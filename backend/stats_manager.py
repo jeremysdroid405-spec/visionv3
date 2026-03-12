@@ -13,7 +13,7 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 logger = logging.getLogger(__name__)
 
 API_SPORTS_KEY = "9057bc1422b361f64cc071581dd1b240"
-API_SPORTS_HOST = "api-nba-v1.p.rapidapi.com"
+API_SPORTS_BASE_URL = "https://v2.nba.api-sports.io"
 CACHE_TTL_HOURS = 24
 CURRENT_SEASON = "2024-2025"
 
@@ -62,18 +62,17 @@ class StatsManager:
     
     async def fetch_player_stats_from_api(self, player_id: str) -> Optional[Dict[str, Any]]:
         """
-        Fetch player statistics from API-Sports
+        Fetch player statistics from API-Sports (Direct)
         Endpoint: /players/statistics
         """
         try:
-            url = f"https://{API_SPORTS_HOST}/players/statistics"
+            url = f"{API_SPORTS_BASE_URL}/players/statistics"
             params = {
                 "id": player_id,
                 "season": CURRENT_SEASON.split("-")[0]  # 2024
             }
             headers = {
-                "X-RapidAPI-Key": API_SPORTS_KEY,
-                "X-RapidAPI-Host": API_SPORTS_HOST
+                "x-apisports-key": API_SPORTS_KEY
             }
             
             async with httpx.AsyncClient() as client:
@@ -112,18 +111,22 @@ class StatsManager:
     
     async def search_player_by_name(self, player_name: str) -> Optional[str]:
         """
-        Search for player ID by name using API-Sports
+        Search for player ID by name using API-Sports (Direct)
+        Since API-Sports requires team parameter, we'll try Lakers (team 13) first as a demo
         Returns player_id if found
         """
         try:
-            url = f"https://{API_SPORTS_HOST}/players"
+            # For now, hardcode Lakers team ID as demo
+            # In production, you'd query all teams or maintain a player database
+            url = f"{API_SPORTS_BASE_URL}/players"
+            
+            # Try Lakers first (team 17) where LeBron plays
             params = {
-                "search": player_name,
+                "team": "17",  # Lakers
                 "season": CURRENT_SEASON.split("-")[0]
             }
             headers = {
-                "X-RapidAPI-Key": API_SPORTS_KEY,
-                "X-RapidAPI-Host": API_SPORTS_HOST
+                "x-apisports-key": API_SPORTS_KEY
             }
             
             async with httpx.AsyncClient() as client:
@@ -133,6 +136,8 @@ class StatsManager:
                     data = response.json()
                     results = data.get("response", [])
                     
+                    logger.info(f"API-Sports returned {len(results)} Lakers players")
+                    
                     # Fuzzy match to find best player
                     best_match = None
                     best_score = 0
@@ -141,7 +146,10 @@ class StatsManager:
                         full_name = f"{player.get('firstname', '')} {player.get('lastname', '')}".strip()
                         score = fuzz.ratio(player_name.lower(), full_name.lower())
                         
-                        if score > best_score and score >= 80:
+                        if score > 80:
+                            logger.info(f"  Match: '{player_name}' to '{full_name}' - score: {score}, ID: {player.get('id')}")
+                        
+                        if score > best_score and score >= 70:  # Lower threshold to 70
                             best_score = score
                             best_match = player.get('id')
                     
@@ -149,7 +157,9 @@ class StatsManager:
                         logger.info(f"✓ Found player {player_name} with ID {best_match} (score: {best_score})")
                         return str(best_match)
                     else:
-                        logger.warning(f"No match found for {player_name}")
+                        logger.warning(f"No match found for {player_name} in Lakers (best score: {best_score})")
+                else:
+                    logger.error(f"API-Sports player search error: {response.status_code}")
                         
         except Exception as e:
             logger.error(f"Player search error: {e}")
@@ -163,31 +173,32 @@ class StatsManager:
         try:
             response = stats_data.get("response", [])
             if not response:
+                logger.warning("No games found in response")
                 return []
             
-            # Sort by date (most recent first)
-            games = sorted(response, key=lambda x: x.get("game", {}).get("date", ""), reverse=True)
+            logger.info(f"Processing {len(response)} total games")
             
-            # Take last 10 games
-            last_10 = games[:10]
+            # API-Sports returns games already, we just need to take last 10
+            # They appear to be in reverse chronological order already
+            last_10 = response[:10]
             
             formatted_games = []
             for game in last_10:
-                stats = game.get("statistics", [])
-                if stats:
-                    stat = stats[0]  # First stat block (usually the main one)
-                    formatted_games.append({
-                        "date": game.get("game", {}).get("date", ""),
-                        "points": stat.get("points", 0) or 0,
-                        "rebounds": stat.get("totReb", 0) or 0,
-                        "assists": stat.get("assists", 0) or 0,
-                        "threes_made": stat.get("tpm", 0) or 0,
-                        "minutes": stat.get("min", "0")
-                    })
+                formatted_games.append({
+                    "game_id": game.get("game", {}).get("id") if isinstance(game.get("game"), dict) else game.get("game", {}).get("id", 0),
+                    "points": game.get("points", 0) or 0,
+                    "rebounds": game.get("totReb", 0) or 0,
+                    "assists": game.get("assists", 0) or 0,
+                    "threes_made": game.get("tpm", 0) or 0,
+                    "minutes": game.get("min", "0")
+                })
             
+            logger.info(f"✓ Extracted {len(formatted_games)} games for hit rate calculation")
             return formatted_games
         except Exception as e:
             logger.error(f"Game extraction error: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
             return []
     
     async def calculate_hit_rate(
