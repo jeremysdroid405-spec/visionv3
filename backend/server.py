@@ -16,7 +16,7 @@ import httpx
 from thefuzz import fuzz
 import asyncio
 from stats_manager_bdl import StatsManager
-from demon_tracker_engine import ThreePillarEngine
+from demon_tracker_engine import DeepIngestionEngine
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -47,20 +47,14 @@ stats_manager = None
 demon_tracker = None
 
 async def initial_autonomous_sync():
-    """Run autonomous three-pillar sync on startup"""
+    """Run autonomous deep ingestion on startup"""
     await asyncio.sleep(5)  # Wait for app to fully start
     
-    # Step 1: BallDontLie sync for player stats
-    if stats_manager:
-        logger.info("🚀 Running BallDontLie roster sync...")
-        result = await stats_manager.autonomous_daily_sync()
-        logger.info(f"BDL Sync result: {result.get('message', 'Done')}")
-    
-    # Step 2: Three-Pillar Engine sync (Odds API + BDL + Tank01)
+    # Run deep ingestion (Odds API + BDL + Tank01)
     if demon_tracker:
-        logger.info("🎯 Running Three-Pillar Autonomous Sync...")
-        result = await demon_tracker.autonomous_three_pillar_sync()
-        logger.info(f"Three-Pillar result: {result.get('demon_cards', {}).get('total', 0)} cards generated")
+        logger.info("🚀 Running DEEP INGESTION on startup...")
+        result = await demon_tracker.run_deep_ingestion()
+        logger.info(f"Deep ingestion result: {result.get('step2_unique_players', 0)} players, {result.get('demons_found', 0)} demons")
 
 @app.on_event("startup")
 async def startup_event():
@@ -70,9 +64,9 @@ async def startup_event():
     stats_manager = StatsManager(db)
     logger.info("✓ Stats Manager initialized (BallDontLie)")
     
-    # Initialize Three-Pillar Engine
-    demon_tracker = ThreePillarEngine(db)
-    logger.info("✓ Three-Pillar Engine initialized (Odds API + BDL + Tank01)")
+    # Initialize Deep Ingestion Engine
+    demon_tracker = DeepIngestionEngine(db)
+    logger.info("✓ Deep Ingestion Engine initialized (Two-Step Process)")
     
     # Run autonomous sync on startup
     asyncio.create_task(initial_autonomous_sync())
@@ -577,11 +571,11 @@ async def get_demon_tracker_status():
 
 @api_router.post("/demon-tracker/sync")
 async def trigger_demon_tracker_sync():
-    """Manually trigger full three-pillar sync"""
+    """Manually trigger deep ingestion sync"""
     if not demon_tracker:
         raise HTTPException(status_code=500, detail="Demon Tracker not initialized")
     
-    result = await demon_tracker.autonomous_three_pillar_sync()
+    result = await demon_tracker.run_deep_ingestion()
     return {"success": True, "result": result}
 
 @api_router.get("/demon-tracker/events")
@@ -707,10 +701,13 @@ async def get_player_analysis(player_name: str, line: float = Query(20.0), marke
         raise HTTPException(status_code=404, detail=f"Player {player_name} not found")
     
     # Get stats
-    games = await demon_tracker.fetch_bdl_player_stats(bdl_player.get("id"))
+    games = await demon_tracker.fetch_player_season_stats(bdl_player.get("id"))
     
     # Calculate hit rates
-    hit_rates = demon_tracker.calculate_triple_view_hit_rate(games, market, line)
+    hit_rates = demon_tracker.calculate_hit_rates(games, market, line)
+    
+    # Get injury info
+    injury_info = demon_tracker.check_player_injury_and_news(player_name)
     
     return {
         "success": True,
@@ -723,6 +720,7 @@ async def get_player_analysis(player_name: str, line: float = Query(20.0), marke
         "market": market,
         "line": line,
         "hit_rates": hit_rates,
+        "injury_info": injury_info,
         "games_analyzed": len(games),
         "last_5_games": [
             {
@@ -735,6 +733,24 @@ async def get_player_analysis(player_name: str, line: float = Query(20.0), marke
             }
             for g in games[:5]
         ]
+    }
+
+@api_router.get("/demon-tracker/search")
+async def search_player_cards(
+    q: str = Query(..., description="Player name to search"),
+    market: Optional[str] = Query(None)
+):
+    """Search for a player's cards"""
+    if not demon_tracker:
+        raise HTTPException(status_code=500, detail="Demon Tracker not initialized")
+    
+    cards = await demon_tracker.get_demon_cards(player_name=q, market=market)
+    
+    return {
+        "success": True,
+        "query": q,
+        "count": len(cards),
+        "cards": cards
     }
 
 @api_router.get("/demon-tracker/board")
