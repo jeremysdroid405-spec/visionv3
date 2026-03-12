@@ -293,18 +293,20 @@ class DemonGoblinEngine:
     """
     The Demon & Goblin Analytics Engine - PrizePicks Edition
     
-    Hybrid Caching Strategy:
-    - STATIC SHELL (24h): Player metadata, teams, positions, historical stats
-    - DYNAMIC PULSE (60s): Betting lines only (price, point, demon/goblin tags)
+    WAREHOUSE MODEL (MongoDB):
+    - LIVE_PROPS: All props stored with deduplication (synced via SyncBoard)
+    - DEMON_RADAR: Top 10 pre-calculated picks flagged as is_radar_pick
+    - Zero API calls from frontend - everything reads from MongoDB
     
     Classification (PrizePicks Native):
-    - Demons (Red): Even odds (+100) - Boosted/harder props
-    - Goblins (Green): Default odds (-115 to -125) - Easier props
+    - Standard (No Icon): Main market props
+    - Demons (Red): Alternate market + Even odds (+100)
+    - Goblins (Green): Alternate market + Non-even odds
     
     Features:
-    - Trending 10: Most popular players based on API order + special line count
-    - Line Movement Tracking: Detect props that moved in last 2 hours
-    - Player-First Hierarchy: All 4,000+ bets organized by player
+    - Demon Radar: Pre-calculated top 10 picks based on Hit Rate + Line Gap
+    - Trending 10: Most popular players based on API order
+    - Player-First Hierarchy: All props organized by player
     """
     
     def __init__(self, db: AsyncIOMotorDatabase):
@@ -317,10 +319,15 @@ class DemonGoblinEngine:
         self.trending_cache = db.dg_trending
         self.line_history = db.dg_line_history
         
-        # NEW: Hybrid caching collections
-        self.static_shell_cache = db.dg_static_shell  # 24h cache for player metadata
-        self.dynamic_lines_cache = db.dg_dynamic_lines  # 60s cache for live lines
-        self.tank01_cache = db.dg_tank01_cache  # 4h cache for Tank01 injury/news data
+        # WAREHOUSE MODEL COLLECTIONS
+        self.live_props = db.dg_live_props  # Master props collection (deduplicated)
+        self.radar_picks = db.dg_radar_picks  # Demon Radar top 10 picks
+        self.cached_board = db.dg_cached_board  # Full cached board for frontend
+        
+        # Legacy caching collections
+        self.static_shell_cache = db.dg_static_shell
+        self.dynamic_lines_cache = db.dg_dynamic_lines
+        self.tank01_cache = db.dg_tank01_cache
         
         # In-memory caches
         self._player_name_map: Dict[str, Any] = {}
@@ -334,6 +341,308 @@ class DemonGoblinEngine:
     def get_current_date(self) -> str:
         """Auto-derive today's date from system clock"""
         return datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    
+    # ==================== WAREHOUSE MODEL: SINGLE BATCH SYNC ====================
+    
+    async def sync_odds_to_mongo(self) -> Dict[str, Any]:
+        """
+        THE ONLY API CALL - Single batch fetch to MongoDB
+        
+        This function:
+        1. Makes ONE call to get all NBA events
+        2. Makes ONE call per event to get PrizePicks odds
+        3. Stores EVERYTHING in dg_live_props collection
+        4. Uses composite key for deduplication
+        5. Adds synced_at timestamp
+        
+        Frontend reads ONLY from MongoDB after this.
+        """
+        sync_start = datetime.now(timezone.utc)
+        self._current_date = self.get_current_date()
+        
+        logger.info("=" * 70)
+        logger.info("[SYNC_ODDS_TO_MONGO] Starting single batch sync...")
+        logger.info(f"[SYNC_ODDS_TO_MONGO] Date: {self._current_date}")
+        logger.info("=" * 70)
+        
+        results = {
+            "success": True,
+            "synced_at": sync_start.isoformat(),
+            "events_count": 0,
+            "total_props": 0,
+            "unique_players": 0,
+            "standard_count": 0,
+            "demons_count": 0,
+            "goblins_count": 0,
+            "api_calls_made": 0,
+            "errors": []
+        }
+        
+        try:
+            # Step 1: Fetch events (1 API call)
+            events = await self.fetch_todays_events()
+            results["events_count"] = len(events)
+            results["api_calls_made"] += 1
+            
+            if not events:
+                logger.warning("[SYNC_ODDS_TO_MONGO] No events found")
+                results["success"] = False
+                results["errors"].append("No NBA events found")
+                return results
+            
+            # Step 2: Fetch odds for each event (1 API call per event)
+            all_props = []
+            seen_players = set()
+            
+            for event in events:
+                event_id = event.get("id")
+                if not event_id:
+                    continue
+                
+                odds_data = await self.fetch_prizepicks_odds(event_id, event)
+                results["api_calls_made"] += 1
+                
+                if odds_data:
+                    props = self.extract_prizepicks_props(odds_data)
+                    all_props.extend(props)
+                    
+                    for prop in props:
+                        seen_players.add(prop.get("player_name"))
+                
+                # Small delay to avoid rate limiting
+                await asyncio.sleep(0.3)
+            
+            results["unique_players"] = len(seen_players)
+            
+            # Step 3: Deduplicate and store in MongoDB
+            if all_props:
+                # Clear old data
+                await self.live_props.delete_many({})
+                
+                # Deduplicate using composite key
+                deduplicated = {}
+                for prop in all_props:
+                    # Composite key: player_name + market + line + direction
+                    key = f"{prop['player_name']}|{prop['market']}|{prop['line']}|{prop['direction']}"
+                    
+                    # Add synced_at timestamp
+                    prop["synced_at"] = sync_start.isoformat()
+                    prop["_composite_key"] = key
+                    
+                    # Keep latest version
+                    deduplicated[key] = prop
+                
+                # Insert deduplicated props (without _id to avoid serialization issues)
+                props_list = list(deduplicated.values())
+                for prop in props_list:
+                    prop.pop("_id", None)  # Remove any existing _id
+                    
+                if props_list:
+                    await self.live_props.insert_many(props_list)
+                
+                results["total_props"] = len(props_list)
+                results["standard_count"] = sum(1 for p in props_list if p.get("prop_type") == "standard")
+                results["demons_count"] = sum(1 for p in props_list if p.get("is_demon"))
+                results["goblins_count"] = sum(1 for p in props_list if p.get("is_goblin"))
+                
+                logger.info(f"[SYNC_ODDS_TO_MONGO] Stored {len(props_list)} deduplicated props")
+            
+            # Step 4: Build cached board for frontend (grouped by player)
+            await self._build_cached_board(props_list, sync_start)
+            
+        except Exception as e:
+            logger.error(f"[SYNC_ODDS_TO_MONGO] Error: {e}")
+            results["success"] = False
+            results["errors"].append(str(e))
+        
+        duration = (datetime.now(timezone.utc) - sync_start).total_seconds()
+        results["duration_seconds"] = duration
+        
+        logger.info("=" * 70)
+        logger.info(f"[SYNC_ODDS_TO_MONGO] COMPLETE")
+        logger.info(f"  Duration: {duration:.1f}s")
+        logger.info(f"  API Calls Made: {results['api_calls_made']}")
+        logger.info(f"  Props Stored: {results['total_props']}")
+        logger.info(f"  Players: {results['unique_players']}")
+        logger.info(f"  Standard: {results['standard_count']} | Demons: {results['demons_count']} | Goblins: {results['goblins_count']}")
+        logger.info("=" * 70)
+        
+        return results
+    
+    async def _build_cached_board(self, props: List[Dict], sync_time: datetime):
+        """
+        Build the cached board for frontend consumption.
+        Groups props by player, adds nba_id, stores in dg_cached_board.
+        """
+        if not props:
+            return
+        
+        # Group by player
+        players_dict = {}
+        for prop in props:
+            player_name = prop.get("player_name", "Unknown")
+            
+            if player_name not in players_dict:
+                nba_id = get_nba_player_id(player_name)
+                players_dict[player_name] = {
+                    "player_name": player_name,
+                    "team": prop.get("home_team", "") or prop.get("away_team", ""),
+                    "nba_id": nba_id,
+                    "props": [],
+                    "demons": [],
+                    "goblins": [],
+                    "standard": [],
+                    "demons_count": 0,
+                    "goblins_count": 0,
+                    "standard_count": 0,
+                    "synced_at": sync_time.isoformat()
+                }
+            
+            players_dict[player_name]["props"].append(prop)
+            
+            if prop.get("is_demon"):
+                players_dict[player_name]["demons"].append(prop)
+                players_dict[player_name]["demons_count"] += 1
+            elif prop.get("is_goblin"):
+                players_dict[player_name]["goblins"].append(prop)
+                players_dict[player_name]["goblins_count"] += 1
+            else:
+                players_dict[player_name]["standard"].append(prop)
+                players_dict[player_name]["standard_count"] += 1
+        
+        # Store in cached_board collection
+        await self.cached_board.delete_many({})
+        
+        # Sort players by prop count (most props first)
+        sorted_players = sorted(
+            players_dict.values(),
+            key=lambda x: len(x["props"]),
+            reverse=True
+        )
+        
+        # Add ranking
+        for idx, player in enumerate(sorted_players):
+            player["rank"] = idx + 1
+            player["popularity_order"] = idx + 1
+        
+        if sorted_players:
+            await self.cached_board.insert_many(sorted_players)
+        
+        # Store sync metadata
+        await self.sync_log.update_one(
+            {"type": "cached_board"},
+            {"$set": {
+                "type": "cached_board",
+                "synced_at": sync_time.isoformat(),
+                "players_count": len(sorted_players),
+                "total_props": sum(len(p["props"]) for p in sorted_players)
+            }},
+            upsert=True
+        )
+        
+        logger.info(f"[CACHED_BOARD] Built board with {len(sorted_players)} players")
+    
+    async def get_cached_board(self) -> Dict[str, Any]:
+        """
+        Get the CACHED board from MongoDB.
+        NO API CALLS - reads only from database.
+        """
+        # Get sync metadata
+        sync_meta = await self.sync_log.find_one({"type": "cached_board"})
+        
+        if not sync_meta:
+            return {
+                "success": False,
+                "synced_at": None,
+                "message": "No cached data. Run /api/v3/sync first.",
+                "players": [],
+                "trending": []
+            }
+        
+        # Get all players from cached_board (exclude _id)
+        players = await self.cached_board.find({}, {"_id": 0}).sort("rank", 1).to_list(500)
+        
+        # Clean any remaining ObjectIds
+        for player in players:
+            for prop in player.get("props", []):
+                prop.pop("_id", None)
+            for prop in player.get("demons", []):
+                prop.pop("_id", None)
+            for prop in player.get("goblins", []):
+                prop.pop("_id", None)
+            for prop in player.get("standard", []):
+                prop.pop("_id", None)
+        
+        # Get trending (top 10)
+        trending = players[:10] if players else []
+        
+        return {
+            "success": True,
+            "synced_at": sync_meta.get("synced_at"),
+            "players_count": len(players),
+            "total_props": sync_meta.get("total_props", 0),
+            "players": players,
+            "trending": trending
+        }
+    
+    async def get_cached_player(self, player_name: str) -> Dict[str, Any]:
+        """
+        Get a single player from the CACHED board.
+        NO API CALLS - reads only from database.
+        """
+        # Try exact match first
+        player = await self.cached_board.find_one(
+            {"player_name": player_name},
+            {"_id": 0}
+        )
+        
+        if player:
+            # Clean ObjectIds from nested arrays
+            self._clean_object_ids(player)
+            return {"success": True, "player": player}
+        
+        # Try case-insensitive search
+        player = await self.cached_board.find_one(
+            {"player_name": {"$regex": f"^{player_name}$", "$options": "i"}},
+            {"_id": 0}
+        )
+        
+        if player:
+            self._clean_object_ids(player)
+            return {"success": True, "player": player}
+        
+        # Fuzzy search
+        all_players = await self.cached_board.find({}, {"player_name": 1, "_id": 0}).to_list(500)
+        
+        best_match = None
+        best_score = 0
+        for p in all_players:
+            score = fuzz.ratio(player_name.lower(), p["player_name"].lower())
+            if score > best_score and score > 70:
+                best_score = score
+                best_match = p["player_name"]
+        
+        if best_match:
+            player = await self.cached_board.find_one(
+                {"player_name": best_match},
+                {"_id": 0}
+            )
+            self._clean_object_ids(player)
+            return {"success": True, "player": player, "matched_name": best_match}
+        
+        return {
+            "success": False,
+            "message": "Lines loading... Player not in cache.",
+            "player": None
+        }
+    
+    def _clean_object_ids(self, player: Dict) -> None:
+        """Remove all ObjectId fields from nested arrays to prevent serialization errors"""
+        for key in ["props", "demons", "goblins", "standard"]:
+            if key in player and isinstance(player[key], list):
+                for item in player[key]:
+                    if isinstance(item, dict):
+                        item.pop("_id", None)
     
     # ==================== PILLAR 1: THE ODDS API (PrizePicks) ====================
     

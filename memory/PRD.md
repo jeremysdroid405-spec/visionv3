@@ -7,6 +7,40 @@ Build a high-performance NBA Player Prop Dashboard that identifies "Demons" (har
 
 ---
 
+## WAREHOUSE MODEL - IMPLEMENTED (March 12, 2026)
+
+### Zero API Calls Architecture
+The app now operates on a **Warehouse Model** where:
+- **Frontend reads ONLY from MongoDB** - Zero Odds API calls per click
+- **Single batch sync** stores all data in MongoDB
+- **No auto-refresh** - Manual sync or 4:00 AM scheduled sync only
+
+### Data Flow
+```
+Odds API → sync_odds_to_mongo() → MongoDB → /api/v3/cached-props → Frontend
+              (SINGLE CALL)        (STORE)      (READ ONLY)
+```
+
+### Endpoints
+| Endpoint | Purpose | API Calls |
+|----------|---------|-----------|
+| `GET /api/v3/cached-props` | Read all players from MongoDB | **ZERO** |
+| `GET /api/v3/cached-player/{name}` | Read single player from MongoDB | **ZERO** |
+| `POST /api/v3/sync-to-mongo` | Batch sync from Odds API | **1 per event** |
+
+### MongoDB Collections
+- `dg_live_props` - All props with deduplication
+- `dg_cached_board` - Pre-built player board for frontend
+- `dg_sync_log` - Sync metadata with timestamps
+
+### Last Sync Results
+- **Events**: 11 NBA games
+- **API Calls Made**: 12 (1 events + 11 odds)
+- **Props Stored**: 5,708 (deduplicated)
+- **Players**: 127
+
+---
+
 ## CLASSIFICATION LOGIC (FIXED March 12, 2026)
 
 ### Market-Based Classification

@@ -116,8 +116,9 @@ async def startup_event():
     scheduler.start()
     logger.info(f"[SCHEDULER] APScheduler started - Daily sync at {DAILY_SYNC_HOUR:02d}:{DAILY_SYNC_MINUTE:02d} UTC")
     
-    # Run autonomous sync on startup
-    asyncio.create_task(initial_autonomous_sync())
+    # DISABLED: Auto-sync on startup to prevent credit drain
+    # The sync should only run manually via /api/v3/sync or at 4:00 AM
+    logger.info("[STARTUP] Auto-sync DISABLED - Use /api/v3/sync to manually sync data")
 
 class SignUpRequest(BaseModel):
     email: str
@@ -1097,34 +1098,69 @@ async def get_live_lines():
 @api_router.get("/v3/hydrated-board")
 async def get_hydrated_board():
     """
-    Get fully hydrated board using hybrid caching strategy:
-    1. Static shell (player metadata, stats) - 24h cache
-    2. Live lines (prices, demon/goblin tags) - 60s cache
+    DEPRECATED - Use /api/v3/cached-props instead.
+    Redirects to cached board for backward compatibility.
+    """
+    return await get_cached_props()
+
+
+# ==================== WAREHOUSE MODEL ENDPOINTS (ZERO API CALLS) ====================
+
+@api_router.get("/v3/cached-props")
+async def get_cached_props():
+    """
+    THE PRIMARY ENDPOINT - Reads ONLY from MongoDB.
+    NO Odds API calls. Zero credit usage.
     
-    Returns combined data optimized for fast initial render + live updates
+    Returns the full cached board with:
+    - All players grouped by props
+    - Trending 10
+    - synced_at timestamp
     """
     if not demon_goblin_engine:
         raise HTTPException(status_code=500, detail="Engine not initialized")
     
-    board = await demon_goblin_engine.get_hydrated_board()
+    board = await demon_goblin_engine.get_cached_board()
     
-    if board.get("needs_sync"):
-        return {
-            "success": True,
-            "needs_sync": True,
-            "message": "Static shell cache empty - run full sync first"
-        }
+    return board
+
+
+@api_router.get("/v3/cached-player/{player_name}")
+async def get_cached_player(player_name: str):
+    """
+    Get a single player from the CACHED database.
+    NO Odds API calls. Zero credit usage.
     
-    return {
-        "success": True,
-        "needs_sync": False,
-        "static_cache_age": board.get("static_cache_age"),
-        "lines_cache_age": board.get("lines_cache_age"),
-        "sync_date": board.get("sync_date"),
-        "players_count": len(board.get("players", [])),
-        "players": board.get("players", []),
-        "trending": board.get("trending", [])
-    }
+    If player not found, returns "Lines loading..." message.
+    Does NOT trigger any API call.
+    """
+    if not demon_goblin_engine:
+        raise HTTPException(status_code=500, detail="Engine not initialized")
+    
+    result = await demon_goblin_engine.get_cached_player(player_name)
+    
+    return result
+
+
+@api_router.post("/v3/sync-to-mongo")
+async def sync_to_mongo():
+    """
+    THE ONLY API CALL ENDPOINT - Single batch sync.
+    
+    This is the ONLY place where Odds API is called.
+    Fetches all data and stores in MongoDB.
+    
+    Use this endpoint manually or via scheduler.
+    Frontend NEVER calls this.
+    """
+    if not demon_goblin_engine:
+        raise HTTPException(status_code=500, detail="Engine not initialized")
+    
+    logger.info("[MANUAL SYNC] sync_to_mongo triggered")
+    
+    result = await demon_goblin_engine.sync_odds_to_mongo()
+    
+    return result
 
 
 # ==================== SCHEDULER ENDPOINTS ====================

@@ -599,7 +599,7 @@ const LadderPropRow = memo(({ prop, categoryStats, isFirst, isLast }) => {
 
 LadderPropRow.displayName = 'LadderPropRow';
 
-// ==================== PLAYER DETAIL PAGE (Refactored) ====================
+// ==================== PLAYER DETAIL PAGE (CACHED - No API Calls) ====================
 
 const PlayerDetailPage = ({ playerName, onBack }) => {
   const [player, setPlayer] = useState(null);
@@ -609,17 +609,23 @@ const PlayerDetailPage = ({ playerName, onBack }) => {
   
   useEffect(() => {
     const fetchPlayer = async () => {
+      /**
+       * HARD CUTOFF: Uses ONLY the cached MongoDB endpoint.
+       * NO Odds API calls. Zero credit usage.
+       */
       try {
         setLoading(true);
-        const response = await axios.get(`${API}/v3/player/${encodeURIComponent(playerName)}`);
-        if (response.data.success) {
+        const response = await axios.get(`${API}/v3/cached-player/${encodeURIComponent(playerName)}`);
+        
+        if (response.data.success && response.data.player) {
           setPlayer(response.data.player);
         } else {
-          setError('Player not found');
+          // Show "Lines loading..." message - do NOT trigger API call
+          setError(response.data.message || 'Lines loading... Player not in cache.');
         }
       } catch (err) {
-        console.error('Error fetching player:', err);
-        setError('Failed to load player data');
+        console.error('Error fetching player from cache:', err);
+        setError('Lines loading... Please sync data first.');
       } finally {
         setLoading(false);
       }
@@ -900,120 +906,78 @@ export const DemonGoblinDashboardOptimized = () => {
   const [syncing, setSyncing] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState('all');
-  const [cacheStatus, setCacheStatus] = useState({ static: null, lines: null });
+  const [syncedAt, setSyncedAt] = useState(null);
   
   // Navigation state
   const [selectedPlayer, setSelectedPlayer] = useState(null);
 
-  // ==================== DATA LOADING ====================
+  // ==================== CACHED DATA LOADING (ZERO API CALLS) ====================
   
-  const loadStaticShell = useCallback(async () => {
-    const cached = CacheService.getStaticShell();
-    
-    if (cached.hit) {
-      console.log(`[CACHE HIT] Static shell (age: ${cached.age.toFixed(0)}s)`);
-      setPlayers(cached.data.players || []);
-      setTrending(cached.data.trending || []);
-      setStaticLoaded(true);
-      setCacheStatus(prev => ({ ...prev, static: { hit: true, age: cached.age } }));
-      return;
-    }
-    
-    console.log('[CACHE MISS] Fetching from API...');
+  const loadCachedBoard = useCallback(async () => {
+    /**
+     * HARD CUTOFF: This is the ONLY data fetch function.
+     * It reads ONLY from MongoDB via /api/v3/cached-props.
+     * NO Odds API calls are made here.
+     */
     try {
-      const response = await axios.get(`${API}/v3/static-shell`);
+      console.log('[CACHED] Loading from MongoDB...');
+      const response = await axios.get(`${API}/v3/cached-props`);
+      
       if (response.data.success && response.data.players_count > 0) {
         setPlayers(response.data.players || []);
         setTrending(response.data.trending || []);
+        setSyncedAt(response.data.synced_at);
         setStaticLoaded(true);
-        setCacheStatus(prev => ({ ...prev, static: { hit: response.data.cache_hit, age: response.data.cache_age_seconds } }));
-        CacheService.setStaticShell({ players: response.data.players, trending: response.data.trending });
+        setLinesLoaded(true);
+        console.log(`[CACHED] Loaded ${response.data.players_count} players from MongoDB`);
         return;
       }
       
-      // Fallback to board
-      console.log('[FALLBACK] Using v3/board...');
-      const boardResponse = await axios.get(`${API}/v3/board`);
-      if (boardResponse.data.success) {
-        setPlayers(boardResponse.data.players || []);
-        setStaticLoaded(true);
-        setLinesLoaded(true);
-        setCacheStatus(prev => ({ ...prev, static: { hit: false, age: 0 } }));
-        
-        const trendingResponse = await axios.get(`${API}/v3/trending`);
-        if (trendingResponse.data.success) {
-          setTrending(trendingResponse.data.trending || []);
-        }
-      }
+      // No cached data - show empty state
+      console.log('[CACHED] No cached data. Run /api/v3/sync-to-mongo first.');
+      setStaticLoaded(true);
+      setLinesLoaded(false);
+      
     } catch (error) {
-      console.error('Error loading:', error);
+      console.error('[CACHED] Error loading from MongoDB:', error);
+      setStaticLoaded(true);
     }
   }, []);
   
-  const loadLiveLines = useCallback(async () => {
-    try {
-      const response = await axios.get(`${API}/v3/live-lines`);
-      if (response.data.success) {
-        const lines = response.data.lines || {};
-        
-        setPlayers(prev => prev.map(player => {
-          const playerLines = lines[player.player_name] || [];
-          return {
-            ...player,
-            props: playerLines,
-            demons_count: playerLines.filter(l => l.is_demon).length,
-            goblins_count: playerLines.filter(l => l.is_goblin).length
-          };
-        }));
-        
-        setTrending(prev => prev.map(t => {
-          const playerLines = lines[t.player_name] || [];
-          return {
-            ...t,
-            demons_count: playerLines.filter(l => l.is_demon).length,
-            goblins_count: playerLines.filter(l => l.is_goblin).length
-          };
-        }));
-        
-        setLinesLoaded(true);
-        setCacheStatus(prev => ({ ...prev, lines: { hit: response.data.cache_hit, age: response.data.cache_age_seconds } }));
-      }
-    } catch (error) {
-      console.error('Error loading lines:', error);
-    }
-  }, []);
-  
-  const triggerFullSync = async () => {
+  const triggerSync = async () => {
+    /**
+     * THE ONLY API CALL: Manual sync to MongoDB.
+     * This fetches from Odds API and stores in MongoDB.
+     * Should be used sparingly to conserve API credits.
+     */
     try {
       setSyncing(true);
       setLinesLoaded(false);
-      toast.info('Starting full sync...');
-      CacheService.clear();
+      toast.info('Syncing from Odds API to MongoDB...');
       
-      const response = await axios.post(`${API}/v3/sync`, {}, { timeout: 600000 });
+      const response = await axios.post(`${API}/v3/sync-to-mongo`, {}, { timeout: 600000 });
+      
       if (response.data.success) {
-        const result = response.data.result || {};
-        toast.success(`Sync complete! ${result.unique_players} players`);
-        await loadStaticShell();
-        await loadLiveLines();
+        const result = response.data;
+        toast.success(`Sync complete! ${result.unique_players} players, ${result.api_calls_made} API calls`);
+        
+        // Reload from MongoDB
+        await loadCachedBoard();
+      } else {
+        toast.error('Sync failed: ' + (response.data.errors?.join(', ') || 'Unknown error'));
       }
     } catch (error) {
-      toast.error('Sync failed');
+      toast.error('Sync failed: ' + error.message);
     } finally {
       setSyncing(false);
     }
   };
   
   useEffect(() => {
-    const init = async () => {
-      await loadStaticShell();
-      setTimeout(() => loadLiveLines(), 100);
-    };
-    init();
-    
-    const linesInterval = setInterval(loadLiveLines, 60000);
-    return () => clearInterval(linesInterval);
-  }, [loadStaticShell, loadLiveLines]);
+    // Load from MongoDB cache on mount
+    // NO auto-refresh interval - data is static until manual sync
+    loadCachedBoard();
+  }, [loadCachedBoard]);
   
   // ==================== FILTERING ====================
   
@@ -1065,37 +1029,43 @@ export const DemonGoblinDashboardOptimized = () => {
 
           <div className="flex items-center gap-2 flex-shrink-0">
             <Button
-              onClick={triggerFullSync}
+              onClick={triggerSync}
               disabled={syncing}
               variant="ghost"
               size="sm"
               className="text-purple-400 hover:text-purple-300 p-1.5"
               data-testid="sync-btn"
+              title="Sync from Odds API (uses credits)"
             >
               <Database className={`w-4 h-4 ${syncing ? 'animate-spin' : ''}`} />
             </Button>
             <Button
-              onClick={loadLiveLines}
+              onClick={loadCachedBoard}
               disabled={!staticLoaded}
               variant="ghost"
               size="sm"
               className="text-zinc-400 hover:text-white p-1.5"
               data-testid="refresh-btn"
+              title="Reload from MongoDB (free)"
             >
               <RefreshCw className="w-4 h-4" />
             </Button>
           </div>
         </div>
         
-        {/* Sub-header info */}
+        {/* Sub-header info with Last Updated timestamp */}
         <div className="flex items-center gap-2 mt-1.5 text-[10px] text-zinc-500">
           <span>{players.length} Players</span>
           <span>·</span>
           <HardDrive className="w-3 h-3" />
-          <span>{cacheStatus.static?.hit ? 'CACHED' : 'FRESH'}</span>
-          <span>·</span>
-          <Zap className="w-3 h-3" />
-          <span>{linesLoaded ? 'LIVE' : 'Loading...'}</span>
+          <span>CACHED</span>
+          {syncedAt && (
+            <>
+              <span>·</span>
+              <Clock className="w-3 h-3" />
+              <span>Last Updated: {new Date(syncedAt).toLocaleString()}</span>
+            </>
+          )}
         </div>
       </header>
 
@@ -1129,8 +1099,8 @@ export const DemonGoblinDashboardOptimized = () => {
           </div>
           
           <div className="text-xs text-zinc-500 flex items-center gap-1">
-            <Clock className="w-3 h-3" />
-            60s
+            <HardDrive className="w-3 h-3" />
+            MongoDB
           </div>
         </div>
 
