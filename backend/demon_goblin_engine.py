@@ -541,6 +541,184 @@ class DemonGoblinEngine:
         )
         
         logger.info(f"[CACHED_BOARD] Built board with {len(sorted_players)} players")
+        
+        # Build Demon Radar (Top 10 picks)
+        await self._build_demon_radar(players_dict, sync_time)
+    
+    async def _build_demon_radar(self, players_dict: Dict[str, Dict], sync_time: datetime):
+        """
+        THE INTRICATE DEMON RADAR ALGORITHM
+        
+        Scoring Formula:
+        1. Hit Probability (P) = (H10 × 0.6) + (H5 × 0.4)
+           - If hit rates unavailable, estimate P based on line gap
+        2. Line Gap (G) = (Demon_Value - Standard_Value) / Standard_Value  
+        3. Final Score = P - (G × 100)
+        
+        Logic Guard: Only include if P >= 60%
+        """
+        logger.info("[DEMON RADAR] Calculating top 10 picks...")
+        
+        radar_picks = []
+        
+        for player_name, player_data in players_dict.items():
+            demons = player_data.get("demons", [])
+            standard = player_data.get("standard", [])
+            
+            if not demons:
+                continue
+            
+            # Build a map of standard lines by stat type
+            standard_map = {}
+            for std_prop in standard:
+                market = std_prop.get("market", "")
+                stat_type = self._extract_stat_type(market)
+                if stat_type:
+                    key = f"{stat_type}_{std_prop.get('direction', '')}"
+                    if key not in standard_map:
+                        standard_map[key] = std_prop
+            
+            # Score each demon
+            for demon in demons:
+                demon_market = demon.get("market", "")
+                demon_stat = self._extract_stat_type(demon_market)
+                demon_line = demon.get("line", 0)
+                demon_direction = demon.get("direction", "")
+                
+                if not demon_stat or demon_line <= 0:
+                    continue
+                
+                # Find corresponding standard line
+                std_key = f"{demon_stat}_{demon_direction}"
+                std_prop = standard_map.get(std_key)
+                
+                # If no standard line, use a reference gap
+                if std_prop:
+                    std_line = std_prop.get("line", 0)
+                else:
+                    # No standard line - skip or estimate
+                    # For now, use the demon line as a rough estimate
+                    std_line = demon_line * 0.85  # Assume demon is ~15% above standard
+                
+                if std_line <= 0:
+                    continue
+                
+                # Get hit rates from BallDontLie stats if available
+                hit_rates = demon.get("hit_rates", {})
+                h10 = hit_rates.get("l10", {}).get("hit_rate", 0)
+                h5 = hit_rates.get("l5", {}).get("hit_rate", 0)
+                
+                # Calculate Line Gap (G)
+                # G = (Demon_Value - Standard_Value) / Standard_Value
+                G = (demon_line - std_line) / std_line if std_line > 0 else 0
+                
+                # If no hit rates, estimate P based on line gap
+                # Closer gap = higher probability
+                if h10 == 0 and h5 == 0:
+                    # Estimate: P decreases as gap increases
+                    # Gap of 0% = 80% P, Gap of 20% = 60% P, Gap of 50% = 40% P
+                    estimated_P = max(0.40, 0.80 - (G * 1.0))  # Linear decay
+                    h10 = estimated_P
+                    h5 = estimated_P
+                
+                # Calculate Hit Probability (P)
+                # P = (H10 × 0.6) + (H5 × 0.4)
+                P = (h10 * 0.6) + (h5 * 0.4)
+                
+                # Logic Guard: Only include if P >= 60%
+                if P < 0.60:
+                    continue
+                
+                # Final Radar Score = P - (G × 100)
+                radar_score = P - (G * 100)
+                
+                # Calculate gap difference for UI
+                gap_diff = demon_line - std_line
+                gap_pct = G * 100
+                
+                radar_picks.append({
+                    "player_name": player_name,
+                    "team": player_data.get("team", ""),
+                    "nba_id": player_data.get("nba_id"),
+                    "stat_type": demon_stat,
+                    "direction": demon_direction,
+                    "demon_line": demon_line,
+                    "standard_line": round(std_line, 1),
+                    "gap_diff": round(gap_diff, 1),
+                    "gap_pct": round(gap_pct, 1),
+                    "h10_rate": round(h10 * 100, 1),
+                    "h5_rate": round(h5 * 100, 1),
+                    "hit_probability": round(P * 100, 1),
+                    "radar_score": round(radar_score, 2),
+                    "radar_strength": min(100, max(0, round(P * 100, 1))),
+                    "price": demon.get("price", 100),
+                    "is_radar_pick": True,
+                    "estimated_p": h10 == h5,  # Flag if P was estimated
+                    "synced_at": sync_time.isoformat()
+                })
+        
+        # Sort by radar_score descending
+        radar_picks.sort(key=lambda x: x["radar_score"], reverse=True)
+        
+        # Take top 10
+        top_10 = radar_picks[:10]
+        
+        # Store in radar_picks collection
+        await self.radar_picks.delete_many({})
+        if top_10:
+            await self.radar_picks.insert_many(top_10)
+        
+        logger.info(f"[DEMON RADAR] Generated {len(top_10)} top picks from {len(radar_picks)} candidates")
+        
+        # Log top 3 for debugging
+        for i, pick in enumerate(top_10[:3]):
+            logger.info(f"  #{i+1}: {pick['player_name']} - {pick['stat_type']} {pick['demon_line']} "
+                       f"(Gap: {pick['gap_diff']}, P: {pick['hit_probability']}%, Score: {pick['radar_score']})")
+    
+    def _extract_stat_type(self, market: str) -> str:
+        """Extract stat type from market name"""
+        # Remove _alternate suffix
+        market = market.replace("_alternate", "")
+        
+        # Map to stat types
+        stat_map = {
+            "player_points": "PTS",
+            "player_rebounds": "REB",
+            "player_assists": "AST",
+            "player_threes": "3PM",
+            "player_blocks": "BLK",
+            "player_steals": "STL",
+            "player_turnovers": "TO",
+            "player_points_rebounds": "P+R",
+            "player_points_assists": "P+A",
+            "player_rebounds_assists": "R+A",
+            "player_points_rebounds_assists": "PRA",
+        }
+        
+        return stat_map.get(market, "")
+    
+    async def get_demon_radar(self) -> Dict[str, Any]:
+        """
+        Get the Demon Radar top 10 picks from MongoDB.
+        NO API CALLS - reads only from database.
+        """
+        picks = await self.radar_picks.find({}, {"_id": 0}).sort("radar_score", -1).to_list(10)
+        
+        sync_meta = await self.sync_log.find_one({"type": "cached_board"})
+        
+        return {
+            "success": True,
+            "synced_at": sync_meta.get("synced_at") if sync_meta else None,
+            "picks_count": len(picks),
+            "picks": picks,
+            "algorithm": {
+                "description": "Weighted Probability + Line Gap",
+                "formula": "Score = P - (G × 100)",
+                "hit_probability": "(H10 × 0.6) + (H5 × 0.4)",
+                "line_gap": "(Demon - Standard) / Standard",
+                "min_probability": "60%"
+            }
+        }
     
     async def get_cached_board(self) -> Dict[str, Any]:
         """

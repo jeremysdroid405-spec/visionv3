@@ -319,6 +319,110 @@ const TrendingCard = memo(({ player, rank, onClick, linesLoaded }) => {
 
 TrendingCard.displayName = 'TrendingCard';
 
+// ==================== DEMON RADAR CARD ====================
+
+const RadarCard = memo(({ pick, rank, onClick }) => {
+  // Radar strength determines the glow intensity
+  const strengthClass = pick.radar_strength >= 80 ? 'ring-red-500/60' :
+                       pick.radar_strength >= 70 ? 'ring-red-500/40' :
+                       'ring-red-500/20';
+  
+  return (
+    <Card 
+      className={`
+        bg-gradient-to-br from-red-950/30 to-zinc-950 border-red-900/50
+        hover:border-red-500/70 hover:scale-[1.02] transition-all duration-200
+        cursor-pointer active:scale-[0.98] ring-1 ${strengthClass}
+      `}
+      onClick={onClick}
+      data-testid={`radar-card-${rank}`}
+    >
+      <div className="p-3">
+        {/* Header: Headshot + Rank + Name */}
+        <div className="flex items-center gap-2 mb-2">
+          {/* Headshot with Radar Badge */}
+          <div className="relative">
+            <PlayerHeadshot 
+              nbaId={pick.nba_id} 
+              playerName={pick.player_name} 
+              size="md"
+              className="ring-2 ring-red-800/50"
+            />
+            {/* Rank Badge with Radar icon */}
+            <div className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full flex items-center justify-center 
+                          font-bold text-[10px] border-2 border-zinc-900 bg-red-600 text-white">
+              {rank}
+            </div>
+          </div>
+          
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-1">
+              <span className="font-bold text-white text-sm truncate">{pick.player_name}</span>
+              <Skull className="w-3 h-3 text-red-500 flex-shrink-0" />
+            </div>
+            <div className="flex items-center gap-1 text-[10px] text-zinc-500">
+              <span className="font-mono">{pick.team || '---'}</span>
+              <span>· {pick.stat_type}</span>
+            </div>
+          </div>
+        </div>
+        
+        {/* Radar Stats */}
+        <div className="space-y-1.5">
+          {/* Line Info */}
+          <div className="flex items-center justify-between text-xs">
+            <span className="text-zinc-400">Line:</span>
+            <div className="flex items-center gap-1">
+              <span className="text-white font-bold">{pick.demon_line}</span>
+              <span className="text-red-400 font-mono">+100</span>
+            </div>
+          </div>
+          
+          {/* Gap Difference */}
+          <div className="flex items-center justify-between text-xs">
+            <span className="text-zinc-400">Gap:</span>
+            <span className="text-yellow-400 font-medium">
+              {pick.gap_diff > 0 ? '+' : ''}{pick.gap_diff} above standard
+            </span>
+          </div>
+          
+          {/* Radar Strength Progress Bar */}
+          <div className="mt-2">
+            <div className="flex items-center justify-between text-[10px] mb-1">
+              <span className="text-zinc-500">Radar Strength</span>
+              <span className={`font-bold ${
+                pick.radar_strength >= 80 ? 'text-green-400' :
+                pick.radar_strength >= 70 ? 'text-yellow-400' :
+                'text-zinc-400'
+              }`}>
+                {pick.radar_strength}%
+              </span>
+            </div>
+            <div className="h-1.5 bg-zinc-800 rounded-full overflow-hidden">
+              <div 
+                className={`h-full rounded-full transition-all ${
+                  pick.radar_strength >= 80 ? 'bg-gradient-to-r from-green-500 to-green-400' :
+                  pick.radar_strength >= 70 ? 'bg-gradient-to-r from-yellow-500 to-yellow-400' :
+                  'bg-gradient-to-r from-zinc-500 to-zinc-400'
+                }`}
+                style={{ width: `${pick.radar_strength}%` }}
+              />
+            </div>
+          </div>
+          
+          {/* Hit Rate Info */}
+          <div className="flex items-center justify-between text-[10px] text-zinc-500 mt-1">
+            <span>L10: <span className="text-white">{pick.h10_rate}%</span></span>
+            <span>L5: <span className="text-white">{pick.h5_rate}%</span></span>
+          </div>
+        </div>
+      </div>
+    </Card>
+  );
+});
+
+RadarCard.displayName = 'RadarCard';
+
 // ==================== STAT CATEGORIES ====================
 
 const STAT_CATEGORIES = {
@@ -901,6 +1005,7 @@ export const DemonGoblinDashboardOptimized = () => {
   // State
   const [players, setPlayers] = useState([]);
   const [trending, setTrending] = useState([]);
+  const [radarPicks, setRadarPicks] = useState([]);
   const [linesLoaded, setLinesLoaded] = useState(false);
   const [staticLoaded, setStaticLoaded] = useState(false);
   const [syncing, setSyncing] = useState(false);
@@ -921,22 +1026,31 @@ export const DemonGoblinDashboardOptimized = () => {
      */
     try {
       console.log('[CACHED] Loading from MongoDB...');
-      const response = await axios.get(`${API}/v3/cached-props`);
       
-      if (response.data.success && response.data.players_count > 0) {
-        setPlayers(response.data.players || []);
-        setTrending(response.data.trending || []);
-        setSyncedAt(response.data.synced_at);
+      // Load board and radar in parallel
+      const [boardResponse, radarResponse] = await Promise.all([
+        axios.get(`${API}/v3/cached-props`),
+        axios.get(`${API}/v3/demon-radar`)
+      ]);
+      
+      if (boardResponse.data.success && boardResponse.data.players_count > 0) {
+        setPlayers(boardResponse.data.players || []);
+        setTrending(boardResponse.data.trending || []);
+        setSyncedAt(boardResponse.data.synced_at);
         setStaticLoaded(true);
         setLinesLoaded(true);
-        console.log(`[CACHED] Loaded ${response.data.players_count} players from MongoDB`);
-        return;
+        console.log(`[CACHED] Loaded ${boardResponse.data.players_count} players from MongoDB`);
+      } else {
+        console.log('[CACHED] No cached data. Run /api/v3/sync-to-mongo first.');
+        setStaticLoaded(true);
+        setLinesLoaded(false);
       }
       
-      // No cached data - show empty state
-      console.log('[CACHED] No cached data. Run /api/v3/sync-to-mongo first.');
-      setStaticLoaded(true);
-      setLinesLoaded(false);
+      // Load radar picks
+      if (radarResponse.data.success) {
+        setRadarPicks(radarResponse.data.picks || []);
+        console.log(`[RADAR] Loaded ${radarResponse.data.picks_count} radar picks`);
+      }
       
     } catch (error) {
       console.error('[CACHED] Error loading from MongoDB:', error);
@@ -1103,6 +1217,35 @@ export const DemonGoblinDashboardOptimized = () => {
             MongoDB
           </div>
         </div>
+
+        {/* DEMON RADAR - Top 10 Mathematical Picks */}
+        {radarPicks.length > 0 && (
+          <div data-testid="radar-section">
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-2">
+                <Skull className="w-5 h-5 text-red-500" />
+                <span className="text-sm font-bold text-red-400">DEMON RADAR</span>
+                <Badge className="bg-red-950/50 text-red-400 border-red-800/50 text-[10px]">
+                  TOP 10
+                </Badge>
+              </div>
+              <div className="text-[10px] text-zinc-500">
+                P = (H10×0.6 + H5×0.4) | Min 60%
+              </div>
+            </div>
+            
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+              {radarPicks.slice(0, 10).map((pick, idx) => (
+                <RadarCard 
+                  key={`${pick.player_name}-${pick.stat_type}`} 
+                  pick={pick} 
+                  rank={idx + 1}
+                  onClick={() => handlePlayerClick(pick.player_name)}
+                />
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Trending 10 - Clickable Cards */}
         {trending.length > 0 && (

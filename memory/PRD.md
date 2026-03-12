@@ -41,6 +41,42 @@ Odds API → sync_odds_to_mongo() → MongoDB → /api/v3/cached-props → Front
 
 ---
 
+## DEMON RADAR - IMPLEMENTED (March 12, 2026)
+
+### The Intricate Demon Radar Algorithm
+
+**Formula:**
+```
+Hit Probability (P) = (H10 × 0.6) + (H5 × 0.4)
+Line Gap (G) = (Demon_Value - Standard_Value) / Standard_Value
+Final Score = P - (G × 100)
+```
+
+**Logic Guard:** Only includes picks where P >= 60%
+
+### How It Works
+1. **Data Extraction**: Pulls all Demons from `dg_cached_board`
+2. **Scoring**: Calculates P and G for each demon
+3. **Ranking**: Sorts by Final Score (descending)
+4. **Storage**: Top 10 stored in `dg_radar_picks` collection
+
+### Radar Card Display
+- **Radar Strength**: Progress bar showing P (0-100%)
+- **Gap Difference**: "+X above standard" text
+- **L10/L5 Rates**: Historical hit percentages
+- **Green**: Strength >= 80%
+- **Yellow**: Strength >= 70%
+
+### API Endpoint
+- `GET /api/v3/demon-radar` - Returns top 10 pre-calculated picks
+
+### Latest Results (1549 candidates → 10 picks)
+1. Nikola Jokic - PTS 29.5 (76.5%, Gap: +1)
+2. Nickeil Alexander-Walker - PRA 27.5 (76.2%, Gap: +1)
+3. Derrick White - PRA 27.5 (76.2%, Gap: +1)
+
+---
+
 ## CLASSIFICATION LOGIC (FIXED March 12, 2026)
 
 ### Market-Based Classification

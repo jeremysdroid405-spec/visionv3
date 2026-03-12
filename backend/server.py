@@ -1149,6 +1149,7 @@ async def sync_to_mongo():
     
     This is the ONLY place where Odds API is called.
     Fetches all data and stores in MongoDB.
+    Also calculates and stores Demon Radar top 10.
     
     Use this endpoint manually or via scheduler.
     Frontend NEVER calls this.
@@ -1159,6 +1160,30 @@ async def sync_to_mongo():
     logger.info("[MANUAL SYNC] sync_to_mongo triggered")
     
     result = await demon_goblin_engine.sync_odds_to_mongo()
+    
+    return result
+
+
+# ==================== DEMON RADAR ENDPOINT ====================
+
+@api_router.get("/v3/demon-radar")
+async def get_demon_radar():
+    """
+    THE DEMON RADAR - Top 10 picks based on mathematical analysis.
+    
+    Algorithm:
+    1. Hit Probability (P) = (H10 × 0.6) + (H5 × 0.4)
+    2. Line Gap (G) = (Demon_Value - Standard_Value) / Standard_Value
+    3. Final Score = P - (G × 100)
+    
+    Logic Guard: Only includes picks with P >= 60%
+    
+    NO API CALLS - reads from pre-calculated MongoDB data.
+    """
+    if not demon_goblin_engine:
+        raise HTTPException(status_code=500, detail="Engine not initialized")
+    
+    result = await demon_goblin_engine.get_demon_radar()
     
     return result
 
