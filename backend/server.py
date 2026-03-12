@@ -966,6 +966,29 @@ async def get_dg_board():
         "players": players
     }
 
+@api_router.get("/v3/trending")
+async def get_trending_10():
+    """
+    Get the Top 10 Most Popular players today (Trending 10)
+    Based on PrizePicks board order and Demon/Goblin count
+    
+    Returns players with:
+    - Popularity score
+    - Top 3 props with hit rates
+    - Injury status (with NEW INJURY tag if applicable)
+    """
+    if not demon_goblin_engine:
+        raise HTTPException(status_code=500, detail="Demon & Goblin Engine not initialized")
+    
+    trending = await demon_goblin_engine.get_trending_10()
+    
+    return {
+        "success": True,
+        "description": "Most Popular Today - Top 10 trending players on PrizePicks",
+        "count": len(trending),
+        "trending": trending
+    }
+
 app.include_router(api_router)
 
 app.add_middleware(

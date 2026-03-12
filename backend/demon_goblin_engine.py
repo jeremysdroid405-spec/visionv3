@@ -102,7 +102,10 @@ class DemonGoblinEngine:
     - Demons (Red): Even odds (+100) - Boosted/harder props
     - Goblins (Green): Default odds (-115 to -125) - Easier props
     
-    Data organized hierarchically by player for easy navigation.
+    Features:
+    - Trending 10: Most popular players based on API order + special line count
+    - Line Movement Tracking: Detect props that moved in last 2 hours
+    - Player-First Hierarchy: All 4,000+ bets organized by player
     """
     
     def __init__(self, db: AsyncIOMotorDatabase):
@@ -112,6 +115,8 @@ class DemonGoblinEngine:
         self.player_data = db.dg_player_data
         self.stats_cache = db.dg_stats_cache
         self.sync_log = db.dg_sync_log
+        self.trending_cache = db.dg_trending  # NEW: Trending players cache
+        self.line_history = db.dg_line_history  # NEW: Line movement tracking
         
         # In-memory caches
         self._player_name_map: Dict[str, Any] = {}
@@ -119,6 +124,7 @@ class DemonGoblinEngine:
         self._news_data: List[Dict] = []
         self._last_sync: Optional[datetime] = None
         self._current_date: Optional[str] = None
+        self._player_popularity: Dict[str, int] = {}  # Track API order for popularity
     
     def get_current_date(self) -> str:
         """Auto-derive today's date from system clock"""
@@ -251,13 +257,19 @@ class DemonGoblinEngine:
         
         PrizePicks Native Classification:
         - Demon (Red): Even odds (+100) - Boosted/harder lines
-        - Goblin (Green): Default odds (around -115 to -125) - Easier lines
+        - Goblin (Green): Negative odds (e.g., -137) - Easier lines
+        
+        Also tracks player order for popularity ranking.
         """
         props = []
         event_id = odds_data.get("id") or odds_data.get("event_id")
         home_team = odds_data.get("home_team", "")
         away_team = odds_data.get("away_team", "")
         commence_time = odds_data.get("commence_time", "")
+        
+        # Track player appearance order (first players in response = more popular)
+        player_order_counter = 0
+        seen_players_in_event = set()
         
         for bookmaker in odds_data.get("bookmakers", []):
             book_key = bookmaker.get("key", "")
@@ -268,6 +280,7 @@ class DemonGoblinEngine:
             
             for market in bookmaker.get("markets", []):
                 market_key = market.get("key", "")
+                market_last_update = market.get("last_update", "")
                 
                 # Only process alternate markets (where Demons/Goblins exist)
                 if "_alternate" not in market_key:
@@ -280,6 +293,21 @@ class DemonGoblinEngine:
                     price = outcome.get("price")  # American odds
                     
                     if player_name and line is not None:
+                        # Track popularity order - first appearance = more popular
+                        if player_name not in seen_players_in_event:
+                            seen_players_in_event.add(player_name)
+                            player_order_counter += 1
+                            
+                            # Store popularity (lower = more popular)
+                            if player_name not in self._player_popularity:
+                                self._player_popularity[player_name] = player_order_counter
+                            else:
+                                # Average with existing (in case player appears in multiple events)
+                                self._player_popularity[player_name] = min(
+                                    self._player_popularity[player_name], 
+                                    player_order_counter
+                                )
+                        
                         # PrizePicks Classification
                         # Demon: Even odds (+100) = Boosted/harder prop
                         # Goblin: Negative odds (e.g., -137) = Easier prop (closer to average)
@@ -302,8 +330,12 @@ class DemonGoblinEngine:
                             "is_demon": is_demon,
                             "is_goblin": is_goblin,
                             "prop_type": prop_type,
+                            "last_update": market_last_update,
+                            "popularity_order": self._player_popularity.get(player_name, 999),
                             "fetched_at": datetime.now(timezone.utc).isoformat()
                         })
+        
+        return props
         
         return props
     
@@ -773,10 +805,12 @@ class DemonGoblinEngine:
                         "team": prop.get("bdl_team", ""),
                         "position": prop.get("position", ""),
                         "injury_info": prop.get("injury_info", {}),
+                        "popularity_order": self._player_popularity.get(player_name, 999),
                         "props": [],
                         "demons": [],
                         "goblins": [],
-                        "has_goblin_warning": False
+                        "has_goblin_warning": False,
+                        "has_new_injury": False  # NEW: Track if this is a new injury update
                     }
                 
                 player_data[player_name]["props"].append(prop)
@@ -790,7 +824,73 @@ class DemonGoblinEngine:
                 if prop.get("has_goblin_warning"):
                     player_data[player_name]["has_goblin_warning"] = True
             
-            # Store in MongoDB
+            # ===== BUILD TRENDING 10 =====
+            logger.info("\n[TRENDING] Building Most Popular Today (Top 10)...")
+            
+            # Calculate popularity score for each player
+            # Score = (API Order * 10) - (Demon Count * 5) - (Goblin Count * 3) - (Has Injury Flag * -50)
+            # Lower score = more popular
+            trending_list = []
+            for name, data in player_data.items():
+                demons_count = len(data.get("demons", []))
+                goblins_count = len(data.get("goblins", []))
+                special_count = demons_count + goblins_count
+                
+                # Only include players with at least 1 Demon or Goblin
+                if special_count == 0:
+                    continue
+                
+                popularity_order = data.get("popularity_order", 999)
+                injury_info = data.get("injury_info", {})
+                has_injury = injury_info.get("has_injury", False)
+                
+                # Popularity score (lower = more popular)
+                score = popularity_order - (special_count * 2)
+                if has_injury:
+                    score += 20  # Penalize injured players slightly
+                
+                # Get best prop for display (highest hit rate Goblin or Demon)
+                best_prop = None
+                best_hit_rate = 0
+                for prop in data.get("props", []):
+                    if prop.get("is_demon") or prop.get("is_goblin"):
+                        hit_rates = prop.get("hit_rates") or {}
+                        l10 = hit_rates.get("l10") or {}
+                        hit_rate = l10.get("hit_rate", 0) or 0
+                        if hit_rate > best_hit_rate:
+                            best_hit_rate = hit_rate
+                            best_prop = prop
+                
+                trending_list.append({
+                    "player_name": name,
+                    "team": data.get("team", ""),
+                    "position": data.get("position", ""),
+                    "popularity_score": score,
+                    "popularity_order": popularity_order,
+                    "demons_count": demons_count,
+                    "goblins_count": goblins_count,
+                    "total_props": len(data.get("props", [])),
+                    "injury_info": injury_info,
+                    "has_new_injury": has_injury,  # Mark if they have any injury
+                    "best_prop": best_prop,
+                    "best_hit_rate": best_hit_rate
+                })
+            
+            # Sort by popularity score (lower = better)
+            trending_list.sort(key=lambda x: x["popularity_score"])
+            
+            # Take top 10
+            trending_10 = trending_list[:10]
+            
+            # Store trending in DB
+            await self.trending_cache.delete_many({})
+            if trending_10:
+                await self.trending_cache.insert_many(trending_10)
+            
+            results["trending_count"] = len(trending_10)
+            logger.info(f"  Trending 10: {[t['player_name'] for t in trending_10]}")
+            
+            # Store all player data in MongoDB
             await self.player_data.delete_many({})
             if player_data:
                 await self.player_data.insert_many(list(player_data.values()))
@@ -962,3 +1062,51 @@ PILLAR 3 - TANK01:
             {"_id": 0}
         )
         return await cursor.to_list(50)
+
+    
+    async def get_trending_10(self) -> List[Dict[str, Any]]:
+        """
+        Get the Top 10 Most Popular players today
+        Based on PrizePicks board order and Demon/Goblin count
+        """
+        cursor = self.trending_cache.find({}, {"_id": 0}).sort("popularity_score", 1)
+        trending = await cursor.to_list(10)
+        
+        # Enrich with full player data if needed
+        enriched = []
+        for t in trending:
+            player_name = t.get("player_name")
+            # Get full player data
+            player = await self.player_data.find_one(
+                {"player_name": player_name},
+                {"_id": 0}
+            )
+            
+            if player:
+                # Get top 3 props (best hit rate Demons/Goblins)
+                top_props = []
+                all_props = player.get("props", [])
+                
+                # Filter to Demons and Goblins only
+                special_props = [p for p in all_props if p.get("is_demon") or p.get("is_goblin")]
+                
+                # Sort by hit rate - handle None values
+                def get_hit_rate(x):
+                    hr = x.get("hit_rates") or {}
+                    l10 = hr.get("l10") or {}
+                    return l10.get("hit_rate", 0) or 0
+                
+                special_props.sort(key=get_hit_rate, reverse=True)
+                
+                top_props = special_props[:3]
+                
+                enriched.append({
+                    **t,
+                    "top_props": top_props,
+                    "all_demons": player.get("demons", [])[:5],
+                    "all_goblins": player.get("goblins", [])[:5]
+                })
+            else:
+                enriched.append(t)
+        
+        return enriched

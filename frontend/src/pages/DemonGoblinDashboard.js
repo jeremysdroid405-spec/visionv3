@@ -7,7 +7,7 @@ import { Input } from '../components/ui/input';
 import { 
   Activity, Crown, RefreshCw, Search, Database, 
   ChevronDown, ChevronRight, AlertTriangle, Skull, Ghost,
-  TrendingUp, TrendingDown, User, Newspaper, Clock
+  TrendingUp, TrendingDown, User, Newspaper, Clock, Flame, Star
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -29,10 +29,13 @@ const MARKET_NAMES = {
   'player_points_rebounds_assists': 'PRA',
   'player_double_double': '2x2',
   'player_first_basket': '1ST BSK',
-  'alternate_player_points': 'ALT PTS',
-  'alternate_player_rebounds': 'ALT REB',
-  'alternate_player_assists': 'ALT AST',
-  'alternate_player_threes': 'ALT 3PM'
+  'player_points_alternate': 'PTS',
+  'player_rebounds_alternate': 'REB',
+  'player_assists_alternate': 'AST',
+  'player_threes_alternate': '3PM',
+  'player_blocks_alternate': 'BLK',
+  'player_steals_alternate': 'STL',
+  'player_turnovers_alternate': 'TO'
 };
 
 // Format American odds
@@ -94,6 +97,175 @@ const GoblinBadge = ({ price, hasWarning }) => (
     {hasWarning && <AlertTriangle className="w-3 h-3 ml-1" />}
   </Badge>
 );
+
+// ==================== TRENDING 10 SECTION ====================
+
+// Trending Player Card - Shows hit rates immediately without click
+const TrendingPlayerCard = ({ player, rank }) => {
+  const hasInjury = player.has_new_injury || player.injury_info?.has_injury;
+  const injuryStatus = player.injury_info?.injury_status;
+  
+  // Get top 3 props to display
+  const topProps = player.top_props || [];
+  
+  return (
+    <Card 
+      className={`
+        bg-gradient-to-br from-zinc-900 to-zinc-950 border-zinc-800 
+        hover:border-purple-500/50 transition-all duration-300
+        ${hasInjury ? 'ring-1 ring-yellow-500/50' : ''}
+      `}
+      data-testid={`trending-card-${rank}`}
+    >
+      <div className="p-4">
+        {/* Header with rank and player info */}
+        <div className="flex items-start justify-between mb-3">
+          <div className="flex items-center gap-3">
+            {/* Rank Badge */}
+            <div className={`
+              w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm
+              ${rank === 1 ? 'bg-yellow-500 text-black' : 
+                rank === 2 ? 'bg-zinc-400 text-black' :
+                rank === 3 ? 'bg-amber-700 text-white' :
+                'bg-zinc-700 text-zinc-300'}
+            `}>
+              {rank}
+            </div>
+            
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="font-bold text-white text-lg">{player.player_name}</span>
+                {rank <= 3 && <Flame className="w-4 h-4 text-orange-500" />}
+              </div>
+              <div className="flex items-center gap-2 text-xs">
+                <Badge variant="outline" className="bg-zinc-800 text-zinc-400 border-zinc-700">
+                  {player.team || 'NBA'}
+                </Badge>
+                <span className="text-zinc-500">{player.position}</span>
+              </div>
+            </div>
+          </div>
+          
+          {/* Injury Warning */}
+          {hasInjury && (
+            <Badge className="bg-yellow-600/20 text-yellow-400 border-yellow-600/50 text-xs animate-pulse">
+              <AlertTriangle className="w-3 h-3 mr-1" />
+              {injuryStatus || 'INJURY'}
+            </Badge>
+          )}
+        </div>
+        
+        {/* Demon/Goblin Counts */}
+        <div className="flex items-center gap-4 mb-3">
+          {player.demons_count > 0 && (
+            <div className="flex items-center gap-1">
+              <Skull className="w-4 h-4 text-red-500" />
+              <span className="text-red-400 font-bold">{player.demons_count}</span>
+              <span className="text-zinc-500 text-xs">Demons</span>
+            </div>
+          )}
+          {player.goblins_count > 0 && (
+            <div className="flex items-center gap-1">
+              <Ghost className="w-4 h-4 text-green-500" />
+              <span className="text-green-400 font-bold">{player.goblins_count}</span>
+              <span className="text-zinc-500 text-xs">Goblins</span>
+            </div>
+          )}
+        </div>
+        
+        {/* Top Props with Hit Rates - VISIBLE WITHOUT CLICK */}
+        <div className="space-y-2">
+          {topProps.slice(0, 3).map((prop, idx) => {
+            const hitRates = prop.hit_rates || {};
+            const l10 = hitRates.l10 || {};
+            const season = hitRates.season || {};
+            const l10Rate = (l10.hit_rate || 0) * 100;
+            const seasonRate = (season.hit_rate || 0) * 100;
+            
+            return (
+              <div 
+                key={idx}
+                className={`
+                  flex items-center justify-between p-2 rounded
+                  ${prop.is_demon ? 'bg-red-950/30 border border-red-800/30' : 
+                    prop.is_goblin ? 'bg-green-950/30 border border-green-800/30' : 
+                    'bg-zinc-800/50'}
+                `}
+              >
+                <div className="flex items-center gap-2">
+                  {prop.is_demon ? <Skull className="w-3 h-3 text-red-400" /> : 
+                   prop.is_goblin ? <Ghost className="w-3 h-3 text-green-400" /> : null}
+                  <span className="text-white text-sm font-mono">
+                    {MARKET_NAMES[prop.market] || prop.market?.replace('_alternate', '')}
+                  </span>
+                  <span className="text-zinc-400 text-sm">
+                    {prop.direction} {prop.line}
+                  </span>
+                </div>
+                
+                {/* Hit Rates */}
+                <div className="flex items-center gap-3 text-xs">
+                  <div className="text-center">
+                    <div className={`font-bold ${l10Rate >= 70 ? 'text-green-400' : l10Rate >= 50 ? 'text-yellow-400' : 'text-zinc-400'}`}>
+                      {l10Rate.toFixed(0)}%
+                    </div>
+                    <div className="text-zinc-600">L10</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-zinc-300 font-bold">{seasonRate.toFixed(0)}%</div>
+                    <div className="text-zinc-600">SZN</div>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+          
+          {topProps.length === 0 && (
+            <div className="text-zinc-500 text-xs text-center py-2">
+              {player.total_props} props available
+            </div>
+          )}
+        </div>
+      </div>
+    </Card>
+  );
+};
+
+// Trending 10 Section Component
+const TrendingSection = ({ trending, loading }) => {
+  if (loading || !trending || trending.length === 0) {
+    return null;
+  }
+  
+  return (
+    <div className="mb-8" data-testid="trending-section">
+      {/* Section Header */}
+      <div className="flex items-center gap-3 mb-4">
+        <div className="flex items-center gap-2 bg-gradient-to-r from-purple-600/20 to-pink-600/20 px-4 py-2 rounded-lg border border-purple-500/30">
+          <Flame className="w-5 h-5 text-orange-500" />
+          <h2 className="text-xl font-bold text-white">Most Popular Today</h2>
+          <Star className="w-5 h-5 text-yellow-500" />
+        </div>
+        <Badge className="bg-purple-600/20 text-purple-400 border-purple-600/30">
+          Top 10 Trending
+        </Badge>
+      </div>
+      
+      {/* Trending Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
+        {trending.map((player, idx) => (
+          <TrendingPlayerCard 
+            key={player.player_name} 
+            player={player} 
+            rank={idx + 1} 
+          />
+        ))}
+      </div>
+    </div>
+  );
+};
+
+// ==================== PLAYER CARDS ====================
 
 // Player Card (Collapsed State)
 const PlayerCardCollapsed = ({ player, isExpanded, onToggle }) => {
@@ -286,6 +458,7 @@ const PlayerCardExpanded = ({ player }) => {
 // Main Dashboard Component
 export const DemonGoblinDashboard = () => {
   const [players, setPlayers] = useState([]);
+  const [trending, setTrending] = useState([]);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
@@ -303,6 +476,18 @@ export const DemonGoblinDashboard = () => {
       }
     } catch (error) {
       console.error('Error fetching status:', error);
+    }
+  }, []);
+
+  // Fetch trending 10
+  const fetchTrending = useCallback(async () => {
+    try {
+      const response = await axios.get(`${API}/v3/trending`);
+      if (response.data.success) {
+        setTrending(response.data.trending || []);
+      }
+    } catch (error) {
+      console.error('Error fetching trending:', error);
     }
   }, []);
 
@@ -345,6 +530,7 @@ export const DemonGoblinDashboard = () => {
         toast.success(`Sync complete! ${result.unique_players} players, ${result.demons_count} demons, ${result.goblins_count} goblins`);
         
         await fetchBoard();
+        await fetchTrending();
         await fetchStatus();
       }
     } catch (error) {
@@ -380,17 +566,19 @@ export const DemonGoblinDashboard = () => {
   useEffect(() => {
     const loadData = async () => {
       await fetchStatus();
+      await fetchTrending();
       await fetchBoard();
     };
     loadData();
 
     // Auto-refresh every 5 minutes
     const interval = setInterval(() => {
+      fetchTrending();
       fetchBoard();
     }, 5 * 60 * 1000);
 
     return () => clearInterval(interval);
-  }, [fetchStatus, fetchBoard]);
+  }, [fetchStatus, fetchBoard, fetchTrending]);
 
   // Filter players
   const getFilteredPlayers = () => {
@@ -550,6 +738,9 @@ export const DemonGoblinDashboard = () => {
             </div>
           </div>
         </Card>
+
+        {/* TRENDING 10 SECTION - Most Popular Today */}
+        <TrendingSection trending={trending} loading={loading} />
 
         {/* Filters */}
         <div className="mb-6 flex flex-col md:flex-row gap-4">
