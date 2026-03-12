@@ -454,6 +454,15 @@ async def sync_rosters(force: bool = False):
     result = await stats_manager.sync_nba_rosters(force=force)
     return {"success": True, "sync_result": result}
 
+@api_router.post("/clear-all-cache")
+async def clear_all_cache():
+    """Clear ALL cache (use when changing seasons)"""
+    if not stats_manager:
+        raise HTTPException(status_code=500, detail="Stats manager not initialized")
+    
+    deleted_count = await stats_manager.clear_all_cache()
+    return {"success": True, "deleted_count": deleted_count, "reason": "Season change - cleared all 2024 data"}
+
 @api_router.get("/roster-status")
 async def get_roster_status():
     """Get roster sync status and statistics"""

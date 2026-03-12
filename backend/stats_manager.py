@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 API_SPORTS_KEY = "9057bc1422b361f64cc071581dd1b240"
 API_SPORTS_BASE_URL = "https://v2.nba.api-sports.io"
 CACHE_TTL_HOURS = 24
-CURRENT_SEASON = "2024-2025"
+CURRENT_SEASON = "2024-2025"  # API-Sports uses 2024 for 2024-25 season
 ROSTER_SYNC_INTERVAL_HOURS = 24
 
 
@@ -309,6 +309,18 @@ class StatsManager:
         logger.warning(f"Player {player_name} not found in roster - may need refresh")
         return None
     
+    async def clear_all_cache(self) -> int:
+        """
+        Clear ALL cache entries (use when changing seasons)
+        """
+        try:
+            result = await self.stats_cache.delete_many({})
+            logger.info(f"✓ Cleared {result.deleted_count} total cache entries")
+            return result.deleted_count
+        except Exception as e:
+            logger.error(f"Cache clear error: {e}")
+            return 0
+    
     def extract_last_10_games(self, stats_data: Dict[str, Any]) -> List[Dict[str, Any]]:
         """
         Extract last 10 games from API-Sports response
@@ -351,7 +363,8 @@ class StatsManager:
         line_value: float
     ) -> Optional[Dict[str, Any]]:
         """
-        Calculate real hit rate from last 10 games
+        Calculate TRIPLE-VIEW hit rate: L5, L10, and Season
+        Includes trend detection (🔥 Trending Up, ⏰ Heavy Minutes)
         
         Args:
             player_name: Full player name
@@ -359,7 +372,7 @@ class StatsManager:
             line_value: The line to compare against
             
         Returns:
-            Dict with hit_rate, games_over, total_games, and game_data
+            Dict with L5, L10, Season stats, trends, and full game data
         """
         try:
             # Search for player
@@ -374,11 +387,29 @@ class StatsManager:
                 logger.warning(f"Could not fetch stats for {player_name}")
                 return None
             
-            # Extract last 10 games
-            last_10_games = self.extract_last_10_games(stats_data)
-            if not last_10_games:
+            # Extract ALL games for season
+            response = stats_data.get("response", [])
+            if not response:
+                logger.warning("No games found in response")
+                return None
+            
+            # Format all games
+            all_games = []
+            for game in response:
+                all_games.append({
+                    "game_id": game.get("game", {}).get("id") if isinstance(game.get("game"), dict) else game.get("game", {}).get("id", 0),
+                    "points": game.get("points", 0) or 0,
+                    "rebounds": game.get("totReb", 0) or 0,
+                    "assists": game.get("assists", 0) or 0,
+                    "threes_made": game.get("tpm", 0) or 0,
+                    "minutes": game.get("min", "0") or "0"
+                })
+            
+            if not all_games:
                 logger.warning(f"No game data found for {player_name}")
                 return None
+            
+            logger.info(f"Processing {len(all_games)} total games for {player_name}")
             
             # Determine which stat to check
             stat_key_map = {
@@ -389,36 +420,103 @@ class StatsManager:
             }
             stat_key = stat_key_map.get(prop_type.lower(), "points")
             
-            # Count games where player went OVER the line
-            games_over = 0
-            for game in last_10_games:
-                if game.get(stat_key, 0) > line_value:
-                    games_over += 1
+            # Extract L5, L10, and Season
+            l5_games = all_games[:5]
+            l10_games = all_games[:10]
+            season_games = all_games
             
-            total_games = len(last_10_games)
-            hit_rate = (games_over / total_games) if total_games > 0 else 0
+            # Calculate hit rates for each window
+            def calc_window_stats(games, line):
+                if not games:
+                    return {"games_over": 0, "total_games": 0, "hit_rate": 0, "avg": 0}
+                    
+                games_over = sum(1 for g in games if g.get(stat_key, 0) > line)
+                total_games = len(games)
+                hit_rate = (games_over / total_games) if total_games > 0 else 0
+                avg = sum(g.get(stat_key, 0) for g in games) / total_games if total_games > 0 else 0
+                
+                return {
+                    "games_over": games_over,
+                    "total_games": total_games,
+                    "hit_rate": round(hit_rate, 3),
+                    "avg": round(avg, 1)
+                }
+            
+            l5_stats = calc_window_stats(l5_games, line_value)
+            l10_stats = calc_window_stats(l10_games, line_value)
+            season_stats = calc_window_stats(season_games, line_value)
+            
+            # Calculate average minutes for L5 and Season
+            l5_minutes = sum(float(g.get("minutes", "0").replace(":", ".") if ":" not in str(g.get("minutes", "0")) else g.get("minutes", "0").split(":")[0]) for g in l5_games) / len(l5_games) if l5_games else 0
+            season_minutes = sum(float(g.get("minutes", "0").replace(":", ".") if ":" not in str(g.get("minutes", "0")) else g.get("minutes", "0").split(":")[0]) for g in season_games) / len(season_games) if season_games else 0
+            
+            # Trend Detection
+            trends = []
+            
+            # 🔥 Trending Up: L5 avg > Season avg by 20%+
+            if l5_stats["avg"] > season_stats["avg"] * 1.20:
+                trends.append("🔥 Trending Up")
+            
+            # ❄️ Trending Down: L5 avg < Season avg by 20%+
+            elif l5_stats["avg"] < season_stats["avg"] * 0.80:
+                trends.append("❄️ Trending Down")
+            
+            # ⏰ Heavy Minutes: L5 minutes > Season minutes by 5+
+            if l5_minutes > season_minutes + 5:
+                trends.append("⏰ Heavy Minutes")
+            
+            # 🎯 Consistent: Hit rate variation < 10% across windows
+            hit_rates = [l5_stats["hit_rate"], l10_stats["hit_rate"], season_stats["hit_rate"]]
+            if max(hit_rates) - min(hit_rates) < 0.10:
+                trends.append("🎯 Consistent")
             
             result = {
                 "player_name": player_name,
                 "player_id": player_id,
                 "prop_type": prop_type,
                 "line_value": line_value,
-                "hit_rate": round(hit_rate, 3),
-                "games_over": games_over,
-                "total_games": total_games,
-                "last_10_games": last_10_games,
+                "season": CURRENT_SEASON,
+                "l5": {
+                    "hit_rate": l5_stats["hit_rate"],
+                    "games_over": l5_stats["games_over"],
+                    "total_games": l5_stats["total_games"],
+                    "avg": l5_stats["avg"]
+                },
+                "l10": {
+                    "hit_rate": l10_stats["hit_rate"],
+                    "games_over": l10_stats["games_over"],
+                    "total_games": l10_stats["total_games"],
+                    "avg": l10_stats["avg"]
+                },
+                "season": {
+                    "hit_rate": season_stats["hit_rate"],
+                    "games_over": season_stats["games_over"],
+                    "total_games": season_stats["total_games"],
+                    "avg": season_stats["avg"]
+                },
+                "trends": trends,
+                "minutes_info": {
+                    "l5_avg": round(l5_minutes, 1),
+                    "season_avg": round(season_minutes, 1)
+                },
+                "all_games": all_games[:10],  # Return L10 for detail view
                 "cached_at": stats_data.get("cached_at") if isinstance(stats_data, dict) else None
             }
             
             logger.info(
-                f"✓ Hit rate for {player_name} {prop_type} O{line_value}: "
-                f"{games_over}/{total_games} = {hit_rate:.1%}"
+                f"✓ Triple-view for {player_name} {prop_type} O{line_value}: "
+                f"L5: {l5_stats['games_over']}/{l5_stats['total_games']}, "
+                f"L10: {l10_stats['games_over']}/{l10_stats['total_games']}, "
+                f"Season: {season_stats['games_over']}/{season_stats['total_games']} | "
+                f"Trends: {', '.join(trends) if trends else 'None'}"
             )
             
             return result
             
         except Exception as e:
             logger.error(f"Hit rate calculation error: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
             return None
     
     async def validate_demon_line(
@@ -427,9 +525,10 @@ class StatsManager:
         prop_type: str,
         demon_line: float,
         min_hit_rate: float = 0.40
-    ) -> bool:
+    ) -> Dict[str, Any]:
         """
-        Validate if a Demon line qualifies based on real L10 data
+        Validate if a Demon line qualifies using TRIPLE CHECK
+        A demon must pass L5, L10, AND Season validation
         
         Args:
             player_name: Full player name
@@ -438,27 +537,61 @@ class StatsManager:
             min_hit_rate: Minimum hit rate to qualify (default 40%)
             
         Returns:
-            True if demon line is valid, False otherwise
+            Dict with validation results for all three windows
         """
         hit_rate_data = await self.calculate_hit_rate(player_name, prop_type, demon_line)
         
         if not hit_rate_data:
-            return False
+            return {
+                "is_valid_demon": False,
+                "reason": "No data available",
+                "triple_check": None
+            }
         
-        is_valid = hit_rate_data["hit_rate"] >= min_hit_rate
+        # Triple Check: L5, L10, Season
+        l5_pass = hit_rate_data["l5"]["hit_rate"] >= min_hit_rate
+        l10_pass = hit_rate_data["l10"]["hit_rate"] >= min_hit_rate
+        season_pass = hit_rate_data["season"]["hit_rate"] >= min_hit_rate
         
-        if is_valid:
-            logger.info(
-                f"✓ DEMON VALIDATED: {player_name} {prop_type} {demon_line} "
-                f"({hit_rate_data['hit_rate']:.1%} hit rate)"
-            )
-        else:
-            logger.info(
-                f"✗ Demon rejected: {player_name} {prop_type} {demon_line} "
-                f"({hit_rate_data['hit_rate']:.1%} < {min_hit_rate:.1%})"
-            )
+        # Demon is valid if at least 2 out of 3 windows pass
+        passes = sum([l5_pass, l10_pass, season_pass])
+        is_valid = passes >= 2
         
-        return is_valid
+        triple_check = {
+            "l5": {
+                "hit_rate": hit_rate_data["l5"]["hit_rate"],
+                "passed": l5_pass,
+                "games": f"{hit_rate_data['l5']['games_over']}/{hit_rate_data['l5']['total_games']}"
+            },
+            "l10": {
+                "hit_rate": hit_rate_data["l10"]["hit_rate"],
+                "passed": l10_pass,
+                "games": f"{hit_rate_data['l10']['games_over']}/{hit_rate_data['l10']['total_games']}"
+            },
+            "season": {
+                "hit_rate": hit_rate_data["season"]["hit_rate"],
+                "passed": season_pass,
+                "games": f"{hit_rate_data['season']['games_over']}/{hit_rate_data['season']['total_games']}"
+            }
+        }
+        
+        verdict = "✅ VALID DEMON" if is_valid else "❌ REJECTED"
+        confidence = "High" if passes == 3 else "Medium" if passes == 2 else "Low"
+        
+        logger.info(
+            f"{verdict}: {player_name} {prop_type} {demon_line} | "
+            f"Triple Check: L5={l5_pass}, L10={l10_pass}, Season={season_pass} | "
+            f"Confidence: {confidence}"
+        )
+        
+        return {
+            "is_valid_demon": is_valid,
+            "passes": passes,
+            "confidence": confidence,
+            "triple_check": triple_check,
+            "trends": hit_rate_data.get("trends", []),
+            "full_data": hit_rate_data
+        }
     
     async def get_cache_status(self) -> Dict[str, Any]:
         """
