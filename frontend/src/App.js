@@ -5,6 +5,7 @@ import { AuthProvider } from './context/AuthContext';
 import { Auth } from './pages/Auth';
 import { Dashboard } from './pages/Dashboard';
 import { DashboardDemo } from './pages/DashboardDemo';
+import { FullBoard } from './pages/FullBoard';
 import { Toaster } from 'sonner';
 
 function App() {
@@ -24,7 +25,8 @@ function App() {
         />
         <BrowserRouter>
           <Routes>
-            <Route path="/" element={<Navigate to="/demo" replace />} />
+            <Route path="/" element={<Navigate to="/full-board" replace />} />
+            <Route path="/full-board" element={<FullBoard />} />
             <Route path="/demo" element={<DashboardDemo />} />
             <Route path="/auth" element={<Auth />} />
             <Route path="/dashboard" element={<Dashboard />} />

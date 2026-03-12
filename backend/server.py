@@ -13,6 +13,8 @@ from datetime import datetime, timezone, timedelta
 from supabase import create_client, Client
 from jose import JWTError, jwt
 import httpx
+from thefuzz import fuzz
+import asyncio
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -59,35 +61,31 @@ class UserResponse(BaseModel):
     profile: ProfileResponse
     access_token: str
 
-class NBAGame(BaseModel):
-    game_id: str
-    home_team: str
-    away_team: str
-    game_date: str
-    game_time: str
-
-class Injury(BaseModel):
+class PlayerPropFull(BaseModel):
     player_name: str
     team: str
-    injury_status: str
-    description: Optional[str] = None
-
-class PlayerProp(BaseModel):
-    player_name: str
-    team: str
+    opponent: str
     prop_type: str
-    prizepicks_line: float
-    market_avg: float
+    market: str
+    source: str
+    line: float
+    prizepicks_line: Optional[float] = None
+    market_avg: Optional[float] = None
+    market_edge: Optional[float] = None
     draftkings_line: Optional[float] = None
     fanduel_line: Optional[float] = None
     betmgm_line: Optional[float] = None
     caesars_line: Optional[float] = None
     is_demon: bool = False
     demon_line: Optional[float] = None
+    is_goblin: bool = False
+    goblin_line: Optional[float] = None
     hit_rate: Optional[float] = None
     best_bet_score: float
     matchup_grade: str
     confidence: float
+    injury_impact: Optional[str] = None
+    def_rank: Optional[int] = None
 
 async def verify_jwt(credentials: HTTPAuthorizationCredentials = Depends(security)):
     token = credentials.credentials
@@ -116,6 +114,71 @@ async def get_current_user(token: str = Depends(verify_jwt)):
         return user_response.user
     except Exception as e:
         raise HTTPException(status_code=401, detail=f"Authentication failed: {str(e)}")
+
+async def get_cached_data(cache_key: str, ttl_hours: int = 24):
+    cached = await db.cache.find_one({"key": cache_key})
+    if cached:
+        cached_time = datetime.fromisoformat(cached["cached_at"])
+        if datetime.now(timezone.utc) - cached_time < timedelta(hours=ttl_hours):
+            return cached.get("data")
+    return None
+
+async def set_cached_data(cache_key: str, data: Any):
+    await db.cache.update_one(
+        {"key": cache_key},
+        {"$set": {"key": cache_key, "data": data, "cached_at": datetime.now(timezone.utc).isoformat()}},
+        upsert=True
+    )
+
+def fuzzy_match_player(name1: str, name2: str, threshold: int = 80) -> bool:
+    return fuzz.ratio(name1.lower(), name2.lower()) >= threshold
+
+async def fetch_tank01_injuries():
+    cached = await get_cached_data("tank01_injuries")
+    if cached:
+        return cached
+    
+    try:
+        async with httpx.AsyncClient() as http_client:
+            response = await http_client.get(
+                "https://tank01-nba-live-in-game-real-time-statistics-nba.p.rapidapi.com/getNBAInjuryList",
+                headers={
+                    "X-RapidAPI-Key": TANK01_API_KEY,
+                    "X-RapidAPI-Host": "tank01-nba-live-in-game-real-time-statistics-nba.p.rapidapi.com"
+                },
+                timeout=10.0
+            )
+            if response.status_code == 200:
+                data = response.json().get("body", [])
+                await set_cached_data("tank01_injuries", data)
+                return data
+    except Exception as e:
+        logger.error(f"Tank01 injuries error: {e}")
+    return []
+
+async def fetch_tank01_teams():
+    cached = await get_cached_data("tank01_teams")
+    if cached:
+        return cached
+    
+    try:
+        async with httpx.AsyncClient() as http_client:
+            response = await http_client.get(
+                "https://tank01-nba-live-in-game-real-time-statistics-nba.p.rapidapi.com/getNBATeams",
+                params={"teamStats": "true"},
+                headers={
+                    "X-RapidAPI-Key": TANK01_API_KEY,
+                    "X-RapidAPI-Host": "tank01-nba-live-in-game-real-time-statistics-nba.p.rapidapi.com"
+                },
+                timeout=10.0
+            )
+            if response.status_code == 200:
+                data = response.json().get("body", [])
+                await set_cached_data("tank01_teams", data)
+                return data
+    except Exception as e:
+        logger.error(f"Tank01 teams error: {e}")
+    return []
 
 @api_router.post("/auth/signup", response_model=UserResponse)
 async def signup(request: SignUpRequest):
@@ -197,226 +260,113 @@ async def get_profile(current_user = Depends(get_current_user)):
     }
     return ProfileResponse(**profile_data)
 
-@api_router.get("/nba/games")
-async def get_nba_games():
-    try:
-        today = datetime.now(timezone.utc).strftime("%Y%m%d")
-        
-        async with httpx.AsyncClient() as client:
-            response = await client.get(
-                "https://tank01-nba-live-in-game-real-time-statistics-nba.p.rapidapi.com/getNBAGamesForDate",
-                params={"gameDate": today},
-                headers={
-                    "X-RapidAPI-Key": TANK01_API_KEY,
-                    "X-RapidAPI-Host": "tank01-nba-live-in-game-real-time-statistics-nba.p.rapidapi.com"
-                },
-                timeout=10.0
-            )
-            
-            if response.status_code == 200:
-                data = response.json()
-                cached_data = {
-                    "date": today,
-                    "games": data.get("body", []),
-                    "cached_at": datetime.now(timezone.utc).isoformat()
-                }
-                await db.nba_games.update_one(
-                    {"date": today},
-                    {"$set": cached_data},
-                    upsert=True
-                )
-                return {"success": True, "data": data.get("body", [])}
-            else:
-                logger.error(f"Tank01 API error: {response.status_code}")
-                return {"success": False, "error": "Failed to fetch games"}
-    except Exception as e:
-        logger.error(f"Error fetching NBA games: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-@api_router.get("/nba/injuries")
-async def get_injuries():
-    try:
-        async with httpx.AsyncClient() as client:
-            response = await client.get(
-                "https://tank01-nba-live-in-game-real-time-statistics-nba.p.rapidapi.com/getNBAInjuryList",
-                headers={
-                    "X-RapidAPI-Key": TANK01_API_KEY,
-                    "X-RapidAPI-Host": "tank01-nba-live-in-game-real-time-statistics-nba.p.rapidapi.com"
-                },
-                timeout=10.0
-            )
-            
-            if response.status_code == 200:
-                data = response.json()
-                return {"success": True, "data": data.get("body", [])}
-            else:
-                return {"success": False, "error": "Failed to fetch injuries"}
-    except Exception as e:
-        logger.error(f"Error fetching injuries: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-@api_router.get("/nba/teams")
-async def get_teams():
-    try:
-        async with httpx.AsyncClient() as client:
-            response = await client.get(
-                "https://tank01-nba-live-in-game-real-time-statistics-nba.p.rapidapi.com/getNBATeams",
-                params={"teamStats": "true"},
-                headers={
-                    "X-RapidAPI-Key": TANK01_API_KEY,
-                    "X-RapidAPI-Host": "tank01-nba-live-in-game-real-time-statistics-nba.p.rapidapi.com"
-                },
-                timeout=10.0
-            )
-            
-            if response.status_code == 200:
-                data = response.json()
-                return {"success": True, "data": data.get("body", [])}
-            else:
-                return {"success": False, "error": "Failed to fetch teams"}
-    except Exception as e:
-        logger.error(f"Error fetching teams: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-@api_router.get("/odds/player-props")
-async def get_player_props():
-    try:
-        async with httpx.AsyncClient() as client:
-            response = await client.get(
-                "https://api.the-odds-api.com/v4/sports/basketball_nba/odds",
-                params={
-                    "apiKey": ODDS_API_KEY,
-                    "regions": "us",
-                    "markets": "player_points,player_rebounds,player_assists",
-                    "oddsFormat": "american"
-                },
-                timeout=15.0
-            )
-            
-            if response.status_code == 200:
-                data = response.json()
-                return {"success": True, "data": data}
-            else:
-                logger.error(f"Odds API error: {response.status_code}")
-                return {"success": False, "error": "Failed to fetch odds"}
-    except Exception as e:
-        logger.error(f"Error fetching odds: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-@api_router.get("/best-bets-demo", response_model=List[PlayerProp])
-async def get_best_bets_demo():
-    """Demo endpoint - no auth required for testing"""
+@api_router.get("/full-board")
+async def get_full_board(market: str = "full"):
     try:
         import random
         
-        mock_players = [
-            {"name": "LeBron James", "team": "LAL", "prop": "points"},
-            {"name": "Stephen Curry", "team": "GSW", "prop": "points"},
-            {"name": "Giannis Antetokounmpo", "team": "MIL", "prop": "points"},
-            {"name": "Luka Doncic", "team": "DAL", "prop": "assists"},
-            {"name": "Nikola Jokic", "team": "DEN", "prop": "rebounds"},
-            {"name": "Kevin Durant", "team": "PHX", "prop": "points"},
-            {"name": "Joel Embiid", "team": "PHI", "prop": "points"},
-            {"name": "Jayson Tatum", "team": "BOS", "prop": "points"},
+        injuries = await fetch_tank01_injuries()
+        teams = await fetch_tank01_teams()
+        
+        mock_games = [
+            {"home": "LAL", "away": "GSW"},
+            {"home": "MIL", "away": "BKN"},
+            {"home": "DAL", "away": "DEN"},
+            {"home": "PHX", "away": "BOS"},
+            {"home": "PHI", "away": "MIA"},
         ]
         
-        best_bets = []
-        for player in mock_players:
-            pp_line = random.uniform(20, 35)
-            market_avg = pp_line + random.uniform(-3, 5)
-            line_diff = market_avg - pp_line
-            is_demon = random.random() > 0.7
-            hit_rate = random.uniform(0.35, 0.65) if is_demon else None
-            
-            best_bet_score = abs(line_diff) * 10 + (hit_rate * 20 if hit_rate else 0)
-            
-            matchup_grades = ["A+", "A", "B+", "B", "C"]
-            matchup_grade = random.choice(matchup_grades)
-            
-            confidence = min(95, max(50, best_bet_score + random.uniform(-5, 5)))
-            
-            best_bets.append(PlayerProp(
-                player_name=player["name"],
-                team=player["team"],
-                prop_type=player["prop"],
-                prizepicks_line=round(pp_line, 1),
-                market_avg=round(market_avg, 1),
-                draftkings_line=round(market_avg + random.uniform(-1, 1), 1),
-                fanduel_line=round(market_avg + random.uniform(-1, 1), 1),
-                betmgm_line=round(market_avg + random.uniform(-1, 1), 1),
-                caesars_line=round(market_avg + random.uniform(-1, 1), 1),
-                is_demon=is_demon,
-                demon_line=round(pp_line + random.uniform(3, 7), 1) if is_demon else None,
-                hit_rate=round(hit_rate, 2) if hit_rate else None,
-                best_bet_score=round(best_bet_score, 1),
-                matchup_grade=matchup_grade,
-                confidence=round(confidence, 1)
-            ))
+        mock_players_by_team = {
+            "LAL": ["LeBron James", "Anthony Davis", "Austin Reaves"],
+            "GSW": ["Stephen Curry", "Klay Thompson", "Draymond Green"],
+            "MIL": ["Giannis Antetokounmpo", "Damian Lillard", "Brook Lopez"],
+            "BKN": ["Mikal Bridges", "Nic Claxton", "Cameron Thomas"],
+            "DAL": ["Luka Doncic", "Kyrie Irving", "Daniel Gafford"],
+            "DEN": ["Nikola Jokic", "Jamal Murray", "Michael Porter Jr"],
+            "PHX": ["Kevin Durant", "Devin Booker", "Bradley Beal"],
+            "BOS": ["Jayson Tatum", "Jaylen Brown", "Kristaps Porzingis"],
+            "PHI": ["Joel Embiid", "Tyrese Maxey", "Tobias Harris"],
+            "MIA": ["Jimmy Butler", "Bam Adebayo", "Tyler Herro"],
+        }
         
-        best_bets.sort(key=lambda x: x.best_bet_score, reverse=True)
-        return best_bets
+        prop_types = ["points", "rebounds", "assists"] if market == "full" else [f"{market}_points", f"{market}_assists", f"{market}_rebounds"]
+        sources = ["PrizePicks", "DraftKings", "FanDuel", "BetMGM", "Caesars"]
+        
+        all_props = []
+        
+        for game in mock_games:
+            for team in [game["home"], game["away"]]:
+                opponent = game["away"] if team == game["home"] else game["home"]
+                players = mock_players_by_team.get(team, [])
+                
+                for player in players:
+                    for prop_type in prop_types:
+                        base_line = random.uniform(15, 35) if "points" in prop_type else random.uniform(5, 12)
+                        
+                        pp_line = round(base_line, 1)
+                        dk_line = round(base_line + random.uniform(-2, 2), 1)
+                        fd_line = round(base_line + random.uniform(-2, 2), 1)
+                        mgm_line = round(base_line + random.uniform(-2, 2), 1)
+                        cae_line = round(base_line + random.uniform(-2, 2), 1)
+                        
+                        market_avg = round((dk_line + fd_line + mgm_line + cae_line) / 4, 1)
+                        market_edge = round(market_avg - pp_line, 1)
+                        
+                        is_demon = random.random() > 0.85
+                        is_goblin = random.random() > 0.9
+                        hit_rate = random.uniform(0.35, 0.65) if is_demon else None
+                        
+                        best_bet_score = abs(market_edge) * 10 + (hit_rate * 20 if hit_rate else 0)
+                        matchup_grade = random.choice(["A+", "A", "B+", "B", "C"])
+                        confidence = min(95, max(50, best_bet_score + random.uniform(-5, 5)))
+                        
+                        for source in sources:
+                            if source == "PrizePicks":
+                                line = pp_line
+                            elif source == "DraftKings":
+                                line = dk_line
+                            elif source == "FanDuel":
+                                line = fd_line
+                            elif source == "BetMGM":
+                                line = mgm_line
+                            else:
+                                line = cae_line
+                            
+                            all_props.append(PlayerPropFull(
+                                player_name=player,
+                                team=team,
+                                opponent=opponent,
+                                prop_type=prop_type,
+                                market=market,
+                                source=source,
+                                line=line,
+                                prizepicks_line=pp_line if source != "PrizePicks" else None,
+                                market_avg=market_avg,
+                                market_edge=market_edge,
+                                draftkings_line=dk_line,
+                                fanduel_line=fd_line,
+                                betmgm_line=mgm_line,
+                                caesars_line=cae_line,
+                                is_demon=is_demon and source == "PrizePicks",
+                                demon_line=round(pp_line + random.uniform(4, 8), 1) if is_demon and source == "PrizePicks" else None,
+                                is_goblin=is_goblin and source == "PrizePicks",
+                                goblin_line=round(pp_line - random.uniform(2, 4), 1) if is_goblin and source == "PrizePicks" else None,
+                                hit_rate=round(hit_rate, 2) if hit_rate and source == "PrizePicks" else None,
+                                best_bet_score=round(best_bet_score, 1),
+                                matchup_grade=matchup_grade,
+                                confidence=round(confidence, 1),
+                                def_rank=random.randint(1, 30)
+                            ))
+        
+        all_props.sort(key=lambda x: x.best_bet_score, reverse=True)
+        return {"success": True, "data": all_props, "total": len(all_props)}
     except Exception as e:
-        logger.error(f"Error generating best bets: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-@api_router.get("/best-bets", response_model=List[PlayerProp])
-async def get_best_bets(current_user = Depends(get_current_user)):
-    try:
-        import random
-        
-        mock_players = [
-            {"name": "LeBron James", "team": "LAL", "prop": "points"},
-            {"name": "Stephen Curry", "team": "GSW", "prop": "points"},
-            {"name": "Giannis Antetokounmpo", "team": "MIL", "prop": "points"},
-            {"name": "Luka Doncic", "team": "DAL", "prop": "assists"},
-            {"name": "Nikola Jokic", "team": "DEN", "prop": "rebounds"},
-            {"name": "Kevin Durant", "team": "PHX", "prop": "points"},
-            {"name": "Joel Embiid", "team": "PHI", "prop": "points"},
-            {"name": "Jayson Tatum", "team": "BOS", "prop": "points"},
-        ]
-        
-        best_bets = []
-        for player in mock_players:
-            pp_line = random.uniform(20, 35)
-            market_avg = pp_line + random.uniform(-3, 5)
-            line_diff = market_avg - pp_line
-            is_demon = random.random() > 0.7
-            hit_rate = random.uniform(0.35, 0.65) if is_demon else None
-            
-            best_bet_score = abs(line_diff) * 10 + (hit_rate * 20 if hit_rate else 0)
-            
-            matchup_grades = ["A+", "A", "B+", "B", "C"]
-            matchup_grade = random.choice(matchup_grades)
-            
-            confidence = min(95, max(50, best_bet_score + random.uniform(-5, 5)))
-            
-            best_bets.append(PlayerProp(
-                player_name=player["name"],
-                team=player["team"],
-                prop_type=player["prop"],
-                prizepicks_line=round(pp_line, 1),
-                market_avg=round(market_avg, 1),
-                draftkings_line=round(market_avg + random.uniform(-1, 1), 1),
-                fanduel_line=round(market_avg + random.uniform(-1, 1), 1),
-                betmgm_line=round(market_avg + random.uniform(-1, 1), 1),
-                caesars_line=round(market_avg + random.uniform(-1, 1), 1),
-                is_demon=is_demon,
-                demon_line=round(pp_line + random.uniform(3, 7), 1) if is_demon else None,
-                hit_rate=round(hit_rate, 2) if hit_rate else None,
-                best_bet_score=round(best_bet_score, 1),
-                matchup_grade=matchup_grade,
-                confidence=round(confidence, 1)
-            ))
-        
-        best_bets.sort(key=lambda x: x.best_bet_score, reverse=True)
-        return best_bets
-    except Exception as e:
-        logger.error(f"Error generating best bets: {str(e)}")
+        logger.error(f"Error generating full board: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @api_router.get("/")
 async def root():
-    return {"message": "NBA Best Bets API - Ready"}
+    return {"message": "NBA Best Bets API - Full Board System"}
 
 app.include_router(api_router)
 
