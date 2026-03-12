@@ -3,7 +3,24 @@
 ## Product Requirements Document
 
 ### Original Problem Statement
-Build a high-performance NBA Player Prop Dashboard that identifies "Demons" (harder, boosted lines) and "Goblins" (easier, high-probability lines) from PrizePicks alternate markets, with optimized caching for fast load times.
+Build a high-performance NBA Player Prop Dashboard that identifies "Demons" (harder, boosted lines) and "Goblins" (easier, high-probability lines) from PrizePicks, with Standard lines from main markets, with optimized caching for fast load times.
+
+---
+
+## CLASSIFICATION LOGIC (FIXED March 12, 2026)
+
+### Market-Based Classification
+| Type | Market | Odds | Icon |
+|------|--------|------|------|
+| **STANDARD** | Main market (e.g., `player_points`) | Any | None |
+| **DEMON** | Alternate market (e.g., `player_points_alternate`) | +100 | Red Fire |
+| **GOBLIN** | Alternate market (e.g., `player_points_alternate`) | ≠+100 (e.g., -137) | Green Ghost |
+
+### Key Implementation
+- Standard lines come from main markets without `_alternate` suffix
+- Demons and Goblins ONLY come from alternate markets
+- Demons have exactly +100 odds (even money)
+- Goblins have any odds that are NOT +100 (typically negative like -137)
 
 ---
 
@@ -32,34 +49,49 @@ Build a high-performance NBA Player Prop Dashboard that identifies "Demons" (har
 ### API Configuration
 - **Region**: `us_dfs` (Daily Fantasy Sports)
 - **Bookmaker**: `prizepicks`
-- **Markets**: `player_*_alternate`
+- **Markets**: Both standard (e.g., `player_points`) and alternate (e.g., `player_points_alternate`)
 
 ### Classification
-- **Demon (Red)**: Even odds (+100) = Boosted/harder props
-- **Goblin (Green)**: Negative odds (e.g., -137) = Easier props
+- **Standard (No Icon)**: Main market props
+- **Demon (Red)**: Alternate market + Even odds (+100)
+- **Goblin (Green)**: Alternate market + Other odds (e.g., -137)
 
 ---
 
 ## Implementation Status (March 12, 2026)
 
+### Classification Fix - COMPLETED ✅
+- Fixed line classification logic to correctly differentiate:
+  - **Standard**: Props from main markets (no icon)
+  - **Demons**: Props from alternate markets with +100 odds (red icon)
+  - **Goblins**: Props from alternate markets with odds ≠+100 (green icon)
+
 ### Current Results
 - **Date**: 2026-03-12
 - **Events**: 9 NBA games
-- **Players**: 117 unique players
-- **DEMONS**: 2,653 (Even +100)
-- **GOBLINS**: 1,702 (Negative odds)
+- **Players**: 115 unique players
+- **Total Props**: 5,405
+- **STANDARD**: 1,294 (Main Markets)
+- **DEMONS**: 2,512 (Alternate +100)
+- **GOBLINS**: 1,599 (Alternate ≠+100)
+
+### Verified Player: Shai Gilgeous-Alexander (SGA)
+- **Team**: OKC
+- **Standard Props**: 14
+- **Demon Props**: 26
+- **Goblin Props**: 14
 
 ### Trending 10 (Live)
-1. Grayson Allen (PHX) - 28 D, 22 G
-2. Cade Cunningham (DET) - 27 D, 20 G
-3. Jalen Suggs (ORL) - 29 D, 18 G
-4. Jalen Johnson (MIA) - 24 D, 23 G
-5. Cooper Flagg (DAL) - 26 D, 19 G
-6. Cam Spencer (MEM) - 26 D, 18 G
-7. Nikola Jokic (DEN) - 25 D, 19 G
-8. Victor Wembanyama (SAS) - 27 D, 19 G
-9. Austin Reaves (LAL) - 26 D, 19 G
-10. Danny Wolf (BKN) - 25 D, 20 G
+1. Grayson Allen (PHX)
+2. Cade Cunningham (DET)
+3. Jalen Suggs (ORL)
+4. Jalen Johnson (MIA)
+5. Cooper Flagg (DAL)
+6. Cam Spencer (MEM)
+7. Nikola Jokic (DEN)
+8. Victor Wembanyama (SAS)
+9. Austin Reaves (LAL)
+10. Danny Wolf (BKN)
 
 ---
 
@@ -91,9 +123,16 @@ Build a high-performance NBA Player Prop Dashboard that identifies "Demons" (har
 ## Pending Items
 
 ### P0 - Critical
-- [ ] Fix authentication flow (Supabase)
+- [ ] Fix authentication flow (Supabase) - bypassed currently
 
 ### P1 - High Priority
-- [ ] Implement 4:00 AM scheduled sync (cron)
-- [ ] Tank01 injury integration
-- [ ] Virtual scrolling for 4,000+ rows
+- [ ] Implement 4:00 AM scheduled sync (cron job)
+- [ ] Tank01 injury integration (rate-limited currently)
+- [ ] Virtual scrolling for 5,000+ props (react-window)
+
+### P2 - Medium Priority
+- [ ] "Pro Tier" subscription features
+- [ ] Historical line movement tracking
+
+### P3 - Future
+- [ ] Push notifications for high-value lines
