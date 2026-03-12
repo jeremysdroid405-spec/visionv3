@@ -35,8 +35,7 @@ logger = logging.getLogger(__name__)
 # ==================== API CONFIGURATION ====================
 
 # Pillar 1: The Odds API
-ODDS_API_KEY = os.environ.get("ODDS_API_KEY", "672e7374ca294c653664ca3d5964f434")
-ODDS_API_FALLBACK = "e1ae76ab21c34ee88ed552cffb4449fd"  # Fallback key
+ODDS_API_KEY = os.environ.get("ODDS_API_KEY", "e1ae76ab21c34ee88ed552cffb4449fd")
 ODDS_API_BASE = "https://api.the-odds-api.com/v4"
 
 # Pillar 2: BallDontLie API
@@ -105,40 +104,17 @@ class ThreePillarEngine:
         self._player_name_map = {}
         self._injury_flags = {}
         self._last_sync = None
-        self._odds_api_key = ODDS_API_KEY  # Will fallback if needed
     
     # ==================== PILLAR 1: LINE INGESTION (ODDS API) ====================
-    
-    async def _test_odds_api_key(self, key: str) -> bool:
-        """Test if an Odds API key is valid"""
-        try:
-            url = f"{ODDS_API_BASE}/sports/basketball_nba/events"
-            params = {"apiKey": key, "dateFormat": "iso"}
-            
-            async with httpx.AsyncClient() as client:
-                response = await client.get(url, params=params, timeout=10.0)
-                return response.status_code == 200
-        except:
-            return False
     
     async def fetch_todays_events(self) -> List[Dict[str, Any]]:
         """
         Pillar 1: Get all NBA events for today from The Odds API
         """
         try:
-            # Test primary key, fallback if needed
-            if not await self._test_odds_api_key(self._odds_api_key):
-                logger.warning(f"Primary Odds API key failed, trying fallback...")
-                if await self._test_odds_api_key(ODDS_API_FALLBACK):
-                    self._odds_api_key = ODDS_API_FALLBACK
-                    logger.info("Using fallback Odds API key")
-                else:
-                    logger.error("Both Odds API keys failed")
-                    return []
-            
             url = f"{ODDS_API_BASE}/sports/basketball_nba/events"
             params = {
-                "apiKey": self._odds_api_key,
+                "apiKey": ODDS_API_KEY,
                 "dateFormat": "iso"
             }
             
@@ -171,7 +147,7 @@ class ThreePillarEngine:
         try:
             url = f"{ODDS_API_BASE}/sports/basketball_nba/events/{event_id}/odds"
             params = {
-                "apiKey": self._odds_api_key,
+                "apiKey": ODDS_API_KEY,
                 "regions": "us",
                 "markets": ALL_MARKETS,
                 "bookmakers": ",".join(TARGET_BOOKMAKERS),
