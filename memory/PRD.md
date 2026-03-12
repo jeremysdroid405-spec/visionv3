@@ -70,39 +70,45 @@ Odds API → sync_odds_to_mongo() → MongoDB → /api/v3/cached-props → Front
 
 ---
 
-## DEMON RADAR - IMPLEMENTED (March 12, 2026)
+## DEMON RADAR v2.0 - UPGRADED (March 12, 2026)
 
-### The Intricate Demon Radar Algorithm
+### The Intricate Demon Radar Algorithm v2.0 - Opportunity-Focused
 
-**Formula:**
+**NEW Scoring Formula (Ratio-Based):**
 ```
-Hit Probability (P) = (H10 × 0.6) + (H5 × 0.4)
-Line Gap (G) = (Demon_Value - Standard_Value) / Standard_Value
-Final Score = P - (G × 100)
+Weighted Probability (P) = (L10 × 0.6) + (L5 × 0.4)
+Gap Ratio (R) = Demon_Value / Standard_Value (e.g., 1.10 = 10% higher)
+Final Score = P / Gap_Ratio
+
+Example: P=0.80, Gap=1.10 → Score=0.727
+Example: P=0.80, Gap=1.30 → Score=0.615
 ```
 
-**Logic Guard:** Only includes picks where P >= 60%
+**Dynamic Thresholds (Ensures Top 10 is NEVER empty):**
+1. **STRICT** (P >= 70%): Default mode when 10+ candidates
+2. **OPPORTUNITY** (P >= 55%): Auto-lowers if <10 picks in strict
+3. **MINIMUM** (P >= 40%): Final fallback to ensure picks exist
 
-### How It Works
-1. **Data Extraction**: Pulls all Demons from `dg_cached_board`
-2. **Scoring**: Calculates P and G for each demon
-3. **Ranking**: Sorts by Final Score (descending)
-4. **Storage**: Top 10 stored in `dg_radar_picks` collection
+### Heat Level (1-5 Flame Icons)
+| Flames | Condition | Label |
+|--------|-----------|-------|
+| 🔥🔥🔥🔥🔥 | L10 >= 90% (9-10/10 games hit) | ON FIRE |
+| 🔥🔥🔥🔥 | L10 >= 80% OR perfect 5-game streak | HOT |
+| 🔥🔥🔥 | L10 >= 70% OR L5 >= 80% OR 3-game streak | WARM |
+| 🔥🔥 | L10 >= 60% | MILD |
+| 🔥 | L10 >= 50% | COOL |
 
 ### Radar Card Display
-- **Radar Strength**: Progress bar showing P (0-100%)
-- **Gap Difference**: "+X above standard" text
-- **L10/L5 Rates**: Historical hit percentages
-- **Green**: Strength >= 80%
-- **Yellow**: Strength >= 70%
+- **Heat Level Flames**: Visual indicator (1-5 flames)
+- **Heat Label**: HOT, WARM, MILD, COOL
+- **Value Score**: P/Gap_Ratio as percentage
+- **Gap %**: Percentage above standard line
+- **🔥 STREAK**: Badge for 3+ game hot streaks
 
-### API Endpoint
-- `GET /api/v3/demon-radar` - Returns top 10 pre-calculated picks
-
-### Latest Results (1549 candidates → 10 picks)
-1. Nikola Jokic - PTS 29.5 (76.5%, Gap: +1)
-2. Nickeil Alexander-Walker - PRA 27.5 (76.2%, Gap: +1)
-3. Derrick White - PRA 27.5 (76.2%, Gap: +1)
+### Latest Results (51 strict + 44 opportunity candidates)
+1. Brandon Williams - P+A 17.5 (P: 88.9%, Score: 0.839) 🔥🔥🔥🔥 HOT
+2. Brandon Williams - PRA 21.5 (P: 84.7%, Score: 0.769) 🔥🔥🔥🔥 HOT
+3. Derrick White - PRA 27.5 (P: 74.0%, Score: 0.713) 🔥🔥🔥 WARM 🔥STREAK
 
 ---
 

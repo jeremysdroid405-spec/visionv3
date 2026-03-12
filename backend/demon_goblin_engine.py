@@ -815,19 +815,30 @@ class DemonGoblinEngine:
     
     async def _build_demon_radar(self, players_dict: Dict[str, Dict], sync_time: datetime):
         """
-        THE INTRICATE DEMON RADAR ALGORITHM
+        THE INTRICATE DEMON RADAR ALGORITHM v2.0 - Opportunity-Focused
         
-        Scoring Formula:
-        1. Hit Probability (P) = (H10 × 0.6) + (H5 × 0.4)
-           - If hit rates unavailable, estimate P based on line gap
-        2. Line Gap (G) = (Demon_Value - Standard_Value) / Standard_Value  
-        3. Final Score = P - (G × 100)
+        NEW Scoring Formula (Ratio-Based):
+        1. Weighted Probability (P) = (L10 × 0.6) + (L5 × 0.4)
+        2. Gap Ratio (R) = Demon_Value / Standard_Value (e.g., 1.10 = 10% higher)
+        3. Final Score = P / Gap_Ratio
+           - Example: P=0.80, Gap=1.10 → Score=0.727
+           - Example: P=0.80, Gap=1.30 → Score=0.615
         
-        Logic Guard: Only include if P >= 60%
+        Dynamic Threshold:
+        - Start with P >= 70% (strict)
+        - If fewer than 10 picks, lower to 55% (opportunity mode)
+        - Ensures Demon Radar is NEVER empty
+        
+        Heat Level (1-5 Flames):
+        - 5 Flames: L10 >= 90% (9-10/10 games hit)
+        - 4 Flames: L10 >= 80% OR on 3+ game streak
+        - 3 Flames: L10 >= 70% OR L5 >= 80%
+        - 2 Flames: L10 >= 60%
+        - 1 Flame: L10 >= 50%
         """
-        logger.info("[DEMON RADAR] Calculating top 10 picks...")
+        logger.info("[DEMON RADAR v2.0] Calculating opportunity-focused top 10 picks...")
         
-        radar_picks = []
+        all_candidates = []
         
         for player_name, player_data in players_dict.items():
             demons = player_data.get("demons", [])
@@ -860,56 +871,61 @@ class DemonGoblinEngine:
                 std_key = f"{demon_stat}_{demon_direction}"
                 std_prop = standard_map.get(std_key)
                 
-                # If no standard line, use a reference gap
+                # Calculate standard line reference
                 if std_prop:
                     std_line = std_prop.get("line", 0)
                 else:
-                    # No standard line - skip or estimate
-                    # For now, use the demon line as a rough estimate
-                    std_line = demon_line * 0.85  # Assume demon is ~15% above standard
+                    # No standard line - estimate as 85% of demon line
+                    std_line = demon_line * 0.85
                 
                 if std_line <= 0:
                     continue
                 
-                # Get hit rates from BallDontLie stats if available
+                # Get hit rates from BallDontLie stats
                 hit_rates = demon.get("hit_rates", {})
                 h10_data = hit_rates.get("l10", {})
                 h5_data = hit_rates.get("l5", {})
+                season_data = hit_rates.get("season", {})
+                
                 h10 = h10_data.get("hit_rate", 0)
                 h5 = h5_data.get("hit_rate", 0)
+                h10_games = h10_data.get("total_games", 0)
+                h5_games = h5_data.get("total_games", 0)
+                h10_over = h10_data.get("games_over", 0)
+                h5_over = h5_data.get("games_over", 0)
+                season_avg = season_data.get("avg", 0)
                 
-                # Track if we have real data (at least some games played)
-                has_real_data = h10_data.get("total_games", 0) > 0 or h5_data.get("total_games", 0) > 0
+                # Track if we have real data
+                has_real_data = h10_games > 0 or h5_games > 0
                 
-                # Calculate Line Gap (G)
-                # G = (Demon_Value - Standard_Value) / Standard_Value
-                G = (demon_line - std_line) / std_line if std_line > 0 else 0
+                # Calculate Gap Ratio (R)
+                # R = Demon_Value / Standard_Value (e.g., 1.10 = 10% higher)
+                gap_ratio = demon_line / std_line if std_line > 0 else 1.0
+                gap_pct = (gap_ratio - 1) * 100  # Percentage above standard
                 
-                # If no real data, estimate P based on line gap
-                # Closer gap = higher probability
+                # If no real data, estimate P based on gap ratio
                 if not has_real_data:
                     # Estimate: P decreases as gap increases
-                    # Gap of 0% = 80% P, Gap of 20% = 60% P, Gap of 50% = 40% P
-                    estimated_P = max(0.40, 0.80 - (G * 1.0))  # Linear decay
+                    # Gap ratio 1.0 = 75% P, Gap ratio 1.2 = 55% P, Gap ratio 1.5 = 35% P
+                    estimated_P = max(0.35, 0.95 - (gap_ratio - 1) * 1.0)
                     h10 = estimated_P
                     h5 = estimated_P
                 
-                # Calculate Hit Probability (P)
-                # P = (H10 × 0.6) + (H5 × 0.4)
+                # Calculate Weighted Probability (P)
+                # P = (L10 × 0.6) + (L5 × 0.4)
                 P = (h10 * 0.6) + (h5 * 0.4)
                 
-                # Logic Guard: Only include if P >= 60%
-                if P < 0.60:
-                    continue
+                # Calculate Final Score using Value Ratio
+                # Score = P / Gap_Ratio
+                radar_score = P / gap_ratio if gap_ratio > 0 else P
                 
-                # Final Radar Score = P - (G × 100)
-                radar_score = P - (G * 100)
+                # Calculate Heat Level (1-5 Flames)
+                heat_level = self._calculate_heat_level(h10, h5, h10_over, h5_over, h10_games, h5_games)
                 
-                # Calculate gap difference for UI
-                gap_diff = demon_line - std_line
-                gap_pct = G * 100
+                # Streak detection (3+ consecutive games)
+                is_hot_streak = h5_over >= 3 if h5_games >= 3 else False
                 
-                radar_picks.append({
+                all_candidates.append({
                     "player_name": player_name,
                     "team": player_data.get("team", ""),
                     "nba_id": player_data.get("nba_id"),
@@ -917,18 +933,28 @@ class DemonGoblinEngine:
                     "direction": demon_direction,
                     "demon_line": demon_line,
                     "standard_line": round(std_line, 1),
-                    "gap_diff": round(gap_diff, 1),
+                    "gap_ratio": round(gap_ratio, 3),
                     "gap_pct": round(gap_pct, 1),
                     "h10_rate": round(h10 * 100, 1),
                     "h5_rate": round(h5 * 100, 1),
+                    "h10_over": h10_over,
+                    "h10_games": h10_games,
+                    "h5_over": h5_over,
+                    "h5_games": h5_games,
+                    "season_avg": round(season_avg, 1),
                     "hit_probability": round(P * 100, 1),
-                    "radar_score": round(radar_score, 2),
+                    "radar_score": round(radar_score, 4),
+                    "heat_level": heat_level,
+                    "is_hot_streak": is_hot_streak,
                     "radar_strength": min(100, max(0, round(P * 100, 1))),
                     "price": demon.get("price", 100),
                     "is_radar_pick": True,
-                    "estimated_p": not has_real_data,  # True if P was estimated (no BDL data)
+                    "estimated_p": not has_real_data,
                     "synced_at": sync_time.isoformat()
                 })
+        
+        # Dynamic Threshold: Start strict (70%), lower if needed
+        radar_picks = self._apply_dynamic_threshold(all_candidates)
         
         # Sort by radar_score descending
         radar_picks.sort(key=lambda x: x["radar_score"], reverse=True)
@@ -941,12 +967,87 @@ class DemonGoblinEngine:
         if top_10:
             await self.radar_picks.insert_many(top_10)
         
-        logger.info(f"[DEMON RADAR] Generated {len(top_10)} top picks from {len(radar_picks)} candidates")
+        # Log summary
+        strict_count = len([p for p in all_candidates if p["hit_probability"] >= 70])
+        opportunity_count = len([p for p in all_candidates if 55 <= p["hit_probability"] < 70])
         
-        # Log top 3 for debugging
+        logger.info(f"[DEMON RADAR v2.0] Generated {len(top_10)} top picks")
+        logger.info(f"  Strict (P>=70%): {strict_count} | Opportunity (P>=55%): {opportunity_count}")
+        logger.info(f"  Total candidates: {len(all_candidates)}")
+        
+        # Log top 3 with heat levels
         for i, pick in enumerate(top_10[:3]):
+            flames = "🔥" * pick['heat_level']
             logger.info(f"  #{i+1}: {pick['player_name']} - {pick['stat_type']} {pick['demon_line']} "
-                       f"(Gap: {pick['gap_diff']}, P: {pick['hit_probability']}%, Score: {pick['radar_score']})")
+                       f"(P: {pick['hit_probability']}%, Score: {pick['radar_score']:.3f}) {flames}")
+    
+    def _calculate_heat_level(self, h10: float, h5: float, h10_over: int, h5_over: int, h10_games: int, h5_games: int) -> int:
+        """
+        Calculate Heat Level (1-5 Flames) based on performance:
+        - 5 Flames: L10 >= 90% (9-10/10 games hit) - FIRE
+        - 4 Flames: L10 >= 80% OR on perfect 5-game streak - HOT
+        - 3 Flames: L10 >= 70% OR L5 >= 80% - WARM
+        - 2 Flames: L10 >= 60% - MILD
+        - 1 Flame:  L10 >= 50% - COOL
+        - 0 Flames: L10 < 50% - COLD
+        """
+        # 5 Flames: 9-10 out of 10 games hit
+        if h10_games >= 10 and h10_over >= 9:
+            return 5
+        if h10 >= 0.90:
+            return 5
+        
+        # 4 Flames: 80%+ L10 OR perfect 5-game streak
+        if h10 >= 0.80:
+            return 4
+        if h5_games >= 5 and h5_over == 5:  # Perfect last 5
+            return 4
+        
+        # 3 Flames: 70%+ L10 OR 80%+ L5 (hot streak)
+        if h10 >= 0.70:
+            return 3
+        if h5 >= 0.80:
+            return 3
+        if h5_games >= 3 and h5_over >= 3:  # 3+ game streak
+            return 3
+        
+        # 2 Flames: 60%+ L10
+        if h10 >= 0.60:
+            return 2
+        
+        # 1 Flame: 50%+ L10
+        if h10 >= 0.50:
+            return 1
+        
+        # 0 Flames: Cold
+        return 0
+    
+    def _apply_dynamic_threshold(self, candidates: List[Dict]) -> List[Dict]:
+        """
+        Dynamic Threshold Logic:
+        1. Start with STRICT threshold (P >= 70%)
+        2. If fewer than 10 picks, lower to OPPORTUNITY threshold (P >= 55%)
+        3. Ensures Demon Radar is NEVER empty
+        """
+        # First pass: Strict threshold (P >= 70%)
+        strict_picks = [c for c in candidates if c["hit_probability"] >= 70]
+        
+        if len(strict_picks) >= 10:
+            logger.info(f"[THRESHOLD] Using STRICT mode (P>=70%): {len(strict_picks)} candidates")
+            return strict_picks
+        
+        # Second pass: Lower to Opportunity threshold (P >= 55%)
+        opportunity_picks = [c for c in candidates if c["hit_probability"] >= 55]
+        
+        if len(opportunity_picks) >= 10:
+            logger.info(f"[THRESHOLD] Using OPPORTUNITY mode (P>=55%): {len(opportunity_picks)} candidates")
+            return opportunity_picks
+        
+        # Final pass: Take all with P >= 40% to ensure we have picks
+        final_picks = [c for c in candidates if c["hit_probability"] >= 40]
+        
+        logger.info(f"[THRESHOLD] Using MINIMUM mode (P>=40%): {len(final_picks)} candidates")
+        return final_picks
     
     def _extract_stat_type(self, market: str) -> str:
         """Extract stat type from market name"""

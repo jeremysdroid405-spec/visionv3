@@ -327,6 +327,35 @@ const RadarCard = memo(({ pick, rank, onClick }) => {
                        pick.radar_strength >= 70 ? 'ring-red-500/40' :
                        'ring-red-500/20';
   
+  // Heat Level flame rendering
+  const heatLevel = pick.heat_level || 0;
+  const renderFlames = () => {
+    if (heatLevel === 0) return null;
+    return (
+      <div className="flex items-center gap-0.5" title={getHeatDescription(heatLevel)}>
+        {[...Array(heatLevel)].map((_, i) => (
+          <Flame key={i} className={`w-3 h-3 ${
+            heatLevel >= 5 ? 'text-orange-400' :
+            heatLevel >= 4 ? 'text-orange-500' :
+            heatLevel >= 3 ? 'text-yellow-500' :
+            'text-yellow-600'
+          }`} fill="currentColor" />
+        ))}
+      </div>
+    );
+  };
+  
+  const getHeatDescription = (level) => {
+    switch(level) {
+      case 5: return '🔥 ON FIRE! 9-10/10 games hit';
+      case 4: return '🔥 HOT! 80%+ L10 or 5-game streak';
+      case 3: return '🔥 WARM! 70%+ L10 or 3-game streak';
+      case 2: return '🔥 Mild - 60%+ L10';
+      case 1: return '🔥 Cool - 50%+ L10';
+      default: return 'Cold';
+    }
+  };
+  
   return (
     <Card 
       className={`
@@ -367,6 +396,24 @@ const RadarCard = memo(({ pick, rank, onClick }) => {
           </div>
         </div>
         
+        {/* Heat Level Flames */}
+        {heatLevel > 0 && (
+          <div className="flex items-center justify-between mb-2 px-1">
+            {renderFlames()}
+            <span className={`text-[10px] font-medium ${
+              heatLevel >= 5 ? 'text-orange-400' :
+              heatLevel >= 4 ? 'text-orange-500' :
+              heatLevel >= 3 ? 'text-yellow-500' :
+              'text-yellow-600'
+            }`}>
+              {heatLevel >= 5 ? 'ON FIRE' :
+               heatLevel >= 4 ? 'HOT' :
+               heatLevel >= 3 ? 'WARM' :
+               heatLevel >= 2 ? 'MILD' : 'COOL'}
+            </span>
+          </div>
+        )}
+        
         {/* Radar Stats */}
         <div className="space-y-1.5">
           {/* Line Info */}
@@ -378,34 +425,34 @@ const RadarCard = memo(({ pick, rank, onClick }) => {
             </div>
           </div>
           
-          {/* Gap Difference */}
+          {/* Gap Ratio (New v2.0 metric) */}
           <div className="flex items-center justify-between text-xs">
             <span className="text-zinc-400">Gap:</span>
             <span className="text-yellow-400 font-medium">
-              {pick.gap_diff > 0 ? '+' : ''}{pick.gap_diff} above standard
+              {pick.gap_pct > 0 ? '+' : ''}{pick.gap_pct}% above std
             </span>
           </div>
           
-          {/* Radar Strength Progress Bar */}
+          {/* Radar Score (Value Ratio) */}
           <div className="mt-2">
             <div className="flex items-center justify-between text-[10px] mb-1">
-              <span className="text-zinc-500">Radar Strength</span>
+              <span className="text-zinc-500">Value Score</span>
               <span className={`font-bold ${
-                pick.radar_strength >= 80 ? 'text-green-400' :
-                pick.radar_strength >= 70 ? 'text-yellow-400' :
+                pick.radar_score >= 0.70 ? 'text-green-400' :
+                pick.radar_score >= 0.55 ? 'text-yellow-400' :
                 'text-zinc-400'
               }`}>
-                {pick.radar_strength}%
+                {(pick.radar_score * 100).toFixed(1)}%
               </span>
             </div>
             <div className="h-1.5 bg-zinc-800 rounded-full overflow-hidden">
               <div 
                 className={`h-full rounded-full transition-all ${
-                  pick.radar_strength >= 80 ? 'bg-gradient-to-r from-green-500 to-green-400' :
-                  pick.radar_strength >= 70 ? 'bg-gradient-to-r from-yellow-500 to-yellow-400' :
+                  pick.radar_score >= 0.70 ? 'bg-gradient-to-r from-green-500 to-green-400' :
+                  pick.radar_score >= 0.55 ? 'bg-gradient-to-r from-yellow-500 to-yellow-400' :
                   'bg-gradient-to-r from-zinc-500 to-zinc-400'
                 }`}
-                style={{ width: `${pick.radar_strength}%` }}
+                style={{ width: `${Math.min(100, pick.radar_score * 100)}%` }}
               />
             </div>
           </div>
@@ -414,6 +461,9 @@ const RadarCard = memo(({ pick, rank, onClick }) => {
           <div className="flex items-center justify-between text-[10px] text-zinc-500 mt-1">
             <span>L10: <span className="text-white">{pick.h10_rate}%</span></span>
             <span>L5: <span className="text-white">{pick.h5_rate}%</span></span>
+            {pick.is_hot_streak && (
+              <span className="text-orange-400 font-medium">🔥 STREAK</span>
+            )}
           </div>
         </div>
       </div>
