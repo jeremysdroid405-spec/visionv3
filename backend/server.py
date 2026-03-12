@@ -1,4 +1,4 @@
-from fastapi import FastAPI, APIRouter, Depends, HTTPException, status
+from fastapi import FastAPI, APIRouter, Depends, HTTPException, status, Query
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
@@ -15,10 +15,13 @@ from jose import JWTError, jwt
 import httpx
 from thefuzz import fuzz
 import asyncio
-from stats_manager import StatsManager, CURRENT_SEASON
+from stats_manager_bdl import StatsManager
+from demon_tracker_engine import DemonTrackerEngine
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
+
+CURRENT_SEASON = "2025"  # 2025-26 NBA season
 
 mongo_url = os.environ['MONGO_URL']
 client = AsyncIOMotorClient(mongo_url)
@@ -33,7 +36,7 @@ ODDS_API_KEY = os.environ.get('ODDS_API_KEY')
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_ANON_KEY) if SUPABASE_ANON_KEY else None
 
-app = FastAPI(title="NBA Best Bets API")
+app = FastAPI(title="NBA Best Bets API - Demon Tracker v2")
 api_router = APIRouter(prefix="/api")
 security = HTTPBearer()
 
@@ -41,23 +44,38 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 stats_manager = None
+demon_tracker = None
 
-async def initial_roster_sync():
-    """Run roster sync on startup"""
+async def initial_autonomous_sync():
+    """Run autonomous daily sync on startup - three-way data sync"""
     await asyncio.sleep(5)  # Wait for app to fully start
+    
+    # Step 1: BallDontLie sync for player stats
     if stats_manager:
-        logger.info("🔄 Running initial roster sync...")
-        result = await stats_manager.sync_nba_rosters()
-        logger.info(f"Initial sync result: {result}")
+        logger.info("🚀 Running BallDontLie daily sync...")
+        result = await stats_manager.autonomous_daily_sync()
+        logger.info(f"BDL Sync result: {result.get('message', 'Done')}")
+    
+    # Step 2: Demon Tracker three-way sync (Odds API + BDL + Tank01)
+    if demon_tracker:
+        logger.info("🎯 Running Demon Tracker v2 full sync...")
+        result = await demon_tracker.run_full_sync()
+        logger.info(f"Demon Tracker result: {result.get('processed_count', 0)} props, {result.get('demon_count', 0)} demons")
 
 @app.on_event("startup")
 async def startup_event():
-    global stats_manager
-    stats_manager = StatsManager(db)
-    logger.info("✓ Stats Manager initialized")
+    global stats_manager, demon_tracker
     
-    # Run initial roster sync in background
-    asyncio.create_task(initial_roster_sync())
+    # Initialize stats manager (BallDontLie)
+    stats_manager = StatsManager(db)
+    logger.info("✓ Stats Manager initialized (BallDontLie)")
+    
+    # Initialize Demon Tracker engine (three-way sync)
+    demon_tracker = DemonTrackerEngine(db)
+    logger.info("✓ Demon Tracker v2 initialized (Odds API + BDL + Tank01)")
+    
+    # Run autonomous daily data loading
+    asyncio.create_task(initial_autonomous_sync())
 
 class SignUpRequest(BaseModel):
     email: str
@@ -463,31 +481,42 @@ async def clear_all_cache():
     deleted_count = await stats_manager.clear_all_cache()
     return {"success": True, "deleted_count": deleted_count, "reason": "Season change - cleared all 2024 data"}
 
+@api_router.get("/todays-games")
+async def get_todays_games():
+    """Get today's NBA games from BallDontLie"""
+    if not stats_manager:
+        raise HTTPException(status_code=500, detail="Stats manager not initialized")
+    
+    result = await stats_manager.get_todays_games_summary()
+    return result
+
+@api_router.post("/trigger-daily-sync")
+async def trigger_daily_sync():
+    """Manually trigger the autonomous daily sync"""
+    if not stats_manager:
+        raise HTTPException(status_code=500, detail="Stats manager not initialized")
+    
+    result = await stats_manager.autonomous_daily_sync()
+    return {"success": True, "sync_result": result}
+
 @api_router.post("/sync-lakers-test")
 async def sync_lakers_test():
     """
-    Test Lakers roster sync for season 2025
-    Verifies subscription access and rate limits
+    Test Lakers roster sync for season 2025 using BallDontLie
     """
     if not stats_manager:
         raise HTTPException(status_code=500, detail="Stats manager not initialized")
     
-    logger.info("🏀 Testing Lakers roster sync for season 2025...")
-    result = await stats_manager.sync_team_roster(17, "Los Angeles Lakers")
+    logger.info("🏀 Testing Lakers roster sync for season 2025 (BallDontLie)...")
     
-    if not result.get("success"):
-        if result.get("error") == "SUBSCRIPTION_SYNC_REQUIRED":
-            raise HTTPException(
-                status_code=402,  # Payment Required
-                detail=f"🚨 SUBSCRIPTION SYNC REQUIRED: {result.get('message')} - Upgrade at https://www.api-sports.io/pricing/nba/"
-            )
-        else:
-            raise HTTPException(status_code=500, detail=result.get("error", "Unknown error"))
+    # Lakers team ID in BallDontLie is 14
+    player_ids = await stats_manager.sync_players_for_team(14)
     
     return {
         "success": True,
-        "message": "Lakers roster synced successfully",
-        "data": result
+        "message": "Lakers roster synced successfully via BallDontLie",
+        "players_synced": len(player_ids),
+        "data_source": "BallDontLie API"
     }
 
 @api_router.get("/rate-limit-status")
@@ -497,11 +526,6 @@ async def get_rate_limit_status():
         raise HTTPException(status_code=500, detail="Stats manager not initialized")
     
     status = stats_manager.rate_limit.get_status()
-    
-    if status["limit"] == 100:
-        status["warning"] = "PRO PLAN NOT DETECTED BY SERVER"
-        status["action_required"] = "Verify subscription at https://dashboard.api-sports.io"
-    
     return {"success": True, "rate_limit": status}
 
 @api_router.get("/roster-status")
@@ -538,7 +562,211 @@ async def get_roster_status():
 
 @api_router.get("/")
 async def root():
-    return {"message": "NBA Best Bets API - Full Board System"}
+    return {"message": "NBA Best Bets API - Demon Tracker v2"}
+
+# ==================== DEMON TRACKER V2 ENDPOINTS ====================
+
+@api_router.get("/demon-tracker/status")
+async def get_demon_tracker_status():
+    """Get current Demon Tracker sync status"""
+    if not demon_tracker:
+        raise HTTPException(status_code=500, detail="Demon Tracker not initialized")
+    
+    status = await demon_tracker.get_sync_status()
+    return {"success": True, "data": status}
+
+@api_router.post("/demon-tracker/sync")
+async def trigger_demon_tracker_sync():
+    """Manually trigger a full three-way sync"""
+    if not demon_tracker:
+        raise HTTPException(status_code=500, detail="Demon Tracker not initialized")
+    
+    result = await demon_tracker.run_full_sync()
+    return {"success": True, "result": result}
+
+@api_router.get("/demon-tracker/events")
+async def get_todays_events():
+    """Get today's NBA events from The Odds API"""
+    if not demon_tracker:
+        raise HTTPException(status_code=500, detail="Demon Tracker not initialized")
+    
+    events = await demon_tracker.fetch_todays_events()
+    return {
+        "success": True,
+        "count": len(events),
+        "events": [
+            {
+                "id": e.get("id"),
+                "home_team": e.get("home_team"),
+                "away_team": e.get("away_team"),
+                "commence_time": e.get("commence_time")
+            }
+            for e in events
+        ]
+    }
+
+@api_router.get("/demon-tracker/event/{event_id}/odds")
+async def get_event_odds(event_id: str):
+    """Get all odds for a specific event including player props"""
+    if not demon_tracker:
+        raise HTTPException(status_code=500, detail="Demon Tracker not initialized")
+    
+    odds = await demon_tracker.fetch_event_odds(event_id)
+    if not odds:
+        raise HTTPException(status_code=404, detail=f"Event {event_id} not found")
+    
+    props = demon_tracker.extract_player_props_from_odds(odds)
+    
+    return {
+        "success": True,
+        "event": {
+            "id": odds.get("id"),
+            "home_team": odds.get("home_team"),
+            "away_team": odds.get("away_team"),
+            "commence_time": odds.get("commence_time")
+        },
+        "bookmakers_count": len(odds.get("bookmakers", [])),
+        "player_props_count": len(props),
+        "player_props": props[:50]  # Limit response size
+    }
+
+@api_router.get("/demon-tracker/props")
+async def get_processed_props(
+    event_id: Optional[str] = Query(None),
+    bookmaker: Optional[str] = Query(None),
+    market: Optional[str] = Query(None),
+    demons_only: bool = Query(False)
+):
+    """Get processed player props with filters"""
+    if not demon_tracker:
+        raise HTTPException(status_code=500, detail="Demon Tracker not initialized")
+    
+    props = await demon_tracker.get_processed_props(
+        event_id=event_id,
+        bookmaker=bookmaker,
+        market=market,
+        demons_only=demons_only
+    )
+    
+    return {
+        "success": True,
+        "count": len(props),
+        "props": props
+    }
+
+@api_router.get("/demon-tracker/demons")
+async def get_demon_lines():
+    """Get all qualified Demon lines (L10 hit rate >= 40%)"""
+    if not demon_tracker:
+        raise HTTPException(status_code=500, detail="Demon Tracker not initialized")
+    
+    props = await demon_tracker.get_processed_props(demons_only=True)
+    
+    # Sort by L10 hit rate descending
+    sorted_props = sorted(
+        props,
+        key=lambda x: x.get("hit_rates", {}).get("l10", {}).get("hit_rate", 0),
+        reverse=True
+    )
+    
+    return {
+        "success": True,
+        "count": len(sorted_props),
+        "demons": sorted_props
+    }
+
+@api_router.get("/demon-tracker/player/{player_name}")
+async def get_player_analysis(player_name: str, line: float = Query(20.0), market: str = Query("player_points")):
+    """Get full analysis for a specific player"""
+    if not demon_tracker:
+        raise HTTPException(status_code=500, detail="Demon Tracker not initialized")
+    
+    # Search for player
+    bdl_player = await demon_tracker.search_bdl_player(player_name)
+    if not bdl_player:
+        raise HTTPException(status_code=404, detail=f"Player {player_name} not found")
+    
+    # Get stats
+    games = await demon_tracker.fetch_bdl_player_stats(bdl_player.get("id"))
+    
+    # Calculate hit rates
+    hit_rates = demon_tracker.calculate_triple_view_hit_rate(games, market, line)
+    
+    return {
+        "success": True,
+        "player": {
+            "id": bdl_player.get("id"),
+            "name": f"{bdl_player.get('first_name', '')} {bdl_player.get('last_name', '')}".strip(),
+            "team": bdl_player.get("team", {}).get("full_name", ""),
+            "position": bdl_player.get("position", "")
+        },
+        "market": market,
+        "line": line,
+        "hit_rates": hit_rates,
+        "games_analyzed": len(games),
+        "last_5_games": [
+            {
+                "date": g.get("game", {}).get("date", "")[:10],
+                "pts": g.get("pts", 0),
+                "reb": g.get("reb", 0),
+                "ast": g.get("ast", 0),
+                "fg3m": g.get("fg3m", 0),
+                "min": g.get("min", 0)
+            }
+            for g in games[:5]
+        ]
+    }
+
+@api_router.get("/demon-tracker/board")
+async def get_full_demon_board():
+    """
+    Get the full Demon Tracker board for today
+    Returns all processed props grouped by event
+    """
+    if not demon_tracker:
+        raise HTTPException(status_code=500, detail="Demon Tracker not initialized")
+    
+    # Get all processed props
+    all_props = await demon_tracker.get_processed_props()
+    
+    # Filter out None props
+    all_props = [p for p in all_props if p is not None]
+    
+    # Group by event
+    events_map = {}
+    for prop in all_props:
+        if not prop:
+            continue
+        event_id = prop.get("event_id", "unknown")
+        if event_id not in events_map:
+            events_map[event_id] = {
+                "event_id": event_id,
+                "home_team": prop.get("home_team"),
+                "away_team": prop.get("away_team"),
+                "commence_time": prop.get("commence_time"),
+                "props": []
+            }
+        events_map[event_id]["props"].append(prop)
+    
+    # Sort events by game time
+    events_list = sorted(
+        events_map.values(),
+        key=lambda x: x.get("commence_time") or ""
+    )
+    
+    # Count demons (safe null check)
+    total_demons = sum(
+        1 for p in all_props 
+        if p and p.get("hit_rates") and p.get("hit_rates", {}).get("is_demon")
+    )
+    
+    return {
+        "success": True,
+        "events_count": len(events_list),
+        "total_props": len(all_props),
+        "total_demons": total_demons,
+        "board": events_list
+    }
 
 app.include_router(api_router)
 
