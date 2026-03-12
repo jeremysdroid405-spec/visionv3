@@ -1,7 +1,7 @@
 """
 NBA Stats Manager with API-Sports Integration
-Handles player statistics with 24hr persistent caching
-GLOBAL ROSTER SYNC for all 30 NBA teams
+Native API-Sports NBA endpoint (v2.nba.api-sports.io)
+Season 2025 (March 2026) with dynamic rate limit monitoring
 """
 
 import httpx
@@ -14,11 +14,40 @@ import asyncio
 
 logger = logging.getLogger(__name__)
 
+# Native API-Sports Configuration
 API_SPORTS_KEY = "1196210f53a32375b7c319c45802fbe8"
 API_SPORTS_BASE_URL = "https://v2.nba.api-sports.io"
+CURRENT_SEASON = "2025"  # 2025-26 NBA season (Oct 2025 - June 2026)
+LEAGUE = "standard"  # NBA professional regular season
 CACHE_TTL_HOURS = 24
-CURRENT_SEASON = "2024"  # Latest available season (free tier: 2022-2024)
 ROSTER_SYNC_INTERVAL_HOURS = 24
+
+
+class RateLimitMonitor:
+    """Monitor API rate limits dynamically"""
+    
+    def __init__(self):
+        self.limit = None
+        self.remaining = None
+        self.last_check = None
+    
+    def update_from_headers(self, headers: Dict[str, str]):
+        """Extract rate limit info from response headers"""
+        self.limit = int(headers.get('x-ratelimit-requests-limit', 0))
+        self.remaining = int(headers.get('x-ratelimit-requests-remaining', 0))
+        self.last_check = datetime.now(timezone.utc)
+        
+        if self.limit == 100:
+            logger.warning("⚠️ PRO PLAN NOT DETECTED BY SERVER - Rate limit: 100/day")
+        else:
+            logger.info(f"✓ Rate limit detected: {self.limit}/day | Remaining: {self.remaining}")
+    
+    def get_status(self) -> Dict[str, Any]:
+        return {
+            "limit": self.limit,
+            "remaining": self.remaining,
+            "last_check": self.last_check.isoformat() if self.last_check else None
+        }
 
 
 class StatsManager:
@@ -27,7 +56,90 @@ class StatsManager:
         self.stats_cache = db.stats_cache
         self.league_roster = db.league_roster
         self.last_roster_sync = None
+        self.rate_limit = RateLimitMonitor()
         
+    async def sync_team_roster(self, team_id: int, team_name: str) -> Dict[str, Any]:
+        """
+        Sync roster for a specific team (used for testing Lakers first)
+        """
+        try:
+            url = f"{API_SPORTS_BASE_URL}/players"
+            params = {
+                "team": str(team_id),
+                "season": CURRENT_SEASON,
+                "league": LEAGUE
+            }
+            headers = {
+                "x-apisports-key": API_SPORTS_KEY
+            }
+            
+            async with httpx.AsyncClient() as client:
+                response = await client.get(url, params=params, headers=headers, timeout=10.0)
+                
+                # Monitor rate limits
+                self.rate_limit.update_from_headers(dict(response.headers))
+                
+                if response.status_code == 200:
+                    data = response.json()
+                    
+                    # Check for subscription errors
+                    if data.get("errors"):
+                        errors = data["errors"]
+                        if "plan" in errors:
+                            return {
+                                "success": False,
+                                "error": "SUBSCRIPTION_SYNC_REQUIRED",
+                                "message": errors["plan"],
+                                "team": team_name
+                            }
+                    
+                    players = data.get("response", [])
+                    synced_count = 0
+                    
+                    for player in players:
+                        player_id = player.get("id")
+                        firstname = player.get("firstname", "")
+                        lastname = player.get("lastname", "")
+                        full_name = f"{firstname} {lastname}".strip()
+                        
+                        if player_id and full_name:
+                            roster_entry = {
+                                "player_id": str(player_id),
+                                "player_name": full_name,
+                                "firstname": firstname,
+                                "lastname": lastname,
+                                "team_id": str(team_id),
+                                "team_name": team_name,
+                                "synced_at": datetime.now(timezone.utc).isoformat(),
+                                "season": CURRENT_SEASON
+                            }
+                            
+                            await self.league_roster.update_one(
+                                {"player_id": str(player_id)},
+                                {"$set": roster_entry},
+                                upsert=True
+                            )
+                            synced_count += 1
+                    
+                    logger.info(f"✓ {team_name}: {synced_count} players synced (season {CURRENT_SEASON})")
+                    
+                    return {
+                        "success": True,
+                        "team": team_name,
+                        "players_synced": synced_count,
+                        "rate_limit": self.rate_limit.get_status()
+                    }
+                else:
+                    return {
+                        "success": False,
+                        "error": f"HTTP {response.status_code}",
+                        "team": team_name
+                    }
+                    
+        except Exception as e:
+            logger.error(f"Team sync error ({team_name}): {e}")
+            return {"success": False, "error": str(e), "team": team_name}
+    
     async def get_all_nba_teams(self) -> List[Dict[str, Any]]:
         """
         Fetch all NBA teams from API-Sports
@@ -246,14 +358,16 @@ class StatsManager:
     
     async def fetch_player_stats_from_api(self, player_id: str) -> Optional[Dict[str, Any]]:
         """
-        Fetch player statistics from API-Sports (Direct)
+        Fetch player statistics from Native API-Sports NBA endpoint
         Endpoint: /players/statistics
+        Season: 2025 (March 2026 data)
         """
         try:
             url = f"{API_SPORTS_BASE_URL}/players/statistics"
             params = {
                 "id": player_id,
-                "season": CURRENT_SEASON  # Use 2025 directly
+                "season": CURRENT_SEASON,
+                "league": LEAGUE
             }
             headers = {
                 "x-apisports-key": API_SPORTS_KEY
@@ -262,10 +376,27 @@ class StatsManager:
             async with httpx.AsyncClient() as client:
                 response = await client.get(url, params=params, headers=headers, timeout=15.0)
                 
+                # Monitor rate limits
+                self.rate_limit.update_from_headers(dict(response.headers))
+                
                 if response.status_code == 200:
                     data = response.json()
-                    logger.info(f"✓ Fetched stats from API-Sports for player {player_id}")
-                    return data
+                    
+                    # Check for subscription errors
+                    if data.get("errors"):
+                        errors = data["errors"]
+                        if "plan" in errors:
+                            logger.error(f"🚨 SUBSCRIPTION SYNC REQUIRED: {errors['plan']}")
+                            logger.error("⚠️ Season 2025 blocked - Upgrade needed at https://www.api-sports.io/pricing/nba/")
+                            return None
+                    
+                    if data.get("results", 0) > 0:
+                        logger.info(f"✓ Fetched {data['results']} games from API-Sports for player {player_id}")
+                        return data
+                    else:
+                        logger.warning(f"No data returned for player {player_id} (season {CURRENT_SEASON})")
+                        return None
+                        
                 elif response.status_code == 429:
                     logger.error("⚠️ API-Sports rate limit hit (429)")
                     return None

@@ -463,6 +463,47 @@ async def clear_all_cache():
     deleted_count = await stats_manager.clear_all_cache()
     return {"success": True, "deleted_count": deleted_count, "reason": "Season change - cleared all 2024 data"}
 
+@api_router.post("/sync-lakers-test")
+async def sync_lakers_test():
+    """
+    Test Lakers roster sync for season 2025
+    Verifies subscription access and rate limits
+    """
+    if not stats_manager:
+        raise HTTPException(status_code=500, detail="Stats manager not initialized")
+    
+    logger.info("🏀 Testing Lakers roster sync for season 2025...")
+    result = await stats_manager.sync_team_roster(17, "Los Angeles Lakers")
+    
+    if not result.get("success"):
+        if result.get("error") == "SUBSCRIPTION_SYNC_REQUIRED":
+            raise HTTPException(
+                status_code=402,  # Payment Required
+                detail=f"🚨 SUBSCRIPTION SYNC REQUIRED: {result.get('message')} - Upgrade at https://www.api-sports.io/pricing/nba/"
+            )
+        else:
+            raise HTTPException(status_code=500, detail=result.get("error", "Unknown error"))
+    
+    return {
+        "success": True,
+        "message": "Lakers roster synced successfully",
+        "data": result
+    }
+
+@api_router.get("/rate-limit-status")
+async def get_rate_limit_status():
+    """Get current API rate limit status"""
+    if not stats_manager:
+        raise HTTPException(status_code=500, detail="Stats manager not initialized")
+    
+    status = stats_manager.rate_limit.get_status()
+    
+    if status["limit"] == 100:
+        status["warning"] = "PRO PLAN NOT DETECTED BY SERVER"
+        status["action_required"] = "Verify subscription at https://dashboard.api-sports.io"
+    
+    return {"success": True, "rate_limit": status}
+
 @api_router.get("/roster-status")
 async def get_roster_status():
     """Get roster sync status and statistics"""
