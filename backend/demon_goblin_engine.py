@@ -468,6 +468,7 @@ class DemonGoblinEngine:
         logger.info(f"  Duration: {duration:.1f}s")
         logger.info(f"  API Calls Made: {results['api_calls_made']}")
         logger.info(f"  Props Stored: {results['total_props']}")
+        logger.info(f"  Props Enriched: {results.get('stats_enriched', 0)}")
         logger.info(f"  Players: {results['unique_players']}")
         logger.info(f"  Standard: {results['standard_count']} | Demons: {results['demons_count']} | Goblins: {results['goblins_count']}")
         logger.info("=" * 70)
@@ -588,26 +589,88 @@ class DemonGoblinEngine:
         
         try:
             url = f"{BDL_BASE_URL}/players"
-            # Split name for better search
-            name_parts = player_name.split()
-            search_term = name_parts[-1] if len(name_parts) > 1 else player_name
-            
-            params = {"search": search_term, "per_page": 25}
             headers = {"Authorization": BDL_API_KEY}
             
+            # Normalize name for search (handle G.G., Jr., etc.)
+            normalized_name = player_name.replace(".", "").strip()
+            name_parts = normalized_name.split()
+            first_name = name_parts[0] if name_parts else ""
+            last_name = name_parts[-1] if len(name_parts) > 1 else ""
+            
+            # Search strategies: first name is most reliable for unique names
+            search_terms = [
+                first_name if first_name else normalized_name,  # First name first (most reliable)
+                normalized_name,  # Full name
+                last_name if last_name else normalized_name,  # Last name (fallback)
+            ]
+            
             async with httpx.AsyncClient() as client:
-                response = await client.get(url, params=params, headers=headers, timeout=10.0)
-                
-                if response.status_code == 200:
+                for search_term in search_terms:
+                    if not search_term:
+                        continue
+                        
+                    params = {"search": search_term, "per_page": 100}
+                    response = await client.get(url, params=params, headers=headers, timeout=10.0)
+                    
+                    if response.status_code != 200:
+                        continue
+                    
                     data = response.json()
                     players = data.get("data", [])
                     
-                    # Find best match
+                    if not players:
+                        continue
+                    
+                    # Find best match with scoring
+                    best_match = None
+                    best_score = 0
+                    
                     for player in players:
-                        full_name = f"{player.get('first_name', '')} {player.get('last_name', '')}"
-                        if fuzz.ratio(player_name.lower(), full_name.lower()) > 85:
+                        full_name = f"{player.get('first_name', '')} {player.get('last_name', '')}".strip()
+                        normalized_full = full_name.replace(".", "").strip()
+                        
+                        # Exact first+last name match gets bonus
+                        player_first = player.get('first_name', '').replace(".", "").strip().lower()
+                        player_last = player.get('last_name', '').replace(".", "").strip().lower()
+                        
+                        # Check for exact first and last name match
+                        exact_first = player_first == first_name.lower() if first_name else False
+                        exact_last = player_last == last_name.lower() if last_name else False
+                        
+                        # Also check if first name starts with search term (Alex -> Alexandre)
+                        starts_with_first = player_first.startswith(first_name.lower()) if first_name and len(first_name) >= 3 else False
+                        
+                        # If both first and last names match exactly, this is our player
+                        if exact_first and exact_last:
                             self._player_name_map[player_name] = player
                             return player.get("id")
+                        
+                        # If last name is exact and first name starts with search, also accept
+                        if exact_last and starts_with_first:
+                            self._player_name_map[player_name] = player
+                            return player.get("id")
+                        
+                        # Calculate similarity scores
+                        ratio = fuzz.ratio(normalized_name.lower(), normalized_full.lower())
+                        partial = fuzz.partial_ratio(normalized_name.lower(), normalized_full.lower())
+                        token_sort = fuzz.token_sort_ratio(normalized_name.lower(), normalized_full.lower())
+                        
+                        # Use the best of all metrics
+                        score = max(ratio, partial, token_sort)
+                        
+                        # Bonus for matching first name
+                        if exact_first:
+                            score += 10
+                        
+                        if score > best_score:
+                            best_score = score
+                            best_match = player
+                    
+                    # Accept if score is high enough (80% threshold after bonuses)
+                    if best_match and best_score >= 80:
+                        self._player_name_map[player_name] = best_match
+                        return best_match.get("id")
+                        
         except Exception as e:
             logger.debug(f"[BDL] Error searching for {player_name}: {e}")
         
@@ -810,16 +873,21 @@ class DemonGoblinEngine:
                 
                 # Get hit rates from BallDontLie stats if available
                 hit_rates = demon.get("hit_rates", {})
-                h10 = hit_rates.get("l10", {}).get("hit_rate", 0)
-                h5 = hit_rates.get("l5", {}).get("hit_rate", 0)
+                h10_data = hit_rates.get("l10", {})
+                h5_data = hit_rates.get("l5", {})
+                h10 = h10_data.get("hit_rate", 0)
+                h5 = h5_data.get("hit_rate", 0)
+                
+                # Track if we have real data (at least some games played)
+                has_real_data = h10_data.get("total_games", 0) > 0 or h5_data.get("total_games", 0) > 0
                 
                 # Calculate Line Gap (G)
                 # G = (Demon_Value - Standard_Value) / Standard_Value
                 G = (demon_line - std_line) / std_line if std_line > 0 else 0
                 
-                # If no hit rates, estimate P based on line gap
+                # If no real data, estimate P based on line gap
                 # Closer gap = higher probability
-                if h10 == 0 and h5 == 0:
+                if not has_real_data:
                     # Estimate: P decreases as gap increases
                     # Gap of 0% = 80% P, Gap of 20% = 60% P, Gap of 50% = 40% P
                     estimated_P = max(0.40, 0.80 - (G * 1.0))  # Linear decay
@@ -858,7 +926,7 @@ class DemonGoblinEngine:
                     "radar_strength": min(100, max(0, round(P * 100, 1))),
                     "price": demon.get("price", 100),
                     "is_radar_pick": True,
-                    "estimated_p": h10 == h5,  # Flag if P was estimated
+                    "estimated_p": not has_real_data,  # True if P was estimated (no BDL data)
                     "synced_at": sync_time.isoformat()
                 })
         
