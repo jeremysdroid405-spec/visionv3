@@ -414,14 +414,19 @@ class DemonGoblinEngine:
             
             results["unique_players"] = len(seen_players)
             
-            # Step 3: Deduplicate and store in MongoDB
-            if all_props:
+            # Step 3: Enrich props with BallDontLie hit rates
+            logger.info(f"[SYNC_ODDS_TO_MONGO] Enriching {len(seen_players)} players with BallDontLie stats...")
+            enriched_props = await self._enrich_props_with_stats(all_props, list(seen_players))
+            results["stats_enriched"] = len([p for p in enriched_props if p.get("hit_rates")])
+            
+            # Step 4: Deduplicate and store in MongoDB
+            if enriched_props:
                 # Clear old data
                 await self.live_props.delete_many({})
                 
                 # Deduplicate using composite key
                 deduplicated = {}
-                for prop in all_props:
+                for prop in enriched_props:
                     # Composite key: player_name + market + line + direction
                     key = f"{prop['player_name']}|{prop['market']}|{prop['line']}|{prop['direction']}"
                     
@@ -447,7 +452,7 @@ class DemonGoblinEngine:
                 
                 logger.info(f"[SYNC_ODDS_TO_MONGO] Stored {len(props_list)} deduplicated props")
             
-            # Step 4: Build cached board for frontend (grouped by player)
+            # Step 5: Build cached board for frontend (grouped by player)
             await self._build_cached_board(props_list, sync_start)
             
         except Exception as e:
@@ -468,6 +473,206 @@ class DemonGoblinEngine:
         logger.info("=" * 70)
         
         return results
+    
+    async def _enrich_props_with_stats(self, props: List[Dict], player_names: List[str]) -> List[Dict]:
+        """
+        Enrich props with BallDontLie hit rates.
+        
+        Calculates:
+        - L5: Last 5 games hit rate
+        - L10: Last 10 games hit rate
+        - Season: Full season hit rate
+        
+        This is used by the Demon Radar for accurate probability calculations.
+        """
+        logger.info(f"[STATS ENRICHMENT] Starting enrichment for {len(player_names)} players...")
+        
+        # Cache player stats to avoid duplicate API calls
+        player_stats_cache = {}
+        enriched_count = 0
+        
+        # Batch process players (limit concurrent requests)
+        batch_size = 10
+        for i in range(0, len(player_names), batch_size):
+            batch = player_names[i:i+batch_size]
+            
+            for player_name in batch:
+                if player_name in player_stats_cache:
+                    continue
+                
+                try:
+                    # Fetch player stats from BallDontLie
+                    stats = await self._fetch_player_season_stats(player_name)
+                    if stats:
+                        player_stats_cache[player_name] = stats
+                        enriched_count += 1
+                except Exception as e:
+                    logger.debug(f"[STATS] Error fetching stats for {player_name}: {e}")
+                
+                # Rate limiting
+                await asyncio.sleep(0.1)
+            
+            # Log progress
+            if i % 50 == 0 and i > 0:
+                logger.info(f"[STATS ENRICHMENT] Progress: {i}/{len(player_names)} players")
+        
+        logger.info(f"[STATS ENRICHMENT] Fetched stats for {enriched_count}/{len(player_names)} players")
+        
+        # Enrich props with hit rates
+        for prop in props:
+            player_name = prop.get("player_name")
+            player_stats = player_stats_cache.get(player_name, {})
+            
+            if not player_stats:
+                continue
+            
+            # Extract stat type from market
+            stat_type = self._extract_stat_type(prop.get("market", ""))
+            line_value = prop.get("line", 0)
+            
+            if not stat_type or line_value <= 0:
+                continue
+            
+            # Calculate hit rates for this line
+            hit_rates = self._calculate_hit_rates(player_stats, stat_type, line_value)
+            
+            if hit_rates:
+                prop["hit_rates"] = hit_rates
+        
+        return props
+    
+    async def _fetch_player_season_stats(self, player_name: str) -> Dict[str, Any]:
+        """
+        Fetch a player's season stats from BallDontLie API.
+        Returns game-by-game stats for hit rate calculation.
+        """
+        try:
+            # First, find the player ID
+            player_id = await self._get_bdl_player_id(player_name)
+            if not player_id:
+                return {}
+            
+            # Fetch season stats
+            url = f"{BDL_BASE_URL}/stats"
+            params = {
+                "player_ids[]": player_id,
+                "seasons[]": CURRENT_SEASON,
+                "per_page": 100
+            }
+            headers = {"Authorization": BDL_API_KEY}
+            
+            async with httpx.AsyncClient() as client:
+                response = await client.get(url, params=params, headers=headers, timeout=15.0)
+                
+                if response.status_code == 200:
+                    data = response.json()
+                    games = data.get("data", [])
+                    
+                    if games:
+                        return {
+                            "player_name": player_name,
+                            "player_id": player_id,
+                            "games": games,
+                            "total_games": len(games)
+                        }
+        except Exception as e:
+            logger.debug(f"[BDL] Error fetching stats for {player_name}: {e}")
+        
+        return {}
+    
+    async def _get_bdl_player_id(self, player_name: str) -> Optional[int]:
+        """Get BallDontLie player ID from name (with caching)"""
+        # Check cache first
+        if player_name in self._player_name_map:
+            return self._player_name_map[player_name].get("id")
+        
+        try:
+            url = f"{BDL_BASE_URL}/players"
+            # Split name for better search
+            name_parts = player_name.split()
+            search_term = name_parts[-1] if len(name_parts) > 1 else player_name
+            
+            params = {"search": search_term, "per_page": 25}
+            headers = {"Authorization": BDL_API_KEY}
+            
+            async with httpx.AsyncClient() as client:
+                response = await client.get(url, params=params, headers=headers, timeout=10.0)
+                
+                if response.status_code == 200:
+                    data = response.json()
+                    players = data.get("data", [])
+                    
+                    # Find best match
+                    for player in players:
+                        full_name = f"{player.get('first_name', '')} {player.get('last_name', '')}"
+                        if fuzz.ratio(player_name.lower(), full_name.lower()) > 85:
+                            self._player_name_map[player_name] = player
+                            return player.get("id")
+        except Exception as e:
+            logger.debug(f"[BDL] Error searching for {player_name}: {e}")
+        
+        return None
+    
+    def _calculate_hit_rates(self, player_stats: Dict, stat_type: str, line_value: float) -> Dict[str, Any]:
+        """
+        Calculate hit rates for a specific line.
+        
+        Returns:
+        - l5: Last 5 games hit rate
+        - l10: Last 10 games hit rate  
+        - season: Full season hit rate
+        """
+        games = player_stats.get("games", [])
+        if not games:
+            return {}
+        
+        # Map stat type to BallDontLie field
+        stat_field_map = {
+            "PTS": "pts",
+            "REB": "reb",
+            "AST": "ast",
+            "3PM": "fg3m",
+            "BLK": "blk",
+            "STL": "stl",
+            "TO": "turnover",
+            "P+R": ["pts", "reb"],
+            "P+A": ["pts", "ast"],
+            "R+A": ["reb", "ast"],
+            "PRA": ["pts", "reb", "ast"]
+        }
+        
+        fields = stat_field_map.get(stat_type)
+        if not fields:
+            return {}
+        
+        # Sort games by date (most recent first)
+        sorted_games = sorted(games, key=lambda g: g.get("game", {}).get("date", ""), reverse=True)
+        
+        def get_stat_value(game):
+            if isinstance(fields, list):
+                return sum(game.get(f, 0) or 0 for f in fields)
+            return game.get(fields, 0) or 0
+        
+        def calc_hit_rate(game_list):
+            if not game_list:
+                return {"hit_rate": 0, "games_over": 0, "total_games": 0, "avg": 0}
+            
+            values = [get_stat_value(g) for g in game_list]
+            games_over = sum(1 for v in values if v >= line_value)
+            avg = sum(values) / len(values) if values else 0
+            
+            return {
+                "hit_rate": games_over / len(game_list) if game_list else 0,
+                "games_over": games_over,
+                "total_games": len(game_list),
+                "avg": round(avg, 1)
+            }
+        
+        return {
+            "l5": calc_hit_rate(sorted_games[:5]),
+            "l10": calc_hit_rate(sorted_games[:10]),
+            "season": calc_hit_rate(sorted_games)
+        }
     
     async def _build_cached_board(self, props: List[Dict], sync_time: datetime):
         """
