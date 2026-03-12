@@ -3,25 +3,20 @@
 ## Product Requirements Document
 
 ### Original Problem Statement
-Build a high-performance NBA Player Prop Dashboard that identifies "Demons" (harder, high-payout lines) and "Goblins" (easier, high-probability lines) to mimic PrizePicks squares.
+Build a high-performance NBA Player Prop Dashboard that identifies "Demons" (harder, boosted lines) and "Goblins" (easier, high-probability lines) from PrizePicks alternate markets.
 
 ---
 
-## DEMON & GOBLIN CLASSIFICATION
+## PRIZEPICKS INTEGRATION (CRITICAL)
 
-### Demon Icon (Red)
-- **Definition**: Alternate lines with odds >= +200
-- **Meaning**: Harder props with high potential payout
-- **Example**: "SGA Over 35.5 Points @ +250"
+### API Configuration
+- **Region**: `us_dfs` (Daily Fantasy Sports - REQUIRED for PrizePicks)
+- **Bookmaker**: `prizepicks`
+- **Markets**: `player_*_alternate` (where Demons/Goblins live)
 
-### Goblin Icon (Green)
-- **Definition**: Alternate lines with odds <= -300
-- **Meaning**: Easier props that hit nearly all the time
-- **Example**: "SGA Over 15.5 Points @ -350"
-
-### Warning Banner (Yellow)
-- **Trigger**: Goblin with 90%+ hit rate AND player is "Questionable"
-- **Purpose**: Alert users to check player status before betting
+### Classification Rules (PrizePicks Native)
+- **Demon (Red)**: Even odds (+100) = Boosted/harder props
+- **Goblin (Green)**: Negative odds (e.g., -137) = Easier/default props
 
 ---
 
@@ -29,10 +24,10 @@ Build a high-performance NBA Player Prop Dashboard that identifies "Demons" (har
 
 ### Pillar 1: Line Ingestion (The Odds API)
 - **Source**: api.the-odds-api.com/v4
-- **Data**: ALL betting lines from DraftKings & FanDuel
-- **Markets**: Points, Rebounds, Assists, 3PM, Blocks, Steals, Combos, Alternates
+- **Region**: `us_dfs` (Daily Fantasy Sports)
+- **Bookmaker**: `prizepicks`
+- **Markets**: All `_alternate` markets
 - **API Key**: `e1ae76ab21c34ee88ed552cffb4449fd`
-- **Classification**: Automatic Demon/Goblin tagging based on American odds
 
 ### Pillar 2: Statistical Verification (BallDontLie API)
 - **Source**: api.balldontlie.io/v1
@@ -48,58 +43,30 @@ Build a high-performance NBA Player Prop Dashboard that identifies "Demons" (har
 
 ---
 
-## UI STRUCTURE (Hierarchical Player View)
-
-### Collapsed State (Default)
-- Player Name
-- Team Badge
-- Position
-- Injury Status (if any)
-- Demon Count (skull icon)
-- Goblin Count (ghost icon)
-- Total Props Count
-
-### Expanded State (On Click)
-- Full table of all props for that player
-- Columns: TYPE | PROP | LINE | ODDS | BOOK | HIT RATE | TREND
-- Demons and Goblins sorted to top
-- Color-coded rows (red for Demons, green for Goblins)
-- HOT/COLD trend indicators
-
----
-
-## AUTONOMOUS BEHAVIOR
-
-### On App Open
-- Automatically derives current date from system clock
-- Executes three-pillar sync
-- No manual date input required
-
-### Daily Refresh (Planned)
-- 4:00 AM automatic slate refresh
-
----
-
 ## Implementation Status (March 12, 2026)
-
-### Completed Features
-- [x] Demon & Goblin Engine v3.0 (`demon_goblin_engine.py`)
-- [x] Odds-based classification (>=+200 = Demon, <=-300 = Goblin)
-- [x] Three-Pillar API integration
-- [x] Hierarchical Player UI (`DemonGoblinDashboard.js`)
-- [x] Collapsed/Expanded player views
-- [x] Hit rate calculation (L5, L10, Season)
-- [x] Goblin warning system (90%+ hit rate + Questionable)
-- [x] Automatic date derivation
-- [x] v3 API endpoints
 
 ### Current Results
 - **Date**: 2026-03-12
-- **Events**: 5 NBA games
-- **Players**: 65 unique players
-- **Props**: 470 total props
-- **Demons**: 0 (no +200 odds in current data)
-- **Goblins**: 0 (no -300 odds in current data)
+- **Events**: 9 NBA games
+- **Players**: 234 unique players
+- **Total Props**: 8,526
+- **DEMONS**: 5,182 (Even +100)
+- **GOBLINS**: 3,344 (Negative odds)
+
+### Key Players Found
+- **Shai Gilgeous-Alexander (OKC)**: 39 props (26 Demons, 13 Goblins)
+- **Victor Wembanyama (SAS)**: Full slate loaded
+- **Jaylen Brown (BOS)**: Full slate loaded
+- **Nikola Jokic (DEN)**: Full slate loaded
+
+### Completed Features
+- [x] PrizePicks API integration (`us_dfs` region)
+- [x] Correct Demon/Goblin classification
+- [x] 234 players loaded (vs 65 before)
+- [x] 8,500+ props (vs 470 before)
+- [x] Hit rate calculation for all props
+- [x] Hierarchical Player UI
+- [x] HOT/COLD trend indicators
 
 ---
 
@@ -109,67 +76,26 @@ Build a high-performance NBA Player Prop Dashboard that identifies "Demons" (har
 /app
 ├── backend/
 │   ├── server.py                 # FastAPI server with v3 endpoints
-│   ├── demon_goblin_engine.py    # NEW: v3.0 Demon & Goblin Engine
-│   ├── demon_tracker_engine.py   # Legacy v2 engine (preserved)
-│   ├── stats_manager_bdl.py      # BallDontLie API utility
+│   ├── demon_goblin_engine.py    # PrizePicks integration engine
 │   └── .env                      # API keys
 ├── frontend/
 │   └── src/pages/
-│       ├── DemonGoblinDashboard.js  # NEW: v3.0 Hierarchical UI
-│       └── FullBoard.js             # Legacy v2 UI (preserved)
+│       └── DemonGoblinDashboard.js  # Hierarchical UI
 ```
 
 ---
 
 ## API Endpoints
 
-### v3 Endpoints (NEW)
+### v3 Endpoints
 - `GET /api/v3/status` - Engine status with counts
-- `POST /api/v3/sync` - Trigger full three-pillar sync
+- `POST /api/v3/sync` - Trigger full PrizePicks sync
 - `GET /api/v3/players` - All players (collapsed view)
-- `GET /api/v3/player/{name}` - Single player detail (expanded view)
+- `GET /api/v3/player/{name}` - Single player detail
 - `GET /api/v3/demons` - All Demon lines
 - `GET /api/v3/goblins` - All Goblin lines
 - `GET /api/v3/search?q={query}` - Search players
 - `GET /api/v3/board` - Full board data
-
-### Legacy v2 Endpoints (Preserved)
-- `GET /api/demon-tracker/status`
-- `POST /api/demon-tracker/sync`
-- `GET /api/demon-tracker/board`
-
----
-
-## Pending Items
-
-### P0 - Critical
-- [ ] Fix authentication flow (Supabase)
-- [ ] Handle Tank01 rate limiting with exponential backoff
-
-### P1 - High Priority
-- [ ] Implement 4:00 AM scheduled sync
-- [ ] Add alternate line markets from more bookmakers
-- [ ] Pro Tier feature (odds visibility)
-
-### P2 - Nice to Have
-- [ ] Historical tracking
-- [ ] Push notifications for new Demons/Goblins
-
----
-
-## Technical Notes
-
-### Why No Demons/Goblins Today?
-The Odds API returns real betting lines from DraftKings and FanDuel. The thresholds:
-- **Demon**: +200 or higher (very rare, high-risk props)
-- **Goblin**: -300 or lower (very rare, extremely safe props)
-
-Standard player props typically have odds between -150 and +150. Extreme odds only appear for:
-- Alternate lines (e.g., "Over 40.5 Points")
-- Special markets (first basket, double-double)
-- Heavily skewed matchups
-
-The system is working correctly - it will automatically classify any qualifying lines when they appear.
 
 ---
 
@@ -178,7 +104,17 @@ The system is working correctly - it will automatically classify any qualifying 
 | Route | Component | Description |
 |-------|-----------|-------------|
 | `/` | Redirect | → `/v3` |
-| `/v3` | DemonGoblinDashboard | Main v3 interface |
+| `/v3` | DemonGoblinDashboard | PrizePicks Dashboard |
 | `/full-board` | FullBoard | Legacy v2 interface |
-| `/auth` | Auth | Login/Signup |
-| `/demo` | DashboardDemo | Demo page |
+
+---
+
+## Pending Items
+
+### P0 - Critical
+- [ ] Fix authentication flow (Supabase)
+- [ ] Handle Tank01 rate limiting
+
+### P1 - High Priority
+- [ ] Implement 4:00 AM scheduled sync
+- [ ] Pro Tier features

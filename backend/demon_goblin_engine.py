@@ -2,13 +2,19 @@
 Demon & Goblin Analytics Engine v3.0
 =====================================
 
-PrizePicks-Style Mimic System for NBA Player Props
+PrizePicks-Specific System for NBA Player Props
 
-Demon Icon (Red): Alternate lines with Odds >= +200 (Harder, High-Payout)
-Goblin Icon (Green): Alternate lines with Odds <= -300 (Easier, High-Probability)
+API Configuration:
+- Region: us_dfs (Daily Fantasy Sports - includes PrizePicks)
+- Bookmaker: prizepicks
+- Markets: player_*_alternate (PrizePicks alternate lines)
+
+Classification (PrizePicks Native):
+- Goblin (Green): Default odds lines - easier, high-probability props
+- Demon (Red): Even odds (+100) lines - harder, boosted props
 
 Triple-Pillar Integration:
-1. The Odds API - All betting lines from DraftKings & FanDuel
+1. The Odds API (us_dfs/prizepicks) - All PrizePicks lines
 2. BallDontLie API - Player stats for hit rate calculation
 3. Tank01 API - Injury reports and player news
 """
@@ -37,25 +43,43 @@ TANK01_BASE = "https://tank01-nba-live-in-game-real-time-statistics-nba.p.rapida
 
 CURRENT_SEASON = "2025"  # 2025-26 NBA Season
 
-# Demon & Goblin Thresholds (Based on American Odds)
-DEMON_ODDS_THRESHOLD = 200    # +200 or higher = Demon (harder)
-GOBLIN_ODDS_THRESHOLD = -300  # -300 or lower = Goblin (easier)
+# PrizePicks-Specific Configuration
+PRIZEPICKS_REGION = "us_dfs"  # Daily Fantasy Sports region - REQUIRED for PrizePicks
+PRIZEPICKS_BOOKMAKER = "prizepicks"
+
+# PrizePicks Alternate Markets - These contain Demons and Goblins
+PRIZEPICKS_MARKETS = ",".join([
+    "player_points_alternate",
+    "player_rebounds_alternate", 
+    "player_assists_alternate",
+    "player_threes_alternate",
+    "player_blocks_alternate",
+    "player_steals_alternate",
+    "player_turnovers_alternate",
+    "player_points_rebounds_alternate",
+    "player_points_assists_alternate",
+    "player_rebounds_assists_alternate",
+    "player_points_rebounds_assists_alternate",
+])
+
+# Also fetch standard markets for comparison
+STANDARD_MARKETS = ",".join([
+    "player_points",
+    "player_rebounds",
+    "player_assists",
+    "player_threes",
+    "player_blocks",
+    "player_steals",
+])
+
+# Demon/Goblin Classification (PrizePicks Native)
+# Demon: Even odds (+100) - Harder/Boosted props (over the expected stat)
+# Goblin: Negative odds (like -137 or lower) - Easier props (under the expected stat)
+DEMON_ODDS = 100  # Even odds = Demon
+GOBLIN_ODDS_THRESHOLD = 0  # Any negative odds = Goblin (easier prop)
 
 # Hit rate threshold for Goblin warning
 GOBLIN_HIT_RATE_WARNING = 0.90  # 90% hit rate
-
-# Comprehensive player prop markets
-ALL_PLAYER_MARKETS = ",".join([
-    "player_points", "player_rebounds", "player_assists", "player_threes",
-    "player_blocks", "player_steals", "player_turnovers",
-    "player_points_rebounds", "player_points_assists", "player_rebounds_assists",
-    "player_points_rebounds_assists", "player_double_double", "player_triple_double",
-    "player_first_basket",
-    "alternate_player_points", "alternate_player_rebounds", 
-    "alternate_player_assists", "alternate_player_threes",
-])
-
-TARGET_BOOKMAKERS = ["draftkings", "fanduel"]
 
 INJURY_KEYWORDS = [
     "injury", "injured", "out", "questionable", "doubtful", "probable",
@@ -67,11 +91,16 @@ INJURY_KEYWORDS = [
 
 class DemonGoblinEngine:
     """
-    The Demon & Goblin Analytics Engine
+    The Demon & Goblin Analytics Engine - PrizePicks Edition
     
-    Classifies betting lines into:
-    - Demons: High-payout lines (+200 or higher odds)
-    - Goblins: High-probability lines (-300 or lower odds)
+    Fetches data from The Odds API using:
+    - Region: us_dfs (Daily Fantasy Sports)
+    - Bookmaker: prizepicks
+    - Markets: *_alternate (where Demons and Goblins live)
+    
+    Classification (PrizePicks Native):
+    - Demons (Red): Even odds (+100) - Boosted/harder props
+    - Goblins (Green): Default odds (-115 to -125) - Easier props
     
     Data organized hierarchically by player for easy navigation.
     """
@@ -95,7 +124,7 @@ class DemonGoblinEngine:
         """Auto-derive today's date from system clock"""
         return datetime.now(timezone.utc).strftime("%Y-%m-%d")
     
-    # ==================== PILLAR 1: THE ODDS API ====================
+    # ==================== PILLAR 1: THE ODDS API (PrizePicks) ====================
     
     async def fetch_todays_events(self) -> List[Dict[str, Any]]:
         """Fetch all NBA events for today"""
@@ -109,36 +138,39 @@ class DemonGoblinEngine:
                 if response.status_code == 200:
                     events = response.json()
                     
-                    # Filter to today's events only
-                    today = self.get_current_date()
-                    todays_events = [
-                        e for e in events 
-                        if e.get("commence_time", "").startswith(today)
-                    ]
-                    
-                    # Store in cache
+                    # Store all events (don't filter by date to ensure we get all games)
                     await self.events_cache.delete_many({})
-                    for event in todays_events:
+                    for event in events:
                         event["fetched_at"] = datetime.now(timezone.utc).isoformat()
                         await self.events_cache.insert_one(event)
                     
-                    logger.info(f"[PILLAR 1] Found {len(todays_events)} events for {today}")
-                    return todays_events
+                    logger.info(f"[PILLAR 1] Found {len(events)} NBA events")
+                    for e in events[:10]:
+                        logger.info(f"  • {e.get('away_team')} @ {e.get('home_team')}")
+                    
+                    return events
                     
         except Exception as e:
             logger.error(f"[PILLAR 1] Event fetch error: {e}")
         
         return []
     
-    async def fetch_event_odds(self, event_id: str, event_info: Dict) -> Dict[str, Any]:
-        """Fetch ALL odds for a specific event including alternates"""
+    async def fetch_prizepicks_odds(self, event_id: str, event_info: Dict) -> Dict[str, Any]:
+        """
+        Fetch PrizePicks odds using the correct API parameters:
+        - regions=us_dfs (Daily Fantasy Sports)
+        - bookmakers=prizepicks
+        - markets=player_*_alternate (where Demons/Goblins live)
+        """
         try:
             url = f"{ODDS_API_BASE}/sports/basketball_nba/events/{event_id}/odds"
+            
+            # CRITICAL: Use us_dfs region and prizepicks bookmaker
             params = {
                 "apiKey": ODDS_API_KEY,
-                "regions": "us",
-                "markets": ALL_PLAYER_MARKETS,
-                "bookmakers": ",".join(TARGET_BOOKMAKERS),
+                "regions": PRIZEPICKS_REGION,  # us_dfs - REQUIRED for PrizePicks
+                "markets": PRIZEPICKS_MARKETS,  # _alternate markets
+                "bookmakers": PRIZEPICKS_BOOKMAKER,  # prizepicks specifically
                 "oddsFormat": "american"
             }
             
@@ -149,18 +181,23 @@ class DemonGoblinEngine:
                     odds_data = response.json()
                     odds_data["event_id"] = event_id
                     odds_data["fetched_at"] = datetime.now(timezone.utc).isoformat()
+                    odds_data["source"] = "prizepicks"
                     
                     # Count outcomes
                     total_outcomes = 0
+                    players_found = set()
                     for bm in odds_data.get("bookmakers", []):
                         for market in bm.get("markets", []):
-                            total_outcomes += len(market.get("outcomes", []))
+                            for outcome in market.get("outcomes", []):
+                                total_outcomes += 1
+                                if outcome.get("description"):
+                                    players_found.add(outcome.get("description"))
                     
-                    logger.info(f"  [ODDS] {event_info.get('away_team')} @ {event_info.get('home_team')}: {total_outcomes} outcomes")
+                    logger.info(f"  [PRIZEPICKS] {event_info.get('away_team')} @ {event_info.get('home_team')}: {total_outcomes} lines, {len(players_found)} players")
                     
                     # Store in cache
                     await self.odds_cache.update_one(
-                        {"event_id": event_id},
+                        {"event_id": event_id, "source": "prizepicks"},
                         {"$set": odds_data},
                         upsert=True
                     )
@@ -168,19 +205,54 @@ class DemonGoblinEngine:
                     return odds_data
                     
                 elif response.status_code == 422:
-                    # Fallback to basic markets
-                    params["markets"] = "player_points,player_rebounds,player_assists,player_threes"
+                    # Try with just the basic alternate markets
+                    logger.warning(f"  [PRIZEPICKS] Some markets unavailable for {event_id}, trying basic alternates")
+                    params["markets"] = "player_points_alternate,player_rebounds_alternate,player_assists_alternate"
                     response = await client.get(url, params=params, timeout=30.0)
                     if response.status_code == 200:
-                        return response.json()
+                        odds_data = response.json()
+                        odds_data["event_id"] = event_id
+                        odds_data["source"] = "prizepicks"
+                        return odds_data
+                else:
+                    logger.warning(f"  [PRIZEPICKS] API returned {response.status_code} for {event_id}")
                         
         except Exception as e:
-            logger.error(f"[PILLAR 1] Odds fetch error for {event_id}: {e}")
+            logger.error(f"[PILLAR 1] PrizePicks odds fetch error for {event_id}: {e}")
         
         return {}
     
-    def extract_player_props(self, odds_data: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """Extract all player props from odds data"""
+    async def fetch_standard_odds(self, event_id: str, event_info: Dict) -> Dict[str, Any]:
+        """Also fetch standard markets from DraftKings/FanDuel for comparison"""
+        try:
+            url = f"{ODDS_API_BASE}/sports/basketball_nba/events/{event_id}/odds"
+            params = {
+                "apiKey": ODDS_API_KEY,
+                "regions": "us",
+                "markets": STANDARD_MARKETS,
+                "bookmakers": "draftkings,fanduel",
+                "oddsFormat": "american"
+            }
+            
+            async with httpx.AsyncClient() as client:
+                response = await client.get(url, params=params, timeout=30.0)
+                
+                if response.status_code == 200:
+                    return response.json()
+                        
+        except Exception as e:
+            logger.error(f"[PILLAR 1] Standard odds fetch error: {e}")
+        
+        return {}
+    
+    def extract_prizepicks_props(self, odds_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """
+        Extract all PrizePicks props and classify as Demon or Goblin
+        
+        PrizePicks Native Classification:
+        - Demon (Red): Even odds (+100) - Boosted/harder lines
+        - Goblin (Green): Default odds (around -115 to -125) - Easier lines
+        """
         props = []
         event_id = odds_data.get("id") or odds_data.get("event_id")
         home_team = odds_data.get("home_team", "")
@@ -188,13 +260,17 @@ class DemonGoblinEngine:
         commence_time = odds_data.get("commence_time", "")
         
         for bookmaker in odds_data.get("bookmakers", []):
-            book_key = bookmaker.get("key")
-            book_title = bookmaker.get("title")
+            book_key = bookmaker.get("key", "")
+            
+            # Only process PrizePicks data
+            if book_key != "prizepicks":
+                continue
             
             for market in bookmaker.get("markets", []):
                 market_key = market.get("key", "")
                 
-                if not (market_key.startswith("player_") or market_key.startswith("alternate_")):
+                # Only process alternate markets (where Demons/Goblins exist)
+                if "_alternate" not in market_key:
                     continue
                 
                 for outcome in market.get("outcomes", []):
@@ -203,10 +279,14 @@ class DemonGoblinEngine:
                     line = outcome.get("point")
                     price = outcome.get("price")  # American odds
                     
-                    if player_name and line is not None and price is not None:
-                        # Classify as Demon or Goblin based on odds
-                        is_demon = price >= DEMON_ODDS_THRESHOLD
-                        is_goblin = price <= GOBLIN_ODDS_THRESHOLD
+                    if player_name and line is not None:
+                        # PrizePicks Classification
+                        # Demon: Even odds (+100) = Boosted/harder prop
+                        # Goblin: Negative odds (e.g., -137) = Easier prop (closer to average)
+                        is_demon = price is not None and price == DEMON_ODDS
+                        is_goblin = price is not None and price < GOBLIN_ODDS_THRESHOLD
+                        
+                        prop_type = "demon" if is_demon else ("goblin" if is_goblin else "standard")
                         
                         props.append({
                             "event_id": event_id,
@@ -218,10 +298,10 @@ class DemonGoblinEngine:
                             "direction": direction,
                             "line": float(line),
                             "price": price,
-                            "bookmaker": book_key,
-                            "bookmaker_title": book_title,
+                            "bookmaker": "prizepicks",
                             "is_demon": is_demon,
                             "is_goblin": is_goblin,
+                            "prop_type": prop_type,
                             "fetched_at": datetime.now(timezone.utc).isoformat()
                         })
         
@@ -546,9 +626,12 @@ class DemonGoblinEngine:
             result["bdl_team"] = bdl_player.get("team", {}).get("abbreviation", "")
             result["position"] = bdl_player.get("position", "")
             
+            # Convert market name for stats lookup (remove _alternate suffix)
+            stat_market = market.replace("_alternate", "")
+            
             games = await self.fetch_player_season_stats(bdl_player.get("id"))
             if games:
-                hit_rates = self.calculate_hit_rates(games, market, line)
+                hit_rates = self.calculate_hit_rates(games, stat_market, line)
                 result["hit_rates"] = hit_rates
         
         # Pillar 3: Injury check
@@ -564,13 +647,14 @@ class DemonGoblinEngine:
         return result
     
     async def run_full_sync(self) -> Dict[str, Any]:
-        """Execute the full three-pillar sync"""
+        """Execute the full three-pillar sync with PrizePicks data"""
         sync_start = datetime.now(timezone.utc)
         self._current_date = self.get_current_date()
         
         logger.info("=" * 70)
-        logger.info(f"DEMON & GOBLIN ENGINE v3.0 - SYNC STARTED")
+        logger.info(f"DEMON & GOBLIN ENGINE v3.0 - PRIZEPICKS SYNC")
         logger.info(f"Date: {self._current_date}")
+        logger.info(f"Region: {PRIZEPICKS_REGION} | Bookmaker: {PRIZEPICKS_BOOKMAKER}")
         logger.info("=" * 70)
         
         results = {
@@ -590,33 +674,29 @@ class DemonGoblinEngine:
         }
         
         try:
-            # ===== PILLAR 1: FETCH EVENTS AND ODDS =====
-            logger.info("\n[PILLAR 1] Fetching events and odds from The Odds API...")
+            # ===== PILLAR 1: FETCH EVENTS AND PRIZEPICKS ODDS =====
+            logger.info("\n[PILLAR 1] Fetching NBA events and PrizePicks lines...")
+            logger.info(f"  Using region={PRIZEPICKS_REGION}, bookmaker={PRIZEPICKS_BOOKMAKER}")
             
             events = await self.fetch_todays_events()
             results["events_count"] = len(events)
             
             if not events:
-                # If no events today, fetch all upcoming events
-                logger.warning("No events for today, fetching all upcoming events...")
-                url = f"{ODDS_API_BASE}/sports/basketball_nba/events"
-                params = {"apiKey": ODDS_API_KEY, "dateFormat": "iso"}
-                
-                async with httpx.AsyncClient() as client:
-                    response = await client.get(url, params=params, timeout=15.0)
-                    if response.status_code == 200:
-                        events = response.json()[:10]  # Take first 10 upcoming
-                        results["events_count"] = len(events)
+                results["success"] = False
+                results["errors"].append("No NBA events found")
+                return results
             
             all_props = []
             all_players: Set[str] = set()
             
+            # Fetch PrizePicks odds for EVERY event
             for event in events:
                 event_id = event.get("id")
                 if event_id:
-                    odds_data = await self.fetch_event_odds(event_id, event)
+                    # Fetch PrizePicks alternate lines
+                    odds_data = await self.fetch_prizepicks_odds(event_id, event)
                     if odds_data:
-                        props = self.extract_player_props(odds_data)
+                        props = self.extract_prizepicks_props(odds_data)
                         all_props.extend(props)
                         for p in props:
                             all_players.add(p.get("player_name", ""))
@@ -628,8 +708,11 @@ class DemonGoblinEngine:
             results["demons_count"] = sum(1 for p in all_props if p.get("is_demon"))
             results["goblins_count"] = sum(1 for p in all_props if p.get("is_goblin"))
             
-            logger.info(f"[PILLAR 1] Complete: {len(all_props)} props, {len(all_players)} players")
-            logger.info(f"           Demons: {results['demons_count']}, Goblins: {results['goblins_count']}")
+            logger.info(f"\n[PILLAR 1] PRIZEPICKS DATA COMPLETE:")
+            logger.info(f"  Total Props: {len(all_props)}")
+            logger.info(f"  Unique Players: {len(all_players)}")
+            logger.info(f"  DEMONS (Even +100): {results['demons_count']}")
+            logger.info(f"  GOBLINS (Default): {results['goblins_count']}")
             
             # ===== PILLAR 3: FETCH INJURIES FIRST =====
             logger.info("\n[PILLAR 3] Fetching injury data from Tank01...")
@@ -647,17 +730,13 @@ class DemonGoblinEngine:
                 key = f"{prop['player_name']}|{prop['market']}|{prop['line']}|{prop['direction']}"
                 if key not in unique_props:
                     unique_props[key] = prop
-                else:
-                    # Merge bookmaker data
-                    existing = unique_props[key]
-                    if "all_prices" not in existing:
-                        existing["all_prices"] = {existing["bookmaker"]: existing["price"]}
-                    existing["all_prices"][prop["bookmaker"]] = prop["price"]
             
-            # Process all unique props
+            # Process ALL unique props - no limit!
             processed_props = []
             prop_list = list(unique_props.values())
             batch_size = 50
+            
+            logger.info(f"  Processing {len(prop_list)} unique props...")
             
             for i in range(0, len(prop_list), batch_size):
                 batch = prop_list[i:i+batch_size]
@@ -735,19 +814,19 @@ class DemonGoblinEngine:
         
         logger.info("\n" + "=" * 70)
         logger.info(f"""
-DEMON & GOBLIN SYNC COMPLETE
-============================
+DEMON & GOBLIN SYNC COMPLETE - PRIZEPICKS EDITION
+==================================================
 Duration: {results['duration']:.1f}s
 Date: {results['sync_date']}
 
-PILLAR 1 - THE ODDS API:
+PILLAR 1 - PRIZEPICKS (us_dfs region):
   Events: {results['events_count']}
   Total Props: {results['total_props']}
   Unique Players: {results['unique_players']}
   
 CLASSIFICATION:
-  Demons (+200 or higher): {results['demons_count']}
-  Goblins (-300 or lower): {results['goblins_count']}
+  DEMONS (Even +100): {results['demons_count']}
+  GOBLINS (Default odds): {results['goblins_count']}
   
 PILLAR 2 - BALLDONTLIE:
   Stats Fetched: {results['stats_fetched']}

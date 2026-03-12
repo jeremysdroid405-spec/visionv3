@@ -78,19 +78,19 @@ const HitRateDisplay = ({ hitRates }) => {
   );
 };
 
-// Demon Badge (Red - Hard Props)
+// Demon Badge (Red - Even Odds +100 = Harder/Boosted Props)
 const DemonBadge = ({ price }) => (
   <Badge className="bg-red-600/30 text-red-400 border-red-500/50 text-xs gap-1">
     <Skull className="w-3 h-3" />
-    DEMON {formatOdds(price)}
+    DEMON {price === 100 ? '(+100)' : ''}
   </Badge>
 );
 
-// Goblin Badge (Green - Easy Props)
+// Goblin Badge (Green - Default Odds = Easier Props)
 const GoblinBadge = ({ price, hasWarning }) => (
   <Badge className={`${hasWarning ? 'bg-yellow-600/30 text-yellow-400 border-yellow-500/50' : 'bg-green-600/30 text-green-400 border-green-500/50'} text-xs gap-1`}>
     <Ghost className="w-3 h-3" />
-    GOBLIN {formatOdds(price)}
+    GOBLIN
     {hasWarning && <AlertTriangle className="w-3 h-3 ml-1" />}
   </Badge>
 );
@@ -509,7 +509,7 @@ export const DemonGoblinDashboard = () => {
                 <Skull className="w-6 h-6 text-red-500" />
                 <div>
                   <span className="text-red-400 font-bold text-2xl">{totalDemons}</span>
-                  <p className="text-zinc-500 text-xs">Demons (+200)</p>
+                  <p className="text-zinc-500 text-xs">Demons (+100)</p>
                 </div>
               </div>
               
@@ -521,7 +521,7 @@ export const DemonGoblinDashboard = () => {
                 <Ghost className="w-6 h-6 text-green-500" />
                 <div>
                   <span className="text-green-400 font-bold text-2xl">{totalGoblins}</span>
-                  <p className="text-zinc-500 text-xs">Goblins (-300)</p>
+                  <p className="text-zinc-500 text-xs">Goblins (Default)</p>
                 </div>
               </div>
 
@@ -614,8 +614,8 @@ export const DemonGoblinDashboard = () => {
               <Skull className="w-8 h-8 text-red-500" />
               <div>
                 <h3 className="text-red-400 font-bold">DEMONS</h3>
-                <p className="text-xs text-zinc-400">Odds +200 or higher</p>
-                <p className="text-xs text-zinc-500">Harder props, high payout</p>
+                <p className="text-xs text-zinc-400">Even odds (+100)</p>
+                <p className="text-xs text-zinc-500">Boosted/harder PrizePicks lines</p>
               </div>
             </div>
           </Card>
@@ -624,8 +624,8 @@ export const DemonGoblinDashboard = () => {
               <Ghost className="w-8 h-8 text-green-500" />
               <div>
                 <h3 className="text-green-400 font-bold">GOBLINS</h3>
-                <p className="text-xs text-zinc-400">Odds -300 or lower</p>
-                <p className="text-xs text-zinc-500">Easier props, high probability</p>
+                <p className="text-xs text-zinc-400">Default odds (-115 to -125)</p>
+                <p className="text-xs text-zinc-500">Easier PrizePicks lines</p>
               </div>
             </div>
           </Card>
