@@ -1237,7 +1237,7 @@ export const DemonGoblinDashboardOptimized = () => {
             <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
               {radarPicks.slice(0, 10).map((pick, idx) => (
                 <RadarCard 
-                  key={`${pick.player_name}-${pick.stat_type}`} 
+                  key={`${pick.player_name}-${pick.stat_type}-${pick.demon_line}-${idx}`} 
                   pick={pick} 
                   rank={idx + 1}
                   onClick={() => handlePlayerClick(pick.player_name)}

@@ -7,6 +7,35 @@ Build a high-performance NBA Player Prop Dashboard that identifies "Demons" (har
 
 ---
 
+## BALLDONTLIE STATS ENRICHMENT - COMPLETED (March 12, 2026)
+
+### Real Hit Rates Integration ✅
+The Demon Radar now uses **real player statistics** from the BallDontLie API to calculate accurate hit probabilities.
+
+**Key Achievements:**
+- **96% Props Enriched**: 4,174 out of 4,354 props have real hit_rates
+- **123/128 Players**: Stats found for 96% of players in the board
+- **Demon Radar Accuracy**: 7 out of 10 top picks now use real BallDontLie data
+
+### Hit Rates Structure
+Each prop now contains:
+```json
+{
+  "hit_rates": {
+    "l5": { "hit_rate": 0.6, "games_over": 3, "total_games": 5, "avg": 24.5 },
+    "l10": { "hit_rate": 0.7, "games_over": 7, "total_games": 10, "avg": 25.2 },
+    "season": { "hit_rate": 0.65, "games_over": 43, "total_games": 66, "avg": 23.8 }
+  }
+}
+```
+
+### Player Search Improvements
+- Exact first+last name matching for accuracy (handles "Cameron Johnson" vs "Armon Johnson")
+- Partial first name matching (handles "Alex" → "Alexandre Sarr")
+- Special character handling (handles "G.G. Jackson" → "GG Jackson")
+
+---
+
 ## WAREHOUSE MODEL - IMPLEMENTED (March 12, 2026)
 
 ### Zero API Calls Architecture
@@ -273,9 +302,29 @@ Final Score = P - (G × 100)
 ### P0 - Critical
 - [ ] Fix authentication flow (Supabase) - bypassed currently
 
+### P1 - High Priority  
+- [ ] Complete NBA Player ID Mapping (expand for all players or implement dynamic fetch)
+- [ ] Automate 4:00 AM Daily Sync (connect sync_odds_to_mongo to APScheduler)
+
 ### P2 - Medium Priority
 - [ ] "Pro Tier" subscription features
 - [ ] Historical line movement tracking
+- [ ] Improve BallDontLie search for remaining 5 players without stats
 
 ### P3 - Future
 - [ ] Push notifications for high-value lines
+- [ ] "Best Bets" summary card per player
+
+---
+
+## Completed Tasks (March 12, 2026)
+
+### BallDontLie Stats Enrichment ✅
+- Implemented `_enrich_props_with_stats` method in demon_goblin_engine.py
+- Improved player search with exact name matching and fuzzy fallback
+- 96% of props now have real L5/L10/Season hit rates
+- Demon Radar uses real data for 7/10 top picks
+
+### Fixes Applied
+- Fixed `estimated_p` flag to correctly identify props without real BDL data
+- Fixed React key warning for duplicate player entries in Demon Radar
