@@ -4,6 +4,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import { Auth } from './pages/Auth';
 import { Dashboard } from './pages/Dashboard';
+import { DashboardDemo } from './pages/DashboardDemo';
 import { Toaster } from 'sonner';
 
 function App() {
@@ -23,7 +24,8 @@ function App() {
         />
         <BrowserRouter>
           <Routes>
-            <Route path="/" element={<Navigate to="/auth" replace />} />
+            <Route path="/" element={<Navigate to="/demo" replace />} />
+            <Route path="/demo" element={<DashboardDemo />} />
             <Route path="/auth" element={<Auth />} />
             <Route path="/dashboard" element={<Dashboard />} />
           </Routes>

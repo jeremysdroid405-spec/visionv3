@@ -303,6 +303,62 @@ async def get_player_props():
         logger.error(f"Error fetching odds: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@api_router.get("/best-bets-demo", response_model=List[PlayerProp])
+async def get_best_bets_demo():
+    """Demo endpoint - no auth required for testing"""
+    try:
+        import random
+        
+        mock_players = [
+            {"name": "LeBron James", "team": "LAL", "prop": "points"},
+            {"name": "Stephen Curry", "team": "GSW", "prop": "points"},
+            {"name": "Giannis Antetokounmpo", "team": "MIL", "prop": "points"},
+            {"name": "Luka Doncic", "team": "DAL", "prop": "assists"},
+            {"name": "Nikola Jokic", "team": "DEN", "prop": "rebounds"},
+            {"name": "Kevin Durant", "team": "PHX", "prop": "points"},
+            {"name": "Joel Embiid", "team": "PHI", "prop": "points"},
+            {"name": "Jayson Tatum", "team": "BOS", "prop": "points"},
+        ]
+        
+        best_bets = []
+        for player in mock_players:
+            pp_line = random.uniform(20, 35)
+            market_avg = pp_line + random.uniform(-3, 5)
+            line_diff = market_avg - pp_line
+            is_demon = random.random() > 0.7
+            hit_rate = random.uniform(0.35, 0.65) if is_demon else None
+            
+            best_bet_score = abs(line_diff) * 10 + (hit_rate * 20 if hit_rate else 0)
+            
+            matchup_grades = ["A+", "A", "B+", "B", "C"]
+            matchup_grade = random.choice(matchup_grades)
+            
+            confidence = min(95, max(50, best_bet_score + random.uniform(-5, 5)))
+            
+            best_bets.append(PlayerProp(
+                player_name=player["name"],
+                team=player["team"],
+                prop_type=player["prop"],
+                prizepicks_line=round(pp_line, 1),
+                market_avg=round(market_avg, 1),
+                draftkings_line=round(market_avg + random.uniform(-1, 1), 1),
+                fanduel_line=round(market_avg + random.uniform(-1, 1), 1),
+                betmgm_line=round(market_avg + random.uniform(-1, 1), 1),
+                caesars_line=round(market_avg + random.uniform(-1, 1), 1),
+                is_demon=is_demon,
+                demon_line=round(pp_line + random.uniform(3, 7), 1) if is_demon else None,
+                hit_rate=round(hit_rate, 2) if hit_rate else None,
+                best_bet_score=round(best_bet_score, 1),
+                matchup_grade=matchup_grade,
+                confidence=round(confidence, 1)
+            ))
+        
+        best_bets.sort(key=lambda x: x.best_bet_score, reverse=True)
+        return best_bets
+    except Exception as e:
+        logger.error(f"Error generating best bets: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @api_router.get("/best-bets", response_model=List[PlayerProp])
 async def get_best_bets(current_user = Depends(get_current_user)):
     try:
