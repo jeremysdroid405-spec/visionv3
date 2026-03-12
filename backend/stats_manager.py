@@ -1,6 +1,7 @@
 """
 NBA Stats Manager with API-Sports Integration
 Handles player statistics with 24hr persistent caching
+GLOBAL ROSTER SYNC for all 30 NBA teams
 """
 
 import httpx
@@ -9,6 +10,7 @@ from datetime import datetime, timezone, timedelta
 from typing import Optional, Dict, List, Any
 from thefuzz import fuzz
 from motor.motor_asyncio import AsyncIOMotorDatabase
+import asyncio
 
 logger = logging.getLogger(__name__)
 
@@ -16,12 +18,194 @@ API_SPORTS_KEY = "9057bc1422b361f64cc071581dd1b240"
 API_SPORTS_BASE_URL = "https://v2.nba.api-sports.io"
 CACHE_TTL_HOURS = 24
 CURRENT_SEASON = "2024-2025"
+ROSTER_SYNC_INTERVAL_HOURS = 24
 
 
 class StatsManager:
     def __init__(self, db: AsyncIOMotorDatabase):
         self.db = db
         self.stats_cache = db.stats_cache
+        self.league_roster = db.league_roster
+        self.last_roster_sync = None
+        
+    async def get_all_nba_teams(self) -> List[Dict[str, Any]]:
+        """
+        Fetch all NBA teams from API-Sports
+        """
+        try:
+            url = f"{API_SPORTS_BASE_URL}/teams"
+            headers = {"x-apisports-key": API_SPORTS_KEY}
+            
+            async with httpx.AsyncClient() as client:
+                response = await client.get(url, headers=headers, timeout=15.0)
+                
+                if response.status_code == 200:
+                    data = response.json()
+                    teams = data.get("response", [])
+                    
+                    # Filter only NBA franchise teams
+                    nba_teams = [t for t in teams if t.get("nbaFranchise", False)]
+                    logger.info(f"✓ Found {len(nba_teams)} NBA teams")
+                    return nba_teams
+                else:
+                    logger.error(f"Teams API error: {response.status_code}")
+                    return []
+        except Exception as e:
+            logger.error(f"Error fetching teams: {e}")
+            return []
+    
+    async def sync_nba_rosters(self, force: bool = False) -> Dict[str, Any]:
+        """
+        Sync complete NBA rosters for all 30 teams
+        Stores player_name -> team_id -> player_id mapping in league_roster collection
+        
+        Args:
+            force: Force sync even if recently synced
+            
+        Returns:
+            Dict with sync statistics
+        """
+        try:
+            # Check if we need to sync
+            if not force and self.last_roster_sync:
+                time_since_sync = datetime.now(timezone.utc) - self.last_roster_sync
+                if time_since_sync < timedelta(hours=ROSTER_SYNC_INTERVAL_HOURS):
+                    logger.info(f"Roster sync skipped - last synced {time_since_sync.seconds // 3600}h ago")
+                    return {"status": "skipped", "reason": "recently_synced"}
+            
+            logger.info("🔄 Starting global NBA roster sync...")
+            
+            # Get all NBA teams
+            teams = await self.get_all_nba_teams()
+            if not teams:
+                return {"status": "error", "reason": "no_teams_found"}
+            
+            total_players = 0
+            synced_teams = 0
+            failed_teams = []
+            
+            url = f"{API_SPORTS_BASE_URL}/players"
+            headers = {"x-apisports-key": API_SPORTS_KEY}
+            
+            async with httpx.AsyncClient() as client:
+                for team in teams:
+                    team_id = team.get("id")
+                    team_name = team.get("name")
+                    
+                    try:
+                        # Fetch all players for this team
+                        params = {
+                            "team": str(team_id),
+                            "season": CURRENT_SEASON.split("-")[0]
+                        }
+                        
+                        response = await client.get(url, params=params, headers=headers, timeout=10.0)
+                        
+                        if response.status_code == 200:
+                            data = response.json()
+                            players = data.get("response", [])
+                            
+                            # Store each player in league_roster
+                            for player in players:
+                                player_id = player.get("id")
+                                firstname = player.get("firstname", "")
+                                lastname = player.get("lastname", "")
+                                full_name = f"{firstname} {lastname}".strip()
+                                
+                                if player_id and full_name:
+                                    roster_entry = {
+                                        "player_id": str(player_id),
+                                        "player_name": full_name,
+                                        "firstname": firstname,
+                                        "lastname": lastname,
+                                        "team_id": str(team_id),
+                                        "team_name": team_name,
+                                        "team_code": team.get("code", ""),
+                                        "synced_at": datetime.now(timezone.utc).isoformat(),
+                                        "season": CURRENT_SEASON
+                                    }
+                                    
+                                    await self.league_roster.update_one(
+                                        {"player_id": str(player_id)},
+                                        {"$set": roster_entry},
+                                        upsert=True
+                                    )
+                                    total_players += 1
+                            
+                            synced_teams += 1
+                            logger.info(f"  ✓ {team_name}: {len(players)} players")
+                            
+                            # Small delay to avoid rate limiting
+                            await asyncio.sleep(0.5)
+                        else:
+                            logger.warning(f"  ✗ {team_name}: HTTP {response.status_code}")
+                            failed_teams.append(team_name)
+                            
+                    except Exception as e:
+                        logger.error(f"  ✗ {team_name}: {str(e)}")
+                        failed_teams.append(team_name)
+            
+            self.last_roster_sync = datetime.now(timezone.utc)
+            
+            result = {
+                "status": "completed",
+                "total_teams": len(teams),
+                "synced_teams": synced_teams,
+                "total_players": total_players,
+                "failed_teams": failed_teams,
+                "synced_at": self.last_roster_sync.isoformat()
+            }
+            
+            logger.info(f"✅ Roster sync complete: {total_players} players from {synced_teams}/{len(teams)} teams")
+            
+            return result
+            
+        except Exception as e:
+            logger.error(f"Roster sync error: {e}")
+            return {"status": "error", "error": str(e)}
+    
+    async def search_player_in_roster(self, player_name: str) -> Optional[Dict[str, Any]]:
+        """
+        Search for player in local league_roster collection
+        Uses fuzzy matching to handle name variations
+        
+        Returns:
+            Dict with player_id, team_id, team_name if found
+        """
+        try:
+            # Get all players from roster
+            cursor = self.league_roster.find({})
+            all_players = await cursor.to_list(length=1000)
+            
+            if not all_players:
+                logger.warning("League roster is empty - run sync_nba_rosters() first")
+                return None
+            
+            # Fuzzy match
+            best_match = None
+            best_score = 0
+            
+            for player in all_players:
+                stored_name = player.get("player_name", "")
+                score = fuzz.ratio(player_name.lower(), stored_name.lower())
+                
+                if score > best_score and score >= 70:
+                    best_score = score
+                    best_match = player
+            
+            if best_match:
+                logger.info(
+                    f"✓ Found {player_name} -> {best_match['player_name']} "
+                    f"(ID: {best_match['player_id']}, Team: {best_match['team_name']}, Score: {best_score})"
+                )
+                return best_match
+            else:
+                logger.warning(f"Player {player_name} not found in roster (best score: {best_score})")
+                return None
+                
+        except Exception as e:
+            logger.error(f"Roster search error: {e}")
+            return None
         
     async def get_cached_stats(self, player_id: str) -> Optional[Dict[str, Any]]:
         """
@@ -111,59 +295,18 @@ class StatsManager:
     
     async def search_player_by_name(self, player_name: str) -> Optional[str]:
         """
-        Search for player ID by name using API-Sports (Direct)
-        Since API-Sports requires team parameter, we'll try Lakers (team 13) first as a demo
+        Search for player ID by name using local roster first (FAST)
+        Falls back to roster refresh if not found
+        
         Returns player_id if found
         """
-        try:
-            # For now, hardcode Lakers team ID as demo
-            # In production, you'd query all teams or maintain a player database
-            url = f"{API_SPORTS_BASE_URL}/players"
-            
-            # Try Lakers first (team 17) where LeBron plays
-            params = {
-                "team": "17",  # Lakers
-                "season": CURRENT_SEASON.split("-")[0]
-            }
-            headers = {
-                "x-apisports-key": API_SPORTS_KEY
-            }
-            
-            async with httpx.AsyncClient() as client:
-                response = await client.get(url, params=params, headers=headers, timeout=10.0)
-                
-                if response.status_code == 200:
-                    data = response.json()
-                    results = data.get("response", [])
-                    
-                    logger.info(f"API-Sports returned {len(results)} Lakers players")
-                    
-                    # Fuzzy match to find best player
-                    best_match = None
-                    best_score = 0
-                    
-                    for player in results:
-                        full_name = f"{player.get('firstname', '')} {player.get('lastname', '')}".strip()
-                        score = fuzz.ratio(player_name.lower(), full_name.lower())
-                        
-                        if score > 80:
-                            logger.info(f"  Match: '{player_name}' to '{full_name}' - score: {score}, ID: {player.get('id')}")
-                        
-                        if score > best_score and score >= 70:  # Lower threshold to 70
-                            best_score = score
-                            best_match = player.get('id')
-                    
-                    if best_match:
-                        logger.info(f"✓ Found player {player_name} with ID {best_match} (score: {best_score})")
-                        return str(best_match)
-                    else:
-                        logger.warning(f"No match found for {player_name} in Lakers (best score: {best_score})")
-                else:
-                    logger.error(f"API-Sports player search error: {response.status_code}")
-                        
-        except Exception as e:
-            logger.error(f"Player search error: {e}")
+        # Try local roster first
+        roster_entry = await self.search_player_in_roster(player_name)
+        if roster_entry:
+            return roster_entry.get("player_id")
         
+        # If not in roster, player might be newly added - return None
+        logger.warning(f"Player {player_name} not found in roster - may need refresh")
         return None
     
     def extract_last_10_games(self, stats_data: Dict[str, Any]) -> List[Dict[str, Any]]:

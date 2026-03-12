@@ -15,7 +15,7 @@ from jose import JWTError, jwt
 import httpx
 from thefuzz import fuzz
 import asyncio
-from stats_manager import StatsManager
+from stats_manager import StatsManager, CURRENT_SEASON
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -42,11 +42,22 @@ logger = logging.getLogger(__name__)
 
 stats_manager = None
 
+async def initial_roster_sync():
+    """Run roster sync on startup"""
+    await asyncio.sleep(5)  # Wait for app to fully start
+    if stats_manager:
+        logger.info("🔄 Running initial roster sync...")
+        result = await stats_manager.sync_nba_rosters()
+        logger.info(f"Initial sync result: {result}")
+
 @app.on_event("startup")
 async def startup_event():
     global stats_manager
     stats_manager = StatsManager(db)
     logger.info("✓ Stats Manager initialized")
+    
+    # Run initial roster sync in background
+    asyncio.create_task(initial_roster_sync())
 
 class SignUpRequest(BaseModel):
     email: str
@@ -430,6 +441,50 @@ async def clear_expired_cache():
     
     deleted_count = await stats_manager.clear_expired_cache()
     return {"success": True, "deleted_count": deleted_count}
+
+@api_router.post("/sync-rosters")
+async def sync_rosters(force: bool = False):
+    """
+    Sync NBA rosters for all 30 teams
+    This creates a global player database for fast lookups
+    """
+    if not stats_manager:
+        raise HTTPException(status_code=500, detail="Stats manager not initialized")
+    
+    result = await stats_manager.sync_nba_rosters(force=force)
+    return {"success": True, "sync_result": result}
+
+@api_router.get("/roster-status")
+async def get_roster_status():
+    """Get roster sync status and statistics"""
+    if not stats_manager:
+        raise HTTPException(status_code=500, detail="Stats manager not initialized")
+    
+    try:
+        total_players = await stats_manager.league_roster.count_documents({})
+        
+        # Get teams count
+        teams = await stats_manager.league_roster.distinct("team_name")
+        
+        # Get last sync time
+        latest = await stats_manager.league_roster.find_one(
+            {},
+            sort=[("synced_at", -1)]
+        )
+        
+        last_synced = latest.get("synced_at") if latest else None
+        
+        return {
+            "success": True,
+            "total_players": total_players,
+            "total_teams": len(teams),
+            "teams": sorted(teams),
+            "last_synced": last_synced,
+            "season": CURRENT_SEASON
+        }
+    except Exception as e:
+        logger.error(f"Roster status error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @api_router.get("/")
 async def root():
