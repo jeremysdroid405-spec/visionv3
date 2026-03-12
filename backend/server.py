@@ -17,6 +17,7 @@ from thefuzz import fuzz
 import asyncio
 from stats_manager_bdl import StatsManager
 from demon_tracker_engine import DeepIngestionEngine
+from demon_goblin_engine import DemonGoblinEngine
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -36,7 +37,7 @@ ODDS_API_KEY = os.environ.get('ODDS_API_KEY')
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_ANON_KEY) if SUPABASE_ANON_KEY else None
 
-app = FastAPI(title="NBA Best Bets API - Demon Tracker v2")
+app = FastAPI(title="NBA Best Bets API - Demon & Goblin Engine v3.0")
 api_router = APIRouter(prefix="/api")
 security = HTTPBearer()
 
@@ -45,28 +46,33 @@ logger = logging.getLogger(__name__)
 
 stats_manager = None
 demon_tracker = None
+demon_goblin_engine = None
 
 async def initial_autonomous_sync():
-    """Run autonomous deep ingestion on startup"""
+    """Run autonomous sync on startup - Demon & Goblin Engine v3"""
     await asyncio.sleep(5)  # Wait for app to fully start
     
-    # Run deep ingestion (Odds API + BDL + Tank01)
-    if demon_tracker:
-        logger.info("🚀 Running DEEP INGESTION on startup...")
-        result = await demon_tracker.run_deep_ingestion()
-        logger.info(f"Deep ingestion result: {result.get('step2_unique_players', 0)} players, {result.get('demons_found', 0)} demons")
+    # Run Demon & Goblin sync (v3)
+    if demon_goblin_engine:
+        logger.info("DEMON & GOBLIN ENGINE v3.0 - AUTONOMOUS STARTUP SYNC")
+        result = await demon_goblin_engine.run_full_sync()
+        logger.info(f"Sync complete: {result.get('unique_players', 0)} players, {result.get('demons_count', 0)} demons, {result.get('goblins_count', 0)} goblins")
 
 @app.on_event("startup")
 async def startup_event():
-    global stats_manager, demon_tracker
+    global stats_manager, demon_tracker, demon_goblin_engine
     
     # Initialize stats manager (BallDontLie)
     stats_manager = StatsManager(db)
-    logger.info("✓ Stats Manager initialized (BallDontLie)")
+    logger.info("Stats Manager initialized (BallDontLie)")
     
-    # Initialize Deep Ingestion Engine
+    # Initialize Deep Ingestion Engine (v2 - legacy)
     demon_tracker = DeepIngestionEngine(db)
-    logger.info("✓ Deep Ingestion Engine initialized (Two-Step Process)")
+    logger.info("Deep Ingestion Engine initialized (v2)")
+    
+    # Initialize Demon & Goblin Engine (v3 - NEW)
+    demon_goblin_engine = DemonGoblinEngine(db)
+    logger.info("Demon & Goblin Engine v3.0 initialized")
     
     # Run autonomous sync on startup
     asyncio.create_task(initial_autonomous_sync())
@@ -814,6 +820,150 @@ async def get_full_demon_board():
         "total_demons": total_demons,
         "card_colors": color_counts,
         "board": events_list
+    }
+
+# ==================== DEMON & GOBLIN ENGINE v3.0 ENDPOINTS ====================
+
+@api_router.get("/v3/status")
+async def get_dg_status():
+    """Get Demon & Goblin Engine sync status"""
+    if not demon_goblin_engine:
+        raise HTTPException(status_code=500, detail="Demon & Goblin Engine not initialized")
+    
+    status = await demon_goblin_engine.get_sync_status()
+    return {"success": True, "data": status}
+
+@api_router.post("/v3/sync")
+async def trigger_dg_sync():
+    """Trigger full Demon & Goblin sync"""
+    if not demon_goblin_engine:
+        raise HTTPException(status_code=500, detail="Demon & Goblin Engine not initialized")
+    
+    result = await demon_goblin_engine.run_full_sync()
+    return {"success": True, "result": result}
+
+@api_router.get("/v3/players")
+async def get_all_players_v3():
+    """
+    Get all players (collapsed view)
+    Returns: player_name, team, injury_status, demon_count, goblin_count
+    """
+    if not demon_goblin_engine:
+        raise HTTPException(status_code=500, detail="Demon & Goblin Engine not initialized")
+    
+    players = await demon_goblin_engine.get_all_players()
+    
+    # Format for collapsed view
+    collapsed = []
+    for p in players:
+        collapsed.append({
+            "player_name": p.get("player_name"),
+            "team": p.get("team", ""),
+            "position": p.get("position", ""),
+            "injury_status": p.get("injury_info", {}).get("injury_status"),
+            "injury_warning": p.get("injury_info", {}).get("warning_level", "none"),
+            "demons_count": len(p.get("demons", [])),
+            "goblins_count": len(p.get("goblins", [])),
+            "total_props": len(p.get("props", [])),
+            "has_goblin_warning": p.get("has_goblin_warning", False)
+        })
+    
+    return {
+        "success": True,
+        "count": len(collapsed),
+        "players": collapsed
+    }
+
+@api_router.get("/v3/player/{player_name}")
+async def get_player_detail_v3(player_name: str):
+    """
+    Get full player detail (expanded view)
+    Returns: All props with Demons and Goblins sorted to top
+    """
+    if not demon_goblin_engine:
+        raise HTTPException(status_code=500, detail="Demon & Goblin Engine not initialized")
+    
+    player = await demon_goblin_engine.get_player_detail(player_name)
+    
+    if not player:
+        raise HTTPException(status_code=404, detail=f"Player {player_name} not found")
+    
+    return {"success": True, "player": player}
+
+@api_router.get("/v3/demons")
+async def get_all_demons_v3():
+    """
+    Get all Demon lines (odds >= +200)
+    Sorted by highest odds first
+    """
+    if not demon_goblin_engine:
+        raise HTTPException(status_code=500, detail="Demon & Goblin Engine not initialized")
+    
+    demons = await demon_goblin_engine.get_all_demons()
+    return {
+        "success": True,
+        "count": len(demons),
+        "description": "Demons are alternate lines with odds >= +200 (harder, high-payout)",
+        "demons": demons
+    }
+
+@api_router.get("/v3/goblins")
+async def get_all_goblins_v3():
+    """
+    Get all Goblin lines (odds <= -300)
+    Sorted by highest hit rate first
+    """
+    if not demon_goblin_engine:
+        raise HTTPException(status_code=500, detail="Demon & Goblin Engine not initialized")
+    
+    goblins = await demon_goblin_engine.get_all_goblins()
+    
+    # Count warnings
+    warnings_count = sum(1 for g in goblins if g.get("has_warning"))
+    
+    return {
+        "success": True,
+        "count": len(goblins),
+        "warnings": warnings_count,
+        "description": "Goblins are alternate lines with odds <= -300 (easier, high-probability)",
+        "goblins": goblins
+    }
+
+@api_router.get("/v3/search")
+async def search_players_v3(q: str = Query(..., description="Player name to search")):
+    """Search for players by name"""
+    if not demon_goblin_engine:
+        raise HTTPException(status_code=500, detail="Demon & Goblin Engine not initialized")
+    
+    players = await demon_goblin_engine.search_players(q)
+    return {
+        "success": True,
+        "query": q,
+        "count": len(players),
+        "players": players
+    }
+
+@api_router.get("/v3/board")
+async def get_dg_board():
+    """
+    Get the full Demon & Goblin Board
+    Hierarchical view organized by player
+    """
+    if not demon_goblin_engine:
+        raise HTTPException(status_code=500, detail="Demon & Goblin Engine not initialized")
+    
+    players = await demon_goblin_engine.get_all_players()
+    status = await demon_goblin_engine.get_sync_status()
+    
+    return {
+        "success": True,
+        "sync_date": status.get("sync_date"),
+        "last_sync": status.get("last_sync"),
+        "unique_players": len(players),
+        "total_props": status.get("total_props", 0),
+        "demons_count": status.get("demons_count", 0),
+        "goblins_count": status.get("goblins_count", 0),
+        "players": players
     }
 
 app.include_router(api_router)

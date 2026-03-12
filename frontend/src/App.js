@@ -6,6 +6,7 @@ import { Auth } from './pages/Auth';
 import { Dashboard } from './pages/Dashboard';
 import { DashboardDemo } from './pages/DashboardDemo';
 import { FullBoard } from './pages/FullBoard';
+import DemonGoblinDashboard from './pages/DemonGoblinDashboard';
 import { Toaster } from 'sonner';
 
 function App() {
@@ -25,7 +26,8 @@ function App() {
         />
         <BrowserRouter>
           <Routes>
-            <Route path="/" element={<Navigate to="/full-board" replace />} />
+            <Route path="/" element={<Navigate to="/v3" replace />} />
+            <Route path="/v3" element={<DemonGoblinDashboard />} />
             <Route path="/full-board" element={<FullBoard />} />
             <Route path="/demo" element={<DashboardDemo />} />
             <Route path="/auth" element={<Auth />} />
