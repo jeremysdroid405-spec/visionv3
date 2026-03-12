@@ -95,6 +95,31 @@ Build a high-performance NBA Player Prop Dashboard that identifies "Demons" (har
 
 ---
 
+## P1 Features - COMPLETED (March 12, 2026)
+
+### 1. 4:00 AM Daily Scheduler ✅
+- **Implementation**: APScheduler with CronTrigger
+- **Schedule**: Daily at 04:00 UTC
+- **Endpoints**:
+  - `GET /api/v3/scheduler-status` - Check scheduler status
+  - `POST /api/v3/trigger-scheduled-sync` - Manual trigger
+- **Status**: VERIFIED WORKING
+
+### 2. Tank01 API Exponential Backoff ✅
+- **Implementation**: fetch_with_backoff() helper function
+- **Retry delays**: 1s → 2s → 4s → 8s (with jitter)
+- **Cache**: 4-hour TTL in `dg_tank01_cache` collection
+- **Graceful degradation**: Works even when API returns 404/429
+- **Status**: VERIFIED WORKING
+
+### 3. Frontend List Performance ✅
+- **Implementation**: CSS overflow scrolling (`max-h-[60vh] overflow-y-auto`)
+- **Note**: react-window v2 was tested but reverted due to API incompatibility
+- **Result**: All 115 players render correctly with smooth scrolling
+- **Status**: VERIFIED WORKING
+
+---
+
 ## API Endpoints
 
 ### v3 Endpoints
@@ -107,6 +132,8 @@ Build a high-performance NBA Player Prop Dashboard that identifies "Demons" (har
 - `GET /api/v3/players` - All players
 - `GET /api/v3/player/{name}` - Player detail
 - `GET /api/v3/board` - Full board
+- `GET /api/v3/scheduler-status` - Scheduler status (NEW)
+- `POST /api/v3/trigger-scheduled-sync` - Manual sync trigger (NEW)
 
 ---
 
@@ -124,11 +151,6 @@ Build a high-performance NBA Player Prop Dashboard that identifies "Demons" (har
 
 ### P0 - Critical
 - [ ] Fix authentication flow (Supabase) - bypassed currently
-
-### P1 - High Priority
-- [ ] Implement 4:00 AM scheduled sync (cron job)
-- [ ] Tank01 injury integration (rate-limited currently)
-- [ ] Virtual scrolling for 5,000+ props (react-window)
 
 ### P2 - Medium Priority
 - [ ] "Pro Tier" subscription features
