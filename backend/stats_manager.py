@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 API_SPORTS_KEY = "9057bc1422b361f64cc071581dd1b240"
 API_SPORTS_BASE_URL = "https://v2.nba.api-sports.io"
 CACHE_TTL_HOURS = 24
-CURRENT_SEASON = "2024-2025"  # API-Sports uses 2024 for 2024-25 season
+CURRENT_SEASON = "2024"  # Latest available season in API-Sports (2024-25 season)
 ROSTER_SYNC_INTERVAL_HOURS = 24
 
 
@@ -96,7 +96,7 @@ class StatsManager:
                         # Fetch all players for this team
                         params = {
                             "team": str(team_id),
-                            "season": CURRENT_SEASON.split("-")[0]
+                            "season": CURRENT_SEASON  # Use 2025 directly
                         }
                         
                         response = await client.get(url, params=params, headers=headers, timeout=10.0)
@@ -253,7 +253,7 @@ class StatsManager:
             url = f"{API_SPORTS_BASE_URL}/players/statistics"
             params = {
                 "id": player_id,
-                "season": CURRENT_SEASON.split("-")[0]  # 2024
+                "season": CURRENT_SEASON  # Use 2025 directly
             }
             headers = {
                 "x-apisports-key": API_SPORTS_KEY
