@@ -1,0 +1,114 @@
+{
+  "persona": "E1 - The Anti-AI Designer",
+  "project_name": "Best Bets - NBA Player Prop Dashboard",
+  "theme": {
+    "mode": "dark",
+    "background_strategy": "The Midnight Terminal"
+  },
+  "typography": {
+    "headings": {
+      "family": "Barlow Condensed, sans-serif",
+      "weights": ["600", "700", "800"],
+      "usage": "Page titles, Section headers, Player names",
+      "tracking": "tracking-tight"
+    },
+    "body": {
+      "family": "Inter, sans-serif",
+      "weights": ["400", "500"],
+      "usage": "General text, labels"
+    },
+    "data": {
+      "family": "JetBrains Mono, monospace",
+      "weights": ["400", "500"],
+      "usage": "Odds, probabilities, timestamps, confidence scores"
+    }
+  },
+  "colors": {
+    "background": {
+      "app": "#09090B",
+      "card": "#18181B",
+      "overlay": "rgba(9, 9, 11, 0.8)"
+    },
+    "text": {
+      "primary": "#FAFAFA",
+      "secondary": "#A1A1A9",
+      "muted": "#52525B"
+    },
+    "border": {
+      "default": "#27272A",
+      "active": "#3F3F46"
+    },
+    "accents": {
+      "primary": "#22c55e",
+      "primary_glow": "rgba(34, 197, 94, 0.5)",
+      "demon": "#a855f7",
+      "demon_glow": "0 0 15px rgba(168, 85, 247, 0.6)",
+      "danger": "#ef4444",
+      "warning": "#eab308"
+    }
+  },
+  "layout_strategy": {
+    "type": "Bento Grid - High Density (Mode B)",
+    "container_padding": "p-4 md:p-6 lg:p-8",
+    "grid_gap": "gap-4",
+    "card_style": "sharp-edges or rounded-md (max 6px)",
+    "density": "compact"
+  },
+  "visual_enhancers": {
+    "borders": "1px solid #27272A",
+    "shadows": "none (flat) or subtle ambient for active states",
+    "glassmorphism": "Only for sticky headers (backdrop-blur-md bg-background/80)",
+    "demon_effect": "Purple pulsing border or shadow for demon lines"
+  },
+  "components": {
+    "Button": {
+      "style": "h-9 px-4 rounded-md font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50",
+      "variants": {
+        "default": "bg-primary text-primary-foreground hover:bg-primary/90 shadow",
+        "demon": "bg-purple-600 text-white hover:bg-purple-700 shadow-[0_0_10px_rgba(168,85,247,0.4)]"
+      }
+    },
+    "Card": {
+      "style": "rounded-lg border bg-card text-card-foreground shadow-sm"
+    },
+    "Badge": {
+      "style": "inline-flex items-center rounded-sm border px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2",
+      "variants": {
+        "value": "border-transparent bg-green-500/15 text-green-500 hover:bg-green-500/25",
+        "demon": "border-transparent bg-purple-500/15 text-purple-400 hover:bg-purple-500/25 animate-pulse"
+      }
+    }
+  },
+  "image_urls": {
+    "hero_background": "https://images.unsplash.com/photo-1519432473078-0151c4f90335?crop=entropy&cs=srgb&fm=jpg&q=85",
+    "basketball_court": "https://images.unsplash.com/photo-1773098654494-be1df2c16e86?crop=entropy&cs=srgb&fm=jpg&q=85",
+    "player_detail_bg": "https://images.unsplash.com/photo-1646625753091-de94be5cfc32?crop=entropy&cs=srgb&fm=jpg&q=85"
+  },
+  "instructions_to_main_agent": [
+    "Install necessary fonts via Google Fonts import in index.css: Barlow Condensed (600, 700, 800), JetBrains Mono (400, 500).",
+    "Enforce Dark Mode by adding 'dark' class to html/body or configured in tailwind.config.js.",
+    "Use 'lucide-react' for all icons.",
+    "Implement the 'Demon Line' logic: If line_type == 'demon', apply the purple glow effect defined in colors.accents.demon_glow.",
+    "For the 'Best Bets' table, use a dense layout. Row height should be small (h-10 or h-12).",
+    "Use Shadcn UI components for complex interactions (Dialog, Popover, Command) but style them to match the 'Midnight Terminal' theme.",
+    "Do not use gradients for backgrounds. Use solid colors with subtle borders.",
+    "Ensure the 'Confidence %' and 'Demon' columns are conditionally rendered based on user subscription tier (mocked for now).",
+    "Use Recharts for any historical trend graphs (hit rate over last 10 games).",
+    "Add a 'Live' indicator (green pulsing dot) next to the odds to show real-time status."
+  ],
+  "universal_guidelines": [
+    "You tend to converge toward generic outputs. Avoid this.",
+    "Dark colors look good when used independently without gradients. DO NOT use dark colors as gradients.",
+    "Create depth through layered design elements with z-index hierarchy.",
+    "Use 2-3x more spacing than feels comfortable in marketing sections, but KEEP IT DENSE for the dashboard data table.",
+    "Every interaction needs micro-animations - hover states, transitions.",
+    "Components MUST use named exports.",
+    "Use 'sonner' for toasts.",
+    "All interactive elements MUST include data-testid attribute."
+  ],
+  "parallel_tool_usage": {
+    "core_principle": "Execute tools in parallel by default.",
+    "parallel_execution": ["View multiple files", "Web searches", "Image generation"],
+    "sequential_execution": ["Read before edit", "Dependent tool outputs"]
+  }
+}
