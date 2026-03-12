@@ -1,14 +1,30 @@
 """
-Demon Tracker v2 - Three-Way Data Sync Engine
-Orchestrates: The Odds API + BallDontLie + Tank01
+Demon Tracker v2.1 - Three-Pillar Data Engine
+============================================
 
-March 2026 Season Implementation
+Pillar 1: Line Ingestion (The Odds API)
+- Pull ALL available betting lines for daily games
+- Include exotic/alternate props from DraftKings and FanDuel
+
+Pillar 2: Statistical Verification (BallDontLie API)
+- Cross-reference every line with player stats
+- Calculate Hit Rate for 2025-26 season (L5, L10, Season)
+
+Pillar 3: Contextual Research (Tank01 API)
+- Search for Injury Reports, Player News
+- Flag players with injury/load management risk
+
+Autonomous: Sync on app startup and populate Demon Cards
+- Green: High hit rate (>= 50%)
+- Yellow: Injury/news warning
+- Red: Low hit rate (< 30%)
 """
 
 import httpx
 import logging
 import os
 import asyncio
+import re
 from datetime import datetime, timezone, timedelta
 from typing import Optional, Dict, List, Any, Tuple
 from thefuzz import fuzz
@@ -16,47 +32,63 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 
 logger = logging.getLogger(__name__)
 
-# API Configuration
-ODDS_API_KEY = os.environ.get("ODDS_API_KEY", "e1ae76ab21c34ee88ed552cffb4449fd")
+# ==================== API CONFIGURATION ====================
+
+# Pillar 1: The Odds API
+ODDS_API_KEY = os.environ.get("ODDS_API_KEY", "672e7374ca294c653664ca3d5964f434")
+ODDS_API_FALLBACK = "e1ae76ab21c34ee88ed552cffb4449fd"  # Fallback key
 ODDS_API_BASE = "https://api.the-odds-api.com/v4"
 
+# Pillar 2: BallDontLie API
 BDL_API_KEY = os.environ.get("BDL_API_KEY", "ad5544be-9969-434b-9389-2b7cf658c8e0")
 BDL_BASE_URL = "https://api.balldontlie.io/v1"
 
+# Pillar 3: Tank01 API (via RapidAPI)
 TANK01_API_KEY = os.environ.get("TANK01_API_KEY", "402edbcac6mshd04997e7ca01d17p1879eajsn65ab176cdb1e")
 TANK01_BASE = "https://tank01-nba-live-in-game-real-time-statistics-nba.p.rapidapi.com"
 
 # Current NBA Season (2025-26)
 CURRENT_SEASON = "2025"
 
-# Supported markets for player props
-PLAYER_MARKETS = [
-    "player_points", "player_rebounds", "player_assists", "player_threes",
-    "player_double_double", "player_blocks", "player_steals", "player_turnovers",
-    "player_points_q1", "player_points_h1"
-]
-
-# All markets including game-level
+# ALL available markets from The Odds API
 ALL_MARKETS = ",".join([
+    # Game markets
     "h2h", "spreads", "totals",
-    "player_points", "player_rebounds", "player_assists", "player_threes"
+    # Player prop markets
+    "player_points", "player_rebounds", "player_assists", "player_threes",
+    "player_blocks", "player_steals", "player_turnovers",
+    "player_points_rebounds", "player_points_assists", "player_rebounds_assists",
+    "player_points_rebounds_assists",
+    # Alternate/exotic markets
+    "alternate_spreads", "alternate_totals"
 ])
 
 # Target bookmakers
 TARGET_BOOKMAKERS = ["draftkings", "fanduel"]
 
+# Hit rate thresholds for card colors
+HIT_RATE_HIGH = 0.50   # Green
+HIT_RATE_LOW = 0.30    # Red
+# Between LOW and HIGH = Standard
 
-class DemonTrackerEngine:
+# Injury/load management keywords
+INJURY_KEYWORDS = [
+    "injury", "injured", "out", "questionable", "doubtful", "probable",
+    "day-to-day", "GTD", "load management", "rest", "ankle", "knee",
+    "hamstring", "back", "shoulder", "concussion", "illness", "personal"
+]
+
+
+class ThreePillarEngine:
     """
-    Three-way data sync engine for NBA prop betting analysis.
+    Three-Pillar Data Engine for NBA Prop Betting Analysis
     
-    Flow:
-    1. Fetch today's events from The Odds API
-    2. Pull all player prop lines from DraftKings & FanDuel
-    3. Map player names to BallDontLie player IDs
-    4. Calculate Triple-View hit rates (L5, L10, Season)
-    5. Verify with Tank01 and get matchup strength
-    6. Flag discrepancies > 1%
+    Autonomous Flow:
+    1. Derive current date
+    2. Fetch ALL lines from Odds API (Pillar 1)
+    3. Calculate hit rates from BallDontLie (Pillar 2)
+    4. Check injury/news from Tank01 (Pillar 3)
+    5. Generate color-coded Demon Cards
     """
     
     def __init__(self, db: AsyncIOMotorDatabase):
@@ -65,25 +97,48 @@ class DemonTrackerEngine:
         self.odds_cache = db.odds_cache
         self.player_props = db.player_props
         self.stats_cache = db.stats_cache
-        self.league_roster = db.league_roster
-        self.matchup_data = db.matchup_data
-        self.discrepancies = db.stat_discrepancies
+        self.injury_cache = db.injury_cache
+        self.news_cache = db.news_cache
+        self.demon_cards = db.demon_cards
         
-        # In-memory caches for fast lookups
-        self._player_name_map = {}  # odds_name -> bdl_player_id
-        self._tank01_cache = {}
+        # In-memory caches
+        self._player_name_map = {}
+        self._injury_flags = {}
         self._last_sync = None
+        self._odds_api_key = ODDS_API_KEY  # Will fallback if needed
     
-    # ==================== THE ODDS API ====================
+    # ==================== PILLAR 1: LINE INGESTION (ODDS API) ====================
+    
+    async def _test_odds_api_key(self, key: str) -> bool:
+        """Test if an Odds API key is valid"""
+        try:
+            url = f"{ODDS_API_BASE}/sports/basketball_nba/events"
+            params = {"apiKey": key, "dateFormat": "iso"}
+            
+            async with httpx.AsyncClient() as client:
+                response = await client.get(url, params=params, timeout=10.0)
+                return response.status_code == 200
+        except:
+            return False
     
     async def fetch_todays_events(self) -> List[Dict[str, Any]]:
         """
-        Step 1: Get all NBA events for today from The Odds API
+        Pillar 1: Get all NBA events for today from The Odds API
         """
         try:
+            # Test primary key, fallback if needed
+            if not await self._test_odds_api_key(self._odds_api_key):
+                logger.warning(f"Primary Odds API key failed, trying fallback...")
+                if await self._test_odds_api_key(ODDS_API_FALLBACK):
+                    self._odds_api_key = ODDS_API_FALLBACK
+                    logger.info("Using fallback Odds API key")
+                else:
+                    logger.error("Both Odds API keys failed")
+                    return []
+            
             url = f"{ODDS_API_BASE}/sports/basketball_nba/events"
             params = {
-                "apiKey": ODDS_API_KEY,
+                "apiKey": self._odds_api_key,
                 "dateFormat": "iso"
             }
             
@@ -99,25 +154,24 @@ class DemonTrackerEngine:
                         event["fetched_at"] = datetime.now(timezone.utc).isoformat()
                         await self.events_cache.insert_one(event)
                     
-                    logger.info(f"✓ Fetched {len(events)} NBA events from Odds API")
+                    logger.info(f"✓ PILLAR 1: Fetched {len(events)} NBA events")
                     return events
                 else:
                     logger.error(f"Odds API events error: {response.status_code}")
                     return []
                     
         except Exception as e:
-            logger.error(f"Error fetching events: {e}")
+            logger.error(f"Pillar 1 error: {e}")
             return []
     
-    async def fetch_event_odds(self, event_id: str) -> Dict[str, Any]:
+    async def fetch_all_event_odds(self, event_id: str) -> Dict[str, Any]:
         """
-        Step 2: Fetch ALL markets for a specific event
-        Includes player props from DraftKings and FanDuel
+        Fetch ALL markets (including exotic props) for an event
         """
         try:
             url = f"{ODDS_API_BASE}/sports/basketball_nba/events/{event_id}/odds"
             params = {
-                "apiKey": ODDS_API_KEY,
+                "apiKey": self._odds_api_key,
                 "regions": "us",
                 "markets": ALL_MARKETS,
                 "bookmakers": ",".join(TARGET_BOOKMAKERS),
@@ -129,8 +183,6 @@ class DemonTrackerEngine:
                 
                 if response.status_code == 200:
                     odds_data = response.json()
-                    
-                    # Store in cache
                     odds_data["event_id"] = event_id
                     odds_data["fetched_at"] = datetime.now(timezone.utc).isoformat()
                     
@@ -140,40 +192,22 @@ class DemonTrackerEngine:
                         upsert=True
                     )
                     
-                    logger.info(f"✓ Fetched odds for event {event_id}: {odds_data.get('home_team')} vs {odds_data.get('away_team')}")
                     return odds_data
-                else:
-                    logger.error(f"Odds API error for event {event_id}: {response.status_code}")
-                    return {}
+                elif response.status_code == 422:
+                    # Some markets may not be available, try basic markets
+                    params["markets"] = "player_points,player_rebounds,player_assists,player_threes"
+                    response = await client.get(url, params=params, timeout=20.0)
+                    if response.status_code == 200:
+                        return response.json()
+                    
+                return {}
                     
         except Exception as e:
-            logger.error(f"Error fetching odds for {event_id}: {e}")
+            logger.error(f"Odds fetch error for {event_id}: {e}")
             return {}
     
-    async def fetch_all_todays_odds(self) -> List[Dict[str, Any]]:
-        """
-        Fetch odds for ALL today's events
-        """
-        events = await self.fetch_todays_events()
-        all_odds = []
-        
-        for event in events:
-            event_id = event.get("id")
-            if event_id:
-                odds = await self.fetch_event_odds(event_id)
-                if odds:
-                    all_odds.append(odds)
-                # Small delay to respect rate limits
-                await asyncio.sleep(0.3)
-        
-        logger.info(f"✓ Fetched odds for {len(all_odds)} events")
-        return all_odds
-    
-    def extract_player_props_from_odds(self, odds_data: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """
-        Extract all player props from odds data
-        Returns list of prop objects with player name, market, line, odds
-        """
+    def extract_player_props(self, odds_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Extract all player props from odds data"""
         props = []
         event_id = odds_data.get("id") or odds_data.get("event_id")
         home_team = odds_data.get("home_team", "")
@@ -182,23 +216,22 @@ class DemonTrackerEngine:
         
         for bookmaker in odds_data.get("bookmakers", []):
             book_key = bookmaker.get("key")
-            book_title = bookmaker.get("title")
             
             for market in bookmaker.get("markets", []):
                 market_key = market.get("key", "")
                 
-                # Only process player prop markets
+                # Only player prop markets
                 if not market_key.startswith("player_"):
                     continue
                 
                 for outcome in market.get("outcomes", []):
                     player_name = outcome.get("description", "")
-                    direction = outcome.get("name", "")  # Over/Under
+                    direction = outcome.get("name", "")
                     line = outcome.get("point")
                     price = outcome.get("price")
                     
                     if player_name and line is not None:
-                        prop = {
+                        props.append({
                             "event_id": event_id,
                             "home_team": home_team,
                             "away_team": away_team,
@@ -209,34 +242,23 @@ class DemonTrackerEngine:
                             "line": float(line),
                             "price": price,
                             "bookmaker": book_key,
-                            "bookmaker_title": book_title,
                             "fetched_at": datetime.now(timezone.utc).isoformat()
-                        }
-                        props.append(prop)
+                        })
         
         return props
     
-    # ==================== BALLDONTLIE API ====================
+    # ==================== PILLAR 2: STATISTICAL VERIFICATION (BDL) ====================
     
     async def search_bdl_player(self, player_name: str) -> Optional[Dict[str, Any]]:
-        """
-        Search for player in BallDontLie API
-        Returns player dict with id, first_name, last_name, team info
-        """
-        # Check in-memory cache first
+        """Search for player in BallDontLie API"""
         if player_name in self._player_name_map:
             return self._player_name_map[player_name]
         
         try:
-            # Split name for search (BDL works best with single names)
             name_parts = player_name.strip().split()
-            search_terms = []
-            
+            search_terms = [name_parts[-1]] if len(name_parts) >= 2 else [player_name]
             if len(name_parts) >= 2:
-                search_terms.append(name_parts[-1])  # Last name
-                search_terms.append(name_parts[0])   # First name
-            else:
-                search_terms.append(player_name)
+                search_terms.append(name_parts[0])
             
             url = f"{BDL_BASE_URL}/players"
             headers = {"Authorization": BDL_API_KEY}
@@ -256,7 +278,6 @@ class DemonTrackerEngine:
                         if not players:
                             continue
                         
-                        # Find best match
                         best_match = None
                         best_score = 0
                         
@@ -273,22 +294,18 @@ class DemonTrackerEngine:
                         
                         if best_match:
                             self._player_name_map[player_name] = best_match
-                            logger.debug(f"✓ Mapped {player_name} -> {best_match.get('first_name')} {best_match.get('last_name')} (ID: {best_match.get('id')})")
                             return best_match
             
-            logger.warning(f"Could not find BDL player for: {player_name}")
             return None
             
         except Exception as e:
-            logger.error(f"BDL player search error: {e}")
+            logger.error(f"BDL search error: {e}")
             return None
     
-    async def fetch_bdl_player_stats(self, player_id: int) -> List[Dict[str, Any]]:
-        """
-        Fetch player game stats from BallDontLie for current season
-        """
+    async def fetch_player_stats(self, player_id: int) -> List[Dict[str, Any]]:
+        """Fetch player game stats from BallDontLie for 2025-26 season"""
         try:
-            # Check cache first
+            # Check cache
             cached = await self.stats_cache.find_one({"player_id": str(player_id)})
             if cached:
                 cached_time = datetime.fromisoformat(cached["cached_at"])
@@ -316,12 +333,12 @@ class DemonTrackerEngine:
                         reverse=True
                     )
                     
-                    # Filter out DNP games (0 minutes)
+                    # Filter out DNP games
                     def player_played(game):
                         minutes = game.get("min")
                         if minutes:
                             min_str = str(minutes).replace(":", "").strip()
-                            if min_str and min_str != "0" and min_str != "00" and min_str != "000":
+                            if min_str and min_str != "0" and min_str != "00":
                                 return True
                         pts = game.get("pts", 0) or 0
                         reb = game.get("reb", 0) or 0
@@ -330,7 +347,7 @@ class DemonTrackerEngine:
                     
                     played_games = [g for g in games_sorted if player_played(g)]
                     
-                    # Cache the results
+                    # Cache results
                     await self.stats_cache.update_one(
                         {"player_id": str(player_id)},
                         {"$set": {
@@ -342,11 +359,10 @@ class DemonTrackerEngine:
                         upsert=True
                     )
                     
-                    logger.debug(f"✓ Fetched {len(played_games)} games for player {player_id}")
                     return played_games
                     
         except Exception as e:
-            logger.error(f"BDL stats fetch error: {e}")
+            logger.error(f"BDL stats error: {e}")
         
         return []
     
@@ -356,32 +372,36 @@ class DemonTrackerEngine:
         market: str,
         line: float
     ) -> Dict[str, Any]:
-        """
-        Calculate Triple-View hit rate: L5, L10, Season
-        """
-        # Map market to stat key
+        """Calculate L5, L10, Season hit rates"""
         market_to_stat = {
             "player_points": "pts",
-            "player_points_q1": "pts",  # Approximate with full game
-            "player_points_h1": "pts",
             "player_rebounds": "reb",
             "player_assists": "ast",
             "player_threes": "fg3m",
             "player_blocks": "blk",
             "player_steals": "stl",
-            "player_turnovers": "turnover"
+            "player_turnovers": "turnover",
+            "player_points_rebounds": ["pts", "reb"],
+            "player_points_assists": ["pts", "ast"],
+            "player_rebounds_assists": ["reb", "ast"],
+            "player_points_rebounds_assists": ["pts", "reb", "ast"]
         }
         
-        stat_key = market_to_stat.get(market, "pts")
+        stat_keys = market_to_stat.get(market, "pts")
+        if isinstance(stat_keys, str):
+            stat_keys = [stat_keys]
+        
+        def get_stat_value(game):
+            return sum((game.get(key, 0) or 0) for key in stat_keys)
         
         def calc_window(game_list, line_val):
             if not game_list:
                 return {"games_over": 0, "total_games": 0, "hit_rate": 0, "avg": 0}
             
-            games_over = sum(1 for g in game_list if (g.get(stat_key, 0) or 0) > line_val)
+            games_over = sum(1 for g in game_list if get_stat_value(g) > line_val)
             total = len(game_list)
             hit_rate = games_over / total if total > 0 else 0
-            avg = sum((g.get(stat_key, 0) or 0) for g in game_list) / total if total > 0 else 0
+            avg = sum(get_stat_value(g) for g in game_list) / total if total > 0 else 0
             
             return {
                 "games_over": games_over,
@@ -396,36 +416,72 @@ class DemonTrackerEngine:
         
         # Trend detection
         trends = []
-        if l5["avg"] > season["avg"] * 1.20:
+        if l5["avg"] > season["avg"] * 1.15:
             trends.append("HOT")
-        elif l5["avg"] < season["avg"] * 0.80:
+        elif l5["avg"] < season["avg"] * 0.85:
             trends.append("COLD")
         
-        # Demon qualification (L10 hit rate >= 40%)
-        is_demon = l10["hit_rate"] >= 0.40
+        # Determine card color based on L10 hit rate
+        l10_rate = l10["hit_rate"]
+        if l10_rate >= HIT_RATE_HIGH:
+            card_color = "green"
+        elif l10_rate < HIT_RATE_LOW:
+            card_color = "red"
+        else:
+            card_color = "standard"
         
         return {
             "l5": l5,
             "l10": l10,
             "season": season,
             "trends": trends,
-            "is_demon": is_demon,
-            "stat_key": stat_key
+            "card_color": card_color,
+            "is_demon": l10_rate >= 0.40
         }
     
-    # ==================== TANK01 API ====================
+    # ==================== PILLAR 3: CONTEXTUAL RESEARCH (TANK01) ====================
     
-    async def fetch_tank01_teams(self, include_rosters: bool = True) -> Dict[str, Any]:
-        """
-        Fetch team data from Tank01 including rosters with player stats
-        """
+    async def fetch_tank01_news(self) -> List[Dict[str, Any]]:
+        """Fetch latest NBA news from Tank01"""
+        try:
+            url = f"{TANK01_BASE}/getNBANews"
+            headers = {
+                "X-RapidAPI-Key": TANK01_API_KEY,
+                "X-RapidAPI-Host": "tank01-nba-live-in-game-real-time-statistics-nba.p.rapidapi.com"
+            }
+            
+            async with httpx.AsyncClient() as client:
+                response = await client.get(url, headers=headers, timeout=15.0)
+                
+                if response.status_code == 200:
+                    data = response.json()
+                    news_items = data.get("body", []) if isinstance(data, dict) else data
+                    
+                    if isinstance(news_items, list):
+                        # Store in cache
+                        await self.news_cache.delete_many({})
+                        for item in news_items[:50]:  # Store latest 50
+                            item["fetched_at"] = datetime.now(timezone.utc).isoformat()
+                            await self.news_cache.insert_one(item)
+                        
+                        logger.info(f"✓ PILLAR 3: Fetched {len(news_items)} news items")
+                        return news_items
+                        
+                elif response.status_code == 429:
+                    logger.warning("Tank01 rate limited")
+                    
+        except Exception as e:
+            logger.error(f"Tank01 news error: {e}")
+        
+        return []
+    
+    async def fetch_tank01_teams_with_injuries(self) -> Dict[str, List[str]]:
+        """Fetch team rosters to identify injury status"""
+        injuries = {}
+        
         try:
             url = f"{TANK01_BASE}/getNBATeams"
-            params = {}
-            if include_rosters:
-                params["rosters"] = "true"
-                params["teamStats"] = "true"
-            
+            params = {"rosters": "true", "schedules": "false", "topPerformers": "false"}
             headers = {
                 "X-RapidAPI-Key": TANK01_API_KEY,
                 "X-RapidAPI-Host": "tank01-nba-live-in-game-real-time-statistics-nba.p.rapidapi.com"
@@ -436,149 +492,114 @@ class DemonTrackerEngine:
                 
                 if response.status_code == 200:
                     data = response.json()
+                    teams = data.get("body", []) if isinstance(data, dict) else data
                     
-                    if isinstance(data, dict) and "body" in data:
-                        teams = data.get("body", [])
-                        logger.info(f"✓ Fetched {len(teams)} teams from Tank01")
-                        return {"teams": teams, "success": True}
-                    elif isinstance(data, list):
-                        logger.info(f"✓ Fetched {len(data)} teams from Tank01")
-                        return {"teams": data, "success": True}
-                    else:
-                        logger.warning(f"Tank01 unexpected response: {data}")
-                        return {"teams": [], "success": False, "error": str(data)}
-                else:
-                    logger.error(f"Tank01 API error: {response.status_code}")
-                    return {"teams": [], "success": False}
+                    if isinstance(teams, list):
+                        for team in teams:
+                            roster = team.get("Roster", {})
+                            if isinstance(roster, dict):
+                                for player_id, player_data in roster.items():
+                                    injury_status = player_data.get("injury", {})
+                                    if injury_status and isinstance(injury_status, dict):
+                                        status = injury_status.get("designation", "")
+                                        if status and status.lower() in ["out", "questionable", "doubtful", "day-to-day"]:
+                                            player_name = player_data.get("longName", "")
+                                            injuries[player_name.lower()] = {
+                                                "status": status,
+                                                "description": injury_status.get("description", ""),
+                                                "team": team.get("teamAbv", "")
+                                            }
+                    
+                    logger.info(f"✓ PILLAR 3: Found {len(injuries)} injured players")
                     
         except Exception as e:
-            logger.error(f"Tank01 fetch error: {e}")
-            return {"teams": [], "success": False, "error": str(e)}
-    
-    async def get_tank01_player_stats(self, player_name: str) -> Optional[Dict[str, Any]]:
-        """
-        Get player stats from Tank01 for verification
-        """
-        # Check cache
-        if player_name in self._tank01_cache:
-            return self._tank01_cache[player_name]
+            logger.error(f"Tank01 injuries error: {e}")
         
-        try:
-            # Fetch teams with rosters
-            teams_data = await self.fetch_tank01_teams(include_rosters=True)
-            
-            if not teams_data.get("success"):
-                return None
-            
-            # Search through all team rosters
-            for team in teams_data.get("teams", []):
-                roster = team.get("Roster", {})
-                if isinstance(roster, dict):
-                    for player_id, player_data in roster.items():
-                        tank_name = player_data.get("longName", "")
-                        if fuzz.ratio(player_name.lower(), tank_name.lower()) >= 80:
-                            self._tank01_cache[player_name] = player_data
-                            return player_data
-            
-            return None
-            
-        except Exception as e:
-            logger.error(f"Tank01 player search error: {e}")
-            return None
+        return injuries
     
-    async def get_matchup_strength(
+    def check_injury_from_news(self, player_name: str, news_items: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+        """Check if player has injury/news mention"""
+        player_lower = player_name.lower()
+        player_parts = player_lower.split()
+        
+        for news in news_items:
+            title = (news.get("title", "") or "").lower()
+            link = (news.get("link", "") or "").lower()
+            
+            # Check if player is mentioned
+            player_mentioned = False
+            for part in player_parts:
+                if len(part) > 2 and part in title:
+                    player_mentioned = True
+                    break
+            
+            if player_mentioned:
+                # Check for injury keywords
+                for keyword in INJURY_KEYWORDS:
+                    if keyword in title:
+                        return {
+                            "type": "injury_news",
+                            "title": news.get("title", ""),
+                            "link": news.get("link", ""),
+                            "keyword": keyword
+                        }
+        
+        return None
+    
+    def check_player_injury_status(
         self,
-        player_team: str,
-        opponent_team: str,
-        position: str
+        player_name: str,
+        injuries: Dict[str, Any],
+        news_items: List[Dict[str, Any]]
     ) -> Dict[str, Any]:
         """
-        Get matchup strength data from Tank01
-        Returns defensive ranking vs position
+        Check player's injury/news status from all sources
+        Returns warning level: none, yellow (caution), red (out)
         """
-        try:
-            teams_data = await self.fetch_tank01_teams(include_rosters=False)
-            
-            if not teams_data.get("success"):
-                return {"def_rank": None, "matchup_grade": "N/A"}
-            
-            # Find opponent team stats
-            for team in teams_data.get("teams", []):
-                team_abv = team.get("teamAbv", "")
-                team_name = team.get("teamName", "")
-                
-                if team_abv == opponent_team or opponent_team in team_name:
-                    # Get defensive stats
-                    oppg = float(team.get("oppg", 0) or 0)  # Opponent points per game
-                    
-                    # Calculate defensive rank (lower oppg = better defense)
-                    # This is simplified - real implementation would track all teams
-                    if oppg < 105:
-                        def_rank = "Elite"
-                        matchup_grade = "D"  # Hard matchup
-                    elif oppg < 110:
-                        def_rank = "Good"
-                        matchup_grade = "C"
-                    elif oppg < 115:
-                        def_rank = "Average"
-                        matchup_grade = "B"
-                    else:
-                        def_rank = "Poor"
-                        matchup_grade = "A"  # Easy matchup
-                    
-                    return {
-                        "opponent": team_name,
-                        "oppg": oppg,
-                        "def_rank": def_rank,
-                        "matchup_grade": matchup_grade
-                    }
-            
-            return {"def_rank": None, "matchup_grade": "N/A"}
-            
-        except Exception as e:
-            logger.error(f"Matchup strength error: {e}")
-            return {"def_rank": None, "matchup_grade": "N/A"}
-    
-    def verify_stats_discrepancy(
-        self,
-        bdl_avg: float,
-        tank01_avg: float,
-        stat_name: str
-    ) -> Dict[str, Any]:
-        """
-        Compare BDL stats vs Tank01 stats
-        Flag if discrepancy > 1%
-        """
-        if bdl_avg == 0 and tank01_avg == 0:
-            return {"discrepancy": False, "diff_pct": 0}
+        player_lower = player_name.lower()
         
-        if bdl_avg == 0:
-            diff_pct = 100
-        else:
-            diff_pct = abs(bdl_avg - tank01_avg) / bdl_avg * 100
+        # Check direct injury list
+        if player_lower in injuries:
+            injury_data = injuries[player_lower]
+            status = injury_data.get("status", "").lower()
+            
+            if status in ["out"]:
+                return {
+                    "warning_level": "red",
+                    "status": status.upper(),
+                    "description": injury_data.get("description", ""),
+                    "source": "injury_report"
+                }
+            elif status in ["questionable", "doubtful", "day-to-day"]:
+                return {
+                    "warning_level": "yellow",
+                    "status": status.upper(),
+                    "description": injury_data.get("description", ""),
+                    "source": "injury_report"
+                }
         
-        return {
-            "discrepancy": diff_pct > 1,
-            "diff_pct": round(diff_pct, 2),
-            "bdl_value": bdl_avg,
-            "tank01_value": tank01_avg,
-            "stat": stat_name,
-            "flagged": diff_pct > 1
-        }
+        # Check news for injury mentions
+        news_injury = self.check_injury_from_news(player_name, news_items)
+        if news_injury:
+            return {
+                "warning_level": "yellow",
+                "status": "NEWS ALERT",
+                "description": news_injury.get("title", ""),
+                "source": "news",
+                "keyword": news_injury.get("keyword", "")
+            }
+        
+        return {"warning_level": "none"}
     
     # ==================== MAIN ORCHESTRATION ====================
     
-    async def process_single_prop(
+    async def process_prop_with_full_analysis(
         self,
-        prop: Dict[str, Any]
+        prop: Dict[str, Any],
+        injuries: Dict[str, Any],
+        news_items: List[Dict[str, Any]]
     ) -> Dict[str, Any]:
-        """
-        Process a single player prop through the full pipeline:
-        1. Map to BDL player
-        2. Calculate hit rates
-        3. Verify with Tank01
-        4. Get matchup strength
-        """
+        """Process a single prop through all three pillars"""
         player_name = prop.get("player_name", "")
         market = prop.get("market", "")
         line = prop.get("line", 0)
@@ -587,90 +608,93 @@ class DemonTrackerEngine:
             **prop,
             "bdl_player_id": None,
             "hit_rates": None,
-            "tank01_verified": False,
-            "matchup": None,
-            "discrepancy": None,
+            "injury_status": {"warning_level": "none"},
+            "card_color": "standard",
             "processed_at": datetime.now(timezone.utc).isoformat()
         }
         
-        # Step 1: Map to BDL player
+        # PILLAR 2: Get BDL stats
         bdl_player = await self.search_bdl_player(player_name)
-        if not bdl_player:
-            result["error"] = "Player not found in BDL"
-            return result
+        if bdl_player:
+            result["bdl_player_id"] = bdl_player.get("id")
+            result["bdl_team"] = bdl_player.get("team", {}).get("abbreviation", "")
+            result["position"] = bdl_player.get("position", "")
+            
+            games = await self.fetch_player_stats(bdl_player.get("id"))
+            if games:
+                hit_rates = self.calculate_triple_view_hit_rate(games, market, line)
+                result["hit_rates"] = hit_rates
+                result["card_color"] = hit_rates.get("card_color", "standard")
         
-        result["bdl_player_id"] = bdl_player.get("id")
-        result["bdl_team"] = bdl_player.get("team", {}).get("abbreviation", "")
+        # PILLAR 3: Check injury status
+        injury_status = self.check_player_injury_status(player_name, injuries, news_items)
+        result["injury_status"] = injury_status
         
-        # Step 2: Fetch BDL stats and calculate hit rates
-        games = await self.fetch_bdl_player_stats(bdl_player.get("id"))
-        if games:
-            hit_rates = self.calculate_triple_view_hit_rate(games, market, line)
-            result["hit_rates"] = hit_rates
-        
-        # Step 3: Verify with Tank01 (optional - can be slow)
-        # tank01_player = await self.get_tank01_player_stats(player_name)
-        # if tank01_player and hit_rates:
-        #     # Compare season averages
-        #     tank01_ppg = float(tank01_player.get("pts", 0) or 0)
-        #     bdl_ppg = hit_rates["season"]["avg"]
-        #     result["discrepancy"] = self.verify_stats_discrepancy(bdl_ppg, tank01_ppg, "points")
-        #     result["tank01_verified"] = True
-        
-        # Step 4: Get matchup strength
-        opponent = prop.get("away_team") if prop.get("home_team") and result["bdl_team"] in prop.get("home_team", "") else prop.get("home_team")
-        if opponent:
-            matchup = await self.get_matchup_strength(
-                result["bdl_team"],
-                opponent,
-                bdl_player.get("position", "")
-            )
-            result["matchup"] = matchup
+        # Override card color if injured
+        if injury_status["warning_level"] == "red":
+            result["card_color"] = "red"
+        elif injury_status["warning_level"] == "yellow" and result["card_color"] != "red":
+            result["card_color"] = "yellow"
         
         return result
     
-    async def run_full_sync(self) -> Dict[str, Any]:
+    async def autonomous_three_pillar_sync(self) -> Dict[str, Any]:
         """
-        Run the complete three-way data sync:
-        1. Fetch today's events
-        2. Get all odds/lines
-        3. Process each player prop
-        4. Store results
+        Autonomous sync that runs on app startup
+        Executes full three-pillar data sync and generates Demon Cards
         """
         sync_start = datetime.now(timezone.utc)
-        logger.info("🚀 DEMON TRACKER V2 - Starting full sync")
+        current_date = sync_start.strftime("%Y-%m-%d")
+        logger.info(f"🚀 THREE-PILLAR SYNC STARTED - {current_date}")
         
         results = {
             "success": True,
-            "events_count": 0,
-            "props_count": 0,
-            "processed_count": 0,
-            "demon_count": 0,
+            "sync_date": current_date,
+            "sync_time": sync_start.isoformat(),
+            "pillar_1_events": 0,
+            "pillar_1_props": 0,
+            "pillar_2_stats_fetched": 0,
+            "pillar_3_injuries_found": 0,
+            "pillar_3_news_items": 0,
+            "demon_cards": {
+                "green": 0,
+                "yellow": 0,
+                "red": 0,
+                "standard": 0,
+                "total": 0
+            },
             "errors": [],
-            "sync_duration": 0
+            "duration": 0
         }
         
         try:
-            # Step 1: Fetch all today's odds
-            all_odds = await self.fetch_all_todays_odds()
-            results["events_count"] = len(all_odds)
+            # PILLAR 1: Fetch all events and odds
+            logger.info("📊 PILLAR 1: Fetching lines from Odds API...")
+            events = await self.fetch_todays_events()
+            results["pillar_1_events"] = len(events)
             
-            if not all_odds:
-                results["success"] = False
-                results["errors"].append("No events found")
-                return results
-            
-            # Step 2: Extract all player props
             all_props = []
-            for odds_data in all_odds:
-                props = self.extract_player_props_from_odds(odds_data)
-                all_props.extend(props)
+            for event in events:
+                event_id = event.get("id")
+                if event_id:
+                    odds = await self.fetch_all_event_odds(event_id)
+                    if odds:
+                        props = self.extract_player_props(odds)
+                        all_props.extend(props)
+                    await asyncio.sleep(0.2)
             
-            results["props_count"] = len(all_props)
-            logger.info(f"📊 Found {len(all_props)} player props across {len(all_odds)} events")
+            results["pillar_1_props"] = len(all_props)
+            logger.info(f"✓ PILLAR 1 COMPLETE: {len(all_props)} props from {len(events)} events")
             
-            # Step 3: Process unique player/market/line combinations
-            # Group by player + market + line to avoid duplicates
+            # PILLAR 3: Fetch injury data and news (do before processing)
+            logger.info("🏥 PILLAR 3: Fetching injury reports and news...")
+            injuries = await self.fetch_tank01_teams_with_injuries()
+            news_items = await self.fetch_tank01_news()
+            results["pillar_3_injuries_found"] = len(injuries)
+            results["pillar_3_news_items"] = len(news_items)
+            logger.info(f"✓ PILLAR 3 DATA: {len(injuries)} injuries, {len(news_items)} news items")
+            
+            # Deduplicate props by player+market+line
             unique_props = {}
             for prop in all_props:
                 key = f"{prop['player_name']}|{prop['market']}|{prop['line']}"
@@ -679,41 +703,39 @@ class DemonTrackerEngine:
                 else:
                     # Merge bookmaker data
                     existing = unique_props[key]
-                    if prop['bookmaker'] not in str(existing.get('bookmakers', '')):
-                        if 'bookmakers' not in existing:
-                            existing['bookmakers'] = {existing['bookmaker']: existing['price']}
-                        existing['bookmakers'][prop['bookmaker']] = prop['price']
+                    if "all_prices" not in existing:
+                        existing["all_prices"] = {existing["bookmaker"]: existing["price"]}
+                    existing["all_prices"][prop["bookmaker"]] = prop["price"]
             
-            logger.info(f"📋 Processing {len(unique_props)} unique props")
+            logger.info(f"📊 Processing {len(unique_props)} unique props...")
             
-            # Step 4: Process each prop (limit to avoid rate limits)
+            # PILLAR 2 + 3: Process each prop
             processed_props = []
-            demons = []
-            
-            for i, (key, prop) in enumerate(list(unique_props.items())[:100]):  # Limit to 100 for now
+            for i, (key, prop) in enumerate(list(unique_props.items())[:150]):  # Limit to avoid timeouts
                 try:
-                    processed = await self.process_single_prop(prop)
+                    processed = await self.process_prop_with_full_analysis(prop, injuries, news_items)
                     processed_props.append(processed)
                     
-                    if processed.get("hit_rates", {}).get("is_demon"):
-                        demons.append(processed)
+                    # Count by card color
+                    color = processed.get("card_color", "standard")
+                    results["demon_cards"][color] = results["demon_cards"].get(color, 0) + 1
+                    results["demon_cards"]["total"] += 1
                     
-                    # Rate limiting
-                    if i % 10 == 0:
-                        logger.info(f"  Processed {i+1}/{min(100, len(unique_props))} props")
-                    await asyncio.sleep(0.2)
+                    if processed.get("bdl_player_id"):
+                        results["pillar_2_stats_fetched"] += 1
+                    
+                    if i % 20 == 0 and i > 0:
+                        logger.info(f"  Processed {i}/{min(150, len(unique_props))} props")
+                    
+                    await asyncio.sleep(0.15)
                     
                 except Exception as e:
-                    logger.error(f"Error processing prop {key}: {e}")
-                    results["errors"].append(str(e))
+                    results["errors"].append(f"Prop {key}: {str(e)}")
             
-            results["processed_count"] = len(processed_props)
-            results["demon_count"] = len(demons)
-            
-            # Step 5: Store in database
+            # Store demon cards
             if processed_props:
-                await self.player_props.delete_many({})
-                await self.player_props.insert_many(processed_props)
+                await self.demon_cards.delete_many({})
+                await self.demon_cards.insert_many(processed_props)
             
             self._last_sync = datetime.now(timezone.utc)
             
@@ -722,51 +744,89 @@ class DemonTrackerEngine:
             results["success"] = False
             results["errors"].append(str(e))
         
-        results["sync_duration"] = (datetime.now(timezone.utc) - sync_start).total_seconds()
-        logger.info(f"✅ SYNC COMPLETE: {results['processed_count']} props, {results['demon_count']} demons in {results['sync_duration']:.1f}s")
+        results["duration"] = (datetime.now(timezone.utc) - sync_start).total_seconds()
+        
+        logger.info(f"""
+✅ THREE-PILLAR SYNC COMPLETE
+   Duration: {results['duration']:.1f}s
+   Events: {results['pillar_1_events']}
+   Props: {results['pillar_1_props']}
+   Demon Cards:
+     🟢 Green (High): {results['demon_cards']['green']}
+     🟡 Yellow (Warning): {results['demon_cards']['yellow']}
+     🔴 Red (Low/Injured): {results['demon_cards']['red']}
+     ⚪ Standard: {results['demon_cards']['standard']}
+""")
         
         return results
     
-    async def get_processed_props(
+    async def get_demon_cards(
         self,
-        event_id: Optional[str] = None,
-        bookmaker: Optional[str] = None,
+        color: Optional[str] = None,
         market: Optional[str] = None,
+        bookmaker: Optional[str] = None,
         demons_only: bool = False
     ) -> List[Dict[str, Any]]:
-        """
-        Retrieve processed props with optional filters
-        """
+        """Get processed demon cards with optional filters"""
         query = {}
         
-        if event_id:
-            query["event_id"] = event_id
-        if bookmaker:
-            query["bookmaker"] = bookmaker
+        if color:
+            query["card_color"] = color
         if market:
             query["market"] = market
+        if bookmaker:
+            query["bookmaker"] = bookmaker
         if demons_only:
             query["hit_rates.is_demon"] = True
         
-        cursor = self.player_props.find(query, {"_id": 0})
-        return await cursor.to_list(1000)
+        cursor = self.demon_cards.find(query, {"_id": 0})
+        cards = await cursor.to_list(1000)
+        
+        # Filter out None cards and cards without hit_rates
+        cards = [c for c in cards if c is not None and c.get("hit_rates")]
+        
+        # Sort by card color priority (green first, then yellow, then standard, then red)
+        color_priority = {"green": 0, "yellow": 1, "standard": 2, "red": 3}
+        
+        def sort_key(x):
+            if not x:
+                return (999, 0)
+            card_color = x.get("card_color", "standard")
+            hit_rate = 0
+            if x.get("hit_rates") and x.get("hit_rates", {}).get("l10"):
+                hit_rate = x.get("hit_rates", {}).get("l10", {}).get("hit_rate", 0) or 0
+            return (color_priority.get(card_color, 2), -hit_rate)
+        
+        cards.sort(key=sort_key)
+        
+        return cards
     
     async def get_sync_status(self) -> Dict[str, Any]:
-        """
-        Get current sync status
-        """
+        """Get current sync status"""
         events_count = await self.events_cache.count_documents({})
-        props_count = await self.player_props.count_documents({})
-        demons_count = await self.player_props.count_documents({"hit_rates.is_demon": True})
+        cards_count = await self.demon_cards.count_documents({})
+        
+        # Count by color
+        green_count = await self.demon_cards.count_documents({"card_color": "green"})
+        yellow_count = await self.demon_cards.count_documents({"card_color": "yellow"})
+        red_count = await self.demon_cards.count_documents({"card_color": "red"})
+        demons_count = await self.demon_cards.count_documents({"hit_rates.is_demon": True})
         
         return {
             "last_sync": self._last_sync.isoformat() if self._last_sync else None,
             "events_cached": events_count,
-            "props_cached": props_count,
+            "demon_cards_total": cards_count,
+            "card_colors": {
+                "green": green_count,
+                "yellow": yellow_count,
+                "red": red_count,
+                "standard": cards_count - green_count - yellow_count - red_count
+            },
             "demons_found": demons_count,
             "data_sources": {
                 "odds_api": "active",
                 "balldontlie": "active",
-                "tank01": "limited"  # Rate limited
-            }
+                "tank01": "active"
+            },
+            "season": CURRENT_SEASON
         }

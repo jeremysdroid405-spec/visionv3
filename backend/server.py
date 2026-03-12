@@ -16,7 +16,7 @@ import httpx
 from thefuzz import fuzz
 import asyncio
 from stats_manager_bdl import StatsManager
-from demon_tracker_engine import DemonTrackerEngine
+from demon_tracker_engine import ThreePillarEngine
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -47,20 +47,20 @@ stats_manager = None
 demon_tracker = None
 
 async def initial_autonomous_sync():
-    """Run autonomous daily sync on startup - three-way data sync"""
+    """Run autonomous three-pillar sync on startup"""
     await asyncio.sleep(5)  # Wait for app to fully start
     
     # Step 1: BallDontLie sync for player stats
     if stats_manager:
-        logger.info("🚀 Running BallDontLie daily sync...")
+        logger.info("🚀 Running BallDontLie roster sync...")
         result = await stats_manager.autonomous_daily_sync()
         logger.info(f"BDL Sync result: {result.get('message', 'Done')}")
     
-    # Step 2: Demon Tracker three-way sync (Odds API + BDL + Tank01)
+    # Step 2: Three-Pillar Engine sync (Odds API + BDL + Tank01)
     if demon_tracker:
-        logger.info("🎯 Running Demon Tracker v2 full sync...")
-        result = await demon_tracker.run_full_sync()
-        logger.info(f"Demon Tracker result: {result.get('processed_count', 0)} props, {result.get('demon_count', 0)} demons")
+        logger.info("🎯 Running Three-Pillar Autonomous Sync...")
+        result = await demon_tracker.autonomous_three_pillar_sync()
+        logger.info(f"Three-Pillar result: {result.get('demon_cards', {}).get('total', 0)} cards generated")
 
 @app.on_event("startup")
 async def startup_event():
@@ -70,11 +70,11 @@ async def startup_event():
     stats_manager = StatsManager(db)
     logger.info("✓ Stats Manager initialized (BallDontLie)")
     
-    # Initialize Demon Tracker engine (three-way sync)
-    demon_tracker = DemonTrackerEngine(db)
-    logger.info("✓ Demon Tracker v2 initialized (Odds API + BDL + Tank01)")
+    # Initialize Three-Pillar Engine
+    demon_tracker = ThreePillarEngine(db)
+    logger.info("✓ Three-Pillar Engine initialized (Odds API + BDL + Tank01)")
     
-    # Run autonomous daily data loading
+    # Run autonomous sync on startup
     asyncio.create_task(initial_autonomous_sync())
 
 class SignUpRequest(BaseModel):
@@ -577,11 +577,11 @@ async def get_demon_tracker_status():
 
 @api_router.post("/demon-tracker/sync")
 async def trigger_demon_tracker_sync():
-    """Manually trigger a full three-way sync"""
+    """Manually trigger full three-pillar sync"""
     if not demon_tracker:
         raise HTTPException(status_code=500, detail="Demon Tracker not initialized")
     
-    result = await demon_tracker.run_full_sync()
+    result = await demon_tracker.autonomous_three_pillar_sync()
     return {"success": True, "result": result}
 
 @api_router.get("/demon-tracker/events")
@@ -632,17 +632,17 @@ async def get_event_odds(event_id: str):
 
 @api_router.get("/demon-tracker/props")
 async def get_processed_props(
-    event_id: Optional[str] = Query(None),
+    color: Optional[str] = Query(None, description="Filter by card color: green, yellow, red, standard"),
     bookmaker: Optional[str] = Query(None),
     market: Optional[str] = Query(None),
     demons_only: bool = Query(False)
 ):
-    """Get processed player props with filters"""
+    """Get processed demon cards with filters"""
     if not demon_tracker:
         raise HTTPException(status_code=500, detail="Demon Tracker not initialized")
     
-    props = await demon_tracker.get_processed_props(
-        event_id=event_id,
+    cards = await demon_tracker.get_demon_cards(
+        color=color,
         bookmaker=bookmaker,
         market=market,
         demons_only=demons_only
@@ -650,8 +650,8 @@ async def get_processed_props(
     
     return {
         "success": True,
-        "count": len(props),
-        "props": props
+        "count": len(cards),
+        "cards": cards
     }
 
 @api_router.get("/demon-tracker/demons")
@@ -660,20 +660,40 @@ async def get_demon_lines():
     if not demon_tracker:
         raise HTTPException(status_code=500, detail="Demon Tracker not initialized")
     
-    props = await demon_tracker.get_processed_props(demons_only=True)
-    
-    # Sort by L10 hit rate descending
-    sorted_props = sorted(
-        props,
-        key=lambda x: x.get("hit_rates", {}).get("l10", {}).get("hit_rate", 0),
-        reverse=True
-    )
+    cards = await demon_tracker.get_demon_cards(demons_only=True)
     
     return {
         "success": True,
-        "count": len(sorted_props),
-        "demons": sorted_props
+        "count": len(cards),
+        "demons": cards
     }
+
+@api_router.get("/demon-tracker/cards/green")
+async def get_green_cards():
+    """Get all GREEN demon cards (high hit rate >= 50%)"""
+    if not demon_tracker:
+        raise HTTPException(status_code=500, detail="Demon Tracker not initialized")
+    
+    cards = await demon_tracker.get_demon_cards(color="green")
+    return {"success": True, "count": len(cards), "cards": cards}
+
+@api_router.get("/demon-tracker/cards/yellow")
+async def get_yellow_cards():
+    """Get all YELLOW demon cards (injury/news warnings)"""
+    if not demon_tracker:
+        raise HTTPException(status_code=500, detail="Demon Tracker not initialized")
+    
+    cards = await demon_tracker.get_demon_cards(color="yellow")
+    return {"success": True, "count": len(cards), "cards": cards}
+
+@api_router.get("/demon-tracker/cards/red")
+async def get_red_cards():
+    """Get all RED demon cards (low hit rate < 30% or injured)"""
+    if not demon_tracker:
+        raise HTTPException(status_code=500, detail="Demon Tracker not initialized")
+    
+    cards = await demon_tracker.get_demon_cards(color="red")
+    return {"success": True, "count": len(cards), "cards": cards}
 
 @api_router.get("/demon-tracker/player/{player_name}")
 async def get_player_analysis(player_name: str, line: float = Query(20.0), market: str = Query("player_points")):
@@ -720,33 +740,43 @@ async def get_player_analysis(player_name: str, line: float = Query(20.0), marke
 @api_router.get("/demon-tracker/board")
 async def get_full_demon_board():
     """
-    Get the full Demon Tracker board for today
-    Returns all processed props grouped by event
+    Get the full Demon Board with color-coded cards
+    Green: High hit rate (>=50%)
+    Yellow: Injury/news warning
+    Red: Low hit rate (<30%) or injured OUT
     """
     if not demon_tracker:
         raise HTTPException(status_code=500, detail="Demon Tracker not initialized")
     
-    # Get all processed props
-    all_props = await demon_tracker.get_processed_props()
+    # Get all demon cards
+    all_cards = await demon_tracker.get_demon_cards()
     
-    # Filter out None props
-    all_props = [p for p in all_props if p is not None]
+    # Filter out None cards
+    all_cards = [c for c in all_cards if c is not None]
+    
+    # Count by color
+    color_counts = {
+        "green": sum(1 for c in all_cards if c and c.get("card_color") == "green"),
+        "yellow": sum(1 for c in all_cards if c and c.get("card_color") == "yellow"),
+        "red": sum(1 for c in all_cards if c and c.get("card_color") == "red"),
+        "standard": sum(1 for c in all_cards if c and c.get("card_color") == "standard")
+    }
     
     # Group by event
     events_map = {}
-    for prop in all_props:
-        if not prop:
+    for card in all_cards:
+        if not card:
             continue
-        event_id = prop.get("event_id", "unknown")
+        event_id = card.get("event_id", "unknown")
         if event_id not in events_map:
             events_map[event_id] = {
                 "event_id": event_id,
-                "home_team": prop.get("home_team"),
-                "away_team": prop.get("away_team"),
-                "commence_time": prop.get("commence_time"),
-                "props": []
+                "home_team": card.get("home_team"),
+                "away_team": card.get("away_team"),
+                "commence_time": card.get("commence_time"),
+                "cards": []
             }
-        events_map[event_id]["props"].append(prop)
+        events_map[event_id]["cards"].append(card)
     
     # Sort events by game time
     events_list = sorted(
@@ -754,17 +784,19 @@ async def get_full_demon_board():
         key=lambda x: x.get("commence_time") or ""
     )
     
-    # Count demons (safe null check)
+    # Count demons
     total_demons = sum(
-        1 for p in all_props 
-        if p and p.get("hit_rates") and p.get("hit_rates", {}).get("is_demon")
+        1 for c in all_cards 
+        if c and c.get("hit_rates") and c.get("hit_rates", {}).get("is_demon")
     )
     
     return {
         "success": True,
+        "sync_date": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
         "events_count": len(events_list),
-        "total_props": len(all_props),
+        "total_cards": len(all_cards),
         "total_demons": total_demons,
+        "card_colors": color_counts,
         "board": events_list
     }
 

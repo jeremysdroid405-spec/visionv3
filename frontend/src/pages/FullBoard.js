@@ -5,11 +5,47 @@ import { Card } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
 import { Input } from '../components/ui/input';
 import { Tabs, TabsList, TabsTrigger } from '../components/ui/tabs';
-import { Activity, Crown, TrendingUp, AlertCircle, RefreshCw, Search, Flame, Snowflake, Target, Zap, Database } from 'lucide-react';
+import { Activity, Crown, TrendingUp, AlertCircle, RefreshCw, Search, Flame, Snowflake, Target, Zap, Database, AlertTriangle, CheckCircle, XCircle } from 'lucide-react';
 import { toast } from 'sonner';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;
+
+// Card color styles
+const CARD_COLORS = {
+  green: {
+    bg: 'bg-green-900/20',
+    border: 'border-green-500/50',
+    glow: 'shadow-green-500/20',
+    badge: 'bg-green-600/30 text-green-400 border-green-500/50',
+    icon: CheckCircle,
+    label: 'HIGH HIT'
+  },
+  yellow: {
+    bg: 'bg-yellow-900/20',
+    border: 'border-yellow-500/50',
+    glow: 'shadow-yellow-500/20',
+    badge: 'bg-yellow-600/30 text-yellow-400 border-yellow-500/50',
+    icon: AlertTriangle,
+    label: 'CAUTION'
+  },
+  red: {
+    bg: 'bg-red-900/20',
+    border: 'border-red-500/50',
+    glow: 'shadow-red-500/20',
+    badge: 'bg-red-600/30 text-red-400 border-red-500/50',
+    icon: XCircle,
+    label: 'LOW/OUT'
+  },
+  standard: {
+    bg: 'bg-[#18181B]',
+    border: 'border-[#27272A]',
+    glow: '',
+    badge: 'bg-[#27272A] text-[#A1A1A9] border-[#3F3F46]',
+    icon: null,
+    label: ''
+  }
+};
 
 // Hit Rate Display Component
 const HitRateCell = ({ hitRates }) => {
@@ -24,62 +60,53 @@ const HitRateCell = ({ hitRates }) => {
   return (
     <div className="flex flex-col gap-0.5 text-xs font-mono">
       <div className="flex items-center gap-2">
-        <span className="text-[#A1A1A9] w-6">L5:</span>
-        <span className={l5.hit_rate >= 0.5 ? 'text-[#22c55e] font-bold' : 'text-white'}>
+        <span className="text-[#A1A1A9] w-8">L5:</span>
+        <span className={l5.hit_rate >= 0.5 ? 'text-green-400 font-bold' : 'text-white'}>
           {((l5.hit_rate || 0) * 100).toFixed(0)}%
         </span>
         <span className="text-[#52525B]">({l5.games_over || 0}/{l5.total_games || 0})</span>
       </div>
       <div className="flex items-center gap-2">
-        <span className="text-[#A1A1A9] w-6">L10:</span>
-        <span className={l10.hit_rate >= 0.5 ? 'text-[#22c55e] font-bold' : l10.hit_rate >= 0.4 ? 'text-purple-400 font-bold' : 'text-white'}>
+        <span className="text-[#A1A1A9] w-8">L10:</span>
+        <span className={l10.hit_rate >= 0.5 ? 'text-green-400 font-bold' : l10.hit_rate >= 0.4 ? 'text-purple-400 font-bold' : 'text-white'}>
           {((l10.hit_rate || 0) * 100).toFixed(0)}%
         </span>
         <span className="text-[#52525B]">({l10.games_over || 0}/{l10.total_games || 0})</span>
       </div>
       <div className="flex items-center gap-2">
-        <span className="text-[#A1A1A9] w-6">Avg:</span>
+        <span className="text-[#A1A1A9] w-8">Avg:</span>
         <span className="text-white">{(season.avg || 0).toFixed(1)}</span>
       </div>
     </div>
   );
 };
 
-// Trend Badge Component
-const TrendBadge = ({ trends, isDemon }) => {
-  if (isDemon) {
-    return (
-      <Badge className="bg-purple-600/30 text-purple-400 border-purple-600/50 text-xs animate-pulse">
-        <Zap className="w-3 h-3 mr-1" />
-        DEMON
-      </Badge>
-    );
-  }
+// Card Color Badge
+const CardColorBadge = ({ color }) => {
+  const style = CARD_COLORS[color] || CARD_COLORS.standard;
+  const Icon = style.icon;
   
-  if (!trends || trends.length === 0) return <span className="text-[#52525B]">-</span>;
+  if (!style.label) return null;
   
   return (
-    <div className="flex gap-1">
-      {trends.map((trend, idx) => {
-        if (trend === 'HOT') {
-          return (
-            <Badge key={idx} className="bg-[#22c55e]/20 text-[#22c55e] border-[#22c55e]/30 text-xs">
-              <Flame className="w-3 h-3 mr-1" />
-              HOT
-            </Badge>
-          );
-        }
-        if (trend === 'COLD') {
-          return (
-            <Badge key={idx} className="bg-[#ef4444]/20 text-[#ef4444] border-[#ef4444]/30 text-xs">
-              <Snowflake className="w-3 h-3 mr-1" />
-              COLD
-            </Badge>
-          );
-        }
-        return null;
-      })}
-    </div>
+    <Badge className={`${style.badge} text-xs`}>
+      {Icon && <Icon className="w-3 h-3 mr-1" />}
+      {style.label}
+    </Badge>
+  );
+};
+
+// Injury Warning Badge
+const InjuryBadge = ({ injuryStatus }) => {
+  if (!injuryStatus || injuryStatus.warning_level === 'none') return null;
+  
+  const isRed = injuryStatus.warning_level === 'red';
+  
+  return (
+    <Badge className={`text-xs ${isRed ? 'bg-red-600/30 text-red-400 border-red-500/50' : 'bg-yellow-600/30 text-yellow-400 border-yellow-500/50'}`}>
+      <AlertTriangle className="w-3 h-3 mr-1" />
+      {injuryStatus.status || 'WARNING'}
+    </Badge>
   );
 };
 
@@ -88,23 +115,31 @@ const MARKET_NAMES = {
   'player_points': 'PTS',
   'player_rebounds': 'REB',
   'player_assists': 'AST',
-  'player_threes': '3PM'
+  'player_threes': '3PM',
+  'player_blocks': 'BLK',
+  'player_steals': 'STL',
+  'player_turnovers': 'TO',
+  'player_points_rebounds': 'PTS+REB',
+  'player_points_assists': 'PTS+AST',
+  'player_rebounds_assists': 'REB+AST',
+  'player_points_rebounds_assists': 'PRA'
 };
 
 export const FullBoard = () => {
   const [board, setBoard] = useState([]);
-  const [demons, setDemons] = useState([]);
+  const [allCards, setAllCards] = useState([]);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [lastRefresh, setLastRefresh] = useState(new Date());
   const [isPro, setIsPro] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedMarket, setSelectedMarket] = useState('all');
+  const [selectedColor, setSelectedColor] = useState('all');
   const [selectedBookmaker, setSelectedBookmaker] = useState('all');
   const [syncStatus, setSyncStatus] = useState(null);
-  const [viewMode, setViewMode] = useState('board'); // 'board' or 'demons'
+  const [colorCounts, setColorCounts] = useState({ green: 0, yellow: 0, red: 0, standard: 0 });
 
-  // Fetch demon tracker status
+  // Fetch status
   const fetchStatus = useCallback(async () => {
     try {
       const response = await axios.get(`${API}/demon-tracker/status`);
@@ -116,15 +151,31 @@ export const FullBoard = () => {
     }
   }, []);
 
-  // Fetch full board
+  // Fetch board
   const fetchBoard = useCallback(async () => {
     try {
       setLoading(true);
       const response = await axios.get(`${API}/demon-tracker/board`);
       if (response.data.success) {
         setBoard(response.data.board || []);
+        setColorCounts(response.data.card_colors || {});
+        
+        // Flatten all cards
+        const cards = [];
+        (response.data.board || []).forEach(event => {
+          (event.cards || []).forEach(card => {
+            if (card) {
+              cards.push({
+                ...card,
+                eventHome: event.home_team,
+                eventAway: event.away_team
+              });
+            }
+          });
+        });
+        setAllCards(cards);
         setLastRefresh(new Date());
-        toast.success(`Loaded ${response.data.total_props} props, ${response.data.total_demons} demons`);
+        toast.success(`Loaded ${response.data.total_cards} cards (${response.data.card_colors?.green || 0} green, ${response.data.card_colors?.yellow || 0} yellow)`);
       }
     } catch (error) {
       console.error('Error fetching board:', error);
@@ -134,33 +185,19 @@ export const FullBoard = () => {
     }
   }, []);
 
-  // Fetch demons only
-  const fetchDemons = useCallback(async () => {
-    try {
-      const response = await axios.get(`${API}/demon-tracker/demons`);
-      if (response.data.success) {
-        setDemons(response.data.demons || []);
-      }
-    } catch (error) {
-      console.error('Error fetching demons:', error);
-    }
-  }, []);
-
-  // Trigger full sync
+  // Trigger sync
   const triggerSync = async () => {
     try {
       setSyncing(true);
-      toast.info('Starting three-way data sync...');
+      toast.info('Starting Three-Pillar Sync (Odds API + BDL + Tank01)...');
       
       const response = await axios.post(`${API}/demon-tracker/sync`);
       
       if (response.data.success) {
         const result = response.data.result;
-        toast.success(`Sync complete: ${result.processed_count} props, ${result.demon_count} demons found`);
+        toast.success(`Sync complete! ${result.demon_cards?.total || 0} cards generated`);
         
-        // Refresh data
         await fetchBoard();
-        await fetchDemons();
         await fetchStatus();
       }
     } catch (error) {
@@ -176,75 +213,59 @@ export const FullBoard = () => {
     const loadData = async () => {
       await fetchStatus();
       await fetchBoard();
-      await fetchDemons();
     };
     loadData();
 
-    // Auto-refresh every 5 minutes
     const interval = setInterval(() => {
       fetchBoard();
-      fetchDemons();
     }, 5 * 60 * 1000);
 
     return () => clearInterval(interval);
-  }, [fetchStatus, fetchBoard, fetchDemons]);
+  }, [fetchStatus, fetchBoard]);
 
-  // Filter props based on search and filters
-  const getFilteredProps = () => {
-    let allProps = [];
-    
-    if (viewMode === 'demons') {
-      allProps = demons;
-    } else {
-      board.forEach(event => {
-        (event.props || []).forEach(prop => {
-          if (prop) {
-            allProps.push({
-              ...prop,
-              eventHome: event.home_team,
-              eventAway: event.away_team
-            });
-          }
-        });
-      });
-    }
-
-    return allProps.filter(prop => {
-      if (!prop) return false;
+  // Filter cards
+  const getFilteredCards = () => {
+    return allCards.filter(card => {
+      if (!card) return false;
       
       // Search filter
       if (searchTerm) {
         const search = searchTerm.toLowerCase();
-        const playerName = (prop.player_name || '').toLowerCase();
-        const market = (prop.market || '').toLowerCase();
+        const playerName = (card.player_name || '').toLowerCase();
+        const market = (card.market || '').toLowerCase();
         if (!playerName.includes(search) && !market.includes(search)) {
           return false;
         }
       }
 
+      // Color filter
+      if (selectedColor !== 'all') {
+        if (card.card_color !== selectedColor) return false;
+      }
+
       // Market filter
       if (selectedMarket !== 'all') {
-        if (prop.market !== selectedMarket) return false;
+        if (card.market !== selectedMarket) return false;
       }
 
       // Bookmaker filter
       if (selectedBookmaker !== 'all') {
-        if (prop.bookmaker !== selectedBookmaker) return false;
+        if (card.bookmaker !== selectedBookmaker) return false;
       }
 
       return true;
     });
   };
 
-  const filteredProps = getFilteredProps();
+  const filteredCards = getFilteredCards();
 
-  if (loading && board.length === 0) {
+  if (loading && allCards.length === 0) {
     return (
       <div className="min-h-screen bg-[#09090B] flex items-center justify-center">
         <div className="text-center">
-          <Activity className="w-12 h-12 text-[#22c55e] mx-auto mb-4 animate-pulse" />
-          <p className="text-[#A1A1A9]">Loading Demon Tracker v2...</p>
-          <p className="text-[#52525B] text-sm mt-2">Syncing odds from DraftKings & FanDuel</p>
+          <Activity className="w-12 h-12 text-green-500 mx-auto mb-4 animate-pulse" />
+          <p className="text-[#A1A1A9]">Loading Three-Pillar Engine...</p>
+          <p className="text-[#52525B] text-sm mt-2">Syncing from Odds API + BallDontLie + Tank01</p>
         </div>
       </div>
     );
@@ -259,17 +280,20 @@ export const FullBoard = () => {
             <div className="flex items-center gap-3 mb-2">
               <Zap className="w-8 h-8 text-purple-500" />
               <h1 className="text-3xl md:text-4xl font-bold text-white tracking-tight" data-testid="dashboard-title">
-                DEMON TRACKER v2
+                DEMON TRACKER
               </h1>
+              <Badge className="bg-purple-600/30 text-purple-400 border-purple-500/50 text-xs">
+                THREE-PILLAR ENGINE
+              </Badge>
             </div>
             <p className="text-[#A1A1A9] text-sm">
-              Three-Way Sync: Odds API + BallDontLie + Tank01 | {board.length} events | {demons.length} demons
+              Odds API + BallDontLie + Tank01 | Season 2025-26 | {syncStatus?.events_cached || 0} events
             </p>
           </div>
 
           <div className="flex items-center gap-3 flex-wrap">
             <div className="flex items-center gap-2 bg-[#18181B] px-4 py-2 rounded-md border border-[#27272A]">
-              <div className="w-2 h-2 bg-[#22c55e] rounded-full animate-pulse"></div>
+              <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
               <span className="text-white text-sm font-medium">LIVE</span>
             </div>
             
@@ -277,14 +301,7 @@ export const FullBoard = () => {
               data-testid="tier-badge"
               className={isPro ? "bg-purple-600/20 text-purple-400 border-purple-600/30" : "bg-[#27272A] text-[#A1A1A9] border-[#3F3F46]"}
             >
-              {isPro ? (
-                <>
-                  <Crown className="w-3 h-3 mr-1" />
-                  PRO
-                </>
-              ) : (
-                'FREE'
-              )}
+              {isPro ? <><Crown className="w-3 h-3 mr-1" />PRO</> : 'FREE'}
             </Badge>
 
             <Button
@@ -300,7 +317,7 @@ export const FullBoard = () => {
             </Button>
 
             <Button
-              onClick={() => { fetchBoard(); fetchDemons(); }}
+              onClick={() => fetchBoard()}
               disabled={loading}
               variant="outline"
               size="sm"
@@ -322,43 +339,56 @@ export const FullBoard = () => {
           </div>
         </header>
 
-        {/* Sync Status Card */}
-        {syncStatus && (
-          <Card className="mb-6 bg-[#18181B] border-[#27272A] p-4">
-            <div className="flex items-center justify-between flex-wrap gap-4">
-              <div className="flex items-center gap-6 text-sm">
-                <span className="text-[#A1A1A9]">
-                  <Target className="w-4 h-4 inline mr-1 text-purple-400" />
-                  Events: <span className="text-white font-medium">{syncStatus.events_cached}</span>
-                </span>
-                <span className="text-[#A1A1A9]">
-                  <Database className="w-4 h-4 inline mr-1 text-[#22c55e]" />
-                  Props: <span className="text-white font-medium">{syncStatus.props_cached}</span>
-                </span>
-                <span className="text-[#A1A1A9]">
-                  <Zap className="w-4 h-4 inline mr-1 text-purple-400" />
-                  Demons: <span className="text-purple-400 font-bold">{syncStatus.demons_found}</span>
-                </span>
+        {/* Color-Coded Stats Bar */}
+        <Card className="mb-6 bg-[#18181B] border-[#27272A] p-4">
+          <div className="flex items-center justify-between flex-wrap gap-4">
+            <div className="flex items-center gap-6">
+              {/* Green Count */}
+              <div 
+                className="flex items-center gap-2 cursor-pointer hover:opacity-80"
+                onClick={() => setSelectedColor(selectedColor === 'green' ? 'all' : 'green')}
+              >
+                <div className="w-4 h-4 rounded-full bg-green-500"></div>
+                <span className="text-green-400 font-bold text-lg">{colorCounts.green || 0}</span>
+                <span className="text-[#A1A1A9] text-sm">Green (High)</span>
               </div>
-              <div className="text-xs text-[#52525B]">
-                Last sync: {syncStatus.last_sync ? new Date(syncStatus.last_sync).toLocaleTimeString() : 'Never'}
+              
+              {/* Yellow Count */}
+              <div 
+                className="flex items-center gap-2 cursor-pointer hover:opacity-80"
+                onClick={() => setSelectedColor(selectedColor === 'yellow' ? 'all' : 'yellow')}
+              >
+                <div className="w-4 h-4 rounded-full bg-yellow-500"></div>
+                <span className="text-yellow-400 font-bold text-lg">{colorCounts.yellow || 0}</span>
+                <span className="text-[#A1A1A9] text-sm">Yellow (Caution)</span>
+              </div>
+              
+              {/* Red Count */}
+              <div 
+                className="flex items-center gap-2 cursor-pointer hover:opacity-80"
+                onClick={() => setSelectedColor(selectedColor === 'red' ? 'all' : 'red')}
+              >
+                <div className="w-4 h-4 rounded-full bg-red-500"></div>
+                <span className="text-red-400 font-bold text-lg">{colorCounts.red || 0}</span>
+                <span className="text-[#A1A1A9] text-sm">Red (Low/Out)</span>
+              </div>
+              
+              {/* Standard Count */}
+              <div 
+                className="flex items-center gap-2 cursor-pointer hover:opacity-80"
+                onClick={() => setSelectedColor(selectedColor === 'standard' ? 'all' : 'standard')}
+              >
+                <div className="w-4 h-4 rounded-full bg-gray-500"></div>
+                <span className="text-gray-400 font-bold text-lg">{colorCounts.standard || 0}</span>
+                <span className="text-[#A1A1A9] text-sm">Standard</span>
               </div>
             </div>
-          </Card>
-        )}
-
-        {/* View Mode Tabs */}
-        <Tabs value={viewMode} onValueChange={setViewMode} className="mb-4">
-          <TabsList className="grid w-full max-w-md grid-cols-2 bg-[#18181B] border border-[#27272A]">
-            <TabsTrigger value="board" className="data-[state=active]:bg-[#22c55e] data-[state=active]:text-white" data-testid="tab-board">
-              Full Board
-            </TabsTrigger>
-            <TabsTrigger value="demons" className="data-[state=active]:bg-purple-600 data-[state=active]:text-white" data-testid="tab-demons">
-              <Zap className="w-4 h-4 mr-1" />
-              Demons Only ({demons.length})
-            </TabsTrigger>
-          </TabsList>
-        </Tabs>
+            
+            <div className="text-xs text-[#52525B]">
+              Last sync: {syncStatus?.last_sync ? new Date(syncStatus.last_sync).toLocaleTimeString() : 'Never'}
+            </div>
+          </div>
+        </Card>
 
         {/* Filters */}
         <div className="mb-6 flex flex-col md:flex-row gap-4">
@@ -372,6 +402,19 @@ export const FullBoard = () => {
               data-testid="search-input"
             />
           </div>
+
+          <select
+            value={selectedColor}
+            onChange={(e) => setSelectedColor(e.target.value)}
+            className="bg-[#18181B] border border-[#27272A] text-white px-4 py-2 rounded-md"
+            data-testid="color-filter"
+          >
+            <option value="all">All Colors</option>
+            <option value="green">🟢 Green (High)</option>
+            <option value="yellow">🟡 Yellow (Caution)</option>
+            <option value="red">🔴 Red (Low/Out)</option>
+            <option value="standard">⚪ Standard</option>
+          </select>
 
           <select
             value={selectedMarket}
@@ -401,67 +444,70 @@ export const FullBoard = () => {
         {/* Stats Info */}
         <div className="mb-4 flex items-center justify-between">
           <p className="text-[#A1A1A9] text-sm">
-            Last updated: {lastRefresh.toLocaleTimeString()} | Showing {filteredProps.length} props
+            Showing {filteredCards.length} of {allCards.length} cards | Last updated: {lastRefresh.toLocaleTimeString()}
           </p>
         </div>
 
-        {/* Props Table */}
+        {/* Cards Table */}
         <div className="overflow-x-auto rounded-lg border border-[#27272A]">
-          <table className="w-full border-collapse" data-testid="props-table">
+          <table className="w-full border-collapse" data-testid="cards-table">
             <thead>
               <tr className="border-b border-[#27272A] bg-[#18181B]/50">
+                <th className="text-left p-3 text-white font-semibold text-xs">STATUS</th>
                 <th className="text-left p-3 text-white font-semibold text-xs">PLAYER</th>
                 <th className="text-left p-3 text-white font-semibold text-xs">MATCHUP</th>
                 <th className="text-left p-3 text-white font-semibold text-xs">PROP</th>
                 <th className="text-center p-3 text-white font-semibold text-xs">LINE</th>
                 <th className="text-center p-3 text-white font-semibold text-xs">BOOK</th>
-                <th className="text-left p-3 text-white font-semibold text-xs">HIT RATE</th>
-                <th className="text-center p-3 text-white font-semibold text-xs">STATUS</th>
+                <th className="text-left p-3 text-white font-semibold text-xs">HIT RATE (L5/L10/AVG)</th>
+                <th className="text-center p-3 text-white font-semibold text-xs">INJURY</th>
                 {isPro && (
                   <th className="text-center p-3 text-white font-semibold text-xs">PRICE</th>
                 )}
               </tr>
             </thead>
             <tbody>
-              {filteredProps.length === 0 ? (
+              {filteredCards.length === 0 ? (
                 <tr>
-                  <td colSpan={isPro ? 8 : 7} className="p-8 text-center text-[#A1A1A9]">
-                    {syncing ? 'Syncing data...' : 'No props available. Click "Sync All" to fetch today\'s lines.'}
+                  <td colSpan={isPro ? 9 : 8} className="p-8 text-center text-[#A1A1A9]">
+                    {syncing ? 'Syncing data...' : 'No cards available. Click "Sync All" to fetch today\'s lines.'}
                   </td>
                 </tr>
               ) : (
-                filteredProps.map((prop, index) => {
-                  const hitRates = prop.hit_rates || {};
-                  const isDemon = hitRates.is_demon;
-                  const l10HitRate = hitRates.l10?.hit_rate || 0;
+                filteredCards.map((card, index) => {
+                  const hitRates = card.hit_rates || {};
+                  const cardColor = card.card_color || 'standard';
+                  const colorStyle = CARD_COLORS[cardColor] || CARD_COLORS.standard;
+                  const injuryStatus = card.injury_status || {};
 
                   return (
                     <tr
-                      key={`${prop.player_name}-${prop.market}-${prop.line}-${prop.bookmaker}-${index}`}
-                      className={`border-b border-[#27272A] hover:bg-[#18181B]/50 transition-colors ${
-                        isDemon ? 'bg-purple-900/10 border-l-2 border-l-purple-500' : ''
-                      }`}
-                      data-testid={`prop-row-${index}`}
+                      key={`${card.player_name}-${card.market}-${card.line}-${card.bookmaker}-${index}`}
+                      className={`border-b border-[#27272A] hover:bg-[#18181B]/50 transition-colors ${colorStyle.bg} ${colorStyle.border ? `border-l-4 ${colorStyle.border}` : ''}`}
+                      data-testid={`card-row-${index}`}
                     >
                       <td className="p-3">
-                        <div className="font-medium text-white">{prop.player_name}</div>
-                        <div className="text-xs text-[#52525B]">{prop.bdl_team || ''}</div>
+                        <CardColorBadge color={cardColor} />
+                      </td>
+                      <td className="p-3">
+                        <div className="font-medium text-white">{card.player_name}</div>
+                        <div className="text-xs text-[#52525B]">{card.bdl_team || ''} • {card.position || ''}</div>
                       </td>
                       <td className="p-3">
                         <div className="text-xs text-[#A1A1A9]">
-                          {prop.away_team || prop.eventAway} @ {prop.home_team || prop.eventHome}
+                          {card.away_team || card.eventAway} @ {card.home_team || card.eventHome}
                         </div>
                       </td>
                       <td className="p-3">
                         <Badge variant="outline" className="bg-[#27272A] text-[#A1A1A9] border-[#3F3F46] text-xs font-mono">
-                          {MARKET_NAMES[prop.market] || prop.market}
+                          {MARKET_NAMES[card.market] || card.market}
                         </Badge>
                       </td>
                       <td className="p-3 text-center">
                         <div className="flex flex-col items-center">
-                          <span className="font-mono text-white font-bold">{prop.line}</span>
-                          <span className={`text-xs ${prop.direction === 'Over' ? 'text-[#22c55e]' : 'text-[#ef4444]'}`}>
-                            {prop.direction}
+                          <span className="font-mono text-white font-bold">{card.line}</span>
+                          <span className={`text-xs ${card.direction === 'Over' ? 'text-green-400' : 'text-red-400'}`}>
+                            {card.direction}
                           </span>
                         </div>
                       </td>
@@ -469,24 +515,24 @@ export const FullBoard = () => {
                         <Badge 
                           variant="outline" 
                           className={`text-xs ${
-                            prop.bookmaker === 'draftkings' 
+                            card.bookmaker === 'draftkings' 
                               ? 'bg-green-900/20 text-green-400 border-green-600/30' 
                               : 'bg-blue-900/20 text-blue-400 border-blue-600/30'
                           }`}
                         >
-                          {prop.bookmaker === 'draftkings' ? 'DK' : 'FD'}
+                          {card.bookmaker === 'draftkings' ? 'DK' : 'FD'}
                         </Badge>
                       </td>
                       <td className="p-3">
                         <HitRateCell hitRates={hitRates} />
                       </td>
                       <td className="p-3 text-center">
-                        <TrendBadge trends={hitRates.trends} isDemon={isDemon} />
+                        <InjuryBadge injuryStatus={injuryStatus} />
                       </td>
                       {isPro && (
                         <td className="p-3 text-center">
-                          <span className={`font-mono text-sm ${prop.price > 0 ? 'text-[#22c55e]' : 'text-[#ef4444]'}`}>
-                            {prop.price > 0 ? '+' : ''}{prop.price}
+                          <span className={`font-mono text-sm ${card.price > 0 ? 'text-green-400' : 'text-red-400'}`}>
+                            {card.price > 0 ? '+' : ''}{card.price}
                           </span>
                         </td>
                       )}
@@ -498,17 +544,36 @@ export const FullBoard = () => {
           </table>
         </div>
 
-        {/* Pro Tier CTA */}
-        {!isPro && (
-          <div className="mt-6 text-center">
-            <Card className="inline-flex items-center gap-2 bg-[#18181B] px-4 py-2 border-[#27272A]">
-              <AlertCircle className="w-4 h-4 text-purple-400" />
-              <span className="text-[#A1A1A9] text-sm">
-                Odds prices and advanced analytics are hidden on the free tier
-              </span>
-            </Card>
-          </div>
-        )}
+        {/* Legend */}
+        <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-4">
+          <Card className="bg-green-900/10 border-green-500/30 p-4">
+            <div className="flex items-center gap-3">
+              <CheckCircle className="w-6 h-6 text-green-400" />
+              <div>
+                <h3 className="text-green-400 font-semibold">GREEN - High Hit Rate</h3>
+                <p className="text-xs text-[#A1A1A9]">L10 hit rate ≥ 50% - Strong plays</p>
+              </div>
+            </div>
+          </Card>
+          <Card className="bg-yellow-900/10 border-yellow-500/30 p-4">
+            <div className="flex items-center gap-3">
+              <AlertTriangle className="w-6 h-6 text-yellow-400" />
+              <div>
+                <h3 className="text-yellow-400 font-semibold">YELLOW - Caution</h3>
+                <p className="text-xs text-[#A1A1A9]">Injury/news warning - Check status</p>
+              </div>
+            </div>
+          </Card>
+          <Card className="bg-red-900/10 border-red-500/30 p-4">
+            <div className="flex items-center gap-3">
+              <XCircle className="w-6 h-6 text-red-400" />
+              <div>
+                <h3 className="text-red-400 font-semibold">RED - Avoid</h3>
+                <p className="text-xs text-[#A1A1A9]">L10 hit rate &lt; 30% or player OUT</p>
+              </div>
+            </div>
+          </Card>
+        </div>
       </div>
     </div>
   );
