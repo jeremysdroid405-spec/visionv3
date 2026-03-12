@@ -146,6 +146,31 @@ Build a high-performance NBA Player Prop Dashboard that identifies "Demons" (har
 
 ---
 
+## NBA Player Headshots - IMPLEMENTED (March 12, 2026)
+
+### Implementation ✅
+- **NBA CDN URL**: `https://cdn.nba.com/headshots/nba/latest/1040x760/{nba_id}.png`
+- **ID Mapping**: 100+ top NBA players mapped to official NBA IDs
+- **Lazy Loading**: Images loaded on-demand with `loading="lazy"`
+- **Fallback**: User icon displayed when no NBA ID or image fails
+
+### PlayerHeadshot Component
+- **Sizes**: sm (32px), md (48px), lg (64px), xl (96px)
+- **Styling**: Circular mask, zoom to focus on face
+- **Locations**: TrendingCard, PlayerRow, PlayerDetailPage header
+
+### Mapped Players Include
+- Shai Gilgeous-Alexander (1628983)
+- Nikola Jokic (203999)
+- Luka Doncic (1629029)
+- Victor Wembanyama (1641705)
+- Cade Cunningham (1630595)
+- And 95+ more...
+
+**Note**: Headshots will display once Odds API data is available (API quota was exceeded during testing)
+
+---
+
 ## API Endpoints
 
 ### v3 Endpoints

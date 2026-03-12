@@ -14,6 +14,73 @@ import { toast } from 'sonner';
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;
 
+// NBA CDN headshot URL
+const NBA_HEADSHOT_URL = (nbaId) => `https://cdn.nba.com/headshots/nba/latest/1040x760/${nbaId}.png`;
+
+// ==================== PLAYER HEADSHOT COMPONENT ====================
+
+const PlayerHeadshot = memo(({ nbaId, playerName, size = 'md', className = '' }) => {
+  const [loaded, setLoaded] = useState(false);
+  const [error, setError] = useState(false);
+  
+  // Size classes
+  const sizeClasses = {
+    sm: 'w-8 h-8',
+    md: 'w-12 h-12',
+    lg: 'w-16 h-16',
+    xl: 'w-24 h-24',
+  };
+  
+  const sizeClass = sizeClasses[size] || sizeClasses.md;
+  
+  // If no NBA ID, show fallback
+  if (!nbaId || error) {
+    return (
+      <div 
+        className={`
+          ${sizeClass} rounded-full bg-gradient-to-br from-zinc-700 to-zinc-800 
+          flex items-center justify-center flex-shrink-0 ${className}
+        `}
+        title={playerName}
+      >
+        <User className={`${size === 'sm' ? 'w-4 h-4' : size === 'lg' ? 'w-8 h-8' : 'w-6 h-6'} text-zinc-500`} />
+      </div>
+    );
+  }
+  
+  return (
+    <div 
+      className={`
+        ${sizeClass} rounded-full overflow-hidden flex-shrink-0 
+        bg-gradient-to-br from-zinc-700 to-zinc-800 ${className}
+      `}
+      title={playerName}
+    >
+      {!loaded && (
+        <div className={`${sizeClass} animate-pulse bg-zinc-700 rounded-full`} />
+      )}
+      <img
+        src={NBA_HEADSHOT_URL(nbaId)}
+        alt={playerName}
+        loading="lazy"
+        onLoad={() => setLoaded(true)}
+        onError={() => setError(true)}
+        className={`
+          w-full h-full object-cover object-top
+          ${loaded ? 'opacity-100' : 'opacity-0'}
+          transition-opacity duration-300
+        `}
+        style={{ 
+          objectPosition: 'center 20%',
+          transform: 'scale(1.3)'  // Zoom in for face focus
+        }}
+      />
+    </div>
+  );
+});
+
+PlayerHeadshot.displayName = 'PlayerHeadshot';
+
 // Cache keys
 const CACHE_KEYS = {
   STATIC_SHELL: 'dg_static_shell',
@@ -163,7 +230,7 @@ const PropRow = memo(({ prop, compact = false }) => {
 
 PropRow.displayName = 'PropRow';
 
-// ==================== TRENDING CARD (Clickable) ====================
+// ==================== TRENDING CARD (Clickable with Headshot) ====================
 
 const TrendingCard = memo(({ player, rank, onClick, linesLoaded }) => {
   const hasInjury = player.injury_info?.has_injury;
@@ -180,16 +247,27 @@ const TrendingCard = memo(({ player, rank, onClick, linesLoaded }) => {
       data-testid={`trending-card-${rank}`}
     >
       <div className="p-3">
-        {/* Header: Rank + Name */}
+        {/* Header: Headshot + Rank Badge + Name */}
         <div className="flex items-center gap-2 mb-2">
-          <div className={`
-            w-6 h-6 rounded-full flex items-center justify-center font-bold text-xs
-            ${rank === 1 ? 'bg-yellow-500 text-black' : 
-              rank === 2 ? 'bg-zinc-400 text-black' :
-              rank === 3 ? 'bg-amber-700 text-white' :
-              'bg-zinc-700 text-zinc-300'}
-          `}>
-            {rank}
+          {/* Headshot with Rank Badge */}
+          <div className="relative">
+            <PlayerHeadshot 
+              nbaId={player.nba_id} 
+              playerName={player.player_name} 
+              size="md"
+              className="ring-2 ring-zinc-700"
+            />
+            {/* Rank Badge - Positioned at bottom right of headshot */}
+            <div className={`
+              absolute -bottom-1 -right-1 w-5 h-5 rounded-full flex items-center justify-center 
+              font-bold text-[10px] border-2 border-zinc-900
+              ${rank === 1 ? 'bg-yellow-500 text-black' : 
+                rank === 2 ? 'bg-zinc-400 text-black' :
+                rank === 3 ? 'bg-amber-700 text-white' :
+                'bg-zinc-700 text-zinc-300'}
+            `}>
+              {rank}
+            </div>
           </div>
           
           <div className="min-w-0 flex-1">
@@ -616,7 +694,7 @@ const PlayerDetailPage = ({ playerName, onBack }) => {
   
   return (
     <div className="min-h-screen bg-zinc-950">
-      {/* Header */}
+      {/* Header with Large Headshot */}
       <div className="sticky top-0 z-10 bg-zinc-950/95 backdrop-blur border-b border-zinc-800 px-3 py-3">
         <div className="flex items-center gap-3">
           <Button
@@ -628,6 +706,16 @@ const PlayerDetailPage = ({ playerName, onBack }) => {
           >
             <ArrowLeft className="w-5 h-5" />
           </Button>
+          
+          {/* Large Headshot */}
+          {player && (
+            <PlayerHeadshot 
+              nbaId={player.nba_id} 
+              playerName={playerName} 
+              size="lg"
+              className="ring-2 ring-purple-500/50"
+            />
+          )}
           
           <div className="flex-1 min-w-0">
             <h1 className="text-lg font-bold text-white truncate">{playerName}</h1>
@@ -725,7 +813,7 @@ const PlayerDetailPage = ({ playerName, onBack }) => {
   );
 };
 
-// ==================== PLAYER ROW (List View) ====================
+// ==================== PLAYER ROW (List View with Headshot) ====================
 
 const PlayerRow = memo(({ player, isExpanded, onToggle, onClick, linesLoaded }) => {
   const hasInjury = player.injury_info?.warning_level && player.injury_info.warning_level !== 'none';
@@ -749,10 +837,13 @@ const PlayerRow = memo(({ player, isExpanded, onToggle, onClick, linesLoaded }) 
         onClick={onClick || onToggle}
         data-testid={`player-row-${player.player_name}`}
       >
-        <div className="flex items-center gap-2 min-w-0 flex-1">
-          <div className="text-zinc-600">
-            {isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
-          </div>
+        <div className="flex items-center gap-2.5 min-w-0 flex-1">
+          {/* Small Headshot */}
+          <PlayerHeadshot 
+            nbaId={player.nba_id} 
+            playerName={player.player_name} 
+            size="sm"
+          />
           
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-1.5">

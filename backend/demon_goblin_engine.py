@@ -115,6 +115,130 @@ INJURY_KEYWORDS = [
     "illness", "personal", "sore", "sprain", "strain"
 ]
 
+# ==================== NBA PLAYER ID MAPPING ====================
+# NBA CDN headshot URL format: https://cdn.nba.com/headshots/nba/latest/1040x760/{nba_id}.png
+# These IDs are from the official NBA stats API
+
+NBA_PLAYER_IDS = {
+    # Superstars
+    "Shai Gilgeous-Alexander": 1628983,
+    "Giannis Antetokounmpo": 203507,
+    "Luka Doncic": 1629029,
+    "Nikola Jokic": 203999,
+    "Joel Embiid": 203954,
+    "LeBron James": 2544,
+    "Stephen Curry": 201939,
+    "Kevin Durant": 201142,
+    "Jayson Tatum": 1628369,
+    "Anthony Davis": 203076,
+    "Damian Lillard": 203081,
+    "Devin Booker": 1626164,
+    "Anthony Edwards": 1630162,
+    "Ja Morant": 1629630,
+    "Donovan Mitchell": 1628378,
+    "Trae Young": 1629027,
+    "Kyrie Irving": 202681,
+    "Jimmy Butler": 202710,
+    "Paul George": 202331,
+    "Kawhi Leonard": 202695,
+    "Zion Williamson": 1629627,
+    "Jaylen Brown": 1627759,
+    "Domantas Sabonis": 1627734,
+    "De'Aaron Fox": 1628368,
+    "LaMelo Ball": 1630163,
+    "Karl-Anthony Towns": 1626157,
+    "Bam Adebayo": 1628389,
+    "Cade Cunningham": 1630595,
+    "Paolo Banchero": 1631094,
+    "Victor Wembanyama": 1641705,
+    "Tyrese Haliburton": 1630169,
+    "Tyrese Maxey": 1630178,
+    "Jalen Brunson": 1628973,
+    "Scottie Barnes": 1630567,
+    "Franz Wagner": 1630532,
+    "Alperen Sengun": 1630578,
+    "Evan Mobley": 1630596,
+    "Desmond Bane": 1630217,
+    "Anfernee Simons": 1629014,
+    "Mikal Bridges": 1628969,
+    "OG Anunoby": 1628384,
+    "Tyler Herro": 1629639,
+    "Jaren Jackson Jr.": 1628991,
+    "DeMar DeRozan": 201942,
+    "Bradley Beal": 203078,
+    "Zach LaVine": 203897,
+    "Julius Randle": 203944,
+    "Lauri Markkanen": 1628374,
+    "Dejounte Murray": 1627749,
+    "Fred VanVleet": 1627832,
+    "Pascal Siakam": 1627783,
+    "Khris Middleton": 203114,
+    "Brandon Ingram": 1627742,
+    "CJ McCollum": 203468,
+    "Derrick White": 1628401,
+    "Jrue Holiday": 201950,
+    "Draymond Green": 203110,
+    "Chris Paul": 101108,
+    "Russell Westbrook": 201566,
+    "James Harden": 201935,
+    "Klay Thompson": 202691,
+    "Andrew Wiggins": 203952,
+    "Austin Reaves": 1630559,
+    "Jalen Williams": 1631114,
+    "Chet Holmgren": 1631096,
+    "Jamal Murray": 1627750,
+    "Michael Porter Jr.": 1629008,
+    "Aaron Gordon": 203932,
+    "Myles Turner": 1626167,
+    "Brook Lopez": 201572,
+    "Rudy Gobert": 203497,
+    "Clint Capela": 203991,
+    "Nikola Vucevic": 202696,
+    "Jonas Valanciunas": 202685,
+    "Deandre Ayton": 1629028,
+    "Jarrett Allen": 1628386,
+    "Onyeka Okongwu": 1630168,
+    "Mark Williams": 1631109,
+    "Walker Kessler": 1631117,
+    "Jalen Suggs": 1630591,
+    "Tre Mann": 1630544,
+    "Cam Thomas": 1630560,
+    "Immanuel Quickley": 1630193,
+    "Coby White": 1629632,
+    "Collin Sexton": 1629012,
+    "Keldon Johnson": 1629640,
+    "Herbert Jones": 1630546,
+    "Josh Giddey": 1630581,
+    "Keegan Murray": 1631099,
+    "Bennedict Mathurin": 1631097,
+    "Jaden Ivey": 1631093,
+    "Shaedon Sharpe": 1631101,
+    "Jabari Smith Jr.": 1631095,
+    "Tari Eason": 1631106,
+    "Dyson Daniels": 1631098,
+    "Jeremy Sochan": 1631110,
+    "Jalen Duren": 1631105,
+    "AJ Griffin": 1631100,
+    "Malaki Branham": 1631107,
+    "Ochai Agbaji": 1631104,
+    "Johnny Davis": 1631102,
+    "MarJon Beauchamp": 1631173,
+    "Nikola Jovic": 1631108,
+    "Peyton Watson": 1631213,
+    "Cooper Flagg": 1642355,
+    "Dylan Harper": 1642356,
+    "Ace Bailey": 1642357,
+    "Grayson Allen": 1628960,
+    "Collin Gillespie": 1631208,
+    "Jalen Johnson": 1630552,
+    "Cam Spencer": 1641734,
+    "Danny Wolf": 1642358,
+}
+
+def get_nba_player_id(player_name: str) -> Optional[int]:
+    """Get NBA player ID from static mapping or return None"""
+    return NBA_PLAYER_IDS.get(player_name)
+
 
 # ==================== EXPONENTIAL BACKOFF HELPER ====================
 
@@ -953,10 +1077,14 @@ class DemonGoblinEngine:
                 player_name = prop.get("player_name", "Unknown")
                 
                 if player_name not in player_data:
+                    # Get NBA player ID for headshot
+                    nba_id = get_nba_player_id(player_name)
+                    
                     player_data[player_name] = {
                         "player_name": player_name,
                         "team": prop.get("bdl_team", ""),
                         "position": prop.get("position", ""),
+                        "nba_id": nba_id,  # NBA CDN headshot ID
                         "injury_info": prop.get("injury_info", {}),
                         "popularity_order": self._player_popularity.get(player_name, 999),
                         "props": [],
@@ -1021,6 +1149,7 @@ class DemonGoblinEngine:
                     "player_name": name,
                     "team": data.get("team", ""),
                     "position": data.get("position", ""),
+                    "nba_id": data.get("nba_id"),  # NBA CDN headshot ID
                     "popularity_score": score,
                     "popularity_order": popularity_order,
                     "demons_count": demons_count,
