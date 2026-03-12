@@ -13,6 +13,10 @@ Classification (PrizePicks Native):
 - Goblin (Green): Default odds lines - easier, high-probability props
 - Demon (Red): Even odds (+100) lines - harder, boosted props
 
+Hybrid Caching Strategy:
+1. STATIC SHELL (24h cache): Player metadata, teams, positions, historical stats
+2. DYNAMIC PULSE (60s cache): Betting lines only (price, point, demon/goblin tags)
+
 Triple-Pillar Integration:
 1. The Odds API (us_dfs/prizepicks) - All PrizePicks lines
 2. BallDontLie API - Player stats for hit rate calculation
@@ -42,6 +46,11 @@ TANK01_API_KEY = os.environ.get("TANK01_API_KEY", "402edbcac6mshd04997e7ca01d17p
 TANK01_BASE = "https://tank01-nba-live-in-game-real-time-statistics-nba.p.rapidapi.com"
 
 CURRENT_SEASON = "2025"  # 2025-26 NBA Season
+
+# ==================== CACHE TTL CONFIGURATION ====================
+STATIC_CACHE_TTL = timedelta(hours=24)  # Player metadata, stats - refresh at 4 AM
+DYNAMIC_CACHE_TTL = timedelta(seconds=60)  # Betting lines only - live data
+STATS_CACHE_TTL = timedelta(hours=4)  # BDL stats cache
 
 # PrizePicks-Specific Configuration
 PRIZEPICKS_REGION = "us_dfs"  # Daily Fantasy Sports region - REQUIRED for PrizePicks
@@ -93,10 +102,9 @@ class DemonGoblinEngine:
     """
     The Demon & Goblin Analytics Engine - PrizePicks Edition
     
-    Fetches data from The Odds API using:
-    - Region: us_dfs (Daily Fantasy Sports)
-    - Bookmaker: prizepicks
-    - Markets: *_alternate (where Demons and Goblins live)
+    Hybrid Caching Strategy:
+    - STATIC SHELL (24h): Player metadata, teams, positions, historical stats
+    - DYNAMIC PULSE (60s): Betting lines only (price, point, demon/goblin tags)
     
     Classification (PrizePicks Native):
     - Demons (Red): Even odds (+100) - Boosted/harder props
@@ -115,16 +123,21 @@ class DemonGoblinEngine:
         self.player_data = db.dg_player_data
         self.stats_cache = db.dg_stats_cache
         self.sync_log = db.dg_sync_log
-        self.trending_cache = db.dg_trending  # NEW: Trending players cache
-        self.line_history = db.dg_line_history  # NEW: Line movement tracking
+        self.trending_cache = db.dg_trending
+        self.line_history = db.dg_line_history
+        
+        # NEW: Hybrid caching collections
+        self.static_shell_cache = db.dg_static_shell  # 24h cache for player metadata
+        self.dynamic_lines_cache = db.dg_dynamic_lines  # 60s cache for live lines
         
         # In-memory caches
         self._player_name_map: Dict[str, Any] = {}
         self._injury_data: Dict[str, Any] = {}
         self._news_data: List[Dict] = []
         self._last_sync: Optional[datetime] = None
+        self._last_lines_fetch: Optional[datetime] = None
         self._current_date: Optional[str] = None
-        self._player_popularity: Dict[str, int] = {}  # Track API order for popularity
+        self._player_popularity: Dict[str, int] = {}
     
     def get_current_date(self) -> str:
         """Auto-derive today's date from system clock"""
@@ -895,6 +908,10 @@ class DemonGoblinEngine:
             if player_data:
                 await self.player_data.insert_many(list(player_data.values()))
             
+            # ===== STORE STATIC SHELL CACHE =====
+            logger.info("\n[CACHE] Storing static shell (24h TTL)...")
+            await self.store_static_shell(list(player_data.values()), trending_10)
+            
             # Log sync result
             await self.sync_log.insert_one({
                 "sync_date": self._current_date,
@@ -1110,3 +1127,253 @@ PILLAR 3 - TANK01:
                 enriched.append(t)
         
         return enriched
+
+    
+    # ==================== HYBRID CACHING LAYER ====================
+    
+    async def get_static_shell(self) -> Dict[str, Any]:
+        """
+        Get cached STATIC SHELL data (24h TTL)
+        Contains: Player metadata, teams, positions, historical stats (L5, L10, Season)
+        Does NOT contain: Live betting lines
+        """
+        # Check if we have valid cached data
+        cached = await self.static_shell_cache.find_one({"type": "shell"}, {"_id": 0})
+        
+        if cached:
+            cached_time = datetime.fromisoformat(cached["cached_at"])
+            age = datetime.now(timezone.utc) - cached_time
+            
+            if age < STATIC_CACHE_TTL:
+                logger.info(f"[CACHE HIT] Static shell (age: {age.total_seconds():.0f}s)")
+                return {
+                    "cache_hit": True,
+                    "cache_age_seconds": age.total_seconds(),
+                    "players": cached.get("players", []),
+                    "trending": cached.get("trending", []),
+                    "sync_date": cached.get("sync_date"),
+                    "stats_version": cached.get("stats_version")
+                }
+        
+        # Cache miss - need full sync
+        logger.info("[CACHE MISS] Static shell expired or not found")
+        return {"cache_hit": False, "players": [], "trending": []}
+    
+    async def store_static_shell(self, players: List[Dict], trending: List[Dict]):
+        """
+        Store STATIC SHELL data with 24h TTL
+        Strips out live betting lines, keeps only metadata and historical stats
+        """
+        # Extract static data only (no live lines)
+        static_players = []
+        for p in players:
+            static_player = {
+                "player_name": p.get("player_name"),
+                "team": p.get("team"),
+                "position": p.get("position"),
+                "injury_info": p.get("injury_info"),
+                "popularity_order": p.get("popularity_order"),
+                # Historical stats only (these don't change intra-day)
+                "stats_summary": self._extract_stats_summary(p.get("props", []))
+            }
+            static_players.append(static_player)
+        
+        # Clean trending data (remove any _id fields)
+        clean_trending = []
+        for t in trending:
+            clean_t = {k: v for k, v in t.items() if k != '_id'}
+            clean_trending.append(clean_t)
+        
+        # Store with timestamp
+        await self.static_shell_cache.update_one(
+            {"type": "shell"},
+            {"$set": {
+                "type": "shell",
+                "players": static_players,
+                "trending": clean_trending,
+                "sync_date": self.get_current_date(),
+                "stats_version": datetime.now(timezone.utc).strftime("%Y%m%d"),
+                "cached_at": datetime.now(timezone.utc).isoformat()
+            }},
+            upsert=True
+        )
+        logger.info(f"[CACHE STORE] Static shell saved ({len(static_players)} players)")
+    
+    def _extract_stats_summary(self, props: List[Dict]) -> Dict[str, Any]:
+        """Extract aggregated stats summary from props for caching"""
+        if not props:
+            return {}
+        
+        # Get unique market stats
+        stats = {}
+        for prop in props:
+            market = prop.get("market", "").replace("_alternate", "")
+            hit_rates = prop.get("hit_rates") or {}
+            
+            if market and hit_rates and market not in stats:
+                stats[market] = {
+                    "l5": hit_rates.get("l5"),
+                    "l10": hit_rates.get("l10"),
+                    "season": hit_rates.get("season"),
+                    "trends": hit_rates.get("trends", [])
+                }
+        
+        return stats
+    
+    async def get_live_lines(self) -> Dict[str, Any]:
+        """
+        Get DYNAMIC PULSE data (60s TTL)
+        Contains ONLY: Live betting lines (price, point, demon/goblin tags)
+        This is the lightweight endpoint for real-time updates
+        """
+        # Check dynamic cache
+        cached = await self.dynamic_lines_cache.find_one({"type": "lines"}, {"_id": 0})
+        
+        if cached:
+            cached_time = datetime.fromisoformat(cached["cached_at"])
+            age = datetime.now(timezone.utc) - cached_time
+            
+            if age < DYNAMIC_CACHE_TTL:
+                logger.info(f"[CACHE HIT] Dynamic lines (age: {age.total_seconds():.0f}s)")
+                return {
+                    "cache_hit": True,
+                    "cache_age_seconds": age.total_seconds(),
+                    "lines": cached.get("lines", {}),
+                    "last_update": cached.get("cached_at")
+                }
+        
+        # Cache miss - fetch fresh lines
+        logger.info("[CACHE MISS] Dynamic lines - fetching fresh data")
+        lines = await self._fetch_fresh_lines()
+        
+        # Store in cache
+        await self.dynamic_lines_cache.update_one(
+            {"type": "lines"},
+            {"$set": {
+                "type": "lines",
+                "lines": lines,
+                "cached_at": datetime.now(timezone.utc).isoformat()
+            }},
+            upsert=True
+        )
+        
+        return {
+            "cache_hit": False,
+            "cache_age_seconds": 0,
+            "lines": lines,
+            "last_update": datetime.now(timezone.utc).isoformat()
+        }
+    
+    async def _fetch_fresh_lines(self) -> Dict[str, List[Dict]]:
+        """
+        Fetch ONLY live betting lines (lightweight)
+        Returns: {player_name: [{market, line, price, is_demon, is_goblin}, ...]}
+        """
+        lines_by_player = {}
+        
+        try:
+            # Get events
+            events = await self.fetch_todays_events()
+            
+            for event in events[:10]:  # Limit to 10 events for speed
+                event_id = event.get("id")
+                if not event_id:
+                    continue
+                
+                # Fetch PrizePicks lines only
+                url = f"{ODDS_API_BASE}/sports/basketball_nba/events/{event_id}/odds"
+                params = {
+                    "apiKey": ODDS_API_KEY,
+                    "regions": PRIZEPICKS_REGION,
+                    "markets": PRIZEPICKS_MARKETS,
+                    "bookmakers": PRIZEPICKS_BOOKMAKER,
+                    "oddsFormat": "american"
+                }
+                
+                async with httpx.AsyncClient() as client:
+                    response = await client.get(url, params=params, timeout=15.0)
+                    
+                    if response.status_code == 200:
+                        data = response.json()
+                        
+                        for bm in data.get("bookmakers", []):
+                            if bm.get("key") != "prizepicks":
+                                continue
+                            
+                            for market in bm.get("markets", []):
+                                market_key = market.get("key", "")
+                                if "_alternate" not in market_key:
+                                    continue
+                                
+                                for outcome in market.get("outcomes", []):
+                                    player_name = outcome.get("description", "")
+                                    if not player_name:
+                                        continue
+                                    
+                                    line_data = {
+                                        "market": market_key,
+                                        "direction": outcome.get("name"),
+                                        "line": outcome.get("point"),
+                                        "price": outcome.get("price"),
+                                        "is_demon": outcome.get("price") == DEMON_ODDS,
+                                        "is_goblin": outcome.get("price") is not None and outcome.get("price") < GOBLIN_ODDS_THRESHOLD
+                                    }
+                                    
+                                    if player_name not in lines_by_player:
+                                        lines_by_player[player_name] = []
+                                    lines_by_player[player_name].append(line_data)
+                
+                await asyncio.sleep(0.2)  # Rate limiting
+                
+        except Exception as e:
+            logger.error(f"[LINES FETCH] Error: {e}")
+        
+        return lines_by_player
+    
+    async def get_hydrated_board(self) -> Dict[str, Any]:
+        """
+        Get board with hybrid caching:
+        1. First load static shell (instant)
+        2. Then hydrate with live lines (background)
+        """
+        # Get static shell first
+        static = await self.get_static_shell()
+        
+        if not static.get("cache_hit"):
+            # No cached data - need full sync
+            return {
+                "needs_sync": True,
+                "players": [],
+                "trending": []
+            }
+        
+        # Get live lines
+        lines_data = await self.get_live_lines()
+        lines = lines_data.get("lines", {})
+        
+        # Hydrate static players with live lines
+        hydrated_players = []
+        for player in static.get("players", []):
+            player_name = player.get("player_name")
+            player_lines = lines.get(player_name, [])
+            
+            # Count demons and goblins from live lines
+            demons_count = sum(1 for l in player_lines if l.get("is_demon"))
+            goblins_count = sum(1 for l in player_lines if l.get("is_goblin"))
+            
+            hydrated_players.append({
+                **player,
+                "props": player_lines,
+                "demons_count": demons_count,
+                "goblins_count": goblins_count,
+                "lines_loaded": len(player_lines) > 0
+            })
+        
+        return {
+            "needs_sync": False,
+            "static_cache_age": static.get("cache_age_seconds"),
+            "lines_cache_age": lines_data.get("cache_age_seconds"),
+            "players": hydrated_players,
+            "trending": static.get("trending", []),
+            "sync_date": static.get("sync_date")
+        }

@@ -989,6 +989,101 @@ async def get_trending_10():
         "trending": trending
     }
 
+# ==================== HYBRID CACHING ENDPOINTS ====================
+
+@api_router.get("/v3/static-shell")
+async def get_static_shell():
+    """
+    Get STATIC SHELL data (24h TTL)
+    Contains: Player metadata, teams, positions, historical stats
+    Does NOT contain: Live betting lines
+    
+    Use this for initial page load - instant render of player cards
+    """
+    if not demon_goblin_engine:
+        raise HTTPException(status_code=500, detail="Engine not initialized")
+    
+    shell = await demon_goblin_engine.get_static_shell()
+    
+    return {
+        "success": True,
+        "cache_hit": shell.get("cache_hit", False),
+        "cache_age_seconds": shell.get("cache_age_seconds", 0),
+        "sync_date": shell.get("sync_date"),
+        "players_count": len(shell.get("players", [])),
+        "players": shell.get("players", []),
+        "trending": shell.get("trending", [])
+    }
+
+@api_router.get("/v3/live-lines")
+async def get_live_lines():
+    """
+    Get DYNAMIC PULSE data (60s TTL)
+    Contains ONLY: Live betting lines (price, point, demon/goblin tags)
+    
+    Use this to hydrate cards with live data after initial render
+    Lightweight endpoint - minimal payload
+    """
+    if not demon_goblin_engine:
+        raise HTTPException(status_code=500, detail="Engine not initialized")
+    
+    lines = await demon_goblin_engine.get_live_lines()
+    
+    # Count totals
+    total_lines = sum(len(v) for v in lines.get("lines", {}).values())
+    total_demons = sum(
+        sum(1 for l in player_lines if l.get("is_demon"))
+        for player_lines in lines.get("lines", {}).values()
+    )
+    total_goblins = sum(
+        sum(1 for l in player_lines if l.get("is_goblin"))
+        for player_lines in lines.get("lines", {}).values()
+    )
+    
+    return {
+        "success": True,
+        "cache_hit": lines.get("cache_hit", False),
+        "cache_age_seconds": lines.get("cache_age_seconds", 0),
+        "last_update": lines.get("last_update"),
+        "total_lines": total_lines,
+        "total_demons": total_demons,
+        "total_goblins": total_goblins,
+        "players_count": len(lines.get("lines", {})),
+        "lines": lines.get("lines", {})
+    }
+
+@api_router.get("/v3/hydrated-board")
+async def get_hydrated_board():
+    """
+    Get fully hydrated board using hybrid caching strategy:
+    1. Static shell (player metadata, stats) - 24h cache
+    2. Live lines (prices, demon/goblin tags) - 60s cache
+    
+    Returns combined data optimized for fast initial render + live updates
+    """
+    if not demon_goblin_engine:
+        raise HTTPException(status_code=500, detail="Engine not initialized")
+    
+    board = await demon_goblin_engine.get_hydrated_board()
+    
+    if board.get("needs_sync"):
+        return {
+            "success": True,
+            "needs_sync": True,
+            "message": "Static shell cache empty - run full sync first"
+        }
+    
+    return {
+        "success": True,
+        "needs_sync": False,
+        "static_cache_age": board.get("static_cache_age"),
+        "lines_cache_age": board.get("lines_cache_age"),
+        "sync_date": board.get("sync_date"),
+        "players_count": len(board.get("players", [])),
+        "players": board.get("players", []),
+        "trending": board.get("trending", [])
+    }
+
 app.include_router(api_router)
 
 app.add_middleware(
