@@ -15,6 +15,8 @@ from jose import JWTError, jwt
 import httpx
 from thefuzz import fuzz
 import asyncio
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.triggers.cron import CronTrigger
 from stats_manager_bdl import StatsManager
 from demon_tracker_engine import DeepIngestionEngine
 from demon_goblin_engine import DemonGoblinEngine
@@ -35,6 +37,11 @@ JWT_SECRET = os.environ.get('JWT_SECRET')
 TANK01_API_KEY = os.environ.get('TANK01_API_KEY')
 ODDS_API_KEY = os.environ.get('ODDS_API_KEY')
 
+# Scheduler timezone (UTC)
+SCHEDULER_TIMEZONE = 'UTC'
+DAILY_SYNC_HOUR = 4  # 4:00 AM UTC
+DAILY_SYNC_MINUTE = 0
+
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_ANON_KEY) if SUPABASE_ANON_KEY else None
 
 app = FastAPI(title="NBA Best Bets API - Demon & Goblin Engine v3.0")
@@ -47,6 +54,7 @@ logger = logging.getLogger(__name__)
 stats_manager = None
 demon_tracker = None
 demon_goblin_engine = None
+scheduler = None  # APScheduler instance
 
 async def initial_autonomous_sync():
     """Run autonomous sync on startup - Demon & Goblin Engine v3"""
@@ -58,9 +66,31 @@ async def initial_autonomous_sync():
         result = await demon_goblin_engine.run_full_sync()
         logger.info(f"Sync complete: {result.get('unique_players', 0)} players, {result.get('demons_count', 0)} demons, {result.get('goblins_count', 0)} goblins")
 
+
+async def scheduled_daily_sync():
+    """
+    Scheduled job that runs at 4:00 AM UTC daily
+    Triggers a full data sync for fresh betting lines
+    """
+    logger.info("=" * 70)
+    logger.info(f"[SCHEDULER] 4:00 AM DAILY SYNC TRIGGERED")
+    logger.info(f"[SCHEDULER] Time: {datetime.now(timezone.utc).isoformat()}")
+    logger.info("=" * 70)
+    
+    if demon_goblin_engine:
+        try:
+            result = await demon_goblin_engine.run_full_sync()
+            logger.info(f"[SCHEDULER] Sync complete: {result.get('unique_players', 0)} players")
+            logger.info(f"[SCHEDULER] Standard: {result.get('standard_count', 0)}, Demons: {result.get('demons_count', 0)}, Goblins: {result.get('goblins_count', 0)}")
+        except Exception as e:
+            logger.error(f"[SCHEDULER] Daily sync failed: {e}")
+    else:
+        logger.error("[SCHEDULER] Demon & Goblin Engine not initialized")
+
+
 @app.on_event("startup")
 async def startup_event():
-    global stats_manager, demon_tracker, demon_goblin_engine
+    global stats_manager, demon_tracker, demon_goblin_engine, scheduler
     
     # Initialize stats manager (BallDontLie)
     stats_manager = StatsManager(db)
@@ -73,6 +103,18 @@ async def startup_event():
     # Initialize Demon & Goblin Engine (v3 - NEW)
     demon_goblin_engine = DemonGoblinEngine(db)
     logger.info("Demon & Goblin Engine v3.0 initialized")
+    
+    # Initialize APScheduler for 4:00 AM daily sync
+    scheduler = AsyncIOScheduler(timezone=SCHEDULER_TIMEZONE)
+    scheduler.add_job(
+        scheduled_daily_sync,
+        CronTrigger(hour=DAILY_SYNC_HOUR, minute=DAILY_SYNC_MINUTE, timezone=SCHEDULER_TIMEZONE),
+        id='daily_sync',
+        name='4:00 AM Daily Sync',
+        replace_existing=True
+    )
+    scheduler.start()
+    logger.info(f"[SCHEDULER] APScheduler started - Daily sync at {DAILY_SYNC_HOUR:02d}:{DAILY_SYNC_MINUTE:02d} UTC")
     
     # Run autonomous sync on startup
     asyncio.create_task(initial_autonomous_sync())
@@ -1032,11 +1074,11 @@ async def get_live_lines():
     # Count totals
     total_lines = sum(len(v) for v in lines.get("lines", {}).values())
     total_demons = sum(
-        sum(1 for l in player_lines if l.get("is_demon"))
+        sum(1 for line in player_lines if line.get("is_demon"))
         for player_lines in lines.get("lines", {}).values()
     )
     total_goblins = sum(
-        sum(1 for l in player_lines if l.get("is_goblin"))
+        sum(1 for line in player_lines if line.get("is_goblin"))
         for player_lines in lines.get("lines", {}).values()
     )
     
@@ -1084,6 +1126,72 @@ async def get_hydrated_board():
         "trending": board.get("trending", [])
     }
 
+
+# ==================== SCHEDULER ENDPOINTS ====================
+
+@api_router.get("/v3/scheduler-status")
+async def get_scheduler_status():
+    """
+    Get the status of the daily sync scheduler
+    Shows next run time, job info, and scheduler state
+    """
+    global scheduler
+    
+    if not scheduler:
+        return {
+            "success": False,
+            "error": "Scheduler not initialized"
+        }
+    
+    jobs = scheduler.get_jobs()
+    job_info = []
+    
+    for job in jobs:
+        job_info.append({
+            "id": job.id,
+            "name": job.name,
+            "next_run_time": job.next_run_time.isoformat() if job.next_run_time else None,
+            "trigger": str(job.trigger)
+        })
+    
+    return {
+        "success": True,
+        "scheduler_running": scheduler.running,
+        "timezone": SCHEDULER_TIMEZONE,
+        "daily_sync_time": f"{DAILY_SYNC_HOUR:02d}:{DAILY_SYNC_MINUTE:02d} UTC",
+        "jobs_count": len(jobs),
+        "jobs": job_info,
+        "current_time_utc": datetime.now(timezone.utc).isoformat()
+    }
+
+
+@api_router.post("/v3/trigger-scheduled-sync")
+async def trigger_scheduled_sync_manually():
+    """
+    Manually trigger the scheduled daily sync
+    Useful for testing or forcing an immediate refresh
+    """
+    if not demon_goblin_engine:
+        raise HTTPException(status_code=500, detail="Engine not initialized")
+    
+    logger.info("[MANUAL TRIGGER] Triggering scheduled sync manually")
+    
+    # Run the sync
+    result = await demon_goblin_engine.run_full_sync()
+    
+    return {
+        "success": True,
+        "message": "Manual sync triggered successfully",
+        "result": {
+            "unique_players": result.get("unique_players", 0),
+            "total_props": result.get("total_props", 0),
+            "standard_count": result.get("standard_count", 0),
+            "demons_count": result.get("demons_count", 0),
+            "goblins_count": result.get("goblins_count", 0),
+            "duration": result.get("duration", 0)
+        }
+    }
+
 app.include_router(api_router)
 
 app.add_middleware(
@@ -1096,4 +1204,10 @@ app.add_middleware(
 
 @app.on_event("shutdown")
 async def shutdown_db_client():
+    # Shutdown scheduler
+    global scheduler
+    if scheduler:
+        scheduler.shutdown(wait=False)
+        logger.info("[SCHEDULER] APScheduler shutdown")
+    
     client.close()

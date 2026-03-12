@@ -27,12 +27,18 @@ import httpx
 import logging
 import os
 import asyncio
+import random
 from datetime import datetime, timezone, timedelta, time
 from typing import Optional, Dict, List, Any, Set
 from thefuzz import fuzz
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
 logger = logging.getLogger(__name__)
+
+# ==================== EXPONENTIAL BACKOFF CONFIG ====================
+MAX_RETRIES = 4
+BASE_DELAY = 1.0  # seconds
+MAX_DELAY = 16.0  # seconds
 
 # ==================== API CONFIGURATION ====================
 
@@ -44,6 +50,7 @@ BDL_BASE_URL = "https://api.balldontlie.io/v1"
 
 TANK01_API_KEY = os.environ.get("TANK01_API_KEY", "402edbcac6mshd04997e7ca01d17p1879eajsn65ab176cdb1e")
 TANK01_BASE = "https://tank01-nba-live-in-game-real-time-statistics-nba.p.rapidapi.com"
+TANK01_CACHE_TTL = timedelta(hours=4)  # Cache Tank01 data for 4 hours
 
 CURRENT_SEASON = "2025"  # 2025-26 NBA Season
 
@@ -109,6 +116,55 @@ INJURY_KEYWORDS = [
 ]
 
 
+# ==================== EXPONENTIAL BACKOFF HELPER ====================
+
+async def fetch_with_backoff(url: str, headers: Dict, params: Dict = None, max_retries: int = MAX_RETRIES) -> Optional[Dict]:
+    """
+    Fetch with exponential backoff for rate-limited APIs
+    
+    Retry delays: 1s -> 2s -> 4s -> 8s (with jitter)
+    """
+    for attempt in range(max_retries):
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.get(url, headers=headers, params=params, timeout=30.0)
+                
+                if response.status_code == 200:
+                    return response.json()
+                
+                elif response.status_code == 429:
+                    # Rate limited - calculate backoff delay
+                    delay = min(BASE_DELAY * (2 ** attempt), MAX_DELAY)
+                    jitter = random.uniform(0, delay * 0.1)  # Add 0-10% jitter
+                    total_delay = delay + jitter
+                    
+                    logger.warning(f"[BACKOFF] Rate limited. Attempt {attempt + 1}/{max_retries}. Waiting {total_delay:.1f}s")
+                    await asyncio.sleep(total_delay)
+                    continue
+                
+                elif response.status_code >= 500:
+                    # Server error - retry with backoff
+                    delay = min(BASE_DELAY * (2 ** attempt), MAX_DELAY)
+                    logger.warning(f"[BACKOFF] Server error {response.status_code}. Retrying in {delay:.1f}s")
+                    await asyncio.sleep(delay)
+                    continue
+                
+                else:
+                    logger.error(f"[BACKOFF] Request failed with status {response.status_code}")
+                    return None
+                    
+        except httpx.TimeoutException:
+            delay = min(BASE_DELAY * (2 ** attempt), MAX_DELAY)
+            logger.warning(f"[BACKOFF] Timeout. Attempt {attempt + 1}/{max_retries}. Retrying in {delay:.1f}s")
+            await asyncio.sleep(delay)
+        except Exception as e:
+            logger.error(f"[BACKOFF] Request error: {e}")
+            return None
+    
+    logger.error(f"[BACKOFF] Max retries ({max_retries}) exceeded for {url}")
+    return None
+
+
 class DemonGoblinEngine:
     """
     The Demon & Goblin Analytics Engine - PrizePicks Edition
@@ -140,6 +196,7 @@ class DemonGoblinEngine:
         # NEW: Hybrid caching collections
         self.static_shell_cache = db.dg_static_shell  # 24h cache for player metadata
         self.dynamic_lines_cache = db.dg_dynamic_lines  # 60s cache for live lines
+        self.tank01_cache = db.dg_tank01_cache  # 4h cache for Tank01 injury/news data
         
         # In-memory caches
         self._player_name_map: Dict[str, Any] = {}
@@ -549,79 +606,136 @@ class DemonGoblinEngine:
             "trends": trends
         }
     
-    # ==================== PILLAR 3: TANK01 API ====================
+    # ==================== PILLAR 3: TANK01 API (with Exponential Backoff) ====================
     
     async def fetch_injuries(self) -> Dict[str, Any]:
-        """Fetch injury data from Tank01"""
-        try:
-            url = f"{TANK01_BASE}/getNBATeams"
-            params = {"rosters": "true", "schedules": "false"}
-            headers = {
-                "X-RapidAPI-Key": TANK01_API_KEY,
-                "X-RapidAPI-Host": "tank01-nba-live-in-game-real-time-statistics-nba.p.rapidapi.com"
-            }
-            
-            async with httpx.AsyncClient() as client:
-                response = await client.get(url, params=params, headers=headers, timeout=30.0)
-                
-                if response.status_code == 200:
-                    data = response.json()
-                    teams = data.get("body", []) if isinstance(data, dict) else data
-                    
-                    injuries = {}
-                    if isinstance(teams, list):
-                        for team in teams:
-                            roster = team.get("Roster", {})
-                            if isinstance(roster, dict):
-                                for player_id, player_data in roster.items():
-                                    injury_info = player_data.get("injury", {})
-                                    if injury_info and isinstance(injury_info, dict):
-                                        status = injury_info.get("designation", "")
-                                        if status:
-                                            player_name = player_data.get("longName", "")
-                                            injuries[player_name.lower()] = {
-                                                "status": status,
-                                                "description": injury_info.get("description", ""),
-                                                "return_date": injury_info.get("injReturnDate", ""),
-                                                "team": team.get("teamAbv", "")
-                                            }
-                    
-                    self._injury_data = injuries
-                    logger.info(f"[PILLAR 3] Found {len(injuries)} injured players")
-                    return injuries
-                    
-                elif response.status_code == 429:
-                    logger.warning("[PILLAR 3] Tank01 rate limited")
-                    
-        except Exception as e:
-            logger.error(f"[PILLAR 3] Injury fetch error: {e}")
+        """
+        Fetch injury data from Tank01 with:
+        - 4-hour cache to reduce API calls
+        - Exponential backoff for rate limiting
+        - Graceful degradation on failure
+        """
+        # Check cache first
+        cached = await self.tank01_cache.find_one({"type": "injuries"})
+        if cached:
+            cached_time = datetime.fromisoformat(cached["cached_at"])
+            age = datetime.now(timezone.utc) - cached_time
+            if age < TANK01_CACHE_TTL:
+                logger.info(f"[PILLAR 3] Using cached injury data (age: {age.total_seconds():.0f}s)")
+                self._injury_data = cached.get("data", {})
+                return self._injury_data
         
+        # Fetch fresh data with exponential backoff
+        url = f"{TANK01_BASE}/getNBATeams"
+        params = {"rosters": "true", "schedules": "false"}
+        headers = {
+            "X-RapidAPI-Key": TANK01_API_KEY,
+            "X-RapidAPI-Host": "tank01-nba-live-in-game-real-time-statistics-nba.p.rapidapi.com"
+        }
+        
+        logger.info("[PILLAR 3] Fetching injury data from Tank01 (with backoff)...")
+        data = await fetch_with_backoff(url, headers, params)
+        
+        if data:
+            teams = data.get("body", []) if isinstance(data, dict) else data
+            
+            injuries = {}
+            if isinstance(teams, list):
+                for team in teams:
+                    roster = team.get("Roster", {})
+                    if isinstance(roster, dict):
+                        for player_id, player_data in roster.items():
+                            injury_info = player_data.get("injury", {})
+                            if injury_info and isinstance(injury_info, dict):
+                                status = injury_info.get("designation", "")
+                                if status:
+                                    player_name = player_data.get("longName", "")
+                                    injuries[player_name.lower()] = {
+                                        "status": status,
+                                        "description": injury_info.get("description", ""),
+                                        "return_date": injury_info.get("injReturnDate", ""),
+                                        "team": team.get("teamAbv", "")
+                                    }
+            
+            # Cache the results
+            await self.tank01_cache.update_one(
+                {"type": "injuries"},
+                {"$set": {
+                    "type": "injuries",
+                    "data": injuries,
+                    "cached_at": datetime.now(timezone.utc).isoformat()
+                }},
+                upsert=True
+            )
+            
+            self._injury_data = injuries
+            logger.info(f"[PILLAR 3] Found {len(injuries)} injured players (cached for 4h)")
+            return injuries
+        
+        # Fallback to cached data if available (even if expired)
+        if cached:
+            logger.warning("[PILLAR 3] Using stale cached injury data (API failed)")
+            self._injury_data = cached.get("data", {})
+            return self._injury_data
+        
+        logger.warning("[PILLAR 3] No injury data available")
         return {}
     
     async def fetch_news(self) -> List[Dict[str, Any]]:
-        """Fetch latest NBA news from Tank01"""
-        try:
-            url = f"{TANK01_BASE}/getNBANews"
-            headers = {
-                "X-RapidAPI-Key": TANK01_API_KEY,
-                "X-RapidAPI-Host": "tank01-nba-live-in-game-real-time-statistics-nba.p.rapidapi.com"
-            }
-            
-            async with httpx.AsyncClient() as client:
-                response = await client.get(url, headers=headers, timeout=15.0)
-                
-                if response.status_code == 200:
-                    data = response.json()
-                    news_items = data.get("body", []) if isinstance(data, dict) else data
-                    
-                    if isinstance(news_items, list):
-                        self._news_data = news_items[:100]
-                        logger.info(f"[PILLAR 3] Fetched {len(news_items)} news items")
-                        return news_items
-                        
-        except Exception as e:
-            logger.error(f"[PILLAR 3] News fetch error: {e}")
+        """
+        Fetch latest NBA news from Tank01 with:
+        - 4-hour cache to reduce API calls
+        - Exponential backoff for rate limiting
+        - Graceful degradation on failure
+        """
+        # Check cache first
+        cached = await self.tank01_cache.find_one({"type": "news"})
+        if cached:
+            cached_time = datetime.fromisoformat(cached["cached_at"])
+            age = datetime.now(timezone.utc) - cached_time
+            if age < TANK01_CACHE_TTL:
+                logger.info(f"[PILLAR 3] Using cached news data (age: {age.total_seconds():.0f}s)")
+                self._news_data = cached.get("data", [])
+                return self._news_data
         
+        # Fetch fresh data with exponential backoff
+        url = f"{TANK01_BASE}/getNBANews"
+        headers = {
+            "X-RapidAPI-Key": TANK01_API_KEY,
+            "X-RapidAPI-Host": "tank01-nba-live-in-game-real-time-statistics-nba.p.rapidapi.com"
+        }
+        
+        logger.info("[PILLAR 3] Fetching news from Tank01 (with backoff)...")
+        data = await fetch_with_backoff(url, headers)
+        
+        if data:
+            news_items = data.get("body", []) if isinstance(data, dict) else data
+            
+            if isinstance(news_items, list):
+                news_list = news_items[:100]
+                
+                # Cache the results
+                await self.tank01_cache.update_one(
+                    {"type": "news"},
+                    {"$set": {
+                        "type": "news",
+                        "data": news_list,
+                        "cached_at": datetime.now(timezone.utc).isoformat()
+                    }},
+                    upsert=True
+                )
+                
+                self._news_data = news_list
+                logger.info(f"[PILLAR 3] Fetched {len(news_list)} news items (cached for 4h)")
+                return news_list
+        
+        # Fallback to cached data if available (even if expired)
+        if cached:
+            logger.warning("[PILLAR 3] Using stale cached news data (API failed)")
+            self._news_data = cached.get("data", [])
+            return self._news_data
+        
+        logger.warning("[PILLAR 3] No news data available")
         return []
     
     def get_player_injury_status(self, player_name: str) -> Dict[str, Any]:
@@ -1409,8 +1523,8 @@ PILLAR 3 - TANK01:
             player_lines = lines.get(player_name, [])
             
             # Count demons and goblins from live lines
-            demons_count = sum(1 for l in player_lines if l.get("is_demon"))
-            goblins_count = sum(1 for l in player_lines if l.get("is_goblin"))
+            demons_count = sum(1 for line in player_lines if line.get("is_demon"))
+            goblins_count = sum(1 for line in player_lines if line.get("is_goblin"))
             
             hydrated_players.append({
                 **player,
