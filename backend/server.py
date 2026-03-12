@@ -15,6 +15,7 @@ from jose import JWTError, jwt
 import httpx
 from thefuzz import fuzz
 import asyncio
+from stats_manager import StatsManager
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -38,6 +39,14 @@ security = HTTPBearer()
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+stats_manager = None
+
+@app.on_event("startup")
+async def startup_event():
+    global stats_manager
+    stats_manager = StatsManager(db)
+    logger.info("✓ Stats Manager initialized")
 
 class SignUpRequest(BaseModel):
     email: str
@@ -363,6 +372,64 @@ async def get_full_board(market: str = "full"):
     except Exception as e:
         logger.error(f"Error generating full board: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.get("/calculate-hit-rate")
+async def calculate_hit_rate_endpoint(
+    player_name: str,
+    prop_type: str,
+    line: float
+):
+    """Calculate real hit rate from API-Sports L10 data"""
+    if not stats_manager:
+        raise HTTPException(status_code=500, detail="Stats manager not initialized")
+    
+    result = await stats_manager.calculate_hit_rate(player_name, prop_type, line)
+    
+    if not result:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Could not calculate hit rate for {player_name}"
+        )
+    
+    return {"success": True, "data": result}
+
+@api_router.get("/validate-demon")
+async def validate_demon_endpoint(
+    player_name: str,
+    prop_type: str,
+    demon_line: float
+):
+    """Validate if a demon line qualifies based on real data"""
+    if not stats_manager:
+        raise HTTPException(status_code=500, detail="Stats manager not initialized")
+    
+    is_valid = await stats_manager.validate_demon_line(player_name, prop_type, demon_line)
+    
+    hit_rate_data = await stats_manager.calculate_hit_rate(player_name, prop_type, demon_line)
+    
+    return {
+        "success": True,
+        "is_valid_demon": is_valid,
+        "hit_rate_data": hit_rate_data
+    }
+
+@api_router.get("/cache-status")
+async def get_cache_status():
+    """Get cache statistics"""
+    if not stats_manager:
+        raise HTTPException(status_code=500, detail="Stats manager not initialized")
+    
+    status = await stats_manager.get_cache_status()
+    return {"success": True, "data": status}
+
+@api_router.post("/clear-expired-cache")
+async def clear_expired_cache():
+    """Clear expired cache entries"""
+    if not stats_manager:
+        raise HTTPException(status_code=500, detail="Stats manager not initialized")
+    
+    deleted_count = await stats_manager.clear_expired_cache()
+    return {"success": True, "deleted_count": deleted_count}
 
 @api_router.get("/")
 async def root():
