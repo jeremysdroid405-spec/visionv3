@@ -57,7 +57,7 @@ PRIZEPICKS_REGION = "us_dfs"  # Daily Fantasy Sports region - REQUIRED for Prize
 PRIZEPICKS_BOOKMAKER = "prizepicks"
 
 # PrizePicks Alternate Markets - These contain Demons and Goblins
-PRIZEPICKS_MARKETS = ",".join([
+PRIZEPICKS_ALTERNATE_MARKETS = [
     "player_points_alternate",
     "player_rebounds_alternate", 
     "player_assists_alternate",
@@ -69,23 +69,34 @@ PRIZEPICKS_MARKETS = ",".join([
     "player_points_assists_alternate",
     "player_rebounds_assists_alternate",
     "player_points_rebounds_assists_alternate",
-])
+]
 
-# Also fetch standard markets for comparison
-STANDARD_MARKETS = ",".join([
+# Standard markets - These are "Standard" lines (no Demon/Goblin icon)
+PRIZEPICKS_STANDARD_MARKETS = [
     "player_points",
     "player_rebounds",
     "player_assists",
     "player_threes",
     "player_blocks",
     "player_steals",
-])
+    "player_turnovers",
+    "player_points_rebounds",
+    "player_points_assists",
+    "player_rebounds_assists",
+    "player_points_rebounds_assists",
+]
+
+# Combined markets for API call
+PRIZEPICKS_ALL_MARKETS = ",".join(PRIZEPICKS_ALTERNATE_MARKETS + PRIZEPICKS_STANDARD_MARKETS)
 
 # Demon/Goblin Classification (PrizePicks Native)
-# Demon: Even odds (+100) - Harder/Boosted props (over the expected stat)
-# Goblin: Negative odds (like -137 or lower) - Easier props (under the expected stat)
-DEMON_ODDS = 100  # Even odds = Demon
-GOBLIN_ODDS_THRESHOLD = 0  # Any negative odds = Goblin (easier prop)
+# 
+# CLASSIFICATION RULES:
+# 1. STANDARD (no icon): Props from MAIN markets (e.g., player_points, player_rebounds)
+# 2. DEMON (red icon): Props from ALTERNATE markets with EVEN odds (+100)
+# 3. GOBLIN (green icon): Props from ALTERNATE markets with any other odds (e.g., -119, -137)
+#
+DEMON_ODDS = 100  # Even odds = Demon (only applies to alternate markets)
 
 # Hit rate threshold for Goblin warning
 GOBLIN_HIT_RATE_WARNING = 0.90  # 90% hit rate
@@ -179,16 +190,21 @@ class DemonGoblinEngine:
         Fetch PrizePicks odds using the correct API parameters:
         - regions=us_dfs (Daily Fantasy Sports)
         - bookmakers=prizepicks
-        - markets=player_*_alternate (where Demons/Goblins live)
+        - markets=ALL markets (both standard and alternate)
+        
+        Classification will happen later based on market type:
+        - Standard markets → "standard" (no icon)
+        - Alternate markets + price=100 → "demon" (red icon)
+        - Alternate markets + price≠100 → "goblin" (green icon)
         """
         try:
             url = f"{ODDS_API_BASE}/sports/basketball_nba/events/{event_id}/odds"
             
-            # CRITICAL: Use us_dfs region and prizepicks bookmaker
+            # CRITICAL: Use us_dfs region and prizepicks bookmaker with ALL markets
             params = {
                 "apiKey": ODDS_API_KEY,
                 "regions": PRIZEPICKS_REGION,  # us_dfs - REQUIRED for PrizePicks
-                "markets": PRIZEPICKS_MARKETS,  # _alternate markets
+                "markets": PRIZEPICKS_ALL_MARKETS,  # Both standard and alternate markets
                 "bookmakers": PRIZEPICKS_BOOKMAKER,  # prizepicks specifically
                 "oddsFormat": "american"
             }
@@ -225,8 +241,8 @@ class DemonGoblinEngine:
                     
                 elif response.status_code == 422:
                     # Try with just the basic alternate markets
-                    logger.warning(f"  [PRIZEPICKS] Some markets unavailable for {event_id}, trying basic alternates")
-                    params["markets"] = "player_points_alternate,player_rebounds_alternate,player_assists_alternate"
+                    logger.warning(f"  [PRIZEPICKS] Some markets unavailable for {event_id}, trying basic markets")
+                    params["markets"] = "player_points,player_points_alternate,player_rebounds,player_rebounds_alternate,player_assists,player_assists_alternate"
                     response = await client.get(url, params=params, timeout=30.0)
                     if response.status_code == 200:
                         odds_data = response.json()
@@ -248,7 +264,7 @@ class DemonGoblinEngine:
             params = {
                 "apiKey": ODDS_API_KEY,
                 "regions": "us",
-                "markets": STANDARD_MARKETS,
+                "markets": ",".join(PRIZEPICKS_STANDARD_MARKETS),
                 "bookmakers": "draftkings,fanduel",
                 "oddsFormat": "american"
             }
@@ -266,11 +282,12 @@ class DemonGoblinEngine:
     
     def extract_prizepicks_props(self, odds_data: Dict[str, Any]) -> List[Dict[str, Any]]:
         """
-        Extract all PrizePicks props and classify as Demon or Goblin
+        Extract all PrizePicks props and classify correctly:
         
-        PrizePicks Native Classification:
-        - Demon (Red): Even odds (+100) - Boosted/harder lines
-        - Goblin (Green): Negative odds (e.g., -137) - Easier lines
+        CLASSIFICATION RULES:
+        - STANDARD (no icon): Props from MAIN markets (e.g., player_points)
+        - DEMON (red icon): Props from ALTERNATE markets with EVEN odds (+100)
+        - GOBLIN (green icon): Props from ALTERNATE markets with odds ≠ +100
         
         Also tracks player order for popularity ranking.
         """
@@ -295,9 +312,8 @@ class DemonGoblinEngine:
                 market_key = market.get("key", "")
                 market_last_update = market.get("last_update", "")
                 
-                # Only process alternate markets (where Demons/Goblins exist)
-                if "_alternate" not in market_key:
-                    continue
+                # Determine if this is an alternate market
+                is_alternate_market = "_alternate" in market_key
                 
                 for outcome in market.get("outcomes", []):
                     player_name = outcome.get("description", "")
@@ -321,13 +337,21 @@ class DemonGoblinEngine:
                                     player_order_counter
                                 )
                         
-                        # PrizePicks Classification
-                        # Demon: Even odds (+100) = Boosted/harder prop
-                        # Goblin: Negative odds (e.g., -137) = Easier prop (closer to average)
-                        is_demon = price is not None and price == DEMON_ODDS
-                        is_goblin = price is not None and price < GOBLIN_ODDS_THRESHOLD
+                        # CLASSIFICATION LOGIC:
+                        # 1. Standard: Main market (no _alternate) → no icon
+                        # 2. Demon: Alternate market + price == +100 → red icon
+                        # 3. Goblin: Alternate market + price != +100 → green icon
                         
-                        prop_type = "demon" if is_demon else ("goblin" if is_goblin else "standard")
+                        if is_alternate_market:
+                            # Alternate market classification
+                            is_demon = price is not None and price == DEMON_ODDS
+                            is_goblin = price is not None and price != DEMON_ODDS
+                            prop_type = "demon" if is_demon else "goblin"
+                        else:
+                            # Standard market - no demon/goblin classification
+                            is_demon = False
+                            is_goblin = False
+                            prop_type = "standard"
                         
                         props.append({
                             "event_id": event_id,
@@ -340,6 +364,7 @@ class DemonGoblinEngine:
                             "line": float(line),
                             "price": price,
                             "bookmaker": "prizepicks",
+                            "is_alternate_market": is_alternate_market,
                             "is_demon": is_demon,
                             "is_goblin": is_goblin,
                             "prop_type": prop_type,
@@ -347,8 +372,6 @@ class DemonGoblinEngine:
                             "popularity_order": self._player_popularity.get(player_name, 999),
                             "fetched_at": datetime.now(timezone.utc).isoformat()
                         })
-        
-        return props
         
         return props
     
@@ -709,6 +732,7 @@ class DemonGoblinEngine:
             "events_count": 0,
             "total_props": 0,
             "unique_players": 0,
+            "standard_count": 0,
             "demons_count": 0,
             "goblins_count": 0,
             "stats_fetched": 0,
@@ -750,14 +774,16 @@ class DemonGoblinEngine:
             
             results["total_props"] = len(all_props)
             results["unique_players"] = len(all_players)
+            results["standard_count"] = sum(1 for p in all_props if p.get("prop_type") == "standard")
             results["demons_count"] = sum(1 for p in all_props if p.get("is_demon"))
             results["goblins_count"] = sum(1 for p in all_props if p.get("is_goblin"))
             
             logger.info(f"\n[PILLAR 1] PRIZEPICKS DATA COMPLETE:")
             logger.info(f"  Total Props: {len(all_props)}")
             logger.info(f"  Unique Players: {len(all_players)}")
-            logger.info(f"  DEMONS (Even +100): {results['demons_count']}")
-            logger.info(f"  GOBLINS (Default): {results['goblins_count']}")
+            logger.info(f"  STANDARD (Main Markets): {results['standard_count']}")
+            logger.info(f"  DEMONS (Alternate +100): {results['demons_count']}")
+            logger.info(f"  GOBLINS (Alternate ≠+100): {results['goblins_count']}")
             
             # ===== PILLAR 3: FETCH INJURIES FIRST =====
             logger.info("\n[PILLAR 3] Fetching injury data from Tank01...")
@@ -820,19 +846,22 @@ class DemonGoblinEngine:
                         "injury_info": prop.get("injury_info", {}),
                         "popularity_order": self._player_popularity.get(player_name, 999),
                         "props": [],
-                        "demons": [],
-                        "goblins": [],
+                        "standard": [],  # Standard props (main market, no icon)
+                        "demons": [],    # Demon props (alternate market, +100)
+                        "goblins": [],   # Goblin props (alternate market, ≠+100)
                         "has_goblin_warning": False,
                         "has_new_injury": False  # NEW: Track if this is a new injury update
                     }
                 
                 player_data[player_name]["props"].append(prop)
                 
+                # Classify into appropriate bucket
                 if prop.get("is_demon"):
                     player_data[player_name]["demons"].append(prop)
-                
-                if prop.get("is_goblin"):
+                elif prop.get("is_goblin"):
                     player_data[player_name]["goblins"].append(prop)
+                else:
+                    player_data[player_name]["standard"].append(prop)
                 
                 if prop.get("has_goblin_warning"):
                     player_data[player_name]["has_goblin_warning"] = True
@@ -941,9 +970,10 @@ PILLAR 1 - PRIZEPICKS (us_dfs region):
   Total Props: {results['total_props']}
   Unique Players: {results['unique_players']}
   
-CLASSIFICATION:
-  DEMONS (Even +100): {results['demons_count']}
-  GOBLINS (Default odds): {results['goblins_count']}
+CLASSIFICATION (Market-Based):
+  STANDARD (Main Markets): {results['standard_count']}
+  DEMONS (Alternate +100): {results['demons_count']}
+  GOBLINS (Alternate ≠+100): {results['goblins_count']}
   
 PILLAR 2 - BALLDONTLIE:
   Stats Fetched: {results['stats_fetched']}
@@ -1041,15 +1071,17 @@ PILLAR 3 - TANK01:
         """Get current sync status"""
         players_count = await self.player_data.count_documents({})
         
-        # Count demons and goblins
+        # Count standard, demons and goblins
         pipeline = [
             {"$project": {
+                "standard_count": {"$size": {"$ifNull": ["$standard", []]}},
                 "demons_count": {"$size": {"$ifNull": ["$demons", []]}},
                 "goblins_count": {"$size": {"$ifNull": ["$goblins", []]}},
                 "props_count": {"$size": {"$ifNull": ["$props", []]}}
             }},
             {"$group": {
                 "_id": None,
+                "total_standard": {"$sum": "$standard_count"},
                 "total_demons": {"$sum": "$demons_count"},
                 "total_goblins": {"$sum": "$goblins_count"},
                 "total_props": {"$sum": "$props_count"}
@@ -1057,7 +1089,7 @@ PILLAR 3 - TANK01:
         ]
         
         agg_result = await self.player_data.aggregate(pipeline).to_list(1)
-        counts = agg_result[0] if agg_result else {"total_demons": 0, "total_goblins": 0, "total_props": 0}
+        counts = agg_result[0] if agg_result else {"total_standard": 0, "total_demons": 0, "total_goblins": 0, "total_props": 0}
         
         # Get last sync log
         last_sync = await self.sync_log.find_one({}, sort=[("sync_time", -1)])
@@ -1067,6 +1099,7 @@ PILLAR 3 - TANK01:
             "sync_date": self._current_date or self.get_current_date(),
             "unique_players": players_count,
             "total_props": counts.get("total_props", 0),
+            "standard_count": counts.get("total_standard", 0),
             "demons_count": counts.get("total_demons", 0),
             "goblins_count": counts.get("total_goblins", 0),
             "season": CURRENT_SEASON
@@ -1267,7 +1300,12 @@ PILLAR 3 - TANK01:
     async def _fetch_fresh_lines(self) -> Dict[str, List[Dict]]:
         """
         Fetch ONLY live betting lines (lightweight)
-        Returns: {player_name: [{market, line, price, is_demon, is_goblin}, ...]}
+        Returns: {player_name: [{market, line, price, is_demon, is_goblin, prop_type}, ...]}
+        
+        Classification:
+        - Standard: Main market (no _alternate)
+        - Demon: Alternate market + price == +100
+        - Goblin: Alternate market + price != +100
         """
         lines_by_player = {}
         
@@ -1280,12 +1318,12 @@ PILLAR 3 - TANK01:
                 if not event_id:
                     continue
                 
-                # Fetch PrizePicks lines only
+                # Fetch PrizePicks lines - both standard and alternate
                 url = f"{ODDS_API_BASE}/sports/basketball_nba/events/{event_id}/odds"
                 params = {
                     "apiKey": ODDS_API_KEY,
                     "regions": PRIZEPICKS_REGION,
-                    "markets": PRIZEPICKS_MARKETS,
+                    "markets": PRIZEPICKS_ALL_MARKETS,  # Both standard and alternate
                     "bookmakers": PRIZEPICKS_BOOKMAKER,
                     "oddsFormat": "american"
                 }
@@ -1302,21 +1340,34 @@ PILLAR 3 - TANK01:
                             
                             for market in bm.get("markets", []):
                                 market_key = market.get("key", "")
-                                if "_alternate" not in market_key:
-                                    continue
+                                is_alternate_market = "_alternate" in market_key
                                 
                                 for outcome in market.get("outcomes", []):
                                     player_name = outcome.get("description", "")
                                     if not player_name:
                                         continue
                                     
+                                    price = outcome.get("price")
+                                    
+                                    # Classification logic
+                                    if is_alternate_market:
+                                        is_demon = price is not None and price == DEMON_ODDS
+                                        is_goblin = price is not None and price != DEMON_ODDS
+                                        prop_type = "demon" if is_demon else "goblin"
+                                    else:
+                                        is_demon = False
+                                        is_goblin = False
+                                        prop_type = "standard"
+                                    
                                     line_data = {
                                         "market": market_key,
                                         "direction": outcome.get("name"),
                                         "line": outcome.get("point"),
-                                        "price": outcome.get("price"),
-                                        "is_demon": outcome.get("price") == DEMON_ODDS,
-                                        "is_goblin": outcome.get("price") is not None and outcome.get("price") < GOBLIN_ODDS_THRESHOLD
+                                        "price": price,
+                                        "is_alternate_market": is_alternate_market,
+                                        "is_demon": is_demon,
+                                        "is_goblin": is_goblin,
+                                        "prop_type": prop_type
                                     }
                                     
                                     if player_name not in lines_by_player:
