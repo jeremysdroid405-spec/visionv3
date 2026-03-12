@@ -120,6 +120,32 @@ Build a high-performance NBA Player Prop Dashboard that identifies "Demons" (har
 
 ---
 
+## Player Detail Page Refactor - COMPLETED (March 12, 2026)
+
+### Category Grouping Layout ✅
+- **11 Stat Categories**: PTS, REB, AST, PRA, P+R, P+A, R+A, 3PM, BLK, STL, TO
+- **Collapsible Accordions**: Click header to expand/collapse
+- **Expand All / Collapse All**: Quick actions for all categories
+- **Category Colors**: Each category has distinct gradient (purple/blue/yellow/etc.)
+
+### Ladder Sorting ✅
+- Within each category, lines sorted by Target Number (lowest to highest)
+- Example for Points: 19.5 → 21.5 → 22.5 → 24.5 → 28.5 → 29.5 → 34.5
+
+### Play Type Labels ✅
+| Type | Label | Icon | Color |
+|------|-------|------|-------|
+| Goblin | Safety Play | Ghost (green) | Green background |
+| Standard | Main Line | Gray dot | Gray background |
+| Demon | Payout Play | Skull (red) | Red background |
+
+### Hit Rates Display ✅
+- **L10**: Last 10 games hit rate (e.g., "L10: 70%")
+- **Season**: Full season hit rate (e.g., "Szn: 75%")
+- **Color Coding**: Green (≥60%), Yellow (≥40%), Gray (<40%)
+
+---
+
 ## API Endpoints
 
 ### v3 Endpoints
