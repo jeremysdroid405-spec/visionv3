@@ -14,10 +14,10 @@ import asyncio
 
 logger = logging.getLogger(__name__)
 
-API_SPORTS_KEY = "9057bc1422b361f64cc071581dd1b240"
+API_SPORTS_KEY = "1196210f53a32375b7c319c45802fbe8"
 API_SPORTS_BASE_URL = "https://v2.nba.api-sports.io"
 CACHE_TTL_HOURS = 24
-CURRENT_SEASON = "2024"  # Latest available season in API-Sports (2024-25 season)
+CURRENT_SEASON = "2024"  # Latest available season (free tier: 2022-2024)
 ROSTER_SYNC_INTERVAL_HOURS = 24
 
 
