@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, memo } from 'react';
+import React, { useState, useEffect, useCallback, memo, useMemo } from 'react';
 import axios from 'axios';
 import { Button } from '../components/ui/button';
 import { Card } from '../components/ui/card';
@@ -241,12 +241,293 @@ const TrendingCard = memo(({ player, rank, onClick, linesLoaded }) => {
 
 TrendingCard.displayName = 'TrendingCard';
 
-// ==================== PLAYER DETAIL PAGE ====================
+// ==================== STAT CATEGORIES ====================
+
+const STAT_CATEGORIES = {
+  'PTS': { name: 'Points', markets: ['player_points', 'player_points_alternate'], icon: 'target', color: 'purple' },
+  'REB': { name: 'Rebounds', markets: ['player_rebounds', 'player_rebounds_alternate'], icon: 'circle', color: 'blue' },
+  'AST': { name: 'Assists', markets: ['player_assists', 'player_assists_alternate'], icon: 'zap', color: 'yellow' },
+  'PRA': { name: 'Pts+Reb+Ast', markets: ['player_points_rebounds_assists', 'player_points_rebounds_assists_alternate'], icon: 'star', color: 'orange' },
+  'P+R': { name: 'Pts+Reb', markets: ['player_points_rebounds', 'player_points_rebounds_alternate'], icon: 'layers', color: 'cyan' },
+  'P+A': { name: 'Pts+Ast', markets: ['player_points_assists', 'player_points_assists_alternate'], icon: 'layers', color: 'pink' },
+  'R+A': { name: 'Reb+Ast', markets: ['player_rebounds_assists', 'player_rebounds_assists_alternate'], icon: 'layers', color: 'emerald' },
+  '3PM': { name: '3-PT Made', markets: ['player_threes', 'player_threes_alternate'], icon: 'crosshair', color: 'red' },
+  'BLK': { name: 'Blocks', markets: ['player_blocks', 'player_blocks_alternate'], icon: 'shield', color: 'slate' },
+  'STL': { name: 'Steals', markets: ['player_steals', 'player_steals_alternate'], icon: 'eye', color: 'amber' },
+  'TO': { name: 'Turnovers', markets: ['player_turnovers', 'player_turnovers_alternate'], icon: 'alert', color: 'gray' },
+};
+
+// Get category key from market
+const getCategoryKey = (market) => {
+  for (const [key, config] of Object.entries(STAT_CATEGORIES)) {
+    if (config.markets.includes(market)) {
+      return key;
+    }
+  }
+  return 'OTHER';
+};
+
+// Category color classes
+const getCategoryColor = (key) => {
+  const colors = {
+    'PTS': 'from-purple-600/20 to-transparent border-purple-500/50 text-purple-400',
+    'REB': 'from-blue-600/20 to-transparent border-blue-500/50 text-blue-400',
+    'AST': 'from-yellow-600/20 to-transparent border-yellow-500/50 text-yellow-400',
+    'PRA': 'from-orange-600/20 to-transparent border-orange-500/50 text-orange-400',
+    'P+R': 'from-cyan-600/20 to-transparent border-cyan-500/50 text-cyan-400',
+    'P+A': 'from-pink-600/20 to-transparent border-pink-500/50 text-pink-400',
+    'R+A': 'from-emerald-600/20 to-transparent border-emerald-500/50 text-emerald-400',
+    '3PM': 'from-red-600/20 to-transparent border-red-500/50 text-red-400',
+    'BLK': 'from-slate-600/20 to-transparent border-slate-500/50 text-slate-400',
+    'STL': 'from-amber-600/20 to-transparent border-amber-500/50 text-amber-400',
+    'TO': 'from-gray-600/20 to-transparent border-gray-500/50 text-gray-400',
+  };
+  return colors[key] || 'from-zinc-600/20 to-transparent border-zinc-500/50 text-zinc-400';
+};
+
+// ==================== CATEGORY ACCORDION ====================
+
+const CategoryAccordion = memo(({ categoryKey, categoryName, props, isExpanded, onToggle, stats }) => {
+  // Count demons, goblins, standard
+  const demons = props.filter(p => p.is_demon);
+  const goblins = props.filter(p => p.is_goblin);
+  const standard = props.filter(p => !p.is_demon && !p.is_goblin);
+  
+  // Sort by line value (ladder sorting - lowest to highest)
+  const sortedProps = [...props].sort((a, b) => {
+    // First sort by line value
+    if (a.line !== b.line) return a.line - b.line;
+    // Then by type (standard, goblin, demon)
+    if (a.is_demon && !b.is_demon) return 1;
+    if (!a.is_demon && b.is_demon) return -1;
+    if (a.is_goblin && !b.is_goblin) return -1;
+    if (!a.is_goblin && b.is_goblin) return 1;
+    return 0;
+  });
+  
+  // Get stats for this category
+  const categoryStats = stats || {};
+  const l10Stats = categoryStats?.l10 || {};
+  const seasonStats = categoryStats?.season || {};
+  
+  const colorClasses = getCategoryColor(categoryKey);
+  
+  return (
+    <div className="rounded-lg overflow-hidden border border-zinc-800/50">
+      {/* Category Header - Clickable */}
+      <div
+        onClick={onToggle}
+        className={`
+          flex items-center justify-between px-3 py-2.5 cursor-pointer
+          bg-gradient-to-r ${colorClasses.split(' ').slice(0, 2).join(' ')}
+          hover:bg-zinc-800/50 transition-all
+        `}
+        data-testid={`category-${categoryKey}`}
+      >
+        <div className="flex items-center gap-2">
+          <div className={`text-lg font-bold ${colorClasses.split(' ').slice(-1)[0]}`}>
+            {isExpanded ? <ChevronDown className="w-5 h-5" /> : <ChevronRight className="w-5 h-5" />}
+          </div>
+          
+          <div>
+            <div className="flex items-center gap-2">
+              <span className={`font-bold text-sm ${colorClasses.split(' ').slice(-1)[0]}`}>
+                {categoryName}
+              </span>
+              <span className="text-zinc-500 text-xs">({props.length})</span>
+            </div>
+            
+            {/* Quick Stats - L10 Hit Rate */}
+            {l10Stats.hit_rate !== undefined && (
+              <div className="flex items-center gap-2 text-[10px] text-zinc-500">
+                <span>L10: <span className={`font-bold ${l10Stats.hit_rate >= 0.6 ? 'text-green-400' : l10Stats.hit_rate >= 0.4 ? 'text-yellow-400' : 'text-zinc-400'}`}>
+                  {Math.round(l10Stats.hit_rate * 100)}%
+                </span></span>
+                <span className="text-zinc-600">|</span>
+                <span>Avg: <span className="text-white font-mono">{l10Stats.avg?.toFixed(1) || '---'}</span></span>
+              </div>
+            )}
+          </div>
+        </div>
+        
+        {/* Type Badges */}
+        <div className="flex items-center gap-2">
+          {demons.length > 0 && (
+            <div className="flex items-center gap-1 bg-red-950/50 px-1.5 py-0.5 rounded">
+              <Skull className="w-3 h-3 text-red-400" />
+              <span className="text-red-400 text-xs font-bold">{demons.length}</span>
+            </div>
+          )}
+          {goblins.length > 0 && (
+            <div className="flex items-center gap-1 bg-green-950/50 px-1.5 py-0.5 rounded">
+              <Ghost className="w-3 h-3 text-green-400" />
+              <span className="text-green-400 text-xs font-bold">{goblins.length}</span>
+            </div>
+          )}
+          {standard.length > 0 && (
+            <div className="flex items-center gap-1 bg-zinc-800/50 px-1.5 py-0.5 rounded">
+              <span className="text-zinc-400 text-xs font-bold">{standard.length}</span>
+            </div>
+          )}
+        </div>
+      </div>
+      
+      {/* Expanded Content - Ladder View */}
+      {isExpanded && (
+        <div className="bg-zinc-900/30 p-2 space-y-1">
+          {/* Stats Summary Bar */}
+          {(l10Stats.hit_rate !== undefined || seasonStats.hit_rate !== undefined) && (
+            <div className="flex items-center justify-between px-2 py-1.5 bg-zinc-800/50 rounded mb-2 text-xs">
+              <div className="flex items-center gap-4">
+                {l10Stats.hit_rate !== undefined && (
+                  <div className="flex items-center gap-1">
+                    <span className="text-zinc-500">L10:</span>
+                    <span className={`font-bold ${l10Stats.hit_rate >= 0.6 ? 'text-green-400' : l10Stats.hit_rate >= 0.4 ? 'text-yellow-400' : 'text-zinc-400'}`}>
+                      {l10Stats.games_over || 0}/{l10Stats.total_games || 0}
+                    </span>
+                    <span className="text-zinc-600">({Math.round(l10Stats.hit_rate * 100)}%)</span>
+                  </div>
+                )}
+                {seasonStats.hit_rate !== undefined && (
+                  <div className="flex items-center gap-1">
+                    <span className="text-zinc-500">Season:</span>
+                    <span className={`font-bold ${seasonStats.hit_rate >= 0.6 ? 'text-green-400' : seasonStats.hit_rate >= 0.4 ? 'text-yellow-400' : 'text-zinc-400'}`}>
+                      {seasonStats.games_over || 0}/{seasonStats.total_games || 0}
+                    </span>
+                    <span className="text-zinc-600">({Math.round(seasonStats.hit_rate * 100)}%)</span>
+                  </div>
+                )}
+              </div>
+              <div className="text-zinc-500">
+                Avg: <span className="text-white font-mono">{l10Stats.avg?.toFixed(1) || seasonStats.avg?.toFixed(1) || '---'}</span>
+              </div>
+            </div>
+          )}
+          
+          {/* Ladder Lines */}
+          {sortedProps.map((prop, idx) => (
+            <LadderPropRow 
+              key={`${categoryKey}-${idx}`} 
+              prop={prop} 
+              categoryStats={categoryStats}
+              isFirst={idx === 0}
+              isLast={idx === sortedProps.length - 1}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+});
+
+CategoryAccordion.displayName = 'CategoryAccordion';
+
+// ==================== LADDER PROP ROW ====================
+
+const LadderPropRow = memo(({ prop, categoryStats, isFirst, isLast }) => {
+  const line = prop.line;
+  const direction = prop.direction;
+  const price = prop.price;
+  const isDemon = prop.is_demon;
+  const isGoblin = prop.is_goblin;
+  
+  // Calculate hit rate for this specific line from stats
+  const l10HitRate = prop.hit_rates?.l10?.hit_rate;
+  const seasonHitRate = prop.hit_rates?.season?.hit_rate;
+  const hitPct = Math.round((l10HitRate || 0) * 100);
+  
+  // Determine play type label
+  let playTypeLabel = '';
+  let playTypeColor = 'text-zinc-500';
+  if (isGoblin) {
+    playTypeLabel = 'Safety Play';
+    playTypeColor = 'text-green-400';
+  } else if (isDemon) {
+    playTypeLabel = 'Payout Play';
+    playTypeColor = 'text-red-400';
+  } else {
+    playTypeLabel = 'Main Line';
+    playTypeColor = 'text-zinc-400';
+  }
+  
+  return (
+    <div 
+      className={`
+        flex items-center justify-between px-3 py-2 rounded-lg transition-all
+        ${isDemon ? 'bg-red-950/30 border-l-3 border-red-500 hover:bg-red-950/50' : ''}
+        ${isGoblin ? 'bg-green-950/30 border-l-3 border-green-500 hover:bg-green-950/50' : ''}
+        ${!isDemon && !isGoblin ? 'bg-zinc-800/30 border-l-3 border-zinc-600 hover:bg-zinc-800/50' : ''}
+      `}
+      data-testid={`ladder-prop-${line}`}
+    >
+      {/* Left: Line Value + Direction */}
+      <div className="flex items-center gap-3">
+        {/* Type Icon */}
+        <div className="w-5 flex justify-center">
+          {isDemon && <Skull className="w-4 h-4 text-red-400" />}
+          {isGoblin && <Ghost className="w-4 h-4 text-green-400" />}
+          {!isDemon && !isGoblin && <div className="w-2 h-2 bg-zinc-500 rounded-full" />}
+        </div>
+        
+        {/* Line Value */}
+        <div className="flex items-baseline gap-1.5">
+          <span className="text-xl font-bold text-white">{line}</span>
+          <span className={`text-xs font-medium ${direction === 'Over' ? 'text-green-400' : 'text-red-400'}`}>
+            {direction}
+          </span>
+        </div>
+        
+        {/* Play Type Label */}
+        <span className={`text-[10px] font-medium ${playTypeColor} bg-zinc-800/50 px-1.5 py-0.5 rounded`}>
+          {playTypeLabel}
+        </span>
+      </div>
+      
+      {/* Right: Odds + Hit Rates */}
+      <div className="flex items-center gap-4">
+        {/* Hit Rates */}
+        <div className="flex items-center gap-2 text-xs">
+          {l10HitRate !== undefined && (
+            <div className="flex items-center gap-1">
+              <span className="text-zinc-500">L10:</span>
+              <span className={`font-bold ${hitPct >= 60 ? 'text-green-400' : hitPct >= 40 ? 'text-yellow-400' : 'text-zinc-400'}`}>
+                {hitPct}%
+              </span>
+            </div>
+          )}
+          {seasonHitRate !== undefined && (
+            <div className="flex items-center gap-1">
+              <span className="text-zinc-500">Szn:</span>
+              <span className={`font-bold ${Math.round(seasonHitRate * 100) >= 60 ? 'text-green-400' : Math.round(seasonHitRate * 100) >= 40 ? 'text-yellow-400' : 'text-zinc-400'}`}>
+                {Math.round(seasonHitRate * 100)}%
+              </span>
+            </div>
+          )}
+        </div>
+        
+        {/* Odds */}
+        <div className={`
+          text-sm font-mono font-bold min-w-[50px] text-right px-2 py-1 rounded
+          ${price === 100 ? 'bg-red-500/20 text-red-400' : ''}
+          ${price < 0 ? 'bg-green-500/20 text-green-400' : ''}
+          ${price > 0 && price !== 100 ? 'text-zinc-400' : ''}
+        `}>
+          {price > 0 ? `+${price}` : price}
+        </div>
+      </div>
+    </div>
+  );
+});
+
+LadderPropRow.displayName = 'LadderPropRow';
+
+// ==================== PLAYER DETAIL PAGE (Refactored) ====================
 
 const PlayerDetailPage = ({ playerName, onBack }) => {
   const [player, setPlayer] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [expandedCategories, setExpandedCategories] = useState(new Set(['PTS', 'AST', 'REB'])); // Default expanded
   
   useEffect(() => {
     const fetchPlayer = async () => {
@@ -269,20 +550,69 @@ const PlayerDetailPage = ({ playerName, onBack }) => {
     fetchPlayer();
   }, [playerName]);
   
-  // Sort props: Demons first, then Goblins, then by hit rate
-  const sortedProps = player?.props?.slice().sort((a, b) => {
-    if (a.is_demon && !b.is_demon) return -1;
-    if (!a.is_demon && b.is_demon) return 1;
-    if (a.is_goblin && !b.is_goblin) return -1;
-    if (!a.is_goblin && b.is_goblin) return 1;
-    const hitA = a.hit_rates?.l10?.hit_rate || 0;
-    const hitB = b.hit_rates?.l10?.hit_rate || 0;
-    return hitB - hitA;
-  }) || [];
+  // Group props by category
+  const groupedProps = useMemo(() => {
+    if (!player?.props) return {};
+    
+    const groups = {};
+    
+    player.props.forEach(prop => {
+      const categoryKey = getCategoryKey(prop.market);
+      if (!groups[categoryKey]) {
+        groups[categoryKey] = [];
+      }
+      groups[categoryKey].push(prop);
+    });
+    
+    return groups;
+  }, [player]);
   
-  const demons = sortedProps.filter(p => p.is_demon);
-  const goblins = sortedProps.filter(p => p.is_goblin);
-  const standard = sortedProps.filter(p => !p.is_demon && !p.is_goblin);
+  // Get ordered category keys (by number of props)
+  const orderedCategories = useMemo(() => {
+    const keys = Object.keys(groupedProps);
+    // Sort by: PRA combos first, then by prop count
+    const priorityOrder = ['PRA', 'P+R', 'P+A', 'R+A', 'PTS', 'AST', 'REB', '3PM', 'BLK', 'STL', 'TO'];
+    return keys.sort((a, b) => {
+      const aIdx = priorityOrder.indexOf(a);
+      const bIdx = priorityOrder.indexOf(b);
+      if (aIdx !== -1 && bIdx !== -1) return aIdx - bIdx;
+      if (aIdx !== -1) return -1;
+      if (bIdx !== -1) return 1;
+      return groupedProps[b].length - groupedProps[a].length;
+    });
+  }, [groupedProps]);
+  
+  // Toggle category expansion
+  const toggleCategory = (categoryKey) => {
+    setExpandedCategories(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(categoryKey)) {
+        newSet.delete(categoryKey);
+      } else {
+        newSet.add(categoryKey);
+      }
+      return newSet;
+    });
+  };
+  
+  // Expand/collapse all
+  const expandAll = () => setExpandedCategories(new Set(orderedCategories));
+  const collapseAll = () => setExpandedCategories(new Set());
+  
+  // Count totals
+  const demons = player?.props?.filter(p => p.is_demon) || [];
+  const goblins = player?.props?.filter(p => p.is_goblin) || [];
+  const standard = player?.props?.filter(p => !p.is_demon && !p.is_goblin) || [];
+  
+  // Get stats summary for each category
+  const getStatsForCategory = (categoryKey) => {
+    const category = STAT_CATEGORIES[categoryKey];
+    if (!category || !player?.stats_summary) return {};
+    
+    // Find the matching stat in stats_summary
+    const baseMarket = category.markets[0]; // e.g., 'player_points'
+    return player.stats_summary[baseMarket] || {};
+  };
   
   return (
     <div className="min-h-screen bg-zinc-950">
@@ -341,55 +671,49 @@ const PlayerDetailPage = ({ playerName, onBack }) => {
             </Button>
           </div>
         ) : (
-          <div className="space-y-4">
-            {/* Demons Section */}
-            {demons.length > 0 && (
-              <div>
-                <div className="flex items-center gap-2 mb-2">
-                  <Skull className="w-4 h-4 text-red-500" />
-                  <span className="text-red-400 font-bold text-sm">DEMONS (+100)</span>
-                  <span className="text-zinc-600 text-xs">{demons.length} props</span>
-                </div>
-                <div className="space-y-1">
-                  {demons.map((prop, idx) => (
-                    <PropRow key={`demon-${idx}`} prop={prop} />
-                  ))}
-                </div>
+          <div className="space-y-3">
+            {/* Quick Actions */}
+            <div className="flex items-center justify-between">
+              <div className="text-xs text-zinc-500">
+                {orderedCategories.length} categories · {player?.props?.length || 0} props
               </div>
-            )}
-            
-            {/* Goblins Section */}
-            {goblins.length > 0 && (
-              <div>
-                <div className="flex items-center gap-2 mb-2">
-                  <Ghost className="w-4 h-4 text-green-500" />
-                  <span className="text-green-400 font-bold text-sm">GOBLINS (Default)</span>
-                  <span className="text-zinc-600 text-xs">{goblins.length} props</span>
-                </div>
-                <div className="space-y-1">
-                  {goblins.map((prop, idx) => (
-                    <PropRow key={`goblin-${idx}`} prop={prop} />
-                  ))}
-                </div>
+              <div className="flex items-center gap-2">
+                <button 
+                  onClick={expandAll}
+                  className="text-xs text-zinc-400 hover:text-white transition-colors"
+                >
+                  Expand All
+                </button>
+                <span className="text-zinc-600">|</span>
+                <button 
+                  onClick={collapseAll}
+                  className="text-xs text-zinc-400 hover:text-white transition-colors"
+                >
+                  Collapse All
+                </button>
               </div>
-            )}
+            </div>
             
-            {/* Standard Props */}
-            {standard.length > 0 && (
-              <div>
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="text-zinc-400 font-bold text-sm">STANDARD</span>
-                  <span className="text-zinc-600 text-xs">{standard.length} props</span>
-                </div>
-                <div className="space-y-1">
-                  {standard.map((prop, idx) => (
-                    <PropRow key={`std-${idx}`} prop={prop} />
-                  ))}
-                </div>
-              </div>
-            )}
+            {/* Category Accordions */}
+            {orderedCategories.map(categoryKey => {
+              const category = STAT_CATEGORIES[categoryKey];
+              const categoryProps = groupedProps[categoryKey] || [];
+              const categoryStats = getStatsForCategory(categoryKey);
+              
+              return (
+                <CategoryAccordion
+                  key={categoryKey}
+                  categoryKey={categoryKey}
+                  categoryName={category?.name || categoryKey}
+                  props={categoryProps}
+                  stats={categoryStats}
+                  isExpanded={expandedCategories.has(categoryKey)}
+                  onToggle={() => toggleCategory(categoryKey)}
+                />
+              );
+            })}
             
-            {sortedProps.length === 0 && (
+            {orderedCategories.length === 0 && (
               <div className="text-center py-8 text-zinc-500">
                 No props available for this player
               </div>
