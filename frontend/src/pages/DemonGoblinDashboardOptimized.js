@@ -11,7 +11,7 @@ import {
   ChevronDown, ChevronRight, AlertTriangle,
   User, Flame, Star, Clock, Zap, HardDrive, ArrowLeft, X,
   DollarSign, TrendingUp, Target, Layers, CheckCircle, XCircle,
-  LogOut, Crown
+  LogOut, Crown, Eye
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -54,7 +54,7 @@ const BeaconGlowStyles = () => (
       opacity: 0.9;
     }
     
-    /* ==================== GOBLIN VAULT - Emerald Green Beacon ==================== */
+    /* ==================== GOBLIN RECON - Emerald Green Beacon ==================== */
     @keyframes emerald-glow-pulse {
       0% { 
         box-shadow: 0 0 5px #90EE90, 0 0 10px rgba(144, 238, 144, 0.3); 
@@ -713,7 +713,7 @@ const RadarCard = memo(({ pick, rank, onClick, isScanning = false }) => {
 
 RadarCard.displayName = 'RadarCard';
 
-// ==================== GOBLIN VAULT CARD ====================
+// ==================== GOBLIN RECON CARD ====================
 
 const VaultCard = memo(({ pick, rank, onClick }) => {
   const [isClicked, setIsClicked] = useState(false);
@@ -2793,9 +2793,8 @@ export const DemonGoblinDashboardOptimized = ({ isDemoMode = false }) => {
       <header className="sticky top-0 z-10 bg-zinc-950/95 backdrop-blur border-b border-zinc-800 px-3 py-2.5">
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2 min-w-0">
-            <DemonIcon size={24} />
-            <GoblinIcon size={24} />
-            <h1 className="text-lg font-bold text-white truncate">DEMON & GOBLIN</h1>
+            <Eye className="w-6 h-6 text-zinc-400 flex-shrink-0" />
+            <h1 className="text-lg font-bold text-white truncate">PICKVISION</h1>
             <Badge className="bg-purple-600/30 text-purple-400 border-purple-500/50 text-[10px] flex-shrink-0">
               v3
             </Badge>
@@ -2974,13 +2973,13 @@ export const DemonGoblinDashboardOptimized = ({ isDemoMode = false }) => {
           </div>
         )}
 
-        {/* GOBLIN VAULT - Top 10 Safe Plays */}
+        {/* GOBLIN RECON - Top 10 Safe Plays */}
         {vaultPicks.length > 0 && (
-          <div data-testid="vault-section">
+          <div data-testid="recon-section">
             <div className="flex items-center justify-between mb-2">
               <div className="flex items-center gap-2">
                 <GoblinIcon size={24} />
-                <span className="text-sm font-bold text-green-400">THE GOBLIN VAULT</span>
+                <span className="text-sm font-bold text-green-400">THE GOBLIN RECON</span>
                 <Badge className="bg-green-950/50 text-green-400 border-green-800/50 text-[10px]">
                   TOP 10 HEX-STACK
                 </Badge>
@@ -3003,13 +3002,13 @@ export const DemonGoblinDashboardOptimized = ({ isDemoMode = false }) => {
           </div>
         )}
 
-        {/* THE BIG MONEY BUILDER - Parlay Generator */}
+        {/* THE GAUNTLET - Demon Parlay Generator */}
         {Object.keys(parlayData).length > 0 && (
-          <div data-testid="parlay-section" className="mt-6">
+          <div data-testid="gauntlet-section" className="mt-6">
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2">
                 <DollarSign className="w-5 h-5 text-amber-500" />
-                <span className="text-sm font-bold text-amber-400">THE BIG MONEY BUILDER</span>
+                <span className="text-sm font-bold text-amber-400">THE GAUNTLET</span>
                 <Badge className="bg-amber-950/50 text-amber-400 border-amber-800/50 text-[10px]">
                   PARLAY GENERATOR
                 </Badge>
@@ -3045,13 +3044,13 @@ export const DemonGoblinDashboardOptimized = ({ isDemoMode = false }) => {
           </div>
         )}
 
-        {/* THE GOBLIN RECON - High-Consistency Parlays */}
+        {/* THE SAFE HAVEN - Goblin Parlay Generator */}
         {Object.keys(reconData).length > 0 && (
-          <div data-testid="recon-section" className="mt-6">
+          <div data-testid="safehaven-section" className="mt-6">
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2">
                 <GoblinIcon size={20} />
-                <span className="text-sm font-bold text-emerald-400">THE GOBLIN RECON</span>
+                <span className="text-sm font-bold text-emerald-400">THE SAFE HAVEN</span>
                 <Badge className="bg-emerald-950/50 text-emerald-400 border-emerald-800/50 text-[10px]">
                   HIGH RELIABILITY
                 </Badge>
