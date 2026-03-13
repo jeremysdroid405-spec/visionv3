@@ -154,6 +154,68 @@ NBA_TEAM_MAP = {
 # Reverse map for lookups
 NBA_TEAM_ABBREV_TO_FULL = {v: k for k, v in NBA_TEAM_MAP.items()}
 
+# ==================== KNOWN PLAYER-TEAM MAPPING ====================
+# Hardcoded for star players to ensure correct team assignment
+# This overrides any incorrect API data
+KNOWN_PLAYER_TEAMS = {
+    # Boston Celtics
+    "Derrick White": "BOS",
+    "Jayson Tatum": "BOS",
+    "Jaylen Brown": "BOS",
+    "Jrue Holiday": "BOS",
+    "Kristaps Porzingis": "BOS",
+    "Payton Pritchard": "BOS",
+    # Los Angeles Lakers
+    "LeBron James": "LAL",
+    "Anthony Davis": "LAL",
+    "Austin Reaves": "LAL",
+    "D'Angelo Russell": "LAL",
+    # Denver Nuggets
+    "Nikola Jokic": "DEN",
+    "Jamal Murray": "DEN",
+    "Michael Porter Jr.": "DEN",
+    # Milwaukee Bucks
+    "Giannis Antetokounmpo": "MIL",
+    "Damian Lillard": "MIL",
+    "Khris Middleton": "MIL",
+    # Phoenix Suns
+    "Kevin Durant": "PHX",
+    "Devin Booker": "PHX",
+    "Bradley Beal": "PHX",
+    # Dallas Mavericks
+    "Luka Doncic": "DAL",
+    "Kyrie Irving": "DAL",
+    # Golden State Warriors
+    "Stephen Curry": "GSW",
+    "Klay Thompson": "GSW",
+    "Draymond Green": "GSW",
+    # Oklahoma City Thunder
+    "Shai Gilgeous-Alexander": "OKC",
+    "Chet Holmgren": "OKC",
+    "Jalen Williams": "OKC",
+    # Philadelphia 76ers
+    "Joel Embiid": "PHI",
+    "Tyrese Maxey": "PHI",
+    # San Antonio Spurs
+    "Victor Wembanyama": "SAS",
+    # Orlando Magic
+    "Paolo Banchero": "ORL",
+    "Franz Wagner": "ORL",
+    # Memphis Grizzlies
+    "Ja Morant": "MEM",
+    "Desmond Bane": "MEM",
+    # Minnesota Timberwolves
+    "Anthony Edwards": "MIN",
+    "Karl-Anthony Towns": "MIN",
+    # Cleveland Cavaliers
+    "Donovan Mitchell": "CLE",
+    "Darius Garland": "CLE",
+    # Miami Heat
+    "Jimmy Butler": "MIA",
+    "Bam Adebayo": "MIA",
+    "Tyler Herro": "MIA",
+}
+
 # ==================== NAME NORMALIZATION ====================
 # Common name variations/nicknames to canonical names
 NAME_ALIASES = {
@@ -1000,9 +1062,25 @@ class DemonGoblinEngine:
             
             if player_name not in players_dict:
                 nba_id = get_nba_player_id(player_name)
+                
+                # Priority 1: Check known player-team mapping (most reliable)
+                player_team_abbrev = KNOWN_PLAYER_TEAMS.get(player_name, "")
+                
+                # Priority 2: Get player's actual team from BallDontLie cache
+                if not player_team_abbrev:
+                    bdl_player = self._player_name_map.get(player_name, {})
+                    bdl_team = bdl_player.get("team", {})
+                    player_team_abbrev = bdl_team.get("abbreviation", "")
+                
+                # Priority 3: Infer from game context (fallback)
+                if not player_team_abbrev:
+                    home = prop.get("home_team", "")
+                    away = prop.get("away_team", "")
+                    player_team_abbrev = home or away
+                
                 players_dict[player_name] = {
                     "player_name": player_name,
-                    "team": prop.get("home_team", "") or prop.get("away_team", ""),
+                    "team": player_team_abbrev,
                     "nba_id": nba_id,
                     "props": [],
                     "demons": [],

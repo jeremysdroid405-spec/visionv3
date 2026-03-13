@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, memo, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, memo, useMemo, useRef } from 'react';
 import axios from 'axios';
 import { Button } from '../components/ui/button';
 import { Card } from '../components/ui/card';
@@ -16,6 +16,38 @@ const API = `${BACKEND_URL}/api`;
 
 // NBA CDN headshot URL
 const NBA_HEADSHOT_URL = (nbaId) => `https://cdn.nba.com/headshots/nba/latest/1040x760/${nbaId}.png`;
+
+// ==================== BEACON GLOW CSS ====================
+// Injected CSS for the infinite pulse animation
+const BeaconGlowStyles = () => (
+  <style>{`
+    @keyframes beacon-glow-pulse {
+      0% { 
+        box-shadow: 0 0 5px #FFD700, 0 0 10px rgba(255, 215, 0, 0.3); 
+        border-color: #FFD700; 
+      }
+      50% { 
+        box-shadow: 0 0 20px #FF4500, 0 0 40px rgba(255, 69, 0, 0.4); 
+        border-color: #FF4500; 
+      }
+      100% { 
+        box-shadow: 0 0 5px #FFD700, 0 0 10px rgba(255, 215, 0, 0.3); 
+        border-color: #FFD700; 
+      }
+    }
+    
+    .beacon-glow {
+      animation: beacon-glow-pulse 2s ease-in-out infinite;
+      border-width: 2px;
+      border-style: solid;
+    }
+    
+    .beacon-glow-subtle {
+      animation: beacon-glow-pulse 3s ease-in-out infinite;
+      opacity: 0.9;
+    }
+  `}</style>
+);
 
 // ==================== PLAYER HEADSHOT COMPONENT ====================
 
@@ -519,11 +551,14 @@ const getCategoryColor = (key) => {
 
 // ==================== CATEGORY ACCORDION ====================
 
-const CategoryAccordion = memo(({ categoryKey, categoryName, props, isExpanded, onToggle, stats }) => {
+const CategoryAccordion = memo(({ categoryKey, categoryName, props, isExpanded, onToggle, stats, isHighlightedProp, highlightRef }) => {
   // Count demons, goblins, standard
   const demons = props.filter(p => p.is_demon);
   const goblins = props.filter(p => p.is_goblin);
   const standard = props.filter(p => !p.is_demon && !p.is_goblin);
+  
+  // Check if this category has a highlighted prop
+  const hasHighlightedProp = props.some(p => isHighlightedProp?.(p));
   
   // Sort by line value (ladder sorting - lowest to highest)
   const sortedProps = [...props].sort((a, b) => {
@@ -545,7 +580,7 @@ const CategoryAccordion = memo(({ categoryKey, categoryName, props, isExpanded, 
   const colorClasses = getCategoryColor(categoryKey);
   
   return (
-    <div className="rounded-lg overflow-hidden border border-zinc-800/50">
+    <div className={`rounded-lg overflow-hidden border ${hasHighlightedProp ? 'border-yellow-500/50 beacon-glow-subtle' : 'border-zinc-800/50'}`}>
       {/* Category Header - Clickable */}
       <div
         onClick={onToggle}
@@ -567,6 +602,11 @@ const CategoryAccordion = memo(({ categoryKey, categoryName, props, isExpanded, 
                 {categoryName}
               </span>
               <span className="text-zinc-500 text-xs">({props.length})</span>
+              {hasHighlightedProp && (
+                <Badge className="bg-yellow-500/20 text-yellow-400 border-yellow-500/50 text-[10px]">
+                  RADAR TARGET
+                </Badge>
+              )}
             </div>
             
             {/* Quick Stats - L10 Hit Rate */}
@@ -644,6 +684,8 @@ const CategoryAccordion = memo(({ categoryKey, categoryName, props, isExpanded, 
               categoryStats={categoryStats}
               isFirst={idx === 0}
               isLast={idx === sortedProps.length - 1}
+              isHighlighted={isHighlightedProp?.(prop)}
+              highlightRef={highlightRef}
             />
           ))}
         </div>
@@ -656,7 +698,7 @@ CategoryAccordion.displayName = 'CategoryAccordion';
 
 // ==================== LADDER PROP ROW ====================
 
-const LadderPropRow = memo(({ prop, categoryStats, isFirst, isLast }) => {
+const LadderPropRow = memo(({ prop, categoryStats, isFirst, isLast, isHighlighted, highlightRef }) => {
   const line = prop.line;
   const direction = prop.direction;
   const price = prop.price;
@@ -684,13 +726,16 @@ const LadderPropRow = memo(({ prop, categoryStats, isFirst, isLast }) => {
   
   return (
     <div 
+      ref={isHighlighted ? highlightRef : null}
       className={`
         flex items-center justify-between px-3 py-2 rounded-lg transition-all
         ${isDemon ? 'bg-red-950/30 border-l-3 border-red-500 hover:bg-red-950/50' : ''}
         ${isGoblin ? 'bg-green-950/30 border-l-3 border-green-500 hover:bg-green-950/50' : ''}
         ${!isDemon && !isGoblin ? 'bg-zinc-800/30 border-l-3 border-zinc-600 hover:bg-zinc-800/50' : ''}
+        ${isHighlighted ? 'beacon-glow' : ''}
       `}
       data-testid={`ladder-prop-${line}`}
+      data-highlighted={isHighlighted ? 'true' : 'false'}
     >
       {/* Left: Line Value + Direction */}
       <div className="flex items-center gap-3">
@@ -713,6 +758,13 @@ const LadderPropRow = memo(({ prop, categoryStats, isFirst, isLast }) => {
         <span className={`text-[10px] font-medium ${playTypeColor} bg-zinc-800/50 px-1.5 py-0.5 rounded`}>
           {playTypeLabel}
         </span>
+        
+        {/* Radar Pick Badge */}
+        {isHighlighted && (
+          <Badge className="bg-yellow-500/20 text-yellow-400 border-yellow-500/50 text-[10px] animate-pulse">
+            RADAR PICK
+          </Badge>
+        )}
       </div>
       
       {/* Right: Odds + Hit Rates */}
@@ -755,11 +807,26 @@ LadderPropRow.displayName = 'LadderPropRow';
 
 // ==================== PLAYER DETAIL PAGE (CACHED - No API Calls) ====================
 
-const PlayerDetailPage = ({ playerName, onBack }) => {
+const PlayerDetailPage = ({ playerName, onBack, highlightProp = null }) => {
   const [player, setPlayer] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [expandedCategories, setExpandedCategories] = useState(new Set(['PTS', 'AST', 'REB'])); // Default expanded
+  const highlightRef = useRef(null);
+  
+  // Parse highlight info (format: "stat_type|line|direction" e.g., "AST|3.5|Over")
+  const highlightInfo = useMemo(() => {
+    if (!highlightProp) return null;
+    const parts = highlightProp.split('|');
+    if (parts.length >= 2) {
+      return {
+        statType: parts[0],
+        line: parseFloat(parts[1]),
+        direction: parts[2] || 'Over'
+      };
+    }
+    return null;
+  }, [highlightProp]);
   
   useEffect(() => {
     const fetchPlayer = async () => {
@@ -788,7 +855,7 @@ const PlayerDetailPage = ({ playerName, onBack }) => {
     fetchPlayer();
   }, [playerName]);
   
-  // Group props by category
+  // Group props by category (must be before useEffect that uses it)
   const groupedProps = useMemo(() => {
     if (!player?.props) return {};
     
@@ -804,6 +871,49 @@ const PlayerDetailPage = ({ playerName, onBack }) => {
     
     return groups;
   }, [player]);
+  
+  // Auto-expand category containing highlighted prop and scroll to it
+  useEffect(() => {
+    if (highlightInfo && player?.props && Object.keys(groupedProps).length > 0) {
+      // Find which category contains the highlighted prop
+      const matchingCategory = Object.entries(groupedProps).find(([key, props]) => {
+        return props.some(p => 
+          getCategoryKey(p.market) === highlightInfo.statType || 
+          key === highlightInfo.statType
+        );
+      });
+      
+      if (matchingCategory) {
+        // Expand the matching category
+        setExpandedCategories(prev => {
+          const newSet = new Set(prev);
+          newSet.add(matchingCategory[0]);
+          return newSet;
+        });
+      }
+      
+      // Scroll to highlighted element after a short delay (for expansion to complete)
+      setTimeout(() => {
+        if (highlightRef.current) {
+          highlightRef.current.scrollIntoView({ 
+            behavior: 'smooth', 
+            block: 'center' 
+          });
+        }
+      }, 300);
+    }
+  }, [highlightInfo, player, groupedProps]);
+  
+  // Check if a prop matches the highlight
+  const isHighlightedProp = useCallback((prop) => {
+    if (!highlightInfo) return false;
+    const propCategory = getCategoryKey(prop.market);
+    return (
+      (propCategory === highlightInfo.statType || prop.stat_type_extracted === highlightInfo.statType) &&
+      Math.abs(prop.line - highlightInfo.line) < 0.1 &&
+      prop.direction === highlightInfo.direction
+    );
+  }, [highlightInfo]);
   
   // Get ordered category keys (by number of props)
   const orderedCategories = useMemo(() => {
@@ -957,6 +1067,8 @@ const PlayerDetailPage = ({ playerName, onBack }) => {
                   stats={categoryStats}
                   isExpanded={expandedCategories.has(categoryKey)}
                   onToggle={() => toggleCategory(categoryKey)}
+                  isHighlightedProp={isHighlightedProp}
+                  highlightRef={highlightRef}
                 />
               );
             })}
@@ -1162,19 +1274,46 @@ export const DemonGoblinDashboardOptimized = () => {
   
   // ==================== NAVIGATION ====================
   
-  const handlePlayerClick = (playerName) => {
+  // State for highlighted prop from Radar
+  const [highlightProp, setHighlightProp] = useState(null);
+  
+  const handlePlayerClick = (playerName, highlight = null) => {
     setSelectedPlayer(playerName);
+    setHighlightProp(highlight);
+  };
+  
+  // Handler for Radar card clicks - passes highlight info
+  const handleRadarClick = (pick) => {
+    // Create highlight param: stat_type|line|direction
+    const highlightParam = `${pick.stat_type}|${pick.demon_line}|${pick.direction || 'Over'}`;
+    handlePlayerClick(pick.player_name, highlightParam);
+    
+    // Toast notification
+    toast.success(
+      `Navigating to ${pick.player_name}`, 
+      { description: `Looking for ${pick.stat_type} ${pick.demon_line} line...` }
+    );
   };
   
   const handleBack = () => {
     setSelectedPlayer(null);
+    setHighlightProp(null);
   };
   
   // ==================== RENDER ====================
   
-  // If a player is selected, show detail page
+  // If a player is selected, show detail page with highlight
   if (selectedPlayer) {
-    return <PlayerDetailPage playerName={selectedPlayer} onBack={handleBack} />;
+    return (
+      <>
+        <BeaconGlowStyles />
+        <PlayerDetailPage 
+          playerName={selectedPlayer} 
+          onBack={handleBack}
+          highlightProp={highlightProp}
+        />
+      </>
+    );
   }
 
   return (
@@ -1290,7 +1429,7 @@ export const DemonGoblinDashboardOptimized = () => {
                   key={`${pick.player_name}-${pick.stat_type}-${pick.demon_line}-${idx}`} 
                   pick={pick} 
                   rank={idx + 1}
-                  onClick={() => handlePlayerClick(pick.player_name)}
+                  onClick={() => handleRadarClick(pick)}
                 />
               ))}
             </div>

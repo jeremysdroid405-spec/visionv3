@@ -7,6 +7,37 @@ Build a high-performance NBA Player Prop Dashboard that identifies "Demons" (har
 
 ---
 
+## BEACON GLOW FEATURE - COMPLETED (March 13, 2026)
+
+### Deep-Link Handshake ✅
+When clicking a Demon Radar card, the app navigates to the player with highlight info:
+- **Format**: `stat_type|line|direction` (e.g., "PTS|4.5|Over")
+- **Toast notification**: Shows "Navigating to [player]..."
+
+### Permanent Pulse Animation ✅
+CSS animation for highlighted props:
+```css
+@keyframes beacon-glow-pulse {
+  0%: { box-shadow: 0 0 5px #FFD700; border-color: #FFD700; }
+  50%: { box-shadow: 0 0 20px #FF4500; border-color: #FF4500; }
+  100%: { box-shadow: 0 0 5px #FFD700; border-color: #FFD700; }
+}
+```
+- **Duration**: Infinite (never stops)
+- **Applied to**: Highlighted category AND specific prop row
+
+### Auto-Focus Logic ✅
+- **Auto-expand**: Category containing the highlighted prop expands automatically
+- **Scroll to view**: `scrollIntoView({ behavior: 'smooth', block: 'center' })`
+- **Badges**: "RADAR TARGET" on category, "RADAR PICK" on prop row
+
+### Player Team Mapping Fix ✅
+Added `KNOWN_PLAYER_TEAMS` dictionary for star players:
+- Derrick White → BOS (was incorrectly showing away team)
+- 50+ star players mapped to correct teams
+
+---
+
 ## DATABASE NORMALIZATION v2.0 - COMPLETED (March 13, 2026)
 
 ### Team Mapping Translation Table ✅
