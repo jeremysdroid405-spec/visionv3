@@ -3995,7 +3995,11 @@ class DemonGoblinEngine:
             return round(prob * 100, 2)
         
         def calculate_goblin_payout(picks: List[Dict]) -> Dict:
-            """Calculate live payout using the payout engine for Goblin picks."""
+            """Calculate live payout using the payout engine for Goblin picks.
+            
+            Uses GOBLIN_BASE_MULTIPLIERS which reflect actual PrizePicks payouts
+            for picks at -137 to -150 odds (safer/easier lines).
+            """
             # Mark all picks as goblins for proper modifier calculation
             goblin_picks = []
             for pick in picks:
@@ -4010,13 +4014,15 @@ class DemonGoblinEngine:
                 }
                 goblin_picks.append(goblin_pick)
             
-            payout_result = calculate_payout_from_picks(goblin_picks)
+            # Use goblin base multipliers for accurate Safe Haven payouts
+            payout_result = calculate_payout_from_picks(goblin_picks, use_goblin_base=True)
             return {
                 "estimated_payout": payout_result.get("estimated_payout", 0),
                 "payout_display": payout_result.get("payout_display", "0x"),
                 "cumulative_modifier": payout_result.get("cumulative_modifier", 1.0),
-                "base_multiplier": payout_result.get("base_multiplier", 3.0),
+                "base_multiplier": payout_result.get("base_multiplier", 1.4),
                 "asset_breakdown": payout_result.get("asset_breakdown", {}),
+                "payout_type": payout_result.get("payout_type", "goblin"),
                 "legs": payout_result.get("legs", [])
             }
         

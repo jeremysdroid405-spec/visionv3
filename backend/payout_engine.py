@@ -46,7 +46,7 @@ class LegModifier:
     team: str = ""
 
 
-# Base multipliers by number of picks (PrizePicks style)
+# Base multipliers by number of picks (PrizePicks style - Standard/Demon lines at +100 odds)
 BASE_MULTIPLIERS = {
     2: 3.0,    # 2-pick: 3x base
     3: 5.0,    # 3-pick: 5x base
@@ -55,11 +55,21 @@ BASE_MULTIPLIERS = {
     6: 40.0,   # 6-pick: 40x base
 }
 
+# Base multipliers for Goblin-heavy parlays (picks at -137 to -150 odds)
+# These reflect actual PrizePicks payouts for "safer" picks
+GOBLIN_BASE_MULTIPLIERS = {
+    2: 1.4,    # 2-pick goblin: ~1.4x (actual PrizePicks payout)
+    3: 2.0,    # 3-pick goblin: ~2x
+    4: 3.0,    # 4-pick goblin: ~3x
+    5: 5.0,    # 5-pick goblin: ~5x
+    6: 8.0,    # 6-pick goblin: ~8x (Flex: 5/6=1.25x, 6/6=8x)
+}
+
 # Modifier ranges by asset type
 MODIFIER_RANGES = {
     AssetType.DEMON: (1.10, 1.50),      # 10-50% boost for harder lines
     AssetType.STANDARD: (0.95, 1.05),   # Near 1.0 for standard lines
-    AssetType.GOBLIN: (0.70, 0.90),     # 10-30% reduction for easier lines
+    AssetType.GOBLIN: (0.85, 1.0),      # Slight reduction for easier lines (base already lower)
 }
 
 
@@ -111,7 +121,7 @@ def calculate_leg_modifier(
     return asset_type, round(modifier, 2)
 
 
-def calculate_parlay_payout(legs: List[LegModifier]) -> Dict[str, Any]:
+def calculate_parlay_payout(legs: List[LegModifier], use_goblin_base: bool = False) -> Dict[str, Any]:
     """
     Calculate the total payout for a parlay.
     
@@ -119,6 +129,7 @@ def calculate_parlay_payout(legs: List[LegModifier]) -> Dict[str, Any]:
     
     Args:
         legs: List of LegModifier objects
+        use_goblin_base: If True, use GOBLIN_BASE_MULTIPLIERS (for Safe Haven/Goblin Recon)
     
     Returns:
         Dict with payout calculation details
@@ -139,10 +150,7 @@ def calculate_parlay_payout(legs: List[LegModifier]) -> Dict[str, Any]:
             "legs": []
         }
     
-    # Get base multiplier
-    base_multiplier = BASE_MULTIPLIERS.get(num_picks, 3.0)
-    
-    # Calculate cumulative modifier
+    # Calculate cumulative modifier and count asset types first
     cumulative_modifier = 1.0
     leg_details = []
     
@@ -171,6 +179,16 @@ def calculate_parlay_payout(legs: List[LegModifier]) -> Dict[str, Any]:
             "modifier_display": f"{leg.modifier:.2f}x"
         })
     
+    # Determine which base multiplier to use
+    # Use goblin base if explicitly requested OR if majority are goblins
+    is_goblin_heavy = goblin_count > (demon_count + standard_count)
+    if use_goblin_base or is_goblin_heavy:
+        base_multiplier = GOBLIN_BASE_MULTIPLIERS.get(num_picks, 1.4)
+        payout_type = "goblin"
+    else:
+        base_multiplier = BASE_MULTIPLIERS.get(num_picks, 3.0)
+        payout_type = "standard"
+    
     # Calculate final payout
     estimated_payout = base_multiplier * cumulative_modifier
     
@@ -180,6 +198,7 @@ def calculate_parlay_payout(legs: List[LegModifier]) -> Dict[str, Any]:
         "cumulative_modifier": round(cumulative_modifier, 3),
         "estimated_payout": round(estimated_payout, 2),
         "payout_display": f"{estimated_payout:.1f}x",
+        "payout_type": payout_type,
         "asset_breakdown": {
             "demons": demon_count,
             "goblins": goblin_count,
@@ -189,7 +208,7 @@ def calculate_parlay_payout(legs: List[LegModifier]) -> Dict[str, Any]:
     }
 
 
-def calculate_payout_from_picks(picks: List[Dict[str, Any]]) -> Dict[str, Any]:
+def calculate_payout_from_picks(picks: List[Dict[str, Any]], use_goblin_base: bool = False) -> Dict[str, Any]:
     """
     Calculate payout from a list of pick dictionaries.
     
@@ -200,6 +219,7 @@ def calculate_payout_from_picks(picks: List[Dict[str, Any]]) -> Dict[str, Any]:
                - player_name, stat_type, line, direction
                - is_demon, is_goblin, standard_line (optional)
                - demon_line, goblin_line (optional)
+        use_goblin_base: If True, use GOBLIN_BASE_MULTIPLIERS (for Safe Haven/Goblin Recon)
     
     Returns:
         Dict with payout calculation
@@ -244,11 +264,11 @@ def calculate_payout_from_picks(picks: List[Dict[str, Any]]) -> Dict[str, Any]:
             team=team
         ))
     
-    return calculate_parlay_payout(legs)
+    return calculate_parlay_payout(legs, use_goblin_base=use_goblin_base)
 
 
 # Quick payout estimate functions
-def estimate_payout(num_picks: int, demon_count: int = 0, goblin_count: int = 0) -> float:
+def estimate_payout(num_picks: int, demon_count: int = 0, goblin_count: int = 0, use_goblin_base: bool = False) -> float:
     """
     Quick estimate of payout based on pick composition.
     
@@ -256,6 +276,7 @@ def estimate_payout(num_picks: int, demon_count: int = 0, goblin_count: int = 0)
         num_picks: Total number of picks
         demon_count: Number of demon picks
         goblin_count: Number of goblin picks
+        use_goblin_base: If True, use goblin base multipliers
     
     Returns:
         Estimated payout multiplier
@@ -263,11 +284,16 @@ def estimate_payout(num_picks: int, demon_count: int = 0, goblin_count: int = 0)
     if num_picks < 2 or num_picks > 6:
         return 0.0
     
-    base = BASE_MULTIPLIERS.get(num_picks, 3.0)
+    # Use appropriate base multiplier
+    is_goblin_heavy = goblin_count > (demon_count + (num_picks - demon_count - goblin_count))
+    if use_goblin_base or is_goblin_heavy:
+        base = GOBLIN_BASE_MULTIPLIERS.get(num_picks, 1.4)
+    else:
+        base = BASE_MULTIPLIERS.get(num_picks, 3.0)
     
-    # Average modifiers
+    # Average modifiers (adjusted for new goblin range)
     demon_mod = 1.25  # Average demon modifier
-    goblin_mod = 0.80  # Average goblin modifier
+    goblin_mod = 0.92  # Average goblin modifier (now 0.85-1.0 range)
     standard_mod = 1.0
     
     standard_count = num_picks - demon_count - goblin_count
@@ -281,17 +307,19 @@ def estimate_payout(num_picks: int, demon_count: int = 0, goblin_count: int = 0)
     return round(base * cumulative, 2)
 
 
-# Examples for reference
+# Examples for reference - Updated with realistic goblin payouts
 EXAMPLE_PAYOUTS = {
-    "2_pick_standard": estimate_payout(2, 0, 0),      # 3.0x
-    "2_pick_all_demons": estimate_payout(2, 2, 0),    # ~4.7x
-    "2_pick_all_goblins": estimate_payout(2, 0, 2),   # ~1.9x
-    "2_pick_mixed": estimate_payout(2, 1, 1),         # ~3.0x
-    "3_pick_standard": estimate_payout(3, 0, 0),      # 5.0x
-    "3_pick_all_demons": estimate_payout(3, 3, 0),    # ~9.8x
-    "4_pick_standard": estimate_payout(4, 0, 0),      # 10.0x
-    "6_pick_standard": estimate_payout(6, 0, 0),      # 40.0x
-    "6_pick_all_demons": estimate_payout(6, 6, 0),    # ~152x
+    "2_pick_standard": estimate_payout(2, 0, 0),                    # 3.0x
+    "2_pick_all_demons": estimate_payout(2, 2, 0),                  # ~4.7x
+    "2_pick_all_goblins": estimate_payout(2, 0, 2, use_goblin_base=True),  # ~1.2x (realistic)
+    "2_pick_mixed": estimate_payout(2, 1, 1),                       # ~3.5x
+    "3_pick_standard": estimate_payout(3, 0, 0),                    # 5.0x
+    "3_pick_all_demons": estimate_payout(3, 3, 0),                  # ~9.8x
+    "3_pick_all_goblins": estimate_payout(3, 0, 3, use_goblin_base=True),  # ~1.6x (realistic)
+    "4_pick_standard": estimate_payout(4, 0, 0),                    # 10.0x
+    "6_pick_standard": estimate_payout(6, 0, 0),                    # 40.0x
+    "6_pick_all_demons": estimate_payout(6, 6, 0),                  # ~152x
+    "6_pick_all_goblins": estimate_payout(6, 0, 6, use_goblin_base=True),  # ~5x (realistic)
 }
 
 
