@@ -108,6 +108,81 @@ DEMON_ODDS = 100  # Even odds = Demon (only applies to alternate markets)
 # Hit rate threshold for Goblin warning
 GOBLIN_HIT_RATE_WARNING = 0.90  # 90% hit rate
 
+# ==================== NBA TEAM MAPPING ====================
+# Full team names to 3-letter abbreviations
+NBA_TEAM_MAP = {
+    # Atlantic Division
+    "Boston Celtics": "BOS",
+    "Brooklyn Nets": "BKN",
+    "New York Knicks": "NYK",
+    "Philadelphia 76ers": "PHI",
+    "Toronto Raptors": "TOR",
+    # Central Division
+    "Chicago Bulls": "CHI",
+    "Cleveland Cavaliers": "CLE",
+    "Detroit Pistons": "DET",
+    "Indiana Pacers": "IND",
+    "Milwaukee Bucks": "MIL",
+    # Southeast Division
+    "Atlanta Hawks": "ATL",
+    "Charlotte Hornets": "CHA",
+    "Miami Heat": "MIA",
+    "Orlando Magic": "ORL",
+    "Washington Wizards": "WAS",
+    # Northwest Division
+    "Denver Nuggets": "DEN",
+    "Minnesota Timberwolves": "MIN",
+    "Oklahoma City Thunder": "OKC",
+    "Portland Trail Blazers": "POR",
+    "Utah Jazz": "UTA",
+    # Pacific Division
+    "Golden State Warriors": "GSW",
+    "LA Clippers": "LAC",
+    "Los Angeles Clippers": "LAC",
+    "Los Angeles Lakers": "LAL",
+    "LA Lakers": "LAL",
+    "Phoenix Suns": "PHX",
+    "Sacramento Kings": "SAC",
+    # Southwest Division
+    "Dallas Mavericks": "DAL",
+    "Houston Rockets": "HOU",
+    "Memphis Grizzlies": "MEM",
+    "New Orleans Pelicans": "NOP",
+    "San Antonio Spurs": "SAS",
+}
+
+# Reverse map for lookups
+NBA_TEAM_ABBREV_TO_FULL = {v: k for k, v in NBA_TEAM_MAP.items()}
+
+# ==================== NAME NORMALIZATION ====================
+# Common name variations/nicknames to canonical names
+NAME_ALIASES = {
+    # First name variations
+    "nic": "nicolas",
+    "nick": "nicolas", 
+    "mike": "michael",
+    "will": "william",
+    "chris": "christopher",
+    "rob": "robert",
+    "bob": "robert",
+    "dan": "daniel",
+    "danny": "daniel",
+    "tony": "anthony",
+    "alex": "alexandre",
+    "tj": "t.j.",
+    "pj": "p.j.",
+    "cj": "c.j.",
+    "jt": "j.t.",
+    "aj": "a.j.",
+    "rj": "r.j.",
+    "dj": "d.j.",
+    "gg": "g.g.",
+    # Common last name issues
+    "gilgeous alexander": "gilgeous-alexander",
+    "porter jr": "porter jr.",
+    "payton ii": "payton ii",
+}
+
 INJURY_KEYWORDS = [
     "injury", "injured", "out", "questionable", "doubtful", "probable",
     "day-to-day", "GTD", "game time decision", "load management", "rest",
@@ -337,10 +412,125 @@ class DemonGoblinEngine:
         self._last_lines_fetch: Optional[datetime] = None
         self._current_date: Optional[str] = None
         self._player_popularity: Dict[str, int] = {}
+        self._canonical_names: Dict[str, str] = {}  # Cache for normalized names
     
     def get_current_date(self) -> str:
         """Auto-derive today's date from system clock"""
         return datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    
+    # ==================== DATABASE NORMALIZATION ====================
+    
+    def normalize_team_name(self, team_name: str) -> str:
+        """
+        Convert full team name to 3-letter abbreviation.
+        Examples:
+        - "Los Angeles Lakers" → "LAL"
+        - "Brooklyn Nets" → "BKN"
+        - "LAL" → "LAL" (already abbreviated)
+        """
+        if not team_name:
+            return ""
+        
+        # Check if already abbreviated (3 letters)
+        if len(team_name) <= 3:
+            return team_name.upper()
+        
+        # Lookup in team map
+        if team_name in NBA_TEAM_MAP:
+            return NBA_TEAM_MAP[team_name]
+        
+        # Try case-insensitive match
+        team_lower = team_name.lower()
+        for full_name, abbrev in NBA_TEAM_MAP.items():
+            if full_name.lower() == team_lower:
+                return abbrev
+        
+        # Partial match (e.g., "Lakers" → "LAL")
+        for full_name, abbrev in NBA_TEAM_MAP.items():
+            if team_lower in full_name.lower() or full_name.lower() in team_lower:
+                return abbrev
+        
+        # Return first 3 letters as fallback
+        return team_name[:3].upper()
+    
+    def sanitize_player_name(self, name: str) -> str:
+        """
+        Sanitize and normalize player name for consistent storage.
+        
+        Handles:
+        - Case normalization (Title Case)
+        - Special character handling (G.G. → GG)
+        - Common nickname variations (Nic → Nicolas)
+        - Suffix standardization (Jr → Jr.)
+        
+        Returns canonical name format for database storage.
+        """
+        if not name:
+            return ""
+        
+        # Check cache first
+        if name in self._canonical_names:
+            return self._canonical_names[name]
+        
+        # Step 1: Basic cleanup
+        cleaned = name.strip()
+        
+        # Step 2: Handle special characters (periods, hyphens)
+        # Normalize "G.G." to "G.G." (keep periods for proper names)
+        # But normalize "Gilgeous Alexander" to "Gilgeous-Alexander"
+        
+        # Step 3: Split into parts for processing
+        parts = cleaned.split()
+        normalized_parts = []
+        
+        for part in parts:
+            part_lower = part.lower().strip()
+            
+            # Check for known aliases
+            for alias, canonical in NAME_ALIASES.items():
+                if part_lower == alias or part_lower.replace(".", "") == alias.replace(".", ""):
+                    part = canonical.title()
+                    break
+            
+            # Capitalize properly (handle Jr., II, III)
+            if part_lower in ["jr", "jr.", "sr", "sr."]:
+                part = part_lower.rstrip(".").title() + "."
+            elif part_lower in ["ii", "iii", "iv", "v"]:
+                part = part.upper()
+            elif len(part) <= 3 and "." in part:
+                # Keep initials as-is (J.J., P.J., etc.)
+                part = part.upper()
+            else:
+                part = part.title()
+            
+            normalized_parts.append(part)
+        
+        # Step 4: Join and handle hyphenated names
+        result = " ".join(normalized_parts)
+        
+        # Fix known hyphenation issues
+        result = result.replace("Gilgeous Alexander", "Gilgeous-Alexander")
+        result = result.replace("Porter Jr", "Porter Jr.")
+        result = result.replace("Payton Ii", "Payton II")
+        
+        # Cache the result
+        self._canonical_names[name] = result
+        
+        return result
+    
+    def create_composite_key(self, player_name: str, stat_type: str, game_date: str) -> str:
+        """
+        Create a unique composite key for deduplication.
+        
+        Format: {sanitized_player_name}|{stat_type}|{game_date}
+        
+        Example: "lebron-james|PTS|2026-03-12"
+        """
+        # Sanitize player name for key (lowercase, no spaces/special chars)
+        safe_name = player_name.lower().replace(" ", "-").replace(".", "").replace("'", "")
+        safe_stat = stat_type.lower().replace("_", "-")
+        
+        return f"{safe_name}|{safe_stat}|{game_date}"
     
     # ==================== WAREHOUSE MODEL: SINGLE BATCH SYNC ====================
     
@@ -348,12 +538,11 @@ class DemonGoblinEngine:
         """
         THE ONLY API CALL - Single batch fetch to MongoDB
         
-        This function:
-        1. Makes ONE call to get all NBA events
-        2. Makes ONE call per event to get PrizePicks odds
-        3. Stores EVERYTHING in dg_live_props collection
-        4. Uses composite key for deduplication
-        5. Adds synced_at timestamp
+        DATABASE NORMALIZATION (v2.0):
+        1. Team names converted to 3-letter abbreviations (LAL, BKN, etc.)
+        2. Player names sanitized and normalized (Nic → Nicolas, etc.)
+        3. Composite key: player_name + stat_type + game_date for deduplication
+        4. UPSERT mode: Update existing records instead of duplicating
         
         Frontend reads ONLY from MongoDB after this.
         """
@@ -361,7 +550,7 @@ class DemonGoblinEngine:
         self._current_date = self.get_current_date()
         
         logger.info("=" * 70)
-        logger.info("[SYNC_ODDS_TO_MONGO] Starting single batch sync...")
+        logger.info("[SYNC_ODDS_TO_MONGO] Starting normalized batch sync v2.0...")
         logger.info(f"[SYNC_ODDS_TO_MONGO] Date: {self._current_date}")
         logger.info("=" * 70)
         
@@ -375,6 +564,9 @@ class DemonGoblinEngine:
             "demons_count": 0,
             "goblins_count": 0,
             "api_calls_made": 0,
+            "duplicates_prevented": 0,
+            "names_normalized": 0,
+            "teams_normalized": 0,
             "errors": []
         }
         
@@ -392,7 +584,8 @@ class DemonGoblinEngine:
             
             # Step 2: Fetch odds for each event (1 API call per event)
             all_props = []
-            seen_players = set()
+            seen_players_raw = set()
+            seen_players_normalized = set()
             
             for event in events:
                 event_id = event.get("id")
@@ -407,42 +600,91 @@ class DemonGoblinEngine:
                     all_props.extend(props)
                     
                     for prop in props:
-                        seen_players.add(prop.get("player_name"))
+                        seen_players_raw.add(prop.get("player_name"))
                 
                 # Small delay to avoid rate limiting
                 await asyncio.sleep(0.3)
             
-            results["unique_players"] = len(seen_players)
+            # Step 3: Normalize all props (team names, player names)
+            logger.info(f"[NORMALIZATION] Processing {len(all_props)} props...")
+            normalized_props = []
             
-            # Step 3: Enrich props with BallDontLie hit rates
-            logger.info(f"[SYNC_ODDS_TO_MONGO] Enriching {len(seen_players)} players with BallDontLie stats...")
-            enriched_props = await self._enrich_props_with_stats(all_props, list(seen_players))
+            for prop in all_props:
+                # Normalize team names to 3-letter abbreviations
+                original_home = prop.get("home_team", "")
+                original_away = prop.get("away_team", "")
+                
+                prop["home_team"] = self.normalize_team_name(original_home)
+                prop["away_team"] = self.normalize_team_name(original_away)
+                prop["home_team_full"] = original_home  # Keep original for reference
+                prop["away_team_full"] = original_away
+                
+                if prop["home_team"] != original_home:
+                    results["teams_normalized"] += 1
+                
+                # Normalize player names
+                original_name = prop.get("player_name", "")
+                normalized_name = self.sanitize_player_name(original_name)
+                
+                if normalized_name != original_name:
+                    results["names_normalized"] += 1
+                    logger.debug(f"[NORMALIZE] '{original_name}' → '{normalized_name}'")
+                
+                prop["player_name"] = normalized_name
+                prop["player_name_raw"] = original_name  # Keep original for debugging
+                
+                seen_players_normalized.add(normalized_name)
+                
+                # Extract stat type for composite key
+                market = prop.get("market", "")
+                stat_type = self._extract_stat_type(market)
+                
+                # Create composite key: player_name + stat_type + line + direction + game_date
+                composite_key = f"{normalized_name}|{stat_type}|{prop.get('line', 0)}|{prop.get('direction', '')}|{self._current_date}"
+                prop["_composite_key"] = composite_key
+                prop["stat_type_extracted"] = stat_type
+                prop["game_date"] = self._current_date
+                prop["synced_at"] = sync_start.isoformat()
+                
+                normalized_props.append(prop)
+            
+            results["unique_players"] = len(seen_players_normalized)
+            logger.info(f"[NORMALIZATION] Normalized {results['names_normalized']} names, {results['teams_normalized']} teams")
+            logger.info(f"[NORMALIZATION] Raw players: {len(seen_players_raw)} → Normalized: {len(seen_players_normalized)}")
+            
+            # Step 4: Enrich props with BallDontLie hit rates
+            logger.info(f"[SYNC_ODDS_TO_MONGO] Enriching {len(seen_players_normalized)} players with BallDontLie stats...")
+            enriched_props = await self._enrich_props_with_stats(normalized_props, list(seen_players_normalized))
             results["stats_enriched"] = len([p for p in enriched_props if p.get("hit_rates")])
             
-            # Step 4: Deduplicate and store in MongoDB
+            # Step 5: Wipe dirty data and insert clean normalized data with UPSERT
             if enriched_props:
-                # Clear old data
-                await self.live_props.delete_many({})
+                # Clear old data to start fresh (clean slate approach)
+                deleted = await self.live_props.delete_many({})
+                logger.info(f"[CLEANUP] Wiped {deleted.deleted_count} old records")
                 
                 # Deduplicate using composite key
                 deduplicated = {}
                 for prop in enriched_props:
-                    # Composite key: player_name + market + line + direction
-                    key = f"{prop['player_name']}|{prop['market']}|{prop['line']}|{prop['direction']}"
-                    
-                    # Add synced_at timestamp
-                    prop["synced_at"] = sync_start.isoformat()
-                    prop["_composite_key"] = key
-                    
-                    # Keep latest version
-                    deduplicated[key] = prop
+                    key = prop.get("_composite_key", "")
+                    if key:
+                        if key in deduplicated:
+                            results["duplicates_prevented"] += 1
+                        # Keep latest version (overwrites duplicates)
+                        deduplicated[key] = prop
                 
-                # Insert deduplicated props (without _id to avoid serialization issues)
+                # Insert deduplicated props
                 props_list = list(deduplicated.values())
                 for prop in props_list:
                     prop.pop("_id", None)  # Remove any existing _id
-                    
+                
                 if props_list:
+                    # Create unique index on composite key for future upserts
+                    try:
+                        await self.live_props.create_index("_composite_key", unique=True, sparse=True)
+                    except Exception:
+                        pass  # Index may already exist
+                    
                     await self.live_props.insert_many(props_list)
                 
                 results["total_props"] = len(props_list)
@@ -450,13 +692,16 @@ class DemonGoblinEngine:
                 results["demons_count"] = sum(1 for p in props_list if p.get("is_demon"))
                 results["goblins_count"] = sum(1 for p in props_list if p.get("is_goblin"))
                 
-                logger.info(f"[SYNC_ODDS_TO_MONGO] Stored {len(props_list)} deduplicated props")
+                logger.info(f"[SYNC_ODDS_TO_MONGO] Stored {len(props_list)} clean, deduplicated props")
+                logger.info(f"[SYNC_ODDS_TO_MONGO] Duplicates prevented: {results['duplicates_prevented']}")
             
-            # Step 5: Build cached board for frontend (grouped by player)
+            # Step 6: Build cached board for frontend (grouped by player)
             await self._build_cached_board(props_list, sync_start)
             
         except Exception as e:
             logger.error(f"[SYNC_ODDS_TO_MONGO] Error: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
             results["success"] = False
             results["errors"].append(str(e))
         
@@ -464,12 +709,15 @@ class DemonGoblinEngine:
         results["duration_seconds"] = duration
         
         logger.info("=" * 70)
-        logger.info(f"[SYNC_ODDS_TO_MONGO] COMPLETE")
+        logger.info(f"[SYNC_ODDS_TO_MONGO] COMPLETE (Normalized v2.0)")
         logger.info(f"  Duration: {duration:.1f}s")
         logger.info(f"  API Calls Made: {results['api_calls_made']}")
         logger.info(f"  Props Stored: {results['total_props']}")
         logger.info(f"  Props Enriched: {results.get('stats_enriched', 0)}")
         logger.info(f"  Players: {results['unique_players']}")
+        logger.info(f"  Names Normalized: {results['names_normalized']}")
+        logger.info(f"  Teams Normalized: {results['teams_normalized']}")
+        logger.info(f"  Duplicates Prevented: {results['duplicates_prevented']}")
         logger.info(f"  Standard: {results['standard_count']} | Demons: {results['demons_count']} | Goblins: {results['goblins_count']}")
         logger.info("=" * 70)
         

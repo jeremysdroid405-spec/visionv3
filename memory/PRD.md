@@ -7,6 +7,52 @@ Build a high-performance NBA Player Prop Dashboard that identifies "Demons" (har
 
 ---
 
+## DATABASE NORMALIZATION v2.0 - COMPLETED (March 13, 2026)
+
+### Team Mapping Translation Table ✅
+All team names are now stored as 3-letter abbreviations:
+
+| Full Name | Abbreviation |
+|-----------|--------------|
+| Los Angeles Lakers | LAL |
+| Brooklyn Nets | BKN |
+| Golden State Warriors | GSW |
+| ... | ... |
+
+**Implementation:** `NBA_TEAM_MAP` dictionary in `demon_goblin_engine.py`
+
+### Composite Key Deduplication ✅
+Prevents duplicate records using unique composite keys:
+
+```
+Format: {player_name}|{stat_type}|{line}|{direction}|{game_date}
+Example: "lebron-james|PTS|27.5|Over|2026-03-13"
+```
+
+- **MongoDB Unique Index**: `_composite_key` field with unique constraint
+- **UPSERT Mode**: Updates existing records instead of creating duplicates
+- **Result**: 0 duplicates in database (9 duplicates prevented on last sync)
+
+### Name Sanitization ✅
+Handles common name variations:
+
+| Alias | Canonical |
+|-------|-----------|
+| Nic | Nicolas |
+| Alex | Alexandre |
+| TJ, PJ, CJ | T.J., P.J., C.J. |
+| Gilgeous Alexander | Gilgeous-Alexander |
+
+**Implementation:** `sanitize_player_name()` method with regex and alias mapping
+
+### Latest Sync Results (March 13, 2026)
+- **Names Normalized**: 308
+- **Teams Normalized**: 3,455 (all converted to 3-letter codes)
+- **Duplicates Prevented**: 9
+- **Unique Teams**: ATL, DET, IND, LAL, MEM, MIA, OKC, ORL, SAS
+
+---
+
 ## BALLDONTLIE STATS ENRICHMENT - COMPLETED (March 12, 2026)
 
 ### Real Hit Rates Integration ✅
