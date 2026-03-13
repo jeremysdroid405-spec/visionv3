@@ -1994,7 +1994,58 @@ const LadderPropRow = memo(({ prop, categoryStats, isFirst, isLast, isHighlighte
   const paceFactor = insights.pace_adjustment_factor || 1.0;
   const usageBump = insights.usage_bump_percent || 0;
   const insightSummary = insights.insight_summary || '';
-  const confidenceRating = insights.ai_confidence_rating || 50;
+  
+  // Calculate per-prop AI confidence based on actual hit rates
+  // Formula: (L5 weight * 0.4) + (L10 weight * 0.35) + (Season weight * 0.25) + bonuses
+  const calculatePropConfidence = () => {
+    if (seasonGames === 0) return 50; // No data = neutral
+    
+    let baseScore = 0;
+    
+    // L5 contribution (40% weight) - most recent form matters most
+    if (l5Games > 0) {
+      baseScore += (l5Pct / 100) * 40;
+    } else {
+      baseScore += 20; // Neutral if no L5 data
+    }
+    
+    // L10 contribution (35% weight)
+    if (l10Games > 0) {
+      baseScore += (l10Pct / 100) * 35;
+    } else {
+      baseScore += 17.5;
+    }
+    
+    // Season contribution (25% weight)
+    if (seasonGames > 0) {
+      baseScore += (seasonPct / 100) * 25;
+    } else {
+      baseScore += 12.5;
+    }
+    
+    // Bonus: Season average above line (+5 to +15)
+    if (seasonAvg > 0 && seasonAvg > line) {
+      const buffer = ((seasonAvg - line) / line) * 100;
+      baseScore += Math.min(buffer * 0.5, 15);
+    }
+    
+    // Penalty: Season average below line (-5 to -15)
+    if (seasonAvg > 0 && seasonAvg < line) {
+      const deficit = ((line - seasonAvg) / line) * 100;
+      baseScore -= Math.min(deficit * 0.5, 15);
+    }
+    
+    // Bonus for Goblin status (high consistency)
+    if (isGoblin) baseScore += 5;
+    
+    // Penalty for Demon status (high variance)
+    if (isDemon) baseScore -= 3;
+    
+    // Clamp between 10-98
+    return Math.round(Math.max(10, Math.min(98, baseScore)));
+  };
+  
+  const confidenceRating = calculatePropConfidence();
   
   // Determine play type label
   let playTypeLabel = '';
