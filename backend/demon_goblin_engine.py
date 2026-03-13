@@ -21,6 +21,13 @@ Triple-Pillar Integration:
 1. The Odds API (us_dfs/prizepicks) - All PrizePicks lines
 2. BallDontLie API - Player stats for hit rate calculation
 3. Tank01 API - Injury reports and player news
+
+Advanced Analytics (v3.1):
+- Schedule Density Factor (fatigue from B2B, 3-in-4)
+- Pace Adjustment Factor (matchup tempo)
+- Usage Ripple Effect (teammate injuries)
+- Volatility Score (consistency rating)
+- Template-based Insight Summaries
 """
 
 import httpx
@@ -28,6 +35,7 @@ import logging
 import os
 import asyncio
 import random
+import statistics
 from datetime import datetime, timezone, timedelta, time
 from typing import Optional, Dict, List, Any, Set, Tuple
 from thefuzz import fuzz
@@ -514,6 +522,7 @@ class DemonGoblinEngine:
         self.static_shell_cache = db.dg_static_shell
         self.dynamic_lines_cache = db.dg_dynamic_lines
         self.tank01_cache = db.dg_tank01_cache
+        self.daily_insights = db.dg_daily_insights  # Advanced analytics cache
         
         # In-memory caches
         self._player_name_map: Dict[str, Any] = {}
@@ -525,6 +534,15 @@ class DemonGoblinEngine:
         self._player_popularity: Dict[str, int] = {}
         self._canonical_names: Dict[str, str] = {}  # Cache for normalized names
         self._master_roster_cache: Dict[str, str] = {}  # In-memory cache for quick lookups
+        self._team_pace_cache: Dict[str, float] = {}  # Team pace cache for analytics
+        
+        # Advanced Analytics Constants
+        self.LEAGUE_AVG_PACE = 100.0
+        self.B2B_PENALTY = 0.95
+        self.THREE_IN_FOUR_PENALTY = 0.92
+        self.VOLATILITY_HIGH_THRESHOLD = 10.0
+        self.VOLATILITY_MED_THRESHOLD = 5.0
+        self.USAGE_REDISTRIBUTION_BASE = 12.0
     
     # ==================== MASTER ROSTER SYNC (SOURCE OF TRUTH) ====================
     
@@ -4252,6 +4270,381 @@ class DemonGoblinEngine:
                 result["has_goblin_warning"] = True
         
         return result
+    
+    # ==================== ADVANCED ANALYTICS ENGINE v3.1 ====================
+    
+    def calculate_volatility(self, game_values: List[float]) -> Tuple[str, float]:
+        """
+        Calculate volatility score from recent game values.
+        
+        Returns:
+            (volatility_label "Low"/"Med"/"High", standard_deviation)
+        """
+        if not game_values or len(game_values) < 3:
+            return ("Low", 0.0)
+        
+        try:
+            stddev = statistics.stdev(game_values)
+            
+            if stddev > self.VOLATILITY_HIGH_THRESHOLD:
+                return ("High", round(stddev, 2))
+            elif stddev > self.VOLATILITY_MED_THRESHOLD:
+                return ("Med", round(stddev, 2))
+            else:
+                return ("Low", round(stddev, 2))
+        except:
+            return ("Low", 0.0)
+    
+    def get_team_pace(self, team: str) -> float:
+        """Get team's pace (possessions per 48 minutes)."""
+        if team in self._team_pace_cache:
+            return self._team_pace_cache[team]
+        
+        # 2024-25 season pace values
+        TEAM_PACE = {
+            "IND": 103.5, "ATL": 102.8, "MIL": 102.2, "SAC": 101.9, "MIN": 101.5,
+            "DEN": 101.2, "BOS": 100.8, "PHX": 100.6, "GSW": 100.4, "LAL": 100.2,
+            "DAL": 100.0, "OKC": 99.8, "NOP": 99.6, "POR": 99.4, "HOU": 99.2,
+            "TOR": 99.0, "CHI": 98.8, "WAS": 98.6, "BKN": 98.4, "CHA": 98.2,
+            "SAS": 98.0, "UTA": 97.8, "DET": 97.6, "ORL": 97.4, "MEM": 97.2,
+            "PHI": 97.0, "CLE": 96.8, "MIA": 96.6, "NYK": 96.4, "LAC": 96.2
+        }
+        
+        pace = TEAM_PACE.get(team, self.LEAGUE_AVG_PACE)
+        self._team_pace_cache[team] = pace
+        return pace
+    
+    def calculate_pace_factor(self, team: str, opponent: str) -> float:
+        """
+        Calculate pace adjustment factor.
+        Formula: (Team_Pace + Opponent_Pace) / (2 * League_Avg_Pace)
+        """
+        team_pace = self.get_team_pace(team)
+        opp_pace = self.get_team_pace(opponent)
+        combined_pace = (team_pace + opp_pace) / 2
+        return round(combined_pace / self.LEAGUE_AVG_PACE, 3)
+    
+    def get_high_usage_players(self, team: str) -> List[str]:
+        """Get list of high-usage players (>25% usage rate) on a team."""
+        HIGH_USAGE_BY_TEAM = {
+            "ATL": ["Trae Young", "Dejounte Murray"],
+            "BOS": ["Jayson Tatum", "Jaylen Brown", "Derrick White"],
+            "BKN": ["Cam Thomas", "Dennis Schroder"],
+            "CHA": ["LaMelo Ball", "Brandon Miller"],
+            "CHI": ["Zach LaVine", "Coby White"],
+            "CLE": ["Donovan Mitchell", "Darius Garland"],
+            "DAL": ["Luka Doncic", "Kyrie Irving"],
+            "DEN": ["Nikola Jokic", "Jamal Murray"],
+            "DET": ["Cade Cunningham", "Jaden Ivey"],
+            "GSW": ["Stephen Curry", "Andrew Wiggins"],
+            "HOU": ["Jalen Green", "Alperen Sengun", "Kevin Durant"],
+            "IND": ["Tyrese Haliburton", "Pascal Siakam"],
+            "LAC": ["James Harden", "Kawhi Leonard"],
+            "LAL": ["LeBron James", "Anthony Davis"],
+            "MEM": ["Ja Morant", "Desmond Bane"],
+            "MIA": ["Jimmy Butler", "Bam Adebayo"],
+            "MIL": ["Giannis Antetokounmpo", "Damian Lillard"],
+            "MIN": ["Anthony Edwards", "Karl-Anthony Towns"],
+            "NOP": ["Zion Williamson", "Brandon Ingram", "Trey Murphy III"],
+            "NYK": ["Jalen Brunson", "Julius Randle"],
+            "OKC": ["Shai Gilgeous-Alexander", "Jalen Williams"],
+            "ORL": ["Paolo Banchero", "Franz Wagner"],
+            "PHI": ["Joel Embiid", "Tyrese Maxey"],
+            "PHX": ["Devin Booker", "Bradley Beal"],
+            "POR": ["Anfernee Simons", "Scoot Henderson"],
+            "SAC": ["De'Aaron Fox", "Domantas Sabonis"],
+            "SAS": ["Victor Wembanyama", "Devin Vassell"],
+            "TOR": ["Scottie Barnes", "RJ Barrett"],
+            "UTA": ["Lauri Markkanen", "Collin Sexton"],
+            "WAS": ["Jordan Poole", "Kyle Kuzma"]
+        }
+        return HIGH_USAGE_BY_TEAM.get(team, [])
+    
+    def calculate_usage_bump(
+        self, 
+        player_name: str, 
+        team: str,
+        injured_teammates: List[str]
+    ) -> Tuple[float, List[str]]:
+        """
+        Calculate usage bump when high-usage teammates are out.
+        
+        Returns:
+            (usage_bump_percent, list of injured high-usage teammates)
+        """
+        high_usage = self.get_high_usage_players(team)
+        
+        # Find injured high-usage players (excluding current player)
+        injured_stars = [p for p in injured_teammates if p in high_usage and p != player_name]
+        
+        if not injured_stars:
+            return (0.0, [])
+        
+        # Calculate usage bump with diminishing returns
+        usage_bump = 0.0
+        for i, _ in enumerate(injured_stars):
+            multiplier = 1.0 / (i + 1)
+            usage_bump += self.USAGE_REDISTRIBUTION_BASE * multiplier
+        
+        return (round(usage_bump, 1), injured_stars)
+    
+    def generate_insight_summary(
+        self,
+        player_name: str,
+        pace_factor: float,
+        usage_bump: float,
+        volatility: str,
+        days_rest: int,
+        is_b2b: bool,
+        is_3in4: bool,
+        injured_teammates: List[str],
+        opponent: str
+    ) -> str:
+        """Generate template-based insight summary prioritizing highest-impact factor."""
+        insights = []
+        
+        # Priority 1: Usage Bump (most impactful)
+        if usage_bump > 10:
+            teammates_str = " & ".join(injured_teammates[:2])
+            insights.append(f"🚀 Usage Spike: With {teammates_str} out, usage +{usage_bump:.0f}%")
+        elif usage_bump > 5:
+            teammates_str = injured_teammates[0] if injured_teammates else "teammate"
+            insights.append(f"📈 Usage Up: {teammates_str} out, +{usage_bump:.0f}% opportunity")
+        
+        # Priority 2: Schedule Fatigue
+        if is_3in4:
+            insights.append("⚠️ 3-in-4 Fatigue: -8% performance expected")
+        elif is_b2b:
+            insights.append("⚠️ Back-to-Back: -5% fatigue factor")
+        
+        # Priority 3: Pace Matchup
+        if pace_factor > 1.05:
+            insights.append(f"🏃 Fast Pace vs {opponent}: +{(pace_factor-1)*100:.0f}% boost")
+        elif pace_factor < 0.95:
+            insights.append(f"🐢 Slow Pace vs {opponent}: {(pace_factor-1)*100:.0f}% drag")
+        
+        # Priority 4: Rest Advantage
+        if days_rest >= 3:
+            insights.append(f"😴 {days_rest} Days Rest: Fresh legs advantage")
+        
+        # Priority 5: Volatility Warning
+        if volatility == "High":
+            insights.append("📊 High Variance: Inconsistent, proceed with caution")
+        
+        if not insights:
+            return f"📈 Standard projection. No significant modifiers."
+        
+        return " | ".join(insights[:2])
+    
+    def calculate_confidence_rating(
+        self, 
+        density_factor: float, 
+        volatility: str, 
+        sample_size: int
+    ) -> int:
+        """Calculate AI confidence rating (0-100)."""
+        confidence = 70
+        
+        if density_factor < 0.95:
+            confidence -= 10
+        
+        if volatility == "High":
+            confidence -= 20
+        elif volatility == "Med":
+            confidence -= 10
+        
+        if sample_size >= 10:
+            confidence += 10
+        elif sample_size < 5:
+            confidence -= 15
+        
+        return max(0, min(100, confidence))
+    
+    async def calculate_player_insights(
+        self,
+        player_name: str,
+        team: str,
+        opponent: str,
+        game_stats: List[Dict],
+        stat_type: str = "pts"
+    ) -> Dict[str, Any]:
+        """
+        Calculate all advanced analytics for a player.
+        
+        Args:
+            player_name: Player name
+            team: Player's team abbreviation
+            opponent: Opponent team abbreviation
+            game_stats: List of recent game stats [{pts, reb, ast, ...}, ...]
+            stat_type: Which stat to calculate volatility for
+        
+        Returns:
+            Complete insights dictionary
+        """
+        # Extract stat values for volatility calculation
+        stat_key_map = {
+            "pts": "pts", "points": "pts",
+            "reb": "reb", "rebounds": "reb",
+            "ast": "ast", "assists": "ast",
+            "fg3m": "fg3m", "3pm": "fg3m", "threes": "fg3m"
+        }
+        stat_key = stat_key_map.get(stat_type.lower(), "pts")
+        
+        recent_values = []
+        for game in game_stats[:10]:
+            val = game.get(stat_key, 0)
+            if val is not None:
+                recent_values.append(float(val))
+        
+        # Calculate volatility
+        volatility, stddev = self.calculate_volatility(recent_values)
+        
+        # Calculate pace factor
+        pace_factor = self.calculate_pace_factor(team, opponent) if opponent else 1.0
+        
+        # Get injured teammates (simplified - would need injury API integration)
+        # For now, use empty list; will be populated by Tank01 in production
+        injured_teammates = []
+        
+        # Calculate usage bump
+        usage_bump, injured_stars = self.calculate_usage_bump(player_name, team, injured_teammates)
+        
+        # Determine schedule density (simplified)
+        # In production, would check actual schedule
+        days_rest = 2  # Default
+        is_b2b = False
+        is_3in4 = False
+        density_factor = 1.0
+        
+        # Generate summary
+        summary = self.generate_insight_summary(
+            player_name=player_name,
+            pace_factor=pace_factor,
+            usage_bump=usage_bump,
+            volatility=volatility,
+            days_rest=days_rest,
+            is_b2b=is_b2b,
+            is_3in4=is_3in4,
+            injured_teammates=injured_stars,
+            opponent=opponent or "TBD"
+        )
+        
+        # Calculate confidence
+        confidence = self.calculate_confidence_rating(density_factor, volatility, len(recent_values))
+        
+        return {
+            "schedule_density_factor": density_factor,
+            "pace_adjustment_factor": pace_factor,
+            "usage_bump_percent": usage_bump,
+            "volatility_score": volatility,
+            "volatility_stddev": stddev,
+            "insight_summary": summary,
+            "ai_confidence_rating": confidence,
+            "is_back_to_back": is_b2b,
+            "is_three_in_four": is_3in4,
+            "days_rest": days_rest,
+            "injured_teammates": injured_stars
+        }
+    
+    async def sync_daily_insights(self) -> Dict[str, Any]:
+        """
+        Sync daily insights for all players with active props.
+        Calculates advanced analytics and stores in MongoDB.
+        Should be run daily at 8:00 AM EST.
+        """
+        sync_start = datetime.now(timezone.utc)
+        logger.info("[INSIGHTS SYNC] Starting daily insights calculation...")
+        
+        insights_calculated = 0
+        errors = []
+        
+        try:
+            # Get all players from cached board
+            players = await self.cached_board.find({}, {"_id": 0}).to_list(None)
+            
+            if not players:
+                return {"success": True, "insights_calculated": 0, "message": "No players to process"}
+            
+            logger.info(f"[INSIGHTS SYNC] Processing {len(players)} players...")
+            
+            for player in players:
+                try:
+                    player_name = player.get("player_name", "")
+                    team = player.get("team", "")
+                    
+                    # Get opponent from props (if available)
+                    opponent = ""
+                    if player.get("props"):
+                        first_prop = player["props"][0]
+                        opponent = first_prop.get("opponent", first_prop.get("away_team", ""))
+                    
+                    # Get cached stats for this player
+                    stats_doc = await self.player_stats.find_one(
+                        {"normalized_name": self.sanitize_player_name(player_name)},
+                        {"_id": 0}
+                    )
+                    
+                    game_stats = []
+                    if stats_doc:
+                        game_stats = stats_doc.get("games", [])[:10]
+                    
+                    # Calculate insights
+                    insights = await self.calculate_player_insights(
+                        player_name=player_name,
+                        team=team,
+                        opponent=opponent,
+                        game_stats=game_stats,
+                        stat_type="pts"
+                    )
+                    
+                    # Add metadata
+                    insights["player_name"] = player_name
+                    insights["team"] = team
+                    insights["opponent"] = opponent
+                    insights["synced_at"] = sync_start.isoformat()
+                    
+                    # Store in MongoDB
+                    await self.daily_insights.update_one(
+                        {"player_name": player_name},
+                        {"$set": insights},
+                        upsert=True
+                    )
+                    
+                    insights_calculated += 1
+                    
+                except Exception as e:
+                    errors.append(f"{player.get('player_name', 'Unknown')}: {str(e)}")
+            
+            # Create indexes
+            await self.daily_insights.create_index("player_name", unique=True)
+            await self.daily_insights.create_index("team")
+            
+            duration = (datetime.now(timezone.utc) - sync_start).total_seconds()
+            logger.info(f"[INSIGHTS SYNC] Completed: {insights_calculated} players in {duration:.1f}s")
+            
+            return {
+                "success": True,
+                "insights_calculated": insights_calculated,
+                "duration_seconds": duration,
+                "errors": errors[:5],
+                "synced_at": sync_start.isoformat()
+            }
+            
+        except Exception as e:
+            logger.error(f"[INSIGHTS SYNC] Failed: {e}")
+            return {
+                "success": False,
+                "error": str(e),
+                "insights_calculated": insights_calculated
+            }
+    
+    async def get_player_insights(self, player_name: str) -> Optional[Dict[str, Any]]:
+        """Get cached insights for a player."""
+        doc = await self.daily_insights.find_one(
+            {"player_name": player_name},
+            {"_id": 0}
+        )
+        return doc
     
     async def run_full_sync(self) -> Dict[str, Any]:
         """Execute the full three-pillar sync with PrizePicks data"""

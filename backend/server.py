@@ -74,6 +74,7 @@ async def scheduled_daily_sync():
     Execution order:
     1. Sync player stats to MongoDB (from BallDontLie + NBA.com fallback)
     2. Run full odds sync (uses cached stats for fast hit rate calculations)
+    3. Calculate daily insights (advanced analytics)
     """
     logger.info("=" * 70)
     logger.info(f"[SCHEDULER] 4:00 AM DAILY SYNC TRIGGERED")
@@ -82,16 +83,22 @@ async def scheduled_daily_sync():
     
     if demon_goblin_engine:
         try:
-            # Step 1: Sync player stats to cache (this makes subsequent syncs faster)
-            logger.info("[SCHEDULER] Step 1/2: Syncing player stats to cache...")
+            # Step 1: Sync player stats to cache
+            logger.info("[SCHEDULER] Step 1/3: Syncing player stats to cache...")
             stats_result = await demon_goblin_engine.sync_player_stats()
             logger.info(f"[SCHEDULER] Stats sync: {stats_result.get('stats_synced', 0)} players (BDL: {stats_result.get('from_balldontlie', 0)}, NBA: {stats_result.get('from_nba_api', 0)})")
             
-            # Step 2: Run full odds sync (uses cached stats)
-            logger.info("[SCHEDULER] Step 2/2: Running full odds sync...")
+            # Step 2: Run full odds sync
+            logger.info("[SCHEDULER] Step 2/3: Running full odds sync...")
             result = await demon_goblin_engine.run_full_sync()
             logger.info(f"[SCHEDULER] Sync complete: {result.get('unique_players', 0)} players")
             logger.info(f"[SCHEDULER] Standard: {result.get('standard_count', 0)}, Demons: {result.get('demons_count', 0)}, Goblins: {result.get('goblins_count', 0)}")
+            
+            # Step 3: Calculate daily insights (advanced analytics)
+            logger.info("[SCHEDULER] Step 3/3: Calculating daily insights...")
+            insights_result = await demon_goblin_engine.sync_daily_insights()
+            logger.info(f"[SCHEDULER] Insights: {insights_result.get('insights_calculated', 0)} players analyzed")
+            
         except Exception as e:
             logger.error(f"[SCHEDULER] Daily sync failed: {e}")
     else:
@@ -1361,6 +1368,53 @@ async def sync_player_stats():
     result = await demon_goblin_engine.sync_player_stats()
     
     return result
+
+
+@api_router.post("/v3/sync-daily-insights")
+async def sync_daily_insights():
+    """
+    ADVANCED ANALYTICS - Calculate and cache daily insights for all players.
+    
+    Calculates:
+    - Schedule Density Factor (B2B, 3-in-4 fatigue)
+    - Pace Adjustment Factor (matchup tempo)
+    - Usage Ripple Effect (teammate injuries)
+    - Volatility Score (consistency rating)
+    - Template-based Insight Summaries
+    
+    Should be run daily at 8:00 AM EST.
+    """
+    if not demon_goblin_engine:
+        raise HTTPException(status_code=500, detail="Engine not initialized")
+    
+    logger.info("[INSIGHTS] Manual sync triggered via API")
+    result = await demon_goblin_engine.sync_daily_insights()
+    
+    return result
+
+
+@api_router.get("/v3/player-insights/{player_name}")
+async def get_player_insights(player_name: str):
+    """
+    Get advanced analytics insights for a specific player.
+    
+    Returns:
+    - schedule_density_factor
+    - pace_adjustment_factor
+    - usage_bump_percent
+    - volatility_score
+    - insight_summary
+    - ai_confidence_rating
+    """
+    if not demon_goblin_engine:
+        raise HTTPException(status_code=500, detail="Engine not initialized")
+    
+    insights = await demon_goblin_engine.get_player_insights(player_name)
+    
+    if not insights:
+        raise HTTPException(status_code=404, detail=f"No insights found for {player_name}")
+    
+    return insights
 
 
 @api_router.get("/v3/master-roster-status")

@@ -1575,7 +1575,7 @@ CategoryAccordion.displayName = 'CategoryAccordion';
 
 // ==================== LADDER PROP ROW ====================
 
-const LadderPropRow = memo(({ prop, categoryStats, isFirst, isLast, isHighlighted, highlightRef, glowClass = 'beacon-glow', highlightType = 'demon' }) => {
+const LadderPropRow = memo(({ prop, categoryStats, isFirst, isLast, isHighlighted, highlightRef, glowClass = 'beacon-glow', highlightType = 'demon', playerInsights }) => {
   const [isExpanded, setIsExpanded] = useState(false);
   
   const line = prop.line;
@@ -1606,6 +1606,14 @@ const LadderPropRow = memo(({ prop, categoryStats, isFirst, isLast, isHighlighte
   const seasonGames = seasonData.total_games || 0;
   const seasonAvg = seasonData.avg || 0;
   
+  // Advanced Analytics from playerInsights
+  const insights = playerInsights || {};
+  const volatilityScore = insights.volatility_score || 'Low';
+  const paceFactor = insights.pace_adjustment_factor || 1.0;
+  const usageBump = insights.usage_bump_percent || 0;
+  const insightSummary = insights.insight_summary || '';
+  const confidenceRating = insights.ai_confidence_rating || 50;
+  
   // Determine play type label
   let playTypeLabel = '';
   let playTypeColor = 'text-zinc-500';
@@ -1626,6 +1634,13 @@ const LadderPropRow = memo(({ prop, categoryStats, isFirst, isLast, isHighlighte
     if (pct >= 50) return 'text-yellow-400';
     if (pct >= 30) return 'text-orange-400';
     return 'text-red-400';
+  };
+  
+  // Volatility color
+  const getVolatilityColor = (vol) => {
+    if (vol === 'High') return 'text-red-400 bg-red-500/20';
+    if (vol === 'Med') return 'text-yellow-400 bg-yellow-500/20';
+    return 'text-green-400 bg-green-500/20';
   };
   
   return (
