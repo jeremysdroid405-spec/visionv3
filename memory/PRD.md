@@ -42,6 +42,27 @@ Build a high-performance NBA Player Prop Dashboard that mimics the PrizePicks us
 ### IN PROGRESS
 - None currently
 
+### RECENTLY COMPLETED (Dec 13, 2025 - Session 4)
+- [x] **Static Vision Intel Briefing Engine (Gemini 3 Flash)**:
+  - **New `intel_briefing_engine.py` module**: Generates AI-powered Mission Intel Briefings using Gemini 2.5 Flash
+  - **Static Generation Logic**: One-time AI call for each unique PlayerID + GameID combination
+  - **Conditional Execution**: Checks `intel_briefing` field before calling API - no duplicate calls
+  - **Prompt Template**: Military Scout tone with `[Sector Trend]` and `[Engagement Context]` structure
+  - **L10 Stats Integration**: Uses player's L10 average, hit rate, and current betting line
+  - **API Endpoints**:
+    - `POST /api/v3/generate-intel-briefings`: Manual trigger to generate missing intel
+    - `GET /api/v3/intel-briefing/{player_name}`: Get cached intel for a player
+  - **Auto-Generation**: Intel generated automatically after sync via `/api/v3/sync-to-mongo`
+  - **UI Integration**: 
+    - Displays in "THE VISION" section on Demon Radar and Goblin Recon cards
+    - Shows `[Sector Trend]` and `[Engagement Context]` military tactical briefings
+    - Placeholder text: "Analyzing Sector Data..." when pending
+  - **Database**: 
+    - Cached in `dg_intel_briefings` collection
+    - Also stored as `intel_briefing` field on `dg_cached_board` entries
+  - **Model**: `gemini-2.5-flash` with low thinking level for speed/cost efficiency
+  - **GOOGLE_API_KEY**: User's Gemini API key stored in backend/.env
+
 ### RECENTLY COMPLETED (Dec 13, 2025 - Session 3)
 - [x] **Adaptive Sync Engine (Mission-Critical Polling)**:
   - **Polling Tiers**: Standby (>6hrs = 60min), Active (1-6hrs = 10min), Critical (<60min = 60s), Post-Tip (stop)
@@ -126,9 +147,12 @@ Build a high-performance NBA Player Prop Dashboard that mimics the PrizePicks us
 ```
 /app/backend/
 ├── server.py                 # API endpoints, APScheduler, auth routes
-├── demon_goblin_engine.py    # Core business logic (5300+ lines)
+├── demon_goblin_engine.py    # Core business logic (6500+ lines)
+├── intel_briefing_engine.py  # NEW: Gemini 3 Flash AI Intel Briefings
+├── adaptive_sync_engine.py   # Real-time odds polling with adaptive frequency
+├── payout_engine.py          # Dynamic parlay payout calculations
 ├── requirements.txt          # Python dependencies
-└── .env                      # Environment variables
+└── .env                      # Environment variables (GOOGLE_API_KEY added)
 ```
 
 ### Frontend (React)
@@ -146,9 +170,10 @@ Build a high-performance NBA Player Prop Dashboard that mimics the PrizePicks us
 ### Database (MongoDB Collections)
 - `player_master_roster` - Player identity source of truth
 - `dg_live_props` - Raw prop data from The Odds API
-- `dg_cached_board` - Denormalized player+props for fast reads
+- `dg_cached_board` - Denormalized player+props for fast reads (now includes `intel_briefing`)
 - `dg_player_stats` - Cached game logs (L5/L10/Season)
 - `dg_daily_insights` - Pre-calculated advanced analytics
+- `dg_intel_briefings` - NEW: Gemini-generated Mission Intel Briefings
 - `dg_parlays_demon/goblin` - Smart parlay picks
 - `dg_verification_failures` - V3.1 Truth Engine audit log
 

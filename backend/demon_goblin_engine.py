@@ -4223,15 +4223,26 @@ class DemonGoblinEngine:
         """
         picks = await self.radar_picks.find({}, {"_id": 0}).sort("radar_score", -1).to_list(10)
         
-        # Only add AI insights (these are generated separately)
+        # Add AI insights (both old insight_summary and new intel_briefing)
         for pick in picks:
+            player_name = pick.get('player_name')
+            
+            # Get old insight_summary from daily_insights
             insight = await self.daily_insights.find_one(
-                {"player_name": pick.get('player_name')},
+                {"player_name": player_name},
                 {"_id": 0, "insight_summary": 1, "ai_confidence_rating": 1}
             )
             if insight:
                 pick['insight_summary'] = insight.get('insight_summary', '')
                 pick['ai_confidence'] = insight.get('ai_confidence_rating', 50)
+            
+            # Get new intel_briefing from cached_board or intel_briefings
+            board_entry = await self.cached_board.find_one(
+                {"player_name": player_name},
+                {"_id": 0, "intel_briefing": 1}
+            )
+            if board_entry and board_entry.get('intel_briefing'):
+                pick['intel_briefing'] = board_entry.get('intel_briefing')
         
         sync_meta = await self.sync_log.find_one({"type": "cached_board"})
         
@@ -4257,15 +4268,26 @@ class DemonGoblinEngine:
         """
         picks = await self.goblin_vault.find({}, {"_id": 0}).sort("vault_score", -1).to_list(10)
         
-        # Only add AI insights (these are generated separately)
+        # Add AI insights (both old insight_summary and new intel_briefing)
         for pick in picks:
+            player_name = pick.get('player_name')
+            
+            # Get old insight_summary from daily_insights
             insight = await self.daily_insights.find_one(
-                {"player_name": pick.get('player_name')},
+                {"player_name": player_name},
                 {"_id": 0, "insight_summary": 1, "ai_confidence_rating": 1}
             )
             if insight:
                 pick['insight_summary'] = insight.get('insight_summary', '')
                 pick['ai_confidence'] = insight.get('ai_confidence_rating', 50)
+            
+            # Get new intel_briefing from cached_board
+            board_entry = await self.cached_board.find_one(
+                {"player_name": player_name},
+                {"_id": 0, "intel_briefing": 1}
+            )
+            if board_entry and board_entry.get('intel_briefing'):
+                pick['intel_briefing'] = board_entry.get('intel_briefing')
         
         sync_meta = await self.sync_log.find_one({"type": "cached_board"})
         

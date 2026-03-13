@@ -37,6 +37,11 @@ from adaptive_sync_engine import (
     get_adaptive_sync_engine,
     STALE_DATA_THRESHOLD_SECONDS
 )
+from intel_briefing_engine import (
+    IntelBriefingEngine,
+    init_intel_briefing_engine,
+    get_intel_briefing_engine
+)
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -76,6 +81,7 @@ injury_service = None  # Injury Intelligence service instance
 raw_stat_fetcher = None  # RAW STAT FETCHER - Isolated data integrity service
 social_signal_engine = None  # Social Signal Engine - News sentiment & revenge games
 adaptive_sync = None  # Adaptive Sync Engine - Mission-critical polling
+intel_briefing_engine = None  # Intel Briefing Engine - Gemini 3 Flash
 scheduler = None  # APScheduler instance
 
 async def initial_autonomous_sync():
@@ -172,7 +178,7 @@ async def scheduled_roster_sync():
 
 @app.on_event("startup")
 async def startup_event():
-    global stats_manager, demon_tracker, demon_goblin_engine, vision_ai_service, injury_service, raw_stat_fetcher, social_signal_engine, adaptive_sync, scheduler
+    global stats_manager, demon_tracker, demon_goblin_engine, vision_ai_service, injury_service, raw_stat_fetcher, social_signal_engine, adaptive_sync, intel_briefing_engine, scheduler
     
     # Initialize stats manager (BallDontLie)
     stats_manager = StatsManager(db)
@@ -208,6 +214,14 @@ async def startup_event():
     # Initialize Adaptive Sync Engine - Mission-critical polling
     adaptive_sync = init_adaptive_sync_engine(db, ODDS_API_KEY)
     logger.info("Adaptive Sync Engine initialized (Mission-Critical Polling)")
+    
+    # Initialize Intel Briefing Engine - Gemini 3 Flash
+    intel_briefing_engine = init_intel_briefing_engine(db)
+    google_key = os.environ.get('GOOGLE_API_KEY')
+    if google_key:
+        logger.info("Intel Briefing Engine initialized (Gemini 3 Flash)")
+    else:
+        logger.warning("[INTEL BRIEFING] No GOOGLE_API_KEY - Intel Briefing disabled")
     
     # Start the adaptive sync engine (background polling)
     if ODDS_API_KEY:
@@ -1293,6 +1307,7 @@ async def sync_to_mongo():
     This is the ONLY place where Odds API is called.
     Fetches all data and stores in MongoDB.
     Also calculates and stores Demon Radar top 10.
+    After sync, triggers Intel Briefing generation for new entries.
     
     Use this endpoint manually or via scheduler.
     Frontend NEVER calls this.
@@ -1304,7 +1319,85 @@ async def sync_to_mongo():
     
     result = await demon_goblin_engine.sync_odds_to_mongo()
     
+    # After sync, generate intel briefings for new entries
+    if intel_briefing_engine and os.environ.get('GOOGLE_API_KEY'):
+        try:
+            logger.info("[INTEL BRIEFING] Generating intel for new entries...")
+            intel_result = await intel_briefing_engine.check_and_generate_for_board()
+            result["intel_briefings"] = intel_result
+        except Exception as e:
+            logger.error(f"[INTEL BRIEFING] Post-sync generation failed: {e}")
+            result["intel_briefings"] = {"error": str(e)}
+    
     return result
+
+
+@api_router.post("/v3/generate-intel-briefings")
+async def generate_intel_briefings():
+    """
+    INTEL BRIEFING GENERATION - Generate AI tactical reports using Gemini 3 Flash.
+    
+    Scans cached_board for entries missing intel_briefing and generates them.
+    Only generates once per PlayerID + GameID combination (conditional execution).
+    
+    Prompt Template:
+    - Uses player's L10 stats and current betting line
+    - Military Scout tone
+    - [Sector Trend] + [Engagement Context] structure
+    
+    Returns:
+    - scanned: Number of entries checked
+    - generated: Number of new intel briefings created
+    - errors: Number of failed generations
+    """
+    if not intel_briefing_engine:
+        raise HTTPException(status_code=500, detail="Intel Briefing Engine not initialized")
+    
+    if not os.environ.get('GOOGLE_API_KEY'):
+        raise HTTPException(status_code=500, detail="GOOGLE_API_KEY not configured")
+    
+    logger.info("[INTEL BRIEFING] Manual generation triggered")
+    result = await intel_briefing_engine.check_and_generate_for_board()
+    
+    return result
+
+
+@api_router.get("/v3/intel-briefing/{player_name}")
+async def get_player_intel_briefing(player_name: str, game_id: Optional[str] = None):
+    """
+    Get the Intel Briefing for a specific player.
+    
+    Returns the cached intel_briefing text or placeholder if not generated yet.
+    
+    Args:
+    - player_name: Player's name
+    - game_id: Optional specific game ID
+    
+    Returns:
+    - intel_briefing: The tactical report text
+    - status: "ready" | "pending" | "unavailable"
+    """
+    if not intel_briefing_engine:
+        return {
+            "player_name": player_name,
+            "intel_briefing": "Analyzing Sector Data...",
+            "status": "unavailable"
+        }
+    
+    intel = await intel_briefing_engine.get_intel_for_player(player_name, game_id)
+    
+    if intel:
+        return {
+            "player_name": player_name,
+            "intel_briefing": intel,
+            "status": "ready"
+        }
+    else:
+        return {
+            "player_name": player_name,
+            "intel_briefing": "Analyzing Sector Data...",
+            "status": "pending"
+        }
 
 
 # ==================== DEMON RADAR ENDPOINT ====================

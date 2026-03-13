@@ -1011,7 +1011,7 @@ TrendingCard.displayName = 'TrendingCard';
 const RadarCard = memo(({ pick, rank, onClick, isScanning = false }) => {
   // Check if this has a special Vision insight (Master Tier)
   const hasVisionGlow = pick.has_high_conflict || 
-    (pick.insight_summary && !pick.insight_summary.toLowerCase().includes('standard'));
+    ((pick.intel_briefing || pick.insight_summary) && !(pick.intel_briefing || pick.insight_summary).toLowerCase().includes('standard'));
   
   // Determine card styling based on Vision status
   const cardClass = hasVisionGlow 
@@ -1186,14 +1186,14 @@ const RadarCard = memo(({ pick, rank, onClick, isScanning = false }) => {
           </div>
           
           {/* AI Explainer - Why this Demon? */}
-          {pick.insight_summary && (
+          {(pick.intel_briefing || pick.insight_summary) && (
             <div className="mt-2 pt-2 border-t border-red-900/30">
               <div className="flex items-center gap-1 mb-1">
                 <Zap className="w-2.5 h-2.5 text-purple-400" />
                 <span className="text-[9px] text-purple-400 uppercase tracking-wider font-semibold">The Vision</span>
               </div>
               <p className="text-[10px] text-purple-300/80 leading-tight line-clamp-2 italic">
-                "{pick.insight_summary}"
+                "{pick.intel_briefing || pick.insight_summary}"
               </p>
             </div>
           )}
@@ -1212,7 +1212,7 @@ const VaultCard = memo(({ pick, rank, onClick }) => {
   
   // Check if this has a special Vision insight
   const hasVisionGlow = pick.has_high_conflict || 
-    (pick.insight_summary && !pick.insight_summary.toLowerCase().includes('standard'));
+    ((pick.intel_briefing || pick.insight_summary) && !(pick.intel_briefing || pick.insight_summary).toLowerCase().includes('standard'));
   
   // Determine card styling based on Vision status
   const cardClass = hasVisionGlow 
@@ -1410,14 +1410,14 @@ const VaultCard = memo(({ pick, rank, onClick }) => {
           </div>
           
           {/* AI Explainer - Why this Goblin? */}
-          {pick.insight_summary && (
+          {(pick.intel_briefing || pick.insight_summary) && (
             <div className="mt-2 pt-2 border-t border-green-900/30">
               <div className="flex items-center gap-1 mb-1">
                 <Zap className="w-2.5 h-2.5 text-purple-400" />
                 <span className="text-[9px] text-purple-400 uppercase tracking-wider font-semibold">The Vision</span>
               </div>
               <p className="text-[10px] text-purple-300/80 leading-tight line-clamp-2 italic">
-                "{pick.insight_summary}"
+                "{pick.intel_briefing || pick.insight_summary}"
               </p>
             </div>
           )}
@@ -1519,13 +1519,13 @@ const ParlayCard = memo(({ parlay, pickCount, onClick }) => {
                   <span className="text-[10px] text-zinc-400">{pick.stat_type}</span>
                   <span className="text-xs font-bold text-white">{pick.line}</span>
                   {pick.has_heat_boost && <Flame className="w-3 h-3 text-orange-400" />}
-                  {pick.insight_summary && <Zap className="w-3 h-3 text-purple-400" title="Has AI Vision" />}
+                  {(pick.intel_briefing || pick.insight_summary) && <Zap className="w-3 h-3 text-purple-400" title="Has AI Vision" />}
                 </div>
               </div>
               {/* Mini Vision Preview */}
-              {pick.insight_summary && (
+              {(pick.intel_briefing || pick.insight_summary) && (
                 <div className="mt-1 text-[9px] text-purple-300/70 line-clamp-1 italic pl-5">
-                  "{pick.insight_summary}"
+                  "{pick.intel_briefing || pick.insight_summary}"
                 </div>
               )}
             </div>
@@ -2126,14 +2126,14 @@ const ParlayPickCard = memo(({ pick, idx, isRecon, colors, playerData, onPickCli
         </div>
         
         {/* THE VISION - AI Insight Preview (Always visible) */}
-        {pick.insight_summary && (
+        {(pick.intel_briefing || pick.insight_summary) && (
           <div className="mt-2 bg-gradient-to-r from-purple-950/40 via-zinc-900/50 to-purple-950/40 rounded-lg px-3 py-2 border border-purple-800/30">
             <div className="flex items-center gap-1.5 mb-1">
               <Zap className="w-3 h-3 text-purple-400" />
               <span className="text-[9px] text-purple-400 uppercase tracking-wider font-semibold">The Vision</span>
             </div>
             <p className="text-[11px] text-purple-200/80 leading-relaxed line-clamp-2 italic">
-              "{pick.insight_summary}"
+              "{pick.intel_briefing || pick.insight_summary}"
             </p>
           </div>
         )}
@@ -2217,7 +2217,7 @@ const ParlayPickCard = memo(({ pick, idx, isRecon, colors, playerData, onPickCli
             )}
             
             {/* THE VISION - Full AI Analysis Section */}
-            {pick.insight_summary && (
+            {(pick.intel_briefing || pick.insight_summary) && (
               <div className="mt-3 pt-3 border-t border-purple-800/30">
                 <div className="flex items-center gap-1.5 mb-2">
                   <Zap className="w-3.5 h-3.5 text-purple-400" />
@@ -2229,7 +2229,7 @@ const ParlayPickCard = memo(({ pick, idx, isRecon, colors, playerData, onPickCli
                 <div className="bg-gradient-to-r from-purple-950/50 via-zinc-900 to-purple-950/50 rounded-lg px-3 py-2.5 border border-purple-700/40 relative overflow-hidden">
                   <div className="absolute top-0 left-0 w-1 h-full bg-gradient-to-b from-purple-500 to-purple-700" />
                   <p className="text-sm text-purple-200 leading-relaxed pl-2 italic">
-                    "{pick.insight_summary}"
+                    "{pick.intel_briefing || pick.insight_summary}"
                   </p>
                 </div>
                 
@@ -2632,7 +2632,8 @@ const LadderPropRow = memo(({ prop, categoryStats, isFirst, isLast, isHighlighte
   const volatilityScore = insights.volatility_score || 'Low';
   const paceFactor = insights.pace_adjustment_factor || 1.0;
   const usageBump = insights.usage_bump_percent || 0;
-  const insightSummary = insights.insight_summary || '';
+  // Prefer intel_briefing (Gemini) over insight_summary (Claude)
+  const insightSummary = prop.intel_briefing || insights.intel_briefing || insights.insight_summary || '';
   
   // Calculate per-prop AI confidence based on actual hit rates
   // Formula: (L5 weight * 0.4) + (L10 weight * 0.35) + (Season weight * 0.25) + bonuses
@@ -2885,7 +2886,7 @@ const LadderPropRow = memo(({ prop, categoryStats, isFirst, isLast, isHighlighte
                     </div>
                   ) : (
                     <div className="bg-zinc-900/50 rounded-lg px-3 py-2.5 mb-3 border border-zinc-800 text-center">
-                      <p className="text-xs text-zinc-500">AI insight generating... Check back soon.</p>
+                      <p className="text-xs text-zinc-500">Analyzing Sector Data...</p>
                     </div>
                   )}
                   
