@@ -278,6 +278,109 @@ const BreakingNewsTicker = memo(({ news }) => {
 
 BreakingNewsTicker.displayName = 'BreakingNewsTicker';
 
+// ==================== V3.1 TRUTH ENGINE - DATA VALIDATION STATUS LIGHT ====================
+
+const DataValidationLight = memo(({ dataStatus }) => {
+  if (!dataStatus) return null;
+  
+  const { status, verified_count, failed_count, verification_rate, total_props } = dataStatus;
+  
+  // Determine light color and status text
+  let lightColor, statusText, statusBg, pulseColor;
+  
+  switch (status) {
+    case 'verified':
+      lightColor = 'bg-green-500';
+      statusBg = 'bg-green-500/10 border-green-500/30';
+      pulseColor = 'animate-pulse-green';
+      statusText = 'Data Verified';
+      break;
+    case 'discrepancy_found':
+      lightColor = 'bg-red-500';
+      statusBg = 'bg-red-500/10 border-red-500/30';
+      pulseColor = 'animate-pulse-red';
+      statusText = 'Discrepancy Found';
+      break;
+    case 'no_data':
+      lightColor = 'bg-zinc-500';
+      statusBg = 'bg-zinc-500/10 border-zinc-500/30';
+      pulseColor = '';
+      statusText = 'No Data';
+      break;
+    case 'pending_verification':
+      lightColor = 'bg-amber-500';
+      statusBg = 'bg-amber-500/10 border-amber-500/30';
+      pulseColor = 'animate-pulse-amber';
+      statusText = 'Verifying...';
+      break;
+    default:
+      lightColor = 'bg-zinc-600';
+      statusBg = 'bg-zinc-600/10 border-zinc-600/30';
+      pulseColor = '';
+      statusText = 'Loading...';
+  }
+  
+  return (
+    <div 
+      className={`flex items-center gap-2 px-2.5 py-1 rounded-lg border ${statusBg}`}
+      data-testid="data-validation-light"
+      title={`${verified_count || 0} verified, ${failed_count || 0} failed, ${verification_rate || 0}% verification rate`}
+    >
+      {/* Status Light */}
+      <div className="relative flex items-center justify-center">
+        <div className={`w-2 h-2 rounded-full ${lightColor} ${pulseColor}`} />
+        {status === 'verified' && (
+          <div className="absolute w-4 h-4 rounded-full bg-green-500/20 animate-ping" style={{ animationDuration: '2s' }} />
+        )}
+        {status === 'discrepancy_found' && (
+          <div className="absolute w-4 h-4 rounded-full bg-red-500/20 animate-ping" style={{ animationDuration: '1.5s' }} />
+        )}
+      </div>
+      
+      {/* Status Text */}
+      <span className={`text-[10px] font-medium ${
+        status === 'verified' ? 'text-green-400' : 
+        status === 'discrepancy_found' ? 'text-red-400' : 
+        status === 'pending_verification' ? 'text-amber-400' :
+        'text-zinc-400'
+      }`}>
+        {statusText}
+      </span>
+      
+      {/* Verification Rate Badge */}
+      {total_props > 0 && (
+        <Badge className={`text-[8px] px-1.5 py-0 h-4 ${
+          status === 'verified' ? 'bg-green-500/20 text-green-300 border-green-500/30' :
+          status === 'discrepancy_found' ? 'bg-red-500/20 text-red-300 border-red-500/30' :
+          'bg-zinc-500/20 text-zinc-300 border-zinc-500/30'
+        }`}>
+          {verification_rate}%
+        </Badge>
+      )}
+      
+      <style jsx>{`
+        @keyframes pulse-green {
+          0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.7); }
+          50% { opacity: 0.8; box-shadow: 0 0 8px 2px rgba(34, 197, 94, 0.4); }
+        }
+        @keyframes pulse-red {
+          0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
+          50% { opacity: 0.8; box-shadow: 0 0 8px 2px rgba(239, 68, 68, 0.4); }
+        }
+        @keyframes pulse-amber {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.5; }
+        }
+        .animate-pulse-green { animation: pulse-green 2s ease-in-out infinite; }
+        .animate-pulse-red { animation: pulse-red 1.5s ease-in-out infinite; }
+        .animate-pulse-amber { animation: pulse-amber 1s ease-in-out infinite; }
+      `}</style>
+    </div>
+  );
+});
+
+DataValidationLight.displayName = 'DataValidationLight';
+
 // Cache keys
 const CACHE_KEYS = {
   STATIC_SHELL: 'dg_static_shell',
@@ -2549,6 +2652,14 @@ export const DemonGoblinDashboardOptimized = ({ isDemoMode = false }) => {
   const [injuryAlerts, setInjuryAlerts] = useState({});  // player_name -> injury_info
   const [breakingNews, setBreakingNews] = useState([]);  // Breaking news ticker
   
+  // V3.1 Truth Engine - Data Integrity Status
+  const [dataStatus, setDataStatus] = useState({
+    status: 'loading',
+    verified_count: 0,
+    failed_count: 0,
+    verification_rate: 0
+  });
+  
   // Navigation state
   const [selectedPlayer, setSelectedPlayer] = useState(null);
   
@@ -2581,15 +2692,16 @@ export const DemonGoblinDashboardOptimized = ({ isDemoMode = false }) => {
     try {
       console.log('[CACHED] Loading from MongoDB...');
       
-      // Load board, radar, vault, parlays, recon, and injuries in parallel
-      const [boardResponse, radarResponse, vaultResponse, parlayResponse, reconResponse, injuryResponse, newsResponse] = await Promise.all([
+      // Load board, radar, vault, parlays, recon, injuries, and data status in parallel
+      const [boardResponse, radarResponse, vaultResponse, parlayResponse, reconResponse, injuryResponse, newsResponse, dataStatusResponse] = await Promise.all([
         axios.get(`${API}/v3/cached-props`),
         axios.get(`${API}/v3/demon-radar`),
         axios.get(`${API}/v3/goblin-vault`),
         axios.get(`${API}/v3/parlay-builder`),
         axios.get(`${API}/v3/goblin-recon`),
         axios.get(`${API}/v3/injuries/alerts`).catch(() => ({ data: { success: false, alerts: {} }})),
-        axios.get(`${API}/v3/breaking-news?injury_only=true`).catch(() => ({ data: { success: false, news: [] }}))
+        axios.get(`${API}/v3/breaking-news?injury_only=true`).catch(() => ({ data: { success: false, news: [] }})),
+        axios.get(`${API}/v3/data-status`).catch(() => ({ data: { success: false, status: 'error' }}))
       ]);
       
       if (boardResponse.data.success && boardResponse.data.players_count > 0) {
@@ -2639,6 +2751,14 @@ export const DemonGoblinDashboardOptimized = ({ isDemoMode = false }) => {
       if (newsResponse.data.success) {
         setBreakingNews(newsResponse.data.news || []);
         console.log(`[NEWS] Loaded ${newsResponse.data.news_count || 0} breaking news items`);
+      }
+      
+      // V3.1 Truth Engine - Load data integrity status
+      if (dataStatusResponse.data.success) {
+        setDataStatus(dataStatusResponse.data);
+        console.log(`[DATA STATUS] Status: ${dataStatusResponse.data.status}, Verified: ${dataStatusResponse.data.verification_rate}%`);
+      } else {
+        setDataStatus({ status: 'error', verified_count: 0, failed_count: 0, verification_rate: 0 });
       }
       
     } catch (error) {
@@ -2889,19 +3009,24 @@ export const DemonGoblinDashboardOptimized = ({ isDemoMode = false }) => {
           </div>
         </div>
         
-        {/* Sub-header info with Last Updated timestamp */}
-        <div className="flex items-center gap-2 mt-1.5 text-[10px] text-zinc-500">
-          <span>{players.length} Players</span>
-          <span>·</span>
-          <HardDrive className="w-3 h-3" />
-          <span>CACHED</span>
-          {syncedAt && (
-            <>
-              <span>·</span>
-              <Clock className="w-3 h-3" />
-              <span>Last Updated: {new Date(syncedAt).toLocaleString()}</span>
-            </>
-          )}
+        {/* Sub-header info with Last Updated timestamp and Data Validation Status */}
+        <div className="flex items-center justify-between mt-1.5">
+          <div className="flex items-center gap-2 text-[10px] text-zinc-500">
+            <span>{players.length} Players</span>
+            <span>·</span>
+            <HardDrive className="w-3 h-3" />
+            <span>CACHED</span>
+            {syncedAt && (
+              <>
+                <span>·</span>
+                <Clock className="w-3 h-3" />
+                <span>Last Updated: {new Date(syncedAt).toLocaleString()}</span>
+              </>
+            )}
+          </div>
+          
+          {/* V3.1 Truth Engine - Data Validation Status Light */}
+          <DataValidationLight dataStatus={dataStatus} />
         </div>
       </header>
 

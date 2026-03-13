@@ -1341,6 +1341,35 @@ async def get_goblin_recon():
     return result
 
 
+# ==================== V3.1 TRUTH ENGINE - DATA INTEGRITY ENDPOINTS ====================
+
+@api_router.get("/v3/data-status")
+async def get_data_status():
+    """
+    V3.1 TRUTH ENGINE - Data Integrity Status
+    
+    Reports the integrity status of the latest data sync for the frontend status light.
+    
+    Returns:
+    - status: "verified" | "discrepancy_found" | "no_data" | "pending_verification"
+    - verified_count: Props that passed all verification checks
+    - failed_count: Props that failed verification (hallucinations, discrepancies, Naji Safeguard)
+    - verification_rate: Percentage of props verified
+    - recent_failures: Last 5 verification failures with details
+    
+    Frontend uses this to display:
+    - Green light: status = "verified" (all data verified)
+    - Red light: status = "discrepancy_found" (verification failures detected)
+    - Gray light: status = "no_data" or "pending_verification"
+    """
+    if not demon_goblin_engine:
+        raise HTTPException(status_code=500, detail="Engine not initialized")
+    
+    result = await demon_goblin_engine.get_data_integrity_status()
+    
+    return result
+
+
 # ==================== SCHEDULER ENDPOINTS ====================
 
 @api_router.post("/v3/sync-master-roster")

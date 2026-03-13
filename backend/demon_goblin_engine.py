@@ -4207,6 +4207,113 @@ class DemonGoblinEngine:
             
         return [get_stat_value(g) for g in games[:10]]
     
+    async def _log_verification_failure(self, player_name: str, failure_type: str, details: Dict[str, Any]):
+        """
+        Log verification failures to MongoDB for audit and data status reporting.
+        
+        V3.1 Truth Engine: All failures are logged for the data status endpoint.
+        """
+        try:
+            failure_doc = {
+                "player_name": player_name,
+                "failure_type": failure_type,
+                "details": details,
+                "logged_at": datetime.now(timezone.utc).isoformat(),
+                "sync_date": self.get_current_date()
+            }
+            
+            await self.db.dg_verification_failures.insert_one(failure_doc)
+            logger.info(f"[VERIFICATION LOG] Logged {failure_type} failure for {player_name}")
+        except Exception as e:
+            logger.error(f"[VERIFICATION LOG] Failed to log failure: {e}")
+    
+    async def get_data_integrity_status(self) -> Dict[str, Any]:
+        """
+        V3.1 Truth Engine: Report data integrity status for the latest sync.
+        
+        Used by /api/v3/data-status endpoint for the frontend status light.
+        
+        Returns:
+            - status: "verified" | "discrepancy_found" | "no_data"
+            - verified_count: Number of props that passed verification
+            - failed_count: Number of props that failed verification
+            - failure_details: Recent failures with types
+            - last_sync: Timestamp of last sync
+        """
+        try:
+            current_date = self.get_current_date()
+            
+            # Count verified vs failed props in cached_board
+            total_props = 0
+            verified_props = 0
+            failed_props = 0
+            unverified_props = 0
+            
+            # Get all players from cached board
+            players = await self.cached_board.find({}).to_list(None)
+            
+            for player in players:
+                for prop in player.get("props", []):
+                    total_props += 1
+                    if prop.get("source_verified"):
+                        verified_props += 1
+                    elif prop.get("verification_status") in ["HALLUCINATION_DETECTED", "DISCREPANCY", "NAJI_SAFEGUARD_FAILED"]:
+                        failed_props += 1
+                    else:
+                        unverified_props += 1
+            
+            # Get recent verification failures
+            recent_failures = await self.db.dg_verification_failures.find(
+                {"sync_date": current_date},
+                {"_id": 0}
+            ).sort("logged_at", -1).limit(10).to_list(None)
+            
+            # Count failure types
+            failure_types = {}
+            for failure in recent_failures:
+                ftype = failure.get("failure_type", "unknown")
+                failure_types[ftype] = failure_types.get(ftype, 0) + 1
+            
+            # Get last sync time
+            sync_log = await self.sync_log.find_one(
+                {"type": "cached_board"},
+                {"_id": 0, "synced_at": 1}
+            )
+            last_sync = sync_log.get("synced_at") if sync_log else None
+            
+            # Determine overall status
+            if total_props == 0:
+                status = "no_data"
+            elif failed_props > 0:
+                status = "discrepancy_found"
+            elif verified_props > 0:
+                status = "verified"
+            else:
+                status = "pending_verification"
+            
+            return {
+                "success": True,
+                "status": status,
+                "sync_date": current_date,
+                "last_sync": last_sync,
+                "total_props": total_props,
+                "verified_count": verified_props,
+                "failed_count": failed_props,
+                "unverified_count": unverified_props,
+                "verification_rate": round((verified_props / total_props * 100), 2) if total_props > 0 else 0,
+                "failure_types": failure_types,
+                "recent_failures": recent_failures[:5],  # Limit to 5 for response size
+                "naji_safeguard_enabled": True
+            }
+            
+        except Exception as e:
+            logger.error(f"[DATA STATUS] Error getting integrity status: {e}")
+            return {
+                "success": False,
+                "status": "error",
+                "error": str(e)
+            }
+    
     async def verify_player_roster_match(self, player_name: str, player_id: int, team_abbrev: str) -> bool:
         """
         NAJI SAFEGUARD: Verify player ID matches active roster for today.
@@ -4416,7 +4523,14 @@ class DemonGoblinEngine:
     # ==================== MAIN ORCHESTRATION ====================
     
     async def process_player_prop(self, prop: Dict[str, Any]) -> Dict[str, Any]:
-        """Process a single prop through all three pillars"""
+        """
+        Process a single prop through all three pillars with V3.1 "Truth Engine" verification.
+        
+        V3.1 NAJI SAFEGUARD:
+        - Verify playerID from game logs matches playerID from active daily roster
+        - Discard data if mismatch (prevents wrong player stats)
+        - Log all discrepancies for audit
+        """
         player_name = prop.get("player_name", "")
         market = prop.get("market", "")
         line = prop.get("line", 0)
@@ -4431,55 +4545,110 @@ class DemonGoblinEngine:
             "has_goblin_warning": False,  # High hit rate + Questionable
             "source_verified": False,  # V3.1: Data integrity flag
             "verification_status": "unverified",  # V3.1: Verification status
+            "verification_details": {},  # V3.1: Detailed verification info
+            "naji_safeguard_passed": None,  # V3.1: Naji Safeguard result
             "processed_at": datetime.now(timezone.utc).isoformat()
         }
         
         # Pillar 2: BallDontLie stats
         bdl_player = await self.search_bdl_player(player_name)
         if bdl_player:
-            result["bdl_player_id"] = bdl_player.get("id")
+            bdl_player_id = bdl_player.get("id")
+            result["bdl_player_id"] = bdl_player_id
             result["bdl_team"] = bdl_player.get("team", {}).get("abbreviation", "")
             result["position"] = bdl_player.get("position", "")
             
             # Convert market name for stats lookup (remove _alternate suffix)
             stat_market = market.replace("_alternate", "")
             
-            games = await self.fetch_player_season_stats(bdl_player.get("id"))
+            games = await self.fetch_player_season_stats(bdl_player_id)
             if games:
-                hit_rates = self.calculate_hit_rates(games, stat_market, line)
-                result["hit_rates"] = hit_rates
+                # ==================== V3.1 NAJI SAFEGUARD ====================
+                # Verify that game log playerIDs match the expected BDL player ID
+                # This prevents data from wrong players (e.g., Naji Marshall issue)
+                naji_safeguard_passed = True
+                mismatched_games = []
                 
-                # V3.1: Triple-check verification
-                verifier = DataIntegrityVerifier()
-                l10_data = self._extract_l10_values(games[:10], stat_market)
-                if l10_data:
-                    calculated_hits = sum(1 for v in l10_data if v > line)
-                    calculated_rate = (calculated_hits / len(l10_data) * 100) if l10_data else 0
-                    claimed_rate = hit_rates.get("l10", {}).get("hit_rate", 0) * 100
-                    raw_avg = sum(l10_data) / len(l10_data) if l10_data else 0
+                for game in games:
+                    # BallDontLie game logs contain player reference in "player" field
+                    game_player = game.get("player", {})
+                    game_player_id = game_player.get("id") if isinstance(game_player, dict) else None
                     
-                    # Verification Gate: Detect hallucinations
-                    is_hallucinated = (
-                        claimed_rate > 80 and 
-                        raw_avg < line and 
-                        calculated_rate < 50
+                    # If game log has player ID, verify it matches
+                    if game_player_id is not None and game_player_id != bdl_player_id:
+                        naji_safeguard_passed = False
+                        mismatched_games.append({
+                            "expected_id": bdl_player_id,
+                            "found_id": game_player_id,
+                            "game_date": game.get("game", {}).get("date", "unknown")
+                        })
+                
+                result["naji_safeguard_passed"] = naji_safeguard_passed
+                
+                if not naji_safeguard_passed:
+                    # DISCARD DATA - Player ID mismatch detected
+                    result["source_verified"] = False
+                    result["verification_status"] = "NAJI_SAFEGUARD_FAILED"
+                    result["verification_details"] = {
+                        "reason": "Player ID mismatch in game logs",
+                        "expected_player_id": bdl_player_id,
+                        "mismatched_games": mismatched_games[:5]  # Limit to 5 for log size
+                    }
+                    logger.error(
+                        f"[NAJI SAFEGUARD] FAILED for {player_name}: "
+                        f"Expected ID {bdl_player_id}, found mismatched games: {len(mismatched_games)}"
                     )
-                    
-                    major_discrepancy = abs(claimed_rate - calculated_rate) > 20
-                    
-                    if is_hallucinated or major_discrepancy:
-                        result["source_verified"] = False
-                        result["verification_status"] = "HALLUCINATION_DETECTED" if is_hallucinated else "DISCREPANCY"
-                        logger.warning(
-                            f"[VERIFY FAIL] {player_name} {stat_market}: "
-                            f"Claimed {claimed_rate:.1f}% vs Calculated {calculated_rate:.1f}% "
-                            f"(avg {raw_avg:.1f} vs line {line})"
-                        )
-                    else:
-                        result["source_verified"] = True
-                        result["verification_status"] = "verified"
+                    # Store the failure for audit
+                    await self._log_verification_failure(player_name, "naji_safeguard", result["verification_details"])
                 else:
-                    result["verification_status"] = "no_game_data"
+                    # Naji Safeguard passed - proceed with hit rate calculation
+                    hit_rates = self.calculate_hit_rates(games, stat_market, line)
+                    result["hit_rates"] = hit_rates
+                    
+                    # V3.1: Triple-check verification
+                    l10_data = self._extract_l10_values(games[:10], stat_market)
+                    if l10_data:
+                        calculated_hits = sum(1 for v in l10_data if v > line)
+                        calculated_rate = (calculated_hits / len(l10_data) * 100) if l10_data else 0
+                        claimed_rate = hit_rates.get("l10", {}).get("hit_rate", 0) * 100
+                        raw_avg = sum(l10_data) / len(l10_data) if l10_data else 0
+                        
+                        # Store verification details for audit
+                        result["verification_details"] = {
+                            "calculated_hits": calculated_hits,
+                            "calculated_rate": round(calculated_rate, 2),
+                            "claimed_rate": round(claimed_rate, 2),
+                            "raw_avg": round(raw_avg, 2),
+                            "line": line,
+                            "games_analyzed": len(l10_data)
+                        }
+                        
+                        # Verification Gate: Detect hallucinations
+                        is_hallucinated = (
+                            claimed_rate > 80 and 
+                            raw_avg < line and 
+                            calculated_rate < 50
+                        )
+                        
+                        major_discrepancy = abs(claimed_rate - calculated_rate) > 20
+                        
+                        if is_hallucinated or major_discrepancy:
+                            result["source_verified"] = False
+                            result["verification_status"] = "HALLUCINATION_DETECTED" if is_hallucinated else "DISCREPANCY"
+                            logger.warning(
+                                f"[VERIFY FAIL] {player_name} {stat_market}: "
+                                f"Claimed {claimed_rate:.1f}% vs Calculated {calculated_rate:.1f}% "
+                                f"(avg {raw_avg:.1f} vs line {line})"
+                            )
+                            # Log failure for audit
+                            await self._log_verification_failure(player_name, result["verification_status"], result["verification_details"])
+                        else:
+                            result["source_verified"] = True
+                            result["verification_status"] = "verified"
+                    else:
+                        result["verification_status"] = "no_game_data"
+            else:
+                result["verification_status"] = "no_games_found"
         
         # Pillar 3: Injury check
         injury_info = self.get_player_injury_status(player_name)
@@ -4892,11 +5061,23 @@ class DemonGoblinEngine:
             "stats_fetched": 0,
             "injuries_found": 0,
             "goblin_warnings": 0,
+            # V3.1 Truth Engine verification stats
+            "verification_stats": {
+                "verified_count": 0,
+                "failed_count": 0,
+                "naji_safeguard_failures": 0,
+                "hallucinations_detected": 0,
+                "discrepancies_found": 0
+            },
             "errors": [],
             "duration": 0
         }
         
         try:
+            # V3.1 Truth Engine: Clear previous verification failures for today's sync
+            await self.db.dg_verification_failures.delete_many({"sync_date": self._current_date})
+            logger.info("[TRUTH ENGINE] Cleared previous verification failures for today")
+            
             # ===== PILLAR 1: FETCH EVENTS AND PRIZEPICKS ODDS =====
             logger.info("\n[PILLAR 1] Fetching NBA events and PrizePicks lines...")
             logger.info(f"  Using region={PRIZEPICKS_REGION}, bookmaker={PRIZEPICKS_BOOKMAKER}")
@@ -4976,6 +5157,21 @@ class DemonGoblinEngine:
                         
                         if processed.get("has_goblin_warning"):
                             results["goblin_warnings"] += 1
+                        
+                        # V3.1 Truth Engine - Track verification stats
+                        if processed.get("source_verified"):
+                            results["verification_stats"]["verified_count"] += 1
+                        else:
+                            verification_status = processed.get("verification_status", "")
+                            if verification_status == "NAJI_SAFEGUARD_FAILED":
+                                results["verification_stats"]["naji_safeguard_failures"] += 1
+                                results["verification_stats"]["failed_count"] += 1
+                            elif verification_status == "HALLUCINATION_DETECTED":
+                                results["verification_stats"]["hallucinations_detected"] += 1
+                                results["verification_stats"]["failed_count"] += 1
+                            elif verification_status == "DISCREPANCY":
+                                results["verification_stats"]["discrepancies_found"] += 1
+                                results["verification_stats"]["failed_count"] += 1
                         
                         await asyncio.sleep(0.1)
                         
@@ -5128,6 +5324,11 @@ class DemonGoblinEngine:
         
         results["duration"] = (datetime.now(timezone.utc) - sync_start).total_seconds()
         
+        # Calculate verification rate
+        total_verifiable = results["verification_stats"]["verified_count"] + results["verification_stats"]["failed_count"]
+        verification_rate = (results["verification_stats"]["verified_count"] / total_verifiable * 100) if total_verifiable > 0 else 0
+        results["verification_stats"]["verification_rate"] = round(verification_rate, 2)
+        
         logger.info("\n" + "=" * 70)
         logger.info(f"""
 DEMON & GOBLIN SYNC COMPLETE - PRIZEPICKS EDITION
@@ -5151,6 +5352,14 @@ PILLAR 2 - BALLDONTLIE:
 PILLAR 3 - TANK01:
   Injuries Found: {results['injuries_found']}
   Goblin Warnings: {results['goblin_warnings']}
+
+V3.1 TRUTH ENGINE - DATA INTEGRITY:
+  Verified Props: {results['verification_stats']['verified_count']}
+  Failed Props: {results['verification_stats']['failed_count']}
+  Naji Safeguard Failures: {results['verification_stats']['naji_safeguard_failures']}
+  Hallucinations Detected: {results['verification_stats']['hallucinations_detected']}
+  Discrepancies Found: {results['verification_stats']['discrepancies_found']}
+  Verification Rate: {results['verification_stats']['verification_rate']}%
 """)
         logger.info("=" * 70)
         
