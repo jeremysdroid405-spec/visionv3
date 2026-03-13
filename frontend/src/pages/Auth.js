@@ -101,20 +101,20 @@ const TerminalLine = ({ label, status, statusColor = 'emerald', delay = 0 }) => 
   );
 };
 
-// Kill List Spec Row - Enhanced Industrial Design
+// Kill List Spec Row - Enhanced Industrial Design (Mobile Optimized)
 const SpecRow = ({ spec, title, edge, icon }) => (
-  <div className="py-5 border-b border-zinc-800/30 last:border-0 group">
-    <div className="flex items-start gap-4">
-      <div className="flex-shrink-0 w-12 h-12 rounded-lg border border-zinc-700/50 bg-zinc-900/80 flex items-center justify-center group-hover:border-emerald-800/50 group-hover:bg-zinc-900 transition-all">
+  <div className="py-3 sm:py-5 border-b border-zinc-800/30 last:border-0 group">
+    <div className="flex items-start gap-3 sm:gap-4">
+      <div className="flex-shrink-0 w-10 h-10 sm:w-12 sm:h-12 rounded-lg border border-zinc-700/50 bg-zinc-900/80 flex items-center justify-center group-hover:border-emerald-800/50 group-hover:bg-zinc-900 transition-all">
         {icon}
       </div>
       <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-3 mb-1">
-          <span className="text-emerald-500 font-mono text-xs uppercase tracking-widest font-bold">{spec}</span>
+        <div className="flex items-center gap-2 sm:gap-3 mb-0.5 sm:mb-1">
+          <span className="text-emerald-500 font-mono text-[10px] sm:text-xs uppercase tracking-widest font-bold">{spec}</span>
           <div className="flex-1 h-px bg-gradient-to-r from-zinc-800 to-transparent" />
         </div>
-        <p className="text-white font-medium text-sm mb-2">{title}</p>
-        <div className="text-zinc-500 text-xs leading-relaxed">
+        <p className="text-white font-medium text-xs sm:text-sm mb-1 sm:mb-2">{title}</p>
+        <div className="text-zinc-500 text-[11px] sm:text-xs leading-relaxed line-clamp-3 sm:line-clamp-none">
           <span className="text-zinc-400 font-semibold">The Edge:</span> {edge}
         </div>
       </div>
@@ -270,63 +270,63 @@ export const Auth = () => {
       `}</style>
 
       {/* ==================== SECTION 1: HERO ==================== */}
-      <section className="min-h-screen flex flex-col items-center justify-center relative px-4 py-12">
+      <section className="min-h-[85vh] sm:min-h-screen flex flex-col items-center justify-center relative px-4 py-8 sm:py-12">
         <DataStream />
         
         {/* Logo */}
         <div className="relative z-10 flex flex-col items-center">
-          <div className="flex items-center gap-3 mb-3">
-            <Crosshair className="w-6 h-6 text-zinc-600" />
-            <Eye className="w-8 h-8 text-zinc-400" />
-            <Crosshair className="w-6 h-6 text-zinc-600" />
+          <div className="flex items-center gap-2 sm:gap-3 mb-2 sm:mb-3">
+            <Crosshair className="w-5 h-5 sm:w-6 sm:h-6 text-zinc-600" />
+            <Eye className="w-7 h-7 sm:w-8 sm:h-8 text-zinc-400" />
+            <Crosshair className="w-5 h-5 sm:w-6 sm:h-6 text-zinc-600" />
           </div>
-          <h1 className="text-5xl md:text-7xl font-black tracking-tighter gradient-text-silver">
+          <h1 className="text-4xl sm:text-5xl md:text-7xl font-black tracking-tighter gradient-text-silver">
             PICKVISION
           </h1>
-          <span className="text-sm text-zinc-600 font-mono tracking-[0.3em] mt-1">v3.0 // FLASH ARCHITECTURE</span>
+          <span className="text-[10px] sm:text-sm text-zinc-600 font-mono tracking-[0.2em] sm:tracking-[0.3em] mt-1">v3.0 // FLASH ARCHITECTURE</span>
         </div>
 
         {/* THE Headline - War Room Version */}
-        <div className="mt-8 text-center relative z-10 max-w-2xl">
-          <p className="text-xl md:text-2xl text-zinc-500 font-light tracking-wide">
+        <div className="mt-5 sm:mt-8 text-center relative z-10 max-w-2xl">
+          <p className="text-lg sm:text-xl md:text-2xl text-zinc-500 font-light tracking-wide">
             The books have an edge.
           </p>
-          <p className="text-2xl md:text-3xl text-white font-bold mt-2">
+          <p className="text-xl sm:text-2xl md:text-3xl text-white font-bold mt-1 sm:mt-2">
             Now, you have a <span className="text-emerald-400">weapon</span>.
           </p>
         </div>
 
         {/* Live Scan Visual */}
-        <div className="mt-10 w-full max-w-lg relative z-10">
+        <div className="mt-6 sm:mt-10 w-full max-w-lg relative z-10">
           <div className="relative bg-zinc-950 rounded-xl border border-zinc-800/50 overflow-hidden">
             <ScanningBar isActive={true} speed={scanSpeed} />
             
             {/* Terminal Header */}
-            <div className="flex items-center gap-2 px-4 py-2 border-b border-zinc-800/50 bg-zinc-900/50">
+            <div className="flex items-center gap-2 px-3 sm:px-4 py-2 border-b border-zinc-800/50 bg-zinc-900/50">
               <div className="w-2 h-2 rounded-full bg-red-500" />
               <div className="w-2 h-2 rounded-full bg-yellow-500" />
               <div className="w-2 h-2 rounded-full bg-green-500" />
-              <span className="ml-2 text-zinc-600 text-xs font-mono">PICKVISION_TERMINAL</span>
+              <span className="ml-2 text-zinc-600 text-[10px] sm:text-xs font-mono">PICKVISION_TERMINAL</span>
             </div>
             
             {/* Terminal Content */}
-            <div className="p-4 space-y-2">
-              <div className="flex items-center gap-2 text-xs font-mono">
+            <div className="p-3 sm:p-4 space-y-1.5 sm:space-y-2">
+              <div className="flex items-center gap-2 text-[10px] sm:text-xs font-mono">
                 <Radio className="w-3 h-3 text-emerald-500 animate-pulse" />
                 <span className="text-zinc-600">[SCANNING TANK01 FEEDS...]</span>
                 <span className="text-emerald-400">STABLE</span>
               </div>
-              <div className="flex items-center gap-2 text-xs font-mono">
+              <div className="flex items-center gap-2 text-[10px] sm:text-xs font-mono">
                 <Lock className="w-3 h-3 text-emerald-500" />
                 <span className="text-zinc-600">[LLM HANDSHAKE...]</span>
                 <span className="text-emerald-400">ENCRYPTED</span>
               </div>
-              <div className="flex items-center gap-2 text-xs font-mono">
+              <div className="flex items-center gap-2 text-[10px] sm:text-xs font-mono">
                 <DemonIcon size={14} />
                 <span className="text-zinc-600">[DEMON TARGETS DETECTED...]</span>
                 <span className="text-red-400 font-bold">{demonCount}</span>
               </div>
-              <div className="flex items-center gap-2 text-xs font-mono">
+              <div className="flex items-center gap-2 text-[10px] sm:text-xs font-mono">
                 <GoblinIcon size={14} />
                 <span className="text-zinc-600">[GOBLIN LOCKS FOUND...]</span>
                 <span className="text-emerald-400 font-bold">{goblinCount}</span>
@@ -334,8 +334,8 @@ export const Auth = () => {
             </div>
             
             {/* Blinking Cursor Line */}
-            <div className="px-4 pb-4">
-              <span className="text-emerald-500 font-mono text-xs terminal-cursor">
+            <div className="px-3 sm:px-4 pb-3 sm:pb-4">
+              <span className="text-emerald-500 font-mono text-[10px] sm:text-xs terminal-cursor">
                 &gt; AWAITING OPERATOR AUTHENTICATION
               </span>
             </div>
@@ -346,7 +346,7 @@ export const Auth = () => {
         <Button
           onClick={scrollToForm}
           data-testid="enter-vault-btn"
-          className="mt-8 px-10 py-6 text-base font-mono font-bold bg-emerald-500 hover:bg-emerald-400 text-black rounded border border-emerald-400 shadow-lg shadow-emerald-500/30 hover:shadow-emerald-400/50 transition-all duration-300 hover:scale-105 relative z-10 tracking-wider"
+          className="mt-6 sm:mt-8 px-8 sm:px-10 py-5 sm:py-6 text-sm sm:text-base font-mono font-bold bg-emerald-500 hover:bg-emerald-400 text-black rounded border border-emerald-400 shadow-lg shadow-emerald-500/30 hover:shadow-emerald-400/50 transition-all duration-300 hover:scale-105 relative z-10 tracking-wider"
         >
           [ CLAIM YOUR EDGE ]
         </Button>
@@ -358,45 +358,45 @@ export const Auth = () => {
       </section>
 
       {/* ==================== SECTION 2: MISSION OBJECTIVES ==================== */}
-      <section className="py-20 px-4 bg-zinc-950 border-y border-zinc-900">
+      <section className="py-12 sm:py-20 px-4 bg-zinc-950 border-y border-zinc-900">
         <div className="max-w-3xl mx-auto">
           {/* Section Header */}
-          <div className="text-center mb-10">
-            <span className="text-zinc-600 font-mono text-[10px] tracking-[0.3em]">TECHNICAL SPECIFICATIONS</span>
-            <h2 className="text-2xl md:text-3xl font-bold text-white mt-2 tracking-tight">
+          <div className="text-center mb-6 sm:mb-10">
+            <span className="text-zinc-600 font-mono text-[9px] sm:text-[10px] tracking-[0.2em] sm:tracking-[0.3em]">TECHNICAL SPECIFICATIONS</span>
+            <h2 className="text-xl sm:text-2xl md:text-3xl font-bold text-white mt-2 tracking-tight">
               DEPLOYMENT: <span className="text-emerald-400">MISSION OBJECTIVES™</span>
             </h2>
-            <div className="flex items-center justify-center gap-2 mt-3">
-              <span className="text-zinc-600 font-mono text-xs">SYSTEM STATUS:</span>
-              <span className="text-emerald-400 font-mono text-xs font-bold animate-pulse">[OPERATIONAL // INTEL_SYNC_ACTIVE]</span>
+            <div className="flex items-center justify-center gap-2 mt-2 sm:mt-3">
+              <span className="text-zinc-600 font-mono text-[10px] sm:text-xs">SYSTEM STATUS:</span>
+              <span className="text-emerald-400 font-mono text-[10px] sm:text-xs font-bold animate-pulse">[OPERATIONAL // INTEL_SYNC_ACTIVE]</span>
             </div>
           </div>
           
           {/* Spec Table */}
-          <div className="bg-gradient-to-b from-zinc-900/50 to-zinc-950 rounded-2xl border border-zinc-800/50 p-6 md:p-8">
+          <div className="bg-gradient-to-b from-zinc-900/50 to-zinc-950 rounded-2xl border border-zinc-800/50 p-4 sm:p-6 md:p-8">
             <SpecRow 
               spec="MODEL"
               title="PickVision v3.0 (Flash Architecture)"
               edge="Built on zero-latency infrastructure. While legacy models refresh on a delay, Flash Architecture processes the entry in real-time. No lag, no slippage—just synchronized speed."
-              icon={<Cpu className="w-6 h-6 text-zinc-400" />}
+              icon={<Cpu className="w-5 h-5 sm:w-6 sm:h-6 text-zinc-400" />}
             />
             <SpecRow 
               spec="LOGIC"
               title="Anomaly Detection"
               edge="We hunt for Systemic Glitches. Our AI scans millions of data points to isolate the 1% of lines where the sportsbooks' mathematical models have objectively fractured."
-              icon={<Zap className="w-6 h-6 text-yellow-500" />}
+              icon={<Zap className="w-5 h-5 sm:w-6 sm:h-6 text-yellow-500" />}
             />
             <SpecRow 
               spec="INTEL"
               title="Usage Ripple™"
               edge="Automated roster recalculation. When injury news drops or a roster shift occurs, the Ripple re-maps the floor and ceiling for the entire squad within 60s. You get the value before the market can adjust."
-              icon={<Radio className="w-6 h-6 text-cyan-400" />}
+              icon={<Radio className="w-5 h-5 sm:w-6 sm:h-6 text-cyan-400" />}
             />
             <SpecRow 
               spec="SENTIMENT"
               title="Social Signal™"
               edge="Beyond the box score. We track high-impact external factors. From personal disruptions and off-court volatility to Revenge Game narratives. If a player's focus is fractured or their motivation is peaked, the Objectives are re-prioritized in real-time."
-              icon={<Newspaper className="w-6 h-6 text-purple-400" />}
+              icon={<Newspaper className="w-5 h-5 sm:w-6 sm:h-6 text-purple-400" />}
             />
             <SpecRow 
               spec="TARGETING"
@@ -415,18 +415,18 @@ export const Auth = () => {
       </section>
 
       {/* ==================== SECTION 3: SIGNUP FORM ==================== */}
-      <section ref={formRef} className="py-20 px-4 bg-black" id="signup-section">
+      <section ref={formRef} className="py-12 sm:py-20 px-4 bg-black pb-24 sm:pb-20" id="signup-section">
         <div className="max-w-md mx-auto">
           {/* War Room Quote */}
-          <div className="text-center mb-8">
-            <p className="text-zinc-600 font-mono text-xs tracking-widest mb-4">// OPERATOR AUTHENTICATION</p>
-            <h2 className="text-xl md:text-2xl font-bold gradient-text-silver tracking-wide uppercase">
+          <div className="text-center mb-6 sm:mb-8">
+            <p className="text-zinc-600 font-mono text-[10px] sm:text-xs tracking-widest mb-3 sm:mb-4">// OPERATOR AUTHENTICATION</p>
+            <h2 className="text-lg sm:text-xl md:text-2xl font-bold gradient-text-silver tracking-wide uppercase">
               "The books have an edge.<br/>Now, you have a weapon."
             </h2>
           </div>
 
           {/* System Status Terminal */}
-          <div className="bg-zinc-950 rounded-lg border border-zinc-800/50 p-4 mb-6 font-mono text-xs">
+          <div className="bg-zinc-950 rounded-lg border border-zinc-800/50 p-3 sm:p-4 mb-4 sm:mb-6 font-mono text-[10px] sm:text-xs">
             <TerminalLine label="SCANNING TANK01 FEEDS..." status="STABLE" delay={0} />
             <TerminalLine label="LLM HANDSHAKE..." status="ENCRYPTED" delay={300} />
             <TerminalLine label="DEMON TARGETS DETECTED..." status={demonCount.toString()} statusColor="red" delay={600} />
@@ -434,11 +434,11 @@ export const Auth = () => {
           </div>
 
           {/* Auth Form */}
-          <div className="bg-zinc-950 rounded-xl border border-zinc-800/50 p-6 relative overflow-hidden">
+          <div className="bg-zinc-950 rounded-xl border border-zinc-800/50 p-4 sm:p-6 relative overflow-hidden">
             {isTyping && <ScanningBar isActive={true} speed={0.8} />}
             
             {/* Social Auth Buttons */}
-            <div className="space-y-3 mb-6">
+            <div className="space-y-2 sm:space-y-3 mb-4 sm:mb-6">
               <Button
                 type="button"
                 variant="outline"
@@ -457,7 +457,7 @@ export const Auth = () => {
               <Button
                 type="button"
                 variant="outline"
-                className="w-full bg-zinc-900 hover:bg-zinc-800 text-white border-zinc-700 py-5 font-medium"
+                className="w-full bg-zinc-900 hover:bg-zinc-800 text-white border-zinc-700 py-4 sm:py-5 font-medium text-sm"
                 onClick={() => toast.info('Apple Auth coming soon!')}
               >
                 <svg className="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 24 24">
@@ -468,17 +468,17 @@ export const Auth = () => {
             </div>
 
             {/* Divider */}
-            <div className="flex items-center gap-4 my-6">
+            <div className="flex items-center gap-4 my-4 sm:my-6">
               <div className="flex-1 h-px bg-zinc-800" />
-              <span className="text-zinc-700 text-xs font-mono">OR</span>
+              <span className="text-zinc-700 text-[10px] sm:text-xs font-mono">OR</span>
               <div className="flex-1 h-px bg-zinc-800" />
             </div>
 
             {/* Traditional Form */}
-            <form onSubmit={handleSubmit} className="space-y-4">
+            <form onSubmit={handleSubmit} className="space-y-3 sm:space-y-4">
               {!isLogin && (
-                <div className="space-y-2">
-                  <Label htmlFor="fullName" className="text-zinc-500 text-xs font-mono uppercase tracking-wider">
+                <div className="space-y-1.5 sm:space-y-2">
+                  <Label htmlFor="fullName" className="text-zinc-500 text-[10px] sm:text-xs font-mono uppercase tracking-wider">
                     Operator Name
                   </Label>
                   <Input
@@ -488,13 +488,13 @@ export const Auth = () => {
                     placeholder="Enter callsign"
                     value={formData.fullName}
                     onChange={(e) => handleInputChange('fullName', e.target.value)}
-                    className="bg-zinc-900 border-zinc-800 text-white placeholder:text-zinc-700 focus:border-emerald-500/50 focus:ring-emerald-500/20 py-5 font-mono"
+                    className="bg-zinc-900 border-zinc-800 text-white placeholder:text-zinc-700 focus:border-emerald-500/50 focus:ring-emerald-500/20 py-4 sm:py-5 font-mono text-sm"
                   />
                 </div>
               )}
               
-              <div className="space-y-2">
-                <Label htmlFor="email" className="text-zinc-500 text-xs font-mono uppercase tracking-wider">
+              <div className="space-y-1.5 sm:space-y-2">
+                <Label htmlFor="email" className="text-zinc-500 text-[10px] sm:text-xs font-mono uppercase tracking-wider">
                   Email
                 </Label>
                 <Input
@@ -505,12 +505,12 @@ export const Auth = () => {
                   value={formData.email}
                   onChange={(e) => handleInputChange('email', e.target.value)}
                   required
-                  className="bg-zinc-900 border-zinc-800 text-white placeholder:text-zinc-700 focus:border-emerald-500/50 focus:ring-emerald-500/20 py-5 font-mono"
+                  className="bg-zinc-900 border-zinc-800 text-white placeholder:text-zinc-700 focus:border-emerald-500/50 focus:ring-emerald-500/20 py-4 sm:py-5 font-mono text-sm"
                 />
               </div>
               
-              <div className="space-y-2">
-                <Label htmlFor="password" className="text-zinc-500 text-xs font-mono uppercase tracking-wider">
+              <div className="space-y-1.5 sm:space-y-2">
+                <Label htmlFor="password" className="text-zinc-500 text-[10px] sm:text-xs font-mono uppercase tracking-wider">
                   Access Key
                 </Label>
                 <Input
@@ -522,7 +522,7 @@ export const Auth = () => {
                   onChange={(e) => handleInputChange('password', e.target.value)}
                   required
                   minLength={6}
-                  className="bg-zinc-900 border-zinc-800 text-white placeholder:text-zinc-700 focus:border-emerald-500/50 focus:ring-emerald-500/20 py-5 font-mono"
+                  className="bg-zinc-900 border-zinc-800 text-white placeholder:text-zinc-700 focus:border-emerald-500/50 focus:ring-emerald-500/20 py-4 sm:py-5 font-mono text-sm"
                 />
               </div>
 
@@ -530,7 +530,7 @@ export const Auth = () => {
                 type="submit"
                 data-testid={isLogin ? "login-submit-btn" : "signup-submit-btn"}
                 disabled={loading}
-                className="w-full py-6 text-sm font-mono font-bold bg-emerald-500 hover:bg-emerald-400 text-black rounded border border-emerald-400 shadow-lg shadow-emerald-500/20 hover:shadow-emerald-400/40 transition-all duration-300 tracking-widest uppercase"
+                className="w-full py-5 sm:py-6 text-xs sm:text-sm font-mono font-bold bg-emerald-500 hover:bg-emerald-400 text-black rounded border border-emerald-400 shadow-lg shadow-emerald-500/20 hover:shadow-emerald-400/40 transition-all duration-300 tracking-widest uppercase"
               >
                 {loading ? (
                   <div className="flex items-center gap-2 justify-center">
@@ -582,15 +582,25 @@ export const Auth = () => {
       </section>
 
       {/* Footer */}
-      <footer className="py-6 px-4 border-t border-zinc-900">
+      <footer className="py-4 sm:py-6 px-4 border-t border-zinc-900 mb-16 sm:mb-0">
         <div className="max-w-4xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Eye className="w-4 h-4 text-zinc-700" />
-            <span className="text-zinc-700 text-xs font-mono">PICKVISION AI</span>
+            <span className="text-zinc-700 text-[10px] sm:text-xs font-mono">PICKVISION AI</span>
           </div>
-          <span className="text-zinc-800 text-xs font-mono">© 2026</span>
+          <span className="text-zinc-800 text-[10px] sm:text-xs font-mono">© 2026</span>
         </div>
       </footer>
+
+      {/* Sticky Mobile CTA */}
+      <div className="fixed bottom-0 left-0 right-0 p-3 bg-black/95 backdrop-blur-lg border-t border-zinc-800 sm:hidden z-50">
+        <Button
+          onClick={scrollToForm}
+          className="w-full py-4 text-xs font-mono font-bold bg-emerald-500 hover:bg-emerald-400 text-black rounded border border-emerald-400 shadow-lg shadow-emerald-500/30 tracking-widest uppercase"
+        >
+          [ CLAIM YOUR EDGE ]
+        </Button>
+      </div>
     </div>
   );
 };
