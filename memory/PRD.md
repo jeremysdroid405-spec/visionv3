@@ -42,6 +42,12 @@ Build a high-performance NBA Player Prop Dashboard that mimics the PrizePicks us
 ### IN PROGRESS
 - None currently
 
+### RECENTLY COMPLETED (Dec 13, 2025)
+- [x] **"Ultra-Pro" Icon Refresh** - Replaced all old Skull/Ghost icons with custom SVG glyphs:
+  - **DemonIcon**: Red spike/crown shape (King of Longshots)
+  - **GoblinIcon**: Green hex-stack (Vault Hunter)
+  - Updated across: Dashboard header, stats bar, Radar cards, Vault cards, Parlay Builder, Goldmine, Trending cards, Player detail pages, and all legends
+
 ### BACKLOG (P2/P3)
 - [ ] "Pro Tier" feature gating based on user tier
 - [ ] Historical line movement tracking
@@ -152,6 +158,7 @@ Build a high-performance NBA Player Prop Dashboard that mimics the PrizePicks us
 ---
 
 ## Recent Changes (Dec 13, 2025)
+- **"Ultra-Pro" Icon Refresh** - Replaced all Skull/Ghost icons with premium custom SVG glyphs (DemonIcon: red spike, GoblinIcon: green hex-stack)
 - **"THE VISION" UI Overhaul** - AI insights now prominent with featured box, confidence meter, and card explainers
 - **AI Confidence Meter** - Color-coded progress bar (green >80%, yellow 60-80%, orange 40-60%, red <40%)
 - **Demon Radar AI Explainers** - Each card shows "The Vision" insight explaining why it's flagged
@@ -165,6 +172,6 @@ Build a high-performance NBA Player Prop Dashboard that mimics the PrizePicks us
 ---
 
 ## Next Steps
-1. Verify Advanced Analytics UI with authenticated user
-2. Implement player news/injury integration
-3. Add "Pro Tier" feature gating
+1. Refactor `DemonGoblinDashboardOptimized.js` (3000+ lines) - Extract components into `/components/dashboard/` directory
+2. Add "Pro Tier" feature gating
+3. Historical line movement tracking

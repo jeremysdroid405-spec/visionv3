@@ -520,8 +520,8 @@ const PropRow = memo(({ prop, compact = false }) => {
     >
       {/* Left: Type Icon + Market + Line */}
       <div className="flex items-center gap-1.5 min-w-0 flex-1">
-        {isDemon && <Skull className="w-3.5 h-3.5 text-red-400 flex-shrink-0" />}
-        {isGoblin && <Ghost className="w-3.5 h-3.5 text-green-400 flex-shrink-0" />}
+        {isDemon && <DemonIcon size={14} className="flex-shrink-0" />}
+        {isGoblin && <GoblinIcon size={14} className="flex-shrink-0" />}
         {!isDemon && !isGoblin && <div className="w-3.5" />}
         
         <span className="text-zinc-400 font-mono text-xs">{market}</span>
@@ -632,13 +632,13 @@ const TrendingCard = memo(({ player, rank, onClick, linesLoaded, injuryAlerts })
           <div className="flex items-center gap-3">
             {(player.demons_count || 0) > 0 && (
               <div className="flex items-center gap-1">
-                <Skull className="w-3.5 h-3.5 text-red-500" />
+                <DemonIcon size={14} />
                 <span className="text-red-400 font-bold text-sm">{player.demons_count}</span>
               </div>
             )}
             {(player.goblins_count || 0) > 0 && (
               <div className="flex items-center gap-1">
-                <Ghost className="w-3.5 h-3.5 text-green-500" />
+                <GoblinIcon size={14} />
                 <span className="text-green-400 font-bold text-sm">{player.goblins_count}</span>
               </div>
             )}
@@ -746,7 +746,7 @@ const RadarCard = memo(({ pick, rank, onClick, isScanning = false }) => {
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-1">
               <span className="font-bold text-white text-sm truncate">{pick.player_name}</span>
-              <Skull className="w-3 h-3 text-red-500 flex-shrink-0" />
+              <DemonIcon size={12} className="flex-shrink-0" />
             </div>
             <div className="flex items-center gap-1 text-[10px] text-zinc-500">
               <span className="font-mono">{pick.team || '---'}</span>
@@ -1115,7 +1115,7 @@ const ParlayCard = memo(({ parlay, pickCount, onClick }) => {
               className="flex items-center justify-between bg-zinc-900/50 rounded px-2 py-1"
             >
               <div className="flex items-center gap-2 min-w-0">
-                <Skull className="w-3 h-3 text-red-400 flex-shrink-0" />
+                <DemonIcon size={12} className="flex-shrink-0" />
                 <span className="text-xs text-white truncate">{pick.player_name}</span>
                 <span className="text-[10px] text-zinc-500">{pick.team}</span>
               </div>
@@ -1214,7 +1214,7 @@ const GoldmineCard = memo(({ parlay, tier, onClick }) => {
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-2">
             <div className={`w-8 h-8 rounded-full ${style.badge} flex items-center justify-center`}>
-              <Ghost className={`w-4 h-4 ${style.text}`} />
+              <GoblinIcon size={16} />
             </div>
             <div>
               <div className={`text-sm font-bold ${style.text}`}>{parlay?.name || tier}</div>
@@ -1278,7 +1278,7 @@ const GoldmineCard = memo(({ parlay, tier, onClick }) => {
               className="flex items-center justify-between bg-zinc-900/50 rounded px-2 py-1"
             >
               <div className="flex items-center gap-2 min-w-0">
-                <Ghost className="w-3 h-3 text-emerald-400 flex-shrink-0" />
+                <GoblinIcon size={12} className="flex-shrink-0" />
                 <span className="text-xs text-white truncate">{pick.player_name}</span>
                 <span className="text-[10px] text-zinc-500">{pick.team}</span>
               </div>
@@ -1400,9 +1400,9 @@ const ParlayPickCard = memo(({ pick, idx, isGoldmine, colors, playerData, onPick
         `}>
           <div className="flex items-center gap-3">
             {isGoldmine ? (
-              <Ghost className="w-5 h-5 text-green-400" />
+              <GoblinIcon size={20} />
             ) : (
-              <Skull className="w-5 h-5 text-red-400" />
+              <DemonIcon size={20} />
             )}
             <div>
               <div className="text-white font-bold text-xl">
@@ -1559,7 +1559,7 @@ const ExpandedParlayView = memo(({ parlay, type, onClose, onPickClick, players }
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               {isGoldmine ? (
-                <Ghost className={`w-6 h-6 ${colors.text}`} />
+                <GoblinIcon size={24} />
               ) : (
                 <DollarSign className={`w-6 h-6 ${colors.text}`} />
               )}
@@ -1767,13 +1767,13 @@ const CategoryAccordion = memo(({ categoryKey, categoryName, props, isExpanded, 
         <div className="flex items-center gap-2">
           {demons.length > 0 && (
             <div className="flex items-center gap-1 bg-red-950/50 px-1.5 py-0.5 rounded">
-              <Skull className="w-3 h-3 text-red-400" />
+              <DemonIcon size={12} />
               <span className="text-red-400 text-xs font-bold">{demons.length}</span>
             </div>
           )}
           {goblins.length > 0 && (
             <div className="flex items-center gap-1 bg-green-950/50 px-1.5 py-0.5 rounded">
-              <Ghost className="w-3 h-3 text-green-400" />
+              <GoblinIcon size={12} />
               <span className="text-green-400 text-xs font-bold">{goblins.length}</span>
             </div>
           )}
@@ -1940,8 +1940,8 @@ const LadderPropRow = memo(({ prop, categoryStats, isFirst, isLast, isHighlighte
           
           {/* Type Icon */}
           <div className="w-5 flex justify-center">
-            {isDemon && <Skull className="w-4 h-4 text-red-400" />}
-            {isGoblin && <Ghost className="w-4 h-4 text-green-400" />}
+            {isDemon && <DemonIcon size={16} />}
+            {isGoblin && <GoblinIcon size={16} />}
             {!isDemon && !isGoblin && <div className="w-2 h-2 bg-zinc-500 rounded-full" />}
           </div>
           
@@ -2363,11 +2363,11 @@ const PlayerDetailPage = ({ playerName, onBack, highlightProp = null, highlightT
           {player && (
             <div className="flex items-center gap-2 flex-shrink-0">
               <div className="flex items-center gap-1">
-                <Skull className="w-4 h-4 text-red-500" />
+                <DemonIcon size={16} />
                 <span className="text-red-400 font-bold">{demons.length}</span>
               </div>
               <div className="flex items-center gap-1">
-                <Ghost className="w-4 h-4 text-green-500" />
+                <GoblinIcon size={16} />
                 <span className="text-green-400 font-bold">{goblins.length}</span>
               </div>
             </div>
@@ -2502,13 +2502,13 @@ const PlayerRow = memo(({ player, isExpanded, onToggle, onClick, linesLoaded }) 
             <>
               {(player.demons_count || 0) > 0 && (
                 <div className="flex items-center gap-1">
-                  <Skull className="w-3.5 h-3.5 text-red-400" />
+                  <DemonIcon size={14} className="flex-shrink-0" />
                   <span className="text-red-400 font-bold text-sm">{player.demons_count}</span>
                 </div>
               )}
               {(player.goblins_count || 0) > 0 && (
                 <div className="flex items-center gap-1">
-                  <Ghost className="w-3.5 h-3.5 text-green-400" />
+                  <GoblinIcon size={14} className="flex-shrink-0" />
                   <span className="text-green-400 font-bold text-sm">{player.goblins_count}</span>
                 </div>
               )}
@@ -2796,8 +2796,8 @@ export const DemonGoblinDashboardOptimized = ({ isDemoMode = false }) => {
       <header className="sticky top-0 z-10 bg-zinc-950/95 backdrop-blur border-b border-zinc-800 px-3 py-2.5">
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2 min-w-0">
-            <Skull className="w-6 h-6 text-red-500 flex-shrink-0" />
-            <Ghost className="w-6 h-6 text-green-500 flex-shrink-0" />
+            <DemonIcon size={24} />
+            <GoblinIcon size={24} />
             <h1 className="text-lg font-bold text-white truncate">DEMON & GOBLIN</h1>
             <Badge className="bg-purple-600/30 text-purple-400 border-purple-500/50 text-[10px] flex-shrink-0">
               v3
@@ -2920,7 +2920,7 @@ export const DemonGoblinDashboardOptimized = ({ isDemoMode = false }) => {
               className={`flex items-center gap-1.5 cursor-pointer ${filterType === 'demons' ? 'ring-1 ring-red-500 rounded px-1 -mx-1' : ''}`}
               onClick={() => setFilterType(filterType === 'demons' ? 'all' : 'demons')}
             >
-              <Skull className="w-5 h-5 text-red-500" />
+              <DemonIcon size={20} />
               {linesLoaded ? (
                 <span className="text-red-400 font-bold text-xl">{totalDemons}</span>
               ) : (
@@ -2932,7 +2932,7 @@ export const DemonGoblinDashboardOptimized = ({ isDemoMode = false }) => {
               className={`flex items-center gap-1.5 cursor-pointer ${filterType === 'goblins' ? 'ring-1 ring-green-500 rounded px-1 -mx-1' : ''}`}
               onClick={() => setFilterType(filterType === 'goblins' ? 'all' : 'goblins')}
             >
-              <Ghost className="w-5 h-5 text-green-500" />
+              <GoblinIcon size={20} />
               {linesLoaded ? (
                 <span className="text-green-400 font-bold text-xl">{totalGoblins}</span>
               ) : (
@@ -3053,7 +3053,7 @@ export const DemonGoblinDashboardOptimized = ({ isDemoMode = false }) => {
           <div data-testid="goldmine-section" className="mt-6">
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2">
-                <Ghost className="w-5 h-5 text-emerald-500" />
+                <GoblinIcon size={20} />
                 <span className="text-sm font-bold text-emerald-400">THE GOBLIN GOLDMINE</span>
                 <Badge className="bg-emerald-950/50 text-emerald-400 border-emerald-800/50 text-[10px]">
                   HIGH RELIABILITY
@@ -3083,7 +3083,7 @@ export const DemonGoblinDashboardOptimized = ({ isDemoMode = false }) => {
             
             {/* Goldmine Legend */}
             <div className="mt-2 flex items-center justify-center gap-4 text-[10px] text-zinc-500">
-              <span><Ghost className="w-3 h-3 inline text-emerald-400" /> = 88%+ Hit Rate</span>
+              <span><GoblinIcon size={12} className="inline" /> = 88%+ Hit Rate</span>
               <span className="text-emerald-300 font-bold">LOCK</span><span> = Floor ≥ Line</span>
               <span><Layers className="w-3 h-3 inline text-cyan-400" /> = Game Diversified</span>
             </div>
