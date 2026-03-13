@@ -7,6 +7,38 @@ Build a high-performance NBA Player Prop Dashboard that identifies "Demons" (har
 
 ---
 
+## INTERACTIVE HIT-RATE DROPDOWN - COMPLETED (March 13, 2026)
+
+### Feature Description ✅
+Expandable "Stat Insight" panel on every prop/bet row in the Player Detail page. Click any prop line to see detailed hit rate statistics.
+
+### Data Points Displayed ✅
+| Stat | Format | Example |
+|------|--------|---------|
+| Last 5 Games | X/Y = Z% | 4/5 = 80% |
+| Last 10 Games | X/Y = Z% | 8/10 = 80% |
+| Season | X/Y = Z% | 51/65 = 78% |
+| Season Average | Value + line comparison | 24.7 (+5.2 above line) |
+
+### Color Coding ✅
+| Hit Rate | Color | Tailwind Class |
+|----------|-------|----------------|
+| ≥70% | Green | text-green-400 |
+| 50-69% | Yellow | text-yellow-400 |
+| 30-49% | Orange | text-orange-400 |
+| <30% | Red | text-red-400 |
+
+### UI Behavior ✅
+- **Chevron Icon**: ⌄ rotates to ∧ when expanded
+- **Toggle**: Click row to expand, click again to collapse
+- **Multiple**: Each row can be expanded independently
+- **Styling**: Dark background panel with clean typography
+
+### Component: `LadderPropRow` ✅
+Location: `/app/frontend/src/pages/DemonGoblinDashboardOptimized.js` (~line 1252)
+
+---
+
 ## GLOBAL PHOTO SYNC & HEADSHOT DISPLAY - COMPLETED (March 13, 2026)
 
 ### Bug Fix: Trey Murphy III Headshot Not Displaying ✅
