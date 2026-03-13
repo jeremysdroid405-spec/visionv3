@@ -2696,9 +2696,6 @@ export const DemonGoblinDashboardOptimized = ({ isDemoMode = false }) => {
     return true;
   });
   
-  const totalDemons = players.reduce((acc, p) => acc + (p.demons_count || 0), 0);
-  const totalGoblins = players.reduce((acc, p) => acc + (p.goblins_count || 0), 0);
-  
   // ==================== NAVIGATION ====================
   
   // State for highlighted prop from Radar or Vault
@@ -2909,40 +2906,6 @@ export const DemonGoblinDashboardOptimized = ({ isDemoMode = false }) => {
       </header>
 
       <div className="p-3 space-y-4">
-        {/* Stats Bar - Compact */}
-        <div className="flex items-center justify-between bg-zinc-900/50 rounded-lg px-3 py-2">
-          <div className="flex items-center gap-4">
-            <div 
-              className={`flex items-center gap-1.5 cursor-pointer ${filterType === 'demons' ? 'ring-1 ring-red-500 rounded px-1 -mx-1' : ''}`}
-              onClick={() => setFilterType(filterType === 'demons' ? 'all' : 'demons')}
-            >
-              <DemonIcon size={20} />
-              {linesLoaded ? (
-                <span className="text-red-400 font-bold text-xl">{totalDemons}</span>
-              ) : (
-                <div className="w-10 h-6 bg-zinc-800 animate-pulse rounded" />
-              )}
-            </div>
-            
-            <div 
-              className={`flex items-center gap-1.5 cursor-pointer ${filterType === 'goblins' ? 'ring-1 ring-green-500 rounded px-1 -mx-1' : ''}`}
-              onClick={() => setFilterType(filterType === 'goblins' ? 'all' : 'goblins')}
-            >
-              <GoblinIcon size={20} />
-              {linesLoaded ? (
-                <span className="text-green-400 font-bold text-xl">{totalGoblins}</span>
-              ) : (
-                <div className="w-10 h-6 bg-zinc-800 animate-pulse rounded" />
-              )}
-            </div>
-          </div>
-          
-          <div className="text-xs text-zinc-500 flex items-center gap-1">
-            <HardDrive className="w-3 h-3" />
-            MongoDB
-          </div>
-        </div>
-
         {/* DEMON RADAR - Top 10 Mathematical Picks */}
         {radarPicks.length > 0 && (
           <div data-testid="radar-section" className="demon-radar-scanning">
