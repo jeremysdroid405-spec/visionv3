@@ -44,26 +44,26 @@ Build a high-performance NBA Player Prop Dashboard that mimics the PrizePicks us
 
 ### RECENTLY COMPLETED (Dec 13, 2025 - Session 4)
 - [x] **Static Vision Intel Briefing Engine (Gemini 3 Flash)**:
-  - **New `intel_briefing_engine.py` module**: Generates AI-powered Mission Intel Briefings using Gemini 2.5 Flash
+  - **New `intel_briefing_engine.py` module**: Generates AI-powered Strategic Thesis using Gemini 2.5 Flash
   - **Static Generation Logic**: One-time AI call for each unique PlayerID + GameID combination
   - **Conditional Execution**: Checks `intel_briefing` field before calling API - no duplicate calls
-  - **UPGRADED Prompt Template (v2)**:
-    - `[Sector Trend]`: Analyzes L5/L10 mission success rates against specific line with consistency details
-    - `[Engagement Context]`: Analyzes matchup with opponent's defensive rankings, usage bump opportunities
-    - Military Scout terminology: Sector, Tactical Edge, Deployment, High-Value Target, Asset, Mission, Cleared
-    - No fluff, no "I think", no hedging language
-  - **Example Output**: "[Sector Trend] Duncan Robinson has cleared 4+ RA in 70% of his last 10 deployments, showing elite consistency as a secondary facilitator. [Engagement Context] Detroit's defensive perimeter is currently compromised, ranking 28th in assists allowed to shooting guards, creating a high-probability tactical edge."
+  - **NARRATIVE ANALYSIS (v3)**:
+    - Single cohesive paragraph (3-4 sentences) - NO labels, NO bullet points
+    - **Synthesize, Don't List**: "His recent high-volume usage suggests..." instead of "He averaged X"
+    - **Connect the Dots**: Links player form to opponent's specific weakness
+    - **The 'Why'**: Explains why the line is a tactical error by the books
+    - **Gritty Scout Tone**: Professional, analytical, no hedging
+    - **Required Keywords**: Leverage, Exploitation, Gravity, Defensive Gap, Usage Surge
+  - **Example Output**: "Robinson is currently operating with massive offensive gravity, drawing multiple defenders on the perimeter which has unlocked his secondary playmaking role. Facing a Detroit unit that historically struggles with back-cut rotations and allows a high volume of kick-out assists to shooting guards, this 3.5 RA line represents a significant miscalculation of his current deployment. Expect him to exploit these defensive gaps early, making this a high-leverage Recon target."
   - **API Endpoints**:
     - `POST /api/v3/generate-intel-briefings`: Manual trigger to generate missing intel
     - `GET /api/v3/intel-briefing/{player_name}`: Get cached intel for a player
   - **Auto-Generation**: Intel generated automatically after sync via `/api/v3/sync-to-mongo`
-  - **UI Integration**: 
-    - Displays in "THE VISION" section on Demon Radar and Goblin Recon cards
-    - Placeholder text: "Analyzing Sector Data..." when pending
+  - **UI Integration**: Displays in "THE VISION" section on Demon Radar and Goblin Recon cards
   - **Database**: 
     - Cached in `dg_intel_briefings` collection
     - Also stored as `intel_briefing` field on `dg_cached_board` entries
-  - **Model**: `gemini-2.5-flash` with optimized system instructions
+  - **Model**: `gemini-2.5-flash` with optimized narrative prompt
   - **GOOGLE_API_KEY**: User's Gemini API key stored in backend/.env
 
 ### RECENTLY COMPLETED (Dec 13, 2025 - Session 3)

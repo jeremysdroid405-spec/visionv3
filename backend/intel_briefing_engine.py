@@ -175,7 +175,7 @@ class IntelBriefingEngine:
         position: str = "",
         injury_context: str = ""
     ) -> str:
-        """Build the enhanced prompt for Gemini with tactical scout instructions."""
+        """Build the narrative-driven prompt for strategic thesis analysis."""
         
         # Format prop type for readability
         prop_display = prop_type.replace("_", " ").replace("player ", "").replace("alternate", "").strip().title()
@@ -185,66 +185,87 @@ class IntelBriefingEngine:
         # Calculate L5 hit rate
         l5_hit_rate = (l5_over / l5_games * 100) if l5_games > 0 else 0
         
-        # Format stat type for defensive context
+        # Determine narrative context based on stat type
         stat_category = prop_display.lower()
         if "point" in stat_category:
-            defensive_stat = "points allowed"
-            position_context = "scorers"
+            role_narrative = "scoring load"
+            exploitation_angle = "defensive breakdowns and isolation opportunities"
+            gravity_context = "offensive gravity as a primary scoring threat"
         elif "rebound" in stat_category:
-            defensive_stat = "rebounds allowed"
-            position_context = "rebounders"
+            role_narrative = "glass work and positioning"
+            exploitation_angle = "weak rebounding rotations and box-out lapses"
+            gravity_context = "physical presence on the boards"
         elif "assist" in stat_category:
-            defensive_stat = "assists allowed"
-            position_context = "playmakers"
+            role_narrative = "playmaking responsibilities"
+            exploitation_angle = "defensive gaps and kick-out opportunities"
+            gravity_context = "offensive gravity that draws multiple defenders"
         elif "3" in stat_category or "three" in stat_category:
-            defensive_stat = "three-pointers allowed"
-            position_context = "perimeter shooters"
+            role_narrative = "perimeter shooting volume"
+            exploitation_angle = "close-out breakdowns and weak perimeter defense"
+            gravity_context = "spacing gravity that stretches the floor"
         elif "steal" in stat_category:
-            defensive_stat = "steals allowed"
-            position_context = "ball handlers"
+            role_narrative = "ball-hawking tendencies"
+            exploitation_angle = "careless ball-handling and turnover-prone lineups"
+            gravity_context = "disruptive presence in passing lanes"
         elif "block" in stat_category:
-            defensive_stat = "blocks allowed"
-            position_context = "rim protectors"
+            role_narrative = "rim protection duties"
+            exploitation_angle = "interior attack tendencies and weak finishing"
+            gravity_context = "vertical threat at the rim"
         else:
-            defensive_stat = f"{stat_category} allowed"
-            position_context = "players at this position"
+            role_narrative = "current role"
+            exploitation_angle = "matchup vulnerabilities"
+            gravity_context = "overall impact"
         
-        # Build system instructions prompt
-        prompt = f"""SYSTEM INSTRUCTIONS:
-You are a professional NBA Tactical Scout. You are analyzing a specific player prop.
+        # Determine performance narrative
+        if l10_hit_rate >= 80:
+            form_narrative = "operating at peak efficiency"
+            consistency_desc = "elite consistency"
+        elif l10_hit_rate >= 60:
+            form_narrative = "trending in a favorable direction"
+            consistency_desc = "reliable production"
+        elif l10_hit_rate >= 40:
+            form_narrative = "showing inconsistent outputs"
+            consistency_desc = "volatile but capable numbers"
+        else:
+            form_narrative = "struggling to find rhythm"
+            consistency_desc = "concerning variance"
+        
+        # Determine line value assessment
+        gap = l10_avg - line
+        if gap > line * 0.15:
+            line_assessment = "a significant undervaluation by the books"
+            opportunity_type = "high-leverage"
+        elif gap > 0:
+            line_assessment = "a slight miscalculation in his favor"
+            opportunity_type = "solid value"
+        elif gap > -line * 0.1:
+            line_assessment = "accurately priced but exploitable"
+            opportunity_type = "calculated"
+        else:
+            line_assessment = "an aggressive target requiring careful consideration"
+            opportunity_type = "high-risk"
+        
+        # Build the narrative prompt
+        prompt = f"""You are a gritty, professional NBA betting analyst writing a Strategic Thesis.
 
-DATA CONTEXT:
-- Asset: {player_name}
-- Team: {team}
-- Position: {position if position else "Guard/Forward"}
-- Stat Type: {prop_display}
-- Line: Over/Under {line}
-- Opponent: {opponent}
+PLAYER DATA:
+- {player_name} ({team}, {position if position else "Guard/Forward"})
+- Prop: {prop_display} Over {line} vs {opponent}
+- L5: {l5_over}/{l5_games} clears ({l5_hit_rate:.0f}%) | L10: {l10_over}/{l10_games} clears ({l10_hit_rate:.0f}%)
+- Average: {l10_avg:.1f} | Range: {l10_low:.0f}-{l10_high:.0f}
+{f"- Injury news: {injury_context}" if injury_context else ""}
 
-RECENT DEPLOYMENT DATA:
-- L5 Missions: Cleared {line} in {l5_over}/{l5_games} deployments ({l5_hit_rate:.0f}% success)
-- L10 Missions: Cleared {line} in {l10_over}/{l10_games} deployments ({l10_hit_rate:.0f}% success)
-- L10 Average Output: {l10_avg:.1f}
-- Output Range: {l10_low:.0f} - {l10_high:.0f}
+RULES:
+- Write ONE flowing paragraph (3-4 sentences). NO labels like [Sector Trend]. NO bullet points.
+- SYNTHESIZE stats into narrative. Don't list numbers - interpret them.
+- Connect player form to opponent weaknesses.
+- Explain why this {line} line is mispriced.
+- Use these words naturally: leverage, exploitation, gravity, defensive gap, usage surge
 
-{f"INJURY INTEL: {injury_context}" if injury_context else ""}
+WRITE EXACTLY LIKE THIS EXAMPLE:
+"Robinson is currently operating with massive offensive gravity, drawing multiple defenders on the perimeter which has unlocked his secondary playmaking role. Facing a Detroit unit that historically struggles with back-cut rotations and allows a high volume of kick-out assists to shooting guards, this 3.5 RA line represents a significant miscalculation of his current deployment. Expect him to exploit these defensive gaps early, making this a high-leverage Recon target."
 
-THE TWO-SENTENCE MANDATE:
-
-Sentence 1 [Sector Trend]: Analyze the asset's recent form (L5/L10) specifically against this {line} line. Do NOT just list the average. Explain consistency (e.g., "Cleared in {l10_over} of last {l10_games} missions" or "Showing volatility with outputs ranging from {l10_low:.0f} to {l10_high:.0f}").
-
-Sentence 2 [Engagement Context]: Analyze the matchup against {opponent}. Reference defensive vulnerabilities or strengths. If teammate injuries create a usage bump opportunity, mention it.
-
-TACTICAL RULES:
-- No fluff. No "I think." No hedging language.
-- Use military terminology: Sector, Tactical Edge, Deployment, High-Value Target, Asset, Mission, Cleared.
-- Be specific about the numbers.
-- Maximum 2 sentences total.
-
-EXAMPLE OUTPUT FORMAT:
-[Sector Trend] Duncan Robinson has cleared 4+ RA in 70% of his last 10 deployments, showing elite consistency as a secondary facilitator. [Engagement Context] Detroit's defensive perimeter is currently compromised, ranking 28th in {defensive_stat} to {position_context}, creating a high-probability tactical edge.
-
-Generate the intel briefing for {player_name} {prop_display} Over {line}:"""
+Now write ONE paragraph for {player_name} {prop_display} Over {line}:"""
 
         return prompt
     
