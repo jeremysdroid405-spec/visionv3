@@ -1312,6 +1312,26 @@ async def sync_master_roster():
     return result
 
 
+@api_router.post("/v3/sync-player-photos")
+async def sync_player_photos():
+    """
+    PHOTO PIPELINE - Sync headshots for all active players.
+    
+    Sources:
+    1. NBA CDN (official high-res headshots)
+    2. Team logo fallback for missing headshots
+    
+    Updates cached_board and master_roster with photo URLs.
+    """
+    if not demon_goblin_engine:
+        raise HTTPException(status_code=500, detail="Engine not initialized")
+    
+    logger.info("[PHOTO SYNC] Manual sync triggered via API")
+    result = await demon_goblin_engine.sync_player_photos()
+    
+    return result
+
+
 @api_router.get("/v3/master-roster-status")
 async def get_master_roster_status():
     """

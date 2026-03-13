@@ -795,6 +795,210 @@ class DemonGoblinEngine:
         
         logger.warning(f"[FLAGGED] Unknown player: {player_name} (Odds API says: {odds_api_team})")
     
+    async def sync_player_photos(self) -> Dict[str, Any]:
+        """
+        PHOTO PIPELINE - Bulk-populate player headshots from multiple sources.
+        
+        Source Priority:
+        1. NBA CDN (official headshots): https://cdn.nba.com/headshots/nba/latest/1040x760/{nba_id}.png
+        2. ESPN Headshots via Tank01: espnHeadshot field
+        3. Team Logo fallback for missing photos
+        
+        Returns:
+            Dict with sync status and photo counts
+        """
+        logger.info("=" * 60)
+        logger.info("[PHOTO SYNC] Starting player headshot pipeline...")
+        logger.info("=" * 60)
+        
+        sync_start = datetime.now(timezone.utc)
+        photos_added = 0
+        photos_failed = 0
+        
+        # NBA Team Logo URLs (fallback for missing headshots)
+        TEAM_LOGOS = {
+            "ATL": "https://cdn.nba.com/logos/nba/1610612737/global/L/logo.svg",
+            "BOS": "https://cdn.nba.com/logos/nba/1610612738/global/L/logo.svg",
+            "BKN": "https://cdn.nba.com/logos/nba/1610612751/global/L/logo.svg",
+            "CHA": "https://cdn.nba.com/logos/nba/1610612766/global/L/logo.svg",
+            "CHI": "https://cdn.nba.com/logos/nba/1610612741/global/L/logo.svg",
+            "CLE": "https://cdn.nba.com/logos/nba/1610612739/global/L/logo.svg",
+            "DAL": "https://cdn.nba.com/logos/nba/1610612742/global/L/logo.svg",
+            "DEN": "https://cdn.nba.com/logos/nba/1610612743/global/L/logo.svg",
+            "DET": "https://cdn.nba.com/logos/nba/1610612765/global/L/logo.svg",
+            "GSW": "https://cdn.nba.com/logos/nba/1610612744/global/L/logo.svg",
+            "HOU": "https://cdn.nba.com/logos/nba/1610612745/global/L/logo.svg",
+            "IND": "https://cdn.nba.com/logos/nba/1610612754/global/L/logo.svg",
+            "LAC": "https://cdn.nba.com/logos/nba/1610612746/global/L/logo.svg",
+            "LAL": "https://cdn.nba.com/logos/nba/1610612747/global/L/logo.svg",
+            "MEM": "https://cdn.nba.com/logos/nba/1610612763/global/L/logo.svg",
+            "MIA": "https://cdn.nba.com/logos/nba/1610612748/global/L/logo.svg",
+            "MIL": "https://cdn.nba.com/logos/nba/1610612749/global/L/logo.svg",
+            "MIN": "https://cdn.nba.com/logos/nba/1610612750/global/L/logo.svg",
+            "NOP": "https://cdn.nba.com/logos/nba/1610612740/global/L/logo.svg",
+            "NYK": "https://cdn.nba.com/logos/nba/1610612752/global/L/logo.svg",
+            "OKC": "https://cdn.nba.com/logos/nba/1610612760/global/L/logo.svg",
+            "ORL": "https://cdn.nba.com/logos/nba/1610612753/global/L/logo.svg",
+            "PHI": "https://cdn.nba.com/logos/nba/1610612755/global/L/logo.svg",
+            "PHX": "https://cdn.nba.com/logos/nba/1610612756/global/L/logo.svg",
+            "POR": "https://cdn.nba.com/logos/nba/1610612757/global/L/logo.svg",
+            "SAC": "https://cdn.nba.com/logos/nba/1610612758/global/L/logo.svg",
+            "SAS": "https://cdn.nba.com/logos/nba/1610612759/global/L/logo.svg",
+            "TOR": "https://cdn.nba.com/logos/nba/1610612761/global/L/logo.svg",
+            "UTA": "https://cdn.nba.com/logos/nba/1610612762/global/L/logo.svg",
+            "WAS": "https://cdn.nba.com/logos/nba/1610612764/global/L/logo.svg",
+        }
+        
+        # Get all players from cached_board (active players with props today)
+        players = await self.cached_board.find(
+            {},
+            {"_id": 0, "player_name": 1, "team": 1, "nba_id": 1}
+        ).to_list(None)
+        
+        logger.info(f"[PHOTO SYNC] Processing {len(players)} players...")
+        
+        for player in players:
+            player_name = player.get("player_name", "")
+            team = player.get("team", "")
+            nba_id = player.get("nba_id")
+            
+            # Try to get nba_id from static mapping if not in database
+            if not nba_id:
+                nba_id = NBA_PLAYER_IDS.get(player_name)
+            
+            photo_url = None
+            photo_source = None
+            
+            # SOURCE 1: NBA CDN (best quality)
+            if nba_id:
+                # High-res headshot URL
+                photo_url = f"https://cdn.nba.com/headshots/nba/latest/1040x760/{nba_id}.png"
+                photo_source = "nba_cdn"
+            
+            # SOURCE 2: Fallback to team logo if no NBA ID
+            if not photo_url and team:
+                photo_url = TEAM_LOGOS.get(team)
+                photo_source = "team_logo"
+                logger.info(f"  {player_name}: Using team logo fallback ({team})")
+            
+            # Update database with photo URL
+            if photo_url:
+                await self.cached_board.update_one(
+                    {"player_name": player_name},
+                    {
+                        "$set": {
+                            "photo_url": photo_url,
+                            "photo_source": photo_source,
+                            "team_logo_url": TEAM_LOGOS.get(team, ""),
+                            "photo_synced_at": sync_start.isoformat()
+                        }
+                    }
+                )
+                photos_added += 1
+            else:
+                photos_failed += 1
+        
+        # Also update master_roster with photo URLs
+        roster_players = await self.master_roster.find({}, {"_id": 0, "player_name": 1, "team_abbreviation": 1, "bdl_player_id": 1}).to_list(None)
+        
+        for player in roster_players:
+            player_name = player.get("player_name", "")
+            team = player.get("team_abbreviation", "")
+            nba_id = NBA_PLAYER_IDS.get(player_name)
+            
+            photo_url = None
+            if nba_id:
+                photo_url = f"https://cdn.nba.com/headshots/nba/latest/1040x760/{nba_id}.png"
+            
+            team_logo = TEAM_LOGOS.get(team, "")
+            
+            await self.master_roster.update_one(
+                {"player_name": player_name},
+                {
+                    "$set": {
+                        "photo_url": photo_url,
+                        "team_logo_url": team_logo,
+                        "photo_synced_at": sync_start.isoformat()
+                    }
+                }
+            )
+        
+        logger.info("=" * 60)
+        logger.info(f"[PHOTO SYNC] COMPLETE")
+        logger.info(f"  Photos added: {photos_added}")
+        logger.info(f"  Photos failed: {photos_failed}")
+        logger.info(f"  Duration: {(datetime.now(timezone.utc) - sync_start).total_seconds():.1f}s")
+        logger.info("=" * 60)
+        
+        return {
+            "success": True,
+            "photos_added": photos_added,
+            "photos_failed": photos_failed,
+            "synced_at": sync_start.isoformat()
+        }
+    
+    def get_player_photo_url(self, player_name: str, team: str = None, nba_id: int = None) -> Dict[str, str]:
+        """
+        Get the best available photo URL for a player.
+        
+        Priority:
+        1. NBA CDN headshot (if nba_id available)
+        2. Team logo (fallback)
+        
+        Returns:
+            Dict with photo_url and fallback_url
+        """
+        # Team logos for fallback
+        TEAM_LOGOS = {
+            "ATL": "https://cdn.nba.com/logos/nba/1610612737/global/L/logo.svg",
+            "BOS": "https://cdn.nba.com/logos/nba/1610612738/global/L/logo.svg",
+            "BKN": "https://cdn.nba.com/logos/nba/1610612751/global/L/logo.svg",
+            "CHA": "https://cdn.nba.com/logos/nba/1610612766/global/L/logo.svg",
+            "CHI": "https://cdn.nba.com/logos/nba/1610612741/global/L/logo.svg",
+            "CLE": "https://cdn.nba.com/logos/nba/1610612739/global/L/logo.svg",
+            "DAL": "https://cdn.nba.com/logos/nba/1610612742/global/L/logo.svg",
+            "DEN": "https://cdn.nba.com/logos/nba/1610612743/global/L/logo.svg",
+            "DET": "https://cdn.nba.com/logos/nba/1610612765/global/L/logo.svg",
+            "GSW": "https://cdn.nba.com/logos/nba/1610612744/global/L/logo.svg",
+            "HOU": "https://cdn.nba.com/logos/nba/1610612745/global/L/logo.svg",
+            "IND": "https://cdn.nba.com/logos/nba/1610612754/global/L/logo.svg",
+            "LAC": "https://cdn.nba.com/logos/nba/1610612746/global/L/logo.svg",
+            "LAL": "https://cdn.nba.com/logos/nba/1610612747/global/L/logo.svg",
+            "MEM": "https://cdn.nba.com/logos/nba/1610612763/global/L/logo.svg",
+            "MIA": "https://cdn.nba.com/logos/nba/1610612748/global/L/logo.svg",
+            "MIL": "https://cdn.nba.com/logos/nba/1610612749/global/L/logo.svg",
+            "MIN": "https://cdn.nba.com/logos/nba/1610612750/global/L/logo.svg",
+            "NOP": "https://cdn.nba.com/logos/nba/1610612740/global/L/logo.svg",
+            "NYK": "https://cdn.nba.com/logos/nba/1610612752/global/L/logo.svg",
+            "OKC": "https://cdn.nba.com/logos/nba/1610612760/global/L/logo.svg",
+            "ORL": "https://cdn.nba.com/logos/nba/1610612753/global/L/logo.svg",
+            "PHI": "https://cdn.nba.com/logos/nba/1610612755/global/L/logo.svg",
+            "PHX": "https://cdn.nba.com/logos/nba/1610612756/global/L/logo.svg",
+            "POR": "https://cdn.nba.com/logos/nba/1610612757/global/L/logo.svg",
+            "SAC": "https://cdn.nba.com/logos/nba/1610612758/global/L/logo.svg",
+            "SAS": "https://cdn.nba.com/logos/nba/1610612759/global/L/logo.svg",
+            "TOR": "https://cdn.nba.com/logos/nba/1610612761/global/L/logo.svg",
+            "UTA": "https://cdn.nba.com/logos/nba/1610612762/global/L/logo.svg",
+            "WAS": "https://cdn.nba.com/logos/nba/1610612764/global/L/logo.svg",
+        }
+        
+        photo_url = None
+        fallback_url = TEAM_LOGOS.get(team, "")
+        
+        # Get NBA ID if not provided
+        if not nba_id:
+            nba_id = NBA_PLAYER_IDS.get(player_name)
+        
+        # Build photo URL
+        if nba_id:
+            photo_url = f"https://cdn.nba.com/headshots/nba/latest/1040x760/{nba_id}.png"
+        
+        return {
+            "photo_url": photo_url,
+            "fallback_url": fallback_url,
+            "has_photo": photo_url is not None
+        }
+    
     def get_current_date(self) -> str:
         """Auto-derive today's date from system clock"""
         return datetime.now(timezone.utc).strftime("%Y-%m-%d")
