@@ -20,6 +20,7 @@ import os
 import httpx
 import logging
 import time
+import asyncio
 from datetime import datetime, timezone
 from typing import Dict, List, Any, Optional
 
@@ -45,19 +46,31 @@ class RawStatFetcher:
     - Interpret or adjust values
     
     It ONLY:
-    - Fetches raw JSON from BallDontLie/Tank01
+    - Fetches raw JSON from BallDontLie/Tank01/NBA.com
     - Returns the exact response unchanged
     - Logs raw data for audit
+    
+    Data Source Priority:
+    1. BallDontLie (primary)
+    2. Tank01 (secondary - user has subscription)
+    3. NBA.com (tertiary - fallback for rookies)
     """
     
-    # Default BDL API key (same as demon_goblin_engine)
+    # Default API keys
     DEFAULT_BDL_KEY = "ad5544be-9969-434b-9389-2b7cf658c8e0"
+    DEFAULT_TANK01_KEY = "402edbcac6mshd04997e7ca01d17p1879eajsn65ab176cdb1e"
     
     def __init__(self, db):
         self.db = db
         self.raw_stats_collection = db.dg_raw_stats_audit
+        # BallDontLie
         self.BDL_BASE_URL = "https://api.balldontlie.io/v1"
         self.BDL_API_KEY = os.environ.get("BDL_API_KEY", self.DEFAULT_BDL_KEY)
+        # Tank01
+        self.TANK01_BASE = "https://tank01-fantasy-stats.p.rapidapi.com"
+        self.TANK01_KEY = os.environ.get("TANK01_API_KEY", self.DEFAULT_TANK01_KEY)
+        self.TANK01_HOST = "tank01-fantasy-stats.p.rapidapi.com"
+        self.CURRENT_SEASON = "2025"
         
     def set_api_key(self, key: str):
         """Set BallDontLie API key"""
@@ -244,9 +257,22 @@ class RawStatFetcher:
             
         raw_games = games_response["raw_response"].get("data", [])
         
-        # If BallDontLie has no games, try NBA.com API as fallback
+        # If BallDontLie has no games, try Tank01 first (user has subscription)
+        if not raw_games:
+            logger.info(f"[RAW FETCH] BallDontLie has no games for {player_name}, trying Tank01...")
+            tank_result = await self._fetch_tank01_raw(player_name, num_games)
+            if tank_result.get("success"):
+                result["success"] = True
+                result["games"] = tank_result["games"]
+                result["games_returned"] = len(tank_result["games"])
+                result["data_source"] = "tank01_raw"
+                result["tank_player_id"] = tank_result.get("tank_player_id")
+                await self._store_validation_data(player_name, player_id, result["games"])
+                return result
+        
+        # If Tank01 also fails, try NBA.com API as final fallback
         if not raw_games and NBA_API_AVAILABLE:
-            logger.info(f"[RAW FETCH] BallDontLie has no games for {player_name}, trying NBA.com...")
+            logger.info(f"[RAW FETCH] Tank01 has no games for {player_name}, trying NBA.com...")
             nba_result = self._fetch_nba_api_raw(player_name, num_games)
             if nba_result.get("success"):
                 result["success"] = True
@@ -311,6 +337,142 @@ class RawStatFetcher:
         
         # Store in audit collection
         await self._store_validation_data(player_name, player_id, result["games"])
+        
+        return result
+    
+    async def _fetch_tank01_raw(self, player_name: str, num_games: int = 10) -> Dict[str, Any]:
+        """
+        Fetch raw stats from Tank01 API as secondary fallback.
+        
+        Tank01 provides box scores - we get recent games from team schedule
+        and extract player stats from box scores.
+        
+        Returns RAW data - NO PROCESSING.
+        """
+        result = {
+            "success": False,
+            "games": [],
+            "error": None
+        }
+        
+        try:
+            headers = {
+                "x-rapidapi-key": self.TANK01_KEY,
+                "x-rapidapi-host": self.TANK01_HOST
+            }
+            
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                # Step 1: Get player info to find their team
+                search_url = f"{self.TANK01_BASE}/getNBAPlayerInfo"
+                response = await client.get(
+                    search_url,
+                    params={"playerName": player_name},
+                    headers=headers
+                )
+                
+                if response.status_code != 200:
+                    result["error"] = f"Tank01 player search failed: {response.status_code}"
+                    return result
+                
+                data = response.json()
+                body = data.get("body", [])
+                if not body or not isinstance(body, list):
+                    result["error"] = f"Player not found in Tank01: {player_name}"
+                    return result
+                
+                player = body[0]
+                team_abv = player.get("team")
+                tank_player_id = player.get("playerID")
+                
+                if not team_abv:
+                    result["error"] = f"No team found for {player_name}"
+                    return result
+                
+                result["tank_player_id"] = tank_player_id
+                
+                # Step 2: Get team schedule to find recent completed games
+                schedule_url = f"{self.TANK01_BASE}/getNBATeamSchedule"
+                response = await client.get(
+                    schedule_url,
+                    params={"teamAbv": team_abv, "season": self.CURRENT_SEASON},
+                    headers=headers
+                )
+                
+                if response.status_code != 200:
+                    result["error"] = f"Tank01 schedule fetch failed: {response.status_code}"
+                    return result
+                
+                schedule_data = response.json()
+                schedule = schedule_data.get("body", {}).get("schedule", [])
+                
+                # Get recent completed games
+                completed_games = [g for g in schedule if g.get("gameStatus") == "Completed"]
+                recent_games = completed_games[-num_games:]  # Most recent N
+                
+                if not recent_games:
+                    result["error"] = f"No completed games for {team_abv}"
+                    return result
+                
+                # Step 3: Fetch box scores and extract player stats
+                games = []
+                for game in recent_games:
+                    game_id = game.get("gameID")
+                    if not game_id:
+                        continue
+                    
+                    box_url = f"{self.TANK01_BASE}/getNBABoxScore"
+                    box_response = await client.get(
+                        box_url,
+                        params={"gameID": game_id},
+                        headers=headers
+                    )
+                    
+                    if box_response.status_code != 200:
+                        continue
+                    
+                    box_data = box_response.json()
+                    player_stats = box_data.get("body", {}).get("playerStats", {})
+                    
+                    # Find our player in the box score
+                    for pid, stats in player_stats.items():
+                        stat_name = stats.get("longName", "").lower()
+                        if player_name.lower() in stat_name or stat_name in player_name.lower():
+                            games.append({
+                                "game_date": game.get("gameDate", ""),
+                                "player_team": team_abv,
+                                "game_id": game_id,
+                                "home_score": None,
+                                "visitor_score": None,
+                                # RAW stat values - EXACTLY as returned
+                                "pts": int(stats.get("pts", 0) or 0),
+                                "reb": int(stats.get("reb", 0) or 0),
+                                "ast": int(stats.get("ast", 0) or 0),
+                                "stl": int(stats.get("stl", 0) or 0),
+                                "blk": int(stats.get("blk", 0) or 0),
+                                "turnover": int(stats.get("TOV", 0) or 0),
+                                "min": stats.get("mins", ""),
+                                "fgm": int(stats.get("fgm", 0) or 0),
+                                "fga": int(stats.get("fga", 0) or 0),
+                                "fg3m": int(stats.get("tptfgm", 0) or 0),
+                                "fg3a": int(stats.get("tptfga", 0) or 0),
+                                "ftm": int(stats.get("ftm", 0) or 0),
+                                "fta": int(stats.get("fta", 0) or 0),
+                                "raw_api_object": stats
+                            })
+                            break
+                    
+                    await asyncio.sleep(0.1)  # Rate limiting
+                
+                if games:
+                    result["success"] = True
+                    result["games"] = games
+                    logger.info(f"[RAW FETCH] Tank01: {len(games)} games for {player_name}")
+                else:
+                    result["error"] = f"No box score data found for {player_name}"
+                
+        except Exception as e:
+            result["error"] = str(e)
+            logger.error(f"[RAW FETCH] Tank01 error for {player_name}: {e}")
         
         return result
     

@@ -712,8 +712,10 @@ class DemonGoblinEngine:
         """
         Sync player game logs to MongoDB for cached hit rate calculations.
         
-        This function fetches stats from BallDontLie (primary) and NBA.com (fallback)
-        and stores them in the dg_player_stats collection.
+        Data Source Priority:
+        1. BallDontLie (primary)
+        2. Tank01 (secondary - user has subscription)
+        3. NBA.com (tertiary - for rookies)
         
         Should be run daily during the 4:00 AM sync job.
         
@@ -725,6 +727,7 @@ class DemonGoblinEngine:
         
         stats_synced = 0
         stats_from_bdl = 0
+        stats_from_tank = 0
         stats_from_nba = 0
         errors = []
         
@@ -748,14 +751,25 @@ class DemonGoblinEngine:
                 
                 for player_name in batch:
                     try:
-                        # Try BallDontLie first
-                        stats = await self._fetch_bdl_stats_for_cache(player_name)
-                        source = "balldontlie"
+                        source = None
+                        stats = None
                         
-                        # Fallback to NBA.com if no BDL data
-                        if not stats or not stats.get("games"):
+                        # Priority 1: BallDontLie
+                        stats = await self._fetch_bdl_stats_for_cache(player_name)
+                        if stats and stats.get("games"):
+                            source = "balldontlie"
+                        
+                        # Priority 2: Tank01 (user has subscription)
+                        if not source:
+                            stats = await self._fetch_tank01_player_stats(player_name)
+                            if stats and stats.get("games"):
+                                source = "tank01"
+                        
+                        # Priority 3: NBA.com (fallback for rookies)
+                        if not source:
                             stats = self._fetch_nba_api_stats(player_name)
-                            source = "nba_api" if stats else None
+                            if stats and stats.get("games"):
+                                source = "nba_api"
                         
                         if stats and stats.get("games"):
                             # Prepare document for MongoDB
@@ -787,6 +801,8 @@ class DemonGoblinEngine:
                             stats_synced += 1
                             if source == "balldontlie":
                                 stats_from_bdl += 1
+                            elif source == "tank01":
+                                stats_from_tank += 1
                             else:
                                 stats_from_nba += 1
                             
@@ -806,12 +822,13 @@ class DemonGoblinEngine:
             await self.player_stats.create_index("player_name")
             
             duration = (datetime.now(timezone.utc) - sync_start).total_seconds()
-            logger.info(f"[STATS SYNC] Completed: {stats_synced} players synced in {duration:.1f}s (BDL: {stats_from_bdl}, NBA: {stats_from_nba})")
+            logger.info(f"[STATS SYNC] Completed: {stats_synced} players synced in {duration:.1f}s (BDL: {stats_from_bdl}, Tank01: {stats_from_tank}, NBA: {stats_from_nba})")
             
             return {
                 "success": True,
                 "stats_synced": stats_synced,
                 "from_balldontlie": stats_from_bdl,
+                "from_tank01": stats_from_tank,
                 "from_nba_api": stats_from_nba,
                 "errors": errors[:10],  # Limit errors in response
                 "duration_seconds": duration,
@@ -1785,8 +1802,14 @@ class DemonGoblinEngine:
         except Exception as e:
             logger.debug(f"[BDL] Error fetching stats for {player_name}: {e}")
         
-        # Fallback to NBA.com API if BallDontLie has no data
-        logger.debug(f"[STATS] BallDontLie has no data for {player_name}, trying NBA.com API...")
+        # Fallback 1: Tank01 API (secondary - user has subscription)
+        logger.debug(f"[STATS] BallDontLie has no data for {player_name}, trying Tank01...")
+        tank_stats = await self._fetch_tank01_player_stats(player_name)
+        if tank_stats and tank_stats.get("games"):
+            return tank_stats
+        
+        # Fallback 2: NBA.com API (tertiary)
+        logger.debug(f"[STATS] Tank01 has no data for {player_name}, trying NBA.com API...")
         nba_stats = self._fetch_nba_api_stats(player_name)
         if nba_stats and nba_stats.get("games"):
             return nba_stats
@@ -1978,6 +2001,127 @@ class DemonGoblinEngine:
             
         except Exception as e:
             logger.debug(f"[NBA_API] Error fetching stats for {player_name}: {e}")
+            return {}
+    
+    async def _fetch_tank01_player_stats(self, player_name: str) -> Dict[str, Any]:
+        """
+        Fetch player stats from Tank01 API as secondary fallback.
+        
+        Tank01 provides box scores via getNBABoxScore endpoint.
+        We fetch recent game dates and get the player's stats from box scores.
+        
+        Returns stats in the same format as BallDontLie for compatibility.
+        """
+        try:
+            headers = {
+                "x-rapidapi-key": TANK01_API_KEY,
+                "x-rapidapi-host": TANK01_HOST
+            }
+            
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                # Step 1: Get player info to find their team
+                search_url = f"{TANK01_BASE}/getNBAPlayerInfo"
+                response = await client.get(
+                    search_url,
+                    params={"playerName": player_name},
+                    headers=headers
+                )
+                
+                if response.status_code != 200:
+                    logger.debug(f"[TANK01] Player search failed: {response.status_code}")
+                    return {}
+                
+                data = response.json()
+                body = data.get("body", [])
+                if not body or not isinstance(body, list):
+                    logger.debug(f"[TANK01] Player not found: {player_name}")
+                    return {}
+                
+                player = body[0]
+                team_abv = player.get("team")
+                tank_player_id = player.get("playerID")
+                player_espn_name = player.get("espnName", player_name)
+                
+                if not team_abv:
+                    logger.debug(f"[TANK01] No team found for {player_name}")
+                    return {}
+                
+                # Step 2: Get team schedule to find recent completed games
+                schedule_url = f"{TANK01_BASE}/getNBATeamSchedule"
+                response = await client.get(
+                    schedule_url,
+                    params={"teamAbv": team_abv, "season": CURRENT_SEASON},
+                    headers=headers
+                )
+                
+                if response.status_code != 200:
+                    logger.debug(f"[TANK01] Schedule fetch failed: {response.status_code}")
+                    return {}
+                
+                schedule_data = response.json()
+                schedule = schedule_data.get("body", {}).get("schedule", [])
+                
+                # Get last 15 completed games
+                completed_games = [g for g in schedule if g.get("gameStatus") == "Completed"]
+                recent_games = completed_games[-15:]  # Most recent 15
+                
+                if not recent_games:
+                    logger.debug(f"[TANK01] No completed games for {team_abv}")
+                    return {}
+                
+                # Step 3: Fetch box scores and extract player stats
+                games = []
+                for game in recent_games[-10:]:  # Limit to 10 games to reduce API calls
+                    game_id = game.get("gameID")
+                    if not game_id:
+                        continue
+                    
+                    box_url = f"{TANK01_BASE}/getNBABoxScore"
+                    box_response = await client.get(
+                        box_url,
+                        params={"gameID": game_id},
+                        headers=headers
+                    )
+                    
+                    if box_response.status_code != 200:
+                        continue
+                    
+                    box_data = box_response.json()
+                    player_stats = box_data.get("body", {}).get("playerStats", {})
+                    
+                    # Find our player in the box score
+                    for pid, stats in player_stats.items():
+                        stat_name = stats.get("longName", "").lower()
+                        if player_name.lower() in stat_name or stat_name in player_name.lower():
+                            games.append({
+                                "pts": int(stats.get("pts", 0) or 0),
+                                "reb": int(stats.get("reb", 0) or 0),
+                                "ast": int(stats.get("ast", 0) or 0),
+                                "fg3m": int(stats.get("tptfgm", 0) or 0),  # 3PM
+                                "blk": int(stats.get("blk", 0) or 0),
+                                "stl": int(stats.get("stl", 0) or 0),
+                                "turnover": int(stats.get("TOV", 0) or 0),
+                                "game": {
+                                    "date": game.get("gameDate", ""),
+                                    "id": game_id
+                                }
+                            })
+                            break
+                    
+                    await asyncio.sleep(0.1)  # Rate limiting
+                
+                if games:
+                    logger.info(f"[TANK01] Fetched {len(games)} games for {player_name}")
+                    return {
+                        "games": games,
+                        "player_name": player_name,
+                        "source": "tank01"
+                    }
+                
+                return {}
+                
+        except Exception as e:
+            logger.debug(f"[TANK01] Error fetching stats for {player_name}: {e}")
             return {}
     
     def _calculate_hit_rates(self, player_stats: Dict, stat_type: str, line_value: float) -> Dict[str, Any]:
