@@ -3364,7 +3364,9 @@ class DemonGoblinEngine:
                     "game_key": game_key,
                     "home_team": home_team,
                     "away_team": away_team,
-                    "price": demon.get("price", 100)
+                    "price": demon.get("price", 100),
+                    "is_demon": True,  # Mark as demon for payout calculation
+                    "standard_line": demon.get("standard_line", demon.get("line", 0) * 0.85)  # Estimate standard line ~15% lower
                 }
                 
                 high_prob_demons.append(demon_entry)
@@ -3539,14 +3541,17 @@ class DemonGoblinEngine:
             picks_3, is_valid, team_count = get_multi_team_picks(high_prob_demons, 3)
             if picks_3:
                 combined_prob = self._calculate_parlay_probability(picks_3)
+                payout_data = calculate_live_payout(picks_3)
                 parlays["3_pick"] = {
                     "name": "Triple Threat",
                     "picks": picks_3,
                     "pick_count": 3,
                     "combined_probability": combined_prob,
-                    "estimated_payout": 8,
-                    "payout_range": "8x",
-                    "max_payout": 8,
+                    "estimated_payout": payout_data["estimated_payout"],
+                    "payout_display": payout_data["payout_display"],
+                    "base_multiplier": payout_data["base_multiplier"],
+                    "cumulative_modifier": payout_data["cumulative_modifier"],
+                    "asset_breakdown": payout_data["asset_breakdown"],
                     "description": "Top 3 highest-probability demons",
                     "lineup_valid": is_valid,
                     "team_count": team_count,
@@ -3558,6 +3563,7 @@ class DemonGoblinEngine:
             picks_4, is_valid, team_count, has_pair = get_opponent_paired_picks(high_prob_demons, 4)
             if picks_4:
                 combined_prob = self._calculate_parlay_probability(picks_4)
+                payout_data = calculate_live_payout(picks_4)
                 status = "Valid (Multi-Team)"
                 if has_pair:
                     status = "Valid (Opponent Pair)"
@@ -3569,9 +3575,11 @@ class DemonGoblinEngine:
                     "picks": picks_4,
                     "pick_count": 4,
                     "combined_probability": combined_prob,
-                    "estimated_payout": 16,
-                    "payout_range": "16x",
-                    "max_payout": 16,
+                    "estimated_payout": payout_data["estimated_payout"],
+                    "payout_display": payout_data["payout_display"],
+                    "base_multiplier": payout_data["base_multiplier"],
+                    "cumulative_modifier": payout_data["cumulative_modifier"],
+                    "asset_breakdown": payout_data["asset_breakdown"],
                     "description": "4 picks with opponent correlation" if has_pair else "Top 4 highest-probability demons",
                     "lineup_valid": is_valid,
                     "team_count": team_count,
@@ -3584,6 +3592,7 @@ class DemonGoblinEngine:
             picks_5, is_valid, team_count, has_pair = get_opponent_paired_picks(high_prob_demons, 5)
             if picks_5:
                 combined_prob = self._calculate_parlay_probability(picks_5)
+                payout_data = calculate_live_payout(picks_5)
                 status = "Valid (Multi-Team)"
                 if has_pair:
                     status = "Valid (Opponent Pair)"
@@ -3595,9 +3604,11 @@ class DemonGoblinEngine:
                     "picks": picks_5,
                     "pick_count": 5,
                     "combined_probability": combined_prob,
-                    "estimated_payout": 32,
-                    "payout_range": "32x",
-                    "max_payout": 32,
+                    "estimated_payout": payout_data["estimated_payout"],
+                    "payout_display": payout_data["payout_display"],
+                    "base_multiplier": payout_data["base_multiplier"],
+                    "cumulative_modifier": payout_data["cumulative_modifier"],
+                    "asset_breakdown": payout_data["asset_breakdown"],
                     "description": "5 picks with game correlation" if has_pair else "Top 5 highest-probability demons",
                     "lineup_valid": is_valid,
                     "team_count": team_count,
@@ -3605,11 +3616,12 @@ class DemonGoblinEngine:
                     "lineup_status": status
                 }
         
-        # ==================== 6-PICK (Jackpot 64x) - With Opponent Pairing ====================
+        # ==================== 6-PICK (Jackpot) - With Opponent Pairing ====================
         if len(high_prob_demons) >= 6:
             picks_6, is_valid, team_count, has_pair = get_opponent_paired_picks(high_prob_demons, 6)
             if picks_6:
                 combined_prob = self._calculate_parlay_probability(picks_6)
+                payout_data = calculate_live_payout(picks_6)
                 status = "Valid (Multi-Team)"
                 if has_pair:
                     status = "Valid (Opponent Pair)"
@@ -3617,13 +3629,15 @@ class DemonGoblinEngine:
                     status = "INVALID (Single Team)"
                 
                 parlays["6_pick"] = {
-                    "name": "Jackpot 64x",
+                    "name": "Jackpot",
                     "picks": picks_6,
                     "pick_count": 6,
                     "combined_probability": combined_prob,
-                    "estimated_payout": 64,
-                    "payout_range": "64x",
-                    "max_payout": 64,
+                    "estimated_payout": payout_data["estimated_payout"],
+                    "payout_display": payout_data["payout_display"],
+                    "base_multiplier": payout_data["base_multiplier"],
+                    "cumulative_modifier": payout_data["cumulative_modifier"],
+                    "asset_breakdown": payout_data["asset_breakdown"],
                     "description": "6 picks with game correlation - MAX PAYOUT!" if has_pair else "Top 6 highest-probability demons - MAX PAYOUT!",
                     "lineup_valid": is_valid,
                     "team_count": team_count,
@@ -3980,11 +3994,31 @@ class DemonGoblinEngine:
                 prob *= p
             return round(prob * 100, 2)
         
-        def estimate_goblin_payout(picks: List[Dict]) -> float:
-            """Estimate payout for Goblin parlay (odds are typically -137)"""
-            legs = len(picks)
-            base_multiplier = 1.73 ** legs
-            return round(base_multiplier, 1)
+        def calculate_goblin_payout(picks: List[Dict]) -> Dict:
+            """Calculate live payout using the payout engine for Goblin picks."""
+            # Mark all picks as goblins for proper modifier calculation
+            goblin_picks = []
+            for pick in picks:
+                goblin_pick = {
+                    "player_name": pick.get("player_name", "Unknown"),
+                    "stat_type": pick.get("stat_type", "PTS"),
+                    "line": pick.get("line", 0),
+                    "direction": pick.get("direction", "over"),
+                    "team": pick.get("team", ""),
+                    "is_goblin": True,  # Mark as goblin for payout calculation
+                    "standard_line": pick.get("line", 0) * 1.15  # Goblin lines are ~15% easier
+                }
+                goblin_picks.append(goblin_pick)
+            
+            payout_result = calculate_payout_from_picks(goblin_picks)
+            return {
+                "estimated_payout": payout_result.get("estimated_payout", 0),
+                "payout_display": payout_result.get("payout_display", "0x"),
+                "cumulative_modifier": payout_result.get("cumulative_modifier", 1.0),
+                "base_multiplier": payout_result.get("base_multiplier", 3.0),
+                "asset_breakdown": payout_result.get("asset_breakdown", {}),
+                "legs": payout_result.get("legs", [])
+            }
         
         parlays = {}
         
@@ -3993,6 +4027,7 @@ class DemonGoblinEngine:
             picks_2, is_valid, team_count = get_multi_team_picks(recon_candidates, 2)
             if picks_2:
                 combined_prob = calculate_recon_probability(picks_2)
+                payout_data = calculate_goblin_payout(picks_2)
                 parlays["daily_double"] = {
                     "name": "Daily Double",
                     "tier": "daily_double",
@@ -4000,8 +4035,11 @@ class DemonGoblinEngine:
                     "pick_count": 2,
                     "combined_probability": combined_prob,
                     "reliability": combined_prob,
-                    "estimated_payout": estimate_goblin_payout(picks_2),
-                    "payout_range": "~3x",
+                    "estimated_payout": payout_data["estimated_payout"],
+                    "payout_display": payout_data["payout_display"],
+                    "base_multiplier": payout_data["base_multiplier"],
+                    "cumulative_modifier": payout_data["cumulative_modifier"],
+                    "asset_breakdown": payout_data["asset_breakdown"],
                     "description": "Top 2 highest-consistency Goblins - Nearly automatic!",
                     "badge": "SAFEST BET",
                     "lineup_valid": is_valid,
@@ -4014,6 +4052,7 @@ class DemonGoblinEngine:
             picks_3, is_valid, team_count = get_diversified_multi_team_picks(recon_candidates, 3, game_groups)
             if picks_3:
                 combined_prob = calculate_recon_probability(picks_3)
+                payout_data = calculate_goblin_payout(picks_3)
                 parlays["green_ladder_3"] = {
                     "name": "Green Ladder",
                     "tier": "green_ladder_3",
@@ -4021,8 +4060,11 @@ class DemonGoblinEngine:
                     "pick_count": 3,
                     "combined_probability": combined_prob,
                     "reliability": combined_prob,
-                    "estimated_payout": estimate_goblin_payout(picks_3),
-                    "payout_range": "~5x",
+                    "estimated_payout": payout_data["estimated_payout"],
+                    "payout_display": payout_data["payout_display"],
+                    "base_multiplier": payout_data["base_multiplier"],
+                    "cumulative_modifier": payout_data["cumulative_modifier"],
+                    "asset_breakdown": payout_data["asset_breakdown"],
                     "description": "3 Goblins diversified across games",
                     "badge": "DIVERSIFIED",
                     "lineup_valid": is_valid,
@@ -4035,6 +4077,7 @@ class DemonGoblinEngine:
             picks_4, is_valid, team_count = get_diversified_multi_team_picks(recon_candidates, 4, game_groups)
             if picks_4:
                 combined_prob = calculate_recon_probability(picks_4)
+                payout_data = calculate_goblin_payout(picks_4)
                 parlays["green_ladder_4"] = {
                     "name": "Green Ladder+",
                     "tier": "green_ladder_4",
@@ -4042,8 +4085,11 @@ class DemonGoblinEngine:
                     "pick_count": 4,
                     "combined_probability": combined_prob,
                     "reliability": combined_prob,
-                    "estimated_payout": estimate_goblin_payout(picks_4),
-                    "payout_range": "~9x",
+                    "estimated_payout": payout_data["estimated_payout"],
+                    "payout_display": payout_data["payout_display"],
+                    "base_multiplier": payout_data["base_multiplier"],
+                    "cumulative_modifier": payout_data["cumulative_modifier"],
+                    "asset_breakdown": payout_data["asset_breakdown"],
                     "description": "4 Goblins diversified for risk management",
                     "badge": "BALANCED",
                     "lineup_valid": is_valid,
@@ -4057,6 +4103,7 @@ class DemonGoblinEngine:
             picks_6, is_valid, team_count = get_diversified_multi_team_picks(recon_candidates, 6, game_groups)
             if picks_6:
                 combined_prob = calculate_recon_probability(picks_6)
+                payout_data = calculate_goblin_payout(picks_6)
                 
                 # Calculate Flex probability (hitting 5 or 6 out of 6)
                 avg_p = sum(p["weighted_hit_rate"] for p in picks_6) / 600
@@ -4072,9 +4119,12 @@ class DemonGoblinEngine:
                     "combined_probability": combined_prob,
                     "flex_probability": flex_win_prob,
                     "reliability": flex_win_prob,
-                    "estimated_payout": estimate_goblin_payout(picks_6),
+                    "estimated_payout": payout_data["estimated_payout"],
+                    "payout_display": payout_data["payout_display"],
+                    "base_multiplier": payout_data["base_multiplier"],
+                    "cumulative_modifier": payout_data["cumulative_modifier"],
+                    "asset_breakdown": payout_data["asset_breakdown"],
                     "flex_payout": "5/6 = 1.5x | 6/6 = 15x",
-                    "payout_range": "~15x (Flex)",
                     "description": "PrizePicks Flex Play - Win on 5 OR 6 hits!",
                     "badge": "FLEX FORTRESS",
                     "lineup_valid": is_valid,
