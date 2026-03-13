@@ -33,6 +33,14 @@ from typing import Optional, Dict, List, Any, Set, Tuple
 from thefuzz import fuzz
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
+# NBA.com API fallback for players missing from BallDontLie
+try:
+    from nba_api.stats.endpoints import playergamelog
+    from nba_api.stats.static import players as nba_players
+    NBA_API_AVAILABLE = True
+except ImportError:
+    NBA_API_AVAILABLE = False
+
 logger = logging.getLogger(__name__)
 
 # ==================== EXPONENTIAL BACKOFF CONFIG ====================
@@ -1522,39 +1530,46 @@ class DemonGoblinEngine:
     async def _fetch_player_season_stats(self, player_name: str) -> Dict[str, Any]:
         """
         Fetch a player's season stats from BallDontLie API.
+        Falls back to NBA.com official API if BallDontLie doesn't have data.
         Returns game-by-game stats for hit rate calculation.
         """
+        # Try BallDontLie first
         try:
             # First, find the player ID
             player_id = await self._get_bdl_player_id(player_name)
-            if not player_id:
-                return {}
-            
-            # Fetch season stats
-            url = f"{BDL_BASE_URL}/stats"
-            params = {
-                "player_ids[]": player_id,
-                "seasons[]": CURRENT_SEASON,
-                "per_page": 100
-            }
-            headers = {"Authorization": BDL_API_KEY}
-            
-            async with httpx.AsyncClient() as client:
-                response = await client.get(url, params=params, headers=headers, timeout=15.0)
+            if player_id:
+                # Fetch season stats
+                url = f"{BDL_BASE_URL}/stats"
+                params = {
+                    "player_ids[]": player_id,
+                    "seasons[]": CURRENT_SEASON,
+                    "per_page": 100
+                }
+                headers = {"Authorization": BDL_API_KEY}
                 
-                if response.status_code == 200:
-                    data = response.json()
-                    games = data.get("data", [])
+                async with httpx.AsyncClient() as client:
+                    response = await client.get(url, params=params, headers=headers, timeout=15.0)
                     
-                    if games:
-                        return {
-                            "player_name": player_name,
-                            "player_id": player_id,
-                            "games": games,
-                            "total_games": len(games)
-                        }
+                    if response.status_code == 200:
+                        data = response.json()
+                        games = data.get("data", [])
+                        
+                        if games:
+                            return {
+                                "player_name": player_name,
+                                "player_id": player_id,
+                                "games": games,
+                                "total_games": len(games),
+                                "source": "balldontlie"
+                            }
         except Exception as e:
             logger.debug(f"[BDL] Error fetching stats for {player_name}: {e}")
+        
+        # Fallback to NBA.com API if BallDontLie has no data
+        logger.debug(f"[STATS] BallDontLie has no data for {player_name}, trying NBA.com API...")
+        nba_stats = self._fetch_nba_api_stats(player_name)
+        if nba_stats and nba_stats.get("games"):
+            return nba_stats
         
         return {}
     
@@ -1652,6 +1667,86 @@ class DemonGoblinEngine:
             logger.debug(f"[BDL] Error searching for {player_name}: {e}")
         
         return None
+    
+    def _fetch_nba_api_stats(self, player_name: str) -> Dict[str, Any]:
+        """
+        Fetch player stats from NBA.com official API as a fallback.
+        This is a synchronous function using the nba_api library.
+        
+        Returns stats in the same format as BallDontLie for compatibility.
+        """
+        if not NBA_API_AVAILABLE:
+            return {}
+        
+        try:
+            # Find player in NBA database
+            all_players = nba_players.get_players()
+            
+            # Try exact name match first
+            player_match = None
+            normalized_search = player_name.lower().strip()
+            
+            for p in all_players:
+                if p['full_name'].lower() == normalized_search:
+                    player_match = p
+                    break
+            
+            # If no exact match, try partial matching
+            if not player_match:
+                for p in all_players:
+                    if normalized_search in p['full_name'].lower():
+                        player_match = p
+                        break
+            
+            if not player_match:
+                logger.debug(f"[NBA_API] Player not found: {player_name}")
+                return {}
+            
+            player_id = player_match['id']
+            
+            # Fetch game logs (with rate limiting)
+            import time
+            time.sleep(0.6)  # NBA.com rate limit
+            
+            gamelog = playergamelog.PlayerGameLog(
+                player_id=player_id, 
+                season='2024-25',
+                season_type_all_star='Regular Season'
+            )
+            df = gamelog.get_data_frames()[0]
+            
+            if df.empty:
+                logger.debug(f"[NBA_API] No games found for {player_name}")
+                return {}
+            
+            # Convert to BallDontLie-compatible format
+            games = []
+            for _, row in df.iterrows():
+                games.append({
+                    "pts": row.get('PTS', 0),
+                    "reb": row.get('REB', 0),
+                    "ast": row.get('AST', 0),
+                    "fg3m": row.get('FG3M', 0),
+                    "blk": row.get('BLK', 0),
+                    "stl": row.get('STL', 0),
+                    "turnover": row.get('TOV', 0),
+                    "game": {
+                        "date": row.get('GAME_DATE', ''),
+                        "matchup": row.get('MATCHUP', '')
+                    }
+                })
+            
+            logger.info(f"[NBA_API] Fetched {len(games)} games for {player_name}")
+            
+            return {
+                "games": games,
+                "player_name": player_name,
+                "source": "nba_api"
+            }
+            
+        except Exception as e:
+            logger.debug(f"[NBA_API] Error fetching stats for {player_name}: {e}")
+            return {}
     
     def _calculate_hit_rates(self, player_stats: Dict, stat_type: str, line_value: float) -> Dict[str, Any]:
         """

@@ -7,6 +7,32 @@ Build a high-performance NBA Player Prop Dashboard that identifies "Demons" (har
 
 ---
 
+## NBA.COM API FALLBACK FOR STATS - COMPLETED (March 13, 2026)
+
+### Problem Solved ✅
+Some players (Trey Murphy III, Jabari Smith Jr.) had no stats in BallDontLie API, causing empty hit rate dropdowns.
+
+### Solution: Dual-Source Stats Pipeline ✅
+1. **Primary Source**: BallDontLie API (faster, handles most players)
+2. **Fallback Source**: NBA.com official API via `nba_api` library (handles missing players)
+
+### Implementation Details ✅
+- **New Library**: `nba_api==1.11.4` added to requirements.txt
+- **Function**: `_fetch_nba_api_stats()` in `demon_goblin_engine.py`
+- **Auto-Fallback**: If BallDontLie returns no data, automatically queries NBA.com
+
+### Coverage After Fix ✅
+| Player | Before | After |
+|--------|--------|-------|
+| Trey Murphy III | ❌ No stats | ✅ 53 games |
+| Jabari Smith Jr. | ❌ No stats | ✅ 57 games |
+| Ace Bailey | ❌ No stats | ❌ Rookie (0 NBA games) |
+
+### Data Format ✅
+NBA.com stats are converted to BallDontLie-compatible format for seamless integration with existing `_calculate_hit_rates()` function.
+
+---
+
 ## INTERACTIVE HIT-RATE DROPDOWN - COMPLETED (March 13, 2026)
 
 ### Feature Description ✅
