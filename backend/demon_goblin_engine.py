@@ -4961,6 +4961,17 @@ class DemonGoblinEngine:
             logger.info("\n[CACHE] Storing static shell (24h TTL)...")
             await self.store_static_shell(list(player_data.values()), trending_10)
             
+            # ===== BUILD PARLAY GENERATORS =====
+            logger.info("\n[PARLAYS] Building parlay generators...")
+            
+            # Build demon parlays (The Gauntlet)
+            await self._build_parlay_builder(player_data, sync_start)
+            
+            # Build goblin parlays (The Safe Haven)
+            await self._build_goblin_recon(player_data, sync_start)
+            
+            logger.info("[PARLAYS] Parlay generators built successfully")
+            
             # Log sync result
             await self.sync_log.insert_one({
                 "sync_date": self._current_date,
