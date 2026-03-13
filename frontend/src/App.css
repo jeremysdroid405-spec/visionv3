@@ -16,37 +16,46 @@
   color: #22c55e;
 }
 
-/* ==================== DEMON ICON EFFECTS ==================== */
+/* ==================== ELITE DEMON ICON EFFECTS ==================== */
 
-/* Demon Breathing Glow - Deep Crimson pulse */
-@keyframes demon-breathe {
+/* Glassmorphism Container for Icons */
+.demon-icon-container,
+.goblin-icon-container {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  flex-shrink: 0;
+}
+
+/* Demon Glow Effect - Deep Crimson pulse */
+@keyframes demon-glow-pulse {
   0%, 100% { 
-    filter: drop-shadow(0 0 8px rgba(255, 0, 0, 0.6)) drop-shadow(0 0 20px rgba(255, 0, 0, 0.3));
-    transform: scale(1);
+    filter: drop-shadow(0 0 6px rgba(255, 0, 0, 0.7)) drop-shadow(0 0 15px rgba(255, 0, 0, 0.4));
   }
   50% { 
-    filter: drop-shadow(0 0 15px rgba(255, 0, 0, 0.8)) drop-shadow(0 0 35px rgba(255, 0, 0, 0.5));
-    transform: scale(1.05);
+    filter: drop-shadow(0 0 12px rgba(255, 0, 0, 0.9)) drop-shadow(0 0 25px rgba(255, 0, 0, 0.6));
   }
 }
 
 .demon-icon {
-  animation: demon-breathe 3s ease-in-out infinite;
+  animation: demon-glow-pulse 2.5s ease-in-out infinite;
 }
 
-/* Demon Glitch Effect - Horizontal shift every 5s */
-@keyframes demon-glitch {
-  0%, 98%, 100% { transform: translateX(0); }
-  98.5% { transform: translateX(-3px); }
-  99% { transform: translateX(3px); }
-  99.5% { transform: translateX(-2px); }
+/* Demon Scanning State - Glitch Effect */
+@keyframes demon-scan-glitch {
+  0%, 94%, 100% { transform: translateX(0); opacity: 1; }
+  95% { transform: translateX(-2px); opacity: 0.8; }
+  96% { transform: translateX(2px); opacity: 0.9; }
+  97% { transform: translateX(-1px); opacity: 1; }
+  98% { transform: translateX(1px); }
 }
 
-.demon-radar-scanning .demon-icon {
-  animation: demon-breathe 3s ease-in-out infinite, demon-glitch 5s steps(1) infinite;
+.demon-scanning .demon-icon {
+  animation: demon-glow-pulse 2s ease-in-out infinite, demon-scan-glitch 4s steps(1) infinite;
 }
 
-/* Demon Card Master Tier - 3D Lifted Effect */
+/* Demon Master Card - 3D Lifted Effect */
 .demon-master-card {
   transform: perspective(1000px) rotateX(2deg);
   box-shadow: 
@@ -64,35 +73,41 @@
     0 0 40px rgba(255, 0, 0, 0.2);
 }
 
-/* ==================== GOBLIN ICON EFFECTS ==================== */
+/* ==================== ELITE GOBLIN ICON EFFECTS ==================== */
 
-/* Goblin Rim Light Effect - Only edges glow */
-@keyframes goblin-rim {
+/* Goblin Glow Effect - Emerald pulse */
+@keyframes goblin-glow-pulse {
   0%, 100% { 
-    filter: drop-shadow(0 0 2px rgba(0, 255, 127, 0.9));
-    stroke-opacity: 1;
+    filter: drop-shadow(0 0 4px rgba(0, 255, 127, 0.8)) drop-shadow(0 0 12px rgba(0, 255, 127, 0.4));
   }
   50% { 
-    filter: drop-shadow(0 0 6px rgba(0, 255, 127, 1)) drop-shadow(0 0 12px rgba(0, 255, 127, 0.5));
-    stroke-opacity: 0.8;
+    filter: drop-shadow(0 0 8px rgba(0, 255, 127, 1)) drop-shadow(0 0 20px rgba(0, 255, 127, 0.6));
   }
 }
 
 .goblin-icon {
-  animation: goblin-rim 2.5s ease-in-out infinite;
+  animation: goblin-glow-pulse 2.5s ease-in-out infinite;
 }
 
-/* Goblin Rotation Lock Effect on Click */
-@keyframes goblin-unlock {
-  0% { transform: rotate(0deg); }
-  25% { transform: rotate(-15deg); }
-  50% { transform: rotate(10deg); }
-  75% { transform: rotate(-5deg); }
-  100% { transform: rotate(0deg); }
+/* Goblin Success Spin - On target hit */
+@keyframes goblin-success-spin {
+  0% { transform: rotate(0deg) scale(1); }
+  25% { transform: rotate(90deg) scale(1.1); }
+  50% { transform: rotate(180deg) scale(1.15); }
+  75% { transform: rotate(270deg) scale(1.1); }
+  100% { transform: rotate(360deg) scale(1); }
 }
 
-.goblin-icon-clicked {
-  animation: goblin-unlock 0.4s ease-out forwards;
+/* Goblin Pulse on Click */
+@keyframes goblin-click-pulse {
+  0% { transform: scale(1); filter: brightness(1); }
+  25% { transform: scale(1.2); filter: brightness(1.3); }
+  50% { transform: scale(1.1); filter: brightness(1.2); }
+  100% { transform: scale(1); filter: brightness(1); }
+}
+
+.goblin-pulse .goblin-icon {
+  animation: goblin-click-pulse 0.5s ease-out forwards;
 }
 
 /* Goblin Vault Card Effect */
@@ -108,6 +123,38 @@
   box-shadow: 
     0 0 30px rgba(0, 255, 127, 0.25),
     inset 0 0 40px rgba(0, 255, 127, 0.08);
+}
+
+/* ==================== VISION SPARKLE ORBIT ==================== */
+
+/* Vision Sparkle - Orbiting data bit for Vision picks */
+@keyframes sparkle-orbit {
+  0% { 
+    transform: rotate(0deg) translateX(14px) rotate(0deg);
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+  100% { 
+    transform: rotate(360deg) translateX(14px) rotate(-360deg);
+    opacity: 1;
+  }
+}
+
+.vision-sparkle {
+  position: absolute;
+  width: 4px;
+  height: 4px;
+  background: white;
+  border-radius: 50%;
+  animation: sparkle-orbit 2s linear infinite;
+  box-shadow: 0 0 6px white, 0 0 10px rgba(255, 255, 255, 0.5);
+}
+
+.vision-sparkle-green {
+  background: #00FF7F;
+  box-shadow: 0 0 6px #00FF7F, 0 0 10px rgba(0, 255, 127, 0.5);
 }
 
 /* ==================== VISION EFFECTS ==================== */

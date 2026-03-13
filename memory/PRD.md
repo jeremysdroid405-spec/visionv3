@@ -43,6 +43,11 @@ Build a high-performance NBA Player Prop Dashboard that mimics the PrizePicks us
 - None currently
 
 ### RECENTLY COMPLETED (Dec 13, 2025)
+- [x] **Elite Icon Redesign (Gemini Specs)** - Replaced icons with professional gaming badge style:
+  - **Demon (Cyber-Horns)**: Red circular head with sharp horn shapes, white slash eyes, glow filter
+  - **Goblin (Sneaky Elf)**: Green circular head with pointed ear fins, dot eyes, smirk
+  - Added Vision Sparkle orbit animation for picks with AI insights
+  - Glassmorphism containers and state animations (pulse on click)
 - [x] **Vision Integration in Parlay Makers** - Added AI insights to all parlay picks:
   - Both "Big Money Builder" and "Goblin Goldmine" now enrich picks with `insight_summary` and `ai_confidence_rating`
   - Parlay card picks show ⚡ indicator and mini Vision preview text

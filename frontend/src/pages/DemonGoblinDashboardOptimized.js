@@ -258,81 +258,118 @@ const InjuryBadge = memo(({ playerName, injuryAlerts, size = 'sm' }) => {
 
 InjuryBadge.displayName = 'InjuryBadge';
 
-// ==================== ULTRA-PRO ICON COMPONENTS ====================
+// ==================== ELITE ICON COMPONENTS ====================
 
-// The Demon Glyph - Red Spike (King of Longshots)
-const DemonIcon = memo(({ size = 24, className = '', isScanning = false }) => (
-  <svg 
-    width={size} 
-    height={size} 
-    viewBox="0 0 24 24" 
-    fill="none" 
-    xmlns="http://www.w3.org/2000/svg"
-    className={`demon-icon ${className} ${isScanning ? 'demon-radar-scanning' : ''}`}
-  >
-    {/* Outer spike/crown shape */}
-    <path 
-      d="M12 2L4 21L12 17L20 21L12 2Z" 
-      fill="rgba(255, 0, 0, 0.2)" 
-      stroke="#FF0000" 
-      strokeWidth="2"
-    />
-    {/* Inner vertical line */}
-    <path 
-      d="M12 17V10" 
-      stroke="#FF0000" 
-      strokeWidth="2" 
-      strokeLinecap="round"
-    />
-    {/* Center dot for emphasis */}
-    <circle cx="12" cy="8" r="1.5" fill="#FF0000" />
-  </svg>
-));
-
-DemonIcon.displayName = 'DemonIcon';
-
-// The Goblin Glyph - Hex Stack (Vault Hunter)
-const GoblinIcon = memo(({ size = 24, className = '', isClicked = false }) => {
-  const [clicked, setClicked] = useState(false);
-  
-  const handleClick = () => {
-    setClicked(true);
-    setTimeout(() => setClicked(false), 400);
-  };
-  
-  return (
+// The Elite Demon - Cyber-Horns (Sharp, Minimalist, Dangerous)
+const DemonIcon = memo(({ size = 24, className = '', isScanning = false, hasVision = false }) => (
+  <div className={`demon-icon-container ${isScanning ? 'demon-scanning' : ''} ${className}`} style={{ width: size, height: size }}>
     <svg 
       width={size} 
       height={size} 
       viewBox="0 0 24 24" 
       fill="none" 
       xmlns="http://www.w3.org/2000/svg"
-      className={`goblin-icon ${className} ${clicked || isClicked ? 'goblin-icon-clicked' : ''}`}
-      onClick={handleClick}
+      className="demon-icon"
     >
-      {/* Main hexagon */}
+      <defs>
+        <filter id="demon-glow" x="-20%" y="-20%" width="140%" height="140%">
+          <feGaussianBlur stdDeviation="1.5" result="blur" />
+          <feComposite in="SourceGraphic" in2="blur" operator="over" />
+        </filter>
+      </defs>
+      {/* Main head circle with glow */}
       <path 
-        d="M7 7.5L12 4.5L17 7.5V13.5L12 16.5L7 13.5V7.5Z" 
-        fill="rgba(0, 255, 127, 0.1)"
-        stroke="#00FF7F" 
-        strokeWidth="2"
+        d="M12 22C16.4183 22 20 18.4183 20 14C20 9.58172 16.4183 6 12 6C7.58172 6 4 9.58172 4 14C4 18.4183 7.58172 22 12 22Z" 
+        fill="#FF0000" 
+        filter="url(#demon-glow)"
       />
-      {/* Inner structure lines */}
+      {/* Left horn */}
       <path 
-        d="M12 10.5L17 7.5M12 10.5L7 7.5M12 10.5V16.5" 
-        stroke="#00FF7F" 
-        strokeWidth="1.5"
-        strokeOpacity="0.7"
+        d="M5 8L2 2L9 5" 
+        stroke="#FF0000" 
+        strokeWidth="2.5" 
+        strokeLinejoin="round"
       />
-      {/* Bottom accent hexagon (offset) */}
+      {/* Right horn */}
       <path 
-        d="M9 15L12 13L15 15V18L12 20L9 18V15Z" 
-        fill="rgba(0, 255, 127, 0.15)"
-        stroke="#00FF7F" 
-        strokeWidth="1"
-        strokeOpacity="0.5"
+        d="M19 8L22 2L15 5" 
+        stroke="#FF0000" 
+        strokeWidth="2.5" 
+        strokeLinejoin="round"
+      />
+      {/* Eyes - Negative space slashes */}
+      <path 
+        d="M8 12L10 14M16 12L14 14" 
+        stroke="white" 
+        strokeWidth="2" 
+        strokeLinecap="round"
       />
     </svg>
+    {/* Vision sparkle orbit */}
+    {hasVision && <div className="vision-sparkle" />}
+  </div>
+));
+
+DemonIcon.displayName = 'DemonIcon';
+
+// The Elite Goblin - Sneaky Elf Ears (Cunning, Technical)
+const GoblinIcon = memo(({ size = 24, className = '', isClicked = false, hasVision = false }) => {
+  const [clicked, setClicked] = useState(false);
+  
+  const handleClick = (e) => {
+    e.stopPropagation();
+    setClicked(true);
+    setTimeout(() => setClicked(false), 500);
+  };
+  
+  return (
+    <div 
+      className={`goblin-icon-container ${clicked || isClicked ? 'goblin-pulse' : ''} ${className}`} 
+      style={{ width: size, height: size }}
+      onClick={handleClick}
+    >
+      <svg 
+        width={size} 
+        height={size} 
+        viewBox="0 0 24 24" 
+        fill="none" 
+        xmlns="http://www.w3.org/2000/svg"
+        className="goblin-icon"
+      >
+        {/* Main head circle */}
+        <path 
+          d="M12 20C15.866 20 19 16.866 19 13C19 9.13401 15.866 6 12 6C8.13401 6 5 9.13401 5 13C5 16.866 8.13401 20 12 20Z" 
+          fill="#00FF7F" 
+          fillOpacity="0.9"
+        />
+        {/* Left ear fin */}
+        <path 
+          d="M5 11L1 7L6 12" 
+          fill="#00FF7F"
+        />
+        {/* Right ear fin */}
+        <path 
+          d="M19 11L23 7L18 12" 
+          fill="#00FF7F"
+        />
+        {/* Eyes - Dot style */}
+        <path 
+          d="M9 13H10M14 13H15" 
+          stroke="black" 
+          strokeWidth="2.5" 
+          strokeLinecap="round"
+        />
+        {/* Smirk */}
+        <path 
+          d="M10 16.5C10.5 17.5 13.5 17.5 14 16.5" 
+          stroke="black" 
+          strokeWidth="1" 
+          strokeLinecap="round"
+        />
+      </svg>
+      {/* Vision sparkle orbit */}
+      {hasVision && <div className="vision-sparkle vision-sparkle-green" />}
+    </div>
   );
 });
 
@@ -721,9 +758,9 @@ const RadarCard = memo(({ pick, rank, onClick, isScanning = false }) => {
       <div className="p-3">
         {/* Header: Demon Icon + Headshot + Rank + Name */}
         <div className="flex items-center gap-2 mb-2">
-          {/* Demon Icon with breathing glow */}
+          {/* Demon Icon with breathing glow - add Vision sparkle if has insight */}
           <div className="flex-shrink-0">
-            <DemonIcon size={20} isScanning={isScanning} />
+            <DemonIcon size={20} isScanning={isScanning} hasVision={hasVisionGlow} />
           </div>
           
           {/* Headshot with Radar Badge */}
@@ -910,9 +947,9 @@ const VaultCard = memo(({ pick, rank, onClick }) => {
       <div className="p-3">
         {/* Header: Goblin Icon + Headshot + Rank + Name */}
         <div className="flex items-center gap-2 mb-2">
-          {/* Goblin Hex-Stack Icon with rotation on click */}
+          {/* Goblin Icon with pulse on click - add Vision sparkle if has insight */}
           <div className="flex-shrink-0">
-            <GoblinIcon size={20} isClicked={isClicked} />
+            <GoblinIcon size={20} isClicked={isClicked} hasVision={hasVisionGlow} />
           </div>
           
           {/* Headshot with Vault Badge */}
