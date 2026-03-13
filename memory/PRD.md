@@ -7,6 +7,39 @@ Build a high-performance NBA Player Prop Dashboard that identifies "Demons" (har
 
 ---
 
+## MASTER ROSTER SYSTEM - COMPLETED (March 13, 2026)
+
+### Source of Truth Architecture ✅
+**Problem:** The Odds API and BallDontLie API sometimes have incorrect team assignments (e.g., Luka Doncic shown on LAL instead of DAL).
+
+**Solution:** Implemented a 3-tier priority system for team lookups:
+
+### Priority Order ✅
+1. **KNOWN_PLAYER_TEAMS** (Manual Overrides): For correcting known API errors
+2. **Master Roster** (BallDontLie weekly sync): 5000+ players with team data
+3. **Game Context Inference**: Last resort, flags player for manual review
+
+### Weekly Roster Sync ✅
+- **Function**: `sync_master_roster()`
+- **Schedule**: Every Sunday at midnight UTC
+- **Data Source**: BallDontLie `/players` API (paginated, all 5000+ players)
+- **Storage**: MongoDB `dg_master_roster` collection
+
+### Manual Override Dictionary ✅
+`KNOWN_PLAYER_TEAMS` contains ~70 high-profile players with verified team assignments:
+- Fixes BallDontLie errors (e.g., Luka Doncic: DAL, not LAL)
+- Handles recent trades and roster changes
+
+### API Endpoints ✅
+- `POST /api/v3/sync-master-roster` - Trigger manual roster sync
+- `GET /api/v3/master-roster-status` - Check roster stats and flagged players
+
+### Flagged Players Collection ✅
+- Unknown players (not in roster or overrides) are flagged for manual review
+- Stored in `dg_flagged_players` collection with game context
+
+---
+
 ## THE GOBLIN GOLDMINE - COMPLETED (March 13, 2026)
 
 ### Floor Scoring Algorithm ($F$) ✅

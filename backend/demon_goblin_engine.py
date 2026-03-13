@@ -177,6 +177,7 @@ KNOWN_PLAYER_TEAMS = {
     "Nikola Jokic": "DEN",
     "Jamal Murray": "DEN",
     "Michael Porter Jr.": "DEN",
+    "Christian Braun": "DEN",
     # Milwaukee Bucks
     "Giannis Antetokounmpo": "MIL",
     "Damian Lillard": "MIL",
@@ -197,12 +198,16 @@ KNOWN_PLAYER_TEAMS = {
     "Shai Gilgeous-Alexander": "OKC",
     "Chet Holmgren": "OKC",
     "Jalen Williams": "OKC",
+    "Cason Wallace": "OKC",
+    "Jaylin Williams": "OKC",
     # Philadelphia 76ers
     "Joel Embiid": "PHI",
     "Tyrese Maxey": "PHI",
+    "Jared McCain": "PHI",
     # San Antonio Spurs
     "Victor Wembanyama": "SAS",
     "Devin Vassell": "SAS",
+    "Dylan Harper": "SAS",
     # Orlando Magic
     "Paolo Banchero": "ORL",
     "Franz Wagner": "ORL",
@@ -222,11 +227,17 @@ KNOWN_PLAYER_TEAMS = {
     # Utah Jazz
     "Cody Williams": "UTA",
     "Kyle Filipowski": "UTA",
+    "Brice Sensabaugh": "UTA",
     # Portland Trail Blazers
     "Toumani Camara": "POR",
+    "Donovan Clingan": "POR",
     # New York Knicks
     "Karl-Anthony Towns": "NYK",
     "Jalen Brunson": "NYK",
+    # Charlotte Hornets
+    "Nicolas Richards": "CHA",
+    # Houston Rockets
+    "Ace Bailey": "HOU",
 }
 
 # ==================== NAME NORMALIZATION ====================
@@ -476,6 +487,8 @@ class DemonGoblinEngine:
         self.parlay_builder = db.dg_parlay_builder  # Big Money Builder parlays
         self.goblin_goldmine = db.dg_goblin_goldmine  # Goblin Goldmine parlays (high-consistency)
         self.cached_board = db.dg_cached_board  # Full cached board for frontend
+        self.master_roster = db.dg_master_roster  # SOURCE OF TRUTH: Player-to-team mapping
+        self.flagged_players = db.dg_flagged_players  # Players not in master roster (manual review)
         
         # Legacy caching collections
         self.static_shell_cache = db.dg_static_shell
@@ -491,6 +504,286 @@ class DemonGoblinEngine:
         self._current_date: Optional[str] = None
         self._player_popularity: Dict[str, int] = {}
         self._canonical_names: Dict[str, str] = {}  # Cache for normalized names
+        self._master_roster_cache: Dict[str, str] = {}  # In-memory cache for quick lookups
+    
+    # ==================== MASTER ROSTER SYNC (SOURCE OF TRUTH) ====================
+    
+    async def sync_master_roster(self) -> Dict[str, Any]:
+        """
+        WEEKLY ROSTER SYNC - Establishes the Source of Truth for player-to-team mapping.
+        
+        Fetches ALL NBA players from BallDontLie API and stores them in player_master_roster.
+        This should run once every Sunday at midnight to keep rosters current.
+        
+        Returns:
+            Dict with sync status, player count, and any errors
+        """
+        logger.info("=" * 60)
+        logger.info("[MASTER ROSTER] Starting weekly roster sync...")
+        logger.info("=" * 60)
+        
+        sync_start = datetime.now(timezone.utc)
+        players_synced = 0
+        teams_found = set()
+        errors = []
+        
+        try:
+            headers = {"Authorization": BDL_API_KEY}
+            all_players = []
+            
+            # BallDontLie API returns paginated results
+            # We need to fetch ALL pages to get complete roster
+            cursor = None
+            page = 1
+            max_pages = 50  # Safety limit
+            
+            while page <= max_pages:
+                url = f"{BDL_BASE_URL}/players?per_page=100"
+                if cursor:
+                    url += f"&cursor={cursor}"
+                
+                logger.info(f"[MASTER ROSTER] Fetching page {page}...")
+                
+                async with httpx.AsyncClient(timeout=30) as client:
+                    response = await client.get(url, headers=headers)
+                    
+                    if response.status_code != 200:
+                        logger.error(f"[MASTER ROSTER] API error: {response.status_code}")
+                        errors.append(f"Page {page}: HTTP {response.status_code}")
+                        break
+                    
+                    data = response.json()
+                    players = data.get("data", [])
+                    
+                    if not players:
+                        logger.info(f"[MASTER ROSTER] No more players on page {page}")
+                        break
+                    
+                    all_players.extend(players)
+                    logger.info(f"[MASTER ROSTER] Page {page}: {len(players)} players (total: {len(all_players)})")
+                    
+                    # Check for next page
+                    meta = data.get("meta", {})
+                    cursor = meta.get("next_cursor")
+                    
+                    if not cursor:
+                        break
+                    
+                    page += 1
+                    await asyncio.sleep(0.2)  # Rate limit protection
+            
+            logger.info(f"[MASTER ROSTER] Fetched {len(all_players)} total players from BallDontLie")
+            
+            # Process and store players
+            roster_docs = []
+            
+            for player in all_players:
+                player_id = player.get("id")
+                first_name = player.get("first_name", "")
+                last_name = player.get("last_name", "")
+                full_name = f"{first_name} {last_name}".strip()
+                
+                team_data = player.get("team", {})
+                team_abbrev = team_data.get("abbreviation", "") if team_data else ""
+                team_full = team_data.get("full_name", "") if team_data else ""
+                
+                # Skip players without valid team (free agents, retired, etc.)
+                if not team_abbrev or not full_name:
+                    continue
+                
+                # Normalize names for matching
+                normalized_name = self.sanitize_player_name(full_name)
+                
+                roster_doc = {
+                    "player_name": full_name,
+                    "normalized_name": normalized_name,
+                    "bdl_player_id": player_id,
+                    "team_abbreviation": team_abbrev.upper(),
+                    "team_full_name": team_full,
+                    "position": player.get("position", ""),
+                    "height": player.get("height", ""),
+                    "weight": player.get("weight", ""),
+                    "jersey_number": player.get("jersey_number", ""),
+                    "college": player.get("college", ""),
+                    "country": player.get("country", ""),
+                    "draft_year": player.get("draft_year"),
+                    "draft_round": player.get("draft_round"),
+                    "draft_number": player.get("draft_number"),
+                    "synced_at": sync_start.isoformat(),
+                    "source": "balldontlie"
+                }
+                
+                roster_docs.append(roster_doc)
+                teams_found.add(team_abbrev.upper())
+                players_synced += 1
+            
+            # Clear existing roster and insert new data
+            logger.info(f"[MASTER ROSTER] Clearing old roster and inserting {len(roster_docs)} players...")
+            await self.master_roster.delete_many({})
+            
+            if roster_docs:
+                await self.master_roster.insert_many(roster_docs)
+                
+                # Create indexes for fast lookups
+                await self.master_roster.create_index("player_name")
+                await self.master_roster.create_index("normalized_name")
+                await self.master_roster.create_index("team_abbreviation")
+            
+            # Update in-memory cache
+            self._master_roster_cache = {
+                doc["normalized_name"]: doc["team_abbreviation"] 
+                for doc in roster_docs
+            }
+            
+            # Log summary
+            logger.info("=" * 60)
+            logger.info(f"[MASTER ROSTER] SYNC COMPLETE")
+            logger.info(f"  Players synced: {players_synced}")
+            logger.info(f"  Teams found: {len(teams_found)}")
+            logger.info(f"  Teams: {', '.join(sorted(teams_found))}")
+            logger.info("=" * 60)
+            
+            return {
+                "success": True,
+                "players_synced": players_synced,
+                "teams_found": len(teams_found),
+                "teams": sorted(teams_found),
+                "errors": errors,
+                "synced_at": sync_start.isoformat()
+            }
+            
+        except Exception as e:
+            logger.error(f"[MASTER ROSTER] Sync failed: {str(e)}")
+            return {
+                "success": False,
+                "error": str(e),
+                "players_synced": players_synced,
+                "errors": errors
+            }
+    
+    async def get_team_from_master_roster(self, player_name: str) -> Optional[str]:
+        """
+        Look up a player's team using priority order:
+        1. KNOWN_PLAYER_TEAMS (manual overrides for incorrect API data)
+        2. Master Roster from BallDontLie (may have errors)
+        3. Fuzzy matching
+        
+        Args:
+            player_name: The player's name to look up
+            
+        Returns:
+            Team abbreviation if found, None otherwise
+        """
+        # PRIORITY 1: Check manual overrides FIRST (fixes BallDontLie errors)
+        # Example: BallDontLie shows Luka Doncic on LAL but he plays for DAL
+        if player_name in KNOWN_PLAYER_TEAMS:
+            return KNOWN_PLAYER_TEAMS[player_name]
+        
+        # Normalize the name for lookups
+        normalized = self.sanitize_player_name(player_name)
+        
+        # Check normalized version in manual overrides
+        for known_name, team in KNOWN_PLAYER_TEAMS.items():
+            if self.sanitize_player_name(known_name) == normalized:
+                return team
+        
+        # PRIORITY 2: Check in-memory master roster cache
+        if normalized in self._master_roster_cache:
+            return self._master_roster_cache[normalized]
+        
+        # PRIORITY 3: Query database directly
+        doc = await self.master_roster.find_one(
+            {"normalized_name": normalized},
+            {"_id": 0, "team_abbreviation": 1}
+        )
+        
+        if doc:
+            team = doc.get("team_abbreviation")
+            self._master_roster_cache[normalized] = team
+            return team
+        
+        # PRIORITY 4: Try fuzzy match
+        all_players = await self.master_roster.find(
+            {},
+            {"_id": 0, "player_name": 1, "normalized_name": 1, "team_abbreviation": 1}
+        ).to_list(None)
+        
+        best_match = None
+        best_ratio = 0
+        
+        for p in all_players:
+            # Check various name variations
+            ratio = 0
+            p_normalized = p.get("normalized_name", "")
+            p_full = p.get("player_name", "").lower()
+            
+            # Exact normalized match
+            if normalized == p_normalized:
+                best_match = p
+                break
+            
+            # Partial match check
+            if normalized in p_normalized or p_normalized in normalized:
+                ratio = 0.8
+            elif p_full in player_name.lower() or player_name.lower() in p_full:
+                ratio = 0.7
+            
+            if ratio > best_ratio:
+                best_ratio = ratio
+                best_match = p
+        
+        if best_match and best_ratio >= 0.7:
+            team = best_match.get("team_abbreviation")
+            self._master_roster_cache[normalized] = team
+            return team
+        
+        return None
+    
+    async def load_master_roster_cache(self):
+        """Load the master roster into memory for fast lookups."""
+        logger.info("[MASTER ROSTER] Loading roster into memory cache...")
+        
+        roster = await self.master_roster.find(
+            {},
+            {"_id": 0, "normalized_name": 1, "team_abbreviation": 1}
+        ).to_list(None)
+        
+        self._master_roster_cache = {
+            doc["normalized_name"]: doc["team_abbreviation"]
+            for doc in roster
+        }
+        
+        logger.info(f"[MASTER ROSTER] Loaded {len(self._master_roster_cache)} players into cache")
+    
+    async def flag_unknown_player(self, player_name: str, odds_api_team: str, game_info: Dict):
+        """
+        Flag a player not found in master roster for manual review.
+        
+        Args:
+            player_name: The player name from Odds API
+            odds_api_team: The team provided by Odds API (may be incorrect)
+            game_info: Additional context about the game
+        """
+        normalized = self.sanitize_player_name(player_name)
+        
+        await self.flagged_players.update_one(
+            {"normalized_name": normalized},
+            {
+                "$set": {
+                    "player_name": player_name,
+                    "normalized_name": normalized,
+                    "odds_api_team": odds_api_team,
+                    "home_team": game_info.get("home_team", ""),
+                    "away_team": game_info.get("away_team", ""),
+                    "game_date": game_info.get("game_date", ""),
+                    "flagged_at": datetime.now(timezone.utc).isoformat(),
+                    "reviewed": False
+                }
+            },
+            upsert=True
+        )
+        
+        logger.warning(f"[FLAGGED] Unknown player: {player_name} (Odds API says: {odds_api_team})")
     
     def get_current_date(self) -> str:
         """Auto-derive today's date from system clock"""
@@ -649,6 +942,17 @@ class DemonGoblinEngine:
         }
         
         try:
+            # Step 0: Load Master Roster cache for team lookups
+            await self.load_master_roster_cache()
+            
+            # Check if master roster exists
+            roster_count = await self.master_roster.count_documents({})
+            if roster_count == 0:
+                logger.warning("[SYNC_ODDS_TO_MONGO] Master roster is empty! Running initial sync...")
+                await self.sync_master_roster()
+            else:
+                logger.info(f"[SYNC_ODDS_TO_MONGO] Master roster loaded: {roster_count} players")
+            
             # Step 1: Fetch events (1 API call)
             events = await self.fetch_todays_events()
             results["events_count"] = len(events)
@@ -1079,24 +1383,39 @@ class DemonGoblinEngine:
             if player_name not in players_dict:
                 nba_id = get_nba_player_id(player_name)
                 
-                # Priority 1: Check known player-team mapping (most reliable)
-                player_team_abbrev = KNOWN_PLAYER_TEAMS.get(player_name, "")
+                # ==================== SOURCE OF TRUTH: MASTER ROSTER ====================
+                # Priority 1: Look up in Master Roster (BallDontLie synced weekly)
+                player_team_abbrev = await self.get_team_from_master_roster(player_name)
                 
-                # Priority 2: Get player's actual team from BallDontLie cache
+                # If found in master roster, use that (most reliable)
+                team_source = "master_roster" if player_team_abbrev else None
+                
+                # Priority 2: Fallback to BallDontLie in-memory cache
                 if not player_team_abbrev:
                     bdl_player = self._player_name_map.get(player_name, {})
                     bdl_team = bdl_player.get("team", {})
                     player_team_abbrev = bdl_team.get("abbreviation", "")
+                    if player_team_abbrev:
+                        team_source = "bdl_cache"
                 
-                # Priority 3: Infer from game context (fallback)
+                # Priority 3: Game context inference (LAST RESORT - flag for review)
                 if not player_team_abbrev:
                     home = prop.get("home_team", "")
                     away = prop.get("away_team", "")
                     player_team_abbrev = home or away
+                    team_source = "inferred"
+                    
+                    # Flag this player for manual review
+                    await self.flag_unknown_player(player_name, player_team_abbrev, {
+                        "home_team": home,
+                        "away_team": away,
+                        "game_date": prop.get("game_date", "")
+                    })
                 
                 players_dict[player_name] = {
                     "player_name": player_name,
                     "team": player_team_abbrev,
+                    "team_source": team_source,  # Track where we got the team from
                     "nba_id": nba_id,
                     "props": [],
                     "demons": [],

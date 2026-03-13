@@ -88,6 +88,27 @@ async def scheduled_daily_sync():
         logger.error("[SCHEDULER] Demon & Goblin Engine not initialized")
 
 
+async def scheduled_roster_sync():
+    """
+    Scheduled job that runs every Sunday at midnight UTC.
+    Syncs the master roster from BallDontLie to ensure accurate team mappings.
+    """
+    logger.info("=" * 70)
+    logger.info(f"[SCHEDULER] WEEKLY MASTER ROSTER SYNC TRIGGERED")
+    logger.info(f"[SCHEDULER] Time: {datetime.now(timezone.utc).isoformat()}")
+    logger.info("=" * 70)
+    
+    if demon_goblin_engine:
+        try:
+            result = await demon_goblin_engine.sync_master_roster()
+            logger.info(f"[SCHEDULER] Master Roster sync complete: {result.get('players_synced', 0)} players")
+            logger.info(f"[SCHEDULER] Teams found: {result.get('teams_found', 0)}")
+        except Exception as e:
+            logger.error(f"[SCHEDULER] Master Roster sync failed: {e}")
+    else:
+        logger.error("[SCHEDULER] Demon & Goblin Engine not initialized")
+
+
 @app.on_event("startup")
 async def startup_event():
     global stats_manager, demon_tracker, demon_goblin_engine, scheduler
@@ -104,8 +125,10 @@ async def startup_event():
     demon_goblin_engine = DemonGoblinEngine(db)
     logger.info("Demon & Goblin Engine v3.0 initialized")
     
-    # Initialize APScheduler for 4:00 AM daily sync
+    # Initialize APScheduler for daily and weekly syncs
     scheduler = AsyncIOScheduler(timezone=SCHEDULER_TIMEZONE)
+    
+    # Daily sync at 4:00 AM UTC
     scheduler.add_job(
         scheduled_daily_sync,
         CronTrigger(hour=DAILY_SYNC_HOUR, minute=DAILY_SYNC_MINUTE, timezone=SCHEDULER_TIMEZONE),
@@ -113,8 +136,19 @@ async def startup_event():
         name='4:00 AM Daily Sync',
         replace_existing=True
     )
+    
+    # Weekly Master Roster sync every Sunday at midnight UTC
+    scheduler.add_job(
+        scheduled_roster_sync,
+        CronTrigger(day_of_week='sun', hour=0, minute=0, timezone=SCHEDULER_TIMEZONE),
+        id='weekly_roster_sync',
+        name='Sunday Midnight Master Roster Sync',
+        replace_existing=True
+    )
+    
     scheduler.start()
     logger.info(f"[SCHEDULER] APScheduler started - Daily sync at {DAILY_SYNC_HOUR:02d}:{DAILY_SYNC_MINUTE:02d} UTC")
+    logger.info(f"[SCHEDULER] Weekly roster sync scheduled: Sunday 00:00 UTC")
     
     # DISABLED: Auto-sync on startup to prevent credit drain
     # The sync should only run manually via /api/v3/sync or at 4:00 AM
@@ -1257,6 +1291,67 @@ async def get_goblin_goldmine():
 
 
 # ==================== SCHEDULER ENDPOINTS ====================
+
+@api_router.post("/v3/sync-master-roster")
+async def sync_master_roster():
+    """
+    WEEKLY ROSTER SYNC - Source of Truth for player-to-team mapping.
+    
+    Fetches ALL NBA players from BallDontLie API and stores them in 
+    the player_master_roster collection. Should run weekly (Sunday midnight)
+    but can be triggered manually.
+    
+    This ensures accurate team assignments by overriding Odds API data.
+    """
+    if not demon_goblin_engine:
+        raise HTTPException(status_code=500, detail="Engine not initialized")
+    
+    logger.info("[MASTER ROSTER] Manual sync triggered via API")
+    result = await demon_goblin_engine.sync_master_roster()
+    
+    return result
+
+
+@api_router.get("/v3/master-roster-status")
+async def get_master_roster_status():
+    """
+    Get the current status of the master roster.
+    Shows player count, teams, last sync time, and any flagged players.
+    """
+    if not demon_goblin_engine:
+        raise HTTPException(status_code=500, detail="Engine not initialized")
+    
+    # Get roster stats
+    roster_count = await demon_goblin_engine.master_roster.count_documents({})
+    flagged_count = await demon_goblin_engine.flagged_players.count_documents({"reviewed": False})
+    
+    # Get last sync time
+    latest = await demon_goblin_engine.master_roster.find_one(
+        {}, {"_id": 0, "synced_at": 1}, sort=[("synced_at", -1)]
+    )
+    
+    # Get team distribution
+    pipeline = [
+        {"$group": {"_id": "$team_abbreviation", "count": {"$sum": 1}}},
+        {"$sort": {"_id": 1}}
+    ]
+    teams = await demon_goblin_engine.master_roster.aggregate(pipeline).to_list(None)
+    
+    # Get flagged players
+    flagged = await demon_goblin_engine.flagged_players.find(
+        {"reviewed": False}, {"_id": 0}
+    ).to_list(20)
+    
+    return {
+        "success": True,
+        "roster_count": roster_count,
+        "teams_count": len(teams),
+        "teams": {t["_id"]: t["count"] for t in teams},
+        "last_sync": latest.get("synced_at") if latest else None,
+        "flagged_players_count": flagged_count,
+        "flagged_players": flagged
+    }
+
 
 @api_router.get("/v3/scheduler-status")
 async def get_scheduler_status():
