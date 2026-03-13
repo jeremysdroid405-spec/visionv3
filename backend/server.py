@@ -69,8 +69,11 @@ async def initial_autonomous_sync():
 
 async def scheduled_daily_sync():
     """
-    Scheduled job that runs at 4:00 AM UTC daily
-    Triggers a full data sync for fresh betting lines
+    Scheduled job that runs at 4:00 AM UTC daily.
+    
+    Execution order:
+    1. Sync player stats to MongoDB (from BallDontLie + NBA.com fallback)
+    2. Run full odds sync (uses cached stats for fast hit rate calculations)
     """
     logger.info("=" * 70)
     logger.info(f"[SCHEDULER] 4:00 AM DAILY SYNC TRIGGERED")
@@ -79,6 +82,13 @@ async def scheduled_daily_sync():
     
     if demon_goblin_engine:
         try:
+            # Step 1: Sync player stats to cache (this makes subsequent syncs faster)
+            logger.info("[SCHEDULER] Step 1/2: Syncing player stats to cache...")
+            stats_result = await demon_goblin_engine.sync_player_stats()
+            logger.info(f"[SCHEDULER] Stats sync: {stats_result.get('stats_synced', 0)} players (BDL: {stats_result.get('from_balldontlie', 0)}, NBA: {stats_result.get('from_nba_api', 0)})")
+            
+            # Step 2: Run full odds sync (uses cached stats)
+            logger.info("[SCHEDULER] Step 2/2: Running full odds sync...")
             result = await demon_goblin_engine.run_full_sync()
             logger.info(f"[SCHEDULER] Sync complete: {result.get('unique_players', 0)} players")
             logger.info(f"[SCHEDULER] Standard: {result.get('standard_count', 0)}, Demons: {result.get('demons_count', 0)}, Goblins: {result.get('goblins_count', 0)}")
@@ -1328,6 +1338,27 @@ async def sync_player_photos():
     
     logger.info("[PHOTO SYNC] Manual sync triggered via API")
     result = await demon_goblin_engine.sync_player_photos()
+    
+    return result
+
+
+@api_router.post("/v3/sync-player-stats")
+async def sync_player_stats():
+    """
+    STATS CACHE - Sync player game logs to MongoDB.
+    
+    Fetches stats from:
+    1. BallDontLie API (primary)
+    2. NBA.com API (fallback for missing players)
+    
+    Stores in dg_player_stats collection for fast hit rate calculations.
+    Should be run daily before sync-to-mongo.
+    """
+    if not demon_goblin_engine:
+        raise HTTPException(status_code=500, detail="Engine not initialized")
+    
+    logger.info("[STATS SYNC] Manual sync triggered via API")
+    result = await demon_goblin_engine.sync_player_stats()
     
     return result
 

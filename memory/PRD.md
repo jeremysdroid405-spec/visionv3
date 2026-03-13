@@ -12,14 +12,27 @@ Build a high-performance NBA Player Prop Dashboard that identifies "Demons" (har
 ### Problem Solved ✅
 Some players (Trey Murphy III, Jabari Smith Jr.) had no stats in BallDontLie API, causing empty hit rate dropdowns.
 
-### Solution: Dual-Source Stats Pipeline ✅
-1. **Primary Source**: BallDontLie API (faster, handles most players)
-2. **Fallback Source**: NBA.com official API via `nba_api` library (handles missing players)
+### Solution: Dual-Source Stats Pipeline with MongoDB Cache ✅
 
-### Implementation Details ✅
-- **New Library**: `nba_api==1.11.4` added to requirements.txt
-- **Function**: `_fetch_nba_api_stats()` in `demon_goblin_engine.py`
-- **Auto-Fallback**: If BallDontLie returns no data, automatically queries NBA.com
+#### Data Sources
+1. **Primary**: BallDontLie API (faster, handles most players)
+2. **Fallback**: NBA.com official API via `nba_api` library (handles missing players)
+
+#### MongoDB Cache Architecture ✅
+- **Collection**: `dg_player_stats`
+- **Schema**: `{ player_name, normalized_name, games[], total_games, source, synced_at }`
+- **Sync Endpoint**: `POST /api/v3/sync-player-stats`
+- **Auto-Sync**: Included in daily 4:00 AM scheduler job
+
+#### Performance Improvement ✅
+| Metric | Before (API Calls) | After (MongoDB Cache) |
+|--------|-------------------|----------------------|
+| Odds Sync Time | ~30 seconds | **~6 seconds** |
+| API Calls per Sync | 50+ | 0 (from cache) |
+
+#### Daily Sync Order ✅
+1. `sync-player-stats` - Fetch game logs from BDL + NBA.com
+2. `sync-to-mongo` - Use cached stats for fast hit rate calculations
 
 ### Coverage After Fix ✅
 | Player | Before | After |
@@ -27,9 +40,6 @@ Some players (Trey Murphy III, Jabari Smith Jr.) had no stats in BallDontLie API
 | Trey Murphy III | ❌ No stats | ✅ 53 games |
 | Jabari Smith Jr. | ❌ No stats | ✅ 57 games |
 | Ace Bailey | ❌ No stats | ❌ Rookie (0 NBA games) |
-
-### Data Format ✅
-NBA.com stats are converted to BallDontLie-compatible format for seamless integration with existing `_calculate_hit_rates()` function.
 
 ---
 

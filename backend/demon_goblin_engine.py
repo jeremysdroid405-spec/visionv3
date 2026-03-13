@@ -508,6 +508,7 @@ class DemonGoblinEngine:
         self.cached_board = db.dg_cached_board  # Full cached board for frontend
         self.master_roster = db.dg_master_roster  # SOURCE OF TRUTH: Player-to-team mapping
         self.flagged_players = db.dg_flagged_players  # Players not in master roster (manual review)
+        self.player_stats = db.dg_player_stats  # CACHED PLAYER GAME LOGS (synced daily)
         
         # Legacy caching collections
         self.static_shell_cache = db.dg_static_shell
@@ -679,6 +680,174 @@ class DemonGoblinEngine:
                 "players_synced": players_synced,
                 "errors": errors
             }
+    
+    async def sync_player_stats(self, player_names: List[str] = None) -> Dict[str, Any]:
+        """
+        Sync player game logs to MongoDB for cached hit rate calculations.
+        
+        This function fetches stats from BallDontLie (primary) and NBA.com (fallback)
+        and stores them in the dg_player_stats collection.
+        
+        Should be run daily during the 4:00 AM sync job.
+        
+        Args:
+            player_names: Optional list of specific players to sync. If None, syncs all players with props.
+        """
+        sync_start = datetime.now(timezone.utc)
+        logger.info(f"[STATS SYNC] Starting player stats sync...")
+        
+        stats_synced = 0
+        stats_from_bdl = 0
+        stats_from_nba = 0
+        errors = []
+        
+        try:
+            # Get list of players to sync
+            if player_names is None:
+                # Get all players currently in cached_board
+                players = await self.cached_board.distinct("player_name")
+                player_names = list(players) if players else []
+            
+            if not player_names:
+                logger.warning("[STATS SYNC] No players to sync")
+                return {"success": True, "stats_synced": 0, "message": "No players to sync"}
+            
+            logger.info(f"[STATS SYNC] Syncing stats for {len(player_names)} players...")
+            
+            # Process players in batches
+            batch_size = 10
+            for i in range(0, len(player_names), batch_size):
+                batch = player_names[i:i+batch_size]
+                
+                for player_name in batch:
+                    try:
+                        # Try BallDontLie first
+                        stats = await self._fetch_bdl_stats_for_cache(player_name)
+                        source = "balldontlie"
+                        
+                        # Fallback to NBA.com if no BDL data
+                        if not stats or not stats.get("games"):
+                            stats = self._fetch_nba_api_stats(player_name)
+                            source = "nba_api" if stats else None
+                        
+                        if stats and stats.get("games"):
+                            # Prepare document for MongoDB
+                            games = stats.get("games", [])
+                            
+                            # Sort games by date (most recent first)
+                            sorted_games = sorted(
+                                games, 
+                                key=lambda g: g.get("game", {}).get("date", "") if isinstance(g.get("game"), dict) else g.get("GAME_DATE", ""),
+                                reverse=True
+                            )
+                            
+                            doc = {
+                                "player_name": player_name,
+                                "normalized_name": self.sanitize_player_name(player_name),
+                                "games": sorted_games,
+                                "total_games": len(sorted_games),
+                                "source": source,
+                                "synced_at": sync_start.isoformat()
+                            }
+                            
+                            # Upsert to MongoDB
+                            await self.player_stats.update_one(
+                                {"normalized_name": doc["normalized_name"]},
+                                {"$set": doc},
+                                upsert=True
+                            )
+                            
+                            stats_synced += 1
+                            if source == "balldontlie":
+                                stats_from_bdl += 1
+                            else:
+                                stats_from_nba += 1
+                            
+                    except Exception as e:
+                        errors.append(f"{player_name}: {str(e)}")
+                        logger.debug(f"[STATS SYNC] Error syncing {player_name}: {e}")
+                    
+                    # Rate limiting
+                    await asyncio.sleep(0.15)
+                
+                # Progress logging
+                if i % 50 == 0 and i > 0:
+                    logger.info(f"[STATS SYNC] Progress: {i}/{len(player_names)} players")
+            
+            # Create index for fast lookups
+            await self.player_stats.create_index("normalized_name", unique=True)
+            await self.player_stats.create_index("player_name")
+            
+            duration = (datetime.now(timezone.utc) - sync_start).total_seconds()
+            logger.info(f"[STATS SYNC] Completed: {stats_synced} players synced in {duration:.1f}s (BDL: {stats_from_bdl}, NBA: {stats_from_nba})")
+            
+            return {
+                "success": True,
+                "stats_synced": stats_synced,
+                "from_balldontlie": stats_from_bdl,
+                "from_nba_api": stats_from_nba,
+                "errors": errors[:10],  # Limit errors in response
+                "duration_seconds": duration,
+                "synced_at": sync_start.isoformat()
+            }
+            
+        except Exception as e:
+            logger.error(f"[STATS SYNC] Failed: {str(e)}")
+            return {
+                "success": False,
+                "error": str(e),
+                "stats_synced": stats_synced,
+                "errors": errors
+            }
+    
+    async def _fetch_bdl_stats_for_cache(self, player_name: str) -> Dict[str, Any]:
+        """
+        Fetch player stats from BallDontLie for caching.
+        Returns raw game data without hit rate calculations.
+        """
+        try:
+            player_id = await self._get_bdl_player_id(player_name)
+            if not player_id:
+                return {}
+            
+            url = f"{BDL_BASE_URL}/stats"
+            params = {
+                "player_ids[]": player_id,
+                "seasons[]": CURRENT_SEASON,
+                "per_page": 100
+            }
+            headers = {"Authorization": BDL_API_KEY}
+            
+            async with httpx.AsyncClient() as client:
+                response = await client.get(url, params=params, headers=headers, timeout=15.0)
+                
+                if response.status_code == 200:
+                    data = response.json()
+                    games = data.get("data", [])
+                    
+                    if games:
+                        return {
+                            "player_name": player_name,
+                            "games": games,
+                            "total_games": len(games),
+                            "source": "balldontlie"
+                        }
+        except Exception as e:
+            logger.debug(f"[BDL CACHE] Error fetching {player_name}: {e}")
+        
+        return {}
+    
+    async def get_cached_player_stats(self, player_name: str) -> Dict[str, Any]:
+        """
+        Get player stats from MongoDB cache.
+        Returns empty dict if not found - caller should handle missing data.
+        """
+        normalized = self.sanitize_player_name(player_name)
+        doc = await self.player_stats.find_one(
+            {"normalized_name": normalized},
+            {"_id": 0}
+        )
+        return doc if doc else {}
     
     async def get_team_from_master_roster(self, player_name: str) -> Optional[str]:
         """
@@ -1462,47 +1631,71 @@ class DemonGoblinEngine:
     
     async def _enrich_props_with_stats(self, props: List[Dict], player_names: List[str]) -> List[Dict]:
         """
-        Enrich props with BallDontLie hit rates.
+        Enrich props with hit rates from CACHED player stats in MongoDB.
+        
+        Reads from dg_player_stats collection (populated by sync_player_stats).
+        Falls back to live API calls only if cache is empty.
         
         Calculates:
         - L5: Last 5 games hit rate
         - L10: Last 10 games hit rate
         - Season: Full season hit rate
-        
-        This is used by the Demon Radar for accurate probability calculations.
         """
-        logger.info(f"[STATS ENRICHMENT] Starting enrichment for {len(player_names)} players...")
+        logger.info(f"[STATS ENRICHMENT] Starting enrichment for {len(player_names)} players from cache...")
         
-        # Cache player stats to avoid duplicate API calls
+        # Load all cached stats in one query for efficiency
         player_stats_cache = {}
         enriched_count = 0
+        cache_hits = 0
+        api_fallbacks = 0
         
-        # Batch process players (limit concurrent requests)
-        batch_size = 10
-        for i in range(0, len(player_names), batch_size):
-            batch = player_names[i:i+batch_size]
+        # Batch load from MongoDB
+        normalized_names = [self.sanitize_player_name(name) for name in player_names]
+        cached_docs = await self.player_stats.find(
+            {"normalized_name": {"$in": normalized_names}},
+            {"_id": 0}
+        ).to_list(None)
+        
+        # Build cache from MongoDB results
+        for doc in cached_docs:
+            player_stats_cache[doc.get("player_name")] = doc
+            cache_hits += 1
+        
+        logger.info(f"[STATS ENRICHMENT] Loaded {cache_hits} players from MongoDB cache")
+        
+        # For players not in cache, try live API (fallback)
+        missing_players = [name for name in player_names if name not in player_stats_cache]
+        if missing_players:
+            logger.info(f"[STATS ENRICHMENT] {len(missing_players)} players not in cache, fetching from API...")
             
-            for player_name in batch:
-                if player_name in player_stats_cache:
-                    continue
-                
+            for player_name in missing_players[:20]:  # Limit API calls
                 try:
-                    # Fetch player stats from BallDontLie
                     stats = await self._fetch_player_season_stats(player_name)
-                    if stats:
+                    if stats and stats.get("games"):
                         player_stats_cache[player_name] = stats
-                        enriched_count += 1
+                        api_fallbacks += 1
+                        
+                        # Also save to cache for next time
+                        doc = {
+                            "player_name": player_name,
+                            "normalized_name": self.sanitize_player_name(player_name),
+                            "games": stats.get("games", []),
+                            "total_games": len(stats.get("games", [])),
+                            "source": stats.get("source", "api_fallback"),
+                            "synced_at": datetime.now(timezone.utc).isoformat()
+                        }
+                        await self.player_stats.update_one(
+                            {"normalized_name": doc["normalized_name"]},
+                            {"$set": doc},
+                            upsert=True
+                        )
                 except Exception as e:
                     logger.debug(f"[STATS] Error fetching stats for {player_name}: {e}")
                 
-                # Rate limiting
                 await asyncio.sleep(0.1)
-            
-            # Log progress
-            if i % 50 == 0 and i > 0:
-                logger.info(f"[STATS ENRICHMENT] Progress: {i}/{len(player_names)} players")
         
-        logger.info(f"[STATS ENRICHMENT] Fetched stats for {enriched_count}/{len(player_names)} players")
+        enriched_count = len(player_stats_cache)
+        logger.info(f"[STATS ENRICHMENT] Total stats: {enriched_count} (cache: {cache_hits}, API: {api_fallbacks})")
         
         # Enrich props with hit rates
         for prop in props:
