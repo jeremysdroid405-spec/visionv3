@@ -6,7 +6,7 @@ import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { 
   Eye, Zap, Target, Shield, ChevronDown, 
-  Play, Lock, Crosshair, Radio, Cpu
+  Play, Lock, Crosshair, Radio, Cpu, Newspaper
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -114,9 +114,9 @@ const SpecRow = ({ spec, title, edge, icon }) => (
           <div className="flex-1 h-px bg-gradient-to-r from-zinc-800 to-transparent" />
         </div>
         <p className="text-white font-medium text-sm mb-2">{title}</p>
-        <p className="text-zinc-500 text-xs leading-relaxed">
+        <div className="text-zinc-500 text-xs leading-relaxed">
           <span className="text-zinc-400 font-semibold">The Edge:</span> {edge}
-        </p>
+        </div>
       </div>
     </div>
   </div>
@@ -357,18 +357,18 @@ export const Auth = () => {
         </div>
       </section>
 
-      {/* ==================== SECTION 2: THE KILL LIST ==================== */}
+      {/* ==================== SECTION 2: MISSION OBJECTIVES ==================== */}
       <section className="py-20 px-4 bg-zinc-950 border-y border-zinc-900">
         <div className="max-w-3xl mx-auto">
           {/* Section Header */}
           <div className="text-center mb-10">
             <span className="text-zinc-600 font-mono text-[10px] tracking-[0.3em]">TECHNICAL SPECIFICATIONS</span>
             <h2 className="text-2xl md:text-3xl font-bold text-white mt-2 tracking-tight">
-              DEPLOYMENT: <span className="text-emerald-400">THE KILL LIST</span>
+              DEPLOYMENT: <span className="text-emerald-400">MISSION OBJECTIVES™</span>
             </h2>
             <div className="flex items-center justify-center gap-2 mt-3">
               <span className="text-zinc-600 font-mono text-xs">SYSTEM STATUS:</span>
-              <span className="text-emerald-400 font-mono text-xs font-bold animate-pulse">[OPERATIONAL]</span>
+              <span className="text-emerald-400 font-mono text-xs font-bold animate-pulse">[OPERATIONAL // INTEL_SYNC_ACTIVE]</span>
             </div>
           </div>
           
@@ -377,31 +377,37 @@ export const Auth = () => {
             <SpecRow 
               spec="MODEL"
               title="PickVision v3.0 (Flash Architecture)"
-              edge="Built on ultra-low latency infrastructure. While other apps are still refreshing, PickVision has already processed the play. No lag, no delays—just raw speed."
+              edge="Built on zero-latency infrastructure. While legacy models refresh on a delay, Flash Architecture processes the entry in real-time. No lag, no slippage—just synchronized speed."
               icon={<Cpu className="w-6 h-6 text-zinc-400" />}
             />
             <SpecRow 
               spec="LOGIC"
               title="Anomaly Detection"
-              edge="We ignore the 'standard.' Most models chase averages; we hunt the glitches. Our AI identifies the 1% of lines where the sportsbooks' math has failed."
+              edge="We hunt for Systemic Glitches. Our AI scans millions of data points to isolate the 1% of lines where the sportsbooks' mathematical models have objectively fractured."
               icon={<Zap className="w-6 h-6 text-yellow-500" />}
             />
             <SpecRow 
               spec="INTEL"
               title="Usage Ripple™"
-              edge="Automated battlefield recalculation. When injury news drops, the Ripple evaluates the floor and ceiling for the entire roster within 60s. You get the new line before the spread moves."
+              edge="Automated roster recalculation. When injury news drops or a roster shift occurs, the Ripple re-maps the floor and ceiling for the entire squad within 60s. You get the value before the market can adjust."
               icon={<Radio className="w-6 h-6 text-cyan-400" />}
+            />
+            <SpecRow 
+              spec="SENTIMENT"
+              title="Social Signal™"
+              edge="Beyond the box score. We track high-impact external factors. From personal disruptions and off-court volatility to Revenge Game narratives. If a player's focus is fractured or their motivation is peaked, the Objectives are re-prioritized in real-time."
+              icon={<Newspaper className="w-6 h-6 text-purple-400" />}
             />
             <SpecRow 
               spec="TARGETING"
               title="Demon Radar"
-              edge="High-alpha, high-variance line exploits. This isn't for the faint of heart. The Radar targets the high-multiplier kills that turn a session into a season."
+              edge={<>High-alpha, high-variance exploits. This is for the strategist looking to turn a single session into a season-defining win. <span className="text-red-500">🔥🔥🔥🔥</span></>}
               icon={<DemonIcon size={24} />}
             />
             <SpecRow 
               spec="SAFETY"
               title="Goblin Recon"
-              edge="Surgical bankroll stabilization. Recon isn't about luck; it's about the math of the 'Lock.' High-probability infiltration data for consistent resource accumulation."
+              edge={<>Surgical bankroll stabilization. Recon replaces luck with Statistical Certainty. High-probability infiltration data for consistent, low-friction resource accumulation. <span className="text-cyan-400">💎💎💎💎</span></>}
               icon={<GoblinIcon size={24} />}
             />
           </div>

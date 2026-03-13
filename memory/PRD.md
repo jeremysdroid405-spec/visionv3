@@ -217,11 +217,18 @@ Build a high-performance NBA Player Prop Dashboard that mimics the PrizePicks us
 
 ---
 
+## Recent Changes (Dec 13, 2025 - Session 2)
+- **Auth Page "MISSION OBJECTIVES™" Update** - Redesigned Section 2 of onboarding page:
+  - Renamed "THE KILL LIST" → "MISSION OBJECTIVES™"
+  - Updated system status: "[OPERATIONAL // INTEL_SYNC_ACTIVE]"
+  - Added new **SENTIMENT** spec row for "Social Signal™" feature (purple newspaper icon)
+  - Updated all spec row text with refined "War Room" copy
+  - Added 🔥🔥🔥🔥 fire emojis to Demon Radar and 💎💎💎💎 sapphire gems to Goblin Recon
+
 ## Next Steps
-1. **Social Signals Active**: System now polls Tank01 for news sentiment & revenge games
-   - 🗞️ Intel Icon: Shows when volatility detected (injuries, trades, suspensions)
-   - 🗡️ Dagger Icon: Shows when facing former team (revenge game)
-   - Gem modifiers: -1 for volatility, +1 for revenge
-2. **Sync Order for Data**: `sync-player-stats` → `sync-to-mongo` → `sync-social-signals`
-3. Refactor `DemonGoblinDashboardOptimized.js` (3500+ lines monolith)
-4. Add 30-minute auto-polling for social signals
+1. **Refactor `DemonGoblinDashboardOptimized.js`** (3500+ lines monolith) - Extract components:
+   - RadarCard, VaultCard, PlayerDetailView, TheGauntlet, TheSafeHaven
+   - Move to `/app/frontend/src/components/dashboard/`
+2. **"Pro Tier" Features** - Gate certain features behind user tier
+3. **"Copy Parlay" Button** - Add clipboard copy for social sharing
+4. **Social Signals Polling** - Add 30-minute auto-polling for news sentiment & revenge games
