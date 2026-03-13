@@ -1626,6 +1626,45 @@ async def sync_active_players():
     return result
 
 
+@api_router.post("/v3/refresh-board-photos")
+async def refresh_board_photos():
+    """
+    Refresh photo URLs in cached_board from master_roster with fuzzy matching.
+    
+    Use this after sync-active-players to fix any name mismatches between
+    Odds API player names and Tank01 roster names.
+    """
+    if not demon_goblin_engine:
+        raise HTTPException(status_code=500, detail="Engine not initialized")
+    
+    logger.info("[PHOTO REFRESH] Manual refresh triggered via API")
+    result = await demon_goblin_engine.refresh_cached_board_photos()
+    
+    return result
+
+
+@api_router.post("/v3/refresh-all-photos")
+async def refresh_all_photos():
+    """
+    MASTER PHOTO REFRESH - Updates photo URLs across ALL collections.
+    
+    Refreshes photos in:
+    - cached_board (main player board)
+    - goblin_recon (parlay picks)
+    - demon_radar (demon picks)
+    - goblin_vault (goblin picks)
+    
+    Use this after sync-active-players to ensure all player photos are updated.
+    """
+    if not demon_goblin_engine:
+        raise HTTPException(status_code=500, detail="Engine not initialized")
+    
+    logger.info("[MASTER PHOTO REFRESH] Manual refresh triggered via API")
+    result = await demon_goblin_engine.refresh_all_photos()
+    
+    return result
+
+
 @api_router.get("/v3/players")
 async def get_all_players():
     """
