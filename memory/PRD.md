@@ -7,6 +7,45 @@ Build a high-performance NBA Player Prop Dashboard that identifies "Demons" (har
 
 ---
 
+## GLOBAL PHOTO SYNC & HEADSHOT DISPLAY - COMPLETED (March 13, 2026)
+
+### Bug Fix: Trey Murphy III Headshot Not Displaying ✅
+**Problem:** Players with valid ESPN headshot URLs in the master roster were showing team logos instead of their actual headshots.
+
+**Root Cause:**
+1. Backend `_build_cached_board` function was not including `photo_url` in the player data
+2. Demon Radar, Goblin Vault, and parlay builder functions were missing `photo_url` in candidate objects
+3. Frontend `PlayerHeadshot` component only accepted `nbaId` prop, ignoring the `photo_url` field
+
+**Solution Implemented:**
+1. **Backend** - Added `get_photo_url_from_master_roster()` function to look up ESPN headshot URLs
+2. **Backend** - Updated `_build_cached_board()` to include `photo_url` in `players_dict`
+3. **Backend** - Updated demon radar, goblin vault, parlay builder, goblin goldmine builders to include `photo_url`
+4. **Frontend** - Updated `PlayerHeadshot` component to accept `photoUrl` prop with priority:
+   - Priority 1: `photoUrl` (ESPN headshot from master roster)
+   - Priority 2: NBA CDN URL from `nbaId`
+   - Priority 3: Team logo fallback
+   - Priority 4: User icon
+
+### Photo Sync Pipeline ✅
+- **Function**: `sync_player_photos()` 
+- **Data Source**: Tank01 API (`tank01-fantasy-stats.p.rapidapi.com`)
+- **Storage**: `dg_master_roster.photo_url` field
+- **Coverage**: 318 ESPN headshots, 7 NBA CDN headshots, rest have team logos
+
+### Frontend Fallback Chain ✅
+```
+photoUrl (ESPN) → NBA CDN (nbaId) → Team Logo → User Icon
+```
+- **"No-Gray" Policy**: No gray silhouettes - always show team logo as minimum fallback
+- **Invalid Photo Detection**: Filters out ESPN "nophoto" placeholder URLs
+
+### Verification ✅
+- **Trey Murphy III**: Now shows ESPN headshot in Demon Radar, Goblin Vault, and All Players
+- **Rookies** (Ace Bailey, etc.): Correctly show team logos (not in master roster yet)
+
+---
+
 ## MASTER ROSTER SYSTEM - COMPLETED (March 13, 2026)
 
 ### Source of Truth Architecture ✅
