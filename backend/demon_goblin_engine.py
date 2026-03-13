@@ -2816,6 +2816,11 @@ class DemonGoblinEngine:
                 # Calculate weighted probability
                 base_prob = (h10 * 0.6) + (h5 * 0.4)
                 
+                # V3.2 FIX: SKIP players with no real stats data
+                has_real_data = h10_games > 0 or h5_games > 0
+                if not has_real_data:
+                    continue
+                
                 # STRICT FILTER: Only include demons with 50%+ hit probability
                 if base_prob < 0.50:
                     continue
@@ -3241,6 +3246,11 @@ class DemonGoblinEngine:
                 
                 # Calculate weighted hit rate
                 weighted_hit_rate = (h10 * 0.6) + (h5 * 0.4)
+                
+                # V3.2 FIX: SKIP players with no real stats data
+                has_real_data = h10_games > 0 or h5_games > 0
+                if not has_real_data:
+                    continue
                 
                 # PRIMARY THRESHOLD: Only 88%+ weighted hit rate
                 if weighted_hit_rate < 0.88:

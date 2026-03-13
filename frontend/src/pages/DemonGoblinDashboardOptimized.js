@@ -1019,32 +1019,57 @@ const VaultCard = memo(({ pick, rank, onClick }) => {
     ? 'goblin-vault-card' 
     : 'bg-gradient-to-br from-green-950/30 to-zinc-950 border-green-900/50';
   
-  // Shield rendering for safety level
-  const safetyLevel = pick.safety_level || 0;
-  const renderShields = () => {
-    if (safetyLevel === 0) return null;
+  // Calculate gem count based on L10 hit rate (like fire streaks for demons)
+  // 1 Gem = 70%, 2 Gems = 80%, 3 Gems = 90%, 4 Gems = 100%
+  const h10Rate = pick.h10_rate || 0;
+  const getGemCount = () => {
+    if (h10Rate >= 100) return 4;
+    if (h10Rate >= 90) return 3;
+    if (h10Rate >= 80) return 2;
+    if (h10Rate >= 70) return 1;
+    return 0;
+  };
+  
+  const gemCount = getGemCount();
+  
+  // Sapphire Blue Gems rendering
+  const renderGems = () => {
+    if (gemCount === 0) return null;
     return (
-      <div className="flex items-center gap-0.5" title={getSafetyDescription(safetyLevel)}>
-        {[...Array(safetyLevel)].map((_, i) => (
-          <div key={i} className={`w-3 h-3 flex items-center justify-center text-[10px] ${
-            safetyLevel >= 5 ? 'text-green-400' :
-            safetyLevel >= 4 ? 'text-green-500' :
-            safetyLevel >= 3 ? 'text-emerald-500' :
-            'text-emerald-600'
-          }`}>⬡</div>
+      <div className="flex items-center gap-0.5" title={getGemDescription(gemCount)}>
+        {[...Array(gemCount)].map((_, i) => (
+          <span 
+            key={i} 
+            className="text-[12px]"
+            style={{ 
+              color: '#00BFFF',
+              textShadow: '0 0 4px #00BFFF, 0 0 8px #00BFFF40'
+            }}
+          >
+            💎
+          </span>
         ))}
       </div>
     );
   };
   
-  const getSafetyDescription = (level) => {
-    switch(level) {
-      case 5: return 'FORTRESS! Perfect 10/10 cleared';
-      case 4: return 'VAULT! 90%+ hit rate';
-      case 3: return 'SAFE! 85%+ hit rate';
-      case 2: return 'Reliable - 80%+ hit rate';
-      case 1: return 'Moderate - 70%+ hit rate';
-      default: return 'Risky';
+  const getGemDescription = (count) => {
+    switch(count) {
+      case 4: return 'FORTRESS! 100% L10 hit rate';
+      case 3: return 'DIAMOND! 90%+ L10 hit rate';
+      case 2: return 'VAULT! 80%+ L10 hit rate';
+      case 1: return 'SAFE! 70%+ L10 hit rate';
+      default: return 'Below 70% hit rate';
+    }
+  };
+  
+  const getGemLabel = (count) => {
+    switch(count) {
+      case 4: return 'FORTRESS';
+      case 3: return 'DIAMOND';
+      case 2: return 'VAULT';
+      case 1: return 'SAFE';
+      default: return '';
     }
   };
   
@@ -1085,7 +1110,7 @@ const VaultCard = memo(({ pick, rank, onClick }) => {
               size="md"
               className="ring-2 ring-green-800/50"
             />
-            {/* Rank Badge with shield icon */}
+            {/* Rank Badge */}
             <div className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full flex items-center justify-center 
                           font-bold text-[10px] border-2 border-zinc-900 bg-green-600 text-white">
               {rank}
@@ -1103,20 +1128,15 @@ const VaultCard = memo(({ pick, rank, onClick }) => {
           </div>
         </div>
         
-        {/* Safety Level Shields */}
-        {safetyLevel > 0 && (
+        {/* Sapphire Gem Streak (like fire streaks for demons) */}
+        {gemCount > 0 && (
           <div className="flex items-center justify-between mb-2 px-1">
-            {renderShields()}
-            <span className={`text-[10px] font-medium ${
-              safetyLevel >= 5 ? 'text-green-400' :
-              safetyLevel >= 4 ? 'text-green-500' :
-              safetyLevel >= 3 ? 'text-emerald-500' :
-              'text-emerald-600'
-            }`}>
-              {safetyLevel >= 5 ? 'FORTRESS' :
-               safetyLevel >= 4 ? 'VAULT' :
-               safetyLevel >= 3 ? 'SAFE' :
-               safetyLevel >= 2 ? 'RELIABLE' : 'MODERATE'}
+            {renderGems()}
+            <span 
+              className="text-[10px] font-medium"
+              style={{ color: '#00BFFF' }}
+            >
+              {getGemLabel(gemCount)}
             </span>
           </div>
         )}
@@ -1132,46 +1152,24 @@ const VaultCard = memo(({ pick, rank, onClick }) => {
             </div>
           </div>
           
-          {/* Safety Rating - Main metric */}
-          <div className="flex items-center justify-between text-xs bg-green-950/50 px-2 py-1 rounded">
-            <span className="text-green-400 font-semibold">Safety:</span>
-            <span className="text-white font-bold">{pick.safety_rating}%</span>
-            <span className="text-zinc-400 text-[10px]">
-              Clear in {pick.safety_string}
-            </span>
+          {/* Clean Hit Rate Display */}
+          <div className="flex items-center justify-between text-xs">
+            <span className="text-zinc-400">L10:</span>
+            <span className="text-white font-bold">{pick.h10_rate}%</span>
+            <span className="text-zinc-500 text-[10px]">({pick.h10_over}/{pick.h10_games})</span>
           </div>
           
-          {/* Vault Score (Safety + Value) */}
+          {/* Vault Score Bar */}
           <div className="mt-2">
-            <div className="flex items-center justify-between text-[10px] mb-1">
-              <span className="text-zinc-500">Vault Score</span>
-              <span className={`font-bold ${
-                pick.vault_score >= 0.80 ? 'text-green-400' :
-                pick.vault_score >= 0.65 ? 'text-emerald-400' :
-                'text-zinc-400'
-              }`}>
-                {(pick.vault_score * 100).toFixed(1)}%
-              </span>
-            </div>
             <div className="h-1.5 bg-zinc-800 rounded-full overflow-hidden">
               <div 
-                className={`h-full rounded-full transition-all ${
-                  pick.vault_score >= 0.80 ? 'bg-gradient-to-r from-green-500 to-green-400' :
-                  pick.vault_score >= 0.65 ? 'bg-gradient-to-r from-emerald-500 to-emerald-400' :
-                  'bg-gradient-to-r from-zinc-500 to-zinc-400'
-                }`}
-                style={{ width: `${Math.min(100, pick.vault_score * 100)}%` }}
+                className="h-full rounded-full transition-all"
+                style={{ 
+                  width: `${Math.min(100, pick.h10_rate || 0)}%`,
+                  background: 'linear-gradient(to right, #00BFFF, #00CED1)'
+                }}
               />
             </div>
-          </div>
-          
-          {/* Hit Rate Info */}
-          <div className="flex items-center justify-between text-[10px] text-zinc-500 mt-1">
-            <span>L10: <span className="text-white">{pick.h10_rate}%</span></span>
-            <span>L5: <span className="text-white">{pick.h5_rate}%</span></span>
-            {pick.is_perfect_streak && (
-              <span className="text-green-400 font-medium">✓ PERFECT</span>
-            )}
           </div>
           
           {/* AI Explainer - Why this Goblin? */}
@@ -1439,36 +1437,51 @@ const ReconCard = memo(({ parlay, tier, onClick }) => {
           </div>
         </div>
         
-        {/* Picks List */}
+        {/* Picks List with Sapphire Gems */}
         <div className="space-y-1.5 mb-3">
-          {picks.slice(0, 4).map((pick, idx) => (
-            <div 
-              key={`${pick.player_name}-${pick.stat_type}-${idx}`}
-              className="bg-zinc-900/50 rounded px-2 py-1"
-            >
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2 min-w-0">
-                  <GoblinIcon size={12} className="flex-shrink-0" />
-                  <span className="text-xs text-white truncate">{pick.player_name}</span>
-                  <span className="text-[10px] text-zinc-500">{pick.team}</span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <span className="text-[10px] text-zinc-400">{pick.stat_type}</span>
-                  <span className="text-xs font-bold text-emerald-300">{pick.line}</span>
-                  {pick.is_recon_lock && (
-                    <span className="text-[8px] bg-emerald-500/30 text-emerald-300 px-1 rounded">LOCK</span>
-                  )}
-                  {pick.insight_summary && <Zap className="w-3 h-3 text-purple-400" title="Has AI Vision" />}
+          {picks.slice(0, 4).map((pick, idx) => {
+            // Calculate gem count based on L10 hit rate
+            const h10Rate = pick.h10_rate || (pick.h10_games > 0 ? (pick.h10_over / pick.h10_games) * 100 : 0);
+            const gemCount = h10Rate >= 100 ? 4 : h10Rate >= 90 ? 3 : h10Rate >= 80 ? 2 : h10Rate >= 70 ? 1 : 0;
+            
+            return (
+              <div 
+                key={`${pick.player_name}-${pick.stat_type}-${idx}`}
+                className="bg-zinc-900/50 rounded px-2 py-1"
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 min-w-0">
+                    {/* Sapphire Gems instead of goblin icon */}
+                    {gemCount > 0 ? (
+                      <div className="flex items-center gap-0.5 flex-shrink-0">
+                        {[...Array(Math.min(gemCount, 4))].map((_, i) => (
+                          <span 
+                            key={i} 
+                            className="text-[10px]"
+                            style={{ 
+                              color: '#00BFFF',
+                              textShadow: '0 0 4px #00BFFF'
+                            }}
+                          >💎</span>
+                        ))}
+                      </div>
+                    ) : (
+                      <GoblinIcon size={12} className="flex-shrink-0" />
+                    )}
+                    <span className="text-xs text-white truncate">{pick.player_name}</span>
+                    <span className="text-[10px] text-zinc-500">{pick.team}</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[10px] text-zinc-400">{pick.stat_type}</span>
+                    <span className="text-xs font-bold text-emerald-300">{pick.line}</span>
+                    {pick.is_recon_lock && (
+                      <span className="text-[8px] bg-emerald-500/30 text-emerald-300 px-1 rounded">LOCK</span>
+                    )}
+                  </div>
                 </div>
               </div>
-              {/* Mini Vision Preview */}
-              {pick.insight_summary && (
-                <div className="mt-1 text-[9px] text-purple-300/70 line-clamp-1 italic pl-5">
-                  "{pick.insight_summary}"
-                </div>
-              )}
-            </div>
-          ))}
+            );
+          })}
           {picks.length > 4 && (
             <div className="text-[10px] text-zinc-500 text-center">
               +{picks.length - 4} more picks
@@ -3217,17 +3230,15 @@ export const DemonGoblinDashboardOptimized = ({ isDemoMode = false }) => {
             )}
           </div>
           
-          {/* V3.1 Truth Engine - Data Validation Status Light + Button */}
-          <div className="flex items-center gap-2">
-            <DataValidationLight dataStatus={dataStatus} />
-            <button
-              onClick={() => setShowValidationTable(true)}
-              className="px-2 py-1 bg-red-900/30 hover:bg-red-800/40 border border-red-500/30 rounded text-[10px] text-red-400 font-mono"
-              data-testid="open-validation-table"
-            >
-              ⚠️ VERIFY DATA
-            </button>
-          </div>
+          {/* Manual Data Verification Button - Hidden by default, for debugging */}
+          <button
+            onClick={() => setShowValidationTable(true)}
+            className="px-2 py-1 bg-zinc-800/50 hover:bg-zinc-700/50 border border-zinc-700/30 rounded text-[10px] text-zinc-500 font-mono opacity-50 hover:opacity-100 transition-opacity"
+            data-testid="open-validation-table"
+            title="Open Raw Data Validation"
+          >
+            🔍
+          </button>
         </div>
       </header>
 
@@ -3372,11 +3383,12 @@ export const DemonGoblinDashboardOptimized = ({ isDemoMode = false }) => {
               })}
             </div>
             
-            {/* Recon Legend */}
+            {/* Sapphire Gem Legend */}
             <div className="mt-2 flex items-center justify-center gap-4 text-[10px] text-zinc-500">
-              <span><GoblinIcon size={12} className="inline" /> = 88%+ Hit Rate</span>
-              <span className="text-emerald-300 font-bold">LOCK</span><span> = Floor ≥ Line</span>
-              <span><Layers className="w-3 h-3 inline text-cyan-400" /> = Game Diversified</span>
+              <span style={{ color: '#00BFFF' }}>💎</span><span>= 70%+</span>
+              <span style={{ color: '#00BFFF' }}>💎💎</span><span>= 80%+</span>
+              <span style={{ color: '#00BFFF' }}>💎💎💎</span><span>= 90%+</span>
+              <span style={{ color: '#00BFFF' }}>💎💎💎💎</span><span>= 100% FORTRESS</span>
             </div>
           </div>
         )}
