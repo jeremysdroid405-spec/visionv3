@@ -101,17 +101,23 @@ const TerminalLine = ({ label, status, statusColor = 'emerald', delay = 0 }) => 
   );
 };
 
-// Kill List Spec Row
-const SpecRow = ({ spec, tactical, icon }) => (
-  <div className="flex items-start gap-4 py-4 border-b border-zinc-800/50 last:border-0 group hover:bg-zinc-900/30 transition-colors px-2 -mx-2 rounded">
-    <div className="flex-shrink-0 w-10 h-10 rounded border border-zinc-700/50 bg-zinc-900 flex items-center justify-center group-hover:border-zinc-600 transition-colors">
-      {icon}
-    </div>
-    <div className="flex-1 min-w-0">
-      <div className="flex items-center gap-2 mb-1">
-        <span className="text-zinc-400 font-mono text-xs uppercase tracking-wider">{spec}</span>
+// Kill List Spec Row - Enhanced Industrial Design
+const SpecRow = ({ spec, title, edge, icon }) => (
+  <div className="py-5 border-b border-zinc-800/30 last:border-0 group">
+    <div className="flex items-start gap-4">
+      <div className="flex-shrink-0 w-12 h-12 rounded-lg border border-zinc-700/50 bg-zinc-900/80 flex items-center justify-center group-hover:border-emerald-800/50 group-hover:bg-zinc-900 transition-all">
+        {icon}
       </div>
-      <p className="text-zinc-300 text-sm leading-relaxed">{tactical}</p>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-3 mb-1">
+          <span className="text-emerald-500 font-mono text-xs uppercase tracking-widest font-bold">{spec}</span>
+          <div className="flex-1 h-px bg-gradient-to-r from-zinc-800 to-transparent" />
+        </div>
+        <p className="text-white font-medium text-sm mb-2">{title}</p>
+        <p className="text-zinc-500 text-xs leading-relaxed">
+          <span className="text-zinc-400 font-semibold">The Edge:</span> {edge}
+        </p>
+      </div>
     </div>
   </div>
 );
@@ -353,44 +359,50 @@ export const Auth = () => {
 
       {/* ==================== SECTION 2: THE KILL LIST ==================== */}
       <section className="py-20 px-4 bg-zinc-950 border-y border-zinc-900">
-        <div className="max-w-2xl mx-auto">
+        <div className="max-w-3xl mx-auto">
           {/* Section Header */}
-          <div className="text-center mb-12">
-            <span className="text-zinc-600 font-mono text-xs tracking-widest">TECHNICAL SPECIFICATIONS</span>
-            <h2 className="text-2xl md:text-3xl font-bold text-white mt-2">
-              THE <span className="text-emerald-400">KILL LIST</span>
+          <div className="text-center mb-10">
+            <span className="text-zinc-600 font-mono text-[10px] tracking-[0.3em]">TECHNICAL SPECIFICATIONS</span>
+            <h2 className="text-2xl md:text-3xl font-bold text-white mt-2 tracking-tight">
+              DEPLOYMENT: <span className="text-emerald-400">THE KILL LIST</span>
             </h2>
-            <p className="text-zinc-500 text-sm mt-2 font-mono">
-              Tactical advantages deployed
-            </p>
+            <div className="flex items-center justify-center gap-2 mt-3">
+              <span className="text-zinc-600 font-mono text-xs">SYSTEM STATUS:</span>
+              <span className="text-emerald-400 font-mono text-xs font-bold animate-pulse">[OPERATIONAL]</span>
+            </div>
           </div>
           
           {/* Spec Table */}
-          <div className="bg-zinc-900/30 rounded-xl border border-zinc-800/50 p-6">
+          <div className="bg-gradient-to-b from-zinc-900/50 to-zinc-950 rounded-2xl border border-zinc-800/50 p-6 md:p-8">
             <SpecRow 
               spec="MODEL"
-              tactical="PickVision v3.0 (Flash Architecture)"
-              icon={<Cpu className="w-5 h-5 text-zinc-400" />}
+              title="PickVision v3.0 (Flash Architecture)"
+              edge="Built on ultra-low latency infrastructure. While other apps are still refreshing, PickVision has already processed the play. No lag, no delays—just raw speed."
+              icon={<Cpu className="w-6 h-6 text-zinc-400" />}
             />
             <SpecRow 
               spec="LOGIC"
-              tactical="Anomaly Detection. We ignore the 'standard' and hunt the glitches."
-              icon={<Zap className="w-5 h-5 text-yellow-400" />}
+              title="Anomaly Detection"
+              edge="We ignore the 'standard.' Most models chase averages; we hunt the glitches. Our AI identifies the 1% of lines where the sportsbooks' math has failed."
+              icon={<Zap className="w-6 h-6 text-yellow-500" />}
             />
             <SpecRow 
               spec="INTEL"
-              tactical="Usage Ripple. Automated recalculation of roster value within 60s of injury news."
-              icon={<Radio className="w-5 h-5 text-cyan-400" />}
+              title="Usage Ripple™"
+              edge="Automated battlefield recalculation. When injury news drops, the Ripple evaluates the floor and ceiling for the entire roster within 60s. You get the new line before the spread moves."
+              icon={<Radio className="w-6 h-6 text-cyan-400" />}
             />
             <SpecRow 
               spec="TARGETING"
-              tactical="Demon Radar. High-alpha, high-variance line exploits only."
-              icon={<DemonIcon size={20} />}
+              title="Demon Radar"
+              edge="High-alpha, high-variance line exploits. This isn't for the faint of heart. The Radar targets the high-multiplier kills that turn a session into a season."
+              icon={<DemonIcon size={24} />}
             />
             <SpecRow 
               spec="SAFETY"
-              tactical="Goblin Vault. Defensive bankroll stabilization via high-probability math."
-              icon={<GoblinIcon size={20} />}
+              title="Goblin Recon"
+              edge="Surgical bankroll stabilization. Recon isn't about luck; it's about the math of the 'Lock.' High-probability infiltration data for consistent resource accumulation."
+              icon={<GoblinIcon size={24} />}
             />
           </div>
         </div>
