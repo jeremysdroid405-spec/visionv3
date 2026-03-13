@@ -460,6 +460,7 @@ class DemonGoblinEngine:
         self.live_props = db.dg_live_props  # Master props collection (deduplicated)
         self.radar_picks = db.dg_radar_picks  # Demon Radar top 10 picks
         self.goblin_vault = db.dg_goblin_vault  # Goblin Vault top 10 safe picks
+        self.parlay_builder = db.dg_parlay_builder  # Big Money Builder parlays
         self.cached_board = db.dg_cached_board  # Full cached board for frontend
         
         # Legacy caching collections
@@ -1142,6 +1143,9 @@ class DemonGoblinEngine:
         
         # Build Goblin Vault (Top 10 safe plays)
         await self._build_goblin_vault(players_dict, sync_time)
+        
+        # Build Parlay Builder (Big Money parlays)
+        await self._build_parlay_builder(players_dict, sync_time)
     
     async def _build_demon_radar(self, players_dict: Dict[str, Dict], sync_time: datetime):
         """
@@ -1594,6 +1598,259 @@ class DemonGoblinEngine:
         # 0 Shields: Below 70%
         return 0
     
+    async def _build_parlay_builder(self, players_dict: Dict[str, Dict], sync_time: datetime):
+        """
+        THE BIG MONEY BUILDER - Parlay Generator Algorithm
+        
+        "WHALE" SCORING:
+        1. Ceiling Frequency: Filter demons where H10 >= 30% (hit at least 3/10 times)
+        2. Recent Heat: 20% boost if player hit in last game (H5 >= 20%)
+        3. Correlation Filter: Pair players from same game for 4-6 pick parlays
+        
+        LINE TYPES:
+        - 2-Pick (Double Demon): Top 2 highest radar picks (5x-10x payout)
+        - 3-Pick (Mid-Tier): #1 + next 2 correlated picks (15x-25x)
+        - 4-Pick (Power Play): Top 4 with game correlation (40x-80x)
+        - 5-Pick (Heavy Hitter): Mix of high prob + value (150x-300x)
+        - 6-Pick (2000x Lotto): Top 6 highest probability demons
+        
+        PAYOUT ESTIMATION:
+        - Each demon leg at +100 odds = ~2x multiplier
+        - n-pick parlay: ~2^n multiplier (adjusted for probabilities)
+        """
+        logger.info("[PARLAY BUILDER] Generating Big Money parlays...")
+        
+        # Collect all scoreable demons
+        all_demons = []
+        game_groups = {}  # Group players by game for correlation
+        
+        for player_name, player_data in players_dict.items():
+            demons = player_data.get("demons", [])
+            team = player_data.get("team", "")
+            
+            for demon in demons:
+                hit_rates = demon.get("hit_rates", {})
+                h10_data = hit_rates.get("l10", {})
+                h5_data = hit_rates.get("l5", {})
+                
+                h10 = h10_data.get("hit_rate", 0)
+                h5 = h5_data.get("hit_rate", 0)
+                h10_games = h10_data.get("total_games", 0)
+                h5_over = h5_data.get("games_over", 0)
+                h5_games = h5_data.get("total_games", 0)
+                
+                # Ceiling Frequency Filter: H10 >= 30%
+                if h10 < 0.30 and h10_games > 0:
+                    continue
+                
+                # Calculate Whale Score
+                base_prob = (h10 * 0.6) + (h5 * 0.4)
+                
+                # Recent Heat Boost: 20% if hit in last game (proxy: H5 >= 40%)
+                heat_boost = 1.20 if (h5_games > 0 and h5_over >= 2) else 1.0
+                
+                whale_score = base_prob * heat_boost
+                
+                # Get game info for correlation
+                home_team = demon.get("home_team", "")
+                away_team = demon.get("away_team", "")
+                game_key = f"{away_team}@{home_team}" if home_team and away_team else ""
+                
+                demon_entry = {
+                    "player_name": player_name,
+                    "team": team,
+                    "nba_id": player_data.get("nba_id"),
+                    "stat_type": self._extract_stat_type(demon.get("market", "")),
+                    "line": demon.get("line", 0),
+                    "direction": demon.get("direction", "Over"),
+                    "h10_rate": round(h10 * 100, 1),
+                    "h5_rate": round(h5 * 100, 1),
+                    "whale_score": round(whale_score, 4),
+                    "hit_probability": round(base_prob * 100, 1),
+                    "has_heat_boost": heat_boost > 1,
+                    "game_key": game_key,
+                    "home_team": home_team,
+                    "away_team": away_team,
+                    "price": demon.get("price", 100)
+                }
+                
+                all_demons.append(demon_entry)
+                
+                # Group by game for correlation
+                if game_key:
+                    if game_key not in game_groups:
+                        game_groups[game_key] = []
+                    game_groups[game_key].append(demon_entry)
+        
+        # Sort by whale_score descending
+        all_demons.sort(key=lambda x: x["whale_score"], reverse=True)
+        
+        parlays = {}
+        
+        # ==================== 2-PICK (Double Demon) ====================
+        # Top 2 highest scoring picks
+        if len(all_demons) >= 2:
+            picks_2 = all_demons[:2]
+            combined_prob = self._calculate_parlay_probability(picks_2)
+            parlays["2_pick"] = {
+                "name": "Double Demon",
+                "picks": picks_2,
+                "pick_count": 2,
+                "combined_probability": combined_prob,
+                "estimated_payout": self._estimate_payout(2, combined_prob),
+                "payout_range": "5x - 10x",
+                "description": "Top 2 highest-scoring Radar picks"
+            }
+        
+        # ==================== 3-PICK (Mid-Tier) ====================
+        # #1 pick + 2 correlated picks from same game OR next 2 best
+        if len(all_demons) >= 3:
+            top_pick = all_demons[0]
+            game_key = top_pick.get("game_key", "")
+            
+            # Try to find correlated picks from same game
+            correlated = [d for d in all_demons[1:] if d.get("game_key") == game_key and d["player_name"] != top_pick["player_name"]][:2]
+            
+            # Fill remaining with next best
+            remaining_needed = 2 - len(correlated)
+            if remaining_needed > 0:
+                others = [d for d in all_demons[1:] if d not in correlated][:remaining_needed]
+                correlated.extend(others)
+            
+            picks_3 = [top_pick] + correlated
+            combined_prob = self._calculate_parlay_probability(picks_3)
+            parlays["3_pick"] = {
+                "name": "Triple Threat",
+                "picks": picks_3,
+                "pick_count": 3,
+                "combined_probability": combined_prob,
+                "estimated_payout": self._estimate_payout(3, combined_prob),
+                "payout_range": "15x - 25x",
+                "description": "#1 pick + correlated teammates"
+            }
+        
+        # ==================== 4-PICK (Power Play) ====================
+        if len(all_demons) >= 4:
+            # Try to build with game correlation
+            picks_4 = self._build_correlated_parlay(all_demons, 4, game_groups)
+            combined_prob = self._calculate_parlay_probability(picks_4)
+            parlays["4_pick"] = {
+                "name": "Power Play",
+                "picks": picks_4,
+                "pick_count": 4,
+                "combined_probability": combined_prob,
+                "estimated_payout": self._estimate_payout(4, combined_prob),
+                "payout_range": "40x - 80x",
+                "description": "4 picks with game correlation"
+            }
+        
+        # ==================== 5-PICK (Heavy Hitter) ====================
+        if len(all_demons) >= 5:
+            picks_5 = self._build_correlated_parlay(all_demons, 5, game_groups)
+            combined_prob = self._calculate_parlay_probability(picks_5)
+            parlays["5_pick"] = {
+                "name": "Heavy Hitter",
+                "picks": picks_5,
+                "pick_count": 5,
+                "combined_probability": combined_prob,
+                "estimated_payout": self._estimate_payout(5, combined_prob),
+                "payout_range": "150x - 300x",
+                "description": "5 high-value picks"
+            }
+        
+        # ==================== 6-PICK (2000x Lotto) ====================
+        if len(all_demons) >= 6:
+            # Top 6 highest probability demons
+            picks_6 = all_demons[:6]
+            combined_prob = self._calculate_parlay_probability(picks_6)
+            parlays["6_pick"] = {
+                "name": "2000x Lotto",
+                "picks": picks_6,
+                "pick_count": 6,
+                "combined_probability": combined_prob,
+                "estimated_payout": self._estimate_payout(6, combined_prob),
+                "payout_range": "500x - 2000x",
+                "description": "Top 6 highest-probability demons"
+            }
+        
+        # Store in database
+        await self.parlay_builder.delete_many({})
+        
+        parlay_doc = {
+            "parlays": parlays,
+            "total_demons_analyzed": len(all_demons),
+            "games_with_correlation": len(game_groups),
+            "synced_at": sync_time.isoformat()
+        }
+        
+        await self.parlay_builder.insert_one(parlay_doc)
+        
+        logger.info(f"[PARLAY BUILDER] Generated {len(parlays)} parlay types from {len(all_demons)} demons")
+        for ptype, pdata in parlays.items():
+            logger.info(f"  {ptype}: {pdata['name']} - Est. {pdata['estimated_payout']}x payout")
+    
+    def _build_correlated_parlay(self, all_demons: List[Dict], target_count: int, game_groups: Dict) -> List[Dict]:
+        """Build a parlay with game correlation where possible"""
+        selected = []
+        used_players = set()
+        
+        # Start with top pick
+        if all_demons:
+            top = all_demons[0]
+            selected.append(top)
+            used_players.add(top["player_name"])
+        
+        # Try to add correlated picks from same games as selected
+        for demon in selected[:]:
+            game_key = demon.get("game_key", "")
+            if game_key and game_key in game_groups:
+                for corr in game_groups[game_key]:
+                    if len(selected) >= target_count:
+                        break
+                    if corr["player_name"] not in used_players:
+                        selected.append(corr)
+                        used_players.add(corr["player_name"])
+        
+        # Fill remaining from top demons
+        for demon in all_demons:
+            if len(selected) >= target_count:
+                break
+            if demon["player_name"] not in used_players:
+                selected.append(demon)
+                used_players.add(demon["player_name"])
+        
+        return selected[:target_count]
+    
+    def _calculate_parlay_probability(self, picks: List[Dict]) -> float:
+        """Calculate combined probability of parlay hitting"""
+        if not picks:
+            return 0
+        
+        prob = 1.0
+        for pick in picks:
+            # Use whale_score as probability
+            p = pick.get("whale_score", 0.5)
+            # Cap at 90% for individual legs
+            p = min(0.90, max(0.10, p))
+            prob *= p
+        
+        return round(prob * 100, 2)
+    
+    def _estimate_payout(self, legs: int, combined_prob: float) -> int:
+        """Estimate payout multiplier for parlay"""
+        # Base multiplier per leg at +100 odds = 2x
+        base_mult = 2 ** legs
+        
+        # Adjust based on probability (lower prob = higher payout potential)
+        if combined_prob > 30:
+            return round(base_mult * 0.8)
+        elif combined_prob > 20:
+            return round(base_mult * 1.0)
+        elif combined_prob > 10:
+            return round(base_mult * 1.5)
+        else:
+            return round(base_mult * 2.0)
+    
     def _extract_stat_type(self, market: str) -> str:
         """Extract stat type from market name"""
         # Remove _alternate suffix
@@ -1659,6 +1916,35 @@ class DemonGoblinEngine:
                 "hit_rate": "(L10 × 0.6) + (L5 × 0.4)",
                 "target": "90%+ hit rate for maximum safety",
                 "min_probability": "80%"
+            }
+        }
+    
+    async def get_parlay_builder(self) -> Dict[str, Any]:
+        """
+        Get the Parlay Builder (Big Money) parlays from MongoDB.
+        NO API CALLS - reads only from database.
+        """
+        doc = await self.parlay_builder.find_one({}, {"_id": 0})
+        
+        if not doc:
+            return {
+                "success": False,
+                "message": "No parlay data. Run /api/v3/sync first.",
+                "parlays": {}
+            }
+        
+        return {
+            "success": True,
+            "synced_at": doc.get("synced_at"),
+            "total_demons_analyzed": doc.get("total_demons_analyzed", 0),
+            "games_with_correlation": doc.get("games_with_correlation", 0),
+            "parlays": doc.get("parlays", {}),
+            "algorithm": {
+                "description": "Whale Scoring + Correlation Filter",
+                "whale_score": "(H10 × 0.6) + (H5 × 0.4) × heat_boost",
+                "heat_boost": "1.20x if hit in last 2 games",
+                "min_ceiling": "30% L10 hit rate",
+                "correlation": "Same-game pairing for 4-6 picks"
             }
         }
     

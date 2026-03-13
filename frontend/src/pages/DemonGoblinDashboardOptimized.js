@@ -7,7 +7,8 @@ import { Input } from '../components/ui/input';
 import { 
   Activity, RefreshCw, Search, Database, 
   ChevronDown, ChevronRight, AlertTriangle, Skull, Ghost,
-  User, Flame, Star, Clock, Zap, HardDrive, ArrowLeft, X
+  User, Flame, Star, Clock, Zap, HardDrive, ArrowLeft, X,
+  DollarSign, TrendingUp, Target, Layers
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -687,6 +688,101 @@ const VaultCard = memo(({ pick, rank, onClick }) => {
 });
 
 VaultCard.displayName = 'VaultCard';
+
+// ==================== PARLAY CARD ====================
+
+const ParlayCard = memo(({ parlay, pickCount, onClick }) => {
+  const picks = parlay?.picks || [];
+  const payoutMultiplier = parlay?.estimated_payout || 0;
+  const combinedProb = parlay?.combined_probability || 0;
+  const payoutRange = parlay?.payout_range || '';
+  
+  // Color scheme based on pick count
+  const colorScheme = {
+    2: { bg: 'from-amber-950/40', border: 'border-amber-700/50', text: 'text-amber-400', badge: 'bg-amber-500/20' },
+    3: { bg: 'from-orange-950/40', border: 'border-orange-700/50', text: 'text-orange-400', badge: 'bg-orange-500/20' },
+    4: { bg: 'from-red-950/40', border: 'border-red-700/50', text: 'text-red-400', badge: 'bg-red-500/20' },
+    5: { bg: 'from-purple-950/40', border: 'border-purple-700/50', text: 'text-purple-400', badge: 'bg-purple-500/20' },
+    6: { bg: 'from-pink-950/40', border: 'border-pink-700/50', text: 'text-pink-400', badge: 'bg-pink-500/20' }
+  };
+  
+  const colors = colorScheme[pickCount] || colorScheme[2];
+  
+  return (
+    <Card 
+      className={`
+        bg-gradient-to-br ${colors.bg} to-zinc-950 ${colors.border}
+        hover:scale-[1.02] transition-all duration-200 cursor-pointer
+        overflow-hidden
+      `}
+      onClick={onClick}
+      data-testid={`parlay-card-${pickCount}`}
+    >
+      <div className="p-3">
+        {/* Header */}
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <div className={`w-8 h-8 rounded-full ${colors.badge} flex items-center justify-center`}>
+              <span className={`text-lg font-black ${colors.text}`}>{pickCount}</span>
+            </div>
+            <div>
+              <div className={`text-sm font-bold ${colors.text}`}>{parlay?.name || `${pickCount}-PICK`}</div>
+              <div className="text-[10px] text-zinc-500">{parlay?.description || ''}</div>
+            </div>
+          </div>
+          
+          {/* Payout Badge */}
+          <Badge className={`${colors.badge} ${colors.text} border-none text-xs font-bold px-2 py-1`}>
+            <DollarSign className="w-3 h-3 mr-0.5" />
+            {payoutMultiplier}x
+          </Badge>
+        </div>
+        
+        {/* Picks List */}
+        <div className="space-y-1.5 mb-3">
+          {picks.slice(0, 4).map((pick, idx) => (
+            <div 
+              key={`${pick.player_name}-${pick.stat_type}-${idx}`}
+              className="flex items-center justify-between bg-zinc-900/50 rounded px-2 py-1"
+            >
+              <div className="flex items-center gap-2 min-w-0">
+                <Skull className="w-3 h-3 text-red-400 flex-shrink-0" />
+                <span className="text-xs text-white truncate">{pick.player_name}</span>
+                <span className="text-[10px] text-zinc-500">{pick.team}</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] text-zinc-400">{pick.stat_type}</span>
+                <span className="text-xs font-bold text-white">{pick.line}</span>
+                {pick.has_heat_boost && <Flame className="w-3 h-3 text-orange-400" />}
+              </div>
+            </div>
+          ))}
+          {picks.length > 4 && (
+            <div className="text-[10px] text-zinc-500 text-center">
+              +{picks.length - 4} more picks
+            </div>
+          )}
+        </div>
+        
+        {/* Stats Footer */}
+        <div className="flex items-center justify-between pt-2 border-t border-zinc-800/50">
+          <div className="flex items-center gap-1 text-[10px]">
+            <Target className="w-3 h-3 text-zinc-500" />
+            <span className="text-zinc-500">Combined:</span>
+            <span className={`font-bold ${combinedProb >= 20 ? 'text-green-400' : combinedProb >= 10 ? 'text-yellow-400' : 'text-zinc-400'}`}>
+              {combinedProb}%
+            </span>
+          </div>
+          <div className="text-[10px] text-zinc-500">
+            Range: <span className="text-white">{payoutRange}</span>
+          </div>
+        </div>
+      </div>
+    </Card>
+  );
+});
+
+ParlayCard.displayName = 'ParlayCard';
 
 // ==================== STAT CATEGORIES ====================
 
@@ -1372,6 +1468,7 @@ export const DemonGoblinDashboardOptimized = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState('all');
   const [syncedAt, setSyncedAt] = useState(null);
+  const [parlayData, setParlayData] = useState({});
   
   // Navigation state
   const [selectedPlayer, setSelectedPlayer] = useState(null);
@@ -1387,11 +1484,12 @@ export const DemonGoblinDashboardOptimized = () => {
     try {
       console.log('[CACHED] Loading from MongoDB...');
       
-      // Load board, radar, and vault in parallel
-      const [boardResponse, radarResponse, vaultResponse] = await Promise.all([
+      // Load board, radar, vault, and parlays in parallel
+      const [boardResponse, radarResponse, vaultResponse, parlayResponse] = await Promise.all([
         axios.get(`${API}/v3/cached-props`),
         axios.get(`${API}/v3/demon-radar`),
-        axios.get(`${API}/v3/goblin-vault`)
+        axios.get(`${API}/v3/goblin-vault`),
+        axios.get(`${API}/v3/parlay-builder`)
       ]);
       
       if (boardResponse.data.success && boardResponse.data.players_count > 0) {
@@ -1417,6 +1515,12 @@ export const DemonGoblinDashboardOptimized = () => {
       if (vaultResponse.data.success) {
         setVaultPicks(vaultResponse.data.picks || []);
         console.log(`[VAULT] Loaded ${vaultResponse.data.picks_count} vault picks`);
+      }
+      
+      // Load parlay data
+      if (parlayResponse.data.success) {
+        setParlayData(parlayResponse.data.parlays || {});
+        console.log(`[PARLAY] Loaded ${Object.keys(parlayResponse.data.parlays || {}).length} parlay types`);
       }
       
     } catch (error) {
@@ -1683,6 +1787,51 @@ export const DemonGoblinDashboardOptimized = () => {
                   onClick={() => handleVaultClick(pick)}
                 />
               ))}
+            </div>
+          </div>
+        )}
+
+        {/* THE BIG MONEY BUILDER - Parlay Generator */}
+        {Object.keys(parlayData).length > 0 && (
+          <div data-testid="parlay-section" className="mt-6">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <DollarSign className="w-5 h-5 text-amber-500" />
+                <span className="text-sm font-bold text-amber-400">THE BIG MONEY BUILDER</span>
+                <Badge className="bg-amber-950/50 text-amber-400 border-amber-800/50 text-[10px]">
+                  PARLAY GENERATOR
+                </Badge>
+              </div>
+              <div className="text-[10px] text-zinc-500">
+                Whale Scoring + Correlation Filter
+              </div>
+            </div>
+            
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+              {[2, 3, 4, 5, 6].map(pickCount => {
+                const parlay = parlayData[`${pickCount}_pick`];
+                if (!parlay) return null;
+                return (
+                  <ParlayCard
+                    key={`parlay-${pickCount}`}
+                    parlay={parlay}
+                    pickCount={pickCount}
+                    onClick={() => {
+                      toast.info(
+                        `${parlay.name} Parlay`,
+                        { description: `${pickCount} picks | Est. ${parlay.estimated_payout}x payout` }
+                      );
+                    }}
+                  />
+                );
+              })}
+            </div>
+            
+            {/* Parlay Legend */}
+            <div className="mt-2 flex items-center justify-center gap-4 text-[10px] text-zinc-500">
+              <span><Flame className="w-3 h-3 inline text-orange-400" /> = Heat Boost (20%)</span>
+              <span><Layers className="w-3 h-3 inline text-blue-400" /> = Same-Game Correlation</span>
+              <span><TrendingUp className="w-3 h-3 inline text-green-400" /> = 30%+ Ceiling Frequency</span>
             </div>
           </div>
         )}

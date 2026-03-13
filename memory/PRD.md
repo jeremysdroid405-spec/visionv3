@@ -7,6 +7,42 @@ Build a high-performance NBA Player Prop Dashboard that identifies "Demons" (har
 
 ---
 
+## THE BIG MONEY BUILDER - COMPLETED (March 13, 2026)
+
+### Whale Scoring Algorithm ✅
+**Criteria:**
+1. **Ceiling Frequency**: Filter demons with H10 >= 30% (hit at least 3/10 times)
+2. **Recent Heat**: 20% boost if player hit in last 2 games
+3. **Correlation Filter**: Pair players from same game for 4-6 pick parlays
+
+**Formula:**
+```
+Whale Score = (H10 × 0.6 + H5 × 0.4) × heat_boost
+heat_boost = 1.20 if hit in last 2 games, else 1.0
+```
+
+### Parlay Types ✅
+| Type | Name | Description | Payout Range |
+|------|------|-------------|--------------|
+| 2-Pick | Double Demon | Top 2 highest radar picks | 5x - 10x |
+| 3-Pick | Triple Threat | #1 + correlated teammates | 15x - 25x |
+| 4-Pick | Power Play | 4 picks with game correlation | 40x - 80x |
+| 5-Pick | Heavy Hitter | 5 high-value picks | 150x - 300x |
+| 6-Pick | 2000x Lotto | Top 6 highest-probability | 500x - 2000x |
+
+### UI Cards ✅
+- **Color-coded**: Amber (2) → Orange (3) → Red (4) → Purple (5) → Pink (6)
+- **Payout badges**: Shows estimated multiplier ($3x, $24x, $64x)
+- **Heat indicators**: 🔥 for players with recent hot streaks
+- **Combined probability**: Calculated across all legs
+
+### Latest Results
+- **395 demons analyzed**
+- **Power Play (4-Pick)**: 3 Phoenix Suns players correlated
+- **Example**: Royce O'Neale 🔥 + Ousmane Dieng 🔥 = 3x payout
+
+---
+
 ## THE GOBLIN VAULT - COMPLETED (March 13, 2026)
 
 ### Vault Scoring Algorithm ✅

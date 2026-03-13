@@ -1210,6 +1210,27 @@ async def get_goblin_vault():
     return result
 
 
+@api_router.get("/v3/parlay-builder")
+async def get_parlay_builder():
+    """
+    THE BIG MONEY BUILDER - Parlay Generator
+    
+    Returns 5 parlay types (2-pick to 6-pick) with:
+    - Player picks with demon stats
+    - Estimated payout multipliers
+    - Combined probability calculations
+    - Game correlation info
+    
+    NO API CALLS - reads from pre-calculated MongoDB data.
+    """
+    if not demon_goblin_engine:
+        raise HTTPException(status_code=500, detail="Engine not initialized")
+    
+    result = await demon_goblin_engine.get_parlay_builder()
+    
+    return result
+
+
 # ==================== SCHEDULER ENDPOINTS ====================
 
 @api_router.get("/v3/scheduler-status")
