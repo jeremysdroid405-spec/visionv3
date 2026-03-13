@@ -11,6 +11,9 @@ import DemonGoblinDashboard from './pages/DemonGoblinDashboard';
 import DemonGoblinDashboardOptimized from './pages/DemonGoblinDashboardOptimized';
 import { Toaster } from 'sonner';
 
+// Demo mode wrapper - passes isDemoMode prop to dashboard
+const DemoModeWrapper = () => <DemonGoblinDashboardOptimized isDemoMode={true} />;
+
 function App() {
   return (
     <AuthProvider>
@@ -68,6 +71,9 @@ function App() {
             
             {/* Demo page - public for testing */}
             <Route path="/demo" element={<DashboardDemo />} />
+            
+            {/* V3 Demo mode - public, full dashboard without auth */}
+            <Route path="/v3/demo" element={<DemoModeWrapper />} />
           </Routes>
         </BrowserRouter>
       </div>

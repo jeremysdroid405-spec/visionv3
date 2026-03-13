@@ -2234,7 +2234,7 @@ PlayerRow.displayName = 'PlayerRow';
 
 // ==================== MAIN DASHBOARD ====================
 
-export const DemonGoblinDashboardOptimized = () => {
+export const DemonGoblinDashboardOptimized = ({ isDemoMode = false }) => {
   // Auth
   const { user, logout } = useAuth();
   const navigate = useNavigate();
@@ -2454,6 +2454,28 @@ export const DemonGoblinDashboardOptimized = () => {
 
   return (
     <div className="min-h-screen bg-zinc-950">
+      {/* Demo Mode Banner */}
+      {isDemoMode && (
+        <div className="bg-gradient-to-r from-amber-600/20 via-purple-600/20 to-amber-600/20 border-b border-amber-500/30 px-4 py-2">
+          <div className="flex items-center justify-center gap-3">
+            <div className="flex items-center gap-2">
+              <Zap className="w-4 h-4 text-amber-400" />
+              <span className="text-amber-200 text-sm font-medium">Demo Mode</span>
+            </div>
+            <span className="text-zinc-400 text-xs hidden sm:inline">|</span>
+            <span className="text-zinc-400 text-xs hidden sm:inline">Explore all features without an account</span>
+            <Button
+              onClick={() => navigate('/auth')}
+              size="sm"
+              className="ml-2 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 text-xs px-3 py-1 h-7"
+              data-testid="demo-signup-btn"
+            >
+              Create Account
+            </Button>
+          </div>
+        </div>
+      )}
+      
       {/* Header - Mobile Optimized */}
       <header className="sticky top-0 z-10 bg-zinc-950/95 backdrop-blur border-b border-zinc-800 px-3 py-2.5">
         <div className="flex items-center justify-between gap-2">
@@ -2492,50 +2514,67 @@ export const DemonGoblinDashboardOptimized = () => {
             
             {/* User Menu */}
             <div className="relative">
-              <Button
-                onClick={() => setShowUserMenu(!showUserMenu)}
-                variant="ghost"
-                size="sm"
-                className="text-zinc-400 hover:text-white p-1.5 flex items-center gap-1.5"
-                data-testid="user-menu-btn"
-              >
-                <div className="w-6 h-6 rounded-full bg-gradient-to-br from-amber-500 to-red-500 flex items-center justify-center">
-                  <User className="w-3.5 h-3.5 text-white" />
-                </div>
-              </Button>
-              
-              {showUserMenu && (
-                <div className="absolute right-0 mt-2 w-56 bg-zinc-900 border border-zinc-800 rounded-lg shadow-xl z-50">
-                  <div className="p-3 border-b border-zinc-800">
-                    <div className="flex items-center gap-2">
-                      <div className="w-8 h-8 rounded-full bg-gradient-to-br from-amber-500 to-red-500 flex items-center justify-center">
-                        <User className="w-4 h-4 text-white" />
+              {isDemoMode ? (
+                // Demo mode - show Login button instead of user menu
+                <Button
+                  onClick={() => navigate('/auth')}
+                  variant="ghost"
+                  size="sm"
+                  className="text-amber-400 hover:text-amber-300 p-1.5 flex items-center gap-1.5 border border-amber-500/30"
+                  data-testid="demo-login-btn"
+                >
+                  <User className="w-4 h-4" />
+                  <span className="text-xs hidden sm:inline">Login</span>
+                </Button>
+              ) : (
+                // Normal mode - show user menu
+                <>
+                  <Button
+                    onClick={() => setShowUserMenu(!showUserMenu)}
+                    variant="ghost"
+                    size="sm"
+                    className="text-zinc-400 hover:text-white p-1.5 flex items-center gap-1.5"
+                    data-testid="user-menu-btn"
+                  >
+                    <div className="w-6 h-6 rounded-full bg-gradient-to-br from-amber-500 to-red-500 flex items-center justify-center">
+                      <User className="w-3.5 h-3.5 text-white" />
+                    </div>
+                  </Button>
+                  
+                  {showUserMenu && (
+                    <div className="absolute right-0 mt-2 w-56 bg-zinc-900 border border-zinc-800 rounded-lg shadow-xl z-50 user-menu-dropdown">
+                      <div className="p-3 border-b border-zinc-800">
+                        <div className="flex items-center gap-2">
+                          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-amber-500 to-red-500 flex items-center justify-center">
+                            <User className="w-4 h-4 text-white" />
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="text-sm font-medium text-white truncate">{user?.full_name || 'User'}</p>
+                            <p className="text-xs text-zinc-500 truncate">{user?.email}</p>
+                          </div>
+                        </div>
                       </div>
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm font-medium text-white truncate">{user?.full_name || 'User'}</p>
-                        <p className="text-xs text-zinc-500 truncate">{user?.email}</p>
+                      <div className="p-1">
+                        <button
+                          className="w-full flex items-center gap-2 px-3 py-2 text-sm text-zinc-400 hover:text-white hover:bg-zinc-800 rounded transition-colors"
+                          data-testid="pro-tier-btn"
+                        >
+                          <Crown className="w-4 h-4 text-amber-400" />
+                          <span>Upgrade to Pro</span>
+                          <Badge className="ml-auto bg-amber-500/20 text-amber-400 border-none text-[10px]">Soon</Badge>
+                        </button>
+                        <button
+                          onClick={handleLogout}
+                          className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-400 hover:text-red-300 hover:bg-red-950/30 rounded transition-colors"
+                          data-testid="logout-btn"
+                        >
+                          <LogOut className="w-4 h-4" />
+                          <span>Logout</span>
+                        </button>
                       </div>
                     </div>
-                  </div>
-                  <div className="p-1">
-                    <button
-                      className="w-full flex items-center gap-2 px-3 py-2 text-sm text-zinc-400 hover:text-white hover:bg-zinc-800 rounded transition-colors"
-                      data-testid="pro-tier-btn"
-                    >
-                      <Crown className="w-4 h-4 text-amber-400" />
-                      <span>Upgrade to Pro</span>
-                      <Badge className="ml-auto bg-amber-500/20 text-amber-400 border-none text-[10px]">Soon</Badge>
-                    </button>
-                    <button
-                      onClick={handleLogout}
-                      className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-400 hover:text-red-300 hover:bg-red-950/30 rounded transition-colors"
-                      data-testid="logout-btn"
-                    >
-                      <LogOut className="w-4 h-4" />
-                      <span>Logout</span>
-                    </button>
-                  </div>
-                </div>
+                  )}
+                </>
               )}
             </div>
           </div>

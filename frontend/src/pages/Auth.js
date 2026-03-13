@@ -6,7 +6,7 @@ import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '../components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
-import { Skull, Ghost, TrendingUp } from 'lucide-react';
+import { Skull, Ghost, TrendingUp, Play } from 'lucide-react';
 import { toast } from 'sonner';
 
 export const Auth = () => {
@@ -237,6 +237,22 @@ export const Auth = () => {
         <p className="text-center text-zinc-500 text-xs mt-6">
           Find high-value Demons (boosted lines) & safe Goblins (easy overs)
         </p>
+        
+        {/* Demo Mode Button */}
+        <div className="mt-6 pt-6 border-t border-zinc-800">
+          <Button
+            onClick={() => navigate('/v3/demo')}
+            data-testid="try-demo-btn"
+            variant="outline"
+            className="w-full bg-transparent border-zinc-700 text-zinc-400 hover:bg-zinc-800 hover:text-white hover:border-zinc-600 transition-all"
+          >
+            <Play className="w-4 h-4 mr-2" />
+            Try Demo Mode
+          </Button>
+          <p className="text-center text-zinc-600 text-[10px] mt-2">
+            Explore the full dashboard without creating an account
+          </p>
+        </div>
       </div>
     </div>
   );

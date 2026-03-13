@@ -35,6 +35,7 @@ Build a high-performance NBA Player Prop Dashboard that mimics the PrizePicks us
 - [x] **Advanced Analytics Backend** - Schedule density, pace, usage bumps, volatility
 - [x] **Advanced Analytics Frontend** - Display insights in prop dropdowns (Dec 13, 2025)
 - [x] **Daily Sync Automation** - APScheduler at 4:00 AM UTC for all data syncs
+- [x] **Demo Mode** - Public /v3/demo route allows exploring full dashboard without account (Dec 13, 2025)
 
 ### IN PROGRESS
 - [ ] **Player News/Injury Data** - Tank01 API or alternative for real-time alerts
@@ -149,6 +150,7 @@ Build a high-performance NBA Player Prop Dashboard that mimics the PrizePicks us
 ---
 
 ## Recent Changes (Dec 13, 2025)
+- **Demo Mode** - Added `/v3/demo` public route with demo banner and Login button for non-authenticated access
 - **Advanced Analytics Frontend** - Completed integration of insights display in LadderPropRow
 - **_add_player_insights()** - New method to merge insights into cached player data
 - **Daily Sync Order** - Verified: stats → odds → insights
