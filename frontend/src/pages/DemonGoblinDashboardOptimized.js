@@ -1112,18 +1112,27 @@ const ParlayCard = memo(({ parlay, pickCount, onClick }) => {
           {picks.slice(0, 4).map((pick, idx) => (
             <div 
               key={`${pick.player_name}-${pick.stat_type}-${idx}`}
-              className="flex items-center justify-between bg-zinc-900/50 rounded px-2 py-1"
+              className="bg-zinc-900/50 rounded px-2 py-1"
             >
-              <div className="flex items-center gap-2 min-w-0">
-                <DemonIcon size={12} className="flex-shrink-0" />
-                <span className="text-xs text-white truncate">{pick.player_name}</span>
-                <span className="text-[10px] text-zinc-500">{pick.team}</span>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 min-w-0">
+                  <DemonIcon size={12} className="flex-shrink-0" />
+                  <span className="text-xs text-white truncate">{pick.player_name}</span>
+                  <span className="text-[10px] text-zinc-500">{pick.team}</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[10px] text-zinc-400">{pick.stat_type}</span>
+                  <span className="text-xs font-bold text-white">{pick.line}</span>
+                  {pick.has_heat_boost && <Flame className="w-3 h-3 text-orange-400" />}
+                  {pick.insight_summary && <Zap className="w-3 h-3 text-purple-400" title="Has AI Vision" />}
+                </div>
               </div>
-              <div className="flex items-center gap-1.5">
-                <span className="text-[10px] text-zinc-400">{pick.stat_type}</span>
-                <span className="text-xs font-bold text-white">{pick.line}</span>
-                {pick.has_heat_boost && <Flame className="w-3 h-3 text-orange-400" />}
-              </div>
+              {/* Mini Vision Preview */}
+              {pick.insight_summary && (
+                <div className="mt-1 text-[9px] text-purple-300/70 line-clamp-1 italic pl-5">
+                  "{pick.insight_summary}"
+                </div>
+              )}
             </div>
           ))}
           {picks.length > 4 && (
@@ -1275,20 +1284,29 @@ const GoldmineCard = memo(({ parlay, tier, onClick }) => {
           {picks.slice(0, 4).map((pick, idx) => (
             <div 
               key={`${pick.player_name}-${pick.stat_type}-${idx}`}
-              className="flex items-center justify-between bg-zinc-900/50 rounded px-2 py-1"
+              className="bg-zinc-900/50 rounded px-2 py-1"
             >
-              <div className="flex items-center gap-2 min-w-0">
-                <GoblinIcon size={12} className="flex-shrink-0" />
-                <span className="text-xs text-white truncate">{pick.player_name}</span>
-                <span className="text-[10px] text-zinc-500">{pick.team}</span>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 min-w-0">
+                  <GoblinIcon size={12} className="flex-shrink-0" />
+                  <span className="text-xs text-white truncate">{pick.player_name}</span>
+                  <span className="text-[10px] text-zinc-500">{pick.team}</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[10px] text-zinc-400">{pick.stat_type}</span>
+                  <span className="text-xs font-bold text-emerald-300">{pick.line}</span>
+                  {pick.is_goldmine_lock && (
+                    <span className="text-[8px] bg-emerald-500/30 text-emerald-300 px-1 rounded">LOCK</span>
+                  )}
+                  {pick.insight_summary && <Zap className="w-3 h-3 text-purple-400" title="Has AI Vision" />}
+                </div>
               </div>
-              <div className="flex items-center gap-1.5">
-                <span className="text-[10px] text-zinc-400">{pick.stat_type}</span>
-                <span className="text-xs font-bold text-emerald-300">{pick.line}</span>
-                {pick.is_goldmine_lock && (
-                  <span className="text-[8px] bg-emerald-500/30 text-emerald-300 px-1 rounded">LOCK</span>
-                )}
-              </div>
+              {/* Mini Vision Preview */}
+              {pick.insight_summary && (
+                <div className="mt-1 text-[9px] text-purple-300/70 line-clamp-1 italic pl-5">
+                  "{pick.insight_summary}"
+                </div>
+              )}
             </div>
           ))}
           {picks.length > 4 && (
@@ -1430,6 +1448,19 @@ const ParlayPickCard = memo(({ pick, idx, isGoldmine, colors, playerData, onPick
             )}
           </div>
         </div>
+        
+        {/* THE VISION - AI Insight Preview (Always visible) */}
+        {pick.insight_summary && (
+          <div className="mt-2 bg-gradient-to-r from-purple-950/40 via-zinc-900/50 to-purple-950/40 rounded-lg px-3 py-2 border border-purple-800/30">
+            <div className="flex items-center gap-1.5 mb-1">
+              <Zap className="w-3 h-3 text-purple-400" />
+              <span className="text-[9px] text-purple-400 uppercase tracking-wider font-semibold">The Vision</span>
+            </div>
+            <p className="text-[11px] text-purple-200/80 leading-relaxed line-clamp-2 italic">
+              "{pick.insight_summary}"
+            </p>
+          </div>
+        )}
       </div>
       
       {/* Expanded Hit Rate Dropdown */}
@@ -1506,6 +1537,53 @@ const ParlayPickCard = memo(({ pick, idx, isGoldmine, colors, playerData, onPick
                     </Badge>
                   )}
                 </div>
+              </div>
+            )}
+            
+            {/* THE VISION - Full AI Analysis Section */}
+            {pick.insight_summary && (
+              <div className="mt-3 pt-3 border-t border-purple-800/30">
+                <div className="flex items-center gap-1.5 mb-2">
+                  <Zap className="w-3.5 h-3.5 text-purple-400" />
+                  <span className="text-[10px] text-purple-400 uppercase tracking-wider font-semibold">THE VISION</span>
+                  <span className="text-[9px] text-zinc-600">AI Analysis</span>
+                </div>
+                
+                {/* AI Insight Box */}
+                <div className="bg-gradient-to-r from-purple-950/50 via-zinc-900 to-purple-950/50 rounded-lg px-3 py-2.5 border border-purple-700/40 relative overflow-hidden">
+                  <div className="absolute top-0 left-0 w-1 h-full bg-gradient-to-b from-purple-500 to-purple-700" />
+                  <p className="text-sm text-purple-200 leading-relaxed pl-2 italic">
+                    "{pick.insight_summary}"
+                  </p>
+                </div>
+                
+                {/* AI Confidence Meter */}
+                {pick.ai_confidence_rating !== undefined && (
+                  <div className="mt-2">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-[9px] text-zinc-500 uppercase tracking-wider">AI Confidence</span>
+                      <span className={`text-xs font-bold ${
+                        pick.ai_confidence_rating >= 80 ? 'text-green-400' :
+                        pick.ai_confidence_rating >= 60 ? 'text-yellow-400' :
+                        pick.ai_confidence_rating >= 40 ? 'text-orange-400' :
+                        'text-red-400'
+                      }`}>
+                        {pick.ai_confidence_rating}%
+                      </span>
+                    </div>
+                    <div className="h-1.5 bg-zinc-800 rounded-full overflow-hidden">
+                      <div 
+                        className={`h-full rounded-full transition-all ${
+                          pick.ai_confidence_rating >= 80 ? 'bg-gradient-to-r from-green-600 to-green-400' :
+                          pick.ai_confidence_rating >= 60 ? 'bg-gradient-to-r from-yellow-600 to-yellow-400' :
+                          pick.ai_confidence_rating >= 40 ? 'bg-gradient-to-r from-orange-600 to-orange-400' :
+                          'bg-gradient-to-r from-red-600 to-red-400'
+                        }`}
+                        style={{ width: `${pick.ai_confidence_rating}%` }}
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>

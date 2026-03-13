@@ -43,6 +43,10 @@ Build a high-performance NBA Player Prop Dashboard that mimics the PrizePicks us
 - None currently
 
 ### RECENTLY COMPLETED (Dec 13, 2025)
+- [x] **Vision Integration in Parlay Makers** - Added AI insights to all parlay picks:
+  - Both "Big Money Builder" and "Goblin Goldmine" now enrich picks with `insight_summary` and `ai_confidence_rating`
+  - Parlay card picks show ⚡ indicator and mini Vision preview text
+  - Expanded parlay modal shows full Vision section with AI insight box and confidence meter
 - [x] **"Ultra-Pro" Icon Refresh** - Replaced all old Skull/Ghost icons with custom SVG glyphs:
   - **DemonIcon**: Red spike/crown shape (King of Longshots)
   - **GoblinIcon**: Green hex-stack (Vault Hunter)

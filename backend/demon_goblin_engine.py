@@ -3516,6 +3516,7 @@ class DemonGoblinEngine:
     async def get_parlay_builder(self) -> Dict[str, Any]:
         """
         Get the Parlay Builder (Big Money) parlays from MongoDB.
+        Enriches picks with AI insights from daily_insights collection.
         NO API CALLS - reads only from database.
         """
         doc = await self.parlay_builder.find_one({}, {"_id": 0})
@@ -3527,12 +3528,25 @@ class DemonGoblinEngine:
                 "parlays": {}
             }
         
+        # Enrich each pick in each parlay with AI insights
+        parlays = doc.get("parlays", {})
+        for parlay_key, parlay_data in parlays.items():
+            picks = parlay_data.get("picks", [])
+            for pick in picks:
+                insight = await self.daily_insights.find_one(
+                    {"player_name": pick.get('player_name')},
+                    {"_id": 0, "insight_summary": 1, "ai_confidence_rating": 1}
+                )
+                if insight:
+                    pick['insight_summary'] = insight.get('insight_summary', '')
+                    pick['ai_confidence_rating'] = insight.get('ai_confidence_rating', 50)
+        
         return {
             "success": True,
             "synced_at": doc.get("synced_at"),
             "total_demons_analyzed": doc.get("total_demons_analyzed", 0),
             "games_with_correlation": doc.get("games_with_correlation", 0),
-            "parlays": doc.get("parlays", {}),
+            "parlays": parlays,
             "algorithm": {
                 "description": "Whale Scoring + Correlation Filter",
                 "whale_score": "(H10 × 0.6) + (H5 × 0.4) × heat_boost",
@@ -3546,6 +3560,7 @@ class DemonGoblinEngine:
         """
         Get the Goblin Goldmine parlays from MongoDB.
         High-consistency Goblin-only parlays for maximum win probability.
+        Enriches picks with AI insights from daily_insights collection.
         NO API CALLS - reads only from database.
         """
         doc = await self.goblin_goldmine.find_one({}, {"_id": 0})
@@ -3557,13 +3572,26 @@ class DemonGoblinEngine:
                 "parlays": {}
             }
         
+        # Enrich each pick in each parlay with AI insights
+        parlays = doc.get("parlays", {})
+        for parlay_key, parlay_data in parlays.items():
+            picks = parlay_data.get("picks", [])
+            for pick in picks:
+                insight = await self.daily_insights.find_one(
+                    {"player_name": pick.get('player_name')},
+                    {"_id": 0, "insight_summary": 1, "ai_confidence_rating": 1}
+                )
+                if insight:
+                    pick['insight_summary'] = insight.get('insight_summary', '')
+                    pick['ai_confidence_rating'] = insight.get('ai_confidence_rating', 50)
+        
         return {
             "success": True,
             "synced_at": doc.get("synced_at"),
             "total_candidates": doc.get("total_candidates", 0),
             "goldmine_locks": doc.get("goldmine_locks", 0),
             "games_available": doc.get("games_available", 0),
-            "parlays": doc.get("parlays", {}),
+            "parlays": parlays,
             "algorithm": {
                 "name": "Floor Scoring ($F$)",
                 "description": "Maximum win probability using high-consistency Goblins",
