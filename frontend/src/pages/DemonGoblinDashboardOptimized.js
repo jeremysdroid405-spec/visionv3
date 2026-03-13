@@ -1421,7 +1421,7 @@ const getCategoryColor = (key) => {
 
 // ==================== CATEGORY ACCORDION ====================
 
-const CategoryAccordion = memo(({ categoryKey, categoryName, props, isExpanded, onToggle, stats, isHighlightedProp, highlightRef, glowClass = 'beacon-glow', glowSubtleClass = 'beacon-glow-subtle', highlightType = 'demon' }) => {
+const CategoryAccordion = memo(({ categoryKey, categoryName, props, isExpanded, onToggle, stats, isHighlightedProp, highlightRef, glowClass = 'beacon-glow', glowSubtleClass = 'beacon-glow-subtle', highlightType = 'demon', playerInsights }) => {
   // Count demons, goblins, standard
   const demons = props.filter(p => p.is_demon);
   const goblins = props.filter(p => p.is_goblin);
@@ -1563,6 +1563,7 @@ const CategoryAccordion = memo(({ categoryKey, categoryName, props, isExpanded, 
               highlightRef={highlightRef}
               glowClass={glowClass}
               highlightType={highlightType}
+              playerInsights={playerInsights}
             />
           ))}
         </div>
@@ -1794,6 +1795,64 @@ const LadderPropRow = memo(({ prop, categoryStats, isFirst, isLast, isHighlighte
                     )}
                   </div>
                 </div>
+                
+                {/* Advanced Analytics Section */}
+                {insightSummary && (
+                  <div className="mt-3 pt-3 border-t border-zinc-700/50">
+                    <div className="text-[10px] text-zinc-500 uppercase tracking-wider font-semibold mb-2 flex items-center gap-1">
+                      <Zap className="w-3 h-3" />
+                      Advanced Analytics
+                    </div>
+                    
+                    {/* Insight Summary */}
+                    <div className="bg-gradient-to-r from-purple-950/30 to-zinc-900 rounded px-2 py-2 mb-2 text-xs text-purple-300 border border-purple-800/30">
+                      {insightSummary}
+                    </div>
+                    
+                    {/* Analytics Grid */}
+                    <div className="grid grid-cols-2 gap-2">
+                      {/* Volatility Score */}
+                      <div className="flex items-center justify-between bg-zinc-800/40 rounded px-2 py-1.5">
+                        <span className="text-[10px] text-zinc-500">Volatility</span>
+                        <span className={`text-xs font-bold px-1.5 py-0.5 rounded ${getVolatilityColor(volatilityScore)}`}>
+                          {volatilityScore}
+                        </span>
+                      </div>
+                      
+                      {/* Pace Factor */}
+                      <div className="flex items-center justify-between bg-zinc-800/40 rounded px-2 py-1.5">
+                        <span className="text-[10px] text-zinc-500">Pace</span>
+                        <span className={`text-xs font-bold ${
+                          paceFactor > 1.02 ? 'text-green-400' : 
+                          paceFactor < 0.98 ? 'text-red-400' : 
+                          'text-zinc-300'
+                        }`}>
+                          {paceFactor > 1.0 ? '+' : ''}{((paceFactor - 1) * 100).toFixed(0)}%
+                        </span>
+                      </div>
+                      
+                      {/* Usage Bump */}
+                      {usageBump > 0 && (
+                        <div className="flex items-center justify-between bg-green-950/30 rounded px-2 py-1.5 border border-green-800/30">
+                          <span className="text-[10px] text-green-400">Usage Bump</span>
+                          <span className="text-xs font-bold text-green-400">+{usageBump.toFixed(0)}%</span>
+                        </div>
+                      )}
+                      
+                      {/* AI Confidence */}
+                      <div className="flex items-center justify-between bg-zinc-800/40 rounded px-2 py-1.5">
+                        <span className="text-[10px] text-zinc-500">AI Confidence</span>
+                        <span className={`text-xs font-bold ${
+                          confidenceRating >= 70 ? 'text-green-400' :
+                          confidenceRating >= 50 ? 'text-yellow-400' :
+                          'text-red-400'
+                        }`}>
+                          {confidenceRating}%
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </>
             )}
           </div>
@@ -2078,6 +2137,7 @@ const PlayerDetailPage = ({ playerName, onBack, highlightProp = null, highlightT
                   glowClass={glowClass}
                   glowSubtleClass={glowSubtleClass}
                   highlightType={highlightType}
+                  playerInsights={player?.insights}
                 />
               );
             })}

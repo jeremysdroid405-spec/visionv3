@@ -3598,6 +3598,7 @@ class DemonGoblinEngine:
     async def get_cached_player(self, player_name: str) -> Dict[str, Any]:
         """
         Get a single player from the CACHED board.
+        Also includes advanced analytics insights from dg_daily_insights.
         NO API CALLS - reads only from database.
         """
         # Try exact match first
@@ -3609,6 +3610,8 @@ class DemonGoblinEngine:
         if player:
             # Clean ObjectIds from nested arrays
             self._clean_object_ids(player)
+            # Add insights data
+            await self._add_player_insights(player)
             return {"success": True, "player": player}
         
         # Try case-insensitive search
@@ -3619,6 +3622,7 @@ class DemonGoblinEngine:
         
         if player:
             self._clean_object_ids(player)
+            await self._add_player_insights(player)
             return {"success": True, "player": player}
         
         # Fuzzy search
@@ -3638,6 +3642,7 @@ class DemonGoblinEngine:
                 {"_id": 0}
             )
             self._clean_object_ids(player)
+            await self._add_player_insights(player)
             return {"success": True, "player": player, "matched_name": best_match}
         
         return {
@@ -3645,6 +3650,34 @@ class DemonGoblinEngine:
             "message": "Lines loading... Player not in cache.",
             "player": None
         }
+    
+    async def _add_player_insights(self, player: Dict) -> None:
+        """Fetch and add insights data to a player dict."""
+        if not player or not player.get("player_name"):
+            return
+        
+        insights = await self.daily_insights.find_one(
+            {"player_name": player["player_name"]},
+            {"_id": 0, "player_name": 0, "team": 0, "synced_at": 0}
+        )
+        
+        if insights:
+            player["insights"] = insights
+        else:
+            # Provide default insights if not calculated yet
+            player["insights"] = {
+                "schedule_density_factor": 1.0,
+                "pace_adjustment_factor": 1.0,
+                "usage_bump_percent": 0,
+                "volatility_score": "Low",
+                "volatility_stddev": 0,
+                "insight_summary": "",
+                "ai_confidence_rating": 50,
+                "is_back_to_back": False,
+                "is_three_in_four": False,
+                "days_rest": 2,
+                "injured_teammates": []
+            }
     
     def _clean_object_ids(self, player: Dict) -> None:
         """Remove all ObjectId fields from nested arrays to prevent serialization errors"""
