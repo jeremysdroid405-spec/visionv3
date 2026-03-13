@@ -1,8 +1,14 @@
 """
-Demon & Goblin Analytics Engine v3.1
+Demon & Goblin Analytics Engine v3.2
 =====================================
 
 PrizePicks-Specific System for NBA Player Props
+
+ARCHITECTURE RESET (v3.2):
+- Single source of truth: All data enrichment happens during sync
+- Dumb components: Demon Radar, Goblin Recon, Gauntlet, Safe Haven just read data
+- Tank01 playerID as primary key
+- No runtime lookups
 
 API Configuration:
 - Region: us_dfs (Daily Fantasy Sports - includes PrizePicks)
@@ -13,21 +19,14 @@ Classification (PrizePicks Native):
 - Goblin (Green): Default odds lines - easier, high-probability props
 - Demon (Red): Even odds (+100) lines - harder, boosted props
 
-Hybrid Caching Strategy:
-1. STATIC SHELL (24h cache): Player metadata, teams, positions, historical stats
-2. DYNAMIC PULSE (60s cache): Betting lines only (price, point, demon/goblin tags)
+Payout Calculation Engine (v3.2):
+- Leg-level modifiers: Standard (1.0), Demon (1.1-1.5), Goblin (0.7-0.9)
+- Formula: Total Payout = Base Multiplier × (Mod_1 × Mod_2 × ... × Mod_n)
 
 Triple-Pillar Integration:
 1. The Odds API (us_dfs/prizepicks) - All PrizePicks lines
 2. BallDontLie API - Player stats for hit rate calculation
 3. Tank01 API - Injury reports and player news
-
-Advanced Analytics (v3.1):
-- Schedule Density Factor (fatigue from B2B, 3-in-4)
-- Pace Adjustment Factor (matchup tempo)
-- Usage Ripple Effect (teammate injuries)
-- Volatility Score (consistency rating)
-- Template-based Insight Summaries
 
 DATA INTEGRITY (v3.1):
 - Triple-check verification for all stats
@@ -49,6 +48,15 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 
 # Data Integrity Module
 from data_integrity import DataIntegrityVerifier, create_verified_insight
+
+# Payout Calculation Engine
+from payout_engine import (
+    calculate_payout_from_picks,
+    calculate_leg_modifier,
+    estimate_payout,
+    AssetType,
+    BASE_MULTIPLIERS
+)
 
 # NBA.com API fallback for players missing from BallDontLie
 try:
@@ -3492,19 +3500,34 @@ class DemonGoblinEngine:
         
         parlays = {}
         
+        def calculate_live_payout(picks: List[Dict]) -> Dict:
+            """Calculate live payout using the payout engine."""
+            payout_result = calculate_payout_from_picks(picks)
+            return {
+                "estimated_payout": payout_result.get("estimated_payout", 0),
+                "payout_display": payout_result.get("payout_display", "0x"),
+                "cumulative_modifier": payout_result.get("cumulative_modifier", 1.0),
+                "base_multiplier": payout_result.get("base_multiplier", 3.0),
+                "asset_breakdown": payout_result.get("asset_breakdown", {}),
+                "legs": payout_result.get("legs", [])
+            }
+        
         # ==================== 2-PICK (Double Up) ====================
         if len(high_prob_demons) >= 2:
             picks_2, is_valid, team_count = get_multi_team_picks(high_prob_demons, 2)
             if picks_2:
                 combined_prob = self._calculate_parlay_probability(picks_2)
+                payout_data = calculate_live_payout(picks_2)
                 parlays["2_pick"] = {
                     "name": "Double Up",
                     "picks": picks_2,
                     "pick_count": 2,
                     "combined_probability": combined_prob,
-                    "estimated_payout": 4,
-                    "payout_range": "4x",
-                    "max_payout": 4,
+                    "estimated_payout": payout_data["estimated_payout"],
+                    "payout_display": payout_data["payout_display"],
+                    "base_multiplier": payout_data["base_multiplier"],
+                    "cumulative_modifier": payout_data["cumulative_modifier"],
+                    "asset_breakdown": payout_data["asset_breakdown"],
                     "description": "Top 2 highest-probability demons",
                     "lineup_valid": is_valid,
                     "team_count": team_count,
