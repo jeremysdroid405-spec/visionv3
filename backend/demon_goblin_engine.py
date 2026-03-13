@@ -971,29 +971,31 @@ class DemonGoblinEngine:
         
         return None
     
-    async def get_photo_url_from_master_roster(self, player_name: str) -> Optional[str]:
+    async def get_photo_and_team_from_master_roster(self, player_name: str) -> Optional[Dict]:
         """
-        Look up a player's photo_url from master roster with fuzzy matching.
+        Look up a player's photo_url AND team from master roster with fuzzy matching.
+        
+        Returns dict with photo_url, team_abbreviation, nba_com_id or None if not found.
         
         Handles name variations like:
         - "Herb Jones" vs "Herbert Jones"
-        - "G.G. Jackson" vs "GG Jackson II"
-        - "Derrick Jones" vs "Derrick Jones Jr."
+        - "G.G. Jackson" vs "Gregory Jackson"  
+        - "Jaylen Wells" (exact match only - no partial first name matching)
         - "Jabari Smith Jr." vs "Jabari Smith"
-        - "Isaiah Stewart II" vs "Isaiah Stewart"
-        
-        Returns the ESPN headshot URL if available.
         """
+        if not player_name:
+            return None
+            
         normalized = self.sanitize_player_name(player_name)
         
         # Try exact normalized match first
         doc = await self.master_roster.find_one(
             {"normalized_name": normalized},
-            {"_id": 0, "photo_url": 1}
+            {"_id": 0, "photo_url": 1, "team_abbreviation": 1, "nba_com_id": 1, "player_name": 1}
         )
         
-        if doc and doc.get("photo_url"):
-            return doc.get("photo_url")
+        if doc:
+            return doc
         
         # Remove common suffixes for matching
         name_without_suffix = player_name
@@ -1010,12 +1012,12 @@ class DemonGoblinEngine:
             normalized_no_suffix = self.sanitize_player_name(name_without_suffix)
             doc = await self.master_roster.find_one(
                 {"normalized_name": normalized_no_suffix},
-                {"_id": 0, "photo_url": 1}
+                {"_id": 0, "photo_url": 1, "team_abbreviation": 1, "nba_com_id": 1, "player_name": 1}
             )
-            if doc and doc.get("photo_url"):
-                return doc.get("photo_url")
+            if doc:
+                return doc
         
-        # Try regex matching with first and last name
+        # Try regex matching with BOTH first AND last name (must match both)
         name_parts = name_cleaned.split()
         if len(name_parts) >= 2:
             first_name = name_parts[0]
@@ -1025,37 +1027,78 @@ class DemonGoblinEngine:
             if last_name.lower() in ["jr", "iii", "ii", "iv", "sr"]:
                 last_name = name_parts[-2] if len(name_parts) > 2 else first_name
             
-            # Try exact first + last name match
+            # STRICT: Match must have EXACT last name at word boundary
+            # This prevents "Jaylen Wells" from matching "Jaylen Brown"
             doc = await self.master_roster.find_one(
                 {
                     "player_name": {
-                        "$regex": f"^{first_name}.*{last_name}",
+                        "$regex": f"^{first_name}.*\\b{last_name}\\b",
                         "$options": "i"
                     }
                 },
-                {"_id": 0, "photo_url": 1}
+                {"_id": 0, "photo_url": 1, "team_abbreviation": 1, "nba_com_id": 1, "player_name": 1}
             )
             
-            if doc and doc.get("photo_url"):
-                return doc.get("photo_url")
+            if doc:
+                return doc
             
-            # Try with shortened first name (Herb -> Herbert)
-            if len(first_name) >= 3:
-                first_name_pattern = first_name[:3]
+            # Try nickname/initial expansions for first name ONLY if last name matches exactly
+            # G.G. -> Gregory, Herb -> Herbert, etc.
+            first_name_variations = self._get_name_variations(first_name)
+            for variation in first_name_variations:
                 doc = await self.master_roster.find_one(
                     {
                         "player_name": {
-                            "$regex": f"^{first_name_pattern}.*{last_name}",
+                            "$regex": f"^{variation}.*\\b{last_name}\\b",
                             "$options": "i"
                         }
                     },
-                    {"_id": 0, "photo_url": 1}
+                    {"_id": 0, "photo_url": 1, "team_abbreviation": 1, "nba_com_id": 1, "player_name": 1}
                 )
-                
-                if doc and doc.get("photo_url"):
-                    return doc.get("photo_url")
+                if doc:
+                    return doc
         
         return None
+    
+    def _get_name_variations(self, first_name: str) -> list:
+        """Get common variations/expansions for a first name."""
+        variations = []
+        
+        # Common nickname mappings
+        nickname_map = {
+            "gg": ["gregory", "george"],
+            "jj": ["james", "john", "junior"],
+            "tj": ["thomas", "timothy"],
+            "pj": ["paul", "peter"],
+            "cj": ["charles", "christopher"],
+            "aj": ["anthony", "andrew"],
+            "rj": ["robert", "richard"],
+            "herb": ["herbert"],
+            "mike": ["michael"],
+            "chris": ["christopher"],
+            "matt": ["matthew"],
+            "dan": ["daniel"],
+            "rob": ["robert"],
+            "will": ["william"],
+            "nick": ["nicholas"],
+            "alex": ["alexander"],
+        }
+        
+        # Check for nickname expansion
+        name_lower = first_name.lower().replace(".", "")
+        if name_lower in nickname_map:
+            variations.extend(nickname_map[name_lower])
+        
+        return variations
+
+    async def get_photo_url_from_master_roster(self, player_name: str) -> Optional[str]:
+        """
+        Look up a player's photo_url from master roster with fuzzy matching.
+        
+        Returns the photo URL if available, None otherwise.
+        """
+        result = await self.get_photo_and_team_from_master_roster(player_name)
+        return result.get("photo_url") if result else None
     
     async def refresh_cached_board_photos(self) -> Dict[str, Any]:
         """
@@ -1082,8 +1125,16 @@ class DemonGoblinEngine:
                 "combiner" not in current_photo):
                 continue
             
-            # Try to find photo in master_roster
-            photo_url = await self.get_photo_url_from_master_roster(player_name)
+            # Try to find photo AND team from master_roster
+            player_doc = await self.get_photo_and_team_from_master_roster(player_name)
+            
+            if not player_doc:
+                still_missing.append(player_name)
+                continue
+            
+            photo_url = player_doc.get("photo_url")
+            correct_team = player_doc.get("team_abbreviation")
+            nba_com_id = player_doc.get("nba_com_id")
             
             # Check if it's a real photo (not a nophoto placeholder)
             is_real_photo = (
@@ -1093,37 +1144,28 @@ class DemonGoblinEngine:
                 "combiner" not in photo_url  # combiner URLs often show placeholder
             )
             
+            update_fields = {}
+            
             if is_real_photo:
+                update_fields["photo_url"] = photo_url
+                update_fields["photo_source"] = "espn_matched"
+            elif nba_com_id:
+                # Use NBA.com CDN fallback
+                nba_url = f"https://cdn.nba.com/headshots/nba/latest/1040x760/{nba_com_id}.png"
+                update_fields["photo_url"] = nba_url
+                update_fields["photo_source"] = "nba_cdn_fallback"
+            
+            # Also fix the team if it's wrong
+            if correct_team:
+                update_fields["team"] = correct_team
+            
+            if update_fields:
                 await self.cached_board.update_one(
                     {"player_name": player_name},
-                    {"$set": {"photo_url": photo_url, "photo_source": "espn_matched"}}
+                    {"$set": update_fields}
                 )
                 updated += 1
-                logger.info(f"[PHOTO REFRESH] Updated {player_name}: {photo_url[:50]}...")
-            else:
-                # Try to get NBA.com ID from master_roster for fallback
-                player_doc = await self.master_roster.find_one(
-                    {"player_name": {"$regex": player_name.split()[0], "$options": "i"}},
-                    {"nba_com_id": 1, "team_abbreviation": 1, "team_logo_url": 1}
-                )
-                
-                if player_doc and player_doc.get("nba_com_id"):
-                    nba_url = f"https://cdn.nba.com/headshots/nba/latest/1040x760/{player_doc['nba_com_id']}.png"
-                    await self.cached_board.update_one(
-                        {"player_name": player_name},
-                        {"$set": {"photo_url": nba_url, "photo_source": "nba_cdn_fallback"}}
-                    )
-                    updated += 1
-                    logger.info(f"[PHOTO REFRESH] NBA.com fallback for {player_name}")
-                elif player_doc and player_doc.get("team_logo_url"):
-                    await self.cached_board.update_one(
-                        {"player_name": player_name},
-                        {"$set": {"photo_url": player_doc["team_logo_url"], "photo_source": "team_logo_fallback"}}
-                    )
-                    updated += 1
-                    logger.info(f"[PHOTO REFRESH] Team logo fallback for {player_name}")
-                else:
-                    still_missing.append(player_name)
+                logger.info(f"[PHOTO REFRESH] Updated {player_name}: team={correct_team}, photo={update_fields.get('photo_source', 'N/A')}")
         
         # Update sync timestamp if we made changes (forces frontend cache invalidation)
         if updated > 0:
@@ -1149,69 +1191,66 @@ class DemonGoblinEngine:
     
     async def refresh_all_photos(self) -> Dict[str, Any]:
         """
-        MASTER PHOTO REFRESH - Updates photo URLs across ALL collections.
+        MASTER PHOTO REFRESH - Updates photo URLs and teams across ALL collections.
         
         Collections updated:
         - dg_cached_board (main player board)
-        - dg_goblin_recon (parlay picks)
-        - dg_demon_radar (demon picks)
-        - dg_goblin_vault (goblin picks)
+        - dg_goblin_vault (direct list of picks)
+        - dg_radar_picks (direct list of picks)  
+        - dg_goblin_recon (nested in parlays)
+        - dg_parlay_builder (nested in parlays)
         
         Uses fuzzy matching from master_roster to handle name variations.
         """
         logger.info("=" * 60)
-        logger.info("[MASTER PHOTO REFRESH] Updating photos across all collections...")
+        logger.info("[MASTER PHOTO REFRESH] Updating photos and teams across all collections...")
         logger.info("=" * 60)
         
         total_updated = 0
-        all_missing = []
         collection_stats = {}
-        
-        # Collections that contain player picks with photo_url
-        collections_to_update = [
-            (self.cached_board, "cached_board", "player_name"),
-            (self.goblin_recon, "goblin_recon", None),  # Nested in parlays
-            (self.radar_picks, "radar_picks", None),
-            (self.goblin_vault, "goblin_vault", None),
-        ]
         
         # First refresh cached_board
         board_result = await self.refresh_cached_board_photos()
         total_updated += board_result.get("photos_updated", 0)
         collection_stats["cached_board"] = board_result
         
-        # Now update nested parlay collections
-        for collection, name, _ in collections_to_update[1:]:  # Skip cached_board
+        # Direct-list collections (goblin_vault, radar_picks)
+        direct_collections = [
+            (self.goblin_vault, "goblin_vault"),
+            (self.radar_picks, "radar_picks"),
+        ]
+        
+        for collection, name in direct_collections:
             updated = 0
+            picks = await collection.find({}).to_list(100)
             
-            # Get the document (these store parlays as nested objects)
-            doc = await collection.find_one({})
-            if not doc:
-                logger.info(f"[MASTER PHOTO REFRESH] {name}: No data found")
-                collection_stats[name] = {"photos_updated": 0, "status": "no_data"}
-                continue
-            
-            # Update photos in nested parlays structure
-            parlays = doc.get("parlays", {})
-            needs_update = False
-            
-            for parlay_key, parlay_data in parlays.items():
-                picks = parlay_data.get("picks", [])
-                for pick in picks:
-                    player_name = pick.get("player_name", "")
-                    current_photo = pick.get("photo_url")
-                    
-                    # Skip if already has a valid photo
-                    if (current_photo and 
-                        "espncdn" in current_photo and 
-                        "nophoto" not in current_photo.lower() and
-                        "combiner" not in current_photo):
-                        continue
-                    
-                    # Try to find photo from master_roster
-                    photo_url = await self.get_photo_url_from_master_roster(player_name)
-                    
-                    # Check if it's a real photo
+            for pick in picks:
+                player_name = pick.get("player_name", "")
+                
+                # Get correct photo AND team from master_roster
+                player_doc = await self.get_photo_and_team_from_master_roster(player_name)
+                
+                if not player_doc:
+                    continue
+                
+                photo_url = player_doc.get("photo_url")
+                correct_team = player_doc.get("team_abbreviation")
+                nba_com_id = player_doc.get("nba_com_id")
+                
+                update_fields = {}
+                
+                # Check if team needs update
+                if correct_team and pick.get("team") != correct_team:
+                    update_fields["team"] = correct_team
+                
+                # Check if photo needs update
+                current_photo = pick.get("photo_url")
+                photo_needs_update = not (current_photo and 
+                    "espncdn" in current_photo and 
+                    "nophoto" not in current_photo.lower() and
+                    "combiner" not in current_photo)
+                
+                if photo_needs_update:
                     is_real_photo = (
                         photo_url and 
                         "espncdn" in photo_url and 
@@ -1220,24 +1259,84 @@ class DemonGoblinEngine:
                     )
                     
                     if is_real_photo:
-                        pick["photo_url"] = photo_url
-                        updated += 1
-                        needs_update = True
-                        logger.info(f"[MASTER PHOTO REFRESH] {name}: Updated {player_name}")
-                    elif photo_url:
-                        # Try NBA.com fallback
-                        player_doc = await self.master_roster.find_one(
-                            {"player_name": {"$regex": player_name.split()[0], "$options": "i"}},
-                            {"nba_com_id": 1}
-                        )
-                        if player_doc and player_doc.get("nba_com_id"):
-                            nba_url = f"https://cdn.nba.com/headshots/nba/latest/1040x760/{player_doc['nba_com_id']}.png"
-                            pick["photo_url"] = nba_url
-                            updated += 1
-                            needs_update = True
-                            logger.info(f"[MASTER PHOTO REFRESH] {name}: NBA.com fallback for {player_name}")
+                        update_fields["photo_url"] = photo_url
+                    elif nba_com_id:
+                        update_fields["photo_url"] = f"https://cdn.nba.com/headshots/nba/latest/1040x760/{nba_com_id}.png"
+                
+                if update_fields:
+                    await collection.update_one(
+                        {"_id": pick["_id"]},
+                        {"$set": update_fields}
+                    )
+                    updated += 1
+                    logger.info(f"[MASTER PHOTO REFRESH] {name}: Updated {player_name} (team={correct_team})")
             
-            # Save updates back to collection
+            total_updated += updated
+            collection_stats[name] = {"photos_updated": updated}
+            logger.info(f"[MASTER PHOTO REFRESH] {name}: Updated {updated} picks")
+        
+        # Nested parlay collections (goblin_recon, parlay_builder)
+        parlay_collections = [
+            (self.goblin_recon, "goblin_recon"),
+            (self.parlay_builder, "parlay_builder"),
+        ]
+        
+        for collection, name in parlay_collections:
+            updated = 0
+            
+            doc = await collection.find_one({})
+            if not doc:
+                collection_stats[name] = {"photos_updated": 0, "status": "no_data"}
+                continue
+            
+            parlays = doc.get("parlays", {})
+            needs_update = False
+            
+            for parlay_key, parlay_data in parlays.items():
+                picks = parlay_data.get("picks", [])
+                for pick in picks:
+                    player_name = pick.get("player_name", "")
+                    
+                    # Get correct photo AND team from master_roster
+                    player_doc = await self.get_photo_and_team_from_master_roster(player_name)
+                    
+                    if not player_doc:
+                        continue
+                    
+                    photo_url = player_doc.get("photo_url")
+                    correct_team = player_doc.get("team_abbreviation")
+                    nba_com_id = player_doc.get("nba_com_id")
+                    
+                    # Check if team needs update
+                    if correct_team and pick.get("team") != correct_team:
+                        pick["team"] = correct_team
+                        needs_update = True
+                    
+                    # Check if photo needs update
+                    current_photo = pick.get("photo_url")
+                    photo_needs_update = not (current_photo and 
+                        "espncdn" in current_photo and 
+                        "nophoto" not in current_photo.lower() and
+                        "combiner" not in current_photo)
+                    
+                    if photo_needs_update:
+                        is_real_photo = (
+                            photo_url and 
+                            "espncdn" in photo_url and 
+                            "nophoto" not in photo_url.lower() and
+                            "combiner" not in photo_url
+                        )
+                        
+                        if is_real_photo:
+                            pick["photo_url"] = photo_url
+                            needs_update = True
+                        elif nba_com_id:
+                            pick["photo_url"] = f"https://cdn.nba.com/headshots/nba/latest/1040x760/{nba_com_id}.png"
+                            needs_update = True
+                    
+                    if needs_update:
+                        updated += 1
+            
             if needs_update:
                 await collection.update_one(
                     {"_id": doc["_id"]},
@@ -1246,10 +1345,10 @@ class DemonGoblinEngine:
             
             total_updated += updated
             collection_stats[name] = {"photos_updated": updated}
-            logger.info(f"[MASTER PHOTO REFRESH] {name}: Updated {updated} photos")
+            logger.info(f"[MASTER PHOTO REFRESH] {name}: Updated {updated} picks in parlays")
         
         logger.info("=" * 60)
-        logger.info(f"[MASTER PHOTO REFRESH] COMPLETE - Total: {total_updated} photos updated")
+        logger.info(f"[MASTER PHOTO REFRESH] COMPLETE - Total: {total_updated} photos/teams updated")
         logger.info("=" * 60)
         
         return {
