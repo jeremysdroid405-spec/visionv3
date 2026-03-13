@@ -258,6 +258,106 @@ const InjuryBadge = memo(({ playerName, injuryAlerts, size = 'sm' }) => {
 
 InjuryBadge.displayName = 'InjuryBadge';
 
+// ==================== ULTRA-PRO ICON COMPONENTS ====================
+
+// The Demon Glyph - Red Spike (King of Longshots)
+const DemonIcon = memo(({ size = 24, className = '', isScanning = false }) => (
+  <svg 
+    width={size} 
+    height={size} 
+    viewBox="0 0 24 24" 
+    fill="none" 
+    xmlns="http://www.w3.org/2000/svg"
+    className={`demon-icon ${className} ${isScanning ? 'demon-radar-scanning' : ''}`}
+  >
+    {/* Outer spike/crown shape */}
+    <path 
+      d="M12 2L4 21L12 17L20 21L12 2Z" 
+      fill="rgba(255, 0, 0, 0.2)" 
+      stroke="#FF0000" 
+      strokeWidth="2"
+    />
+    {/* Inner vertical line */}
+    <path 
+      d="M12 17V10" 
+      stroke="#FF0000" 
+      strokeWidth="2" 
+      strokeLinecap="round"
+    />
+    {/* Center dot for emphasis */}
+    <circle cx="12" cy="8" r="1.5" fill="#FF0000" />
+  </svg>
+));
+
+DemonIcon.displayName = 'DemonIcon';
+
+// The Goblin Glyph - Hex Stack (Vault Hunter)
+const GoblinIcon = memo(({ size = 24, className = '', isClicked = false }) => {
+  const [clicked, setClicked] = useState(false);
+  
+  const handleClick = () => {
+    setClicked(true);
+    setTimeout(() => setClicked(false), 400);
+  };
+  
+  return (
+    <svg 
+      width={size} 
+      height={size} 
+      viewBox="0 0 24 24" 
+      fill="none" 
+      xmlns="http://www.w3.org/2000/svg"
+      className={`goblin-icon ${className} ${clicked || isClicked ? 'goblin-icon-clicked' : ''}`}
+      onClick={handleClick}
+    >
+      {/* Main hexagon */}
+      <path 
+        d="M7 7.5L12 4.5L17 7.5V13.5L12 16.5L7 13.5V7.5Z" 
+        fill="rgba(0, 255, 127, 0.1)"
+        stroke="#00FF7F" 
+        strokeWidth="2"
+      />
+      {/* Inner structure lines */}
+      <path 
+        d="M12 10.5L17 7.5M12 10.5L7 7.5M12 10.5V16.5" 
+        stroke="#00FF7F" 
+        strokeWidth="1.5"
+        strokeOpacity="0.7"
+      />
+      {/* Bottom accent hexagon (offset) */}
+      <path 
+        d="M9 15L12 13L15 15V18L12 20L9 18V15Z" 
+        fill="rgba(0, 255, 127, 0.15)"
+        stroke="#00FF7F" 
+        strokeWidth="1"
+        strokeOpacity="0.5"
+      />
+    </svg>
+  );
+});
+
+GoblinIcon.displayName = 'GoblinIcon';
+
+// Vision Synergy Badge - For Master Tier cards
+const VisionBadge = memo(({ type = 'demon', hasVision = false }) => {
+  if (!hasVision) return null;
+  
+  return (
+    <div className={`
+      absolute -top-2 -right-2 w-8 h-8 rounded-full 
+      flex items-center justify-center z-10
+      ${type === 'demon' 
+        ? 'bg-gradient-to-br from-red-600 to-red-900 shadow-lg shadow-red-500/50' 
+        : 'bg-gradient-to-br from-green-600 to-green-900 shadow-lg shadow-green-500/50'
+      }
+    `}>
+      <Zap className="w-4 h-4 text-white" />
+    </div>
+  );
+});
+
+VisionBadge.displayName = 'VisionBadge';
+
 // ==================== BREAKING NEWS TICKER ====================
 
 const BreakingNewsTicker = memo(({ news }) => {
@@ -566,15 +666,15 @@ TrendingCard.displayName = 'TrendingCard';
 
 // ==================== DEMON RADAR CARD ====================
 
-const RadarCard = memo(({ pick, rank, onClick }) => {
-  // Radar strength determines the glow intensity
-  const strengthClass = pick.radar_strength >= 80 ? 'ring-red-500/60' :
-                       pick.radar_strength >= 70 ? 'ring-red-500/40' :
-                       'ring-red-500/20';
-  
-  // Check if this has a special Vision insight (not "standard")
+const RadarCard = memo(({ pick, rank, onClick, isScanning = false }) => {
+  // Check if this has a special Vision insight (Master Tier)
   const hasVisionGlow = pick.has_high_conflict || 
     (pick.insight_summary && !pick.insight_summary.toLowerCase().includes('standard'));
+  
+  // Determine card styling based on Vision status
+  const cardClass = hasVisionGlow 
+    ? 'demon-master-card vision-pulse' 
+    : 'bg-gradient-to-br from-red-950/30 to-zinc-950 border-red-900/50';
   
   // Heat Level flame rendering
   const heatLevel = pick.heat_level || 0;
@@ -596,11 +696,11 @@ const RadarCard = memo(({ pick, rank, onClick }) => {
   
   const getHeatDescription = (level) => {
     switch(level) {
-      case 5: return '🔥 ON FIRE! 9-10/10 games hit';
-      case 4: return '🔥 HOT! 80%+ L10 or 5-game streak';
-      case 3: return '🔥 WARM! 70%+ L10 or 3-game streak';
-      case 2: return '🔥 Mild - 60%+ L10';
-      case 1: return '🔥 Cool - 50%+ L10';
+      case 5: return 'ON FIRE! 9-10/10 games hit';
+      case 4: return 'HOT! 80%+ L10 or 5-game streak';
+      case 3: return 'WARM! 70%+ L10 or 3-game streak';
+      case 2: return 'Mild - 60%+ L10';
+      case 1: return 'Cool - 50%+ L10';
       default: return 'Cold';
     }
   };
@@ -608,17 +708,24 @@ const RadarCard = memo(({ pick, rank, onClick }) => {
   return (
     <Card 
       className={`
-        bg-gradient-to-br from-red-950/30 to-zinc-950 border-red-900/50
-        hover:border-red-500/70 hover:scale-[1.02] transition-all duration-200
-        cursor-pointer active:scale-[0.98] ring-1 ${strengthClass}
-        ${hasVisionGlow ? 'vision-glow vision-pulse' : ''}
+        ${cardClass}
+        hover:scale-[1.02] transition-all duration-300
+        cursor-pointer active:scale-[0.98] relative overflow-visible
       `}
       onClick={onClick}
       data-testid={`radar-card-${rank}`}
     >
+      {/* Vision Synergy Badge */}
+      {hasVisionGlow && <VisionBadge type="demon" hasVision={true} />}
+      
       <div className="p-3">
-        {/* Header: Headshot + Rank + Name */}
+        {/* Header: Demon Icon + Headshot + Rank + Name */}
         <div className="flex items-center gap-2 mb-2">
+          {/* Demon Icon with breathing glow */}
+          <div className="flex-shrink-0">
+            <DemonIcon size={20} isScanning={isScanning} />
+          </div>
+          
           {/* Headshot with Radar Badge */}
           <div className="relative">
             <PlayerHeadshot 
@@ -741,10 +848,16 @@ RadarCard.displayName = 'RadarCard';
 // ==================== GOBLIN VAULT CARD ====================
 
 const VaultCard = memo(({ pick, rank, onClick }) => {
-  // Safety level determines the glow intensity
-  const safetyClass = pick.safety_level >= 4 ? 'ring-green-500/60' :
-                     pick.safety_level >= 3 ? 'ring-green-500/40' :
-                     'ring-green-500/20';
+  const [isClicked, setIsClicked] = useState(false);
+  
+  // Check if this has a special Vision insight
+  const hasVisionGlow = pick.has_high_conflict || 
+    (pick.insight_summary && !pick.insight_summary.toLowerCase().includes('standard'));
+  
+  // Determine card styling based on Vision status
+  const cardClass = hasVisionGlow 
+    ? 'goblin-vault-card' 
+    : 'bg-gradient-to-br from-green-950/30 to-zinc-950 border-green-900/50';
   
   // Shield rendering for safety level
   const safetyLevel = pick.safety_level || 0;
@@ -758,7 +871,7 @@ const VaultCard = memo(({ pick, rank, onClick }) => {
             safetyLevel >= 4 ? 'text-green-500' :
             safetyLevel >= 3 ? 'text-emerald-500' :
             'text-emerald-600'
-          }`}>🛡️</div>
+          }`}>⬡</div>
         ))}
       </div>
     );
@@ -766,28 +879,42 @@ const VaultCard = memo(({ pick, rank, onClick }) => {
   
   const getSafetyDescription = (level) => {
     switch(level) {
-      case 5: return '🛡️ FORTRESS! Perfect 10/10 cleared';
-      case 4: return '🛡️ VAULT! 90%+ hit rate';
-      case 3: return '🛡️ SAFE! 85%+ hit rate';
-      case 2: return '🛡️ Reliable - 80%+ hit rate';
-      case 1: return '🛡️ Moderate - 70%+ hit rate';
+      case 5: return 'FORTRESS! Perfect 10/10 cleared';
+      case 4: return 'VAULT! 90%+ hit rate';
+      case 3: return 'SAFE! 85%+ hit rate';
+      case 2: return 'Reliable - 80%+ hit rate';
+      case 1: return 'Moderate - 70%+ hit rate';
       default: return 'Risky';
     }
+  };
+  
+  const handleClick = () => {
+    setIsClicked(true);
+    setTimeout(() => setIsClicked(false), 400);
+    onClick?.();
   };
   
   return (
     <Card 
       className={`
-        bg-gradient-to-br from-green-950/30 to-zinc-950 border-green-900/50
-        hover:border-green-500/70 hover:scale-[1.02] transition-all duration-200
-        cursor-pointer active:scale-[0.98] ring-1 ${safetyClass}
+        ${cardClass}
+        hover:scale-[1.02] transition-all duration-300
+        cursor-pointer active:scale-[0.98] relative overflow-visible
       `}
-      onClick={onClick}
+      onClick={handleClick}
       data-testid={`vault-card-${rank}`}
     >
+      {/* Vision Synergy Badge */}
+      {hasVisionGlow && <VisionBadge type="goblin" hasVision={true} />}
+      
       <div className="p-3">
-        {/* Header: Headshot + Rank + Name */}
+        {/* Header: Goblin Icon + Headshot + Rank + Name */}
         <div className="flex items-center gap-2 mb-2">
+          {/* Goblin Hex-Stack Icon with rotation on click */}
+          <div className="flex-shrink-0">
+            <GoblinIcon size={20} isClicked={isClicked} />
+          </div>
+          
           {/* Headshot with Vault Badge */}
           <div className="relative">
             <PlayerHeadshot 
@@ -808,7 +935,6 @@ const VaultCard = memo(({ pick, rank, onClick }) => {
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-1">
               <span className="font-bold text-white text-sm truncate">{pick.player_name}</span>
-              <Ghost className="w-3 h-3 text-green-500 flex-shrink-0" />
             </div>
             <div className="flex items-center gap-1 text-[10px] text-zinc-500">
               <span className="font-mono">{pick.team || '---'}</span>
@@ -2823,17 +2949,17 @@ export const DemonGoblinDashboardOptimized = ({ isDemoMode = false }) => {
 
         {/* DEMON RADAR - Top 10 Mathematical Picks */}
         {radarPicks.length > 0 && (
-          <div data-testid="radar-section">
+          <div data-testid="radar-section" className="demon-radar-scanning">
             <div className="flex items-center justify-between mb-2">
               <div className="flex items-center gap-2">
-                <Skull className="w-5 h-5 text-red-500" />
+                <DemonIcon size={24} isScanning={true} />
                 <span className="text-sm font-bold text-red-400">DEMON RADAR</span>
                 <Badge className="bg-red-950/50 text-red-400 border-red-800/50 text-[10px]">
-                  TOP 10
+                  TOP 10 HIGH-ALPHA
                 </Badge>
               </div>
               <div className="text-[10px] text-zinc-500">
-                P = (H10×0.6 + H5×0.4) | Min 60%
+                King of Longshots | Dangerous but Profitable
               </div>
             </div>
             
@@ -2844,6 +2970,7 @@ export const DemonGoblinDashboardOptimized = ({ isDemoMode = false }) => {
                   pick={pick} 
                   rank={idx + 1}
                   onClick={() => handleRadarClick(pick)}
+                  isScanning={true}
                 />
               ))}
             </div>
@@ -2855,14 +2982,14 @@ export const DemonGoblinDashboardOptimized = ({ isDemoMode = false }) => {
           <div data-testid="vault-section">
             <div className="flex items-center justify-between mb-2">
               <div className="flex items-center gap-2">
-                <Ghost className="w-5 h-5 text-green-500" />
+                <GoblinIcon size={24} />
                 <span className="text-sm font-bold text-green-400">THE GOBLIN VAULT</span>
                 <Badge className="bg-green-950/50 text-green-400 border-green-800/50 text-[10px]">
-                  TOP 10 SAFE PLAYS
+                  TOP 10 HEX-STACK
                 </Badge>
               </div>
               <div className="text-[10px] text-zinc-500">
-                Target: 90%+ Hit Rate | Low Risk
+                Consistent Vault-Hunters | Stack Green
               </div>
             </div>
             

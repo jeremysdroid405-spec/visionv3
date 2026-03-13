@@ -16,6 +16,102 @@
   color: #22c55e;
 }
 
+/* ==================== DEMON ICON EFFECTS ==================== */
+
+/* Demon Breathing Glow - Deep Crimson pulse */
+@keyframes demon-breathe {
+  0%, 100% { 
+    filter: drop-shadow(0 0 8px rgba(255, 0, 0, 0.6)) drop-shadow(0 0 20px rgba(255, 0, 0, 0.3));
+    transform: scale(1);
+  }
+  50% { 
+    filter: drop-shadow(0 0 15px rgba(255, 0, 0, 0.8)) drop-shadow(0 0 35px rgba(255, 0, 0, 0.5));
+    transform: scale(1.05);
+  }
+}
+
+.demon-icon {
+  animation: demon-breathe 3s ease-in-out infinite;
+}
+
+/* Demon Glitch Effect - Horizontal shift every 5s */
+@keyframes demon-glitch {
+  0%, 98%, 100% { transform: translateX(0); }
+  98.5% { transform: translateX(-3px); }
+  99% { transform: translateX(3px); }
+  99.5% { transform: translateX(-2px); }
+}
+
+.demon-radar-scanning .demon-icon {
+  animation: demon-breathe 3s ease-in-out infinite, demon-glitch 5s steps(1) infinite;
+}
+
+/* Demon Card Master Tier - 3D Lifted Effect */
+.demon-master-card {
+  transform: perspective(1000px) rotateX(2deg);
+  box-shadow: 
+    0 25px 50px -12px rgba(255, 0, 0, 0.25),
+    0 0 30px rgba(255, 0, 0, 0.15),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 0, 0, 0.4) !important;
+  background: linear-gradient(145deg, rgba(255, 0, 0, 0.08), rgba(20, 0, 0, 0.9)) !important;
+}
+
+.demon-master-card:hover {
+  transform: perspective(1000px) rotateX(0deg) translateY(-4px);
+  box-shadow: 
+    0 35px 60px -15px rgba(255, 0, 0, 0.35),
+    0 0 40px rgba(255, 0, 0, 0.2);
+}
+
+/* ==================== GOBLIN ICON EFFECTS ==================== */
+
+/* Goblin Rim Light Effect - Only edges glow */
+@keyframes goblin-rim {
+  0%, 100% { 
+    filter: drop-shadow(0 0 2px rgba(0, 255, 127, 0.9));
+    stroke-opacity: 1;
+  }
+  50% { 
+    filter: drop-shadow(0 0 6px rgba(0, 255, 127, 1)) drop-shadow(0 0 12px rgba(0, 255, 127, 0.5));
+    stroke-opacity: 0.8;
+  }
+}
+
+.goblin-icon {
+  animation: goblin-rim 2.5s ease-in-out infinite;
+}
+
+/* Goblin Rotation Lock Effect on Click */
+@keyframes goblin-unlock {
+  0% { transform: rotate(0deg); }
+  25% { transform: rotate(-15deg); }
+  50% { transform: rotate(10deg); }
+  75% { transform: rotate(-5deg); }
+  100% { transform: rotate(0deg); }
+}
+
+.goblin-icon-clicked {
+  animation: goblin-unlock 0.4s ease-out forwards;
+}
+
+/* Goblin Vault Card Effect */
+.goblin-vault-card {
+  box-shadow: 
+    0 0 20px rgba(0, 255, 127, 0.15),
+    inset 0 0 30px rgba(0, 255, 127, 0.05);
+  border: 1px solid rgba(0, 255, 127, 0.3) !important;
+  background: linear-gradient(145deg, rgba(0, 255, 127, 0.05), rgba(0, 20, 10, 0.9)) !important;
+}
+
+.goblin-vault-card:hover {
+  box-shadow: 
+    0 0 30px rgba(0, 255, 127, 0.25),
+    inset 0 0 40px rgba(0, 255, 127, 0.08);
+}
+
+/* ==================== VISION EFFECTS ==================== */
+
 /* Vision Glow Effect - For high-conflict insights */
 .vision-glow {
   box-shadow: 0 0 20px rgba(147, 51, 234, 0.4), 0 0 40px rgba(147, 51, 234, 0.2);
@@ -43,4 +139,36 @@
 
 .vision-pulse {
   animation: vision-pulse 2s ease-in-out infinite;
+}
+
+/* Master Tier Card with Vision */
+.vision-master-card {
+  transform: perspective(1000px) rotateX(2deg) rotateY(-1deg);
+  box-shadow: 
+    0 30px 60px -15px rgba(147, 51, 234, 0.3),
+    0 0 40px rgba(147, 51, 234, 0.15),
+    inset 0 1px 0 rgba(255, 255, 255, 0.15);
+  border: 1px solid rgba(147, 51, 234, 0.5) !important;
+  background: linear-gradient(145deg, rgba(147, 51, 234, 0.1), rgba(10, 0, 20, 0.95)) !important;
+}
+
+.vision-master-card:hover {
+  transform: perspective(1000px) rotateX(0deg) rotateY(0deg) translateY(-6px) scale(1.02);
+  box-shadow: 
+    0 40px 80px -20px rgba(147, 51, 234, 0.4),
+    0 0 50px rgba(147, 51, 234, 0.25);
+}
+
+/* Breaking News Ticker Animation */
+@keyframes ticker-scroll {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+
+.ticker-scroll {
+  animation: ticker-scroll 30s linear infinite;
+}
+
+.ticker-scroll:hover {
+  animation-play-state: paused;
 }
