@@ -43,6 +43,14 @@ Build a high-performance NBA Player Prop Dashboard that mimics the PrizePicks us
 - None currently
 
 ### RECENTLY COMPLETED (Dec 13, 2025)
+- [x] **V3.1 "Truth Engine" Data Integrity Overhaul** - Critical fix for data hallucination issues:
+  - **Naji Safeguard**: Verifies playerID from game logs matches expected BDL player ID, discards data on mismatch
+  - **source_verified flag**: All props now tagged with verification status (verified/failed/pending)
+  - **verification_status field**: Tracks specific failure reasons (HALLUCINATION_DETECTED, DISCREPANCY, NAJI_SAFEGUARD_FAILED)
+  - **`/api/v3/data-status` endpoint**: Reports data integrity status for frontend polling
+  - **DataValidationLight component**: Live status light in dashboard header (Green=Verified, Red=Discrepancy, Amber=Pending)
+  - **Verification failures logging**: Failures stored in `dg_verification_failures` collection for audit
+  - **Sync verification stats**: `run_full_sync` returns verification_stats with counts and rates
 - [x] **"War Room" Aesthetic Overhaul (Auth Page)** - Complete redesign with aggressive tactical theme:
   - **Hero Headline**: "The books have an edge. Now, you have a weapon."
   - **System Status Terminal**: Live status display with [SCANNING TANK01 FEEDS...], [LLM HANDSHAKE...], [DEMON TARGETS...], [GOBLIN LOCKS...]
@@ -107,6 +115,7 @@ Build a high-performance NBA Player Prop Dashboard that mimics the PrizePicks us
 - `dg_player_stats` - Cached game logs (L5/L10/Season)
 - `dg_daily_insights` - Pre-calculated advanced analytics
 - `dg_parlays_demon/goblin` - Smart parlay picks
+- `dg_verification_failures` - V3.1 Truth Engine audit log
 
 ### Scheduled Jobs (APScheduler)
 | Job | Schedule | Purpose |
@@ -121,6 +130,7 @@ Build a high-performance NBA Player Prop Dashboard that mimics the PrizePicks us
 ### V3 Core
 - `GET /api/v3/cached-props` - Main dashboard data
 - `GET /api/v3/cached-player/{name}` - Player detail with insights
+- `GET /api/v3/data-status` - Data integrity status (Truth Engine v3.1)
 - `POST /api/v3/sync-odds` - Trigger odds sync
 - `POST /api/v3/sync-player-stats` - Sync game logs
 - `POST /api/v3/sync-daily-insights` - Calculate analytics
@@ -200,6 +210,8 @@ Build a high-performance NBA Player Prop Dashboard that mimics the PrizePicks us
 ---
 
 ## Next Steps
-1. Refactor `DemonGoblinDashboardOptimized.js` (3000+ lines) - Extract components into `/components/dashboard/` directory
-2. Add "Pro Tier" feature gating
-3. Historical line movement tracking
+1. Trigger a full data sync to populate verification fields on all props
+2. Perform "Kill List" audit: Verify data for Luka Doncic, Anthony Edwards, and Naji Marshall
+3. Refactor `DemonGoblinDashboardOptimized.js` (3000+ lines) - Extract components into `/components/dashboard/` directory
+4. Add "Pro Tier" feature gating
+5. Historical line movement tracking
