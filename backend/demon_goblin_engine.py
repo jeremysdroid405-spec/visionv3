@@ -2612,8 +2612,11 @@ class DemonGoblinEngine:
                 h10 = h10_data.get("hit_rate", 0)
                 h5 = h5_data.get("hit_rate", 0)
                 h10_games = h10_data.get("total_games", 0)
+                h10_over = h10_data.get("games_over", 0)
                 h5_over = h5_data.get("games_over", 0)
                 h5_games = h5_data.get("total_games", 0)
+                season_data = hit_rates.get("season", {})
+                season_avg = season_data.get("avg", 0)
                 
                 # Calculate weighted probability
                 base_prob = (h10 * 0.6) + (h5 * 0.4)
@@ -2646,6 +2649,11 @@ class DemonGoblinEngine:
                     "direction": demon.get("direction", "Over"),
                     "h10_rate": round(h10 * 100, 1),
                     "h5_rate": round(h5 * 100, 1),
+                    "h10_over": h10_over,
+                    "h10_games": h10_games,
+                    "h5_over": h5_over,
+                    "h5_games": h5_games,
+                    "season_avg": season_avg,
                     "whale_score": round(whale_score, 4),
                     "hit_probability": round(base_prob * 100, 1),
                     "has_heat_boost": heat_boost > 1,
