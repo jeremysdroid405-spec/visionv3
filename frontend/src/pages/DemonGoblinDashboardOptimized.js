@@ -906,7 +906,25 @@ const RadarCard = memo(({ pick, rank, onClick, isScanning = false }) => {
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-1">
               <span className="font-bold text-white text-sm truncate">{pick.player_name}</span>
-              <DemonIcon size={12} className="flex-shrink-0" />
+              {/* Social Signal Icons */}
+              {pick.volatility_flag && (
+                <span 
+                  className="text-[14px] cursor-help" 
+                  title={`Intel: ${pick.volatility_reason || 'Volatility detected'}`}
+                  style={{ filter: 'drop-shadow(0 0 2px #f97316)' }}
+                >
+                  🗞️
+                </span>
+              )}
+              {pick.revenge_game && (
+                <span 
+                  className="text-[14px] cursor-help" 
+                  title={`Revenge Game vs ${pick.revenge_opponent || 'former team'}`}
+                  style={{ filter: 'drop-shadow(0 0 2px #22c55e)' }}
+                >
+                  🗡️
+                </span>
+              )}
             </div>
             <div className="flex items-center gap-1 text-[10px] text-zinc-500">
               <span className="font-mono">{pick.team || '---'}</span>
@@ -1019,10 +1037,17 @@ const VaultCard = memo(({ pick, rank, onClick }) => {
     ? 'goblin-vault-card' 
     : 'bg-gradient-to-br from-green-950/30 to-zinc-950 border-green-900/50';
   
+  // Social Signals
+  const hasVolatility = pick.volatility_flag;
+  const hasRevengeGame = pick.revenge_game;
+  
   // Calculate gem count based on L10 hit rate (like fire streaks for demons)
   // 1 Gem = 70%, 2 Gems = 80%, 3 Gems = 90%, 4 Gems = 100%
+  // MODIFIER: -1 for volatility, +1 for revenge game
   const h10Rate = pick.h10_rate || 0;
-  const getGemCount = () => {
+  const gemModifier = pick.gem_modifier || ((hasRevengeGame ? 1 : 0) + (hasVolatility ? -1 : 0));
+  
+  const getBaseGemCount = () => {
     if (h10Rate >= 100) return 4;
     if (h10Rate >= 90) return 3;
     if (h10Rate >= 80) return 2;
@@ -1030,13 +1055,14 @@ const VaultCard = memo(({ pick, rank, onClick }) => {
     return 0;
   };
   
-  const gemCount = getGemCount();
+  const baseGemCount = getBaseGemCount();
+  const gemCount = Math.max(0, Math.min(4, baseGemCount + gemModifier));
   
   // Sapphire Blue Gems rendering
   const renderGems = () => {
-    if (gemCount === 0) return null;
+    if (baseGemCount === 0) return null;
     return (
-      <div className="flex items-center gap-0.5" title={getGemDescription(gemCount)}>
+      <div className="flex items-center gap-0.5" title={getGemDescription(gemCount, gemModifier)}>
         {[...Array(gemCount)].map((_, i) => (
           <span 
             key={i} 
@@ -1049,18 +1075,28 @@ const VaultCard = memo(({ pick, rank, onClick }) => {
             💎
           </span>
         ))}
+        {/* Show modifier indicator */}
+        {gemModifier !== 0 && (
+          <span className={`text-[10px] ml-1 ${gemModifier > 0 ? 'text-green-400' : 'text-red-400'}`}>
+            {gemModifier > 0 ? '+1' : '-1'}
+          </span>
+        )}
       </div>
     );
   };
   
-  const getGemDescription = (count) => {
+  const getGemDescription = (count, modifier) => {
+    let base = '';
     switch(count) {
-      case 4: return 'FORTRESS! 100% L10 hit rate';
-      case 3: return 'DIAMOND! 90%+ L10 hit rate';
-      case 2: return 'VAULT! 80%+ L10 hit rate';
-      case 1: return 'SAFE! 70%+ L10 hit rate';
-      default: return 'Below 70% hit rate';
+      case 4: base = 'FORTRESS! 100% L10 hit rate'; break;
+      case 3: base = 'DIAMOND! 90%+ L10 hit rate'; break;
+      case 2: base = 'VAULT! 80%+ L10 hit rate'; break;
+      case 1: base = 'SAFE! 70%+ L10 hit rate'; break;
+      default: base = 'Below 70% hit rate';
     }
+    if (modifier > 0) base += ' (Revenge Game Bonus!)';
+    if (modifier < 0) base += ' (Volatility Warning)';
+    return base;
   };
   
   const getGemLabel = (count) => {
@@ -1120,6 +1156,25 @@ const VaultCard = memo(({ pick, rank, onClick }) => {
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-1">
               <span className="font-bold text-white text-sm truncate">{pick.player_name}</span>
+              {/* Social Signal Icons */}
+              {hasVolatility && (
+                <span 
+                  className="text-[14px] cursor-help" 
+                  title={`Intel: ${pick.volatility_reason || 'Volatility detected'}`}
+                  style={{ filter: 'drop-shadow(0 0 2px #f97316)' }}
+                >
+                  🗞️
+                </span>
+              )}
+              {hasRevengeGame && (
+                <span 
+                  className="text-[14px] cursor-help" 
+                  title={`Revenge Game vs ${pick.revenge_opponent || 'former team'}`}
+                  style={{ filter: 'drop-shadow(0 0 2px #22c55e)' }}
+                >
+                  🗡️
+                </span>
+              )}
             </div>
             <div className="flex items-center gap-1 text-[10px] text-zinc-500">
               <span className="font-mono">{pick.team || '---'}</span>
@@ -2897,8 +2952,8 @@ export const DemonGoblinDashboardOptimized = ({ isDemoMode = false }) => {
     try {
       console.log('[CACHED] Loading from MongoDB...');
       
-      // Load board, radar, vault, parlays, recon, injuries, and data status in parallel
-      const [boardResponse, radarResponse, vaultResponse, parlayResponse, reconResponse, injuryResponse, newsResponse, dataStatusResponse] = await Promise.all([
+      // Load board, radar, vault, parlays, recon, injuries, social signals, and data status in parallel
+      const [boardResponse, radarResponse, vaultResponse, parlayResponse, reconResponse, injuryResponse, newsResponse, dataStatusResponse, socialSignalsResponse] = await Promise.all([
         axios.get(`${API}/v3/cached-props`),
         axios.get(`${API}/v3/demon-radar`),
         axios.get(`${API}/v3/goblin-vault`),
@@ -2906,8 +2961,30 @@ export const DemonGoblinDashboardOptimized = ({ isDemoMode = false }) => {
         axios.get(`${API}/v3/goblin-recon`),
         axios.get(`${API}/v3/injuries/alerts`).catch(() => ({ data: { success: false, alerts: {} }})),
         axios.get(`${API}/v3/breaking-news?injury_only=true`).catch(() => ({ data: { success: false, news: [] }})),
-        axios.get(`${API}/v3/data-status`).catch(() => ({ data: { success: false, status: 'error' }}))
+        axios.get(`${API}/v3/data-status`).catch(() => ({ data: { success: false, status: 'error' }})),
+        axios.get(`${API}/v3/social-signals`).catch(() => ({ data: { success: false, signals: {} }}))
       ]);
+      
+      // Social signals for applying to picks
+      const socialSignals = socialSignalsResponse.data?.signals || {};
+      
+      // Helper to apply social signals to picks
+      const applySignals = (picks) => {
+        return picks.map(pick => {
+          const signal = socialSignals[pick.player_name];
+          if (signal) {
+            return {
+              ...pick,
+              volatility_flag: signal.volatility_flag,
+              volatility_reason: signal.volatility_reason,
+              revenge_game: signal.revenge_game,
+              revenge_opponent: signal.revenge_opponent,
+              gem_modifier: signal.volatility_flag ? -1 : (signal.revenge_game ? 1 : 0)
+            };
+          }
+          return pick;
+        });
+      };
       
       if (boardResponse.data.success && boardResponse.data.players_count > 0) {
         setPlayers(boardResponse.data.players || []);
@@ -2922,15 +2999,17 @@ export const DemonGoblinDashboardOptimized = ({ isDemoMode = false }) => {
         setLinesLoaded(false);
       }
       
-      // Load radar picks
+      // Load radar picks with social signals
       if (radarResponse.data.success) {
-        setRadarPicks(radarResponse.data.picks || []);
+        const picksWithSignals = applySignals(radarResponse.data.picks || []);
+        setRadarPicks(picksWithSignals);
         console.log(`[RADAR] Loaded ${radarResponse.data.picks_count} radar picks`);
       }
       
-      // Load vault picks
+      // Load vault picks with social signals
       if (vaultResponse.data.success) {
-        setVaultPicks(vaultResponse.data.picks || []);
+        const picksWithSignals = applySignals(vaultResponse.data.picks || []);
+        setVaultPicks(picksWithSignals);
         console.log(`[VAULT] Loaded ${vaultResponse.data.picks_count} vault picks`);
       }
       

@@ -218,8 +218,10 @@ Build a high-performance NBA Player Prop Dashboard that mimics the PrizePicks us
 ---
 
 ## Next Steps
-1. **RESOLVED**: Stats now flowing to Demon Radar and Goblin Recon after running `sync-player-stats` first
-2. Note: Some players (Ace Bailey, William Richard) show estimated rates because they're rookies with no BallDontLie game history
-3. **Sync Order**: Always run `/api/v3/sync-player-stats` BEFORE `/api/v3/sync-to-mongo` to ensure stats are cached
-4. Refactor `DemonGoblinDashboardOptimized.js` (3000+ lines monolith)
-5. Add "Pro Tier" feature gating
+1. **Social Signals Active**: System now polls Tank01 for news sentiment & revenge games
+   - 🗞️ Intel Icon: Shows when volatility detected (injuries, trades, suspensions)
+   - 🗡️ Dagger Icon: Shows when facing former team (revenge game)
+   - Gem modifiers: -1 for volatility, +1 for revenge
+2. **Sync Order for Data**: `sync-player-stats` → `sync-to-mongo` → `sync-social-signals`
+3. Refactor `DemonGoblinDashboardOptimized.js` (3500+ lines monolith)
+4. Add 30-minute auto-polling for social signals

@@ -23,6 +23,7 @@ from demon_goblin_engine import DemonGoblinEngine
 from vision_ai_service import VisionAIService, get_vision_service
 from injury_service import InjuryIntelligenceService, get_injury_service
 from raw_stat_fetcher import RawStatFetcher
+from social_signal_engine import SocialSignalEngine, get_social_signal_engine
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -60,6 +61,7 @@ demon_goblin_engine = None
 vision_ai_service = None  # Vision AI service instance
 injury_service = None  # Injury Intelligence service instance
 raw_stat_fetcher = None  # RAW STAT FETCHER - Isolated data integrity service
+social_signal_engine = None  # Social Signal Engine - News sentiment & revenge games
 scheduler = None  # APScheduler instance
 
 async def initial_autonomous_sync():
@@ -156,7 +158,7 @@ async def scheduled_roster_sync():
 
 @app.on_event("startup")
 async def startup_event():
-    global stats_manager, demon_tracker, demon_goblin_engine, vision_ai_service, injury_service, raw_stat_fetcher, scheduler
+    global stats_manager, demon_tracker, demon_goblin_engine, vision_ai_service, injury_service, raw_stat_fetcher, social_signal_engine, scheduler
     
     # Initialize stats manager (BallDontLie)
     stats_manager = StatsManager(db)
@@ -184,6 +186,10 @@ async def startup_event():
     if bdl_key:
         raw_stat_fetcher.set_api_key(bdl_key)
     logger.info("Raw Stat Fetcher initialized (Data Integrity Service)")
+    
+    # Initialize Social Signal Engine - News sentiment & revenge games
+    social_signal_engine = get_social_signal_engine(db)
+    logger.info("Social Signal Engine initialized (News + Revenge Detection)")
     
     # Initialize APScheduler for daily and weekly syncs
     scheduler = AsyncIOScheduler(timezone=SCHEDULER_TIMEZONE)
@@ -1480,6 +1486,81 @@ async def get_raw_player_games(player_name: str, num_games: int = 10):
     
     result = await raw_stat_fetcher.get_raw_recent_games(player_name, num_games)
     return result
+
+
+# ==================== SOCIAL SIGNAL ENGINE ENDPOINTS ====================
+
+@api_router.post("/v3/sync-social-signals")
+async def sync_social_signals():
+    """
+    SOCIAL SIGNAL SYNC - News sentiment & revenge game detection.
+    
+    Uses Tank01 API to:
+    1. Scan player news for volatility keywords (injuries, trades, suspensions)
+    2. Detect revenge games (player vs former team)
+    
+    Should be called every 30 minutes for fresh signals.
+    
+    Returns:
+    - volatility_flags: Count of players with negative news
+    - revenge_games: Count of players facing former teams
+    """
+    global social_signal_engine
+    if not social_signal_engine:
+        raise HTTPException(status_code=500, detail="Social Signal Engine not initialized")
+    
+    logger.info("[SOCIAL SIGNAL] Manual sync triggered via API")
+    result = await social_signal_engine.sync_social_signals()
+    
+    # Apply signals to cached board
+    if result.get("success"):
+        apply_result = await social_signal_engine.apply_signals_to_board()
+        result["applied"] = apply_result
+    
+    return result
+
+
+@api_router.get("/v3/social-signals")
+async def get_social_signals():
+    """
+    Get all cached social signals.
+    
+    Returns dict of player signals with:
+    - volatility_flag: boolean (🗞️ Intel Icon)
+    - volatility_reason: string (REDUCED USAGE or VOLATILITY type)
+    - revenge_game: boolean (🗡️ Dagger Icon)
+    - revenge_opponent: string (former team abbreviation)
+    """
+    global social_signal_engine
+    if not social_signal_engine:
+        raise HTTPException(status_code=500, detail="Social Signal Engine not initialized")
+    
+    result = await social_signal_engine.get_all_signals()
+    return result
+
+
+@api_router.get("/v3/social-signal/{player_name}")
+async def get_player_social_signal(player_name: str):
+    """
+    Get social signal for a specific player.
+    
+    Returns the volatility and revenge flags for UI display.
+    """
+    global social_signal_engine
+    if not social_signal_engine:
+        raise HTTPException(status_code=500, detail="Social Signal Engine not initialized")
+    
+    signal = await social_signal_engine.get_player_signal(player_name)
+    
+    if not signal:
+        return {
+            "player_name": player_name,
+            "volatility_flag": False,
+            "revenge_game": False,
+            "message": "No signals detected"
+        }
+    
+    return signal
 
 
 # ==================== SCHEDULER ENDPOINTS ====================
