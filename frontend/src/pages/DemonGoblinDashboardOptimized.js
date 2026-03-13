@@ -8,7 +8,7 @@ import { Badge } from '../components/ui/badge';
 import { Input } from '../components/ui/input';
 import { 
   Activity, RefreshCw, Search, Database, 
-  ChevronDown, ChevronRight, AlertTriangle, Skull, Ghost,
+  ChevronDown, ChevronRight, AlertTriangle,
   User, Flame, Star, Clock, Zap, HardDrive, ArrowLeft, X,
   DollarSign, TrendingUp, Target, Layers, CheckCircle, XCircle,
   LogOut, Crown
