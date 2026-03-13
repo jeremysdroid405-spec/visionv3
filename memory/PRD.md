@@ -7,7 +7,19 @@ Build a high-performance NBA Player Prop Dashboard that identifies "Demons" (har
 
 ---
 
-## THE BIG MONEY BUILDER - COMPLETED (March 13, 2026)
+## THE BIG MONEY BUILDER - UPDATED (March 13, 2026)
+
+### Mathematically Accurate Payouts ✅
+**FIXED:** Previous version showed misleading payouts (e.g., "2000x Lotto"). 
+At +100 odds per leg, the TRUE maximum payout is **2^n**:
+
+| Picks | Max Payout | Formula |
+|-------|------------|---------|
+| 2     | 4x         | 2² = 4  |
+| 3     | 8x         | 2³ = 8  |
+| 4     | 16x        | 2⁴ = 16 |
+| 5     | 32x        | 2⁵ = 32 |
+| 6     | 64x        | 2⁶ = 64 |
 
 ### Whale Scoring Algorithm ✅
 **Criteria:**
@@ -21,25 +33,28 @@ Whale Score = (H10 × 0.6 + H5 × 0.4) × heat_boost
 heat_boost = 1.20 if hit in last 2 games, else 1.0
 ```
 
-### Parlay Types ✅
-| Type | Name | Description | Payout Range |
-|------|------|-------------|--------------|
-| 2-Pick | Double Demon | Top 2 highest radar picks | 5x - 10x |
-| 3-Pick | Triple Threat | #1 + correlated teammates | 15x - 25x |
-| 4-Pick | Power Play | 4 picks with game correlation | 40x - 80x |
-| 5-Pick | Heavy Hitter | 5 high-value picks | 150x - 300x |
-| 6-Pick | 2000x Lotto | Top 6 highest-probability | 500x - 2000x |
+### Parlay Types (CORRECTED) ✅
+| Type | Name | Description | Max Payout |
+|------|------|-------------|------------|
+| 2-Pick | Double Up | Top 2 highest-probability demons | 4x |
+| 3-Pick | Triple Threat | #1 + correlated teammates | 8x |
+| 4-Pick | Power Play | 4 picks with game correlation | 16x |
+| 5-Pick | Heavy Hitter | 5 high-value picks | 32x |
+| 6-Pick | Jackpot 64x | Top 6 highest-probability demons | 64x |
 
 ### UI Cards ✅
 - **Color-coded**: Amber (2) → Orange (3) → Red (4) → Purple (5) → Pink (6)
-- **Payout badges**: Shows estimated multiplier ($3x, $24x, $64x)
+- **Payout badges**: Shows accurate multiplier ($4x, $16x, $64x)
 - **Heat indicators**: 🔥 for players with recent hot streaks
 - **Combined probability**: Calculated across all legs
 
-### Latest Results
-- **395 demons analyzed**
-- **Power Play (4-Pick)**: 3 Phoenix Suns players correlated
-- **Example**: Royce O'Neale 🔥 + Ousmane Dieng 🔥 = 3x payout
+### Latest Results (March 13, 2026)
+- **356 demons analyzed**
+- **Double Up (2-Pick)**: 4x payout | 81.0% hit chance
+- **Triple Threat (3-Pick)**: 8x payout | 45.1% hit chance
+- **Power Play (4-Pick)**: 16x payout | 1.18% hit chance
+- **Heavy Hitter (5-Pick)**: 32x payout | 0.31% hit chance
+- **Jackpot 64x (6-Pick)**: 64x payout | 53.14% hit chance
 
 ---
 

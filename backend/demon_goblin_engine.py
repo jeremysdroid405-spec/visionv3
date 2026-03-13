@@ -1607,16 +1607,17 @@ class DemonGoblinEngine:
         2. Recent Heat: 20% boost if player hit in last game (H5 >= 20%)
         3. Correlation Filter: Pair players from same game for 4-6 pick parlays
         
-        LINE TYPES:
-        - 2-Pick (Double Demon): Top 2 highest radar picks (5x-10x payout)
-        - 3-Pick (Mid-Tier): #1 + next 2 correlated picks (15x-25x)
-        - 4-Pick (Power Play): Top 4 with game correlation (40x-80x)
-        - 5-Pick (Heavy Hitter): Mix of high prob + value (150x-300x)
-        - 6-Pick (2000x Lotto): Top 6 highest probability demons
+        LINE TYPES (Mathematically Accurate at +100 odds):
+        - 2-Pick: Max 4x payout (2² = 4)
+        - 3-Pick: Max 8x payout (2³ = 8)
+        - 4-Pick: Max 16x payout (2⁴ = 16)
+        - 5-Pick: Max 32x payout (2⁵ = 32)
+        - 6-Pick: Max 64x payout (2⁶ = 64)
         
-        PAYOUT ESTIMATION:
-        - Each demon leg at +100 odds = ~2x multiplier
-        - n-pick parlay: ~2^n multiplier (adjusted for probabilities)
+        PAYOUT MATH:
+        - Each demon leg at +100 odds = 2x multiplier (bet $100, win $100 + stake)
+        - n-pick parlay: 2^n maximum payout
+        - GOAL: Maximize combined hit probability while achieving multiplier
         """
         logger.info("[PARLAY BUILDER] Generating Big Money parlays...")
         
@@ -1688,22 +1689,23 @@ class DemonGoblinEngine:
         parlays = {}
         
         # ==================== 2-PICK (Double Demon) ====================
-        # Top 2 highest scoring picks
+        # Top 2 highest scoring picks - Max payout: 4x
         if len(all_demons) >= 2:
             picks_2 = all_demons[:2]
             combined_prob = self._calculate_parlay_probability(picks_2)
             parlays["2_pick"] = {
-                "name": "Double Demon",
+                "name": "Double Up",
                 "picks": picks_2,
                 "pick_count": 2,
                 "combined_probability": combined_prob,
-                "estimated_payout": self._calculate_true_payout(picks_2),
-                "payout_range": "3x - 4x",
-                "description": "Top 2 highest-scoring Radar picks"
+                "estimated_payout": 4,  # 2^2 = 4x at +100 odds
+                "payout_range": "4x",
+                "max_payout": 4,
+                "description": "Top 2 highest-probability demons"
             }
         
-        # ==================== 3-PICK (Mid-Tier) ====================
-        # #1 pick + 2 correlated picks from same game OR next 2 best
+        # ==================== 3-PICK (Triple Threat) ====================
+        # #1 pick + 2 correlated picks from same game OR next 2 best - Max payout: 8x
         if len(all_demons) >= 3:
             top_pick = all_demons[0]
             game_key = top_pick.get("game_key", "")
@@ -1724,12 +1726,14 @@ class DemonGoblinEngine:
                 "picks": picks_3,
                 "pick_count": 3,
                 "combined_probability": combined_prob,
-                "estimated_payout": self._calculate_true_payout(picks_3),
-                "payout_range": "6x - 8x",
+                "estimated_payout": 8,  # 2^3 = 8x at +100 odds
+                "payout_range": "8x",
+                "max_payout": 8,
                 "description": "#1 pick + correlated teammates"
             }
         
         # ==================== 4-PICK (Power Play) ====================
+        # Max payout: 16x
         if len(all_demons) >= 4:
             # Try to build with game correlation
             picks_4 = self._build_correlated_parlay(all_demons, 4, game_groups)
@@ -1739,12 +1743,14 @@ class DemonGoblinEngine:
                 "picks": picks_4,
                 "pick_count": 4,
                 "combined_probability": combined_prob,
-                "estimated_payout": self._calculate_true_payout(picks_4),
-                "payout_range": "10x - 16x",
+                "estimated_payout": 16,  # 2^4 = 16x at +100 odds
+                "payout_range": "16x",
+                "max_payout": 16,
                 "description": "4 picks with game correlation"
             }
         
         # ==================== 5-PICK (Heavy Hitter) ====================
+        # Max payout: 32x
         if len(all_demons) >= 5:
             picks_5 = self._build_correlated_parlay(all_demons, 5, game_groups)
             combined_prob = self._calculate_parlay_probability(picks_5)
@@ -1753,24 +1759,27 @@ class DemonGoblinEngine:
                 "picks": picks_5,
                 "pick_count": 5,
                 "combined_probability": combined_prob,
-                "estimated_payout": self._calculate_true_payout(picks_5),
-                "payout_range": "20x - 32x",
+                "estimated_payout": 32,  # 2^5 = 32x at +100 odds
+                "payout_range": "32x",
+                "max_payout": 32,
                 "description": "5 high-value picks"
             }
         
         # ==================== 6-PICK (Jackpot) ====================
+        # Max payout: 64x (THE TRUE MAXIMUM)
         if len(all_demons) >= 6:
             # Top 6 highest probability demons
             picks_6 = all_demons[:6]
             combined_prob = self._calculate_parlay_probability(picks_6)
             parlays["6_pick"] = {
-                "name": "Jackpot",
+                "name": "Jackpot 64x",
                 "picks": picks_6,
                 "pick_count": 6,
                 "combined_probability": combined_prob,
-                "estimated_payout": self._calculate_true_payout(picks_6),
-                "payout_range": "40x - 64x",
-                "description": "Top 6 highest-probability demons"
+                "estimated_payout": 64,  # 2^6 = 64x at +100 odds (TRUE MAX)
+                "payout_range": "64x",
+                "max_payout": 64,
+                "description": "Top 6 highest-probability demons - Maximum multiplier!"
             }
         
         # Store in database
@@ -1787,7 +1796,7 @@ class DemonGoblinEngine:
         
         logger.info(f"[PARLAY BUILDER] Generated {len(parlays)} parlay types from {len(all_demons)} demons")
         for ptype, pdata in parlays.items():
-            logger.info(f"  {ptype}: {pdata['name']} - Est. {pdata['estimated_payout']}x payout")
+            logger.info(f"  {ptype}: {pdata['name']} - {pdata['estimated_payout']}x payout | {pdata['combined_probability']:.1f}% hit chance")
     
     def _build_correlated_parlay(self, all_demons: List[Dict], target_count: int, game_groups: Dict) -> List[Dict]:
         """Build a parlay with game correlation where possible"""
@@ -1835,21 +1844,6 @@ class DemonGoblinEngine:
             prob *= p
         
         return round(prob * 100, 2)
-    
-    def _estimate_payout(self, legs: int, combined_prob: float) -> int:
-        """Estimate payout multiplier for parlay"""
-        # Base multiplier per leg at +100 odds = 2x
-        base_mult = 2 ** legs
-        
-        # Adjust based on probability (lower prob = higher payout potential)
-        if combined_prob > 30:
-            return round(base_mult * 0.8)
-        elif combined_prob > 20:
-            return round(base_mult * 1.0)
-        elif combined_prob > 10:
-            return round(base_mult * 1.5)
-        else:
-            return round(base_mult * 2.0)
     
     def _extract_stat_type(self, market: str) -> str:
         """Extract stat type from market name"""
