@@ -3448,9 +3448,20 @@ class DemonGoblinEngine:
     async def get_demon_radar(self) -> Dict[str, Any]:
         """
         Get the Demon Radar top 10 picks from MongoDB.
+        Enriches with AI insight summaries.
         NO API CALLS - reads only from database.
         """
         picks = await self.radar_picks.find({}, {"_id": 0}).sort("radar_score", -1).to_list(10)
+        
+        # Enrich with AI insights
+        for pick in picks:
+            insight = await self.daily_insights.find_one(
+                {"player_name": pick.get('player_name')},
+                {"_id": 0, "insight_summary": 1, "ai_confidence_rating": 1}
+            )
+            if insight:
+                pick['insight_summary'] = insight.get('insight_summary', '')
+                pick['ai_confidence'] = insight.get('ai_confidence_rating', 50)
         
         sync_meta = await self.sync_log.find_one({"type": "cached_board"})
         
@@ -3471,9 +3482,20 @@ class DemonGoblinEngine:
     async def get_goblin_vault(self) -> Dict[str, Any]:
         """
         Get the Goblin Vault top 10 safe plays from MongoDB.
+        Enriches with AI insight summaries.
         NO API CALLS - reads only from database.
         """
         picks = await self.goblin_vault.find({}, {"_id": 0}).sort("vault_score", -1).to_list(10)
+        
+        # Enrich with AI insights
+        for pick in picks:
+            insight = await self.daily_insights.find_one(
+                {"player_name": pick.get('player_name')},
+                {"_id": 0, "insight_summary": 1, "ai_confidence_rating": 1}
+            )
+            if insight:
+                pick['insight_summary'] = insight.get('insight_summary', '')
+                pick['ai_confidence'] = insight.get('ai_confidence_rating', 50)
         
         sync_meta = await self.sync_log.find_one({"type": "cached_board"})
         

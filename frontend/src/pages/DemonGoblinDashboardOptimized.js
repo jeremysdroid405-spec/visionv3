@@ -712,6 +712,19 @@ const RadarCard = memo(({ pick, rank, onClick }) => {
               <span className="text-orange-400 font-medium">🔥 STREAK</span>
             )}
           </div>
+          
+          {/* AI Explainer - Why this Demon? */}
+          {pick.insight_summary && (
+            <div className="mt-2 pt-2 border-t border-red-900/30">
+              <div className="flex items-center gap-1 mb-1">
+                <Zap className="w-2.5 h-2.5 text-purple-400" />
+                <span className="text-[9px] text-purple-400 uppercase tracking-wider font-semibold">The Vision</span>
+              </div>
+              <p className="text-[10px] text-purple-300/80 leading-tight line-clamp-2 italic">
+                "{pick.insight_summary}"
+              </p>
+            </div>
+          )}
         </div>
       </div>
     </Card>
@@ -869,6 +882,19 @@ const VaultCard = memo(({ pick, rank, onClick }) => {
               <span className="text-green-400 font-medium">✓ PERFECT</span>
             )}
           </div>
+          
+          {/* AI Explainer - Why this Goblin? */}
+          {pick.insight_summary && (
+            <div className="mt-2 pt-2 border-t border-green-900/30">
+              <div className="flex items-center gap-1 mb-1">
+                <Zap className="w-2.5 h-2.5 text-purple-400" />
+                <span className="text-[9px] text-purple-400 uppercase tracking-wider font-semibold">The Vision</span>
+              </div>
+              <p className="text-[10px] text-purple-300/80 leading-tight line-clamp-2 italic">
+                "{pick.insight_summary}"
+              </p>
+            </div>
+          )}
         </div>
       </div>
     </Card>
@@ -1905,63 +1931,90 @@ const LadderPropRow = memo(({ prop, categoryStats, isFirst, isLast, isHighlighte
                   </div>
                 </div>
                 
-                {/* Advanced Analytics Section */}
-                {insightSummary && (
-                  <div className="mt-3 pt-3 border-t border-zinc-700/50">
-                    <div className="text-[10px] text-zinc-500 uppercase tracking-wider font-semibold mb-2 flex items-center gap-1">
-                      <Zap className="w-3 h-3" />
-                      Advanced Analytics
+                {/* THE VISION - AI Insight Section (Always Show) */}
+                <div className="mt-3 pt-3 border-t border-zinc-700/50">
+                  <div className="text-[10px] uppercase tracking-wider font-semibold mb-2 flex items-center gap-1 text-purple-400">
+                    <Zap className="w-3 h-3" />
+                    THE VISION
+                    <span className="text-zinc-600 font-normal ml-1">AI Analysis</span>
+                  </div>
+                  
+                  {/* AI Insight Summary - Featured Box */}
+                  {insightSummary ? (
+                    <div className="bg-gradient-to-r from-purple-950/50 via-zinc-900 to-purple-950/50 rounded-lg px-3 py-2.5 mb-3 border border-purple-700/40 relative overflow-hidden">
+                      <div className="absolute top-0 left-0 w-1 h-full bg-gradient-to-b from-purple-500 to-purple-700" />
+                      <p className="text-sm text-purple-200 leading-relaxed pl-2 italic">
+                        "{insightSummary}"
+                      </p>
                     </div>
-                    
-                    {/* Insight Summary */}
-                    <div className="bg-gradient-to-r from-purple-950/30 to-zinc-900 rounded px-2 py-2 mb-2 text-xs text-purple-300 border border-purple-800/30">
-                      {insightSummary}
+                  ) : (
+                    <div className="bg-zinc-900/50 rounded-lg px-3 py-2.5 mb-3 border border-zinc-800 text-center">
+                      <p className="text-xs text-zinc-500">AI insight generating... Check back soon.</p>
                     </div>
-                    
-                    {/* Analytics Grid */}
-                    <div className="grid grid-cols-2 gap-2">
-                      {/* Volatility Score */}
-                      <div className="flex items-center justify-between bg-zinc-800/40 rounded px-2 py-1.5">
-                        <span className="text-[10px] text-zinc-500">Volatility</span>
-                        <span className={`text-xs font-bold px-1.5 py-0.5 rounded ${getVolatilityColor(volatilityScore)}`}>
-                          {volatilityScore}
-                        </span>
-                      </div>
-                      
-                      {/* Pace Factor */}
-                      <div className="flex items-center justify-between bg-zinc-800/40 rounded px-2 py-1.5">
-                        <span className="text-[10px] text-zinc-500">Pace</span>
-                        <span className={`text-xs font-bold ${
-                          paceFactor > 1.02 ? 'text-green-400' : 
-                          paceFactor < 0.98 ? 'text-red-400' : 
-                          'text-zinc-300'
-                        }`}>
-                          {paceFactor > 1.0 ? '+' : ''}{((paceFactor - 1) * 100).toFixed(0)}%
-                        </span>
-                      </div>
-                      
-                      {/* Usage Bump */}
-                      {usageBump > 0 && (
-                        <div className="flex items-center justify-between bg-green-950/30 rounded px-2 py-1.5 border border-green-800/30">
-                          <span className="text-[10px] text-green-400">Usage Bump</span>
-                          <span className="text-xs font-bold text-green-400">+{usageBump.toFixed(0)}%</span>
-                        </div>
-                      )}
-                      
-                      {/* AI Confidence */}
-                      <div className="flex items-center justify-between bg-zinc-800/40 rounded px-2 py-1.5">
-                        <span className="text-[10px] text-zinc-500">AI Confidence</span>
-                        <span className={`text-xs font-bold ${
-                          confidenceRating >= 70 ? 'text-green-400' :
-                          confidenceRating >= 50 ? 'text-yellow-400' :
-                          'text-red-400'
-                        }`}>
-                          {confidenceRating}%
-                        </span>
-                      </div>
+                  )}
+                  
+                  {/* Confidence Score Meter */}
+                  <div className="mb-3">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-[10px] text-zinc-500 uppercase tracking-wider">AI Confidence</span>
+                      <span className={`text-sm font-bold ${
+                        confidenceRating >= 80 ? 'text-green-400' :
+                        confidenceRating >= 60 ? 'text-yellow-400' :
+                        confidenceRating >= 40 ? 'text-orange-400' :
+                        'text-red-400'
+                      }`}>
+                        {confidenceRating}%
+                      </span>
+                    </div>
+                    <div className="h-2 bg-zinc-800 rounded-full overflow-hidden">
+                      <div 
+                        className={`h-full rounded-full transition-all duration-500 ${
+                          confidenceRating >= 80 ? 'bg-gradient-to-r from-green-600 to-green-400' :
+                          confidenceRating >= 60 ? 'bg-gradient-to-r from-yellow-600 to-yellow-400' :
+                          confidenceRating >= 40 ? 'bg-gradient-to-r from-orange-600 to-orange-400' :
+                          'bg-gradient-to-r from-red-600 to-red-400'
+                        }`}
+                        style={{ width: `${confidenceRating}%` }}
+                      />
+                    </div>
+                    <div className="flex justify-between text-[8px] text-zinc-600 mt-0.5">
+                      <span>Low</span>
+                      <span>Med</span>
+                      <span>High</span>
                     </div>
                   </div>
-                )}
+                  
+                  {/* Analytics Grid */}
+                  <div className="grid grid-cols-2 gap-2">
+                    {/* Volatility Score */}
+                    <div className="flex items-center justify-between bg-zinc-800/40 rounded px-2 py-1.5">
+                      <span className="text-[10px] text-zinc-500">Volatility</span>
+                      <span className={`text-xs font-bold px-1.5 py-0.5 rounded ${getVolatilityColor(volatilityScore)}`}>
+                        {volatilityScore}
+                      </span>
+                    </div>
+                    
+                    {/* Pace Factor */}
+                    <div className="flex items-center justify-between bg-zinc-800/40 rounded px-2 py-1.5">
+                      <span className="text-[10px] text-zinc-500">Pace</span>
+                      <span className={`text-xs font-bold ${
+                        paceFactor > 1.02 ? 'text-green-400' : 
+                        paceFactor < 0.98 ? 'text-red-400' : 
+                        'text-zinc-300'
+                      }`}>
+                        {paceFactor > 1.0 ? '+' : ''}{((paceFactor - 1) * 100).toFixed(0)}%
+                      </span>
+                    </div>
+                    
+                    {/* Usage Bump */}
+                    {usageBump > 0 && (
+                      <div className="flex items-center justify-between bg-green-950/30 rounded px-2 py-1.5 border border-green-800/30">
+                        <span className="text-[10px] text-green-400">Usage Bump</span>
+                        <span className="text-xs font-bold text-green-400">+{usageBump.toFixed(0)}%</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
               </>
             )}
           </div>

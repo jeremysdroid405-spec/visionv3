@@ -152,12 +152,14 @@ Build a high-performance NBA Player Prop Dashboard that mimics the PrizePicks us
 ---
 
 ## Recent Changes (Dec 13, 2025)
-- **Injury Intelligence Service** - ESPN API integration for real-time injury tracking with usage ripple calculations
+- **"THE VISION" UI Overhaul** - AI insights now prominent with featured box, confidence meter, and card explainers
+- **AI Confidence Meter** - Color-coded progress bar (green >80%, yellow 60-80%, orange 40-60%, red <40%)
+- **Demon Radar AI Explainers** - Each card shows "The Vision" insight explaining why it's flagged
+- **Goblin Vault AI Explainers** - Safe play cards also show AI reasoning
+- **Tank01 + ESPN Hybrid** - Injuries enriched from both sources with return dates
+- **Vision AI Injury Context** - Prompt includes: "Factor in the latest injury news for [Team]"
 - **Breaking News Ticker** - Scrolling injury-related news banner at top of dashboard
 - **Injury Badges on Player Cards** - Red/Yellow pulsing badges with status (Out, Day-To-Day, Questionable)
-- **Vision AI Integration** - Added Claude Sonnet 4.5 for generating "badass" AI insights for Demons/Goblins/High Volatility players
-- **Demo Mode** - Added `/v3/demo` public route with demo banner and Login button for non-authenticated access
-- **Advanced Analytics Frontend** - Completed integration of insights display in LadderPropRow
 - **Daily Sync Order** - Updated to 5 steps: injuries → stats → odds → insights → Vision AI
 
 ---
