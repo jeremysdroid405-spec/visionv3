@@ -218,6 +218,13 @@ Build a high-performance NBA Player Prop Dashboard that mimics the PrizePicks us
 ---
 
 ## Recent Changes (Dec 13, 2025 - Session 2)
+- **Active Player Photo Sync** - New system to download ALL NBA player headshots:
+  - Created `/api/v3/sync-active-players` endpoint that uses Tank01 as the primary source
+  - Fetches ~534 active NBA players (not 5000+ historical players)
+  - 100% ESPN headshot coverage - every player has a professional photo
+  - Fixed Tank01 abbreviation mapping (GS→GSW, NO→NOP, NY→NYK, PHO→PHX, SA→SAS)
+  - New endpoints: `/api/v3/players`, `/api/v3/player/{name}/photo`, `/api/v3/team/{abbrev}/roster`
+  - Data stored: player_name, team, position, jersey, height, weight, college, espn_id, nba_com_id, photo_url
 - **Auth Page "MISSION OBJECTIVES™" Update** - Redesigned Section 2 of onboarding page:
   - Renamed "THE KILL LIST" → "MISSION OBJECTIVES™"
   - Updated system status: "[OPERATIONAL // INTEL_SYNC_ACTIVE]"

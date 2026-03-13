@@ -1291,6 +1291,208 @@ class DemonGoblinEngine:
             "duration_seconds": round(duration, 1)
         }
     
+    async def sync_active_players_with_photos(self) -> Dict[str, Any]:
+        """
+        ACTIVE PLAYER SYNC - Fetches ONLY current NBA players from Tank01 with headshots.
+        
+        This replaces the old approach of syncing 5000+ historical players from BallDontLie.
+        Tank01 returns ~530 active players with ESPN headshot URLs included.
+        
+        Data stored per player:
+        - player_name, team, position
+        - espn_id, nba_com_id (for cross-referencing)
+        - photo_url (ESPN headshot or NBA CDN fallback)
+        - jersey_number, height, weight, college, etc.
+        
+        Returns:
+            Dict with sync status and player counts
+        """
+        logger.info("=" * 60)
+        logger.info("[ACTIVE PLAYER SYNC] Fetching current NBA rosters from Tank01...")
+        logger.info("=" * 60)
+        
+        sync_start = datetime.now(timezone.utc)
+        players_synced = 0
+        teams_processed = 0
+        photos_found = 0
+        errors = []
+        
+        # Tank01 uses non-standard abbreviations - map to standard NBA abbreviations
+        TANK01_TO_NBA_ABBREV = {
+            "GS": "GSW",    # Golden State Warriors
+            "NO": "NOP",    # New Orleans Pelicans
+            "NY": "NYK",    # New York Knicks
+            "PHO": "PHX",   # Phoenix Suns
+            "SA": "SAS",    # San Antonio Spurs
+        }
+        
+        # Team logos for fallback (using standard NBA abbreviations)
+        TEAM_LOGOS = {
+            "ATL": "https://cdn.nba.com/logos/nba/1610612737/global/L/logo.svg",
+            "BOS": "https://cdn.nba.com/logos/nba/1610612738/global/L/logo.svg",
+            "BKN": "https://cdn.nba.com/logos/nba/1610612751/global/L/logo.svg",
+            "CHA": "https://cdn.nba.com/logos/nba/1610612766/global/L/logo.svg",
+            "CHI": "https://cdn.nba.com/logos/nba/1610612741/global/L/logo.svg",
+            "CLE": "https://cdn.nba.com/logos/nba/1610612739/global/L/logo.svg",
+            "DAL": "https://cdn.nba.com/logos/nba/1610612742/global/L/logo.svg",
+            "DEN": "https://cdn.nba.com/logos/nba/1610612743/global/L/logo.svg",
+            "DET": "https://cdn.nba.com/logos/nba/1610612765/global/L/logo.svg",
+            "GSW": "https://cdn.nba.com/logos/nba/1610612744/global/L/logo.svg",
+            "HOU": "https://cdn.nba.com/logos/nba/1610612745/global/L/logo.svg",
+            "IND": "https://cdn.nba.com/logos/nba/1610612754/global/L/logo.svg",
+            "LAC": "https://cdn.nba.com/logos/nba/1610612746/global/L/logo.svg",
+            "LAL": "https://cdn.nba.com/logos/nba/1610612747/global/L/logo.svg",
+            "MEM": "https://cdn.nba.com/logos/nba/1610612763/global/L/logo.svg",
+            "MIA": "https://cdn.nba.com/logos/nba/1610612748/global/L/logo.svg",
+            "MIL": "https://cdn.nba.com/logos/nba/1610612749/global/L/logo.svg",
+            "MIN": "https://cdn.nba.com/logos/nba/1610612750/global/L/logo.svg",
+            "NOP": "https://cdn.nba.com/logos/nba/1610612740/global/L/logo.svg",
+            "NYK": "https://cdn.nba.com/logos/nba/1610612752/global/L/logo.svg",
+            "OKC": "https://cdn.nba.com/logos/nba/1610612760/global/L/logo.svg",
+            "ORL": "https://cdn.nba.com/logos/nba/1610612753/global/L/logo.svg",
+            "PHI": "https://cdn.nba.com/logos/nba/1610612755/global/L/logo.svg",
+            "PHX": "https://cdn.nba.com/logos/nba/1610612756/global/L/logo.svg",
+            "POR": "https://cdn.nba.com/logos/nba/1610612757/global/L/logo.svg",
+            "SAC": "https://cdn.nba.com/logos/nba/1610612758/global/L/logo.svg",
+            "SAS": "https://cdn.nba.com/logos/nba/1610612759/global/L/logo.svg",
+            "TOR": "https://cdn.nba.com/logos/nba/1610612761/global/L/logo.svg",
+            "UTA": "https://cdn.nba.com/logos/nba/1610612762/global/L/logo.svg",
+            "WAS": "https://cdn.nba.com/logos/nba/1610612764/global/L/logo.svg",
+        }
+        
+        try:
+            headers = {
+                "X-RapidAPI-Key": TANK01_API_KEY,
+                "X-RapidAPI-Host": TANK01_HOST
+            }
+            
+            async with httpx.AsyncClient(timeout=60) as client:
+                # Fetch all teams with rosters from Tank01
+                response = await client.get(
+                    f"{TANK01_BASE}/getNBATeams",
+                    headers=headers,
+                    params={"rosters": "true"}
+                )
+                
+                if response.status_code != 200:
+                    logger.error(f"[ACTIVE PLAYER SYNC] Tank01 API error: {response.status_code}")
+                    return {"success": False, "error": f"Tank01 API returned {response.status_code}"}
+                
+                data = response.json()
+                teams_data = data.get("body", [])
+                
+                logger.info(f"[ACTIVE PLAYER SYNC] Tank01 returned {len(teams_data)} teams")
+                
+                # Clear existing master roster and rebuild with ONLY active players
+                await self.master_roster.delete_many({})
+                logger.info("[ACTIVE PLAYER SYNC] Cleared old master roster")
+                
+                # Process each team's roster
+                player_docs = []
+                
+                for team in teams_data:
+                    tank01_abv = team.get("teamAbv", "")
+                    team_name = team.get("teamName", "")
+                    team_city = team.get("teamCity", "")
+                    roster = team.get("Roster", {})
+                    
+                    # Normalize Tank01 abbreviation to standard NBA abbreviation
+                    team_abv = TANK01_TO_NBA_ABBREV.get(tank01_abv, tank01_abv)
+                    
+                    # Skip non-NBA teams (like All-Star teams)
+                    if team_abv not in TEAM_LOGOS:
+                        logger.warning(f"[ACTIVE PLAYER SYNC] Skipping unknown team: {tank01_abv}")
+                        continue
+                    
+                    teams_processed += 1
+                    
+                    if isinstance(roster, dict):
+                        for player_id, player in roster.items():
+                            player_name = player.get("longName", "")
+                            if not player_name:
+                                continue
+                            
+                            # Get photo URL - prioritize ESPN headshot
+                            espn_headshot = player.get("espnHeadshot", "")
+                            espn_id = player.get("espnID")
+                            nba_com_id = player.get("nbaComID")
+                            
+                            # Determine best photo URL
+                            photo_url = None
+                            photo_source = None
+                            
+                            if espn_headshot:
+                                photo_url = espn_headshot
+                                photo_source = "espn_direct"
+                                photos_found += 1
+                            elif espn_id:
+                                photo_url = f"https://a.espncdn.com/i/headshots/nba/players/full/{espn_id}.png"
+                                photo_source = "espn_cdn"
+                                photos_found += 1
+                            elif nba_com_id:
+                                photo_url = f"https://cdn.nba.com/headshots/nba/latest/1040x760/{nba_com_id}.png"
+                                photo_source = "nba_cdn"
+                                photos_found += 1
+                            else:
+                                photo_url = TEAM_LOGOS.get(team_abv, "")
+                                photo_source = "team_logo"
+                            
+                            # Build player document
+                            player_doc = {
+                                "player_name": player_name,
+                                "normalized_name": self.sanitize_player_name(player_name),
+                                "team_abbreviation": team_abv,  # Use normalized abbreviation
+                                "team_name": f"{team_city} {team_name}",
+                                "position": player.get("pos", ""),
+                                "jersey_number": player.get("jerseyNum", ""),
+                                "height": player.get("height", ""),
+                                "weight": player.get("weight", ""),
+                                "college": player.get("college", ""),
+                                "birth_date": player.get("bDay", ""),
+                                "years_pro": player.get("exp", ""),
+                                "tank01_player_id": player_id,
+                                "espn_id": espn_id,
+                                "nba_com_id": nba_com_id,
+                                "photo_url": photo_url,
+                                "photo_source": photo_source,
+                                "team_logo_url": TEAM_LOGOS.get(team_abv, ""),
+                                "is_active": True,
+                                "synced_at": sync_start.isoformat()
+                            }
+                            
+                            player_docs.append(player_doc)
+                            players_synced += 1
+                
+                # Bulk insert all players
+                if player_docs:
+                    await self.master_roster.insert_many(player_docs)
+                    logger.info(f"[ACTIVE PLAYER SYNC] Inserted {len(player_docs)} active players")
+                
+        except Exception as e:
+            logger.error(f"[ACTIVE PLAYER SYNC] Error: {str(e)}")
+            errors.append(str(e))
+        
+        duration = (datetime.now(timezone.utc) - sync_start).total_seconds()
+        
+        logger.info("=" * 60)
+        logger.info(f"[ACTIVE PLAYER SYNC] COMPLETE")
+        logger.info(f"  Teams processed: {teams_processed}")
+        logger.info(f"  Players synced: {players_synced}")
+        logger.info(f"  Photos found: {photos_found}")
+        logger.info(f"  Duration: {duration:.1f}s")
+        logger.info("=" * 60)
+        
+        return {
+            "success": True,
+            "teams_processed": teams_processed,
+            "players_synced": players_synced,
+            "photos_found": photos_found,
+            "photo_coverage": f"{(photos_found/players_synced*100):.1f}%" if players_synced > 0 else "0%",
+            "errors": errors,
+            "synced_at": sync_start.isoformat(),
+            "duration_seconds": round(duration, 1)
+        }
+    
     def get_player_photo_url(self, player_name: str, team: str = None, nba_id: int = None) -> Dict[str, str]:
         """
         Get the best available photo URL for a player.

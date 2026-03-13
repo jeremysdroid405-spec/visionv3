@@ -1605,6 +1605,98 @@ async def sync_player_photos():
     return result
 
 
+@api_router.post("/v3/sync-active-players")
+async def sync_active_players():
+    """
+    ACTIVE PLAYER SYNC - Fetches ONLY current NBA players from Tank01 with headshots.
+    
+    This is the recommended way to populate the player database:
+    - Gets ~530 active NBA players (not 5000+ historical)
+    - Includes ESPN headshot URLs directly from Tank01
+    - Stores player metadata: team, position, jersey, height, weight, college
+    
+    Run this once to populate the database, then use sync-player-photos for updates.
+    """
+    if not demon_goblin_engine:
+        raise HTTPException(status_code=500, detail="Engine not initialized")
+    
+    logger.info("[ACTIVE PLAYER SYNC] Manual sync triggered via API")
+    result = await demon_goblin_engine.sync_active_players_with_photos()
+    
+    return result
+
+
+@api_router.get("/v3/players")
+async def get_all_players():
+    """
+    Get all active NBA players with their headshots.
+    """
+    if not demon_goblin_engine:
+        raise HTTPException(status_code=500, detail="Engine not initialized")
+    
+    players = await demon_goblin_engine.master_roster.find(
+        {"is_active": True},
+        {"_id": 0}
+    ).sort("player_name", 1).to_list(None)
+    
+    return {
+        "success": True,
+        "count": len(players),
+        "players": players
+    }
+
+
+@api_router.get("/v3/player/{player_name}/photo")
+async def get_player_photo(player_name: str):
+    """
+    Get a specific player's headshot URL.
+    """
+    if not demon_goblin_engine:
+        raise HTTPException(status_code=500, detail="Engine not initialized")
+    
+    # Try exact match first
+    player = await demon_goblin_engine.master_roster.find_one(
+        {"player_name": player_name},
+        {"_id": 0, "player_name": 1, "team_abbreviation": 1, "photo_url": 1, "photo_source": 1}
+    )
+    
+    # If not found, try normalized name match
+    if not player:
+        normalized = demon_goblin_engine.sanitize_player_name(player_name)
+        player = await demon_goblin_engine.master_roster.find_one(
+            {"normalized_name": normalized},
+            {"_id": 0, "player_name": 1, "team_abbreviation": 1, "photo_url": 1, "photo_source": 1}
+        )
+    
+    if not player:
+        raise HTTPException(status_code=404, detail=f"Player '{player_name}' not found")
+    
+    return player
+
+
+@api_router.get("/v3/team/{team_abbrev}/roster")
+async def get_team_roster(team_abbrev: str):
+    """
+    Get all players on a specific team with their headshots.
+    """
+    if not demon_goblin_engine:
+        raise HTTPException(status_code=500, detail="Engine not initialized")
+    
+    players = await demon_goblin_engine.master_roster.find(
+        {"team_abbreviation": team_abbrev.upper()},
+        {"_id": 0}
+    ).sort("player_name", 1).to_list(None)
+    
+    if not players:
+        raise HTTPException(status_code=404, detail=f"Team '{team_abbrev}' not found")
+    
+    return {
+        "team": team_abbrev.upper(),
+        "count": len(players),
+        "players": players
+    }
+
+
 @api_router.post("/v3/sync-player-stats")
 async def sync_player_stats():
     """
