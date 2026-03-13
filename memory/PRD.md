@@ -42,6 +42,17 @@ Build a high-performance NBA Player Prop Dashboard that mimics the PrizePicks us
 ### IN PROGRESS
 - None currently
 
+### RECENTLY COMPLETED (Dec 13, 2025 - Session 3)
+- [x] **Dynamic Payout Calculation Engine** - Complete backend integration:
+  - **New `payout_engine.py` module**: Handles PrizePicks-style cumulative payout calculations
+  - **Formula**: `Total Payout = Base Multiplier × (Mod_1 × Mod_2 × ... × Mod_n)`
+  - **Base Multipliers**: 2-pick=3.0x, 3-pick=5.0x, 4-pick=10.0x, 5-pick=20.0x, 6-pick=40.0x
+  - **Asset Types**: Demons (1.1-1.5x modifier), Standards (1.0x), Goblins (0.7-0.9x modifier)
+  - **`/api/v3/calculate-payout` endpoint**: Accepts picks array, returns dynamic payout calculation
+  - **Parlay Builder Integration**: All tiers (2-6 pick) now return `estimated_payout`, `payout_display`, `base_multiplier`, `cumulative_modifier`, `asset_breakdown`
+  - **Goblin Recon Integration**: All tiers return dynamic payouts with goblins correctly identified in asset_breakdown
+  - **Testing**: 16/16 backend tests passed
+
 ### RECENTLY COMPLETED (Dec 13, 2025)
 - [x] **V3.2 Data Integrity Crisis Response** - Isolated raw data fetching:
   - **RawStatFetcher service**: New isolated service (`/app/backend/raw_stat_fetcher.py`) that ONLY pulls raw JSON from BallDontLie - ZERO processing
@@ -217,6 +228,19 @@ Build a high-performance NBA Player Prop Dashboard that mimics the PrizePicks us
 
 ---
 
+## Recent Changes (Dec 13, 2025 - Session 3)
+- **Dynamic Payout Calculation Engine** - Complete backend integration:
+  - Created `/app/backend/payout_engine.py` with PrizePicks-style payout calculation
+  - Formula: `Total Payout = Base Multiplier × (Mod_1 × Mod_2 × ... × Mod_n)`
+  - Base Multipliers: 2-pick=3.0x, 3-pick=5.0x, 4-pick=10.0x, 5-pick=20.0x, 6-pick=40.0x
+  - Demon modifier: 1.10-1.50x (harder lines = higher payouts)
+  - Goblin modifier: 0.70-0.90x (easier lines = lower payouts)
+  - New endpoint: `POST /api/v3/calculate-payout`
+  - Updated `_build_parlay_builder()` - All 5 tiers (2-6 pick) use dynamic payout engine
+  - Updated `_build_goblin_recon()` - All 4 tiers use dynamic payout engine with goblin identification
+  - New response fields: `estimated_payout`, `payout_display`, `base_multiplier`, `cumulative_modifier`, `asset_breakdown`
+  - Testing: 16/16 backend tests passed
+
 ## Recent Changes (Dec 13, 2025 - Session 2)
 - **Active Player Photo Sync** - New system to download ALL NBA player headshots:
   - Created `/api/v3/sync-active-players` endpoint that uses Tank01 as the primary source
@@ -233,9 +257,10 @@ Build a high-performance NBA Player Prop Dashboard that mimics the PrizePicks us
   - Added 🔥🔥🔥🔥 fire emojis to Demon Radar and 💎💎💎💎 sapphire gems to Goblin Recon
 
 ## Next Steps
-1. **Refactor `DemonGoblinDashboardOptimized.js`** (3500+ lines monolith) - Extract components:
+1. **UI Sync for Live Payouts** - Update frontend to display new `payout_display` and `asset_breakdown` fields in parlay views
+2. **Refactor `DemonGoblinDashboardOptimized.js`** (3500+ lines monolith) - Extract components:
    - RadarCard, VaultCard, PlayerDetailView, TheGauntlet, TheSafeHaven
    - Move to `/app/frontend/src/components/dashboard/`
-2. **"Pro Tier" Features** - Gate certain features behind user tier
-3. **"Copy Parlay" Button** - Add clipboard copy for social sharing
-4. **Social Signals Polling** - Add 30-minute auto-polling for news sentiment & revenge games
+3. **"Pro Tier" Features** - Gate certain features behind user tier
+4. **"Copy Parlay" Button** - Add clipboard copy for social sharing
+5. **Social Signals Polling** - Add 30-minute auto-polling for news sentiment & revenge games
