@@ -1619,11 +1619,11 @@ class DemonGoblinEngine:
         - n-pick parlay: 2^n maximum payout
         - GOAL: Maximize combined hit probability while achieving multiplier
         """
-        logger.info("[PARLAY BUILDER] Generating Big Money parlays...")
+        logger.info("[PARLAY BUILDER] Generating HIGH-PROBABILITY parlays...")
         
-        # Collect all scoreable demons
-        all_demons = []
-        game_groups = {}  # Group players by game for correlation
+        # Collect ONLY high-probability demons (minimum 50% hit rate)
+        # This ensures combined probabilities stay high
+        high_prob_demons = []
         
         for player_name, player_data in players_dict.items():
             demons = player_data.get("demons", [])
@@ -1640,19 +1640,20 @@ class DemonGoblinEngine:
                 h5_over = h5_data.get("games_over", 0)
                 h5_games = h5_data.get("total_games", 0)
                 
-                # Ceiling Frequency Filter: H10 >= 30%
-                if h10 < 0.30 and h10_games > 0:
-                    continue
-                
-                # Calculate Whale Score
+                # Calculate weighted probability
                 base_prob = (h10 * 0.6) + (h5 * 0.4)
                 
-                # Recent Heat Boost: 20% if hit in last game (proxy: H5 >= 40%)
-                heat_boost = 1.20 if (h5_games > 0 and h5_over >= 2) else 1.0
+                # STRICT FILTER: Only include demons with 50%+ hit probability
+                # This ensures our parlays have reasonable combined chances
+                if base_prob < 0.50:
+                    continue
+                
+                # Heat boost for recent performance
+                heat_boost = 1.10 if (h5_games > 0 and h5_over >= 3) else 1.0
                 
                 whale_score = base_prob * heat_boost
                 
-                # Get game info for correlation
+                # Get game info
                 home_team = demon.get("home_team", "")
                 away_team = demon.get("away_team", "")
                 game_key = f"{away_team}@{home_team}" if home_team and away_team else ""
@@ -1675,111 +1676,105 @@ class DemonGoblinEngine:
                     "price": demon.get("price", 100)
                 }
                 
-                all_demons.append(demon_entry)
-                
-                # Group by game for correlation
-                if game_key:
-                    if game_key not in game_groups:
-                        game_groups[game_key] = []
-                    game_groups[game_key].append(demon_entry)
+                high_prob_demons.append(demon_entry)
         
-        # Sort by whale_score descending
-        all_demons.sort(key=lambda x: x["whale_score"], reverse=True)
+        # Sort by hit_probability (NOT whale_score) - we want highest chance of hitting
+        high_prob_demons.sort(key=lambda x: x["hit_probability"], reverse=True)
+        
+        logger.info(f"[PARLAY BUILDER] Found {len(high_prob_demons)} high-probability demons (50%+ hit rate)")
         
         parlays = {}
         
-        # ==================== 2-PICK (Double Demon) ====================
-        # Top 2 highest scoring picks - Max payout: 4x
-        if len(all_demons) >= 2:
-            picks_2 = all_demons[:2]
+        # Helper to get unique player picks (no duplicate players in same parlay)
+        def get_top_unique_picks(demons: List[Dict], count: int) -> List[Dict]:
+            picks = []
+            used_players = set()
+            for d in demons:
+                if d["player_name"] not in used_players:
+                    picks.append(d)
+                    used_players.add(d["player_name"])
+                if len(picks) >= count:
+                    break
+            return picks
+        
+        # ==================== 2-PICK ====================
+        # Top 2 highest probability - 4x payout
+        if len(high_prob_demons) >= 2:
+            picks_2 = get_top_unique_picks(high_prob_demons, 2)
             combined_prob = self._calculate_parlay_probability(picks_2)
             parlays["2_pick"] = {
                 "name": "Double Up",
                 "picks": picks_2,
                 "pick_count": 2,
                 "combined_probability": combined_prob,
-                "estimated_payout": 4,  # 2^2 = 4x at +100 odds
+                "estimated_payout": 4,
                 "payout_range": "4x",
                 "max_payout": 4,
                 "description": "Top 2 highest-probability demons"
             }
         
-        # ==================== 3-PICK (Triple Threat) ====================
-        # #1 pick + 2 correlated picks from same game OR next 2 best - Max payout: 8x
-        if len(all_demons) >= 3:
-            top_pick = all_demons[0]
-            game_key = top_pick.get("game_key", "")
-            
-            # Try to find correlated picks from same game
-            correlated = [d for d in all_demons[1:] if d.get("game_key") == game_key and d["player_name"] != top_pick["player_name"]][:2]
-            
-            # Fill remaining with next best
-            remaining_needed = 2 - len(correlated)
-            if remaining_needed > 0:
-                others = [d for d in all_demons[1:] if d not in correlated][:remaining_needed]
-                correlated.extend(others)
-            
-            picks_3 = [top_pick] + correlated
+        # ==================== 3-PICK ====================
+        # Top 3 highest probability - 8x payout
+        if len(high_prob_demons) >= 3:
+            picks_3 = get_top_unique_picks(high_prob_demons, 3)
             combined_prob = self._calculate_parlay_probability(picks_3)
             parlays["3_pick"] = {
                 "name": "Triple Threat",
                 "picks": picks_3,
                 "pick_count": 3,
                 "combined_probability": combined_prob,
-                "estimated_payout": 8,  # 2^3 = 8x at +100 odds
+                "estimated_payout": 8,
                 "payout_range": "8x",
                 "max_payout": 8,
-                "description": "#1 pick + correlated teammates"
+                "description": "Top 3 highest-probability demons"
             }
         
-        # ==================== 4-PICK (Power Play) ====================
-        # Max payout: 16x
-        if len(all_demons) >= 4:
-            # Try to build with game correlation
-            picks_4 = self._build_correlated_parlay(all_demons, 4, game_groups)
+        # ==================== 4-PICK ====================
+        # Top 4 highest probability - 16x payout
+        if len(high_prob_demons) >= 4:
+            picks_4 = get_top_unique_picks(high_prob_demons, 4)
             combined_prob = self._calculate_parlay_probability(picks_4)
             parlays["4_pick"] = {
                 "name": "Power Play",
                 "picks": picks_4,
                 "pick_count": 4,
                 "combined_probability": combined_prob,
-                "estimated_payout": 16,  # 2^4 = 16x at +100 odds
+                "estimated_payout": 16,
                 "payout_range": "16x",
                 "max_payout": 16,
-                "description": "4 picks with game correlation"
+                "description": "Top 4 highest-probability demons"
             }
         
-        # ==================== 5-PICK (Heavy Hitter) ====================
-        # Max payout: 32x
-        if len(all_demons) >= 5:
-            picks_5 = self._build_correlated_parlay(all_demons, 5, game_groups)
+        # ==================== 5-PICK ====================
+        # Top 5 highest probability - 32x payout
+        if len(high_prob_demons) >= 5:
+            picks_5 = get_top_unique_picks(high_prob_demons, 5)
             combined_prob = self._calculate_parlay_probability(picks_5)
             parlays["5_pick"] = {
                 "name": "Heavy Hitter",
                 "picks": picks_5,
                 "pick_count": 5,
                 "combined_probability": combined_prob,
-                "estimated_payout": 32,  # 2^5 = 32x at +100 odds
+                "estimated_payout": 32,
                 "payout_range": "32x",
                 "max_payout": 32,
-                "description": "5 high-value picks"
+                "description": "Top 5 highest-probability demons"
             }
         
-        # ==================== 6-PICK (Jackpot) ====================
-        # Max payout: 64x (THE TRUE MAXIMUM)
-        if len(all_demons) >= 6:
-            # Top 6 highest probability demons
-            picks_6 = all_demons[:6]
+        # ==================== 6-PICK ====================
+        # Top 6 highest probability - 64x payout (MAXIMUM)
+        if len(high_prob_demons) >= 6:
+            picks_6 = get_top_unique_picks(high_prob_demons, 6)
             combined_prob = self._calculate_parlay_probability(picks_6)
             parlays["6_pick"] = {
                 "name": "Jackpot 64x",
                 "picks": picks_6,
                 "pick_count": 6,
                 "combined_probability": combined_prob,
-                "estimated_payout": 64,  # 2^6 = 64x at +100 odds (TRUE MAX)
+                "estimated_payout": 64,
                 "payout_range": "64x",
                 "max_payout": 64,
-                "description": "Top 6 highest-probability demons - Maximum multiplier!"
+                "description": "Top 6 highest-probability demons - MAX PAYOUT!"
             }
         
         # Store in database
@@ -1787,14 +1782,14 @@ class DemonGoblinEngine:
         
         parlay_doc = {
             "parlays": parlays,
-            "total_demons_analyzed": len(all_demons),
-            "games_with_correlation": len(game_groups),
+            "total_demons_analyzed": len(high_prob_demons),
+            "min_probability_threshold": "50%",
             "synced_at": sync_time.isoformat()
         }
         
         await self.parlay_builder.insert_one(parlay_doc)
         
-        logger.info(f"[PARLAY BUILDER] Generated {len(parlays)} parlay types from {len(all_demons)} demons")
+        logger.info(f"[PARLAY BUILDER] Generated {len(parlays)} parlay types from {len(high_prob_demons)} high-prob demons")
         for ptype, pdata in parlays.items():
             logger.info(f"  {ptype}: {pdata['name']} - {pdata['estimated_payout']}x payout | {pdata['combined_probability']:.1f}% hit chance")
     
@@ -1831,16 +1826,19 @@ class DemonGoblinEngine:
         return selected[:target_count]
     
     def _calculate_parlay_probability(self, picks: List[Dict]) -> float:
-        """Calculate combined probability of parlay hitting"""
+        """Calculate combined probability of parlay hitting.
+        
+        Uses actual hit_probability (L10*0.6 + L5*0.4) for accurate calculation.
+        """
         if not picks:
             return 0
         
         prob = 1.0
         for pick in picks:
-            # Use whale_score as probability
-            p = pick.get("whale_score", 0.5)
-            # Cap at 90% for individual legs
-            p = min(0.90, max(0.10, p))
+            # Use hit_probability (the actual weighted probability)
+            p = pick.get("hit_probability", 50) / 100  # Convert from percentage
+            # Don't cap - use actual probability
+            p = max(0.10, p)  # Only prevent division issues
             prob *= p
         
         return round(prob * 100, 2)
