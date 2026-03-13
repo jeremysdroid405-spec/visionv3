@@ -381,6 +381,195 @@ const DataValidationLight = memo(({ dataStatus }) => {
 
 DataValidationLight.displayName = 'DataValidationLight';
 
+// ==================== RAW STAT VALIDATION TABLE ====================
+// DATA INTEGRITY CHECK - Shows RAW API values for manual ESPN verification
+
+const RawValidationTable = memo(({ isVisible, onClose }) => {
+  const [validationData, setValidationData] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [customPlayer, setCustomPlayer] = useState('');
+  
+  // Kill List players for verification
+  const KILL_LIST = ['Luka Doncic', 'Anthony Edwards', 'Naji Marshall'];
+  
+  const fetchValidationData = async (playerNames) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await axios.post(`${API}/v3/raw-validation/batch`, playerNames);
+      if (response.data.success) {
+        setValidationData(response.data.validation_entries);
+      } else {
+        setError('Failed to fetch validation data');
+      }
+    } catch (err) {
+      setError(err.message || 'Error fetching data');
+    } finally {
+      setLoading(false);
+    }
+  };
+  
+  const addPlayer = async () => {
+    if (!customPlayer.trim()) return;
+    setLoading(true);
+    try {
+      const response = await axios.get(`${API}/v3/raw-validation/${encodeURIComponent(customPlayer)}`);
+      if (response.data.success) {
+        setValidationData(prev => {
+          // Remove existing entry for this player
+          const filtered = prev.filter(p => p.player_name?.toLowerCase() !== customPlayer.toLowerCase());
+          return [...filtered, response.data.validation_entry];
+        });
+        setCustomPlayer('');
+      }
+    } catch (err) {
+      setError(`Player not found: ${customPlayer}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+  
+  useEffect(() => {
+    if (isVisible && validationData.length === 0) {
+      fetchValidationData(KILL_LIST);
+    }
+  }, [isVisible]);
+  
+  if (!isVisible) return null;
+  
+  return (
+    <div className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-4" data-testid="raw-validation-modal">
+      <div className="bg-zinc-900 border border-red-500/50 rounded-lg max-w-5xl w-full max-h-[90vh] overflow-auto">
+        {/* Header */}
+        <div className="sticky top-0 bg-zinc-900 border-b border-red-500/30 p-4 flex justify-between items-center">
+          <div>
+            <h2 className="text-xl font-bold text-red-500 font-mono">
+              ⚠️ DATA INTEGRITY CHECK
+            </h2>
+            <p className="text-xs text-zinc-400 mt-1">
+              RAW API VALUES - Compare against ESPN box scores
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            className="text-zinc-400 hover:text-white p-2"
+            data-testid="close-validation-modal"
+          >
+            ✕
+          </button>
+        </div>
+        
+        {/* Add Player Input */}
+        <div className="p-4 border-b border-zinc-800">
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={customPlayer}
+              onChange={(e) => setCustomPlayer(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && addPlayer()}
+              placeholder="Add player to verify (e.g., LeBron James)"
+              className="flex-1 bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-sm text-white placeholder-zinc-500"
+              data-testid="validation-player-input"
+            />
+            <button
+              onClick={addPlayer}
+              disabled={loading}
+              className="px-4 py-2 bg-red-600 hover:bg-red-500 text-white text-sm font-medium rounded"
+              data-testid="add-validation-player"
+            >
+              {loading ? '...' : 'ADD'}
+            </button>
+            <button
+              onClick={() => fetchValidationData(KILL_LIST)}
+              disabled={loading}
+              className="px-4 py-2 bg-zinc-700 hover:bg-zinc-600 text-white text-sm rounded"
+            >
+              RESET
+            </button>
+          </div>
+          {error && (
+            <p className="text-red-400 text-xs mt-2">{error}</p>
+          )}
+        </div>
+        
+        {/* Validation Table */}
+        <div className="p-4">
+          {loading && validationData.length === 0 ? (
+            <div className="text-center text-zinc-400 py-8">Loading raw data...</div>
+          ) : (
+            <div className="space-y-6">
+              {validationData.map((player, idx) => (
+                <div key={idx} className="bg-zinc-800/50 rounded-lg p-4 border border-zinc-700">
+                  {player.error ? (
+                    <div className="text-red-400">
+                      <span className="font-bold">{player.player_name}</span>: {player.error}
+                    </div>
+                  ) : (
+                    <>
+                      <div className="flex justify-between items-center mb-3">
+                        <h3 className="text-lg font-bold text-white">{player.player_name}</h3>
+                        <span className="text-xs text-zinc-500 font-mono">
+                          BDL ID: {player.bdl_player_id}
+                        </span>
+                      </div>
+                      
+                      {/* Stats Table */}
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="border-b border-zinc-700">
+                              <th className="text-left py-2 px-3 text-zinc-400 font-mono text-xs">DATE</th>
+                              <th className="text-left py-2 px-3 text-zinc-400 font-mono text-xs">TEAM</th>
+                              <th className="text-left py-2 px-3 text-zinc-400 font-mono text-xs">SCORE</th>
+                              <th className="text-center py-2 px-3 text-yellow-500 font-mono text-xs font-bold">PTS (RAW)</th>
+                              <th className="text-center py-2 px-3 text-blue-500 font-mono text-xs font-bold">REB (RAW)</th>
+                              <th className="text-center py-2 px-3 text-green-500 font-mono text-xs font-bold">AST (RAW)</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {player.last_5_games?.map((game, gIdx) => (
+                              <tr key={gIdx} className="border-b border-zinc-800 hover:bg-zinc-700/30">
+                                <td className="py-2 px-3 text-zinc-300 font-mono text-xs">
+                                  {game.date ? new Date(game.date).toLocaleDateString() : '-'}
+                                </td>
+                                <td className="py-2 px-3 text-zinc-300 font-mono text-xs">{game.team || '???'}</td>
+                                <td className="py-2 px-3 text-zinc-300 font-mono text-xs">{game.score || '-'}</td>
+                                <td className="py-2 px-3 text-center">
+                                  <span className="text-yellow-400 font-bold text-lg">{game.pts ?? 'NULL'}</span>
+                                </td>
+                                <td className="py-2 px-3 text-center">
+                                  <span className="text-blue-400 font-bold text-lg">{game.reb ?? 'NULL'}</span>
+                                </td>
+                                <td className="py-2 px-3 text-center">
+                                  <span className="text-green-400 font-bold text-lg">{game.ast ?? 'NULL'}</span>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+        
+        {/* Footer */}
+        <div className="sticky bottom-0 bg-zinc-900 border-t border-zinc-800 p-4">
+          <p className="text-xs text-zinc-500 text-center font-mono">
+            SOURCE: balldontlie_raw_unprocessed | ZERO PROCESSING APPLIED | Verify against ESPN.com
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+});
+
+RawValidationTable.displayName = 'RawValidationTable';
+
 // Cache keys
 const CACHE_KEYS = {
   STATIC_SHELL: 'dg_static_shell',
@@ -2660,6 +2849,9 @@ export const DemonGoblinDashboardOptimized = ({ isDemoMode = false }) => {
     verification_rate: 0
   });
   
+  // RAW VALIDATION TABLE - Data Integrity Check
+  const [showValidationTable, setShowValidationTable] = useState(false);
+  
   // Navigation state
   const [selectedPlayer, setSelectedPlayer] = useState(null);
   
@@ -3025,10 +3217,25 @@ export const DemonGoblinDashboardOptimized = ({ isDemoMode = false }) => {
             )}
           </div>
           
-          {/* V3.1 Truth Engine - Data Validation Status Light */}
-          <DataValidationLight dataStatus={dataStatus} />
+          {/* V3.1 Truth Engine - Data Validation Status Light + Button */}
+          <div className="flex items-center gap-2">
+            <DataValidationLight dataStatus={dataStatus} />
+            <button
+              onClick={() => setShowValidationTable(true)}
+              className="px-2 py-1 bg-red-900/30 hover:bg-red-800/40 border border-red-500/30 rounded text-[10px] text-red-400 font-mono"
+              data-testid="open-validation-table"
+            >
+              ⚠️ VERIFY DATA
+            </button>
+          </div>
         </div>
       </header>
+
+      {/* RAW VALIDATION TABLE MODAL */}
+      <RawValidationTable 
+        isVisible={showValidationTable} 
+        onClose={() => setShowValidationTable(false)} 
+      />
 
       <div className="p-3 space-y-4">
         {/* DEMON RADAR - Top 10 Mathematical Picks */}

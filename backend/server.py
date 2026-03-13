@@ -22,6 +22,7 @@ from demon_tracker_engine import DeepIngestionEngine
 from demon_goblin_engine import DemonGoblinEngine
 from vision_ai_service import VisionAIService, get_vision_service
 from injury_service import InjuryIntelligenceService, get_injury_service
+from raw_stat_fetcher import RawStatFetcher
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -58,6 +59,7 @@ demon_tracker = None
 demon_goblin_engine = None
 vision_ai_service = None  # Vision AI service instance
 injury_service = None  # Injury Intelligence service instance
+raw_stat_fetcher = None  # RAW STAT FETCHER - Isolated data integrity service
 scheduler = None  # APScheduler instance
 
 async def initial_autonomous_sync():
@@ -154,7 +156,7 @@ async def scheduled_roster_sync():
 
 @app.on_event("startup")
 async def startup_event():
-    global stats_manager, demon_tracker, demon_goblin_engine, vision_ai_service, injury_service, scheduler
+    global stats_manager, demon_tracker, demon_goblin_engine, vision_ai_service, injury_service, raw_stat_fetcher, scheduler
     
     # Initialize stats manager (BallDontLie)
     stats_manager = StatsManager(db)
@@ -175,6 +177,13 @@ async def startup_event():
     # Initialize Injury Intelligence Service
     injury_service = get_injury_service(db)
     logger.info("Injury Intelligence Service initialized (ESPN + Tank01)")
+    
+    # Initialize RAW STAT FETCHER - Isolated data integrity service
+    raw_stat_fetcher = RawStatFetcher(db)
+    bdl_key = os.environ.get('BDL_API_KEY')
+    if bdl_key:
+        raw_stat_fetcher.set_api_key(bdl_key)
+    logger.info("Raw Stat Fetcher initialized (Data Integrity Service)")
     
     # Initialize APScheduler for daily and weekly syncs
     scheduler = AsyncIOScheduler(timezone=SCHEDULER_TIMEZONE)
@@ -1367,6 +1376,109 @@ async def get_data_status():
     
     result = await demon_goblin_engine.get_data_integrity_status()
     
+    return result
+
+
+# ==================== RAW STAT VALIDATION ENDPOINTS ====================
+# DATA INTEGRITY CRISIS RESPONSE - Zero Processing, Raw API Data Only
+
+@api_router.get("/v3/raw-validation/{player_name}")
+async def get_raw_validation_for_player(player_name: str):
+    """
+    RAW STAT VALIDATION - Fetch unprocessed stats for manual ESPN verification.
+    
+    This endpoint returns EXACTLY what BallDontLie API returns.
+    NO processing, NO adjustments, NO interpretation.
+    
+    Compare these values directly against ESPN box scores.
+    If they don't match, we have an API data issue.
+    
+    Returns:
+    - player_name: str
+    - bdl_player_id: int
+    - last_5_games: [
+        { date, vs, pts (RAW), reb (RAW), ast (RAW) }
+      ]
+    """
+    global raw_stat_fetcher
+    if not raw_stat_fetcher:
+        raise HTTPException(status_code=500, detail="Raw Stat Fetcher not initialized")
+    
+    result = await raw_stat_fetcher.fetch_and_validate_player(player_name)
+    
+    if not result.get("success"):
+        raise HTTPException(status_code=404, detail=result.get("error", "Player not found"))
+    
+    return result
+
+
+@api_router.post("/v3/raw-validation/batch")
+async def batch_raw_validation(player_names: List[str]):
+    """
+    Fetch raw validation data for multiple players at once.
+    
+    Use this to populate the validation table UI.
+    
+    Request body: ["Luka Doncic", "Anthony Edwards", "Naji Marshall"]
+    """
+    global raw_stat_fetcher
+    if not raw_stat_fetcher:
+        raise HTTPException(status_code=500, detail="Raw Stat Fetcher not initialized")
+    
+    results = []
+    for name in player_names[:20]:  # Limit to 20 players
+        try:
+            result = await raw_stat_fetcher.fetch_and_validate_player(name)
+            if result.get("success"):
+                results.append(result["validation_entry"])
+            else:
+                results.append({
+                    "player_name": name,
+                    "error": result.get("error", "Failed to fetch")
+                })
+        except Exception as e:
+            results.append({
+                "player_name": name,
+                "error": str(e)
+            })
+    
+    return {
+        "success": True,
+        "validation_entries": results,
+        "fetched_at": datetime.now(timezone.utc).isoformat(),
+        "source": "balldontlie_raw_unprocessed"
+    }
+
+
+@api_router.get("/v3/raw-validation-table")
+async def get_raw_validation_table():
+    """
+    Get the full validation table for the UI.
+    
+    Returns all players that have been fetched for validation,
+    with their RAW stats for manual ESPN comparison.
+    """
+    global raw_stat_fetcher
+    if not raw_stat_fetcher:
+        raise HTTPException(status_code=500, detail="Raw Stat Fetcher not initialized")
+    
+    result = await raw_stat_fetcher.get_validation_table()
+    return result
+
+
+@api_router.get("/v3/raw-player-games/{player_name}")
+async def get_raw_player_games(player_name: str, num_games: int = 10):
+    """
+    Get raw game logs for a player - FULL DETAIL.
+    
+    This returns the complete raw API response for deep inspection.
+    Use this to debug data issues.
+    """
+    global raw_stat_fetcher
+    if not raw_stat_fetcher:
+        raise HTTPException(status_code=500, detail="Raw Stat Fetcher not initialized")
+    
+    result = await raw_stat_fetcher.get_raw_recent_games(player_name, num_games)
     return result
 
 

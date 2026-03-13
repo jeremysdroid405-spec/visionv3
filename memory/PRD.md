@@ -43,6 +43,14 @@ Build a high-performance NBA Player Prop Dashboard that mimics the PrizePicks us
 - None currently
 
 ### RECENTLY COMPLETED (Dec 13, 2025)
+- [x] **V3.2 Data Integrity Crisis Response** - Isolated raw data fetching:
+  - **RawStatFetcher service**: New isolated service (`/app/backend/raw_stat_fetcher.py`) that ONLY pulls raw JSON from BallDontLie - ZERO processing
+  - **`/api/v3/raw-validation/{player_name}` endpoint**: Returns raw stats for a player
+  - **`/api/v3/raw-validation/batch` endpoint**: Batch fetch raw stats for multiple players
+  - **`/api/v3/raw-validation-table` endpoint**: Get all validation data
+  - **RawValidationTable UI component**: Modal showing RAW API values (Date, Team, Score, PTS, REB, AST) for manual ESPN verification
+  - **"VERIFY DATA" button**: Added to dashboard header next to status light
+  - **Kill List tested**: Luka Doncic, Anthony Edwards, Naji Marshall all returning raw data
 - [x] **V3.1 "Truth Engine" Data Integrity Overhaul** - Critical fix for data hallucination issues:
   - **Naji Safeguard**: Verifies playerID from game logs matches expected BDL player ID, discards data on mismatch
   - **source_verified flag**: All props now tagged with verification status (verified/failed/pending)
@@ -210,8 +218,10 @@ Build a high-performance NBA Player Prop Dashboard that mimics the PrizePicks us
 ---
 
 ## Next Steps
-1. Trigger a full data sync to populate verification fields on all props
-2. Perform "Kill List" audit: Verify data for Luka Doncic, Anthony Edwards, and Naji Marshall
-3. Refactor `DemonGoblinDashboardOptimized.js` (3000+ lines) - Extract components into `/components/dashboard/` directory
+1. **USER VERIFICATION**: Check the RAW API values in the Validation Table against ESPN box scores
+   - If values don't match ESPN: The BallDontLie API is returning incorrect data
+   - If values match ESPN: The data pipeline processing is the problem
+2. Once raw data is verified correct, investigate the processing layer
+3. Refactor `DemonGoblinDashboardOptimized.js` (3000+ lines monolith)
 4. Add "Pro Tier" feature gating
 5. Historical line movement tracking
