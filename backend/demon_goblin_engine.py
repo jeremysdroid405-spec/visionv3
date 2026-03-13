@@ -178,12 +178,12 @@ KNOWN_PLAYER_TEAMS = {
     "Jamal Murray": "DEN",
     "Michael Porter Jr.": "DEN",
     "Christian Braun": "DEN",
+    "Bruce Brown": "DEN",
     # Milwaukee Bucks
     "Giannis Antetokounmpo": "MIL",
     "Damian Lillard": "MIL",
     "Khris Middleton": "MIL",
     # Phoenix Suns
-    "Kevin Durant": "PHX",
     "Devin Booker": "PHX",
     "Bradley Beal": "PHX",
     # Dallas Mavericks
@@ -204,6 +204,7 @@ KNOWN_PLAYER_TEAMS = {
     "Joel Embiid": "PHI",
     "Tyrese Maxey": "PHI",
     "Jared McCain": "PHI",
+    "Tim Hardaway Jr.": "PHI",
     # San Antonio Spurs
     "Victor Wembanyama": "SAS",
     "Devin Vassell": "SAS",
@@ -237,9 +238,16 @@ KNOWN_PLAYER_TEAMS = {
     "Jalen Brunson": "NYK",
     # Charlotte Hornets
     "Nicolas Richards": "CHA",
-    # Houston Rockets
+    # Houston Rockets - 2026 ROSTER UPDATE
+    "Kevin Durant": "HOU",  # TRADED FROM PHX - 2026
     "Jalen Green": "HOU",
     "Alperen Sengun": "HOU",
+    "Reed Sheppard": "HOU",
+    "Jabari Smith Jr.": "HOU",
+    # New Orleans Pelicans
+    "Trey Murphy III": "NOP",
+    "Zion Williamson": "NOP",
+    "Brandon Ingram": "NOP",
 }
 
 # ==================== NAME NORMALIZATION ====================
@@ -2267,6 +2275,23 @@ class DemonGoblinEngine:
         # Store in database
         await self.parlay_builder.delete_many({})
         
+        # ==================== TWO-TEAM GUARDRAIL ====================
+        # Final validation: Remove any parlays that don't meet 2-team requirement
+        # This ensures users never see an illegal slip even if data errors occur
+        validated_parlays = {}
+        for key, parlay in parlays.items():
+            picks = parlay.get("picks", [])
+            if len(picks) >= 2:
+                teams = set(p.get("team", "") for p in picks)
+                if len(teams) >= 2:
+                    validated_parlays[key] = parlay
+                else:
+                    logger.warning(f"[GUARDRAIL] Rejected {key}: All picks from same team ({teams})")
+            else:
+                validated_parlays[key] = parlay
+        
+        parlays = validated_parlays
+        
         # Count valid lineups
         valid_count = sum(1 for p in parlays.values() if p.get("lineup_valid", False))
         
@@ -2694,6 +2719,23 @@ class DemonGoblinEngine:
         
         # Store in database
         await self.goblin_goldmine.delete_many({})
+        
+        # ==================== TWO-TEAM GUARDRAIL ====================
+        # Final validation: Remove any parlays that don't meet 2-team requirement
+        # This ensures users never see an illegal slip even if data errors occur
+        validated_parlays = {}
+        for key, parlay in parlays.items():
+            picks = parlay.get("picks", [])
+            if len(picks) >= 2:
+                teams = set(p.get("team", "") for p in picks)
+                if len(teams) >= 2:
+                    validated_parlays[key] = parlay
+                else:
+                    logger.warning(f"[GUARDRAIL] Rejected {key}: All picks from same team ({teams})")
+            else:
+                validated_parlays[key] = parlay
+        
+        parlays = validated_parlays
         
         # Count valid lineups
         valid_count = sum(1 for p in parlays.values() if p.get("lineup_valid", False))
