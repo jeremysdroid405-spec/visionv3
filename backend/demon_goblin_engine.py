@@ -165,11 +165,14 @@ KNOWN_PLAYER_TEAMS = {
     "Jrue Holiday": "BOS",
     "Kristaps Porzingis": "BOS",
     "Payton Pritchard": "BOS",
+    "Sam Hauser": "BOS",
     # Los Angeles Lakers
     "LeBron James": "LAL",
     "Anthony Davis": "LAL",
     "Austin Reaves": "LAL",
     "D'Angelo Russell": "LAL",
+    "Max Christie": "LAL",
+    "Luke Kennard": "LAL",
     # Denver Nuggets
     "Nikola Jokic": "DEN",
     "Jamal Murray": "DEN",
@@ -185,10 +188,11 @@ KNOWN_PLAYER_TEAMS = {
     # Dallas Mavericks
     "Luka Doncic": "DAL",
     "Kyrie Irving": "DAL",
+    "Klay Thompson": "DAL",
     # Golden State Warriors
     "Stephen Curry": "GSW",
-    "Klay Thompson": "GSW",
     "Draymond Green": "GSW",
+    "Jonathan Kuminga": "GSW",
     # Oklahoma City Thunder
     "Shai Gilgeous-Alexander": "OKC",
     "Chet Holmgren": "OKC",
@@ -198,6 +202,7 @@ KNOWN_PLAYER_TEAMS = {
     "Tyrese Maxey": "PHI",
     # San Antonio Spurs
     "Victor Wembanyama": "SAS",
+    "Devin Vassell": "SAS",
     # Orlando Magic
     "Paolo Banchero": "ORL",
     "Franz Wagner": "ORL",
@@ -206,7 +211,7 @@ KNOWN_PLAYER_TEAMS = {
     "Desmond Bane": "MEM",
     # Minnesota Timberwolves
     "Anthony Edwards": "MIN",
-    "Karl-Anthony Towns": "MIN",
+    "Robert Dillingham": "MIN",
     # Cleveland Cavaliers
     "Donovan Mitchell": "CLE",
     "Darius Garland": "CLE",
@@ -214,6 +219,14 @@ KNOWN_PLAYER_TEAMS = {
     "Jimmy Butler": "MIA",
     "Bam Adebayo": "MIA",
     "Tyler Herro": "MIA",
+    # Utah Jazz
+    "Cody Williams": "UTA",
+    "Kyle Filipowski": "UTA",
+    # Portland Trail Blazers
+    "Toumani Camara": "POR",
+    # New York Knicks
+    "Karl-Anthony Towns": "NYK",
+    "Jalen Brunson": "NYK",
 }
 
 # ==================== NAME NORMALIZATION ====================
