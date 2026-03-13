@@ -44,15 +44,16 @@ Build a high-performance NBA Player Prop Dashboard that mimics the PrizePicks us
 
 ### RECENTLY COMPLETED (Dec 13, 2025 - Session 3)
 - [x] **Dynamic Payout Calculation Engine** - Complete backend integration:
-  - **New `payout_engine.py` module**: Handles PrizePicks-style cumulative payout calculations
-  - **Formula**: `Total Payout = Base Multiplier × (Mod_1 × Mod_2 × ... × Mod_n)`
+  - **New `payout_engine.py` module**: Handles PrizePicks-style payout calculations
+  - **Demon/Standard Formula**: `Total Payout = Base Multiplier × (Mod_1 × Mod_2 × ... × Mod_n)`
   - **Standard Base Multipliers**: 2-pick=3.0x, 3-pick=5.0x, 4-pick=10.0x, 5-pick=20.0x, 6-pick=40.0x
-  - **Goblin Base Multipliers (Safe Haven)**: 2-pick=1.4x, 3-pick=2.0x, 4-pick=3.0x, 5-pick=5.0x, 6-pick=8.0x
-  - **Asset Types**: Demons (1.1-1.5x modifier boost), Standards (1.0x), Goblins (0.85-1.0x)
+  - **Goblin Formula (Safe Haven)**: `Payout = 1.2^n` (actual PrizePicks formula)
+    - 2-pick: 1.4x, 3-pick: 1.7x, 4-pick: 2.1x, 5-pick: 2.5x, 6-pick: 3.0x
+  - **Asset Types**: Demons (1.1-1.5x modifier boost), Standards (1.0x)
   - **`/api/v3/calculate-payout` endpoint**: Accepts picks array, returns dynamic payout calculation
-  - **Parlay Builder Integration**: All tiers (2-6 pick) now return `estimated_payout`, `payout_display`, `base_multiplier`, `cumulative_modifier`, `asset_breakdown`, `payout_type`
-  - **Goblin Recon / Safe Haven Integration**: Uses realistic GOBLIN_BASE_MULTIPLIERS (e.g., Daily Double ~1.4x instead of ~3x)
-  - **Testing**: Backend tests passed
+  - **Parlay Builder Integration**: All tiers (2-6 pick) return accurate boosted demon payouts
+  - **Goblin Recon / Safe Haven Integration**: Uses exact PrizePicks `1.2^n` formula
+  - **Testing**: All payouts verified against actual PrizePicks values
 
 ### RECENTLY COMPLETED (Dec 13, 2025)
 - [x] **V3.2 Data Integrity Crisis Response** - Isolated raw data fetching:

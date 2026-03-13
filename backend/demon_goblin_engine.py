@@ -3995,35 +3995,42 @@ class DemonGoblinEngine:
             return round(prob * 100, 2)
         
         def calculate_goblin_payout(picks: List[Dict]) -> Dict:
-            """Calculate live payout using the payout engine for Goblin picks.
+            """Calculate payout for Goblin picks using actual PrizePicks formula: 1.2^n
             
-            Uses GOBLIN_BASE_MULTIPLIERS which reflect actual PrizePicks payouts
-            for picks at -137 to -150 odds (safer/easier lines).
+            The formula already accounts for goblin odds (-137), so no additional
+            modifier is applied.
             """
-            # Mark all picks as goblins for proper modifier calculation
-            goblin_picks = []
+            num_picks = len(picks)
+            
+            # Use the exact PrizePicks formula: 1.2^n
+            # 2-pick: 1.44 → 1.4x
+            # 3-pick: 1.73 → 1.7x
+            # 4-pick: 2.07 → 2.1x
+            # 6-pick: 2.99 → 3.0x
+            base_payout = round(1.2 ** num_picks, 2)
+            
+            # Build leg details for response
+            leg_details = []
             for pick in picks:
-                goblin_pick = {
+                leg_details.append({
                     "player_name": pick.get("player_name", "Unknown"),
                     "stat_type": pick.get("stat_type", "PTS"),
                     "line": pick.get("line", 0),
                     "direction": pick.get("direction", "over"),
                     "team": pick.get("team", ""),
-                    "is_goblin": True,  # Mark as goblin for payout calculation
-                    "standard_line": pick.get("line", 0) * 1.15  # Goblin lines are ~15% easier
-                }
-                goblin_picks.append(goblin_pick)
+                    "asset_type": "goblin",
+                    "modifier": 1.0,
+                    "modifier_display": "1.00x"
+                })
             
-            # Use goblin base multipliers for accurate Safe Haven payouts
-            payout_result = calculate_payout_from_picks(goblin_picks, use_goblin_base=True)
             return {
-                "estimated_payout": payout_result.get("estimated_payout", 0),
-                "payout_display": payout_result.get("payout_display", "0x"),
-                "cumulative_modifier": payout_result.get("cumulative_modifier", 1.0),
-                "base_multiplier": payout_result.get("base_multiplier", 1.4),
-                "asset_breakdown": payout_result.get("asset_breakdown", {}),
-                "payout_type": payout_result.get("payout_type", "goblin"),
-                "legs": payout_result.get("legs", [])
+                "estimated_payout": base_payout,
+                "payout_display": f"{base_payout:.1f}x",
+                "cumulative_modifier": 1.0,
+                "base_multiplier": base_payout,
+                "asset_breakdown": {"demons": 0, "goblins": num_picks, "standards": 0},
+                "payout_type": "goblin",
+                "legs": leg_details
             }
         
         parlays = {}

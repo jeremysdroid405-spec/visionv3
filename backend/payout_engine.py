@@ -55,21 +55,23 @@ BASE_MULTIPLIERS = {
     6: 40.0,   # 6-pick: 40x base
 }
 
-# Base multipliers for Goblin-heavy parlays (picks at -137 to -150 odds)
-# These reflect actual PrizePicks payouts for "safer" picks
-GOBLIN_BASE_MULTIPLIERS = {
-    2: 1.4,    # 2-pick goblin: ~1.4x (actual PrizePicks payout)
-    3: 2.0,    # 3-pick goblin: ~2x
-    4: 3.0,    # 4-pick goblin: ~3x
-    5: 5.0,    # 5-pick goblin: ~5x
-    6: 8.0,    # 6-pick goblin: ~8x (Flex: 5/6=1.25x, 6/6=8x)
-}
+# Goblin/Safe Haven payout formula: 1.2^n (actual PrizePicks payouts for -137 odds picks)
+# 2-pick: 1.2^2 = 1.44 → ~1.4x
+# 3-pick: 1.2^3 = 1.73 → ~1.7x
+# 4-pick: 1.2^4 = 2.07 → ~2.1x
+# 5-pick: 1.2^5 = 2.49 → ~2.5x
+# 6-pick: 1.2^6 = 2.99 → ~3.0x
+GOBLIN_LEG_MULTIPLIER = 1.2
+
+def calculate_goblin_base(num_picks: int) -> float:
+    """Calculate goblin payout using actual PrizePicks formula: 1.2^n"""
+    return round(GOBLIN_LEG_MULTIPLIER ** num_picks, 2)
 
 # Modifier ranges by asset type
 MODIFIER_RANGES = {
     AssetType.DEMON: (1.10, 1.50),      # 10-50% boost for harder lines
     AssetType.STANDARD: (0.95, 1.05),   # Near 1.0 for standard lines
-    AssetType.GOBLIN: (0.85, 1.0),      # Slight reduction for easier lines (base already lower)
+    AssetType.GOBLIN: (0.95, 1.05),     # Near 1.0 (base already accounts for goblin odds)
 }
 
 
@@ -183,7 +185,8 @@ def calculate_parlay_payout(legs: List[LegModifier], use_goblin_base: bool = Fal
     # Use goblin base if explicitly requested OR if majority are goblins
     is_goblin_heavy = goblin_count > (demon_count + standard_count)
     if use_goblin_base or is_goblin_heavy:
-        base_multiplier = GOBLIN_BASE_MULTIPLIERS.get(num_picks, 1.4)
+        # Use actual PrizePicks formula: 1.2^n
+        base_multiplier = calculate_goblin_base(num_picks)
         payout_type = "goblin"
     else:
         base_multiplier = BASE_MULTIPLIERS.get(num_picks, 3.0)
@@ -287,13 +290,14 @@ def estimate_payout(num_picks: int, demon_count: int = 0, goblin_count: int = 0,
     # Use appropriate base multiplier
     is_goblin_heavy = goblin_count > (demon_count + (num_picks - demon_count - goblin_count))
     if use_goblin_base or is_goblin_heavy:
-        base = GOBLIN_BASE_MULTIPLIERS.get(num_picks, 1.4)
+        # Use actual PrizePicks formula: 1.2^n
+        base = calculate_goblin_base(num_picks)
     else:
         base = BASE_MULTIPLIERS.get(num_picks, 3.0)
     
-    # Average modifiers (adjusted for new goblin range)
+    # Average modifiers
     demon_mod = 1.25  # Average demon modifier
-    goblin_mod = 0.92  # Average goblin modifier (now 0.85-1.0 range)
+    goblin_mod = 1.0   # Goblin modifier is ~1.0 (base already accounts for odds)
     standard_mod = 1.0
     
     standard_count = num_picks - demon_count - goblin_count
@@ -307,19 +311,19 @@ def estimate_payout(num_picks: int, demon_count: int = 0, goblin_count: int = 0,
     return round(base * cumulative, 2)
 
 
-# Examples for reference - Updated with realistic goblin payouts
+# Examples for reference - Using actual PrizePicks formula: 1.2^n for goblins
 EXAMPLE_PAYOUTS = {
-    "2_pick_standard": estimate_payout(2, 0, 0),                    # 3.0x
-    "2_pick_all_demons": estimate_payout(2, 2, 0),                  # ~4.7x
-    "2_pick_all_goblins": estimate_payout(2, 0, 2, use_goblin_base=True),  # ~1.2x (realistic)
-    "2_pick_mixed": estimate_payout(2, 1, 1),                       # ~3.5x
-    "3_pick_standard": estimate_payout(3, 0, 0),                    # 5.0x
-    "3_pick_all_demons": estimate_payout(3, 3, 0),                  # ~9.8x
-    "3_pick_all_goblins": estimate_payout(3, 0, 3, use_goblin_base=True),  # ~1.6x (realistic)
-    "4_pick_standard": estimate_payout(4, 0, 0),                    # 10.0x
-    "6_pick_standard": estimate_payout(6, 0, 0),                    # 40.0x
-    "6_pick_all_demons": estimate_payout(6, 6, 0),                  # ~152x
-    "6_pick_all_goblins": estimate_payout(6, 0, 6, use_goblin_base=True),  # ~5x (realistic)
+    "2_pick_standard": estimate_payout(2, 0, 0),                              # 3.0x
+    "2_pick_all_demons": estimate_payout(2, 2, 0),                            # ~4.7x
+    "2_pick_all_goblins": estimate_payout(2, 0, 2, use_goblin_base=True),    # 1.44x → ~1.4x
+    "3_pick_standard": estimate_payout(3, 0, 0),                              # 5.0x
+    "3_pick_all_demons": estimate_payout(3, 3, 0),                            # ~9.8x
+    "3_pick_all_goblins": estimate_payout(3, 0, 3, use_goblin_base=True),    # 1.73x → ~1.7x
+    "4_pick_standard": estimate_payout(4, 0, 0),                              # 10.0x
+    "4_pick_all_goblins": estimate_payout(4, 0, 4, use_goblin_base=True),    # 2.07x → ~2.1x
+    "6_pick_standard": estimate_payout(6, 0, 0),                              # 40.0x
+    "6_pick_all_demons": estimate_payout(6, 6, 0),                            # ~152x
+    "6_pick_all_goblins": estimate_payout(6, 0, 6, use_goblin_base=True),    # 2.99x → ~3.0x
 }
 
 
