@@ -15,45 +15,13 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
-const API = `${BACKEND_URL}/api`;
-
-// NBA CDN headshot URL
-const NBA_HEADSHOT_URL = (nbaId) => `https://cdn.nba.com/headshots/nba/latest/1040x760/${nbaId}.png`;
-
-// Team Logo URLs (fallback for missing headshots)
-const TEAM_LOGOS = {
-  "ATL": "https://cdn.nba.com/logos/nba/1610612737/global/L/logo.svg",
-  "BOS": "https://cdn.nba.com/logos/nba/1610612738/global/L/logo.svg",
-  "BKN": "https://cdn.nba.com/logos/nba/1610612751/global/L/logo.svg",
-  "CHA": "https://cdn.nba.com/logos/nba/1610612766/global/L/logo.svg",
-  "CHI": "https://cdn.nba.com/logos/nba/1610612741/global/L/logo.svg",
-  "CLE": "https://cdn.nba.com/logos/nba/1610612739/global/L/logo.svg",
-  "DAL": "https://cdn.nba.com/logos/nba/1610612742/global/L/logo.svg",
-  "DEN": "https://cdn.nba.com/logos/nba/1610612743/global/L/logo.svg",
-  "DET": "https://cdn.nba.com/logos/nba/1610612765/global/L/logo.svg",
-  "GSW": "https://cdn.nba.com/logos/nba/1610612744/global/L/logo.svg",
-  "HOU": "https://cdn.nba.com/logos/nba/1610612745/global/L/logo.svg",
-  "IND": "https://cdn.nba.com/logos/nba/1610612754/global/L/logo.svg",
-  "LAC": "https://cdn.nba.com/logos/nba/1610612746/global/L/logo.svg",
-  "LAL": "https://cdn.nba.com/logos/nba/1610612747/global/L/logo.svg",
-  "MEM": "https://cdn.nba.com/logos/nba/1610612763/global/L/logo.svg",
-  "MIA": "https://cdn.nba.com/logos/nba/1610612748/global/L/logo.svg",
-  "MIL": "https://cdn.nba.com/logos/nba/1610612749/global/L/logo.svg",
-  "MIN": "https://cdn.nba.com/logos/nba/1610612750/global/L/logo.svg",
-  "NOP": "https://cdn.nba.com/logos/nba/1610612740/global/L/logo.svg",
-  "NYK": "https://cdn.nba.com/logos/nba/1610612752/global/L/logo.svg",
-  "OKC": "https://cdn.nba.com/logos/nba/1610612760/global/L/logo.svg",
-  "ORL": "https://cdn.nba.com/logos/nba/1610612753/global/L/logo.svg",
-  "PHI": "https://cdn.nba.com/logos/nba/1610612755/global/L/logo.svg",
-  "PHX": "https://cdn.nba.com/logos/nba/1610612756/global/L/logo.svg",
-  "POR": "https://cdn.nba.com/logos/nba/1610612757/global/L/logo.svg",
-  "SAC": "https://cdn.nba.com/logos/nba/1610612758/global/L/logo.svg",
-  "SAS": "https://cdn.nba.com/logos/nba/1610612759/global/L/logo.svg",
-  "TOR": "https://cdn.nba.com/logos/nba/1610612761/global/L/logo.svg",
-  "UTA": "https://cdn.nba.com/logos/nba/1610612762/global/L/logo.svg",
-  "WAS": "https://cdn.nba.com/logos/nba/1610612764/global/L/logo.svg",
-};
+// Import from refactored components
+import { DemonIcon, GoblinIcon, VisionBadge } from '../components/dashboard/Icons';
+import { 
+  API, 
+  NBA_HEADSHOT_URL, 
+  TEAM_LOGOS
+} from '../components/dashboard/constants';
 
 // ==================== BEACON GLOW CSS ====================
 // Injected CSS for the infinite pulse animation
@@ -257,143 +225,6 @@ const InjuryBadge = memo(({ playerName, injuryAlerts, size = 'sm' }) => {
 });
 
 InjuryBadge.displayName = 'InjuryBadge';
-
-// ==================== ELITE ICON COMPONENTS ====================
-
-// The Elite Demon - Cyber-Horns (Sharp, Minimalist, Dangerous)
-const DemonIcon = memo(({ size = 24, className = '', isScanning = false, hasVision = false }) => (
-  <div className={`demon-icon-container ${isScanning ? 'demon-scanning' : ''} ${className}`} style={{ width: size, height: size }}>
-    <svg 
-      width={size} 
-      height={size} 
-      viewBox="0 0 24 24" 
-      fill="none" 
-      xmlns="http://www.w3.org/2000/svg"
-      className="demon-icon"
-    >
-      <defs>
-        <filter id="demon-glow" x="-20%" y="-20%" width="140%" height="140%">
-          <feGaussianBlur stdDeviation="1.5" result="blur" />
-          <feComposite in="SourceGraphic" in2="blur" operator="over" />
-        </filter>
-      </defs>
-      {/* Main head circle with glow */}
-      <path 
-        d="M12 22C16.4183 22 20 18.4183 20 14C20 9.58172 16.4183 6 12 6C7.58172 6 4 9.58172 4 14C4 18.4183 7.58172 22 12 22Z" 
-        fill="#FF0000" 
-        filter="url(#demon-glow)"
-      />
-      {/* Left horn */}
-      <path 
-        d="M5 8L2 2L9 5" 
-        stroke="#FF0000" 
-        strokeWidth="2.5" 
-        strokeLinejoin="round"
-      />
-      {/* Right horn */}
-      <path 
-        d="M19 8L22 2L15 5" 
-        stroke="#FF0000" 
-        strokeWidth="2.5" 
-        strokeLinejoin="round"
-      />
-      {/* Eyes - Negative space slashes */}
-      <path 
-        d="M8 12L10 14M16 12L14 14" 
-        stroke="white" 
-        strokeWidth="2" 
-        strokeLinecap="round"
-      />
-    </svg>
-    {/* Vision sparkle orbit */}
-    {hasVision && <div className="vision-sparkle" />}
-  </div>
-));
-
-DemonIcon.displayName = 'DemonIcon';
-
-// The Elite Goblin - Sneaky Elf Ears (Cunning, Technical)
-const GoblinIcon = memo(({ size = 24, className = '', isClicked = false, hasVision = false }) => {
-  const [clicked, setClicked] = useState(false);
-  
-  const handleClick = (e) => {
-    e.stopPropagation();
-    setClicked(true);
-    setTimeout(() => setClicked(false), 500);
-  };
-  
-  return (
-    <div 
-      className={`goblin-icon-container ${clicked || isClicked ? 'goblin-pulse' : ''} ${className}`} 
-      style={{ width: size, height: size }}
-      onClick={handleClick}
-    >
-      <svg 
-        width={size} 
-        height={size} 
-        viewBox="0 0 24 24" 
-        fill="none" 
-        xmlns="http://www.w3.org/2000/svg"
-        className="goblin-icon"
-      >
-        {/* Main head circle */}
-        <path 
-          d="M12 20C15.866 20 19 16.866 19 13C19 9.13401 15.866 6 12 6C8.13401 6 5 9.13401 5 13C5 16.866 8.13401 20 12 20Z" 
-          fill="#00FF7F" 
-          fillOpacity="0.9"
-        />
-        {/* Left ear fin */}
-        <path 
-          d="M5 11L1 7L6 12" 
-          fill="#00FF7F"
-        />
-        {/* Right ear fin */}
-        <path 
-          d="M19 11L23 7L18 12" 
-          fill="#00FF7F"
-        />
-        {/* Eyes - Dot style */}
-        <path 
-          d="M9 13H10M14 13H15" 
-          stroke="black" 
-          strokeWidth="2.5" 
-          strokeLinecap="round"
-        />
-        {/* Smirk */}
-        <path 
-          d="M10 16.5C10.5 17.5 13.5 17.5 14 16.5" 
-          stroke="black" 
-          strokeWidth="1" 
-          strokeLinecap="round"
-        />
-      </svg>
-      {/* Vision sparkle orbit */}
-      {hasVision && <div className="vision-sparkle vision-sparkle-green" />}
-    </div>
-  );
-});
-
-GoblinIcon.displayName = 'GoblinIcon';
-
-// Vision Synergy Badge - For Master Tier cards
-const VisionBadge = memo(({ type = 'demon', hasVision = false }) => {
-  if (!hasVision) return null;
-  
-  return (
-    <div className={`
-      absolute -top-2 -right-2 w-8 h-8 rounded-full 
-      flex items-center justify-center z-10
-      ${type === 'demon' 
-        ? 'bg-gradient-to-br from-red-600 to-red-900 shadow-lg shadow-red-500/50' 
-        : 'bg-gradient-to-br from-green-600 to-green-900 shadow-lg shadow-green-500/50'
-      }
-    `}>
-      <Zap className="w-4 h-4 text-white" />
-    </div>
-  );
-});
-
-VisionBadge.displayName = 'VisionBadge';
 
 // ==================== BREAKING NEWS TICKER ====================
 

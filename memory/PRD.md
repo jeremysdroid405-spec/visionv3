@@ -179,6 +179,13 @@ Build a high-performance NBA Player Prop Dashboard that mimics the PrizePicks us
 ---
 
 ## Recent Changes (Dec 13, 2025)
+- **Code Refactoring** - Extracted components from 3353-line dashboard to separate files:
+  - `/components/dashboard/Icons.jsx` - DemonIcon, GoblinIcon, VisionBadge (126 lines)
+  - `/components/dashboard/constants.js` - API config, team logos, stat categories (102 lines)
+  - `/components/dashboard/CacheService.js` - Local storage cache utilities (33 lines)
+  - Main dashboard reduced from 3353 → 3183 lines (170 lines extracted)
+- **"Goblin Goldmine" → "Goblin Recon"** - Renamed across entire codebase (87 occurrences)
+- **AI Confidence Per-Prop** - Changed from static player-level to dynamic per-prop calculation
 - **"Ultra-Pro" Icon Refresh** - Replaced all Skull/Ghost icons with premium custom SVG glyphs (DemonIcon: red spike, GoblinIcon: green hex-stack)
 - **"THE VISION" UI Overhaul** - AI insights now prominent with featured box, confidence meter, and card explainers
 - **AI Confidence Meter** - Color-coded progress bar (green >80%, yellow 60-80%, orange 40-60%, red <40%)
