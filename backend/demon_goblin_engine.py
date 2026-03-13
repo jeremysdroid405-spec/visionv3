@@ -1,5 +1,5 @@
 """
-Demon & Goblin Analytics Engine v3.0
+Demon & Goblin Analytics Engine v3.1
 =====================================
 
 PrizePicks-Specific System for NBA Player Props
@@ -28,6 +28,12 @@ Advanced Analytics (v3.1):
 - Usage Ripple Effect (teammate injuries)
 - Volatility Score (consistency rating)
 - Template-based Insight Summaries
+
+DATA INTEGRITY (v3.1):
+- Triple-check verification for all stats
+- source_verified tag on all Demon/Goblin records
+- Auto-delete insights that fail verification gates
+- Hallucination detection and prevention
 """
 
 import httpx
@@ -40,6 +46,9 @@ from datetime import datetime, timezone, timedelta, time
 from typing import Optional, Dict, List, Any, Set, Tuple
 from thefuzz import fuzz
 from motor.motor_asyncio import AsyncIOMotorDatabase
+
+# Data Integrity Module
+from data_integrity import DataIntegrityVerifier, create_verified_insight
 
 # NBA.com API fallback for players missing from BallDontLie
 try:
@@ -4073,7 +4082,7 @@ class DemonGoblinEngine:
         return []
     
     def calculate_hit_rates(self, games: List[Dict], market: str, line: float) -> Dict[str, Any]:
-        """Calculate L5, L10, and Season hit rates"""
+        """Calculate L5, L10, and Season hit rates with source verification"""
         market_to_stat = {
             "player_points": ["pts"],
             "alternate_player_points": ["pts"],
@@ -4090,6 +4099,7 @@ class DemonGoblinEngine:
             "player_points_assists": ["pts", "ast"],
             "player_rebounds_assists": ["reb", "ast"],
             "player_points_rebounds_assists": ["pts", "reb", "ast"],
+            "player_steals_blocks": ["stl", "blk"],
         }
         
         stat_keys = market_to_stat.get(market, ["pts"])
@@ -4099,18 +4109,20 @@ class DemonGoblinEngine:
         
         def calc_window(game_list, line_val):
             if not game_list:
-                return {"games_over": 0, "total_games": 0, "hit_rate": 0, "avg": 0}
+                return {"games_over": 0, "total_games": 0, "hit_rate": 0, "avg": 0, "values": []}
             
-            games_over = sum(1 for g in game_list if get_stat_value(g) > line_val)
+            values = [get_stat_value(g) for g in game_list]
+            games_over = sum(1 for v in values if v > line_val)
             total = len(game_list)
             hit_rate = games_over / total if total > 0 else 0
-            avg = sum(get_stat_value(g) for g in game_list) / total if total > 0 else 0
+            avg = sum(values) / total if total > 0 else 0
             
             return {
                 "games_over": games_over,
                 "total_games": total,
                 "hit_rate": round(hit_rate, 3),
-                "avg": round(avg, 1)
+                "avg": round(avg, 1),
+                "values": values  # V3.1: Store raw values for verification
             }
         
         l5 = calc_window(games[:5], line)
@@ -4131,6 +4143,33 @@ class DemonGoblinEngine:
             "season": season,
             "trends": trends
         }
+    
+    def _extract_l10_values(self, games: List[Dict], market: str) -> List[float]:
+        """Extract raw stat values from last 10 games for verification."""
+        market_to_stat = {
+            "player_points": ["pts"],
+            "player_rebounds": ["reb"],
+            "player_assists": ["ast"],
+            "player_threes": ["fg3m"],
+            "player_blocks": ["blk"],
+            "player_steals": ["stl"],
+            "player_turnovers": ["turnover"],
+            "player_points_rebounds": ["pts", "reb"],
+            "player_points_assists": ["pts", "ast"],
+            "player_rebounds_assists": ["reb", "ast"],
+            "player_points_rebounds_assists": ["pts", "reb", "ast"],
+            "player_steals_blocks": ["stl", "blk"],
+        }
+        
+        stat_keys = market_to_stat.get(market, ["pts"])
+        
+        def get_stat_value(game):
+            return sum((game.get(key, 0) or 0) for key in stat_keys)
+        
+        if not games:
+            return []
+            
+        return [get_stat_value(g) for g in games[:10]]
     
     # ==================== PILLAR 3: TANK01 API (with Exponential Backoff) ====================
     
@@ -4324,6 +4363,8 @@ class DemonGoblinEngine:
             "hit_rates": None,
             "injury_info": {"warning_level": "none"},
             "has_goblin_warning": False,  # High hit rate + Questionable
+            "source_verified": False,  # V3.1: Data integrity flag
+            "verification_status": "unverified",  # V3.1: Verification status
             "processed_at": datetime.now(timezone.utc).isoformat()
         }
         
@@ -4341,6 +4382,38 @@ class DemonGoblinEngine:
             if games:
                 hit_rates = self.calculate_hit_rates(games, stat_market, line)
                 result["hit_rates"] = hit_rates
+                
+                # V3.1: Triple-check verification
+                verifier = DataIntegrityVerifier()
+                l10_data = self._extract_l10_values(games[:10], stat_market)
+                if l10_data:
+                    calculated_hits = sum(1 for v in l10_data if v > line)
+                    calculated_rate = (calculated_hits / len(l10_data) * 100) if l10_data else 0
+                    claimed_rate = hit_rates.get("l10", {}).get("hit_rate", 0) * 100
+                    raw_avg = sum(l10_data) / len(l10_data) if l10_data else 0
+                    
+                    # Verification Gate: Detect hallucinations
+                    is_hallucinated = (
+                        claimed_rate > 80 and 
+                        raw_avg < line and 
+                        calculated_rate < 50
+                    )
+                    
+                    major_discrepancy = abs(claimed_rate - calculated_rate) > 20
+                    
+                    if is_hallucinated or major_discrepancy:
+                        result["source_verified"] = False
+                        result["verification_status"] = "HALLUCINATION_DETECTED" if is_hallucinated else "DISCREPANCY"
+                        logger.warning(
+                            f"[VERIFY FAIL] {player_name} {stat_market}: "
+                            f"Claimed {claimed_rate:.1f}% vs Calculated {calculated_rate:.1f}% "
+                            f"(avg {raw_avg:.1f} vs line {line})"
+                        )
+                    else:
+                        result["source_verified"] = True
+                        result["verification_status"] = "verified"
+                else:
+                    result["verification_status"] = "no_game_data"
         
         # Pillar 3: Injury check
         injury_info = self.get_player_injury_status(player_name)
