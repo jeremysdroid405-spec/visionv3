@@ -61,7 +61,9 @@ Maximum 25 words per insight."""
         volatility: str = "Med",
         is_demon: bool = False,
         is_goblin: bool = False,
-        projected_score: Optional[float] = None
+        projected_score: Optional[float] = None,
+        team: str = "",
+        team_injury_summary: str = ""
     ) -> Dict[str, Any]:
         """
         Generate a single AI insight for a player prop.
@@ -78,6 +80,8 @@ Maximum 25 words per insight."""
             is_demon: Whether this is a Demon pick
             is_goblin: Whether this is a Goblin pick
             projected_score: AI's projected score (for discrepancy detection)
+            team: Player's team abbreviation
+            team_injury_summary: Summary of team injuries for context
             
         Returns:
             Dict with success status and generated insight
@@ -101,9 +105,17 @@ Maximum 25 words per insight."""
                     direction = "OVER" if projected_score > current_line else "UNDER"
                     discrepancy_note = f"\nCRITICAL EDGE: Model projects {projected_score:.1f} vs line {current_line}. {discrepancy_pct:.0f}% discrepancy favors {direction}. Mention this edge."
             
+            # Build injury context note
+            injury_note = ""
+            if team_injury_summary:
+                injury_note = f"\nFactor in the latest injury news for {team} when writing this insight: {team_injury_summary}"
+            elif team:
+                injury_note = f"\nFactor in the latest injury news for {team} when writing this insight."
+            
             # Build the prompt
             user_prompt = f"""
 PLAYER: {player_name}
+TEAM: {team}
 PROP TYPE: {stat_type}
 CLASSIFICATION: {player_type}
 LINE: {current_line}
@@ -114,6 +126,7 @@ ADVANCED ANALYTICS:
 - Usage Bump: {'+' if usage_bump > 0 else ''}{usage_bump:.0f}%
 - Volatility Risk: {volatility}
 {discrepancy_note}
+{injury_note}
 
 Generate a 1-sentence badass insight for a pro bettor. Why does the data favor this outcome?"""
 
@@ -183,6 +196,19 @@ Generate a 1-sentence badass insight for a pro bettor. Why does the data favor t
         
         logger.info(f"[VISION] Processing {len(eligible_players)} eligible players out of {len(players)} total")
         
+        # Pre-fetch injury summaries for all teams
+        team_injury_cache = {}
+        unique_teams = set(p.get('team', '') for p in eligible_players if p.get('team'))
+        
+        from injury_service import get_injury_service
+        injury_service = get_injury_service(self.db)
+        
+        for team in unique_teams:
+            try:
+                team_injury_cache[team] = await injury_service.get_team_injury_summary(team)
+            except Exception:
+                team_injury_cache[team] = ""
+        
         results = []
         errors = []
         
@@ -192,6 +218,7 @@ Generate a 1-sentence badass insight for a pro bettor. Why does the data favor t
             
             tasks = []
             for player in batch:
+                team = player.get('team', '')
                 task = self.generate_single_insight(
                     player_name=player.get('player_name', 'Unknown'),
                     stat_type=player.get('stat_type', 'points'),
@@ -202,7 +229,9 @@ Generate a 1-sentence badass insight for a pro bettor. Why does the data favor t
                     usage_bump=player.get('usage_bump_percent', 0),
                     volatility=player.get('volatility_score', 'Med'),
                     is_demon=player.get('is_demon', False),
-                    is_goblin=player.get('is_goblin', False)
+                    is_goblin=player.get('is_goblin', False),
+                    team=team,
+                    team_injury_summary=team_injury_cache.get(team, '')
                 )
                 tasks.append(task)
             
