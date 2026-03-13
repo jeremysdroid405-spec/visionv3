@@ -1093,268 +1093,42 @@ class DemonGoblinEngine:
 
     async def get_photo_url_from_master_roster(self, player_name: str) -> Optional[str]:
         """
-        Look up a player's photo_url from master roster with fuzzy matching.
-        
-        Returns the photo URL if available, None otherwise.
+        DEPRECATED: Photo lookup now happens during sync.
+        Kept for backwards compatibility but should not be called at runtime.
         """
         result = await self.get_photo_and_team_from_master_roster(player_name)
         return result.get("photo_url") if result else None
     
     async def refresh_cached_board_photos(self) -> Dict[str, Any]:
         """
-        Update photo URLs in cached_board from master_roster with fuzzy matching.
+        DEPRECATED: All enrichment now happens during sync-to-mongo.
         
-        This handles name mismatches between Odds API names and Tank01 names.
+        To refresh photos, run the full sync:
+        POST /api/v3/sync-to-mongo
+        
+        This endpoint is kept for backwards compatibility but does nothing.
         """
-        logger.info("[PHOTO REFRESH] Updating cached_board photos from master_roster...")
-        
-        updated = 0
-        still_missing = []
-        
-        # Get all players from cached_board
-        players = await self.cached_board.find({}).to_list(None)
-        
-        for player in players:
-            player_name = player.get("player_name", "")
-            current_photo = player.get("photo_url", "")
-            
-            # Skip if already has a REAL ESPN headshot (not nophoto placeholder)
-            if (current_photo and 
-                "espncdn" in current_photo and 
-                "nophoto" not in current_photo.lower() and
-                "combiner" not in current_photo):
-                continue
-            
-            # Try to find photo AND team from master_roster
-            player_doc = await self.get_photo_and_team_from_master_roster(player_name)
-            
-            if not player_doc:
-                still_missing.append(player_name)
-                continue
-            
-            photo_url = player_doc.get("photo_url")
-            correct_team = player_doc.get("team_abbreviation")
-            nba_com_id = player_doc.get("nba_com_id")
-            
-            # Check if it's a real photo (not a nophoto placeholder)
-            is_real_photo = (
-                photo_url and 
-                "espncdn" in photo_url and 
-                "nophoto" not in photo_url.lower() and
-                "combiner" not in photo_url  # combiner URLs often show placeholder
-            )
-            
-            update_fields = {}
-            
-            if is_real_photo:
-                update_fields["photo_url"] = photo_url
-                update_fields["photo_source"] = "espn_matched"
-            elif nba_com_id:
-                # Use NBA.com CDN fallback
-                nba_url = f"https://cdn.nba.com/headshots/nba/latest/1040x760/{nba_com_id}.png"
-                update_fields["photo_url"] = nba_url
-                update_fields["photo_source"] = "nba_cdn_fallback"
-            
-            # Also fix the team if it's wrong
-            if correct_team:
-                update_fields["team"] = correct_team
-            
-            if update_fields:
-                await self.cached_board.update_one(
-                    {"player_name": player_name},
-                    {"$set": update_fields}
-                )
-                updated += 1
-                logger.info(f"[PHOTO REFRESH] Updated {player_name}: team={correct_team}, photo={update_fields.get('photo_source', 'N/A')}")
-        
-        # Update sync timestamp if we made changes (forces frontend cache invalidation)
-        if updated > 0:
-            new_timestamp = datetime.now(timezone.utc).isoformat()
-            await self.cached_board.update_many(
-                {},
-                {"$set": {"synced_at": new_timestamp}}
-            )
-            await self.sync_log.update_one(
-                {"type": "cached_board"},
-                {"$set": {"synced_at": new_timestamp, "photos_refreshed": updated}},
-                upsert=True
-            )
-            logger.info(f"[PHOTO REFRESH] Updated sync timestamp to {new_timestamp}")
-        
-        logger.info(f"[PHOTO REFRESH] Updated {updated} photos, {len(still_missing)} still missing")
-        
+        logger.warning("[DEPRECATED] refresh_cached_board_photos called - use sync-to-mongo instead")
         return {
             "success": True,
-            "photos_updated": updated,
-            "still_missing": still_missing
+            "message": "DEPRECATED: Use POST /api/v3/sync-to-mongo to refresh data",
+            "photos_updated": 0
         }
     
     async def refresh_all_photos(self) -> Dict[str, Any]:
         """
-        MASTER PHOTO REFRESH - Updates photo URLs and teams across ALL collections.
+        DEPRECATED: All enrichment now happens during sync-to-mongo.
         
-        Collections updated:
-        - dg_cached_board (main player board)
-        - dg_goblin_vault (direct list of picks)
-        - dg_radar_picks (direct list of picks)  
-        - dg_goblin_recon (nested in parlays)
-        - dg_parlay_builder (nested in parlays)
+        To refresh photos, run the full sync:
+        POST /api/v3/sync-to-mongo
         
-        Uses fuzzy matching from master_roster to handle name variations.
+        This endpoint is kept for backwards compatibility but does nothing.
         """
-        logger.info("=" * 60)
-        logger.info("[MASTER PHOTO REFRESH] Updating photos and teams across all collections...")
-        logger.info("=" * 60)
-        
-        total_updated = 0
-        collection_stats = {}
-        
-        # First refresh cached_board
-        board_result = await self.refresh_cached_board_photos()
-        total_updated += board_result.get("photos_updated", 0)
-        collection_stats["cached_board"] = board_result
-        
-        # Direct-list collections (goblin_vault, radar_picks)
-        direct_collections = [
-            (self.goblin_vault, "goblin_vault"),
-            (self.radar_picks, "radar_picks"),
-        ]
-        
-        for collection, name in direct_collections:
-            updated = 0
-            picks = await collection.find({}).to_list(100)
-            
-            for pick in picks:
-                player_name = pick.get("player_name", "")
-                
-                # Get correct photo AND team from master_roster
-                player_doc = await self.get_photo_and_team_from_master_roster(player_name)
-                
-                if not player_doc:
-                    continue
-                
-                photo_url = player_doc.get("photo_url")
-                correct_team = player_doc.get("team_abbreviation")
-                nba_com_id = player_doc.get("nba_com_id")
-                
-                update_fields = {}
-                
-                # Check if team needs update
-                if correct_team and pick.get("team") != correct_team:
-                    update_fields["team"] = correct_team
-                
-                # Check if photo needs update
-                current_photo = pick.get("photo_url")
-                photo_needs_update = not (current_photo and 
-                    "espncdn" in current_photo and 
-                    "nophoto" not in current_photo.lower() and
-                    "combiner" not in current_photo)
-                
-                if photo_needs_update:
-                    is_real_photo = (
-                        photo_url and 
-                        "espncdn" in photo_url and 
-                        "nophoto" not in photo_url.lower() and
-                        "combiner" not in photo_url
-                    )
-                    
-                    if is_real_photo:
-                        update_fields["photo_url"] = photo_url
-                    elif nba_com_id:
-                        update_fields["photo_url"] = f"https://cdn.nba.com/headshots/nba/latest/1040x760/{nba_com_id}.png"
-                
-                if update_fields:
-                    await collection.update_one(
-                        {"_id": pick["_id"]},
-                        {"$set": update_fields}
-                    )
-                    updated += 1
-                    logger.info(f"[MASTER PHOTO REFRESH] {name}: Updated {player_name} (team={correct_team})")
-            
-            total_updated += updated
-            collection_stats[name] = {"photos_updated": updated}
-            logger.info(f"[MASTER PHOTO REFRESH] {name}: Updated {updated} picks")
-        
-        # Nested parlay collections (goblin_recon, parlay_builder)
-        parlay_collections = [
-            (self.goblin_recon, "goblin_recon"),
-            (self.parlay_builder, "parlay_builder"),
-        ]
-        
-        for collection, name in parlay_collections:
-            updated = 0
-            
-            doc = await collection.find_one({})
-            if not doc:
-                collection_stats[name] = {"photos_updated": 0, "status": "no_data"}
-                continue
-            
-            parlays = doc.get("parlays", {})
-            needs_update = False
-            
-            for parlay_key, parlay_data in parlays.items():
-                picks = parlay_data.get("picks", [])
-                for pick in picks:
-                    player_name = pick.get("player_name", "")
-                    
-                    # Get correct photo AND team from master_roster
-                    player_doc = await self.get_photo_and_team_from_master_roster(player_name)
-                    
-                    if not player_doc:
-                        continue
-                    
-                    photo_url = player_doc.get("photo_url")
-                    correct_team = player_doc.get("team_abbreviation")
-                    nba_com_id = player_doc.get("nba_com_id")
-                    
-                    # Check if team needs update
-                    if correct_team and pick.get("team") != correct_team:
-                        pick["team"] = correct_team
-                        needs_update = True
-                    
-                    # Check if photo needs update
-                    current_photo = pick.get("photo_url")
-                    photo_needs_update = not (current_photo and 
-                        "espncdn" in current_photo and 
-                        "nophoto" not in current_photo.lower() and
-                        "combiner" not in current_photo)
-                    
-                    if photo_needs_update:
-                        is_real_photo = (
-                            photo_url and 
-                            "espncdn" in photo_url and 
-                            "nophoto" not in photo_url.lower() and
-                            "combiner" not in photo_url
-                        )
-                        
-                        if is_real_photo:
-                            pick["photo_url"] = photo_url
-                            needs_update = True
-                        elif nba_com_id:
-                            pick["photo_url"] = f"https://cdn.nba.com/headshots/nba/latest/1040x760/{nba_com_id}.png"
-                            needs_update = True
-                    
-                    if needs_update:
-                        updated += 1
-            
-            if needs_update:
-                await collection.update_one(
-                    {"_id": doc["_id"]},
-                    {"$set": {"parlays": parlays}}
-                )
-            
-            total_updated += updated
-            collection_stats[name] = {"photos_updated": updated}
-            logger.info(f"[MASTER PHOTO REFRESH] {name}: Updated {updated} picks in parlays")
-        
-        logger.info("=" * 60)
-        logger.info(f"[MASTER PHOTO REFRESH] COMPLETE - Total: {total_updated} photos/teams updated")
-        logger.info("=" * 60)
-        
+        logger.warning("[DEPRECATED] refresh_all_photos called - use sync-to-mongo instead")
         return {
             "success": True,
-            "total_photos_updated": total_updated,
-            "collection_stats": collection_stats
+            "message": "DEPRECATED: Use POST /api/v3/sync-to-mongo to refresh data",
+            "total_photos_updated": 0
         }
     
     async def load_master_roster_cache(self):
@@ -2768,84 +2542,194 @@ class DemonGoblinEngine:
     
     async def _build_cached_board(self, props: List[Dict], sync_time: datetime):
         """
-        Build the cached board for frontend consumption.
-        Groups props by player, adds nba_id, stores in dg_cached_board.
+        ARCHITECTURE RESET: Centralized Data Enrichment
+        
+        This is THE ONLY place where player data enrichment happens.
+        All sections (Demon Radar, Goblin Recon, Gauntlet, Safe Haven) read from here.
+        
+        Data Flow:
+        1. Props come from Odds API
+        2. For each prop, lookup player in dg_master_roster by normalized name
+        3. Enrich with: tank01_player_id (PRIMARY KEY), photo_url, team, stats
+        4. Store everything in dg_cached_board
+        5. No more runtime lookups - if it's not here, it doesn't exist
+        
+        Primary Key: tank01_player_id (from Tank01 roster sync)
         """
         if not props:
             return
         
-        # Group by player
+        logger.info(f"[CACHED_BOARD] Building centralized board from {len(props)} props...")
+        
+        # Load master roster into memory for fast lookups (indexed by normalized name)
+        master_roster_map = {}
+        roster_cursor = self.master_roster.find({}, {"_id": 0})
+        async for player in roster_cursor:
+            normalized = player.get("normalized_name", "").lower()
+            if normalized:
+                master_roster_map[normalized] = player
+        
+        logger.info(f"[CACHED_BOARD] Loaded {len(master_roster_map)} players from master roster")
+        
+        # Load player stats into memory (indexed by normalized name)
+        stats_map = {}
+        stats_cursor = self.player_stats.find({}, {"_id": 0})
+        async for stat in stats_cursor:
+            normalized = self.sanitize_player_name(stat.get("player_name", "")).lower()
+            if normalized:
+                stats_map[normalized] = stat
+        
+        logger.info(f"[CACHED_BOARD] Loaded {len(stats_map)} player stats")
+        
+        # Load social signals (indexed by player name)
+        signals_map = {}
+        try:
+            signals_cursor = self.db.dg_social_signals.find({}, {"_id": 0})
+            async for signal in signals_cursor:
+                player_name = signal.get("player_name", "")
+                if player_name:
+                    signals_map[player_name.lower()] = signal
+        except Exception as e:
+            logger.warning(f"[CACHED_BOARD] Could not load social signals: {e}")
+        
+        # Group props by player and enrich ONCE
         players_dict = {}
+        unmatched_players = []
+        
         for prop in props:
             player_name = prop.get("player_name", "Unknown")
+            normalized_name = self.sanitize_player_name(player_name).lower()
             
             if player_name not in players_dict:
-                nba_id = get_nba_player_id(player_name)
+                # ==================== SINGLE SOURCE LOOKUP ====================
+                # Look up player in master roster (Tank01 data)
+                roster_player = master_roster_map.get(normalized_name)
                 
-                # ==================== SOURCE OF TRUTH: MASTER ROSTER ====================
-                # Priority 1: Look up in Master Roster (BallDontLie synced weekly)
-                player_team_abbrev = await self.get_team_from_master_roster(player_name)
+                if not roster_player:
+                    # Try without suffix (Jr., III, etc.)
+                    for suffix in [" jr", " iii", " ii", " iv", " sr"]:
+                        clean_name = normalized_name.replace(suffix, "").strip()
+                        roster_player = master_roster_map.get(clean_name)
+                        if roster_player:
+                            break
                 
-                # Get photo_url from master roster (ESPN headshot)
-                photo_url = await self.get_photo_url_from_master_roster(player_name)
+                if not roster_player:
+                    # Try nickname expansions (G.G. -> Gregory, etc.)
+                    name_parts = player_name.replace(".", "").split()
+                    if len(name_parts) >= 2:
+                        first_name = name_parts[0].lower()
+                        last_name = name_parts[-1].lower()
+                        
+                        # Nickname mappings
+                        nickname_map = {
+                            "gg": "gregory", "jj": "james", "tj": "thomas",
+                            "pj": "paul", "cj": "charles", "aj": "anthony",
+                            "rj": "robert", "herb": "herbert", "mike": "michael",
+                        }
+                        
+                        expanded_first = nickname_map.get(first_name, first_name)
+                        expanded_name = f"{expanded_first} {last_name}"
+                        roster_player = master_roster_map.get(expanded_name)
+                        
+                        # Also try searching all players with matching last name
+                        if not roster_player:
+                            for norm_name, player in master_roster_map.items():
+                                if last_name in norm_name and expanded_first[:3] in norm_name:
+                                    roster_player = player
+                                    break
                 
-                # If found in master roster, use that (most reliable)
-                team_source = "master_roster" if player_team_abbrev else None
-                
-                # Priority 2: Fallback to BallDontLie in-memory cache
-                if not player_team_abbrev:
-                    bdl_player = self._player_name_map.get(player_name, {})
-                    bdl_team = bdl_player.get("team", {})
-                    player_team_abbrev = bdl_team.get("abbreviation", "")
-                    if player_team_abbrev:
-                        team_source = "bdl_cache"
-                
-                # Priority 3: Game context inference (LAST RESORT - flag for review)
-                if not player_team_abbrev:
-                    home = prop.get("home_team", "")
-                    away = prop.get("away_team", "")
-                    player_team_abbrev = home or away
-                    team_source = "inferred"
+                if not roster_player:
+                    # Player not in master roster - use minimal data
+                    unmatched_players.append(player_name)
+                    players_dict[player_name] = {
+                        "player_name": player_name,
+                        "tank01_player_id": None,  # No Tank01 match
+                        "team": prop.get("home_team") or prop.get("away_team") or "UNK",
+                        "photo_url": None,
+                        "nba_com_id": None,
+                        "espn_id": None,
+                        "position": None,
+                        "l10_stats": {},
+                        "is_verified": False,  # Flag for UI to show caution
+                        "props": [],
+                        "demons": [],
+                        "goblins": [],
+                        "synced_at": sync_time.isoformat()
+                    }
+                else:
+                    # ==================== FULL ENRICHMENT FROM MASTER ROSTER ====================
+                    tank01_id = roster_player.get("tank01_player_id")
                     
-                    # Flag this player for manual review
-                    await self.flag_unknown_player(player_name, player_team_abbrev, {
-                        "home_team": home,
-                        "away_team": away,
-                        "game_date": prop.get("game_date", "")
-                    })
-                
-                players_dict[player_name] = {
-                    "player_name": player_name,
-                    "team": player_team_abbrev,
-                    "team_source": team_source,  # Track where we got the team from
-                    "nba_id": nba_id,
-                    "photo_url": photo_url,  # ESPN headshot URL
-                    "props": [],
-                    "demons": [],
-                    "goblins": [],
-                    "standard": [],
-                    "demons_count": 0,
-                    "goblins_count": 0,
-                    "standard_count": 0,
-                    "synced_at": sync_time.isoformat()
-                }
+                    # Get stats for this player
+                    player_stats = stats_map.get(normalized_name, {})
+                    
+                    # Get social signals
+                    social = signals_map.get(player_name.lower(), {})
+                    
+                    players_dict[player_name] = {
+                        # Primary identifiers
+                        "player_name": player_name,
+                        "tank01_player_id": tank01_id,  # PRIMARY KEY
+                        "nba_com_id": roster_player.get("nba_com_id"),
+                        "espn_id": roster_player.get("espn_id"),
+                        
+                        # Team info (from Tank01)
+                        "team": roster_player.get("team_abbreviation"),
+                        "team_name": roster_player.get("team_name"),
+                        "team_logo_url": roster_player.get("team_logo_url"),
+                        
+                        # Photo (from Tank01 sync)
+                        "photo_url": roster_player.get("photo_url"),
+                        "photo_source": roster_player.get("photo_source"),
+                        
+                        # Player info
+                        "position": roster_player.get("position"),
+                        "jersey_number": roster_player.get("jersey_number"),
+                        
+                        # Pre-computed stats (from sync-player-stats)
+                        "games_played": player_stats.get("games_played", 0),
+                        "l10_stats": {
+                            "pts": player_stats.get("pts_avg_l10", 0),
+                            "reb": player_stats.get("reb_avg_l10", 0),
+                            "ast": player_stats.get("ast_avg_l10", 0),
+                            "pts_reb_ast": player_stats.get("pra_avg_l10", 0),
+                        },
+                        "l5_stats": {
+                            "pts": player_stats.get("pts_avg_l5", 0),
+                            "reb": player_stats.get("reb_avg_l5", 0),
+                            "ast": player_stats.get("ast_avg_l5", 0),
+                        },
+                        
+                        # Social signals (pre-enriched)
+                        "volatility_flag": social.get("volatility_flag", False),
+                        "revenge_game": social.get("revenge_game", False),
+                        "injury_status": social.get("injury_status"),
+                        
+                        # Verification flag
+                        "is_verified": True,
+                        
+                        # Props containers
+                        "props": [],
+                        "demons": [],
+                        "goblins": [],
+                        "synced_at": sync_time.isoformat()
+                    }
             
+            # Add prop to player
             players_dict[player_name]["props"].append(prop)
             
             if prop.get("is_demon"):
                 players_dict[player_name]["demons"].append(prop)
-                players_dict[player_name]["demons_count"] += 1
             elif prop.get("is_goblin"):
                 players_dict[player_name]["goblins"].append(prop)
-                players_dict[player_name]["goblins_count"] += 1
-            else:
-                players_dict[player_name]["standard"].append(prop)
-                players_dict[player_name]["standard_count"] += 1
+        
+        if unmatched_players:
+            logger.warning(f"[CACHED_BOARD] {len(unmatched_players)} players not in master roster: {unmatched_players[:5]}...")
         
         # Store in cached_board collection
         await self.cached_board.delete_many({})
         
-        # Sort players by prop count (most props first)
+        # Sort players by prop count
         sorted_players = sorted(
             players_dict.values(),
             key=lambda x: len(x["props"]),
@@ -2855,35 +2739,32 @@ class DemonGoblinEngine:
         # Add ranking
         for idx, player in enumerate(sorted_players):
             player["rank"] = idx + 1
-            player["popularity_order"] = idx + 1
         
         if sorted_players:
             await self.cached_board.insert_many(sorted_players)
         
         # Store sync metadata
+        verified_count = sum(1 for p in sorted_players if p.get("is_verified"))
         await self.sync_log.update_one(
             {"type": "cached_board"},
             {"$set": {
                 "type": "cached_board",
                 "synced_at": sync_time.isoformat(),
                 "players_count": len(sorted_players),
+                "verified_count": verified_count,
+                "unverified_count": len(sorted_players) - verified_count,
                 "total_props": sum(len(p["props"]) for p in sorted_players)
             }},
             upsert=True
         )
         
-        logger.info(f"[CACHED_BOARD] Built board with {len(sorted_players)} players")
+        logger.info(f"[CACHED_BOARD] Built board: {len(sorted_players)} players ({verified_count} verified)")
         
-        # Build Demon Radar (Top 10 picks)
+        # Build derived collections (Demon Radar, Goblin Vault, etc.)
+        # These just filter/sort the cached_board data - NO additional lookups
         await self._build_demon_radar(players_dict, sync_time)
-        
-        # Build Goblin Vault (Top 10 safe plays)
         await self._build_goblin_vault(players_dict, sync_time)
-        
-        # Build Parlay Builder (Big Money parlays - Demons)
         await self._build_parlay_builder(players_dict, sync_time)
-        
-        # Build Goblin Recon (High-consistency Goblin parlays)
         await self._build_goblin_recon(players_dict, sync_time)
     
     async def _build_demon_radar(self, players_dict: Dict[str, Dict], sync_time: datetime):
@@ -2996,16 +2877,31 @@ class DemonGoblinEngine:
                 is_hot_streak = h5_over >= 3 if h5_games >= 3 else False
                 
                 all_candidates.append({
+                    # PRIMARY KEY - Tank01 player ID
+                    "tank01_player_id": player_data.get("tank01_player_id"),
+                    
+                    # Player info (from centralized enrichment)
                     "player_name": player_name,
                     "team": player_data.get("team", ""),
-                    "nba_id": player_data.get("nba_id"),
                     "photo_url": player_data.get("photo_url"),
+                    "nba_com_id": player_data.get("nba_com_id"),
+                    "espn_id": player_data.get("espn_id"),
+                    "position": player_data.get("position"),
+                    
+                    # Social signals (pre-enriched)
+                    "volatility_flag": player_data.get("volatility_flag", False),
+                    "revenge_game": player_data.get("revenge_game", False),
+                    "is_verified": player_data.get("is_verified", False),
+                    
+                    # Prop data
                     "stat_type": demon_stat,
                     "direction": demon_direction,
                     "demon_line": demon_line,
                     "standard_line": round(std_line, 1),
                     "gap_ratio": round(gap_ratio, 3),
                     "gap_pct": round(gap_pct, 1),
+                    
+                    # Hit rates
                     "h10_rate": round(h10 * 100, 1),
                     "h5_rate": round(h5 * 100, 1),
                     "h10_over": h10_over,
@@ -3013,6 +2909,8 @@ class DemonGoblinEngine:
                     "h5_over": h5_over,
                     "h5_games": h5_games,
                     "season_avg": round(season_avg, 1),
+                    
+                    # Calculated scores
                     "hit_probability": round(P * 100, 1),
                     "radar_score": round(radar_score, 4),
                     "heat_level": heat_level,
@@ -3238,16 +3136,31 @@ class DemonGoblinEngine:
                 safety_string = f"{h10_over}/{h10_games}" if h10_games > 0 else "---"
                 
                 all_candidates.append({
+                    # PRIMARY KEY - Tank01 player ID
+                    "tank01_player_id": player_data.get("tank01_player_id"),
+                    
+                    # Player info (from centralized enrichment)
                     "player_name": player_name,
                     "team": player_data.get("team", ""),
-                    "nba_id": player_data.get("nba_id"),
                     "photo_url": player_data.get("photo_url"),
+                    "nba_com_id": player_data.get("nba_com_id"),
+                    "espn_id": player_data.get("espn_id"),
+                    "position": player_data.get("position"),
+                    
+                    # Social signals (pre-enriched)
+                    "volatility_flag": player_data.get("volatility_flag", False),
+                    "revenge_game": player_data.get("revenge_game", False),
+                    "is_verified": player_data.get("is_verified", False),
+                    
+                    # Prop data
                     "stat_type": goblin_stat,
                     "direction": goblin_direction,
                     "goblin_line": goblin_line,
                     "standard_line": round(std_line, 1),
                     "gap_below_std": round(gap_below_std, 1),
                     "gap_pct": round(gap_pct, 1),
+                    
+                    # Hit rates
                     "h10_rate": round(h10 * 100, 1),
                     "h5_rate": round(h5 * 100, 1),
                     "h10_over": h10_over,
@@ -3255,15 +3168,17 @@ class DemonGoblinEngine:
                     "h5_over": h5_over,
                     "h5_games": h5_games,
                     "season_avg": round(season_avg, 1),
+                    
+                    # Calculated scores
                     "hit_probability": round(hit_rate_score * 100, 1),
                     "vault_score": round(vault_score, 4),
                     "safety_level": safety_level,
                     "safety_rating": round(hit_rate_score * 100, 1),
                     "safety_string": safety_string,
                     "is_perfect_streak": is_perfect_streak,
-                    "price": goblin.get("price", -110),  # Goblins typically have negative odds
+                    "price": goblin.get("price", -110),
                     "is_vault_pick": True,
-                    "has_real_data": True,  # V3.2: All picks now have verified stats
+                    "has_real_data": True,
                     "synced_at": sync_time.isoformat()
                 })
         
@@ -4215,15 +4130,15 @@ class DemonGoblinEngine:
     
     async def get_demon_radar(self) -> Dict[str, Any]:
         """
-        Get the Demon Radar top 10 picks from MongoDB.
-        Enriches with AI insight summaries and player photos.
-        NO API CALLS - reads only from database.
+        DUMB COMPONENT: Get the Demon Radar top 10 picks from MongoDB.
+        
+        Data is PRE-ENRICHED during sync. No runtime lookups.
+        Just reads and returns the data with AI insights.
         """
         picks = await self.radar_picks.find({}, {"_id": 0}).sort("radar_score", -1).to_list(10)
         
-        # Enrich with AI insights and photos
+        # Only add AI insights (these are generated separately)
         for pick in picks:
-            # Get AI insight
             insight = await self.daily_insights.find_one(
                 {"player_name": pick.get('player_name')},
                 {"_id": 0, "insight_summary": 1, "ai_confidence_rating": 1}
@@ -4231,12 +4146,6 @@ class DemonGoblinEngine:
             if insight:
                 pick['insight_summary'] = insight.get('insight_summary', '')
                 pick['ai_confidence'] = insight.get('ai_confidence_rating', 50)
-            
-            # Get photo from master_roster if not present
-            if not pick.get('photo_url'):
-                photo_url = await self.get_photo_url_from_master_roster(pick.get('player_name', ''))
-                if photo_url:
-                    pick['photo_url'] = photo_url
         
         sync_meta = await self.sync_log.find_one({"type": "cached_board"})
         
@@ -4247,24 +4156,23 @@ class DemonGoblinEngine:
             "picks": picks,
             "algorithm": {
                 "description": "Weighted Probability + Line Gap",
-                "formula": "Score = P - (G × 100)",
+                "formula": "Score = P / Gap_Ratio",
                 "hit_probability": "(H10 × 0.6) + (H5 × 0.4)",
-                "line_gap": "(Demon - Standard) / Standard",
                 "min_probability": "60%"
             }
         }
     
     async def get_goblin_vault(self) -> Dict[str, Any]:
         """
-        Get the Goblin Vault top 10 safe plays from MongoDB.
-        Enriches with AI insight summaries and player photos.
-        NO API CALLS - reads only from database.
+        DUMB COMPONENT: Get the Goblin Vault top 10 safe plays from MongoDB.
+        
+        Data is PRE-ENRICHED during sync. No runtime lookups.
+        Just reads and returns the data with AI insights.
         """
         picks = await self.goblin_vault.find({}, {"_id": 0}).sort("vault_score", -1).to_list(10)
         
-        # Enrich with AI insights and photos
+        # Only add AI insights (these are generated separately)
         for pick in picks:
-            # Get AI insight
             insight = await self.daily_insights.find_one(
                 {"player_name": pick.get('player_name')},
                 {"_id": 0, "insight_summary": 1, "ai_confidence_rating": 1}
@@ -4272,12 +4180,6 @@ class DemonGoblinEngine:
             if insight:
                 pick['insight_summary'] = insight.get('insight_summary', '')
                 pick['ai_confidence'] = insight.get('ai_confidence_rating', 50)
-            
-            # Get photo from master_roster if not present
-            if not pick.get('photo_url'):
-                photo_url = await self.get_photo_url_from_master_roster(pick.get('player_name', ''))
-                if photo_url:
-                    pick['photo_url'] = photo_url
         
         sync_meta = await self.sync_log.find_one({"type": "cached_board"})
         
@@ -4289,7 +4191,6 @@ class DemonGoblinEngine:
             "algorithm": {
                 "description": "Hit Rate + Value Gap Scoring",
                 "formula": "Score = (Hit_Rate × 0.8) + (Value_Gap × 0.2)",
-                "hit_rate": "(L10 × 0.6) + (L5 × 0.4)",
                 "target": "90%+ hit rate for maximum safety",
                 "min_probability": "80%"
             }
@@ -4297,9 +4198,10 @@ class DemonGoblinEngine:
     
     async def get_parlay_builder(self) -> Dict[str, Any]:
         """
-        Get the Parlay Builder (Big Money) parlays from MongoDB.
-        Enriches picks with AI insights and player photos from daily_insights collection.
-        NO API CALLS - reads only from database.
+        DUMB COMPONENT: Get the Parlay Builder (Gauntlet) parlays from MongoDB.
+        
+        Data is PRE-ENRICHED during sync. No runtime lookups.
+        Just reads and returns the data with AI insights.
         """
         doc = await self.parlay_builder.find_one({}, {"_id": 0})
         
@@ -4310,12 +4212,11 @@ class DemonGoblinEngine:
                 "parlays": {}
             }
         
-        # Enrich each pick in each parlay with AI insights and photos
+        # Only add AI insights (data is already enriched during sync)
         parlays = doc.get("parlays", {})
         for parlay_key, parlay_data in parlays.items():
             picks = parlay_data.get("picks", [])
             for pick in picks:
-                # Get AI insight
                 insight = await self.daily_insights.find_one(
                     {"player_name": pick.get('player_name')},
                     {"_id": 0, "insight_summary": 1, "ai_confidence_rating": 1}
@@ -4323,12 +4224,6 @@ class DemonGoblinEngine:
                 if insight:
                     pick['insight_summary'] = insight.get('insight_summary', '')
                     pick['ai_confidence_rating'] = insight.get('ai_confidence_rating', 50)
-                
-                # Get photo from master_roster if not present
-                if not pick.get('photo_url'):
-                    photo_url = await self.get_photo_url_from_master_roster(pick.get('player_name', ''))
-                    if photo_url:
-                        pick['photo_url'] = photo_url
         
         return {
             "success": True,
@@ -4339,18 +4234,16 @@ class DemonGoblinEngine:
             "algorithm": {
                 "description": "Whale Scoring + Correlation Filter",
                 "whale_score": "(H10 × 0.6) + (H5 × 0.4) × heat_boost",
-                "heat_boost": "1.20x if hit in last 2 games",
-                "min_ceiling": "30% L10 hit rate",
                 "correlation": "Same-game pairing for 4-6 picks"
             }
         }
     
     async def get_goblin_recon(self) -> Dict[str, Any]:
         """
-        Get the Goblin Recon parlays from MongoDB.
-        High-consistency Goblin-only parlays for maximum win probability.
-        Enriches picks with AI insights and player photos from daily_insights collection.
-        NO API CALLS - reads only from database.
+        DUMB COMPONENT: Get the Goblin Recon (Safe Haven) parlays from MongoDB.
+        
+        Data is PRE-ENRICHED during sync. No runtime lookups.
+        Just reads and returns the data with AI insights.
         """
         doc = await self.goblin_recon.find_one({}, {"_id": 0})
         
@@ -4361,12 +4254,11 @@ class DemonGoblinEngine:
                 "parlays": {}
             }
         
-        # Enrich each pick in each parlay with AI insights and photos
+        # Only add AI insights (data is already enriched during sync)
         parlays = doc.get("parlays", {})
         for parlay_key, parlay_data in parlays.items():
             picks = parlay_data.get("picks", [])
             for pick in picks:
-                # Get AI insight
                 insight = await self.daily_insights.find_one(
                     {"player_name": pick.get('player_name')},
                     {"_id": 0, "insight_summary": 1, "ai_confidence_rating": 1}
@@ -4374,12 +4266,6 @@ class DemonGoblinEngine:
                 if insight:
                     pick['insight_summary'] = insight.get('insight_summary', '')
                     pick['ai_confidence_rating'] = insight.get('ai_confidence_rating', 50)
-                
-                # Get photo from master_roster if not present
-                if not pick.get('photo_url'):
-                    photo_url = await self.get_photo_url_from_master_roster(pick.get('player_name', ''))
-                    if photo_url:
-                        pick['photo_url'] = photo_url
         
         return {
             "success": True,
@@ -4389,12 +4275,10 @@ class DemonGoblinEngine:
             "games_available": doc.get("games_available", 0),
             "parlays": parlays,
             "algorithm": {
-                "name": "Floor Scoring ($F$)",
+                "name": "Floor Scoring",
                 "description": "Maximum win probability using high-consistency Goblins",
-                "min_hit_rate": "88%+ weighted (L10×0.6 + L5×0.4)",
-                "recon_lock": "Player's floor (worst game) >= Goblin line",
-                "diversification": "Green Ladder spreads picks across different games",
-                "flex_play": "6-Pick Fortress designed for PrizePicks Flex (5/6 still wins)"
+                "min_hit_rate": "88%+",
+                "flex_play": "6-Pick Fortress designed for PrizePicks Flex"
             }
         }
     
