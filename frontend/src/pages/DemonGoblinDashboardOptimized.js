@@ -3677,29 +3677,6 @@ export const DemonGoblinDashboardOptimized = ({ isDemoMode = false }) => {
           </div>
 
           <div className="flex items-center gap-2 flex-shrink-0">
-            <Button
-              onClick={triggerSync}
-              disabled={syncing}
-              variant="ghost"
-              size="sm"
-              className="text-purple-400 hover:text-purple-300 p-1.5"
-              data-testid="sync-btn"
-              title="Sync from Odds API (uses credits)"
-            >
-              <Database className={`w-4 h-4 ${syncing ? 'animate-spin' : ''}`} />
-            </Button>
-            <Button
-              onClick={loadCachedBoard}
-              disabled={!staticLoaded}
-              variant="ghost"
-              size="sm"
-              className="text-zinc-400 hover:text-white p-1.5"
-              data-testid="refresh-btn"
-              title="Reload from MongoDB (free)"
-            >
-              <RefreshCw className="w-4 h-4" />
-            </Button>
-            
             {/* User Menu */}
             <div className="relative">
               {isDemoMode ? (
@@ -3768,15 +3745,10 @@ export const DemonGoblinDashboardOptimized = ({ isDemoMode = false }) => {
           </div>
         </div>
         
-        {/* Sub-header info with Last Updated timestamp and Data Validation Status */}
+        {/* Sub-header info - Intel Freshness Only */}
         <div className="flex items-center justify-between mt-1.5">
           <div className="flex items-center gap-2 text-[10px] text-zinc-500">
-            <span>{players.length} Players</span>
-            <span>·</span>
-            <HardDrive className="w-3 h-3" />
-            <span>CACHED</span>
             {/* Adaptive Sync Status - Intel Freshness */}
-            <span>·</span>
             <div className={`flex items-center gap-1 ${
               syncStatus.has_stale_intel 
                 ? 'text-amber-400' 
@@ -3806,16 +3778,6 @@ export const DemonGoblinDashboardOptimized = ({ isDemoMode = false }) => {
               </>
             )}
           </div>
-          
-          {/* Manual Data Verification Button - Hidden by default, for debugging */}
-          <button
-            onClick={() => setShowValidationTable(true)}
-            className="px-2 py-1 bg-zinc-800/50 hover:bg-zinc-700/50 border border-zinc-700/30 rounded text-[10px] text-zinc-500 font-mono opacity-50 hover:opacity-100 transition-opacity"
-            data-testid="open-validation-table"
-            title="Open Raw Data Validation"
-          >
-            🔍
-          </button>
         </div>
       </header>
 
