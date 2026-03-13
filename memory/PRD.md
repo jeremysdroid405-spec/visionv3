@@ -7,6 +7,43 @@ Build a high-performance NBA Player Prop Dashboard that identifies "Demons" (har
 
 ---
 
+## THE GOBLIN GOLDMINE - COMPLETED (March 13, 2026)
+
+### Floor Scoring Algorithm ($F$) ✅
+**Objective:** Maximize win probability using high-consistency Goblin lines.
+
+**Primary Filters:**
+1. **88%+ Weighted Hit Rate**: Only Goblins with (L10×0.6 + L5×0.4) >= 88%
+2. **"Goldmine Lock"**: Player's floor (worst game in L10) >= Goblin line = 100% hit rate
+3. **Diversification**: Green Ladder spreads picks across different games
+
+### Goldmine Tiers ✅
+| Tier | Name | Description | Est. Payout | Goal |
+|------|------|-------------|-------------|------|
+| Daily Double | 2-Pick | Top 2 highest floor safety | ~3x | Nearly automatic |
+| Green Ladder | 3-Pick | 3 Goblins diversified across games | ~5x | Risk diversification |
+| Green Ladder+ | 4-Pick | 4 Goblins for risk management | ~9x | Balanced |
+| 6-Pick Fortress | Flex | Top 6 for PrizePicks Flex Play | ~15x | 5/6 = 1.5x, 6/6 = 15x |
+
+### UI Implementation ✅
+- **Theme**: Emerald Green, Teal, Cyan (clean, professional, "safe")
+- **Reliability Meter**: Progress bar showing combined probability
+- **LOCK Badge**: For 100% hit rate picks (floor >= line)
+- **Badges**: "SAFEST BET", "DIVERSIFIED", "BALANCED", "FLEX FORTRESS"
+
+### API Endpoint ✅
+- `GET /api/v3/goblin-goldmine` - Returns all Goldmine parlay tiers
+
+### Latest Results (March 13, 2026)
+- **7 candidates (88%+ hit rate)**
+- **1 Goldmine Lock (100% L10)**
+- Daily Double: 94% reliability | ~3x payout
+- Green Ladder: 88.36% reliability | ~5.2x payout
+- Green Ladder+: 77.76% reliability | ~9x payout
+- 6-Pick Fortress: 27.71% Flex probability | ~9x payout
+
+---
+
 ## THE BIG MONEY BUILDER - UPDATED (March 13, 2026)
 
 ### Mathematically Accurate Payouts ✅

@@ -784,6 +784,148 @@ const ParlayCard = memo(({ parlay, pickCount, onClick }) => {
 
 ParlayCard.displayName = 'ParlayCard';
 
+// ==================== GOBLIN GOLDMINE CARD ====================
+
+const GoldmineCard = memo(({ parlay, tier, onClick }) => {
+  const picks = parlay?.picks || [];
+  const reliability = parlay?.reliability || 0;
+  const payoutEstimate = parlay?.estimated_payout || 0;
+  const badge = parlay?.badge || '';
+  const flexProb = parlay?.flex_probability || null;
+  
+  // Emerald green theme for Goldmine
+  const tierStyles = {
+    daily_double: { 
+      bg: 'from-emerald-950/60', 
+      border: 'border-emerald-500/50', 
+      text: 'text-emerald-400',
+      badge: 'bg-emerald-500/30',
+      number: 2
+    },
+    green_ladder_3: { 
+      bg: 'from-teal-950/60', 
+      border: 'border-teal-500/50', 
+      text: 'text-teal-400',
+      badge: 'bg-teal-500/30',
+      number: 3
+    },
+    green_ladder_4: { 
+      bg: 'from-cyan-950/60', 
+      border: 'border-cyan-500/50', 
+      text: 'text-cyan-400',
+      badge: 'bg-cyan-500/30',
+      number: 4
+    },
+    fortress_flex: { 
+      bg: 'from-green-950/60', 
+      border: 'border-green-500/50', 
+      text: 'text-green-400',
+      badge: 'bg-green-500/30',
+      number: 6
+    }
+  };
+  
+  const style = tierStyles[tier] || tierStyles.daily_double;
+  
+  return (
+    <Card 
+      className={`
+        bg-gradient-to-br ${style.bg} to-zinc-950 ${style.border}
+        hover:scale-[1.02] transition-all duration-200 cursor-pointer
+        overflow-hidden border-2
+      `}
+      onClick={onClick}
+      data-testid={`goldmine-card-${tier}`}
+    >
+      <div className="p-3">
+        {/* Header */}
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <div className={`w-8 h-8 rounded-full ${style.badge} flex items-center justify-center`}>
+              <Ghost className={`w-4 h-4 ${style.text}`} />
+            </div>
+            <div>
+              <div className={`text-sm font-bold ${style.text}`}>{parlay?.name || tier}</div>
+              <div className="text-[10px] text-zinc-400">{parlay?.description || ''}</div>
+            </div>
+          </div>
+          
+          {/* Badge */}
+          {badge && (
+            <Badge className={`${style.badge} ${style.text} border-none text-[10px] font-bold px-2 py-0.5`}>
+              {badge}
+            </Badge>
+          )}
+        </div>
+        
+        {/* Reliability Meter */}
+        <div className="mb-3">
+          <div className="flex items-center justify-between text-[10px] mb-1">
+            <span className="text-zinc-400">Reliability</span>
+            <span className={`font-bold ${reliability >= 70 ? 'text-emerald-400' : reliability >= 50 ? 'text-yellow-400' : 'text-red-400'}`}>
+              {reliability}%
+            </span>
+          </div>
+          <div className="w-full h-2 bg-zinc-800 rounded-full overflow-hidden">
+            <div 
+              className={`h-full transition-all duration-500 ${
+                reliability >= 70 ? 'bg-gradient-to-r from-emerald-500 to-green-400' : 
+                reliability >= 50 ? 'bg-gradient-to-r from-yellow-500 to-amber-400' : 
+                'bg-gradient-to-r from-red-500 to-orange-400'
+              }`}
+              style={{ width: `${Math.min(reliability, 100)}%` }}
+            />
+          </div>
+        </div>
+        
+        {/* Picks List */}
+        <div className="space-y-1.5 mb-3">
+          {picks.slice(0, 4).map((pick, idx) => (
+            <div 
+              key={`${pick.player_name}-${pick.stat_type}-${idx}`}
+              className="flex items-center justify-between bg-zinc-900/50 rounded px-2 py-1"
+            >
+              <div className="flex items-center gap-2 min-w-0">
+                <Ghost className="w-3 h-3 text-emerald-400 flex-shrink-0" />
+                <span className="text-xs text-white truncate">{pick.player_name}</span>
+                <span className="text-[10px] text-zinc-500">{pick.team}</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] text-zinc-400">{pick.stat_type}</span>
+                <span className="text-xs font-bold text-emerald-300">{pick.line}</span>
+                {pick.is_goldmine_lock && (
+                  <span className="text-[8px] bg-emerald-500/30 text-emerald-300 px-1 rounded">LOCK</span>
+                )}
+              </div>
+            </div>
+          ))}
+          {picks.length > 4 && (
+            <div className="text-[10px] text-zinc-500 text-center">
+              +{picks.length - 4} more picks
+            </div>
+          )}
+        </div>
+        
+        {/* Stats Footer */}
+        <div className="flex items-center justify-between pt-2 border-t border-zinc-800/50">
+          <div className="flex items-center gap-1 text-[10px]">
+            <DollarSign className="w-3 h-3 text-emerald-500" />
+            <span className="text-zinc-400">Est. Payout:</span>
+            <span className="font-bold text-white">~{payoutEstimate}x</span>
+          </div>
+          {flexProb && (
+            <div className="text-[10px] text-zinc-400">
+              Flex (5/6): <span className="text-emerald-300 font-bold">{flexProb}%</span>
+            </div>
+          )}
+        </div>
+      </div>
+    </Card>
+  );
+});
+
+GoldmineCard.displayName = 'GoldmineCard';
+
 // ==================== STAT CATEGORIES ====================
 
 const STAT_CATEGORIES = {
@@ -1469,6 +1611,7 @@ export const DemonGoblinDashboardOptimized = () => {
   const [filterType, setFilterType] = useState('all');
   const [syncedAt, setSyncedAt] = useState(null);
   const [parlayData, setParlayData] = useState({});
+  const [goldmineData, setGoldmineData] = useState({});  // Goblin Goldmine parlays
   
   // Navigation state
   const [selectedPlayer, setSelectedPlayer] = useState(null);
@@ -1484,12 +1627,13 @@ export const DemonGoblinDashboardOptimized = () => {
     try {
       console.log('[CACHED] Loading from MongoDB...');
       
-      // Load board, radar, vault, and parlays in parallel
-      const [boardResponse, radarResponse, vaultResponse, parlayResponse] = await Promise.all([
+      // Load board, radar, vault, parlays, and goldmine in parallel
+      const [boardResponse, radarResponse, vaultResponse, parlayResponse, goldmineResponse] = await Promise.all([
         axios.get(`${API}/v3/cached-props`),
         axios.get(`${API}/v3/demon-radar`),
         axios.get(`${API}/v3/goblin-vault`),
-        axios.get(`${API}/v3/parlay-builder`)
+        axios.get(`${API}/v3/parlay-builder`),
+        axios.get(`${API}/v3/goblin-goldmine`)
       ]);
       
       if (boardResponse.data.success && boardResponse.data.players_count > 0) {
@@ -1521,6 +1665,12 @@ export const DemonGoblinDashboardOptimized = () => {
       if (parlayResponse.data.success) {
         setParlayData(parlayResponse.data.parlays || {});
         console.log(`[PARLAY] Loaded ${Object.keys(parlayResponse.data.parlays || {}).length} parlay types`);
+      }
+      
+      // Load Goblin Goldmine data
+      if (goldmineResponse.data.success) {
+        setGoldmineData(goldmineResponse.data.parlays || {});
+        console.log(`[GOLDMINE] Loaded ${Object.keys(goldmineResponse.data.parlays || {}).length} goldmine tiers`);
       }
       
     } catch (error) {
@@ -1832,6 +1982,59 @@ export const DemonGoblinDashboardOptimized = () => {
               <span><Flame className="w-3 h-3 inline text-orange-400" /> = Heat Boost (20%)</span>
               <span><Layers className="w-3 h-3 inline text-blue-400" /> = Same-Game Correlation</span>
               <span><TrendingUp className="w-3 h-3 inline text-green-400" /> = 30%+ Ceiling Frequency</span>
+            </div>
+          </div>
+        )}
+
+        {/* THE GOBLIN GOLDMINE - High-Consistency Parlays */}
+        {Object.keys(goldmineData).length > 0 && (
+          <div data-testid="goldmine-section" className="mt-6">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <Ghost className="w-5 h-5 text-emerald-500" />
+                <span className="text-sm font-bold text-emerald-400">THE GOBLIN GOLDMINE</span>
+                <Badge className="bg-emerald-950/50 text-emerald-400 border-emerald-800/50 text-[10px]">
+                  HIGH RELIABILITY
+                </Badge>
+              </div>
+              <div className="text-[10px] text-zinc-500">
+                Floor Scoring + 88%+ Hit Rate
+              </div>
+            </div>
+            
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              {['daily_double', 'green_ladder_3', 'green_ladder_4', 'fortress_flex'].map(tier => {
+                const parlay = goldmineData[tier];
+                if (!parlay) return null;
+                return (
+                  <GoldmineCard
+                    key={`goldmine-${tier}`}
+                    parlay={parlay}
+                    tier={tier}
+                    onClick={() => {
+                      // Navigate to first pick's player with green beacon
+                      const firstPick = parlay.picks?.[0];
+                      if (firstPick) {
+                        const highlightKey = `${firstPick.stat_type}|${firstPick.line}|${firstPick.direction || 'Over'}`;
+                        setHighlightProp(highlightKey);
+                        setHighlightType('goblin');
+                        handlePlayerClick(firstPick.player_name);
+                        toast.success(
+                          `${parlay.name}`,
+                          { description: `${parlay.pick_count} picks | ~${parlay.estimated_payout}x payout | ${parlay.reliability}% reliability` }
+                        );
+                      }
+                    }}
+                  />
+                );
+              })}
+            </div>
+            
+            {/* Goldmine Legend */}
+            <div className="mt-2 flex items-center justify-center gap-4 text-[10px] text-zinc-500">
+              <span><Ghost className="w-3 h-3 inline text-emerald-400" /> = 88%+ Hit Rate</span>
+              <span className="text-emerald-300 font-bold">LOCK</span><span> = Floor ≥ Line</span>
+              <span><Layers className="w-3 h-3 inline text-cyan-400" /> = Game Diversified</span>
             </div>
           </div>
         )}

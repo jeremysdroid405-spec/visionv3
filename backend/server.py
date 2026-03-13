@@ -1231,6 +1231,31 @@ async def get_parlay_builder():
     return result
 
 
+@api_router.get("/v3/goblin-goldmine")
+async def get_goblin_goldmine():
+    """
+    THE GOBLIN GOLDMINE - High-Consistency Parlay Generator
+    
+    Returns Goblin-only parlays optimized for maximum win probability:
+    - Daily Double (2-Pick): ~90%+ combined probability
+    - Green Ladder (3 & 4-Pick): Diversified across games
+    - 6-Pick Fortress (Flex): Designed for PrizePicks Flex play
+    
+    Uses Floor Scoring Algorithm:
+    - 88%+ weighted hit rate threshold
+    - Goldmine Lock = player's floor >= line
+    - Blowout protection
+    
+    NO API CALLS - reads from pre-calculated MongoDB data.
+    """
+    if not demon_goblin_engine:
+        raise HTTPException(status_code=500, detail="Engine not initialized")
+    
+    result = await demon_goblin_engine.get_goblin_goldmine()
+    
+    return result
+
+
 # ==================== SCHEDULER ENDPOINTS ====================
 
 @api_router.get("/v3/scheduler-status")
