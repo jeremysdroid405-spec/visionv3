@@ -572,6 +572,10 @@ const RadarCard = memo(({ pick, rank, onClick }) => {
                        pick.radar_strength >= 70 ? 'ring-red-500/40' :
                        'ring-red-500/20';
   
+  // Check if this has a special Vision insight (not "standard")
+  const hasVisionGlow = pick.has_high_conflict || 
+    (pick.insight_summary && !pick.insight_summary.toLowerCase().includes('standard'));
+  
   // Heat Level flame rendering
   const heatLevel = pick.heat_level || 0;
   const renderFlames = () => {
@@ -607,6 +611,7 @@ const RadarCard = memo(({ pick, rank, onClick }) => {
         bg-gradient-to-br from-red-950/30 to-zinc-950 border-red-900/50
         hover:border-red-500/70 hover:scale-[1.02] transition-all duration-200
         cursor-pointer active:scale-[0.98] ring-1 ${strengthClass}
+        ${hasVisionGlow ? 'vision-glow vision-pulse' : ''}
       `}
       onClick={onClick}
       data-testid={`radar-card-${rank}`}
