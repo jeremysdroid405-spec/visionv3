@@ -20,6 +20,7 @@ from apscheduler.triggers.cron import CronTrigger
 from stats_manager_bdl import StatsManager
 from demon_tracker_engine import DeepIngestionEngine
 from demon_goblin_engine import DemonGoblinEngine
+from vision_ai_service import VisionAIService, get_vision_service
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -54,6 +55,7 @@ logger = logging.getLogger(__name__)
 stats_manager = None
 demon_tracker = None
 demon_goblin_engine = None
+vision_ai_service = None  # Vision AI service instance
 scheduler = None  # APScheduler instance
 
 async def initial_autonomous_sync():
@@ -75,6 +77,7 @@ async def scheduled_daily_sync():
     1. Sync player stats to MongoDB (from BallDontLie + NBA.com fallback)
     2. Run full odds sync (uses cached stats for fast hit rate calculations)
     3. Calculate daily insights (advanced analytics)
+    4. Generate Vision AI insights for Demons/Goblins/High Volatility
     """
     logger.info("=" * 70)
     logger.info(f"[SCHEDULER] 4:00 AM DAILY SYNC TRIGGERED")
@@ -84,20 +87,31 @@ async def scheduled_daily_sync():
     if demon_goblin_engine:
         try:
             # Step 1: Sync player stats to cache
-            logger.info("[SCHEDULER] Step 1/3: Syncing player stats to cache...")
+            logger.info("[SCHEDULER] Step 1/4: Syncing player stats to cache...")
             stats_result = await demon_goblin_engine.sync_player_stats()
             logger.info(f"[SCHEDULER] Stats sync: {stats_result.get('stats_synced', 0)} players (BDL: {stats_result.get('from_balldontlie', 0)}, NBA: {stats_result.get('from_nba_api', 0)})")
             
             # Step 2: Run full odds sync
-            logger.info("[SCHEDULER] Step 2/3: Running full odds sync...")
+            logger.info("[SCHEDULER] Step 2/4: Running full odds sync...")
             result = await demon_goblin_engine.run_full_sync()
             logger.info(f"[SCHEDULER] Sync complete: {result.get('unique_players', 0)} players")
             logger.info(f"[SCHEDULER] Standard: {result.get('standard_count', 0)}, Demons: {result.get('demons_count', 0)}, Goblins: {result.get('goblins_count', 0)}")
             
             # Step 3: Calculate daily insights (advanced analytics)
-            logger.info("[SCHEDULER] Step 3/3: Calculating daily insights...")
+            logger.info("[SCHEDULER] Step 3/4: Calculating daily insights...")
             insights_result = await demon_goblin_engine.sync_daily_insights()
             logger.info(f"[SCHEDULER] Insights: {insights_result.get('insights_calculated', 0)} players analyzed")
+            
+            # Step 4: Generate Vision AI insights for eligible players
+            if vision_ai_service and os.environ.get('EMERGENT_LLM_KEY'):
+                logger.info("[SCHEDULER] Step 4/4: Generating Vision AI insights...")
+                try:
+                    vision_result = await vision_ai_service.trigger_insights_for_sync()
+                    logger.info(f"[SCHEDULER] Vision AI: {vision_result.get('insights_generated', 0)} insights generated")
+                except Exception as ve:
+                    logger.error(f"[SCHEDULER] Vision AI failed (non-critical): {ve}")
+            else:
+                logger.info("[SCHEDULER] Step 4/4: Vision AI skipped (not configured)")
             
         except Exception as e:
             logger.error(f"[SCHEDULER] Daily sync failed: {e}")
@@ -128,7 +142,7 @@ async def scheduled_roster_sync():
 
 @app.on_event("startup")
 async def startup_event():
-    global stats_manager, demon_tracker, demon_goblin_engine, scheduler
+    global stats_manager, demon_tracker, demon_goblin_engine, vision_ai_service, scheduler
     
     # Initialize stats manager (BallDontLie)
     stats_manager = StatsManager(db)
@@ -141,6 +155,10 @@ async def startup_event():
     # Initialize Demon & Goblin Engine (v3 - NEW)
     demon_goblin_engine = DemonGoblinEngine(db)
     logger.info("Demon & Goblin Engine v3.0 initialized")
+    
+    # Initialize Vision AI Service (Claude Sonnet 4.5)
+    vision_ai_service = get_vision_service(db)
+    logger.info("Vision AI Service initialized (Claude Sonnet 4.5)")
     
     # Initialize APScheduler for daily and weekly syncs
     scheduler = AsyncIOScheduler(timezone=SCHEDULER_TIMEZONE)
@@ -1520,6 +1538,127 @@ async def trigger_scheduled_sync_manually():
             "duration": result.get("duration", 0)
         }
     }
+
+
+# ==================== VISION AI ENDPOINTS ====================
+
+class VisionInsightRequest(BaseModel):
+    """Request model for single AI insight generation"""
+    player_name: str
+    stat_type: str = "points"
+    current_line: float
+    l10_rate: float = 50.0
+    pace_factor: float = 1.0
+    fatigue: str = "Normal"  # "Fresh", "Normal", "Fatigued"
+    usage_bump: float = 0
+    volatility: str = "Med"  # "Low", "Med", "High"
+    is_demon: bool = False
+    is_goblin: bool = False
+    projected_score: Optional[float] = None
+
+
+@api_router.post("/v3/vision/generate-insight")
+async def generate_vision_insight(request: VisionInsightRequest):
+    """
+    VISION AI - Generate a single AI insight for a player prop.
+    
+    Uses Claude Sonnet 4.5 to generate a "badass" 1-sentence insight.
+    Only use for Demons, Goblins, or High Volatility players to manage costs.
+    
+    The AI analyzes:
+    - Hit rate trends (L10)
+    - Pace adjustments
+    - Fatigue factors
+    - Usage bumps from injured teammates
+    - Volatility risk level
+    
+    If projected_score differs from current_line by >15%, 
+    the AI will explicitly mention the "Edge".
+    """
+    if not vision_ai_service:
+        raise HTTPException(status_code=500, detail="Vision AI Service not initialized")
+    
+    result = await vision_ai_service.generate_single_insight(
+        player_name=request.player_name,
+        stat_type=request.stat_type,
+        current_line=request.current_line,
+        l10_rate=request.l10_rate,
+        pace_factor=request.pace_factor,
+        fatigue=request.fatigue,
+        usage_bump=request.usage_bump,
+        volatility=request.volatility,
+        is_demon=request.is_demon,
+        is_goblin=request.is_goblin,
+        projected_score=request.projected_score
+    )
+    
+    if not result.get('success'):
+        raise HTTPException(status_code=400, detail=result.get('error', 'Failed to generate insight'))
+    
+    return result
+
+
+@api_router.post("/v3/vision/trigger-batch")
+async def trigger_vision_batch():
+    """
+    VISION AI BATCH - Generate insights for all eligible players.
+    
+    Filters for cost efficiency:
+    - Only Demons (high payout potential)
+    - Only Goblins (high safety picks)  
+    - Only High Volatility players
+    
+    Should be called AFTER daily sync completes.
+    Updates the insight_summary field in daily_insights collection.
+    
+    Rate limited: Max 3 concurrent API calls with 0.5s delays.
+    """
+    if not vision_ai_service:
+        raise HTTPException(status_code=500, detail="Vision AI Service not initialized")
+    
+    logger.info("[VISION] Batch insight generation triggered")
+    
+    result = await vision_ai_service.trigger_insights_for_sync()
+    
+    return {
+        "success": result.get('success', False),
+        "message": "Vision AI batch processing complete",
+        "insights_generated": result.get('insights_generated', 0),
+        "errors_count": result.get('errors_count', 0),
+        "eligible_players": result.get('eligible_players', 0),
+        "total_players": result.get('total_players', 0),
+        "sample_results": result.get('results', [])[:3]
+    }
+
+
+@api_router.get("/v3/vision/status")
+async def get_vision_status():
+    """
+    Get Vision AI service status and configuration.
+    """
+    emergent_key_configured = bool(os.environ.get('EMERGENT_LLM_KEY'))
+    
+    # Count players with AI-generated insights
+    ai_insights_count = 0
+    if vision_ai_service:
+        ai_insights_count = await db.dg_daily_insights.count_documents({
+            "ai_generated_at": {"$exists": True}
+        })
+    
+    return {
+        "success": True,
+        "service_initialized": vision_ai_service is not None,
+        "emergent_key_configured": emergent_key_configured,
+        "model": "claude-sonnet-4.5",
+        "provider": "anthropic",
+        "ai_insights_count": ai_insights_count,
+        "cost_filters": {
+            "demons_only": True,
+            "goblins_only": True,
+            "high_volatility_only": True
+        }
+    }
+
 
 app.include_router(api_router)
 

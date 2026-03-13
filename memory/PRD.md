@@ -36,6 +36,7 @@ Build a high-performance NBA Player Prop Dashboard that mimics the PrizePicks us
 - [x] **Advanced Analytics Frontend** - Display insights in prop dropdowns (Dec 13, 2025)
 - [x] **Daily Sync Automation** - APScheduler at 4:00 AM UTC for all data syncs
 - [x] **Demo Mode** - Public /v3/demo route allows exploring full dashboard without account (Dec 13, 2025)
+- [x] **Vision AI Integration** - Claude Sonnet 4.5 generates "badass" insights for Demons/Goblins (Dec 13, 2025)
 
 ### IN PROGRESS
 - [ ] **Player News/Injury Data** - Tank01 API or alternative for real-time alerts
@@ -150,10 +151,11 @@ Build a high-performance NBA Player Prop Dashboard that mimics the PrizePicks us
 ---
 
 ## Recent Changes (Dec 13, 2025)
+- **Vision AI Integration** - Added Claude Sonnet 4.5 for generating "badass" AI insights for Demons/Goblins/High Volatility players
 - **Demo Mode** - Added `/v3/demo` public route with demo banner and Login button for non-authenticated access
 - **Advanced Analytics Frontend** - Completed integration of insights display in LadderPropRow
 - **_add_player_insights()** - New method to merge insights into cached player data
-- **Daily Sync Order** - Verified: stats → odds → insights
+- **Daily Sync Order** - Updated to 4 steps: stats → odds → insights → Vision AI
 
 ---
 
