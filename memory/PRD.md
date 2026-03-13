@@ -43,6 +43,13 @@ Build a high-performance NBA Player Prop Dashboard that mimics the PrizePicks us
 - None currently
 
 ### RECENTLY COMPLETED (Dec 13, 2025 - Session 3)
+- [x] **Adaptive Sync Engine (Mission-Critical Polling)**:
+  - **Polling Tiers**: Standby (>6hrs = 60min), Active (1-6hrs = 10min), Critical (<60min = 60s), Post-Tip (stop)
+  - **Stale Intel Detection**: Warns if data >5min old during Mission Critical windows
+  - **Priority Refresh**: Immediate high-priority refresh endpoint for stale data
+  - **Daily Stats Cron**: Scheduled at 04:00 EST for static player stats
+  - **Frontend Display**: Shows "Intel: Xs ago" with live freshness indicator
+  - **API Endpoints**: `/v3/sync-status`, `/v3/stale-intel-check`, `/v3/priority-refresh`, `/v3/intel-freshness`
 - [x] **Mobile Swipeable Cards (Tinder-style)** - Major mobile UX improvement:
   - All card sections now use horizontal swipe navigation on mobile
   - Each section shows one card at a time with "N / Total" indicator and dots

@@ -11,7 +11,7 @@ import {
   ChevronDown, ChevronRight, ChevronLeft, AlertTriangle,
   User, Flame, Star, Clock, Zap, HardDrive, ArrowLeft, X,
   DollarSign, TrendingUp, Target, Layers, CheckCircle, XCircle,
-  LogOut, Crown, Eye
+  LogOut, Crown, Eye, Radio
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -3365,6 +3365,15 @@ export const DemonGoblinDashboardOptimized = ({ isDemoMode = false }) => {
     verification_rate: 0
   });
   
+  // Adaptive Sync Engine - Intel Freshness Status
+  const [syncStatus, setSyncStatus] = useState({
+    engine_status: 'loading',
+    sync_age_display: '...',
+    seconds_since_sync: 0,
+    mission_critical_games: 0,
+    has_stale_intel: false
+  });
+  
   // RAW VALIDATION TABLE - Data Integrity Check
   const [showValidationTable, setShowValidationTable] = useState(false);
   
@@ -3400,8 +3409,8 @@ export const DemonGoblinDashboardOptimized = ({ isDemoMode = false }) => {
     try {
       console.log('[CACHED] Loading from MongoDB...');
       
-      // Load board, radar, vault, parlays, recon, injuries, social signals, and data status in parallel
-      const [boardResponse, radarResponse, vaultResponse, parlayResponse, reconResponse, injuryResponse, newsResponse, dataStatusResponse, socialSignalsResponse] = await Promise.all([
+      // Load board, radar, vault, parlays, recon, injuries, social signals, data status, and sync status in parallel
+      const [boardResponse, radarResponse, vaultResponse, parlayResponse, reconResponse, injuryResponse, newsResponse, dataStatusResponse, socialSignalsResponse, syncStatusResponse] = await Promise.all([
         axios.get(`${API}/v3/cached-props`),
         axios.get(`${API}/v3/demon-radar`),
         axios.get(`${API}/v3/goblin-vault`),
@@ -3410,7 +3419,8 @@ export const DemonGoblinDashboardOptimized = ({ isDemoMode = false }) => {
         axios.get(`${API}/v3/injuries/alerts`).catch(() => ({ data: { success: false, alerts: {} }})),
         axios.get(`${API}/v3/breaking-news?injury_only=true`).catch(() => ({ data: { success: false, news: [] }})),
         axios.get(`${API}/v3/data-status`).catch(() => ({ data: { success: false, status: 'error' }})),
-        axios.get(`${API}/v3/social-signals`).catch(() => ({ data: { success: false, signals: {} }}))
+        axios.get(`${API}/v3/social-signals`).catch(() => ({ data: { success: false, signals: {} }})),
+        axios.get(`${API}/v3/sync-status`).catch(() => ({ data: { engine_status: 'offline', sync_age_display: 'N/A' }}))
       ]);
       
       // Social signals for applying to picks
@@ -3491,6 +3501,19 @@ export const DemonGoblinDashboardOptimized = ({ isDemoMode = false }) => {
         console.log(`[DATA STATUS] Status: ${dataStatusResponse.data.status}, Verified: ${dataStatusResponse.data.verification_rate}%`);
       } else {
         setDataStatus({ status: 'error', verified_count: 0, failed_count: 0, verification_rate: 0 });
+      }
+      
+      // Adaptive Sync Engine - Load sync status
+      if (syncStatusResponse.data) {
+        setSyncStatus({
+          engine_status: syncStatusResponse.data.engine_status || 'offline',
+          sync_age_display: syncStatusResponse.data.sync_age_display || 'N/A',
+          seconds_since_sync: syncStatusResponse.data.seconds_since_sync || 0,
+          mission_critical_games: syncStatusResponse.data.mission_critical_games || 0,
+          active_games: syncStatusResponse.data.active_games || 0,
+          has_stale_intel: (syncStatusResponse.data.seconds_since_sync || 0) > 300
+        });
+        console.log(`[SYNC STATUS] Engine: ${syncStatusResponse.data.engine_status}, Last sync: ${syncStatusResponse.data.sync_age_display}`);
       }
       
     } catch (error) {
@@ -3748,11 +3771,34 @@ export const DemonGoblinDashboardOptimized = ({ isDemoMode = false }) => {
             <span>·</span>
             <HardDrive className="w-3 h-3" />
             <span>CACHED</span>
-            {syncedAt && (
+            {/* Adaptive Sync Status - Intel Freshness */}
+            <span>·</span>
+            <div className={`flex items-center gap-1 ${
+              syncStatus.has_stale_intel 
+                ? 'text-amber-400' 
+                : syncStatus.engine_status === 'running' 
+                  ? 'text-emerald-400' 
+                  : 'text-zinc-500'
+            }`}>
+              {syncStatus.has_stale_intel ? (
+                <AlertTriangle className="w-3 h-3 animate-pulse" />
+              ) : (
+                <Radio className="w-3 h-3" />
+              )}
+              <span className="font-mono">
+                {syncStatus.has_stale_intel 
+                  ? `⚠️ STALE INTEL (${syncStatus.sync_age_display})`
+                  : `Intel: ${syncStatus.sync_age_display}`
+                }
+              </span>
+            </div>
+            {/* Mission Critical Badge */}
+            {syncStatus.mission_critical_games > 0 && (
               <>
                 <span>·</span>
-                <Clock className="w-3 h-3" />
-                <span>Last Updated: {new Date(syncedAt).toLocaleString()}</span>
+                <span className="text-red-400 font-mono animate-pulse">
+                  🔴 {syncStatus.mission_critical_games} CRITICAL
+                </span>
               </>
             )}
           </div>

@@ -31,6 +31,12 @@ from payout_engine import (
     AssetType,
     BASE_MULTIPLIERS
 )
+from adaptive_sync_engine import (
+    AdaptiveSyncEngine,
+    init_adaptive_sync_engine,
+    get_adaptive_sync_engine,
+    STALE_DATA_THRESHOLD_SECONDS
+)
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -69,6 +75,7 @@ vision_ai_service = None  # Vision AI service instance
 injury_service = None  # Injury Intelligence service instance
 raw_stat_fetcher = None  # RAW STAT FETCHER - Isolated data integrity service
 social_signal_engine = None  # Social Signal Engine - News sentiment & revenge games
+adaptive_sync = None  # Adaptive Sync Engine - Mission-critical polling
 scheduler = None  # APScheduler instance
 
 async def initial_autonomous_sync():
@@ -165,7 +172,7 @@ async def scheduled_roster_sync():
 
 @app.on_event("startup")
 async def startup_event():
-    global stats_manager, demon_tracker, demon_goblin_engine, vision_ai_service, injury_service, raw_stat_fetcher, social_signal_engine, scheduler
+    global stats_manager, demon_tracker, demon_goblin_engine, vision_ai_service, injury_service, raw_stat_fetcher, social_signal_engine, adaptive_sync, scheduler
     
     # Initialize stats manager (BallDontLie)
     stats_manager = StatsManager(db)
@@ -198,15 +205,27 @@ async def startup_event():
     social_signal_engine = get_social_signal_engine(db)
     logger.info("Social Signal Engine initialized (News + Revenge Detection)")
     
+    # Initialize Adaptive Sync Engine - Mission-critical polling
+    adaptive_sync = init_adaptive_sync_engine(db, ODDS_API_KEY)
+    logger.info("Adaptive Sync Engine initialized (Mission-Critical Polling)")
+    
+    # Start the adaptive sync engine (background polling)
+    if ODDS_API_KEY:
+        await adaptive_sync.start()
+        logger.info("[ADAPTIVE_SYNC] Background polling STARTED")
+    else:
+        logger.warning("[ADAPTIVE_SYNC] No Odds API key - adaptive sync disabled")
+    
     # Initialize APScheduler for daily and weekly syncs
     scheduler = AsyncIOScheduler(timezone=SCHEDULER_TIMEZONE)
     
-    # Daily sync at 4:00 AM UTC
+    # Daily sync at 4:00 AM EST (9:00 AM UTC) for static stats
+    # Note: 04:00 EST = 09:00 UTC during standard time
     scheduler.add_job(
         scheduled_daily_sync,
-        CronTrigger(hour=DAILY_SYNC_HOUR, minute=DAILY_SYNC_MINUTE, timezone=SCHEDULER_TIMEZONE),
+        CronTrigger(hour=9, minute=0, timezone=SCHEDULER_TIMEZONE),  # 4:00 AM EST = 9:00 AM UTC
         id='daily_sync',
-        name='4:00 AM Daily Sync',
+        name='4:00 AM EST Daily Stats Sync',
         replace_existing=True
     )
     
@@ -220,12 +239,29 @@ async def startup_event():
     )
     
     scheduler.start()
-    logger.info(f"[SCHEDULER] APScheduler started - Daily sync at {DAILY_SYNC_HOUR:02d}:{DAILY_SYNC_MINUTE:02d} UTC")
+    logger.info(f"[SCHEDULER] APScheduler started - Daily stats sync at 04:00 EST (09:00 UTC)")
     logger.info(f"[SCHEDULER] Weekly roster sync scheduled: Sunday 00:00 UTC")
     
-    # DISABLED: Auto-sync on startup to prevent credit drain
-    # The sync should only run manually via /api/v3/sync or at 4:00 AM
-    logger.info("[STARTUP] Auto-sync DISABLED - Use /api/v3/sync to manually sync data")
+    # DISABLED: Full auto-sync on startup to prevent credit drain
+    # The adaptive sync engine handles real-time odds polling
+    logger.info("[STARTUP] Full sync DISABLED - Adaptive Sync Engine handles real-time odds")
+
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Clean shutdown of background services."""
+    global adaptive_sync, scheduler
+    
+    # Stop adaptive sync engine
+    if adaptive_sync:
+        await adaptive_sync.stop()
+        logger.info("[SHUTDOWN] Adaptive Sync Engine stopped")
+    
+    # Shutdown scheduler
+    if scheduler:
+        scheduler.shutdown()
+        logger.info("[SHUTDOWN] APScheduler stopped")
+
 
 class SignUpRequest(BaseModel):
     email: str
@@ -1390,6 +1426,127 @@ async def get_data_status():
     result = await demon_goblin_engine.get_data_integrity_status()
     
     return result
+
+
+# ==================== ADAPTIVE SYNC ENGINE ENDPOINTS ====================
+# Mission-Critical Polling System - Conserve API Credits + Maximize Freshness
+
+@api_router.get("/v3/sync-status")
+async def get_adaptive_sync_status():
+    """
+    ADAPTIVE SYNC ENGINE - Get Current Sync Status
+    
+    Returns:
+    - last_sync: When data was last refreshed
+    - sync_age_display: Human-readable time since last sync (e.g., "45s ago")
+    - engine_status: "running" | "stopped"
+    - active_games: Number of games being tracked
+    - mission_critical_games: Games within 60 mins of tip-off
+    - game_registry: Full list of tracked games with their polling status
+    
+    Polling Tiers:
+    - Standby (>6hrs): Refresh every 60 minutes
+    - Active (1-6hrs): Refresh every 10 minutes
+    - Mission Critical (<60mins): Refresh every 60 seconds
+    - Post-Tip: Cease polling for that game
+    """
+    engine = get_adaptive_sync_engine()
+    if not engine:
+        return {"error": "Adaptive Sync Engine not initialized", "engine_status": "disabled"}
+    
+    status = await engine.get_sync_status()
+    return status
+
+
+@api_router.get("/v3/stale-intel-check")
+async def check_for_stale_intel(game_id: Optional[str] = None):
+    """
+    STALE INTEL DETECTION - Check for outdated data in mission-critical windows.
+    
+    If data is older than 5 minutes during a mission-critical window (<60 mins to tip),
+    this endpoint returns a warning.
+    
+    Args:
+    - game_id: Optional - Check specific game only
+    
+    Returns:
+    - has_stale_intel: True if any mission-critical data is stale
+    - stale_games: List of games with stale data
+    - threshold_seconds: Current stale threshold (300 = 5 minutes)
+    """
+    engine = get_adaptive_sync_engine()
+    if not engine:
+        return {"error": "Adaptive Sync Engine not initialized", "has_stale_intel": False}
+    
+    result = await engine.check_stale_intel(game_id)
+    return result
+
+
+@api_router.post("/v3/priority-refresh")
+async def trigger_priority_refresh(game_id: Optional[str] = None):
+    """
+    PRIORITY REFRESH - Trigger immediate high-priority data refresh.
+    
+    Use this when stale intel is detected during mission-critical windows.
+    Bypasses normal polling schedule for immediate refresh.
+    
+    Args:
+    - game_id: Optional - Refresh specific game only
+    
+    Returns:
+    - updated: Number of records updated
+    - timestamp: Refresh completion time
+    - trigger: "priority_refresh"
+    """
+    engine = get_adaptive_sync_engine()
+    if not engine:
+        raise HTTPException(status_code=500, detail="Adaptive Sync Engine not initialized")
+    
+    result = await engine.trigger_priority_refresh(game_id)
+    return result
+
+
+@api_router.get("/v3/intel-freshness")
+async def get_intel_with_freshness(limit: int = 100):
+    """
+    INTEL WITH FRESHNESS - Get cached board data with freshness indicators.
+    
+    Returns all cached odds data with:
+    - last_updated timestamp
+    - freshness.seconds_ago: How old the data is
+    - freshness.display: Human-readable (e.g., "45s ago")
+    - freshness.is_stale: True if older than 5 minutes
+    
+    Use this for frontend to display "Intel updated 45s ago" on cards.
+    """
+    engine = get_adaptive_sync_engine()
+    if not engine:
+        raise HTTPException(status_code=500, detail="Adaptive Sync Engine not initialized")
+    
+    result = await engine.get_board_with_freshness(limit)
+    return result
+
+
+@api_router.post("/v3/adaptive-sync/start")
+async def start_adaptive_sync():
+    """Start the adaptive sync engine (if stopped)."""
+    engine = get_adaptive_sync_engine()
+    if not engine:
+        raise HTTPException(status_code=500, detail="Adaptive Sync Engine not initialized")
+    
+    await engine.start()
+    return {"status": "started", "message": "Adaptive Sync Engine started"}
+
+
+@api_router.post("/v3/adaptive-sync/stop")
+async def stop_adaptive_sync():
+    """Stop the adaptive sync engine."""
+    engine = get_adaptive_sync_engine()
+    if not engine:
+        raise HTTPException(status_code=500, detail="Adaptive Sync Engine not initialized")
+    
+    await engine.stop()
+    return {"status": "stopped", "message": "Adaptive Sync Engine stopped"}
 
 
 # ==================== RAW STAT VALIDATION ENDPOINTS ====================
