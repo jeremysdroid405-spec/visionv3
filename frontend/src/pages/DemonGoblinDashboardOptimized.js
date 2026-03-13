@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useCallback, memo, useMemo, useRef } from 'react';
 import axios from 'axios';
+import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
 import { Button } from '../components/ui/button';
 import { Card } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
@@ -8,7 +10,8 @@ import {
   Activity, RefreshCw, Search, Database, 
   ChevronDown, ChevronRight, AlertTriangle, Skull, Ghost,
   User, Flame, Star, Clock, Zap, HardDrive, ArrowLeft, X,
-  DollarSign, TrendingUp, Target, Layers, CheckCircle, XCircle
+  DollarSign, TrendingUp, Target, Layers, CheckCircle, XCircle,
+  LogOut, Crown
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -2157,6 +2160,11 @@ PlayerRow.displayName = 'PlayerRow';
 // ==================== MAIN DASHBOARD ====================
 
 export const DemonGoblinDashboardOptimized = () => {
+  // Auth
+  const { user, logout } = useAuth();
+  const navigate = useNavigate();
+  const [showUserMenu, setShowUserMenu] = useState(false);
+  
   // State
   const [players, setPlayers] = useState([]);
   const [trending, setTrending] = useState([]);
@@ -2174,6 +2182,24 @@ export const DemonGoblinDashboardOptimized = () => {
   
   // Navigation state
   const [selectedPlayer, setSelectedPlayer] = useState(null);
+  
+  // Logout handler
+  const handleLogout = async () => {
+    await logout();
+    navigate('/auth');
+    toast.success('Logged out successfully');
+  };
+  
+  // Close user menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (showUserMenu && !e.target.closest('[data-testid="user-menu-btn"]') && !e.target.closest('.user-menu-dropdown')) {
+        setShowUserMenu(false);
+      }
+    };
+    document.addEventListener('click', handleClickOutside);
+    return () => document.removeEventListener('click', handleClickOutside);
+  }, [showUserMenu]);
 
   // ==================== CACHED DATA LOADING (ZERO API CALLS) ====================
   
@@ -2388,6 +2414,55 @@ export const DemonGoblinDashboardOptimized = () => {
             >
               <RefreshCw className="w-4 h-4" />
             </Button>
+            
+            {/* User Menu */}
+            <div className="relative">
+              <Button
+                onClick={() => setShowUserMenu(!showUserMenu)}
+                variant="ghost"
+                size="sm"
+                className="text-zinc-400 hover:text-white p-1.5 flex items-center gap-1.5"
+                data-testid="user-menu-btn"
+              >
+                <div className="w-6 h-6 rounded-full bg-gradient-to-br from-amber-500 to-red-500 flex items-center justify-center">
+                  <User className="w-3.5 h-3.5 text-white" />
+                </div>
+              </Button>
+              
+              {showUserMenu && (
+                <div className="absolute right-0 mt-2 w-56 bg-zinc-900 border border-zinc-800 rounded-lg shadow-xl z-50">
+                  <div className="p-3 border-b border-zinc-800">
+                    <div className="flex items-center gap-2">
+                      <div className="w-8 h-8 rounded-full bg-gradient-to-br from-amber-500 to-red-500 flex items-center justify-center">
+                        <User className="w-4 h-4 text-white" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium text-white truncate">{user?.full_name || 'User'}</p>
+                        <p className="text-xs text-zinc-500 truncate">{user?.email}</p>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="p-1">
+                    <button
+                      className="w-full flex items-center gap-2 px-3 py-2 text-sm text-zinc-400 hover:text-white hover:bg-zinc-800 rounded transition-colors"
+                      data-testid="pro-tier-btn"
+                    >
+                      <Crown className="w-4 h-4 text-amber-400" />
+                      <span>Upgrade to Pro</span>
+                      <Badge className="ml-auto bg-amber-500/20 text-amber-400 border-none text-[10px]">Soon</Badge>
+                    </button>
+                    <button
+                      onClick={handleLogout}
+                      className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-400 hover:text-red-300 hover:bg-red-950/30 rounded transition-colors"
+                      data-testid="logout-btn"
+                    >
+                      <LogOut className="w-4 h-4" />
+                      <span>Logout</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </div>
         

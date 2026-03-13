@@ -1,18 +1,29 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '../components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
-import { Activity } from 'lucide-react';
+import { Skull, Ghost, TrendingUp } from 'lucide-react';
 import { toast } from 'sonner';
 
 export const Auth = () => {
   const navigate = useNavigate();
-  const { signup, login } = useAuth();
+  const location = useLocation();
+  const { signup, login, isAuthenticated } = useAuth();
   const [loading, setLoading] = useState(false);
+
+  // Get the page user was trying to access (default to /v3)
+  const from = location.state?.from?.pathname || '/v3';
+
+  // If already authenticated, redirect to dashboard
+  React.useEffect(() => {
+    if (isAuthenticated) {
+      navigate(from, { replace: true });
+    }
+  }, [isAuthenticated, navigate, from]);
 
   const [loginData, setLoginData] = useState({
     email: '',
@@ -34,8 +45,8 @@ export const Auth = () => {
     setLoading(false);
 
     if (result.success) {
-      toast.success('Login successful!');
-      navigate('/dashboard');
+      toast.success('Welcome back!');
+      navigate(from, { replace: true });
     } else {
       toast.error(result.error);
     }
@@ -54,41 +65,61 @@ export const Auth = () => {
     setLoading(false);
 
     if (result.success) {
-      toast.success('Account created successfully!');
-      navigate('/dashboard');
+      toast.success('Account created! Check your email to confirm, then log in.');
+      // Switch to login tab after signup
     } else {
       toast.error(result.error);
     }
   };
 
   return (
-    <div className="min-h-screen bg-[#09090B] flex items-center justify-center p-4">
+    <div className="min-h-screen bg-zinc-950 flex items-center justify-center p-4">
       <div className="w-full max-w-md">
-        <div className="flex items-center justify-center mb-8">
-          <Activity className="w-10 h-10 text-[#22c55e] mr-3" />
-          <h1 className="text-4xl font-heading font-bold text-white tracking-tight">
-            BEST BETS
-          </h1>
+        {/* Logo/Branding */}
+        <div className="flex flex-col items-center mb-8">
+          <div className="flex items-center gap-3 mb-2">
+            <Skull className="w-8 h-8 text-red-500" />
+            <h1 className="text-3xl font-bold text-white tracking-tight">
+              DEMON & GOBLIN
+            </h1>
+            <Ghost className="w-8 h-8 text-green-500" />
+          </div>
+          <p className="text-zinc-400 text-sm flex items-center gap-2">
+            <TrendingUp className="w-4 h-4" />
+            NBA Prop Analytics Engine v3.0
+          </p>
         </div>
 
         <Tabs defaultValue="login" className="w-full">
-          <TabsList className="grid w-full grid-cols-2 bg-[#18181B]">
-            <TabsTrigger value="login" data-testid="login-tab">Login</TabsTrigger>
-            <TabsTrigger value="signup" data-testid="signup-tab">Sign Up</TabsTrigger>
+          <TabsList className="grid w-full grid-cols-2 bg-zinc-900 border border-zinc-800">
+            <TabsTrigger 
+              value="login" 
+              data-testid="login-tab"
+              className="data-[state=active]:bg-zinc-800"
+            >
+              Login
+            </TabsTrigger>
+            <TabsTrigger 
+              value="signup" 
+              data-testid="signup-tab"
+              className="data-[state=active]:bg-zinc-800"
+            >
+              Sign Up
+            </TabsTrigger>
           </TabsList>
 
           <TabsContent value="login">
-            <Card className="bg-[#18181B] border-[#27272A]">
+            <Card className="bg-zinc-900 border-zinc-800">
               <CardHeader>
                 <CardTitle className="text-white">Welcome Back</CardTitle>
-                <CardDescription className="text-[#A1A1A9]">
-                  Login to access your NBA prop dashboard
+                <CardDescription className="text-zinc-400">
+                  Login to access your prop dashboard
                 </CardDescription>
               </CardHeader>
               <form onSubmit={handleLogin}>
                 <CardContent className="space-y-4">
                   <div className="space-y-2">
-                    <Label htmlFor="login-email" className="text-white">Email</Label>
+                    <Label htmlFor="login-email" className="text-zinc-300">Email</Label>
                     <Input
                       id="login-email"
                       data-testid="login-email"
@@ -99,11 +130,11 @@ export const Auth = () => {
                         setLoginData({ ...loginData, email: e.target.value })
                       }
                       required
-                      className="bg-[#27272A] border-[#3F3F46] text-white"
+                      className="bg-zinc-800 border-zinc-700 text-white placeholder:text-zinc-500"
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="login-password" className="text-white">Password</Label>
+                    <Label htmlFor="login-password" className="text-zinc-300">Password</Label>
                     <Input
                       id="login-password"
                       data-testid="login-password"
@@ -114,7 +145,7 @@ export const Auth = () => {
                         setLoginData({ ...loginData, password: e.target.value })
                       }
                       required
-                      className="bg-[#27272A] border-[#3F3F46] text-white"
+                      className="bg-zinc-800 border-zinc-700 text-white placeholder:text-zinc-500"
                     />
                   </div>
                 </CardContent>
@@ -123,7 +154,7 @@ export const Auth = () => {
                     type="submit"
                     data-testid="login-submit-btn"
                     disabled={loading}
-                    className="w-full bg-[#22c55e] hover:bg-[#16a34a] text-white font-medium"
+                    className="w-full bg-gradient-to-r from-red-600 to-amber-600 hover:from-red-500 hover:to-amber-500 text-white font-medium"
                   >
                     {loading ? 'Logging in...' : 'Login'}
                   </Button>
@@ -133,17 +164,17 @@ export const Auth = () => {
           </TabsContent>
 
           <TabsContent value="signup">
-            <Card className="bg-[#18181B] border-[#27272A]">
+            <Card className="bg-zinc-900 border-zinc-800">
               <CardHeader>
                 <CardTitle className="text-white">Create Account</CardTitle>
-                <CardDescription className="text-[#A1A1A9]">
-                  Start finding the best NBA player prop bets
+                <CardDescription className="text-zinc-400">
+                  Join to find Demons & Goblins in NBA props
                 </CardDescription>
               </CardHeader>
               <form onSubmit={handleSignup}>
                 <CardContent className="space-y-4">
                   <div className="space-y-2">
-                    <Label htmlFor="signup-name" className="text-white">Full Name</Label>
+                    <Label htmlFor="signup-name" className="text-zinc-300">Full Name</Label>
                     <Input
                       id="signup-name"
                       data-testid="signup-name"
@@ -153,11 +184,11 @@ export const Auth = () => {
                       onChange={(e) =>
                         setSignupData({ ...signupData, fullName: e.target.value })
                       }
-                      className="bg-[#27272A] border-[#3F3F46] text-white"
+                      className="bg-zinc-800 border-zinc-700 text-white placeholder:text-zinc-500"
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="signup-email" className="text-white">Email</Label>
+                    <Label htmlFor="signup-email" className="text-zinc-300">Email</Label>
                     <Input
                       id="signup-email"
                       data-testid="signup-email"
@@ -168,22 +199,23 @@ export const Auth = () => {
                         setSignupData({ ...signupData, email: e.target.value })
                       }
                       required
-                      className="bg-[#27272A] border-[#3F3F46] text-white"
+                      className="bg-zinc-800 border-zinc-700 text-white placeholder:text-zinc-500"
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="signup-password" className="text-white">Password</Label>
+                    <Label htmlFor="signup-password" className="text-zinc-300">Password</Label>
                     <Input
                       id="signup-password"
                       data-testid="signup-password"
                       type="password"
-                      placeholder="••••••••"
+                      placeholder="Min 6 characters"
                       value={signupData.password}
                       onChange={(e) =>
                         setSignupData({ ...signupData, password: e.target.value })
                       }
                       required
-                      className="bg-[#27272A] border-[#3F3F46] text-white"
+                      minLength={6}
+                      className="bg-zinc-800 border-zinc-700 text-white placeholder:text-zinc-500"
                     />
                   </div>
                 </CardContent>
@@ -192,9 +224,9 @@ export const Auth = () => {
                     type="submit"
                     data-testid="signup-submit-btn"
                     disabled={loading}
-                    className="w-full bg-[#22c55e] hover:bg-[#16a34a] text-white font-medium"
+                    className="w-full bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 text-white font-medium"
                   >
-                    {loading ? 'Creating account...' : 'Sign Up'}
+                    {loading ? 'Creating account...' : 'Create Account'}
                   </Button>
                 </CardFooter>
               </form>
@@ -202,8 +234,8 @@ export const Auth = () => {
           </TabsContent>
         </Tabs>
 
-        <p className="text-center text-[#A1A1A9] text-sm mt-6">
-          Find the best NBA player prop arbitrage opportunities
+        <p className="text-center text-zinc-500 text-xs mt-6">
+          Find high-value Demons (boosted lines) & safe Goblins (easy overs)
         </p>
       </div>
     </div>

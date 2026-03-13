@@ -2,6 +2,7 @@ import React from 'react';
 import '@/App.css';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
+import { ProtectedRoute } from './components/ProtectedRoute';
 import { Auth } from './pages/Auth';
 import { Dashboard } from './pages/Dashboard';
 import { DashboardDemo } from './pages/DashboardDemo';
@@ -27,14 +28,46 @@ function App() {
         />
         <BrowserRouter>
           <Routes>
-            {/* Default to optimized dashboard */}
-            <Route path="/" element={<Navigate to="/v3" replace />} />
-            <Route path="/v3" element={<DemonGoblinDashboardOptimized />} />
-            <Route path="/v3-legacy" element={<DemonGoblinDashboard />} />
-            <Route path="/full-board" element={<FullBoard />} />
-            <Route path="/demo" element={<DashboardDemo />} />
+            {/* Auth page - public */}
             <Route path="/auth" element={<Auth />} />
-            <Route path="/dashboard" element={<Dashboard />} />
+            
+            {/* Protected routes - require login */}
+            <Route path="/" element={<Navigate to="/v3" replace />} />
+            <Route 
+              path="/v3" 
+              element={
+                <ProtectedRoute>
+                  <DemonGoblinDashboardOptimized />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="/v3-legacy" 
+              element={
+                <ProtectedRoute>
+                  <DemonGoblinDashboard />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="/full-board" 
+              element={
+                <ProtectedRoute>
+                  <FullBoard />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="/dashboard" 
+              element={
+                <ProtectedRoute>
+                  <Dashboard />
+                </ProtectedRoute>
+              } 
+            />
+            
+            {/* Demo page - public for testing */}
+            <Route path="/demo" element={<DashboardDemo />} />
           </Routes>
         </BrowserRouter>
       </div>
