@@ -5,12 +5,12 @@ import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { 
-  Eye, Zap, Target, Shield, TrendingUp, ChevronDown, 
-  Play, Lock, BarChart3, Sparkles, ArrowRight
+  Eye, Zap, Target, Shield, ChevronDown, 
+  Play, Lock, Crosshair, Radio, Cpu
 } from 'lucide-react';
 import { toast } from 'sonner';
 
-// ==================== ELITE ICON COMPONENTS (Matching Dashboard) ====================
+// ==================== ELITE ICON COMPONENTS ====================
 
 const DemonIcon = ({ size = 24, className = '' }) => (
   <svg 
@@ -55,7 +55,7 @@ const GoblinIcon = ({ size = 24, className = '' }) => (
 
 const ScanningBar = ({ isActive, speed = 3 }) => (
   <div 
-    className="absolute left-0 right-0 h-1 bg-gradient-to-r from-transparent via-emerald-400 to-transparent shadow-lg shadow-emerald-500/50"
+    className="absolute left-0 right-0 h-0.5 bg-gradient-to-r from-transparent via-emerald-400 to-transparent shadow-lg shadow-emerald-500/50"
     style={{
       animation: isActive ? `scan-down ${speed}s ease-in-out infinite` : 'none',
       top: '0%'
@@ -64,11 +64,11 @@ const ScanningBar = ({ isActive, speed = 3 }) => (
 );
 
 const DataStream = () => (
-  <div className="absolute inset-0 overflow-hidden opacity-20 pointer-events-none">
-    {[...Array(20)].map((_, i) => (
+  <div className="absolute inset-0 overflow-hidden opacity-15 pointer-events-none">
+    {[...Array(25)].map((_, i) => (
       <div
         key={i}
-        className="absolute text-emerald-500/30 font-mono text-[10px] whitespace-nowrap"
+        className="absolute text-emerald-500/40 font-mono text-[10px] whitespace-nowrap"
         style={{
           left: `${Math.random() * 100}%`,
           top: `${Math.random() * 100}%`,
@@ -76,51 +76,42 @@ const DataStream = () => (
           animationDelay: `${Math.random() * 5}s`
         }}
       >
-        {Math.random() > 0.5 ? '01001110' : '10110101'}
+        {['01001110', '10110101', 'SCAN_OK', 'TARGET_ACQ', '0xFF00'][Math.floor(Math.random() * 5)]}
       </div>
     ))}
   </div>
 );
 
-const PulsingGlyph = ({ children, color = 'silver' }) => (
-  <div className={`
-    w-12 h-12 rounded-xl flex items-center justify-center
-    bg-gradient-to-br from-zinc-800 to-zinc-900
-    border border-zinc-700/50
-    shadow-lg ${color === 'red' ? 'shadow-red-500/20' : color === 'green' ? 'shadow-emerald-500/20' : 'shadow-zinc-500/20'}
-    animate-pulse
-  `}>
-    {children}
-  </div>
-);
+// System Status Terminal Line
+const TerminalLine = ({ label, status, statusColor = 'emerald', delay = 0 }) => {
+  const [visible, setVisible] = useState(false);
+  
+  useEffect(() => {
+    const timer = setTimeout(() => setVisible(true), delay);
+    return () => clearTimeout(timer);
+  }, [delay]);
+  
+  if (!visible) return <div className="h-5" />;
+  
+  return (
+    <div className="flex items-center justify-between font-mono text-xs animate-fade-in">
+      <span className="text-zinc-500">[{label}]</span>
+      <span className={`text-${statusColor}-400 font-bold`}>{status}</span>
+    </div>
+  );
+};
 
-// ==================== FEATURE BENTO GRID ====================
-
-const FeatureCard = ({ icon, title, description, glowColor }) => (
-  <div className={`
-    group relative p-4 rounded-2xl
-    bg-gradient-to-br from-zinc-900/80 to-zinc-950
-    border border-zinc-800/50 hover:border-${glowColor}-500/30
-    transition-all duration-300 hover:scale-[1.02]
-    overflow-hidden
-  `}>
-    {/* Glow Effect */}
-    <div className={`
-      absolute -inset-1 bg-gradient-to-r from-${glowColor}-500/0 via-${glowColor}-500/10 to-${glowColor}-500/0
-      opacity-0 group-hover:opacity-100 transition-opacity duration-500 blur-xl
-    `} />
-    
-    <div className="relative flex items-start gap-3">
-      <div className={`
-        flex-shrink-0 w-10 h-10 rounded-lg flex items-center justify-center
-        bg-${glowColor}-950/50 border border-${glowColor}-800/30
-      `}>
-        {icon}
+// Kill List Spec Row
+const SpecRow = ({ spec, tactical, icon }) => (
+  <div className="flex items-start gap-4 py-4 border-b border-zinc-800/50 last:border-0 group hover:bg-zinc-900/30 transition-colors px-2 -mx-2 rounded">
+    <div className="flex-shrink-0 w-10 h-10 rounded border border-zinc-700/50 bg-zinc-900 flex items-center justify-center group-hover:border-zinc-600 transition-colors">
+      {icon}
+    </div>
+    <div className="flex-1 min-w-0">
+      <div className="flex items-center gap-2 mb-1">
+        <span className="text-zinc-400 font-mono text-xs uppercase tracking-wider">{spec}</span>
       </div>
-      <div>
-        <h4 className="text-white font-semibold text-sm mb-1">{title}</h4>
-        <p className="text-zinc-500 text-xs leading-relaxed">{description}</p>
-      </div>
+      <p className="text-zinc-300 text-sm leading-relaxed">{tactical}</p>
     </div>
   </div>
 );
@@ -133,9 +124,12 @@ export const Auth = () => {
   const { signup, login, isAuthenticated } = useAuth();
   const [loading, setLoading] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
-  const [showSignup, setShowSignup] = useState(false);
   const [scanSpeed, setScanSpeed] = useState(3);
   const formRef = useRef(null);
+  
+  // Simulated live stats
+  const [demonCount, setDemonCount] = useState(14);
+  const [goblinCount, setGoblinCount] = useState(8);
   
   // Form states
   const [formData, setFormData] = useState({
@@ -153,10 +147,19 @@ export const Auth = () => {
     }
   }, [isAuthenticated, navigate, from]);
 
+  // Simulate live target updates
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setDemonCount(prev => prev + Math.floor(Math.random() * 3) - 1);
+      setGoblinCount(prev => prev + Math.floor(Math.random() * 2));
+    }, 5000);
+    return () => clearInterval(interval);
+  }, []);
+
   // Speed up scan when typing
   useEffect(() => {
     if (isTyping) {
-      setScanSpeed(1);
+      setScanSpeed(0.8);
     } else {
       setScanSpeed(3);
     }
@@ -175,11 +178,10 @@ export const Auth = () => {
       const result = await login(formData.email, formData.password);
       setLoading(false);
       if (result.success) {
-        // Flash effect before navigation
         document.body.classList.add('flash-silver');
         setTimeout(() => {
           document.body.classList.remove('flash-silver');
-          toast.success('System Activated. Welcome back.');
+          toast.success('SYSTEM ACTIVATED');
           navigate(from, { replace: true });
         }, 300);
       } else {
@@ -198,14 +200,13 @@ export const Auth = () => {
   };
 
   const scrollToForm = () => {
-    setShowSignup(true);
     setTimeout(() => {
       formRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, 100);
   };
 
   return (
-    <div className="min-h-screen bg-zinc-950 overflow-x-hidden">
+    <div className="min-h-screen bg-black overflow-x-hidden">
       {/* CSS Animations */}
       <style>{`
         @keyframes scan-down {
@@ -224,91 +225,113 @@ export const Auth = () => {
           0%, 100% { filter: drop-shadow(0 0 8px currentColor); }
           50% { filter: drop-shadow(0 0 20px currentColor); }
         }
+        @keyframes fade-in {
+          0% { opacity: 0; transform: translateX(-10px); }
+          100% { opacity: 1; transform: translateX(0); }
+        }
+        @keyframes typewriter {
+          from { width: 0; }
+          to { width: 100%; }
+        }
+        @keyframes blink {
+          0%, 50% { opacity: 1; }
+          51%, 100% { opacity: 0; }
+        }
         .demon-glow { animation: glow-pulse 2s ease-in-out infinite; color: #FF0000; }
         .goblin-glow { animation: glow-pulse 2s ease-in-out infinite; color: #00FF7F; }
+        .animate-fade-in { animation: fade-in 0.5s ease-out forwards; }
         .flash-silver { animation: flash 0.3s ease-out; }
         @keyframes flash {
           0% { filter: brightness(1); }
-          50% { filter: brightness(2) saturate(0); }
+          50% { filter: brightness(2.5) saturate(0); }
           100% { filter: brightness(1); }
+        }
+        .gradient-text-silver {
+          background: linear-gradient(90deg, #71717a, #fafafa, #71717a);
+          background-size: 200% auto;
+          -webkit-background-clip: text;
+          -webkit-text-fill-color: transparent;
+          animation: gradient-shift 4s ease infinite;
         }
         @keyframes gradient-shift {
           0%, 100% { background-position: 0% 50%; }
           50% { background-position: 100% 50%; }
         }
-        .gradient-text {
-          background: linear-gradient(90deg, #C0C0C0, #FFFFFF, #C0C0C0);
-          background-size: 200% auto;
-          -webkit-background-clip: text;
-          -webkit-text-fill-color: transparent;
-          animation: gradient-shift 3s ease infinite;
+        .terminal-cursor::after {
+          content: '_';
+          animation: blink 1s step-end infinite;
         }
       `}</style>
 
       {/* ==================== SECTION 1: HERO ==================== */}
       <section className="min-h-screen flex flex-col items-center justify-center relative px-4 py-12">
-        {/* Background Data Stream */}
         <DataStream />
         
         {/* Logo */}
         <div className="relative z-10 flex flex-col items-center">
-          <div className="flex items-center gap-2 mb-2">
+          <div className="flex items-center gap-3 mb-3">
+            <Crosshair className="w-6 h-6 text-zinc-600" />
             <Eye className="w-8 h-8 text-zinc-400" />
+            <Crosshair className="w-6 h-6 text-zinc-600" />
           </div>
-          <h1 className="text-5xl md:text-6xl font-black tracking-tighter gradient-text">
+          <h1 className="text-5xl md:text-7xl font-black tracking-tighter gradient-text-silver">
             PICKVISION
           </h1>
-          <span className="text-lg text-zinc-500 font-medium tracking-widest -mt-1">AI</span>
+          <span className="text-sm text-zinc-600 font-mono tracking-[0.3em] mt-1">v3.0 // FLASH ARCHITECTURE</span>
         </div>
 
-        {/* Headline */}
-        <div className="mt-6 text-center relative z-10">
-          <p className="text-xl md:text-2xl text-zinc-400 font-medium">
-            Stop guessing. <span className="text-emerald-400 font-bold">Start winning.</span>
+        {/* THE Headline - War Room Version */}
+        <div className="mt-8 text-center relative z-10 max-w-2xl">
+          <p className="text-xl md:text-2xl text-zinc-500 font-light tracking-wide">
+            The books have an edge.
+          </p>
+          <p className="text-2xl md:text-3xl text-white font-bold mt-2">
+            Now, you have a <span className="text-emerald-400">weapon</span>.
           </p>
         </div>
 
         {/* Live Scan Visual */}
-        <div className="mt-10 w-full max-w-md relative z-10">
-          <div className="relative bg-gradient-to-br from-zinc-900 to-zinc-950 rounded-3xl border border-zinc-800/50 overflow-hidden p-6">
-            {/* Scanning Bar */}
+        <div className="mt-10 w-full max-w-lg relative z-10">
+          <div className="relative bg-zinc-950 rounded-xl border border-zinc-800/50 overflow-hidden">
             <ScanningBar isActive={true} speed={scanSpeed} />
             
-            {/* Simulated Player Card (Blurred Background) */}
-            <div className="relative">
-              <div className="absolute inset-0 bg-gradient-to-b from-transparent to-zinc-900/80" />
-              
-              {/* Player Preview */}
-              <div className="flex items-center gap-4 blur-[2px] opacity-60">
-                <div className="w-16 h-16 rounded-full bg-zinc-800" />
-                <div className="flex-1">
-                  <div className="h-4 w-32 bg-zinc-700 rounded mb-2" />
-                  <div className="h-3 w-20 bg-zinc-800 rounded" />
-                </div>
+            {/* Terminal Header */}
+            <div className="flex items-center gap-2 px-4 py-2 border-b border-zinc-800/50 bg-zinc-900/50">
+              <div className="w-2 h-2 rounded-full bg-red-500" />
+              <div className="w-2 h-2 rounded-full bg-yellow-500" />
+              <div className="w-2 h-2 rounded-full bg-green-500" />
+              <span className="ml-2 text-zinc-600 text-xs font-mono">PICKVISION_TERMINAL</span>
+            </div>
+            
+            {/* Terminal Content */}
+            <div className="p-4 space-y-2">
+              <div className="flex items-center gap-2 text-xs font-mono">
+                <Radio className="w-3 h-3 text-emerald-500 animate-pulse" />
+                <span className="text-zinc-600">[SCANNING TANK01 FEEDS...]</span>
+                <span className="text-emerald-400">STABLE</span>
               </div>
-              
-              {/* Revealed Vision Insight */}
-              <div className="mt-4 p-3 bg-gradient-to-r from-emerald-950/50 to-zinc-900 rounded-xl border border-emerald-800/30">
-                <div className="flex items-center gap-2 mb-2">
-                  <GoblinIcon size={18} />
-                  <span className="text-emerald-400 text-xs font-bold tracking-wider">GOBLIN DETECTED</span>
-                </div>
-                <p className="text-zinc-400 text-xs italic">
-                  "VanVleet's absence opens backcourt minutes. Expect 15%+ usage bump..."
-                </p>
-                <div className="flex items-center gap-2 mt-2">
-                  <div className="flex-1 h-1.5 bg-zinc-800 rounded-full overflow-hidden">
-                    <div className="h-full w-[92%] bg-gradient-to-r from-emerald-600 to-emerald-400" />
-                  </div>
-                  <span className="text-emerald-400 text-xs font-bold">92%</span>
-                </div>
+              <div className="flex items-center gap-2 text-xs font-mono">
+                <Lock className="w-3 h-3 text-emerald-500" />
+                <span className="text-zinc-600">[LLM HANDSHAKE...]</span>
+                <span className="text-emerald-400">ENCRYPTED</span>
+              </div>
+              <div className="flex items-center gap-2 text-xs font-mono">
+                <DemonIcon size={14} />
+                <span className="text-zinc-600">[DEMON TARGETS DETECTED...]</span>
+                <span className="text-red-400 font-bold">{demonCount}</span>
+              </div>
+              <div className="flex items-center gap-2 text-xs font-mono">
+                <GoblinIcon size={14} />
+                <span className="text-zinc-600">[GOBLIN LOCKS FOUND...]</span>
+                <span className="text-emerald-400 font-bold">{goblinCount}</span>
               </div>
             </div>
             
-            {/* Scanning Text */}
-            <div className="mt-4 flex items-center justify-center gap-2 text-zinc-600 text-xs">
-              <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
-              Analyzing 2026 Season Trends...
+            {/* Blinking Cursor Line */}
+            <div className="px-4 pb-4">
+              <span className="text-emerald-500 font-mono text-xs terminal-cursor">
+                &gt; AWAITING OPERATOR AUTHENTICATION
+              </span>
             </div>
           </div>
         </div>
@@ -317,108 +340,84 @@ export const Auth = () => {
         <Button
           onClick={scrollToForm}
           data-testid="enter-vault-btn"
-          className="mt-8 px-8 py-6 text-lg font-bold bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-500 hover:to-emerald-400 text-black rounded-xl shadow-lg shadow-emerald-500/30 hover:shadow-emerald-500/50 transition-all duration-300 hover:scale-105 relative z-10"
+          className="mt-8 px-10 py-6 text-base font-mono font-bold bg-emerald-500 hover:bg-emerald-400 text-black rounded border border-emerald-400 shadow-lg shadow-emerald-500/30 hover:shadow-emerald-400/50 transition-all duration-300 hover:scale-105 relative z-10 tracking-wider"
         >
-          ENTER THE VAULT
-          <ArrowRight className="ml-2 w-5 h-5" />
+          [ CLAIM YOUR EDGE ]
         </Button>
 
         {/* Scroll Indicator */}
-        <div className="absolute bottom-8 left-1/2 -translate-x-1/2 text-zinc-600 animate-bounce">
+        <div className="absolute bottom-8 left-1/2 -translate-x-1/2 text-zinc-700 animate-bounce">
           <ChevronDown className="w-6 h-6" />
         </div>
       </section>
 
-      {/* ==================== SECTION 2: BENTO GRID ==================== */}
-      <section className="py-20 px-4 bg-gradient-to-b from-zinc-950 to-black">
-        <div className="max-w-4xl mx-auto">
-          <h2 className="text-center text-2xl md:text-3xl font-bold text-white mb-2">
-            The <span className="text-emerald-400">Edge</span> You've Been Missing
-          </h2>
-          <p className="text-center text-zinc-500 text-sm mb-12">
-            Why sharps choose PickVision AI
-          </p>
+      {/* ==================== SECTION 2: THE KILL LIST ==================== */}
+      <section className="py-20 px-4 bg-zinc-950 border-y border-zinc-900">
+        <div className="max-w-2xl mx-auto">
+          {/* Section Header */}
+          <div className="text-center mb-12">
+            <span className="text-zinc-600 font-mono text-xs tracking-widest">TECHNICAL SPECIFICATIONS</span>
+            <h2 className="text-2xl md:text-3xl font-bold text-white mt-2">
+              THE <span className="text-emerald-400">KILL LIST</span>
+            </h2>
+            <p className="text-zinc-500 text-sm mt-2 font-mono">
+              Tactical advantages deployed
+            </p>
+          </div>
           
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {/* The Seer Model */}
-            <FeatureCard
-              icon={<Sparkles className="w-5 h-5 text-zinc-400" />}
-              title="The Seer Model"
-              description="AI that 'watches' the game. We factor in fatigue, altitude, and momentum—not just averages."
-              glowColor="zinc"
+          {/* Spec Table */}
+          <div className="bg-zinc-900/30 rounded-xl border border-zinc-800/50 p-6">
+            <SpecRow 
+              spec="MODEL"
+              tactical="PickVision v3.0 (Flash Architecture)"
+              icon={<Cpu className="w-5 h-5 text-zinc-400" />}
             />
-            
-            {/* Demon Radar */}
-            <FeatureCard
+            <SpecRow 
+              spec="LOGIC"
+              tactical="Anomaly Detection. We ignore the 'standard' and hunt the glitches."
+              icon={<Zap className="w-5 h-5 text-yellow-400" />}
+            />
+            <SpecRow 
+              spec="INTEL"
+              tactical="Usage Ripple. Automated recalculation of roster value within 60s of injury news."
+              icon={<Radio className="w-5 h-5 text-cyan-400" />}
+            />
+            <SpecRow 
+              spec="TARGETING"
+              tactical="Demon Radar. High-alpha, high-variance line exploits only."
               icon={<DemonIcon size={20} />}
-              title="Demon Radar"
-              description="We hunt for the 'Mismatches.' Find the high-multiplier lines before the books pull them."
-              glowColor="red"
             />
-            
-            {/* Usage Ripple */}
-            <FeatureCard
-              icon={<BarChart3 className="w-5 h-5 text-cyan-400" />}
-              title="Usage Ripple™"
-              description="If a star is out, the floor shifts. We predict the new usage leaders in real-time."
-              glowColor="cyan"
-            />
-            
-            {/* The Goblin Vault */}
-            <FeatureCard
+            <SpecRow 
+              spec="SAFETY"
+              tactical="Goblin Vault. Defensive bankroll stabilization via high-probability math."
               icon={<GoblinIcon size={20} />}
-              title="The Goblin Vault"
-              description="Consistency is king. Daily high-probability 'Locks' designed to build your bankroll."
-              glowColor="green"
             />
           </div>
         </div>
       </section>
 
-      {/* ==================== SECTION 3: THE PROMISE ==================== */}
-      <section className="py-16 px-4 relative overflow-hidden">
-        {/* Background Gradient */}
-        <div className="absolute inset-0 bg-gradient-to-r from-emerald-950/20 via-zinc-950 to-red-950/20" />
-        
-        <div className="max-w-2xl mx-auto text-center relative z-10">
-          <div className="flex items-center justify-center gap-2 mb-4">
-            <div className="w-8 h-[1px] bg-gradient-to-r from-transparent to-zinc-600" />
-            <Eye className="w-5 h-5 text-zinc-500" />
-            <div className="w-8 h-[1px] bg-gradient-to-l from-transparent to-zinc-600" />
-          </div>
-          
-          <blockquote className="text-xl md:text-2xl text-zinc-300 font-light italic leading-relaxed">
-            "In 2026, <span className="text-zinc-400">data is noise</span>. 
-            <span className="text-white font-medium"> Vision is profit</span>. 
-            We strip away the fluff to give you the one thing that matters: 
-            <span className="text-emerald-400 font-semibold"> The Edge</span>."
-          </blockquote>
-          
-          <div className="mt-6 flex items-center justify-center gap-4">
-            <DemonIcon size={24} />
-            <span className="text-zinc-600 text-sm">×</span>
-            <GoblinIcon size={24} />
-          </div>
-        </div>
-      </section>
-
-      {/* ==================== SECTION 4: SIGNUP FORM ==================== */}
+      {/* ==================== SECTION 3: SIGNUP FORM ==================== */}
       <section ref={formRef} className="py-20 px-4 bg-black" id="signup-section">
         <div className="max-w-md mx-auto">
-          {/* Form Header */}
+          {/* War Room Quote */}
           <div className="text-center mb-8">
-            <h2 className="text-2xl font-bold text-white mb-2">
-              {isLogin ? 'Access The Vault' : 'Join The Vision'}
+            <p className="text-zinc-600 font-mono text-xs tracking-widest mb-4">// OPERATOR AUTHENTICATION</p>
+            <h2 className="text-xl md:text-2xl font-bold gradient-text-silver tracking-wide uppercase">
+              "The books have an edge.<br/>Now, you have a weapon."
             </h2>
-            <p className="text-zinc-500 text-sm">
-              {isLogin ? 'Welcome back, sharp.' : 'Create your PickVision account'}
-            </p>
+          </div>
+
+          {/* System Status Terminal */}
+          <div className="bg-zinc-950 rounded-lg border border-zinc-800/50 p-4 mb-6 font-mono text-xs">
+            <TerminalLine label="SCANNING TANK01 FEEDS..." status="STABLE" delay={0} />
+            <TerminalLine label="LLM HANDSHAKE..." status="ENCRYPTED" delay={300} />
+            <TerminalLine label="DEMON TARGETS DETECTED..." status={demonCount.toString()} statusColor="red" delay={600} />
+            <TerminalLine label="GOBLIN LOCKS FOUND..." status={goblinCount.toString()} delay={900} />
           </div>
 
           {/* Auth Form */}
-          <div className="bg-gradient-to-br from-zinc-900 to-zinc-950 rounded-2xl border border-zinc-800/50 p-6 relative overflow-hidden">
-            {/* Scanning Effect on Form */}
-            {isTyping && <ScanningBar isActive={true} speed={1} />}
+          <div className="bg-zinc-950 rounded-xl border border-zinc-800/50 p-6 relative overflow-hidden">
+            {isTyping && <ScanningBar isActive={true} speed={0.8} />}
             
             {/* Social Auth Buttons */}
             <div className="space-y-3 mb-6">
@@ -440,7 +439,7 @@ export const Auth = () => {
               <Button
                 type="button"
                 variant="outline"
-                className="w-full bg-black hover:bg-zinc-900 text-white border-zinc-700 py-5 font-medium"
+                className="w-full bg-zinc-900 hover:bg-zinc-800 text-white border-zinc-700 py-5 font-medium"
                 onClick={() => toast.info('Apple Auth coming soon!')}
               >
                 <svg className="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 24 24">
@@ -453,7 +452,7 @@ export const Auth = () => {
             {/* Divider */}
             <div className="flex items-center gap-4 my-6">
               <div className="flex-1 h-px bg-zinc-800" />
-              <span className="text-zinc-600 text-xs">or</span>
+              <span className="text-zinc-700 text-xs font-mono">OR</span>
               <div className="flex-1 h-px bg-zinc-800" />
             </div>
 
@@ -461,51 +460,51 @@ export const Auth = () => {
             <form onSubmit={handleSubmit} className="space-y-4">
               {!isLogin && (
                 <div className="space-y-2">
-                  <Label htmlFor="fullName" className="text-zinc-400 text-xs uppercase tracking-wider">
-                    Full Name
+                  <Label htmlFor="fullName" className="text-zinc-500 text-xs font-mono uppercase tracking-wider">
+                    Operator Name
                   </Label>
                   <Input
                     id="fullName"
                     data-testid="signup-name"
                     type="text"
-                    placeholder="John Sharp"
+                    placeholder="Enter callsign"
                     value={formData.fullName}
                     onChange={(e) => handleInputChange('fullName', e.target.value)}
-                    className="bg-zinc-900 border-zinc-800 text-white placeholder:text-zinc-600 focus:border-emerald-500/50 focus:ring-emerald-500/20 py-5"
+                    className="bg-zinc-900 border-zinc-800 text-white placeholder:text-zinc-700 focus:border-emerald-500/50 focus:ring-emerald-500/20 py-5 font-mono"
                   />
                 </div>
               )}
               
               <div className="space-y-2">
-                <Label htmlFor="email" className="text-zinc-400 text-xs uppercase tracking-wider">
+                <Label htmlFor="email" className="text-zinc-500 text-xs font-mono uppercase tracking-wider">
                   Email
                 </Label>
                 <Input
                   id="email"
                   data-testid={isLogin ? "login-email" : "signup-email"}
                   type="email"
-                  placeholder="your@email.com"
+                  placeholder="operator@domain.com"
                   value={formData.email}
                   onChange={(e) => handleInputChange('email', e.target.value)}
                   required
-                  className="bg-zinc-900 border-zinc-800 text-white placeholder:text-zinc-600 focus:border-emerald-500/50 focus:ring-emerald-500/20 py-5"
+                  className="bg-zinc-900 border-zinc-800 text-white placeholder:text-zinc-700 focus:border-emerald-500/50 focus:ring-emerald-500/20 py-5 font-mono"
                 />
               </div>
               
               <div className="space-y-2">
-                <Label htmlFor="password" className="text-zinc-400 text-xs uppercase tracking-wider">
-                  Password
+                <Label htmlFor="password" className="text-zinc-500 text-xs font-mono uppercase tracking-wider">
+                  Access Key
                 </Label>
                 <Input
                   id="password"
                   data-testid={isLogin ? "login-password" : "signup-password"}
                   type="password"
-                  placeholder="••••••••"
+                  placeholder="••••••••••••"
                   value={formData.password}
                   onChange={(e) => handleInputChange('password', e.target.value)}
                   required
                   minLength={6}
-                  className="bg-zinc-900 border-zinc-800 text-white placeholder:text-zinc-600 focus:border-emerald-500/50 focus:ring-emerald-500/20 py-5"
+                  className="bg-zinc-900 border-zinc-800 text-white placeholder:text-zinc-700 focus:border-emerald-500/50 focus:ring-emerald-500/20 py-5 font-mono"
                 />
               </div>
 
@@ -513,25 +512,22 @@ export const Auth = () => {
                 type="submit"
                 data-testid={isLogin ? "login-submit-btn" : "signup-submit-btn"}
                 disabled={loading}
-                className="w-full py-6 text-base font-bold bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-500 hover:to-emerald-400 text-black rounded-xl shadow-lg shadow-emerald-500/20 hover:shadow-emerald-500/40 transition-all duration-300"
+                className="w-full py-6 text-sm font-mono font-bold bg-emerald-500 hover:bg-emerald-400 text-black rounded border border-emerald-400 shadow-lg shadow-emerald-500/20 hover:shadow-emerald-400/40 transition-all duration-300 tracking-widest uppercase"
               >
                 {loading ? (
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 justify-center">
                     <div className="w-4 h-4 border-2 border-black/30 border-t-black rounded-full animate-spin" />
-                    {isLogin ? 'Activating...' : 'Creating Account...'}
+                    AUTHENTICATING...
                   </div>
                 ) : (
-                  <>
-                    <Lock className="w-4 h-4 mr-2" />
-                    {isLogin ? 'Access The Vault' : 'Create Account'}
-                  </>
+                  <>[ CLAIM YOUR EDGE ]</>
                 )}
               </Button>
             </form>
 
             {/* Social Proof */}
-            <p className="text-center text-zinc-600 text-xs mt-4">
-              Join <span className="text-emerald-400 font-medium">12,402</span> sharps using PickVision intelligence today.
+            <p className="text-center text-zinc-700 text-xs mt-4 font-mono">
+              <span className="text-emerald-500">12,402</span> operators active
             </p>
 
             {/* Toggle Login/Signup */}
@@ -539,11 +535,11 @@ export const Auth = () => {
               <button
                 type="button"
                 onClick={() => setIsLogin(!isLogin)}
-                className="text-zinc-500 text-sm hover:text-white transition-colors"
+                className="text-zinc-600 text-xs font-mono hover:text-white transition-colors"
               >
-                {isLogin ? "Don't have an account? " : "Already have an account? "}
-                <span className="text-emerald-400 font-medium">
-                  {isLogin ? 'Sign up' : 'Log in'}
+                {isLogin ? "NEW OPERATOR? " : "EXISTING OPERATOR? "}
+                <span className="text-emerald-400 font-bold">
+                  {isLogin ? '[REGISTER]' : '[LOGIN]'}
                 </span>
               </button>
             </div>
@@ -555,26 +551,26 @@ export const Auth = () => {
               onClick={() => navigate('/v3/demo')}
               data-testid="try-demo-btn"
               variant="ghost"
-              className="text-zinc-500 hover:text-white hover:bg-zinc-900/50 transition-all"
+              className="text-zinc-600 hover:text-white hover:bg-zinc-900/50 transition-all font-mono text-xs"
             >
               <Play className="w-4 h-4 mr-2" />
-              Try Demo Mode First
+              [ DEMO MODE ]
             </Button>
-            <p className="text-zinc-700 text-[10px] mt-1">
-              Explore the full dashboard without an account
+            <p className="text-zinc-800 text-[10px] mt-1 font-mono">
+              Explore without authentication
             </p>
           </div>
         </div>
       </section>
 
       {/* Footer */}
-      <footer className="py-8 px-4 border-t border-zinc-900">
+      <footer className="py-6 px-4 border-t border-zinc-900">
         <div className="max-w-4xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Eye className="w-4 h-4 text-zinc-600" />
-            <span className="text-zinc-600 text-xs">PickVision AI</span>
+            <Eye className="w-4 h-4 text-zinc-700" />
+            <span className="text-zinc-700 text-xs font-mono">PICKVISION AI</span>
           </div>
-          <span className="text-zinc-700 text-xs">© 2026</span>
+          <span className="text-zinc-800 text-xs font-mono">© 2026</span>
         </div>
       </footer>
     </div>
