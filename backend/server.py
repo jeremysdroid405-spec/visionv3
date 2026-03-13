@@ -1316,10 +1316,10 @@ async def get_parlay_builder():
     return result
 
 
-@api_router.get("/v3/goblin-goldmine")
-async def get_goblin_goldmine():
+@api_router.get("/v3/goblin-recon")
+async def get_goblin_recon():
     """
-    THE GOBLIN GOLDMINE - High-Consistency Parlay Generator
+    THE GOBLIN RECON - High-Consistency Parlay Generator
     
     Returns Goblin-only parlays optimized for maximum win probability:
     - Daily Double (2-Pick): ~90%+ combined probability
@@ -1328,7 +1328,7 @@ async def get_goblin_goldmine():
     
     Uses Floor Scoring Algorithm:
     - 88%+ weighted hit rate threshold
-    - Goldmine Lock = player's floor >= line
+    - Recon Lock = player's floor >= line
     - Blowout protection
     
     NO API CALLS - reads from pre-calculated MongoDB data.
@@ -1336,7 +1336,7 @@ async def get_goblin_goldmine():
     if not demon_goblin_engine:
         raise HTTPException(status_code=500, detail="Engine not initialized")
     
-    result = await demon_goblin_engine.get_goblin_goldmine()
+    result = await demon_goblin_engine.get_goblin_recon()
     
     return result
 

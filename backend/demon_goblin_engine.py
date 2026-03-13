@@ -512,7 +512,7 @@ class DemonGoblinEngine:
         self.radar_picks = db.dg_radar_picks  # Demon Radar top 10 picks
         self.goblin_vault = db.dg_goblin_vault  # Goblin Vault top 10 safe picks
         self.parlay_builder = db.dg_parlay_builder  # Big Money Builder parlays
-        self.goblin_goldmine = db.dg_goblin_goldmine  # Goblin Goldmine parlays (high-consistency)
+        self.goblin_recon = db.dg_goblin_recon  # Goblin Recon parlays (high-consistency)
         self.cached_board = db.dg_cached_board  # Full cached board for frontend
         self.master_roster = db.dg_master_roster  # SOURCE OF TRUTH: Player-to-team mapping
         self.flagged_players = db.dg_flagged_players  # Players not in master roster (manual review)
@@ -2137,8 +2137,8 @@ class DemonGoblinEngine:
         # Build Parlay Builder (Big Money parlays - Demons)
         await self._build_parlay_builder(players_dict, sync_time)
         
-        # Build Goblin Goldmine (High-consistency Goblin parlays)
-        await self._build_goblin_goldmine(players_dict, sync_time)
+        # Build Goblin Recon (High-consistency Goblin parlays)
+        await self._build_goblin_recon(players_dict, sync_time)
     
     async def _build_demon_radar(self, players_dict: Dict[str, Dict], sync_time: datetime):
         """
@@ -3019,16 +3019,16 @@ class DemonGoblinEngine:
         
         return round(prob * 100, 2)
     
-    async def _build_goblin_goldmine(self, players_dict: Dict[str, Dict], sync_time: datetime):
+    async def _build_goblin_recon(self, players_dict: Dict[str, Dict], sync_time: datetime):
         """
-        THE GOBLIN GOLDMINE - Maximum Win Probability Parlay Generator
+        THE GOBLIN RECON - Maximum Win Probability Parlay Generator
         
         FLOOR SCORING ALGORITHM ($F$):
         1. Primary Threshold: Only Goblins with 88%+ weighted hit rate
-        2. "Worst Case" Check: Player's lowest stat in L10 >= Goblin line = "Goldmine Lock"
+        2. "Worst Case" Check: Player's lowest stat in L10 >= Goblin line = "Recon Lock"
         3. Blowout Protection: Avoid players on teams favored by >12 points
         
-        GOLDMINE TIERS:
+        RECON TIERS:
         - "Daily Double" (2-Pick): Top 2 highest floor safety (~90%+ combined)
         - "Green Ladder" (3 & 4-Pick): Diversified across different games
         - "6-Pick Fortress" (Flex): Top 6 for PrizePicks Flex (5/6 still profits)
@@ -3039,9 +3039,9 @@ class DemonGoblinEngine:
         - 4-Pick: ~6x payout
         - 6-Pick: ~12x payout (Flex: 5/6 = 1.5x, 6/6 = 12x)
         """
-        logger.info("[GOBLIN GOLDMINE] Mining for high-consistency Goblin parlays...")
+        logger.info("[GOBLIN RECON] Mining for high-consistency Goblin parlays...")
         
-        goldmine_candidates = []
+        recon_candidates = []
         game_groups = {}  # For diversification
         
         for player_name, player_data in players_dict.items():
@@ -3086,7 +3086,7 @@ class DemonGoblinEngine:
                 # Check if player's floor (lowest game) >= goblin line
                 # We approximate this: if hit rate is 100%, floor >= line
                 # If hit rate is 90%, the floor might be just below line
-                is_goldmine_lock = h10_games >= 5 and h10_over == h10_games  # Perfect 10/10 or 5/5+
+                is_recon_lock = h10_games >= 5 and h10_over == h10_games  # Perfect 10/10 or 5/5+
                 
                 # Floor safety score (0-100)
                 # Perfect streak = 100, 9/10 = 90, 8/10 = 80, etc.
@@ -3098,7 +3098,7 @@ class DemonGoblinEngine:
                 # Safety string
                 safety_string = f"{h10_over}/{h10_games}" if h10_games > 0 else "---"
                 
-                goldmine_entry = {
+                recon_entry = {
                     "player_name": player_name,
                     "team": team,
                     "nba_id": player_data.get("nba_id"),
@@ -3117,7 +3117,7 @@ class DemonGoblinEngine:
                     "floor_score": round(floor_score, 1),
                     "reliability": reliability,
                     "safety_string": safety_string,
-                    "is_goldmine_lock": is_goldmine_lock,
+                    "is_recon_lock": is_recon_lock,
                     "game_key": game_key,
                     "home_team": home_team,
                     "away_team": away_team,
@@ -3125,18 +3125,18 @@ class DemonGoblinEngine:
                     "synced_at": sync_time.isoformat()
                 }
                 
-                goldmine_candidates.append(goldmine_entry)
+                recon_candidates.append(recon_entry)
                 
                 # Group by game for diversification
                 if game_key:
                     if game_key not in game_groups:
                         game_groups[game_key] = []
-                    game_groups[game_key].append(goldmine_entry)
+                    game_groups[game_key].append(recon_entry)
         
         # Sort by floor_score (highest first), then by reliability
-        goldmine_candidates.sort(key=lambda x: (x["floor_score"], x["reliability"]), reverse=True)
+        recon_candidates.sort(key=lambda x: (x["floor_score"], x["reliability"]), reverse=True)
         
-        logger.info(f"[GOBLIN GOLDMINE] Found {len(goldmine_candidates)} candidates (88%+ hit rate)")
+        logger.info(f"[GOBLIN RECON] Found {len(recon_candidates)} candidates (88%+ hit rate)")
         
         # ==================== TWO-TEAM RULE HELPERS ====================
         def get_multi_team_picks(candidates: List[Dict], count: int) -> Tuple[List[Dict], bool, int]:
@@ -3264,8 +3264,8 @@ class DemonGoblinEngine:
             is_valid = len(teams_used) >= 2
             return picks[:count], is_valid, len(teams_used)
         
-        def calculate_goldmine_probability(picks: List[Dict]) -> float:
-            """Calculate combined probability for Goldmine parlays"""
+        def calculate_recon_probability(picks: List[Dict]) -> float:
+            """Calculate combined probability for Recon parlays"""
             if not picks:
                 return 0
             prob = 1.0
@@ -3283,10 +3283,10 @@ class DemonGoblinEngine:
         parlays = {}
         
         # ==================== DAILY DOUBLE (2-Pick) ====================
-        if len(goldmine_candidates) >= 2:
-            picks_2, is_valid, team_count = get_multi_team_picks(goldmine_candidates, 2)
+        if len(recon_candidates) >= 2:
+            picks_2, is_valid, team_count = get_multi_team_picks(recon_candidates, 2)
             if picks_2:
-                combined_prob = calculate_goldmine_probability(picks_2)
+                combined_prob = calculate_recon_probability(picks_2)
                 parlays["daily_double"] = {
                     "name": "Daily Double",
                     "tier": "daily_double",
@@ -3304,10 +3304,10 @@ class DemonGoblinEngine:
                 }
         
         # ==================== GREEN LADDER 3-Pick ====================
-        if len(goldmine_candidates) >= 3:
-            picks_3, is_valid, team_count = get_diversified_multi_team_picks(goldmine_candidates, 3, game_groups)
+        if len(recon_candidates) >= 3:
+            picks_3, is_valid, team_count = get_diversified_multi_team_picks(recon_candidates, 3, game_groups)
             if picks_3:
-                combined_prob = calculate_goldmine_probability(picks_3)
+                combined_prob = calculate_recon_probability(picks_3)
                 parlays["green_ladder_3"] = {
                     "name": "Green Ladder",
                     "tier": "green_ladder_3",
@@ -3325,10 +3325,10 @@ class DemonGoblinEngine:
                 }
         
         # ==================== GREEN LADDER 4-Pick ====================
-        if len(goldmine_candidates) >= 4:
-            picks_4, is_valid, team_count = get_diversified_multi_team_picks(goldmine_candidates, 4, game_groups)
+        if len(recon_candidates) >= 4:
+            picks_4, is_valid, team_count = get_diversified_multi_team_picks(recon_candidates, 4, game_groups)
             if picks_4:
-                combined_prob = calculate_goldmine_probability(picks_4)
+                combined_prob = calculate_recon_probability(picks_4)
                 parlays["green_ladder_4"] = {
                     "name": "Green Ladder+",
                     "tier": "green_ladder_4",
@@ -3347,10 +3347,10 @@ class DemonGoblinEngine:
         
         # ==================== 6-PICK FORTRESS (Flex Play) ====================
         # Designed for PrizePicks Flex: 5/6 = 1.5x profit, 6/6 = 12x
-        if len(goldmine_candidates) >= 6:
-            picks_6, is_valid, team_count = get_diversified_multi_team_picks(goldmine_candidates, 6, game_groups)
+        if len(recon_candidates) >= 6:
+            picks_6, is_valid, team_count = get_diversified_multi_team_picks(recon_candidates, 6, game_groups)
             if picks_6:
-                combined_prob = calculate_goldmine_probability(picks_6)
+                combined_prob = calculate_recon_probability(picks_6)
                 
                 # Calculate Flex probability (hitting 5 or 6 out of 6)
                 avg_p = sum(p["weighted_hit_rate"] for p in picks_6) / 600
@@ -3377,7 +3377,7 @@ class DemonGoblinEngine:
                 }
         
         # Store in database
-        await self.goblin_goldmine.delete_many({})
+        await self.goblin_recon.delete_many({})
         
         # ==================== TWO-TEAM GUARDRAIL ====================
         # Final validation: Remove any parlays that don't meet 2-team requirement
@@ -3399,10 +3399,10 @@ class DemonGoblinEngine:
         # Count valid lineups
         valid_count = sum(1 for p in parlays.values() if p.get("lineup_valid", False))
         
-        goldmine_doc = {
+        recon_doc = {
             "parlays": parlays,
-            "total_candidates": len(goldmine_candidates),
-            "goldmine_locks": len([c for c in goldmine_candidates if c["is_goldmine_lock"]]),
+            "total_candidates": len(recon_candidates),
+            "recon_locks": len([c for c in recon_candidates if c["is_recon_lock"]]),
             "games_available": len(game_groups),
             "min_hit_rate_threshold": "88%",
             "valid_lineups": valid_count,
@@ -3410,12 +3410,12 @@ class DemonGoblinEngine:
             "synced_at": sync_time.isoformat()
         }
         
-        await self.goblin_goldmine.insert_one(goldmine_doc)
+        await self.goblin_recon.insert_one(recon_doc)
         
         # Log summary
-        locks_count = len([c for c in goldmine_candidates if c["is_goldmine_lock"]])
-        logger.info(f"[GOBLIN GOLDMINE] Generated {len(parlays)} Goldmine parlay tiers ({valid_count} valid for PrizePicks)")
-        logger.info(f"  Goldmine Locks (100% L10): {locks_count}")
+        locks_count = len([c for c in recon_candidates if c["is_recon_lock"]])
+        logger.info(f"[GOBLIN RECON] Generated {len(parlays)} Recon parlay tiers ({valid_count} valid for PrizePicks)")
+        logger.info(f"  Recon Locks (100% L10): {locks_count}")
         logger.info(f"  Games for diversification: {len(game_groups)}")
         
         for tier, data in parlays.items():
@@ -3556,19 +3556,19 @@ class DemonGoblinEngine:
             }
         }
     
-    async def get_goblin_goldmine(self) -> Dict[str, Any]:
+    async def get_goblin_recon(self) -> Dict[str, Any]:
         """
-        Get the Goblin Goldmine parlays from MongoDB.
+        Get the Goblin Recon parlays from MongoDB.
         High-consistency Goblin-only parlays for maximum win probability.
         Enriches picks with AI insights from daily_insights collection.
         NO API CALLS - reads only from database.
         """
-        doc = await self.goblin_goldmine.find_one({}, {"_id": 0})
+        doc = await self.goblin_recon.find_one({}, {"_id": 0})
         
         if not doc:
             return {
                 "success": False,
-                "message": "No Goldmine data. Run /api/v3/sync first.",
+                "message": "No Recon data. Run /api/v3/sync first.",
                 "parlays": {}
             }
         
@@ -3589,14 +3589,14 @@ class DemonGoblinEngine:
             "success": True,
             "synced_at": doc.get("synced_at"),
             "total_candidates": doc.get("total_candidates", 0),
-            "goldmine_locks": doc.get("goldmine_locks", 0),
+            "recon_locks": doc.get("recon_locks", 0),
             "games_available": doc.get("games_available", 0),
             "parlays": parlays,
             "algorithm": {
                 "name": "Floor Scoring ($F$)",
                 "description": "Maximum win probability using high-consistency Goblins",
                 "min_hit_rate": "88%+ weighted (L10×0.6 + L5×0.4)",
-                "goldmine_lock": "Player's floor (worst game) >= Goblin line",
+                "recon_lock": "Player's floor (worst game) >= Goblin line",
                 "diversification": "Green Ladder spreads picks across different games",
                 "flex_play": "6-Pick Fortress designed for PrizePicks Flex (5/6 still wins)"
             }

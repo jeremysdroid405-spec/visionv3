@@ -1199,9 +1199,9 @@ const ParlayCard = memo(({ parlay, pickCount, onClick }) => {
 
 ParlayCard.displayName = 'ParlayCard';
 
-// ==================== GOBLIN GOLDMINE CARD ====================
+// ==================== GOBLIN RECON CARD ====================
 
-const GoldmineCard = memo(({ parlay, tier, onClick }) => {
+const ReconCard = memo(({ parlay, tier, onClick }) => {
   const picks = parlay?.picks || [];
   const reliability = parlay?.reliability || 0;
   const payoutEstimate = parlay?.estimated_payout || 0;
@@ -1211,7 +1211,7 @@ const GoldmineCard = memo(({ parlay, tier, onClick }) => {
   const lineupStatus = parlay?.lineup_status || 'Valid (Multi-Team)';
   const teamCount = parlay?.team_count || 0;
   
-  // Emerald green theme for Goldmine
+  // Emerald green theme for Recon
   const tierStyles = {
     daily_double: { 
       bg: 'from-emerald-950/60', 
@@ -1253,7 +1253,7 @@ const GoldmineCard = memo(({ parlay, tier, onClick }) => {
         overflow-hidden border-2 ${!lineupValid ? 'opacity-60' : ''}
       `}
       onClick={onClick}
-      data-testid={`goldmine-card-${tier}`}
+      data-testid={`recon-card-${tier}`}
     >
       <div className="p-3">
         {/* Header */}
@@ -1332,7 +1332,7 @@ const GoldmineCard = memo(({ parlay, tier, onClick }) => {
                 <div className="flex items-center gap-1.5">
                   <span className="text-[10px] text-zinc-400">{pick.stat_type}</span>
                   <span className="text-xs font-bold text-emerald-300">{pick.line}</span>
-                  {pick.is_goldmine_lock && (
+                  {pick.is_recon_lock && (
                     <span className="text-[8px] bg-emerald-500/30 text-emerald-300 px-1 rounded">LOCK</span>
                   )}
                   {pick.insight_summary && <Zap className="w-3 h-3 text-purple-400" title="Has AI Vision" />}
@@ -1371,13 +1371,13 @@ const GoldmineCard = memo(({ parlay, tier, onClick }) => {
   );
 });
 
-GoldmineCard.displayName = 'GoldmineCard';
+ReconCard.displayName = 'ReconCard';
 
 // ==================== EXPANDED PARLAY VIEW ====================
 // Shows all picks in a parlay with player cards and bet details
 
 // Individual pick card with expandable hit rate dropdown
-const ParlayPickCard = memo(({ pick, idx, isGoldmine, colors, playerData, onPickClick }) => {
+const ParlayPickCard = memo(({ pick, idx, isRecon, colors, playerData, onPickClick }) => {
   const [isExpanded, setIsExpanded] = useState(false);
   
   // Get hit rate data from pick
@@ -1451,10 +1451,10 @@ const ParlayPickCard = memo(({ pick, idx, isGoldmine, colors, playerData, onPick
         <div className={`
           flex items-center justify-between
           bg-zinc-800/50 rounded-lg px-3 py-2
-          border-l-4 ${isGoldmine ? 'border-green-500' : 'border-red-500'}
+          border-l-4 ${isRecon ? 'border-green-500' : 'border-red-500'}
         `}>
           <div className="flex items-center gap-3">
-            {isGoldmine ? (
+            {isRecon ? (
               <GoblinIcon size={20} />
             ) : (
               <DemonIcon size={20} />
@@ -1475,7 +1475,7 @@ const ParlayPickCard = memo(({ pick, idx, isGoldmine, colors, playerData, onPick
                 {h10Pct}%
               </span>
             </div>
-            {pick.is_goldmine_lock && (
+            {pick.is_recon_lock && (
               <Badge className="bg-emerald-500/30 text-emerald-300 border-none text-[10px]">
                 LOCK
               </Badge>
@@ -1534,8 +1534,8 @@ const ParlayPickCard = memo(({ pick, idx, isGoldmine, colors, playerData, onPick
               </div>
             </div>
             
-            {/* Weighted Hit Rate (for Goldmine) */}
-            {isGoldmine && weightedPct > 0 && (
+            {/* Weighted Hit Rate (for Recon) */}
+            {isRecon && weightedPct > 0 && (
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <span className="text-xs text-zinc-400 w-24">Weighted Rate:</span>
@@ -1562,13 +1562,13 @@ const ParlayPickCard = memo(({ pick, idx, isGoldmine, colors, playerData, onPick
               </div>
             </div>
             
-            {/* Floor Score (for Goldmine) */}
-            {isGoldmine && pick.floor_score !== undefined && (
+            {/* Floor Score (for Recon) */}
+            {isRecon && pick.floor_score !== undefined && (
               <div className="flex items-center justify-between bg-emerald-950/30 rounded px-2 py-1.5 border border-emerald-800/30">
                 <span className="text-xs text-emerald-400">Floor Score</span>
                 <div className="flex items-center gap-2">
                   <span className="text-emerald-300 font-bold">{pick.floor_score?.toFixed(1) || '---'}</span>
-                  {pick.is_goldmine_lock && (
+                  {pick.is_recon_lock && (
                     <Badge className="bg-emerald-500/30 text-emerald-300 border-none text-[9px]">
                       FLOOR ≥ LINE
                     </Badge>
@@ -1647,10 +1647,10 @@ const ExpandedParlayView = memo(({ parlay, type, onClose, onPickClick, players }
   if (!parlay) return null;
   
   const picks = parlay.picks || [];
-  const isGoldmine = type === 'goldmine';
+  const isRecon = type === 'recon';
   
   // Get color scheme based on type
-  const colors = isGoldmine
+  const colors = isRecon
     ? { bg: 'from-emerald-950/90', border: 'border-emerald-500/50', text: 'text-emerald-400', accent: 'emerald' }
     : { bg: 'from-amber-950/90', border: 'border-amber-500/50', text: 'text-amber-400', accent: 'amber' };
   
@@ -1673,7 +1673,7 @@ const ExpandedParlayView = memo(({ parlay, type, onClose, onPickClick, players }
         <div className="sticky top-0 z-10 bg-zinc-950/95 backdrop-blur-sm border-b border-zinc-800 px-4 py-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              {isGoldmine ? (
+              {isRecon ? (
                 <GoblinIcon size={24} />
               ) : (
                 <DollarSign className={`w-6 h-6 ${colors.text}`} />
@@ -1689,7 +1689,7 @@ const ExpandedParlayView = memo(({ parlay, type, onClose, onPickClick, players }
               <Badge className={`bg-${colors.accent}-500/20 ${colors.text} border-none`}>
                 {parlay.estimated_payout}x Payout
               </Badge>
-              {isGoldmine && parlay.reliability && (
+              {isRecon && parlay.reliability && (
                 <Badge className="bg-green-500/20 text-green-400 border-none">
                   {parlay.reliability}% Reliable
                 </Badge>
@@ -1733,7 +1733,7 @@ const ExpandedParlayView = memo(({ parlay, type, onClose, onPickClick, players }
                 key={`${pick.player_name}-${pick.stat_type}-${idx}`}
                 pick={pick}
                 idx={idx}
-                isGoldmine={isGoldmine}
+                isRecon={isRecon}
                 colors={colors}
                 playerData={playerData}
                 onPickClick={onPickClick}
@@ -2660,7 +2660,7 @@ export const DemonGoblinDashboardOptimized = ({ isDemoMode = false }) => {
   const [filterType, setFilterType] = useState('all');
   const [syncedAt, setSyncedAt] = useState(null);
   const [parlayData, setParlayData] = useState({});
-  const [goldmineData, setGoldmineData] = useState({});  // Goblin Goldmine parlays
+  const [reconData, setReconData] = useState({});  // Goblin Recon parlays
   const [expandedParlay, setExpandedParlay] = useState(null);  // Currently expanded parlay view
   
   // Injury Intelligence state
@@ -2699,13 +2699,13 @@ export const DemonGoblinDashboardOptimized = ({ isDemoMode = false }) => {
     try {
       console.log('[CACHED] Loading from MongoDB...');
       
-      // Load board, radar, vault, parlays, goldmine, and injuries in parallel
-      const [boardResponse, radarResponse, vaultResponse, parlayResponse, goldmineResponse, injuryResponse, newsResponse] = await Promise.all([
+      // Load board, radar, vault, parlays, recon, and injuries in parallel
+      const [boardResponse, radarResponse, vaultResponse, parlayResponse, reconResponse, injuryResponse, newsResponse] = await Promise.all([
         axios.get(`${API}/v3/cached-props`),
         axios.get(`${API}/v3/demon-radar`),
         axios.get(`${API}/v3/goblin-vault`),
         axios.get(`${API}/v3/parlay-builder`),
-        axios.get(`${API}/v3/goblin-goldmine`),
+        axios.get(`${API}/v3/goblin-recon`),
         axios.get(`${API}/v3/injuries/alerts`).catch(() => ({ data: { success: false, alerts: {} }})),
         axios.get(`${API}/v3/breaking-news?injury_only=true`).catch(() => ({ data: { success: false, news: [] }}))
       ]);
@@ -2741,10 +2741,10 @@ export const DemonGoblinDashboardOptimized = ({ isDemoMode = false }) => {
         console.log(`[PARLAY] Loaded ${Object.keys(parlayResponse.data.parlays || {}).length} parlay types`);
       }
       
-      // Load Goblin Goldmine data
-      if (goldmineResponse.data.success) {
-        setGoldmineData(goldmineResponse.data.parlays || {});
-        console.log(`[GOLDMINE] Loaded ${Object.keys(goldmineResponse.data.parlays || {}).length} goldmine tiers`);
+      // Load Goblin Recon data
+      if (reconResponse.data.success) {
+        setReconData(reconResponse.data.parlays || {});
+        console.log(`[RECON] Loaded ${Object.keys(reconResponse.data.parlays || {}).length} recon tiers`);
       }
       
       // Load injury alerts
@@ -3163,13 +3163,13 @@ export const DemonGoblinDashboardOptimized = ({ isDemoMode = false }) => {
           </div>
         )}
 
-        {/* THE GOBLIN GOLDMINE - High-Consistency Parlays */}
-        {Object.keys(goldmineData).length > 0 && (
-          <div data-testid="goldmine-section" className="mt-6">
+        {/* THE GOBLIN RECON - High-Consistency Parlays */}
+        {Object.keys(reconData).length > 0 && (
+          <div data-testid="recon-section" className="mt-6">
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2">
                 <GoblinIcon size={20} />
-                <span className="text-sm font-bold text-emerald-400">THE GOBLIN GOLDMINE</span>
+                <span className="text-sm font-bold text-emerald-400">THE GOBLIN RECON</span>
                 <Badge className="bg-emerald-950/50 text-emerald-400 border-emerald-800/50 text-[10px]">
                   HIGH RELIABILITY
                 </Badge>
@@ -3181,22 +3181,22 @@ export const DemonGoblinDashboardOptimized = ({ isDemoMode = false }) => {
             
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               {['daily_double', 'green_ladder_3', 'green_ladder_4', 'fortress_flex'].map(tier => {
-                const parlay = goldmineData[tier];
+                const parlay = reconData[tier];
                 if (!parlay) return null;
                 return (
-                  <GoldmineCard
-                    key={`goldmine-${tier}`}
+                  <ReconCard
+                    key={`recon-${tier}`}
                     parlay={parlay}
                     tier={tier}
                     onClick={() => {
-                      setExpandedParlay({ parlay, type: 'goldmine' });
+                      setExpandedParlay({ parlay, type: 'recon' });
                     }}
                   />
                 );
               })}
             </div>
             
-            {/* Goldmine Legend */}
+            {/* Recon Legend */}
             <div className="mt-2 flex items-center justify-center gap-4 text-[10px] text-zinc-500">
               <span><GoblinIcon size={12} className="inline" /> = 88%+ Hit Rate</span>
               <span className="text-emerald-300 font-bold">LOCK</span><span> = Floor ≥ Line</span>
@@ -3288,7 +3288,7 @@ export const DemonGoblinDashboardOptimized = ({ isDemoMode = false }) => {
             setExpandedParlay(null);
             const highlightKey = `${pick.stat_type}|${pick.line}|${pick.direction || 'Over'}`;
             setHighlightProp(highlightKey);
-            setHighlightType(expandedParlay.type === 'goldmine' ? 'goblin' : 'demon');
+            setHighlightType(expandedParlay.type === 'recon' ? 'goblin' : 'demon');
             handlePlayerClick(pick.player_name);
           }}
           players={players}
