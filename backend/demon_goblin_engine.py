@@ -228,6 +228,7 @@ KNOWN_PLAYER_TEAMS = {
     "Cody Williams": "UTA",
     "Kyle Filipowski": "UTA",
     "Brice Sensabaugh": "UTA",
+    "Ace Bailey": "UTA",
     # Portland Trail Blazers
     "Toumani Camara": "POR",
     "Donovan Clingan": "POR",
@@ -237,7 +238,8 @@ KNOWN_PLAYER_TEAMS = {
     # Charlotte Hornets
     "Nicolas Richards": "CHA",
     # Houston Rockets
-    "Ace Bailey": "HOU",
+    "Jalen Green": "HOU",
+    "Alperen Sengun": "HOU",
 }
 
 # ==================== NAME NORMALIZATION ====================
