@@ -1390,57 +1390,71 @@ const LadderPropRow = memo(({ prop, categoryStats, isFirst, isLast, isHighlighte
               Stat Insight for {line}+ {direction}
             </div>
             
-            {/* L5 Hit Rate */}
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-zinc-400 w-20">Last 5 Games:</span>
-                <span className={`text-sm font-bold ${getPctColor(l5Pct)}`}>
-                  {l5Games > 0 ? `${l5Over}/${l5Games}` : '---'}
-                </span>
+            {/* Show "No Data" message if no stats available */}
+            {seasonGames === 0 ? (
+              <div className="flex flex-col items-center justify-center py-4 text-center">
+                <div className="text-zinc-500 text-sm mb-1">📊 Stats Unavailable</div>
+                <div className="text-zinc-600 text-xs">
+                  Game log data not found for this player.
+                  <br />
+                  This may be a rookie or recently traded player.
+                </div>
               </div>
-              <div className={`text-lg font-bold ${getPctColor(l5Pct)}`}>
-                {l5Games > 0 ? `${l5Pct}%` : '---'}
-              </div>
-            </div>
-            
-            {/* L10 Hit Rate */}
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-zinc-400 w-20">Last 10 Games:</span>
-                <span className={`text-sm font-bold ${getPctColor(l10Pct)}`}>
-                  {l10Games > 0 ? `${l10Over}/${l10Games}` : '---'}
-                </span>
-              </div>
-              <div className={`text-lg font-bold ${getPctColor(l10Pct)}`}>
-                {l10Games > 0 ? `${l10Pct}%` : '---'}
-              </div>
-            </div>
-            
-            {/* Season Average */}
-            <div className="flex items-center justify-between border-t border-zinc-700/50 pt-2 mt-2">
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-zinc-400 w-20">Season:</span>
-                <span className={`text-sm font-bold ${getPctColor(seasonPct)}`}>
-                  {seasonGames > 0 ? `${seasonOver}/${seasonGames}` : '---'}
-                </span>
-              </div>
-              <div className={`text-lg font-bold ${getPctColor(seasonPct)}`}>
-                {seasonGames > 0 ? `${seasonPct}%` : '---'}
-              </div>
-            </div>
-            
-            {/* Season Average Value */}
-            <div className="flex items-center justify-between bg-zinc-800/50 rounded px-2 py-1.5 mt-2">
-              <span className="text-xs text-zinc-400">Season Average</span>
-              <div className="flex items-center gap-2">
-                <span className="text-white font-bold">{seasonAvg > 0 ? seasonAvg.toFixed(1) : '---'}</span>
-                {seasonAvg > 0 && (
-                  <span className={`text-xs px-1.5 py-0.5 rounded ${seasonAvg > line ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>
-                    {seasonAvg > line ? `+${(seasonAvg - line).toFixed(1)} above line` : `${(seasonAvg - line).toFixed(1)} below line`}
-                  </span>
-                )}
-              </div>
-            </div>
+            ) : (
+              <>
+                {/* L5 Hit Rate */}
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-zinc-400 w-20">Last 5 Games:</span>
+                    <span className={`text-sm font-bold ${getPctColor(l5Pct)}`}>
+                      {l5Games > 0 ? `${l5Over}/${l5Games}` : '---'}
+                    </span>
+                  </div>
+                  <div className={`text-lg font-bold ${getPctColor(l5Pct)}`}>
+                    {l5Games > 0 ? `${l5Pct}%` : '---'}
+                  </div>
+                </div>
+                
+                {/* L10 Hit Rate */}
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-zinc-400 w-20">Last 10 Games:</span>
+                    <span className={`text-sm font-bold ${getPctColor(l10Pct)}`}>
+                      {l10Games > 0 ? `${l10Over}/${l10Games}` : '---'}
+                    </span>
+                  </div>
+                  <div className={`text-lg font-bold ${getPctColor(l10Pct)}`}>
+                    {l10Games > 0 ? `${l10Pct}%` : '---'}
+                  </div>
+                </div>
+                
+                {/* Season Hit Rate */}
+                <div className="flex items-center justify-between border-t border-zinc-700/50 pt-2 mt-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-zinc-400 w-20">Season:</span>
+                    <span className={`text-sm font-bold ${getPctColor(seasonPct)}`}>
+                      {seasonGames > 0 ? `${seasonOver}/${seasonGames}` : '---'}
+                    </span>
+                  </div>
+                  <div className={`text-lg font-bold ${getPctColor(seasonPct)}`}>
+                    {seasonGames > 0 ? `${seasonPct}%` : '---'}
+                  </div>
+                </div>
+                
+                {/* Season Average Value */}
+                <div className="flex items-center justify-between bg-zinc-800/50 rounded px-2 py-1.5 mt-2">
+                  <span className="text-xs text-zinc-400">Season Average</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-white font-bold">{seasonAvg > 0 ? seasonAvg.toFixed(1) : '---'}</span>
+                    {seasonAvg > 0 && (
+                      <span className={`text-xs px-1.5 py-0.5 rounded ${seasonAvg > line ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>
+                        {seasonAvg > line ? `+${(seasonAvg - line).toFixed(1)} above line` : `${(seasonAvg - line).toFixed(1)} below line`}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}
