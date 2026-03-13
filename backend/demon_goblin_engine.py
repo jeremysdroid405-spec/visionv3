@@ -4117,13 +4117,14 @@ class DemonGoblinEngine:
     async def get_demon_radar(self) -> Dict[str, Any]:
         """
         Get the Demon Radar top 10 picks from MongoDB.
-        Enriches with AI insight summaries.
+        Enriches with AI insight summaries and player photos.
         NO API CALLS - reads only from database.
         """
         picks = await self.radar_picks.find({}, {"_id": 0}).sort("radar_score", -1).to_list(10)
         
-        # Enrich with AI insights
+        # Enrich with AI insights and photos
         for pick in picks:
+            # Get AI insight
             insight = await self.daily_insights.find_one(
                 {"player_name": pick.get('player_name')},
                 {"_id": 0, "insight_summary": 1, "ai_confidence_rating": 1}
@@ -4131,6 +4132,12 @@ class DemonGoblinEngine:
             if insight:
                 pick['insight_summary'] = insight.get('insight_summary', '')
                 pick['ai_confidence'] = insight.get('ai_confidence_rating', 50)
+            
+            # Get photo from master_roster if not present
+            if not pick.get('photo_url'):
+                photo_url = await self.get_photo_url_from_master_roster(pick.get('player_name', ''))
+                if photo_url:
+                    pick['photo_url'] = photo_url
         
         sync_meta = await self.sync_log.find_one({"type": "cached_board"})
         
@@ -4151,13 +4158,14 @@ class DemonGoblinEngine:
     async def get_goblin_vault(self) -> Dict[str, Any]:
         """
         Get the Goblin Vault top 10 safe plays from MongoDB.
-        Enriches with AI insight summaries.
+        Enriches with AI insight summaries and player photos.
         NO API CALLS - reads only from database.
         """
         picks = await self.goblin_vault.find({}, {"_id": 0}).sort("vault_score", -1).to_list(10)
         
-        # Enrich with AI insights
+        # Enrich with AI insights and photos
         for pick in picks:
+            # Get AI insight
             insight = await self.daily_insights.find_one(
                 {"player_name": pick.get('player_name')},
                 {"_id": 0, "insight_summary": 1, "ai_confidence_rating": 1}
@@ -4165,6 +4173,12 @@ class DemonGoblinEngine:
             if insight:
                 pick['insight_summary'] = insight.get('insight_summary', '')
                 pick['ai_confidence'] = insight.get('ai_confidence_rating', 50)
+            
+            # Get photo from master_roster if not present
+            if not pick.get('photo_url'):
+                photo_url = await self.get_photo_url_from_master_roster(pick.get('player_name', ''))
+                if photo_url:
+                    pick['photo_url'] = photo_url
         
         sync_meta = await self.sync_log.find_one({"type": "cached_board"})
         
@@ -4185,7 +4199,7 @@ class DemonGoblinEngine:
     async def get_parlay_builder(self) -> Dict[str, Any]:
         """
         Get the Parlay Builder (Big Money) parlays from MongoDB.
-        Enriches picks with AI insights from daily_insights collection.
+        Enriches picks with AI insights and player photos from daily_insights collection.
         NO API CALLS - reads only from database.
         """
         doc = await self.parlay_builder.find_one({}, {"_id": 0})
@@ -4197,11 +4211,12 @@ class DemonGoblinEngine:
                 "parlays": {}
             }
         
-        # Enrich each pick in each parlay with AI insights
+        # Enrich each pick in each parlay with AI insights and photos
         parlays = doc.get("parlays", {})
         for parlay_key, parlay_data in parlays.items():
             picks = parlay_data.get("picks", [])
             for pick in picks:
+                # Get AI insight
                 insight = await self.daily_insights.find_one(
                     {"player_name": pick.get('player_name')},
                     {"_id": 0, "insight_summary": 1, "ai_confidence_rating": 1}
@@ -4209,6 +4224,12 @@ class DemonGoblinEngine:
                 if insight:
                     pick['insight_summary'] = insight.get('insight_summary', '')
                     pick['ai_confidence_rating'] = insight.get('ai_confidence_rating', 50)
+                
+                # Get photo from master_roster if not present
+                if not pick.get('photo_url'):
+                    photo_url = await self.get_photo_url_from_master_roster(pick.get('player_name', ''))
+                    if photo_url:
+                        pick['photo_url'] = photo_url
         
         return {
             "success": True,
@@ -4229,7 +4250,7 @@ class DemonGoblinEngine:
         """
         Get the Goblin Recon parlays from MongoDB.
         High-consistency Goblin-only parlays for maximum win probability.
-        Enriches picks with AI insights from daily_insights collection.
+        Enriches picks with AI insights and player photos from daily_insights collection.
         NO API CALLS - reads only from database.
         """
         doc = await self.goblin_recon.find_one({}, {"_id": 0})
@@ -4241,11 +4262,12 @@ class DemonGoblinEngine:
                 "parlays": {}
             }
         
-        # Enrich each pick in each parlay with AI insights
+        # Enrich each pick in each parlay with AI insights and photos
         parlays = doc.get("parlays", {})
         for parlay_key, parlay_data in parlays.items():
             picks = parlay_data.get("picks", [])
             for pick in picks:
+                # Get AI insight
                 insight = await self.daily_insights.find_one(
                     {"player_name": pick.get('player_name')},
                     {"_id": 0, "insight_summary": 1, "ai_confidence_rating": 1}
@@ -4253,6 +4275,12 @@ class DemonGoblinEngine:
                 if insight:
                     pick['insight_summary'] = insight.get('insight_summary', '')
                     pick['ai_confidence_rating'] = insight.get('ai_confidence_rating', 50)
+                
+                # Get photo from master_roster if not present
+                if not pick.get('photo_url'):
+                    photo_url = await self.get_photo_url_from_master_roster(pick.get('player_name', ''))
+                    if photo_url:
+                        pick['photo_url'] = photo_url
         
         return {
             "success": True,
