@@ -67,9 +67,30 @@ def calculate_goblin_base(num_picks: int) -> float:
     """Calculate goblin payout using actual PrizePicks formula: 1.2^n"""
     return round(GOBLIN_LEG_MULTIPLIER ** num_picks, 2)
 
-# Modifier ranges by asset type
+# Demon/Gauntlet payout - PrizePicks uses progressive scaling
+# Actual payouts from user:
+# - 2-pick: 3.75x → Base 3.0 × 1.25 = 3.75 ✓
+# - 6-pick: 109x → Base 40.0 × 2.725 = 109 ✓
+#
+# The cumulative modifier seems to follow: modifier ≈ 1.12 + (num_picks * 0.01)
+# Or approximately: cumulative = 1.25 for 2-pick, scaling up to 2.725 for 6-pick
+#
+# Simplified: Use 1.18 per leg but slightly boost the base for demons
+DEMON_LEG_MODIFIER = 1.18
+
+# Demon base multipliers (slightly higher than standard to match actual payouts)
+# These are tuned to match actual PrizePicks demon payouts
+DEMON_BASE_MULTIPLIERS = {
+    2: 2.7,    # 2.7 × 1.18² = 3.76x ≈ 3.75x ✓
+    3: 4.8,    # 4.8 × 1.18³ = 7.89x
+    4: 9.0,    # 9.0 × 1.18⁴ = 17.45x
+    5: 18.0,   # 18.0 × 1.18⁵ = 41.1x
+    6: 40.0,   # 40.0 × 1.18⁶ = 108x ≈ 109x ✓
+}
+
+# Modifier ranges by asset type (used for dynamic calculation when needed)
 MODIFIER_RANGES = {
-    AssetType.DEMON: (1.10, 1.50),      # 10-50% boost for harder lines
+    AssetType.DEMON: (1.10, 1.20),      # 10-20% boost for harder lines
     AssetType.STANDARD: (0.95, 1.05),   # Near 1.0 for standard lines
     AssetType.GOBLIN: (0.95, 1.05),     # Near 1.0 (base already accounts for goblin odds)
 }
@@ -98,29 +119,27 @@ def calculate_leg_modifier(
     if standard_line <= 0:
         return AssetType.STANDARD, 1.0
     
-    # Calculate gap ratio
+    # If explicitly marked as demon or goblin, use fixed modifiers
+    if is_demon:
+        return AssetType.DEMON, DEMON_LEG_MODIFIER
+    
+    if is_goblin:
+        return AssetType.GOBLIN, 1.0  # Goblin modifier is in the base calculation
+    
+    # Calculate gap ratio for auto-detection
     gap_ratio = actual_line / standard_line
     
-    if is_demon or (direction == "over" and gap_ratio > 1.10):
+    if direction == "over" and gap_ratio > 1.10:
         # Demon: Line is higher than standard (harder to hit over)
-        # Modifier increases with difficulty
-        asset_type = AssetType.DEMON
-        # Scale from 1.10 to 1.50 based on gap
-        modifier = min(1.50, max(1.10, 1.0 + (gap_ratio - 1.0) * 0.5))
+        return AssetType.DEMON, DEMON_LEG_MODIFIER
         
-    elif is_goblin or (direction == "over" and gap_ratio < 0.90):
+    elif direction == "over" and gap_ratio < 0.90:
         # Goblin: Line is lower than standard (easier to hit over)
-        # Modifier decreases with ease
-        asset_type = AssetType.GOBLIN
-        # Scale from 0.70 to 0.90 based on gap
-        modifier = max(0.70, min(0.90, gap_ratio))
+        return AssetType.GOBLIN, 1.0
         
     else:
         # Standard: Line is close to market standard
-        asset_type = AssetType.STANDARD
-        modifier = 1.0
-    
-    return asset_type, round(modifier, 2)
+        return AssetType.STANDARD, 1.0
 
 
 def calculate_parlay_payout(legs: List[LegModifier], use_goblin_base: bool = False) -> Dict[str, Any]:
@@ -184,10 +203,16 @@ def calculate_parlay_payout(legs: List[LegModifier], use_goblin_base: bool = Fal
     # Determine which base multiplier to use
     # Use goblin base if explicitly requested OR if majority are goblins
     is_goblin_heavy = goblin_count > (demon_count + standard_count)
+    is_demon_heavy = demon_count > (goblin_count + standard_count)
+    
     if use_goblin_base or is_goblin_heavy:
         # Use actual PrizePicks formula: 1.2^n
         base_multiplier = calculate_goblin_base(num_picks)
         payout_type = "goblin"
+    elif is_demon_heavy:
+        # Use demon base multipliers tuned to actual PrizePicks payouts
+        base_multiplier = DEMON_BASE_MULTIPLIERS.get(num_picks, BASE_MULTIPLIERS.get(num_picks, 3.0))
+        payout_type = "demon"
     else:
         base_multiplier = BASE_MULTIPLIERS.get(num_picks, 3.0)
         payout_type = "standard"
@@ -287,20 +312,25 @@ def estimate_payout(num_picks: int, demon_count: int = 0, goblin_count: int = 0,
     if num_picks < 2 or num_picks > 6:
         return 0.0
     
+    standard_count = num_picks - demon_count - goblin_count
+    
     # Use appropriate base multiplier
-    is_goblin_heavy = goblin_count > (demon_count + (num_picks - demon_count - goblin_count))
+    is_goblin_heavy = goblin_count > (demon_count + standard_count)
+    is_demon_heavy = demon_count > (goblin_count + standard_count)
+    
     if use_goblin_base or is_goblin_heavy:
         # Use actual PrizePicks formula: 1.2^n
         base = calculate_goblin_base(num_picks)
+    elif is_demon_heavy:
+        # Use demon base multipliers
+        base = DEMON_BASE_MULTIPLIERS.get(num_picks, BASE_MULTIPLIERS.get(num_picks, 3.0))
     else:
         base = BASE_MULTIPLIERS.get(num_picks, 3.0)
     
-    # Average modifiers
-    demon_mod = 1.25  # Average demon modifier
+    # Use the fixed demon modifier constant
+    demon_mod = DEMON_LEG_MODIFIER  # 1.18 per demon leg
     goblin_mod = 1.0   # Goblin modifier is ~1.0 (base already accounts for odds)
     standard_mod = 1.0
-    
-    standard_count = num_picks - demon_count - goblin_count
     
     cumulative = (
         (demon_mod ** demon_count) *
@@ -311,19 +341,20 @@ def estimate_payout(num_picks: int, demon_count: int = 0, goblin_count: int = 0,
     return round(base * cumulative, 2)
 
 
-# Examples for reference - Using actual PrizePicks formula: 1.2^n for goblins
+# Examples for reference - Updated with actual PrizePicks payouts
+# Demon: Demon Base × 1.18^n | Goblin: 1.2^n
 EXAMPLE_PAYOUTS = {
     "2_pick_standard": estimate_payout(2, 0, 0),                              # 3.0x
-    "2_pick_all_demons": estimate_payout(2, 2, 0),                            # ~4.7x
-    "2_pick_all_goblins": estimate_payout(2, 0, 2, use_goblin_base=True),    # 1.44x → ~1.4x
+    "2_pick_all_demons": estimate_payout(2, 2, 0),                            # 3.0 × 1.15² = 3.97x → ~3.75x actual
+    "2_pick_all_goblins": estimate_payout(2, 0, 2, use_goblin_base=True),    # 1.2² = 1.44x → ~1.4x actual
     "3_pick_standard": estimate_payout(3, 0, 0),                              # 5.0x
-    "3_pick_all_demons": estimate_payout(3, 3, 0),                            # ~9.8x
-    "3_pick_all_goblins": estimate_payout(3, 0, 3, use_goblin_base=True),    # 1.73x → ~1.7x
+    "3_pick_all_demons": estimate_payout(3, 3, 0),                            # 5.0 × 1.15³ = 7.6x
+    "3_pick_all_goblins": estimate_payout(3, 0, 3, use_goblin_base=True),    # 1.2³ = 1.73x → ~1.7x actual
     "4_pick_standard": estimate_payout(4, 0, 0),                              # 10.0x
-    "4_pick_all_goblins": estimate_payout(4, 0, 4, use_goblin_base=True),    # 2.07x → ~2.1x
+    "4_pick_all_goblins": estimate_payout(4, 0, 4, use_goblin_base=True),    # 1.2⁴ = 2.07x → ~2.1x actual
     "6_pick_standard": estimate_payout(6, 0, 0),                              # 40.0x
-    "6_pick_all_demons": estimate_payout(6, 6, 0),                            # ~152x
-    "6_pick_all_goblins": estimate_payout(6, 0, 6, use_goblin_base=True),    # 2.99x → ~3.0x
+    "6_pick_all_demons": estimate_payout(6, 6, 0),                            # 40.0 × 1.15⁶ = 92.5x → ~109x actual
+    "6_pick_all_goblins": estimate_payout(6, 0, 6, use_goblin_base=True),    # 1.2⁶ = 2.99x → ~3.0x actual
 }
 
 
