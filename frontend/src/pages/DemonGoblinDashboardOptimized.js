@@ -1049,6 +1049,217 @@ const GoldmineCard = memo(({ parlay, tier, onClick }) => {
 
 GoldmineCard.displayName = 'GoldmineCard';
 
+// ==================== EXPANDED PARLAY VIEW ====================
+// Shows all picks in a parlay with player cards and bet details
+
+const ExpandedParlayView = memo(({ parlay, type, onClose, onPickClick, players }) => {
+  if (!parlay) return null;
+  
+  const picks = parlay.picks || [];
+  const isGoldmine = type === 'goldmine';
+  
+  // Get color scheme based on type
+  const colors = isGoldmine
+    ? { bg: 'from-emerald-950/90', border: 'border-emerald-500/50', text: 'text-emerald-400', accent: 'emerald' }
+    : { bg: 'from-amber-950/90', border: 'border-amber-500/50', text: 'text-amber-400', accent: 'amber' };
+  
+  return (
+    <div 
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4"
+      onClick={onClose}
+      data-testid="expanded-parlay-overlay"
+    >
+      <div 
+        className={`
+          relative w-full max-w-2xl max-h-[85vh] overflow-auto
+          bg-gradient-to-br ${colors.bg} to-zinc-950 ${colors.border} border-2
+          rounded-xl shadow-2xl
+        `}
+        onClick={(e) => e.stopPropagation()}
+        data-testid="expanded-parlay-modal"
+      >
+        {/* Header */}
+        <div className="sticky top-0 z-10 bg-zinc-950/95 backdrop-blur-sm border-b border-zinc-800 px-4 py-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              {isGoldmine ? (
+                <Ghost className={`w-6 h-6 ${colors.text}`} />
+              ) : (
+                <DollarSign className={`w-6 h-6 ${colors.text}`} />
+              )}
+              <div>
+                <h3 className={`text-lg font-bold ${colors.text}`}>{parlay.name}</h3>
+                <p className="text-xs text-zinc-400">{parlay.description || `${picks.length} picks`}</p>
+              </div>
+            </div>
+            
+            <div className="flex items-center gap-3">
+              {/* Stats badges */}
+              <Badge className={`bg-${colors.accent}-500/20 ${colors.text} border-none`}>
+                {parlay.estimated_payout}x Payout
+              </Badge>
+              {isGoldmine && parlay.reliability && (
+                <Badge className="bg-green-500/20 text-green-400 border-none">
+                  {parlay.reliability}% Reliable
+                </Badge>
+              )}
+              
+              {/* Close button */}
+              <button 
+                onClick={onClose}
+                className="p-1.5 rounded-full bg-zinc-800 hover:bg-zinc-700 transition-colors"
+                data-testid="close-parlay-modal"
+              >
+                <X className="w-5 h-5 text-zinc-400" />
+              </button>
+            </div>
+          </div>
+          
+          {/* Lineup Status */}
+          <div className={`mt-2 flex items-center gap-2 text-xs px-2 py-1 rounded-full w-fit ${
+            parlay.lineup_valid 
+              ? 'bg-green-500/20 text-green-300'
+              : 'bg-red-500/20 text-red-300'
+          }`}>
+            {parlay.lineup_valid ? <CheckCircle className="w-3 h-3" /> : <XCircle className="w-3 h-3" />}
+            <span>{parlay.lineup_status || 'Valid Lineup'}</span>
+            {parlay.team_count > 0 && <span className="text-zinc-400">• {parlay.team_count} teams</span>}
+          </div>
+        </div>
+        
+        {/* Picks List */}
+        <div className="p-4 space-y-3">
+          <div className="text-xs text-zinc-500 uppercase tracking-wider mb-2">
+            Parlay Picks ({picks.length})
+          </div>
+          
+          {picks.map((pick, idx) => {
+            // Find the player data for photo
+            const playerData = players?.find(p => p.player_name === pick.player_name);
+            
+            return (
+              <div 
+                key={`${pick.player_name}-${pick.stat_type}-${idx}`}
+                className={`
+                  bg-zinc-900/70 rounded-xl border border-zinc-800 overflow-hidden
+                  hover:border-${colors.accent}-500/50 transition-all cursor-pointer
+                `}
+                onClick={() => onPickClick(pick)}
+                data-testid={`parlay-pick-${idx}`}
+              >
+                <div className="p-3">
+                  {/* Player Info Row */}
+                  <div className="flex items-center gap-3 mb-3">
+                    {/* Player Headshot */}
+                    <PlayerHeadshot 
+                      nbaId={pick.nba_id || playerData?.nba_id}
+                      playerName={pick.player_name}
+                      team={pick.team}
+                      photoUrl={pick.photo_url || playerData?.photo_url}
+                      size="lg"
+                      className="ring-2 ring-zinc-700"
+                    />
+                    
+                    {/* Player Details */}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="text-white font-bold text-lg truncate">{pick.player_name}</span>
+                        <span className="text-xs text-zinc-500 bg-zinc-800 px-1.5 py-0.5 rounded">{pick.team}</span>
+                      </div>
+                      {pick.opponent_team && (
+                        <div className="text-xs text-zinc-500 mt-0.5">
+                          vs {pick.opponent_team}
+                        </div>
+                      )}
+                    </div>
+                    
+                    {/* Pick Number Badge */}
+                    <div className={`w-8 h-8 rounded-full bg-${colors.accent}-500/30 flex items-center justify-center`}>
+                      <span className={`text-sm font-bold ${colors.text}`}>#{idx + 1}</span>
+                    </div>
+                  </div>
+                  
+                  {/* Bet Details */}
+                  <div className={`
+                    flex items-center justify-between
+                    bg-zinc-800/50 rounded-lg px-3 py-2
+                    border-l-4 ${isGoldmine ? 'border-green-500' : 'border-red-500'}
+                  `}>
+                    <div className="flex items-center gap-3">
+                      {isGoldmine ? (
+                        <Ghost className="w-5 h-5 text-green-400" />
+                      ) : (
+                        <Skull className="w-5 h-5 text-red-400" />
+                      )}
+                      <div>
+                        <div className="text-white font-bold text-xl">
+                          {pick.line} <span className="text-green-400 text-sm">{pick.direction || 'Over'}</span>
+                        </div>
+                        <div className="text-xs text-zinc-400">{pick.stat_type}</div>
+                      </div>
+                    </div>
+                    
+                    {/* Hit Rate Info */}
+                    <div className="text-right">
+                      {pick.h10_rate !== undefined && (
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-zinc-500">L10:</span>
+                          <span className={`text-lg font-bold ${
+                            pick.h10_rate >= 70 ? 'text-green-400' : 
+                            pick.h10_rate >= 50 ? 'text-yellow-400' : 'text-zinc-400'
+                          }`}>
+                            {Math.round(pick.h10_rate)}%
+                          </span>
+                        </div>
+                      )}
+                      {pick.weighted_hit_rate !== undefined && (
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-zinc-500">Weighted:</span>
+                          <span className={`text-lg font-bold ${
+                            pick.weighted_hit_rate >= 88 ? 'text-green-400' : 
+                            pick.weighted_hit_rate >= 70 ? 'text-yellow-400' : 'text-zinc-400'
+                          }`}>
+                            {Math.round(pick.weighted_hit_rate)}%
+                          </span>
+                        </div>
+                      )}
+                      {pick.is_goldmine_lock && (
+                        <Badge className="bg-emerald-500/30 text-emerald-300 border-none text-[10px] mt-1">
+                          LOCK
+                        </Badge>
+                      )}
+                      {pick.has_heat_boost && (
+                        <Flame className="w-4 h-4 text-orange-400 inline ml-2" />
+                      )}
+                    </div>
+                  </div>
+                </div>
+                
+                {/* Click hint */}
+                <div className="bg-zinc-800/30 px-3 py-1.5 text-center">
+                  <span className="text-[10px] text-zinc-500">
+                    Click to view player's full prop ladder →
+                  </span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+        
+        {/* Footer */}
+        <div className="sticky bottom-0 bg-zinc-950/95 backdrop-blur-sm border-t border-zinc-800 px-4 py-3">
+          <div className="flex items-center justify-between text-xs text-zinc-500">
+            <span>Combined Probability: <span className="text-white font-bold">{parlay.combined_probability || parlay.flex_probability || '---'}%</span></span>
+            <span>Est. Payout: <span className={`font-bold ${colors.text}`}>{parlay.payout_range || `~${parlay.estimated_payout}x`}</span></span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+});
+
+ExpandedParlayView.displayName = 'ExpandedParlayView';
+
 // ==================== STAT CATEGORIES ====================
 
 const STAT_CATEGORIES = {
@@ -1847,6 +2058,7 @@ export const DemonGoblinDashboardOptimized = () => {
   const [syncedAt, setSyncedAt] = useState(null);
   const [parlayData, setParlayData] = useState({});
   const [goldmineData, setGoldmineData] = useState({});  // Goblin Goldmine parlays
+  const [expandedParlay, setExpandedParlay] = useState(null);  // Currently expanded parlay view
   
   // Navigation state
   const [selectedPlayer, setSelectedPlayer] = useState(null);
@@ -2202,10 +2414,7 @@ export const DemonGoblinDashboardOptimized = () => {
                     parlay={parlay}
                     pickCount={pickCount}
                     onClick={() => {
-                      toast.info(
-                        `${parlay.name} Parlay`,
-                        { description: `${pickCount} picks | Est. ${parlay.estimated_payout}x payout` }
-                      );
+                      setExpandedParlay({ parlay, type: 'builder' });
                     }}
                   />
                 );
@@ -2247,18 +2456,7 @@ export const DemonGoblinDashboardOptimized = () => {
                     parlay={parlay}
                     tier={tier}
                     onClick={() => {
-                      // Navigate to first pick's player with green beacon
-                      const firstPick = parlay.picks?.[0];
-                      if (firstPick) {
-                        const highlightKey = `${firstPick.stat_type}|${firstPick.line}|${firstPick.direction || 'Over'}`;
-                        setHighlightProp(highlightKey);
-                        setHighlightType('goblin');
-                        handlePlayerClick(firstPick.player_name);
-                        toast.success(
-                          `${parlay.name}`,
-                          { description: `${parlay.pick_count} picks | ~${parlay.estimated_payout}x payout | ${parlay.reliability}% reliability` }
-                        );
-                      }
+                      setExpandedParlay({ parlay, type: 'goldmine' });
                     }}
                   />
                 );
@@ -2344,6 +2542,24 @@ export const DemonGoblinDashboardOptimized = () => {
           )}
         </div>
       </div>
+      
+      {/* Expanded Parlay View Modal */}
+      {expandedParlay && (
+        <ExpandedParlayView 
+          parlay={expandedParlay.parlay}
+          type={expandedParlay.type}
+          onClose={() => setExpandedParlay(null)}
+          onPickClick={(pick) => {
+            // Close modal and navigate to player with highlighted prop
+            setExpandedParlay(null);
+            const highlightKey = `${pick.stat_type}|${pick.line}|${pick.direction || 'Over'}`;
+            setHighlightProp(highlightKey);
+            setHighlightType(expandedParlay.type === 'goldmine' ? 'goblin' : 'demon');
+            handlePlayerClick(pick.player_name);
+          }}
+          players={players}
+        />
+      )}
     </div>
   );
 };
