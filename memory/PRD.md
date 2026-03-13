@@ -47,20 +47,23 @@ Build a high-performance NBA Player Prop Dashboard that mimics the PrizePicks us
   - **New `intel_briefing_engine.py` module**: Generates AI-powered Mission Intel Briefings using Gemini 2.5 Flash
   - **Static Generation Logic**: One-time AI call for each unique PlayerID + GameID combination
   - **Conditional Execution**: Checks `intel_briefing` field before calling API - no duplicate calls
-  - **Prompt Template**: Military Scout tone with `[Sector Trend]` and `[Engagement Context]` structure
-  - **L10 Stats Integration**: Uses player's L10 average, hit rate, and current betting line
+  - **UPGRADED Prompt Template (v2)**:
+    - `[Sector Trend]`: Analyzes L5/L10 mission success rates against specific line with consistency details
+    - `[Engagement Context]`: Analyzes matchup with opponent's defensive rankings, usage bump opportunities
+    - Military Scout terminology: Sector, Tactical Edge, Deployment, High-Value Target, Asset, Mission, Cleared
+    - No fluff, no "I think", no hedging language
+  - **Example Output**: "[Sector Trend] Duncan Robinson has cleared 4+ RA in 70% of his last 10 deployments, showing elite consistency as a secondary facilitator. [Engagement Context] Detroit's defensive perimeter is currently compromised, ranking 28th in assists allowed to shooting guards, creating a high-probability tactical edge."
   - **API Endpoints**:
     - `POST /api/v3/generate-intel-briefings`: Manual trigger to generate missing intel
     - `GET /api/v3/intel-briefing/{player_name}`: Get cached intel for a player
   - **Auto-Generation**: Intel generated automatically after sync via `/api/v3/sync-to-mongo`
   - **UI Integration**: 
     - Displays in "THE VISION" section on Demon Radar and Goblin Recon cards
-    - Shows `[Sector Trend]` and `[Engagement Context]` military tactical briefings
     - Placeholder text: "Analyzing Sector Data..." when pending
   - **Database**: 
     - Cached in `dg_intel_briefings` collection
     - Also stored as `intel_briefing` field on `dg_cached_board` entries
-  - **Model**: `gemini-2.5-flash` with low thinking level for speed/cost efficiency
+  - **Model**: `gemini-2.5-flash` with optimized system instructions
   - **GOOGLE_API_KEY**: User's Gemini API key stored in backend/.env
 
 ### RECENTLY COMPLETED (Dec 13, 2025 - Session 3)

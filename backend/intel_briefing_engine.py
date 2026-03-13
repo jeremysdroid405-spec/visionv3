@@ -55,7 +55,10 @@ class IntelBriefingEngine:
         line: float,
         l10_stats: Dict[str, Any],
         team: str = "",
-        opponent: str = ""
+        opponent: str = "",
+        l5_stats: Dict[str, Any] = None,
+        position: str = "",
+        injury_context: str = ""
     ) -> Optional[str]:
         """
         Generate a Mission Intel Briefing for a specific player prop.
@@ -68,6 +71,9 @@ class IntelBriefingEngine:
             l10_stats: Last 10 games statistics
             team: Player's team abbreviation
             opponent: Opponent team abbreviation
+            l5_stats: Last 5 games statistics (optional)
+            position: Player's position (PG, SG, SF, PF, C)
+            injury_context: Any relevant injury news affecting usage
         
         Returns:
             Generated intel briefing text or None if generation fails
@@ -98,6 +104,11 @@ class IntelBriefingEngine:
         l10_high = l10_stats.get("high", 0)
         l10_low = l10_stats.get("low", 0)
         
+        # Extract L5 data if available
+        l5_stats = l5_stats or {}
+        l5_over = l5_stats.get("games_over", 0)
+        l5_games = l5_stats.get("total_games", 5)
+        
         # Build the prompt
         prompt = self._build_prompt(
             player_name=player_name,
@@ -110,7 +121,11 @@ class IntelBriefingEngine:
             l10_high=l10_high,
             l10_low=l10_low,
             team=team,
-            opponent=opponent
+            opponent=opponent,
+            l5_over=l5_over,
+            l5_games=l5_games,
+            position=position,
+            injury_context=injury_context
         )
         
         try:
@@ -154,43 +169,82 @@ class IntelBriefingEngine:
         l10_high: float,
         l10_low: float,
         team: str,
-        opponent: str
+        opponent: str,
+        l5_over: int = 0,
+        l5_games: int = 5,
+        position: str = "",
+        injury_context: str = ""
     ) -> str:
-        """Build the prompt for Gemini."""
+        """Build the enhanced prompt for Gemini with tactical scout instructions."""
         
         # Format prop type for readability
         prop_display = prop_type.replace("_", " ").replace("player ", "").replace("alternate", "").strip().title()
         if not prop_display:
             prop_display = "Points"
         
-        # Determine confidence level based on stats
-        if l10_hit_rate >= 70:
-            confidence = "HIGH"
-        elif l10_hit_rate >= 50:
-            confidence = "MODERATE"
-        else:
-            confidence = "LOW"
+        # Calculate L5 hit rate
+        l5_hit_rate = (l5_over / l5_games * 100) if l5_games > 0 else 0
         
-        # Build trend description
-        if l10_avg > line * 1.1:
-            trend = f"consistently exceeding targets with {l10_avg:.1f} average"
-        elif l10_avg > line:
-            trend = f"marginally above line with {l10_avg:.1f} average"
-        elif l10_avg < line * 0.9:
-            trend = f"operating below expected output at {l10_avg:.1f} average"
+        # Format stat type for defensive context
+        stat_category = prop_display.lower()
+        if "point" in stat_category:
+            defensive_stat = "points allowed"
+            position_context = "scorers"
+        elif "rebound" in stat_category:
+            defensive_stat = "rebounds allowed"
+            position_context = "rebounders"
+        elif "assist" in stat_category:
+            defensive_stat = "assists allowed"
+            position_context = "playmakers"
+        elif "3" in stat_category or "three" in stat_category:
+            defensive_stat = "three-pointers allowed"
+            position_context = "perimeter shooters"
+        elif "steal" in stat_category:
+            defensive_stat = "steals allowed"
+            position_context = "ball handlers"
+        elif "block" in stat_category:
+            defensive_stat = "blocks allowed"
+            position_context = "rim protectors"
         else:
-            trend = f"tracking close to line with {l10_avg:.1f} average"
+            defensive_stat = f"{stat_category} allowed"
+            position_context = "players at this position"
         
-        prompt = f"""You are a military scout providing a tactical briefing. Write exactly 2 complete sentences.
+        # Build system instructions prompt
+        prompt = f"""SYSTEM INSTRUCTIONS:
+You are a professional NBA Tactical Scout. You are analyzing a specific player prop.
 
-ASSET: {player_name} ({team}) vs {opponent}
-OBJECTIVE: {prop_display} - Line target: {line}
-INTEL: L10 average {l10_avg:.1f}, Success rate {l10_hit_rate:.0f}% ({l10_over}/{l10_games} over target), Range {l10_low:.0f}-{l10_high:.0f}
+DATA CONTEXT:
+- Asset: {player_name}
+- Team: {team}
+- Position: {position if position else "Guard/Forward"}
+- Stat Type: {prop_display}
+- Line: Over/Under {line}
+- Opponent: {opponent}
 
-Format your response EXACTLY like this:
-[Sector Trend] Asset {player_name.split()[-1]} has demonstrated {trend} across last ten engagements with {l10_hit_rate:.0f}% mission success rate. [Engagement Context] Given the {line} line target, recommend {confidence} confidence engagement based on sector data.
+RECENT DEPLOYMENT DATA:
+- L5 Missions: Cleared {line} in {l5_over}/{l5_games} deployments ({l5_hit_rate:.0f}% success)
+- L10 Missions: Cleared {line} in {l10_over}/{l10_games} deployments ({l10_hit_rate:.0f}% success)
+- L10 Average Output: {l10_avg:.1f}
+- Output Range: {l10_low:.0f} - {l10_high:.0f}
 
-Write your 2-sentence tactical briefing now:"""
+{f"INJURY INTEL: {injury_context}" if injury_context else ""}
+
+THE TWO-SENTENCE MANDATE:
+
+Sentence 1 [Sector Trend]: Analyze the asset's recent form (L5/L10) specifically against this {line} line. Do NOT just list the average. Explain consistency (e.g., "Cleared in {l10_over} of last {l10_games} missions" or "Showing volatility with outputs ranging from {l10_low:.0f} to {l10_high:.0f}").
+
+Sentence 2 [Engagement Context]: Analyze the matchup against {opponent}. Reference defensive vulnerabilities or strengths. If teammate injuries create a usage bump opportunity, mention it.
+
+TACTICAL RULES:
+- No fluff. No "I think." No hedging language.
+- Use military terminology: Sector, Tactical Edge, Deployment, High-Value Target, Asset, Mission, Cleared.
+- Be specific about the numbers.
+- Maximum 2 sentences total.
+
+EXAMPLE OUTPUT FORMAT:
+[Sector Trend] Duncan Robinson has cleared 4+ RA in 70% of his last 10 deployments, showing elite consistency as a secondary facilitator. [Engagement Context] Detroit's defensive perimeter is currently compromised, ranking 28th in {defensive_stat} to {position_context}, creating a high-probability tactical edge.
+
+Generate the intel briefing for {player_name} {prop_display} Over {line}:"""
 
         return prompt
     
@@ -286,15 +340,22 @@ Write your 2-sentence tactical briefing now:"""
             prop_type = target_prop.get("market", "") or target_prop.get("prop_type", "points")
             line = target_prop.get("line", 0)
             
-            # Extract L10 stats from hit_rates structure
+            # Extract L10 and L5 stats from hit_rates structure
             hit_rates = target_prop.get("hit_rates", {})
             l10_data = hit_rates.get("l10", {})
+            l5_data = hit_rates.get("l5", {})
             
             # Also get opponent from prop if not on entry
             opponent = entry.get("opponent", "") or target_prop.get("away_team", "") or target_prop.get("home_team", "")
             team = entry.get("team", "") or ""
+            position = entry.get("position", "") or ""
             
-            # Generate intel
+            # Check for injury context (usage bump opportunities)
+            injury_context = ""
+            if entry.get("has_usage_bump"):
+                injury_context = f"Teammate injuries may create usage bump opportunity."
+            
+            # Generate intel with enhanced parameters
             intel = await self.generate_intel_briefing(
                 player_name=player_name,
                 game_id=game_id,
@@ -302,7 +363,10 @@ Write your 2-sentence tactical briefing now:"""
                 line=line,
                 l10_stats=l10_data,
                 team=team,
-                opponent=opponent
+                opponent=opponent,
+                l5_stats=l5_data,
+                position=position,
+                injury_context=injury_context
             )
             
             if intel:
