@@ -8,7 +8,7 @@ import { Badge } from '../components/ui/badge';
 import { Input } from '../components/ui/input';
 import { 
   Activity, RefreshCw, Search, Database, 
-  ChevronDown, ChevronRight, AlertTriangle,
+  ChevronDown, ChevronRight, ChevronLeft, AlertTriangle,
   User, Flame, Star, Clock, Zap, HardDrive, ArrowLeft, X,
   DollarSign, TrendingUp, Target, Layers, CheckCircle, XCircle,
   LogOut, Crown, Eye
@@ -173,19 +173,85 @@ const SwipeIndicator = memo(({ current, total, accentColor = 'orange' }) => {
   );
 });
 
+// ==================== SWIPE HINT COMPONENT ====================
+const SwipeHint = memo(({ show, accentColor = 'orange' }) => {
+  const [visible, setVisible] = useState(true);
+  
+  useEffect(() => {
+    if (!show) {
+      // Fade out after user has swiped
+      const timer = setTimeout(() => setVisible(false), 300);
+      return () => clearTimeout(timer);
+    }
+  }, [show]);
+  
+  if (!visible) return null;
+  
+  const colorClasses = {
+    orange: 'text-orange-400 border-orange-500/30',
+    green: 'text-emerald-400 border-emerald-500/30',
+    blue: 'text-blue-400 border-blue-500/30',
+    purple: 'text-purple-400 border-purple-500/30'
+  };
+  
+  return (
+    <div 
+      className={`absolute inset-0 pointer-events-none sm:hidden transition-opacity duration-500 ${show ? 'opacity-100' : 'opacity-0'}`}
+    >
+      {/* Left arrow hint */}
+      <div className="absolute left-2 top-1/2 -translate-y-1/2 z-10">
+        <div className={`w-8 h-8 rounded-full bg-black/60 backdrop-blur-sm flex items-center justify-center border ${colorClasses[accentColor]} animate-pulse`}>
+          <ChevronLeft className={`w-5 h-5 ${colorClasses[accentColor].split(' ')[0]}`} />
+        </div>
+      </div>
+      
+      {/* Right arrow hint */}
+      <div className="absolute right-2 top-1/2 -translate-y-1/2 z-10">
+        <div className={`w-8 h-8 rounded-full bg-black/60 backdrop-blur-sm flex items-center justify-center border ${colorClasses[accentColor]} animate-pulse`}>
+          <ChevronRight className={`w-5 h-5 ${colorClasses[accentColor].split(' ')[0]}`} />
+        </div>
+      </div>
+      
+      {/* Swipe text hint */}
+      <div className="absolute bottom-2 left-1/2 -translate-x-1/2 z-10">
+        <div className={`px-3 py-1 rounded-full bg-black/70 backdrop-blur-sm border ${colorClasses[accentColor]} text-[10px] ${colorClasses[accentColor].split(' ')[0]} animate-pulse`}>
+          ← Swipe to explore →
+        </div>
+      </div>
+    </div>
+  );
+});
+
+SwipeHint.displayName = 'SwipeHint';
+
 // ==================== SWIPEABLE SECTION HOOK ====================
+const SWIPE_HINT_KEY = 'pickvision_swipe_discovered';
+
 const useSwipeTracker = (itemCount) => {
   const [currentIndex, setCurrentIndex] = useState(1);
+  const [hasUserSwiped, setHasUserSwiped] = useState(() => {
+    // Check localStorage to see if user has already discovered swipe
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem(SWIPE_HINT_KEY) === 'true';
+    }
+    return false;
+  });
   const containerRef = useRef(null);
   
   const handleScroll = useCallback(() => {
     if (!containerRef.current) return;
     const container = containerRef.current;
-    const cardWidth = container.querySelector('.swipe-card')?.offsetWidth || 300;
+    const cardWidth = container.querySelector('.snap-center')?.offsetWidth || 300;
     const scrollLeft = container.scrollLeft;
     const newIndex = Math.round(scrollLeft / (cardWidth + 12)) + 1;
     setCurrentIndex(Math.max(1, Math.min(newIndex, itemCount)));
-  }, [itemCount]);
+    
+    // Mark as swiped if user has scrolled past first card
+    if (scrollLeft > 50 && !hasUserSwiped) {
+      setHasUserSwiped(true);
+      localStorage.setItem(SWIPE_HINT_KEY, 'true');
+    }
+  }, [itemCount, hasUserSwiped]);
   
   useEffect(() => {
     const container = containerRef.current;
@@ -195,7 +261,7 @@ const useSwipeTracker = (itemCount) => {
     return () => container.removeEventListener('scroll', handleScroll);
   }, [handleScroll]);
   
-  return { containerRef, currentIndex };
+  return { containerRef, currentIndex, showHint: !hasUserSwiped };
 };
 
 
@@ -1685,7 +1751,7 @@ ReconCard.displayName = 'ReconCard';
 
 // Demon Radar Swipeable Section
 const DemonRadarSwipeSection = memo(({ picks, onPickClick }) => {
-  const { containerRef, currentIndex } = useSwipeTracker(picks.length);
+  const { containerRef, currentIndex, showHint } = useSwipeTracker(picks.length);
   
   return (
     <div data-testid="radar-section" className="demon-radar-scanning">
@@ -1703,24 +1769,27 @@ const DemonRadarSwipeSection = memo(({ picks, onPickClick }) => {
       </div>
       
       {/* Mobile: Horizontal scroll / Desktop: Grid */}
-      <div 
-        ref={containerRef} 
-        className="flex overflow-x-auto snap-x snap-mandatory scrollbar-hide gap-3 px-4 pb-2 sm:grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 sm:overflow-visible sm:px-0 sm:gap-2"
-        style={{ WebkitOverflowScrolling: 'touch', scrollbarWidth: 'none', msOverflowStyle: 'none' }}
-      >
-        {picks.map((pick, idx) => (
-          <div 
-            key={`${pick.player_name}-${pick.stat_type}-${pick.demon_line}-${idx}`} 
-            className="snap-center flex-shrink-0 w-[calc(100vw-48px)] max-w-[340px] sm:w-auto sm:max-w-none"
-          >
-            <RadarCard 
-              pick={pick} 
-              rank={idx + 1}
-              onClick={() => onPickClick(pick)}
-              isScanning={true}
-            />
-          </div>
-        ))}
+      <div className="relative">
+        <SwipeHint show={showHint} accentColor="orange" />
+        <div 
+          ref={containerRef} 
+          className="flex overflow-x-auto snap-x snap-mandatory scrollbar-hide gap-3 px-4 pb-2 sm:grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 sm:overflow-visible sm:px-0 sm:gap-2"
+          style={{ WebkitOverflowScrolling: 'touch', scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+        >
+          {picks.map((pick, idx) => (
+            <div 
+              key={`${pick.player_name}-${pick.stat_type}-${pick.demon_line}-${idx}`} 
+              className="snap-center flex-shrink-0 w-[calc(100vw-48px)] max-w-[340px] sm:w-auto sm:max-w-none"
+            >
+              <RadarCard 
+                pick={pick} 
+                rank={idx + 1}
+                onClick={() => onPickClick(pick)}
+                isScanning={true}
+              />
+            </div>
+          ))}
+        </div>
       </div>
       
       <SwipeIndicator current={currentIndex} total={picks.length} accentColor="orange" />
@@ -1732,7 +1801,7 @@ DemonRadarSwipeSection.displayName = 'DemonRadarSwipeSection';
 
 // Goblin Recon Swipeable Section
 const GoblinReconSwipeSection = memo(({ picks, onPickClick }) => {
-  const { containerRef, currentIndex } = useSwipeTracker(picks.length);
+  const { containerRef, currentIndex, showHint } = useSwipeTracker(picks.length);
   
   return (
     <div data-testid="recon-section">
@@ -1749,11 +1818,13 @@ const GoblinReconSwipeSection = memo(({ picks, onPickClick }) => {
         </div>
       </div>
       
-      <div 
-        ref={containerRef} 
-        className="flex overflow-x-auto snap-x snap-mandatory scrollbar-hide gap-3 px-4 pb-2 sm:grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 sm:overflow-visible sm:px-0 sm:gap-2"
-        style={{ WebkitOverflowScrolling: 'touch', scrollbarWidth: 'none', msOverflowStyle: 'none' }}
-      >
+      <div className="relative">
+        <SwipeHint show={showHint} accentColor="green" />
+        <div 
+          ref={containerRef} 
+          className="flex overflow-x-auto snap-x snap-mandatory scrollbar-hide gap-3 px-4 pb-2 sm:grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 sm:overflow-visible sm:px-0 sm:gap-2"
+          style={{ WebkitOverflowScrolling: 'touch', scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+        >
         {picks.map((pick, idx) => (
           <div 
             key={`${pick.player_name}-${pick.stat_type}-${pick.goblin_line}-${idx}`} 
@@ -1766,6 +1837,7 @@ const GoblinReconSwipeSection = memo(({ picks, onPickClick }) => {
             />
           </div>
         ))}
+        </div>
       </div>
       
       <SwipeIndicator current={currentIndex} total={picks.length} accentColor="green" />
@@ -1778,7 +1850,7 @@ GoblinReconSwipeSection.displayName = 'GoblinReconSwipeSection';
 // Gauntlet (Demon Parlay) Swipeable Section
 const GauntletSwipeSection = memo(({ parlayData, onParlayClick }) => {
   const parlays = [2, 3, 4, 5, 6].map(n => parlayData[`${n}_pick`]).filter(Boolean);
-  const { containerRef, currentIndex } = useSwipeTracker(parlays.length);
+  const { containerRef, currentIndex, showHint } = useSwipeTracker(parlays.length);
   
   return (
     <div data-testid="gauntlet-section" className="mt-6">
@@ -1795,27 +1867,30 @@ const GauntletSwipeSection = memo(({ parlayData, onParlayClick }) => {
         </div>
       </div>
       
-      <div 
-        ref={containerRef} 
-        className="flex overflow-x-auto snap-x snap-mandatory scrollbar-hide gap-3 px-4 pb-2 sm:grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 sm:overflow-visible sm:px-0 sm:gap-3"
-        style={{ WebkitOverflowScrolling: 'touch', scrollbarWidth: 'none', msOverflowStyle: 'none' }}
-      >
-        {[2, 3, 4, 5, 6].map(pickCount => {
-          const parlay = parlayData[`${pickCount}_pick`];
-          if (!parlay) return null;
-          return (
-            <div 
-              key={`parlay-${pickCount}`} 
-              className="snap-center flex-shrink-0 w-[calc(100vw-48px)] max-w-[340px] sm:w-auto sm:max-w-none"
-            >
-              <ParlayCard
-                parlay={parlay}
-                pickCount={pickCount}
-                onClick={() => onParlayClick(parlay)}
-              />
-            </div>
-          );
-        })}
+      <div className="relative">
+        <SwipeHint show={showHint} accentColor="orange" />
+        <div 
+          ref={containerRef} 
+          className="flex overflow-x-auto snap-x snap-mandatory scrollbar-hide gap-3 px-4 pb-2 sm:grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 sm:overflow-visible sm:px-0 sm:gap-3"
+          style={{ WebkitOverflowScrolling: 'touch', scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+        >
+          {[2, 3, 4, 5, 6].map(pickCount => {
+            const parlay = parlayData[`${pickCount}_pick`];
+            if (!parlay) return null;
+            return (
+              <div 
+                key={`parlay-${pickCount}`} 
+                className="snap-center flex-shrink-0 w-[calc(100vw-48px)] max-w-[340px] sm:w-auto sm:max-w-none"
+              >
+                <ParlayCard
+                  parlay={parlay}
+                  pickCount={pickCount}
+                  onClick={() => onParlayClick(parlay)}
+                />
+              </div>
+            );
+          })}
+        </div>
       </div>
       
       <SwipeIndicator current={currentIndex} total={parlays.length} accentColor="orange" />
@@ -1836,7 +1911,7 @@ GauntletSwipeSection.displayName = 'GauntletSwipeSection';
 const SafeHavenSwipeSection = memo(({ reconData, onParlayClick }) => {
   const tiers = ['daily_double', 'green_ladder_3', 'green_ladder_4', 'fortress_flex'];
   const parlays = tiers.map(t => reconData[t]).filter(Boolean);
-  const { containerRef, currentIndex } = useSwipeTracker(parlays.length);
+  const { containerRef, currentIndex, showHint } = useSwipeTracker(parlays.length);
   
   return (
     <div data-testid="safehaven-section" className="mt-6">
@@ -1853,27 +1928,30 @@ const SafeHavenSwipeSection = memo(({ reconData, onParlayClick }) => {
         </div>
       </div>
       
-      <div 
-        ref={containerRef} 
-        className="flex overflow-x-auto snap-x snap-mandatory scrollbar-hide gap-3 px-4 pb-2 sm:grid sm:grid-cols-2 lg:grid-cols-4 sm:overflow-visible sm:px-0 sm:gap-3"
-        style={{ WebkitOverflowScrolling: 'touch', scrollbarWidth: 'none', msOverflowStyle: 'none' }}
-      >
-        {tiers.map(tier => {
-          const parlay = reconData[tier];
-          if (!parlay) return null;
-          return (
-            <div 
-              key={`recon-${tier}`} 
-              className="snap-center flex-shrink-0 w-[calc(100vw-48px)] max-w-[340px] sm:w-auto sm:max-w-none"
-            >
-              <ReconCard
-                parlay={parlay}
-                tier={tier}
-                onClick={() => onParlayClick(parlay)}
-              />
-            </div>
-          );
-        })}
+      <div className="relative">
+        <SwipeHint show={showHint} accentColor="green" />
+        <div 
+          ref={containerRef} 
+          className="flex overflow-x-auto snap-x snap-mandatory scrollbar-hide gap-3 px-4 pb-2 sm:grid sm:grid-cols-2 lg:grid-cols-4 sm:overflow-visible sm:px-0 sm:gap-3"
+          style={{ WebkitOverflowScrolling: 'touch', scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+        >
+          {tiers.map(tier => {
+            const parlay = reconData[tier];
+            if (!parlay) return null;
+            return (
+              <div 
+                key={`recon-${tier}`} 
+                className="snap-center flex-shrink-0 w-[calc(100vw-48px)] max-w-[340px] sm:w-auto sm:max-w-none"
+              >
+                <ReconCard
+                  parlay={parlay}
+                  tier={tier}
+                  onClick={() => onParlayClick(parlay)}
+                />
+              </div>
+            );
+          })}
+        </div>
       </div>
       
       <SwipeIndicator current={currentIndex} total={parlays.length} accentColor="green" />
@@ -1893,7 +1971,7 @@ SafeHavenSwipeSection.displayName = 'SafeHavenSwipeSection';
 
 // Trending Players Swipeable Section
 const TrendingSwipeSection = memo(({ players, linesLoaded, onPlayerClick, injuryAlerts }) => {
-  const { containerRef, currentIndex } = useSwipeTracker(players.length);
+  const { containerRef, currentIndex, showHint } = useSwipeTracker(players.length);
   
   return (
     <div data-testid="trending-section">
@@ -1903,25 +1981,28 @@ const TrendingSwipeSection = memo(({ players, linesLoaded, onPlayerClick, injury
         <Star className="w-4 h-4 text-yellow-500" />
       </div>
       
-      <div 
-        ref={containerRef} 
-        className="flex overflow-x-auto snap-x snap-mandatory scrollbar-hide gap-3 px-4 pb-2 sm:grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 sm:overflow-visible sm:px-0 sm:gap-2"
-        style={{ WebkitOverflowScrolling: 'touch', scrollbarWidth: 'none', msOverflowStyle: 'none' }}
-      >
-        {players.map((player, idx) => (
-          <div 
-            key={player.player_name} 
-            className="snap-center flex-shrink-0 w-[calc(100vw-48px)] max-w-[340px] sm:w-auto sm:max-w-none"
-          >
-            <TrendingCard 
-              player={player} 
-              rank={idx + 1}
-              linesLoaded={linesLoaded}
-              onClick={() => onPlayerClick(player.player_name)}
-              injuryAlerts={injuryAlerts}
-            />
-          </div>
-        ))}
+      <div className="relative">
+        <SwipeHint show={showHint} accentColor="orange" />
+        <div 
+          ref={containerRef} 
+          className="flex overflow-x-auto snap-x snap-mandatory scrollbar-hide gap-3 px-4 pb-2 sm:grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 sm:overflow-visible sm:px-0 sm:gap-2"
+          style={{ WebkitOverflowScrolling: 'touch', scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+        >
+          {players.map((player, idx) => (
+            <div 
+              key={player.player_name} 
+              className="snap-center flex-shrink-0 w-[calc(100vw-48px)] max-w-[340px] sm:w-auto sm:max-w-none"
+            >
+              <TrendingCard 
+                player={player} 
+                rank={idx + 1}
+                linesLoaded={linesLoaded}
+                onClick={() => onPlayerClick(player.player_name)}
+                injuryAlerts={injuryAlerts}
+              />
+            </div>
+          ))}
+        </div>
       </div>
       
       <SwipeIndicator current={currentIndex} total={players.length} accentColor="orange" />
