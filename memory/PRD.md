@@ -218,10 +218,8 @@ Build a high-performance NBA Player Prop Dashboard that mimics the PrizePicks us
 ---
 
 ## Next Steps
-1. **USER VERIFICATION**: Check the RAW API values in the Validation Table against ESPN box scores
-   - If values don't match ESPN: The BallDontLie API is returning incorrect data
-   - If values match ESPN: The data pipeline processing is the problem
-2. Once raw data is verified correct, investigate the processing layer
-3. Refactor `DemonGoblinDashboardOptimized.js` (3000+ lines monolith)
-4. Add "Pro Tier" feature gating
-5. Historical line movement tracking
+1. **RESOLVED**: Stats now flowing to Demon Radar and Goblin Recon after running `sync-player-stats` first
+2. Note: Some players (Ace Bailey, William Richard) show estimated rates because they're rookies with no BallDontLie game history
+3. **Sync Order**: Always run `/api/v3/sync-player-stats` BEFORE `/api/v3/sync-to-mongo` to ensure stats are cached
+4. Refactor `DemonGoblinDashboardOptimized.js` (3000+ lines monolith)
+5. Add "Pro Tier" feature gating
