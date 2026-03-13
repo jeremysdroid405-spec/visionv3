@@ -4082,34 +4082,57 @@ class DemonGoblinEngine:
         return []
     
     def calculate_hit_rates(self, games: List[Dict], market: str, line: float) -> Dict[str, Any]:
-        """Calculate L5, L10, and Season hit rates with source verification"""
+        """
+        Calculate L5, L10, and Season hit rates with source verification.
+        
+        TRUTH ENGINE V3.1:
+        - All stat keys MUST be lowercase (pts, reb, ast - not PTS, REB, AST)
+        - Manual PRA check for each game
+        - Returns raw values for verification
+        """
+        # CRITICAL: Case-insensitive stat key mapping (Tank01/BallDontLie use lowercase)
         market_to_stat = {
+            # Primary markets (lowercase keys)
             "player_points": ["pts"],
-            "alternate_player_points": ["pts"],
             "player_rebounds": ["reb"],
-            "alternate_player_rebounds": ["reb"],
             "player_assists": ["ast"],
-            "alternate_player_assists": ["ast"],
             "player_threes": ["fg3m"],
-            "alternate_player_threes": ["fg3m"],
             "player_blocks": ["blk"],
             "player_steals": ["stl"],
-            "player_turnovers": ["turnover"],
+            "player_turnovers": ["turnover", "tov"],  # Both variants
+            # Alternate markets
+            "alternate_player_points": ["pts"],
+            "alternate_player_rebounds": ["reb"],
+            "alternate_player_assists": ["ast"],
+            "alternate_player_threes": ["fg3m"],
+            # Combo stats - MANUAL PRA CHECK
             "player_points_rebounds": ["pts", "reb"],
             "player_points_assists": ["pts", "ast"],
             "player_rebounds_assists": ["reb", "ast"],
-            "player_points_rebounds_assists": ["pts", "reb", "ast"],
+            "player_points_rebounds_assists": ["pts", "reb", "ast"],  # PRA
             "player_steals_blocks": ["stl", "blk"],
         }
         
         stat_keys = market_to_stat.get(market, ["pts"])
         
         def get_stat_value(game):
-            return sum((game.get(key, 0) or 0) for key in stat_keys)
+            """Extract stat value with case-insensitive key lookup."""
+            total = 0
+            for key in stat_keys:
+                # Try lowercase first (standard)
+                value = game.get(key, None)
+                # Fallback to uppercase if not found
+                if value is None:
+                    value = game.get(key.upper(), None)
+                # Fallback to title case
+                if value is None:
+                    value = game.get(key.title(), None)
+                total += (value or 0)
+            return total
         
         def calc_window(game_list, line_val):
             if not game_list:
-                return {"games_over": 0, "total_games": 0, "hit_rate": 0, "avg": 0, "values": []}
+                return {"games_over": 0, "total_games": 0, "hit_rate": 0, "avg": 0, "values": [], "floor": 0, "ceiling": 0}
             
             values = [get_stat_value(g) for g in game_list]
             games_over = sum(1 for v in values if v > line_val)
@@ -4122,7 +4145,9 @@ class DemonGoblinEngine:
                 "total_games": total,
                 "hit_rate": round(hit_rate, 3),
                 "avg": round(avg, 1),
-                "values": values  # V3.1: Store raw values for verification
+                "values": values,  # V3.1: Store raw values for verification
+                "floor": min(values) if values else 0,
+                "ceiling": max(values) if values else 0
             }
         
         l5 = calc_window(games[:5], line)
@@ -4145,7 +4170,10 @@ class DemonGoblinEngine:
         }
     
     def _extract_l10_values(self, games: List[Dict], market: str) -> List[float]:
-        """Extract raw stat values from last 10 games for verification."""
+        """
+        Extract raw stat values from last 10 games for verification.
+        Uses case-insensitive key lookup.
+        """
         market_to_stat = {
             "player_points": ["pts"],
             "player_rebounds": ["reb"],
@@ -4153,7 +4181,7 @@ class DemonGoblinEngine:
             "player_threes": ["fg3m"],
             "player_blocks": ["blk"],
             "player_steals": ["stl"],
-            "player_turnovers": ["turnover"],
+            "player_turnovers": ["turnover", "tov"],
             "player_points_rebounds": ["pts", "reb"],
             "player_points_assists": ["pts", "ast"],
             "player_rebounds_assists": ["reb", "ast"],
@@ -4164,12 +4192,50 @@ class DemonGoblinEngine:
         stat_keys = market_to_stat.get(market, ["pts"])
         
         def get_stat_value(game):
-            return sum((game.get(key, 0) or 0) for key in stat_keys)
+            total = 0
+            for key in stat_keys:
+                value = game.get(key, None)
+                if value is None:
+                    value = game.get(key.upper(), None)
+                if value is None:
+                    value = game.get(key.title(), None)
+                total += (value or 0)
+            return total
         
         if not games:
             return []
             
         return [get_stat_value(g) for g in games[:10]]
+    
+    async def verify_player_roster_match(self, player_name: str, player_id: int, team_abbrev: str) -> bool:
+        """
+        NAJI SAFEGUARD: Verify player ID matches active roster for today.
+        If name matches but playerID doesn't match today's roster, KILL the data.
+        """
+        try:
+            # Check if player is in master roster with matching ID
+            roster_player = await self.master_roster.find_one({
+                "player_name": {"$regex": f"^{player_name}$", "$options": "i"},
+                "team": team_abbrev
+            })
+            
+            if not roster_player:
+                logger.warning(f"[NAJI SAFEGUARD] {player_name} not found in master roster")
+                return False
+            
+            # If we have a BDL ID stored, verify it matches
+            stored_id = roster_player.get("bdl_player_id")
+            if stored_id and stored_id != player_id:
+                logger.error(
+                    f"[NAJI SAFEGUARD] ID MISMATCH: {player_name} - "
+                    f"Roster ID: {stored_id}, Provided ID: {player_id} - DATA KILLED"
+                )
+                return False
+            
+            return True
+        except Exception as e:
+            logger.error(f"[NAJI SAFEGUARD] Verification error for {player_name}: {e}")
+            return False
     
     # ==================== PILLAR 3: TANK01 API (with Exponential Backoff) ====================
     
