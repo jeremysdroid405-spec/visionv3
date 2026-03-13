@@ -1697,8 +1697,8 @@ class DemonGoblinEngine:
                 "picks": picks_2,
                 "pick_count": 2,
                 "combined_probability": combined_prob,
-                "estimated_payout": self._estimate_payout(2, combined_prob),
-                "payout_range": "5x - 10x",
+                "estimated_payout": self._calculate_true_payout(picks_2),
+                "payout_range": "3x - 4x",
                 "description": "Top 2 highest-scoring Radar picks"
             }
         
@@ -1724,8 +1724,8 @@ class DemonGoblinEngine:
                 "picks": picks_3,
                 "pick_count": 3,
                 "combined_probability": combined_prob,
-                "estimated_payout": self._estimate_payout(3, combined_prob),
-                "payout_range": "15x - 25x",
+                "estimated_payout": self._calculate_true_payout(picks_3),
+                "payout_range": "6x - 8x",
                 "description": "#1 pick + correlated teammates"
             }
         
@@ -1739,8 +1739,8 @@ class DemonGoblinEngine:
                 "picks": picks_4,
                 "pick_count": 4,
                 "combined_probability": combined_prob,
-                "estimated_payout": self._estimate_payout(4, combined_prob),
-                "payout_range": "40x - 80x",
+                "estimated_payout": self._calculate_true_payout(picks_4),
+                "payout_range": "10x - 16x",
                 "description": "4 picks with game correlation"
             }
         
@@ -1753,23 +1753,23 @@ class DemonGoblinEngine:
                 "picks": picks_5,
                 "pick_count": 5,
                 "combined_probability": combined_prob,
-                "estimated_payout": self._estimate_payout(5, combined_prob),
-                "payout_range": "150x - 300x",
+                "estimated_payout": self._calculate_true_payout(picks_5),
+                "payout_range": "20x - 32x",
                 "description": "5 high-value picks"
             }
         
-        # ==================== 6-PICK (2000x Lotto) ====================
+        # ==================== 6-PICK (Jackpot) ====================
         if len(all_demons) >= 6:
             # Top 6 highest probability demons
             picks_6 = all_demons[:6]
             combined_prob = self._calculate_parlay_probability(picks_6)
             parlays["6_pick"] = {
-                "name": "2000x Lotto",
+                "name": "Jackpot",
                 "picks": picks_6,
                 "pick_count": 6,
                 "combined_probability": combined_prob,
-                "estimated_payout": self._estimate_payout(6, combined_prob),
-                "payout_range": "500x - 2000x",
+                "estimated_payout": self._calculate_true_payout(picks_6),
+                "payout_range": "40x - 64x",
                 "description": "Top 6 highest-probability demons"
             }
         
