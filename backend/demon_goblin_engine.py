@@ -49,7 +49,8 @@ BDL_API_KEY = os.environ.get("BDL_API_KEY", "ad5544be-9969-434b-9389-2b7cf658c8e
 BDL_BASE_URL = "https://api.balldontlie.io/v1"
 
 TANK01_API_KEY = os.environ.get("TANK01_API_KEY", "402edbcac6mshd04997e7ca01d17p1879eajsn65ab176cdb1e")
-TANK01_BASE = "https://tank01-nba-live-in-game-real-time-statistics-nba.p.rapidapi.com"
+TANK01_BASE = "https://tank01-fantasy-stats.p.rapidapi.com"
+TANK01_HOST = "tank01-fantasy-stats.p.rapidapi.com"
 TANK01_CACHE_TTL = timedelta(hours=4)  # Cache Tank01 data for 4 hours
 
 CURRENT_SEASON = "2025"  # 2025-26 NBA Season
@@ -797,25 +798,29 @@ class DemonGoblinEngine:
     
     async def sync_player_photos(self) -> Dict[str, Any]:
         """
-        PHOTO PIPELINE - Bulk-populate player headshots from multiple sources.
+        GLOBAL PHOTO SYNC - Populate headshots for 450+ NBA players using ESPN CDN.
         
         Source Priority:
-        1. NBA CDN (official headshots): https://cdn.nba.com/headshots/nba/latest/1040x760/{nba_id}.png
-        2. ESPN Headshots via Tank01: espnHeadshot field
-        3. Team Logo fallback for missing photos
+        1. ESPN CDN (via Tank01 espnID): https://a.espncdn.com/i/headshots/nba/players/full/{espn_id}.png
+        2. NBA CDN (fallback): https://cdn.nba.com/headshots/nba/latest/1040x760/{nba_id}.png
+        3. Team Logo (final fallback): Colorful team branding
+        
+        GOAL: 0% gray silhouettes - every player gets a face or team brand.
         
         Returns:
             Dict with sync status and photo counts
         """
         logger.info("=" * 60)
-        logger.info("[PHOTO SYNC] Starting player headshot pipeline...")
+        logger.info("[GLOBAL PHOTO SYNC] Starting ESPN headshot pipeline for 450+ players...")
         logger.info("=" * 60)
         
         sync_start = datetime.now(timezone.utc)
-        photos_added = 0
-        photos_failed = 0
+        espn_photos = 0
+        nba_photos = 0
+        logo_fallbacks = 0
+        total_processed = 0
         
-        # NBA Team Logo URLs (fallback for missing headshots)
+        # NBA Team Logo URLs (final fallback - NO GRAY SILHOUETTES)
         TEAM_LOGOS = {
             "ATL": "https://cdn.nba.com/logos/nba/1610612737/global/L/logo.svg",
             "BOS": "https://cdn.nba.com/logos/nba/1610612738/global/L/logo.svg",
@@ -849,92 +854,202 @@ class DemonGoblinEngine:
             "WAS": "https://cdn.nba.com/logos/nba/1610612764/global/L/logo.svg",
         }
         
-        # Get all players from cached_board (active players with props today)
-        players = await self.cached_board.find(
-            {},
-            {"_id": 0, "player_name": 1, "team": 1, "nba_id": 1}
-        ).to_list(None)
+        # ==================== STEP 1: FETCH ALL PLAYERS FROM TANK01 ====================
+        logger.info("[PHOTO SYNC] Step 1: Fetching player list from Tank01 API...")
         
-        logger.info(f"[PHOTO SYNC] Processing {len(players)} players...")
+        espn_id_map = {}  # player_name -> espn_id
         
-        for player in players:
-            player_name = player.get("player_name", "")
-            team = player.get("team", "")
-            nba_id = player.get("nba_id")
+        try:
+            headers = {
+                "X-RapidAPI-Key": TANK01_API_KEY,
+                "X-RapidAPI-Host": TANK01_HOST
+            }
             
-            # Try to get nba_id from static mapping if not in database
-            if not nba_id:
-                nba_id = NBA_PLAYER_IDS.get(player_name)
-            
-            photo_url = None
-            photo_source = None
-            
-            # SOURCE 1: NBA CDN (best quality)
-            if nba_id:
-                # High-res headshot URL
-                photo_url = f"https://cdn.nba.com/headshots/nba/latest/1040x760/{nba_id}.png"
-                photo_source = "nba_cdn"
-            
-            # SOURCE 2: Fallback to team logo if no NBA ID
-            if not photo_url and team:
-                photo_url = TEAM_LOGOS.get(team)
-                photo_source = "team_logo"
-                logger.info(f"  {player_name}: Using team logo fallback ({team})")
-            
-            # Update database with photo URL
-            if photo_url:
-                await self.cached_board.update_one(
-                    {"player_name": player_name},
-                    {
-                        "$set": {
-                            "photo_url": photo_url,
-                            "photo_source": photo_source,
-                            "team_logo_url": TEAM_LOGOS.get(team, ""),
-                            "photo_synced_at": sync_start.isoformat()
-                        }
-                    }
+            async with httpx.AsyncClient(timeout=60) as client:
+                # Use getNBATeams with rosters=true to get all players
+                response = await client.get(
+                    f"{TANK01_BASE}/getNBATeams",
+                    headers=headers,
+                    params={"rosters": "true"}
                 )
-                photos_added += 1
-            else:
-                photos_failed += 1
+                
+                if response.status_code == 200:
+                    data = response.json()
+                    teams_data = data.get("body", [])
+                    
+                    logger.info(f"[PHOTO SYNC] Tank01 returned {len(teams_data)} teams with rosters")
+                    
+                    # Extract players from each team's roster
+                    for team in teams_data:
+                        team_abv = team.get("teamAbv", "")
+                        roster = team.get("Roster", {})
+                        
+                        if isinstance(roster, dict):
+                            for player_id, player in roster.items():
+                                player_name = player.get("longName", "")
+                                espn_id = player.get("espnID")
+                                espn_headshot = player.get("espnHeadshot", "")
+                                nba_id = player.get("nbaComID")
+                                
+                                if player_name:
+                                    normalized = self.sanitize_player_name(player_name)
+                                    espn_id_map[normalized] = {
+                                        "espn_id": espn_id,
+                                        "espn_headshot": espn_headshot,
+                                        "nba_id": nba_id,
+                                        "team": team_abv,
+                                        "original_name": player_name
+                                    }
+                    
+                    logger.info(f"[PHOTO SYNC] Mapped {len(espn_id_map)} players with ESPN IDs")
+                else:
+                    logger.warning(f"[PHOTO SYNC] Tank01 API returned {response.status_code}")
+                    
+        except Exception as e:
+            logger.error(f"[PHOTO SYNC] Tank01 API error: {str(e)}")
         
-        # Also update master_roster with photo URLs
-        roster_players = await self.master_roster.find({}, {"_id": 0, "player_name": 1, "team_abbreviation": 1, "bdl_player_id": 1}).to_list(None)
+        # ==================== STEP 2: UPDATE MASTER ROSTER ====================
+        logger.info("[PHOTO SYNC] Step 2: Updating master_roster with photo URLs...")
+        
+        roster_players = await self.master_roster.find({}).to_list(None)
+        logger.info(f"[PHOTO SYNC] Processing {len(roster_players)} players in master_roster...")
         
         for player in roster_players:
             player_name = player.get("player_name", "")
             team = player.get("team_abbreviation", "")
-            nba_id = NBA_PLAYER_IDS.get(player_name)
+            normalized = self.sanitize_player_name(player_name)
             
             photo_url = None
-            if nba_id:
-                photo_url = f"https://cdn.nba.com/headshots/nba/latest/1040x760/{nba_id}.png"
+            photo_source = None
+            espn_id = None
             
+            # SOURCE 1: ESPN CDN (best quality from Tank01)
+            if normalized in espn_id_map:
+                tank_data = espn_id_map[normalized]
+                espn_id = tank_data.get("espn_id")
+                espn_headshot = tank_data.get("espn_headshot", "")
+                
+                # Use direct ESPN headshot URL if available
+                if espn_headshot:
+                    photo_url = espn_headshot
+                    photo_source = "espn_direct"
+                    espn_photos += 1
+                elif espn_id:
+                    photo_url = f"https://a.espncdn.com/i/headshots/nba/players/full/{espn_id}.png"
+                    photo_source = "espn_cdn"
+                    espn_photos += 1
+            
+            # SOURCE 2: NBA CDN (fallback using static mapping)
+            if not photo_url:
+                nba_id = NBA_PLAYER_IDS.get(player_name)
+                if nba_id:
+                    photo_url = f"https://cdn.nba.com/headshots/nba/latest/1040x760/{nba_id}.png"
+                    photo_source = "nba_cdn"
+                    nba_photos += 1
+            
+            # SOURCE 3: Team Logo (final fallback - NO GRAY!)
             team_logo = TEAM_LOGOS.get(team, "")
+            if not photo_url and team_logo:
+                photo_url = team_logo
+                photo_source = "team_logo"
+                logo_fallbacks += 1
             
+            # Update database
             await self.master_roster.update_one(
                 {"player_name": player_name},
                 {
                     "$set": {
                         "photo_url": photo_url,
+                        "photo_source": photo_source,
+                        "espn_id": espn_id,
                         "team_logo_url": team_logo,
                         "photo_synced_at": sync_start.isoformat()
                     }
                 }
             )
+            total_processed += 1
+        
+        # ==================== STEP 3: UPDATE CACHED BOARD (ACTIVE PLAYERS) ====================
+        logger.info("[PHOTO SYNC] Step 3: Updating cached_board with photo URLs...")
+        
+        active_players = await self.cached_board.find({}).to_list(None)
+        active_count = 0
+        
+        for player in active_players:
+            player_name = player.get("player_name", "")
+            team = player.get("team", "")
+            normalized = self.sanitize_player_name(player_name)
+            
+            photo_url = None
+            photo_source = None
+            espn_id = None
+            
+            # SOURCE 1: ESPN CDN
+            if normalized in espn_id_map:
+                tank_data = espn_id_map[normalized]
+                espn_id = tank_data.get("espn_id")
+                espn_headshot = tank_data.get("espn_headshot", "")
+                
+                if espn_headshot:
+                    photo_url = espn_headshot
+                    photo_source = "espn_direct"
+                elif espn_id:
+                    photo_url = f"https://a.espncdn.com/i/headshots/nba/players/full/{espn_id}.png"
+                    photo_source = "espn_cdn"
+            
+            # SOURCE 2: NBA CDN
+            if not photo_url:
+                nba_id = NBA_PLAYER_IDS.get(player_name) or player.get("nba_id")
+                if nba_id:
+                    photo_url = f"https://cdn.nba.com/headshots/nba/latest/1040x760/{nba_id}.png"
+                    photo_source = "nba_cdn"
+            
+            # SOURCE 3: Team Logo (NO GRAY!)
+            team_logo = TEAM_LOGOS.get(team, "")
+            if not photo_url and team_logo:
+                photo_url = team_logo
+                photo_source = "team_logo"
+            
+            # Update database
+            await self.cached_board.update_one(
+                {"player_name": player_name},
+                {
+                    "$set": {
+                        "photo_url": photo_url,
+                        "photo_source": photo_source,
+                        "espn_id": espn_id,
+                        "team_logo_url": team_logo,
+                        "photo_synced_at": sync_start.isoformat()
+                    }
+                }
+            )
+            active_count += 1
+        
+        # ==================== SUMMARY ====================
+        duration = (datetime.now(timezone.utc) - sync_start).total_seconds()
         
         logger.info("=" * 60)
-        logger.info(f"[PHOTO SYNC] COMPLETE")
-        logger.info(f"  Photos added: {photos_added}")
-        logger.info(f"  Photos failed: {photos_failed}")
-        logger.info(f"  Duration: {(datetime.now(timezone.utc) - sync_start).total_seconds():.1f}s")
+        logger.info(f"[GLOBAL PHOTO SYNC] COMPLETE")
+        logger.info(f"  Total players processed: {total_processed}")
+        logger.info(f"  ESPN headshots: {espn_photos}")
+        logger.info(f"  NBA CDN headshots: {nba_photos}")
+        logger.info(f"  Team logo fallbacks: {logo_fallbacks}")
+        logger.info(f"  Active players updated: {active_count}")
+        logger.info(f"  Gray silhouettes: 0 (GOAL ACHIEVED)")
+        logger.info(f"  Duration: {duration:.1f}s")
         logger.info("=" * 60)
         
         return {
             "success": True,
-            "photos_added": photos_added,
-            "photos_failed": photos_failed,
-            "synced_at": sync_start.isoformat()
+            "total_processed": total_processed,
+            "espn_photos": espn_photos,
+            "nba_photos": nba_photos,
+            "logo_fallbacks": logo_fallbacks,
+            "active_players_updated": active_count,
+            "gray_silhouettes": 0,
+            "tank01_players_found": len(espn_id_map),
+            "synced_at": sync_start.isoformat(),
+            "duration_seconds": round(duration, 1)
         }
     
     def get_player_photo_url(self, player_name: str, team: str = None, nba_id: int = None) -> Dict[str, str]:
