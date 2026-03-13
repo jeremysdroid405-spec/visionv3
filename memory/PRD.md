@@ -37,9 +37,10 @@ Build a high-performance NBA Player Prop Dashboard that mimics the PrizePicks us
 - [x] **Daily Sync Automation** - APScheduler at 4:00 AM UTC for all data syncs
 - [x] **Demo Mode** - Public /v3/demo route allows exploring full dashboard without account (Dec 13, 2025)
 - [x] **Vision AI Integration** - Claude Sonnet 4.5 generates "badass" insights for Demons/Goblins (Dec 13, 2025)
+- [x] **Injury Intelligence** - ESPN API integration with breaking news ticker and player injury badges (Dec 13, 2025)
 
 ### IN PROGRESS
-- [ ] **Player News/Injury Data** - Tank01 API or alternative for real-time alerts
+- None currently
 
 ### BACKLOG (P2/P3)
 - [ ] "Pro Tier" feature gating based on user tier
@@ -151,11 +152,13 @@ Build a high-performance NBA Player Prop Dashboard that mimics the PrizePicks us
 ---
 
 ## Recent Changes (Dec 13, 2025)
+- **Injury Intelligence Service** - ESPN API integration for real-time injury tracking with usage ripple calculations
+- **Breaking News Ticker** - Scrolling injury-related news banner at top of dashboard
+- **Injury Badges on Player Cards** - Red/Yellow pulsing badges with status (Out, Day-To-Day, Questionable)
 - **Vision AI Integration** - Added Claude Sonnet 4.5 for generating "badass" AI insights for Demons/Goblins/High Volatility players
 - **Demo Mode** - Added `/v3/demo` public route with demo banner and Login button for non-authenticated access
 - **Advanced Analytics Frontend** - Completed integration of insights display in LadderPropRow
-- **_add_player_insights()** - New method to merge insights into cached player data
-- **Daily Sync Order** - Updated to 4 steps: stats → odds → insights → Vision AI
+- **Daily Sync Order** - Updated to 5 steps: injuries → stats → odds → insights → Vision AI
 
 ---
 

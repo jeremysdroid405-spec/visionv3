@@ -215,6 +215,101 @@ const PlayerHeadshot = memo(({ nbaId, playerName, team, photoUrl, size = 'md', c
 
 PlayerHeadshot.displayName = 'PlayerHeadshot';
 
+// ==================== INJURY BADGE COMPONENT ====================
+
+const InjuryBadge = memo(({ playerName, injuryAlerts, size = 'sm' }) => {
+  const injury = injuryAlerts?.[playerName];
+  
+  if (!injury) return null;
+  
+  const isHighRisk = injury.severity === 'HIGH';
+  const isMediumRisk = injury.severity === 'MEDIUM';
+  
+  const sizeClasses = {
+    sm: 'w-4 h-4',
+    md: 'w-5 h-5',
+    lg: 'w-6 h-6'
+  };
+  
+  return (
+    <div 
+      className={`
+        ${sizeClasses[size]} rounded-full flex items-center justify-center
+        ${isHighRisk ? 'bg-red-500 animate-pulse' : isMediumRisk ? 'bg-yellow-500' : 'bg-green-500'}
+        cursor-pointer relative group
+      `}
+      title={`${injury.status}: ${injury.description}`}
+      data-testid={`injury-badge-${playerName.replace(/\s/g, '-')}`}
+    >
+      <AlertTriangle className={`${size === 'sm' ? 'w-2.5 h-2.5' : 'w-3 h-3'} text-white`} />
+      
+      {/* Tooltip on hover */}
+      <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-48 p-2 bg-zinc-900 border border-zinc-700 rounded-lg shadow-xl opacity-0 group-hover:opacity-100 transition-opacity z-50 pointer-events-none">
+        <div className="flex items-center gap-1 mb-1">
+          <span className={`text-xs font-bold ${isHighRisk ? 'text-red-400' : isMediumRisk ? 'text-yellow-400' : 'text-green-400'}`}>
+            {injury.status}
+          </span>
+        </div>
+        <p className="text-[10px] text-zinc-400 line-clamp-3">{injury.description}</p>
+      </div>
+    </div>
+  );
+});
+
+InjuryBadge.displayName = 'InjuryBadge';
+
+// ==================== BREAKING NEWS TICKER ====================
+
+const BreakingNewsTicker = memo(({ news }) => {
+  if (!news || news.length === 0) return null;
+  
+  return (
+    <div className="bg-gradient-to-r from-red-950/50 via-zinc-900 to-red-950/50 border-b border-red-800/30 py-1.5 overflow-hidden">
+      <div className="flex items-center gap-3 animate-scroll">
+        <div className="flex items-center gap-2 px-3 flex-shrink-0">
+          <div className="flex items-center gap-1 bg-red-600 px-2 py-0.5 rounded">
+            <Zap className="w-3 h-3 text-white" />
+            <span className="text-[10px] font-bold text-white uppercase tracking-wider">Breaking</span>
+          </div>
+        </div>
+        
+        <div className="flex items-center gap-6 whitespace-nowrap">
+          {news.map((item, idx) => (
+            <div key={idx} className="flex items-center gap-2">
+              <AlertTriangle className="w-3 h-3 text-red-400 flex-shrink-0" />
+              <span className="text-xs text-red-200">{item.headline}</span>
+              {idx < news.length - 1 && <span className="text-zinc-600 mx-4">|</span>}
+            </div>
+          ))}
+          {/* Duplicate for seamless loop */}
+          {news.map((item, idx) => (
+            <div key={`dup-${idx}`} className="flex items-center gap-2">
+              <AlertTriangle className="w-3 h-3 text-red-400 flex-shrink-0" />
+              <span className="text-xs text-red-200">{item.headline}</span>
+              {idx < news.length - 1 && <span className="text-zinc-600 mx-4">|</span>}
+            </div>
+          ))}
+        </div>
+      </div>
+      
+      <style jsx>{`
+        @keyframes scroll {
+          0% { transform: translateX(0); }
+          100% { transform: translateX(-50%); }
+        }
+        .animate-scroll {
+          animation: scroll 30s linear infinite;
+        }
+        .animate-scroll:hover {
+          animation-play-state: paused;
+        }
+      `}</style>
+    </div>
+  );
+});
+
+BreakingNewsTicker.displayName = 'BreakingNewsTicker';
+
 // Cache keys
 const CACHE_KEYS = {
   STATIC_SHELL: 'dg_static_shell',
@@ -366,8 +461,10 @@ PropRow.displayName = 'PropRow';
 
 // ==================== TRENDING CARD (Clickable with Headshot) ====================
 
-const TrendingCard = memo(({ player, rank, onClick, linesLoaded }) => {
-  const hasInjury = player.injury_info?.has_injury;
+const TrendingCard = memo(({ player, rank, onClick, linesLoaded, injuryAlerts }) => {
+  const injury = injuryAlerts?.[player.player_name];
+  const hasInjury = !!injury;
+  const isHighRisk = injury?.severity === 'HIGH';
   
   return (
     <Card 
@@ -375,13 +472,13 @@ const TrendingCard = memo(({ player, rank, onClick, linesLoaded }) => {
         bg-gradient-to-br from-zinc-900 to-zinc-950 border-zinc-800 
         hover:border-purple-500/50 hover:scale-[1.02] transition-all duration-200
         cursor-pointer active:scale-[0.98]
-        ${hasInjury ? 'ring-1 ring-yellow-500/30' : ''}
+        ${hasInjury ? (isHighRisk ? 'ring-1 ring-red-500/50' : 'ring-1 ring-yellow-500/30') : ''}
       `}
       onClick={onClick}
       data-testid={`trending-card-${rank}`}
     >
       <div className="p-3">
-        {/* Header: Headshot + Rank Badge + Name */}
+        {/* Header: Headshot + Rank Badge + Name + Injury Badge */}
         <div className="flex items-center gap-2 mb-2">
           {/* Headshot with Rank Badge */}
           <div className="relative">
@@ -404,6 +501,13 @@ const TrendingCard = memo(({ player, rank, onClick, linesLoaded }) => {
             `}>
               {rank}
             </div>
+            
+            {/* Injury Badge - Positioned at top right */}
+            {hasInjury && (
+              <div className="absolute -top-1 -right-1">
+                <InjuryBadge playerName={player.player_name} injuryAlerts={injuryAlerts} size="sm" />
+              </div>
+            )}
           </div>
           
           <div className="min-w-0 flex-1">
@@ -414,6 +518,11 @@ const TrendingCard = memo(({ player, rank, onClick, linesLoaded }) => {
             <div className="flex items-center gap-1 text-[10px] text-zinc-500">
               <span className="font-mono">{player.team || '---'}</span>
               {player.position && <span>· {player.position}</span>}
+              {hasInjury && (
+                <span className={`ml-1 px-1 rounded text-[8px] font-bold ${isHighRisk ? 'bg-red-500/20 text-red-400' : 'bg-yellow-500/20 text-yellow-400'}`}>
+                  {injury.status}
+                </span>
+              )}
             </div>
           </div>
         </div>
@@ -2255,6 +2364,10 @@ export const DemonGoblinDashboardOptimized = ({ isDemoMode = false }) => {
   const [goldmineData, setGoldmineData] = useState({});  // Goblin Goldmine parlays
   const [expandedParlay, setExpandedParlay] = useState(null);  // Currently expanded parlay view
   
+  // Injury Intelligence state
+  const [injuryAlerts, setInjuryAlerts] = useState({});  // player_name -> injury_info
+  const [breakingNews, setBreakingNews] = useState([]);  // Breaking news ticker
+  
   // Navigation state
   const [selectedPlayer, setSelectedPlayer] = useState(null);
   
@@ -2287,13 +2400,15 @@ export const DemonGoblinDashboardOptimized = ({ isDemoMode = false }) => {
     try {
       console.log('[CACHED] Loading from MongoDB...');
       
-      // Load board, radar, vault, parlays, and goldmine in parallel
-      const [boardResponse, radarResponse, vaultResponse, parlayResponse, goldmineResponse] = await Promise.all([
+      // Load board, radar, vault, parlays, goldmine, and injuries in parallel
+      const [boardResponse, radarResponse, vaultResponse, parlayResponse, goldmineResponse, injuryResponse, newsResponse] = await Promise.all([
         axios.get(`${API}/v3/cached-props`),
         axios.get(`${API}/v3/demon-radar`),
         axios.get(`${API}/v3/goblin-vault`),
         axios.get(`${API}/v3/parlay-builder`),
-        axios.get(`${API}/v3/goblin-goldmine`)
+        axios.get(`${API}/v3/goblin-goldmine`),
+        axios.get(`${API}/v3/injuries/alerts`).catch(() => ({ data: { success: false, alerts: {} }})),
+        axios.get(`${API}/v3/breaking-news?injury_only=true`).catch(() => ({ data: { success: false, news: [] }}))
       ]);
       
       if (boardResponse.data.success && boardResponse.data.players_count > 0) {
@@ -2331,6 +2446,18 @@ export const DemonGoblinDashboardOptimized = ({ isDemoMode = false }) => {
       if (goldmineResponse.data.success) {
         setGoldmineData(goldmineResponse.data.parlays || {});
         console.log(`[GOLDMINE] Loaded ${Object.keys(goldmineResponse.data.parlays || {}).length} goldmine tiers`);
+      }
+      
+      // Load injury alerts
+      if (injuryResponse.data.success) {
+        setInjuryAlerts(injuryResponse.data.alerts || {});
+        console.log(`[INJURY] Loaded ${injuryResponse.data.alerts_count || 0} injury alerts`);
+      }
+      
+      // Load breaking news
+      if (newsResponse.data.success) {
+        setBreakingNews(newsResponse.data.news || []);
+        console.log(`[NEWS] Loaded ${newsResponse.data.news_count || 0} breaking news items`);
       }
       
     } catch (error) {
@@ -2474,6 +2601,11 @@ export const DemonGoblinDashboardOptimized = ({ isDemoMode = false }) => {
             </Button>
           </div>
         </div>
+      )}
+      
+      {/* Breaking News Ticker - Injury Alerts */}
+      {breakingNews.length > 0 && (
+        <BreakingNewsTicker news={breakingNews} />
       )}
       
       {/* Header - Mobile Optimized */}
@@ -2790,6 +2922,7 @@ export const DemonGoblinDashboardOptimized = ({ isDemoMode = false }) => {
                   rank={idx + 1}
                   linesLoaded={linesLoaded}
                   onClick={() => handlePlayerClick(player.player_name)}
+                  injuryAlerts={injuryAlerts}
                 />
               ))}
             </div>

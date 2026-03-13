@@ -21,6 +21,7 @@ from stats_manager_bdl import StatsManager
 from demon_tracker_engine import DeepIngestionEngine
 from demon_goblin_engine import DemonGoblinEngine
 from vision_ai_service import VisionAIService, get_vision_service
+from injury_service import InjuryIntelligenceService, get_injury_service
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -56,6 +57,7 @@ stats_manager = None
 demon_tracker = None
 demon_goblin_engine = None
 vision_ai_service = None  # Vision AI service instance
+injury_service = None  # Injury Intelligence service instance
 scheduler = None  # APScheduler instance
 
 async def initial_autonomous_sync():
@@ -74,10 +76,11 @@ async def scheduled_daily_sync():
     Scheduled job that runs at 4:00 AM UTC daily.
     
     Execution order:
-    1. Sync player stats to MongoDB (from BallDontLie + NBA.com fallback)
-    2. Run full odds sync (uses cached stats for fast hit rate calculations)
-    3. Calculate daily insights (advanced analytics)
-    4. Generate Vision AI insights for Demons/Goblins/High Volatility
+    1. Sync injuries from ESPN (first for usage ripple calculations)
+    2. Sync player stats to MongoDB (from BallDontLie + NBA.com fallback)
+    3. Run full odds sync (uses cached stats for fast hit rate calculations)
+    4. Calculate daily insights (advanced analytics)
+    5. Generate Vision AI insights for Demons/Goblins/High Volatility
     """
     logger.info("=" * 70)
     logger.info(f"[SCHEDULER] 4:00 AM DAILY SYNC TRIGGERED")
@@ -86,32 +89,41 @@ async def scheduled_daily_sync():
     
     if demon_goblin_engine:
         try:
-            # Step 1: Sync player stats to cache
-            logger.info("[SCHEDULER] Step 1/4: Syncing player stats to cache...")
+            # Step 1: Sync injuries (ESPN) - Do first for usage ripple data
+            if injury_service:
+                logger.info("[SCHEDULER] Step 1/5: Syncing injury data from ESPN...")
+                try:
+                    injury_result = await injury_service.sync_injuries()
+                    logger.info(f"[SCHEDULER] Injuries: {injury_result.get('injuries_synced', 0)} injuries, {injury_result.get('usage_ripple_updates', 0)} ripple updates")
+                except Exception as ie:
+                    logger.error(f"[SCHEDULER] Injury sync failed (non-critical): {ie}")
+            
+            # Step 2: Sync player stats to cache
+            logger.info("[SCHEDULER] Step 2/5: Syncing player stats to cache...")
             stats_result = await demon_goblin_engine.sync_player_stats()
             logger.info(f"[SCHEDULER] Stats sync: {stats_result.get('stats_synced', 0)} players (BDL: {stats_result.get('from_balldontlie', 0)}, NBA: {stats_result.get('from_nba_api', 0)})")
             
-            # Step 2: Run full odds sync
-            logger.info("[SCHEDULER] Step 2/4: Running full odds sync...")
+            # Step 3: Run full odds sync
+            logger.info("[SCHEDULER] Step 3/5: Running full odds sync...")
             result = await demon_goblin_engine.run_full_sync()
             logger.info(f"[SCHEDULER] Sync complete: {result.get('unique_players', 0)} players")
             logger.info(f"[SCHEDULER] Standard: {result.get('standard_count', 0)}, Demons: {result.get('demons_count', 0)}, Goblins: {result.get('goblins_count', 0)}")
             
-            # Step 3: Calculate daily insights (advanced analytics)
-            logger.info("[SCHEDULER] Step 3/4: Calculating daily insights...")
+            # Step 4: Calculate daily insights (advanced analytics)
+            logger.info("[SCHEDULER] Step 4/5: Calculating daily insights...")
             insights_result = await demon_goblin_engine.sync_daily_insights()
             logger.info(f"[SCHEDULER] Insights: {insights_result.get('insights_calculated', 0)} players analyzed")
             
-            # Step 4: Generate Vision AI insights for eligible players
+            # Step 5: Generate Vision AI insights for eligible players
             if vision_ai_service and os.environ.get('EMERGENT_LLM_KEY'):
-                logger.info("[SCHEDULER] Step 4/4: Generating Vision AI insights...")
+                logger.info("[SCHEDULER] Step 5/5: Generating Vision AI insights...")
                 try:
                     vision_result = await vision_ai_service.trigger_insights_for_sync()
                     logger.info(f"[SCHEDULER] Vision AI: {vision_result.get('insights_generated', 0)} insights generated")
                 except Exception as ve:
                     logger.error(f"[SCHEDULER] Vision AI failed (non-critical): {ve}")
             else:
-                logger.info("[SCHEDULER] Step 4/4: Vision AI skipped (not configured)")
+                logger.info("[SCHEDULER] Step 5/5: Vision AI skipped (not configured)")
             
         except Exception as e:
             logger.error(f"[SCHEDULER] Daily sync failed: {e}")
@@ -142,7 +154,7 @@ async def scheduled_roster_sync():
 
 @app.on_event("startup")
 async def startup_event():
-    global stats_manager, demon_tracker, demon_goblin_engine, vision_ai_service, scheduler
+    global stats_manager, demon_tracker, demon_goblin_engine, vision_ai_service, injury_service, scheduler
     
     # Initialize stats manager (BallDontLie)
     stats_manager = StatsManager(db)
@@ -159,6 +171,10 @@ async def startup_event():
     # Initialize Vision AI Service (Claude Sonnet 4.5)
     vision_ai_service = get_vision_service(db)
     logger.info("Vision AI Service initialized (Claude Sonnet 4.5)")
+    
+    # Initialize Injury Intelligence Service
+    injury_service = get_injury_service(db)
+    logger.info("Injury Intelligence Service initialized (ESPN + Tank01)")
     
     # Initialize APScheduler for daily and weekly syncs
     scheduler = AsyncIOScheduler(timezone=SCHEDULER_TIMEZONE)
@@ -1657,6 +1673,123 @@ async def get_vision_status():
             "goblins_only": True,
             "high_volatility_only": True
         }
+    }
+
+
+# ==================== INJURY INTELLIGENCE ENDPOINTS ====================
+
+@api_router.post("/v3/injuries/sync")
+async def sync_injuries():
+    """
+    INJURY SYNC - Fetch latest injury data from ESPN.
+    
+    Updates:
+    - dg_injuries collection with current injury statuses
+    - Usage ripple calculations for teammates of injured stars
+    - Breaking news from ESPN
+    
+    Should be called periodically (every 30 mins during game days).
+    """
+    if not injury_service:
+        raise HTTPException(status_code=500, detail="Injury Service not initialized")
+    
+    logger.info("[INJURY] Manual injury sync triggered")
+    
+    result = await injury_service.sync_injuries()
+    
+    if not result.get('success'):
+        raise HTTPException(status_code=400, detail=result.get('error', 'Sync failed'))
+    
+    return result
+
+
+@api_router.get("/v3/injuries")
+async def get_all_injuries():
+    """
+    Get all current NBA injuries grouped by severity.
+    
+    Returns:
+    - high_risk: Out, Doubtful players
+    - medium_risk: Questionable, Day-To-Day, GTD players
+    - low_risk: Probable players
+    """
+    if not injury_service:
+        raise HTTPException(status_code=500, detail="Injury Service not initialized")
+    
+    return await injury_service.get_all_injuries()
+
+
+@api_router.get("/v3/injuries/player/{player_name}")
+async def get_player_injury(player_name: str):
+    """
+    Get injury status for a specific player.
+    """
+    if not injury_service:
+        raise HTTPException(status_code=500, detail="Injury Service not initialized")
+    
+    injury = await injury_service.get_player_injury_status(player_name)
+    
+    if not injury:
+        return {"success": True, "injury": None, "message": f"{player_name} has no reported injury"}
+    
+    return {"success": True, "injury": injury}
+
+
+@api_router.get("/v3/injuries/team/{team_abbr}")
+async def get_team_injuries(team_abbr: str):
+    """
+    Get all injuries for a specific team.
+    """
+    if not injury_service:
+        raise HTTPException(status_code=500, detail="Injury Service not initialized")
+    
+    injuries = await injury_service.get_team_injuries(team_abbr)
+    
+    return {
+        "success": True,
+        "team": team_abbr.upper(),
+        "injuries_count": len(injuries),
+        "injuries": injuries
+    }
+
+
+@api_router.get("/v3/injuries/alerts")
+async def get_injury_alerts():
+    """
+    Get injury alerts formatted for the dashboard board.
+    Returns a dict mapping player_name -> injury_info for quick lookup.
+    Used by frontend to display injury badges on player cards.
+    """
+    if not injury_service:
+        raise HTTPException(status_code=500, detail="Injury Service not initialized")
+    
+    alerts = await injury_service.get_injury_alerts_for_board()
+    
+    return {
+        "success": True,
+        "alerts_count": len(alerts),
+        "alerts": alerts
+    }
+
+
+@api_router.get("/v3/breaking-news")
+async def get_breaking_news(injury_only: bool = False):
+    """
+    Get breaking NBA news from ESPN.
+    
+    Args:
+        injury_only: If true, only return injury-related news
+    """
+    if not injury_service:
+        raise HTTPException(status_code=500, detail="Injury Service not initialized")
+    
+    news = await injury_service.get_breaking_news(injury_only=injury_only)
+    
+    return {
+        "success": True,
+        "news_count": len(news),
+        "injury_filter": injury_only,
+        "news": news
     }
 
 
