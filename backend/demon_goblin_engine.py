@@ -2390,18 +2390,15 @@ class DemonGoblinEngine:
                 # Track if we have real data
                 has_real_data = h10_games > 0 or h5_games > 0
                 
+                # V3.2 FIX: SKIP players with no real stats data
+                # This prevents false readings from estimated probabilities
+                if not has_real_data:
+                    continue
+                
                 # Calculate Gap Ratio (R)
                 # R = Demon_Value / Standard_Value (e.g., 1.10 = 10% higher)
                 gap_ratio = demon_line / std_line if std_line > 0 else 1.0
                 gap_pct = (gap_ratio - 1) * 100  # Percentage above standard
-                
-                # If no real data, estimate P based on gap ratio
-                if not has_real_data:
-                    # Estimate: P decreases as gap increases
-                    # Gap ratio 1.0 = 75% P, Gap ratio 1.2 = 55% P, Gap ratio 1.5 = 35% P
-                    estimated_P = max(0.35, 0.95 - (gap_ratio - 1) * 1.0)
-                    h10 = estimated_P
-                    h5 = estimated_P
                 
                 # Calculate Weighted Probability (P)
                 # P = (L10 × 0.6) + (L5 × 0.4)
@@ -2442,7 +2439,7 @@ class DemonGoblinEngine:
                     "radar_strength": min(100, max(0, round(P * 100, 1))),
                     "price": demon.get("price", 100),
                     "is_radar_pick": True,
-                    "estimated_p": not has_real_data,
+                    "has_real_data": True,  # V3.2: All picks now have verified stats
                     "synced_at": sync_time.isoformat()
                 })
         
@@ -2452,8 +2449,17 @@ class DemonGoblinEngine:
         # Sort by radar_score descending
         radar_picks.sort(key=lambda x: x["radar_score"], reverse=True)
         
-        # Take top 10
-        top_10 = radar_picks[:10]
+        # V3.2 FIX: De-duplicate - one pick per player (take their best prop)
+        seen_players = set()
+        unique_picks = []
+        for pick in radar_picks:
+            player_name = pick["player_name"]
+            if player_name not in seen_players:
+                seen_players.add(player_name)
+                unique_picks.append(pick)
+        
+        # Take top 10 unique players
+        top_10 = unique_picks[:10]
         
         # Store in radar_picks collection
         await self.radar_picks.delete_many({})
@@ -2620,18 +2626,15 @@ class DemonGoblinEngine:
                 # Track if we have real data
                 has_real_data = h10_games > 0 or h5_games > 0
                 
+                # V3.2 FIX: SKIP players with no real stats data
+                # This prevents false readings from estimated probabilities
+                if not has_real_data:
+                    continue
+                
                 # Calculate Value Gap (how far BELOW standard)
                 # For Goblins, lower lines = safer, so gap should be negative
                 gap_below_std = std_line - goblin_line  # Positive = safer (further below)
                 gap_pct = (gap_below_std / std_line) * 100 if std_line > 0 else 0
-                
-                # If no real data, estimate based on gap
-                if not has_real_data:
-                    # Estimate: Lower lines = higher hit rate
-                    # Gap of 10% below = 85%, Gap of 20% below = 92%, Gap of 30% = 97%
-                    estimated_hit = min(0.98, 0.80 + (gap_pct / 100) * 0.6)
-                    h10 = estimated_hit
-                    h5 = estimated_hit
                 
                 # Calculate Weighted Hit Rate Score
                 # P = (L10 × 0.6) + (L5 × 0.4)
@@ -2679,7 +2682,7 @@ class DemonGoblinEngine:
                     "is_perfect_streak": is_perfect_streak,
                     "price": goblin.get("price", -110),  # Goblins typically have negative odds
                     "is_vault_pick": True,
-                    "estimated_p": not has_real_data,
+                    "has_real_data": True,  # V3.2: All picks now have verified stats
                     "synced_at": sync_time.isoformat()
                 })
         
@@ -2697,8 +2700,17 @@ class DemonGoblinEngine:
         # Sort by vault_score descending (highest safety + value first)
         safe_picks.sort(key=lambda x: x["vault_score"], reverse=True)
         
-        # Take top 10
-        top_10 = safe_picks[:10]
+        # V3.2 FIX: De-duplicate - one pick per player (take their best prop)
+        seen_players = set()
+        unique_picks = []
+        for pick in safe_picks:
+            player_name = pick["player_name"]
+            if player_name not in seen_players:
+                seen_players.add(player_name)
+                unique_picks.append(pick)
+        
+        # Take top 10 unique players
+        top_10 = unique_picks[:10]
         
         # Store in goblin_vault collection
         await self.goblin_vault.delete_many({})
