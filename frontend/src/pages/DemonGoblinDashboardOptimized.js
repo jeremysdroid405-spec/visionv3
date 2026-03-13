@@ -1250,16 +1250,35 @@ CategoryAccordion.displayName = 'CategoryAccordion';
 // ==================== LADDER PROP ROW ====================
 
 const LadderPropRow = memo(({ prop, categoryStats, isFirst, isLast, isHighlighted, highlightRef, glowClass = 'beacon-glow', highlightType = 'demon' }) => {
+  const [isExpanded, setIsExpanded] = useState(false);
+  
   const line = prop.line;
   const direction = prop.direction;
   const price = prop.price;
   const isDemon = prop.is_demon;
   const isGoblin = prop.is_goblin;
   
-  // Calculate hit rate for this specific line from stats
-  const l10HitRate = prop.hit_rates?.l10?.hit_rate;
-  const seasonHitRate = prop.hit_rates?.season?.hit_rate;
-  const hitPct = Math.round((l10HitRate || 0) * 100);
+  // Get detailed hit rate data
+  const l5Data = prop.hit_rates?.l5 || {};
+  const l10Data = prop.hit_rates?.l10 || {};
+  const seasonData = prop.hit_rates?.season || {};
+  
+  // Calculate percentages
+  const l5HitRate = l5Data.hit_rate || 0;
+  const l10HitRate = l10Data.hit_rate || 0;
+  const seasonHitRate = seasonData.hit_rate || 0;
+  const l5Pct = Math.round(l5HitRate * 100);
+  const l10Pct = Math.round(l10HitRate * 100);
+  const seasonPct = Math.round(seasonHitRate * 100);
+  
+  // Get games over/total
+  const l5Over = l5Data.games_over || 0;
+  const l5Games = l5Data.total_games || 0;
+  const l10Over = l10Data.games_over || 0;
+  const l10Games = l10Data.total_games || 0;
+  const seasonOver = seasonData.games_over || 0;
+  const seasonGames = seasonData.total_games || 0;
+  const seasonAvg = seasonData.avg || 0;
   
   // Determine play type label
   let playTypeLabel = '';
@@ -1275,81 +1294,156 @@ const LadderPropRow = memo(({ prop, categoryStats, isFirst, isLast, isHighlighte
     playTypeColor = 'text-zinc-400';
   }
   
+  // Color helper for percentages
+  const getPctColor = (pct) => {
+    if (pct >= 70) return 'text-green-400';
+    if (pct >= 50) return 'text-yellow-400';
+    if (pct >= 30) return 'text-orange-400';
+    return 'text-red-400';
+  };
+  
   return (
     <div 
       ref={isHighlighted ? highlightRef : null}
       className={`
-        flex items-center justify-between px-3 py-2 rounded-lg transition-all
-        ${isDemon ? 'bg-red-950/30 border-l-3 border-red-500 hover:bg-red-950/50' : ''}
-        ${isGoblin ? 'bg-green-950/30 border-l-3 border-green-500 hover:bg-green-950/50' : ''}
-        ${!isDemon && !isGoblin ? 'bg-zinc-800/30 border-l-3 border-zinc-600 hover:bg-zinc-800/50' : ''}
+        rounded-lg transition-all overflow-hidden
+        ${isDemon ? 'bg-red-950/30 border-l-3 border-red-500' : ''}
+        ${isGoblin ? 'bg-green-950/30 border-l-3 border-green-500' : ''}
+        ${!isDemon && !isGoblin ? 'bg-zinc-800/30 border-l-3 border-zinc-600' : ''}
         ${isHighlighted ? glowClass : ''}
       `}
       data-testid={`ladder-prop-${line}`}
       data-highlighted={isHighlighted ? 'true' : 'false'}
     >
-      {/* Left: Line Value + Direction */}
-      <div className="flex items-center gap-3">
-        {/* Type Icon */}
-        <div className="w-5 flex justify-center">
-          {isDemon && <Skull className="w-4 h-4 text-red-400" />}
-          {isGoblin && <Ghost className="w-4 h-4 text-green-400" />}
-          {!isDemon && !isGoblin && <div className="w-2 h-2 bg-zinc-500 rounded-full" />}
-        </div>
-        
-        {/* Line Value */}
-        <div className="flex items-baseline gap-1.5">
-          <span className="text-xl font-bold text-white">{line}</span>
-          <span className={`text-xs font-medium ${direction === 'Over' ? 'text-green-400' : 'text-red-400'}`}>
-            {direction}
+      {/* Main Row - Clickable */}
+      <div 
+        onClick={() => setIsExpanded(!isExpanded)}
+        className={`
+          flex items-center justify-between px-3 py-2 cursor-pointer
+          ${isDemon ? 'hover:bg-red-950/50' : ''}
+          ${isGoblin ? 'hover:bg-green-950/50' : ''}
+          ${!isDemon && !isGoblin ? 'hover:bg-zinc-800/50' : ''}
+        `}
+      >
+        {/* Left: Line Value + Direction */}
+        <div className="flex items-center gap-3">
+          {/* Expand Icon */}
+          <ChevronDown className={`w-4 h-4 text-zinc-500 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+          
+          {/* Type Icon */}
+          <div className="w-5 flex justify-center">
+            {isDemon && <Skull className="w-4 h-4 text-red-400" />}
+            {isGoblin && <Ghost className="w-4 h-4 text-green-400" />}
+            {!isDemon && !isGoblin && <div className="w-2 h-2 bg-zinc-500 rounded-full" />}
+          </div>
+          
+          {/* Line Value */}
+          <div className="flex items-baseline gap-1.5">
+            <span className="text-xl font-bold text-white">{line}</span>
+            <span className={`text-xs font-medium ${direction === 'Over' ? 'text-green-400' : 'text-red-400'}`}>
+              {direction}
+            </span>
+          </div>
+          
+          {/* Play Type Label */}
+          <span className={`text-[10px] font-medium ${playTypeColor} bg-zinc-800/50 px-1.5 py-0.5 rounded`}>
+            {playTypeLabel}
           </span>
+          
+          {/* Radar/Vault Pick Badge */}
+          {isHighlighted && (
+            <Badge className={`${highlightType === 'goblin' ? 'bg-green-500/20 text-green-400 border-green-500/50' : 'bg-yellow-500/20 text-yellow-400 border-yellow-500/50'} text-[10px] animate-pulse`}>
+              {highlightType === 'goblin' ? 'VAULT PICK' : 'RADAR PICK'}
+            </Badge>
+          )}
         </div>
         
-        {/* Play Type Label */}
-        <span className={`text-[10px] font-medium ${playTypeColor} bg-zinc-800/50 px-1.5 py-0.5 rounded`}>
-          {playTypeLabel}
-        </span>
-        
-        {/* Radar/Vault Pick Badge */}
-        {isHighlighted && (
-          <Badge className={`${highlightType === 'goblin' ? 'bg-green-500/20 text-green-400 border-green-500/50' : 'bg-yellow-500/20 text-yellow-400 border-yellow-500/50'} text-[10px] animate-pulse`}>
-            {highlightType === 'goblin' ? 'VAULT PICK' : 'RADAR PICK'}
-          </Badge>
-        )}
+        {/* Right: Odds + Quick Hit Rate */}
+        <div className="flex items-center gap-4">
+          {/* Quick L10 indicator */}
+          {l10Games > 0 && (
+            <div className="flex items-center gap-1 text-xs">
+              <span className="text-zinc-500">L10:</span>
+              <span className={`font-bold ${getPctColor(l10Pct)}`}>
+                {l10Pct}%
+              </span>
+            </div>
+          )}
+          
+          {/* Odds */}
+          <div className={`
+            text-sm font-mono font-bold min-w-[50px] text-right px-2 py-1 rounded
+            ${price === 100 ? 'bg-red-500/20 text-red-400' : ''}
+            ${price < 0 ? 'bg-green-500/20 text-green-400' : ''}
+            ${price > 0 && price !== 100 ? 'text-zinc-400' : ''}
+          `}>
+            {price > 0 ? `+${price}` : price}
+          </div>
+        </div>
       </div>
       
-      {/* Right: Odds + Hit Rates */}
-      <div className="flex items-center gap-4">
-        {/* Hit Rates */}
-        <div className="flex items-center gap-2 text-xs">
-          {l10HitRate !== undefined && (
-            <div className="flex items-center gap-1">
-              <span className="text-zinc-500">L10:</span>
-              <span className={`font-bold ${hitPct >= 60 ? 'text-green-400' : hitPct >= 40 ? 'text-yellow-400' : 'text-zinc-400'}`}>
-                {hitPct}%
-              </span>
+      {/* Expanded Stat Insight Panel */}
+      {isExpanded && (
+        <div className="px-3 pb-3 pt-1 border-t border-zinc-700/50">
+          <div className="bg-zinc-900/50 rounded-lg p-3 space-y-2">
+            <div className="text-[10px] text-zinc-500 uppercase tracking-wider font-semibold mb-2">
+              Stat Insight for {line}+ {direction}
             </div>
-          )}
-          {seasonHitRate !== undefined && (
-            <div className="flex items-center gap-1">
-              <span className="text-zinc-500">Szn:</span>
-              <span className={`font-bold ${Math.round(seasonHitRate * 100) >= 60 ? 'text-green-400' : Math.round(seasonHitRate * 100) >= 40 ? 'text-yellow-400' : 'text-zinc-400'}`}>
-                {Math.round(seasonHitRate * 100)}%
-              </span>
+            
+            {/* L5 Hit Rate */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-zinc-400 w-20">Last 5 Games:</span>
+                <span className={`text-sm font-bold ${getPctColor(l5Pct)}`}>
+                  {l5Games > 0 ? `${l5Over}/${l5Games}` : '---'}
+                </span>
+              </div>
+              <div className={`text-lg font-bold ${getPctColor(l5Pct)}`}>
+                {l5Games > 0 ? `${l5Pct}%` : '---'}
+              </div>
             </div>
-          )}
+            
+            {/* L10 Hit Rate */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-zinc-400 w-20">Last 10 Games:</span>
+                <span className={`text-sm font-bold ${getPctColor(l10Pct)}`}>
+                  {l10Games > 0 ? `${l10Over}/${l10Games}` : '---'}
+                </span>
+              </div>
+              <div className={`text-lg font-bold ${getPctColor(l10Pct)}`}>
+                {l10Games > 0 ? `${l10Pct}%` : '---'}
+              </div>
+            </div>
+            
+            {/* Season Average */}
+            <div className="flex items-center justify-between border-t border-zinc-700/50 pt-2 mt-2">
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-zinc-400 w-20">Season:</span>
+                <span className={`text-sm font-bold ${getPctColor(seasonPct)}`}>
+                  {seasonGames > 0 ? `${seasonOver}/${seasonGames}` : '---'}
+                </span>
+              </div>
+              <div className={`text-lg font-bold ${getPctColor(seasonPct)}`}>
+                {seasonGames > 0 ? `${seasonPct}%` : '---'}
+              </div>
+            </div>
+            
+            {/* Season Average Value */}
+            <div className="flex items-center justify-between bg-zinc-800/50 rounded px-2 py-1.5 mt-2">
+              <span className="text-xs text-zinc-400">Season Average</span>
+              <div className="flex items-center gap-2">
+                <span className="text-white font-bold">{seasonAvg > 0 ? seasonAvg.toFixed(1) : '---'}</span>
+                {seasonAvg > 0 && (
+                  <span className={`text-xs px-1.5 py-0.5 rounded ${seasonAvg > line ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>
+                    {seasonAvg > line ? `+${(seasonAvg - line).toFixed(1)} above line` : `${(seasonAvg - line).toFixed(1)} below line`}
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
         </div>
-        
-        {/* Odds */}
-        <div className={`
-          text-sm font-mono font-bold min-w-[50px] text-right px-2 py-1 rounded
-          ${price === 100 ? 'bg-red-500/20 text-red-400' : ''}
-          ${price < 0 ? 'bg-green-500/20 text-green-400' : ''}
-          ${price > 0 && price !== 100 ? 'text-zinc-400' : ''}
-        `}>
-          {price > 0 ? `+${price}` : price}
-        </div>
-      </div>
+      )}
     </div>
   );
 });
