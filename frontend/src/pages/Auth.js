@@ -1,259 +1,584 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '../components/ui/card';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
-import { Skull, Ghost, TrendingUp, Play } from 'lucide-react';
+import { 
+  Eye, Zap, Target, Shield, TrendingUp, ChevronDown, 
+  Play, Lock, BarChart3, Sparkles, ArrowRight
+} from 'lucide-react';
 import { toast } from 'sonner';
+
+// ==================== ELITE ICON COMPONENTS (Matching Dashboard) ====================
+
+const DemonIcon = ({ size = 24, className = '' }) => (
+  <svg 
+    width={size} 
+    height={size} 
+    viewBox="0 0 24 24" 
+    fill="none" 
+    xmlns="http://www.w3.org/2000/svg"
+    className={`demon-glow ${className}`}
+  >
+    <defs>
+      <filter id="demon-glow-auth" x="-20%" y="-20%" width="140%" height="140%">
+        <feGaussianBlur stdDeviation="1.5" result="blur" />
+        <feComposite in="SourceGraphic" in2="blur" operator="over" />
+      </filter>
+    </defs>
+    <path d="M12 22C16.4183 22 20 18.4183 20 14C20 9.58172 16.4183 6 12 6C7.58172 6 4 9.58172 4 14C4 18.4183 7.58172 22 12 22Z" fill="#FF0000" filter="url(#demon-glow-auth)"/>
+    <path d="M5 8L2 2L9 5" stroke="#FF0000" strokeWidth="2.5" strokeLinejoin="round"/>
+    <path d="M19 8L22 2L15 5" stroke="#FF0000" strokeWidth="2.5" strokeLinejoin="round"/>
+    <path d="M8 12L10 14M16 12L14 14" stroke="white" strokeWidth="2" strokeLinecap="round"/>
+  </svg>
+);
+
+const GoblinIcon = ({ size = 24, className = '' }) => (
+  <svg 
+    width={size} 
+    height={size} 
+    viewBox="0 0 24 24" 
+    fill="none" 
+    xmlns="http://www.w3.org/2000/svg"
+    className={`goblin-glow ${className}`}
+  >
+    <path d="M12 20C15.866 20 19 16.866 19 13C19 9.13401 15.866 6 12 6C8.13401 6 5 9.13401 5 13C5 16.866 8.13401 20 12 20Z" fill="#00FF7F" fillOpacity="0.9"/>
+    <path d="M5 11L1 7L6 12" fill="#00FF7F"/>
+    <path d="M19 11L23 7L18 12" fill="#00FF7F"/>
+    <path d="M9 13H10M14 13H15" stroke="black" strokeWidth="2.5" strokeLinecap="round"/>
+    <path d="M10 16.5C10.5 17.5 13.5 17.5 14 16.5" stroke="black" strokeWidth="1" strokeLinecap="round"/>
+  </svg>
+);
+
+// ==================== ANIMATED COMPONENTS ====================
+
+const ScanningBar = ({ isActive, speed = 3 }) => (
+  <div 
+    className="absolute left-0 right-0 h-1 bg-gradient-to-r from-transparent via-emerald-400 to-transparent shadow-lg shadow-emerald-500/50"
+    style={{
+      animation: isActive ? `scan-down ${speed}s ease-in-out infinite` : 'none',
+      top: '0%'
+    }}
+  />
+);
+
+const DataStream = () => (
+  <div className="absolute inset-0 overflow-hidden opacity-20 pointer-events-none">
+    {[...Array(20)].map((_, i) => (
+      <div
+        key={i}
+        className="absolute text-emerald-500/30 font-mono text-[10px] whitespace-nowrap"
+        style={{
+          left: `${Math.random() * 100}%`,
+          top: `${Math.random() * 100}%`,
+          animation: `float-up ${5 + Math.random() * 10}s linear infinite`,
+          animationDelay: `${Math.random() * 5}s`
+        }}
+      >
+        {Math.random() > 0.5 ? '01001110' : '10110101'}
+      </div>
+    ))}
+  </div>
+);
+
+const PulsingGlyph = ({ children, color = 'silver' }) => (
+  <div className={`
+    w-12 h-12 rounded-xl flex items-center justify-center
+    bg-gradient-to-br from-zinc-800 to-zinc-900
+    border border-zinc-700/50
+    shadow-lg ${color === 'red' ? 'shadow-red-500/20' : color === 'green' ? 'shadow-emerald-500/20' : 'shadow-zinc-500/20'}
+    animate-pulse
+  `}>
+    {children}
+  </div>
+);
+
+// ==================== FEATURE BENTO GRID ====================
+
+const FeatureCard = ({ icon, title, description, glowColor }) => (
+  <div className={`
+    group relative p-4 rounded-2xl
+    bg-gradient-to-br from-zinc-900/80 to-zinc-950
+    border border-zinc-800/50 hover:border-${glowColor}-500/30
+    transition-all duration-300 hover:scale-[1.02]
+    overflow-hidden
+  `}>
+    {/* Glow Effect */}
+    <div className={`
+      absolute -inset-1 bg-gradient-to-r from-${glowColor}-500/0 via-${glowColor}-500/10 to-${glowColor}-500/0
+      opacity-0 group-hover:opacity-100 transition-opacity duration-500 blur-xl
+    `} />
+    
+    <div className="relative flex items-start gap-3">
+      <div className={`
+        flex-shrink-0 w-10 h-10 rounded-lg flex items-center justify-center
+        bg-${glowColor}-950/50 border border-${glowColor}-800/30
+      `}>
+        {icon}
+      </div>
+      <div>
+        <h4 className="text-white font-semibold text-sm mb-1">{title}</h4>
+        <p className="text-zinc-500 text-xs leading-relaxed">{description}</p>
+      </div>
+    </div>
+  </div>
+);
+
+// ==================== MAIN AUTH COMPONENT ====================
 
 export const Auth = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { signup, login, isAuthenticated } = useAuth();
   const [loading, setLoading] = useState(false);
+  const [isTyping, setIsTyping] = useState(false);
+  const [showSignup, setShowSignup] = useState(false);
+  const [scanSpeed, setScanSpeed] = useState(3);
+  const formRef = useRef(null);
+  
+  // Form states
+  const [formData, setFormData] = useState({
+    email: '',
+    password: '',
+    fullName: '',
+  });
+  const [isLogin, setIsLogin] = useState(true);
 
-  // Get the page user was trying to access (default to /v3)
   const from = location.state?.from?.pathname || '/v3';
 
-  // If already authenticated, redirect to dashboard
-  React.useEffect(() => {
+  useEffect(() => {
     if (isAuthenticated) {
       navigate(from, { replace: true });
     }
   }, [isAuthenticated, navigate, from]);
 
-  const [loginData, setLoginData] = useState({
-    email: '',
-    password: '',
-  });
+  // Speed up scan when typing
+  useEffect(() => {
+    if (isTyping) {
+      setScanSpeed(1);
+    } else {
+      setScanSpeed(3);
+    }
+  }, [isTyping]);
 
-  const [signupData, setSignupData] = useState({
-    email: '',
-    password: '',
-    fullName: '',
-  });
+  const handleInputChange = (field, value) => {
+    setFormData(prev => ({ ...prev, [field]: value }));
+    setIsTyping(value.length > 0);
+  };
 
-  const handleLogin = async (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
 
-    const result = await login(loginData.email, loginData.password);
-    
-    setLoading(false);
-
-    if (result.success) {
-      toast.success('Welcome back!');
-      navigate(from, { replace: true });
+    if (isLogin) {
+      const result = await login(formData.email, formData.password);
+      setLoading(false);
+      if (result.success) {
+        // Flash effect before navigation
+        document.body.classList.add('flash-silver');
+        setTimeout(() => {
+          document.body.classList.remove('flash-silver');
+          toast.success('System Activated. Welcome back.');
+          navigate(from, { replace: true });
+        }, 300);
+      } else {
+        toast.error(result.error);
+      }
     } else {
-      toast.error(result.error);
+      const result = await signup(formData.email, formData.password, formData.fullName);
+      setLoading(false);
+      if (result.success) {
+        toast.success('Account created! Check your email to confirm.');
+        setIsLogin(true);
+      } else {
+        toast.error(result.error);
+      }
     }
   };
 
-  const handleSignup = async (e) => {
-    e.preventDefault();
-    setLoading(true);
-
-    const result = await signup(
-      signupData.email,
-      signupData.password,
-      signupData.fullName
-    );
-    
-    setLoading(false);
-
-    if (result.success) {
-      toast.success('Account created! Check your email to confirm, then log in.');
-      // Switch to login tab after signup
-    } else {
-      toast.error(result.error);
-    }
+  const scrollToForm = () => {
+    setShowSignup(true);
+    setTimeout(() => {
+      formRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }, 100);
   };
 
   return (
-    <div className="min-h-screen bg-zinc-950 flex items-center justify-center p-4">
-      <div className="w-full max-w-md">
-        {/* Logo/Branding */}
-        <div className="flex flex-col items-center mb-8">
-          <div className="flex items-center gap-3 mb-2">
-            <Skull className="w-8 h-8 text-red-500" />
-            <h1 className="text-3xl font-bold text-white tracking-tight">
-              DEMON & GOBLIN
-            </h1>
-            <Ghost className="w-8 h-8 text-green-500" />
-          </div>
-          <p className="text-zinc-400 text-sm flex items-center gap-2">
-            <TrendingUp className="w-4 h-4" />
-            NBA Prop Analytics Engine v3.0
-          </p>
-        </div>
+    <div className="min-h-screen bg-zinc-950 overflow-x-hidden">
+      {/* CSS Animations */}
+      <style>{`
+        @keyframes scan-down {
+          0%, 100% { top: 0%; opacity: 0; }
+          10% { opacity: 1; }
+          90% { opacity: 1; }
+          100% { top: 100%; opacity: 0; }
+        }
+        @keyframes float-up {
+          0% { transform: translateY(100vh); opacity: 0; }
+          10% { opacity: 0.3; }
+          90% { opacity: 0.3; }
+          100% { transform: translateY(-100vh); opacity: 0; }
+        }
+        @keyframes glow-pulse {
+          0%, 100% { filter: drop-shadow(0 0 8px currentColor); }
+          50% { filter: drop-shadow(0 0 20px currentColor); }
+        }
+        .demon-glow { animation: glow-pulse 2s ease-in-out infinite; color: #FF0000; }
+        .goblin-glow { animation: glow-pulse 2s ease-in-out infinite; color: #00FF7F; }
+        .flash-silver { animation: flash 0.3s ease-out; }
+        @keyframes flash {
+          0% { filter: brightness(1); }
+          50% { filter: brightness(2) saturate(0); }
+          100% { filter: brightness(1); }
+        }
+        @keyframes gradient-shift {
+          0%, 100% { background-position: 0% 50%; }
+          50% { background-position: 100% 50%; }
+        }
+        .gradient-text {
+          background: linear-gradient(90deg, #C0C0C0, #FFFFFF, #C0C0C0);
+          background-size: 200% auto;
+          -webkit-background-clip: text;
+          -webkit-text-fill-color: transparent;
+          animation: gradient-shift 3s ease infinite;
+        }
+      `}</style>
 
-        <Tabs defaultValue="login" className="w-full">
-          <TabsList className="grid w-full grid-cols-2 bg-zinc-900 border border-zinc-800">
-            <TabsTrigger 
-              value="login" 
-              data-testid="login-tab"
-              className="data-[state=active]:bg-zinc-800"
-            >
-              Login
-            </TabsTrigger>
-            <TabsTrigger 
-              value="signup" 
-              data-testid="signup-tab"
-              className="data-[state=active]:bg-zinc-800"
-            >
-              Sign Up
-            </TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="login">
-            <Card className="bg-zinc-900 border-zinc-800">
-              <CardHeader>
-                <CardTitle className="text-white">Welcome Back</CardTitle>
-                <CardDescription className="text-zinc-400">
-                  Login to access your prop dashboard
-                </CardDescription>
-              </CardHeader>
-              <form onSubmit={handleLogin}>
-                <CardContent className="space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="login-email" className="text-zinc-300">Email</Label>
-                    <Input
-                      id="login-email"
-                      data-testid="login-email"
-                      type="email"
-                      placeholder="your@email.com"
-                      value={loginData.email}
-                      onChange={(e) =>
-                        setLoginData({ ...loginData, email: e.target.value })
-                      }
-                      required
-                      className="bg-zinc-800 border-zinc-700 text-white placeholder:text-zinc-500"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="login-password" className="text-zinc-300">Password</Label>
-                    <Input
-                      id="login-password"
-                      data-testid="login-password"
-                      type="password"
-                      placeholder="••••••••"
-                      value={loginData.password}
-                      onChange={(e) =>
-                        setLoginData({ ...loginData, password: e.target.value })
-                      }
-                      required
-                      className="bg-zinc-800 border-zinc-700 text-white placeholder:text-zinc-500"
-                    />
-                  </div>
-                </CardContent>
-                <CardFooter>
-                  <Button
-                    type="submit"
-                    data-testid="login-submit-btn"
-                    disabled={loading}
-                    className="w-full bg-gradient-to-r from-red-600 to-amber-600 hover:from-red-500 hover:to-amber-500 text-white font-medium"
-                  >
-                    {loading ? 'Logging in...' : 'Login'}
-                  </Button>
-                </CardFooter>
-              </form>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="signup">
-            <Card className="bg-zinc-900 border-zinc-800">
-              <CardHeader>
-                <CardTitle className="text-white">Create Account</CardTitle>
-                <CardDescription className="text-zinc-400">
-                  Join to find Demons & Goblins in NBA props
-                </CardDescription>
-              </CardHeader>
-              <form onSubmit={handleSignup}>
-                <CardContent className="space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="signup-name" className="text-zinc-300">Full Name</Label>
-                    <Input
-                      id="signup-name"
-                      data-testid="signup-name"
-                      type="text"
-                      placeholder="John Doe"
-                      value={signupData.fullName}
-                      onChange={(e) =>
-                        setSignupData({ ...signupData, fullName: e.target.value })
-                      }
-                      className="bg-zinc-800 border-zinc-700 text-white placeholder:text-zinc-500"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="signup-email" className="text-zinc-300">Email</Label>
-                    <Input
-                      id="signup-email"
-                      data-testid="signup-email"
-                      type="email"
-                      placeholder="your@email.com"
-                      value={signupData.email}
-                      onChange={(e) =>
-                        setSignupData({ ...signupData, email: e.target.value })
-                      }
-                      required
-                      className="bg-zinc-800 border-zinc-700 text-white placeholder:text-zinc-500"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="signup-password" className="text-zinc-300">Password</Label>
-                    <Input
-                      id="signup-password"
-                      data-testid="signup-password"
-                      type="password"
-                      placeholder="Min 6 characters"
-                      value={signupData.password}
-                      onChange={(e) =>
-                        setSignupData({ ...signupData, password: e.target.value })
-                      }
-                      required
-                      minLength={6}
-                      className="bg-zinc-800 border-zinc-700 text-white placeholder:text-zinc-500"
-                    />
-                  </div>
-                </CardContent>
-                <CardFooter>
-                  <Button
-                    type="submit"
-                    data-testid="signup-submit-btn"
-                    disabled={loading}
-                    className="w-full bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 text-white font-medium"
-                  >
-                    {loading ? 'Creating account...' : 'Create Account'}
-                  </Button>
-                </CardFooter>
-              </form>
-            </Card>
-          </TabsContent>
-        </Tabs>
-
-        <p className="text-center text-zinc-500 text-xs mt-6">
-          Find high-value Demons (boosted lines) & safe Goblins (easy overs)
-        </p>
+      {/* ==================== SECTION 1: HERO ==================== */}
+      <section className="min-h-screen flex flex-col items-center justify-center relative px-4 py-12">
+        {/* Background Data Stream */}
+        <DataStream />
         
-        {/* Demo Mode Button */}
-        <div className="mt-6 pt-6 border-t border-zinc-800">
-          <Button
-            onClick={() => navigate('/v3/demo')}
-            data-testid="try-demo-btn"
-            variant="outline"
-            className="w-full bg-transparent border-zinc-700 text-zinc-400 hover:bg-zinc-800 hover:text-white hover:border-zinc-600 transition-all"
-          >
-            <Play className="w-4 h-4 mr-2" />
-            Try Demo Mode
-          </Button>
-          <p className="text-center text-zinc-600 text-[10px] mt-2">
-            Explore the full dashboard without creating an account
+        {/* Logo */}
+        <div className="relative z-10 flex flex-col items-center">
+          <div className="flex items-center gap-2 mb-2">
+            <Eye className="w-8 h-8 text-zinc-400" />
+          </div>
+          <h1 className="text-5xl md:text-6xl font-black tracking-tighter gradient-text">
+            PICKVISION
+          </h1>
+          <span className="text-lg text-zinc-500 font-medium tracking-widest -mt-1">AI</span>
+        </div>
+
+        {/* Headline */}
+        <div className="mt-6 text-center relative z-10">
+          <p className="text-xl md:text-2xl text-zinc-400 font-medium">
+            Stop guessing. <span className="text-emerald-400 font-bold">Start winning.</span>
           </p>
         </div>
-      </div>
+
+        {/* Live Scan Visual */}
+        <div className="mt-10 w-full max-w-md relative z-10">
+          <div className="relative bg-gradient-to-br from-zinc-900 to-zinc-950 rounded-3xl border border-zinc-800/50 overflow-hidden p-6">
+            {/* Scanning Bar */}
+            <ScanningBar isActive={true} speed={scanSpeed} />
+            
+            {/* Simulated Player Card (Blurred Background) */}
+            <div className="relative">
+              <div className="absolute inset-0 bg-gradient-to-b from-transparent to-zinc-900/80" />
+              
+              {/* Player Preview */}
+              <div className="flex items-center gap-4 blur-[2px] opacity-60">
+                <div className="w-16 h-16 rounded-full bg-zinc-800" />
+                <div className="flex-1">
+                  <div className="h-4 w-32 bg-zinc-700 rounded mb-2" />
+                  <div className="h-3 w-20 bg-zinc-800 rounded" />
+                </div>
+              </div>
+              
+              {/* Revealed Vision Insight */}
+              <div className="mt-4 p-3 bg-gradient-to-r from-emerald-950/50 to-zinc-900 rounded-xl border border-emerald-800/30">
+                <div className="flex items-center gap-2 mb-2">
+                  <GoblinIcon size={18} />
+                  <span className="text-emerald-400 text-xs font-bold tracking-wider">GOBLIN DETECTED</span>
+                </div>
+                <p className="text-zinc-400 text-xs italic">
+                  "VanVleet's absence opens backcourt minutes. Expect 15%+ usage bump..."
+                </p>
+                <div className="flex items-center gap-2 mt-2">
+                  <div className="flex-1 h-1.5 bg-zinc-800 rounded-full overflow-hidden">
+                    <div className="h-full w-[92%] bg-gradient-to-r from-emerald-600 to-emerald-400" />
+                  </div>
+                  <span className="text-emerald-400 text-xs font-bold">92%</span>
+                </div>
+              </div>
+            </div>
+            
+            {/* Scanning Text */}
+            <div className="mt-4 flex items-center justify-center gap-2 text-zinc-600 text-xs">
+              <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
+              Analyzing 2026 Season Trends...
+            </div>
+          </div>
+        </div>
+
+        {/* CTA Button */}
+        <Button
+          onClick={scrollToForm}
+          data-testid="enter-vault-btn"
+          className="mt-8 px-8 py-6 text-lg font-bold bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-500 hover:to-emerald-400 text-black rounded-xl shadow-lg shadow-emerald-500/30 hover:shadow-emerald-500/50 transition-all duration-300 hover:scale-105 relative z-10"
+        >
+          ENTER THE VAULT
+          <ArrowRight className="ml-2 w-5 h-5" />
+        </Button>
+
+        {/* Scroll Indicator */}
+        <div className="absolute bottom-8 left-1/2 -translate-x-1/2 text-zinc-600 animate-bounce">
+          <ChevronDown className="w-6 h-6" />
+        </div>
+      </section>
+
+      {/* ==================== SECTION 2: BENTO GRID ==================== */}
+      <section className="py-20 px-4 bg-gradient-to-b from-zinc-950 to-black">
+        <div className="max-w-4xl mx-auto">
+          <h2 className="text-center text-2xl md:text-3xl font-bold text-white mb-2">
+            The <span className="text-emerald-400">Edge</span> You've Been Missing
+          </h2>
+          <p className="text-center text-zinc-500 text-sm mb-12">
+            Why sharps choose PickVision AI
+          </p>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* The Seer Model */}
+            <FeatureCard
+              icon={<Sparkles className="w-5 h-5 text-zinc-400" />}
+              title="The Seer Model"
+              description="AI that 'watches' the game. We factor in fatigue, altitude, and momentum—not just averages."
+              glowColor="zinc"
+            />
+            
+            {/* Demon Radar */}
+            <FeatureCard
+              icon={<DemonIcon size={20} />}
+              title="Demon Radar"
+              description="We hunt for the 'Mismatches.' Find the high-multiplier lines before the books pull them."
+              glowColor="red"
+            />
+            
+            {/* Usage Ripple */}
+            <FeatureCard
+              icon={<BarChart3 className="w-5 h-5 text-cyan-400" />}
+              title="Usage Ripple™"
+              description="If a star is out, the floor shifts. We predict the new usage leaders in real-time."
+              glowColor="cyan"
+            />
+            
+            {/* The Goblin Vault */}
+            <FeatureCard
+              icon={<GoblinIcon size={20} />}
+              title="The Goblin Vault"
+              description="Consistency is king. Daily high-probability 'Locks' designed to build your bankroll."
+              glowColor="green"
+            />
+          </div>
+        </div>
+      </section>
+
+      {/* ==================== SECTION 3: THE PROMISE ==================== */}
+      <section className="py-16 px-4 relative overflow-hidden">
+        {/* Background Gradient */}
+        <div className="absolute inset-0 bg-gradient-to-r from-emerald-950/20 via-zinc-950 to-red-950/20" />
+        
+        <div className="max-w-2xl mx-auto text-center relative z-10">
+          <div className="flex items-center justify-center gap-2 mb-4">
+            <div className="w-8 h-[1px] bg-gradient-to-r from-transparent to-zinc-600" />
+            <Eye className="w-5 h-5 text-zinc-500" />
+            <div className="w-8 h-[1px] bg-gradient-to-l from-transparent to-zinc-600" />
+          </div>
+          
+          <blockquote className="text-xl md:text-2xl text-zinc-300 font-light italic leading-relaxed">
+            "In 2026, <span className="text-zinc-400">data is noise</span>. 
+            <span className="text-white font-medium"> Vision is profit</span>. 
+            We strip away the fluff to give you the one thing that matters: 
+            <span className="text-emerald-400 font-semibold"> The Edge</span>."
+          </blockquote>
+          
+          <div className="mt-6 flex items-center justify-center gap-4">
+            <DemonIcon size={24} />
+            <span className="text-zinc-600 text-sm">×</span>
+            <GoblinIcon size={24} />
+          </div>
+        </div>
+      </section>
+
+      {/* ==================== SECTION 4: SIGNUP FORM ==================== */}
+      <section ref={formRef} className="py-20 px-4 bg-black" id="signup-section">
+        <div className="max-w-md mx-auto">
+          {/* Form Header */}
+          <div className="text-center mb-8">
+            <h2 className="text-2xl font-bold text-white mb-2">
+              {isLogin ? 'Access The Vault' : 'Join The Vision'}
+            </h2>
+            <p className="text-zinc-500 text-sm">
+              {isLogin ? 'Welcome back, sharp.' : 'Create your PickVision account'}
+            </p>
+          </div>
+
+          {/* Auth Form */}
+          <div className="bg-gradient-to-br from-zinc-900 to-zinc-950 rounded-2xl border border-zinc-800/50 p-6 relative overflow-hidden">
+            {/* Scanning Effect on Form */}
+            {isTyping && <ScanningBar isActive={true} speed={1} />}
+            
+            {/* Social Auth Buttons */}
+            <div className="space-y-3 mb-6">
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full bg-white hover:bg-zinc-100 text-black border-none py-5 font-medium"
+                onClick={() => toast.info('Google Auth coming soon!')}
+              >
+                <svg className="w-5 h-5 mr-2" viewBox="0 0 24 24">
+                  <path fill="currentColor" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                  <path fill="currentColor" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                  <path fill="currentColor" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+                  <path fill="currentColor" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+                </svg>
+                Continue with Google
+              </Button>
+              
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full bg-black hover:bg-zinc-900 text-white border-zinc-700 py-5 font-medium"
+                onClick={() => toast.info('Apple Auth coming soon!')}
+              >
+                <svg className="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.81-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/>
+                </svg>
+                Continue with Apple
+              </Button>
+            </div>
+
+            {/* Divider */}
+            <div className="flex items-center gap-4 my-6">
+              <div className="flex-1 h-px bg-zinc-800" />
+              <span className="text-zinc-600 text-xs">or</span>
+              <div className="flex-1 h-px bg-zinc-800" />
+            </div>
+
+            {/* Traditional Form */}
+            <form onSubmit={handleSubmit} className="space-y-4">
+              {!isLogin && (
+                <div className="space-y-2">
+                  <Label htmlFor="fullName" className="text-zinc-400 text-xs uppercase tracking-wider">
+                    Full Name
+                  </Label>
+                  <Input
+                    id="fullName"
+                    data-testid="signup-name"
+                    type="text"
+                    placeholder="John Sharp"
+                    value={formData.fullName}
+                    onChange={(e) => handleInputChange('fullName', e.target.value)}
+                    className="bg-zinc-900 border-zinc-800 text-white placeholder:text-zinc-600 focus:border-emerald-500/50 focus:ring-emerald-500/20 py-5"
+                  />
+                </div>
+              )}
+              
+              <div className="space-y-2">
+                <Label htmlFor="email" className="text-zinc-400 text-xs uppercase tracking-wider">
+                  Email
+                </Label>
+                <Input
+                  id="email"
+                  data-testid={isLogin ? "login-email" : "signup-email"}
+                  type="email"
+                  placeholder="your@email.com"
+                  value={formData.email}
+                  onChange={(e) => handleInputChange('email', e.target.value)}
+                  required
+                  className="bg-zinc-900 border-zinc-800 text-white placeholder:text-zinc-600 focus:border-emerald-500/50 focus:ring-emerald-500/20 py-5"
+                />
+              </div>
+              
+              <div className="space-y-2">
+                <Label htmlFor="password" className="text-zinc-400 text-xs uppercase tracking-wider">
+                  Password
+                </Label>
+                <Input
+                  id="password"
+                  data-testid={isLogin ? "login-password" : "signup-password"}
+                  type="password"
+                  placeholder="••••••••"
+                  value={formData.password}
+                  onChange={(e) => handleInputChange('password', e.target.value)}
+                  required
+                  minLength={6}
+                  className="bg-zinc-900 border-zinc-800 text-white placeholder:text-zinc-600 focus:border-emerald-500/50 focus:ring-emerald-500/20 py-5"
+                />
+              </div>
+
+              <Button
+                type="submit"
+                data-testid={isLogin ? "login-submit-btn" : "signup-submit-btn"}
+                disabled={loading}
+                className="w-full py-6 text-base font-bold bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-500 hover:to-emerald-400 text-black rounded-xl shadow-lg shadow-emerald-500/20 hover:shadow-emerald-500/40 transition-all duration-300"
+              >
+                {loading ? (
+                  <div className="flex items-center gap-2">
+                    <div className="w-4 h-4 border-2 border-black/30 border-t-black rounded-full animate-spin" />
+                    {isLogin ? 'Activating...' : 'Creating Account...'}
+                  </div>
+                ) : (
+                  <>
+                    <Lock className="w-4 h-4 mr-2" />
+                    {isLogin ? 'Access The Vault' : 'Create Account'}
+                  </>
+                )}
+              </Button>
+            </form>
+
+            {/* Social Proof */}
+            <p className="text-center text-zinc-600 text-xs mt-4">
+              Join <span className="text-emerald-400 font-medium">12,402</span> sharps using PickVision intelligence today.
+            </p>
+
+            {/* Toggle Login/Signup */}
+            <div className="mt-6 pt-6 border-t border-zinc-800/50 text-center">
+              <button
+                type="button"
+                onClick={() => setIsLogin(!isLogin)}
+                className="text-zinc-500 text-sm hover:text-white transition-colors"
+              >
+                {isLogin ? "Don't have an account? " : "Already have an account? "}
+                <span className="text-emerald-400 font-medium">
+                  {isLogin ? 'Sign up' : 'Log in'}
+                </span>
+              </button>
+            </div>
+          </div>
+
+          {/* Demo Mode */}
+          <div className="mt-8 text-center">
+            <Button
+              onClick={() => navigate('/v3/demo')}
+              data-testid="try-demo-btn"
+              variant="ghost"
+              className="text-zinc-500 hover:text-white hover:bg-zinc-900/50 transition-all"
+            >
+              <Play className="w-4 h-4 mr-2" />
+              Try Demo Mode First
+            </Button>
+            <p className="text-zinc-700 text-[10px] mt-1">
+              Explore the full dashboard without an account
+            </p>
+          </div>
+        </div>
+      </section>
+
+      {/* Footer */}
+      <footer className="py-8 px-4 border-t border-zinc-900">
+        <div className="max-w-4xl mx-auto flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Eye className="w-4 h-4 text-zinc-600" />
+            <span className="text-zinc-600 text-xs">PickVision AI</span>
+          </div>
+          <span className="text-zinc-700 text-xs">© 2026</span>
+        </div>
+      </footer>
     </div>
   );
 };
+
+export default Auth;
