@@ -29,7 +29,7 @@ import os
 import asyncio
 import random
 from datetime import datetime, timezone, timedelta, time
-from typing import Optional, Dict, List, Any, Set
+from typing import Optional, Dict, List, Any, Set, Tuple
 from thefuzz import fuzz
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
@@ -1940,10 +1940,14 @@ class DemonGoblinEngine:
         """
         THE BIG MONEY BUILDER - Parlay Generator Algorithm
         
+        PRIZEPICKS COMPLIANCE:
+        - MINIMUM 2 TEAMS REQUIRED: Pick #1 and Pick #2 must be from different teams
+        - This ensures all generated lineups are valid for PrizePicks submission
+        
         "WHALE" SCORING:
         1. Ceiling Frequency: Filter demons where H10 >= 30% (hit at least 3/10 times)
         2. Recent Heat: 20% boost if player hit in last game (H5 >= 20%)
-        3. Correlation Filter: Pair players from same game for 4-6 pick parlays
+        3. Smart Correlation: Opponent pairs for 4-6 pick lines to capture game pace
         
         LINE TYPES (Mathematically Accurate at +100 odds):
         - 2-Pick: Max 4x payout (2² = 4)
@@ -1951,16 +1955,10 @@ class DemonGoblinEngine:
         - 4-Pick: Max 16x payout (2⁴ = 16)
         - 5-Pick: Max 32x payout (2⁵ = 32)
         - 6-Pick: Max 64x payout (2⁶ = 64)
-        
-        PAYOUT MATH:
-        - Each demon leg at +100 odds = 2x multiplier (bet $100, win $100 + stake)
-        - n-pick parlay: 2^n maximum payout
-        - GOAL: Maximize combined hit probability while achieving multiplier
         """
-        logger.info("[PARLAY BUILDER] Generating HIGH-PROBABILITY parlays...")
+        logger.info("[PARLAY BUILDER] Generating HIGH-PROBABILITY parlays with 2-Team Rule...")
         
         # Collect ONLY high-probability demons (minimum 50% hit rate)
-        # This ensures combined probabilities stay high
         high_prob_demons = []
         
         for player_name, player_data in players_dict.items():
@@ -1982,7 +1980,6 @@ class DemonGoblinEngine:
                 base_prob = (h10 * 0.6) + (h5 * 0.4)
                 
                 # STRICT FILTER: Only include demons with 50%+ hit probability
-                # This ensures our parlays have reasonable combined chances
                 if base_prob < 0.50:
                     continue
                 
@@ -1991,14 +1988,18 @@ class DemonGoblinEngine:
                 
                 whale_score = base_prob * heat_boost
                 
-                # Get game info
+                # Get game info for opponent pairing
                 home_team = demon.get("home_team", "")
                 away_team = demon.get("away_team", "")
                 game_key = f"{away_team}@{home_team}" if home_team and away_team else ""
                 
+                # Determine opponent team
+                opponent_team = away_team if team == home_team else home_team
+                
                 demon_entry = {
                     "player_name": player_name,
                     "team": team,
+                    "opponent_team": opponent_team,
                     "nba_id": player_data.get("nba_id"),
                     "stat_type": self._extract_stat_type(demon.get("market", "")),
                     "line": demon.get("line", 0),
@@ -2016,120 +2017,274 @@ class DemonGoblinEngine:
                 
                 high_prob_demons.append(demon_entry)
         
-        # Sort by hit_probability (NOT whale_score) - we want highest chance of hitting
+        # Sort by hit_probability - highest chance of hitting first
         high_prob_demons.sort(key=lambda x: x["hit_probability"], reverse=True)
         
         logger.info(f"[PARLAY BUILDER] Found {len(high_prob_demons)} high-probability demons (50%+ hit rate)")
         
-        parlays = {}
-        
-        # Helper to get unique player picks (no duplicate players in same parlay)
-        def get_top_unique_picks(demons: List[Dict], count: int) -> List[Dict]:
+        # ==================== TWO-TEAM RULE HELPER ====================
+        def get_multi_team_picks(demons: List[Dict], count: int) -> Tuple[List[Dict], bool, int]:
+            """
+            Select picks enforcing PrizePicks 2-Team minimum rule.
+            
+            Logic:
+            - Pick #1: Top-ranked player
+            - Pick #2: Next highest-ranked from DIFFERENT team
+            - Picks #3-6: Any team (2-team minimum already established)
+            
+            Returns: (picks, is_valid, team_count)
+            """
+            if len(demons) < count:
+                return [], False, 0
+            
             picks = []
             used_players = set()
+            teams_used = set()
+            
+            # Pick #1: Best available
+            pick_1 = demons[0]
+            picks.append(pick_1)
+            used_players.add(pick_1["player_name"])
+            teams_used.add(pick_1["team"])
+            
+            # Pick #2: MUST be from different team (enforce 2-team rule)
+            pick_2 = None
+            for d in demons[1:]:
+                if d["player_name"] not in used_players and d["team"] != pick_1["team"]:
+                    pick_2 = d
+                    break
+            
+            if not pick_2:
+                # Fallback: Can't find different team, parlay would be invalid
+                # But we'll still try to build it and mark as invalid
+                for d in demons[1:]:
+                    if d["player_name"] not in used_players:
+                        pick_2 = d
+                        break
+            
+            if pick_2:
+                picks.append(pick_2)
+                used_players.add(pick_2["player_name"])
+                teams_used.add(pick_2["team"])
+            
+            # Picks #3-6: Fill with remaining best picks (any team now OK)
             for d in demons:
+                if len(picks) >= count:
+                    break
                 if d["player_name"] not in used_players:
                     picks.append(d)
                     used_players.add(d["player_name"])
+                    teams_used.add(d["team"])
+            
+            is_valid = len(teams_used) >= 2
+            return picks[:count], is_valid, len(teams_used)
+        
+        # ==================== SMART CORRELATION HELPER ====================
+        def get_opponent_paired_picks(demons: List[Dict], count: int) -> Tuple[List[Dict], bool, int, bool]:
+            """
+            For 4+ pick parlays, try to include opponent pairs from same game.
+            This captures game pace correlation.
+            
+            Returns: (picks, is_valid, team_count, has_opponent_pair)
+            """
+            if len(demons) < count:
+                return [], False, 0, False
+            
+            picks = []
+            used_players = set()
+            teams_used = set()
+            has_opponent_pair = False
+            
+            # First, find the best opponent pair (players from opposing teams in same game)
+            opponent_pairs = []
+            for i, d1 in enumerate(demons[:20]):  # Check top 20
+                for d2 in demons[i+1:30]:
+                    if d1["player_name"] != d2["player_name"]:
+                        # Check if they're opponents in the same game
+                        if d1["game_key"] == d2["game_key"] and d1["team"] != d2["team"]:
+                            combined_prob = (d1["hit_probability"] + d2["hit_probability"]) / 2
+                            opponent_pairs.append({
+                                "pair": [d1, d2],
+                                "combined_prob": combined_prob,
+                                "game_key": d1["game_key"]
+                            })
+            
+            # Sort pairs by combined probability
+            opponent_pairs.sort(key=lambda x: x["combined_prob"], reverse=True)
+            
+            # Start with best opponent pair if available
+            if opponent_pairs:
+                best_pair = opponent_pairs[0]["pair"]
+                picks.extend(best_pair)
+                for p in best_pair:
+                    used_players.add(p["player_name"])
+                    teams_used.add(p["team"])
+                has_opponent_pair = True
+            else:
+                # No opponent pair, use standard 2-team logic
+                pick_1 = demons[0]
+                picks.append(pick_1)
+                used_players.add(pick_1["player_name"])
+                teams_used.add(pick_1["team"])
+                
+                for d in demons[1:]:
+                    if d["player_name"] not in used_players and d["team"] != pick_1["team"]:
+                        picks.append(d)
+                        used_players.add(d["player_name"])
+                        teams_used.add(d["team"])
+                        break
+            
+            # Fill remaining slots
+            for d in demons:
                 if len(picks) >= count:
                     break
-            return picks
+                if d["player_name"] not in used_players:
+                    picks.append(d)
+                    used_players.add(d["player_name"])
+                    teams_used.add(d["team"])
+            
+            is_valid = len(teams_used) >= 2
+            return picks[:count], is_valid, len(teams_used), has_opponent_pair
         
-        # ==================== 2-PICK ====================
-        # Top 2 highest probability - 4x payout
+        parlays = {}
+        
+        # ==================== 2-PICK (Double Up) ====================
         if len(high_prob_demons) >= 2:
-            picks_2 = get_top_unique_picks(high_prob_demons, 2)
-            combined_prob = self._calculate_parlay_probability(picks_2)
-            parlays["2_pick"] = {
-                "name": "Double Up",
-                "picks": picks_2,
-                "pick_count": 2,
-                "combined_probability": combined_prob,
-                "estimated_payout": 4,
-                "payout_range": "4x",
-                "max_payout": 4,
-                "description": "Top 2 highest-probability demons"
-            }
+            picks_2, is_valid, team_count = get_multi_team_picks(high_prob_demons, 2)
+            if picks_2:
+                combined_prob = self._calculate_parlay_probability(picks_2)
+                parlays["2_pick"] = {
+                    "name": "Double Up",
+                    "picks": picks_2,
+                    "pick_count": 2,
+                    "combined_probability": combined_prob,
+                    "estimated_payout": 4,
+                    "payout_range": "4x",
+                    "max_payout": 4,
+                    "description": "Top 2 highest-probability demons",
+                    "lineup_valid": is_valid,
+                    "team_count": team_count,
+                    "lineup_status": "Valid (Multi-Team)" if is_valid else "INVALID (Single Team)"
+                }
         
-        # ==================== 3-PICK ====================
-        # Top 3 highest probability - 8x payout
+        # ==================== 3-PICK (Triple Threat) ====================
         if len(high_prob_demons) >= 3:
-            picks_3 = get_top_unique_picks(high_prob_demons, 3)
-            combined_prob = self._calculate_parlay_probability(picks_3)
-            parlays["3_pick"] = {
-                "name": "Triple Threat",
-                "picks": picks_3,
-                "pick_count": 3,
-                "combined_probability": combined_prob,
-                "estimated_payout": 8,
-                "payout_range": "8x",
-                "max_payout": 8,
-                "description": "Top 3 highest-probability demons"
-            }
+            picks_3, is_valid, team_count = get_multi_team_picks(high_prob_demons, 3)
+            if picks_3:
+                combined_prob = self._calculate_parlay_probability(picks_3)
+                parlays["3_pick"] = {
+                    "name": "Triple Threat",
+                    "picks": picks_3,
+                    "pick_count": 3,
+                    "combined_probability": combined_prob,
+                    "estimated_payout": 8,
+                    "payout_range": "8x",
+                    "max_payout": 8,
+                    "description": "Top 3 highest-probability demons",
+                    "lineup_valid": is_valid,
+                    "team_count": team_count,
+                    "lineup_status": "Valid (Multi-Team)" if is_valid else "INVALID (Single Team)"
+                }
         
-        # ==================== 4-PICK ====================
-        # Top 4 highest probability - 16x payout
+        # ==================== 4-PICK (Power Play) - With Opponent Pairing ====================
         if len(high_prob_demons) >= 4:
-            picks_4 = get_top_unique_picks(high_prob_demons, 4)
-            combined_prob = self._calculate_parlay_probability(picks_4)
-            parlays["4_pick"] = {
-                "name": "Power Play",
-                "picks": picks_4,
-                "pick_count": 4,
-                "combined_probability": combined_prob,
-                "estimated_payout": 16,
-                "payout_range": "16x",
-                "max_payout": 16,
-                "description": "Top 4 highest-probability demons"
-            }
+            picks_4, is_valid, team_count, has_pair = get_opponent_paired_picks(high_prob_demons, 4)
+            if picks_4:
+                combined_prob = self._calculate_parlay_probability(picks_4)
+                status = "Valid (Multi-Team)"
+                if has_pair:
+                    status = "Valid (Opponent Pair)"
+                elif not is_valid:
+                    status = "INVALID (Single Team)"
+                
+                parlays["4_pick"] = {
+                    "name": "Power Play",
+                    "picks": picks_4,
+                    "pick_count": 4,
+                    "combined_probability": combined_prob,
+                    "estimated_payout": 16,
+                    "payout_range": "16x",
+                    "max_payout": 16,
+                    "description": "4 picks with opponent correlation" if has_pair else "Top 4 highest-probability demons",
+                    "lineup_valid": is_valid,
+                    "team_count": team_count,
+                    "has_opponent_pair": has_pair,
+                    "lineup_status": status
+                }
         
-        # ==================== 5-PICK ====================
-        # Top 5 highest probability - 32x payout
+        # ==================== 5-PICK (Heavy Hitter) - With Opponent Pairing ====================
         if len(high_prob_demons) >= 5:
-            picks_5 = get_top_unique_picks(high_prob_demons, 5)
-            combined_prob = self._calculate_parlay_probability(picks_5)
-            parlays["5_pick"] = {
-                "name": "Heavy Hitter",
-                "picks": picks_5,
-                "pick_count": 5,
-                "combined_probability": combined_prob,
-                "estimated_payout": 32,
-                "payout_range": "32x",
-                "max_payout": 32,
-                "description": "Top 5 highest-probability demons"
-            }
+            picks_5, is_valid, team_count, has_pair = get_opponent_paired_picks(high_prob_demons, 5)
+            if picks_5:
+                combined_prob = self._calculate_parlay_probability(picks_5)
+                status = "Valid (Multi-Team)"
+                if has_pair:
+                    status = "Valid (Opponent Pair)"
+                elif not is_valid:
+                    status = "INVALID (Single Team)"
+                
+                parlays["5_pick"] = {
+                    "name": "Heavy Hitter",
+                    "picks": picks_5,
+                    "pick_count": 5,
+                    "combined_probability": combined_prob,
+                    "estimated_payout": 32,
+                    "payout_range": "32x",
+                    "max_payout": 32,
+                    "description": "5 picks with game correlation" if has_pair else "Top 5 highest-probability demons",
+                    "lineup_valid": is_valid,
+                    "team_count": team_count,
+                    "has_opponent_pair": has_pair,
+                    "lineup_status": status
+                }
         
-        # ==================== 6-PICK ====================
-        # Top 6 highest probability - 64x payout (MAXIMUM)
+        # ==================== 6-PICK (Jackpot 64x) - With Opponent Pairing ====================
         if len(high_prob_demons) >= 6:
-            picks_6 = get_top_unique_picks(high_prob_demons, 6)
-            combined_prob = self._calculate_parlay_probability(picks_6)
-            parlays["6_pick"] = {
-                "name": "Jackpot 64x",
-                "picks": picks_6,
-                "pick_count": 6,
-                "combined_probability": combined_prob,
-                "estimated_payout": 64,
-                "payout_range": "64x",
-                "max_payout": 64,
-                "description": "Top 6 highest-probability demons - MAX PAYOUT!"
-            }
+            picks_6, is_valid, team_count, has_pair = get_opponent_paired_picks(high_prob_demons, 6)
+            if picks_6:
+                combined_prob = self._calculate_parlay_probability(picks_6)
+                status = "Valid (Multi-Team)"
+                if has_pair:
+                    status = "Valid (Opponent Pair)"
+                elif not is_valid:
+                    status = "INVALID (Single Team)"
+                
+                parlays["6_pick"] = {
+                    "name": "Jackpot 64x",
+                    "picks": picks_6,
+                    "pick_count": 6,
+                    "combined_probability": combined_prob,
+                    "estimated_payout": 64,
+                    "payout_range": "64x",
+                    "max_payout": 64,
+                    "description": "6 picks with game correlation - MAX PAYOUT!" if has_pair else "Top 6 highest-probability demons - MAX PAYOUT!",
+                    "lineup_valid": is_valid,
+                    "team_count": team_count,
+                    "has_opponent_pair": has_pair,
+                    "lineup_status": status
+                }
         
         # Store in database
         await self.parlay_builder.delete_many({})
+        
+        # Count valid lineups
+        valid_count = sum(1 for p in parlays.values() if p.get("lineup_valid", False))
         
         parlay_doc = {
             "parlays": parlays,
             "total_demons_analyzed": len(high_prob_demons),
             "min_probability_threshold": "50%",
+            "valid_lineups": valid_count,
+            "total_lineups": len(parlays),
             "synced_at": sync_time.isoformat()
         }
         
         await self.parlay_builder.insert_one(parlay_doc)
         
-        logger.info(f"[PARLAY BUILDER] Generated {len(parlays)} parlay types from {len(high_prob_demons)} high-prob demons")
+        logger.info(f"[PARLAY BUILDER] Generated {len(parlays)} parlay types ({valid_count} valid for PrizePicks)")
         for ptype, pdata in parlays.items():
-            logger.info(f"  {ptype}: {pdata['name']} - {pdata['estimated_payout']}x payout | {pdata['combined_probability']:.1f}% hit chance")
+            status = pdata.get("lineup_status", "Unknown")
+            logger.info(f"  {ptype}: {pdata['name']} - {pdata['estimated_payout']}x | {pdata['combined_probability']:.1f}% | {status}")
     
     def _build_correlated_parlay(self, all_demons: List[Dict], target_count: int, game_groups: Dict) -> List[Dict]:
         """Build a parlay with game correlation where possible"""
@@ -2299,45 +2454,131 @@ class DemonGoblinEngine:
         
         logger.info(f"[GOBLIN GOLDMINE] Found {len(goldmine_candidates)} candidates (88%+ hit rate)")
         
-        # Helper functions
-        def get_unique_picks(candidates: List[Dict], count: int) -> List[Dict]:
-            """Get top N unique player picks"""
+        # ==================== TWO-TEAM RULE HELPERS ====================
+        def get_multi_team_picks(candidates: List[Dict], count: int) -> Tuple[List[Dict], bool, int]:
+            """
+            Select picks enforcing PrizePicks 2-Team minimum rule.
+            
+            Logic:
+            - Pick #1: Top-ranked player
+            - Pick #2: Next highest-ranked from DIFFERENT team
+            - Picks #3-6: Any team (2-team minimum already established)
+            
+            Returns: (picks, is_valid, team_count)
+            """
+            if len(candidates) < count:
+                return [], False, 0
+            
             picks = []
             used_players = set()
+            teams_used = set()
+            
+            # Pick #1: Best available
+            pick_1 = candidates[0]
+            picks.append(pick_1)
+            used_players.add(pick_1["player_name"])
+            teams_used.add(pick_1["team"])
+            
+            # Pick #2: MUST be from different team (enforce 2-team rule)
+            pick_2 = None
+            for c in candidates[1:]:
+                if c["player_name"] not in used_players and c["team"] != pick_1["team"]:
+                    pick_2 = c
+                    break
+            
+            if not pick_2:
+                # Fallback: Can't find different team
+                for c in candidates[1:]:
+                    if c["player_name"] not in used_players:
+                        pick_2 = c
+                        break
+            
+            if pick_2:
+                picks.append(pick_2)
+                used_players.add(pick_2["player_name"])
+                teams_used.add(pick_2["team"])
+            
+            # Picks #3+: Fill with remaining best picks
             for c in candidates:
+                if len(picks) >= count:
+                    break
                 if c["player_name"] not in used_players:
                     picks.append(c)
                     used_players.add(c["player_name"])
-                if len(picks) >= count:
-                    break
-            return picks
+                    teams_used.add(c["team"])
+            
+            is_valid = len(teams_used) >= 2
+            return picks[:count], is_valid, len(teams_used)
         
-        def get_diversified_picks(candidates: List[Dict], count: int, game_groups: Dict) -> List[Dict]:
-            """Get picks diversified across different games"""
+        def get_diversified_multi_team_picks(candidates: List[Dict], count: int, game_groups: Dict) -> Tuple[List[Dict], bool, int]:
+            """
+            Get diversified picks with 2-Team Rule enforcement.
+            Prioritizes picks from different games AND different teams.
+            """
+            if len(candidates) < count:
+                return [], False, 0
+            
             picks = []
             used_players = set()
             used_games = set()
+            teams_used = set()
             
-            # First pass: one pick per game (diversification)
+            # Pick #1: Best available
+            if candidates:
+                pick_1 = candidates[0]
+                picks.append(pick_1)
+                used_players.add(pick_1["player_name"])
+                teams_used.add(pick_1["team"])
+                if pick_1.get("game_key"):
+                    used_games.add(pick_1["game_key"])
+            
+            # Pick #2: Different team AND different game if possible
+            pick_2 = None
+            for c in candidates[1:]:
+                if c["player_name"] not in used_players and c["team"] != picks[0]["team"]:
+                    game = c.get("game_key", "")
+                    if game and game not in used_games:
+                        pick_2 = c
+                        break
+            
+            # Fallback: Just different team
+            if not pick_2:
+                for c in candidates[1:]:
+                    if c["player_name"] not in used_players and c["team"] != picks[0]["team"]:
+                        pick_2 = c
+                        break
+            
+            if pick_2:
+                picks.append(pick_2)
+                used_players.add(pick_2["player_name"])
+                teams_used.add(pick_2["team"])
+                if pick_2.get("game_key"):
+                    used_games.add(pick_2["game_key"])
+            
+            # Remaining picks: Prioritize different games
             for c in candidates:
                 if len(picks) >= count:
                     break
-                game = c.get("game_key", "")
-                if c["player_name"] not in used_players and game not in used_games:
-                    picks.append(c)
-                    used_players.add(c["player_name"])
-                    if game:
-                        used_games.add(game)
+                if c["player_name"] not in used_players:
+                    game = c.get("game_key", "")
+                    if not game or game not in used_games:
+                        picks.append(c)
+                        used_players.add(c["player_name"])
+                        teams_used.add(c["team"])
+                        if game:
+                            used_games.add(game)
             
-            # Second pass: fill remaining with best available
+            # Final fill if needed
             for c in candidates:
                 if len(picks) >= count:
                     break
                 if c["player_name"] not in used_players:
                     picks.append(c)
                     used_players.add(c["player_name"])
+                    teams_used.add(c["team"])
             
-            return picks
+            is_valid = len(teams_used) >= 2
+            return picks[:count], is_valid, len(teams_used)
         
         def calculate_goldmine_probability(picks: List[Dict]) -> float:
             """Calculate combined probability for Goldmine parlays"""
@@ -2351,8 +2592,6 @@ class DemonGoblinEngine:
         
         def estimate_goblin_payout(picks: List[Dict]) -> float:
             """Estimate payout for Goblin parlay (odds are typically -137)"""
-            # At -137 odds, each leg pays ~1.73x (bet $137 to win $100)
-            # Multiplier per leg = 1.73
             legs = len(picks)
             base_multiplier = 1.73 ** legs
             return round(base_multiplier, 1)
@@ -2360,88 +2599,104 @@ class DemonGoblinEngine:
         parlays = {}
         
         # ==================== DAILY DOUBLE (2-Pick) ====================
-        # Top 2 highest floor safety - nearly automatic
         if len(goldmine_candidates) >= 2:
-            picks_2 = get_unique_picks(goldmine_candidates, 2)
-            combined_prob = calculate_goldmine_probability(picks_2)
-            parlays["daily_double"] = {
-                "name": "Daily Double",
-                "tier": "daily_double",
-                "picks": picks_2,
-                "pick_count": 2,
-                "combined_probability": combined_prob,
-                "reliability": combined_prob,
-                "estimated_payout": estimate_goblin_payout(picks_2),
-                "payout_range": "~3x",
-                "description": "Top 2 highest-consistency Goblins - Nearly automatic!",
-                "badge": "SAFEST BET"
-            }
+            picks_2, is_valid, team_count = get_multi_team_picks(goldmine_candidates, 2)
+            if picks_2:
+                combined_prob = calculate_goldmine_probability(picks_2)
+                parlays["daily_double"] = {
+                    "name": "Daily Double",
+                    "tier": "daily_double",
+                    "picks": picks_2,
+                    "pick_count": 2,
+                    "combined_probability": combined_prob,
+                    "reliability": combined_prob,
+                    "estimated_payout": estimate_goblin_payout(picks_2),
+                    "payout_range": "~3x",
+                    "description": "Top 2 highest-consistency Goblins - Nearly automatic!",
+                    "badge": "SAFEST BET",
+                    "lineup_valid": is_valid,
+                    "team_count": team_count,
+                    "lineup_status": "Valid (Multi-Team)" if is_valid else "INVALID (Single Team)"
+                }
         
         # ==================== GREEN LADDER 3-Pick ====================
-        # Diversified across different games
         if len(goldmine_candidates) >= 3:
-            picks_3 = get_diversified_picks(goldmine_candidates, 3, game_groups)
-            combined_prob = calculate_goldmine_probability(picks_3)
-            parlays["green_ladder_3"] = {
-                "name": "Green Ladder",
-                "tier": "green_ladder_3",
-                "picks": picks_3,
-                "pick_count": 3,
-                "combined_probability": combined_prob,
-                "reliability": combined_prob,
-                "estimated_payout": estimate_goblin_payout(picks_3),
-                "payout_range": "~5x",
-                "description": "3 Goblins diversified across games",
-                "badge": "DIVERSIFIED"
-            }
+            picks_3, is_valid, team_count = get_diversified_multi_team_picks(goldmine_candidates, 3, game_groups)
+            if picks_3:
+                combined_prob = calculate_goldmine_probability(picks_3)
+                parlays["green_ladder_3"] = {
+                    "name": "Green Ladder",
+                    "tier": "green_ladder_3",
+                    "picks": picks_3,
+                    "pick_count": 3,
+                    "combined_probability": combined_prob,
+                    "reliability": combined_prob,
+                    "estimated_payout": estimate_goblin_payout(picks_3),
+                    "payout_range": "~5x",
+                    "description": "3 Goblins diversified across games",
+                    "badge": "DIVERSIFIED",
+                    "lineup_valid": is_valid,
+                    "team_count": team_count,
+                    "lineup_status": "Valid (Multi-Team)" if is_valid else "INVALID (Single Team)"
+                }
         
         # ==================== GREEN LADDER 4-Pick ====================
         if len(goldmine_candidates) >= 4:
-            picks_4 = get_diversified_picks(goldmine_candidates, 4, game_groups)
-            combined_prob = calculate_goldmine_probability(picks_4)
-            parlays["green_ladder_4"] = {
-                "name": "Green Ladder+",
-                "tier": "green_ladder_4",
-                "picks": picks_4,
-                "pick_count": 4,
-                "combined_probability": combined_prob,
-                "reliability": combined_prob,
-                "estimated_payout": estimate_goblin_payout(picks_4),
-                "payout_range": "~9x",
-                "description": "4 Goblins diversified for risk management",
-                "badge": "BALANCED"
-            }
+            picks_4, is_valid, team_count = get_diversified_multi_team_picks(goldmine_candidates, 4, game_groups)
+            if picks_4:
+                combined_prob = calculate_goldmine_probability(picks_4)
+                parlays["green_ladder_4"] = {
+                    "name": "Green Ladder+",
+                    "tier": "green_ladder_4",
+                    "picks": picks_4,
+                    "pick_count": 4,
+                    "combined_probability": combined_prob,
+                    "reliability": combined_prob,
+                    "estimated_payout": estimate_goblin_payout(picks_4),
+                    "payout_range": "~9x",
+                    "description": "4 Goblins diversified for risk management",
+                    "badge": "BALANCED",
+                    "lineup_valid": is_valid,
+                    "team_count": team_count,
+                    "lineup_status": "Valid (Multi-Team)" if is_valid else "INVALID (Single Team)"
+                }
         
         # ==================== 6-PICK FORTRESS (Flex Play) ====================
         # Designed for PrizePicks Flex: 5/6 = 1.5x profit, 6/6 = 12x
         if len(goldmine_candidates) >= 6:
-            picks_6 = get_unique_picks(goldmine_candidates, 6)
-            combined_prob = calculate_goldmine_probability(picks_6)
-            
-            # Calculate Flex probability (hitting 5 or 6 out of 6)
-            # P(5/6) = 6 * p^5 * (1-p) where p is avg individual probability
-            avg_p = sum(p["weighted_hit_rate"] for p in picks_6) / 600  # Convert to decimal
-            p_all_6 = avg_p ** 6
-            p_exactly_5 = 6 * (avg_p ** 5) * (1 - avg_p)
-            flex_win_prob = round((p_all_6 + p_exactly_5) * 100, 2)
-            
-            parlays["fortress_flex"] = {
-                "name": "6-Pick Fortress",
-                "tier": "fortress_flex",
-                "picks": picks_6,
-                "pick_count": 6,
-                "combined_probability": combined_prob,  # All 6 hitting
-                "flex_probability": flex_win_prob,  # 5 or 6 hitting
-                "reliability": flex_win_prob,  # Use flex prob for display
-                "estimated_payout": estimate_goblin_payout(picks_6),
-                "flex_payout": "5/6 = 1.5x | 6/6 = 15x",
-                "payout_range": "~15x (Flex)",
-                "description": "PrizePicks Flex Play - Win on 5 OR 6 hits!",
-                "badge": "FLEX FORTRESS"
-            }
+            picks_6, is_valid, team_count = get_diversified_multi_team_picks(goldmine_candidates, 6, game_groups)
+            if picks_6:
+                combined_prob = calculate_goldmine_probability(picks_6)
+                
+                # Calculate Flex probability (hitting 5 or 6 out of 6)
+                avg_p = sum(p["weighted_hit_rate"] for p in picks_6) / 600
+                p_all_6 = avg_p ** 6
+                p_exactly_5 = 6 * (avg_p ** 5) * (1 - avg_p)
+                flex_win_prob = round((p_all_6 + p_exactly_5) * 100, 2)
+                
+                parlays["fortress_flex"] = {
+                    "name": "6-Pick Fortress",
+                    "tier": "fortress_flex",
+                    "picks": picks_6,
+                    "pick_count": 6,
+                    "combined_probability": combined_prob,
+                    "flex_probability": flex_win_prob,
+                    "reliability": flex_win_prob,
+                    "estimated_payout": estimate_goblin_payout(picks_6),
+                    "flex_payout": "5/6 = 1.5x | 6/6 = 15x",
+                    "payout_range": "~15x (Flex)",
+                    "description": "PrizePicks Flex Play - Win on 5 OR 6 hits!",
+                    "badge": "FLEX FORTRESS",
+                    "lineup_valid": is_valid,
+                    "team_count": team_count,
+                    "lineup_status": "Valid (Multi-Team)" if is_valid else "INVALID (Single Team)"
+                }
         
         # Store in database
         await self.goblin_goldmine.delete_many({})
+        
+        # Count valid lineups
+        valid_count = sum(1 for p in parlays.values() if p.get("lineup_valid", False))
         
         goldmine_doc = {
             "parlays": parlays,
@@ -2449,6 +2704,8 @@ class DemonGoblinEngine:
             "goldmine_locks": len([c for c in goldmine_candidates if c["is_goldmine_lock"]]),
             "games_available": len(game_groups),
             "min_hit_rate_threshold": "88%",
+            "valid_lineups": valid_count,
+            "total_lineups": len(parlays),
             "synced_at": sync_time.isoformat()
         }
         
@@ -2456,14 +2713,14 @@ class DemonGoblinEngine:
         
         # Log summary
         locks_count = len([c for c in goldmine_candidates if c["is_goldmine_lock"]])
-        logger.info(f"[GOBLIN GOLDMINE] Generated {len(parlays)} Goldmine parlay tiers")
+        logger.info(f"[GOBLIN GOLDMINE] Generated {len(parlays)} Goldmine parlay tiers ({valid_count} valid for PrizePicks)")
         logger.info(f"  Goldmine Locks (100% L10): {locks_count}")
         logger.info(f"  Games for diversification: {len(game_groups)}")
         
         for tier, data in parlays.items():
             reliability = data.get("reliability", 0)
-            payout = data.get("estimated_payout", 0)
-            logger.info(f"  {data['name']}: {reliability}% reliability | ~{payout}x payout")
+            status = data.get("lineup_status", "Unknown")
+            logger.info(f"  {data['name']}: {reliability}% reliability | {status}")
     
     def _extract_stat_type(self, market: str) -> str:
         """Extract stat type from market name"""

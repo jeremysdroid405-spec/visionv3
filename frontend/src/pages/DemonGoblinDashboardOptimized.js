@@ -8,7 +8,7 @@ import {
   Activity, RefreshCw, Search, Database, 
   ChevronDown, ChevronRight, AlertTriangle, Skull, Ghost,
   User, Flame, Star, Clock, Zap, HardDrive, ArrowLeft, X,
-  DollarSign, TrendingUp, Target, Layers
+  DollarSign, TrendingUp, Target, Layers, CheckCircle, XCircle
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -696,6 +696,10 @@ const ParlayCard = memo(({ parlay, pickCount, onClick }) => {
   const payoutMultiplier = parlay?.estimated_payout || 0;
   const combinedProb = parlay?.combined_probability || 0;
   const payoutRange = parlay?.payout_range || '';
+  const lineupValid = parlay?.lineup_valid ?? true;
+  const lineupStatus = parlay?.lineup_status || 'Valid (Multi-Team)';
+  const teamCount = parlay?.team_count || 0;
+  const hasOpponentPair = parlay?.has_opponent_pair || false;
   
   // Color scheme based on pick count
   const colorScheme = {
@@ -713,14 +717,14 @@ const ParlayCard = memo(({ parlay, pickCount, onClick }) => {
       className={`
         bg-gradient-to-br ${colors.bg} to-zinc-950 ${colors.border}
         hover:scale-[1.02] transition-all duration-200 cursor-pointer
-        overflow-hidden
+        overflow-hidden ${!lineupValid ? 'opacity-60' : ''}
       `}
       onClick={onClick}
       data-testid={`parlay-card-${pickCount}`}
     >
       <div className="p-3">
         {/* Header */}
-        <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-2">
             <div className={`w-8 h-8 rounded-full ${colors.badge} flex items-center justify-center`}>
               <span className={`text-lg font-black ${colors.text}`}>{pickCount}</span>
@@ -736,6 +740,26 @@ const ParlayCard = memo(({ parlay, pickCount, onClick }) => {
             <DollarSign className="w-3 h-3 mr-0.5" />
             {payoutMultiplier}x
           </Badge>
+        </div>
+        
+        {/* Lineup Status Indicator */}
+        <div className={`flex items-center gap-1 mb-2 text-[9px] px-2 py-0.5 rounded ${
+          lineupValid 
+            ? hasOpponentPair ? 'bg-blue-500/20 text-blue-300' : 'bg-green-500/20 text-green-300'
+            : 'bg-red-500/20 text-red-300'
+        }`}>
+          {lineupValid ? (
+            <>
+              <CheckCircle className="w-3 h-3" />
+              <span>{lineupStatus}</span>
+              {teamCount > 0 && <span className="text-zinc-400">({teamCount} teams)</span>}
+            </>
+          ) : (
+            <>
+              <XCircle className="w-3 h-3" />
+              <span>INVALID - Single Team</span>
+            </>
+          )}
         </div>
         
         {/* Picks List */}
@@ -792,6 +816,9 @@ const GoldmineCard = memo(({ parlay, tier, onClick }) => {
   const payoutEstimate = parlay?.estimated_payout || 0;
   const badge = parlay?.badge || '';
   const flexProb = parlay?.flex_probability || null;
+  const lineupValid = parlay?.lineup_valid ?? true;
+  const lineupStatus = parlay?.lineup_status || 'Valid (Multi-Team)';
+  const teamCount = parlay?.team_count || 0;
   
   // Emerald green theme for Goldmine
   const tierStyles = {
@@ -832,14 +859,14 @@ const GoldmineCard = memo(({ parlay, tier, onClick }) => {
       className={`
         bg-gradient-to-br ${style.bg} to-zinc-950 ${style.border}
         hover:scale-[1.02] transition-all duration-200 cursor-pointer
-        overflow-hidden border-2
+        overflow-hidden border-2 ${!lineupValid ? 'opacity-60' : ''}
       `}
       onClick={onClick}
       data-testid={`goldmine-card-${tier}`}
     >
       <div className="p-3">
         {/* Header */}
-        <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-2">
             <div className={`w-8 h-8 rounded-full ${style.badge} flex items-center justify-center`}>
               <Ghost className={`w-4 h-4 ${style.text}`} />
@@ -858,8 +885,28 @@ const GoldmineCard = memo(({ parlay, tier, onClick }) => {
           )}
         </div>
         
+        {/* Lineup Status Indicator */}
+        <div className={`flex items-center gap-1 mb-2 text-[9px] px-2 py-0.5 rounded ${
+          lineupValid 
+            ? 'bg-emerald-500/20 text-emerald-300'
+            : 'bg-red-500/20 text-red-300'
+        }`}>
+          {lineupValid ? (
+            <>
+              <CheckCircle className="w-3 h-3" />
+              <span>{lineupStatus}</span>
+              {teamCount > 0 && <span className="text-zinc-400">({teamCount} teams)</span>}
+            </>
+          ) : (
+            <>
+              <XCircle className="w-3 h-3" />
+              <span>INVALID - Single Team</span>
+            </>
+          )}
+        </div>
+        
         {/* Reliability Meter */}
-        <div className="mb-3">
+        <div className="mb-2">
           <div className="flex items-center justify-between text-[10px] mb-1">
             <span className="text-zinc-400">Reliability</span>
             <span className={`font-bold ${reliability >= 70 ? 'text-emerald-400' : reliability >= 50 ? 'text-yellow-400' : 'text-red-400'}`}>
