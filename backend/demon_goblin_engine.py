@@ -750,6 +750,24 @@ class DemonGoblinEngine:
         
         return None
     
+    async def get_photo_url_from_master_roster(self, player_name: str) -> Optional[str]:
+        """
+        Look up a player's photo_url from master roster.
+        
+        Returns the ESPN headshot URL if available.
+        """
+        normalized = self.sanitize_player_name(player_name)
+        
+        doc = await self.master_roster.find_one(
+            {"normalized_name": normalized},
+            {"_id": 0, "photo_url": 1}
+        )
+        
+        if doc:
+            return doc.get("photo_url")
+        
+        return None
+    
     async def load_master_roster_cache(self):
         """Load the master roster into memory for fast lookups."""
         logger.info("[MASTER ROSTER] Loading roster into memory cache...")
@@ -1716,6 +1734,9 @@ class DemonGoblinEngine:
                 # Priority 1: Look up in Master Roster (BallDontLie synced weekly)
                 player_team_abbrev = await self.get_team_from_master_roster(player_name)
                 
+                # Get photo_url from master roster (ESPN headshot)
+                photo_url = await self.get_photo_url_from_master_roster(player_name)
+                
                 # If found in master roster, use that (most reliable)
                 team_source = "master_roster" if player_team_abbrev else None
                 
@@ -1746,6 +1767,7 @@ class DemonGoblinEngine:
                     "team": player_team_abbrev,
                     "team_source": team_source,  # Track where we got the team from
                     "nba_id": nba_id,
+                    "photo_url": photo_url,  # ESPN headshot URL
                     "props": [],
                     "demons": [],
                     "goblins": [],
@@ -1928,6 +1950,7 @@ class DemonGoblinEngine:
                     "player_name": player_name,
                     "team": player_data.get("team", ""),
                     "nba_id": player_data.get("nba_id"),
+                    "photo_url": player_data.get("photo_url"),
                     "stat_type": demon_stat,
                     "direction": demon_direction,
                     "demon_line": demon_line,
@@ -2163,6 +2186,7 @@ class DemonGoblinEngine:
                     "player_name": player_name,
                     "team": player_data.get("team", ""),
                     "nba_id": player_data.get("nba_id"),
+                    "photo_url": player_data.get("photo_url"),
                     "stat_type": goblin_stat,
                     "direction": goblin_direction,
                     "goblin_line": goblin_line,
@@ -2328,6 +2352,7 @@ class DemonGoblinEngine:
                     "team": team,
                     "opponent_team": opponent_team,
                     "nba_id": player_data.get("nba_id"),
+                    "photo_url": player_data.get("photo_url"),
                     "stat_type": self._extract_stat_type(demon.get("market", "")),
                     "line": demon.get("line", 0),
                     "direction": demon.get("direction", "Over"),
@@ -2763,6 +2788,7 @@ class DemonGoblinEngine:
                     "player_name": player_name,
                     "team": team,
                     "nba_id": player_data.get("nba_id"),
+                    "photo_url": player_data.get("photo_url"),
                     "stat_type": goblin_stat,
                     "line": goblin_line,
                     "direction": goblin_direction,

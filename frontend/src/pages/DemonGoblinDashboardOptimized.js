@@ -114,7 +114,7 @@ const BeaconGlowStyles = () => (
 
 // ==================== PLAYER HEADSHOT COMPONENT ====================
 
-const PlayerHeadshot = memo(({ nbaId, playerName, team, size = 'md', className = '' }) => {
+const PlayerHeadshot = memo(({ nbaId, playerName, team, photoUrl, size = 'md', className = '' }) => {
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState(false);
   
@@ -131,8 +131,19 @@ const PlayerHeadshot = memo(({ nbaId, playerName, team, size = 'md', className =
   // Get team logo URL for fallback
   const teamLogoUrl = team ? TEAM_LOGOS[team] : null;
   
-  // If no NBA ID or image failed, show team logo or user icon
-  if (!nbaId || error) {
+  // Determine the headshot URL to use (priority: photoUrl > NBA CDN > fallback)
+  // photoUrl comes from ESPN via sync_player_photos
+  // Check if photoUrl is a valid headshot (not a "nophoto" placeholder)
+  const isValidPhotoUrl = photoUrl && 
+    !photoUrl.includes('nophoto') && 
+    !photoUrl.includes('placeholder');
+  
+  const headshotUrl = isValidPhotoUrl 
+    ? photoUrl 
+    : (nbaId ? NBA_HEADSHOT_URL(nbaId) : null);
+  
+  // If no valid headshot URL or image failed, show team logo or user icon
+  if (!headshotUrl || error) {
     // GLOBAL FALLBACK: Show team logo instead of gray user icon
     if (teamLogoUrl) {
       return (
@@ -180,7 +191,7 @@ const PlayerHeadshot = memo(({ nbaId, playerName, team, size = 'md', className =
         <div className={`${sizeClass} animate-pulse bg-zinc-700 rounded-full`} />
       )}
       <img
-        src={NBA_HEADSHOT_URL(nbaId)}
+        src={headshotUrl}
         alt={playerName}
         loading="lazy"
         onLoad={() => setLoaded(true)}
@@ -375,6 +386,7 @@ const TrendingCard = memo(({ player, rank, onClick, linesLoaded }) => {
               nbaId={player.nba_id} 
               playerName={player.player_name}
               team={player.team}
+              photoUrl={player.photo_url}
               size="md"
               className="ring-2 ring-zinc-700"
             />
@@ -496,6 +508,7 @@ const RadarCard = memo(({ pick, rank, onClick }) => {
               nbaId={pick.nba_id} 
               playerName={pick.player_name}
               team={pick.team}
+              photoUrl={pick.photo_url}
               size="md"
               className="ring-2 ring-red-800/50"
             />
@@ -651,6 +664,7 @@ const VaultCard = memo(({ pick, rank, onClick }) => {
               nbaId={pick.nba_id} 
               playerName={pick.player_name}
               team={pick.team}
+              photoUrl={pick.photo_url}
               size="md"
               className="ring-2 ring-green-800/50"
             />
@@ -1524,6 +1538,7 @@ const PlayerDetailPage = ({ playerName, onBack, highlightProp = null, highlightT
               nbaId={player.nba_id} 
               playerName={playerName}
               team={player.team}
+              photoUrl={player.photo_url}
               size="lg"
               className="ring-2 ring-purple-500/50"
             />
@@ -1660,6 +1675,7 @@ const PlayerRow = memo(({ player, isExpanded, onToggle, onClick, linesLoaded }) 
             nbaId={player.nba_id} 
             playerName={player.player_name}
             team={player.team}
+            photoUrl={player.photo_url}
             size="sm"
           />
           
