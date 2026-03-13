@@ -459,6 +459,7 @@ class DemonGoblinEngine:
         # WAREHOUSE MODEL COLLECTIONS
         self.live_props = db.dg_live_props  # Master props collection (deduplicated)
         self.radar_picks = db.dg_radar_picks  # Demon Radar top 10 picks
+        self.goblin_vault = db.dg_goblin_vault  # Goblin Vault top 10 safe picks
         self.cached_board = db.dg_cached_board  # Full cached board for frontend
         
         # Legacy caching collections
@@ -1138,6 +1139,9 @@ class DemonGoblinEngine:
         
         # Build Demon Radar (Top 10 picks)
         await self._build_demon_radar(players_dict, sync_time)
+        
+        # Build Goblin Vault (Top 10 safe plays)
+        await self._build_goblin_vault(players_dict, sync_time)
     
     async def _build_demon_radar(self, players_dict: Dict[str, Dict], sync_time: datetime):
         """
@@ -1375,6 +1379,221 @@ class DemonGoblinEngine:
         logger.info(f"[THRESHOLD] Using MINIMUM mode (P>=40%): {len(final_picks)} candidates")
         return final_picks
     
+    async def _build_goblin_vault(self, players_dict: Dict[str, Dict], sync_time: datetime):
+        """
+        THE GOBLIN VAULT ALGORITHM - Safe Plays Scoring
+        
+        Objective: Find the safest, most reliable Goblin lines with 90%+ hit rates.
+        
+        Scoring Formula:
+        1. Hit Rate Score (80% weight) = Weighted average (L10 × 0.6) + (L5 × 0.4)
+           - Target: 90%+ hit rate for maximum safety
+        2. Value Gap Score (20% weight) = How far BELOW the standard line
+           - The further below standard while maintaining 90%+, the higher the rank
+        
+        Final Score = (Hit_Rate × 0.8) + (Value_Gap_Bonus × 0.2)
+        
+        Safety Rating: X/10 games cleared (displayed as "Safety: 98% | Clear in 10/10 last games")
+        """
+        logger.info("[GOBLIN VAULT] Calculating top 10 safe plays...")
+        
+        all_candidates = []
+        
+        for player_name, player_data in players_dict.items():
+            goblins = player_data.get("goblins", [])
+            standard = player_data.get("standard", [])
+            
+            if not goblins:
+                continue
+            
+            # Build a map of standard lines by stat type
+            standard_map = {}
+            for std_prop in standard:
+                market = std_prop.get("market", "")
+                stat_type = self._extract_stat_type(market)
+                if stat_type:
+                    key = f"{stat_type}_{std_prop.get('direction', '')}"
+                    if key not in standard_map:
+                        standard_map[key] = std_prop
+            
+            # Score each goblin
+            for goblin in goblins:
+                goblin_market = goblin.get("market", "")
+                goblin_stat = self._extract_stat_type(goblin_market)
+                goblin_line = goblin.get("line", 0)
+                goblin_direction = goblin.get("direction", "")
+                
+                if not goblin_stat or goblin_line <= 0:
+                    continue
+                
+                # Find corresponding standard line
+                std_key = f"{goblin_stat}_{goblin_direction}"
+                std_prop = standard_map.get(std_key)
+                
+                # Calculate standard line reference
+                if std_prop:
+                    std_line = std_prop.get("line", 0)
+                else:
+                    # No standard line - estimate as 115% of goblin line (goblins are BELOW standard)
+                    std_line = goblin_line * 1.15
+                
+                if std_line <= 0:
+                    continue
+                
+                # Get hit rates from BallDontLie stats
+                hit_rates = goblin.get("hit_rates", {})
+                h10_data = hit_rates.get("l10", {})
+                h5_data = hit_rates.get("l5", {})
+                season_data = hit_rates.get("season", {})
+                
+                h10 = h10_data.get("hit_rate", 0)
+                h5 = h5_data.get("hit_rate", 0)
+                h10_games = h10_data.get("total_games", 0)
+                h5_games = h5_data.get("total_games", 0)
+                h10_over = h10_data.get("games_over", 0)
+                h5_over = h5_data.get("games_over", 0)
+                season_avg = season_data.get("avg", 0)
+                
+                # Track if we have real data
+                has_real_data = h10_games > 0 or h5_games > 0
+                
+                # Calculate Value Gap (how far BELOW standard)
+                # For Goblins, lower lines = safer, so gap should be negative
+                gap_below_std = std_line - goblin_line  # Positive = safer (further below)
+                gap_pct = (gap_below_std / std_line) * 100 if std_line > 0 else 0
+                
+                # If no real data, estimate based on gap
+                if not has_real_data:
+                    # Estimate: Lower lines = higher hit rate
+                    # Gap of 10% below = 85%, Gap of 20% below = 92%, Gap of 30% = 97%
+                    estimated_hit = min(0.98, 0.80 + (gap_pct / 100) * 0.6)
+                    h10 = estimated_hit
+                    h5 = estimated_hit
+                
+                # Calculate Weighted Hit Rate Score
+                # P = (L10 × 0.6) + (L5 × 0.4)
+                hit_rate_score = (h10 * 0.6) + (h5 * 0.4)
+                
+                # Calculate Value Gap Bonus (normalized 0-1)
+                # Gap of 5% = 0.2, Gap of 10% = 0.4, Gap of 20% = 0.8, Gap of 30%+ = 1.0
+                value_gap_bonus = min(1.0, gap_pct / 30) if gap_pct > 0 else 0
+                
+                # Final Vault Score = (Hit_Rate × 0.8) + (Value_Gap × 0.2)
+                vault_score = (hit_rate_score * 0.8) + (value_gap_bonus * 0.2)
+                
+                # Calculate Safety Level (1-5 shields based on consistency)
+                safety_level = self._calculate_safety_level(h10, h5, h10_over, h5_over, h10_games, h5_games)
+                
+                # Perfect streak detection (cleared in all recent games)
+                is_perfect_streak = h10_games >= 5 and h10_over == h10_games
+                
+                # Safety rating string: "10/10" or "9/10"
+                safety_string = f"{h10_over}/{h10_games}" if h10_games > 0 else "---"
+                
+                all_candidates.append({
+                    "player_name": player_name,
+                    "team": player_data.get("team", ""),
+                    "nba_id": player_data.get("nba_id"),
+                    "stat_type": goblin_stat,
+                    "direction": goblin_direction,
+                    "goblin_line": goblin_line,
+                    "standard_line": round(std_line, 1),
+                    "gap_below_std": round(gap_below_std, 1),
+                    "gap_pct": round(gap_pct, 1),
+                    "h10_rate": round(h10 * 100, 1),
+                    "h5_rate": round(h5 * 100, 1),
+                    "h10_over": h10_over,
+                    "h10_games": h10_games,
+                    "h5_over": h5_over,
+                    "h5_games": h5_games,
+                    "season_avg": round(season_avg, 1),
+                    "hit_probability": round(hit_rate_score * 100, 1),
+                    "vault_score": round(vault_score, 4),
+                    "safety_level": safety_level,
+                    "safety_rating": round(hit_rate_score * 100, 1),
+                    "safety_string": safety_string,
+                    "is_perfect_streak": is_perfect_streak,
+                    "price": goblin.get("price", -110),  # Goblins typically have negative odds
+                    "is_vault_pick": True,
+                    "estimated_p": not has_real_data,
+                    "synced_at": sync_time.isoformat()
+                })
+        
+        # Filter for high safety picks (minimum 80% hit rate for Goblins)
+        safe_picks = [c for c in all_candidates if c["hit_probability"] >= 80]
+        
+        if len(safe_picks) < 10:
+            # Lower threshold to 70% if not enough safe picks
+            safe_picks = [c for c in all_candidates if c["hit_probability"] >= 70]
+        
+        if len(safe_picks) < 10:
+            # Final fallback to 60%
+            safe_picks = [c for c in all_candidates if c["hit_probability"] >= 60]
+        
+        # Sort by vault_score descending (highest safety + value first)
+        safe_picks.sort(key=lambda x: x["vault_score"], reverse=True)
+        
+        # Take top 10
+        top_10 = safe_picks[:10]
+        
+        # Store in goblin_vault collection
+        await self.goblin_vault.delete_many({})
+        if top_10:
+            await self.goblin_vault.insert_many(top_10)
+        
+        # Log summary
+        elite_count = len([p for p in all_candidates if p["hit_probability"] >= 90])
+        safe_count = len([p for p in all_candidates if 80 <= p["hit_probability"] < 90])
+        
+        logger.info(f"[GOBLIN VAULT] Generated {len(top_10)} top safe plays")
+        logger.info(f"  Elite (P>=90%): {elite_count} | Safe (P>=80%): {safe_count}")
+        logger.info(f"  Total candidates: {len(all_candidates)}")
+        
+        # Log top 3 with safety levels
+        for i, pick in enumerate(top_10[:3]):
+            shields = "🛡️" * pick['safety_level']
+            logger.info(f"  #{i+1}: {pick['player_name']} - {pick['stat_type']} {pick['goblin_line']} "
+                       f"(Safety: {pick['safety_rating']}%, Score: {pick['vault_score']:.3f}) {shields}")
+    
+    def _calculate_safety_level(self, h10: float, h5: float, h10_over: int, h5_over: int, h10_games: int, h5_games: int) -> int:
+        """
+        Calculate Safety Level (1-5 Shields) based on consistency:
+        - 5 Shields: Perfect 10/10 or 95%+ hit rate - FORTRESS
+        - 4 Shields: 90%+ hit rate OR perfect 5/5 - VAULT
+        - 3 Shields: 85%+ hit rate - SAFE
+        - 2 Shields: 80%+ hit rate - RELIABLE
+        - 1 Shield:  70%+ hit rate - MODERATE
+        - 0 Shields: < 70% hit rate - RISKY
+        """
+        # 5 Shields: Perfect 10/10 or 95%+
+        if h10_games >= 10 and h10_over == 10:
+            return 5
+        if h10 >= 0.95:
+            return 5
+        
+        # 4 Shields: 90%+ OR perfect 5/5
+        if h10 >= 0.90:
+            return 4
+        if h5_games >= 5 and h5_over == 5:
+            return 4
+        
+        # 3 Shields: 85%+
+        if h10 >= 0.85:
+            return 3
+        if h5 >= 0.90:
+            return 3
+        
+        # 2 Shields: 80%+
+        if h10 >= 0.80:
+            return 2
+        
+        # 1 Shield: 70%+
+        if h10 >= 0.70:
+            return 1
+        
+        # 0 Shields: Below 70%
+        return 0
+    
     def _extract_stat_type(self, market: str) -> str:
         """Extract stat type from market name"""
         # Remove _alternate suffix
@@ -1417,6 +1636,29 @@ class DemonGoblinEngine:
                 "hit_probability": "(H10 × 0.6) + (H5 × 0.4)",
                 "line_gap": "(Demon - Standard) / Standard",
                 "min_probability": "60%"
+            }
+        }
+    
+    async def get_goblin_vault(self) -> Dict[str, Any]:
+        """
+        Get the Goblin Vault top 10 safe plays from MongoDB.
+        NO API CALLS - reads only from database.
+        """
+        picks = await self.goblin_vault.find({}, {"_id": 0}).sort("vault_score", -1).to_list(10)
+        
+        sync_meta = await self.sync_log.find_one({"type": "cached_board"})
+        
+        return {
+            "success": True,
+            "synced_at": sync_meta.get("synced_at") if sync_meta else None,
+            "picks_count": len(picks),
+            "picks": picks,
+            "algorithm": {
+                "description": "Hit Rate + Value Gap Scoring",
+                "formula": "Score = (Hit_Rate × 0.8) + (Value_Gap × 0.2)",
+                "hit_rate": "(L10 × 0.6) + (L5 × 0.4)",
+                "target": "90%+ hit rate for maximum safety",
+                "min_probability": "80%"
             }
         }
     

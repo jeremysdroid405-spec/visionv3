@@ -21,6 +21,7 @@ const NBA_HEADSHOT_URL = (nbaId) => `https://cdn.nba.com/headshots/nba/latest/10
 // Injected CSS for the infinite pulse animation
 const BeaconGlowStyles = () => (
   <style>{`
+    /* ==================== DEMON RADAR - Gold/Orange Beacon ==================== */
     @keyframes beacon-glow-pulse {
       0% { 
         box-shadow: 0 0 5px #FFD700, 0 0 10px rgba(255, 215, 0, 0.3); 
@@ -44,6 +45,33 @@ const BeaconGlowStyles = () => (
     
     .beacon-glow-subtle {
       animation: beacon-glow-pulse 3s ease-in-out infinite;
+      opacity: 0.9;
+    }
+    
+    /* ==================== GOBLIN VAULT - Emerald Green Beacon ==================== */
+    @keyframes emerald-glow-pulse {
+      0% { 
+        box-shadow: 0 0 5px #90EE90, 0 0 10px rgba(144, 238, 144, 0.3); 
+        border-color: #90EE90; 
+      }
+      50% { 
+        box-shadow: 0 0 20px #228B22, 0 0 40px rgba(34, 139, 34, 0.5); 
+        border-color: #228B22; 
+      }
+      100% { 
+        box-shadow: 0 0 5px #90EE90, 0 0 10px rgba(144, 238, 144, 0.3); 
+        border-color: #90EE90; 
+      }
+    }
+    
+    .emerald-glow {
+      animation: emerald-glow-pulse 2s ease-in-out infinite;
+      border-width: 2px;
+      border-style: solid;
+    }
+    
+    .emerald-glow-subtle {
+      animation: emerald-glow-pulse 3s ease-in-out infinite;
       opacity: 0.9;
     }
   `}</style>
@@ -505,6 +533,161 @@ const RadarCard = memo(({ pick, rank, onClick }) => {
 
 RadarCard.displayName = 'RadarCard';
 
+// ==================== GOBLIN VAULT CARD ====================
+
+const VaultCard = memo(({ pick, rank, onClick }) => {
+  // Safety level determines the glow intensity
+  const safetyClass = pick.safety_level >= 4 ? 'ring-green-500/60' :
+                     pick.safety_level >= 3 ? 'ring-green-500/40' :
+                     'ring-green-500/20';
+  
+  // Shield rendering for safety level
+  const safetyLevel = pick.safety_level || 0;
+  const renderShields = () => {
+    if (safetyLevel === 0) return null;
+    return (
+      <div className="flex items-center gap-0.5" title={getSafetyDescription(safetyLevel)}>
+        {[...Array(safetyLevel)].map((_, i) => (
+          <div key={i} className={`w-3 h-3 flex items-center justify-center text-[10px] ${
+            safetyLevel >= 5 ? 'text-green-400' :
+            safetyLevel >= 4 ? 'text-green-500' :
+            safetyLevel >= 3 ? 'text-emerald-500' :
+            'text-emerald-600'
+          }`}>🛡️</div>
+        ))}
+      </div>
+    );
+  };
+  
+  const getSafetyDescription = (level) => {
+    switch(level) {
+      case 5: return '🛡️ FORTRESS! Perfect 10/10 cleared';
+      case 4: return '🛡️ VAULT! 90%+ hit rate';
+      case 3: return '🛡️ SAFE! 85%+ hit rate';
+      case 2: return '🛡️ Reliable - 80%+ hit rate';
+      case 1: return '🛡️ Moderate - 70%+ hit rate';
+      default: return 'Risky';
+    }
+  };
+  
+  return (
+    <Card 
+      className={`
+        bg-gradient-to-br from-green-950/30 to-zinc-950 border-green-900/50
+        hover:border-green-500/70 hover:scale-[1.02] transition-all duration-200
+        cursor-pointer active:scale-[0.98] ring-1 ${safetyClass}
+      `}
+      onClick={onClick}
+      data-testid={`vault-card-${rank}`}
+    >
+      <div className="p-3">
+        {/* Header: Headshot + Rank + Name */}
+        <div className="flex items-center gap-2 mb-2">
+          {/* Headshot with Vault Badge */}
+          <div className="relative">
+            <PlayerHeadshot 
+              nbaId={pick.nba_id} 
+              playerName={pick.player_name} 
+              size="md"
+              className="ring-2 ring-green-800/50"
+            />
+            {/* Rank Badge with shield icon */}
+            <div className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full flex items-center justify-center 
+                          font-bold text-[10px] border-2 border-zinc-900 bg-green-600 text-white">
+              {rank}
+            </div>
+          </div>
+          
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-1">
+              <span className="font-bold text-white text-sm truncate">{pick.player_name}</span>
+              <Ghost className="w-3 h-3 text-green-500 flex-shrink-0" />
+            </div>
+            <div className="flex items-center gap-1 text-[10px] text-zinc-500">
+              <span className="font-mono">{pick.team || '---'}</span>
+              <span>· {pick.stat_type}</span>
+            </div>
+          </div>
+        </div>
+        
+        {/* Safety Level Shields */}
+        {safetyLevel > 0 && (
+          <div className="flex items-center justify-between mb-2 px-1">
+            {renderShields()}
+            <span className={`text-[10px] font-medium ${
+              safetyLevel >= 5 ? 'text-green-400' :
+              safetyLevel >= 4 ? 'text-green-500' :
+              safetyLevel >= 3 ? 'text-emerald-500' :
+              'text-emerald-600'
+            }`}>
+              {safetyLevel >= 5 ? 'FORTRESS' :
+               safetyLevel >= 4 ? 'VAULT' :
+               safetyLevel >= 3 ? 'SAFE' :
+               safetyLevel >= 2 ? 'RELIABLE' : 'MODERATE'}
+            </span>
+          </div>
+        )}
+        
+        {/* Vault Stats */}
+        <div className="space-y-1.5">
+          {/* Line Info */}
+          <div className="flex items-center justify-between text-xs">
+            <span className="text-zinc-400">Line:</span>
+            <div className="flex items-center gap-1">
+              <span className="text-white font-bold">{pick.goblin_line}</span>
+              <span className="text-green-400 font-mono">{pick.price > 0 ? `+${pick.price}` : pick.price}</span>
+            </div>
+          </div>
+          
+          {/* Safety Rating - Main metric */}
+          <div className="flex items-center justify-between text-xs bg-green-950/50 px-2 py-1 rounded">
+            <span className="text-green-400 font-semibold">Safety:</span>
+            <span className="text-white font-bold">{pick.safety_rating}%</span>
+            <span className="text-zinc-400 text-[10px]">
+              Clear in {pick.safety_string}
+            </span>
+          </div>
+          
+          {/* Vault Score (Safety + Value) */}
+          <div className="mt-2">
+            <div className="flex items-center justify-between text-[10px] mb-1">
+              <span className="text-zinc-500">Vault Score</span>
+              <span className={`font-bold ${
+                pick.vault_score >= 0.80 ? 'text-green-400' :
+                pick.vault_score >= 0.65 ? 'text-emerald-400' :
+                'text-zinc-400'
+              }`}>
+                {(pick.vault_score * 100).toFixed(1)}%
+              </span>
+            </div>
+            <div className="h-1.5 bg-zinc-800 rounded-full overflow-hidden">
+              <div 
+                className={`h-full rounded-full transition-all ${
+                  pick.vault_score >= 0.80 ? 'bg-gradient-to-r from-green-500 to-green-400' :
+                  pick.vault_score >= 0.65 ? 'bg-gradient-to-r from-emerald-500 to-emerald-400' :
+                  'bg-gradient-to-r from-zinc-500 to-zinc-400'
+                }`}
+                style={{ width: `${Math.min(100, pick.vault_score * 100)}%` }}
+              />
+            </div>
+          </div>
+          
+          {/* Hit Rate Info */}
+          <div className="flex items-center justify-between text-[10px] text-zinc-500 mt-1">
+            <span>L10: <span className="text-white">{pick.h10_rate}%</span></span>
+            <span>L5: <span className="text-white">{pick.h5_rate}%</span></span>
+            {pick.is_perfect_streak && (
+              <span className="text-green-400 font-medium">✓ PERFECT</span>
+            )}
+          </div>
+        </div>
+      </div>
+    </Card>
+  );
+});
+
+VaultCard.displayName = 'VaultCard';
+
 // ==================== STAT CATEGORIES ====================
 
 const STAT_CATEGORIES = {
@@ -551,7 +734,7 @@ const getCategoryColor = (key) => {
 
 // ==================== CATEGORY ACCORDION ====================
 
-const CategoryAccordion = memo(({ categoryKey, categoryName, props, isExpanded, onToggle, stats, isHighlightedProp, highlightRef }) => {
+const CategoryAccordion = memo(({ categoryKey, categoryName, props, isExpanded, onToggle, stats, isHighlightedProp, highlightRef, glowClass = 'beacon-glow', glowSubtleClass = 'beacon-glow-subtle', highlightType = 'demon' }) => {
   // Count demons, goblins, standard
   const demons = props.filter(p => p.is_demon);
   const goblins = props.filter(p => p.is_goblin);
@@ -559,6 +742,11 @@ const CategoryAccordion = memo(({ categoryKey, categoryName, props, isExpanded, 
   
   // Check if this category has a highlighted prop
   const hasHighlightedProp = props.some(p => isHighlightedProp?.(p));
+  
+  // Determine border color for highlighted category based on type
+  const highlightBorderClass = highlightType === 'goblin' 
+    ? 'border-green-500/50' 
+    : 'border-yellow-500/50';
   
   // Sort by line value (ladder sorting - lowest to highest)
   const sortedProps = [...props].sort((a, b) => {
@@ -580,7 +768,7 @@ const CategoryAccordion = memo(({ categoryKey, categoryName, props, isExpanded, 
   const colorClasses = getCategoryColor(categoryKey);
   
   return (
-    <div className={`rounded-lg overflow-hidden border ${hasHighlightedProp ? 'border-yellow-500/50 beacon-glow-subtle' : 'border-zinc-800/50'}`}>
+    <div className={`rounded-lg overflow-hidden border ${hasHighlightedProp ? `${highlightBorderClass} ${glowSubtleClass}` : 'border-zinc-800/50'}`}>
       {/* Category Header - Clickable */}
       <div
         onClick={onToggle}
@@ -603,8 +791,8 @@ const CategoryAccordion = memo(({ categoryKey, categoryName, props, isExpanded, 
               </span>
               <span className="text-zinc-500 text-xs">({props.length})</span>
               {hasHighlightedProp && (
-                <Badge className="bg-yellow-500/20 text-yellow-400 border-yellow-500/50 text-[10px]">
-                  RADAR TARGET
+                <Badge className={`${highlightType === 'goblin' ? 'bg-green-500/20 text-green-400 border-green-500/50' : 'bg-yellow-500/20 text-yellow-400 border-yellow-500/50'} text-[10px]`}>
+                  {highlightType === 'goblin' ? 'VAULT TARGET' : 'RADAR TARGET'}
                 </Badge>
               )}
             </div>
@@ -686,6 +874,8 @@ const CategoryAccordion = memo(({ categoryKey, categoryName, props, isExpanded, 
               isLast={idx === sortedProps.length - 1}
               isHighlighted={isHighlightedProp?.(prop)}
               highlightRef={highlightRef}
+              glowClass={glowClass}
+              highlightType={highlightType}
             />
           ))}
         </div>
@@ -698,7 +888,7 @@ CategoryAccordion.displayName = 'CategoryAccordion';
 
 // ==================== LADDER PROP ROW ====================
 
-const LadderPropRow = memo(({ prop, categoryStats, isFirst, isLast, isHighlighted, highlightRef }) => {
+const LadderPropRow = memo(({ prop, categoryStats, isFirst, isLast, isHighlighted, highlightRef, glowClass = 'beacon-glow', highlightType = 'demon' }) => {
   const line = prop.line;
   const direction = prop.direction;
   const price = prop.price;
@@ -732,7 +922,7 @@ const LadderPropRow = memo(({ prop, categoryStats, isFirst, isLast, isHighlighte
         ${isDemon ? 'bg-red-950/30 border-l-3 border-red-500 hover:bg-red-950/50' : ''}
         ${isGoblin ? 'bg-green-950/30 border-l-3 border-green-500 hover:bg-green-950/50' : ''}
         ${!isDemon && !isGoblin ? 'bg-zinc-800/30 border-l-3 border-zinc-600 hover:bg-zinc-800/50' : ''}
-        ${isHighlighted ? 'beacon-glow' : ''}
+        ${isHighlighted ? glowClass : ''}
       `}
       data-testid={`ladder-prop-${line}`}
       data-highlighted={isHighlighted ? 'true' : 'false'}
@@ -759,10 +949,10 @@ const LadderPropRow = memo(({ prop, categoryStats, isFirst, isLast, isHighlighte
           {playTypeLabel}
         </span>
         
-        {/* Radar Pick Badge */}
+        {/* Radar/Vault Pick Badge */}
         {isHighlighted && (
-          <Badge className="bg-yellow-500/20 text-yellow-400 border-yellow-500/50 text-[10px] animate-pulse">
-            RADAR PICK
+          <Badge className={`${highlightType === 'goblin' ? 'bg-green-500/20 text-green-400 border-green-500/50' : 'bg-yellow-500/20 text-yellow-400 border-yellow-500/50'} text-[10px] animate-pulse`}>
+            {highlightType === 'goblin' ? 'VAULT PICK' : 'RADAR PICK'}
           </Badge>
         )}
       </div>
@@ -807,12 +997,16 @@ LadderPropRow.displayName = 'LadderPropRow';
 
 // ==================== PLAYER DETAIL PAGE (CACHED - No API Calls) ====================
 
-const PlayerDetailPage = ({ playerName, onBack, highlightProp = null }) => {
+const PlayerDetailPage = ({ playerName, onBack, highlightProp = null, highlightType = 'demon' }) => {
   const [player, setPlayer] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [expandedCategories, setExpandedCategories] = useState(new Set(['PTS', 'AST', 'REB'])); // Default expanded
   const highlightRef = useRef(null);
+  
+  // Determine glow class based on highlight type
+  const glowClass = highlightType === 'goblin' ? 'emerald-glow' : 'beacon-glow';
+  const glowSubtleClass = highlightType === 'goblin' ? 'emerald-glow-subtle' : 'beacon-glow-subtle';
   
   // Parse highlight info (format: "stat_type|line|direction" e.g., "AST|3.5|Over")
   const highlightInfo = useMemo(() => {
@@ -1069,6 +1263,9 @@ const PlayerDetailPage = ({ playerName, onBack, highlightProp = null }) => {
                   onToggle={() => toggleCategory(categoryKey)}
                   isHighlightedProp={isHighlightedProp}
                   highlightRef={highlightRef}
+                  glowClass={glowClass}
+                  glowSubtleClass={glowSubtleClass}
+                  highlightType={highlightType}
                 />
               );
             })}
@@ -1168,6 +1365,7 @@ export const DemonGoblinDashboardOptimized = () => {
   const [players, setPlayers] = useState([]);
   const [trending, setTrending] = useState([]);
   const [radarPicks, setRadarPicks] = useState([]);
+  const [vaultPicks, setVaultPicks] = useState([]);
   const [linesLoaded, setLinesLoaded] = useState(false);
   const [staticLoaded, setStaticLoaded] = useState(false);
   const [syncing, setSyncing] = useState(false);
@@ -1189,10 +1387,11 @@ export const DemonGoblinDashboardOptimized = () => {
     try {
       console.log('[CACHED] Loading from MongoDB...');
       
-      // Load board and radar in parallel
-      const [boardResponse, radarResponse] = await Promise.all([
+      // Load board, radar, and vault in parallel
+      const [boardResponse, radarResponse, vaultResponse] = await Promise.all([
         axios.get(`${API}/v3/cached-props`),
-        axios.get(`${API}/v3/demon-radar`)
+        axios.get(`${API}/v3/demon-radar`),
+        axios.get(`${API}/v3/goblin-vault`)
       ]);
       
       if (boardResponse.data.success && boardResponse.data.players_count > 0) {
@@ -1212,6 +1411,12 @@ export const DemonGoblinDashboardOptimized = () => {
       if (radarResponse.data.success) {
         setRadarPicks(radarResponse.data.picks || []);
         console.log(`[RADAR] Loaded ${radarResponse.data.picks_count} radar picks`);
+      }
+      
+      // Load vault picks
+      if (vaultResponse.data.success) {
+        setVaultPicks(vaultResponse.data.picks || []);
+        console.log(`[VAULT] Loaded ${vaultResponse.data.picks_count} vault picks`);
       }
       
     } catch (error) {
@@ -1274,19 +1479,21 @@ export const DemonGoblinDashboardOptimized = () => {
   
   // ==================== NAVIGATION ====================
   
-  // State for highlighted prop from Radar
+  // State for highlighted prop from Radar or Vault
   const [highlightProp, setHighlightProp] = useState(null);
+  const [highlightType, setHighlightType] = useState('demon'); // 'demon' = gold glow, 'goblin' = green glow
   
-  const handlePlayerClick = (playerName, highlight = null) => {
+  const handlePlayerClick = (playerName, highlight = null, highlightType = 'demon') => {
     setSelectedPlayer(playerName);
     setHighlightProp(highlight);
+    setHighlightType(highlightType);
   };
   
-  // Handler for Radar card clicks - passes highlight info
+  // Handler for Radar card clicks - passes highlight info (Demon - gold glow)
   const handleRadarClick = (pick) => {
     // Create highlight param: stat_type|line|direction
     const highlightParam = `${pick.stat_type}|${pick.demon_line}|${pick.direction || 'Over'}`;
-    handlePlayerClick(pick.player_name, highlightParam);
+    handlePlayerClick(pick.player_name, highlightParam, 'demon');
     
     // Toast notification
     toast.success(
@@ -1295,9 +1502,23 @@ export const DemonGoblinDashboardOptimized = () => {
     );
   };
   
+  // Handler for Vault card clicks - passes highlight info (Goblin - green glow)
+  const handleVaultClick = (pick) => {
+    // Create highlight param: stat_type|line|direction
+    const highlightParam = `${pick.stat_type}|${pick.goblin_line}|${pick.direction || 'Over'}`;
+    handlePlayerClick(pick.player_name, highlightParam, 'goblin');
+    
+    // Toast notification  
+    toast.success(
+      `Opening Vault for ${pick.player_name}`, 
+      { description: `Safety ${pick.safety_rating}% | ${pick.stat_type} ${pick.goblin_line} line` }
+    );
+  };
+  
   const handleBack = () => {
     setSelectedPlayer(null);
     setHighlightProp(null);
+    setHighlightType('demon');
   };
   
   // ==================== RENDER ====================
@@ -1311,6 +1532,7 @@ export const DemonGoblinDashboardOptimized = () => {
           playerName={selectedPlayer} 
           onBack={handleBack}
           highlightProp={highlightProp}
+          highlightType={highlightType}
         />
       </>
     );
@@ -1430,6 +1652,35 @@ export const DemonGoblinDashboardOptimized = () => {
                   pick={pick} 
                   rank={idx + 1}
                   onClick={() => handleRadarClick(pick)}
+                />
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* GOBLIN VAULT - Top 10 Safe Plays */}
+        {vaultPicks.length > 0 && (
+          <div data-testid="vault-section">
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-2">
+                <Ghost className="w-5 h-5 text-green-500" />
+                <span className="text-sm font-bold text-green-400">THE GOBLIN VAULT</span>
+                <Badge className="bg-green-950/50 text-green-400 border-green-800/50 text-[10px]">
+                  TOP 10 SAFE PLAYS
+                </Badge>
+              </div>
+              <div className="text-[10px] text-zinc-500">
+                Target: 90%+ Hit Rate | Low Risk
+              </div>
+            </div>
+            
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+              {vaultPicks.slice(0, 10).map((pick, idx) => (
+                <VaultCard 
+                  key={`${pick.player_name}-${pick.stat_type}-${pick.goblin_line}-${idx}`} 
+                  pick={pick} 
+                  rank={idx + 1}
+                  onClick={() => handleVaultClick(pick)}
                 />
               ))}
             </div>

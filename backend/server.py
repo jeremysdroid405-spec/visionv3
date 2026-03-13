@@ -1188,6 +1188,28 @@ async def get_demon_radar():
     return result
 
 
+@api_router.get("/v3/goblin-vault")
+async def get_goblin_vault():
+    """
+    THE GOBLIN VAULT - Top 10 safest plays based on hit rate analysis.
+    
+    Algorithm:
+    1. Hit Rate Score (80% weight) = (L10 × 0.6) + (L5 × 0.4)
+    2. Value Gap Score (20% weight) = Distance below standard line
+    3. Final Score = (Hit_Rate × 0.8) + (Value_Gap_Bonus × 0.2)
+    
+    Target: 90%+ hit rate lines for maximum safety.
+    
+    NO API CALLS - reads from pre-calculated MongoDB data.
+    """
+    if not demon_goblin_engine:
+        raise HTTPException(status_code=500, detail="Engine not initialized")
+    
+    result = await demon_goblin_engine.get_goblin_vault()
+    
+    return result
+
+
 # ==================== SCHEDULER ENDPOINTS ====================
 
 @api_router.get("/v3/scheduler-status")

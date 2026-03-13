@@ -7,6 +7,50 @@ Build a high-performance NBA Player Prop Dashboard that identifies "Demons" (har
 
 ---
 
+## THE GOBLIN VAULT - COMPLETED (March 13, 2026)
+
+### Vault Scoring Algorithm ✅
+**Formula:**
+```
+Hit Rate Score (80% weight) = (L10 × 0.6) + (L5 × 0.4)
+Value Gap Score (20% weight) = Distance below standard line
+Final Score = (Hit_Rate × 0.8) + (Value_Gap_Bonus × 0.2)
+```
+
+**Target:** 90%+ hit rate for maximum safety
+
+### Safety Level (1-5 Shields) ✅
+| Shields | Condition | Label |
+|---------|-----------|-------|
+| 🛡️🛡️🛡️🛡️🛡️ | Perfect 10/10 OR 95%+ hit rate | FORTRESS |
+| 🛡️🛡️🛡️🛡️ | 90%+ hit rate OR perfect 5/5 | VAULT |
+| 🛡️🛡️🛡️ | 85%+ hit rate | SAFE |
+| 🛡️🛡️ | 80%+ hit rate | RELIABLE |
+| 🛡️ | 70%+ hit rate | MODERATE |
+
+### Green Beacon Pulse ✅
+CSS animation for Goblin Vault highlights:
+```css
+@keyframes emerald-glow-pulse {
+  0%: { box-shadow: 0 0 5px #90EE90; border-color: #90EE90; }  /* Lime green */
+  50%: { box-shadow: 0 0 20px #228B22; border-color: #228B22; }  /* Forest green */
+  100%: { box-shadow: 0 0 5px #90EE90; border-color: #90EE90; }
+}
+```
+
+### Vault Card Display ✅
+- **Safety Rating**: "Safety: 100% | Clear in 10/10"
+- **Vault Score**: Progress bar showing combined score
+- **✓ PERFECT**: Badge for 100% hit rate players
+- **Shield Icons**: Visual safety level indicator
+
+### Latest Vault Results (Top 3)
+1. Bruce Brown - PTS 3.5 (Safety: 100%, Score: 1.000) 🛡️🛡️🛡️🛡️🛡️
+2. Bruce Brown - P+R 6.5 (Safety: 100%, Score: 1.000) 🛡️🛡️🛡️🛡️🛡️
+3. Jared McCain - PTS 4.5 (Safety: 100%, Score: 1.000) 🛡️🛡️🛡️🛡️🛡️
+
+---
+
 ## BEACON GLOW FEATURE - COMPLETED (March 13, 2026)
 
 ### Deep-Link Handshake ✅
