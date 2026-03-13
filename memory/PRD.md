@@ -43,6 +43,13 @@ Build a high-performance NBA Player Prop Dashboard that mimics the PrizePicks us
 - None currently
 
 ### RECENTLY COMPLETED (Dec 13, 2025 - Session 3)
+- [x] **Mobile Swipeable Cards (Tinder-style)** - Major mobile UX improvement:
+  - All card sections now use horizontal swipe navigation on mobile
+  - Each section shows one card at a time with "N / Total" indicator and dots
+  - Smooth CSS scroll-snap for native feel
+  - Desktop: Remains as responsive grid (2-5 columns depending on screen)
+  - Sections updated: Demon Radar, Goblin Recon, The Gauntlet, The Safe Haven, Trending
+  - Added `tailwind-scrollbar-hide` for cleaner mobile appearance
 - [x] **Dynamic Payout Calculation Engine** - Complete backend integration:
   - **New `payout_engine.py` module**: Handles PrizePicks-style payout calculations
   - **Demon/Standard Formula**: `Total Payout = Base Multiplier × (Mod_1 × Mod_2 × ... × Mod_n)`

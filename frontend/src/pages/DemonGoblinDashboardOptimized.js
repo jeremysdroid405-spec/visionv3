@@ -80,8 +80,124 @@ const BeaconGlowStyles = () => (
       animation: emerald-glow-pulse 3s ease-in-out infinite;
       opacity: 0.9;
     }
+    
+    /* ==================== MOBILE SWIPE CARDS ==================== */
+    .swipe-container {
+      display: flex !important;
+      flex-direction: row !important;
+      overflow-x: auto !important;
+      scroll-snap-type: x mandatory;
+      scroll-behavior: smooth;
+      -webkit-overflow-scrolling: touch;
+      scrollbar-width: none;
+      -ms-overflow-style: none;
+      gap: 12px;
+      padding: 4px 16px;
+    }
+    
+    .swipe-container::-webkit-scrollbar {
+      display: none;
+    }
+    
+    .swipe-card {
+      scroll-snap-align: center;
+      flex-shrink: 0 !important;
+      width: calc(100vw - 48px) !important;
+      max-width: 340px !important;
+      min-width: calc(100vw - 48px) !important;
+    }
+    
+    @media (min-width: 640px) {
+      .swipe-container {
+        display: grid !important;
+        grid-template-columns: repeat(2, 1fr) !important;
+        overflow-x: visible !important;
+        scroll-snap-type: none;
+        padding: 0;
+        gap: 8px;
+      }
+      
+      .swipe-card {
+        width: auto !important;
+        max-width: none !important;
+        min-width: 0 !important;
+      }
+    }
+    
+    @media (min-width: 1024px) {
+      .swipe-container {
+        grid-template-columns: repeat(3, 1fr) !important;
+      }
+    }
+    
+    @media (min-width: 1280px) {
+      .swipe-container {
+        grid-template-columns: repeat(4, 1fr) !important;
+      }
+    }
+    
+    @media (min-width: 1536px) {
+      .swipe-container {
+        grid-template-columns: repeat(5, 1fr) !important;
+      }
+    }
   `}</style>
 );
+
+// ==================== SWIPE INDICATOR COMPONENT ====================
+const SwipeIndicator = memo(({ current, total, accentColor = 'orange' }) => {
+  const colorClasses = {
+    orange: 'bg-orange-500',
+    green: 'bg-emerald-500',
+    blue: 'bg-blue-500',
+    purple: 'bg-purple-500'
+  };
+  
+  return (
+    <div className="flex items-center justify-center gap-2 mt-3 sm:hidden">
+      <span className="text-xs text-zinc-500">{current} / {total}</span>
+      <div className="flex gap-1">
+        {Array.from({ length: Math.min(total, 5) }).map((_, i) => (
+          <div
+            key={i}
+            className={`w-1.5 h-1.5 rounded-full transition-all ${
+              i === Math.min(current - 1, 4)
+                ? `${colorClasses[accentColor]} scale-125`
+                : 'bg-zinc-600'
+            }`}
+          />
+        ))}
+        {total > 5 && <span className="text-zinc-600 text-xs">...</span>}
+      </div>
+    </div>
+  );
+});
+
+// ==================== SWIPEABLE SECTION HOOK ====================
+const useSwipeTracker = (itemCount) => {
+  const [currentIndex, setCurrentIndex] = useState(1);
+  const containerRef = useRef(null);
+  
+  const handleScroll = useCallback(() => {
+    if (!containerRef.current) return;
+    const container = containerRef.current;
+    const cardWidth = container.querySelector('.swipe-card')?.offsetWidth || 300;
+    const scrollLeft = container.scrollLeft;
+    const newIndex = Math.round(scrollLeft / (cardWidth + 12)) + 1;
+    setCurrentIndex(Math.max(1, Math.min(newIndex, itemCount)));
+  }, [itemCount]);
+  
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    
+    container.addEventListener('scroll', handleScroll);
+    return () => container.removeEventListener('scroll', handleScroll);
+  }, [handleScroll]);
+  
+  return { containerRef, currentIndex };
+};
+
 
 // ==================== PLAYER HEADSHOT COMPONENT ====================
 
@@ -1563,6 +1679,257 @@ const ReconCard = memo(({ parlay, tier, onClick }) => {
 });
 
 ReconCard.displayName = 'ReconCard';
+
+// ==================== SWIPEABLE SECTION COMPONENTS ====================
+// Mobile-first swipeable card sections with Tinder-style navigation
+
+// Demon Radar Swipeable Section
+const DemonRadarSwipeSection = memo(({ picks, onPickClick }) => {
+  const { containerRef, currentIndex } = useSwipeTracker(picks.length);
+  
+  return (
+    <div data-testid="radar-section" className="demon-radar-scanning">
+      <div className="flex items-center justify-between mb-2 px-4 sm:px-0">
+        <div className="flex items-center gap-2">
+          <DemonIcon size={24} isScanning={true} />
+          <span className="text-sm font-bold text-red-400">DEMON RADAR</span>
+          <Badge className="bg-red-950/50 text-red-400 border-red-800/50 text-[10px] hidden sm:inline-flex">
+            TOP 10 HIGH-ALPHA
+          </Badge>
+        </div>
+        <div className="text-[10px] text-zinc-500 hidden sm:block">
+          King of Longshots | Dangerous but Profitable
+        </div>
+      </div>
+      
+      {/* Mobile: Horizontal scroll / Desktop: Grid */}
+      <div 
+        ref={containerRef} 
+        className="flex overflow-x-auto snap-x snap-mandatory scrollbar-hide gap-3 px-4 pb-2 sm:grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 sm:overflow-visible sm:px-0 sm:gap-2"
+        style={{ WebkitOverflowScrolling: 'touch', scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+      >
+        {picks.map((pick, idx) => (
+          <div 
+            key={`${pick.player_name}-${pick.stat_type}-${pick.demon_line}-${idx}`} 
+            className="snap-center flex-shrink-0 w-[calc(100vw-48px)] max-w-[340px] sm:w-auto sm:max-w-none"
+          >
+            <RadarCard 
+              pick={pick} 
+              rank={idx + 1}
+              onClick={() => onPickClick(pick)}
+              isScanning={true}
+            />
+          </div>
+        ))}
+      </div>
+      
+      <SwipeIndicator current={currentIndex} total={picks.length} accentColor="orange" />
+    </div>
+  );
+});
+
+DemonRadarSwipeSection.displayName = 'DemonRadarSwipeSection';
+
+// Goblin Recon Swipeable Section
+const GoblinReconSwipeSection = memo(({ picks, onPickClick }) => {
+  const { containerRef, currentIndex } = useSwipeTracker(picks.length);
+  
+  return (
+    <div data-testid="recon-section">
+      <div className="flex items-center justify-between mb-2 px-4 sm:px-0">
+        <div className="flex items-center gap-2">
+          <GoblinIcon size={24} />
+          <span className="text-sm font-bold text-green-400">THE GOBLIN RECON</span>
+          <Badge className="bg-green-950/50 text-green-400 border-green-800/50 text-[10px] hidden sm:inline-flex">
+            TOP 10 HEX-STACK
+          </Badge>
+        </div>
+        <div className="text-[10px] text-zinc-500 hidden sm:block">
+          Consistent Vault-Hunters | Stack Green
+        </div>
+      </div>
+      
+      <div 
+        ref={containerRef} 
+        className="flex overflow-x-auto snap-x snap-mandatory scrollbar-hide gap-3 px-4 pb-2 sm:grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 sm:overflow-visible sm:px-0 sm:gap-2"
+        style={{ WebkitOverflowScrolling: 'touch', scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+      >
+        {picks.map((pick, idx) => (
+          <div 
+            key={`${pick.player_name}-${pick.stat_type}-${pick.goblin_line}-${idx}`} 
+            className="snap-center flex-shrink-0 w-[calc(100vw-48px)] max-w-[340px] sm:w-auto sm:max-w-none"
+          >
+            <VaultCard 
+              pick={pick} 
+              rank={idx + 1}
+              onClick={() => onPickClick(pick)}
+            />
+          </div>
+        ))}
+      </div>
+      
+      <SwipeIndicator current={currentIndex} total={picks.length} accentColor="green" />
+    </div>
+  );
+});
+
+GoblinReconSwipeSection.displayName = 'GoblinReconSwipeSection';
+
+// Gauntlet (Demon Parlay) Swipeable Section
+const GauntletSwipeSection = memo(({ parlayData, onParlayClick }) => {
+  const parlays = [2, 3, 4, 5, 6].map(n => parlayData[`${n}_pick`]).filter(Boolean);
+  const { containerRef, currentIndex } = useSwipeTracker(parlays.length);
+  
+  return (
+    <div data-testid="gauntlet-section" className="mt-6">
+      <div className="flex items-center justify-between mb-3 px-4 sm:px-0">
+        <div className="flex items-center gap-2">
+          <DollarSign className="w-5 h-5 text-amber-500" />
+          <span className="text-sm font-bold text-amber-400">THE GAUNTLET</span>
+          <Badge className="bg-amber-950/50 text-amber-400 border-amber-800/50 text-[10px] hidden sm:inline-flex">
+            PARLAY GENERATOR
+          </Badge>
+        </div>
+        <div className="text-[10px] text-zinc-500 hidden sm:block">
+          Whale Scoring + Correlation Filter
+        </div>
+      </div>
+      
+      <div 
+        ref={containerRef} 
+        className="flex overflow-x-auto snap-x snap-mandatory scrollbar-hide gap-3 px-4 pb-2 sm:grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 sm:overflow-visible sm:px-0 sm:gap-3"
+        style={{ WebkitOverflowScrolling: 'touch', scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+      >
+        {[2, 3, 4, 5, 6].map(pickCount => {
+          const parlay = parlayData[`${pickCount}_pick`];
+          if (!parlay) return null;
+          return (
+            <div 
+              key={`parlay-${pickCount}`} 
+              className="snap-center flex-shrink-0 w-[calc(100vw-48px)] max-w-[340px] sm:w-auto sm:max-w-none"
+            >
+              <ParlayCard
+                parlay={parlay}
+                pickCount={pickCount}
+                onClick={() => onParlayClick(parlay)}
+              />
+            </div>
+          );
+        })}
+      </div>
+      
+      <SwipeIndicator current={currentIndex} total={parlays.length} accentColor="orange" />
+      
+      {/* Parlay Legend - Desktop only */}
+      <div className="mt-2 hidden sm:flex items-center justify-center gap-4 text-[10px] text-zinc-500">
+        <span><Flame className="w-3 h-3 inline text-orange-400" /> = Heat Boost (20%)</span>
+        <span><Layers className="w-3 h-3 inline text-blue-400" /> = Same-Game Correlation</span>
+        <span><TrendingUp className="w-3 h-3 inline text-green-400" /> = 30%+ Ceiling Frequency</span>
+      </div>
+    </div>
+  );
+});
+
+GauntletSwipeSection.displayName = 'GauntletSwipeSection';
+
+// Safe Haven (Goblin Parlay) Swipeable Section
+const SafeHavenSwipeSection = memo(({ reconData, onParlayClick }) => {
+  const tiers = ['daily_double', 'green_ladder_3', 'green_ladder_4', 'fortress_flex'];
+  const parlays = tiers.map(t => reconData[t]).filter(Boolean);
+  const { containerRef, currentIndex } = useSwipeTracker(parlays.length);
+  
+  return (
+    <div data-testid="safehaven-section" className="mt-6">
+      <div className="flex items-center justify-between mb-3 px-4 sm:px-0">
+        <div className="flex items-center gap-2">
+          <GoblinIcon size={20} />
+          <span className="text-sm font-bold text-emerald-400">THE SAFE HAVEN</span>
+          <Badge className="bg-emerald-950/50 text-emerald-400 border-emerald-800/50 text-[10px] hidden sm:inline-flex">
+            HIGH RELIABILITY
+          </Badge>
+        </div>
+        <div className="text-[10px] text-zinc-500 hidden sm:block">
+          Floor Scoring + 88%+ Hit Rate
+        </div>
+      </div>
+      
+      <div 
+        ref={containerRef} 
+        className="flex overflow-x-auto snap-x snap-mandatory scrollbar-hide gap-3 px-4 pb-2 sm:grid sm:grid-cols-2 lg:grid-cols-4 sm:overflow-visible sm:px-0 sm:gap-3"
+        style={{ WebkitOverflowScrolling: 'touch', scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+      >
+        {tiers.map(tier => {
+          const parlay = reconData[tier];
+          if (!parlay) return null;
+          return (
+            <div 
+              key={`recon-${tier}`} 
+              className="snap-center flex-shrink-0 w-[calc(100vw-48px)] max-w-[340px] sm:w-auto sm:max-w-none"
+            >
+              <ReconCard
+                parlay={parlay}
+                tier={tier}
+                onClick={() => onParlayClick(parlay)}
+              />
+            </div>
+          );
+        })}
+      </div>
+      
+      <SwipeIndicator current={currentIndex} total={parlays.length} accentColor="green" />
+      
+      {/* Sapphire Gem Legend - Desktop only */}
+      <div className="mt-2 hidden sm:flex items-center justify-center gap-4 text-[10px] text-zinc-500">
+        <span style={{ color: '#00BFFF' }}>💎</span><span>= 70%+</span>
+        <span style={{ color: '#00BFFF' }}>💎💎</span><span>= 80%+</span>
+        <span style={{ color: '#00BFFF' }}>💎💎💎</span><span>= 90%+</span>
+        <span style={{ color: '#00BFFF' }}>💎💎💎💎</span><span>= 100% FORTRESS</span>
+      </div>
+    </div>
+  );
+});
+
+SafeHavenSwipeSection.displayName = 'SafeHavenSwipeSection';
+
+// Trending Players Swipeable Section
+const TrendingSwipeSection = memo(({ players, linesLoaded, onPlayerClick, injuryAlerts }) => {
+  const { containerRef, currentIndex } = useSwipeTracker(players.length);
+  
+  return (
+    <div data-testid="trending-section">
+      <div className="flex items-center gap-2 mb-2 px-4 sm:px-0">
+        <Flame className="w-4 h-4 text-orange-500" />
+        <span className="text-sm font-bold text-white">Most Popular Today</span>
+        <Star className="w-4 h-4 text-yellow-500" />
+      </div>
+      
+      <div 
+        ref={containerRef} 
+        className="flex overflow-x-auto snap-x snap-mandatory scrollbar-hide gap-3 px-4 pb-2 sm:grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 sm:overflow-visible sm:px-0 sm:gap-2"
+        style={{ WebkitOverflowScrolling: 'touch', scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+      >
+        {players.map((player, idx) => (
+          <div 
+            key={player.player_name} 
+            className="snap-center flex-shrink-0 w-[calc(100vw-48px)] max-w-[340px] sm:w-auto sm:max-w-none"
+          >
+            <TrendingCard 
+              player={player} 
+              rank={idx + 1}
+              linesLoaded={linesLoaded}
+              onClick={() => onPlayerClick(player.player_name)}
+              injuryAlerts={injuryAlerts}
+            />
+          </div>
+        ))}
+      </div>
+      
+      <SwipeIndicator current={currentIndex} total={players.length} accentColor="orange" />
+    </div>
+  );
+});
+
+TrendingSwipeSection.displayName = 'TrendingSwipeSection';
 
 // ==================== EXPANDED PARLAY VIEW ====================
 // Shows all picks in a parlay with player cards and bet details
@@ -3330,170 +3697,44 @@ export const DemonGoblinDashboardOptimized = ({ isDemoMode = false }) => {
       <div className="p-3 space-y-4">
         {/* DEMON RADAR - Top 10 Mathematical Picks */}
         {radarPicks.length > 0 && (
-          <div data-testid="radar-section" className="demon-radar-scanning">
-            <div className="flex items-center justify-between mb-2">
-              <div className="flex items-center gap-2">
-                <DemonIcon size={24} isScanning={true} />
-                <span className="text-sm font-bold text-red-400">DEMON RADAR</span>
-                <Badge className="bg-red-950/50 text-red-400 border-red-800/50 text-[10px]">
-                  TOP 10 HIGH-ALPHA
-                </Badge>
-              </div>
-              <div className="text-[10px] text-zinc-500">
-                King of Longshots | Dangerous but Profitable
-              </div>
-            </div>
-            
-            <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
-              {radarPicks.slice(0, 10).map((pick, idx) => (
-                <RadarCard 
-                  key={`${pick.player_name}-${pick.stat_type}-${pick.demon_line}-${idx}`} 
-                  pick={pick} 
-                  rank={idx + 1}
-                  onClick={() => handleRadarClick(pick)}
-                  isScanning={true}
-                />
-              ))}
-            </div>
-          </div>
+          <DemonRadarSwipeSection 
+            picks={radarPicks.slice(0, 10)} 
+            onPickClick={handleRadarClick}
+          />
         )}
 
         {/* GOBLIN RECON - Top 10 Safe Plays */}
         {vaultPicks.length > 0 && (
-          <div data-testid="recon-section">
-            <div className="flex items-center justify-between mb-2">
-              <div className="flex items-center gap-2">
-                <GoblinIcon size={24} />
-                <span className="text-sm font-bold text-green-400">THE GOBLIN RECON</span>
-                <Badge className="bg-green-950/50 text-green-400 border-green-800/50 text-[10px]">
-                  TOP 10 HEX-STACK
-                </Badge>
-              </div>
-              <div className="text-[10px] text-zinc-500">
-                Consistent Vault-Hunters | Stack Green
-              </div>
-            </div>
-            
-            <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
-              {vaultPicks.slice(0, 10).map((pick, idx) => (
-                <VaultCard 
-                  key={`${pick.player_name}-${pick.stat_type}-${pick.goblin_line}-${idx}`} 
-                  pick={pick} 
-                  rank={idx + 1}
-                  onClick={() => handleVaultClick(pick)}
-                />
-              ))}
-            </div>
-          </div>
+          <GoblinReconSwipeSection 
+            picks={vaultPicks.slice(0, 10)} 
+            onPickClick={handleVaultClick}
+          />
         )}
 
         {/* THE GAUNTLET - Demon Parlay Generator */}
         {Object.keys(parlayData).length > 0 && (
-          <div data-testid="gauntlet-section" className="mt-6">
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-2">
-                <DollarSign className="w-5 h-5 text-amber-500" />
-                <span className="text-sm font-bold text-amber-400">THE GAUNTLET</span>
-                <Badge className="bg-amber-950/50 text-amber-400 border-amber-800/50 text-[10px]">
-                  PARLAY GENERATOR
-                </Badge>
-              </div>
-              <div className="text-[10px] text-zinc-500">
-                Whale Scoring + Correlation Filter
-              </div>
-            </div>
-            
-            <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-              {[2, 3, 4, 5, 6].map(pickCount => {
-                const parlay = parlayData[`${pickCount}_pick`];
-                if (!parlay) return null;
-                return (
-                  <ParlayCard
-                    key={`parlay-${pickCount}`}
-                    parlay={parlay}
-                    pickCount={pickCount}
-                    onClick={() => {
-                      setExpandedParlay({ parlay, type: 'builder' });
-                    }}
-                  />
-                );
-              })}
-            </div>
-            
-            {/* Parlay Legend */}
-            <div className="mt-2 flex items-center justify-center gap-4 text-[10px] text-zinc-500">
-              <span><Flame className="w-3 h-3 inline text-orange-400" /> = Heat Boost (20%)</span>
-              <span><Layers className="w-3 h-3 inline text-blue-400" /> = Same-Game Correlation</span>
-              <span><TrendingUp className="w-3 h-3 inline text-green-400" /> = 30%+ Ceiling Frequency</span>
-            </div>
-          </div>
+          <GauntletSwipeSection 
+            parlayData={parlayData}
+            onParlayClick={(parlay) => setExpandedParlay({ parlay, type: 'builder' })}
+          />
         )}
 
         {/* THE SAFE HAVEN - Goblin Parlay Generator */}
         {Object.keys(reconData).length > 0 && (
-          <div data-testid="safehaven-section" className="mt-6">
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-2">
-                <GoblinIcon size={20} />
-                <span className="text-sm font-bold text-emerald-400">THE SAFE HAVEN</span>
-                <Badge className="bg-emerald-950/50 text-emerald-400 border-emerald-800/50 text-[10px]">
-                  HIGH RELIABILITY
-                </Badge>
-              </div>
-              <div className="text-[10px] text-zinc-500">
-                Floor Scoring + 88%+ Hit Rate
-              </div>
-            </div>
-            
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              {['daily_double', 'green_ladder_3', 'green_ladder_4', 'fortress_flex'].map(tier => {
-                const parlay = reconData[tier];
-                if (!parlay) return null;
-                return (
-                  <ReconCard
-                    key={`recon-${tier}`}
-                    parlay={parlay}
-                    tier={tier}
-                    onClick={() => {
-                      setExpandedParlay({ parlay, type: 'recon' });
-                    }}
-                  />
-                );
-              })}
-            </div>
-            
-            {/* Sapphire Gem Legend */}
-            <div className="mt-2 flex items-center justify-center gap-4 text-[10px] text-zinc-500">
-              <span style={{ color: '#00BFFF' }}>💎</span><span>= 70%+</span>
-              <span style={{ color: '#00BFFF' }}>💎💎</span><span>= 80%+</span>
-              <span style={{ color: '#00BFFF' }}>💎💎💎</span><span>= 90%+</span>
-              <span style={{ color: '#00BFFF' }}>💎💎💎💎</span><span>= 100% FORTRESS</span>
-            </div>
-          </div>
+          <SafeHavenSwipeSection 
+            reconData={reconData}
+            onParlayClick={(parlay) => setExpandedParlay({ parlay, type: 'recon' })}
+          />
         )}
 
-        {/* Trending 10 - Clickable Cards */}
+        {/* Trending 10 - Swipeable Cards */}
         {trending.length > 0 && (
-          <div data-testid="trending-section">
-            <div className="flex items-center gap-2 mb-2">
-              <Flame className="w-4 h-4 text-orange-500" />
-              <span className="text-sm font-bold text-white">Most Popular Today</span>
-              <Star className="w-4 h-4 text-yellow-500" />
-            </div>
-            
-            <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
-              {trending.slice(0, 10).map((player, idx) => (
-                <TrendingCard 
-                  key={player.player_name} 
-                  player={player} 
-                  rank={idx + 1}
-                  linesLoaded={linesLoaded}
-                  onClick={() => handlePlayerClick(player.player_name)}
-                  injuryAlerts={injuryAlerts}
-                />
-              ))}
-            </div>
-          </div>
+          <TrendingSwipeSection 
+            players={trending.slice(0, 10)}
+            linesLoaded={linesLoaded}
+            onPlayerClick={handlePlayerClick}
+            injuryAlerts={injuryAlerts}
+          />
         )}
 
         {/* Search */}
