@@ -1928,15 +1928,27 @@ class DemonGoblinEngine:
             import time
             time.sleep(0.6)  # NBA.com rate limit
             
+            # Determine current NBA season dynamically
+            # NBA season runs Oct-Jun, so if month >= 10, it's the new season
+            from datetime import datetime
+            now = datetime.now()
+            if now.month >= 10:
+                season_year = now.year
+            else:
+                season_year = now.year - 1
+            current_season = f"{season_year}-{str(season_year + 1)[-2:]}"
+            
+            logger.debug(f"[NBA_API] Fetching {player_name} for season {current_season}")
+            
             gamelog = playergamelog.PlayerGameLog(
                 player_id=player_id, 
-                season='2024-25',
+                season=current_season,
                 season_type_all_star='Regular Season'
             )
             df = gamelog.get_data_frames()[0]
             
             if df.empty:
-                logger.debug(f"[NBA_API] No games found for {player_name}")
+                logger.debug(f"[NBA_API] No games found for {player_name} in {current_season}")
                 return {}
             
             # Convert to BallDontLie-compatible format
@@ -1956,7 +1968,7 @@ class DemonGoblinEngine:
                     }
                 })
             
-            logger.info(f"[NBA_API] Fetched {len(games)} games for {player_name}")
+            logger.info(f"[NBA_API] Fetched {len(games)} games for {player_name} (season {current_season})")
             
             return {
                 "games": games,

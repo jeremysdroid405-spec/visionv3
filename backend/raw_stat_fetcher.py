@@ -10,13 +10,26 @@ RULES:
 4. Zero business logic - just fetch and return
 
 Author: Truth Engine v3.2
+
+Data Sources (in priority order):
+1. BallDontLie API (primary)
+2. NBA.com API via nba_api (fallback for rookies/missing data)
 """
 
 import os
 import httpx
 import logging
+import time
 from datetime import datetime, timezone
 from typing import Dict, List, Any, Optional
+
+# NBA.com API fallback
+try:
+    from nba_api.stats.endpoints import playergamelog
+    from nba_api.stats.static import players as nba_players
+    NBA_API_AVAILABLE = True
+except ImportError:
+    NBA_API_AVAILABLE = False
 
 logger = logging.getLogger(__name__)
 
@@ -231,6 +244,19 @@ class RawStatFetcher:
             
         raw_games = games_response["raw_response"].get("data", [])
         
+        # If BallDontLie has no games, try NBA.com API as fallback
+        if not raw_games and NBA_API_AVAILABLE:
+            logger.info(f"[RAW FETCH] BallDontLie has no games for {player_name}, trying NBA.com...")
+            nba_result = self._fetch_nba_api_raw(player_name, num_games)
+            if nba_result.get("success"):
+                result["success"] = True
+                result["games"] = nba_result["games"]
+                result["games_returned"] = len(nba_result["games"])
+                result["data_source"] = "nba_api_raw"
+                result["nba_player_id"] = nba_result.get("nba_player_id")
+                await self._store_validation_data(player_name, player_id, result["games"])
+                return result
+        
         # Step 3: Extract ONLY raw values - NO CALCULATIONS
         # Sort by date descending to get recent games
         sorted_games = sorted(
@@ -285,6 +311,106 @@ class RawStatFetcher:
         
         # Store in audit collection
         await self._store_validation_data(player_name, player_id, result["games"])
+        
+        return result
+    
+    def _fetch_nba_api_raw(self, player_name: str, num_games: int = 10) -> Dict[str, Any]:
+        """
+        Fetch raw stats from NBA.com API as fallback.
+        Used when BallDontLie doesn't have data for a player (e.g., rookies).
+        
+        Returns RAW data - NO PROCESSING.
+        """
+        result = {
+            "success": False,
+            "games": [],
+            "error": None
+        }
+        
+        if not NBA_API_AVAILABLE:
+            result["error"] = "NBA API not available"
+            return result
+        
+        try:
+            # Find player
+            all_players = nba_players.get_players()
+            player_match = None
+            normalized_search = player_name.lower().strip()
+            
+            for p in all_players:
+                if p['full_name'].lower() == normalized_search:
+                    player_match = p
+                    break
+            
+            if not player_match:
+                for p in all_players:
+                    if normalized_search in p['full_name'].lower():
+                        player_match = p
+                        break
+            
+            if not player_match:
+                result["error"] = f"Player not found in NBA.com: {player_name}"
+                return result
+            
+            nba_player_id = player_match['id']
+            result["nba_player_id"] = nba_player_id
+            
+            # Determine current season
+            now = datetime.now()
+            if now.month >= 10:
+                season_year = now.year
+            else:
+                season_year = now.year - 1
+            current_season = f"{season_year}-{str(season_year + 1)[-2:]}"
+            
+            # Rate limiting
+            time.sleep(0.6)
+            
+            # Fetch game logs
+            gamelog = playergamelog.PlayerGameLog(
+                player_id=nba_player_id,
+                season=current_season,
+                season_type_all_star='Regular Season'
+            )
+            df = gamelog.get_data_frames()[0]
+            
+            if df.empty:
+                result["error"] = f"No games found for {player_name} in {current_season}"
+                return result
+            
+            # Convert to raw format - ZERO PROCESSING
+            games = []
+            for _, row in df.head(num_games).iterrows():
+                games.append({
+                    "game_date": row.get('GAME_DATE', ''),
+                    "player_team": row.get('MATCHUP', '').split()[0] if row.get('MATCHUP') else '???',
+                    "matchup": row.get('MATCHUP', ''),
+                    "home_score": None,  # Not available in this endpoint
+                    "visitor_score": None,
+                    # RAW stat values - EXACTLY as returned
+                    "pts": int(row.get('PTS', 0)),
+                    "reb": int(row.get('REB', 0)),
+                    "ast": int(row.get('AST', 0)),
+                    "stl": int(row.get('STL', 0)),
+                    "blk": int(row.get('BLK', 0)),
+                    "turnover": int(row.get('TOV', 0)),
+                    "min": row.get('MIN', ''),
+                    "fgm": int(row.get('FGM', 0)),
+                    "fga": int(row.get('FGA', 0)),
+                    "fg3m": int(row.get('FG3M', 0)),
+                    "fg3a": int(row.get('FG3A', 0)),
+                    "ftm": int(row.get('FTM', 0)),
+                    "fta": int(row.get('FTA', 0)),
+                    "raw_api_object": row.to_dict()
+                })
+            
+            result["success"] = True
+            result["games"] = games
+            logger.info(f"[RAW FETCH] NBA.com: {len(games)} games for {player_name}")
+            
+        except Exception as e:
+            result["error"] = str(e)
+            logger.error(f"[RAW FETCH] NBA.com error for {player_name}: {e}")
         
         return result
     
