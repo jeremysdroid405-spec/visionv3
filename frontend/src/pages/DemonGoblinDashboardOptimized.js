@@ -3236,7 +3236,10 @@ const PlayerDetailPage = ({ playerName, onBack, highlightProp = null, highlightT
                   glowClass={glowClass}
                   glowSubtleClass={glowSubtleClass}
                   highlightType={highlightType}
-                  playerInsights={player?.insights}
+                  playerInsights={{
+                    ...player?.insights,
+                    intel_briefing: player?.intel_briefing // Include intel_briefing from player root
+                  }}
                 />
               );
             })}
