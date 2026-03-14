@@ -1,0 +1,437 @@
+/**
+ * PICKVISION DASHBOARD TACTICAL CSS
+ * ==================================
+ * Extracted from DemonGoblinDashboardOptimized.js
+ * Military-tech aesthetic styling for the dashboard.
+ * 
+ * STRICT RULE: No optimization or cleanup.
+ * Every hex code and padding value must remain identical.
+ */
+
+/* ==================== DEMON RADAR - Gold/Orange Beacon ==================== */
+@keyframes beacon-glow-pulse {
+  0% { 
+    box-shadow: 0 0 5px #FFD700, 0 0 10px rgba(255, 215, 0, 0.3); 
+    border-color: #FFD700; 
+  }
+  50% { 
+    box-shadow: 0 0 20px #FF4500, 0 0 40px rgba(255, 69, 0, 0.4); 
+    border-color: #FF4500; 
+  }
+  100% { 
+    box-shadow: 0 0 5px #FFD700, 0 0 10px rgba(255, 215, 0, 0.3); 
+    border-color: #FFD700; 
+  }
+}
+
+.beacon-glow {
+  animation: beacon-glow-pulse 2s ease-in-out infinite;
+  border-width: 2px;
+  border-style: solid;
+}
+
+.beacon-glow-subtle {
+  animation: beacon-glow-pulse 3s ease-in-out infinite;
+  opacity: 0.9;
+}
+
+/* ==================== GOBLIN RECON - Emerald Green Beacon ==================== */
+@keyframes emerald-glow-pulse {
+  0% { 
+    box-shadow: 0 0 5px #90EE90, 0 0 10px rgba(144, 238, 144, 0.3); 
+    border-color: #90EE90; 
+  }
+  50% { 
+    box-shadow: 0 0 20px #228B22, 0 0 40px rgba(34, 139, 34, 0.5); 
+    border-color: #228B22; 
+  }
+  100% { 
+    box-shadow: 0 0 5px #90EE90, 0 0 10px rgba(144, 238, 144, 0.3); 
+    border-color: #90EE90; 
+  }
+}
+
+.emerald-glow {
+  animation: emerald-glow-pulse 2s ease-in-out infinite;
+  border-width: 2px;
+  border-style: solid;
+}
+
+.emerald-glow-subtle {
+  animation: emerald-glow-pulse 3s ease-in-out infinite;
+  opacity: 0.9;
+}
+
+/* ==================== SECTION BACKGROUND GLOWS ==================== */
+.demon-radar-section {
+  position: relative;
+  background: linear-gradient(135deg, rgba(220, 38, 38, 0.15) 0%, rgba(15, 15, 15, 0.95) 50%, rgba(220, 38, 38, 0.1) 100%);
+  border-radius: 16px;
+  padding: 16px;
+  border: 1px solid rgba(239, 68, 68, 0.4);
+  box-shadow: 0 0 30px rgba(239, 68, 68, 0.2), inset 0 0 60px rgba(239, 68, 68, 0.05);
+}
+
+.demon-radar-section::before {
+  content: '';
+  position: absolute;
+  inset: -4px;
+  border-radius: 20px;
+  background: linear-gradient(135deg, rgba(239, 68, 68, 0.4), transparent 40%, transparent 60%, rgba(239, 68, 68, 0.3));
+  filter: blur(12px);
+  z-index: -1;
+  animation: radar-pulse 2.5s ease-in-out infinite;
+}
+
+@keyframes radar-pulse {
+  0%, 100% { opacity: 0.6; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.01); }
+}
+
+.goblin-recon-section {
+  position: relative;
+  background: linear-gradient(135deg, rgba(34, 197, 94, 0.15) 0%, rgba(15, 15, 15, 0.95) 50%, rgba(34, 197, 94, 0.1) 100%);
+  border-radius: 16px;
+  padding: 16px;
+  border: 1px solid rgba(34, 197, 94, 0.4);
+  box-shadow: 0 0 30px rgba(34, 197, 94, 0.2), inset 0 0 60px rgba(34, 197, 94, 0.05);
+}
+
+.goblin-recon-section::before {
+  content: '';
+  position: absolute;
+  inset: -4px;
+  border-radius: 20px;
+  background: linear-gradient(135deg, rgba(34, 197, 94, 0.4), transparent 40%, transparent 60%, rgba(34, 197, 94, 0.3));
+  filter: blur(12px);
+  z-index: -1;
+  animation: recon-pulse 2.5s ease-in-out infinite;
+}
+
+@keyframes recon-pulse {
+  0%, 100% { opacity: 0.6; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.01); }
+}
+
+/* ==================== CARD GLOW EFFECTS ==================== */
+.demon-card-glow {
+  background: linear-gradient(135deg, rgba(127, 29, 29, 0.6) 0%, rgba(24, 24, 27, 0.95) 100%) !important;
+  border: 1px solid rgba(239, 68, 68, 0.5) !important;
+  box-shadow: 0 0 20px rgba(239, 68, 68, 0.3), 0 0 40px rgba(239, 68, 68, 0.1) !important;
+}
+
+.goblin-card-glow {
+  background: linear-gradient(135deg, rgba(20, 83, 45, 0.6) 0%, rgba(24, 24, 27, 0.95) 100%) !important;
+  border: 1px solid rgba(34, 197, 94, 0.5) !important;
+  box-shadow: 0 0 20px rgba(34, 197, 94, 0.3), 0 0 40px rgba(34, 197, 94, 0.1) !important;
+}
+
+/* ==================== MOBILE SWIPE CARDS ==================== */
+.swipe-container {
+  display: flex !important;
+  flex-direction: row !important;
+  overflow-x: auto !important;
+  scroll-snap-type: x mandatory;
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  gap: 12px;
+  padding: 4px 16px;
+}
+
+.swipe-container::-webkit-scrollbar {
+  display: none;
+}
+
+.swipe-card {
+  scroll-snap-align: center;
+  flex-shrink: 0 !important;
+  width: calc(100vw - 48px) !important;
+  max-width: 340px !important;
+  min-width: calc(100vw - 48px) !important;
+}
+
+@media (min-width: 640px) {
+  .swipe-container {
+    display: grid !important;
+    grid-template-columns: repeat(2, 1fr) !important;
+    overflow-x: visible !important;
+    scroll-snap-type: none;
+    padding: 0;
+    gap: 8px;
+  }
+  
+  .swipe-card {
+    width: auto !important;
+    max-width: none !important;
+    min-width: 0 !important;
+  }
+}
+
+@media (min-width: 1024px) {
+  .swipe-container {
+    grid-template-columns: repeat(3, 1fr) !important;
+  }
+}
+
+@media (min-width: 1280px) {
+  .swipe-container {
+    grid-template-columns: repeat(4, 1fr) !important;
+  }
+}
+
+@media (min-width: 1536px) {
+  .swipe-container {
+    grid-template-columns: repeat(5, 1fr) !important;
+  }
+}
+
+/* ==================== LIVE SCORE TICKER ==================== */
+@keyframes score-scroll {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+
+.animate-score-scroll {
+  animation: score-scroll 30s linear infinite;
+}
+
+.animate-score-scroll:hover {
+  animation-play-state: paused;
+}
+
+/* ==================== PARLAY CARD STYLES ==================== */
+.parlay-card-demon {
+  background: linear-gradient(135deg, rgba(217, 119, 6, 0.15) 0%, rgba(15, 15, 15, 0.95) 50%, rgba(217, 119, 6, 0.1) 100%);
+  border: 1px solid rgba(217, 119, 6, 0.4);
+  border-radius: 12px;
+}
+
+.parlay-card-goblin {
+  background: linear-gradient(135deg, rgba(34, 197, 94, 0.15) 0%, rgba(15, 15, 15, 0.95) 50%, rgba(34, 197, 94, 0.1) 100%);
+  border: 1px solid rgba(34, 197, 94, 0.4);
+  border-radius: 12px;
+}
+
+/* ==================== LOCKED GAME OVERLAY ==================== */
+.locked-game-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(2px);
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.locked-badge {
+  background: #dc2626;
+  color: white;
+  padding: 8px 16px;
+  border-radius: 8px;
+  font-family: monospace;
+  font-weight: bold;
+  font-size: 14px;
+  letter-spacing: 0.05em;
+  box-shadow: 0 0 20px rgba(220, 38, 38, 0.5);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* ==================== SCOUTING BADGE ==================== */
+.badge-scouting {
+  background: rgba(255, 165, 0, 0.2);
+  border: 1px solid #FFA500;
+  color: #FFA500;
+}
+
+/* ==================== T-MINUS COUNTDOWN ==================== */
+.t-minus-badge {
+  background: linear-gradient(135deg, rgba(239, 68, 68, 0.3), rgba(239, 68, 68, 0.1));
+  border: 1px solid rgba(239, 68, 68, 0.5);
+  animation: t-minus-pulse 1s ease-in-out infinite;
+}
+
+@keyframes t-minus-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
+/* ==================== VISION AI GLOW ==================== */
+.vision-glow {
+  position: relative;
+}
+
+.vision-glow::after {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  border-radius: 8px;
+  background: linear-gradient(135deg, rgba(251, 191, 36, 0.3), transparent 50%, rgba(251, 191, 36, 0.2));
+  filter: blur(8px);
+  z-index: -1;
+  animation: vision-pulse 3s ease-in-out infinite;
+}
+
+@keyframes vision-pulse {
+  0%, 100% { opacity: 0.5; }
+  50% { opacity: 0.8; }
+}
+
+/* ==================== HEAT LEVEL INDICATORS ==================== */
+.heat-level-5 { color: #fb923c; } /* orange-400 */
+.heat-level-4 { color: #facc15; } /* yellow-400 */
+.heat-level-3 { color: #fbbf24; } /* amber-400 */
+.heat-level-2 { color: #a1a1aa; } /* zinc-400 */
+.heat-level-1 { color: #60a5fa; } /* blue-400 */
+.heat-level-0 { color: #71717a; } /* zinc-500 */
+
+/* ==================== TACTICAL GRID ==================== */
+.tactical-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: 1fr;
+}
+
+@media (min-width: 640px) {
+  .tactical-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (min-width: 1024px) {
+  .tactical-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+/* ==================== PLAYER PHOTO STYLES ==================== */
+.player-photo-container {
+  position: relative;
+  overflow: hidden;
+  border-radius: 9999px;
+  background: linear-gradient(to bottom right, #3f3f46, #27272a);
+  flex-shrink: 0;
+}
+
+.player-photo-container img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center 20%;
+  transform: scale(1.3);
+}
+
+/* ==================== STAT TYPE BADGES ==================== */
+.stat-badge-demon {
+  background: rgba(245, 158, 11, 0.2);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  color: #fbbf24;
+}
+
+.stat-badge-goblin {
+  background: rgba(16, 185, 129, 0.2);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  color: #34d399;
+}
+
+.stat-badge-standard {
+  background: rgba(113, 113, 122, 0.5);
+  border: 1px solid rgba(82, 82, 91, 0.3);
+  color: #d4d4d8;
+}
+
+/* ==================== SYNC STATUS FOOTER ==================== */
+.sync-footer {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: rgba(9, 9, 11, 0.95);
+  backdrop-filter: blur(4px);
+  border-top: 1px solid #27272a;
+  padding: 8px 16px;
+  z-index: 40;
+}
+
+.sync-badge-primary {
+  background: rgba(16, 185, 129, 0.2);
+  color: #34d399;
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.sync-badge-delta {
+  background: rgba(59, 130, 246, 0.2);
+  color: #60a5fa;
+  border: 1px solid rgba(59, 130, 246, 0.3);
+}
+
+.sync-badge-early-bird {
+  background: rgba(249, 115, 22, 0.2);
+  color: #fb923c;
+  border: 1px solid rgba(249, 115, 22, 0.3);
+}
+
+/* ==================== UTILITY ANIMATIONS ==================== */
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slide-up {
+  from { transform: translateY(10px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+.animate-fade-in {
+  animation: fade-in 0.3s ease-out;
+}
+
+.animate-slide-up {
+  animation: slide-up 0.3s ease-out;
+}
+
+/* ==================== SCROLLBAR STYLING ==================== */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: rgba(39, 39, 42, 0.5);
+  border-radius: 3px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(113, 113, 122, 0.5);
+  border-radius: 3px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(161, 161, 170, 0.5);
+}
+
+/* ==================== RESPONSIVE TYPOGRAPHY ==================== */
+.text-tactical-xs { font-size: 10px; }
+.text-tactical-sm { font-size: 12px; }
+.text-tactical-base { font-size: 14px; }
+.text-tactical-lg { font-size: 16px; }
+.text-tactical-xl { font-size: 20px; }
+
+/* ==================== MILITARY-TECH ACCENT COLORS ==================== */
+:root {
+  --demon-primary: #f59e0b;
+  --demon-secondary: #d97706;
+  --demon-glow: rgba(245, 158, 11, 0.3);
+  --goblin-primary: #10b981;
+  --goblin-secondary: #059669;
+  --goblin-glow: rgba(16, 185, 129, 0.3);
+  --tactical-bg: #0a0a0b;
+  --tactical-card: #18181b;
+  --tactical-border: #27272a;
+}

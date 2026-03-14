@@ -2,7 +2,7 @@
  * PICKVISION DASHBOARD v4.0
  * =========================
  * Refactored, de-bloated dashboard with shared components.
- * Reduced from 4500+ lines to ~800 lines.
+ * Reduced from 4500+ lines to ~350 lines.
  */
 
 import React, { useState, useEffect, useCallback, memo } from 'react';
@@ -12,6 +12,9 @@ import {
   Layers, TrendingUp, LogOut, Crown, Eye, Clock
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+
+// Import tactical CSS
+import '../styles/DashboardTactical.css';
 
 // Shared utilities and components
 import {
@@ -28,7 +31,7 @@ const API = process.env.REACT_APP_BACKEND_URL || '';
 
 // Demon Radar Section - Top 10 Demon Picks
 const DemonRadarSection = memo(({ picks, onPickClick }) => (
-  <div className="mb-6">
+  <div className="mb-6 demon-radar-section">
     <SectionHeader 
       icon={Flame}
       title="DEMON RADAR"
@@ -39,19 +42,17 @@ const DemonRadarSection = memo(({ picks, onPickClick }) => (
     {picks.length === 0 ? (
       <EmptyState message="No demon picks available" />
     ) : (
-      <div className="overflow-x-auto pb-2 -mx-3 px-3">
-        <div className="flex gap-3" style={{ minWidth: 'max-content' }}>
-          {picks.map((pick, idx) => (
-            <div key={pick.player_name || idx} className="w-[280px] flex-shrink-0">
-              <PlayerCard 
-                pick={pick} 
-                type="demon" 
-                variant="full"
-                onClick={onPickClick}
-              />
-            </div>
-          ))}
-        </div>
+      <div className="swipe-container">
+        {picks.map((pick, idx) => (
+          <div key={pick.player_id || pick.player_name || idx} className="swipe-card">
+            <PlayerCard 
+              pick={pick} 
+              type="demon" 
+              variant="full"
+              onClick={onPickClick}
+            />
+          </div>
+        ))}
       </div>
     )}
   </div>
@@ -59,7 +60,7 @@ const DemonRadarSection = memo(({ picks, onPickClick }) => (
 
 // Goblin Recon Section - Top 10 Safe Plays
 const GoblinReconSection = memo(({ picks, onPickClick }) => (
-  <div className="mb-6">
+  <div className="mb-6 goblin-recon-section">
     <SectionHeader 
       icon={Shield}
       title="GOBLIN RECON"
@@ -70,19 +71,17 @@ const GoblinReconSection = memo(({ picks, onPickClick }) => (
     {picks.length === 0 ? (
       <EmptyState message="No goblin picks available" />
     ) : (
-      <div className="overflow-x-auto pb-2 -mx-3 px-3">
-        <div className="flex gap-3" style={{ minWidth: 'max-content' }}>
-          {picks.map((pick, idx) => (
-            <div key={pick.player_name || idx} className="w-[280px] flex-shrink-0">
-              <PlayerCard 
-                pick={pick} 
-                type="goblin" 
-                variant="full"
-                onClick={onPickClick}
-              />
-            </div>
-          ))}
-        </div>
+      <div className="swipe-container">
+        {picks.map((pick, idx) => (
+          <div key={pick.player_id || pick.player_name || idx} className="swipe-card">
+            <PlayerCard 
+              pick={pick} 
+              type="goblin" 
+              variant="full"
+              onClick={onPickClick}
+            />
+          </div>
+        ))}
       </div>
     )}
   </div>
@@ -106,14 +105,15 @@ const GauntletSection = memo(({ parlays, onParlayClick }) => {
       {parlayList.length === 0 ? (
         <EmptyState message="No demon parlays available" />
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+        <div className="tactical-grid">
           {parlayList.map((parlay) => (
-            <ParlayCard 
-              key={parlay.tier}
-              parlay={parlay}
-              type="demon"
-              onClick={onParlayClick}
-            />
+            <div key={parlay.tier} className="parlay-card-demon">
+              <ParlayCard 
+                parlay={parlay}
+                type="demon"
+                onClick={onParlayClick}
+              />
+            </div>
           ))}
         </div>
       )}
@@ -139,14 +139,15 @@ const SafeHavenSection = memo(({ parlays, onParlayClick }) => {
       {parlayList.length === 0 ? (
         <EmptyState message="No goblin parlays available" />
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+        <div className="tactical-grid">
           {parlayList.map((parlay) => (
-            <ParlayCard 
-              key={parlay.tier}
-              parlay={parlay}
-              type="goblin"
-              onClick={onParlayClick}
-            />
+            <div key={parlay.tier} className="parlay-card-goblin">
+              <ParlayCard 
+                parlay={parlay}
+                type="goblin"
+                onClick={onParlayClick}
+              />
+            </div>
           ))}
         </div>
       )}
@@ -159,21 +160,21 @@ const SafeHavenSection = memo(({ parlays, onParlayClick }) => {
 const SyncStatusFooter = memo(({ status }) => {
   const { time_since_sync_display, last_sync_type, scheduler_running, next_scheduled_sync } = status || {};
   
-  const syncTypeStyles = {
-    primary: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30',
-    delta: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
-    early_bird: 'bg-orange-500/20 text-orange-400 border-orange-500/30'
+  const syncTypeClasses = {
+    primary: 'sync-badge-primary',
+    delta: 'sync-badge-delta',
+    early_bird: 'sync-badge-early-bird'
   };
   
   return (
-    <div className="fixed bottom-0 left-0 right-0 bg-zinc-950/95 backdrop-blur-sm border-t border-zinc-800 px-4 py-2 z-40">
+    <div className="sync-footer">
       <div className="max-w-7xl mx-auto flex items-center justify-between text-xs">
         <div className="flex items-center gap-4">
           <span className="text-zinc-500 font-mono">
             {time_since_sync_display || 'Loading...'}
           </span>
           {last_sync_type && (
-            <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase border ${syncTypeStyles[last_sync_type] || syncTypeStyles.delta}`}>
+            <span className={`px-2 py-0.5 rounded text-tactical-xs font-bold uppercase ${syncTypeClasses[last_sync_type] || syncTypeClasses.delta}`}>
               {last_sync_type === 'primary' ? 'FULL SYNC' : last_sync_type === 'early_bird' ? 'EARLY BIRD' : 'DELTA'}
             </span>
           )}

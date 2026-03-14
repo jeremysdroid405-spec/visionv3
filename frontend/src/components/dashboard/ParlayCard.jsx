@@ -2,6 +2,10 @@
  * PARLAY CARD COMPONENT
  * =====================
  * Displays parlay tier with picks and payout info.
+ * 
+ * DATA PIPES (v4.0):
+ * - Photos & Stats: From nba_master_hub_2026 via player_id
+ * - Odds/Lines: From daily_slate_master
  */
 
 import React, { memo } from 'react';
@@ -59,12 +63,15 @@ const ParlayCard = memo(({
         </div>
       </div>
       
-      {/* Picks Preview */}
+      {/* Picks Preview - Using player_id as key, headshot_url for photos */}
       <div className="space-y-1.5 mb-2">
         {picks.slice(0, 3).map((pick, idx) => (
-          <div key={idx} className="flex items-center gap-2 py-1 border-b border-zinc-800/50 last:border-0">
+          <div 
+            key={pick.player_id || pick.player_name || idx} 
+            className="flex items-center gap-2 py-1 border-b border-zinc-800/50 last:border-0"
+          >
             <PlayerPhoto 
-              photoUrl={pick.photo_url} 
+              photoUrl={pick.headshot_url || pick.photo_url} 
               playerName={pick.player_name} 
               size="sm" 
             />

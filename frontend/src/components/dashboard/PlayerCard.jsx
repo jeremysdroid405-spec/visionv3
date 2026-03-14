@@ -2,6 +2,10 @@
  * PLAYER CARD COMPONENT
  * =====================
  * Unified player card for Demon Radar and Goblin Recon picks.
+ * 
+ * DATA PIPES (v4.0):
+ * - Photos & Stats: From nba_master_hub_2026 via player_id
+ * - Odds/Lines: From daily_slate_master (via cached_board)
  */
 
 import React, { memo } from 'react';
@@ -20,16 +24,30 @@ const PlayerCard = memo(({
 }) => {
   if (!pick) return null;
   
+  // DATA PIPES: Extract data with player_id as primary key
   const {
+    // Primary identifier from nba_master_hub_2026
+    player_id,
     player_name,
+    
+    // Team/Photo from nba_master_hub_2026 via player_id
     team,
-    photo_url,
+    photo_url,        // From hub: headshot_url
+    headshot_url,     // Direct hub field
+    
+    // Odds/Lines from daily_slate_master
     stat_type,
     demon_line,
     line,
     direction = 'Over',
+    
+    // Stats from nba_master_hub_2026 via player_id
     h10_rate,
     h5_rate,
+    season_avg,       // From hub: stats.season_avg
+    l10_stats,        // From cached_board (derived from hub)
+    
+    // Analytics
     heat_level = 0,
     hit_probability,
     price,
@@ -37,6 +55,8 @@ const PlayerCard = memo(({
     locked
   } = pick;
   
+  // Use headshot_url first (from hub), then photo_url
+  const displayPhotoUrl = headshot_url || photo_url;
   const displayLine = demon_line || line;
   const isDemon = type === 'demon';
   const borderColor = isDemon ? 'border-amber-500/30 hover:border-amber-400/50' : 'border-emerald-500/30 hover:border-emerald-400/50';
@@ -51,8 +71,9 @@ const PlayerCard = memo(({
       <div 
         className={`flex items-center gap-2 px-2 py-1.5 rounded border ${borderColor} bg-zinc-900/50 cursor-pointer`}
         onClick={() => onClick?.(pick)}
+        data-testid={`mini-card-${player_id || player_name?.replace(/\s/g, '-')}`}
       >
-        <PlayerPhoto photoUrl={photo_url} playerName={player_name} size="sm" />
+        <PlayerPhoto photoUrl={displayPhotoUrl} playerName={player_name} size="sm" />
         <div className="flex-1 min-w-0">
           <p className="text-xs font-medium text-white truncate">{player_name}</p>
           <p className={`text-[10px] ${accentColor}`}>{stat_type} {direction} {displayLine}</p>
@@ -68,9 +89,10 @@ const PlayerCard = memo(({
       <div 
         className={`relative flex items-center gap-3 p-2 rounded-lg border ${borderColor} ${bgGradient} cursor-pointer transition-all`}
         onClick={() => onClick?.(pick)}
+        data-testid={`compact-card-${player_id || player_name?.replace(/\s/g, '-')}`}
       >
         <LockedBadge isLocked={locked} />
-        <PlayerPhoto photoUrl={photo_url} playerName={player_name} size="md" />
+        <PlayerPhoto photoUrl={displayPhotoUrl} playerName={player_name} size="md" />
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
             <p className="text-sm font-bold text-white truncate">{player_name}</p>
@@ -91,13 +113,13 @@ const PlayerCard = memo(({
     <div 
       className={`relative rounded-lg border ${borderColor} ${bgGradient} p-3 cursor-pointer transition-all`}
       onClick={() => onClick?.(pick)}
-      data-testid={`player-card-${player_name?.replace(/\s/g, '-')}`}
+      data-testid={`player-card-${player_id || player_name?.replace(/\s/g, '-')}`}
     >
       <LockedBadge isLocked={locked} />
       
       {/* Header */}
       <div className="flex items-start gap-3 mb-2">
-        <PlayerPhoto photoUrl={photo_url} playerName={player_name} size="lg" />
+        <PlayerPhoto photoUrl={displayPhotoUrl} playerName={player_name} size="lg" />
         <div className="flex-1 min-w-0">
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-bold text-white truncate">{player_name}</h3>
@@ -110,7 +132,7 @@ const PlayerCard = memo(({
         </div>
       </div>
       
-      {/* Stats Row */}
+      {/* Stats Row - from nba_master_hub_2026 */}
       <div className="flex items-center justify-between py-2 border-t border-zinc-800">
         <HitRateDisplay l10={h10_rate} l5={h5_rate} />
         <div className="flex items-center gap-2">
@@ -129,7 +151,7 @@ const PlayerCard = memo(({
       
       {/* Vision */}
       {showVision && vision_text && (
-        <div className="mt-2">
+        <div className="mt-2 vision-glow">
           <VisionText text={vision_text} />
         </div>
       )}

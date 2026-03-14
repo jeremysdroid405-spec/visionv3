@@ -24,6 +24,13 @@ dg_cached_board → dg_demon_radar → dg_goblin_vault → dg_goblin_recon
 
 ## What's Been Implemented
 
+### 2026-03-14: Modular CSS Extraction
+- Created `/src/styles/DashboardTactical.css` (437 lines)
+- Extracted all CSS from dashboard components (keyframes, glows, swipe containers)
+- Updated PlayerCard/ParlayCard to use `player_id` and `headshot_url` from hub
+- Line count reduction: 4,531 → 1,369 (70% reduction)
+- Zero visual changes, fully modular structure
+
 ### 2026-03-14: V4 Odds Master Mapping
 - Created `odds_api_mapper.py` module for permanent player name → ID mapping
 - Created `odds_api_mapping_master` collection (534 players)
