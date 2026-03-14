@@ -3114,14 +3114,17 @@ class DemonGoblinEngine:
                 is_hot_streak = h5_over >= 3 if h5_games >= 3 else False
                 
                 all_candidates.append({
-                    # PRIMARY KEY - Tank01 player ID
-                    "tank01_player_id": player_data.get("tank01_player_id"),
+                    # PRIMARY KEY - player_id from nba_master_hub_2026 (via OddsApiMapper)
+                    "player_id": player_data.get("player_id"),
+                    "tank01_player_id": player_data.get("tank01_player_id") or player_data.get("tank01_id"),
                     
-                    # Player info (from centralized enrichment)
+                    # Player info (from centralized enrichment via OddsApiMapper)
                     "player_name": player_name,
                     "team": player_data.get("team", ""),
-                    "photo_url": player_data.get("photo_url"),
-                    "nba_com_id": player_data.get("nba_com_id"),
+                    "team_name": player_data.get("team_name"),
+                    "photo_url": player_data.get("photo_url") or player_data.get("headshot_url"),
+                    "headshot_url": player_data.get("headshot_url") or player_data.get("photo_url"),
+                    "nba_com_id": player_data.get("nba_com_id") or player_data.get("nba_id"),
                     "espn_id": player_data.get("espn_id"),
                     "position": player_data.get("position"),
                     
@@ -3129,6 +3132,7 @@ class DemonGoblinEngine:
                     "volatility_flag": player_data.get("volatility_flag", False),
                     "revenge_game": player_data.get("revenge_game", False),
                     "is_verified": player_data.get("is_verified", False),
+                    "is_mapper_matched": player_data.get("is_mapper_matched", False),
                     
                     # Prop data
                     "stat_type": demon_stat,
@@ -3385,14 +3389,17 @@ class DemonGoblinEngine:
                 safety_string = f"{h10_over}/{h10_games}" if h10_games > 0 else "---"
                 
                 all_candidates.append({
-                    # PRIMARY KEY - Tank01 player ID
-                    "tank01_player_id": player_data.get("tank01_player_id"),
+                    # PRIMARY KEY - player_id from nba_master_hub_2026 (via OddsApiMapper)
+                    "player_id": player_data.get("player_id"),
+                    "tank01_player_id": player_data.get("tank01_player_id") or player_data.get("tank01_id"),
                     
-                    # Player info (from centralized enrichment)
+                    # Player info (from centralized enrichment via OddsApiMapper)
                     "player_name": player_name,
                     "team": player_data.get("team", ""),
-                    "photo_url": player_data.get("photo_url"),
-                    "nba_com_id": player_data.get("nba_com_id"),
+                    "team_name": player_data.get("team_name"),
+                    "photo_url": player_data.get("photo_url") or player_data.get("headshot_url"),
+                    "headshot_url": player_data.get("headshot_url") or player_data.get("photo_url"),
+                    "nba_com_id": player_data.get("nba_com_id") or player_data.get("nba_id"),
                     "espn_id": player_data.get("espn_id"),
                     "position": player_data.get("position"),
                     
@@ -3400,11 +3407,13 @@ class DemonGoblinEngine:
                     "volatility_flag": player_data.get("volatility_flag", False),
                     "revenge_game": player_data.get("revenge_game", False),
                     "is_verified": player_data.get("is_verified", False),
+                    "is_mapper_matched": player_data.get("is_mapper_matched", False),
                     
                     # Prop data
                     "stat_type": goblin_stat,
                     "direction": goblin_direction,
                     "goblin_line": goblin_line,
+                    "line": goblin_line,  # Alias for frontend compatibility
                     "standard_line": round(std_line, 1),
                     "gap_below_std": round(gap_below_std, 1),
                     "gap_pct": round(gap_pct, 1),
@@ -6266,41 +6275,118 @@ class DemonGoblinEngine:
                 
                 logger.info(f"  Processed {min(i+batch_size, len(prop_list))}/{len(prop_list)} props")
             
-            # ===== STORE RESULTS GROUPED BY PLAYER =====
-            logger.info("\n[STORAGE] Organizing data by player...")
+            # ===== STORE RESULTS GROUPED BY PLAYER (VIA ODDS API MAPPER) =====
+            logger.info("\n[STORAGE] Organizing data by player via OddsApiMapper...")
             
-            # Group props by player
+            # Initialize OddsApiMapper - REQUIRED for player enrichment
+            mapper_ready = await self._ensure_odds_mapper_loaded()
+            if not mapper_ready or not self._odds_mapper:
+                logger.error("[STORAGE] CRITICAL: OddsApiMapper not available!")
+                results["errors"].append("OddsApiMapper initialization failed")
+            else:
+                logger.info("[STORAGE] OddsApiMapper loaded - enriching all players from nba_master_hub_2026")
+            
+            # Collect unique player names for batch lookup
+            unique_players = set(prop.get("player_name", "Unknown") for prop in processed_props)
+            logger.info(f"[STORAGE] Found {len(unique_players)} unique players to enrich")
+            
+            # Batch lookup all players via mapper (pre-fetch for efficiency)
+            player_hub_data = {}
+            unmatched_players = []
+            
+            if mapper_ready and self._odds_mapper:
+                for player_name in unique_players:
+                    # Use getPlayerIdFromOddsName() then getFullPlayerData()
+                    player_id = self._odds_mapper.getPlayerIdFromOddsName(player_name)
+                    if player_id:
+                        hub_data = self._odds_mapper.getFullPlayerData(player_name)
+                        if hub_data:
+                            player_hub_data[player_name] = hub_data
+                        else:
+                            unmatched_players.append(player_name)
+                    else:
+                        unmatched_players.append(player_name)
+                
+                logger.info(f"[STORAGE] Mapper matched: {len(player_hub_data)}/{len(unique_players)} players")
+                if unmatched_players:
+                    logger.warning(f"[STORAGE] Unmatched players ({len(unmatched_players)}): {unmatched_players[:10]}...")
+            
+            # Group props by player with full Hub enrichment
             player_data = {}
             for prop in processed_props:
                 player_name = prop.get("player_name", "Unknown")
                 
                 if player_name not in player_data:
-                    # Get player photo from master roster
-                    photo_url = await self.get_photo_url_from_master_roster(player_name)
-                    nba_id = None
+                    # Get pre-fetched Hub data
+                    hub_player = player_hub_data.get(player_name)
                     
-                    # Fallback: Try static NBA player ID mapping
-                    if not photo_url:
-                        nba_id = get_nba_player_id(player_name)
-                        if nba_id:
-                            photo_url = f"https://cdn.nba.com/headshots/nba/latest/1040x760/{nba_id}.png"
-                    
-                    player_data[player_name] = {
-                        "player_name": player_name,
-                        "team": prop.get("bdl_team", ""),
-                        "position": prop.get("position", ""),
-                        "nba_id": nba_id,  # NBA CDN headshot ID
-                        "photo_url": photo_url,  # Player headshot URL
-                        "injury_info": prop.get("injury_info", {}),
-                        "popularity_order": self._player_popularity.get(player_name, 999),
-                        "props": [],
-                        "standard": [],  # Standard props (main market, no icon)
-                        "demons": [],    # Demon props (alternate market, +100)
-                        "goblins": [],   # Goblin props (alternate market, ≠+100)
-                        "has_goblin_warning": False,
-                        "has_new_injury": False  # NEW: Track if this is a new injury update
-                    }
+                    if hub_player:
+                        # FULL ENRICHMENT from nba_master_hub_2026 via OddsApiMapper
+                        player_data[player_name] = {
+                            # PRIMARY IDENTIFIERS (from Hub)
+                            "player_name": player_name,
+                            "player_id": hub_player.get("player_id"),  # PRIMARY KEY
+                            "espn_id": hub_player.get("espn_id"),
+                            "nba_id": hub_player.get("nba_id"),
+                            "tank01_id": hub_player.get("tank01_id"),
+                            
+                            # TEAM INFO (from Hub)
+                            "team": hub_player.get("team") or prop.get("bdl_team", ""),
+                            "team_name": hub_player.get("team_name"),
+                            
+                            # LOCKED PHOTO URL (from Hub - definitive source)
+                            "photo_url": hub_player.get("headshot_url"),
+                            "headshot_url": hub_player.get("headshot_url"),
+                            "photo_source": "nba_master_hub_2026",
+                            "photo_locked": hub_player.get("photo_locked", True),
+                            
+                            # PLAYER INFO (from Hub)
+                            "position": hub_player.get("position") or prop.get("position", ""),
+                            "jersey": hub_player.get("jersey"),
+                            
+                            # STATS (from Hub)
+                            "season_avg": hub_player.get("stats", {}).get("season_avg", {}),
+                            
+                            # CONTEXTUAL DATA
+                            "injury_info": prop.get("injury_info", {}),
+                            "popularity_order": self._player_popularity.get(player_name, 999),
+                            
+                            # PROP CONTAINERS
+                            "props": [],
+                            "standard": [],
+                            "demons": [],
+                            "goblins": [],
+                            "has_goblin_warning": False,
+                            "has_new_injury": False,
+                            
+                            # VERIFICATION FLAGS
+                            "is_mapper_matched": True,
+                            "is_verified": True
+                        }
+                    else:
+                        # FALLBACK: Player not in Hub (rare edge case)
+                        # NO call to get_photo_url_from_master_roster - Hub is definitive
+                        logger.debug(f"[STORAGE] Player not in Hub: {player_name}")
+                        player_data[player_name] = {
+                            "player_name": player_name,
+                            "player_id": None,
+                            "team": prop.get("bdl_team", ""),
+                            "position": prop.get("position", ""),
+                            "photo_url": None,
+                            "headshot_url": None,
+                            "injury_info": prop.get("injury_info", {}),
+                            "popularity_order": self._player_popularity.get(player_name, 999),
+                            "props": [],
+                            "standard": [],
+                            "demons": [],
+                            "goblins": [],
+                            "has_goblin_warning": False,
+                            "has_new_injury": False,
+                            "is_mapper_matched": False,
+                            "is_verified": False
+                        }
                 
+                # Add prop to player
                 player_data[player_name]["props"].append(prop)
                 
                 # Classify into appropriate bucket
@@ -6313,6 +6399,17 @@ class DemonGoblinEngine:
                 
                 if prop.get("has_goblin_warning"):
                     player_data[player_name]["has_goblin_warning"] = True
+            
+            # Log final enrichment stats
+            mapper_matched = sum(1 for p in player_data.values() if p.get("is_mapper_matched"))
+            with_player_id = sum(1 for p in player_data.values() if p.get("player_id"))
+            with_photo = sum(1 for p in player_data.values() if p.get("headshot_url"))
+            
+            logger.info(f"[STORAGE] ENRICHMENT COMPLETE:")
+            logger.info(f"  Total Players: {len(player_data)}")
+            logger.info(f"  Mapper Matched: {mapper_matched}")
+            logger.info(f"  With player_id: {with_player_id}")
+            logger.info(f"  With headshot_url: {with_photo}")
             
             # ===== BUILD TRENDING 10 =====
             logger.info("\n[TRENDING] Building Most Popular Today (Top 10)...")
