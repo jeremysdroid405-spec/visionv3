@@ -1,384 +1,117 @@
-# NBA "Demon & Goblin" Analytics Engine v3.0 - PRD
+# PickVision - NBA Player Prop Dashboard
 
 ## Original Problem Statement
-Build a high-performance NBA Player Prop Dashboard that mimics the PrizePicks user experience by identifying:
-- **Demons**: Harder, high-payout alternate lines
-- **Goblins**: Easier, high-frequency alternate lines
+Build "PickVision," a high-performance NBA Player Prop Dashboard with a "military tech" aesthetic. Core functionality: AI-driven betting insights identifying "Demons" (high-payout props) and "Goblins" (safer props).
 
 ## Core Requirements
-1. Real-time NBA prop data from multiple sportsbooks via The Odds API
-2. Player statistics from BallDontLie API with NBA.com fallback
-3. Interactive hit-rate analysis for each prop (L5, L10, Season)
-4. Advanced predictive analytics (fatigue, pace, usage bumps, volatility)
-5. Smart parlay builders for both Demons and Goblins
-6. Mandatory user authentication via Supabase
-7. Data warehouse architecture with MongoDB caching
+1. **Data Integrity:** 100% data accuracy using centralized data pipeline (`dg_cached_board`) with Tank01 player IDs
+2. **Advanced Analytics:** LLM for betting insights ("The Vision"), "Social Signal" engine
+3. **"War Room" UI/UX:** Dark, cinematic, military tech aesthetic
+4. **Dynamic Payout Engine:** Global payout calculator for dynamic parlay estimates
+5. **Mobile-First UI:** Fully responsive, optimized for mobile
+6. **Subscriptions & Auth:** Stripe for paid tiers, robust authentication
+7. **Real-Time Data:** Live score ticker, breaking news feed
 
-## User Personas
-- **Sports Bettors**: Primary users seeking edge in NBA player props
-- **Data Analysts**: Users interested in advanced statistical insights
-- **Casual Users**: Looking for easy picks with high hit rates (Goblins)
+## Tech Stack
+- **Frontend:** React, TailwindCSS, Shadcn/UI
+- **Backend:** FastAPI, Python
+- **Database:** MongoDB
+- **AI:** Google Gemini Flash (for Strategic Vision)
+- **Data:** The Odds API, BallDontLie, Tank01
 
----
+## What's Been Implemented
 
-## Features - Implementation Status
+### ✅ Completed (December 2025 - March 2026)
 
-### COMPLETED
-- [x] **Prop Data Pipeline** - Live odds from The Odds API, normalized and cached
-- [x] **Demon Detection** - Identifies boosted alternate lines (>1.3x value factor)
-- [x] **Goblin Detection** - Identifies high hit-rate easy overs (>70%)
-- [x] **Player Stats Caching** - MongoDB cache with NBA.com fallback for missing data
-- [x] **Interactive Hit-Rate Dropdowns** - L5/L10/Season stats in expandable UI
-- [x] **Expanded Parlay View** - Modal showing individual picks in parlays
-- [x] **Supabase Authentication** - Full login/signup with protected routes
-- [x] **Player Headshots** - Tank01 API integration with proper data flow
-- [x] **Advanced Analytics Backend** - Schedule density, pace, usage bumps, volatility
-- [x] **Advanced Analytics Frontend** - Display insights in prop dropdowns (Dec 13, 2025)
-- [x] **Daily Sync Automation** - APScheduler at 4:00 AM UTC for all data syncs
-- [x] **Demo Mode** - Public /v3/demo route allows exploring full dashboard without account (Dec 13, 2025)
-- [x] **Vision AI Integration** - Claude Sonnet 4.5 generates "badass" insights for Demons/Goblins (Dec 13, 2025)
-- [x] **Injury Intelligence** - ESPN API integration with breaking news ticker and player injury badges (Dec 13, 2025)
+**Game Lock Engine v1.0**
+- Background task checking `commence_time` every 60 seconds
+- Auto-locks games/props that have started
+- API endpoints: `/api/v3/lock-status`, `/api/v3/locked-games`, `/api/v3/validate-parlay`
+- Frontend `LockedBadge` component
 
-### IN PROGRESS
+**Strategic Vision Engine v3.0**
+- Gemini-powered 2-sentence thesis for each bet
+- Correctly maps stat types (REB, PTS, AST, etc.)
+- Vision for all pick types: Demon Radar, Goblin Recon, all Parlay Builder picks
+
+**Parlay System**
+- Demon/Gauntlet Parlays: 2-6 picks with opponent pairing
+- **Goblin/Safe Haven Parlays: 2-6 picks including new 5-pick "Green Stack"**
+- Two-team rule enforcement for PrizePicks compliance
+- Dynamic payout calculation
+
+**UI/UX Refinements**
+- Redesigned Demon/Goblin icons (badass versions)
+- Fixed Vision text truncation
+- Compact player cards in parlay sections
+- Mobile auth page fixes
+- Header badge text updates
+
+**Bug Fixes (March 14, 2026)**
+- Fixed 5-pick Goblin parlay not generating
+- Added null-safety for hit_rates data structures
+- Error isolation for parlay builders
+
+### 🔄 In Progress
 - None currently
 
-### RECENTLY COMPLETED (Mar 14, 2026 - Session 6)
-- [x] **Game Lock Engine v1.0 (Auto-Cleanup on Game Start)**:
-  - **New `game_lock_engine.py` module**: Automatic game-start cleanup system
-  - **60-Second Lock Check Loop**: Background task compares `current_time` vs `commence_time`
-  - **Auto-Lock Logic**: Games are flagged as "locked" when tip-off time passes
-  - **Nested Data Structure Support**: Handles player documents with nested props arrays
-  - **API Endpoints**:
-    - `GET /api/v3/lock-status`: Dashboard overview of active/locked/t-minus games
-    - `GET /api/v3/locked-games`: Returns games in progress for Live Score Ticker
-    - `GET /api/v3/t-minus-games`: Games starting within 15 minutes with countdown
-    - `POST /api/v3/validate-parlay`: Pre-lock-in validation for parlays
-    - `POST /api/v3/check-locks`: Manual trigger for lock check
-  - **T-Minus Badge Component**: Countdown timer on cards for games starting in <15 minutes
-    - Color-coded: Yellow (>5min), Orange (<5min), Red+pulse (<1min)
-    - Updates every second when countdown is active
-  - **Frontend Integration**: 
-    - TMinusBadge added to RadarCard and VaultCard components
-    - Lock status passed through DemonRadarSwipeSection and GoblinReconSwipeSection
-  - **Tonight's Games Tested (Mar 13, 2026)**:
-    - 7:30 PM ET: NYK vs IND, PHX vs TOR, CLE vs DAL, MEM vs DET ✅
-    - 8:00 PM ET: NOP vs HOU ✅
-    - 10:00 PM ET: MIN vs GSW ✅
-    - 10:30 PM ET: CHI vs LAC, UTA vs POR ✅
-- [x] **Auth Page Mobile UI Fix**:
-  - Fixed text cutoff in "Mission Objectives" section on mobile
-  - Removed `line-clamp-3` restriction that was truncating "The Edge" descriptions
-  - Increased text size from `text-[11px]` to `text-xs` for better readability
-- [x] **Deployment Blocker Fix**:
-  - Fixed hardcoded Supabase URL in `/app/frontend/src/lib/supabase.js`
-  - Changed to use `process.env.REACT_APP_SUPABASE_URL`
+### ⏳ Upcoming (Priority Order)
 
-### RECENTLY COMPLETED (Dec 14, 2025 - Session 5)
-- [x] **Live Score & Breaking News Command Center**:
-  - **New `live_scores_engine.py` module**: Fetches real-time NBA scores from The Odds API /scores endpoint
-  - **Live Score Ticker**: Marquee-style scrolling ticker at top of app
-    - Neon Green styling for live games (LIVE badge with pulse animation)
-    - Shows real-time scores: "PHX 110 @ 118 TOR LIVE"
-    - Upcoming games show tip-off time in EST and spread
-    - 60-second auto-refresh when games are in progress
-  - **Breaking News Ticker**: Slower marquee with Pulse Red "Breaking" tags
-    - RSS feed integration from Rotoworld and ESPN NBA feeds
-    - Custom headlines support via API
-    - Injury-focused news filtering
-  - **Pause on Hover**: Both tickers pause when mouse hovers (for mobile tap-hold)
-  - **API Endpoints**:
-    - `GET /api/v3/live-scores` - Get live game scores
-    - `POST /api/v3/live-scores/refresh` - Force refresh from API
-    - `GET /api/v3/command-center/news` - Get breaking news with custom headlines
-    - `GET /api/v3/command-center/ticker` - Combined ticker data
-  - **Header Cleanup**: Removed sync/reload buttons, kept only Intel freshness indicator
+**P0 - Automated Board Intelligence & Sync**
+- Primary Sync (10:30 AM ET): Full global fetch with Vision AI
+- Delta Refreshes (1:45 PM, 4:00 PM, 5:45 PM, 7:00 PM ET)
+- New Entry/Removal Logic
+- Live Ticker Handover (60-second checks)
+- "Last Synced: MM:SS" footer display
 
-### RECENTLY COMPLETED (Dec 13, 2025 - Session 4)
-- [x] **Static Vision Intel Briefing Engine (Gemini 3 Flash)**:
-  - **New `intel_briefing_engine.py` module**: Generates AI-powered Strategic Thesis using Gemini 2.5 Flash
-  - **Static Generation Logic**: One-time AI call for each unique PlayerID + GameID combination
-  - **Conditional Execution**: Checks `intel_briefing` field before calling API - no duplicate calls
-  - **NARRATIVE ANALYSIS (v3)**:
-    - Single cohesive paragraph (3-4 sentences) - NO labels, NO bullet points
-    - **Synthesize, Don't List**: "His recent high-volume usage suggests..." instead of "He averaged X"
-    - **Connect the Dots**: Links player form to opponent's specific weakness
-    - **The 'Why'**: Explains why the line is a tactical error by the books
-    - **Gritty Scout Tone**: Professional, analytical, no hedging
-    - **Required Keywords**: Leverage, Exploitation, Gravity, Defensive Gap, Usage Surge
-  - **Example Output**: "Robinson is currently operating with massive offensive gravity, drawing multiple defenders on the perimeter which has unlocked his secondary playmaking role. Facing a Detroit unit that historically struggles with back-cut rotations and allows a high volume of kick-out assists to shooting guards, this 3.5 RA line represents a significant miscalculation of his current deployment. Expect him to exploit these defensive gaps early, making this a high-leverage Recon target."
-  - **API Endpoints**:
-    - `POST /api/v3/generate-intel-briefings`: Manual trigger to generate missing intel
-    - `GET /api/v3/intel-briefing/{player_name}`: Get cached intel for a player
-  - **Auto-Generation**: Intel generated automatically after sync via `/api/v3/sync-to-mongo`
-  - **UI Integration**: Displays in "THE VISION" section on Demon Radar and Goblin Recon cards
-  - **Database**: 
-    - Cached in `dg_intel_briefings` collection
-    - Also stored as `intel_briefing` field on `dg_cached_board` entries
-  - **Model**: `gemini-2.5-flash` with optimized narrative prompt
-  - **GOOGLE_API_KEY**: User's Gemini API key stored in backend/.env
+**P1 - Stripe Integration & Authentication**
+- Payment processing for subscription tiers
+- User authentication system
 
-### RECENTLY COMPLETED (Dec 13, 2025 - Session 3)
-- [x] **Adaptive Sync Engine (Mission-Critical Polling)**:
-  - **Polling Tiers**: Standby (>6hrs = 60min), Active (1-6hrs = 10min), Critical (<60min = 60s), Post-Tip (stop)
-  - **Stale Intel Detection**: Warns if data >5min old during Mission Critical windows
-  - **Priority Refresh**: Immediate high-priority refresh endpoint for stale data
-  - **Daily Stats Cron**: Scheduled at 04:00 EST for static player stats
-  - **Frontend Display**: Shows "Intel: Xs ago" with live freshness indicator
-  - **API Endpoints**: `/v3/sync-status`, `/v3/stale-intel-check`, `/v3/priority-refresh`, `/v3/intel-freshness`
-- [x] **Mobile Swipeable Cards (Tinder-style)** - Major mobile UX improvement:
-  - All card sections now use horizontal swipe navigation on mobile
-  - Each section shows one card at a time with "N / Total" indicator and dots
-  - Smooth CSS scroll-snap for native feel
-  - Desktop: Remains as responsive grid (2-5 columns depending on screen)
-  - Sections updated: Demon Radar, Goblin Recon, The Gauntlet, The Safe Haven, Trending
-  - Added `tailwind-scrollbar-hide` for cleaner mobile appearance
-- [x] **Dynamic Payout Calculation Engine** - Complete backend integration:
-  - **New `payout_engine.py` module**: Handles PrizePicks-style payout calculations
-  - **Demon/Standard Formula**: `Total Payout = Base Multiplier × (Mod_1 × Mod_2 × ... × Mod_n)`
-  - **Standard Base Multipliers**: 2-pick=3.0x, 3-pick=5.0x, 4-pick=10.0x, 5-pick=20.0x, 6-pick=40.0x
-  - **Goblin Formula (Safe Haven)**: `Payout = 1.2^n` (actual PrizePicks formula)
-    - 2-pick: 1.4x, 3-pick: 1.7x, 4-pick: 2.1x, 5-pick: 2.5x, 6-pick: 3.0x
-  - **Asset Types**: Demons (1.1-1.5x modifier boost), Standards (1.0x)
-  - **`/api/v3/calculate-payout` endpoint**: Accepts picks array, returns dynamic payout calculation
-  - **Parlay Builder Integration**: All tiers (2-6 pick) return accurate boosted demon payouts
-  - **Goblin Recon / Safe Haven Integration**: Uses exact PrizePicks `1.2^n` formula
-  - **Testing**: All payouts verified against actual PrizePicks values
+**P2 - Refactor Dashboard**
+- Break down `DemonGoblinDashboardOptimized.js` (4300+ lines)
 
-### RECENTLY COMPLETED (Dec 13, 2025)
-- [x] **V3.2 Data Integrity Crisis Response** - Isolated raw data fetching:
-  - **RawStatFetcher service**: New isolated service (`/app/backend/raw_stat_fetcher.py`) that ONLY pulls raw JSON from BallDontLie - ZERO processing
-  - **`/api/v3/raw-validation/{player_name}` endpoint**: Returns raw stats for a player
-  - **`/api/v3/raw-validation/batch` endpoint**: Batch fetch raw stats for multiple players
-  - **`/api/v3/raw-validation-table` endpoint**: Get all validation data
-  - **RawValidationTable UI component**: Modal showing RAW API values (Date, Team, Score, PTS, REB, AST) for manual ESPN verification
-  - **"VERIFY DATA" button**: Added to dashboard header next to status light
-  - **Kill List tested**: Luka Doncic, Anthony Edwards, Naji Marshall all returning raw data
-- [x] **V3.1 "Truth Engine" Data Integrity Overhaul** - Critical fix for data hallucination issues:
-  - **Naji Safeguard**: Verifies playerID from game logs matches expected BDL player ID, discards data on mismatch
-  - **source_verified flag**: All props now tagged with verification status (verified/failed/pending)
-  - **verification_status field**: Tracks specific failure reasons (HALLUCINATION_DETECTED, DISCREPANCY, NAJI_SAFEGUARD_FAILED)
-  - **`/api/v3/data-status` endpoint**: Reports data integrity status for frontend polling
-  - **DataValidationLight component**: Live status light in dashboard header (Green=Verified, Red=Discrepancy, Amber=Pending)
-  - **Verification failures logging**: Failures stored in `dg_verification_failures` collection for audit
-  - **Sync verification stats**: `run_full_sync` returns verification_stats with counts and rates
-- [x] **"War Room" Aesthetic Overhaul (Auth Page)** - Complete redesign with aggressive tactical theme:
-  - **Hero Headline**: "The books have an edge. Now, you have a weapon."
-  - **System Status Terminal**: Live status display with [SCANNING TANK01 FEEDS...], [LLM HANDSHAKE...], [DEMON TARGETS...], [GOBLIN LOCKS...]
-  - **Kill List Section**: Technical spec sheet format (MODEL, LOGIC, INTEL, TARGETING, SAFETY)
-  - **Signup Form**: Quote at top, terminal status, "ACCESS KEY" label, `[ CLAIM YOUR EDGE ]` CTA, "operators active" social proof
-  - All monospace fonts, blinking terminal cursor, data stream background
-- [x] **"PickVision AI" Premium Onboarding Flow** - Complete redesign of Auth page:
-  - **Section 1 (Hero)**: PICKVISION AI logo, "Stop guessing. Start winning." headline, Live Scan visual with "GOBLIN DETECTED" reveal, "ENTER THE VAULT" CTA
-  - **Section 2 (Bento Grid)**: 4 feature cards (The Seer Model, Demon Radar, Usage Ripple, The Goblin Vault) with elite icons
-  - **Section 3 (Promise)**: "In 2026, data is noise. Vision is profit." quote with Demon × Goblin icons
-  - **Section 4 (Form)**: Google/Apple one-tap auth, email/password fields, social proof ("Join 12,402 sharps..."), Demo Mode option
-  - Interactive animations: scan bar speeds up when typing, silver flash on submit
-- [x] **Elite Icon Redesign (Gemini Specs)** - Replaced icons with professional gaming badge style:
-  - **Demon (Cyber-Horns)**: Red circular head with sharp horn shapes, white slash eyes, glow filter
-  - **Goblin (Sneaky Elf)**: Green circular head with pointed ear fins, dot eyes, smirk
-  - Added Vision Sparkle orbit animation for picks with AI insights
-  - Glassmorphism containers and state animations (pulse on click)
-- [x] **Vision Integration in Parlay Makers** - Added AI insights to all parlay picks:
-  - Both "Big Money Builder" and "Goblin Goldmine" now enrich picks with `insight_summary` and `ai_confidence_rating`
-  - Parlay card picks show ⚡ indicator and mini Vision preview text
-  - Expanded parlay modal shows full Vision section with AI insight box and confidence meter
-- [x] **"Ultra-Pro" Icon Refresh** - Replaced all old Skull/Ghost icons with custom SVG glyphs:
-  - **DemonIcon**: Red spike/crown shape (King of Longshots)
-  - **GoblinIcon**: Green hex-stack (Vault Hunter)
-  - Updated across: Dashboard header, stats bar, Radar cards, Vault cards, Parlay Builder, Goldmine, Trending cards, Player detail pages, and all legends
+### 📋 Backlog
+- Pro Tier feature gating
+- Copy Parlay button
+- Mobile bottom navigation
+- T-Minus countdown timer (live)
 
-### BACKLOG (P2/P3)
-- [ ] "Pro Tier" feature gating based on user tier
-- [ ] Historical line movement tracking
-- [ ] Push notifications for high-value Demons/Goblins
-- [ ] "Copy Parlay" button for social sharing
+## Key API Endpoints
+- `POST /api/v3/sync` - Full data sync
+- `GET /api/v3/goblin-recon` - Goblin parlays
+- `GET /api/v3/parlay-builder` - Demon parlays
+- `GET /api/v3/demon-radar` - Top demon picks
+- `POST /api/v3/run-lock-check` - Manual lock check
+- `GET /api/v3/lock-status` - Current lock status
 
----
+## Database Collections
+- `dg_cached_board` - Main player/prop data
+- `goblin_recon` - Pre-built goblin parlays
+- `demon_radar` - Top demon picks
+- `parlay_builder` - Demon parlays
 
-## Technical Architecture
+## Known Issues
+- Deployment requires proper MONGO_URL configuration for production
+- Continue with Google/Apple buttons are placeholders
 
-### Backend (FastAPI)
+## File Structure
 ```
-/app/backend/
-├── server.py                 # API endpoints, APScheduler, auth routes
-├── demon_goblin_engine.py    # Core business logic (6500+ lines)
-├── intel_briefing_engine.py  # Gemini 3 Flash AI Intel Briefings
-├── game_lock_engine.py       # NEW: Auto-cleanup on game start (60s loop)
-├── live_scores_engine.py     # Live scores and breaking news
-├── adaptive_sync_engine.py   # Real-time odds polling with adaptive frequency
-├── payout_engine.py          # Dynamic parlay payout calculations
-├── requirements.txt          # Python dependencies
-└── .env                      # Environment variables
+/app
+├── backend/
+│   ├── demon_goblin_engine.py   # Main sync & parlay logic
+│   ├── game_lock_engine.py      # Auto-lock system
+│   ├── intel_briefing_engine.py # AI Vision generation
+│   ├── payout_engine.py         # Payout calculations
+│   ├── server.py                # FastAPI routes
+│   └── .env
+├── frontend/
+│   └── src/
+│       ├── pages/
+│       │   ├── DemonGoblinDashboardOptimized.js
+│       │   └── Auth.js
+│       └── components/
+│           └── dashboard/Icons.jsx
+└── memory/
+    └── PRD.md
 ```
-
-### Frontend (React)
-```
-/app/frontend/src/
-├── App.js                    # Router with ProtectedRoute
-├── context/AuthContext.js    # Supabase auth state
-├── pages/
-│   ├── Auth.js               # Login/Signup UI
-│   └── DemonGoblinDashboardOptimized.js  # Main dashboard (4200+ lines)
-└── components/
-    └── ProtectedRoute.js     # Auth enforcement
-```
-
-### Database (MongoDB Collections)
-- `player_master_roster` - Player identity source of truth
-- `dg_live_props` - Raw prop data from The Odds API
-- `dg_cached_board` - Denormalized player+props for fast reads (now includes `intel_briefing`, `locked`)
-- `dg_player_stats` - Cached game logs (L5/L10/Season)
-- `dg_daily_insights` - Pre-calculated advanced analytics
-- `dg_intel_briefings` - Gemini-generated Mission Intel Briefings
-- `dg_locked_games` - NEW: Games that have started (locked for betting)
-- `dg_parlays_demon/goblin` - Smart parlay picks
-- `dg_verification_failures` - V3.1 Truth Engine audit log
-
-### Scheduled Jobs (APScheduler)
-| Job | Schedule | Purpose |
-|-----|----------|---------|
-| Daily Sync | 4:00 AM UTC | Stats → Odds → Insights |
-| Weekly Roster | Sunday 00:00 UTC | Master roster update |
-
----
-
-## API Endpoints
-
-### V3 Core
-- `GET /api/v3/cached-props` - Main dashboard data (filters locked players)
-- `GET /api/v3/cached-player/{name}` - Player detail with insights
-- `GET /api/v3/data-status` - Data integrity status (Truth Engine v3.1)
-- `POST /api/v3/sync-odds` - Trigger odds sync
-- `POST /api/v3/sync-player-stats` - Sync game logs
-- `POST /api/v3/sync-daily-insights` - Calculate analytics
-
-### V3 Game Lock Engine (NEW)
-- `GET /api/v3/lock-status` - Overview of active/locked/t-minus games
-- `GET /api/v3/locked-games` - Games in progress for Live Score Ticker
-- `GET /api/v3/t-minus-games` - Games starting within 15 minutes
-- `POST /api/v3/validate-parlay` - Pre-lock-in validation
-- `POST /api/v3/check-locks` - Manual lock check trigger
-
-### Analytics
-- `GET /api/v3/player-insights/{name}` - Get player insights
-- `GET /api/v3/demon-radar` - Top Demon picks
-- `GET /api/v3/goblin-vault` - Top Goblin picks
-- `GET /api/v3/parlays/{type}` - Get smart parlays
-
-### Auth
-- `POST /api/auth/signup` - Create account
-- `POST /api/auth/login` - Login
-
----
-
-## Data Models
-
-### Player Insights (dg_daily_insights)
-```json
-{
-  "player_name": "Kevin Durant",
-  "team": "HOU",
-  "opponent": "NOP",
-  "schedule_density_factor": 1.0,
-  "pace_adjustment_factor": 0.994,
-  "usage_bump_percent": 0,
-  "volatility_score": "Med",
-  "volatility_stddev": 8.22,
-  "ai_confidence_rating": 70,
-  "insight_summary": "📈 Standard projection. No significant modifiers.",
-  "is_back_to_back": false,
-  "is_three_in_four": false,
-  "days_rest": 2,
-  "injured_teammates": []
-}
-```
-
----
-
-## Integration Dependencies
-- **The Odds API** - Live odds (requires API key)
-- **BallDontLie API** - Player stats (free)
-- **NBA.com API** - Stats fallback (via nba_api package)
-- **Tank01 API** - Headshots (free tier)
-- **Supabase** - User authentication
-- **MongoDB** - Data storage
-
----
-
-## Known Limitations
-1. **Supabase Rate Limits** - Signup emails have rate limits in free tier
-2. **Tank01 News** - Reliability for injury/news data unverified
-3. **Odds API Limits** - 500 requests/month on free tier
-
----
-
-## Recent Changes (Dec 13, 2025)
-- **Code Refactoring** - Extracted components from 3353-line dashboard to separate files:
-  - `/components/dashboard/Icons.jsx` - DemonIcon, GoblinIcon, VisionBadge (126 lines)
-  - `/components/dashboard/constants.js` - API config, team logos, stat categories (102 lines)
-  - `/components/dashboard/CacheService.js` - Local storage cache utilities (33 lines)
-  - Main dashboard reduced from 3353 → 3183 lines (170 lines extracted)
-- **"Goblin Goldmine" → "Goblin Recon"** - Renamed across entire codebase (87 occurrences)
-- **AI Confidence Per-Prop** - Changed from static player-level to dynamic per-prop calculation
-- **"Ultra-Pro" Icon Refresh** - Replaced all Skull/Ghost icons with premium custom SVG glyphs (DemonIcon: red spike, GoblinIcon: green hex-stack)
-- **"THE VISION" UI Overhaul** - AI insights now prominent with featured box, confidence meter, and card explainers
-- **AI Confidence Meter** - Color-coded progress bar (green >80%, yellow 60-80%, orange 40-60%, red <40%)
-- **Demon Radar AI Explainers** - Each card shows "The Vision" insight explaining why it's flagged
-- **Goblin Vault AI Explainers** - Safe play cards also show AI reasoning
-- **Tank01 + ESPN Hybrid** - Injuries enriched from both sources with return dates
-- **Vision AI Injury Context** - Prompt includes: "Factor in the latest injury news for [Team]"
-- **Breaking News Ticker** - Scrolling injury-related news banner at top of dashboard
-- **Injury Badges on Player Cards** - Red/Yellow pulsing badges with status (Out, Day-To-Day, Questionable)
-- **Daily Sync Order** - Updated to 5 steps: injuries → stats → odds → insights → Vision AI
-
----
-
-## Recent Changes (Dec 13, 2025 - Session 3)
-- **Dynamic Payout Calculation Engine** - Complete backend integration:
-  - Created `/app/backend/payout_engine.py` with PrizePicks-style payout calculation
-  - Formula: `Total Payout = Base Multiplier × (Mod_1 × Mod_2 × ... × Mod_n)`
-  - Base Multipliers: 2-pick=3.0x, 3-pick=5.0x, 4-pick=10.0x, 5-pick=20.0x, 6-pick=40.0x
-  - Demon modifier: 1.10-1.50x (harder lines = higher payouts)
-  - Goblin modifier: 0.70-0.90x (easier lines = lower payouts)
-  - New endpoint: `POST /api/v3/calculate-payout`
-  - Updated `_build_parlay_builder()` - All 5 tiers (2-6 pick) use dynamic payout engine
-  - Updated `_build_goblin_recon()` - All 4 tiers use dynamic payout engine with goblin identification
-  - New response fields: `estimated_payout`, `payout_display`, `base_multiplier`, `cumulative_modifier`, `asset_breakdown`
-  - Testing: 16/16 backend tests passed
-
-## Recent Changes (Dec 13, 2025 - Session 2)
-- **Active Player Photo Sync** - New system to download ALL NBA player headshots:
-  - Created `/api/v3/sync-active-players` endpoint that uses Tank01 as the primary source
-  - Fetches ~534 active NBA players (not 5000+ historical players)
-  - 100% ESPN headshot coverage - every player has a professional photo
-  - Fixed Tank01 abbreviation mapping (GS→GSW, NO→NOP, NY→NYK, PHO→PHX, SA→SAS)
-  - New endpoints: `/api/v3/players`, `/api/v3/player/{name}/photo`, `/api/v3/team/{abbrev}/roster`
-  - Data stored: player_name, team, position, jersey, height, weight, college, espn_id, nba_com_id, photo_url
-- **Auth Page "MISSION OBJECTIVES™" Update** - Redesigned Section 2 of onboarding page:
-  - Renamed "THE KILL LIST" → "MISSION OBJECTIVES™"
-  - Updated system status: "[OPERATIONAL // INTEL_SYNC_ACTIVE]"
-  - Added new **SENTIMENT** spec row for "Social Signal™" feature (purple newspaper icon)
-  - Updated all spec row text with refined "War Room" copy
-  - Added 🔥🔥🔥🔥 fire emojis to Demon Radar and 💎💎💎💎 sapphire gems to Goblin Recon
-
-## Recent Changes (Dec 14, 2025 - Session 6)
-- **Auth Page Mobile UI Fix**:
-  - Fixed text cutoff in "Mission Objectives" section on mobile
-  - Removed `line-clamp-3` restriction that was truncating "The Edge" descriptions
-  - Increased text size from `text-[11px]` to `text-xs` for better readability
-  - Improved title font size from `text-xs` to `text-sm`
-  - All spec rows now show full content without truncation on mobile
-- **Deployment Blocker Fix**:
-  - Fixed hardcoded Supabase URL in `/app/frontend/src/lib/supabase.js`
-  - Changed from hardcoded `'https://pqkfcybnvvhvbqglsmvz.supabase.co'` to `process.env.REACT_APP_SUPABASE_URL`
-  - Added `REACT_APP_SUPABASE_URL` environment variable to `/app/frontend/.env`
-  - MONGO_URL in backend/.env correctly uses environment variable pattern (parameterized for production)
-
-## Next Steps
-1. **P0: Stripe Integration & Authentication** - Implement paid subscription tiers
-2. **P1: Refactor `DemonGoblinDashboardOptimized.js`** (4000+ lines monolith) - Extract components:
-   - RadarCard, VaultCard, PlayerDetailView, TheGauntlet, TheSafeHaven
-   - Move to `/app/frontend/src/components/dashboard/`
-3. **P2: "Pro Tier" Features** - Gate certain features behind user tier
-4. **P3: "Copy Parlay" Button** - Add clipboard copy for social sharing
-5. **P4: Mobile Bottom Navigation** - Add persistent bottom nav for mobile users

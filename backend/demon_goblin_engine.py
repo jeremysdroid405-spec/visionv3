@@ -3299,14 +3299,37 @@ class DemonGoblinEngine:
         # Collect ONLY high-probability demons (minimum 50% hit rate)
         high_prob_demons = []
         
+        # Debug: Log player dict structure
+        logger.info(f"[PARLAY BUILDER DEBUG] players_dict type: {type(players_dict)}, len: {len(players_dict) if players_dict else 0}")
+        
         for player_name, player_data in players_dict.items():
+            # Skip None entries
+            if player_data is None:
+                logger.warning(f"[PARLAY BUILDER] Skipping None player_data for {player_name}")
+                continue
+            
+            # Debug: check player_data type
+            if not isinstance(player_data, dict):
+                logger.warning(f"[PARLAY BUILDER] player_data is not dict for {player_name}: {type(player_data)}")
+                continue
+                
             demons = player_data.get("demons", [])
             team = player_data.get("team", "")
             
             for demon in demons:
+                # Skip None demons
+                if demon is None:
+                    logger.warning(f"[PARLAY BUILDER] Skipping None demon for {player_name}")
+                    continue
                 hit_rates = demon.get("hit_rates", {})
+                if hit_rates is None:
+                    hit_rates = {}
                 h10_data = hit_rates.get("l10", {})
                 h5_data = hit_rates.get("l5", {})
+                if h10_data is None:
+                    h10_data = {}
+                if h5_data is None:
+                    h5_data = {}
                 
                 h10 = h10_data.get("hit_rate", 0)
                 h5 = h5_data.get("hit_rate", 0)
@@ -3760,14 +3783,30 @@ class DemonGoblinEngine:
         game_groups = {}  # For diversification
         
         for player_name, player_data in players_dict.items():
+            # Skip None entries
+            if player_data is None:
+                logger.warning(f"[GOBLIN RECON] Skipping None player_data for {player_name}")
+                continue
             goblins = player_data.get("goblins", [])
             team = player_data.get("team", "")
             
             for goblin in goblins:
+                # Skip None goblins
+                if goblin is None:
+                    logger.warning(f"[GOBLIN RECON] Skipping None goblin for {player_name}")
+                    continue
                 hit_rates = goblin.get("hit_rates", {})
+                if hit_rates is None:
+                    hit_rates = {}
                 h10_data = hit_rates.get("l10", {})
                 h5_data = hit_rates.get("l5", {})
                 season_data = hit_rates.get("season", {})
+                if h10_data is None:
+                    h10_data = {}
+                if h5_data is None:
+                    h5_data = {}
+                if season_data is None:
+                    season_data = {}
                 
                 h10 = h10_data.get("hit_rate", 0)
                 h5 = h5_data.get("hit_rate", 0)
@@ -4111,27 +4150,10 @@ class DemonGoblinEngine:
                 }
         
         # ==================== 5-PICK GREEN STACK ====================
-        # Higher payout potential while maintaining safety
-        logger.info(f"[GOBLIN RECON] Checking 5-pick: candidates={len(recon_candidates)}")
+        # Same pattern as 6-pick but with 5 picks
         if len(recon_candidates) >= 5:
-            try:
-                result = get_diversified_multi_team_picks(recon_candidates, 5, game_groups)
-                if result:
-                    picks_5, is_valid, team_count = result
-                else:
-                    picks_5, is_valid, team_count = None, False, 0
-            except Exception as e:
-                logger.warning(f"[GOBLIN RECON] 5-pick diversification error: {e}")
-                picks_5, is_valid, team_count = None, False, 0
-            
-            # Fallback: if diversification fails, just take top 5
-            if not picks_5 or len(picks_5) < 5:
-                picks_5 = recon_candidates[:5]
-                teams_in_picks = set(p.get("team", "") for p in picks_5)
-                is_valid = len(teams_in_picks) >= 2
-                team_count = len(teams_in_picks)
-            
-            if picks_5 and len(picks_5) >= 5:
+            picks_5, is_valid, team_count = get_diversified_multi_team_picks(recon_candidates, 5, game_groups)
+            if picks_5:
                 combined_prob = calculate_recon_probability(picks_5)
                 payout_data = calculate_goblin_payout(picks_5)
                 
@@ -4153,7 +4175,6 @@ class DemonGoblinEngine:
                     "team_count": team_count,
                     "lineup_status": "Valid (Multi-Team)" if is_valid else "INVALID (Single Team)"
                 }
-                logger.info(f"[GOBLIN RECON] 5-pick GREEN STACK created with {len(picks_5)} picks")
         
         # ==================== 6-PICK FORTRESS (Flex Play) ====================
         # Designed for PrizePicks Flex: 5/6 = 1.5x profit, 6/6 = 12x
@@ -6124,10 +6145,16 @@ class DemonGoblinEngine:
             logger.info("\n[PARLAYS] Building parlay generators...")
             
             # Build demon parlays (The Gauntlet)
-            await self._build_parlay_builder(player_data, sync_start)
+            try:
+                await self._build_parlay_builder(player_data, sync_start)
+            except Exception as e:
+                logger.error(f"[PARLAY BUILDER] Error building demon parlays: {e}")
             
             # Build goblin parlays (The Safe Haven)
-            await self._build_goblin_recon(player_data, sync_start)
+            try:
+                await self._build_goblin_recon(player_data, sync_start)
+            except Exception as e:
+                logger.error(f"[GOBLIN RECON] Error building goblin parlays: {e}")
             
             logger.info("[PARLAYS] Parlay generators built successfully")
             
