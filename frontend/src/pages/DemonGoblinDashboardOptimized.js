@@ -11,7 +11,7 @@ import {
   ChevronDown, ChevronRight, ChevronLeft, AlertTriangle,
   User, Flame, Star, Clock, Zap, HardDrive, ArrowLeft, X,
   DollarSign, TrendingUp, Target, Layers, CheckCircle, XCircle,
-  LogOut, Crown, Eye, Radio
+  LogOut, Crown, Eye, Radio, Brain
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -591,6 +591,142 @@ const LockedBadge = memo(({ isLocked, commenceTime }) => {
 });
 
 LockedBadge.displayName = 'LockedBadge';
+
+// ==================== SCOUTING BADGE - Projection Cards ====================
+// Orange themed badge for players awaiting official lines
+const ScoutingBadge = memo(({ isProjection, status }) => {
+  if (!isProjection) return null;
+  
+  return (
+    <div className="absolute top-2 right-2 z-10">
+      <div 
+        className="badge-scouting px-2 py-1 rounded-md flex items-center gap-1.5 animate-pulse"
+        style={{
+          background: 'rgba(255, 165, 0, 0.2)',
+          border: '1px solid #FFA500',
+          color: '#FFA500'
+        }}
+      >
+        <Eye className="w-3 h-3" />
+        <span className="text-[10px] font-bold uppercase tracking-wider">SCOUTING</span>
+      </div>
+      {status && (
+        <div className="mt-1 text-[9px] text-orange-400/80 text-center font-mono">
+          {status}
+        </div>
+      )}
+    </div>
+  );
+});
+
+ScoutingBadge.displayName = 'ScoutingBadge';
+
+// ==================== SCOUTING MISSION BRIEFING CARD ====================
+// Placeholder card for games without live lines yet
+const ScoutingMissionCard = memo(({ projection, onClick }) => {
+  if (!projection) return null;
+  
+  const {
+    player_name,
+    team,
+    opponent,
+    projections,
+    season_avg,
+    last_3_avg,
+    smart_anchor_vision,
+    status,
+    commence_time
+  } = projection;
+  
+  return (
+    <div 
+      className="relative bg-gradient-to-br from-zinc-900 via-orange-950/20 to-zinc-900 border border-orange-500/30 rounded-lg p-4 cursor-pointer hover:border-orange-400/50 transition-all"
+      onClick={() => onClick?.(projection)}
+      data-testid={`scouting-card-${player_name?.replace(/\s/g, '-')}`}
+    >
+      {/* Scouting Badge */}
+      <div 
+        className="absolute top-2 right-2 px-2 py-1 rounded-md flex items-center gap-1.5"
+        style={{
+          background: 'rgba(255, 165, 0, 0.2)',
+          border: '1px solid #FFA500',
+          color: '#FFA500'
+        }}
+      >
+        <Eye className="w-3 h-3" />
+        <span className="text-[10px] font-bold uppercase tracking-wider">SCOUTING</span>
+      </div>
+      
+      {/* Player Header */}
+      <div className="flex items-center gap-3 mb-3">
+        <div className="w-12 h-12 bg-orange-500/20 rounded-full flex items-center justify-center border border-orange-500/30">
+          <Target className="w-6 h-6 text-orange-400" />
+        </div>
+        <div>
+          <h3 className="text-white font-bold text-sm">{player_name}</h3>
+          <p className="text-orange-400/80 text-xs">{team} vs {opponent}</p>
+        </div>
+      </div>
+      
+      {/* Mission Status */}
+      <div className="bg-zinc-950/50 rounded p-2 mb-3 border border-orange-500/20">
+        <p className="text-[10px] text-orange-300 font-mono text-center uppercase tracking-wider">
+          {status || "Awaiting Official Mission Parameters"}
+        </p>
+      </div>
+      
+      {/* Projection Stats */}
+      <div className="grid grid-cols-2 gap-2 mb-3">
+        <div className="bg-zinc-950/30 rounded p-2">
+          <p className="text-[10px] text-zinc-500 uppercase mb-1">Season Avg</p>
+          <div className="flex gap-2 text-xs">
+            <span className="text-orange-300">{season_avg?.pts || '--'} PTS</span>
+            <span className="text-orange-300">{season_avg?.reb || '--'} REB</span>
+            <span className="text-orange-300">{season_avg?.ast || '--'} AST</span>
+          </div>
+        </div>
+        <div className="bg-zinc-950/30 rounded p-2">
+          <p className="text-[10px] text-zinc-500 uppercase mb-1">Last 3 Games</p>
+          <div className="flex gap-2 text-xs">
+            <span className="text-orange-200">{last_3_avg?.pts || '--'} PTS</span>
+            <span className="text-orange-200">{last_3_avg?.reb || '--'} REB</span>
+            <span className="text-orange-200">{last_3_avg?.ast || '--'} AST</span>
+          </div>
+        </div>
+      </div>
+      
+      {/* Smart Anchor Vision */}
+      {smart_anchor_vision && (
+        <div className="bg-orange-500/10 rounded p-2 border border-orange-500/20">
+          <div className="flex items-center gap-1 mb-1">
+            <Brain className="w-3 h-3 text-orange-400" />
+            <span className="text-[10px] text-orange-400 font-bold uppercase">Smart Anchor Intel</span>
+          </div>
+          <p className="text-xs text-orange-200/80 leading-relaxed">
+            {smart_anchor_vision}
+          </p>
+        </div>
+      )}
+      
+      {/* Expected Projections */}
+      <div className="mt-3 flex items-center justify-between">
+        <div className="flex gap-2">
+          <div className="bg-orange-500/20 px-2 py-1 rounded">
+            <span className="text-[10px] text-orange-300">PTS: ~{projections?.points || '--'}</span>
+          </div>
+          <div className="bg-orange-500/20 px-2 py-1 rounded">
+            <span className="text-[10px] text-orange-300">PRA: ~{projections?.pra || '--'}</span>
+          </div>
+        </div>
+        <span className="text-[9px] text-zinc-500 font-mono">
+          Projection • Not Live
+        </span>
+      </div>
+    </div>
+  );
+});
+
+ScoutingMissionCard.displayName = 'ScoutingMissionCard';
 
 // ==================== BREAKING NEWS TICKER ====================
 
@@ -3693,6 +3829,10 @@ export const DemonGoblinDashboardOptimized = ({ isDemoMode = false }) => {
     scheduler_running: false
   });
   
+  // Scouting Projections - Early Bird cards awaiting live lines
+  const [scoutingProjections, setScoutingProjections] = useState([]);
+  const [isEarlyBirdActive, setIsEarlyBirdActive] = useState(false);
+  
   // Navigation state
   const [selectedPlayer, setSelectedPlayer] = useState(null);
   
@@ -3870,6 +4010,25 @@ export const DemonGoblinDashboardOptimized = ({ isDemoMode = false }) => {
           next_scheduled_sync: boardIntelResponse.data.next_scheduled_sync
         });
         console.log(`[BOARD INTEL] ${boardIntelResponse.data.time_since_sync_display}`);
+        
+        // Check if early bird mode is active
+        if (boardIntelResponse.data.last_sync_type === 'early_bird') {
+          setIsEarlyBirdActive(true);
+        }
+      }
+      
+      // Fetch Scouting Projections (Early Bird cards)
+      try {
+        const scoutingResponse = await axios.get(`${API}/v3/scouting-projections`);
+        if (scoutingResponse.data?.projections) {
+          setScoutingProjections(scoutingResponse.data.projections || []);
+          setIsEarlyBirdActive(scoutingResponse.data.status === 'early_bird_active');
+          if (scoutingResponse.data.count > 0) {
+            console.log(`[SCOUTING] ${scoutingResponse.data.count} projection cards awaiting live lines`);
+          }
+        }
+      } catch (e) {
+        console.log('[SCOUTING] No projections available');
       }
       
     } catch (error) {
@@ -4183,6 +4342,45 @@ export const DemonGoblinDashboardOptimized = ({ isDemoMode = false }) => {
       />
 
       <div className="p-3 space-y-4">
+        {/* SCOUTING MISSION - Early Bird Projections (before live lines) */}
+        {isEarlyBirdActive && scoutingProjections.length > 0 && (
+          <div className="mb-4">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <div 
+                  className="w-8 h-8 rounded-full flex items-center justify-center"
+                  style={{ background: 'rgba(255, 165, 0, 0.2)', border: '1px solid #FFA500' }}
+                >
+                  <Eye className="w-4 h-4 text-orange-400" />
+                </div>
+                <div>
+                  <span className="text-sm font-bold text-orange-400">SCOUTING MISSION</span>
+                  <p className="text-[10px] text-orange-400/60">Star players awaiting official lines</p>
+                </div>
+              </div>
+              <div 
+                className="px-2 py-1 rounded text-[10px] font-bold"
+                style={{ background: 'rgba(255, 165, 0, 0.2)', border: '1px solid #FFA500', color: '#FFA500' }}
+              >
+                EARLY BIRD • {scoutingProjections.length} PROJECTIONS
+              </div>
+            </div>
+            
+            <div className="overflow-x-auto pb-2 -mx-3 px-3">
+              <div className="flex gap-3" style={{ minWidth: 'max-content' }}>
+                {scoutingProjections.map((proj, idx) => (
+                  <div key={proj.player_name || idx} className="w-[320px] flex-shrink-0">
+                    <ScoutingMissionCard 
+                      projection={proj}
+                      onClick={(p) => console.log('[SCOUTING] Clicked:', p.player_name)}
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* DEMON RADAR - Top 10 Mathematical Picks */}
         {radarPicks.length > 0 && (
           <DemonRadarSwipeSection 

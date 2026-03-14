@@ -23,7 +23,14 @@ Build "PickVision," a high-performance NBA Player Prop Dashboard with a "militar
 
 ### ✅ Completed (December 2025 - March 2026)
 
-**Automated Board Intelligence & Sync System (NEW - March 14, 2026)**
+**Multi-Stage Morning Deployment (NEW - March 14, 2026)**
+- Early Bird Scan at 8:15 AM ET (star players + projections)
+- Scouting Mission Briefing cards for games without live lines
+- Smart Anchor Vision: Season Avg vs Opponent Defense analysis
+- Full Drop Sweep at 10:30 AM ET replaces projections with live cards
+- "Scouting" badge (orange themed) for projection cards
+
+**Automated Board Intelligence & Sync System (March 14, 2026)**
 - Primary Sync at 10:30 AM ET (Full + Vision AI)
 - Delta Refreshes at 1:45 PM, 4:00 PM, 5:45 PM, 7:00 PM ET (Odds only)
 - New Entry Logic: Auto-generates Vision for new demon/goblin players

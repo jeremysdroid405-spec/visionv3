@@ -2065,6 +2065,63 @@ async def get_live_ticker():
         return {"live_games": [], "count": 0, "error": str(e)}
 
 
+@api_router.post("/v3/board-intel/early-bird")
+async def run_early_bird_scan():
+    """
+    EARLY BIRD SCAN (8:15 AM ET - Manual Trigger)
+    
+    - First global fetch for star players
+    - Creates "Scouting Mission Briefing" cards for games without lines
+    - Smart Anchor Vision: Analyzes Season Avg vs Opponent Defense
+    
+    Returns projections for players awaiting official lines.
+    """
+    try:
+        board_intel = get_board_intel_engine()
+        await board_intel.initialize()
+        
+        dg_engine = DemonGoblinEngine(db)
+        
+        result = await board_intel.run_early_bird_scan(dg_engine)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@api_router.get("/v3/scouting-projections")
+async def get_scouting_projections():
+    """
+    SCOUTING PROJECTIONS
+    
+    Returns "Scouting Mission Briefing" cards for players awaiting official lines.
+    These are star players with projected stats but no live betting lines yet.
+    
+    Display with "Scouting" badge (orange themed) in the UI.
+    
+    Each projection includes:
+    - player_name
+    - team, opponent
+    - status: "Awaiting Official Mission Parameters"
+    - projections: {points, rebounds, assists, pra}
+    - season_avg: Player's season averages
+    - last_3_avg: Performance in last 3 games
+    - smart_anchor_vision: AI analysis of expected line
+    """
+    try:
+        board_intel = get_board_intel_engine()
+        await board_intel.initialize()
+        
+        projections = await board_intel.get_scouting_projections()
+        
+        return {
+            "projections": projections,
+            "count": len(projections),
+            "status": "early_bird_active" if len(projections) > 0 else "full_drop_complete"
+        }
+    except Exception as e:
+        return {"projections": [], "count": 0, "error": str(e)}
+
+
 # ==================== RAW STAT VALIDATION ENDPOINTS ====================
 # DATA INTEGRITY CRISIS RESPONSE - Zero Processing, Raw API Data Only
 
