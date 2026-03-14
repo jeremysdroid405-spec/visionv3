@@ -1216,6 +1216,7 @@ const RadarCard = memo(({ pick, rank, onClick, isScanning = false }) => {
         shadow-[0_0_20px_rgba(239,68,68,0.3)]
         hover:scale-[1.02] transition-all duration-300
         cursor-pointer active:scale-[0.98] relative overflow-visible
+        h-[200px]
       `}
       onClick={onClick}
       data-testid={`radar-card-${rank}`}
@@ -1462,6 +1463,7 @@ const VaultCard = memo(({ pick, rank, onClick }) => {
         shadow-[0_0_20px_rgba(34,197,94,0.3)]
         hover:scale-[1.02] transition-all duration-300
         cursor-pointer active:scale-[0.98] relative overflow-visible
+        h-[200px]
       `}
       onClick={handleClick}
       data-testid={`vault-card-${rank}`}
@@ -1768,7 +1770,7 @@ const ReconCard = memo(({ parlay, tier, onClick }) => {
         bg-gradient-to-br from-green-950/50 to-zinc-900 border border-green-500/40
         shadow-[0_0_20px_rgba(34,197,94,0.3)]
         hover:scale-[1.02] transition-all duration-200 cursor-pointer
-        overflow-hidden ${!lineupValid ? 'opacity-60' : ''}
+        overflow-hidden h-[200px] ${!lineupValid ? 'opacity-60' : ''}
       `}
       onClick={onClick}
       data-testid={`recon-card-${tier}`}
