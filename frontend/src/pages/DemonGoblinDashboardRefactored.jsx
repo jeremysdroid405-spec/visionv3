@@ -2,11 +2,15 @@
  * PICKVISION DASHBOARD v4.0
  * =========================
  * Refactored, de-bloated dashboard with shared components.
- * Reduced from 4500+ lines to ~350 lines.
+ * 
+ * DATA FLOW:
+ * - All data fetched via unified DataService (no direct API calls)
+ * - Photos & Stats: From nba_master_hub_2026 via player_id
+ * - Odds/Lines: From daily_slate_master via cached_board
+ * - NO hardcoded name-matching (handled by backend OddsApiMapper)
  */
 
 import React, { useState, useEffect, useCallback, memo } from 'react';
-import axios from 'axios';
 import { 
   Flame, Shield, RefreshCw, Search, ChevronLeft, Target, 
   Layers, TrendingUp, LogOut, Crown, Eye, Clock
@@ -16,16 +20,17 @@ import { useAuth } from '../context/AuthContext';
 // Import tactical CSS
 import '../styles/DashboardTactical.css';
 
+// Data service - unified backend endpoints
+import DataService from '../services/DataService';
+
 // Shared utilities and components
 import {
-  useDataFetch, SectionHeader, EmptyState, LoadingSpinner,
+  SectionHeader, EmptyState, LoadingSpinner,
   PlayerPhoto, HeatIndicator, PayoutDisplay, formatStatType
 } from '../lib/GlobalUtilities';
 import PlayerCard from '../components/dashboard/PlayerCard';
 import ParlayCard from '../components/dashboard/ParlayCard';
 import { DemonIcon, GoblinIcon } from '../components/dashboard/Icons';
-
-const API = process.env.REACT_APP_BACKEND_URL || '';
 
 // ==================== SECTION COMPONENTS ====================
 
@@ -216,23 +221,23 @@ export const DemonGoblinDashboardRefactored = ({ isDemoMode = false }) => {
   const [refreshing, setRefreshing] = useState(false);
   const [activeSection, setActiveSection] = useState('all');
   
-  // Fetch all data
+  // Fetch all data via unified DataService
   const fetchData = useCallback(async () => {
     try {
-      const [radarRes, vaultRes, demonParlayRes, goblinParlayRes, statusRes] = await Promise.all([
-        axios.get(`${API}/api/v3/demon-radar`).catch(() => ({ data: { picks: [] } })),
-        axios.get(`${API}/api/v3/goblin-vault`).catch(() => ({ data: { picks: [] } })),
-        axios.get(`${API}/api/v3/parlay-builder`).catch(() => ({ data: { parlays: {} } })),
-        axios.get(`${API}/api/v3/goblin-recon`).catch(() => ({ data: { parlays: {} } })),
-        axios.get(`${API}/api/v3/board-intel/status`).catch(() => ({ data: {} }))
-      ]);
+      // Use batch fetch for efficiency
+      const result = await DataService.fetchDashboardData();
       
-      setDemonRadar(radarRes.data?.picks || []);
-      setGoblinVault(vaultRes.data?.picks || []);
-      setDemonParlays(demonParlayRes.data?.parlays || {});
-      setGoblinParlays(goblinParlayRes.data?.parlays || {});
-      setSyncStatus(statusRes.data || {});
-      setError(null);
+      if (result.success) {
+        const { data } = result;
+        setDemonRadar(data.demonRadar || []);
+        setGoblinVault(data.goblinVault || []);
+        setDemonParlays(data.parlayBuilder?.demon_parlays || data.parlayBuilder?.parlays || {});
+        setGoblinParlays(data.goblinRecon || data.parlayBuilder?.goblin_parlays || {});
+        setSyncStatus(data.boardIntelStatus || data.syncStatus || {});
+        setError(null);
+      } else {
+        setError(result.error || 'Failed to fetch data');
+      }
     } catch (err) {
       setError(err.message);
     } finally {
@@ -256,7 +261,7 @@ export const DemonGoblinDashboardRefactored = ({ isDemoMode = false }) => {
   
   // Pick click handler
   const handlePickClick = useCallback((pick) => {
-    console.log('[PICK CLICK]', pick.player_name);
+    console.log('[PICK CLICK]', pick.player_id, pick.player_name);
     // TODO: Navigate to player detail or show modal
   }, []);
   

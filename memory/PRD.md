@@ -24,6 +24,13 @@ dg_cached_board → dg_demon_radar → dg_goblin_vault → dg_goblin_recon
 
 ## What's Been Implemented
 
+### 2026-03-14: Functionality-Preserving Logic Clean-Up
+- Created `/src/services/DataService.js` (370 lines) - unified data fetching
+- Removed direct axios calls, replaced with modular service
+- NO hardcoded name-matching (backend OddsApiMapper handles this)
+- Preserved all UI toggles, sorting, and Parlay Builder logic
+- Line count: 1,744 (vs 4,531 in old monolith) - 62% reduction
+
 ### 2026-03-14: Modular CSS Extraction
 - Created `/src/styles/DashboardTactical.css` (437 lines)
 - Extracted all CSS from dashboard components (keyframes, glows, swipe containers)
