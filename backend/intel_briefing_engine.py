@@ -182,79 +182,130 @@ class IntelBriefingEngine:
     ) -> str:
         """Build the targeted 2-sentence Strategic Thesis prompt."""
         
-        # Format prop type for display
-        prop_display = prop_type.replace("_", " ").replace("player ", "").replace("alternate ", "").strip().title()
-        if not prop_display:
-            prop_display = "Points"
+        # Normalize prop_type - handle short codes and full names
+        prop_type_lower = prop_type.lower().strip()
+        
+        # Map short codes to full stat names
+        stat_code_map = {
+            "pts": "points",
+            "reb": "rebounds", 
+            "ast": "assists",
+            "stl": "steals",
+            "blk": "blocks",
+            "to": "turnovers",
+            "3pm": "threes",
+            "3pt": "threes",
+            "pra": "points+rebounds+assists",
+            "p+r+a": "points+rebounds+assists",
+            "pr": "points+rebounds",
+            "p+r": "points+rebounds", 
+            "pa": "points+assists",
+            "p+a": "points+assists",
+            "ra": "rebounds+assists",
+            "r+a": "rebounds+assists"
+        }
+        
+        # Normalize the prop type
+        normalized_prop = stat_code_map.get(prop_type_lower, prop_type_lower)
+        
+        # Also check for keywords in longer strings
+        if "point" in normalized_prop and "rebound" not in normalized_prop and "assist" not in normalized_prop:
+            normalized_prop = "points"
+        elif "rebound" in normalized_prop and "point" not in normalized_prop and "assist" not in normalized_prop:
+            normalized_prop = "rebounds"
+        elif "assist" in normalized_prop and "point" not in normalized_prop and "rebound" not in normalized_prop:
+            normalized_prop = "assists"
         
         # Extract stats
         l10_avg = l10_stats.get("avg", 0)
         l10_hit_rate = l10_stats.get("hit_rate_pct", 0)
         l10_over = l10_stats.get("games_over", 0)
         l10_games = l10_stats.get("total_games", 10)
-        l5_avg = l5_stats.get("avg", 0)
-        l5_over = l5_stats.get("games_over", 0)
-        l5_games = l5_stats.get("total_games", 5)
         
-        # Determine stat-specific defensive weakness context
-        stat_lower = prop_display.lower()
-        if "point" in stat_lower:
-            defensive_weakness = "perimeter defense, rim protection, or isolation containment"
-            stat_context = "scoring load and shot volume"
-            math_angle = "usage rate and shot attempts"
-        elif "rebound" in stat_lower:
-            defensive_weakness = "rebounding rotations, box-out discipline, or frontcourt depth"
-            stat_context = "glass positioning and crash timing"
-            math_angle = "minutes played and rebound opportunities"
-        elif "assist" in stat_lower:
-            defensive_weakness = "help defense rotations, passing lane coverage, or pick-and-roll containment"
-            stat_context = "playmaking opportunities and kick-out frequency"
-            math_angle = "teammate shooting efficiency and offensive possessions"
-        elif "3" in stat_lower or "three" in stat_lower:
-            defensive_weakness = "perimeter closeouts, three-point defense, or transition coverage"
-            stat_context = "three-point attempts and catch-and-shoot opportunities"
-            math_angle = "shot volume and defensive attention on teammates"
-        elif "steal" in stat_lower:
-            defensive_weakness = "ball security, turnover tendencies, or careless passing"
-            stat_context = "passing lane disruption and on-ball pressure"
-            math_angle = "opponent turnover rate and pace of play"
-        elif "block" in stat_lower:
-            defensive_weakness = "interior finishing, reliance on rim attacks, or weak floater games"
-            stat_context = "rim protection opportunities and help defense positioning"
-            math_angle = "opponent shot selection and paint touches"
+        # Determine STRICT stat-specific context based on normalized prop
+        if normalized_prop == "rebounds" or "rebound" in normalized_prop:
+            stat_focus = "REBOUNDS"
+            matchup_focus = "rebounding, glass work, and board crashing"
+            opponent_weakness = "weak rebounding, poor box-outs, or undersized frontcourt"
+            forbidden = "DO NOT mention scoring, assists, passing, or playmaking"
+            example = f'"{opponent} ranks bottom-10 in defensive rebounding rate and their undersized frontcourt struggles to box out aggressive glass-crashers. {player_name} averages {l10_avg:.1f} boards over his last 10, making this {target_line} line easy money against their weak interior presence."'
+            
+        elif normalized_prop == "assists" or "assist" in normalized_prop:
+            stat_focus = "ASSISTS"
+            matchup_focus = "playmaking, passing, and creating for teammates"
+            opponent_weakness = "porous help defense, poor rotations, or giving up open shooters"
+            forbidden = "DO NOT mention scoring, rebounds, or defensive stats"
+            example = f'"{opponent}\'s help defense collapses too aggressively, leaving shooters wide open on kick-outs for {player_name} to find. His {l10_avg:.1f} assist average makes this {target_line} line exploitable against their broken defensive rotations."'
+            
+        elif normalized_prop == "points" or "point" in normalized_prop:
+            stat_focus = "POINTS"
+            matchup_focus = "scoring, shot creation, and offensive output"
+            opponent_weakness = "weak perimeter defense, poor rim protection, or can't guard isolation"
+            forbidden = "DO NOT mention rebounds, assists, or defensive stats"
+            example = f'"{opponent}\'s perimeter defense is bottom-5 in the league, giving elite scorers clean looks all game. {player_name}\'s {l10_avg:.1f} PPG makes this {target_line} line a gift against their porous coverage."'
+            
+        elif normalized_prop == "blocks" or "block" in normalized_prop:
+            stat_focus = "BLOCKS"
+            matchup_focus = "rim protection, shot blocking, and interior defense"
+            opponent_weakness = "heavy reliance on rim attacks, weak floater game, or poor finishing"
+            forbidden = "DO NOT mention scoring, assists, or perimeter defense"
+            example = f'"{opponent} attacks the rim on 45% of possessions, playing right into {player_name}\'s elite shot-blocking. His {l10_avg:.1f} blocks per game makes this {target_line} line exploitable."'
+            
+        elif normalized_prop == "steals" or "steal" in normalized_prop:
+            stat_focus = "STEALS"
+            matchup_focus = "ball-hawking, passing lane disruption, and active hands"
+            opponent_weakness = "turnover-prone guards, careless passing, or poor ball security"
+            forbidden = "DO NOT mention scoring, rebounds, or offensive production"
+            example = f'"{opponent}\'s guards average 4+ turnovers per game with predictable passing patterns. {player_name}\'s {l10_avg:.1f} steals average makes this {target_line} line easy against their careless ball-handling."'
+            
+        elif normalized_prop == "turnovers" or "turnover" in normalized_prop:
+            stat_focus = "TURNOVERS"
+            matchup_focus = "ball security and turnover tendencies"
+            opponent_weakness = "aggressive trapping, active hands, or forcing turnovers"
+            forbidden = "DO NOT mention scoring, rebounds, or assists"
+            example = f'"{opponent}\'s trapping defense forces high turnover rates from opposing ball-handlers. {player_name}\'s {l10_avg:.1f} turnover average makes this {target_line} line accurately set."'
+            
+        elif normalized_prop == "threes" or "3" in normalized_prop or "three" in normalized_prop:
+            stat_focus = "THREE-POINTERS"
+            matchup_focus = "three-point shooting and perimeter offense"
+            opponent_weakness = "poor closeouts, weak perimeter defense, or leaving shooters open"
+            forbidden = "DO NOT mention rebounds, assists, or interior scoring"
+            example = f'"{opponent} allows the most threes in the league with lazy closeouts. {player_name}\'s {l10_avg:.1f} threes per game makes this {target_line} line easy against their broken coverage."'
+            
+        elif "+" in normalized_prop or "combo" in normalized_prop:
+            # Handle combo stats
+            stat_focus = normalized_prop.upper().replace("+", " + ")
+            matchup_focus = "combined production across multiple categories"
+            opponent_weakness = "overall defensive weaknesses"
+            forbidden = "Focus on the combined stat total"
+            example = f'"{opponent}\'s defensive issues allow {player_name} to produce across multiple categories. His {l10_avg:.1f} combined average makes this {target_line} line exploitable."'
+            
         else:
-            defensive_weakness = "specific matchup vulnerabilities"
-            stat_context = "overall production"
-            math_angle = "opportunity and volume metrics"
+            stat_focus = prop_type.upper()
+            matchup_focus = f"{prop_type} production"
+            opponent_weakness = "matchup vulnerabilities"
+            forbidden = "Focus ONLY on this specific stat"
+            example = f'"Based on matchup analysis, {player_name} should exceed {target_line} {prop_type}."'
         
-        # Calculate the edge
+        # Calculate edge
         edge_vs_line = ((l10_avg - target_line) / target_line * 100) if target_line > 0 else 0
         
-        # Build the prompt
-        prompt = f"""You are an elite NBA betting analyst. Write a 2-sentence Strategic Thesis for this SPECIFIC bet.
+        # Build the STRICT prompt
+        prompt = f"""Write EXACTLY 2 sentences about this NBA bet. {forbidden}.
 
-THE BET:
-{player_name} ({team}, {position}) {direction} {target_line} {prop_display} vs {opponent}
+THE BET: {player_name} ({team}) {direction} {target_line} {stat_focus} vs {opponent}
 
-PLAYER STATS FOR THIS PROP:
-- L10 Average: {l10_avg:.1f} {prop_display.lower()} (hit this line {l10_over}/{l10_games} times = {l10_hit_rate:.0f}%)
-- L5 Average: {l5_avg:.1f} {prop_display.lower()} (hit {l5_over}/{l5_games} = {l5_over/l5_games*100:.0f}% recent form)
-- Edge vs Line: {'+' if edge_vs_line > 0 else ''}{edge_vs_line:.1f}%
-{f"- INJURY CONTEXT: {injury_context}" if injury_context else ""}
+RULES:
+1. This is a {stat_focus} bet - ONLY discuss {matchup_focus}
+2. Sentence 1: Why {opponent}'s {opponent_weakness} helps {player_name} get {stat_focus}
+3. Sentence 2: Why the {target_line} line is mispriced (include a number)
+4. {forbidden}
 
-YOUR OUTPUT MUST BE EXACTLY 2 SENTENCES:
+PLAYER {stat_focus} STATS: L10 avg {l10_avg:.1f}, hit rate {l10_hit_rate:.0f}%
 
-SENTENCE 1 (The Matchup Exploit): 
-Explain specifically why {opponent}'s {defensive_weakness} allows {player_name} to exceed {target_line} {prop_display.lower()}. 
-DO NOT mention other stats - focus ONLY on {prop_display.lower()}.
+EXAMPLE: {example}
 
-SENTENCE 2 (The Math Leverage):
-Explain why this {target_line} line is mispriced using {math_angle}. Include a specific number or percentage.
-
-EXAMPLE OUTPUT (for Luka Over 24.5 Pts):
-"Cleveland is currently missing Jarrett Allen in the paint, leaving their interior defense vulnerable to Luka's elite driving gravity. With Kyrie Irving sidelined tonight, Luka's projected usage rate jumps to a season-high 38%, making this 24.5 point line an easy exploitation of a depleted Cavaliers frontcourt."
-
-NOW WRITE YOUR 2-SENTENCE THESIS FOR: {player_name} {direction} {target_line} {prop_display}"""
+YOUR 2-SENTENCE OUTPUT:"""
 
         return prompt
     
@@ -344,6 +395,10 @@ NOW WRITE YOUR 2-SENTENCE THESIS FOR: {player_name} {direction} {target_line} {p
                     "hit_rates": {}
                 }
             
+            # IMPORTANT: Always use the pick's stat_type, not the prop's market
+            # The pick's stat_type is the specific bet we're analyzing
+            stat_type = pick.get("stat_type", demon_prop.get("market", "points"))
+            
             # Extract hit rates
             hit_rates = demon_prop.get("hit_rates", {})
             l10_stats = hit_rates.get("l10", {})
@@ -363,12 +418,12 @@ NOW WRITE YOUR 2-SENTENCE THESIS FOR: {player_name} {direction} {target_line} {p
                     "total_games": pick.get("h5_games", 5)
                 }
             
-            # Generate thesis
+            # Generate thesis using the PICK's stat_type
             thesis = await self.generate_strategic_thesis(
                 player_name=player_name,
-                prop_type=demon_prop.get("market", pick.get("stat_type", "points")),
-                target_line=demon_prop.get("line", pick.get("demon_line", 0)),
-                direction=demon_prop.get("direction", "Over"),
+                prop_type=stat_type,  # Use pick's stat_type directly
+                target_line=pick.get("demon_line", demon_prop.get("line", 0)),
+                direction=pick.get("direction", "Over"),
                 team=player_data.get("team", pick.get("team", "")),
                 opponent=demon_prop.get("away_team", "") or demon_prop.get("home_team", ""),
                 l10_stats=l10_stats,
