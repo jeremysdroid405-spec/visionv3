@@ -6058,14 +6058,22 @@ class DemonGoblinEngine:
                 player_name = prop.get("player_name", "Unknown")
                 
                 if player_name not in player_data:
-                    # Get NBA player ID for headshot
-                    nba_id = get_nba_player_id(player_name)
+                    # Get player photo from master roster
+                    photo_url = await self.get_photo_url_from_master_roster(player_name)
+                    nba_id = None
+                    
+                    # Fallback: Try static NBA player ID mapping
+                    if not photo_url:
+                        nba_id = get_nba_player_id(player_name)
+                        if nba_id:
+                            photo_url = f"https://cdn.nba.com/headshots/nba/latest/1040x760/{nba_id}.png"
                     
                     player_data[player_name] = {
                         "player_name": player_name,
                         "team": prop.get("bdl_team", ""),
                         "position": prop.get("position", ""),
                         "nba_id": nba_id,  # NBA CDN headshot ID
+                        "photo_url": photo_url,  # Player headshot URL
                         "injury_info": prop.get("injury_info", {}),
                         "popularity_order": self._player_popularity.get(player_name, 999),
                         "props": [],
