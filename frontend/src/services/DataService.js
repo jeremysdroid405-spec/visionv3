@@ -32,12 +32,12 @@ const apiClient = axios.create({
 
 /**
  * Fetch all dashboard data in a single batch call.
- * Returns: demon radar, goblin vault, parlays, sync status, etc.
+ * Returns: war zone, goblin vault, parlays, sync status, etc.
  */
 export const fetchDashboardData = async () => {
   try {
     const [
-      demonRadar,
+      warZone,
       goblinVault,
       parlayBuilder,
       goblinRecon,
@@ -46,7 +46,7 @@ export const fetchDashboardData = async () => {
       liveScores,
       lockStatus,
     ] = await Promise.all([
-      apiClient.get('/v3/demon-radar').catch(() => ({ data: { picks: [] } })),
+      apiClient.get('/v3/war-zone').catch(() => ({ data: { picks: [] } })),
       apiClient.get('/v3/goblin-vault').catch(() => ({ data: { picks: [] } })),
       apiClient.get('/v3/parlay-builder').catch(() => ({ data: { demon_parlays: {}, goblin_parlays: {} } })),
       apiClient.get('/v3/goblin-recon').catch(() => ({ data: { parlays: {} } })),
@@ -59,7 +59,7 @@ export const fetchDashboardData = async () => {
     return {
       success: true,
       data: {
-        demonRadar: demonRadar.data?.picks || demonRadar.data || [],
+        warZone: warZone.data?.picks || warZone.data || [],
         goblinVault: goblinVault.data?.picks || goblinVault.data || [],
         parlayBuilder: parlayBuilder.data || { demon_parlays: {}, goblin_parlays: {} },
         goblinRecon: goblinRecon.data?.parlays || goblinRecon.data || {},
@@ -76,14 +76,14 @@ export const fetchDashboardData = async () => {
 };
 
 /**
- * Fetch demon radar picks (top 10 high-probability demons)
+ * Fetch war zone picks (top 10 high-probability demons)
  */
-export const fetchDemonRadar = async () => {
+export const fetchWarZone = async () => {
   try {
-    const response = await apiClient.get('/v3/demon-radar');
+    const response = await apiClient.get('/v3/war-zone');
     return { success: true, picks: response.data?.picks || response.data || [] };
   } catch (error) {
-    console.error('[DataService] fetchDemonRadar error:', error);
+    console.error('[DataService] fetchWarZone error:', error);
     return { success: false, picks: [], error: error.message };
   }
 };
@@ -337,7 +337,7 @@ export const fetchHydratedBoard = async () => {
 const DataService = {
   // Core data
   fetchDashboardData,
-  fetchDemonRadar,
+  fetchWarZone,
   fetchGoblinVault,
   fetchParlayBuilder,
   fetchGoblinRecon,

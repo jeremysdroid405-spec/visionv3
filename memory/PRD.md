@@ -13,7 +13,7 @@ odds_api_mapping_master (V4 Mapper)
         ↓
 _build_cached_board() in demon_goblin_engine.py
         ↓
-dg_cached_board → dg_demon_radar → dg_goblin_vault → dg_goblin_recon
+dg_cached_board → dg_radar_picks (War Zone) → dg_goblin_vault → dg_goblin_recon
 ```
 
 ### Tech Stack
@@ -23,6 +23,13 @@ dg_cached_board → dg_demon_radar → dg_goblin_vault → dg_goblin_recon
 - **External APIs:** The Odds API V4, Tank01, BallDontLie, Google Gemini
 
 ## What's Been Implemented
+
+### 2026-03-14: Renamed "Demon Radar" to "War Zone"
+- Updated all backend code (`demon_goblin_engine.py`, `server.py`)
+- Changed API endpoint from `/api/v3/demon-radar` to `/api/v3/war-zone`
+- Updated all frontend components and services
+- CSS class renamed from `.demon-radar-section` to `.war-zone-section`
+- Updated Auth.js feature card title
 
 ### 2026-03-14: Functionality-Preserving Logic Clean-Up
 - Created `/src/services/DataService.js` (370 lines) - unified data fetching
@@ -65,13 +72,13 @@ dg_cached_board → dg_demon_radar → dg_goblin_vault → dg_goblin_recon
 - `nba_master_hub_2026` - Master player data (534 players)
 - `odds_api_mapping_master` - Odds API name → player_id mapping
 - `dg_cached_board` - Enriched player prop data
-- `dg_demon_radar` - Top 10 demon picks
+- `dg_radar_picks` - War Zone top 10 demon picks
 - `dg_goblin_vault` - Top 10 safe picks
 - `dg_goblin_recon` - Pre-built goblin parlays
 
 ## API Endpoints
 
-### Odds Mapper (NEW)
+### Odds Mapper
 - `GET /api/v3/odds-mapper/stats`
 - `GET /api/v3/odds-mapper/lookup/{odds_api_name}`
 - `POST /api/v3/odds-mapper/lookup-batch`
@@ -85,7 +92,7 @@ dg_cached_board → dg_demon_radar → dg_goblin_vault → dg_goblin_recon
 - `POST /api/v3/board-intel/early-bird`
 
 ### Data Retrieval
-- `GET /api/v3/demon-radar`
+- `GET /api/v3/war-zone` (formerly demon-radar)
 - `GET /api/v3/goblin-vault`
 - `GET /api/v3/goblin-recon`
 - `GET /api/v3/hydrated-board`

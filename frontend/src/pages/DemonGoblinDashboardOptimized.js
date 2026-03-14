@@ -27,7 +27,7 @@ import {
 // Injected CSS for the infinite pulse animation
 const BeaconGlowStyles = () => (
   <style>{`
-    /* ==================== DEMON RADAR - Gold/Orange Beacon ==================== */
+    /* ==================== WAR ZONE - Gold/Orange Beacon ==================== */
     @keyframes beacon-glow-pulse {
       0% { 
         box-shadow: 0 0 5px #FFD700, 0 0 10px rgba(255, 215, 0, 0.3); 
@@ -82,7 +82,7 @@ const BeaconGlowStyles = () => (
     }
     
     /* ==================== SECTION BACKGROUND GLOWS ==================== */
-    .demon-radar-section {
+    .war-zone-section {
       position: relative;
       background: linear-gradient(135deg, rgba(220, 38, 38, 0.15) 0%, rgba(15, 15, 15, 0.95) 50%, rgba(220, 38, 38, 0.1) 100%);
       border-radius: 16px;
@@ -91,7 +91,7 @@ const BeaconGlowStyles = () => (
       box-shadow: 0 0 30px rgba(239, 68, 68, 0.2), inset 0 0 60px rgba(239, 68, 68, 0.05);
     }
     
-    .demon-radar-section::before {
+    .war-zone-section::before {
       content: '';
       position: absolute;
       inset: -4px;
@@ -2176,16 +2176,16 @@ ReconCard.displayName = 'ReconCard';
 // ==================== SWIPEABLE SECTION COMPONENTS ====================
 // Mobile-first swipeable card sections with Tinder-style navigation
 
-// Demon Radar Swipeable Section
-const DemonRadarSwipeSection = memo(({ picks, onPickClick, tMinusGames = [] }) => {
+// War Zone Swipeable Section
+const WarZoneSwipeSection = memo(({ picks, onPickClick, tMinusGames = [] }) => {
   const { containerRef, currentIndex, showHint } = useSwipeTracker(picks.length);
   
   return (
-    <div data-testid="radar-section" className="demon-radar-section">
+    <div data-testid="war-zone-section" className="war-zone-section">
       <div className="flex items-center justify-between mb-2 px-4 sm:px-0">
         <div className="flex items-center gap-2">
           <DemonIcon size={24} isScanning={true} />
-          <span className="text-sm font-bold text-red-400">DEMON RADAR</span>
+          <span className="text-sm font-bold text-red-400">WAR ZONE</span>
           <Badge className="bg-red-950/50 text-red-400 border-red-800/50 text-[10px] hidden sm:inline-flex">
             TOP 10 DEMON PLAYS
           </Badge>
@@ -2225,7 +2225,7 @@ const DemonRadarSwipeSection = memo(({ picks, onPickClick, tMinusGames = [] }) =
   );
 });
 
-DemonRadarSwipeSection.displayName = 'DemonRadarSwipeSection';
+WarZoneSwipeSection.displayName = 'WarZoneSwipeSection';
 
 // Goblin Recon Swipeable Section
 const GoblinReconSwipeSection = memo(({ picks, onPickClick, tMinusGames = [] }) => {
@@ -3865,10 +3865,10 @@ export const DemonGoblinDashboardOptimized = ({ isDemoMode = false }) => {
     try {
       console.log('[CACHED] Loading from MongoDB...');
       
-      // Load board, radar, vault, parlays, recon, injuries, social signals, data status, sync status, live scores, and lock status in parallel
-      const [boardResponse, radarResponse, vaultResponse, parlayResponse, reconResponse, injuryResponse, newsResponse, dataStatusResponse, socialSignalsResponse, syncStatusResponse, liveScoresResponse, lockStatusResponse, tMinusResponse, boardIntelResponse] = await Promise.all([
+      // Load board, war zone, vault, parlays, recon, injuries, social signals, data status, sync status, live scores, and lock status in parallel
+      const [boardResponse, warZoneResponse, vaultResponse, parlayResponse, reconResponse, injuryResponse, newsResponse, dataStatusResponse, socialSignalsResponse, syncStatusResponse, liveScoresResponse, lockStatusResponse, tMinusResponse, boardIntelResponse] = await Promise.all([
         axios.get(`${API}/v3/cached-props`),
-        axios.get(`${API}/v3/demon-radar`),
+        axios.get(`${API}/v3/war-zone`),
         axios.get(`${API}/v3/goblin-vault`),
         axios.get(`${API}/v3/parlay-builder`),
         axios.get(`${API}/v3/goblin-recon`),
@@ -3917,11 +3917,11 @@ export const DemonGoblinDashboardOptimized = ({ isDemoMode = false }) => {
         setLinesLoaded(false);
       }
       
-      // Load radar picks with social signals
-      if (radarResponse.data.success) {
-        const picksWithSignals = applySignals(radarResponse.data.picks || []);
+      // Load war zone picks with social signals
+      if (warZoneResponse.data.success) {
+        const picksWithSignals = applySignals(warZoneResponse.data.picks || []);
         setRadarPicks(picksWithSignals);
-        console.log(`[RADAR] Loaded ${radarResponse.data.picks_count} radar picks`);
+        console.log(`[WAR ZONE] Loaded ${warZoneResponse.data.picks_count} war zone picks`);
       }
       
       // Load vault picks with social signals
@@ -4381,9 +4381,9 @@ export const DemonGoblinDashboardOptimized = ({ isDemoMode = false }) => {
           </div>
         )}
 
-        {/* DEMON RADAR - Top 10 Mathematical Picks */}
+        {/* WAR ZONE - Top 10 Mathematical Picks */}
         {radarPicks.length > 0 && (
-          <DemonRadarSwipeSection 
+          <WarZoneSwipeSection 
             picks={radarPicks.slice(0, 10)} 
             onPickClick={handleRadarClick}
             tMinusGames={tMinusGames}

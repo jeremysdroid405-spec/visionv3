@@ -6,7 +6,7 @@ PrizePicks-Specific System for NBA Player Props
 
 ARCHITECTURE RESET (v3.2):
 - Single source of truth: All data enrichment happens during sync
-- Dumb components: Demon Radar, Goblin Recon, Gauntlet, Safe Haven just read data
+- Dumb components: War Zone, Goblin Recon, Gauntlet, Safe Haven just read data
 - Tank01 playerID as primary key
 - No runtime lookups
 
@@ -506,7 +506,7 @@ class DemonGoblinEngine:
     
     WAREHOUSE MODEL (MongoDB):
     - LIVE_PROPS: All props stored with deduplication (synced via SyncBoard)
-    - DEMON_RADAR: Top 10 pre-calculated picks flagged as is_radar_pick
+    - WAR_ZONE: Top 10 pre-calculated picks flagged as is_radar_pick
     - Zero API calls from frontend - everything reads from MongoDB
     
     Classification (PrizePicks Native):
@@ -515,7 +515,7 @@ class DemonGoblinEngine:
     - Goblins (Green): Alternate market + Non-even odds
     
     Features:
-    - Demon Radar: Pre-calculated top 10 picks based on Hit Rate + Line Gap
+    - War Zone: Pre-calculated top 10 picks based on Hit Rate + Line Gap
     - Trending 10: Most popular players based on API order
     - Player-First Hierarchy: All props organized by player
     """
@@ -532,7 +532,7 @@ class DemonGoblinEngine:
         
         # WAREHOUSE MODEL COLLECTIONS
         self.live_props = db.dg_live_props  # Master props collection (deduplicated)
-        self.radar_picks = db.dg_radar_picks  # Demon Radar top 10 picks
+        self.radar_picks = db.dg_radar_picks  # War Zone top 10 picks
         self.goblin_vault = db.dg_goblin_vault  # Goblin Vault top 10 safe picks
         self.parlay_builder = db.dg_parlay_builder  # Big Money Builder parlays
         self.goblin_recon = db.dg_goblin_recon  # Goblin Recon parlays (high-consistency)
@@ -2597,7 +2597,7 @@ class DemonGoblinEngine:
         ARCHITECTURE RESET v4.0: Odds API Mapper Integration
         
         This is THE ONLY place where player data enrichment happens.
-        All sections (Demon Radar, Goblin Recon, Gauntlet, Safe Haven) read from here.
+        All sections (War Zone, Goblin Recon, Gauntlet, Safe Haven) read from here.
         
         Data Flow (v4.0 - Mapper-based):
         1. Props come from Odds API with player names in 'description' field
@@ -2822,8 +2822,8 @@ class DemonGoblinEngine:
         
         logger.info(f"[CACHED_BOARD] Built board: {len(sorted_players)} players ({mapper_matched} mapper-matched, {verified_count} verified)")
         
-        # Build derived collections (Demon Radar, Goblin Vault, etc.)
-        await self._build_demon_radar(players_dict, sync_time)
+        # Build derived collections (War Zone, Goblin Vault, etc.)
+        await self._build_war_zone(players_dict, sync_time)
         await self._build_goblin_vault(players_dict, sync_time)
         await self._build_parlay_builder(players_dict, sync_time)
         await self._build_goblin_recon(players_dict, sync_time)
@@ -2982,14 +2982,14 @@ class DemonGoblinEngine:
         
         logger.info(f"[CACHED_BOARD_LEGACY] Built board: {len(sorted_players)} players ({verified_count} verified)")
         
-        await self._build_demon_radar(players_dict, sync_time)
+        await self._build_war_zone(players_dict, sync_time)
         await self._build_goblin_vault(players_dict, sync_time)
         await self._build_parlay_builder(players_dict, sync_time)
         await self._build_goblin_recon(players_dict, sync_time)
     
-    async def _build_demon_radar(self, players_dict: Dict[str, Dict], sync_time: datetime):
+    async def _build_war_zone(self, players_dict: Dict[str, Dict], sync_time: datetime):
         """
-        THE INTRICATE DEMON RADAR ALGORITHM v2.0 - Opportunity-Focused
+        THE INTRICATE WAR ZONE ALGORITHM v2.0 - Opportunity-Focused
         
         NEW Scoring Formula (Ratio-Based):
         1. Weighted Probability (P) = (L10 × 0.6) + (L5 × 0.4)
@@ -3001,7 +3001,7 @@ class DemonGoblinEngine:
         Dynamic Threshold:
         - Start with P >= 70% (strict)
         - If fewer than 10 picks, lower to 55% (opportunity mode)
-        - Ensures Demon Radar is NEVER empty
+        - Ensures War Zone is NEVER empty
         
         Heat Level (1-5 Flames):
         - 5 Flames: L10 >= 90% (9-10/10 games hit)
@@ -3010,7 +3010,7 @@ class DemonGoblinEngine:
         - 2 Flames: L10 >= 60%
         - 1 Flame: L10 >= 50%
         """
-        logger.info("[DEMON RADAR v2.0] Calculating opportunity-focused top 10 picks...")
+        logger.info("[WAR ZONE v2.0] Calculating opportunity-focused top 10 picks...")
         
         all_candidates = []
         
@@ -3185,7 +3185,7 @@ class DemonGoblinEngine:
         strict_count = len([p for p in all_candidates if p["hit_probability"] >= 70])
         opportunity_count = len([p for p in all_candidates if 55 <= p["hit_probability"] < 70])
         
-        logger.info(f"[DEMON RADAR v2.0] Generated {len(top_10)} top picks")
+        logger.info(f"[WAR ZONE v2.0] Generated {len(top_10)} top picks")
         logger.info(f"  Strict (P>=70%): {strict_count} | Opportunity (P>=55%): {opportunity_count}")
         logger.info(f"  Total candidates: {len(all_candidates)}")
         
@@ -3241,7 +3241,7 @@ class DemonGoblinEngine:
         Dynamic Threshold Logic:
         1. Start with STRICT threshold (P >= 70%)
         2. If fewer than 10 picks, lower to OPPORTUNITY threshold (P >= 55%)
-        3. Ensures Demon Radar is NEVER empty
+        3. Ensures War Zone is NEVER empty
         """
         # First pass: Strict threshold (P >= 70%)
         strict_picks = [c for c in candidates if c["hit_probability"] >= 70]
@@ -4525,9 +4525,9 @@ class DemonGoblinEngine:
         
         return stat_map.get(market, "")
     
-    async def get_demon_radar(self) -> Dict[str, Any]:
+    async def get_war_zone(self) -> Dict[str, Any]:
         """
-        DUMB COMPONENT: Get the Demon Radar top 10 picks from MongoDB.
+        DUMB COMPONENT: Get the War Zone top 10 picks from MongoDB.
         
         Data is PRE-ENRICHED during sync. No runtime lookups.
         Just reads and returns the data with AI insights.
@@ -6513,15 +6513,15 @@ class DemonGoblinEngine:
             logger.info("\n[CACHE] Storing static shell (24h TTL)...")
             await self.store_static_shell(list(player_data.values()), trending_10)
             
-            # ===== BUILD RADAR & VAULT (Top 10 Picks) =====
-            logger.info("\n[RADAR/VAULT] Building top 10 pick sections...")
+            # ===== BUILD WAR ZONE & VAULT (Top 10 Picks) =====
+            logger.info("\n[WAR ZONE/VAULT] Building top 10 pick sections...")
             
-            # Build Demon Radar (Top 10 Demon Picks)
+            # Build War Zone (Top 10 Demon Picks)
             try:
-                await self._build_demon_radar(player_data, sync_start)
-                logger.info("[DEMON RADAR] Rebuilt successfully")
+                await self._build_war_zone(player_data, sync_start)
+                logger.info("[WAR ZONE] Rebuilt successfully")
             except Exception as e:
-                logger.error(f"[DEMON RADAR] Error building: {e}")
+                logger.error(f"[WAR ZONE] Error building: {e}")
             
             # Build Goblin Vault (Top 10 Safe Picks)
             try:
@@ -6752,12 +6752,12 @@ V3.1 TRUTH ENGINE - DATA INTEGRITY:
                         player_data[pname] = player
                 
                 if player_data:
-                    logger.info("[DELTA] Rebuilding Demon Radar and Goblin Vault...")
+                    logger.info("[DELTA] Rebuilding War Zone and Goblin Vault...")
                     try:
-                        await self._build_demon_radar(player_data, sync_start)
-                        logger.info("[DEMON RADAR] Rebuilt with fresh data")
+                        await self._build_war_zone(player_data, sync_start)
+                        logger.info("[WAR ZONE] Rebuilt with fresh data")
                     except Exception as e:
-                        logger.error(f"[DEMON RADAR] Rebuild error: {e}")
+                        logger.error(f"[WAR ZONE] Rebuild error: {e}")
                     
                     try:
                         await self._build_goblin_vault(player_data, sync_start)

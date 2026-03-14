@@ -34,12 +34,12 @@ import { DemonIcon, GoblinIcon } from '../components/dashboard/Icons';
 
 // ==================== SECTION COMPONENTS ====================
 
-// Demon Radar Section - Top 10 Demon Picks
-const DemonRadarSection = memo(({ picks, onPickClick }) => (
-  <div className="mb-6 demon-radar-section">
+// War Zone Section - Top 10 Demon Picks
+const WarZoneSection = memo(({ picks, onPickClick }) => (
+  <div className="mb-6 war-zone-section">
     <SectionHeader 
       icon={Flame}
-      title="DEMON RADAR"
+      title="WAR ZONE"
       subtitle="Top 10 high-probability demon plays"
       badge={`${picks.length} PICKS`}
       badgeColor="amber"
@@ -209,7 +209,7 @@ export const DemonGoblinDashboardRefactored = ({ isDemoMode = false }) => {
   const { user, logout } = useAuth() || {};
   
   // Data state
-  const [demonRadar, setDemonRadar] = useState([]);
+  const [warZone, setWarZone] = useState([]);
   const [goblinVault, setGoblinVault] = useState([]);
   const [demonParlays, setDemonParlays] = useState({});
   const [goblinParlays, setGoblinParlays] = useState({});
@@ -229,7 +229,7 @@ export const DemonGoblinDashboardRefactored = ({ isDemoMode = false }) => {
       
       if (result.success) {
         const { data } = result;
-        setDemonRadar(data.demonRadar || []);
+        setWarZone(data.warZone || []);
         setGoblinVault(data.goblinVault || []);
         setDemonParlays(data.parlayBuilder?.demon_parlays || data.parlayBuilder?.parlays || {});
         setGoblinParlays(data.goblinRecon || data.parlayBuilder?.goblin_parlays || {});
@@ -329,8 +329,8 @@ export const DemonGoblinDashboardRefactored = ({ isDemoMode = false }) => {
           </div>
         )}
         
-        {/* Demon Radar */}
-        <DemonRadarSection picks={demonRadar} onPickClick={handlePickClick} />
+        {/* War Zone */}
+        <WarZoneSection picks={warZone} onPickClick={handlePickClick} />
         
         {/* The Gauntlet - Demon Parlays */}
         <GauntletSection parlays={demonParlays} onParlayClick={handleParlayClick} />

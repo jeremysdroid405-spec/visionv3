@@ -400,7 +400,7 @@ export const Auth = () => {
             />
             <SpecRow 
               spec="TARGETING"
-              title="Demon Radar"
+              title="War Zone"
               edge={<>High-alpha, high-variance exploits. This is for the strategist looking to turn a single session into a season-defining win. <span className="text-red-500">🔥🔥🔥🔥</span></>}
               icon={<DemonIcon size={24} />}
             />

@@ -1482,12 +1482,12 @@ async def get_player_intel_briefing(player_name: str, game_id: Optional[str] = N
         }
 
 
-# ==================== DEMON RADAR ENDPOINT ====================
+# ==================== WAR ZONE ENDPOINT ====================
 
-@api_router.get("/v3/demon-radar")
-async def get_demon_radar():
+@api_router.get("/v3/war-zone")
+async def get_war_zone():
     """
-    THE DEMON RADAR - Top 10 picks based on mathematical analysis.
+    THE WAR ZONE - Top 10 picks based on mathematical analysis.
     
     Algorithm:
     1. Hit Probability (P) = (H10 × 0.6) + (H5 × 0.4)
@@ -1501,7 +1501,7 @@ async def get_demon_radar():
     if not demon_goblin_engine:
         raise HTTPException(status_code=500, detail="Engine not initialized")
     
-    result = await demon_goblin_engine.get_demon_radar()
+    result = await demon_goblin_engine.get_war_zone()
     
     # Add lock status to picks by checking player's game commence_time
     if game_lock_engine and result.get("picks"):

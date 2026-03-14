@@ -8,7 +8,7 @@
  * Every hex code and padding value must remain identical.
  */
 
-/* ==================== DEMON RADAR - Gold/Orange Beacon ==================== */
+/* ==================== WAR ZONE - Gold/Orange Beacon ==================== */
 @keyframes beacon-glow-pulse {
   0% { 
     box-shadow: 0 0 5px #FFD700, 0 0 10px rgba(255, 215, 0, 0.3); 
@@ -63,7 +63,7 @@
 }
 
 /* ==================== SECTION BACKGROUND GLOWS ==================== */
-.demon-radar-section {
+.war-zone-section {
   position: relative;
   background: linear-gradient(135deg, rgba(220, 38, 38, 0.15) 0%, rgba(15, 15, 15, 0.95) 50%, rgba(220, 38, 38, 0.1) 100%);
   border-radius: 16px;
@@ -72,7 +72,7 @@
   box-shadow: 0 0 30px rgba(239, 68, 68, 0.2), inset 0 0 60px rgba(239, 68, 68, 0.05);
 }
 
-.demon-radar-section::before {
+.war-zone-section::before {
   content: '';
   position: absolute;
   inset: -4px;
