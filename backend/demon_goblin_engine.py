@@ -4751,11 +4751,37 @@ class DemonGoblinEngine:
     
     async def get_cached_player(self, player_name: str) -> Dict[str, Any]:
         """
-        Get a single player from the CACHED board.
+        Get a single player from the CACHED board or player_data.
         Also includes advanced analytics insights from dg_daily_insights.
         NO API CALLS - reads only from database.
+        
+        Searches in order:
+        1. dg_player_data (from run_full_sync - has player_id)
+        2. dg_cached_board (from sync_odds_to_mongo - fallback)
         """
-        # Try exact match first
+        # Try dg_player_data first (has player_id from OddsApiMapper)
+        player = await self.player_data.find_one(
+            {"player_name": player_name},
+            {"_id": 0}
+        )
+        
+        if player:
+            self._clean_object_ids(player)
+            await self._add_player_insights(player)
+            return {"success": True, "player": player, "source": "player_data"}
+        
+        # Try case-insensitive in player_data
+        player = await self.player_data.find_one(
+            {"player_name": {"$regex": f"^{player_name}$", "$options": "i"}},
+            {"_id": 0}
+        )
+        
+        if player:
+            self._clean_object_ids(player)
+            await self._add_player_insights(player)
+            return {"success": True, "player": player, "source": "player_data"}
+        
+        # Fallback: Try cached_board (exact match)
         player = await self.cached_board.find_one(
             {"player_name": player_name},
             {"_id": 0}
@@ -4766,9 +4792,9 @@ class DemonGoblinEngine:
             self._clean_object_ids(player)
             # Add insights data
             await self._add_player_insights(player)
-            return {"success": True, "player": player}
+            return {"success": True, "player": player, "source": "cached_board"}
         
-        # Try case-insensitive search
+        # Try case-insensitive search in cached_board
         player = await self.cached_board.find_one(
             {"player_name": {"$regex": f"^{player_name}$", "$options": "i"}},
             {"_id": 0}
@@ -4777,27 +4803,32 @@ class DemonGoblinEngine:
         if player:
             self._clean_object_ids(player)
             await self._add_player_insights(player)
-            return {"success": True, "player": player}
+            return {"success": True, "player": player, "source": "cached_board"}
         
-        # Fuzzy search
-        all_players = await self.cached_board.find({}, {"player_name": 1, "_id": 0}).to_list(500)
+        # Fuzzy search in both collections
+        all_players_pd = await self.player_data.find({}, {"player_name": 1, "_id": 0}).to_list(500)
+        all_players_cb = await self.cached_board.find({}, {"player_name": 1, "_id": 0}).to_list(500)
+        all_players = all_players_pd + all_players_cb
         
         best_match = None
         best_score = 0
+        match_source = None
         for p in all_players:
             score = fuzz.ratio(player_name.lower(), p["player_name"].lower())
             if score > best_score and score > 70:
                 best_score = score
                 best_match = p["player_name"]
+                match_source = "player_data" if p in all_players_pd else "cached_board"
         
         if best_match:
-            player = await self.cached_board.find_one(
+            collection = self.player_data if match_source == "player_data" else self.cached_board
+            player = await collection.find_one(
                 {"player_name": best_match},
                 {"_id": 0}
             )
             self._clean_object_ids(player)
             await self._add_player_insights(player)
-            return {"success": True, "player": player, "matched_name": best_match}
+            return {"success": True, "player": player, "matched_name": best_match, "source": match_source}
         
         return {
             "success": False,
