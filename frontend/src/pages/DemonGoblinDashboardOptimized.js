@@ -2051,7 +2051,7 @@ const DemonRadarSwipeSection = memo(({ picks, onPickClick, tMinusGames = [] }) =
           <DemonIcon size={24} isScanning={true} />
           <span className="text-sm font-bold text-red-400">DEMON RADAR</span>
           <Badge className="bg-red-950/50 text-red-400 border-red-800/50 text-[10px] hidden sm:inline-flex">
-            TOP 10 HIGH-ALPHA
+            TOP 10 DEMON PLAYS
           </Badge>
         </div>
         <div className="text-[10px] text-zinc-500 hidden sm:block">
@@ -2102,7 +2102,7 @@ const GoblinReconSwipeSection = memo(({ picks, onPickClick, tMinusGames = [] }) 
           <GoblinIcon size={24} />
           <span className="text-sm font-bold text-green-400">THE GOBLIN RECON</span>
           <Badge className="bg-green-950/50 text-green-400 border-green-800/50 text-[10px] hidden sm:inline-flex">
-            TOP 10 HEX-STACK
+            TOP 10 GOBLIN PLAYS
           </Badge>
         </div>
         <div className="text-[10px] text-zinc-500 hidden sm:block">
