@@ -1392,29 +1392,35 @@ async def sync_to_mongo():
 @api_router.post("/v3/generate-intel-briefings")
 async def generate_intel_briefings():
     """
-    INTEL BRIEFING GENERATION - Generate AI tactical reports using Gemini 3 Flash.
+    TARGETED STRATEGIC VISION - Generate bet-specific 2-sentence theses.
     
-    Scans cached_board for entries missing intel_briefing and generates them.
-    Only generates once per PlayerID + GameID combination (conditional execution).
+    Conditional Trigger: Only generates for:
+    - is_demon = True (Radar picks)
+    - is_goblin = True (Vault picks)
+    - in_parlay_maker = True
     
-    Prompt Template:
-    - Uses player's L10 stats and current betting line
-    - Military Scout tone
-    - [Sector Trend] + [Engagement Context] structure
+    Output Format (2 Sentences):
+    1. The Matchup Exploit - Why opponent's defense allows this stat
+    2. The Math Leverage - Why the line is soft
+    
+    Example: "Cleveland is missing Jarrett Allen in the paint, leaving their 
+    interior defense vulnerable to Luka's elite driving gravity. With Kyrie 
+    Irving sidelined, Luka's projected usage rate jumps to 38%, making this 
+    24.5 point line an easy exploitation."
     
     Returns:
-    - scanned: Number of entries checked
-    - generated: Number of new intel briefings created
+    - generated: Number of Strategic Theses created
+    - processed_players: List of players with new theses
     - errors: Number of failed generations
     """
     if not intel_briefing_engine:
-        raise HTTPException(status_code=500, detail="Intel Briefing Engine not initialized")
+        raise HTTPException(status_code=500, detail="Strategic Vision Engine not initialized")
     
     if not os.environ.get('GOOGLE_API_KEY'):
         raise HTTPException(status_code=500, detail="GOOGLE_API_KEY not configured")
     
-    logger.info("[INTEL BRIEFING] Manual generation triggered")
-    result = await intel_briefing_engine.check_and_generate_for_board()
+    logger.info("[VISION] Targeted Strategic Thesis generation triggered")
+    result = await intel_briefing_engine.generate_for_targeted_picks()
     
     return result
 
