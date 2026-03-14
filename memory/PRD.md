@@ -1,136 +1,141 @@
 # PickVision - NBA Player Prop Dashboard
 
-## Original Problem Statement
-Build "PickVision," a high-performance NBA Player Prop Dashboard with a "military tech" aesthetic. Core functionality: AI-driven betting insights identifying "Demons" (high-payout props) and "Goblins" (safer props).
+## Overview
+PickVision is a high-performance NBA Player Prop Dashboard with a "military tech" aesthetic. The application delivers AI-driven betting insights by identifying "Demons" (high-payout props) and "Goblins" (safer props).
 
-## Core Requirements
-1. **Data Integrity:** 100% data accuracy using centralized data pipeline (`dg_cached_board`) with Tank01 player IDs
-2. **Advanced Analytics:** LLM for betting insights ("The Vision"), "Social Signal" engine
-3. **"War Room" UI/UX:** Dark, cinematic, military tech aesthetic
-4. **Dynamic Payout Engine:** Global payout calculator for dynamic parlay estimates
-5. **Mobile-First UI:** Fully responsive, optimized for mobile
-6. **Subscriptions & Auth:** Stripe for paid tiers, robust authentication
-7. **Real-Time Data:** Live score ticker, breaking news feed
+## Core Architecture
 
-## Tech Stack
-- **Frontend:** React, TailwindCSS, Shadcn/UI
-- **Backend:** FastAPI, Python
+### Data Pipeline (Single Source of Truth)
+```
+nba_master_hub_2026 (SSOT)
+        ↓
+odds_api_mapping_master (V4 Mapper)
+        ↓
+_build_cached_board() in demon_goblin_engine.py
+        ↓
+dg_cached_board → dg_demon_radar → dg_goblin_vault → dg_goblin_recon
+```
+
+### Tech Stack
+- **Frontend:** React 18 with Shadcn/UI components
+- **Backend:** FastAPI (Python 3.11)
 - **Database:** MongoDB
-- **AI:** Google Gemini Flash (for Strategic Vision)
-- **Data:** The Odds API, BallDontLie, Tank01
+- **External APIs:** The Odds API V4, Tank01, BallDontLie, Google Gemini
 
 ## What's Been Implemented
 
-### ✅ Completed (December 2025 - March 2026)
+### 2026-03-14: V4 Odds Master Mapping
+- Created `odds_api_mapper.py` module for permanent player name → ID mapping
+- Created `odds_api_mapping_master` collection (534 players)
+- Updated `_build_cached_board()` to use mapper instead of name-based lookups
+- Added 5 new API endpoints for mapper operations
 
-**Multi-Stage Morning Deployment (NEW - March 14, 2026)**
-- Early Bird Scan at 8:15 AM ET (star players + projections)
-- Scouting Mission Briefing cards for games without live lines
-- Smart Anchor Vision: Season Avg vs Opponent Defense analysis
-- Full Drop Sweep at 10:30 AM ET replaces projections with live cards
-- "Scouting" badge (orange themed) for projection cards
+### 2026-03-14: Frontend Refactoring (80% reduction)
+- Created `DemonGoblinDashboardRefactored.jsx` (~350 lines)
+- Created reusable `PlayerCard.jsx` and `ParlayCard.jsx` components
+- Created `GlobalUtilities.js` library
+- New dashboard accessible at `/v4/demo`
 
-**Automated Board Intelligence & Sync System (March 14, 2026)**
-- Primary Sync at 10:30 AM ET (Full + Vision AI)
-- Delta Refreshes at 1:45 PM, 4:00 PM, 5:45 PM, 7:00 PM ET (Odds only)
-- New Entry Logic: Auto-generates Vision for new demon/goblin players
-- Removal Logic: Removes players when status → Inactive or line pulled
-- Live Ticker Handover: Every 60s checks if game started
-- "Last Synced: MM:SS" footer display with sync type badge
+### 2026-03-14: Data Sync & Integrity
+- Fixed 5-pick Goblin parlay bug
+- Fortified sync process with comprehensive error handling
+- Implemented player photo injection (534 players with locked headshots)
+- Created `board_intelligence_engine.py` for automated syncs
 
-**5-Pick Goblin Parlay (Fixed - March 14, 2026)**
-- Added "Green Stack" 5-pick parlay to Safe Haven section
-- All 5 Goblin Recon parlay tiers now generating (2-6 picks)
+### 2026-03-13: NBA Master Hub (SSOT)
+- Created `nba_master_hub.py` as single source of truth
+- All 534 active players with permanent headshot URLs
+- Daily sync scheduler (4:00 AM ET)
 
-**Game Lock Engine v1.0**
-- Background task checking `commence_time` every 60 seconds
-- Auto-locks games/props that have started
-- API endpoints: `/api/v3/lock-status`, `/api/v3/locked-games`, `/api/v3/validate-parlay`
-- Frontend `LockedBadge` component
+## Key Collections
+- `nba_master_hub_2026` - Master player data (534 players)
+- `odds_api_mapping_master` - Odds API name → player_id mapping
+- `dg_cached_board` - Enriched player prop data
+- `dg_demon_radar` - Top 10 demon picks
+- `dg_goblin_vault` - Top 10 safe picks
+- `dg_goblin_recon` - Pre-built goblin parlays
 
-**Strategic Vision Engine v3.0**
-- Gemini-powered 2-sentence thesis for each bet
-- Correctly maps stat types (REB, PTS, AST, etc.)
-- Vision for all pick types: Demon Radar, Goblin Recon, all Parlay Builder picks
+## API Endpoints
 
-**Parlay System**
-- Demon/Gauntlet Parlays: 2-6 picks with opponent pairing
-- **Goblin/Safe Haven Parlays: 2-6 picks including new 5-pick "Green Stack"**
-- Two-team rule enforcement for PrizePicks compliance
-- Dynamic payout calculation
+### Odds Mapper (NEW)
+- `GET /api/v3/odds-mapper/stats`
+- `GET /api/v3/odds-mapper/lookup/{odds_api_name}`
+- `POST /api/v3/odds-mapper/lookup-batch`
+- `POST /api/v3/odds-mapper/rebuild`
+- `GET /api/v3/odds-mapper/player-id/{player_id}`
 
-**UI/UX Refinements**
-- Redesigned Demon/Goblin icons (badass versions)
-- Fixed Vision text truncation
-- Compact player cards in parlay sections
-- Mobile auth page fixes
-- Header badge text updates
+### Data Sync
+- `POST /api/v3/sync`
+- `POST /api/v3/board-intel/primary-sync`
+- `POST /api/v3/board-intel/delta-refresh`
+- `POST /api/v3/board-intel/early-bird`
 
-**Bug Fixes (March 14, 2026)**
-- Fixed 5-pick Goblin parlay not generating
-- Added null-safety for hit_rates data structures
-- Error isolation for parlay builders
+### Data Retrieval
+- `GET /api/v3/demon-radar`
+- `GET /api/v3/goblin-vault`
+- `GET /api/v3/goblin-recon`
+- `GET /api/v3/hydrated-board`
 
-### 🔄 In Progress
-- None currently
+## Prioritized Backlog
 
-### ⏳ Upcoming (Priority Order)
+### P0 - Critical
+- **Stripe Integration & Authentication** - User's next priority
+  - Subscription tiers (Free/Pro)
+  - Checkout flow
+  - Webhook handling
 
-**P0 - Automated Board Intelligence & Sync**
-- Primary Sync (10:30 AM ET): Full global fetch with Vision AI
-- Delta Refreshes (1:45 PM, 4:00 PM, 5:45 PM, 7:00 PM ET)
-- New Entry/Removal Logic
-- Live Ticker Handover (60-second checks)
-- "Last Synced: MM:SS" footer display
+### P1 - High Priority
+- **Finalize Frontend Refactor**
+  - Replace `DemonGoblinDashboardOptimized.js` with refactored version
+  - Update `App.js` routing
+  - Delete deprecated files
 
-**P1 - Stripe Integration & Authentication**
-- Payment processing for subscription tiers
-- User authentication system
+- **Fix Deployment Blocker**
+  - Parameterize hardcoded `MONGO_URL`
+  - Ensure production environment variable injection
 
-**P2 - Refactor Dashboard**
-- Break down `DemonGoblinDashboardOptimized.js` (4300+ lines)
-
-### 📋 Backlog
+### P2 - Medium Priority
+- Complete SSOT backend integration (purge old lookup functions)
 - Pro Tier feature gating
 - Copy Parlay button
+
+### P3/P4 - Future
 - Mobile bottom navigation
-- T-Minus countdown timer (live)
-
-## Key API Endpoints
-- `POST /api/v3/sync` - Full data sync
-- `GET /api/v3/goblin-recon` - Goblin parlays
-- `GET /api/v3/parlay-builder` - Demon parlays
-- `GET /api/v3/demon-radar` - Top demon picks
-- `POST /api/v3/run-lock-check` - Manual lock check
-- `GET /api/v3/lock-status` - Current lock status
-
-## Database Collections
-- `dg_cached_board` - Main player/prop data
-- `goblin_recon` - Pre-built goblin parlays
-- `demon_radar` - Top demon picks
-- `parlay_builder` - Demon parlays
+- T-Minus live countdown timer
+- Real Google/Apple OAuth (currently placeholders)
 
 ## Known Issues
-- Deployment requires proper MONGO_URL configuration for production
-- Continue with Google/Apple buttons are placeholders
+- Old dashboard (`DemonGoblinDashboardOptimized.js`, 4500+ lines) still in use on main route
+- `MONGO_URL` hardcoded in `backend/.env` (deployment blocker)
+- Google/Apple auth buttons are placeholders
 
 ## File Structure
 ```
 /app
 ├── backend/
-│   ├── demon_goblin_engine.py   # Main sync & parlay logic
-│   ├── game_lock_engine.py      # Auto-lock system
-│   ├── intel_briefing_engine.py # AI Vision generation
-│   ├── payout_engine.py         # Payout calculations
-│   ├── server.py                # FastAPI routes
-│   └── .env
+│   ├── odds_api_mapper.py         # NEW: V4 mapping module
+│   ├── demon_goblin_engine.py     # Core analytics engine
+│   ├── board_intelligence_engine.py
+│   ├── nba_master_hub.py          # SSOT module
+│   └── server.py
 ├── frontend/
-│   └── src/
-│       ├── pages/
-│       │   ├── DemonGoblinDashboardOptimized.js
-│       │   └── Auth.js
-│       └── components/
-│           └── dashboard/Icons.jsx
+│   ├── src/
+│   │   ├── pages/
+│   │   │   ├── DemonGoblinDashboardRefactored.jsx  # NEW (refactored)
+│   │   │   └── DemonGoblinDashboardOptimized.js    # OLD (to be removed)
+│   │   ├── components/dashboard/
+│   │   │   ├── PlayerCard.jsx     # NEW
+│   │   │   └── ParlayCard.jsx     # NEW
+│   │   └── lib/GlobalUtilities.js # NEW
 └── memory/
     └── PRD.md
 ```
+
+## Environment Variables Required
+- `MONGO_URL` - MongoDB connection string
+- `DB_NAME` - Database name (default: test_database)
+- `ODDS_API_KEY` - The Odds API key
+- `TANK01_API_KEY` - Tank01 RapidAPI key
+- `BDL_API_KEY` - BallDontLie API key
+- `EMERGENT_LLM_KEY` - For AI insights
+- `GOOGLE_API_KEY` - Google Gemini API key

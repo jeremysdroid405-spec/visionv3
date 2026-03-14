@@ -61,6 +61,9 @@ from payout_engine import (
 # NBA Master Hub - SINGLE SOURCE OF TRUTH
 from nba_master_hub import fetchPlayerIntel, fetchPlayerIntelByName, get_master_hub
 
+# Odds API Mapper - Permanent player name to ID mapping
+from odds_api_mapper import get_odds_api_mapper, init_odds_api_mapper
+
 # NBA.com API fallback for players missing from BallDontLie
 try:
     from nba_api.stats.endpoints import playergamelog
@@ -563,6 +566,39 @@ class DemonGoblinEngine:
         self.VOLATILITY_HIGH_THRESHOLD = 10.0
         self.VOLATILITY_MED_THRESHOLD = 5.0
         self.USAGE_REDISTRIBUTION_BASE = 12.0
+        
+        # Odds API Mapper - will be initialized on first sync
+        self._odds_mapper = None
+        self._odds_mapper_initialized = False
+    
+    async def _ensure_odds_mapper_loaded(self) -> bool:
+        """
+        Ensure the Odds API Mapper is initialized and loaded.
+        Called before any sync operation that needs player lookups.
+        
+        Returns:
+            True if mapper is ready, False otherwise
+        """
+        if self._odds_mapper_initialized and self._odds_mapper is not None:
+            return True
+        
+        try:
+            logger.info("[ODDS_MAPPER] Initializing Odds API Mapper...")
+            self._odds_mapper = await init_odds_api_mapper(self.db)
+            
+            # Check if mapping collection has data, if not rebuild it
+            stats = await self._odds_mapper.getStats()
+            if stats.get("total_mappings", 0) == 0:
+                logger.info("[ODDS_MAPPER] No mappings found, rebuilding from master hub...")
+                await self._odds_mapper.rebuildMapping()
+            
+            self._odds_mapper_initialized = True
+            logger.info(f"[ODDS_MAPPER] Mapper ready with {stats.get('in_memory_count', 0)} mappings")
+            return True
+            
+        except Exception as e:
+            logger.error(f"[ODDS_MAPPER] Failed to initialize mapper: {e}")
+            return False
     
     # ==================== MASTER ROSTER SYNC (SOURCE OF TRUTH) ====================
     
@@ -2563,42 +2599,57 @@ class DemonGoblinEngine:
     
     async def _build_cached_board(self, props: List[Dict], sync_time: datetime):
         """
-        ARCHITECTURE RESET: Centralized Data Enrichment
+        ARCHITECTURE RESET v4.0: Odds API Mapper Integration
         
         This is THE ONLY place where player data enrichment happens.
         All sections (Demon Radar, Goblin Recon, Gauntlet, Safe Haven) read from here.
         
-        Data Flow:
-        1. Props come from Odds API
-        2. For each prop, lookup player in dg_master_roster by normalized name
-        3. Enrich with: tank01_player_id (PRIMARY KEY), photo_url, team, stats
+        Data Flow (v4.0 - Mapper-based):
+        1. Props come from Odds API with player names in 'description' field
+        2. For each prop, use Odds API Mapper to get player_id directly
+        3. Mapper returns full player data from nba_master_hub_2026
         4. Store everything in dg_cached_board
-        5. No more runtime lookups - if it's not here, it doesn't exist
+        5. No more fuzzy name matching - exact lookup via permanent mapping
         
-        Primary Key: tank01_player_id (from Tank01 roster sync)
+        Primary Key: player_id (from nba_master_hub_2026)
         """
         if not props:
             return
         
         logger.info(f"[CACHED_BOARD] Building centralized board from {len(props)} props...")
         
-        # Load master roster into memory for fast lookups (indexed by normalized name)
-        master_roster_map = {}
-        roster_cursor = self.master_roster.find({}, {"_id": 0})
-        async for player in roster_cursor:
-            normalized = player.get("normalized_name", "").lower()
-            if normalized:
-                master_roster_map[normalized] = player
+        # ==================== STEP 1: ENSURE ODDS MAPPER IS LOADED ====================
+        mapper_ready = await self._ensure_odds_mapper_loaded()
+        if not mapper_ready or self._odds_mapper is None:
+            logger.error("[CACHED_BOARD] Odds API Mapper not available - falling back to legacy lookup")
+            # Fall back to legacy method if mapper fails
+            await self._build_cached_board_legacy(props, sync_time)
+            return
         
-        logger.info(f"[CACHED_BOARD] Loaded {len(master_roster_map)} players from master roster")
+        logger.info(f"[CACHED_BOARD] Odds API Mapper loaded and ready")
         
-        # Load player stats into memory (indexed by normalized name)
+        # ==================== STEP 2: BATCH LOOKUP ALL PLAYER NAMES ====================
+        # Collect all unique player names from props
+        unique_player_names = set(prop.get("player_name", "Unknown") for prop in props)
+        logger.info(f"[CACHED_BOARD] Looking up {len(unique_player_names)} unique players via Mapper")
+        
+        # Batch lookup via mapper
+        player_data_map = await self._odds_mapper.lookupBatch(list(unique_player_names))
+        
+        # Count matches
+        matched_count = sum(1 for v in player_data_map.values() if v is not None)
+        unmatched_count = len(unique_player_names) - matched_count
+        logger.info(f"[CACHED_BOARD] Mapper results: {matched_count} matched, {unmatched_count} unmatched")
+        
+        # ==================== STEP 3: LOAD SUPPLEMENTARY DATA ====================
+        # Load player stats (indexed by player_id)
         stats_map = {}
         stats_cursor = self.player_stats.find({}, {"_id": 0})
         async for stat in stats_cursor:
-            normalized = self.sanitize_player_name(stat.get("player_name", "")).lower()
-            if normalized:
-                stats_map[normalized] = stat
+            # Try to index by player_id if available, otherwise by normalized name
+            player_name = stat.get("player_name", "")
+            normalized = self.sanitize_player_name(player_name).lower()
+            stats_map[normalized] = stat
         
         logger.info(f"[CACHED_BOARD] Loaded {len(stats_map)} player stats")
         
@@ -2613,73 +2664,42 @@ class DemonGoblinEngine:
         except Exception as e:
             logger.warning(f"[CACHED_BOARD] Could not load social signals: {e}")
         
-        # Group props by player and enrich ONCE
+        # ==================== STEP 4: BUILD PLAYER DICT WITH MAPPER DATA ====================
         players_dict = {}
         unmatched_players = []
         
         for prop in props:
             player_name = prop.get("player_name", "Unknown")
-            normalized_name = self.sanitize_player_name(player_name).lower()
             
             if player_name not in players_dict:
-                # ==================== SINGLE SOURCE LOOKUP ====================
-                # Look up player in master roster (Tank01 data)
-                roster_player = master_roster_map.get(normalized_name)
+                # ==================== MAPPER LOOKUP ====================
+                hub_player = player_data_map.get(player_name)
                 
-                if not roster_player:
-                    # Try without suffix (Jr., III, etc.)
-                    for suffix in [" jr", " iii", " ii", " iv", " sr"]:
-                        clean_name = normalized_name.replace(suffix, "").strip()
-                        roster_player = master_roster_map.get(clean_name)
-                        if roster_player:
-                            break
-                
-                if not roster_player:
-                    # Try nickname expansions (G.G. -> Gregory, etc.)
-                    name_parts = player_name.replace(".", "").split()
-                    if len(name_parts) >= 2:
-                        first_name = name_parts[0].lower()
-                        last_name = name_parts[-1].lower()
-                        
-                        # Nickname mappings
-                        nickname_map = {
-                            "gg": "gregory", "jj": "james", "tj": "thomas",
-                            "pj": "paul", "cj": "charles", "aj": "anthony",
-                            "rj": "robert", "herb": "herbert", "mike": "michael",
-                        }
-                        
-                        expanded_first = nickname_map.get(first_name, first_name)
-                        expanded_name = f"{expanded_first} {last_name}"
-                        roster_player = master_roster_map.get(expanded_name)
-                        
-                        # Also try searching all players with matching last name
-                        if not roster_player:
-                            for norm_name, player in master_roster_map.items():
-                                if last_name in norm_name and expanded_first[:3] in norm_name:
-                                    roster_player = player
-                                    break
-                
-                if not roster_player:
-                    # Player not in master roster - use minimal data
+                if not hub_player:
+                    # Player not found in mapper - use minimal data
                     unmatched_players.append(player_name)
                     players_dict[player_name] = {
                         "player_name": player_name,
-                        "tank01_player_id": None,  # No Tank01 match
+                        "player_id": None,
+                        "tank01_player_id": None,
                         "team": prop.get("home_team") or prop.get("away_team") or "UNK",
                         "photo_url": None,
+                        "headshot_url": None,
                         "nba_com_id": None,
                         "espn_id": None,
                         "position": None,
                         "l10_stats": {},
-                        "is_verified": False,  # Flag for UI to show caution
+                        "is_verified": False,
+                        "is_mapper_matched": False,
                         "props": [],
                         "demons": [],
                         "goblins": [],
                         "synced_at": sync_time.isoformat()
                     }
                 else:
-                    # ==================== FULL ENRICHMENT FROM MASTER ROSTER ====================
-                    tank01_id = roster_player.get("tank01_player_id")
+                    # ==================== FULL ENRICHMENT FROM MAPPER (nba_master_hub_2026) ====================
+                    player_id = hub_player.get("player_id")
+                    normalized_name = self.sanitize_player_name(player_name).lower()
                     
                     # Get stats for this player
                     player_stats = stats_map.get(normalized_name, {})
@@ -2687,32 +2707,41 @@ class DemonGoblinEngine:
                     # Get social signals
                     social = signals_map.get(player_name.lower(), {})
                     
+                    # Get season averages from hub
+                    hub_stats = hub_player.get("stats", {})
+                    season_avg = hub_stats.get("season_avg", {})
+                    
                     players_dict[player_name] = {
-                        # Primary identifiers
+                        # Primary identifiers (from mapper/hub)
                         "player_name": player_name,
-                        "tank01_player_id": tank01_id,  # PRIMARY KEY
-                        "nba_com_id": roster_player.get("nba_com_id"),
-                        "espn_id": roster_player.get("espn_id"),
+                        "player_id": player_id,  # PRIMARY KEY from nba_master_hub_2026
+                        "tank01_player_id": hub_player.get("tank01_id"),
+                        "nba_com_id": hub_player.get("nba_id"),
+                        "espn_id": hub_player.get("espn_id"),
                         
-                        # Team info (from Tank01)
-                        "team": roster_player.get("team_abbreviation"),
-                        "team_name": roster_player.get("team_name"),
-                        "team_logo_url": roster_player.get("team_logo_url"),
+                        # Team info (from hub)
+                        "team": hub_player.get("team"),
+                        "team_name": hub_player.get("team_name"),
+                        "team_logo_url": None,  # Not stored in hub
                         
-                        # Photo (from Tank01 sync)
-                        "photo_url": roster_player.get("photo_url"),
-                        "photo_source": roster_player.get("photo_source"),
+                        # Photo (from hub - locked/permanent)
+                        "photo_url": hub_player.get("headshot_url"),
+                        "headshot_url": hub_player.get("headshot_url"),
+                        "photo_source": "nba_master_hub_2026",
                         
-                        # Player info
-                        "position": roster_player.get("position"),
-                        "jersey_number": roster_player.get("jersey_number"),
+                        # Player info (from hub)
+                        "position": hub_player.get("position"),
+                        "jersey_number": hub_player.get("jersey"),
                         
-                        # Pre-computed stats (from sync-player-stats)
-                        "games_played": player_stats.get("games_played", 0),
+                        # Stats from hub
+                        "season_avg": season_avg,
+                        "games_played": season_avg.get("gp", player_stats.get("games_played", 0)),
+                        
+                        # Pre-computed stats (from sync-player-stats or hub)
                         "l10_stats": {
-                            "pts": player_stats.get("pts_avg_l10", 0),
-                            "reb": player_stats.get("reb_avg_l10", 0),
-                            "ast": player_stats.get("ast_avg_l10", 0),
+                            "pts": player_stats.get("pts_avg_l10", season_avg.get("pts", 0)),
+                            "reb": player_stats.get("reb_avg_l10", season_avg.get("reb", 0)),
+                            "ast": player_stats.get("ast_avg_l10", season_avg.get("ast", 0)),
                             "pts_reb_ast": player_stats.get("pra_avg_l10", 0),
                         },
                         "l5_stats": {
@@ -2721,13 +2750,14 @@ class DemonGoblinEngine:
                             "ast": player_stats.get("ast_avg_l5", 0),
                         },
                         
-                        # Social signals (pre-enriched)
+                        # Social signals
                         "volatility_flag": social.get("volatility_flag", False),
                         "revenge_game": social.get("revenge_game", False),
-                        "injury_status": social.get("injury_status"),
+                        "injury_status": hub_player.get("injury", {}).get("status") or social.get("injury_status"),
                         
-                        # Verification flag
+                        # Verification flags
                         "is_verified": True,
+                        "is_mapper_matched": True,
                         
                         # Props containers
                         "props": [],
@@ -2745,9 +2775,21 @@ class DemonGoblinEngine:
                 players_dict[player_name]["goblins"].append(prop)
         
         if unmatched_players:
-            logger.warning(f"[CACHED_BOARD] {len(unmatched_players)} players not in master roster: {unmatched_players[:5]}...")
+            logger.warning(f"[CACHED_BOARD] {len(unmatched_players)} players not found in Odds API Mapper: {unmatched_players[:5]}...")
+            # Flag these players for manual review
+            for player_name in unmatched_players[:20]:  # Limit to prevent spam
+                await self.flagged_players.update_one(
+                    {"player_name": player_name},
+                    {"$set": {
+                        "player_name": player_name,
+                        "flagged_at": sync_time.isoformat(),
+                        "reason": "Not found in odds_api_mapping_master",
+                        "source": "odds_api_v4"
+                    }},
+                    upsert=True
+                )
         
-        # Store in cached_board collection
+        # ==================== STEP 5: STORE IN CACHED_BOARD ====================
         await self.cached_board.delete_many({})
         
         # Sort players by prop count
@@ -2766,6 +2808,169 @@ class DemonGoblinEngine:
         
         # Store sync metadata
         verified_count = sum(1 for p in sorted_players if p.get("is_verified"))
+        mapper_matched = sum(1 for p in sorted_players if p.get("is_mapper_matched"))
+        
+        await self.sync_log.update_one(
+            {"type": "cached_board"},
+            {"$set": {
+                "type": "cached_board",
+                "synced_at": sync_time.isoformat(),
+                "players_count": len(sorted_players),
+                "verified_count": verified_count,
+                "mapper_matched_count": mapper_matched,
+                "unverified_count": len(sorted_players) - verified_count,
+                "total_props": sum(len(p["props"]) for p in sorted_players),
+                "lookup_method": "odds_api_mapper_v4"
+            }},
+            upsert=True
+        )
+        
+        logger.info(f"[CACHED_BOARD] Built board: {len(sorted_players)} players ({mapper_matched} mapper-matched, {verified_count} verified)")
+        
+        # Build derived collections (Demon Radar, Goblin Vault, etc.)
+        await self._build_demon_radar(players_dict, sync_time)
+        await self._build_goblin_vault(players_dict, sync_time)
+        await self._build_parlay_builder(players_dict, sync_time)
+        await self._build_goblin_recon(players_dict, sync_time)
+    
+    async def _build_cached_board_legacy(self, props: List[Dict], sync_time: datetime):
+        """
+        LEGACY FALLBACK: Name-based lookup method.
+        Used only if Odds API Mapper fails to initialize.
+        """
+        logger.warning("[CACHED_BOARD_LEGACY] Using legacy name-based lookup (Mapper unavailable)")
+        
+        # Load master roster into memory for fast lookups (indexed by normalized name)
+        master_roster_map = {}
+        roster_cursor = self.master_roster.find({}, {"_id": 0})
+        async for player in roster_cursor:
+            normalized = player.get("normalized_name", "").lower()
+            if normalized:
+                master_roster_map[normalized] = player
+        
+        logger.info(f"[CACHED_BOARD_LEGACY] Loaded {len(master_roster_map)} players from master roster")
+        
+        # Load player stats into memory (indexed by normalized name)
+        stats_map = {}
+        stats_cursor = self.player_stats.find({}, {"_id": 0})
+        async for stat in stats_cursor:
+            normalized = self.sanitize_player_name(stat.get("player_name", "")).lower()
+            if normalized:
+                stats_map[normalized] = stat
+        
+        logger.info(f"[CACHED_BOARD_LEGACY] Loaded {len(stats_map)} player stats")
+        
+        # Load social signals (indexed by player name)
+        signals_map = {}
+        try:
+            signals_cursor = self.db.dg_social_signals.find({}, {"_id": 0})
+            async for signal in signals_cursor:
+                player_name = signal.get("player_name", "")
+                if player_name:
+                    signals_map[player_name.lower()] = signal
+        except Exception as e:
+            logger.warning(f"[CACHED_BOARD_LEGACY] Could not load social signals: {e}")
+        
+        # Group props by player and enrich ONCE
+        players_dict = {}
+        unmatched_players = []
+        
+        for prop in props:
+            player_name = prop.get("player_name", "Unknown")
+            normalized_name = self.sanitize_player_name(player_name).lower()
+            
+            if player_name not in players_dict:
+                # Legacy lookup in master roster
+                roster_player = master_roster_map.get(normalized_name)
+                
+                if not roster_player:
+                    for suffix in [" jr", " iii", " ii", " iv", " sr"]:
+                        clean_name = normalized_name.replace(suffix, "").strip()
+                        roster_player = master_roster_map.get(clean_name)
+                        if roster_player:
+                            break
+                
+                if not roster_player:
+                    unmatched_players.append(player_name)
+                    players_dict[player_name] = {
+                        "player_name": player_name,
+                        "tank01_player_id": None,
+                        "team": prop.get("home_team") or prop.get("away_team") or "UNK",
+                        "photo_url": None,
+                        "nba_com_id": None,
+                        "espn_id": None,
+                        "position": None,
+                        "l10_stats": {},
+                        "is_verified": False,
+                        "props": [],
+                        "demons": [],
+                        "goblins": [],
+                        "synced_at": sync_time.isoformat()
+                    }
+                else:
+                    tank01_id = roster_player.get("tank01_player_id")
+                    player_stats = stats_map.get(normalized_name, {})
+                    social = signals_map.get(player_name.lower(), {})
+                    
+                    players_dict[player_name] = {
+                        "player_name": player_name,
+                        "tank01_player_id": tank01_id,
+                        "nba_com_id": roster_player.get("nba_com_id"),
+                        "espn_id": roster_player.get("espn_id"),
+                        "team": roster_player.get("team_abbreviation"),
+                        "team_name": roster_player.get("team_name"),
+                        "team_logo_url": roster_player.get("team_logo_url"),
+                        "photo_url": roster_player.get("photo_url"),
+                        "photo_source": roster_player.get("photo_source"),
+                        "position": roster_player.get("position"),
+                        "jersey_number": roster_player.get("jersey_number"),
+                        "games_played": player_stats.get("games_played", 0),
+                        "l10_stats": {
+                            "pts": player_stats.get("pts_avg_l10", 0),
+                            "reb": player_stats.get("reb_avg_l10", 0),
+                            "ast": player_stats.get("ast_avg_l10", 0),
+                            "pts_reb_ast": player_stats.get("pra_avg_l10", 0),
+                        },
+                        "l5_stats": {
+                            "pts": player_stats.get("pts_avg_l5", 0),
+                            "reb": player_stats.get("reb_avg_l5", 0),
+                            "ast": player_stats.get("ast_avg_l5", 0),
+                        },
+                        "volatility_flag": social.get("volatility_flag", False),
+                        "revenge_game": social.get("revenge_game", False),
+                        "injury_status": social.get("injury_status"),
+                        "is_verified": True,
+                        "props": [],
+                        "demons": [],
+                        "goblins": [],
+                        "synced_at": sync_time.isoformat()
+                    }
+            
+            players_dict[player_name]["props"].append(prop)
+            
+            if prop.get("is_demon"):
+                players_dict[player_name]["demons"].append(prop)
+            elif prop.get("is_goblin"):
+                players_dict[player_name]["goblins"].append(prop)
+        
+        if unmatched_players:
+            logger.warning(f"[CACHED_BOARD_LEGACY] {len(unmatched_players)} players not in master roster: {unmatched_players[:5]}...")
+        
+        await self.cached_board.delete_many({})
+        
+        sorted_players = sorted(
+            players_dict.values(),
+            key=lambda x: len(x["props"]),
+            reverse=True
+        )
+        
+        for idx, player in enumerate(sorted_players):
+            player["rank"] = idx + 1
+        
+        if sorted_players:
+            await self.cached_board.insert_many(sorted_players)
+        
+        verified_count = sum(1 for p in sorted_players if p.get("is_verified"))
         await self.sync_log.update_one(
             {"type": "cached_board"},
             {"$set": {
@@ -2774,15 +2979,14 @@ class DemonGoblinEngine:
                 "players_count": len(sorted_players),
                 "verified_count": verified_count,
                 "unverified_count": len(sorted_players) - verified_count,
-                "total_props": sum(len(p["props"]) for p in sorted_players)
+                "total_props": sum(len(p["props"]) for p in sorted_players),
+                "lookup_method": "legacy_name_based"
             }},
             upsert=True
         )
         
-        logger.info(f"[CACHED_BOARD] Built board: {len(sorted_players)} players ({verified_count} verified)")
+        logger.info(f"[CACHED_BOARD_LEGACY] Built board: {len(sorted_players)} players ({verified_count} verified)")
         
-        # Build derived collections (Demon Radar, Goblin Vault, etc.)
-        # These just filter/sort the cached_board data - NO additional lookups
         await self._build_demon_radar(players_dict, sync_time)
         await self._build_goblin_vault(players_dict, sync_time)
         await self._build_parlay_builder(players_dict, sync_time)
