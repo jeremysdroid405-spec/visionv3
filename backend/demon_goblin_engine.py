@@ -4110,6 +4110,51 @@ class DemonGoblinEngine:
                     "lineup_status": "Valid (Multi-Team)" if is_valid else "INVALID (Single Team)"
                 }
         
+        # ==================== 5-PICK GREEN STACK ====================
+        # Higher payout potential while maintaining safety
+        logger.info(f"[GOBLIN RECON] Checking 5-pick: candidates={len(recon_candidates)}")
+        if len(recon_candidates) >= 5:
+            try:
+                result = get_diversified_multi_team_picks(recon_candidates, 5, game_groups)
+                if result:
+                    picks_5, is_valid, team_count = result
+                else:
+                    picks_5, is_valid, team_count = None, False, 0
+            except Exception as e:
+                logger.warning(f"[GOBLIN RECON] 5-pick diversification error: {e}")
+                picks_5, is_valid, team_count = None, False, 0
+            
+            # Fallback: if diversification fails, just take top 5
+            if not picks_5 or len(picks_5) < 5:
+                picks_5 = recon_candidates[:5]
+                teams_in_picks = set(p.get("team", "") for p in picks_5)
+                is_valid = len(teams_in_picks) >= 2
+                team_count = len(teams_in_picks)
+            
+            if picks_5 and len(picks_5) >= 5:
+                combined_prob = calculate_recon_probability(picks_5)
+                payout_data = calculate_goblin_payout(picks_5)
+                
+                parlays["green_stack_5"] = {
+                    "name": "Green Stack",
+                    "tier": "green_stack_5",
+                    "picks": picks_5,
+                    "pick_count": 5,
+                    "combined_probability": combined_prob,
+                    "reliability": combined_prob,
+                    "estimated_payout": payout_data["estimated_payout"],
+                    "payout_display": payout_data["payout_display"],
+                    "base_multiplier": payout_data["base_multiplier"],
+                    "cumulative_modifier": payout_data["cumulative_modifier"],
+                    "asset_breakdown": payout_data["asset_breakdown"],
+                    "description": "5 Goblins stacked for premium payout",
+                    "badge": "STACK",
+                    "lineup_valid": is_valid,
+                    "team_count": team_count,
+                    "lineup_status": "Valid (Multi-Team)" if is_valid else "INVALID (Single Team)"
+                }
+                logger.info(f"[GOBLIN RECON] 5-pick GREEN STACK created with {len(picks_5)} picks")
+        
         # ==================== 6-PICK FORTRESS (Flex Play) ====================
         # Designed for PrizePicks Flex: 5/6 = 1.5x profit, 6/6 = 12x
         if len(recon_candidates) >= 6:

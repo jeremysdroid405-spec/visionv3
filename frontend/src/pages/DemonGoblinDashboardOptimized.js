@@ -2202,7 +2202,7 @@ GauntletSwipeSection.displayName = 'GauntletSwipeSection';
 
 // Safe Haven (Goblin Parlay) Swipeable Section
 const SafeHavenSwipeSection = memo(({ reconData, onParlayClick }) => {
-  const tiers = ['daily_double', 'green_ladder_3', 'green_ladder_4', 'fortress_flex'];
+  const tiers = ['daily_double', 'green_ladder_3', 'green_ladder_4', 'green_stack_5', 'fortress_flex'];
   const parlays = tiers.map(t => reconData[t]).filter(Boolean);
   const { containerRef, currentIndex, showHint } = useSwipeTracker(parlays.length);
   
@@ -2225,7 +2225,7 @@ const SafeHavenSwipeSection = memo(({ reconData, onParlayClick }) => {
         <SwipeHint show={showHint} accentColor="green" />
         <div 
           ref={containerRef} 
-          className="flex overflow-x-auto snap-x snap-mandatory scrollbar-hide gap-3 px-4 pb-2 sm:grid sm:grid-cols-2 lg:grid-cols-4 sm:overflow-visible sm:px-0 sm:gap-3"
+          className="flex overflow-x-auto snap-x snap-mandatory scrollbar-hide gap-3 px-4 pb-2 sm:grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 sm:overflow-visible sm:px-0 sm:gap-3"
           style={{ WebkitOverflowScrolling: 'touch', scrollbarWidth: 'none', msOverflowStyle: 'none' }}
         >
           {tiers.map(tier => {
