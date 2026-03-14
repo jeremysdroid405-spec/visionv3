@@ -81,6 +81,57 @@ const BeaconGlowStyles = () => (
       opacity: 0.9;
     }
     
+    /* ==================== SECTION BACKGROUND GLOWS ==================== */
+    .demon-radar-section {
+      position: relative;
+      background: linear-gradient(135deg, rgba(220, 38, 38, 0.15) 0%, rgba(15, 15, 15, 0.95) 50%, rgba(220, 38, 38, 0.1) 100%);
+      border-radius: 16px;
+      padding: 16px;
+      border: 1px solid rgba(239, 68, 68, 0.4);
+      box-shadow: 0 0 30px rgba(239, 68, 68, 0.2), inset 0 0 60px rgba(239, 68, 68, 0.05);
+    }
+    
+    .demon-radar-section::before {
+      content: '';
+      position: absolute;
+      inset: -4px;
+      border-radius: 20px;
+      background: linear-gradient(135deg, rgba(239, 68, 68, 0.4), transparent 40%, transparent 60%, rgba(239, 68, 68, 0.3));
+      filter: blur(12px);
+      z-index: -1;
+      animation: radar-pulse 2.5s ease-in-out infinite;
+    }
+    
+    @keyframes radar-pulse {
+      0%, 100% { opacity: 0.6; transform: scale(1); }
+      50% { opacity: 1; transform: scale(1.01); }
+    }
+    
+    .goblin-recon-section {
+      position: relative;
+      background: linear-gradient(135deg, rgba(34, 197, 94, 0.15) 0%, rgba(15, 15, 15, 0.95) 50%, rgba(34, 197, 94, 0.1) 100%);
+      border-radius: 16px;
+      padding: 16px;
+      border: 1px solid rgba(34, 197, 94, 0.4);
+      box-shadow: 0 0 30px rgba(34, 197, 94, 0.2), inset 0 0 60px rgba(34, 197, 94, 0.05);
+    }
+    
+    .goblin-recon-section::before {
+      content: '';
+      position: absolute;
+      inset: -4px;
+      border-radius: 20px;
+      background: linear-gradient(135deg, rgba(34, 197, 94, 0.4), transparent 40%, transparent 60%, rgba(34, 197, 94, 0.3));
+      filter: blur(12px);
+      z-index: -1;
+      animation: recon-pulse 2.5s ease-in-out infinite;
+    }
+    
+    @keyframes recon-pulse {
+      0%, 100% { opacity: 0.6; transform: scale(1); }
+      50% { opacity: 1; transform: scale(1.01); }
+    }
+    
     /* ==================== MOBILE SWIPE CARDS ==================== */
     .swipe-container {
       display: flex !important;
@@ -1857,7 +1908,7 @@ const DemonRadarSwipeSection = memo(({ picks, onPickClick }) => {
   const { containerRef, currentIndex, showHint } = useSwipeTracker(picks.length);
   
   return (
-    <div data-testid="radar-section" className="demon-radar-scanning">
+    <div data-testid="radar-section" className="demon-radar-section">
       <div className="flex items-center justify-between mb-2 px-4 sm:px-0">
         <div className="flex items-center gap-2">
           <DemonIcon size={24} isScanning={true} />
@@ -1907,7 +1958,7 @@ const GoblinReconSwipeSection = memo(({ picks, onPickClick }) => {
   const { containerRef, currentIndex, showHint } = useSwipeTracker(picks.length);
   
   return (
-    <div data-testid="recon-section">
+    <div data-testid="recon-section" className="goblin-recon-section">
       <div className="flex items-center justify-between mb-2 px-4 sm:px-0">
         <div className="flex items-center gap-2">
           <GoblinIcon size={24} />
