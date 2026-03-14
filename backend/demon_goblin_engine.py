@@ -3606,52 +3606,87 @@ class DemonGoblinEngine:
                 if hit_probability < 50 or hit_probability >= 70:
                     continue
                 
-                # Calculate bullet level (1-6) based on consistency
-                bullet_level = self._calculate_bullet_level(h10, h5, h10_over, h5_over, h10_games, h5_games)
+                # Calculate gap ratio (demon_line vs standard_line in player_data)
+                standard_line_from_data = player_data.get("standard_line", line)
+                if standard_line_from_data and standard_line_from_data > 0:
+                    gap_ratio = round(line / standard_line_from_data, 3)
+                    gap_pct = round((gap_ratio - 1) * 100, 1)
+                else:
+                    gap_ratio = 1.0
+                    gap_pct = 0.0
                 
-                # Final score: weighted hit rate
-                front_lines_score = hit_rate_score
+                # Calculate heat level same as War Zone
+                heat_level = 0
+                if h10 >= 0.9:
+                    heat_level = 5
+                elif h10 >= 0.8:
+                    heat_level = 4
+                elif h10 >= 0.7:
+                    heat_level = 3
+                elif h10 >= 0.6:
+                    heat_level = 2
+                elif h10 >= 0.5:
+                    heat_level = 1
                 
-                # Get player info from player_data
+                # Calculate radar_score same as War Zone
+                if gap_ratio > 0:
+                    radar_score = round(hit_rate_score / gap_ratio, 4)
+                else:
+                    radar_score = hit_rate_score
+                
+                # Get player info from player_data - MATCH WAR ZONE STRUCTURE EXACTLY
                 all_candidates.append({
-                    "player_name": player_name,
                     "player_id": player_data.get("player_id"),
+                    "tank01_player_id": player_data.get("player_id"),
+                    "player_name": player_name,
                     "team": player_data.get("team"),
+                    "team_name": player_data.get("team_name"),
                     "team_abbr": player_data.get("team_abbr"),
+                    "photo_url": player_data.get("headshot_url"),
+                    "headshot_url": player_data.get("headshot_url"),
                     "opponent": player_data.get("opponent"),
                     "opponent_abbr": player_data.get("opponent_abbr"),
                     "game_id": player_data.get("game_id"),
-                    "headshot_url": player_data.get("headshot_url"),
                     "game_time": player_data.get("game_time"),
+                    "position": player_data.get("position"),
+                    "volatility_flag": player_data.get("volatility_flag", False),
+                    "revenge_game": player_data.get("revenge_game", False),
+                    "is_verified": player_data.get("is_verified", True),
+                    "is_mapper_matched": player_data.get("is_mapper_matched", True),
                     
                     # Prop details
                     "stat_type": stat_type,
-                    "demon_line": line,
-                    "standard_line": line,  # For card compatibility
                     "direction": direction,
+                    "demon_line": line,
+                    "standard_line": standard_line_from_data or line,
+                    "gap_ratio": gap_ratio,
+                    "gap_pct": gap_pct,
                     "market": market,
                     
-                    # Hit rate data
-                    "h10": round(h10 * 100, 1),
-                    "h5": round(h5 * 100, 1),
+                    # Hit rate data - MATCH WAR ZONE FIELD NAMES
+                    "h10_rate": round(h10 * 100, 1),
+                    "h5_rate": round(h5 * 100, 1),
                     "h10_over": h10_over,
                     "h10_games": h10_games,
                     "h5_over": h5_over,
                     "h5_games": h5_games,
                     "season_avg": round(season_avg, 1),
                     
-                    # Calculated scores
+                    # Calculated scores - MATCH WAR ZONE FIELD NAMES
                     "hit_probability": hit_probability,
-                    "front_lines_score": round(front_lines_score, 4),
-                    "bullet_level": bullet_level,
-                    "price": prop.get("price", -110),
+                    "radar_score": radar_score,
+                    "radar_strength": hit_probability,
+                    "heat_level": heat_level,
+                    "is_hot_streak": h5 >= 0.8,
+                    "price": prop.get("price", 100),
+                    "is_radar_pick": True,
                     "is_front_lines_pick": True,
                     "has_real_data": True,
                     "synced_at": sync_time.isoformat()
                 })
         
-        # Sort by front_lines_score descending
-        all_candidates.sort(key=lambda x: x["front_lines_score"], reverse=True)
+        # Sort by radar_score descending (same as War Zone)
+        all_candidates.sort(key=lambda x: x["radar_score"], reverse=True)
         
         # De-duplicate: one pick per player
         seen_players = set()

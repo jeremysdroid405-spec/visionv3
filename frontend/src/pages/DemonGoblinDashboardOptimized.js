@@ -1485,10 +1485,17 @@ TrendingCard.displayName = 'TrendingCard';
 
 // ==================== DEMON RADAR CARD ====================
 
-const RadarCard = memo(({ pick, rank, onClick, isScanning = false, tMinusGames = [] }) => {
+const RadarCard = memo(({ pick, rank, onClick, isScanning = false, tMinusGames = [], colorTheme = 'red' }) => {
   // Check if this has a special Vision insight (Master Tier)
   const hasVisionGlow = pick.has_high_conflict || 
     ((pick.intel_briefing || pick.insight_summary) && !(pick.intel_briefing || pick.insight_summary).toLowerCase().includes('standard'));
+  
+  // Color theme variants
+  const themeColors = {
+    red: { border: 'border-red-500/40', glow: 'rgba(239, 68, 68, 0.3)', text: 'text-red-400', bg: 'from-red-950/50' },
+    amber: { border: 'border-amber-500/40', glow: 'rgba(245, 158, 11, 0.3)', text: 'text-amber-400', bg: 'from-amber-950/50' }
+  };
+  const theme = themeColors[colorTheme] || themeColors.red;
   
   // Heat Level flame rendering
   const heatLevel = pick.heat_level || 0;
@@ -1522,13 +1529,14 @@ const RadarCard = memo(({ pick, rank, onClick, isScanning = false, tMinusGames =
   return (
     <Card 
       className={`
-        bg-gradient-to-br from-red-950/50 to-zinc-900 border border-red-500/40
-        shadow-[0_0_20px_rgba(239,68,68,0.3)]
+        bg-gradient-to-br ${theme.bg} to-zinc-900 border ${theme.border}
+        shadow-[0_0_20px_${theme.glow}]
         hover:scale-[1.02] transition-all duration-300
         cursor-pointer active:scale-[0.98] relative overflow-visible
         min-h-[280px]
         ${pick.locked ? 'pointer-events-none' : ''}
       `}
+      style={{ boxShadow: `0 0 20px ${theme.glow}` }}
       onClick={pick.locked ? undefined : onClick}
       data-testid={`radar-card-${rank}`}
     >
@@ -2588,7 +2596,7 @@ const SafeHavenSwipeSection = memo(({ reconData, onParlayClick }) => {
 
 SafeHavenSwipeSection.displayName = 'SafeHavenSwipeSection';
 
-// Front Lines Swipeable Section - Middle Tier Standard Props
+// Front Lines Swipeable Section - Middle Tier (50-70% hit rate)
 const FrontLinesSwipeSection = memo(({ picks, onPickClick, tMinusGames = [] }) => {
   const { containerRef, currentIndex, showHint } = useSwipeTracker(picks.length);
   
@@ -2616,14 +2624,16 @@ const FrontLinesSwipeSection = memo(({ picks, onPickClick, tMinusGames = [] }) =
         >
           {picks.map((pick, idx) => (
             <div 
-              key={`${pick.player_name}-${pick.stat_type}-${pick.standard_line}-${idx}`} 
+              key={`${pick.player_name}-${pick.stat_type}-${pick.demon_line}-${idx}`} 
               className="snap-center flex-shrink-0 w-[calc(100vw-48px)] max-w-[340px] sm:w-auto sm:max-w-none"
             >
-              <FrontLinesCard 
+              <RadarCard 
                 pick={pick} 
                 rank={idx + 1}
                 onClick={() => onPickClick(pick)}
+                isScanning={true}
                 tMinusGames={tMinusGames}
+                colorTheme="amber"
               />
             </div>
           ))}
@@ -2631,16 +2641,6 @@ const FrontLinesSwipeSection = memo(({ picks, onPickClick, tMinusGames = [] }) =
       </div>
       
       <SwipeIndicator current={currentIndex} total={picks.length} accentColor="amber" />
-      
-      {/* Bullet Legend - Desktop only */}
-      <div className="mt-2 hidden sm:flex items-center justify-center gap-4 text-[10px] text-zinc-500">
-        <span className="text-amber-400">•</span><span>= 60%+</span>
-        <span className="text-amber-400">••</span><span>= 65%+</span>
-        <span className="text-amber-400">•••</span><span>= 70%+</span>
-        <span className="text-amber-400">••••</span><span>= 75%+</span>
-        <span className="text-amber-400">•••••</span><span>= 80%+</span>
-        <span className="text-amber-400">••••••</span><span>= 85%+ ELITE</span>
-      </div>
     </div>
   );
 });
@@ -4639,20 +4639,29 @@ export const DemonGoblinDashboardOptimized = ({ isDemoMode = false }) => {
           </div>
         )}
 
-        {/* WAR ZONE - Top 10 Mathematical Picks */}
-        {radarPicks.length > 0 && (
-          <WarZoneSwipeSection 
-            picks={radarPicks.slice(0, 10)} 
+        {/* THE SAFE HAVEN - Top 10 Goblin Plays (Safest) */}
+        {vaultPicks.length > 0 && (
+          <GoblinReconSwipeSection 
+            picks={vaultPicks.slice(0, 10)} 
+            onPickClick={handleVaultClick}
+            tMinusGames={tMinusGames}
+          />
+        )}
+
+        {/* THE FRONT LINES - Middle Tier (50-70% hit rate) */}
+        {frontLinesPicks.length > 0 && (
+          <FrontLinesSwipeSection 
+            picks={frontLinesPicks.slice(0, 6)}
             onPickClick={handleRadarClick}
             tMinusGames={tMinusGames}
           />
         )}
 
-        {/* GOBLIN RECON - Top 10 Safe Plays */}
-        {vaultPicks.length > 0 && (
-          <GoblinReconSwipeSection 
-            picks={vaultPicks.slice(0, 10)} 
-            onPickClick={handleVaultClick}
+        {/* THE WAR ZONE - Top 10 Demon Plays (Highest Risk/Reward) */}
+        {radarPicks.length > 0 && (
+          <WarZoneSwipeSection 
+            picks={radarPicks.slice(0, 10)} 
+            onPickClick={handleRadarClick}
             tMinusGames={tMinusGames}
           />
         )}
@@ -4665,20 +4674,11 @@ export const DemonGoblinDashboardOptimized = ({ isDemoMode = false }) => {
           />
         )}
 
-        {/* THE SAFE HAVEN - High Reliability Parlays */}
+        {/* Goblin Parlay Generator */}
         {Object.keys(reconData).length > 0 && (
           <SafeHavenSwipeSection 
             reconData={reconData}
             onParlayClick={(parlay) => setExpandedParlay({ parlay, type: 'recon' })}
-          />
-        )}
-
-        {/* THE FRONT LINES - Middle Tier Standard Props */}
-        {frontLinesPicks.length > 0 && (
-          <FrontLinesSwipeSection 
-            picks={frontLinesPicks}
-            onPickClick={handleRadarClick}
-            tMinusGames={tMinusGames}
           />
         )}
 
