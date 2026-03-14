@@ -2185,7 +2185,7 @@ const WarZoneSwipeSection = memo(({ picks, onPickClick, tMinusGames = [] }) => {
       <div className="flex items-center justify-between mb-2 px-4 sm:px-0">
         <div className="flex items-center gap-2">
           <DemonIcon size={24} isScanning={true} />
-          <span className="text-sm font-bold text-red-400">WAR ZONE</span>
+          <span className="text-sm font-bold text-red-400">THE WAR ZONE</span>
           <Badge className="bg-red-950/50 text-red-400 border-red-800/50 text-[10px] hidden sm:inline-flex">
             TOP 10 DEMON PLAYS
           </Badge>
