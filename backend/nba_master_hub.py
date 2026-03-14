@@ -202,10 +202,9 @@ class NBAMasterHub:
             results["success"] = True
             self._last_sync = sync_start
             
-            # Step 5: Enrich with photos from existing master roster
-            logger.info("[MASTER HUB] Step 4: Enriching photos from legacy master roster...")
-            photos_added = await self._enrichPhotosFromLegacyRoster()
-            results["photos_updated"] = photos_added
+            # Photos are LOCKED - daily sync is forbidden from calling external APIs
+            # to "enrich" or "verify" photos. They are pre-injected as plain text strings.
+            logger.info("[MASTER HUB] Photo enrichment SKIPPED (photos are locked)")
             
         except Exception as e:
             logger.error(f"[MASTER HUB] Daily sync error: {e}")

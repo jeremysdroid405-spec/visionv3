@@ -1105,19 +1105,19 @@ class DemonGoblinEngine:
     async def get_photo_url_from_master_roster(self, player_name: str) -> Optional[str]:
         """
         Get photo URL from Master Hub (SSOT).
-        Uses the Valet function fetchPlayerIntelByName.
+        Photos are pre-injected and LOCKED - no external API calls.
         """
         try:
             player = await fetchPlayerIntelByName(player_name)
-            if player:
+            if player and player.get("headshot_url"):
                 return player.get("headshot_url")
         except Exception as e:
             logger.warning(f"[MASTER HUB] Photo lookup failed for {player_name}: {e}")
         
-        # Fallback to static NBA player ID mapping
+        # Fallback: Generate ESPN URL using static player ID mapping
         nba_id = get_nba_player_id(player_name)
         if nba_id:
-            return f"https://cdn.nba.com/headshots/nba/latest/1040x760/{nba_id}.png"
+            return f"https://a.espncdn.com/combiner/i?img=/i/headshots/nba/players/full/{nba_id}.png"
         return None
     
     async def refresh_cached_board_photos(self) -> Dict[str, Any]:
