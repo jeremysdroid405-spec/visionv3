@@ -7,14 +7,11 @@ import { Auth } from './pages/Auth';
 import { Dashboard } from './pages/Dashboard';
 import { DashboardDemo } from './pages/DashboardDemo';
 import { FullBoard } from './pages/FullBoard';
-import DemonGoblinDashboard from './pages/DemonGoblinDashboard';
 import DemonGoblinDashboardOptimized from './pages/DemonGoblinDashboardOptimized';
-import DemonGoblinDashboardRefactored from './pages/DemonGoblinDashboardRefactored';
 import { Toaster } from 'sonner';
 
 // Demo mode wrapper - passes isDemoMode prop to dashboard
 const DemoModeWrapper = () => <DemonGoblinDashboardOptimized isDemoMode={true} />;
-const RefactoredDemoWrapper = () => <DemonGoblinDashboardRefactored isDemoMode={true} />;
 
 function App() {
   return (
@@ -37,20 +34,12 @@ function App() {
             <Route path="/auth" element={<Auth />} />
             
             {/* Protected routes - require login */}
-            <Route path="/" element={<Navigate to="/v3" replace />} />
+            <Route path="/" element={<Navigate to="/dashboard" replace />} />
             <Route 
-              path="/v3" 
+              path="/dashboard" 
               element={
                 <ProtectedRoute>
                   <DemonGoblinDashboardOptimized />
-                </ProtectedRoute>
-              } 
-            />
-            <Route 
-              path="/v3-legacy" 
-              element={
-                <ProtectedRoute>
-                  <DemonGoblinDashboard />
                 </ProtectedRoute>
               } 
             />
@@ -62,23 +51,15 @@ function App() {
                 </ProtectedRoute>
               } 
             />
-            <Route 
-              path="/dashboard" 
-              element={
-                <ProtectedRoute>
-                  <Dashboard />
-                </ProtectedRoute>
-              } 
-            />
+            
+            {/* Legacy routes - redirect to main dashboard */}
+            <Route path="/v3" element={<Navigate to="/dashboard" replace />} />
+            <Route path="/v3-legacy" element={<Navigate to="/dashboard" replace />} />
+            <Route path="/v4/demo" element={<Navigate to="/demo" replace />} />
             
             {/* Demo page - public for testing */}
-            <Route path="/demo" element={<DashboardDemo />} />
-            
-            {/* V3 Demo mode - public, full dashboard without auth */}
+            <Route path="/demo" element={<DemoModeWrapper />} />
             <Route path="/v3/demo" element={<DemoModeWrapper />} />
-            
-            {/* V4 Refactored Demo - public, streamlined dashboard */}
-            <Route path="/v4/demo" element={<RefactoredDemoWrapper />} />
           </Routes>
         </BrowserRouter>
       </div>

@@ -24,6 +24,13 @@ dg_cached_board → dg_radar_picks (War Zone) → dg_goblin_vault → dg_goblin_
 
 ## What's Been Implemented
 
+### 2026-03-14: Frontend Refactor Finalized
+- Consolidated routes in App.js - main dashboard at `/dashboard` and `/demo`
+- Removed legacy `DemonGoblinDashboard.js` file (31KB)
+- Kept `DemonGoblinDashboardOptimized.js` as production dashboard (all features intact)
+- Kept `DemonGoblinDashboardRefactored.jsx` for future lightweight version
+- Legacy routes (`/v3`, `/v3-legacy`, `/v4/demo`) redirect to main routes
+
 ### 2026-03-14: Renamed "Demon Radar" to "War Zone"
 - Updated all backend code (`demon_goblin_engine.py`, `server.py`)
 - Changed API endpoint from `/api/v3/demon-radar` to `/api/v3/war-zone`
@@ -36,18 +43,6 @@ dg_cached_board → dg_radar_picks (War Zone) → dg_goblin_vault → dg_goblin_
 - Removed direct axios calls, replaced with modular service
 - NO hardcoded name-matching (backend OddsApiMapper handles this)
 - Preserved all UI toggles, sorting, and Parlay Builder logic
-- Line count: 1,744 (vs 4,531 in old monolith) - 62% reduction
-
-### 2026-03-14: Modular CSS Extraction
-- Created `/src/styles/DashboardTactical.css` (437 lines)
-- Extracted all CSS from dashboard components (keyframes, glows, swipe containers)
-- Updated PlayerCard/ParlayCard to use `player_id` and `headshot_url` from hub
-- Line count reduction: 4,531 → 1,369 (70% reduction)
-- Zero visual changes, fully modular structure
-
-### 2026-03-14: V4 Odds Master Mapping
-- Created `odds_api_mapper.py` module for permanent player name → ID mapping
-- Created `odds_api_mapping_master` collection (534 players)
 - Updated `_build_cached_board()` to use mapper instead of name-based lookups
 - Added 5 new API endpoints for mapper operations
 
