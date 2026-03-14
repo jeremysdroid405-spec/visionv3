@@ -132,6 +132,59 @@ const BeaconGlowStyles = () => (
       50% { opacity: 1; transform: scale(1.01); }
     }
     
+    /* ==================== FRONT LINES - Tactical Amber/Yellow ==================== */
+    @keyframes amber-glow-pulse {
+      0% { 
+        box-shadow: 0 0 5px #FCD34D, 0 0 10px rgba(252, 211, 77, 0.3); 
+        border-color: #FCD34D; 
+      }
+      50% { 
+        box-shadow: 0 0 20px #F59E0B, 0 0 40px rgba(245, 158, 11, 0.5); 
+        border-color: #F59E0B; 
+      }
+      100% { 
+        box-shadow: 0 0 5px #FCD34D, 0 0 10px rgba(252, 211, 77, 0.3); 
+        border-color: #FCD34D; 
+      }
+    }
+    
+    .front-lines-section {
+      position: relative;
+      background: linear-gradient(135deg, rgba(245, 158, 11, 0.15) 0%, rgba(15, 15, 15, 0.95) 50%, rgba(245, 158, 11, 0.1) 100%);
+      border-radius: 16px;
+      padding: 16px;
+      border: 1px solid rgba(245, 158, 11, 0.4);
+      box-shadow: 0 0 30px rgba(245, 158, 11, 0.2), inset 0 0 60px rgba(245, 158, 11, 0.05);
+    }
+    
+    .front-lines-section::before {
+      content: '';
+      position: absolute;
+      inset: -4px;
+      border-radius: 20px;
+      background: linear-gradient(135deg, rgba(245, 158, 11, 0.4), transparent 40%, transparent 60%, rgba(245, 158, 11, 0.3));
+      filter: blur(12px);
+      z-index: -1;
+      animation: frontlines-pulse 2.5s ease-in-out infinite;
+    }
+    
+    @keyframes frontlines-pulse {
+      0%, 100% { opacity: 0.6; transform: scale(1); }
+      50% { opacity: 1; transform: scale(1.01); }
+    }
+    
+    .amber-glow {
+      animation: amber-glow-pulse 2s ease-in-out infinite;
+      border-width: 2px;
+      border-style: solid;
+    }
+    
+    .front-lines-card-glow {
+      background: linear-gradient(135deg, rgba(120, 80, 10, 0.6) 0%, rgba(24, 24, 27, 0.95) 100%) !important;
+      border: 1px solid rgba(245, 158, 11, 0.5) !important;
+      box-shadow: 0 0 20px rgba(245, 158, 11, 0.3), 0 0 40px rgba(245, 158, 11, 0.1) !important;
+    }
+    
     /* ==================== CARD GLOW EFFECTS ==================== */
     .demon-card-glow {
       background: linear-gradient(135deg, rgba(127, 29, 29, 0.6) 0%, rgba(24, 24, 27, 0.95) 100%) !important;
@@ -255,7 +308,8 @@ const SwipeHint = memo(({ show, accentColor = 'orange' }) => {
     orange: 'text-orange-400 border-orange-500/30',
     green: 'text-emerald-400 border-emerald-500/30',
     blue: 'text-blue-400 border-blue-500/30',
-    purple: 'text-purple-400 border-purple-500/30'
+    purple: 'text-purple-400 border-purple-500/30',
+    amber: 'text-amber-400 border-amber-500/30'
   };
   
   return (
@@ -1861,6 +1915,142 @@ const VaultCard = memo(({ pick, rank, onClick, tMinusGames = [] }) => {
 
 VaultCard.displayName = 'VaultCard';
 
+// ==================== FRONT LINES CARD ====================
+
+const FrontLinesCard = memo(({ pick, rank, onClick, tMinusGames = [] }) => {
+  const [isClicked, setIsClicked] = useState(false);
+  
+  // Calculate bullet count based on bullet_level (1-6)
+  const bulletLevel = pick.bullet_level || 1;
+  
+  const renderBullets = () => {
+    return (
+      <div className="flex items-center gap-0.5" title={`Reliability: ${bulletLevel}/6`}>
+        {[...Array(bulletLevel)].map((_, i) => (
+          <span 
+            key={i} 
+            className="text-[14px] font-bold"
+            style={{ 
+              color: '#F59E0B',
+              textShadow: '0 0 4px #F59E0B, 0 0 8px #F59E0B40'
+            }}
+          >
+            •
+          </span>
+        ))}
+      </div>
+    );
+  };
+  
+  const getBulletLabel = (level) => {
+    switch(level) {
+      case 6: return 'ELITE';
+      case 5: return 'STRONG';
+      case 4: return 'SOLID';
+      case 3: return 'GOOD';
+      case 2: return 'FAIR';
+      default: return 'BASE';
+    }
+  };
+  
+  const handleClick = () => {
+    if (pick.locked) return;
+    setIsClicked(true);
+    setTimeout(() => setIsClicked(false), 400);
+    onClick?.();
+  };
+  
+  return (
+    <Card 
+      className={`
+        bg-gradient-to-br from-amber-950/50 to-zinc-900 border border-amber-500/40
+        shadow-[0_0_20px_rgba(245,158,11,0.3)]
+        hover:scale-[1.02] transition-all duration-300
+        cursor-pointer active:scale-[0.98] relative overflow-visible
+        min-h-[280px]
+        ${pick.locked ? 'pointer-events-none' : ''}
+      `}
+      onClick={handleClick}
+      data-testid={`front-lines-card-${rank}`}
+    >
+      {/* LOCKED Badge */}
+      <LockedBadge isLocked={pick.locked} commenceTime={pick.commence_time} />
+      
+      {/* T-Minus Badge */}
+      <TMinusBadge commenceTime={pick.commence_time} tMinusGames={tMinusGames} />
+      
+      <div className="p-3">
+        {/* Header: Rank + Headshot + Name */}
+        <div className="flex items-center gap-2 mb-2">
+          {/* Rank Badge */}
+          <div className="flex-shrink-0 w-6 h-6 rounded-full bg-amber-500/30 flex items-center justify-center border border-amber-500/50">
+            <span className="text-xs font-bold text-amber-400">{rank}</span>
+          </div>
+          
+          {/* Headshot */}
+          <div className="relative">
+            <PlayerHeadshot 
+              nbaId={pick.nba_id} 
+              playerName={pick.player_name}
+              headshotUrl={pick.headshot_url}
+              playerId={pick.player_id}
+              size={36}
+            />
+          </div>
+          
+          {/* Name + Team */}
+          <div className="flex-1 min-w-0">
+            <div className="text-xs font-bold text-white truncate">{pick.player_name}</div>
+            <div className="text-[10px] text-zinc-500">{pick.team_abbr} • {pick.stat_type}</div>
+          </div>
+          
+          {/* Bullet Rating */}
+          <div className="flex-shrink-0">
+            {renderBullets()}
+          </div>
+        </div>
+        
+        {/* Line Info */}
+        <div className="bg-zinc-900/60 rounded-lg p-2 mb-2">
+          <div className="flex items-center justify-between">
+            <span className="text-zinc-400 text-xs">Line:</span>
+            <span className="text-white font-bold">{pick.standard_line}</span>
+          </div>
+          <div className="flex items-center justify-between mt-1">
+            <span className="text-zinc-400 text-xs">Hit Rate:</span>
+            <span className="text-amber-400 font-bold">{pick.hit_probability}%</span>
+          </div>
+        </div>
+        
+        {/* Stats Bar */}
+        <div className="flex items-center justify-between text-[10px] mb-2">
+          <div>
+            <span className="text-zinc-500">L10: </span>
+            <span className="text-white">{pick.h10}%</span>
+          </div>
+          <div>
+            <span className="text-zinc-500">L5: </span>
+            <span className="text-white">{pick.h5}%</span>
+          </div>
+          <div>
+            <span className="text-zinc-500">Avg: </span>
+            <span className="text-white">{pick.season_avg}</span>
+          </div>
+        </div>
+        
+        {/* Reliability Badge */}
+        <div className="flex items-center justify-center">
+          <Badge className="bg-amber-500/20 text-amber-400 border-amber-500/50 text-[10px]">
+            {getBulletLabel(bulletLevel)}
+          </Badge>
+        </div>
+      </div>
+    </Card>
+  );
+});
+
+FrontLinesCard.displayName = 'FrontLinesCard';
+
 // ==================== PARLAY CARD ====================
 
 const ParlayCard = memo(({ parlay, pickCount, onClick }) => {
@@ -2397,6 +2587,65 @@ const SafeHavenSwipeSection = memo(({ reconData, onParlayClick }) => {
 });
 
 SafeHavenSwipeSection.displayName = 'SafeHavenSwipeSection';
+
+// Front Lines Swipeable Section - Middle Tier Standard Props
+const FrontLinesSwipeSection = memo(({ picks, onPickClick, tMinusGames = [] }) => {
+  const { containerRef, currentIndex, showHint } = useSwipeTracker(picks.length);
+  
+  return (
+    <div data-testid="front-lines-section" className="front-lines-section">
+      <div className="flex items-center justify-between mb-2 px-4 sm:px-0">
+        <div className="flex items-center gap-2">
+          <Target className="w-5 h-5 text-amber-400" />
+          <span className="text-sm font-bold text-amber-400">THE FRONT LINES</span>
+          <Badge className="bg-amber-950/50 text-amber-400 border-amber-800/50 text-[10px] hidden sm:inline-flex">
+            TOP 6 STANDARD PLAYS
+          </Badge>
+        </div>
+        <div className="text-[10px] text-zinc-500 hidden sm:block">
+          Middle-Tier | Balanced Risk/Reward
+        </div>
+      </div>
+      
+      <div className="relative">
+        <SwipeHint show={showHint} accentColor="amber" />
+        <div 
+          ref={containerRef} 
+          className="flex overflow-x-auto snap-x snap-mandatory scrollbar-hide gap-3 px-4 pb-2 sm:grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 sm:overflow-visible sm:px-0 sm:gap-2"
+          style={{ WebkitOverflowScrolling: 'touch', scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+        >
+          {picks.map((pick, idx) => (
+            <div 
+              key={`${pick.player_name}-${pick.stat_type}-${pick.standard_line}-${idx}`} 
+              className="snap-center flex-shrink-0 w-[calc(100vw-48px)] max-w-[340px] sm:w-auto sm:max-w-none"
+            >
+              <FrontLinesCard 
+                pick={pick} 
+                rank={idx + 1}
+                onClick={() => onPickClick(pick)}
+                tMinusGames={tMinusGames}
+              />
+            </div>
+          ))}
+        </div>
+      </div>
+      
+      <SwipeIndicator current={currentIndex} total={picks.length} accentColor="amber" />
+      
+      {/* Bullet Legend - Desktop only */}
+      <div className="mt-2 hidden sm:flex items-center justify-center gap-4 text-[10px] text-zinc-500">
+        <span className="text-amber-400">•</span><span>= 60%+</span>
+        <span className="text-amber-400">••</span><span>= 65%+</span>
+        <span className="text-amber-400">•••</span><span>= 70%+</span>
+        <span className="text-amber-400">••••</span><span>= 75%+</span>
+        <span className="text-amber-400">•••••</span><span>= 80%+</span>
+        <span className="text-amber-400">••••••</span><span>= 85%+ ELITE</span>
+      </div>
+    </div>
+  );
+});
+
+FrontLinesSwipeSection.displayName = 'FrontLinesSwipeSection';
 
 // Trending Players Swipeable Section
 const TrendingSwipeSection = memo(({ players, linesLoaded, onPlayerClick, injuryAlerts }) => {
@@ -3776,6 +4025,7 @@ export const DemonGoblinDashboardOptimized = ({ isDemoMode = false }) => {
   const [trending, setTrending] = useState([]);
   const [radarPicks, setRadarPicks] = useState([]);
   const [vaultPicks, setVaultPicks] = useState([]);
+  const [frontLinesPicks, setFrontLinesPicks] = useState([]);
   const [linesLoaded, setLinesLoaded] = useState(false);
   const [staticLoaded, setStaticLoaded] = useState(false);
   const [syncing, setSyncing] = useState(false);
@@ -3865,10 +4115,11 @@ export const DemonGoblinDashboardOptimized = ({ isDemoMode = false }) => {
     try {
       console.log('[CACHED] Loading from MongoDB...');
       
-      // Load board, war zone, vault, parlays, recon, injuries, social signals, data status, sync status, live scores, and lock status in parallel
-      const [boardResponse, warZoneResponse, vaultResponse, parlayResponse, reconResponse, injuryResponse, newsResponse, dataStatusResponse, socialSignalsResponse, syncStatusResponse, liveScoresResponse, lockStatusResponse, tMinusResponse, boardIntelResponse] = await Promise.all([
+      // Load board, war zone, front lines, vault, parlays, recon, injuries, social signals, data status, sync status, live scores, and lock status in parallel
+      const [boardResponse, warZoneResponse, frontLinesResponse, vaultResponse, parlayResponse, reconResponse, injuryResponse, newsResponse, dataStatusResponse, socialSignalsResponse, syncStatusResponse, liveScoresResponse, lockStatusResponse, tMinusResponse, boardIntelResponse] = await Promise.all([
         axios.get(`${API}/v3/cached-props`),
         axios.get(`${API}/v3/war-zone`),
+        axios.get(`${API}/v3/front-lines`),
         axios.get(`${API}/v3/goblin-vault`),
         axios.get(`${API}/v3/parlay-builder`),
         axios.get(`${API}/v3/goblin-recon`),
@@ -3929,6 +4180,13 @@ export const DemonGoblinDashboardOptimized = ({ isDemoMode = false }) => {
         const picksWithSignals = applySignals(vaultResponse.data.picks || []);
         setVaultPicks(picksWithSignals);
         console.log(`[VAULT] Loaded ${vaultResponse.data.picks_count} vault picks`);
+      }
+      
+      // Load front lines picks with social signals
+      if (frontLinesResponse.data.success) {
+        const picksWithSignals = applySignals(frontLinesResponse.data.picks || []);
+        setFrontLinesPicks(picksWithSignals);
+        console.log(`[FRONT LINES] Loaded ${frontLinesResponse.data.picks_count} front lines picks`);
       }
       
       // Load parlay data
@@ -4412,6 +4670,15 @@ export const DemonGoblinDashboardOptimized = ({ isDemoMode = false }) => {
           <SafeHavenSwipeSection 
             reconData={reconData}
             onParlayClick={(parlay) => setExpandedParlay({ parlay, type: 'recon' })}
+          />
+        )}
+
+        {/* THE FRONT LINES - Middle Tier Standard Props */}
+        {frontLinesPicks.length > 0 && (
+          <FrontLinesSwipeSection 
+            picks={frontLinesPicks}
+            onPickClick={handleRadarClick}
+            tMinusGames={tMinusGames}
           />
         )}
 

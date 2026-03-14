@@ -1573,6 +1573,52 @@ async def get_goblin_vault():
     return result
 
 
+# ==================== FRONT LINES ENDPOINT ====================
+
+@api_router.get("/v3/front-lines")
+async def get_front_lines():
+    """
+    THE FRONT LINES - Top 6 middle-tier standard props.
+    
+    Algorithm:
+    1. Hit Probability (P) = (H10 × 0.6) + (H5 × 0.4)
+    2. Target Range: 60-90% hit rate (sweet spot between demons and goblins)
+    3. Bullet Rating: • to •••••• based on reliability
+    
+    NO API CALLS - reads from pre-calculated MongoDB data.
+    """
+    if not demon_goblin_engine:
+        raise HTTPException(status_code=500, detail="Engine not initialized")
+    
+    result = await demon_goblin_engine.get_front_lines()
+    
+    # Attach intel briefings and lock status
+    if result.get("picks"):
+        locked_games = []
+        locked_event_ids = set()
+        if game_lock_engine:
+            locked_games = await game_lock_engine.get_locked_games()
+            locked_event_ids = {g.get("event_id") for g in locked_games}
+        
+        for pick in result["picks"]:
+            player_name = pick.get("player_name")
+            board_entry = await db.dg_cached_board.find_one(
+                {"player_name": player_name},
+                {"_id": 0, "props": 1}
+            )
+            if board_entry and board_entry.get("props"):
+                first_prop = board_entry["props"][0]
+                pick["event_id"] = first_prop.get("event_id")
+                pick["commence_time"] = first_prop.get("commence_time")
+                pick["home_team"] = first_prop.get("home_team")
+                pick["away_team"] = first_prop.get("away_team")
+                
+                if first_prop.get("event_id") in locked_event_ids:
+                    pick["locked"] = True
+    
+    return result
+
+
 @api_router.get("/v3/parlay-builder")
 async def get_parlay_builder():
     """

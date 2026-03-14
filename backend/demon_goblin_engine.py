@@ -534,6 +534,7 @@ class DemonGoblinEngine:
         self.live_props = db.dg_live_props  # Master props collection (deduplicated)
         self.radar_picks = db.dg_radar_picks  # War Zone top 10 picks
         self.goblin_vault = db.dg_goblin_vault  # Goblin Vault top 10 safe picks
+        self.front_lines = db.dg_front_lines  # Front Lines - middle tier picks
         self.parlay_builder = db.dg_parlay_builder  # Big Money Builder parlays
         self.goblin_recon = db.dg_goblin_recon  # Goblin Recon parlays (high-consistency)
         self.cached_board = db.dg_cached_board  # Full cached board for frontend
@@ -2822,9 +2823,10 @@ class DemonGoblinEngine:
         
         logger.info(f"[CACHED_BOARD] Built board: {len(sorted_players)} players ({mapper_matched} mapper-matched, {verified_count} verified)")
         
-        # Build derived collections (War Zone, Goblin Vault, etc.)
+        # Build derived collections (War Zone, Goblin Vault, Front Lines, etc.)
         await self._build_war_zone(players_dict, sync_time)
         await self._build_goblin_vault(players_dict, sync_time)
+        await self._build_front_lines(players_dict, sync_time)
         await self._build_parlay_builder(players_dict, sync_time)
         await self._build_goblin_recon(players_dict, sync_time)
     
@@ -2984,6 +2986,7 @@ class DemonGoblinEngine:
         
         await self._build_war_zone(players_dict, sync_time)
         await self._build_goblin_vault(players_dict, sync_time)
+        await self._build_front_lines(players_dict, sync_time)
         await self._build_parlay_builder(players_dict, sync_time)
         await self._build_goblin_recon(players_dict, sync_time)
     
@@ -3519,6 +3522,185 @@ class DemonGoblinEngine:
         # 0 Shields: Below 70%
         return 0
     
+    async def _build_front_lines(self, players_dict: Dict[str, Dict], sync_time: datetime):
+        """
+        THE FRONT LINES ALGORITHM - Middle-Tier Picks
+        
+        Objective: Find demons with moderate hit rates (50-75%) - the "middle ground"
+        between top War Zone picks (70%+) and safe Goblin Vault plays (80%+).
+        
+        Scoring Formula (same math as War Zone):
+        1. Hit Rate Score = Weighted average (L10 × 0.6) + (L5 × 0.4)
+        2. Target: 50-75% hit rate range (the balanced tier)
+        
+        Final Score = Hit_Rate weighted by consistency
+        
+        Bullet Rating: • to •••••• (1-6 bullets based on reliability)
+        """
+        logger.info("[FRONT LINES] Calculating top 6 middle-tier plays...")
+        
+        all_candidates = []
+        
+        for player_name, player_data in players_dict.items():
+            if player_data is None:
+                continue
+            
+            # Use DEMONS with moderate hit rates (middle tier)
+            demons = player_data.get("demons", [])
+            
+            if not demons:
+                continue
+            
+            # Score each demon
+            for prop in demons:
+                market = prop.get("market", "")
+                stat_type = self._extract_stat_type(market)
+                line = prop.get("line", 0)
+                direction = prop.get("direction", "")
+                
+                if not stat_type or line <= 0:
+                    continue
+                
+                # Get hit rates
+                hit_rates = prop.get("hit_rates", {})
+                if hit_rates is None:
+                    hit_rates = {}
+                h10_data = hit_rates.get("l10", {})
+                h5_data = hit_rates.get("l5", {})
+                season_data = hit_rates.get("season", {})
+                if h10_data is None:
+                    h10_data = {}
+                if h5_data is None:
+                    h5_data = {}
+                if season_data is None:
+                    season_data = {}
+                
+                h10 = h10_data.get("hit_rate", 0)
+                h5 = h5_data.get("hit_rate", 0)
+                h10_games = h10_data.get("total_games", 0)
+                h5_games = h5_data.get("total_games", 0)
+                h10_over = h10_data.get("games_over", 0)
+                h5_over = h5_data.get("games_over", 0)
+                season_avg = season_data.get("avg", 0)
+                
+                # Skip players with no real data
+                has_real_data = h10_games > 0 or h5_games > 0
+                if not has_real_data:
+                    continue
+                
+                # Calculate weighted hit rate (same as War Zone/Vault)
+                if h10_games >= 10 and h5_games >= 5:
+                    hit_rate_score = (h10 * 0.6) + (h5 * 0.4)
+                elif h10_games >= 5:
+                    hit_rate_score = h10
+                elif h5_games >= 3:
+                    hit_rate_score = h5
+                else:
+                    continue
+                
+                hit_probability = round(hit_rate_score * 100, 1)
+                
+                # Front Lines targets the MIDDLE: 50-75% range
+                # (War Zone takes 70%+ for top picks, Vault takes 80%+ goblins)
+                # This captures demons that are NOT in War Zone but still have decent odds
+                if hit_probability < 50 or hit_probability >= 70:
+                    continue
+                
+                # Calculate bullet level (1-6) based on consistency
+                bullet_level = self._calculate_bullet_level(h10, h5, h10_over, h5_over, h10_games, h5_games)
+                
+                # Final score: weighted hit rate
+                front_lines_score = hit_rate_score
+                
+                # Get player info from player_data
+                all_candidates.append({
+                    "player_name": player_name,
+                    "player_id": player_data.get("player_id"),
+                    "team": player_data.get("team"),
+                    "team_abbr": player_data.get("team_abbr"),
+                    "opponent": player_data.get("opponent"),
+                    "opponent_abbr": player_data.get("opponent_abbr"),
+                    "game_id": player_data.get("game_id"),
+                    "headshot_url": player_data.get("headshot_url"),
+                    "game_time": player_data.get("game_time"),
+                    
+                    # Prop details
+                    "stat_type": stat_type,
+                    "demon_line": line,
+                    "standard_line": line,  # For card compatibility
+                    "direction": direction,
+                    "market": market,
+                    
+                    # Hit rate data
+                    "h10": round(h10 * 100, 1),
+                    "h5": round(h5 * 100, 1),
+                    "h10_over": h10_over,
+                    "h10_games": h10_games,
+                    "h5_over": h5_over,
+                    "h5_games": h5_games,
+                    "season_avg": round(season_avg, 1),
+                    
+                    # Calculated scores
+                    "hit_probability": hit_probability,
+                    "front_lines_score": round(front_lines_score, 4),
+                    "bullet_level": bullet_level,
+                    "price": prop.get("price", -110),
+                    "is_front_lines_pick": True,
+                    "has_real_data": True,
+                    "synced_at": sync_time.isoformat()
+                })
+        
+        # Sort by front_lines_score descending
+        all_candidates.sort(key=lambda x: x["front_lines_score"], reverse=True)
+        
+        # De-duplicate: one pick per player
+        seen_players = set()
+        unique_picks = []
+        for pick in all_candidates:
+            player_name = pick["player_name"]
+            if player_name not in seen_players:
+                seen_players.add(player_name)
+                unique_picks.append(pick)
+        
+        # Take top 6
+        top_6 = unique_picks[:6]
+        
+        # Store in front_lines collection
+        await self.front_lines.delete_many({})
+        if top_6:
+            await self.front_lines.insert_many(top_6)
+        
+        logger.info(f"[FRONT LINES] Generated {len(top_6)} middle-tier picks")
+        logger.info(f"  Total candidates: {len(all_candidates)}")
+        
+        # Log top 3
+        for i, pick in enumerate(top_6[:3]):
+            bullets = "•" * pick['bullet_level']
+            logger.info(f"  #{i+1}: {pick['player_name']} - {pick['stat_type']} {pick['standard_line']} "
+                       f"(P: {pick['hit_probability']}%) {bullets}")
+    
+    def _calculate_bullet_level(self, h10: float, h5: float, h10_over: int, h5_over: int, h10_games: int, h5_games: int) -> int:
+        """
+        Calculate Bullet Level (1-6 Bullets) based on reliability:
+        - 6 Bullets: 85%+ hit rate - ELITE
+        - 5 Bullets: 80%+ hit rate - STRONG
+        - 4 Bullets: 75%+ hit rate - SOLID
+        - 3 Bullets: 70%+ hit rate - GOOD
+        - 2 Bullets: 65%+ hit rate - FAIR
+        - 1 Bullet:  60%+ hit rate - BASE
+        """
+        if h10 >= 0.85:
+            return 6
+        if h10 >= 0.80:
+            return 5
+        if h10 >= 0.75:
+            return 4
+        if h10 >= 0.70:
+            return 3
+        if h10 >= 0.65:
+            return 2
+        return 1
+
     async def _build_parlay_builder(self, players_dict: Dict[str, Dict], sync_time: datetime):
         """
         THE BIG MONEY BUILDER - Parlay Generator Algorithm
@@ -4612,6 +4794,51 @@ class DemonGoblinEngine:
                 "formula": "Score = (Hit_Rate × 0.8) + (Value_Gap × 0.2)",
                 "target": "90%+ hit rate for maximum safety",
                 "min_probability": "80%"
+            }
+        }
+    
+    async def get_front_lines(self) -> Dict[str, Any]:
+        """
+        DUMB COMPONENT: Get the Front Lines top 6 middle-tier picks from MongoDB.
+        
+        Data is PRE-ENRICHED during sync. No runtime lookups.
+        Just reads and returns the data with AI insights.
+        """
+        picks = await self.front_lines.find({}, {"_id": 0}).sort("front_lines_score", -1).to_list(6)
+        
+        # Add AI insights
+        for pick in picks:
+            player_name = pick.get('player_name')
+            
+            # Get insight_summary from daily_insights
+            insight = await self.daily_insights.find_one(
+                {"player_name": player_name},
+                {"_id": 0, "insight_summary": 1, "ai_confidence_rating": 1}
+            )
+            if insight:
+                pick['insight_summary'] = insight.get('insight_summary', '')
+                pick['ai_confidence'] = insight.get('ai_confidence_rating', 50)
+            
+            # Get intel_briefing from cached_board
+            board_entry = await self.cached_board.find_one(
+                {"player_name": player_name},
+                {"_id": 0, "intel_briefing": 1}
+            )
+            if board_entry and board_entry.get('intel_briefing'):
+                pick['intel_briefing'] = board_entry.get('intel_briefing')
+        
+        sync_meta = await self.sync_log.find_one({"type": "cached_board"})
+        
+        return {
+            "success": True,
+            "synced_at": sync_meta.get("synced_at") if sync_meta else None,
+            "picks_count": len(picks),
+            "picks": picks,
+            "algorithm": {
+                "description": "Middle-Tier Probability Scoring",
+                "formula": "Score = Weighted Hit Rate (L10 × 0.6 + L5 × 0.4)",
+                "target": "60-90% hit rate sweet spot",
+                "ranking": "Bullet system (• to ••••••)"
             }
         }
     
@@ -6523,6 +6750,13 @@ class DemonGoblinEngine:
             except Exception as e:
                 logger.error(f"[WAR ZONE] Error building: {e}")
             
+            # Build Front Lines (Top 6 Middle-Tier Picks)
+            try:
+                await self._build_front_lines(player_data, sync_start)
+                logger.info("[FRONT LINES] Rebuilt successfully")
+            except Exception as e:
+                logger.error(f"[FRONT LINES] Error building: {e}")
+            
             # Build Goblin Vault (Top 10 Safe Picks)
             try:
                 await self._build_goblin_vault(player_data, sync_start)
@@ -6752,12 +6986,18 @@ V3.1 TRUTH ENGINE - DATA INTEGRITY:
                         player_data[pname] = player
                 
                 if player_data:
-                    logger.info("[DELTA] Rebuilding War Zone and Goblin Vault...")
+                    logger.info("[DELTA] Rebuilding War Zone, Front Lines, and Goblin Vault...")
                     try:
                         await self._build_war_zone(player_data, sync_start)
                         logger.info("[WAR ZONE] Rebuilt with fresh data")
                     except Exception as e:
                         logger.error(f"[WAR ZONE] Rebuild error: {e}")
+                    
+                    try:
+                        await self._build_front_lines(player_data, sync_start)
+                        logger.info("[FRONT LINES] Rebuilt with fresh data")
+                    except Exception as e:
+                        logger.error(f"[FRONT LINES] Rebuild error: {e}")
                     
                     try:
                         await self._build_goblin_vault(player_data, sync_start)
