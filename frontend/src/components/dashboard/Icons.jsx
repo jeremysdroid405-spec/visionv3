@@ -1,7 +1,7 @@
 import React, { useState, memo } from 'react';
 import { Zap } from 'lucide-react';
 
-// The Elite Demon - Cyber-Horns (Sharp, Minimalist, Dangerous)
+// The Elite Demon - Sharp Horns Only (No circle/head)
 export const DemonIcon = memo(({ size = 24, className = '', isScanning = false, hasVision = false }) => (
   <div className={`demon-icon-container ${isScanning ? 'demon-scanning' : ''} ${className}`} style={{ width: size, height: size }}>
     <svg 
@@ -12,33 +12,29 @@ export const DemonIcon = memo(({ size = 24, className = '', isScanning = false, 
       xmlns="http://www.w3.org/2000/svg"
       className="demon-icon"
     >
-      <defs>
-        <filter id="demon-glow" x="-20%" y="-20%" width="140%" height="140%">
-          <feGaussianBlur stdDeviation="1.5" result="blur" />
-          <feComposite in="SourceGraphic" in2="blur" operator="over" />
-        </filter>
-      </defs>
+      {/* Left Horn */}
       <path 
-        d="M12 22C16.4183 22 20 18.4183 20 14C20 9.58172 16.4183 6 12 6C7.58172 6 4 9.58172 4 14C4 18.4183 7.58172 22 12 22Z" 
-        fill="#FF0000" 
-        filter="url(#demon-glow)"
-      />
-      <path 
-        d="M5 8L2 2L9 5" 
-        stroke="#FF0000" 
+        d="M4 18L2 4L10 14" 
+        stroke="#FF3333" 
         strokeWidth="2.5" 
         strokeLinejoin="round"
+        fill="#FF0000"
+        fillOpacity="0.8"
       />
+      {/* Right Horn */}
       <path 
-        d="M19 8L22 2L15 5" 
-        stroke="#FF0000" 
+        d="M20 18L22 4L14 14" 
+        stroke="#FF3333" 
         strokeWidth="2.5" 
         strokeLinejoin="round"
+        fill="#FF0000"
+        fillOpacity="0.8"
       />
+      {/* Evil Eyes */}
       <path 
-        d="M8 12L10 14M16 12L14 14" 
-        stroke="white" 
-        strokeWidth="2" 
+        d="M7 16L9 14M17 16L15 14" 
+        stroke="#FF0000" 
+        strokeWidth="2.5" 
         strokeLinecap="round"
       />
     </svg>
@@ -48,7 +44,7 @@ export const DemonIcon = memo(({ size = 24, className = '', isScanning = false, 
 
 DemonIcon.displayName = 'DemonIcon';
 
-// The Elite Goblin - Sneaky Elf Ears (Cunning, Technical)
+// The Elite Goblin - Pointy Ears Only (No circle/head)
 export const GoblinIcon = memo(({ size = 24, className = '', isClicked = false, hasVision = false }) => {
   const [clicked, setClicked] = useState(false);
   
@@ -72,29 +68,34 @@ export const GoblinIcon = memo(({ size = 24, className = '', isClicked = false, 
         xmlns="http://www.w3.org/2000/svg"
         className="goblin-icon"
       >
+        {/* Left Ear */}
         <path 
-          d="M12 20C15.866 20 19 16.866 19 13C19 9.13401 15.866 6 12 6C8.13401 6 5 9.13401 5 13C5 16.866 8.13401 20 12 20Z" 
-          fill="#00FF7F" 
-          fillOpacity="0.9"
-        />
-        <path 
-          d="M5 11L1 7L6 12" 
+          d="M4 20L1 6L10 14" 
           fill="#00FF7F"
+          stroke="#00DD6F"
+          strokeWidth="1.5"
+          strokeLinejoin="round"
         />
+        {/* Right Ear */}
         <path 
-          d="M19 11L23 7L18 12" 
+          d="M20 20L23 6L14 14" 
           fill="#00FF7F"
+          stroke="#00DD6F"
+          strokeWidth="1.5"
+          strokeLinejoin="round"
         />
+        {/* Sneaky Eyes */}
         <path 
-          d="M9 13H10M14 13H15" 
-          stroke="black" 
+          d="M8 15H10M14 15H16" 
+          stroke="#00FF7F" 
           strokeWidth="2.5" 
           strokeLinecap="round"
         />
+        {/* Smirk */}
         <path 
-          d="M10 16.5C10.5 17.5 13.5 17.5 14 16.5" 
-          stroke="black" 
-          strokeWidth="1" 
+          d="M9 18C10 19 14 19 15 18" 
+          stroke="#00FF7F" 
+          strokeWidth="1.5" 
           strokeLinecap="round"
         />
       </svg>

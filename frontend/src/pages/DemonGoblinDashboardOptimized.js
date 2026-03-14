@@ -1483,7 +1483,7 @@ const RadarCard = memo(({ pick, rank, onClick, isScanning = false, tMinusGames =
                 <Zap className="w-2.5 h-2.5 text-purple-400" />
                 <span className="text-[9px] text-purple-400 uppercase tracking-wider font-semibold">The Vision</span>
               </div>
-              <p className="text-[10px] text-purple-300/80 leading-tight line-clamp-2 italic">
+              <p className="text-[10px] text-purple-300/80 leading-relaxed italic">
                 "{pick.intel_briefing || pick.insight_summary}"
               </p>
             </div>
@@ -1712,7 +1712,7 @@ const VaultCard = memo(({ pick, rank, onClick, tMinusGames = [] }) => {
                 <Zap className="w-2.5 h-2.5 text-purple-400" />
                 <span className="text-[9px] text-purple-400 uppercase tracking-wider font-semibold">The Vision</span>
               </div>
-              <p className="text-[10px] text-purple-300/80 leading-tight line-clamp-2 italic">
+              <p className="text-[10px] text-purple-300/80 leading-relaxed italic">
                 "{pick.intel_briefing || pick.insight_summary}"
               </p>
             </div>
@@ -1820,7 +1820,7 @@ const ParlayCard = memo(({ parlay, pickCount, onClick }) => {
               </div>
               {/* Mini Vision Preview */}
               {(pick.intel_briefing || pick.insight_summary) && (
-                <div className="mt-1 text-[9px] text-purple-300/70 line-clamp-1 italic pl-5">
+                <div className="mt-1 text-[9px] text-purple-300/70 italic pl-5">
                   "{pick.intel_briefing || pick.insight_summary}"
                 </div>
               )}
@@ -2431,7 +2431,7 @@ const ParlayPickCard = memo(({ pick, idx, isRecon, colors, playerData, onPickCli
               <Zap className="w-3 h-3 text-purple-400" />
               <span className="text-[9px] text-purple-400 uppercase tracking-wider font-semibold">The Vision</span>
             </div>
-            <p className="text-[11px] text-purple-200/80 leading-relaxed line-clamp-2 italic">
+            <p className="text-[11px] text-purple-200/80 leading-relaxed italic">
               "{pick.intel_briefing || pick.insight_summary}"
             </p>
           </div>
