@@ -3268,26 +3268,52 @@ class DemonGoblinEngine:
     
     async def _build_goblin_vault(self, players_dict: Dict[str, Dict], sync_time: datetime):
         """
-        THE GOBLIN VAULT ALGORITHM - Safe Plays Scoring
+        THE GOBLIN VAULT "GOD-TIER" 4-PILLAR ALGORITHM
+        ================================================
         
-        Objective: Find the safest, most reliable Goblin lines with 90%+ hit rates.
+        Hard Filter (The Bouncer):
+        - L10 Hit Frequency must be >= 0.80 (80%)
+        - Uses BINARY hit frequency, not averages
         
-        Scoring Formula:
-        1. Hit Rate Score (80% weight) = Weighted average (L10 × 0.6) + (L5 × 0.4)
-           - Target: 90%+ hit rate for maximum safety
-        2. Value Gap Score (20% weight) = How far BELOW the standard line
-           - The further below standard while maintaining 90%+, the higher the rank
+        4-Pillar Weighted Formula:
+        --------------------------
+        Pillar 1 (50%): Base Consistency
+            = (L10_Hit_Frequency * 0.6) + (L5_Hit_Frequency * 0.4)
         
-        Final Score = (Hit_Rate × 0.8) + (Value_Gap_Bonus × 0.2)
+        Pillar 2 (20%): Vegas Implied Probability
+            - Negative odds: implied_prob = abs(odds) / (abs(odds) + 100)
+            - Positive odds: implied_prob = 100 / (odds + 100)
         
-        Safety Rating: X/10 games cleared (displayed as "Safety: 98% | Clear in 10/10 last games")
+        Pillar 3 (15%): Matchup / DvP Modifier
+            - Range: 0.0 to 1.0 (0.5 = neutral)
+            - Placeholder for future DvP integration
+        
+        Pillar 4 (15%): AI Context Shift
+            - From AiContextEngine
+            - Range: 0.0 to 1.0 (0.5 = neutral)
+        
+        Final Score:
+        vault_score = (consistency * 0.50) + (implied_prob * 0.20) + (dvp * 0.15) + (context * 0.15)
         """
-        logger.info("[GOBLIN VAULT] Calculating top 10 safe plays...")
+        logger.info("[GOBLIN VAULT] Calculating GOD-TIER 4-Pillar scores...")
         
         all_candidates = []
         
+        # Pre-fetch AI context scores for all players
+        ai_context_cache = {}
+        try:
+            cursor = self.db.nba_master_hub_2026.find(
+                {"ai_context_score": {"$exists": True}},
+                {"_id": 0, "display_name": 1, "player_name": 1, "ai_context_score": 1}
+            )
+            async for doc in cursor:
+                name = doc.get("display_name") or doc.get("player_name")
+                if name:
+                    ai_context_cache[name] = doc.get("ai_context_score", 0.5)
+        except Exception as e:
+            logger.warning(f"[GOBLIN VAULT] Could not fetch AI context cache: {e}")
+        
         for player_name, player_data in players_dict.items():
-            # Skip None entries
             if player_data is None:
                 continue
             
@@ -3297,7 +3323,7 @@ class DemonGoblinEngine:
             if not goblins:
                 continue
             
-            # Build a map of standard lines by stat type
+            # Build standard lines map
             standard_map = {}
             for std_prop in standard:
                 market = std_prop.get("market", "")
@@ -3307,45 +3333,32 @@ class DemonGoblinEngine:
                     if key not in standard_map:
                         standard_map[key] = std_prop
             
-            # Score each goblin
             for goblin in goblins:
                 goblin_market = goblin.get("market", "")
                 goblin_stat = self._extract_stat_type(goblin_market)
                 goblin_line = goblin.get("line", 0)
                 goblin_direction = goblin.get("direction", "")
+                goblin_price = goblin.get("price", -110)
                 
                 if not goblin_stat or goblin_line <= 0:
                     continue
                 
-                # Find corresponding standard line
+                # Get standard line reference
                 std_key = f"{goblin_stat}_{goblin_direction}"
                 std_prop = standard_map.get(std_key)
-                
-                # Calculate standard line reference
-                if std_prop:
-                    std_line = std_prop.get("line", 0)
-                else:
-                    # No standard line - estimate as 115% of goblin line (goblins are BELOW standard)
-                    std_line = goblin_line * 1.15
+                std_line = std_prop.get("line", 0) if std_prop else goblin_line * 1.15
                 
                 if std_line <= 0:
                     continue
                 
-                # Get hit rates from BallDontLie stats
-                hit_rates = goblin.get("hit_rates", {})
-                if hit_rates is None:
-                    hit_rates = {}
-                h10_data = hit_rates.get("l10", {})
-                h5_data = hit_rates.get("l5", {})
-                season_data = hit_rates.get("season", {})
-                if h10_data is None:
-                    h10_data = {}
-                if h5_data is None:
-                    h5_data = {}
-                if season_data is None:
-                    season_data = {}
+                # Get hit rates
+                hit_rates = goblin.get("hit_rates", {}) or {}
+                h10_data = hit_rates.get("l10", {}) or {}
+                h5_data = hit_rates.get("l5", {}) or {}
+                season_data = hit_rates.get("season", {}) or {}
                 
-                h10 = h10_data.get("hit_rate", 0)
+                # BINARY HIT FREQUENCY (not averages)
+                h10 = h10_data.get("hit_rate", 0)  # 0.0 to 1.0
                 h5 = h5_data.get("hit_rate", 0)
                 h10_games = h10_data.get("total_games", 0)
                 h5_games = h5_data.get("total_games", 0)
@@ -3353,55 +3366,80 @@ class DemonGoblinEngine:
                 h5_over = h5_data.get("games_over", 0)
                 season_avg = season_data.get("avg", 0)
                 
-                # Track if we have real data
-                has_real_data = h10_games > 0 or h5_games > 0
-                
-                # V3.2 FIX: SKIP players with no real stats data
-                # This prevents false readings from estimated probabilities
-                if not has_real_data:
+                # Must have real data
+                if h10_games == 0 and h5_games == 0:
                     continue
                 
-                # Calculate Value Gap (how far BELOW standard)
-                # For Goblins, lower lines = safer, so gap should be negative
-                gap_below_std = std_line - goblin_line  # Positive = safer (further below)
-                gap_pct = (gap_below_std / std_line) * 100 if std_line > 0 else 0
+                # ==================== THE BOUNCER ====================
+                # Hard filter: L10 Hit Frequency MUST be >= 0.80 (80%)
+                if h10 < 0.80:
+                    continue
                 
-                # Calculate Weighted Hit Rate Score
-                # P = (L10 × 0.6) + (L5 × 0.4)
-                hit_rate_score = (h10 * 0.6) + (h5 * 0.4)
+                # ==================== PILLAR 1: BASE CONSISTENCY (50%) ====================
+                # consistency_score = (L10_Hit_Frequency * 0.6) + (L5_Hit_Frequency * 0.4)
+                pillar_1_consistency = (h10 * 0.6) + (h5 * 0.4)
                 
-                # Calculate Value Gap Bonus (normalized 0-1)
-                # Gap of 5% = 0.2, Gap of 10% = 0.4, Gap of 20% = 0.8, Gap of 30%+ = 1.0
-                value_gap_bonus = min(1.0, gap_pct / 30) if gap_pct > 0 else 0
+                # ==================== PILLAR 2: VEGAS IMPLIED PROBABILITY (20%) ====================
+                # Formula for negative odds: implied_prob = abs(odds) / (abs(odds) + 100)
+                # Formula for positive odds: implied_prob = 100 / (odds + 100)
+                if goblin_price < 0:
+                    pillar_2_vegas = abs(goblin_price) / (abs(goblin_price) + 100)
+                else:
+                    pillar_2_vegas = 100 / (goblin_price + 100)
                 
-                # Final Vault Score = (Hit_Rate × 0.8) + (Value_Gap × 0.2)
-                vault_score = (hit_rate_score * 0.8) + (value_gap_bonus * 0.2)
+                # Normalize to 0-1 range (typical implied prob is 0.4-0.7)
+                pillar_2_vegas = min(1.0, max(0.0, pillar_2_vegas))
                 
-                # Calculate Safety Level (1-5 shields based on consistency)
+                # ==================== PILLAR 3: MATCHUP / DvP MODIFIER (15%) ====================
+                # Placeholder - 0.5 is neutral, 1.0 is best matchup, 0.0 is worst
+                # Future: integrate actual DvP data from stats providers
+                dvp_modifier = player_data.get("dvp_modifier", 0.5)
+                pillar_3_dvp = dvp_modifier
+                
+                # ==================== PILLAR 4: AI CONTEXT SHIFT (15%) ====================
+                # Pull from AiContextEngine cache or default to 0.5 (neutral)
+                pillar_4_context = ai_context_cache.get(player_name, 0.5)
+                
+                # ==================== FINAL VAULT SCORE ====================
+                # vault_score = (consistency * 0.50) + (implied_prob * 0.20) + (dvp * 0.15) + (context * 0.15)
+                vault_score = (
+                    (pillar_1_consistency * 0.50) +
+                    (pillar_2_vegas * 0.20) +
+                    (pillar_3_dvp * 0.15) +
+                    (pillar_4_context * 0.15)
+                )
+                
+                # Scale to 0-100 for readability
+                vault_score_100 = vault_score * 100
+                
+                # Safety level and streak detection
                 safety_level = self._calculate_safety_level(h10, h5, h10_over, h5_over, h10_games, h5_games)
-                
-                # Perfect streak detection (cleared in all recent games)
                 is_perfect_streak = h10_games >= 5 and h10_over == h10_games
-                
-                # Safety rating string: "10/10" or "9/10"
                 safety_string = f"{h10_over}/{h10_games}" if h10_games > 0 else "---"
                 
+                # Gap calculation for display
+                gap_below_std = std_line - goblin_line
+                gap_pct = (gap_below_std / std_line) * 100 if std_line > 0 else 0
+                
                 all_candidates.append({
-                    # PRIMARY KEY - player_id from nba_master_hub_2026 (via OddsApiMapper)
+                    # Player identification
                     "player_id": player_data.get("player_id"),
                     "tank01_player_id": player_data.get("tank01_player_id") or player_data.get("tank01_id"),
-                    
-                    # Player info (from centralized enrichment via OddsApiMapper)
                     "player_name": player_name,
                     "team": player_data.get("team", ""),
                     "team_name": player_data.get("team_name"),
+                    "team_abbr": player_data.get("team_abbr"),
                     "photo_url": player_data.get("photo_url") or player_data.get("headshot_url"),
                     "headshot_url": player_data.get("headshot_url") or player_data.get("photo_url"),
                     "nba_com_id": player_data.get("nba_com_id") or player_data.get("nba_id"),
                     "espn_id": player_data.get("espn_id"),
                     "position": player_data.get("position"),
+                    "opponent": player_data.get("opponent"),
+                    "opponent_abbr": player_data.get("opponent_abbr"),
+                    "game_id": player_data.get("game_id"),
+                    "game_time": player_data.get("game_time"),
                     
-                    # Social signals (pre-enriched)
+                    # Flags
                     "volatility_flag": player_data.get("volatility_flag", False),
                     "revenge_game": player_data.get("revenge_game", False),
                     "is_verified": player_data.get("is_verified", False),
@@ -3411,12 +3449,13 @@ class DemonGoblinEngine:
                     "stat_type": goblin_stat,
                     "direction": goblin_direction,
                     "goblin_line": goblin_line,
-                    "line": goblin_line,  # Alias for frontend compatibility
+                    "line": goblin_line,
                     "standard_line": round(std_line, 1),
                     "gap_below_std": round(gap_below_std, 1),
                     "gap_pct": round(gap_pct, 1),
+                    "price": goblin_price,
                     
-                    # Hit rates
+                    # Raw hit rates
                     "h10_rate": round(h10 * 100, 1),
                     "h5_rate": round(h5 * 100, 1),
                     "h10_over": h10_over,
@@ -3425,63 +3464,55 @@ class DemonGoblinEngine:
                     "h5_games": h5_games,
                     "season_avg": round(season_avg, 1),
                     
-                    # Calculated scores
-                    "hit_probability": round(hit_rate_score * 100, 1),
+                    # 4-PILLAR BREAKDOWN (for transparency)
+                    "pillar_1_consistency": round(pillar_1_consistency, 4),
+                    "pillar_2_vegas": round(pillar_2_vegas, 4),
+                    "pillar_3_dvp": round(pillar_3_dvp, 4),
+                    "pillar_4_context": round(pillar_4_context, 4),
+                    
+                    # FINAL SCORES
                     "vault_score": round(vault_score, 4),
+                    "vault_score_100": round(vault_score_100, 1),
+                    "hit_probability": round(h10 * 100, 1),  # For backwards compatibility
+                    
+                    # Safety metrics
                     "safety_level": safety_level,
-                    "safety_rating": round(hit_rate_score * 100, 1),
+                    "safety_rating": round(h10 * 100, 1),
                     "safety_string": safety_string,
                     "is_perfect_streak": is_perfect_streak,
-                    "price": goblin.get("price", -110),
                     "is_vault_pick": True,
                     "has_real_data": True,
                     "synced_at": sync_time.isoformat()
                 })
         
-        # Filter for high safety picks (minimum 80% hit rate for Goblins)
-        safe_picks = [c for c in all_candidates if c["hit_probability"] >= 80]
+        # Sort by vault_score descending (God-Tier first)
+        all_candidates.sort(key=lambda x: x["vault_score"], reverse=True)
         
-        if len(safe_picks) < 10:
-            # Lower threshold to 70% if not enough safe picks
-            safe_picks = [c for c in all_candidates if c["hit_probability"] >= 70]
-        
-        if len(safe_picks) < 10:
-            # Final fallback to 60%
-            safe_picks = [c for c in all_candidates if c["hit_probability"] >= 60]
-        
-        # Sort by vault_score descending (highest safety + value first)
-        safe_picks.sort(key=lambda x: x["vault_score"], reverse=True)
-        
-        # V3.2 FIX: De-duplicate - one pick per player (take their best prop)
+        # De-duplicate: one pick per player (best score)
         seen_players = set()
         unique_picks = []
-        for pick in safe_picks:
-            player_name = pick["player_name"]
-            if player_name not in seen_players:
-                seen_players.add(player_name)
+        for pick in all_candidates:
+            pname = pick["player_name"]
+            if pname not in seen_players:
+                seen_players.add(pname)
                 unique_picks.append(pick)
         
-        # Take top 10 unique players
+        # Take top 10
         top_10 = unique_picks[:10]
         
-        # Store in goblin_vault collection
+        # Store in MongoDB
         await self.goblin_vault.delete_many({})
         if top_10:
             await self.goblin_vault.insert_many(top_10)
         
         # Log summary
-        elite_count = len([p for p in all_candidates if p["hit_probability"] >= 90])
-        safe_count = len([p for p in all_candidates if 80 <= p["hit_probability"] < 90])
+        logger.info(f"[GOBLIN VAULT] GOD-TIER: {len(top_10)} picks passed 80% bouncer")
+        logger.info(f"  Total candidates evaluated: {len(all_candidates)}")
+        logger.info(f"  4-Pillar Formula: 50% Consistency + 20% Vegas + 15% DvP + 15% AI Context")
         
-        logger.info(f"[GOBLIN VAULT] Generated {len(top_10)} top safe plays")
-        logger.info(f"  Elite (P>=90%): {elite_count} | Safe (P>=80%): {safe_count}")
-        logger.info(f"  Total candidates: {len(all_candidates)}")
-        
-        # Log top 3 with safety levels
         for i, pick in enumerate(top_10[:3]):
-            shields = "🛡️" * pick['safety_level']
-            logger.info(f"  #{i+1}: {pick['player_name']} - {pick['stat_type']} {pick['goblin_line']} "
-                       f"(Safety: {pick['safety_rating']}%, Score: {pick['vault_score']:.3f}) {shields}")
+            logger.info(f"  #{i+1}: {pick['player_name']} - {pick['stat_type']} {pick['goblin_line']}")
+            logger.info(f"       Score: {pick['vault_score_100']:.1f}/100 | L10: {pick['h10_rate']}% | Vegas: {pick['pillar_2_vegas']:.2f}")
     
     def _calculate_safety_level(self, h10: float, h5: float, h10_over: int, h5_over: int, h10_games: int, h5_games: int) -> int:
         """
@@ -4825,10 +4856,16 @@ class DemonGoblinEngine:
             "picks_count": len(picks),
             "picks": picks,
             "algorithm": {
-                "description": "Hit Rate + Value Gap Scoring",
-                "formula": "Score = (Hit_Rate × 0.8) + (Value_Gap × 0.2)",
-                "target": "90%+ hit rate for maximum safety",
-                "min_probability": "80%"
+                "name": "GOD-TIER 4-Pillar Formula",
+                "description": "4-Pillar weighted scoring with 80% hit rate bouncer",
+                "formula": "vault_score = (consistency * 0.50) + (vegas * 0.20) + (dvp * 0.15) + (context * 0.15)",
+                "pillars": {
+                    "pillar_1": "Base Consistency (50%) = (L10 * 0.6) + (L5 * 0.4)",
+                    "pillar_2": "Vegas Implied Prob (20%) = odds conversion",
+                    "pillar_3": "DvP Matchup (15%) = 0.5 neutral placeholder",
+                    "pillar_4": "AI Context Shift (15%) = from AiContextEngine"
+                },
+                "hard_filter": "L10 Hit Frequency >= 80%"
             }
         }
     
