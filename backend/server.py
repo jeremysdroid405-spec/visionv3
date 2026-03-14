@@ -2509,22 +2509,41 @@ async def get_injury_alerts():
 @api_router.get("/v3/breaking-news")
 async def get_breaking_news(injury_only: bool = False):
     """
-    Get breaking NBA news from ESPN.
+    Get breaking NBA news from multiple sources.
+    
+    Uses live_scores_engine for RSS feeds + ESPN news.
     
     Args:
-        injury_only: If true, only return injury-related news
+        injury_only: If true, prioritize injury-related news
     """
-    if not injury_service:
-        raise HTTPException(status_code=500, detail="Injury Service not initialized")
+    # Try live_scores_engine first (has RSS feeds)
+    if live_scores_engine:
+        result = await live_scores_engine.fetch_breaking_news()
+        if result.get("success") and result.get("news"):
+            news = result.get("news", [])
+            if injury_only:
+                # Filter for injury-related news
+                injury_keywords = ["injury", "out", "questionable", "doubtful", "probable", "day-to-day", "ruled out", "ankle", "knee", "back", "hamstring"]
+                news = [n for n in news if any(kw in (n.get("title", "") + n.get("headline", "")).lower() for kw in injury_keywords)]
+            
+            return {
+                "success": True,
+                "news_count": len(news),
+                "injury_filter": injury_only,
+                "news": news[:15]
+            }
     
-    news = await injury_service.get_breaking_news(injury_only=injury_only)
+    # Fallback to injury_service
+    if injury_service:
+        news = await injury_service.get_breaking_news(injury_only=injury_only)
+        return {
+            "success": True,
+            "news_count": len(news),
+            "injury_filter": injury_only,
+            "news": news
+        }
     
-    return {
-        "success": True,
-        "news_count": len(news),
-        "injury_filter": injury_only,
-        "news": news
-    }
+    return {"success": False, "news": [], "news_count": 0}
 
 
 # ==================== LIVE SCORES & COMMAND CENTER ====================

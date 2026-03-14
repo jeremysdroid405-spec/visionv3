@@ -3714,6 +3714,24 @@ export const DemonGoblinDashboardOptimized = ({ isDemoMode = false }) => {
     }
   }, [liveScores]);
   
+  // Auto-refresh breaking news every 15 minutes
+  useEffect(() => {
+    const newsRefreshInterval = setInterval(async () => {
+      try {
+        console.log('[NEWS] Auto-refreshing breaking news...');
+        const response = await axios.get(`${API}/v3/breaking-news`);
+        if (response.data.success && response.data.news) {
+          setBreakingNews(response.data.news);
+          console.log(`[NEWS] Refreshed ${response.data.news.length} news items`);
+        }
+      } catch (error) {
+        console.error('[NEWS] Refresh error:', error);
+      }
+    }, 900000); // Refresh every 15 minutes (900,000ms)
+    
+    return () => clearInterval(newsRefreshInterval);
+  }, []);
+  
   const handlePlayerClick = (playerName, highlight = null, highlightType = 'demon') => {
     setSelectedPlayer(playerName);
     setHighlightProp(highlight);

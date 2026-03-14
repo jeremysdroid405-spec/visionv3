@@ -29,13 +29,18 @@ ODDS_API_BASE = "https://api.the-odds-api.com/v4"
 # RSS Feed URLs for breaking news
 RSS_FEEDS = [
     {
-        "name": "Rotoworld NBA",
-        "url": "https://www.rotoworld.com/rss/feed/nba-news",
-        "category": "injury"
-    },
-    {
         "name": "ESPN NBA",
         "url": "https://www.espn.com/espn/rss/nba/news",
+        "category": "news"
+    },
+    {
+        "name": "Yahoo Sports NBA",
+        "url": "https://sports.yahoo.com/nba/rss.xml",
+        "category": "news"
+    },
+    {
+        "name": "CBS Sports NBA",
+        "url": "https://www.cbssports.com/rss/headlines/nba/",
         "category": "news"
     }
 ]
