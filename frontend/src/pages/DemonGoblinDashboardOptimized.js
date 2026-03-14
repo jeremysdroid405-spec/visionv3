@@ -547,6 +547,51 @@ const TMinusBadge = memo(({ commenceTime, tMinusGames }) => {
 
 TMinusBadge.displayName = 'TMinusBadge';
 
+// ==================== LOCKED BADGE - Game Started ====================
+
+const LockedBadge = memo(({ isLocked, commenceTime }) => {
+  const [gameStarted, setGameStarted] = useState(false);
+  
+  useEffect(() => {
+    if (isLocked) {
+      setGameStarted(true);
+      return;
+    }
+    
+    // Also check if game has started based on commence_time
+    if (commenceTime) {
+      try {
+        const gameTime = new Date(commenceTime);
+        const now = new Date();
+        if (now >= gameTime) {
+          setGameStarted(true);
+        }
+      } catch {
+        // Ignore parsing errors
+      }
+    }
+  }, [isLocked, commenceTime]);
+  
+  if (!gameStarted) return null;
+  
+  return (
+    <div 
+      className="absolute inset-0 z-30 bg-black/70 backdrop-blur-[2px] rounded-lg flex flex-col items-center justify-center"
+      data-testid="locked-badge"
+    >
+      <div className="bg-red-600 text-white px-4 py-2 rounded-lg font-mono font-bold text-sm tracking-wider shadow-[0_0_20px_rgba(220,38,38,0.5)] flex items-center gap-2">
+        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+        </svg>
+        LOCKED
+      </div>
+      <p className="text-zinc-400 text-xs mt-2 font-medium">Game In Progress</p>
+    </div>
+  );
+});
+
+LockedBadge.displayName = 'LockedBadge';
+
 // ==================== BREAKING NEWS TICKER ====================
 
 // ==================== LIVE SCORE TICKER - Command Center ====================
@@ -1292,10 +1337,14 @@ const RadarCard = memo(({ pick, rank, onClick, isScanning = false, tMinusGames =
         hover:scale-[1.02] transition-all duration-300
         cursor-pointer active:scale-[0.98] relative overflow-visible
         min-h-[280px]
+        ${pick.locked ? 'pointer-events-none' : ''}
       `}
-      onClick={onClick}
+      onClick={pick.locked ? undefined : onClick}
       data-testid={`radar-card-${rank}`}
     >
+      {/* LOCKED Badge - Game In Progress */}
+      <LockedBadge isLocked={pick.locked} commenceTime={pick.commence_time} />
+      
       {/* T-Minus Countdown Badge */}
       <TMinusBadge commenceTime={pick.commence_time} tMinusGames={tMinusGames} />
       
@@ -1529,6 +1578,7 @@ const VaultCard = memo(({ pick, rank, onClick, tMinusGames = [] }) => {
   };
   
   const handleClick = () => {
+    if (pick.locked) return;
     setIsClicked(true);
     setTimeout(() => setIsClicked(false), 400);
     onClick?.();
@@ -1542,10 +1592,14 @@ const VaultCard = memo(({ pick, rank, onClick, tMinusGames = [] }) => {
         hover:scale-[1.02] transition-all duration-300
         cursor-pointer active:scale-[0.98] relative overflow-visible
         min-h-[280px]
+        ${pick.locked ? 'pointer-events-none' : ''}
       `}
       onClick={handleClick}
       data-testid={`vault-card-${rank}`}
     >
+      {/* LOCKED Badge - Game In Progress */}
+      <LockedBadge isLocked={pick.locked} commenceTime={pick.commence_time} />
+      
       {/* T-Minus Countdown Badge */}
       <TMinusBadge commenceTime={pick.commence_time} tMinusGames={tMinusGames} />
       

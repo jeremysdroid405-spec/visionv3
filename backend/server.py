@@ -1290,38 +1290,45 @@ async def get_hydrated_board():
 # ==================== WAREHOUSE MODEL ENDPOINTS (ZERO API CALLS) ====================
 
 @api_router.get("/v3/cached-props")
-async def get_cached_props(include_locked: bool = False):
+async def get_cached_props(include_locked: bool = True):
     """
     THE PRIMARY ENDPOINT - Reads ONLY from MongoDB.
     NO Odds API calls. Zero credit usage.
     
     Returns the full cached board with:
-    - All players grouped by props (filtered by lock status)
+    - All players grouped by props (with locked status marked)
     - Trending 10
     - synced_at timestamp
     - t_minus_games: Games starting in <15 minutes (for countdown timers)
     - lock_status: Overview of active/locked games
     
     Query params:
-    - include_locked: If false (default), excludes players from games that have started
+    - include_locked: If true (default), includes locked players with locked=true flag
     """
     if not demon_goblin_engine:
         raise HTTPException(status_code=500, detail="Engine not initialized")
     
     board = await demon_goblin_engine.get_cached_board()
     
-    # Filter out locked players if requested (default: filter them out)
-    if not include_locked and game_lock_engine:
+    if game_lock_engine:
         # Get list of locked event IDs
         locked_games = await game_lock_engine.get_locked_games()
         locked_event_ids = {g.get("event_id") for g in locked_games}
         
-        # Filter players whose event_id is in locked_event_ids
+        # Mark players as locked if their event is locked
         if board.get("players"):
-            board["players"] = [
-                p for p in board["players"]
-                if p.get("event_id") not in locked_event_ids and not p.get("locked")
-            ]
+            for player in board["players"]:
+                # Check if any of the player's props are from locked events
+                player_props = player.get("props", [])
+                for prop in player_props:
+                    if prop.get("event_id") in locked_event_ids:
+                        player["locked"] = True
+                        player["commence_time"] = prop.get("commence_time")
+                        break
+            
+            # Filter out locked if requested
+            if not include_locked:
+                board["players"] = [p for p in board["players"] if not p.get("locked")]
         
         # Add lock status and t-minus info
         lock_status = await game_lock_engine.get_lock_status()
@@ -1471,6 +1478,30 @@ async def get_demon_radar():
     
     result = await demon_goblin_engine.get_demon_radar()
     
+    # Add lock status to picks by checking player's game commence_time
+    if game_lock_engine and result.get("picks"):
+        locked_games = await game_lock_engine.get_locked_games()
+        locked_event_ids = {g.get("event_id") for g in locked_games}
+        
+        # Get commence_time for each player from cached_board
+        for pick in result["picks"]:
+            player_name = pick.get("player_name")
+            # Look up the player in cached_board to get their event_id/commence_time
+            board_entry = await db.dg_cached_board.find_one(
+                {"player_name": player_name},
+                {"_id": 0, "props": 1}
+            )
+            if board_entry and board_entry.get("props"):
+                first_prop = board_entry["props"][0]
+                pick["event_id"] = first_prop.get("event_id")
+                pick["commence_time"] = first_prop.get("commence_time")
+                pick["home_team"] = first_prop.get("home_team")
+                pick["away_team"] = first_prop.get("away_team")
+                
+                # Check if locked
+                if first_prop.get("event_id") in locked_event_ids:
+                    pick["locked"] = True
+    
     return result
 
 
@@ -1492,6 +1523,27 @@ async def get_goblin_vault():
         raise HTTPException(status_code=500, detail="Engine not initialized")
     
     result = await demon_goblin_engine.get_goblin_vault()
+    
+    # Add lock status to picks by checking player's game commence_time
+    if game_lock_engine and result.get("picks"):
+        locked_games = await game_lock_engine.get_locked_games()
+        locked_event_ids = {g.get("event_id") for g in locked_games}
+        
+        for pick in result["picks"]:
+            player_name = pick.get("player_name")
+            board_entry = await db.dg_cached_board.find_one(
+                {"player_name": player_name},
+                {"_id": 0, "props": 1}
+            )
+            if board_entry and board_entry.get("props"):
+                first_prop = board_entry["props"][0]
+                pick["event_id"] = first_prop.get("event_id")
+                pick["commence_time"] = first_prop.get("commence_time")
+                pick["home_team"] = first_prop.get("home_team")
+                pick["away_team"] = first_prop.get("away_team")
+                
+                if first_prop.get("event_id") in locked_event_ids:
+                    pick["locked"] = True
     
     return result
 
@@ -1538,6 +1590,27 @@ async def get_goblin_recon():
         raise HTTPException(status_code=500, detail="Engine not initialized")
     
     result = await demon_goblin_engine.get_goblin_recon()
+    
+    # Add lock status to picks by checking player's game commence_time
+    if game_lock_engine and result.get("picks"):
+        locked_games = await game_lock_engine.get_locked_games()
+        locked_event_ids = {g.get("event_id") for g in locked_games}
+        
+        for pick in result["picks"]:
+            player_name = pick.get("player_name")
+            board_entry = await db.dg_cached_board.find_one(
+                {"player_name": player_name},
+                {"_id": 0, "props": 1}
+            )
+            if board_entry and board_entry.get("props"):
+                first_prop = board_entry["props"][0]
+                pick["event_id"] = first_prop.get("event_id")
+                pick["commence_time"] = first_prop.get("commence_time")
+                pick["home_team"] = first_prop.get("home_team")
+                pick["away_team"] = first_prop.get("away_team")
+                
+                if first_prop.get("event_id") in locked_event_ids:
+                    pick["locked"] = True
     
     return result
 
