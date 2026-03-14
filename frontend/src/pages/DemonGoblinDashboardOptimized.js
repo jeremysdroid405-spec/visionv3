@@ -132,6 +132,19 @@ const BeaconGlowStyles = () => (
       50% { opacity: 1; transform: scale(1.01); }
     }
     
+    /* ==================== CARD GLOW EFFECTS ==================== */
+    .demon-card-glow {
+      background: linear-gradient(135deg, rgba(127, 29, 29, 0.6) 0%, rgba(24, 24, 27, 0.95) 100%) !important;
+      border: 1px solid rgba(239, 68, 68, 0.5) !important;
+      box-shadow: 0 0 20px rgba(239, 68, 68, 0.3), 0 0 40px rgba(239, 68, 68, 0.1) !important;
+    }
+    
+    .goblin-card-glow {
+      background: linear-gradient(135deg, rgba(20, 83, 45, 0.6) 0%, rgba(24, 24, 27, 0.95) 100%) !important;
+      border: 1px solid rgba(34, 197, 94, 0.5) !important;
+      box-shadow: 0 0 20px rgba(34, 197, 94, 0.3), 0 0 40px rgba(34, 197, 94, 0.1) !important;
+    }
+    
     /* ==================== MOBILE SWIPE CARDS ==================== */
     .swipe-container {
       display: flex !important;
@@ -1167,11 +1180,6 @@ const RadarCard = memo(({ pick, rank, onClick, isScanning = false }) => {
   const hasVisionGlow = pick.has_high_conflict || 
     ((pick.intel_briefing || pick.insight_summary) && !(pick.intel_briefing || pick.insight_summary).toLowerCase().includes('standard'));
   
-  // Determine card styling based on Vision status
-  const cardClass = hasVisionGlow 
-    ? 'demon-master-card vision-pulse' 
-    : 'bg-gradient-to-br from-red-950/30 to-zinc-950 border-red-900/50';
-  
   // Heat Level flame rendering
   const heatLevel = pick.heat_level || 0;
   const renderFlames = () => {
@@ -1204,7 +1212,8 @@ const RadarCard = memo(({ pick, rank, onClick, isScanning = false }) => {
   return (
     <Card 
       className={`
-        ${cardClass}
+        demon-card-glow
+        ${hasVisionGlow ? 'vision-pulse' : ''}
         hover:scale-[1.02] transition-all duration-300
         cursor-pointer active:scale-[0.98] relative overflow-visible
       `}
@@ -1368,11 +1377,6 @@ const VaultCard = memo(({ pick, rank, onClick }) => {
   const hasVisionGlow = pick.has_high_conflict || 
     ((pick.intel_briefing || pick.insight_summary) && !(pick.intel_briefing || pick.insight_summary).toLowerCase().includes('standard'));
   
-  // Determine card styling based on Vision status
-  const cardClass = hasVisionGlow 
-    ? 'goblin-vault-card' 
-    : 'bg-gradient-to-br from-green-950/30 to-zinc-950 border-green-900/50';
-  
   // Social Signals
   const hasVolatility = pick.volatility_flag;
   const hasRevengeGame = pick.revenge_game;
@@ -1454,7 +1458,8 @@ const VaultCard = memo(({ pick, rank, onClick }) => {
   return (
     <Card 
       className={`
-        ${cardClass}
+        goblin-card-glow
+        ${hasVisionGlow ? 'vision-pulse' : ''}
         hover:scale-[1.02] transition-all duration-300
         cursor-pointer active:scale-[0.98] relative overflow-visible
       `}
@@ -1760,9 +1765,9 @@ const ReconCard = memo(({ parlay, tier, onClick }) => {
   return (
     <Card 
       className={`
-        bg-gradient-to-br ${style.bg} to-zinc-950 ${style.border}
+        goblin-card-glow
         hover:scale-[1.02] transition-all duration-200 cursor-pointer
-        overflow-hidden border-2 ${!lineupValid ? 'opacity-60' : ''}
+        overflow-hidden ${!lineupValid ? 'opacity-60' : ''}
       `}
       onClick={onClick}
       data-testid={`recon-card-${tier}`}
