@@ -71,6 +71,7 @@ from odds_api_mapper import (
     getFullPlayerData,
     rebuildMapping as rebuildOddsMapping
 )
+from ai_context_engine import AiContextEngine
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -3410,6 +3411,94 @@ async def get_ticker_data():
         "live_games": scores_result.get("live_count", 0),
         "upcoming_games": scores_result.get("upcoming_count", 0),
         "news_count": len(news_result.get("news", []))
+    }
+
+
+# ==================== AI CONTEXT ENGINE ENDPOINTS ====================
+
+@api_router.post("/v3/ai-context/run")
+async def run_ai_context_engine(limit: Optional[int] = Query(None, description="Limit number of players to process")):
+    """
+    Run the AI Context Engine to evaluate all players.
+    
+    This will:
+    1. Fetch news/injury reports for each player
+    2. Send to LLM for impact evaluation
+    3. Update nba_master_hub_2026 with ai_context_score and ai_context_reason
+    """
+    engine = AiContextEngine(db)
+    result = await engine.update_master_hub_with_context(limit=limit)
+    return result
+
+
+@api_router.post("/v3/ai-context/evaluate/{player_name}")
+async def evaluate_player_context(player_name: str):
+    """
+    Evaluate and update context for a single player.
+    """
+    engine = AiContextEngine(db)
+    result = await engine.evaluate_single_player(player_name)
+    return result
+
+
+@api_router.get("/v3/ai-context/status")
+async def get_ai_context_status():
+    """
+    Get status of AI context scores in the master hub.
+    """
+    # Count players with context scores
+    total = await db.nba_master_hub_2026.count_documents({})
+    with_context = await db.nba_master_hub_2026.count_documents({"ai_context_score": {"$exists": True}})
+    
+    # Get score distribution
+    positive = await db.nba_master_hub_2026.count_documents({"ai_context_score": {"$gt": 0.6}})
+    neutral = await db.nba_master_hub_2026.count_documents({"ai_context_score": {"$gte": 0.4, "$lte": 0.6}})
+    negative = await db.nba_master_hub_2026.count_documents({"ai_context_score": {"$lt": 0.4}})
+    
+    # Get most recent update
+    latest = await db.nba_master_hub_2026.find_one(
+        {"ai_context_updated_at": {"$exists": True}},
+        {"_id": 0, "player_name": 1, "ai_context_updated_at": 1},
+        sort=[("ai_context_updated_at", -1)]
+    )
+    
+    return {
+        "success": True,
+        "total_players": total,
+        "players_with_context": with_context,
+        "coverage_pct": round((with_context / total * 100) if total > 0 else 0, 1),
+        "distribution": {
+            "positive_boost": positive,
+            "neutral": neutral,
+            "negative_flag": negative
+        },
+        "last_update": latest.get("ai_context_updated_at") if latest else None,
+        "last_player": latest.get("player_name") if latest else None
+    }
+
+
+@api_router.get("/v3/ai-context/player/{player_name}")
+async def get_player_context(player_name: str):
+    """
+    Get AI context data for a specific player.
+    """
+    player = await db.nba_master_hub_2026.find_one(
+        {"$or": [
+            {"display_name": {"$regex": f"^{player_name}$", "$options": "i"}},
+            {"player_name": {"$regex": f"^{player_name}$", "$options": "i"}}
+        ]},
+        {"_id": 0, "display_name": 1, "player_name": 1, "ai_context_score": 1, "ai_context_reason": 1, "ai_context_updated_at": 1}
+    )
+    
+    if not player:
+        raise HTTPException(status_code=404, detail=f"Player '{player_name}' not found")
+    
+    return {
+        "success": True,
+        "player_name": player.get("display_name") or player.get("player_name"),
+        "context_score": player.get("ai_context_score", 0.5),
+        "context_reason": player.get("ai_context_reason", "Not evaluated"),
+        "updated_at": player.get("ai_context_updated_at")
     }
 
 
