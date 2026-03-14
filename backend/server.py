@@ -56,6 +56,14 @@ from board_intelligence_engine import (
     BoardIntelligenceEngine,
     get_board_intel_engine
 )
+from nba_master_hub import (
+    get_master_hub,
+    fetchPlayerIntel,
+    fetchPlayerIntelByName,
+    searchPlayers as hubSearchPlayers,
+    getHubStats,
+    runDailySync as runHubSync
+)
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -2120,6 +2128,69 @@ async def get_scouting_projections():
         }
     except Exception as e:
         return {"projections": [], "count": 0, "error": str(e)}
+
+
+# ==================== NBA MASTER HUB ENDPOINTS ====================
+# SINGLE SOURCE OF TRUTH for all player data
+
+@api_router.get("/v3/master-hub/player/{player_id}")
+async def get_player_intel(player_id: str):
+    """
+    THE VALET FUNCTION - Fetch player intel from Master Hub
+    
+    This is the ONLY way to access player data from NBA_MASTER_HUB_2026.
+    
+    Args:
+        player_id: Player ID (tank01_id, nba_id, or display_name)
+        
+    Returns:
+        Complete player object with all fields
+    """
+    player = await fetchPlayerIntel(player_id)
+    if not player:
+        raise HTTPException(status_code=404, detail=f"Player not found: {player_id}")
+    return player
+
+
+@api_router.get("/v3/master-hub/player/name/{display_name}")
+async def get_player_by_name(display_name: str):
+    """Fetch player by display name."""
+    player = await fetchPlayerIntelByName(display_name)
+    if not player:
+        raise HTTPException(status_code=404, detail=f"Player not found: {display_name}")
+    return player
+
+
+@api_router.get("/v3/master-hub/search")
+async def search_hub_players(q: str, limit: int = 10):
+    """Search players in Master Hub."""
+    players = await hubSearchPlayers(q, limit)
+    return {"players": players, "count": len(players)}
+
+
+@api_router.get("/v3/master-hub/stats")
+async def get_hub_statistics():
+    """Get Master Hub statistics."""
+    return await getHubStats()
+
+
+@api_router.post("/v3/master-hub/sync")
+async def trigger_hub_sync():
+    """
+    Manually trigger Master Hub daily sync.
+    
+    Normally runs at 4:00 AM ET automatically.
+    """
+    result = await runHubSync()
+    return result
+
+
+@api_router.post("/v3/master-hub/start-scheduler")
+async def start_hub_scheduler():
+    """Start the 4:00 AM ET daily sync scheduler."""
+    hub = get_master_hub()
+    await hub.startDailyScheduler()
+    return {"status": "started", "schedule": "4:00 AM ET daily"}
 
 
 # ==================== RAW STAT VALIDATION ENDPOINTS ====================

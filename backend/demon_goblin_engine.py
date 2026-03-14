@@ -58,6 +58,9 @@ from payout_engine import (
     BASE_MULTIPLIERS
 )
 
+# NBA Master Hub - SINGLE SOURCE OF TRUTH
+from nba_master_hub import fetchPlayerIntel, fetchPlayerIntelByName, get_master_hub
+
 # NBA.com API fallback for players missing from BallDontLie
 try:
     from nba_api.stats.endpoints import playergamelog
@@ -1101,11 +1104,21 @@ class DemonGoblinEngine:
 
     async def get_photo_url_from_master_roster(self, player_name: str) -> Optional[str]:
         """
-        DEPRECATED: Photo lookup now happens during sync.
-        Kept for backwards compatibility but should not be called at runtime.
+        Get photo URL from Master Hub (SSOT).
+        Uses the Valet function fetchPlayerIntelByName.
         """
-        result = await self.get_photo_and_team_from_master_roster(player_name)
-        return result.get("photo_url") if result else None
+        try:
+            player = await fetchPlayerIntelByName(player_name)
+            if player:
+                return player.get("headshot_url")
+        except Exception as e:
+            logger.warning(f"[MASTER HUB] Photo lookup failed for {player_name}: {e}")
+        
+        # Fallback to static NBA player ID mapping
+        nba_id = get_nba_player_id(player_name)
+        if nba_id:
+            return f"https://cdn.nba.com/headshots/nba/latest/1040x760/{nba_id}.png"
+        return None
     
     async def refresh_cached_board_photos(self) -> Dict[str, Any]:
         """
