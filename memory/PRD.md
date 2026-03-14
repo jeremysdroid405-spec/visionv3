@@ -320,11 +320,24 @@ Build a high-performance NBA Player Prop Dashboard that mimics the PrizePicks us
   - Updated all spec row text with refined "War Room" copy
   - Added 🔥🔥🔥🔥 fire emojis to Demon Radar and 💎💎💎💎 sapphire gems to Goblin Recon
 
+## Recent Changes (Dec 14, 2025 - Session 6)
+- **Auth Page Mobile UI Fix**:
+  - Fixed text cutoff in "Mission Objectives" section on mobile
+  - Removed `line-clamp-3` restriction that was truncating "The Edge" descriptions
+  - Increased text size from `text-[11px]` to `text-xs` for better readability
+  - Improved title font size from `text-xs` to `text-sm`
+  - All spec rows now show full content without truncation on mobile
+- **Deployment Blocker Fix**:
+  - Fixed hardcoded Supabase URL in `/app/frontend/src/lib/supabase.js`
+  - Changed from hardcoded `'https://pqkfcybnvvhvbqglsmvz.supabase.co'` to `process.env.REACT_APP_SUPABASE_URL`
+  - Added `REACT_APP_SUPABASE_URL` environment variable to `/app/frontend/.env`
+  - MONGO_URL in backend/.env correctly uses environment variable pattern (parameterized for production)
+
 ## Next Steps
-1. **UI Sync for Live Payouts** - Update frontend to display new `payout_display` and `asset_breakdown` fields in parlay views
-2. **Refactor `DemonGoblinDashboardOptimized.js`** (3500+ lines monolith) - Extract components:
+1. **P0: Stripe Integration & Authentication** - Implement paid subscription tiers
+2. **P1: Refactor `DemonGoblinDashboardOptimized.js`** (4000+ lines monolith) - Extract components:
    - RadarCard, VaultCard, PlayerDetailView, TheGauntlet, TheSafeHaven
    - Move to `/app/frontend/src/components/dashboard/`
-3. **"Pro Tier" Features** - Gate certain features behind user tier
-4. **"Copy Parlay" Button** - Add clipboard copy for social sharing
-5. **Social Signals Polling** - Add 30-minute auto-polling for news sentiment & revenge games
+3. **P2: "Pro Tier" Features** - Gate certain features behind user tier
+4. **P3: "Copy Parlay" Button** - Add clipboard copy for social sharing
+5. **P4: Mobile Bottom Navigation** - Add persistent bottom nav for mobile users

@@ -103,19 +103,19 @@ const TerminalLine = ({ label, status, statusColor = 'emerald', delay = 0 }) => 
 
 // Kill List Spec Row - Enhanced Industrial Design (Mobile Optimized)
 const SpecRow = ({ spec, title, edge, icon }) => (
-  <div className="py-3 sm:py-5 border-b border-zinc-800/30 last:border-0 group">
+  <div className="py-4 sm:py-5 border-b border-zinc-800/30 last:border-0 group">
     <div className="flex items-start gap-3 sm:gap-4">
       <div className="flex-shrink-0 w-10 h-10 sm:w-12 sm:h-12 rounded-lg border border-zinc-700/50 bg-zinc-900/80 flex items-center justify-center group-hover:border-emerald-800/50 group-hover:bg-zinc-900 transition-all">
         {icon}
       </div>
       <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2 sm:gap-3 mb-0.5 sm:mb-1">
+        <div className="flex items-center gap-2 sm:gap-3 mb-1">
           <span className="text-emerald-500 font-mono text-[10px] sm:text-xs uppercase tracking-widest font-bold">{spec}</span>
           <div className="flex-1 h-px bg-gradient-to-r from-zinc-800 to-transparent" />
         </div>
-        <p className="text-white font-medium text-xs sm:text-sm mb-1 sm:mb-2">{title}</p>
-        <div className="text-zinc-500 text-[11px] sm:text-xs leading-relaxed line-clamp-3 sm:line-clamp-none">
-          <span className="text-zinc-400 font-semibold">The Edge:</span> {edge}
+        <p className="text-white font-medium text-sm sm:text-sm mb-1.5 sm:mb-2">{title}</p>
+        <div className="text-zinc-400 text-xs sm:text-xs leading-relaxed">
+          <span className="text-zinc-300 font-semibold">The Edge:</span> {edge}
         </div>
       </div>
     </div>
