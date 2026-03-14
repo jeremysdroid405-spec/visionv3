@@ -476,6 +476,95 @@ NOW WRITE YOUR 2-SENTENCE THESIS FOR: {player_name} {direction} {target_line} {p
             
             await asyncio.sleep(0.3)
         
+        # 3. Process Parlay Builder Picks (all players in parlays)
+        parlay_collections = [
+            self.db.dg_parlays_demon,
+            self.db.dg_parlays_goblin
+        ]
+        
+        for parlay_col in parlay_collections:
+            try:
+                parlays = await parlay_col.find({}, {"_id": 0}).to_list(length=50)
+                logger.info(f"[VISION] Processing parlays from {parlay_col.name}")
+                
+                for parlay in parlays:
+                    picks = parlay.get("picks", [])
+                    for pick in picks:
+                        player_name = pick.get("player_name")
+                        if not player_name or player_name in processed_players:
+                            continue
+                        
+                        player_data = await self.cached_board.find_one(
+                            {"player_name": player_name},
+                            {"_id": 0}
+                        )
+                        
+                        if not player_data:
+                            continue
+                        
+                        # Get prop info from pick or player_data
+                        stat_type = pick.get("stat_type", "points")
+                        line = pick.get("line", pick.get("demon_line", pick.get("goblin_line", 0)))
+                        
+                        # Find matching prop in player_data
+                        props = player_data.get("props", [])
+                        matching_prop = None
+                        for p in props:
+                            if stat_type.lower() in p.get("market", "").lower():
+                                matching_prop = p
+                                break
+                        
+                        if not matching_prop and props:
+                            matching_prop = props[0]
+                        
+                        if not matching_prop:
+                            matching_prop = {}
+                        
+                        hit_rates = matching_prop.get("hit_rates", {})
+                        l10_stats = hit_rates.get("l10", {})
+                        l5_stats = hit_rates.get("l5", {})
+                        
+                        if not l10_stats:
+                            l10_stats = {
+                                "avg": pick.get("season_avg", 0),
+                                "hit_rate_pct": pick.get("h10_rate", 0) * 100 if pick.get("h10_rate", 0) < 1 else pick.get("h10_rate", 0),
+                                "games_over": pick.get("h10_over", 0),
+                                "total_games": pick.get("h10_games", 10)
+                            }
+                        
+                        is_demon = pick.get("is_demon", False)
+                        is_goblin = pick.get("is_goblin", False)
+                        
+                        thesis = await self.generate_strategic_thesis(
+                            player_name=player_name,
+                            prop_type=stat_type,
+                            target_line=line,
+                            direction=pick.get("direction", "Over"),
+                            team=player_data.get("team", pick.get("team", "")),
+                            opponent=matching_prop.get("away_team", "") or matching_prop.get("home_team", ""),
+                            l10_stats=l10_stats,
+                            l5_stats=l5_stats,
+                            position=player_data.get("position", ""),
+                            injury_context=player_data.get("injury_context", ""),
+                            game_id=matching_prop.get("event_id", ""),
+                            is_demon=is_demon,
+                            is_goblin=is_goblin
+                        )
+                        
+                        if thesis:
+                            await self.cached_board.update_one(
+                                {"player_name": player_name},
+                                {"$set": {"intel_briefing": thesis, "has_vision": True}}
+                            )
+                            generated += 1
+                            processed_players.add(player_name)
+                        else:
+                            errors += 1
+                        
+                        await asyncio.sleep(0.3)
+            except Exception as e:
+                logger.warning(f"[VISION] Error processing parlay collection: {e}")
+        
         logger.info(f"[VISION] Generated {generated} Strategic Theses ({errors} errors)")
         
         return {

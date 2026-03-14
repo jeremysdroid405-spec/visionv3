@@ -1564,6 +1564,7 @@ async def get_parlay_builder():
     - Estimated payout multipliers
     - Combined probability calculations
     - Game correlation info
+    - Strategic Vision intel for each pick
     
     NO API CALLS - reads from pre-calculated MongoDB data.
     """
@@ -1571,6 +1572,34 @@ async def get_parlay_builder():
         raise HTTPException(status_code=500, detail="Engine not initialized")
     
     result = await demon_goblin_engine.get_parlay_builder()
+    
+    # Attach intel briefings and lock status to all parlay picks
+    if result.get("parlays"):
+        locked_games = []
+        locked_event_ids = set()
+        if game_lock_engine:
+            locked_games = await game_lock_engine.get_locked_games()
+            locked_event_ids = {g.get("event_id") for g in locked_games}
+        
+        for parlay_type, parlay_data in result["parlays"].items():
+            picks = parlay_data.get("picks", [])
+            for pick in picks:
+                player_name = pick.get("player_name")
+                if player_name:
+                    # Get intel and game info from cached_board
+                    board_entry = await db.dg_cached_board.find_one(
+                        {"player_name": player_name},
+                        {"_id": 0, "intel_briefing": 1, "props": 1}
+                    )
+                    if board_entry:
+                        pick["intel_briefing"] = board_entry.get("intel_briefing", "")
+                        props = board_entry.get("props", [])
+                        if props:
+                            first_prop = props[0]
+                            pick["event_id"] = first_prop.get("event_id")
+                            pick["commence_time"] = first_prop.get("commence_time")
+                            if first_prop.get("event_id") in locked_event_ids:
+                                pick["locked"] = True
     
     return result
 
@@ -1589,6 +1618,7 @@ async def get_goblin_recon():
     - 88%+ weighted hit rate threshold
     - Recon Lock = player's floor >= line
     - Blowout protection
+    - Strategic Vision intel for each pick
     
     NO API CALLS - reads from pre-calculated MongoDB data.
     """
@@ -1597,26 +1627,55 @@ async def get_goblin_recon():
     
     result = await demon_goblin_engine.get_goblin_recon()
     
-    # Add lock status to picks by checking player's game commence_time
-    if game_lock_engine and result.get("picks"):
+    # Add intel briefings and lock status to picks
+    locked_games = []
+    locked_event_ids = set()
+    if game_lock_engine:
         locked_games = await game_lock_engine.get_locked_games()
         locked_event_ids = {g.get("event_id") for g in locked_games}
-        
+    
+    if result.get("picks"):
         for pick in result["picks"]:
             player_name = pick.get("player_name")
             board_entry = await db.dg_cached_board.find_one(
                 {"player_name": player_name},
-                {"_id": 0, "props": 1}
+                {"_id": 0, "props": 1, "intel_briefing": 1}
             )
-            if board_entry and board_entry.get("props"):
-                first_prop = board_entry["props"][0]
-                pick["event_id"] = first_prop.get("event_id")
-                pick["commence_time"] = first_prop.get("commence_time")
-                pick["home_team"] = first_prop.get("home_team")
-                pick["away_team"] = first_prop.get("away_team")
+            if board_entry:
+                # Add intel briefing
+                pick["intel_briefing"] = board_entry.get("intel_briefing", "")
                 
-                if first_prop.get("event_id") in locked_event_ids:
-                    pick["locked"] = True
+                # Add lock status
+                if board_entry.get("props"):
+                    first_prop = board_entry["props"][0]
+                    pick["event_id"] = first_prop.get("event_id")
+                    pick["commence_time"] = first_prop.get("commence_time")
+                    pick["home_team"] = first_prop.get("home_team")
+                    pick["away_team"] = first_prop.get("away_team")
+                    
+                    if first_prop.get("event_id") in locked_event_ids:
+                        pick["locked"] = True
+    
+    # Also process parlays if present
+    if result.get("parlays"):
+        for parlay_type, parlay_data in result["parlays"].items():
+            parlay_picks = parlay_data.get("picks", [])
+            for pick in parlay_picks:
+                player_name = pick.get("player_name")
+                if player_name:
+                    board_entry = await db.dg_cached_board.find_one(
+                        {"player_name": player_name},
+                        {"_id": 0, "intel_briefing": 1, "props": 1}
+                    )
+                    if board_entry:
+                        pick["intel_briefing"] = board_entry.get("intel_briefing", "")
+                        props = board_entry.get("props", [])
+                        if props:
+                            first_prop = props[0]
+                            pick["event_id"] = first_prop.get("event_id")
+                            pick["commence_time"] = first_prop.get("commence_time")
+                            if first_prop.get("event_id") in locked_event_ids:
+                                pick["locked"] = True
     
     return result
 
