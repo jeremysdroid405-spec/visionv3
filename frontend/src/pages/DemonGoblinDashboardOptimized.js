@@ -3686,6 +3686,13 @@ export const DemonGoblinDashboardOptimized = ({ isDemoMode = false }) => {
   // RAW VALIDATION TABLE - Data Integrity Check
   const [showValidationTable, setShowValidationTable] = useState(false);
   
+  // Board Intelligence Status - "Last Synced" footer
+  const [boardIntelStatus, setBoardIntelStatus] = useState({
+    time_since_sync_display: 'Loading...',
+    last_sync_type: null,
+    scheduler_running: false
+  });
+  
   // Navigation state
   const [selectedPlayer, setSelectedPlayer] = useState(null);
   
@@ -3719,7 +3726,7 @@ export const DemonGoblinDashboardOptimized = ({ isDemoMode = false }) => {
       console.log('[CACHED] Loading from MongoDB...');
       
       // Load board, radar, vault, parlays, recon, injuries, social signals, data status, sync status, live scores, and lock status in parallel
-      const [boardResponse, radarResponse, vaultResponse, parlayResponse, reconResponse, injuryResponse, newsResponse, dataStatusResponse, socialSignalsResponse, syncStatusResponse, liveScoresResponse, lockStatusResponse, tMinusResponse] = await Promise.all([
+      const [boardResponse, radarResponse, vaultResponse, parlayResponse, reconResponse, injuryResponse, newsResponse, dataStatusResponse, socialSignalsResponse, syncStatusResponse, liveScoresResponse, lockStatusResponse, tMinusResponse, boardIntelResponse] = await Promise.all([
         axios.get(`${API}/v3/cached-props`),
         axios.get(`${API}/v3/demon-radar`),
         axios.get(`${API}/v3/goblin-vault`),
@@ -3732,7 +3739,8 @@ export const DemonGoblinDashboardOptimized = ({ isDemoMode = false }) => {
         axios.get(`${API}/v3/sync-status`).catch(() => ({ data: { engine_status: 'offline', sync_age_display: 'N/A' }})),
         axios.get(`${API}/v3/live-scores`).catch(() => ({ data: { success: false, games: [] }})),
         axios.get(`${API}/v3/lock-status`).catch(() => ({ data: { active_games: 0, locked_games: 0, t_minus_games: 0 }})),
-        axios.get(`${API}/v3/t-minus-games`).catch(() => ({ data: { games: [], count: 0 }}))
+        axios.get(`${API}/v3/t-minus-games`).catch(() => ({ data: { games: [], count: 0 }})),
+        axios.get(`${API}/v3/board-intel/status`).catch(() => ({ data: { time_since_sync_display: 'Not synced', scheduler_running: false }}))
       ]);
       
       // Social signals for applying to picks
@@ -3851,6 +3859,17 @@ export const DemonGoblinDashboardOptimized = ({ isDemoMode = false }) => {
         if (tMinusResponse.data.games.length > 0) {
           console.log(`[T-MINUS] ${tMinusResponse.data.count} games starting soon!`);
         }
+      }
+      
+      // Board Intelligence Status - "Last Synced" display
+      if (boardIntelResponse.data) {
+        setBoardIntelStatus({
+          time_since_sync_display: boardIntelResponse.data.time_since_sync_display || 'Not synced',
+          last_sync_type: boardIntelResponse.data.last_sync_type,
+          scheduler_running: boardIntelResponse.data.scheduler_running || false,
+          next_scheduled_sync: boardIntelResponse.data.next_scheduled_sync
+        });
+        console.log(`[BOARD INTEL] ${boardIntelResponse.data.time_since_sync_display}`);
       }
       
     } catch (error) {
@@ -4273,6 +4292,40 @@ export const DemonGoblinDashboardOptimized = ({ isDemoMode = false }) => {
           players={players}
         />
       )}
+      
+      {/* Board Intelligence Footer - "Last Synced" Display */}
+      <div className="fixed bottom-0 left-0 right-0 bg-zinc-950/95 backdrop-blur-sm border-t border-zinc-800 px-4 py-2 z-40">
+        <div className="max-w-7xl mx-auto flex items-center justify-between text-xs">
+          <div className="flex items-center gap-4">
+            <span className="text-zinc-500 font-mono">
+              {boardIntelStatus.time_since_sync_display}
+            </span>
+            {boardIntelStatus.last_sync_type && (
+              <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                boardIntelStatus.last_sync_type === 'primary' 
+                  ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' 
+                  : 'bg-blue-500/20 text-blue-400 border border-blue-500/30'
+              }`}>
+                {boardIntelStatus.last_sync_type === 'primary' ? 'FULL SYNC' : 'DELTA'}
+              </span>
+            )}
+            {boardIntelStatus.scheduler_running && (
+              <span className="flex items-center gap-1 text-emerald-400">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                AUTO
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-3 text-zinc-500">
+            {boardIntelStatus.next_scheduled_sync && (
+              <span className="hidden sm:inline">
+                Next: <span className="text-zinc-400">{boardIntelStatus.next_scheduled_sync.time} ({boardIntelStatus.next_scheduled_sync.type?.split(' ')[0]})</span>
+              </span>
+            )}
+            <span className="text-zinc-600">PickVision v3</span>
+          </div>
+        </div>
+      </div>
     </div>
   );
 };

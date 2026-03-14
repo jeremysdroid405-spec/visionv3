@@ -23,6 +23,18 @@ Build "PickVision," a high-performance NBA Player Prop Dashboard with a "militar
 
 ### ✅ Completed (December 2025 - March 2026)
 
+**Automated Board Intelligence & Sync System (NEW - March 14, 2026)**
+- Primary Sync at 10:30 AM ET (Full + Vision AI)
+- Delta Refreshes at 1:45 PM, 4:00 PM, 5:45 PM, 7:00 PM ET (Odds only)
+- New Entry Logic: Auto-generates Vision for new demon/goblin players
+- Removal Logic: Removes players when status → Inactive or line pulled
+- Live Ticker Handover: Every 60s checks if game started
+- "Last Synced: MM:SS" footer display with sync type badge
+
+**5-Pick Goblin Parlay (Fixed - March 14, 2026)**
+- Added "Green Stack" 5-pick parlay to Safe Haven section
+- All 5 Goblin Recon parlay tiers now generating (2-6 picks)
+
 **Game Lock Engine v1.0**
 - Background task checking `commence_time` every 60 seconds
 - Auto-locks games/props that have started

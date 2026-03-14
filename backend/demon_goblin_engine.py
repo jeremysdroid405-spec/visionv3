@@ -6216,6 +6216,153 @@ V3.1 TRUTH ENGINE - DATA INTEGRITY:
         
         return results
     
+    async def run_delta_sync(self) -> Dict[str, Any]:
+        """
+        DELTA SYNC - Odds-only update for Delta Refreshes
+        
+        Updates line and price values for existing players without
+        re-fetching stats or regenerating Vision AI.
+        
+        Used by Board Intelligence Engine for:
+        - 1:45 PM, 4:00 PM, 5:45 PM, 7:00 PM ET refreshes
+        """
+        sync_start = datetime.now(timezone.utc)
+        self._current_date = self.get_current_date()
+        
+        logger.info("─" * 70)
+        logger.info(f"DELTA SYNC - ODDS ONLY UPDATE")
+        logger.info(f"Date: {self._current_date}")
+        logger.info("─" * 70)
+        
+        results = {
+            "success": True,
+            "sync_type": "delta",
+            "sync_date": self._current_date,
+            "sync_time": sync_start.isoformat(),
+            "lines_updated": 0,
+            "new_players": [],
+            "removed_players": [],
+            "errors": []
+        }
+        
+        try:
+            # Get existing players before update
+            existing_board = await self.dg_cached_board.find_one({"type": "main_board"})
+            existing_players = set()
+            if existing_board and "board" in existing_board:
+                for p in existing_board["board"].get("players", []):
+                    existing_players.add(p.get("player_name", ""))
+            
+            # Fetch fresh events and odds (PILLAR 1 only)
+            logger.info("\n[DELTA] Fetching fresh odds from PrizePicks...")
+            events = await self.fetch_todays_events()
+            
+            if not events:
+                results["success"] = False
+                results["errors"].append("No NBA events found")
+                return results
+            
+            all_props = []
+            all_players = set()
+            
+            for event in events:
+                # Fetch PrizePicks odds for each event
+                props = await self.fetch_prizepicks_odds(event)
+                if props:
+                    all_props.extend(props)
+                    for prop in props:
+                        all_players.add(prop.get("player_name", ""))
+            
+            logger.info(f"[DELTA] Fetched {len(all_props)} props for {len(all_players)} players")
+            
+            # Identify new and removed players
+            new_players = all_players - existing_players
+            removed_players = existing_players - all_players
+            
+            results["new_players"] = list(new_players)
+            results["removed_players"] = list(removed_players)
+            
+            if new_players:
+                logger.info(f"[DELTA] New players: {list(new_players)[:5]}...")
+            if removed_players:
+                logger.info(f"[DELTA] Removed players: {list(removed_players)[:5]}...")
+            
+            # Update existing players' odds in the cached board
+            if existing_board and "board" in existing_board:
+                players_list = existing_board["board"].get("players", [])
+                
+                # Create lookup for new props by player
+                props_by_player = {}
+                for prop in all_props:
+                    pname = prop.get("player_name", "")
+                    if pname not in props_by_player:
+                        props_by_player[pname] = []
+                    props_by_player[pname].append(prop)
+                
+                # Update each player's props with fresh odds
+                for player in players_list:
+                    pname = player.get("player_name", "")
+                    if pname in props_by_player:
+                        new_props = props_by_player[pname]
+                        
+                        # Update standard props
+                        for old_prop in player.get("props", []):
+                            for new_prop in new_props:
+                                if (old_prop.get("market") == new_prop.get("market") and
+                                    old_prop.get("direction") == new_prop.get("direction")):
+                                    old_prop["line"] = new_prop.get("line", old_prop.get("line"))
+                                    old_prop["price"] = new_prop.get("price", old_prop.get("price"))
+                                    results["lines_updated"] += 1
+                                    break
+                        
+                        # Update demons
+                        for old_demon in player.get("demons", []):
+                            for new_prop in new_props:
+                                if (old_demon.get("market") == new_prop.get("market") and
+                                    old_demon.get("direction") == new_prop.get("direction") and
+                                    new_prop.get("is_demon")):
+                                    old_demon["line"] = new_prop.get("line", old_demon.get("line"))
+                                    old_demon["price"] = new_prop.get("price", old_demon.get("price"))
+                                    results["lines_updated"] += 1
+                                    break
+                        
+                        # Update goblins
+                        for old_goblin in player.get("goblins", []):
+                            for new_prop in new_props:
+                                if (old_goblin.get("market") == new_prop.get("market") and
+                                    old_goblin.get("direction") == new_prop.get("direction") and
+                                    new_prop.get("is_goblin")):
+                                    old_goblin["line"] = new_prop.get("line", old_goblin.get("line"))
+                                    old_goblin["price"] = new_prop.get("price", old_goblin.get("price"))
+                                    results["lines_updated"] += 1
+                                    break
+                
+                # Remove players whose lines were pulled
+                if removed_players:
+                    players_list = [p for p in players_list if p.get("player_name") not in removed_players]
+                    existing_board["board"]["players"] = players_list
+                
+                # Update the board
+                existing_board["board"]["delta_updated_at"] = sync_start.isoformat()
+                await self.dg_cached_board.update_one(
+                    {"type": "main_board"},
+                    {"$set": existing_board}
+                )
+            
+            logger.info(f"[DELTA] Updated {results['lines_updated']} lines")
+            
+        except Exception as e:
+            logger.error(f"[DELTA] Sync error: {e}")
+            results["success"] = False
+            results["errors"].append(str(e))
+        
+        results["duration"] = (datetime.now(timezone.utc) - sync_start).total_seconds()
+        
+        logger.info(f"[DELTA] Sync completed in {results['duration']:.1f}s")
+        logger.info("─" * 70)
+        
+        return results
+    
     # ==================== DATA ACCESS ====================
     
     async def get_all_players(self) -> List[Dict[str, Any]]:
