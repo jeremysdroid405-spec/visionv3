@@ -3555,195 +3555,283 @@ class DemonGoblinEngine:
     
     async def _build_front_lines(self, players_dict: Dict[str, Dict], sync_time: datetime):
         """
-        THE FRONT LINES ALGORITHM - Middle-Tier Picks
+        THE FRONT LINES - PrizePicks Ladder Logic (Mild Goblins + Mild Demons)
+        ======================================================================
         
-        Objective: Find demons with moderate hit rates (50-75%) - the "middle ground"
-        between top War Zone picks (70%+) and safe Goblin Vault plays (80%+).
+        Target: "Mild" alternate lines - shifted from standard but NOT extreme.
         
-        Scoring Formula (same math as War Zone):
-        1. Hit Rate Score = Weighted average (L10 × 0.6) + (L5 × 0.4)
-        2. Target: 50-75% hit rate range (the balanced tier)
+        The Proximity Filter (Value Gap):
+        - Exclude > 20% difference from standard (too extreme)
+        - Exclude 0% difference (standard lines)
+        - Target Zone: 5% to 18% difference from standard
         
-        Final Score = Hit_Rate weighted by consistency
+        Combines MILD GOBLINS (green) and MILD DEMONS (red) into one array.
         
-        Bullet Rating: • to •••••• (1-6 bullets based on reliability)
+        Uses the exact same "God-Tier" 4-Pillar Formula:
+        vault_score = (consistency * 0.50) + (vegas * 0.20) + (dvp * 0.15) + (context * 0.15)
+        
+        Output: Top 10 picks sorted by combined score descending.
+        Each pick retains is_demon or is_goblin flag for UI icon color.
         """
-        logger.info("[FRONT LINES] Calculating top 6 middle-tier plays...")
+        logger.info("[FRONT LINES] Building Mild Goblins + Mild Demons with 4-Pillar scoring...")
         
         all_candidates = []
+        
+        # Pre-fetch AI context scores for all players
+        ai_context_cache = {}
+        try:
+            cursor = self.db.nba_master_hub_2026.find(
+                {"ai_context_score": {"$exists": True}},
+                {"_id": 0, "display_name": 1, "player_name": 1, "ai_context_score": 1}
+            )
+            async for doc in cursor:
+                name = doc.get("display_name") or doc.get("player_name")
+                if name:
+                    ai_context_cache[name] = doc.get("ai_context_score", 0.5)
+        except Exception as e:
+            logger.warning(f"[FRONT LINES] Could not fetch AI context cache: {e}")
         
         for player_name, player_data in players_dict.items():
             if player_data is None:
                 continue
             
-            # Use DEMONS with moderate hit rates (middle tier)
+            # Get all prop types
             demons = player_data.get("demons", [])
+            goblins = player_data.get("goblins", [])
+            standard = player_data.get("standard", [])
             
-            if not demons:
-                continue
-            
-            # Score each demon
-            for prop in demons:
-                market = prop.get("market", "")
+            # Build standard lines map for gap calculation
+            standard_map = {}
+            for std_prop in standard:
+                market = std_prop.get("market", "")
                 stat_type = self._extract_stat_type(market)
-                line = prop.get("line", 0)
-                direction = prop.get("direction", "")
-                
-                if not stat_type or line <= 0:
-                    continue
-                
-                # Get hit rates
-                hit_rates = prop.get("hit_rates", {})
-                if hit_rates is None:
-                    hit_rates = {}
-                h10_data = hit_rates.get("l10", {})
-                h5_data = hit_rates.get("l5", {})
-                season_data = hit_rates.get("season", {})
-                if h10_data is None:
-                    h10_data = {}
-                if h5_data is None:
-                    h5_data = {}
-                if season_data is None:
-                    season_data = {}
-                
-                h10 = h10_data.get("hit_rate", 0)
-                h5 = h5_data.get("hit_rate", 0)
-                h10_games = h10_data.get("total_games", 0)
-                h5_games = h5_data.get("total_games", 0)
-                h10_over = h10_data.get("games_over", 0)
-                h5_over = h5_data.get("games_over", 0)
-                season_avg = season_data.get("avg", 0)
-                
-                # Skip players with no real data
-                has_real_data = h10_games > 0 or h5_games > 0
-                if not has_real_data:
-                    continue
-                
-                # Calculate weighted hit rate (same as War Zone/Vault)
-                if h10_games >= 10 and h5_games >= 5:
-                    hit_rate_score = (h10 * 0.6) + (h5 * 0.4)
-                elif h10_games >= 5:
-                    hit_rate_score = h10
-                elif h5_games >= 3:
-                    hit_rate_score = h5
-                else:
-                    continue
-                
-                hit_probability = round(hit_rate_score * 100, 1)
-                
-                # Front Lines targets the MIDDLE: 50-75% range
-                # (War Zone takes 70%+ for top picks, Vault takes 80%+ goblins)
-                # This captures demons that are NOT in War Zone but still have decent odds
-                if hit_probability < 50 or hit_probability >= 70:
-                    continue
-                
-                # Calculate gap ratio (demon_line vs standard_line in player_data)
-                standard_line_from_data = player_data.get("standard_line", line)
-                if standard_line_from_data and standard_line_from_data > 0:
-                    gap_ratio = round(line / standard_line_from_data, 3)
-                    gap_pct = round((gap_ratio - 1) * 100, 1)
-                else:
-                    gap_ratio = 1.0
-                    gap_pct = 0.0
-                
-                # Calculate heat level same as War Zone
-                heat_level = 0
-                if h10 >= 0.9:
-                    heat_level = 5
-                elif h10 >= 0.8:
-                    heat_level = 4
-                elif h10 >= 0.7:
-                    heat_level = 3
-                elif h10 >= 0.6:
-                    heat_level = 2
-                elif h10 >= 0.5:
-                    heat_level = 1
-                
-                # Calculate radar_score same as War Zone
-                if gap_ratio > 0:
-                    radar_score = round(hit_rate_score / gap_ratio, 4)
-                else:
-                    radar_score = hit_rate_score
-                
-                # Get player info from player_data - MATCH WAR ZONE STRUCTURE EXACTLY
-                all_candidates.append({
-                    "player_id": player_data.get("player_id"),
-                    "tank01_player_id": player_data.get("player_id"),
-                    "player_name": player_name,
-                    "team": player_data.get("team"),
-                    "team_name": player_data.get("team_name"),
-                    "team_abbr": player_data.get("team_abbr"),
-                    "photo_url": player_data.get("headshot_url"),
-                    "headshot_url": player_data.get("headshot_url"),
-                    "opponent": player_data.get("opponent"),
-                    "opponent_abbr": player_data.get("opponent_abbr"),
-                    "game_id": player_data.get("game_id"),
-                    "game_time": player_data.get("game_time"),
-                    "position": player_data.get("position"),
-                    "volatility_flag": player_data.get("volatility_flag", False),
-                    "revenge_game": player_data.get("revenge_game", False),
-                    "is_verified": player_data.get("is_verified", True),
-                    "is_mapper_matched": player_data.get("is_mapper_matched", True),
-                    
-                    # Prop details
-                    "stat_type": stat_type,
-                    "direction": direction,
-                    "demon_line": line,
-                    "standard_line": standard_line_from_data or line,
-                    "gap_ratio": gap_ratio,
-                    "gap_pct": gap_pct,
-                    "market": market,
-                    
-                    # Hit rate data - MATCH WAR ZONE FIELD NAMES
-                    "h10_rate": round(h10 * 100, 1),
-                    "h5_rate": round(h5 * 100, 1),
-                    "h10_over": h10_over,
-                    "h10_games": h10_games,
-                    "h5_over": h5_over,
-                    "h5_games": h5_games,
-                    "season_avg": round(season_avg, 1),
-                    
-                    # Calculated scores - MATCH WAR ZONE FIELD NAMES
-                    "hit_probability": hit_probability,
-                    "radar_score": radar_score,
-                    "radar_strength": hit_probability,
-                    "heat_level": heat_level,
-                    "is_hot_streak": h5 >= 0.8,
-                    "price": prop.get("price", 100),
-                    "is_radar_pick": True,
-                    "is_front_lines_pick": True,
-                    "has_real_data": True,
-                    "synced_at": sync_time.isoformat()
-                })
+                if stat_type:
+                    key = f"{stat_type}_{std_prop.get('direction', '')}"
+                    if key not in standard_map:
+                        standard_map[key] = std_prop.get("line", 0)
+            
+            # Process DEMONS (look for mild ones)
+            for prop in demons:
+                candidate = self._evaluate_front_lines_prop(
+                    prop, player_name, player_data, standard_map, 
+                    ai_context_cache, sync_time, is_demon=True
+                )
+                if candidate:
+                    all_candidates.append(candidate)
+            
+            # Process GOBLINS (look for mild ones)
+            for prop in goblins:
+                candidate = self._evaluate_front_lines_prop(
+                    prop, player_name, player_data, standard_map,
+                    ai_context_cache, sync_time, is_demon=False
+                )
+                if candidate:
+                    all_candidates.append(candidate)
         
-        # Sort by radar_score descending (same as War Zone)
-        all_candidates.sort(key=lambda x: x["radar_score"], reverse=True)
+        # Sort by vault_score descending (4-Pillar combined score)
+        all_candidates.sort(key=lambda x: x["vault_score"], reverse=True)
         
-        # De-duplicate: one pick per player
+        # De-duplicate: one pick per player (best score)
         seen_players = set()
         unique_picks = []
         for pick in all_candidates:
-            player_name = pick["player_name"]
-            if player_name not in seen_players:
-                seen_players.add(player_name)
+            pname = pick["player_name"]
+            if pname not in seen_players:
+                seen_players.add(pname)
                 unique_picks.append(pick)
         
-        # Take top 6
-        top_6 = unique_picks[:6]
+        # Take top 10
+        top_10 = unique_picks[:10]
+        
+        # Assign bullet ranking (1-6 bullets based on position)
+        for i, pick in enumerate(top_10):
+            # Bullet level based on rank: top 2 get 6 bullets, next 2 get 5, etc.
+            if i < 2:
+                pick["bullet_level"] = 6
+            elif i < 4:
+                pick["bullet_level"] = 5
+            elif i < 6:
+                pick["bullet_level"] = 4
+            elif i < 8:
+                pick["bullet_level"] = 3
+            else:
+                pick["bullet_level"] = 2
         
         # Store in front_lines collection
         await self.front_lines.delete_many({})
-        if top_6:
-            await self.front_lines.insert_many(top_6)
+        if top_10:
+            await self.front_lines.insert_many(top_10)
         
-        logger.info(f"[FRONT LINES] Generated {len(top_6)} middle-tier picks")
-        logger.info(f"  Total candidates: {len(all_candidates)}")
+        # Count breakdown
+        demon_count = len([p for p in top_10 if p.get("is_demon")])
+        goblin_count = len([p for p in top_10 if p.get("is_goblin")])
         
-        # Log top 3
-        for i, pick in enumerate(top_6[:3]):
-            bullets = "•" * pick['bullet_level']
-            logger.info(f"  #{i+1}: {pick['player_name']} - {pick['stat_type']} {pick['standard_line']} "
-                       f"(P: {pick['hit_probability']}%) {bullets}")
+        logger.info(f"[FRONT LINES] Generated {len(top_10)} mild picks (4-Pillar GOD-TIER)")
+        logger.info(f"  Demons: {demon_count} | Goblins: {goblin_count}")
+        logger.info(f"  Total candidates in 5-18% zone: {len(all_candidates)}")
+        
+        for i, pick in enumerate(top_10[:3]):
+            prop_type = "DEMON" if pick.get("is_demon") else "GOBLIN"
+            logger.info(f"  #{i+1}: {pick['player_name']} [{prop_type}] - {pick['stat_type']} {pick['line']}")
+            logger.info(f"       Score: {pick['vault_score_100']:.1f}/100 | Gap: {pick['gap_pct']:.1f}%")
+    
+    def _evaluate_front_lines_prop(
+        self, prop: Dict, player_name: str, player_data: Dict, 
+        standard_map: Dict, ai_context_cache: Dict, sync_time: datetime,
+        is_demon: bool
+    ) -> Optional[Dict]:
+        """
+        Evaluate a single prop for Front Lines eligibility.
+        
+        Returns None if prop doesn't qualify (wrong gap range, no data, etc.)
+        Returns candidate dict if it qualifies.
+        """
+        market = prop.get("market", "")
+        stat_type = self._extract_stat_type(market)
+        line = prop.get("line", 0)
+        direction = prop.get("direction", "")
+        price = prop.get("price", -110)
+        
+        if not stat_type or line <= 0:
+            return None
+        
+        # Get standard line for this stat
+        std_key = f"{stat_type}_{direction}"
+        std_line = standard_map.get(std_key, 0)
+        
+        if std_line <= 0:
+            # Estimate standard line if not found
+            if is_demon:
+                std_line = line * 0.9  # Demons are ABOVE standard
+            else:
+                std_line = line * 1.1  # Goblins are BELOW standard
+        
+        # ==================== THE PROXIMITY FILTER ====================
+        # Calculate gap percentage from standard line
+        if std_line > 0:
+            gap_pct = abs((line - std_line) / std_line) * 100
+        else:
+            return None
+        
+        # Exclude standard lines (0% difference)
+        if gap_pct < 5:
+            return None
+        
+        # Exclude extremes (> 20% - belongs in Safe Haven or War Zone)
+        if gap_pct > 18:
+            return None
+        
+        # TARGET ZONE: 5% to 18% from standard - "Mild" alternates
+        
+        # Get hit rates
+        hit_rates = prop.get("hit_rates", {}) or {}
+        h10_data = hit_rates.get("l10", {}) or {}
+        h5_data = hit_rates.get("l5", {}) or {}
+        season_data = hit_rates.get("season", {}) or {}
+        
+        h10 = h10_data.get("hit_rate", 0)
+        h5 = h5_data.get("hit_rate", 0)
+        h10_games = h10_data.get("total_games", 0)
+        h5_games = h5_data.get("total_games", 0)
+        h10_over = h10_data.get("games_over", 0)
+        h5_over = h5_data.get("games_over", 0)
+        season_avg = season_data.get("avg", 0)
+        
+        # Must have real data
+        if h10_games == 0 and h5_games == 0:
+            return None
+        
+        # ==================== 4-PILLAR GOD-TIER SCORING ====================
+        
+        # PILLAR 1: Base Consistency (50%)
+        pillar_1_consistency = (h10 * 0.6) + (h5 * 0.4)
+        
+        # PILLAR 2: Vegas Implied Probability (20%)
+        if price < 0:
+            pillar_2_vegas = abs(price) / (abs(price) + 100)
+        else:
+            pillar_2_vegas = 100 / (price + 100)
+        pillar_2_vegas = min(1.0, max(0.0, pillar_2_vegas))
+        
+        # PILLAR 3: DvP Matchup Modifier (15%) - placeholder
+        pillar_3_dvp = player_data.get("dvp_modifier", 0.5)
+        
+        # PILLAR 4: AI Context Shift (15%)
+        pillar_4_context = ai_context_cache.get(player_name, 0.5)
+        
+        # FINAL VAULT SCORE (same formula as Safe Haven)
+        vault_score = (
+            (pillar_1_consistency * 0.50) +
+            (pillar_2_vegas * 0.20) +
+            (pillar_3_dvp * 0.15) +
+            (pillar_4_context * 0.15)
+        )
+        vault_score_100 = vault_score * 100
+        
+        # Build candidate
+        return {
+            # Player identification
+            "player_id": player_data.get("player_id"),
+            "tank01_player_id": player_data.get("player_id"),
+            "player_name": player_name,
+            "team": player_data.get("team"),
+            "team_name": player_data.get("team_name"),
+            "team_abbr": player_data.get("team_abbr"),
+            "photo_url": player_data.get("headshot_url"),
+            "headshot_url": player_data.get("headshot_url"),
+            "opponent": player_data.get("opponent"),
+            "opponent_abbr": player_data.get("opponent_abbr"),
+            "game_id": player_data.get("game_id"),
+            "game_time": player_data.get("game_time"),
+            "position": player_data.get("position"),
+            
+            # Flags
+            "volatility_flag": player_data.get("volatility_flag", False),
+            "revenge_game": player_data.get("revenge_game", False),
+            "is_verified": player_data.get("is_verified", False),
+            "is_mapper_matched": player_data.get("is_mapper_matched", False),
+            
+            # CRITICAL: Type flags for UI icon color
+            "is_demon": is_demon,
+            "is_goblin": not is_demon,
+            "prop_type": "demon" if is_demon else "goblin",
+            
+            # Prop data
+            "stat_type": stat_type,
+            "direction": direction,
+            "line": line,
+            "demon_line": line if is_demon else None,
+            "goblin_line": line if not is_demon else None,
+            "standard_line": round(std_line, 1),
+            "gap_pct": round(gap_pct, 1),
+            "price": price,
+            "market": market,
+            
+            # Raw hit rates
+            "h10_rate": round(h10 * 100, 1),
+            "h5_rate": round(h5 * 100, 1),
+            "h10_over": h10_over,
+            "h10_games": h10_games,
+            "h5_over": h5_over,
+            "h5_games": h5_games,
+            "season_avg": round(season_avg, 1),
+            
+            # 4-PILLAR BREAKDOWN
+            "pillar_1_consistency": round(pillar_1_consistency, 4),
+            "pillar_2_vegas": round(pillar_2_vegas, 4),
+            "pillar_3_dvp": round(pillar_3_dvp, 4),
+            "pillar_4_context": round(pillar_4_context, 4),
+            
+            # FINAL SCORES
+            "vault_score": round(vault_score, 4),
+            "vault_score_100": round(vault_score_100, 1),
+            "hit_probability": round(h10 * 100, 1),
+            
+            # Front Lines specific
+            "is_front_lines_pick": True,
+            "has_real_data": True,
+            "synced_at": sync_time.isoformat()
+        }
     
     def _calculate_bullet_level(self, h10: float, h5: float, h10_over: int, h5_over: int, h10_games: int, h5_games: int) -> int:
         """
@@ -4871,12 +4959,12 @@ class DemonGoblinEngine:
     
     async def get_front_lines(self) -> Dict[str, Any]:
         """
-        DUMB COMPONENT: Get the Front Lines top 6 middle-tier picks from MongoDB.
+        THE FRONT LINES - Mild Goblins + Mild Demons (5-18% gap from standard)
         
+        Uses GOD-TIER 4-Pillar Formula, same as Safe Haven.
         Data is PRE-ENRICHED during sync. No runtime lookups.
-        Just reads and returns the data with AI insights.
         """
-        picks = await self.front_lines.find({}, {"_id": 0}).sort("front_lines_score", -1).to_list(6)
+        picks = await self.front_lines.find({}, {"_id": 0}).sort("vault_score", -1).to_list(10)
         
         # Add AI insights
         for pick in picks:
@@ -4901,16 +4989,33 @@ class DemonGoblinEngine:
         
         sync_meta = await self.sync_log.find_one({"type": "cached_board"})
         
+        # Count breakdown
+        demon_count = len([p for p in picks if p.get("is_demon")])
+        goblin_count = len([p for p in picks if p.get("is_goblin")])
+        
         return {
             "success": True,
             "synced_at": sync_meta.get("synced_at") if sync_meta else None,
             "picks_count": len(picks),
+            "demon_count": demon_count,
+            "goblin_count": goblin_count,
             "picks": picks,
             "algorithm": {
-                "description": "Middle-Tier Probability Scoring",
-                "formula": "Score = Weighted Hit Rate (L10 × 0.6 + L5 × 0.4)",
-                "target": "60-90% hit rate sweet spot",
-                "ranking": "Bullet system (• to ••••••)"
+                "name": "GOD-TIER 4-Pillar Formula (Mild Zone)",
+                "description": "Same 4-Pillar scoring as Safe Haven, targeting mild alternates",
+                "formula": "vault_score = (consistency * 0.50) + (vegas * 0.20) + (dvp * 0.15) + (context * 0.15)",
+                "proximity_filter": {
+                    "min_gap": "5% from standard",
+                    "max_gap": "18% from standard",
+                    "excluded": "Standard lines (0%) and extremes (>20%)"
+                },
+                "pillars": {
+                    "pillar_1": "Base Consistency (50%)",
+                    "pillar_2": "Vegas Implied Prob (20%)",
+                    "pillar_3": "DvP Matchup (15%)",
+                    "pillar_4": "AI Context Shift (15%)"
+                },
+                "ranking": "Bullet system (2-6 bullets based on rank)"
             }
         }
     
