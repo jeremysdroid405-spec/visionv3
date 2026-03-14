@@ -1212,8 +1212,8 @@ const RadarCard = memo(({ pick, rank, onClick, isScanning = false }) => {
   return (
     <Card 
       className={`
-        demon-card-glow
-        ${hasVisionGlow ? 'vision-pulse' : ''}
+        bg-gradient-to-br from-red-950/50 to-zinc-900 border border-red-500/40
+        shadow-[0_0_20px_rgba(239,68,68,0.3)]
         hover:scale-[1.02] transition-all duration-300
         cursor-pointer active:scale-[0.98] relative overflow-visible
       `}
@@ -1458,8 +1458,8 @@ const VaultCard = memo(({ pick, rank, onClick }) => {
   return (
     <Card 
       className={`
-        goblin-card-glow
-        ${hasVisionGlow ? 'vision-pulse' : ''}
+        bg-gradient-to-br from-green-950/50 to-zinc-900 border border-green-500/40
+        shadow-[0_0_20px_rgba(34,197,94,0.3)]
         hover:scale-[1.02] transition-all duration-300
         cursor-pointer active:scale-[0.98] relative overflow-visible
       `}
@@ -1765,7 +1765,8 @@ const ReconCard = memo(({ parlay, tier, onClick }) => {
   return (
     <Card 
       className={`
-        goblin-card-glow
+        bg-gradient-to-br from-green-950/50 to-zinc-900 border border-green-500/40
+        shadow-[0_0_20px_rgba(34,197,94,0.3)]
         hover:scale-[1.02] transition-all duration-200 cursor-pointer
         overflow-hidden ${!lineupValid ? 'opacity-60' : ''}
       `}
