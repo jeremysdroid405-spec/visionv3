@@ -42,6 +42,26 @@ Build a high-performance NBA Player Prop Dashboard that mimics the PrizePicks us
 ### IN PROGRESS
 - None currently
 
+### RECENTLY COMPLETED (Dec 14, 2025 - Session 5)
+- [x] **Live Score & Breaking News Command Center**:
+  - **New `live_scores_engine.py` module**: Fetches real-time NBA scores from The Odds API /scores endpoint
+  - **Live Score Ticker**: Marquee-style scrolling ticker at top of app
+    - Neon Green styling for live games (LIVE badge with pulse animation)
+    - Shows real-time scores: "PHX 110 @ 118 TOR LIVE"
+    - Upcoming games show tip-off time in EST and spread
+    - 60-second auto-refresh when games are in progress
+  - **Breaking News Ticker**: Slower marquee with Pulse Red "Breaking" tags
+    - RSS feed integration from Rotoworld and ESPN NBA feeds
+    - Custom headlines support via API
+    - Injury-focused news filtering
+  - **Pause on Hover**: Both tickers pause when mouse hovers (for mobile tap-hold)
+  - **API Endpoints**:
+    - `GET /api/v3/live-scores` - Get live game scores
+    - `POST /api/v3/live-scores/refresh` - Force refresh from API
+    - `GET /api/v3/command-center/news` - Get breaking news with custom headlines
+    - `GET /api/v3/command-center/ticker` - Combined ticker data
+  - **Header Cleanup**: Removed sync/reload buttons, kept only Intel freshness indicator
+
 ### RECENTLY COMPLETED (Dec 13, 2025 - Session 4)
 - [x] **Static Vision Intel Briefing Engine (Gemini 3 Flash)**:
   - **New `intel_briefing_engine.py` module**: Generates AI-powered Strategic Thesis using Gemini 2.5 Flash

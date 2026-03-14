@@ -42,6 +42,11 @@ from intel_briefing_engine import (
     init_intel_briefing_engine,
     get_intel_briefing_engine
 )
+from live_scores_engine import (
+    LiveScoresEngine,
+    init_live_scores_engine,
+    get_live_scores_engine
+)
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -82,6 +87,7 @@ raw_stat_fetcher = None  # RAW STAT FETCHER - Isolated data integrity service
 social_signal_engine = None  # Social Signal Engine - News sentiment & revenge games
 adaptive_sync = None  # Adaptive Sync Engine - Mission-critical polling
 intel_briefing_engine = None  # Intel Briefing Engine - Gemini 3 Flash
+live_scores_engine = None  # Live Scores Engine - Real-time scores and news
 scheduler = None  # APScheduler instance
 
 async def initial_autonomous_sync():
@@ -178,7 +184,7 @@ async def scheduled_roster_sync():
 
 @app.on_event("startup")
 async def startup_event():
-    global stats_manager, demon_tracker, demon_goblin_engine, vision_ai_service, injury_service, raw_stat_fetcher, social_signal_engine, adaptive_sync, intel_briefing_engine, scheduler
+    global stats_manager, demon_tracker, demon_goblin_engine, vision_ai_service, injury_service, raw_stat_fetcher, social_signal_engine, adaptive_sync, intel_briefing_engine, live_scores_engine, scheduler
     
     # Initialize stats manager (BallDontLie)
     stats_manager = StatsManager(db)
@@ -222,6 +228,10 @@ async def startup_event():
         logger.info("Intel Briefing Engine initialized (Gemini 3 Flash)")
     else:
         logger.warning("[INTEL BRIEFING] No GOOGLE_API_KEY - Intel Briefing disabled")
+    
+    # Initialize Live Scores Engine - Real-time scores and news
+    live_scores_engine = init_live_scores_engine(db)
+    logger.info("Live Scores Engine initialized (Scores + Breaking News)")
     
     # Start the adaptive sync engine (background polling)
     if ODDS_API_KEY:
@@ -2514,6 +2524,132 @@ async def get_breaking_news(injury_only: bool = False):
         "news_count": len(news),
         "injury_filter": injury_only,
         "news": news
+    }
+
+
+# ==================== LIVE SCORES & COMMAND CENTER ====================
+
+@api_router.get("/v3/live-scores")
+async def get_live_scores(refresh: bool = False):
+    """
+    Get live NBA scores from The Odds API.
+    
+    Uses /scores endpoint to get real-time game scores.
+    
+    Args:
+        refresh: Force refresh from API (otherwise uses cache)
+    
+    Returns:
+        - games: List of games with scores and status
+        - live_count: Number of games currently in play
+        - upcoming_count: Number of games not yet started
+    """
+    if not live_scores_engine:
+        raise HTTPException(status_code=500, detail="Live Scores Engine not initialized")
+    
+    if refresh:
+        result = await live_scores_engine.fetch_live_scores()
+    else:
+        # Try cache first
+        result = await live_scores_engine.get_cached_scores()
+        if not result.get("success") or not result.get("games"):
+            result = await live_scores_engine.fetch_live_scores()
+    
+    return result
+
+
+@api_router.post("/v3/live-scores/refresh")
+async def refresh_live_scores():
+    """Force refresh live scores from The Odds API."""
+    if not live_scores_engine:
+        raise HTTPException(status_code=500, detail="Live Scores Engine not initialized")
+    
+    result = await live_scores_engine.fetch_live_scores()
+    return result
+
+
+@api_router.get("/v3/command-center/news")
+async def get_command_center_news(custom_headlines: Optional[str] = None):
+    """
+    Get breaking news for the Command Center ticker.
+    
+    Combines RSS feeds from Rotoworld and ESPN with optional custom headlines.
+    
+    Args:
+        custom_headlines: Comma-separated list of custom headlines to include
+    
+    Returns:
+        - news: List of news items with title, source, category
+    """
+    if not live_scores_engine:
+        raise HTTPException(status_code=500, detail="Live Scores Engine not initialized")
+    
+    # Parse custom headlines if provided
+    headlines = None
+    if custom_headlines:
+        headlines = [h.strip() for h in custom_headlines.split("|") if h.strip()]
+    
+    result = await live_scores_engine.fetch_breaking_news(custom_headlines=headlines)
+    return result
+
+
+@api_router.get("/v3/command-center/ticker")
+async def get_ticker_data():
+    """
+    Get combined data for the Command Center tickers.
+    
+    Returns both live scores and breaking news in a single call,
+    optimized for the frontend ticker display.
+    """
+    if not live_scores_engine:
+        raise HTTPException(status_code=500, detail="Live Scores Engine not initialized")
+    
+    # Get scores (from cache)
+    scores_result = await live_scores_engine.get_cached_scores()
+    if not scores_result.get("success"):
+        scores_result = await live_scores_engine.fetch_live_scores()
+    
+    # Get news (from cache)
+    news_result = await live_scores_engine.get_cached_news()
+    if not news_result.get("success"):
+        news_result = await live_scores_engine.fetch_breaking_news()
+    
+    # Format for ticker display
+    ticker_items = []
+    
+    # Add live scores first
+    for game in scores_result.get("games", []):
+        if game["status"] == "in_play":
+            ticker_items.append({
+                "type": "live_score",
+                "text": f"{game['away_team']} {game['away_score']} @ {game['home_team']} {game['home_score']} - {game['status_display']}",
+                "priority": 1,
+                "category": "live"
+            })
+        elif game["status"] == "upcoming":
+            ticker_items.append({
+                "type": "upcoming",
+                "text": f"{game['away_team']} @ {game['home_team']} - {game['status_display']}",
+                "priority": 2,
+                "category": "upcoming"
+            })
+    
+    # Add breaking news
+    for news in news_result.get("news", [])[:10]:
+        ticker_items.append({
+            "type": "news",
+            "text": news["title"],
+            "source": news.get("source", ""),
+            "priority": 3 if news.get("is_custom") else 4,
+            "category": news.get("category", "news")
+        })
+    
+    return {
+        "success": True,
+        "ticker_items": ticker_items,
+        "live_games": scores_result.get("live_count", 0),
+        "upcoming_games": scores_result.get("upcoming_count", 0),
+        "news_count": len(news_result.get("news", []))
     }
 
 

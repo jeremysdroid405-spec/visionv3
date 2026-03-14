@@ -410,14 +410,114 @@ InjuryBadge.displayName = 'InjuryBadge';
 
 // ==================== BREAKING NEWS TICKER ====================
 
+// ==================== LIVE SCORE TICKER - Command Center ====================
+
+const LiveScoreTicker = memo(({ games }) => {
+  const [isPaused, setIsPaused] = useState(false);
+  
+  if (!games || games.length === 0) return null;
+  
+  const liveGames = games.filter(g => g.status === 'in_play');
+  const upcomingGames = games.filter(g => g.status === 'upcoming');
+  
+  return (
+    <div 
+      className="bg-gradient-to-r from-zinc-950 via-emerald-950/30 to-zinc-950 border-b border-emerald-500/30 py-1.5 overflow-hidden"
+      onMouseEnter={() => setIsPaused(true)}
+      onMouseLeave={() => setIsPaused(false)}
+    >
+      <div className={`flex items-center gap-4 ${isPaused ? '' : 'animate-score-scroll'}`}>
+        {/* Live Badge */}
+        <div className="flex items-center gap-2 px-3 flex-shrink-0">
+          <div className="flex items-center gap-1.5 bg-emerald-600 px-2 py-0.5 rounded animate-pulse">
+            <Radio className="w-3 h-3 text-white" />
+            <span className="text-[10px] font-bold text-white uppercase tracking-wider">LIVE</span>
+          </div>
+          {liveGames.length > 0 && (
+            <span className="text-[10px] text-emerald-400 font-mono">{liveGames.length} IN PLAY</span>
+          )}
+        </div>
+        
+        <div className="flex items-center gap-6 whitespace-nowrap">
+          {/* Live Games - Neon Green */}
+          {liveGames.map((game, idx) => (
+            <div key={game.id} className="flex items-center gap-2 bg-emerald-950/50 px-3 py-1 rounded border border-emerald-500/30">
+              <span className="text-xs font-bold text-emerald-300">{game.away_team}</span>
+              <span className="text-sm font-bold text-white">{game.away_score}</span>
+              <span className="text-[10px] text-zinc-500">@</span>
+              <span className="text-sm font-bold text-white">{game.home_score}</span>
+              <span className="text-xs font-bold text-emerald-300">{game.home_team}</span>
+              <span className="text-[9px] text-emerald-400 bg-emerald-900/50 px-1.5 py-0.5 rounded font-mono">
+                {game.status_display}
+              </span>
+            </div>
+          ))}
+          
+          {/* Upcoming Games */}
+          {upcomingGames.slice(0, 5).map((game, idx) => (
+            <div key={game.id} className="flex items-center gap-2 bg-zinc-900/50 px-3 py-1 rounded border border-zinc-700/30">
+              <span className="text-xs text-zinc-400">{game.away_team}</span>
+              <span className="text-[10px] text-zinc-500">@</span>
+              <span className="text-xs text-zinc-400">{game.home_team}</span>
+              <span className="text-[9px] text-amber-400 font-mono">{game.status_display}</span>
+            </div>
+          ))}
+          
+          {/* Duplicate for seamless loop */}
+          {liveGames.map((game, idx) => (
+            <div key={`dup-${game.id}`} className="flex items-center gap-2 bg-emerald-950/50 px-3 py-1 rounded border border-emerald-500/30">
+              <span className="text-xs font-bold text-emerald-300">{game.away_team}</span>
+              <span className="text-sm font-bold text-white">{game.away_score}</span>
+              <span className="text-[10px] text-zinc-500">@</span>
+              <span className="text-sm font-bold text-white">{game.home_score}</span>
+              <span className="text-xs font-bold text-emerald-300">{game.home_team}</span>
+              <span className="text-[9px] text-emerald-400 bg-emerald-900/50 px-1.5 py-0.5 rounded font-mono">
+                {game.status_display}
+              </span>
+            </div>
+          ))}
+          {upcomingGames.slice(0, 5).map((game, idx) => (
+            <div key={`dup-up-${game.id}`} className="flex items-center gap-2 bg-zinc-900/50 px-3 py-1 rounded border border-zinc-700/30">
+              <span className="text-xs text-zinc-400">{game.away_team}</span>
+              <span className="text-[10px] text-zinc-500">@</span>
+              <span className="text-xs text-zinc-400">{game.home_team}</span>
+              <span className="text-[9px] text-amber-400 font-mono">{game.status_display}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+      
+      <style jsx>{`
+        @keyframes scoreScroll {
+          0% { transform: translateX(0); }
+          100% { transform: translateX(-50%); }
+        }
+        .animate-score-scroll {
+          animation: scoreScroll 40s linear infinite;
+        }
+      `}</style>
+    </div>
+  );
+});
+
+LiveScoreTicker.displayName = 'LiveScoreTicker';
+
+// ==================== BREAKING NEWS TICKER - Command Center ====================
+
 const BreakingNewsTicker = memo(({ news }) => {
+  const [isPaused, setIsPaused] = useState(false);
+  
   if (!news || news.length === 0) return null;
   
   return (
-    <div className="bg-gradient-to-r from-red-950/50 via-zinc-900 to-red-950/50 border-b border-red-800/30 py-1.5 overflow-hidden">
-      <div className="flex items-center gap-3 animate-scroll">
+    <div 
+      className="bg-gradient-to-r from-red-950/50 via-zinc-900 to-red-950/50 border-b border-red-800/30 py-1.5 overflow-hidden"
+      onMouseEnter={() => setIsPaused(true)}
+      onMouseLeave={() => setIsPaused(false)}
+    >
+      <div className={`flex items-center gap-3 ${isPaused ? '' : 'animate-news-scroll'}`}>
         <div className="flex items-center gap-2 px-3 flex-shrink-0">
-          <div className="flex items-center gap-1 bg-red-600 px-2 py-0.5 rounded">
+          <div className="flex items-center gap-1 bg-red-600 px-2 py-0.5 rounded animate-pulse">
             <Zap className="w-3 h-3 text-white" />
             <span className="text-[10px] font-bold text-white uppercase tracking-wider">Breaking</span>
           </div>
@@ -426,32 +526,35 @@ const BreakingNewsTicker = memo(({ news }) => {
         <div className="flex items-center gap-6 whitespace-nowrap">
           {news.map((item, idx) => (
             <div key={idx} className="flex items-center gap-2">
-              <AlertTriangle className="w-3 h-3 text-red-400 flex-shrink-0" />
-              <span className="text-xs text-red-200">{item.headline}</span>
-              {idx < news.length - 1 && <span className="text-zinc-600 mx-4">|</span>}
+              <AlertTriangle className="w-3 h-3 text-red-400 flex-shrink-0 animate-pulse" />
+              <span className="text-xs text-red-200">{item.headline || item.title}</span>
+              {item.source && (
+                <span className="text-[9px] text-zinc-500 bg-zinc-800 px-1.5 py-0.5 rounded">{item.source}</span>
+              )}
+              {idx < news.length - 1 && <span className="text-zinc-700 mx-2">|</span>}
             </div>
           ))}
           {/* Duplicate for seamless loop */}
           {news.map((item, idx) => (
             <div key={`dup-${idx}`} className="flex items-center gap-2">
-              <AlertTriangle className="w-3 h-3 text-red-400 flex-shrink-0" />
-              <span className="text-xs text-red-200">{item.headline}</span>
-              {idx < news.length - 1 && <span className="text-zinc-600 mx-4">|</span>}
+              <AlertTriangle className="w-3 h-3 text-red-400 flex-shrink-0 animate-pulse" />
+              <span className="text-xs text-red-200">{item.headline || item.title}</span>
+              {item.source && (
+                <span className="text-[9px] text-zinc-500 bg-zinc-800 px-1.5 py-0.5 rounded">{item.source}</span>
+              )}
+              {idx < news.length - 1 && <span className="text-zinc-700 mx-2">|</span>}
             </div>
           ))}
         </div>
       </div>
       
       <style jsx>{`
-        @keyframes scroll {
+        @keyframes newsScroll {
           0% { transform: translateX(0); }
           100% { transform: translateX(-50%); }
         }
-        .animate-scroll {
-          animation: scroll 30s linear infinite;
-        }
-        .animate-scroll:hover {
-          animation-play-state: paused;
+        .animate-news-scroll {
+          animation: newsScroll 45s linear infinite;
         }
       `}</style>
     </div>
@@ -3361,6 +3464,9 @@ export const DemonGoblinDashboardOptimized = ({ isDemoMode = false }) => {
   const [injuryAlerts, setInjuryAlerts] = useState({});  // player_name -> injury_info
   const [breakingNews, setBreakingNews] = useState([]);  // Breaking news ticker
   
+  // Live Scores Command Center state
+  const [liveScores, setLiveScores] = useState([]);  // Live game scores
+  
   // V3.1 Truth Engine - Data Integrity Status
   const [dataStatus, setDataStatus] = useState({
     status: 'loading',
@@ -3413,8 +3519,8 @@ export const DemonGoblinDashboardOptimized = ({ isDemoMode = false }) => {
     try {
       console.log('[CACHED] Loading from MongoDB...');
       
-      // Load board, radar, vault, parlays, recon, injuries, social signals, data status, and sync status in parallel
-      const [boardResponse, radarResponse, vaultResponse, parlayResponse, reconResponse, injuryResponse, newsResponse, dataStatusResponse, socialSignalsResponse, syncStatusResponse] = await Promise.all([
+      // Load board, radar, vault, parlays, recon, injuries, social signals, data status, sync status, and live scores in parallel
+      const [boardResponse, radarResponse, vaultResponse, parlayResponse, reconResponse, injuryResponse, newsResponse, dataStatusResponse, socialSignalsResponse, syncStatusResponse, liveScoresResponse] = await Promise.all([
         axios.get(`${API}/v3/cached-props`),
         axios.get(`${API}/v3/demon-radar`),
         axios.get(`${API}/v3/goblin-vault`),
@@ -3424,7 +3530,8 @@ export const DemonGoblinDashboardOptimized = ({ isDemoMode = false }) => {
         axios.get(`${API}/v3/breaking-news?injury_only=true`).catch(() => ({ data: { success: false, news: [] }})),
         axios.get(`${API}/v3/data-status`).catch(() => ({ data: { success: false, status: 'error' }})),
         axios.get(`${API}/v3/social-signals`).catch(() => ({ data: { success: false, signals: {} }})),
-        axios.get(`${API}/v3/sync-status`).catch(() => ({ data: { engine_status: 'offline', sync_age_display: 'N/A' }}))
+        axios.get(`${API}/v3/sync-status`).catch(() => ({ data: { engine_status: 'offline', sync_age_display: 'N/A' }})),
+        axios.get(`${API}/v3/live-scores`).catch(() => ({ data: { success: false, games: [] }}))
       ]);
       
       // Social signals for applying to picks
@@ -3520,6 +3627,12 @@ export const DemonGoblinDashboardOptimized = ({ isDemoMode = false }) => {
         console.log(`[SYNC STATUS] Engine: ${syncStatusResponse.data.engine_status}, Last sync: ${syncStatusResponse.data.sync_age_display}`);
       }
       
+      // Live Scores Command Center
+      if (liveScoresResponse.data.success) {
+        setLiveScores(liveScoresResponse.data.games || []);
+        console.log(`[LIVE SCORES] Loaded ${liveScoresResponse.data.games?.length || 0} games (Live: ${liveScoresResponse.data.live_count || 0})`);
+      }
+      
     } catch (error) {
       console.error('[CACHED] Error loading from MongoDB:', error);
       setStaticLoaded(true);
@@ -3580,6 +3693,26 @@ export const DemonGoblinDashboardOptimized = ({ isDemoMode = false }) => {
   // State for highlighted prop from Radar or Vault
   const [highlightProp, setHighlightProp] = useState(null);
   const [highlightType, setHighlightType] = useState('demon'); // 'demon' = gold glow, 'goblin' = green glow
+  
+  // Auto-refresh live scores every 60 seconds when games are in progress
+  useEffect(() => {
+    const hasLiveGames = liveScores.some(g => g.status === 'in_play');
+    
+    if (hasLiveGames) {
+      const refreshInterval = setInterval(async () => {
+        try {
+          const response = await axios.get(`${API}/v3/live-scores?refresh=true`);
+          if (response.data.success) {
+            setLiveScores(response.data.games || []);
+          }
+        } catch (error) {
+          console.error('[LIVE SCORES] Refresh error:', error);
+        }
+      }, 60000); // Refresh every 60 seconds
+      
+      return () => clearInterval(refreshInterval);
+    }
+  }, [liveScores]);
   
   const handlePlayerClick = (playerName, highlight = null, highlightType = 'demon') => {
     setSelectedPlayer(playerName);
@@ -3658,6 +3791,11 @@ export const DemonGoblinDashboardOptimized = ({ isDemoMode = false }) => {
             </Button>
           </div>
         </div>
+      )}
+      
+      {/* Live Score Ticker - Command Center */}
+      {liveScores.length > 0 && (
+        <LiveScoreTicker games={liveScores} />
       )}
       
       {/* Breaking News Ticker - Injury Alerts */}
