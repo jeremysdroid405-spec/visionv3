@@ -2803,6 +2803,10 @@ class DemonGoblinEngine:
         all_candidates = []
         
         for player_name, player_data in players_dict.items():
+            # Skip None entries
+            if player_data is None:
+                continue
+            
             demons = player_data.get("demons", [])
             standard = player_data.get("standard", [])
             
@@ -2845,9 +2849,17 @@ class DemonGoblinEngine:
                 
                 # Get hit rates from BallDontLie stats
                 hit_rates = demon.get("hit_rates", {})
+                if hit_rates is None:
+                    hit_rates = {}
                 h10_data = hit_rates.get("l10", {})
                 h5_data = hit_rates.get("l5", {})
                 season_data = hit_rates.get("season", {})
+                if h10_data is None:
+                    h10_data = {}
+                if h5_data is None:
+                    h5_data = {}
+                if season_data is None:
+                    season_data = {}
                 
                 h10 = h10_data.get("hit_rate", 0)
                 h5 = h5_data.get("hit_rate", 0)
@@ -3056,6 +3068,10 @@ class DemonGoblinEngine:
         all_candidates = []
         
         for player_name, player_data in players_dict.items():
+            # Skip None entries
+            if player_data is None:
+                continue
+            
             goblins = player_data.get("goblins", [])
             standard = player_data.get("standard", [])
             
@@ -3098,9 +3114,17 @@ class DemonGoblinEngine:
                 
                 # Get hit rates from BallDontLie stats
                 hit_rates = goblin.get("hit_rates", {})
+                if hit_rates is None:
+                    hit_rates = {}
                 h10_data = hit_rates.get("l10", {})
                 h5_data = hit_rates.get("l5", {})
                 season_data = hit_rates.get("season", {})
+                if h10_data is None:
+                    h10_data = {}
+                if h5_data is None:
+                    h5_data = {}
+                if season_data is None:
+                    season_data = {}
                 
                 h10 = h10_data.get("hit_rate", 0)
                 h5 = h5_data.get("hit_rate", 0)
@@ -6141,6 +6165,23 @@ class DemonGoblinEngine:
             logger.info("\n[CACHE] Storing static shell (24h TTL)...")
             await self.store_static_shell(list(player_data.values()), trending_10)
             
+            # ===== BUILD RADAR & VAULT (Top 10 Picks) =====
+            logger.info("\n[RADAR/VAULT] Building top 10 pick sections...")
+            
+            # Build Demon Radar (Top 10 Demon Picks)
+            try:
+                await self._build_demon_radar(player_data, sync_start)
+                logger.info("[DEMON RADAR] Rebuilt successfully")
+            except Exception as e:
+                logger.error(f"[DEMON RADAR] Error building: {e}")
+            
+            # Build Goblin Vault (Top 10 Safe Picks)
+            try:
+                await self._build_goblin_vault(player_data, sync_start)
+                logger.info("[GOBLIN VAULT] Rebuilt successfully")
+            except Exception as e:
+                logger.error(f"[GOBLIN VAULT] Error building: {e}")
+            
             # ===== BUILD PARLAY GENERATORS =====
             logger.info("\n[PARLAYS] Building parlay generators...")
             
@@ -6350,6 +6391,31 @@ V3.1 TRUTH ENGINE - DATA INTEGRITY:
                 )
             
             logger.info(f"[DELTA] Updated {results['lines_updated']} lines")
+            
+            # Rebuild Demon Radar and Goblin Vault with updated data
+            if existing_board and "board" in existing_board:
+                players_list = existing_board["board"].get("players", [])
+                
+                # Convert players_list to players_dict format for radar/vault builders
+                player_data = {}
+                for player in players_list:
+                    pname = player.get("player_name", "")
+                    if pname:
+                        player_data[pname] = player
+                
+                if player_data:
+                    logger.info("[DELTA] Rebuilding Demon Radar and Goblin Vault...")
+                    try:
+                        await self._build_demon_radar(player_data, sync_start)
+                        logger.info("[DEMON RADAR] Rebuilt with fresh data")
+                    except Exception as e:
+                        logger.error(f"[DEMON RADAR] Rebuild error: {e}")
+                    
+                    try:
+                        await self._build_goblin_vault(player_data, sync_start)
+                        logger.info("[GOBLIN VAULT] Rebuilt with fresh data")
+                    except Exception as e:
+                        logger.error(f"[GOBLIN VAULT] Rebuild error: {e}")
             
         except Exception as e:
             logger.error(f"[DELTA] Sync error: {e}")
