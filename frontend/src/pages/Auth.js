@@ -281,7 +281,7 @@ export const Auth = () => {
             <Crosshair className="w-5 h-5 sm:w-6 sm:h-6 text-zinc-600" />
           </div>
           <h1 className="text-4xl sm:text-5xl md:text-7xl font-black tracking-tighter gradient-text-silver">
-            PICKVISION
+            PICKVISION AI
           </h1>
           <span className="text-[10px] sm:text-sm text-zinc-600 font-mono tracking-[0.2em] sm:tracking-[0.3em] mt-1">v3.0 // FLASH ARCHITECTURE</span>
         </div>
@@ -306,7 +306,7 @@ export const Auth = () => {
               <div className="w-2 h-2 rounded-full bg-red-500" />
               <div className="w-2 h-2 rounded-full bg-yellow-500" />
               <div className="w-2 h-2 rounded-full bg-green-500" />
-              <span className="ml-2 text-zinc-600 text-[10px] sm:text-xs font-mono">PICKVISION_TERMINAL</span>
+              <span className="ml-2 text-zinc-600 text-[10px] sm:text-xs font-mono">PICKVISION_AI_TERMINAL</span>
             </div>
             
             {/* Terminal Content */}
@@ -376,7 +376,7 @@ export const Auth = () => {
           <div className="bg-gradient-to-b from-zinc-900/50 to-zinc-950 rounded-2xl border border-zinc-800/50 p-4 sm:p-6 md:p-8">
             <SpecRow 
               spec="MODEL"
-              title="PickVision v3.0 (Flash Architecture)"
+              title="PickVision AI (Flash Architecture)"
               edge="Built on zero-latency infrastructure. While legacy models refresh on a delay, Flash Architecture processes the entry in real-time. No lag, no slippage—just synchronized speed."
               icon={<Cpu className="w-5 h-5 sm:w-6 sm:h-6 text-zinc-400" />}
             />

@@ -11,7 +11,7 @@ import {
   ChevronDown, ChevronRight, ChevronLeft, AlertTriangle,
   User, Flame, Star, Clock, Zap, HardDrive, ArrowLeft, X,
   DollarSign, TrendingUp, Target, Layers, CheckCircle, XCircle,
-  LogOut, Crown, Eye, Radio, Brain
+  LogOut, Crown, Eye, Radio, Brain, Shield
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -2236,9 +2236,9 @@ const GoblinReconSwipeSection = memo(({ picks, onPickClick, tMinusGames = [] }) 
       <div className="flex items-center justify-between mb-2 px-4 sm:px-0">
         <div className="flex items-center gap-2">
           <GoblinIcon size={24} />
-          <span className="text-sm font-bold text-green-400">THE GOBLIN RECON</span>
+          <span className="text-sm font-bold text-green-400">THE VAULT</span>
           <Badge className="bg-green-950/50 text-green-400 border-green-800/50 text-[10px] hidden sm:inline-flex">
-            TOP 10 GOBLIN PLAYS
+            TOP 10 SAFE PLAYS
           </Badge>
         </div>
         <div className="text-[10px] text-zinc-500 hidden sm:block">
@@ -2336,7 +2336,7 @@ const GauntletSwipeSection = memo(({ parlayData, onParlayClick }) => {
 
 GauntletSwipeSection.displayName = 'GauntletSwipeSection';
 
-// Safe Haven (Goblin Parlay) Swipeable Section
+// Safe Haven Swipeable Section - High Reliability Parlays
 const SafeHavenSwipeSection = memo(({ reconData, onParlayClick }) => {
   const tiers = ['daily_double', 'green_ladder_3', 'green_ladder_4', 'green_stack_5', 'fortress_flex'];
   const parlays = tiers.map(t => reconData[t]).filter(Boolean);
@@ -2346,7 +2346,7 @@ const SafeHavenSwipeSection = memo(({ reconData, onParlayClick }) => {
     <div data-testid="safehaven-section" className="mt-6">
       <div className="flex items-center justify-between mb-3 px-4 sm:px-0">
         <div className="flex items-center gap-2">
-          <GoblinIcon size={20} />
+          <Shield className="w-5 h-5 text-emerald-400" />
           <span className="text-sm font-bold text-emerald-400">THE SAFE HAVEN</span>
           <Badge className="bg-emerald-950/50 text-emerald-400 border-emerald-800/50 text-[10px] hidden sm:inline-flex">
             HIGH RELIABILITY
@@ -4224,7 +4224,7 @@ export const DemonGoblinDashboardOptimized = ({ isDemoMode = false }) => {
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2 min-w-0">
             <Eye className="w-6 h-6 text-zinc-400 flex-shrink-0" />
-            <h1 className="text-lg font-bold text-white truncate">PICKVISION</h1>
+            <h1 className="text-lg font-bold text-white truncate">PICKVISION AI</h1>
             <Badge className="bg-purple-600/30 text-purple-400 border-purple-500/50 text-[10px] flex-shrink-0">
               v3
             </Badge>
@@ -4407,7 +4407,7 @@ export const DemonGoblinDashboardOptimized = ({ isDemoMode = false }) => {
           />
         )}
 
-        {/* THE SAFE HAVEN - Goblin Parlay Generator */}
+        {/* THE SAFE HAVEN - High Reliability Parlays */}
         {Object.keys(reconData).length > 0 && (
           <SafeHavenSwipeSection 
             reconData={reconData}
@@ -4520,7 +4520,7 @@ export const DemonGoblinDashboardOptimized = ({ isDemoMode = false }) => {
                 Next: <span className="text-zinc-400">{boardIntelStatus.next_scheduled_sync.time} ({boardIntelStatus.next_scheduled_sync.type?.split(' ')[0]})</span>
               </span>
             )}
-            <span className="text-zinc-600">PickVision v3</span>
+            <span className="text-zinc-600">PickVision AI</span>
           </div>
         </div>
       </div>

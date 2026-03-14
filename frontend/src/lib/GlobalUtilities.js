@@ -1,7 +1,7 @@
 /**
- * PICKVISION GLOBAL UTILITIES
+ * PICKVISION AI GLOBAL UTILITIES
  * ===========================
- * Shared components, hooks, and utilities for the PickVision dashboard.
+ * Shared components, hooks, and utilities for the PickVision AI dashboard.
  * Consolidated from DemonGoblinDashboardOptimized.js
  */
 

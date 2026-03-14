@@ -1,5 +1,5 @@
 /**
- * PICKVISION DASHBOARD v4.0
+ * PICKVISION AI DASHBOARD v4.0
  * =========================
  * Refactored, de-bloated dashboard with shared components.
  * 
@@ -126,7 +126,7 @@ const GauntletSection = memo(({ parlays, onParlayClick }) => {
   );
 });
 
-// The Safe Haven - Goblin Parlay Section
+// The Safe Haven - High Reliability Parlay Section
 const SafeHavenSection = memo(({ parlays, onParlayClick }) => {
   const parlayList = Object.values(parlays || {}).sort((a, b) => 
     (a.pick_count || 0) - (b.pick_count || 0)
@@ -137,12 +137,12 @@ const SafeHavenSection = memo(({ parlays, onParlayClick }) => {
       <SectionHeader 
         icon={Shield}
         title="THE SAFE HAVEN"
-        subtitle="High-consistency goblin parlay combinations"
+        subtitle="High-consistency parlay combinations"
         badge={`${parlayList.length} TIERS`}
         badgeColor="emerald"
       />
       {parlayList.length === 0 ? (
-        <EmptyState message="No goblin parlays available" />
+        <EmptyState message="No safe haven parlays available" />
       ) : (
         <div className="tactical-grid">
           {parlayList.map((parlay) => (
@@ -196,7 +196,7 @@ const SyncStatusFooter = memo(({ status }) => {
               Next: <span className="text-zinc-400">{next_scheduled_sync.time}</span>
             </span>
           )}
-          <span className="text-zinc-600">PickVision v4</span>
+          <span className="text-zinc-600">PickVision AI</span>
         </div>
       </div>
     </div>
@@ -276,7 +276,7 @@ export const DemonGoblinDashboardRefactored = ({ isDemoMode = false }) => {
       <div className="min-h-screen bg-zinc-950 flex items-center justify-center">
         <div className="text-center">
           <LoadingSpinner size="lg" />
-          <p className="text-zinc-500 mt-4">Loading PickVision...</p>
+          <p className="text-zinc-500 mt-4">Loading PickVision AI...</p>
         </div>
       </div>
     );
@@ -294,7 +294,7 @@ export const DemonGoblinDashboardRefactored = ({ isDemoMode = false }) => {
                 <GoblinIcon className="w-8 h-8" />
               </div>
               <div>
-                <h1 className="text-lg font-bold">PickVision</h1>
+                <h1 className="text-lg font-bold">PickVision AI</h1>
                 <p className="text-[10px] text-zinc-500">NBA Player Props Intelligence</p>
               </div>
             </div>
@@ -338,7 +338,7 @@ export const DemonGoblinDashboardRefactored = ({ isDemoMode = false }) => {
         {/* Goblin Recon */}
         <GoblinReconSection picks={goblinVault} onPickClick={handlePickClick} />
         
-        {/* The Safe Haven - Goblin Parlays */}
+        {/* The Safe Haven - High Reliability Parlays */}
         <SafeHavenSection parlays={goblinParlays} onParlayClick={handleParlayClick} />
       </main>
       

@@ -1,5 +1,5 @@
 /**
- * PICKVISION DATA SERVICE
+ * PICKVISION AI DATA SERVICE
  * =======================
  * Clean, modular data-fetching service for unified backend endpoints.
  * 
