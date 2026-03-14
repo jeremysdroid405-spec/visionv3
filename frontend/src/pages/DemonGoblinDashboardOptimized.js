@@ -3527,7 +3527,7 @@ export const DemonGoblinDashboardOptimized = ({ isDemoMode = false }) => {
         axios.get(`${API}/v3/parlay-builder`),
         axios.get(`${API}/v3/goblin-recon`),
         axios.get(`${API}/v3/injuries/alerts`).catch(() => ({ data: { success: false, alerts: {} }})),
-        axios.get(`${API}/v3/breaking-news?injury_only=true`).catch(() => ({ data: { success: false, news: [] }})),
+        axios.get(`${API}/v3/breaking-news`).catch(() => ({ data: { success: false, news: [] }})),
         axios.get(`${API}/v3/data-status`).catch(() => ({ data: { success: false, status: 'error' }})),
         axios.get(`${API}/v3/social-signals`).catch(() => ({ data: { success: false, signals: {} }})),
         axios.get(`${API}/v3/sync-status`).catch(() => ({ data: { engine_status: 'offline', sync_age_display: 'N/A' }})),
