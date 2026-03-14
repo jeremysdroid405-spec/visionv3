@@ -574,7 +574,7 @@ class DemonGoblinEngine:
     async def _ensure_odds_mapper_loaded(self) -> bool:
         """
         Ensure the Odds API Mapper is initialized and loaded.
-        Called before any sync operation that needs player lookups.
+        READ-ONLY - never triggers rebuild during sync.
         
         Returns:
             True if mapper is ready, False otherwise
@@ -583,21 +583,16 @@ class DemonGoblinEngine:
             return True
         
         try:
-            logger.info("[ODDS_MAPPER] Initializing Odds API Mapper...")
+            logger.info("[ODDS_MAPPER] Loading mapper (READ-ONLY)...")
             self._odds_mapper = await init_odds_api_mapper(self.db)
-            
-            # Check if mapping collection has data, if not rebuild it
-            stats = await self._odds_mapper.getStats()
-            if stats.get("total_mappings", 0) == 0:
-                logger.info("[ODDS_MAPPER] No mappings found, rebuilding from master hub...")
-                await self._odds_mapper.rebuildMapping()
-            
             self._odds_mapper_initialized = True
-            logger.info(f"[ODDS_MAPPER] Mapper ready with {stats.get('in_memory_count', 0)} mappings")
+            
+            stats = await self._odds_mapper.getStats()
+            logger.info(f"[ODDS_MAPPER] Loaded {stats.get('in_memory_count', 0)} mappings")
             return True
             
         except Exception as e:
-            logger.error(f"[ODDS_MAPPER] Failed to initialize mapper: {e}")
+            logger.error(f"[ODDS_MAPPER] Failed to load: {e}")
             return False
     
     # ==================== MASTER ROSTER SYNC (SOURCE OF TRUTH) ====================

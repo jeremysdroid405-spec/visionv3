@@ -98,6 +98,7 @@ export const useDataFetch = (endpoint, initialData = null, refreshInterval = nul
 
 // Player Photo - Simple hard-coded image
 export const PlayerPhoto = memo(({ photoUrl, playerName, size = 'md' }) => {
+  const [imgError, setImgError] = React.useState(false);
   const sizes = {
     sm: 'w-8 h-8',
     md: 'w-12 h-12',
@@ -105,18 +106,21 @@ export const PlayerPhoto = memo(({ photoUrl, playerName, size = 'md' }) => {
     xl: 'w-20 h-20'
   };
   
+  const initials = playerName?.split(' ').map(n => n[0]).join('').slice(0, 2);
+  
   return (
     <div className={`${sizes[size]} rounded-full overflow-hidden bg-zinc-800 flex-shrink-0`}>
-      {photoUrl ? (
+      {photoUrl && !imgError ? (
         <img 
           src={photoUrl} 
           alt={playerName}
           className="w-full h-full object-cover"
           loading="lazy"
+          onError={() => setImgError(true)}
         />
       ) : (
         <div className="w-full h-full flex items-center justify-center text-zinc-600 text-xs font-bold">
-          {playerName?.split(' ').map(n => n[0]).join('').slice(0, 2)}
+          {initials}
         </div>
       )}
     </div>
