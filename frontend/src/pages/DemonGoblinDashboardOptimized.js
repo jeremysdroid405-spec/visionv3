@@ -1798,7 +1798,7 @@ const ParlayCard = memo(({ parlay, pickCount, onClick }) => {
           )}
         </div>
         
-        {/* Picks List */}
+        {/* Picks List - Compact format like Safe Haven */}
         <div className="space-y-1.5 mb-3">
           {picks.slice(0, 4).map((pick, idx) => (
             <div 
@@ -1818,12 +1818,6 @@ const ParlayCard = memo(({ parlay, pickCount, onClick }) => {
                   {(pick.intel_briefing || pick.insight_summary) && <Zap className="w-3 h-3 text-purple-400" title="Has AI Vision" />}
                 </div>
               </div>
-              {/* Mini Vision Preview */}
-              {(pick.intel_briefing || pick.insight_summary) && (
-                <div className="mt-1 text-[9px] text-purple-300/70 italic pl-5">
-                  "{pick.intel_briefing || pick.insight_summary}"
-                </div>
-              )}
             </div>
           ))}
           {picks.length > 4 && (

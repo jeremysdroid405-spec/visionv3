@@ -1,7 +1,7 @@
 import React, { useState, memo } from 'react';
 import { Zap } from 'lucide-react';
 
-// The Elite Demon - Sharp Horns Only (No circle/head)
+// The Elite Demon - Simple red icon without circle
 export const DemonIcon = memo(({ size = 24, className = '', isScanning = false, hasVision = false }) => (
   <div className={`demon-icon-container ${isScanning ? 'demon-scanning' : ''} ${className}`} style={{ width: size, height: size }}>
     <svg 
@@ -12,29 +12,22 @@ export const DemonIcon = memo(({ size = 24, className = '', isScanning = false, 
       xmlns="http://www.w3.org/2000/svg"
       className="demon-icon"
     >
-      {/* Left Horn */}
+      {/* Devil Horns */}
       <path 
-        d="M4 18L2 4L10 14" 
-        stroke="#FF3333" 
-        strokeWidth="2.5" 
+        d="M5 12L2 3L9 10L12 8L15 10L22 3L19 12" 
+        fill="#EF4444"
+        stroke="#DC2626" 
+        strokeWidth="1.5" 
         strokeLinejoin="round"
-        fill="#FF0000"
-        fillOpacity="0.8"
       />
-      {/* Right Horn */}
+      {/* Eyes */}
+      <circle cx="8" cy="14" r="1.5" fill="#EF4444"/>
+      <circle cx="16" cy="14" r="1.5" fill="#EF4444"/>
+      {/* Smirk */}
       <path 
-        d="M20 18L22 4L14 14" 
-        stroke="#FF3333" 
-        strokeWidth="2.5" 
-        strokeLinejoin="round"
-        fill="#FF0000"
-        fillOpacity="0.8"
-      />
-      {/* Evil Eyes */}
-      <path 
-        d="M7 16L9 14M17 16L15 14" 
-        stroke="#FF0000" 
-        strokeWidth="2.5" 
+        d="M9 18C10 19.5 14 19.5 15 18" 
+        stroke="#EF4444" 
+        strokeWidth="1.5" 
         strokeLinecap="round"
       />
     </svg>
@@ -44,7 +37,7 @@ export const DemonIcon = memo(({ size = 24, className = '', isScanning = false, 
 
 DemonIcon.displayName = 'DemonIcon';
 
-// The Elite Goblin - Pointy Ears Only (No circle/head)
+// The Elite Goblin - Simple green icon without circle
 export const GoblinIcon = memo(({ size = 24, className = '', isClicked = false, hasVision = false }) => {
   const [clicked, setClicked] = useState(false);
   
@@ -68,33 +61,28 @@ export const GoblinIcon = memo(({ size = 24, className = '', isClicked = false, 
         xmlns="http://www.w3.org/2000/svg"
         className="goblin-icon"
       >
-        {/* Left Ear */}
+        {/* Pointy Ears */}
         <path 
-          d="M4 20L1 6L10 14" 
-          fill="#00FF7F"
-          stroke="#00DD6F"
-          strokeWidth="1.5"
+          d="M5 14L1 4L8 12" 
+          fill="#22C55E"
+          stroke="#16A34A" 
+          strokeWidth="1.5" 
           strokeLinejoin="round"
         />
-        {/* Right Ear */}
         <path 
-          d="M20 20L23 6L14 14" 
-          fill="#00FF7F"
-          stroke="#00DD6F"
-          strokeWidth="1.5"
+          d="M19 14L23 4L16 12" 
+          fill="#22C55E"
+          stroke="#16A34A" 
+          strokeWidth="1.5" 
           strokeLinejoin="round"
         />
-        {/* Sneaky Eyes */}
+        {/* Eyes */}
+        <circle cx="9" cy="13" r="1.5" fill="#22C55E"/>
+        <circle cx="15" cy="13" r="1.5" fill="#22C55E"/>
+        {/* Grin */}
         <path 
-          d="M8 15H10M14 15H16" 
-          stroke="#00FF7F" 
-          strokeWidth="2.5" 
-          strokeLinecap="round"
-        />
-        {/* Smirk */}
-        <path 
-          d="M9 18C10 19 14 19 15 18" 
-          stroke="#00FF7F" 
+          d="M8 17C9.5 19 14.5 19 16 17" 
+          stroke="#22C55E" 
           strokeWidth="1.5" 
           strokeLinecap="round"
         />
