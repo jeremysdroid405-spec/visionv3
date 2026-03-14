@@ -47,6 +47,11 @@ from live_scores_engine import (
     init_live_scores_engine,
     get_live_scores_engine
 )
+from game_lock_engine import (
+    GameLockEngine,
+    init_game_lock_engine,
+    get_game_lock_engine
+)
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -88,6 +93,7 @@ social_signal_engine = None  # Social Signal Engine - News sentiment & revenge g
 adaptive_sync = None  # Adaptive Sync Engine - Mission-critical polling
 intel_briefing_engine = None  # Intel Briefing Engine - Gemini 3 Flash
 live_scores_engine = None  # Live Scores Engine - Real-time scores and news
+game_lock_engine = None  # Game Lock Engine - Auto-cleanup on game start
 scheduler = None  # APScheduler instance
 
 async def initial_autonomous_sync():
@@ -184,7 +190,7 @@ async def scheduled_roster_sync():
 
 @app.on_event("startup")
 async def startup_event():
-    global stats_manager, demon_tracker, demon_goblin_engine, vision_ai_service, injury_service, raw_stat_fetcher, social_signal_engine, adaptive_sync, intel_briefing_engine, live_scores_engine, scheduler
+    global stats_manager, demon_tracker, demon_goblin_engine, vision_ai_service, injury_service, raw_stat_fetcher, social_signal_engine, adaptive_sync, intel_briefing_engine, live_scores_engine, game_lock_engine, scheduler
     
     # Initialize stats manager (BallDontLie)
     stats_manager = StatsManager(db)
@@ -233,6 +239,11 @@ async def startup_event():
     live_scores_engine = init_live_scores_engine(db)
     logger.info("Live Scores Engine initialized (Scores + Breaking News)")
     
+    # Initialize Game Lock Engine - Auto-cleanup on game start
+    game_lock_engine = init_game_lock_engine(db)
+    await game_lock_engine.start()
+    logger.info("Game Lock Engine initialized (60s auto-cleanup)")
+    
     # Start the adaptive sync engine (background polling)
     if ODDS_API_KEY:
         await adaptive_sync.start()
@@ -274,12 +285,17 @@ async def startup_event():
 @app.on_event("shutdown")
 async def shutdown_event():
     """Clean shutdown of background services."""
-    global adaptive_sync, scheduler
+    global adaptive_sync, game_lock_engine, scheduler
     
     # Stop adaptive sync engine
     if adaptive_sync:
         await adaptive_sync.stop()
         logger.info("[SHUTDOWN] Adaptive Sync Engine stopped")
+    
+    # Stop game lock engine
+    if game_lock_engine:
+        await game_lock_engine.stop()
+        logger.info("[SHUTDOWN] Game Lock Engine stopped")
     
     # Shutdown scheduler
     if scheduler:
@@ -1274,20 +1290,44 @@ async def get_hydrated_board():
 # ==================== WAREHOUSE MODEL ENDPOINTS (ZERO API CALLS) ====================
 
 @api_router.get("/v3/cached-props")
-async def get_cached_props():
+async def get_cached_props(include_locked: bool = False):
     """
     THE PRIMARY ENDPOINT - Reads ONLY from MongoDB.
     NO Odds API calls. Zero credit usage.
     
     Returns the full cached board with:
-    - All players grouped by props
+    - All players grouped by props (filtered by lock status)
     - Trending 10
     - synced_at timestamp
+    - t_minus_games: Games starting in <15 minutes (for countdown timers)
+    - lock_status: Overview of active/locked games
+    
+    Query params:
+    - include_locked: If false (default), excludes players from games that have started
     """
     if not demon_goblin_engine:
         raise HTTPException(status_code=500, detail="Engine not initialized")
     
     board = await demon_goblin_engine.get_cached_board()
+    
+    # Filter out locked players if requested (default: filter them out)
+    if not include_locked and game_lock_engine:
+        # Get list of locked event IDs
+        locked_games = await game_lock_engine.get_locked_games()
+        locked_event_ids = {g.get("event_id") for g in locked_games}
+        
+        # Filter players whose event_id is in locked_event_ids
+        if board.get("players"):
+            board["players"] = [
+                p for p in board["players"]
+                if p.get("event_id") not in locked_event_ids and not p.get("locked")
+            ]
+        
+        # Add lock status and t-minus info
+        lock_status = await game_lock_engine.get_lock_status()
+        board["lock_status"] = lock_status
+        board["t_minus_games"] = lock_status.get("t_minus_details", [])
+        board["locked_count"] = len(locked_event_ids)
     
     return board
 
@@ -1502,7 +1542,101 @@ async def get_goblin_recon():
     return result
 
 
-# ==================== V3.1 TRUTH ENGINE - DATA INTEGRITY ENDPOINTS ====================
+# ==================== GAME LOCK ENGINE ENDPOINTS ====================
+
+@api_router.get("/v3/lock-status")
+async def get_lock_status():
+    """
+    GAME LOCK STATUS - Dashboard overview of active/locked games.
+    
+    Returns:
+    - active_games: Number of games still open for betting
+    - locked_games: Number of games that have started (removed from feeds)
+    - t_minus_games: Number of games starting in <15 minutes
+    - t_minus_details: Top 5 soonest games with countdown timers
+    - engine_running: Whether the 60-second lock check loop is active
+    """
+    if not game_lock_engine:
+        raise HTTPException(status_code=500, detail="Game Lock Engine not initialized")
+    
+    result = await game_lock_engine.get_lock_status()
+    return result
+
+
+@api_router.get("/v3/t-minus-games")
+async def get_t_minus_games():
+    """
+    T-MINUS COUNTDOWN - Games starting within 15 minutes.
+    
+    Returns games with:
+    - t_minus_seconds: Seconds until tip-off
+    - t_minus_display: Human-readable format (e.g., "T-12:45")
+    - matchup info and player count
+    
+    Use for high-stakes countdown timers on player cards.
+    """
+    if not game_lock_engine:
+        raise HTTPException(status_code=500, detail="Game Lock Engine not initialized")
+    
+    result = await game_lock_engine.get_t_minus_games()
+    return {"games": result, "count": len(result)}
+
+
+@api_router.get("/v3/locked-games")
+async def get_locked_games():
+    """
+    LOCKED GAMES - Games that have started and are in progress.
+    
+    Use for Live Score Ticker integration - these games have been
+    removed from the betting board but can be shown in real-time.
+    """
+    if not game_lock_engine:
+        raise HTTPException(status_code=500, detail="Game Lock Engine not initialized")
+    
+    result = await game_lock_engine.get_locked_games()
+    return {"games": result, "count": len(result)}
+
+
+class ParlayValidationRequest(BaseModel):
+    player_names: List[str]
+
+
+@api_router.post("/v3/validate-parlay")
+async def validate_parlay(request: ParlayValidationRequest):
+    """
+    PARLAY VALIDATION - Pre-lock-in safety check.
+    
+    Validates that no games in the parlay have started in the last 60 seconds.
+    Call this before a user "Locks In" their parlay.
+    
+    Request:
+    - player_names: List of player names in the parlay
+    
+    Returns:
+    - valid: Boolean - whether all picks are valid
+    - invalid_picks: List of picks with games that have started
+    - message: Human-readable status
+    """
+    if not game_lock_engine:
+        raise HTTPException(status_code=500, detail="Game Lock Engine not initialized")
+    
+    result = await game_lock_engine.validate_parlay(request.player_names)
+    return result
+
+
+@api_router.post("/v3/check-locks")
+async def manual_check_locks():
+    """
+    MANUAL LOCK CHECK - Trigger immediate lock check.
+    
+    Forces an immediate check for games that should be locked.
+    Normally runs automatically every 60 seconds.
+    """
+    if not game_lock_engine:
+        raise HTTPException(status_code=500, detail="Game Lock Engine not initialized")
+    
+    result = await game_lock_engine.check_and_lock_games()
+    return result
 
 @api_router.get("/v3/data-status")
 async def get_data_status():

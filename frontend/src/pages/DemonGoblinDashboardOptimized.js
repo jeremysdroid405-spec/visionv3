@@ -472,6 +472,81 @@ const InjuryBadge = memo(({ playerName, injuryAlerts, size = 'sm' }) => {
 
 InjuryBadge.displayName = 'InjuryBadge';
 
+// ==================== T-MINUS COUNTDOWN BADGE ====================
+
+const TMinusBadge = memo(({ commenceTime, tMinusGames }) => {
+  const [countdown, setCountdown] = useState(null);
+  
+  useEffect(() => {
+    if (!commenceTime) return;
+    
+    // Find this game in tMinusGames to get the countdown
+    const matchingGame = tMinusGames?.find(g => g.commence_time === commenceTime);
+    if (matchingGame && matchingGame.t_minus_seconds > 0 && matchingGame.t_minus_seconds <= 900) {
+      setCountdown(matchingGame.t_minus_seconds);
+    } else {
+      // Calculate manually if not in tMinusGames
+      try {
+        const gameTime = new Date(commenceTime);
+        const now = new Date();
+        const diffSeconds = Math.floor((gameTime - now) / 1000);
+        
+        if (diffSeconds > 0 && diffSeconds <= 900) {
+          setCountdown(diffSeconds);
+        } else {
+          setCountdown(null);
+        }
+      } catch {
+        setCountdown(null);
+      }
+    }
+  }, [commenceTime, tMinusGames]);
+  
+  // Update countdown every second when active
+  useEffect(() => {
+    if (!countdown || countdown <= 0) return;
+    
+    const timer = setInterval(() => {
+      setCountdown(prev => {
+        if (prev <= 1) {
+          clearInterval(timer);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    
+    return () => clearInterval(timer);
+  }, [countdown > 0]);
+  
+  if (!countdown || countdown <= 0) return null;
+  
+  const minutes = Math.floor(countdown / 60);
+  const seconds = countdown % 60;
+  const isUrgent = countdown <= 300; // Under 5 minutes
+  const isCritical = countdown <= 60; // Under 1 minute
+  
+  return (
+    <div 
+      className={`
+        absolute -top-2 -right-2 z-20 px-2 py-1 rounded-md text-[10px] font-mono font-bold
+        ${isCritical 
+          ? 'bg-red-500 text-white animate-pulse shadow-[0_0_10px_rgba(239,68,68,0.7)]' 
+          : isUrgent 
+            ? 'bg-orange-500 text-black shadow-[0_0_8px_rgba(249,115,22,0.5)]'
+            : 'bg-yellow-500 text-black shadow-[0_0_5px_rgba(234,179,8,0.4)]'
+        }
+      `}
+      title={`Game tips off in ${minutes}:${seconds.toString().padStart(2, '0')}`}
+      data-testid="t-minus-badge"
+    >
+      T-{minutes}:{seconds.toString().padStart(2, '0')}
+    </div>
+  );
+});
+
+TMinusBadge.displayName = 'TMinusBadge';
+
 // ==================== BREAKING NEWS TICKER ====================
 
 // ==================== LIVE SCORE TICKER - Command Center ====================
@@ -1175,7 +1250,7 @@ TrendingCard.displayName = 'TrendingCard';
 
 // ==================== DEMON RADAR CARD ====================
 
-const RadarCard = memo(({ pick, rank, onClick, isScanning = false }) => {
+const RadarCard = memo(({ pick, rank, onClick, isScanning = false, tMinusGames = [] }) => {
   // Check if this has a special Vision insight (Master Tier)
   const hasVisionGlow = pick.has_high_conflict || 
     ((pick.intel_briefing || pick.insight_summary) && !(pick.intel_briefing || pick.insight_summary).toLowerCase().includes('standard'));
@@ -1221,6 +1296,9 @@ const RadarCard = memo(({ pick, rank, onClick, isScanning = false }) => {
       onClick={onClick}
       data-testid={`radar-card-${rank}`}
     >
+      {/* T-Minus Countdown Badge */}
+      <TMinusBadge commenceTime={pick.commence_time} tMinusGames={tMinusGames} />
+      
       {/* Vision Synergy Badge */}
       {hasVisionGlow && <VisionBadge type="demon" hasVision={true} />}
       
@@ -1371,7 +1449,7 @@ RadarCard.displayName = 'RadarCard';
 
 // ==================== GOBLIN RECON CARD ====================
 
-const VaultCard = memo(({ pick, rank, onClick }) => {
+const VaultCard = memo(({ pick, rank, onClick, tMinusGames = [] }) => {
   const [isClicked, setIsClicked] = useState(false);
   
   // Check if this has a special Vision insight
@@ -1468,6 +1546,9 @@ const VaultCard = memo(({ pick, rank, onClick }) => {
       onClick={handleClick}
       data-testid={`vault-card-${rank}`}
     >
+      {/* T-Minus Countdown Badge */}
+      <TMinusBadge commenceTime={pick.commence_time} tMinusGames={tMinusGames} />
+      
       {/* Vision Synergy Badge */}
       {hasVisionGlow && <VisionBadge type="goblin" hasVision={true} />}
       
@@ -1912,7 +1993,7 @@ ReconCard.displayName = 'ReconCard';
 // Mobile-first swipeable card sections with Tinder-style navigation
 
 // Demon Radar Swipeable Section
-const DemonRadarSwipeSection = memo(({ picks, onPickClick }) => {
+const DemonRadarSwipeSection = memo(({ picks, onPickClick, tMinusGames = [] }) => {
   const { containerRef, currentIndex, showHint } = useSwipeTracker(picks.length);
   
   return (
@@ -1948,6 +2029,7 @@ const DemonRadarSwipeSection = memo(({ picks, onPickClick }) => {
                 rank={idx + 1}
                 onClick={() => onPickClick(pick)}
                 isScanning={true}
+                tMinusGames={tMinusGames}
               />
             </div>
           ))}
@@ -1962,7 +2044,7 @@ const DemonRadarSwipeSection = memo(({ picks, onPickClick }) => {
 DemonRadarSwipeSection.displayName = 'DemonRadarSwipeSection';
 
 // Goblin Recon Swipeable Section
-const GoblinReconSwipeSection = memo(({ picks, onPickClick }) => {
+const GoblinReconSwipeSection = memo(({ picks, onPickClick, tMinusGames = [] }) => {
   const { containerRef, currentIndex, showHint } = useSwipeTracker(picks.length);
   
   return (
@@ -1996,6 +2078,7 @@ const GoblinReconSwipeSection = memo(({ picks, onPickClick }) => {
               pick={pick} 
               rank={idx + 1}
               onClick={() => onPickClick(pick)}
+              tMinusGames={tMinusGames}
             />
           </div>
         ))}
@@ -3526,6 +3609,15 @@ export const DemonGoblinDashboardOptimized = ({ isDemoMode = false }) => {
   // Live Scores Command Center state
   const [liveScores, setLiveScores] = useState([]);  // Live game scores
   
+  // Game Lock Engine state
+  const [lockStatus, setLockStatus] = useState({
+    active_games: 0,
+    locked_games: 0,
+    t_minus_games: 0,
+    t_minus_details: []
+  });
+  const [tMinusGames, setTMinusGames] = useState([]);  // Games starting in <15 minutes
+  
   // V3.1 Truth Engine - Data Integrity Status
   const [dataStatus, setDataStatus] = useState({
     status: 'loading',
@@ -3578,8 +3670,8 @@ export const DemonGoblinDashboardOptimized = ({ isDemoMode = false }) => {
     try {
       console.log('[CACHED] Loading from MongoDB...');
       
-      // Load board, radar, vault, parlays, recon, injuries, social signals, data status, sync status, and live scores in parallel
-      const [boardResponse, radarResponse, vaultResponse, parlayResponse, reconResponse, injuryResponse, newsResponse, dataStatusResponse, socialSignalsResponse, syncStatusResponse, liveScoresResponse] = await Promise.all([
+      // Load board, radar, vault, parlays, recon, injuries, social signals, data status, sync status, live scores, and lock status in parallel
+      const [boardResponse, radarResponse, vaultResponse, parlayResponse, reconResponse, injuryResponse, newsResponse, dataStatusResponse, socialSignalsResponse, syncStatusResponse, liveScoresResponse, lockStatusResponse, tMinusResponse] = await Promise.all([
         axios.get(`${API}/v3/cached-props`),
         axios.get(`${API}/v3/demon-radar`),
         axios.get(`${API}/v3/goblin-vault`),
@@ -3590,7 +3682,9 @@ export const DemonGoblinDashboardOptimized = ({ isDemoMode = false }) => {
         axios.get(`${API}/v3/data-status`).catch(() => ({ data: { success: false, status: 'error' }})),
         axios.get(`${API}/v3/social-signals`).catch(() => ({ data: { success: false, signals: {} }})),
         axios.get(`${API}/v3/sync-status`).catch(() => ({ data: { engine_status: 'offline', sync_age_display: 'N/A' }})),
-        axios.get(`${API}/v3/live-scores`).catch(() => ({ data: { success: false, games: [] }}))
+        axios.get(`${API}/v3/live-scores`).catch(() => ({ data: { success: false, games: [] }})),
+        axios.get(`${API}/v3/lock-status`).catch(() => ({ data: { active_games: 0, locked_games: 0, t_minus_games: 0 }})),
+        axios.get(`${API}/v3/t-minus-games`).catch(() => ({ data: { games: [], count: 0 }}))
       ]);
       
       // Social signals for applying to picks
@@ -3690,6 +3784,25 @@ export const DemonGoblinDashboardOptimized = ({ isDemoMode = false }) => {
       if (liveScoresResponse.data.success) {
         setLiveScores(liveScoresResponse.data.games || []);
         console.log(`[LIVE SCORES] Loaded ${liveScoresResponse.data.games?.length || 0} games (Live: ${liveScoresResponse.data.live_count || 0})`);
+      }
+      
+      // Game Lock Engine - Lock Status
+      if (lockStatusResponse.data) {
+        setLockStatus({
+          active_games: lockStatusResponse.data.active_games || 0,
+          locked_games: lockStatusResponse.data.locked_games || 0,
+          t_minus_games: lockStatusResponse.data.t_minus_games || 0,
+          t_minus_details: lockStatusResponse.data.t_minus_details || []
+        });
+        console.log(`[LOCK STATUS] Active: ${lockStatusResponse.data.active_games}, Locked: ${lockStatusResponse.data.locked_games}, T-Minus: ${lockStatusResponse.data.t_minus_games}`);
+      }
+      
+      // T-Minus Games (games starting in <15 minutes)
+      if (tMinusResponse.data?.games) {
+        setTMinusGames(tMinusResponse.data.games || []);
+        if (tMinusResponse.data.games.length > 0) {
+          console.log(`[T-MINUS] ${tMinusResponse.data.count} games starting soon!`);
+        }
       }
       
     } catch (error) {
@@ -4008,6 +4121,7 @@ export const DemonGoblinDashboardOptimized = ({ isDemoMode = false }) => {
           <DemonRadarSwipeSection 
             picks={radarPicks.slice(0, 10)} 
             onPickClick={handleRadarClick}
+            tMinusGames={tMinusGames}
           />
         )}
 
@@ -4016,6 +4130,7 @@ export const DemonGoblinDashboardOptimized = ({ isDemoMode = false }) => {
           <GoblinReconSwipeSection 
             picks={vaultPicks.slice(0, 10)} 
             onPickClick={handleVaultClick}
+            tMinusGames={tMinusGames}
           />
         )}
 

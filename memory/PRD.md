@@ -42,6 +42,37 @@ Build a high-performance NBA Player Prop Dashboard that mimics the PrizePicks us
 ### IN PROGRESS
 - None currently
 
+### RECENTLY COMPLETED (Mar 14, 2026 - Session 6)
+- [x] **Game Lock Engine v1.0 (Auto-Cleanup on Game Start)**:
+  - **New `game_lock_engine.py` module**: Automatic game-start cleanup system
+  - **60-Second Lock Check Loop**: Background task compares `current_time` vs `commence_time`
+  - **Auto-Lock Logic**: Games are flagged as "locked" when tip-off time passes
+  - **Nested Data Structure Support**: Handles player documents with nested props arrays
+  - **API Endpoints**:
+    - `GET /api/v3/lock-status`: Dashboard overview of active/locked/t-minus games
+    - `GET /api/v3/locked-games`: Returns games in progress for Live Score Ticker
+    - `GET /api/v3/t-minus-games`: Games starting within 15 minutes with countdown
+    - `POST /api/v3/validate-parlay`: Pre-lock-in validation for parlays
+    - `POST /api/v3/check-locks`: Manual trigger for lock check
+  - **T-Minus Badge Component**: Countdown timer on cards for games starting in <15 minutes
+    - Color-coded: Yellow (>5min), Orange (<5min), Red+pulse (<1min)
+    - Updates every second when countdown is active
+  - **Frontend Integration**: 
+    - TMinusBadge added to RadarCard and VaultCard components
+    - Lock status passed through DemonRadarSwipeSection and GoblinReconSwipeSection
+  - **Tonight's Games Tested (Mar 13, 2026)**:
+    - 7:30 PM ET: NYK vs IND, PHX vs TOR, CLE vs DAL, MEM vs DET ✅
+    - 8:00 PM ET: NOP vs HOU ✅
+    - 10:00 PM ET: MIN vs GSW ✅
+    - 10:30 PM ET: CHI vs LAC, UTA vs POR ✅
+- [x] **Auth Page Mobile UI Fix**:
+  - Fixed text cutoff in "Mission Objectives" section on mobile
+  - Removed `line-clamp-3` restriction that was truncating "The Edge" descriptions
+  - Increased text size from `text-[11px]` to `text-xs` for better readability
+- [x] **Deployment Blocker Fix**:
+  - Fixed hardcoded Supabase URL in `/app/frontend/src/lib/supabase.js`
+  - Changed to use `process.env.REACT_APP_SUPABASE_URL`
+
 ### RECENTLY COMPLETED (Dec 14, 2025 - Session 5)
 - [x] **Live Score & Breaking News Command Center**:
   - **New `live_scores_engine.py` module**: Fetches real-time NBA scores from The Odds API /scores endpoint
@@ -171,11 +202,13 @@ Build a high-performance NBA Player Prop Dashboard that mimics the PrizePicks us
 /app/backend/
 ├── server.py                 # API endpoints, APScheduler, auth routes
 ├── demon_goblin_engine.py    # Core business logic (6500+ lines)
-├── intel_briefing_engine.py  # NEW: Gemini 3 Flash AI Intel Briefings
+├── intel_briefing_engine.py  # Gemini 3 Flash AI Intel Briefings
+├── game_lock_engine.py       # NEW: Auto-cleanup on game start (60s loop)
+├── live_scores_engine.py     # Live scores and breaking news
 ├── adaptive_sync_engine.py   # Real-time odds polling with adaptive frequency
 ├── payout_engine.py          # Dynamic parlay payout calculations
 ├── requirements.txt          # Python dependencies
-└── .env                      # Environment variables (GOOGLE_API_KEY added)
+└── .env                      # Environment variables
 ```
 
 ### Frontend (React)
@@ -185,7 +218,7 @@ Build a high-performance NBA Player Prop Dashboard that mimics the PrizePicks us
 ├── context/AuthContext.js    # Supabase auth state
 ├── pages/
 │   ├── Auth.js               # Login/Signup UI
-│   └── DemonGoblinDashboardOptimized.js  # Main dashboard (2800+ lines)
+│   └── DemonGoblinDashboardOptimized.js  # Main dashboard (4200+ lines)
 └── components/
     └── ProtectedRoute.js     # Auth enforcement
 ```
@@ -193,10 +226,11 @@ Build a high-performance NBA Player Prop Dashboard that mimics the PrizePicks us
 ### Database (MongoDB Collections)
 - `player_master_roster` - Player identity source of truth
 - `dg_live_props` - Raw prop data from The Odds API
-- `dg_cached_board` - Denormalized player+props for fast reads (now includes `intel_briefing`)
+- `dg_cached_board` - Denormalized player+props for fast reads (now includes `intel_briefing`, `locked`)
 - `dg_player_stats` - Cached game logs (L5/L10/Season)
 - `dg_daily_insights` - Pre-calculated advanced analytics
-- `dg_intel_briefings` - NEW: Gemini-generated Mission Intel Briefings
+- `dg_intel_briefings` - Gemini-generated Mission Intel Briefings
+- `dg_locked_games` - NEW: Games that have started (locked for betting)
 - `dg_parlays_demon/goblin` - Smart parlay picks
 - `dg_verification_failures` - V3.1 Truth Engine audit log
 
@@ -211,12 +245,19 @@ Build a high-performance NBA Player Prop Dashboard that mimics the PrizePicks us
 ## API Endpoints
 
 ### V3 Core
-- `GET /api/v3/cached-props` - Main dashboard data
+- `GET /api/v3/cached-props` - Main dashboard data (filters locked players)
 - `GET /api/v3/cached-player/{name}` - Player detail with insights
 - `GET /api/v3/data-status` - Data integrity status (Truth Engine v3.1)
 - `POST /api/v3/sync-odds` - Trigger odds sync
 - `POST /api/v3/sync-player-stats` - Sync game logs
 - `POST /api/v3/sync-daily-insights` - Calculate analytics
+
+### V3 Game Lock Engine (NEW)
+- `GET /api/v3/lock-status` - Overview of active/locked/t-minus games
+- `GET /api/v3/locked-games` - Games in progress for Live Score Ticker
+- `GET /api/v3/t-minus-games` - Games starting within 15 minutes
+- `POST /api/v3/validate-parlay` - Pre-lock-in validation
+- `POST /api/v3/check-locks` - Manual lock check trigger
 
 ### Analytics
 - `GET /api/v3/player-insights/{name}` - Get player insights
