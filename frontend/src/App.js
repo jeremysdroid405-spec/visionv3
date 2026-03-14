@@ -9,10 +9,12 @@ import { DashboardDemo } from './pages/DashboardDemo';
 import { FullBoard } from './pages/FullBoard';
 import DemonGoblinDashboard from './pages/DemonGoblinDashboard';
 import DemonGoblinDashboardOptimized from './pages/DemonGoblinDashboardOptimized';
+import DemonGoblinDashboardRefactored from './pages/DemonGoblinDashboardRefactored';
 import { Toaster } from 'sonner';
 
 // Demo mode wrapper - passes isDemoMode prop to dashboard
 const DemoModeWrapper = () => <DemonGoblinDashboardOptimized isDemoMode={true} />;
+const RefactoredDemoWrapper = () => <DemonGoblinDashboardRefactored isDemoMode={true} />;
 
 function App() {
   return (
@@ -74,6 +76,9 @@ function App() {
             
             {/* V3 Demo mode - public, full dashboard without auth */}
             <Route path="/v3/demo" element={<DemoModeWrapper />} />
+            
+            {/* V4 Refactored Demo - public, streamlined dashboard */}
+            <Route path="/v4/demo" element={<RefactoredDemoWrapper />} />
           </Routes>
         </BrowserRouter>
       </div>
