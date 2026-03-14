@@ -1,7 +1,7 @@
 import React, { useState, memo } from 'react';
 import { Zap } from 'lucide-react';
 
-// THE DEMON - Badass flaming skull with horns
+// THE DEMON - Fierce devil face with sharp horns
 export const DemonIcon = memo(({ size = 24, className = '', isScanning = false, hasVision = false }) => (
   <div className={`demon-icon-container ${isScanning ? 'demon-scanning' : ''} ${className}`} style={{ width: size, height: size }}>
     <svg 
@@ -12,61 +12,61 @@ export const DemonIcon = memo(({ size = 24, className = '', isScanning = false, 
       xmlns="http://www.w3.org/2000/svg"
       className="demon-icon"
     >
-      {/* Flame aura */}
+      {/* Left horn - sharp and curved */}
       <path 
-        d="M12 2C12 2 8 6 8 10C8 10 6 8 6 12C6 14 8 16 8 16C8 16 7 14 9 12C9 12 10 15 12 15C14 15 15 12 15 12C17 14 16 16 16 16C16 16 18 14 18 12C18 8 16 10 16 10C16 6 12 2 12 2Z" 
-        fill="#FF4500"
-        opacity="0.6"
-      />
-      {/* Sharp horns */}
-      <path 
-        d="M4 14L1 4L8 11" 
+        d="M6 12L3 2L10 9" 
         fill="#DC2626"
-        stroke="#991B1B" 
-        strokeWidth="1"
+        stroke="#7F1D1D" 
+        strokeWidth="1.5"
         strokeLinejoin="round"
       />
+      {/* Right horn - sharp and curved */}
       <path 
-        d="M20 14L23 4L16 11" 
+        d="M18 12L21 2L14 9" 
         fill="#DC2626"
-        stroke="#991B1B" 
-        strokeWidth="1"
+        stroke="#7F1D1D" 
+        strokeWidth="1.5"
         strokeLinejoin="round"
       />
-      {/* Skull face */}
+      {/* Face - angular and aggressive */}
       <path 
-        d="M6 13C6 9 9 7 12 7C15 7 18 9 18 13C18 17 15 19 12 19C9 19 6 17 6 13Z" 
-        fill="#1F1F1F"
+        d="M12 6L6 12L8 20H16L18 12L12 6Z" 
+        fill="#1C1917"
         stroke="#DC2626" 
         strokeWidth="1.5"
+        strokeLinejoin="round"
       />
-      {/* Glowing evil eyes */}
+      {/* Left eye - slanted angry */}
       <path 
-        d="M8 12L10 11L10 13L8 14Z" 
-        fill="#FF0000"
+        d="M8 11L11 13L8 14Z" 
+        fill="#EF4444"
       />
+      {/* Right eye - slanted angry */}
       <path 
-        d="M16 12L14 11L14 13L16 14Z" 
-        fill="#FF0000"
+        d="M16 11L13 13L16 14Z" 
+        fill="#EF4444"
       />
-      {/* Angry brow */}
+      {/* Angry eyebrow lines */}
       <path 
-        d="M8 10L11 11M16 10L13 11" 
-        stroke="#DC2626" 
+        d="M7 10L10 12" 
+        stroke="#EF4444" 
         strokeWidth="1.5"
         strokeLinecap="round"
       />
-      {/* Fanged grin */}
       <path 
-        d="M9 16L10 15L12 17L14 15L15 16" 
-        stroke="#DC2626" 
-        strokeWidth="1"
+        d="M17 10L14 12" 
+        stroke="#EF4444" 
+        strokeWidth="1.5"
+        strokeLinecap="round"
+      />
+      {/* Jagged mouth with fangs */}
+      <path 
+        d="M9 17L10 16L11 17L12 15L13 17L14 16L15 17" 
+        stroke="#EF4444" 
+        strokeWidth="1.5"
         strokeLinecap="round"
         strokeLinejoin="round"
       />
-      {/* Fangs */}
-      <path d="M10 16L10 18" stroke="#FFFFFF" strokeWidth="1" strokeLinecap="round"/>
-      <path d="M14 16L14 18" stroke="#FFFFFF" strokeWidth="1" strokeLinecap="round"/>
     </svg>
     {hasVision && <div className="vision-sparkle" />}
   </div>
