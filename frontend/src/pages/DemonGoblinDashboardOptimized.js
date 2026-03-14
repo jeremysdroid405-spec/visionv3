@@ -2238,7 +2238,7 @@ const GoblinReconSwipeSection = memo(({ picks, onPickClick, tMinusGames = [] }) 
           <GoblinIcon size={24} />
           <span className="text-sm font-bold text-green-400">THE SAFE HAVEN</span>
           <Badge className="bg-green-950/50 text-green-400 border-green-800/50 text-[10px] hidden sm:inline-flex">
-            TOP 10 SAFE PLAYS
+            TOP 10 GOBLIN PLAYS
           </Badge>
         </div>
         <div className="text-[10px] text-zinc-500 hidden sm:block">
