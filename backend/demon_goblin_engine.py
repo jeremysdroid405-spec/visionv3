@@ -7492,15 +7492,19 @@ V3.1 TRUTH ENGINE - DATA INTEGRITY:
         Returns actual bet lines with ticket volume/popularity scoring
         Includes Standard, Demon, and Goblin lines
         Auto-purges games that have already started
+        
+        48-HOUR HORIZON: Pulls from both cached_board AND odds_cache
+        to ensure we always have upcoming games even if board isn't synced
         """
         try:
             now = datetime.now(timezone.utc)
             now_epoch = now.timestamp()  # Convert to Unix epoch for precise comparison
+            horizon_48h = now + timedelta(hours=48)  # Look 48 hours ahead
             popular_bets = []
             games_filtered = 0
             games_included = 0
             
-            # Get all cached board players
+            # STRATEGY 1: Get bets from cached board (fully processed with hit rates)
             cursor = self.cached_board.find({}, {"_id": 0})
             players = await cursor.to_list(None)
             
@@ -7512,57 +7516,41 @@ V3.1 TRUTH ENGINE - DATA INTEGRITY:
                 props = player.get("props", [])
                 for prop in props:
                     # STRICT LIVE FILTER: Only show bets that are CURRENTLY BETTABLE
-                    # If game has tipped off, the line is no longer live - remove it
                     commence_time_str = prop.get("commence_time")
                     
                     if not commence_time_str:
-                        continue  # No tip-off time = can't verify if live, skip
+                        continue
                     
                     try:
-                        # Parse commence time and convert to Unix epoch (UTC)
                         commence_time = datetime.fromisoformat(commence_time_str.replace('Z', '+00:00'))
                         game_epoch = commence_time.timestamp()
                         
-                        # STRICT CHECK: Game must NOT have started yet
-                        # If game_epoch <= now_epoch, the game has tipped off - NOT BETTABLE
+                        # Game must NOT have started yet
                         if game_epoch <= now_epoch:
                             games_filtered += 1
-                            continue  # Game has started, line is dead, skip
+                            continue
                             
                         games_included += 1
                     except Exception as e:
                         logger.warning(f"[MOST_POPULAR] Failed to parse commence_time: {commence_time_str} - {e}")
-                        continue  # Can't verify tip-off status, skip for safety
+                        continue
                     
-                    # Calculate popularity score based on available metrics
-                    # Higher score = more popular
+                    # Calculate popularity score
                     hit_rates = prop.get("hit_rates", {}) or {}
                     l10_data = hit_rates.get("l10", {}) or {}
                     h10_rate = l10_data.get("hit_rate", 0) or 0
                     
-                    # Determine line type
                     is_demon = prop.get("is_demon", False)
                     is_goblin = prop.get("is_goblin", False)
                     line_type = "demon" if is_demon else "goblin" if is_goblin else "standard"
                     
-                    # Use various factors for popularity scoring
-                    # Demons and Goblins get a boost (they're more interesting)
                     type_boost = 30 if is_demon else 20 if is_goblin else 0
-                    
-                    # Higher hit rates are more popular
                     hit_rate_score = h10_rate * 0.5
-                    
-                    # Value gap indicates line value
                     gap_pct = abs(prop.get("gap_pct", 0) or 0)
-                    gap_score = min(gap_pct * 2, 40)  # Cap at 40
-                    
-                    # Final popularity score (simulated ticket volume proxy)
+                    gap_score = min(gap_pct * 2, 40)
                     popularity_score = type_boost + hit_rate_score + gap_score + (hash(player_name + str(prop.get("line", 0))) % 20)
                     
-                    # Get the actual line value (use specific line field if available, else fallback to main line)
                     line = prop.get("demon_line") or prop.get("goblin_line") or prop.get("line")
-                    
-                    # Get stat type - try multiple field names
                     stat_type = prop.get("stat_type") or prop.get("stat_type_extracted") or prop.get("market", "").replace("player_", "").upper()
                     
                     popular_bets.append({
@@ -7583,20 +7571,129 @@ V3.1 TRUTH ENGINE - DATA INTEGRITY:
                         "commence_time": commence_time_str,
                         "home_team": prop.get("home_team", ""),
                         "away_team": prop.get("away_team", ""),
-                        "event_id": prop.get("event_id", "")
+                        "event_id": prop.get("event_id", ""),
+                        "source": "cached_board"
                     })
+            
+            # STRATEGY 2: If we have <20 bets, supplement from odds_cache for upcoming games
+            if len(popular_bets) < 20:
+                logger.info(f"[MOST_POPULAR] Only {len(popular_bets)} from cached_board, checking odds_cache for upcoming games...")
+                
+                # Get upcoming events from events cache
+                events_cursor = self.events_cache.find({}, {"_id": 0})
+                events = await events_cursor.to_list(None)
+                
+                for event in events:
+                    event_commence = event.get("commence_time", "")
+                    if not event_commence:
+                        continue
+                    
+                    try:
+                        event_time = datetime.fromisoformat(event_commence.replace('Z', '+00:00'))
+                        event_epoch = event_time.timestamp()
+                        
+                        # Skip if game already started or too far in future
+                        if event_epoch <= now_epoch:
+                            continue
+                        if event_time > horizon_48h:
+                            continue
+                            
+                    except:
+                        continue
+                    
+                    event_id = event.get("id")
+                    home_team = event.get("home_team", "")
+                    away_team = event.get("away_team", "")
+                    
+                    # Get odds for this event
+                    odds_doc = await self.odds_cache.find_one({"event_id": event_id}, {"_id": 0})
+                    if not odds_doc:
+                        continue
+                    
+                    # Parse bookmaker data
+                    for bookmaker in odds_doc.get("bookmakers", []):
+                        for market in bookmaker.get("markets", []):
+                            market_key = market.get("key", "")
+                            is_alternate = "alternate" in market_key.lower()
+                            
+                            # Extract stat type from market key
+                            stat_type_raw = market_key.replace("player_", "").replace("_alternate", "").upper()
+                            stat_map = {
+                                "POINTS": "PTS", "REBOUNDS": "REB", "ASSISTS": "AST",
+                                "THREES": "3PM", "STEALS": "STL", "BLOCKS": "BLK",
+                                "TURNOVERS": "TO", "DOUBLE_DOUBLES": "DD",
+                                "POINTS_REBOUNDS": "P+R", "POINTS_ASSISTS": "P+A",
+                                "REBOUNDS_ASSISTS": "R+A", "POINTS_REBOUNDS_ASSISTS": "PRA"
+                            }
+                            stat_type = stat_map.get(stat_type_raw, stat_type_raw[:3])
+                            
+                            for outcome in market.get("outcomes", []):
+                                player_name = outcome.get("description", "")
+                                if not player_name:
+                                    continue
+                                
+                                line = outcome.get("point")
+                                price = outcome.get("price", 0)
+                                direction = outcome.get("name", "Over").lower()
+                                
+                                # Classify: alternate + price=100 = demon, alternate + price!=100 = goblin
+                                is_demon = is_alternate and price == 100
+                                is_goblin = is_alternate and price != 100
+                                line_type = "demon" if is_demon else "goblin" if is_goblin else "standard"
+                                
+                                # Simple popularity score for odds_cache entries
+                                type_boost = 30 if is_demon else 20 if is_goblin else 0
+                                popularity_score = type_boost + (hash(player_name + str(line)) % 30) + 10
+                                
+                                # Check if we already have this bet from cached_board
+                                existing = any(
+                                    b["player_name"] == player_name and 
+                                    b["stat_type"] == stat_type and 
+                                    b["line"] == line 
+                                    for b in popular_bets
+                                )
+                                if existing:
+                                    continue
+                                
+                                popular_bets.append({
+                                    "player_name": player_name,
+                                    "team": "",  # Not available in odds_cache
+                                    "photo_url": "",  # Not available
+                                    "stat_type": stat_type,
+                                    "line": line,
+                                    "line_type": line_type,
+                                    "is_demon": is_demon,
+                                    "is_goblin": is_goblin,
+                                    "direction": direction,
+                                    "h10_rate": 0,  # Not available without full sync
+                                    "h5_rate": 0,
+                                    "gap_pct": 0,
+                                    "popularity_score": round(popularity_score, 1),
+                                    "odds": price,
+                                    "commence_time": event_commence,
+                                    "home_team": home_team,
+                                    "away_team": away_team,
+                                    "event_id": event_id,
+                                    "source": "odds_cache"
+                                })
             
             # Sort by popularity score (descending) and take top 20
             popular_bets.sort(key=lambda x: x["popularity_score"], reverse=True)
             top_20 = popular_bets[:20]
             
-            logger.info(f"[MOST_POPULAR] Live filter: {games_included} upcoming, {games_filtered} tipped-off (filtered out)")
+            board_count = sum(1 for b in top_20 if b.get("source") == "cached_board")
+            odds_count = sum(1 for b in top_20 if b.get("source") == "odds_cache")
+            
+            logger.info(f"[MOST_POPULAR] Live filter: {games_included} upcoming from board, {games_filtered} tipped-off filtered")
+            logger.info(f"[MOST_POPULAR] Final mix: {board_count} from cached_board, {odds_count} from odds_cache")
             
             return {
                 "success": True,
                 "count": len(top_20),
                 "total_live_bets": len(popular_bets),
                 "games_filtered": games_filtered,
+                "board_source_count": board_count,
+                "odds_source_count": odds_count,
                 "last_updated": now.isoformat(),
                 "status": "live" if len(top_20) > 0 else "awaiting_action",
                 "bets": top_20
@@ -7604,8 +7701,10 @@ V3.1 TRUTH ENGINE - DATA INTEGRITY:
             
         except Exception as e:
             logger.error(f"[MOST_POPULAR] Error getting popular bets: {e}")
+            import traceback
+            traceback.print_exc()
             return {
-                "success": True,  # Still success, just no data
+                "success": True,
                 "count": 0,
                 "total_live_bets": 0,
                 "games_filtered": 0,
