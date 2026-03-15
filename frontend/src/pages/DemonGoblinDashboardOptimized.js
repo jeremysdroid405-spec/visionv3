@@ -3155,7 +3155,23 @@ const ParlayPickCard = memo(({ pick, idx, isRecon, colors, playerData, onPickCli
           {/* Player Details */}
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
-              <span className="text-white font-bold text-lg truncate">{pick.player_name}</span>
+              <span 
+                className="text-white font-bold text-lg truncate hover:text-amber-400 hover:underline cursor-pointer transition-colors"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (onPickClick) {
+                    // Pass the pick object - the parent handler will extract what it needs
+                    onPickClick({
+                      ...pick,
+                      line: pick.demon_line || pick.goblin_line || pick.line,
+                      direction: pick.direction || 'over'
+                    });
+                  }
+                }}
+                title="Click to view all player props"
+              >
+                {pick.player_name}
+              </span>
               <span className="text-xs text-zinc-500 bg-zinc-800 px-1.5 py-0.5 rounded">{pick.team}</span>
             </div>
             {pick.opponent_team && (
@@ -3449,7 +3465,7 @@ const ExpandedParlayView = memo(({ parlay, type, onClose, onPickClick, players }
         <div className="p-4 space-y-3">
           <div className="text-xs text-zinc-500 uppercase tracking-wider mb-2 flex items-center gap-2">
             <span>Parlay Picks ({picks.length})</span>
-            <span className="text-zinc-600">• Click to expand stats</span>
+            <span className="text-zinc-600">• Click player name to view all props</span>
           </div>
           
           {picks.map((pick, idx) => {
