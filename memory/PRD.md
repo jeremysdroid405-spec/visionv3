@@ -30,7 +30,9 @@ dg_cached_board → dg_radar_picks (War Zone) → dg_goblin_vault → dg_goblin_
 │   ├── data_integrity_service.py # Verification & NAJI safeguard
 │   ├── stats_enrichment_service.py # Multi-source stats enrichment
 │   ├── odds_sync_service.py     # Odds sync orchestration
-│   ├── sync_orchestration_service.py # Full/delta sync (created, needs integration)
+│   ├── sync_orchestration_service.py # Full/delta sync (671 lines)
+│   ├── prop_processor_service.py # Prop verification pipeline (187 lines)
+│   ├── insights_sync_service.py # Player analytics (176 lines)
 │   ├── dvp_service.py           # DvP matchup calculation
 │   ├── parlay_service.py        # Matrix & DFS compliance
 │   ├── parlay_builder_service.py # Parlay construction
@@ -41,15 +43,20 @@ dg_cached_board → dg_radar_picks (War Zone) → dg_goblin_vault → dg_goblin_
 │   ├── sync_service.py          # Sync utilities
 │   ├── data_scraper.py          # External API fetching
 │   └── social_scout.py          # Social signals & sentiment
-├── routes/              # API route handlers
+├── routes/              # API route handlers (1,436 lines across 12 modules)
 │   ├── picks.py         # War Zone, Safe Haven, Front Lines
 │   ├── parlays.py       # Parlay builder endpoints
 │   ├── board.py         # Player board & search
 │   ├── sync.py          # Sync operations
 │   ├── intel.py         # AI briefings & insights
-│   └── board_intel.py   # Primary sync operations
-├── server.py            # Main entry (middleware, startup)
-└── demon_goblin_engine.py # Core engine class (~2,443 lines)
+│   ├── board_intel.py   # Primary sync operations
+│   ├── auth.py          # Authentication (signup, login, profile) NEW
+│   ├── injuries.py      # Injury endpoints NEW
+│   ├── vision.py        # Vision AI endpoints NEW
+│   ├── live_scores.py   # Live scores & command center NEW
+│   └── ai_context.py    # AI context evaluation NEW
+├── server.py            # Main entry (middleware, startup) ~3,566 lines
+└── demon_goblin_engine.py # Core engine class (~1,514 lines, 82% reduction)
 ```
 
 ### Tech Stack

@@ -266,7 +266,17 @@ async def startup_event():
     logger.info("Game Lock Engine initialized (60s auto-cleanup)")
     
     # Register modular routes (from /routes/ directory)
-    register_all_routes(app, demon_goblin_engine, game_lock_engine, db)
+    from ai_context_engine import AiContextEngine
+    register_all_routes(
+        app, 
+        demon_goblin_engine, 
+        game_lock_engine=game_lock_engine, 
+        db=db,
+        injury_service=injury_service,
+        vision_service=vision_ai_service,
+        live_scores_engine=live_scores_engine,
+        ai_context_engine_class=AiContextEngine
+    )
     logger.info("[ROUTES] Modular routes registered from /routes/ directory")
     
     # Start the adaptive sync engine (background polling)

@@ -1,0 +1,139 @@
+"""
+Live Scores Routes Module
+=========================
+Handles live scores and command center ticker endpoints
+"""
+from fastapi import APIRouter, HTTPException
+from typing import Optional
+import logging
+
+logger = logging.getLogger(__name__)
+
+router = APIRouter(prefix="/v3/live-scores", tags=["live-scores"])
+command_center_router = APIRouter(prefix="/v3/command-center", tags=["command-center"])
+
+# Service reference (set by main app)
+_live_scores_engine = None
+
+
+def set_live_scores_engine(engine):
+    """Set the live scores engine reference."""
+    global _live_scores_engine
+    _live_scores_engine = engine
+
+
+@router.get("")
+async def get_live_scores(refresh: bool = False):
+    """
+    Get live NBA scores from The Odds API.
+    
+    Args:
+        refresh: Force refresh from API (otherwise uses cache)
+    
+    Returns:
+        - games: List of games with scores and status
+        - live_count: Number of games currently in play
+        - upcoming_count: Number of games not yet started
+    """
+    if not _live_scores_engine:
+        raise HTTPException(status_code=500, detail="Live Scores Engine not initialized")
+    
+    if refresh:
+        result = await _live_scores_engine.fetch_live_scores()
+    else:
+        result = await _live_scores_engine.get_cached_scores()
+        if not result.get("success") or not result.get("games"):
+            result = await _live_scores_engine.fetch_live_scores()
+    
+    return result
+
+
+@router.post("/refresh")
+async def refresh_live_scores():
+    """Force refresh live scores from The Odds API."""
+    if not _live_scores_engine:
+        raise HTTPException(status_code=500, detail="Live Scores Engine not initialized")
+    
+    result = await _live_scores_engine.fetch_live_scores()
+    return result
+
+
+@command_center_router.get("/news")
+async def get_command_center_news(custom_headlines: Optional[str] = None):
+    """
+    Get breaking news for the Command Center ticker.
+    
+    Combines RSS feeds from Rotoworld and ESPN with optional custom headlines.
+    
+    Args:
+        custom_headlines: Pipe-separated list of custom headlines to include
+    """
+    if not _live_scores_engine:
+        raise HTTPException(status_code=500, detail="Live Scores Engine not initialized")
+    
+    headlines = None
+    if custom_headlines:
+        headlines = [h.strip() for h in custom_headlines.split("|") if h.strip()]
+    
+    result = await _live_scores_engine.fetch_breaking_news(custom_headlines=headlines)
+    return result
+
+
+@command_center_router.get("/ticker")
+async def get_ticker_data():
+    """
+    Get combined data for the Command Center tickers.
+    
+    Returns both live scores and breaking news in a single call,
+    optimized for the frontend ticker display.
+    """
+    if not _live_scores_engine:
+        raise HTTPException(status_code=500, detail="Live Scores Engine not initialized")
+    
+    # Get scores (from cache)
+    scores_result = await _live_scores_engine.get_cached_scores()
+    if not scores_result.get("success"):
+        scores_result = await _live_scores_engine.fetch_live_scores()
+    
+    # Get news (from cache)
+    news_result = await _live_scores_engine.get_cached_news()
+    if not news_result.get("success"):
+        news_result = await _live_scores_engine.fetch_breaking_news()
+    
+    # Format for ticker display
+    ticker_items = []
+    
+    # Add live scores first
+    for game in scores_result.get("games", []):
+        if game["status"] == "in_play":
+            ticker_items.append({
+                "type": "live_score",
+                "text": f"{game['away_team']} {game['away_score']} @ {game['home_team']} {game['home_score']} - {game['status_display']}",
+                "priority": 1,
+                "category": "live"
+            })
+        elif game["status"] == "upcoming":
+            ticker_items.append({
+                "type": "upcoming",
+                "text": f"{game['away_team']} @ {game['home_team']} - {game['status_display']}",
+                "priority": 2,
+                "category": "upcoming"
+            })
+    
+    # Add breaking news
+    for news in news_result.get("news", [])[:10]:
+        ticker_items.append({
+            "type": "news",
+            "text": news["title"],
+            "source": news.get("source", ""),
+            "priority": 3 if news.get("is_custom") else 4,
+            "category": news.get("category", "news")
+        })
+    
+    return {
+        "success": True,
+        "ticker_items": ticker_items,
+        "live_games": scores_result.get("live_count", 0),
+        "upcoming_games": scores_result.get("upcoming_count", 0),
+        "news_count": len(news_result.get("news", []))
+    }
