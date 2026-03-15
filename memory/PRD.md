@@ -43,19 +43,22 @@ dg_cached_board → dg_radar_picks (War Zone) → dg_goblin_vault → dg_goblin_
 │   ├── sync_service.py          # Sync utilities
 │   ├── data_scraper.py          # External API fetching
 │   └── social_scout.py          # Social signals & sentiment
-├── routes/              # API route handlers (1,437 lines across 12 modules)
+├── routes/              # API route handlers (2,018 lines across 15 modules)
 │   ├── picks.py         # War Zone, Safe Haven, Front Lines
 │   ├── parlays.py       # Parlay builder endpoints
 │   ├── board.py         # Player board & search
 │   ├── sync.py          # Sync operations
 │   ├── intel.py         # AI briefings & insights
 │   ├── board_intel.py   # Primary sync operations
-│   ├── auth.py          # Authentication (signup, login, profile) NEW
-│   ├── injuries.py      # Injury endpoints NEW
-│   ├── vision.py        # Vision AI endpoints NEW
-│   ├── live_scores.py   # Live scores & command center NEW
-│   └── ai_context.py    # AI context evaluation NEW
-├── server.py            # Main entry (middleware, startup) ~3,067 lines (reduced from 3,566)
+│   ├── auth.py          # Authentication (signup, login, profile)
+│   ├── injuries.py      # Injury endpoints
+│   ├── vision.py        # Vision AI endpoints
+│   ├── live_scores.py   # Live scores & command center
+│   ├── ai_context.py    # AI context evaluation
+│   ├── master_hub.py    # NBA Master Hub SSOT endpoints NEW
+│   ├── odds_mapper.py   # Odds API V4 mapping NEW
+│   └── demon_tracker.py # Color-coded demon cards NEW
+├── server.py            # Main entry (middleware, startup) ~3,067 lines
 └── demon_goblin_engine.py # Core engine class (~1,514 lines, 82% reduction)
 ```
 

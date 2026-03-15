@@ -1,0 +1,100 @@
+"""
+Master Hub Routes Module
+========================
+NBA Master Hub - Single Source of Truth for all player data
+"""
+from fastapi import APIRouter, HTTPException
+from typing import Optional
+import logging
+
+logger = logging.getLogger(__name__)
+
+router = APIRouter(prefix="/v3/master-hub", tags=["master-hub"])
+
+# Service references (set by main app)
+_db = None
+_hub_functions = None  # Dict of functions: fetchPlayerIntel, hubSearchPlayers, etc.
+
+
+def set_master_hub_deps(db, hub_functions: dict):
+    """Set the db and hub function references."""
+    global _db, _hub_functions
+    _db = db
+    _hub_functions = hub_functions
+
+
+@router.get("/player/{player_id}")
+async def get_player_intel(player_id: str):
+    """
+    THE VALET FUNCTION - Fetch player intel from Master Hub.
+    
+    This is the ONLY way to access player data from NBA_MASTER_HUB_2026.
+    
+    Args:
+        player_id: Player ID (tank01_id, nba_id, or display_name)
+        
+    Returns:
+        Complete player object with all fields
+    """
+    if _hub_functions is None:
+        raise HTTPException(status_code=500, detail="Master Hub not initialized")
+    
+    player = await _hub_functions["fetchPlayerIntel"](player_id)
+    if not player:
+        raise HTTPException(status_code=404, detail=f"Player not found: {player_id}")
+    return player
+
+
+@router.get("/player/name/{display_name}")
+async def get_player_by_name(display_name: str):
+    """Fetch player by display name."""
+    if _hub_functions is None:
+        raise HTTPException(status_code=500, detail="Master Hub not initialized")
+    
+    player = await _hub_functions["fetchPlayerIntelByName"](display_name)
+    if not player:
+        raise HTTPException(status_code=404, detail=f"Player not found: {display_name}")
+    return player
+
+
+@router.get("/search")
+async def search_hub_players(q: str, limit: int = 10):
+    """Search players in Master Hub."""
+    if _hub_functions is None:
+        raise HTTPException(status_code=500, detail="Master Hub not initialized")
+    
+    players = await _hub_functions["hubSearchPlayers"](q, limit)
+    return {"players": players, "count": len(players)}
+
+
+@router.get("/stats")
+async def get_hub_statistics():
+    """Get Master Hub statistics."""
+    if _hub_functions is None:
+        raise HTTPException(status_code=500, detail="Master Hub not initialized")
+    
+    return await _hub_functions["getHubStats"]()
+
+
+@router.post("/sync")
+async def trigger_hub_sync():
+    """
+    Manually trigger Master Hub daily sync.
+    Normally runs at 4:00 AM ET automatically.
+    """
+    if _hub_functions is None:
+        raise HTTPException(status_code=500, detail="Master Hub not initialized")
+    
+    result = await _hub_functions["runHubSync"]()
+    return result
+
+
+@router.post("/start-scheduler")
+async def start_hub_scheduler():
+    """Start the 4:00 AM ET daily sync scheduler."""
+    if _hub_functions is None:
+        raise HTTPException(status_code=500, detail="Master Hub not initialized")
+    
+    hub = _hub_functions["get_master_hub"]()
+    await hub.startDailyScheduler()
+    return {"status": "started", "schedule": "4:00 AM ET daily"}
