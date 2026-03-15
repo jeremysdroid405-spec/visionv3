@@ -3647,23 +3647,14 @@ class DemonGoblinEngine:
                 seen_demon_players.add(pname)
                 draft_b.append(pick)
         
-        # ========== MERGE: Combine and sort by EV/Edge ==========
+        # ========== MERGE: Combine and RANDOMIZE ==========
         combined = draft_a + draft_b
         
-        # Calculate EV/Edge for sorting: edge = (hit_rate * payout) - (miss_rate * stake)
-        # For +100 odds: EV = (hit_rate * 1.0) - (miss_rate * 1.0) = hit_rate - (1 - hit_rate) = 2*hit_rate - 1
-        # For other odds, we approximate using vault_score * gap_pct as "edge multiplier"
-        for pick in combined:
-            h10_rate = pick.get("h10_rate", 50) / 100  # Convert to decimal
-            gap_pct = abs(pick.get("gap_pct", 0)) / 100  # Convert to decimal
-            vault_score = pick.get("vault_score", 0.5)
-            
-            # EV calculation: combine hit probability with value gap (edge)
-            # Higher gap = more value, but must be weighted by hit probability
-            pick["ev_edge"] = vault_score * (1 + gap_pct)  # Score amplified by edge
-        
-        # Sort by EV/Edge descending
-        combined.sort(key=lambda x: x.get("ev_edge", 0), reverse=True)
+        # Shuffle to mix goblins and demons randomly (use time-based seed for true randomness)
+        import random
+        import time
+        random.seed(int(time.time() * 1000))
+        random.shuffle(combined)
         
         # Take final 10 (should already be 10 if we have enough candidates)
         top_10 = combined[:10]
@@ -4987,9 +4978,9 @@ class DemonGoblinEngine:
         THE FRONT LINES - Mild Goblins + Mild Demons (5-18% gap from standard)
         
         Uses GOD-TIER 4-Pillar Formula, same as Safe Haven.
-        Data is PRE-ENRICHED during sync. No runtime lookups.
+        Data is PRE-ENRICHED and PRE-SHUFFLED during sync. No runtime sorting.
         """
-        picks = await self.front_lines.find({}, {"_id": 0}).sort("vault_score", -1).to_list(10)
+        picks = await self.front_lines.find({}, {"_id": 0}).to_list(10)
         
         # Add AI insights
         for pick in picks:
