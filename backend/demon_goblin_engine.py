@@ -384,7 +384,7 @@ class DemonGoblinEngine:
         from services import (
             RosterService, PhotoService, PropsService, SyncService, 
             TierBuilderService, ParlayBuilderService, CachedBoardBuilderService,
-            OddsApiService
+            OddsApiService, StatsApiService, Tank01Service
         )
         self.roster_service = RosterService(self.repo, db)
         self.photo_service = PhotoService(db)
@@ -396,6 +396,8 @@ class DemonGoblinEngine:
             db, self.tier_builder_service, self.parlay_builder_service
         )
         self.odds_api_service = OddsApiService(db)
+        self.stats_api_service = StatsApiService(db)
+        self.tank01_service = Tank01Service(db)
         
         # Legacy direct collection access (gradually migrating to repo)
         self.events_cache = db.dg_events_cache
@@ -1881,242 +1883,20 @@ class DemonGoblinEngine:
     # ==================== PILLAR 2: BALLDONTLIE API ====================
     
     async def search_bdl_player(self, player_name: str) -> Optional[Dict[str, Any]]:
-        """Map player name to BallDontLie player data"""
-        if player_name in self._player_name_map:
-            return self._player_name_map[player_name]
-        
-        try:
-            name_parts = player_name.strip().split()
-            search_terms = [name_parts[-1]] if len(name_parts) >= 2 else [player_name]
-            if len(name_parts) >= 2:
-                search_terms.append(name_parts[0])
-            
-            url = f"{BDL_BASE_URL}/players"
-            headers = {"Authorization": BDL_API_KEY}
-            
-            for search_term in search_terms:
-                async with httpx.AsyncClient() as client:
-                    response = await client.get(
-                        url,
-                        params={"search": search_term},
-                        headers=headers,
-                        timeout=10.0
-                    )
-                    
-                    if response.status_code == 200:
-                        players = response.json().get("data", [])
-                        
-                        if not players:
-                            continue
-                        
-                        best_match = None
-                        best_score = 0
-                        
-                        for player in players:
-                            full_name = f"{player.get('first_name', '')} {player.get('last_name', '')}".strip()
-                            score = max(
-                                fuzz.ratio(player_name.lower(), full_name.lower()),
-                                fuzz.partial_ratio(player_name.lower(), full_name.lower())
-                            )
-                            
-                            if score > best_score and score >= 60:
-                                best_score = score
-                                best_match = player
-                        
-                        if best_match:
-                            self._player_name_map[player_name] = best_match
-                            return best_match
-            
-        except Exception as e:
-            logger.error(f"[PILLAR 2] BDL search error for {player_name}: {e}")
-        
-        return None
+        """PROXY: Map player name to BDL data - delegated to StatsApiService."""
+        return await self.stats_api_service.search_player(player_name)
     
     async def fetch_player_season_stats(self, player_id: int) -> List[Dict[str, Any]]:
-        """Fetch season stats for hit rate calculation"""
-        try:
-            # Check cache first
-            cached = await self.stats_cache.find_one({"player_id": str(player_id)})
-            if cached:
-                cached_time = datetime.fromisoformat(cached["cached_at"])
-                if datetime.now(timezone.utc) - cached_time < timedelta(hours=4):
-                    return cached.get("games", [])
-            
-            url = f"{BDL_BASE_URL}/stats"
-            params = {
-                "player_ids[]": player_id,
-                "seasons[]": CURRENT_SEASON,
-                "per_page": 100
-            }
-            headers = {"Authorization": BDL_API_KEY}
-            
-            async with httpx.AsyncClient() as client:
-                response = await client.get(url, params=params, headers=headers, timeout=15.0)
-                
-                if response.status_code == 200:
-                    games = response.json().get("data", [])
-                    
-                    # Sort by date (most recent first)
-                    games_sorted = sorted(
-                        games,
-                        key=lambda x: x.get("game", {}).get("date", ""),
-                        reverse=True
-                    )
-                    
-                    # Filter out DNP games
-                    def player_played(game):
-                        minutes = game.get("min")
-                        if minutes:
-                            min_str = str(minutes).replace(":", "").strip()
-                            if min_str and min_str != "0" and min_str != "00":
-                                return True
-                        return (game.get("pts", 0) or 0) + (game.get("reb", 0) or 0) + (game.get("ast", 0) or 0) > 0
-                    
-                    played_games = [g for g in games_sorted if player_played(g)]
-                    
-                    # Cache results
-                    await self.stats_cache.update_one(
-                        {"player_id": str(player_id)},
-                        {"$set": {
-                            "player_id": str(player_id),
-                            "games": played_games,
-                            "cached_at": datetime.now(timezone.utc).isoformat()
-                        }},
-                        upsert=True
-                    )
-                    
-                    return played_games
-                    
-        except Exception as e:
-            logger.error(f"[PILLAR 2] Stats fetch error for player {player_id}: {e}")
-        
-        return []
+        """PROXY: Fetch season stats - delegated to StatsApiService."""
+        return await self.stats_api_service.fetch_player_season_stats(player_id)
     
     def calculate_hit_rates(self, games: List[Dict], market: str, line: float) -> Dict[str, Any]:
-        """
-        Calculate L5, L10, and Season hit rates with source verification.
-        
-        TRUTH ENGINE V3.1:
-        - All stat keys MUST be lowercase (pts, reb, ast - not PTS, REB, AST)
-        - Manual PRA check for each game
-        - Returns raw values for verification
-        """
-        # CRITICAL: Case-insensitive stat key mapping (Tank01/BallDontLie use lowercase)
-        market_to_stat = {
-            # Primary markets (lowercase keys)
-            "player_points": ["pts"],
-            "player_rebounds": ["reb"],
-            "player_assists": ["ast"],
-            "player_threes": ["fg3m"],
-            "player_blocks": ["blk"],
-            "player_steals": ["stl"],
-            "player_turnovers": ["turnover", "tov"],  # Both variants
-            # Alternate markets
-            "alternate_player_points": ["pts"],
-            "alternate_player_rebounds": ["reb"],
-            "alternate_player_assists": ["ast"],
-            "alternate_player_threes": ["fg3m"],
-            # Combo stats - MANUAL PRA CHECK
-            "player_points_rebounds": ["pts", "reb"],
-            "player_points_assists": ["pts", "ast"],
-            "player_rebounds_assists": ["reb", "ast"],
-            "player_points_rebounds_assists": ["pts", "reb", "ast"],  # PRA
-            "player_steals_blocks": ["stl", "blk"],
-        }
-        
-        stat_keys = market_to_stat.get(market, ["pts"])
-        
-        def get_stat_value(game):
-            """Extract stat value with case-insensitive key lookup."""
-            total = 0
-            for key in stat_keys:
-                # Try lowercase first (standard)
-                value = game.get(key, None)
-                # Fallback to uppercase if not found
-                if value is None:
-                    value = game.get(key.upper(), None)
-                # Fallback to title case
-                if value is None:
-                    value = game.get(key.title(), None)
-                total += (value or 0)
-            return total
-        
-        def calc_window(game_list, line_val):
-            if not game_list:
-                return {"games_over": 0, "total_games": 0, "hit_rate": 0, "avg": 0, "values": [], "floor": 0, "ceiling": 0}
-            
-            values = [get_stat_value(g) for g in game_list]
-            games_over = sum(1 for v in values if v > line_val)
-            total = len(game_list)
-            hit_rate = games_over / total if total > 0 else 0
-            avg = sum(values) / total if total > 0 else 0
-            
-            return {
-                "games_over": games_over,
-                "total_games": total,
-                "hit_rate": round(hit_rate, 3),
-                "avg": round(avg, 1),
-                "values": values,  # V3.1: Store raw values for verification
-                "floor": min(values) if values else 0,
-                "ceiling": max(values) if values else 0
-            }
-        
-        l5 = calc_window(games[:5], line)
-        l10 = calc_window(games[:10], line)
-        season = calc_window(games, line)
-        
-        # Trend detection
-        trends = []
-        if l5["total_games"] >= 3 and season["total_games"] >= 10:
-            if l5["avg"] > season["avg"] * 1.15:
-                trends.append("HOT")
-            elif l5["avg"] < season["avg"] * 0.85:
-                trends.append("COLD")
-        
-        return {
-            "l5": l5,
-            "l10": l10,
-            "season": season,
-            "trends": trends
-        }
+        """PROXY: Calculate hit rates - delegated to StatsApiService."""
+        return self.stats_api_service.calculate_hit_rates(games, market, line)
     
     def _extract_l10_values(self, games: List[Dict], market: str) -> List[float]:
-        """
-        Extract raw stat values from last 10 games for verification.
-        Uses case-insensitive key lookup.
-        """
-        market_to_stat = {
-            "player_points": ["pts"],
-            "player_rebounds": ["reb"],
-            "player_assists": ["ast"],
-            "player_threes": ["fg3m"],
-            "player_blocks": ["blk"],
-            "player_steals": ["stl"],
-            "player_turnovers": ["turnover", "tov"],
-            "player_points_rebounds": ["pts", "reb"],
-            "player_points_assists": ["pts", "ast"],
-            "player_rebounds_assists": ["reb", "ast"],
-            "player_points_rebounds_assists": ["pts", "reb", "ast"],
-            "player_steals_blocks": ["stl", "blk"],
-        }
-        
-        stat_keys = market_to_stat.get(market, ["pts"])
-        
-        def get_stat_value(game):
-            total = 0
-            for key in stat_keys:
-                value = game.get(key, None)
-                if value is None:
-                    value = game.get(key.upper(), None)
-                if value is None:
-                    value = game.get(key.title(), None)
-                total += (value or 0)
-            return total
-        
-        if not games:
-            return []
-            
-        return [get_stat_value(g) for g in games[:10]]
+        """PROXY: Extract L10 values - delegated to StatsApiService."""
+        return self.stats_api_service.extract_l10_values(games, market)
     
     async def _log_verification_failure(self, player_name: str, failure_type: str, details: Dict[str, Any]):
         """
@@ -2258,178 +2038,25 @@ class DemonGoblinEngine:
     # ==================== PILLAR 3: TANK01 API (with Exponential Backoff) ====================
     
     async def fetch_injuries(self) -> Dict[str, Any]:
-        """
-        Fetch injury data from Tank01 with:
-        - 4-hour cache to reduce API calls
-        - Exponential backoff for rate limiting
-        - Graceful degradation on failure
-        """
-        # Check cache first
-        cached = await self.tank01_cache.find_one({"type": "injuries"})
-        if cached:
-            cached_time = datetime.fromisoformat(cached["cached_at"])
-            age = datetime.now(timezone.utc) - cached_time
-            if age < TANK01_CACHE_TTL:
-                logger.info(f"[PILLAR 3] Using cached injury data (age: {age.total_seconds():.0f}s)")
-                self._injury_data = cached.get("data", {})
-                return self._injury_data
-        
-        # Fetch fresh data with exponential backoff
-        url = f"{TANK01_BASE}/getNBATeams"
-        params = {"rosters": "true", "schedules": "false"}
-        headers = {
-            "X-RapidAPI-Key": TANK01_API_KEY,
-            "X-RapidAPI-Host": "tank01-nba-live-in-game-real-time-statistics-nba.p.rapidapi.com"
-        }
-        
-        logger.info("[PILLAR 3] Fetching injury data from Tank01 (with backoff)...")
-        data = await fetch_with_backoff(url, headers, params)
-        
-        if data:
-            teams = data.get("body", []) if isinstance(data, dict) else data
-            
-            injuries = {}
-            if isinstance(teams, list):
-                for team in teams:
-                    roster = team.get("Roster", {})
-                    if isinstance(roster, dict):
-                        for player_id, player_data in roster.items():
-                            injury_info = player_data.get("injury", {})
-                            if injury_info and isinstance(injury_info, dict):
-                                status = injury_info.get("designation", "")
-                                if status:
-                                    player_name = player_data.get("longName", "")
-                                    injuries[player_name.lower()] = {
-                                        "status": status,
-                                        "description": injury_info.get("description", ""),
-                                        "return_date": injury_info.get("injReturnDate", ""),
-                                        "team": team.get("teamAbv", "")
-                                    }
-            
-            # Cache the results
-            await self.tank01_cache.update_one(
-                {"type": "injuries"},
-                {"$set": {
-                    "type": "injuries",
-                    "data": injuries,
-                    "cached_at": datetime.now(timezone.utc).isoformat()
-                }},
-                upsert=True
-            )
-            
-            self._injury_data = injuries
-            logger.info(f"[PILLAR 3] Found {len(injuries)} injured players (cached for 4h)")
-            return injuries
-        
-        # Fallback to cached data if available (even if expired)
-        if cached:
-            logger.warning("[PILLAR 3] Using stale cached injury data (API failed)")
-            self._injury_data = cached.get("data", {})
-            return self._injury_data
-        
-        logger.warning("[PILLAR 3] No injury data available")
-        return {}
+        """PROXY: Fetch injury data - delegated to Tank01Service."""
+        injuries = await self.tank01_service.fetch_injuries()
+        self._injury_data = injuries  # Keep local cache in sync
+        return injuries
     
     async def fetch_news(self) -> List[Dict[str, Any]]:
-        """
-        Fetch latest NBA news from Tank01 with:
-        - 4-hour cache to reduce API calls
-        - Exponential backoff for rate limiting
-        - Graceful degradation on failure
-        """
-        # Check cache first
-        cached = await self.tank01_cache.find_one({"type": "news"})
-        if cached:
-            cached_time = datetime.fromisoformat(cached["cached_at"])
-            age = datetime.now(timezone.utc) - cached_time
-            if age < TANK01_CACHE_TTL:
-                logger.info(f"[PILLAR 3] Using cached news data (age: {age.total_seconds():.0f}s)")
-                self._news_data = cached.get("data", [])
-                return self._news_data
-        
-        # Fetch fresh data with exponential backoff
-        url = f"{TANK01_BASE}/getNBANews"
-        headers = {
-            "X-RapidAPI-Key": TANK01_API_KEY,
-            "X-RapidAPI-Host": "tank01-nba-live-in-game-real-time-statistics-nba.p.rapidapi.com"
-        }
-        
-        logger.info("[PILLAR 3] Fetching news from Tank01 (with backoff)...")
-        data = await fetch_with_backoff(url, headers)
-        
-        if data:
-            news_items = data.get("body", []) if isinstance(data, dict) else data
-            
-            if isinstance(news_items, list):
-                news_list = news_items[:100]
-                
-                # Cache the results
-                await self.tank01_cache.update_one(
-                    {"type": "news"},
-                    {"$set": {
-                        "type": "news",
-                        "data": news_list,
-                        "cached_at": datetime.now(timezone.utc).isoformat()
-                    }},
-                    upsert=True
-                )
-                
-                self._news_data = news_list
-                logger.info(f"[PILLAR 3] Fetched {len(news_list)} news items (cached for 4h)")
-                return news_list
-        
-        # Fallback to cached data if available (even if expired)
-        if cached:
-            logger.warning("[PILLAR 3] Using stale cached news data (API failed)")
-            self._news_data = cached.get("data", [])
-            return self._news_data
-        
-        logger.warning("[PILLAR 3] No news data available")
-        return []
+        """PROXY: Fetch news data - delegated to Tank01Service."""
+        news = await self.tank01_service.fetch_news()
+        self._news_data = news  # Keep local cache in sync
+        return news
     
     def get_player_injury_status(self, player_name: str) -> Dict[str, Any]:
-        """Get injury status for a player"""
-        player_lower = player_name.lower()
-        result = {
-            "has_injury": False,
-            "injury_status": None,
-            "injury_description": None,
-            "has_news": False,
-            "news_items": [],
-            "warning_level": "none"  # none, questionable, out
-        }
-        
-        # Check injury data
-        if player_lower in self._injury_data:
-            injury = self._injury_data[player_lower]
-            status = injury.get("status", "").lower()
-            result["has_injury"] = True
-            result["injury_status"] = injury.get("status", "").upper()
-            result["injury_description"] = injury.get("description", "")
-            
-            if status in ["out"]:
-                result["warning_level"] = "out"
-            elif status in ["questionable", "doubtful", "day-to-day", "gtd"]:
-                result["warning_level"] = "questionable"
-        
-        # Check news for injury mentions
-        name_parts = player_lower.split()
-        for news in self._news_data[:50]:
-            title = (news.get("title", "") or "").lower()
-            mentioned = any(part in title for part in name_parts if len(part) > 2)
-            
-            if mentioned:
-                has_injury_keyword = any(kw in title for kw in INJURY_KEYWORDS)
-                if has_injury_keyword:
-                    result["has_news"] = True
-                    result["news_items"].append({
-                        "title": news.get("title", ""),
-                        "link": news.get("link", "")
-                    })
-                    if result["warning_level"] == "none":
-                        result["warning_level"] = "questionable"
-        
-        return result
+        """PROXY: Get player injury status - delegated to Tank01Service."""
+        # Sync local caches to service if needed
+        if self._injury_data and not self.tank01_service.get_injury_data():
+            self.tank01_service.set_injury_data(self._injury_data)
+        if self._news_data and not self.tank01_service.get_news_data():
+            self.tank01_service.set_news_data(self._news_data)
+        return self.tank01_service.get_player_injury_status(player_name)
     
     # ==================== MAIN ORCHESTRATION ====================
     

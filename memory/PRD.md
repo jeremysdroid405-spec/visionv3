@@ -45,6 +45,23 @@ dg_cached_board → dg_radar_picks (War Zone) → dg_goblin_vault → dg_goblin_
 
 ## What's Been Implemented
 
+### 2026-03-15: Backend Engine Deconstruction (Phase 8 - Stats & Tank01 Services)
+- **Engine Reduction:** 4,196 → 3,823 lines (**373 lines extracted, 9% additional reduction**)
+- **Cumulative Reduction:** 8,252 → 3,823 lines (**~54% total reduction**)
+- **New Services Created:**
+  - `StatsApiService` (283 lines): BallDontLie API integration, hit rate calculations
+  - `Tank01Service` (293 lines): Injury and news fetching with caching
+- **Methods Proxied in Engine:**
+  - `search_bdl_player()` → StatsApiService
+  - `fetch_player_season_stats()` → StatsApiService
+  - `calculate_hit_rates()` → StatsApiService
+  - `_extract_l10_values()` → StatsApiService
+  - `fetch_injuries()` → Tank01Service
+  - `fetch_news()` → Tank01Service
+  - `get_player_injury_status()` → Tank01Service
+- **Total Services:** 7,505 lines of modular, reusable code
+- **Test Results:** All API endpoints verified working
+
 ### 2026-03-15: Backend Engine Deconstruction (Phase 7 - Odds API & Cached Board Services)
 - **Engine Reduction:** 5,049 → 4,196 lines (**853 lines extracted, 17% additional reduction**)
 - **Cumulative Reduction:** 8,252 → 4,196 lines (**~49% total reduction**)

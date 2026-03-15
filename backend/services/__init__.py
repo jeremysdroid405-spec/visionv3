@@ -52,3 +52,5 @@ from .tier_builder_service import TierBuilderService
 from .parlay_builder_service import ParlayBuilderService
 from .cached_board_builder_service import CachedBoardBuilderService
 from .odds_api_service import OddsApiService
+from .stats_api_service import StatsApiService
+from .tank01_service import Tank01Service
