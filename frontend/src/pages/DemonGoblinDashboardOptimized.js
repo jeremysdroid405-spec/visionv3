@@ -2176,10 +2176,9 @@ const GoblinReconSwipeSection = memo(({ picks, onPickClick, tMinusGames = [] }) 
     <div data-testid="recon-section" className="goblin-recon-section">
       <div className="flex items-center justify-between mb-2 px-4 sm:px-0">
         <div className="flex items-center gap-2">
-          <GemEmblem size={24} />
-          <span className="text-sm font-bold text-green-400">THE SAFE HAVEN</span>
+          <span className="text-sm font-bold text-green-400">SAFE HAVEN</span>
           <Badge className="bg-green-950/50 text-green-400 border-green-800/50 text-[10px] hidden sm:inline-flex">
-            TOP 10 FORTRESS PLAYS
+            TOP 10 GOBLIN PLAYS
           </Badge>
         </div>
         <div className="text-[10px] text-zinc-500 hidden sm:block">
