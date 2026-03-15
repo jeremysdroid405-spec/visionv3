@@ -248,6 +248,25 @@ export const PickCard = memo(({
             <span className="text-white font-bold">{lineValue}</span>
           </div>
           
+          {/* Season Average Comparison */}
+          {pick.season_avg > 0 && (
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-zinc-400">Avg:</span>
+              <div className="flex items-center gap-1">
+                <span className="text-white font-mono">{pick.season_avg.toFixed(1)}</span>
+                {lineValue > 0 && (
+                  <span className={`text-[10px] px-1 py-0.5 rounded ${
+                    pick.season_avg > lineValue 
+                      ? 'bg-green-500/20 text-green-400' 
+                      : 'bg-red-500/20 text-red-400'
+                  }`}>
+                    {pick.season_avg > lineValue ? '+' : ''}{((pick.season_avg - lineValue) / lineValue * 100).toFixed(0)}%
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
+          
           <div className="flex items-center justify-between text-xs">
             <span className="text-zinc-400">Gap:</span>
             <span className="text-yellow-400 font-medium">
@@ -255,25 +274,71 @@ export const PickCard = memo(({
             </span>
           </div>
           
-          {/* Score Bar */}
-          <div className="mt-2">
-            <div className="flex items-center justify-between text-[10px] mb-1">
-              <span className="text-zinc-500">Value Score</span>
-              <span className={`font-bold ${theme.text}`}>{(scoreValue * 100).toFixed(1)}%</span>
-            </div>
-            <div className="h-1.5 bg-zinc-800 rounded-full overflow-hidden">
-              <div 
-                className={`h-full rounded-full bg-gradient-to-r ${theme.scoreBarHigh}`}
-                style={{ width: `${Math.min(100, scoreValue * 100)}%` }}
-              />
+          {/* Hit Rate Breakdown */}
+          <div className="bg-zinc-800/50 rounded-lg p-2 mt-2">
+            <div className="flex items-center justify-between mb-1.5">
+              <div className="text-center flex-1">
+                <div className="text-[9px] text-zinc-500 uppercase">L5</div>
+                <div className={`text-sm font-bold ${getHitRateColor(pick.h5_rate || 0)}`}>
+                  {pick.h5_rate || 0}%
+                </div>
+                <div className="text-[9px] text-zinc-500">
+                  {pick.h5_over || 0}/{pick.h5_games || 0}
+                </div>
+              </div>
+              <div className="h-8 w-px bg-zinc-700" />
+              <div className="text-center flex-1">
+                <div className="text-[9px] text-zinc-500 uppercase">L10</div>
+                <div className={`text-sm font-bold ${getHitRateColor(h10Rate)}`}>
+                  {h10Rate}%
+                </div>
+                <div className="text-[9px] text-zinc-500">
+                  {pick.h10_over || 0}/{pick.h10_games || 0}
+                </div>
+              </div>
+              <div className="h-8 w-px bg-zinc-700" />
+              <div className="text-center flex-1">
+                <div className="text-[9px] text-zinc-500 uppercase">Season</div>
+                <div className="text-sm font-bold text-white">
+                  {pick.season_avg ? pick.season_avg.toFixed(1) : '---'}
+                </div>
+                <div className="text-[9px] text-zinc-500">avg</div>
+              </div>
             </div>
           </div>
           
-          {/* Hit Rates */}
-          <div className="flex items-center justify-between text-[10px] text-zinc-500 mt-1">
-            <span>L10: <span className="text-white">{h10Rate}%</span></span>
-            <span>L5: <span className="text-white">{pick.h5_rate || 0}%</span></span>
-          </div>
+          {/* AI Confidence Meter */}
+          {(pick.ai_confidence_rating !== undefined && pick.ai_confidence_rating !== null) ? (
+            <div className="mt-2">
+              <div className="flex items-center justify-between text-[10px] mb-1">
+                <span className="text-purple-400 flex items-center gap-1">
+                  <Zap className="w-2.5 h-2.5" /> AI Confidence
+                </span>
+                <span className={`font-bold ${getConfidenceColor(pick.ai_confidence_rating)}`}>
+                  {pick.ai_confidence_rating}%
+                </span>
+              </div>
+              <div className="h-1.5 bg-zinc-800 rounded-full overflow-hidden">
+                <div 
+                  className={`h-full rounded-full transition-all ${getConfidenceGradient(pick.ai_confidence_rating)}`}
+                  style={{ width: `${pick.ai_confidence_rating}%` }}
+                />
+              </div>
+            </div>
+          ) : (
+            <div className="mt-2">
+              <div className="flex items-center justify-between text-[10px] mb-1">
+                <span className="text-zinc-500">Value Score</span>
+                <span className={`font-bold ${theme.text}`}>{(scoreValue * 100).toFixed(1)}%</span>
+              </div>
+              <div className="h-1.5 bg-zinc-800 rounded-full overflow-hidden">
+                <div 
+                  className={`h-full rounded-full bg-gradient-to-r ${theme.scoreBarHigh}`}
+                  style={{ width: `${Math.min(100, scoreValue * 100)}%` }}
+                />
+              </div>
+            </div>
+          )}
           
           {/* AI Vision */}
           {(pick.intel_briefing || pick.insight_summary) && (
