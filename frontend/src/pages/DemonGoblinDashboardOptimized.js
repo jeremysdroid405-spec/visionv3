@@ -2356,8 +2356,7 @@ const FrontLinesSwipeSection = memo(({ picks, onPickClick, tMinusGames = [] }) =
     <div data-testid="front-lines-section" className="front-lines-section">
       <div className="flex items-center justify-between mb-2 px-4 sm:px-0">
         <div className="flex items-center gap-2">
-          <BulletEmblem size={24} />
-          <span className="text-sm font-bold text-amber-400">THE FRONT LINES</span>
+          <span className="text-sm font-bold text-amber-400">FRONT LINES</span>
           <Badge className="bg-amber-950/50 text-amber-400 border-amber-800/50 text-[10px] hidden sm:inline-flex">
             TOP 10 MID-TIER PLAYS
           </Badge>
