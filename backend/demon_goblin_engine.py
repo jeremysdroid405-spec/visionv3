@@ -2992,33 +2992,57 @@ class DemonGoblinEngine:
     
     async def _build_war_zone(self, players_dict: Dict[str, Dict], sync_time: datetime):
         """
-        THE INTRICATE WAR ZONE ALGORITHM v2.0 - Opportunity-Focused
+        THE WAR ZONE - 4-PILLAR CEILING FORMULA v3.0
+        =============================================
         
-        NEW Scoring Formula (Ratio-Based):
-        1. Weighted Probability (P) = (L10 × 0.6) + (L5 × 0.4)
-        2. Gap Ratio (R) = Demon_Value / Standard_Value (e.g., 1.10 = 10% higher)
-        3. Final Score = P / Gap_Ratio
-           - Example: P=0.80, Gap=1.10 → Score=0.727
-           - Example: P=0.80, Gap=1.30 → Score=0.615
+        Designed to predict HIGH-CEILING UPSIDE plays (Demon lines).
         
-        Dynamic Threshold:
-        - Start with P >= 70% (strict)
-        - If fewer than 10 picks, lower to 55% (opportunity mode)
-        - Ensures War Zone is NEVER empty
+        HARD FILTER (The Bouncer):
+        - Reject if L10_Hit_Frequency < 0.20 (must hit demon line at least 2/10 games)
+        - Uses binary hit frequency, NOT averages
         
-        Heat Level (1-5 Flames):
-        - 5 Flames: L10 >= 90% (9-10/10 games hit)
-        - 4 Flames: L10 >= 80% OR on 3+ game streak
-        - 3 Flames: L10 >= 70% OR L5 >= 80%
-        - 2 Flames: L10 >= 60%
-        - 1 Flame: L10 >= 50%
+        4-PILLAR CEILING FORMULA:
+        
+        Pillar 1: Base Ceiling Consistency (40% Weight)
+        ceiling_consistency = (L10_Hit_Frequency * 0.6) + (L5_Hit_Frequency * 0.4)
+        
+        Pillar 2: Vegas Implied Probability (20% Weight)
+        - Negative odds: implied_prob = abs(odds) / (abs(odds) + 100)
+        - Positive odds: implied_prob = 100 / (odds + 100)
+        
+        Pillar 3: Matchup / DvP (20% Weight)
+        - Range: 0.0 to 1.0 (0.5 = neutral, 1.0 = best matchup, 0.0 = worst)
+        - Placeholder for now
+        
+        Pillar 4: AI Context Shift (20% Weight)
+        - Range: 0.0 to 1.0 (0.5 = neutral news, 1.0 = massively positive)
+        - Pulled from AiContextEngine
+        
+        FINAL CALCULATION:
+        demon_score = (ceiling_consistency * 0.40) + (implied_prob * 0.20) + 
+                      (dvp_modifier * 0.20) + (context_shift * 0.20)
+        
+        Heat Level (1-5 Flames) based on L10 hit frequency for visual indicator.
         """
-        logger.info("[WAR ZONE v2.0] Calculating opportunity-focused top 10 picks...")
+        logger.info("[WAR ZONE v3.0] Building with 4-Pillar Ceiling Formula...")
         
         all_candidates = []
         
+        # Pre-fetch AI context scores for all players
+        ai_context_cache = {}
+        try:
+            cursor = self.db.nba_master_hub_2026.find(
+                {"ai_context_score": {"$exists": True}},
+                {"_id": 0, "display_name": 1, "player_name": 1, "ai_context_score": 1}
+            )
+            async for doc in cursor:
+                name = doc.get("display_name") or doc.get("player_name")
+                if name:
+                    ai_context_cache[name] = doc.get("ai_context_score", 0.5)
+        except Exception as e:
+            logger.warning(f"[WAR ZONE] Could not fetch AI context cache: {e}")
+        
         for player_name, player_data in players_dict.items():
-            # Skip None entries
             if player_data is None:
                 continue
             
@@ -3044,6 +3068,7 @@ class DemonGoblinEngine:
                 demon_stat = self._extract_stat_type(demon_market)
                 demon_line = demon.get("line", 0)
                 demon_direction = demon.get("direction", "")
+                demon_price = demon.get("price", 100)
                 
                 if not demon_stat or demon_line <= 0:
                     continue
@@ -3056,27 +3081,18 @@ class DemonGoblinEngine:
                 if std_prop:
                     std_line = std_prop.get("line", 0)
                 else:
-                    # No standard line - estimate as 85% of demon line
                     std_line = demon_line * 0.85
                 
                 if std_line <= 0:
                     continue
                 
                 # Get hit rates from BallDontLie stats
-                hit_rates = demon.get("hit_rates", {})
-                if hit_rates is None:
-                    hit_rates = {}
-                h10_data = hit_rates.get("l10", {})
-                h5_data = hit_rates.get("l5", {})
-                season_data = hit_rates.get("season", {})
-                if h10_data is None:
-                    h10_data = {}
-                if h5_data is None:
-                    h5_data = {}
-                if season_data is None:
-                    season_data = {}
+                hit_rates = demon.get("hit_rates", {}) or {}
+                h10_data = hit_rates.get("l10", {}) or {}
+                h5_data = hit_rates.get("l5", {}) or {}
+                season_data = hit_rates.get("season", {}) or {}
                 
-                h10 = h10_data.get("hit_rate", 0)
+                h10 = h10_data.get("hit_rate", 0)  # Already 0-1 decimal
                 h5 = h5_data.get("hit_rate", 0)
                 h10_games = h10_data.get("total_games", 0)
                 h5_games = h5_data.get("total_games", 0)
@@ -3084,49 +3100,75 @@ class DemonGoblinEngine:
                 h5_over = h5_data.get("games_over", 0)
                 season_avg = season_data.get("avg", 0)
                 
-                # Track if we have real data
+                # Must have real data
                 has_real_data = h10_games > 0 or h5_games > 0
-                
-                # V3.2 FIX: SKIP players with no real stats data
-                # This prevents false readings from estimated probabilities
                 if not has_real_data:
                     continue
                 
-                # Calculate Gap Ratio (R)
-                # R = Demon_Value / Standard_Value (e.g., 1.10 = 10% higher)
+                # ========== HARD FILTER (The Bouncer) ==========
+                # Reject if L10_Hit_Frequency < 0.20 (must hit at least 2/10 games)
+                if h10 < 0.20:
+                    continue
+                
+                # ========== PILLAR 1: Base Ceiling Consistency (40%) ==========
+                # ceiling_consistency = (L10_Hit_Frequency * 0.6) + (L5_Hit_Frequency * 0.4)
+                ceiling_consistency = (h10 * 0.6) + (h5 * 0.4)
+                
+                # ========== PILLAR 2: Vegas Implied Probability (20%) ==========
+                # Calculate from live odds
+                if demon_price < 0:
+                    # Negative odds: implied_prob = abs(odds) / (abs(odds) + 100)
+                    implied_prob = abs(demon_price) / (abs(demon_price) + 100)
+                else:
+                    # Positive odds: implied_prob = 100 / (odds + 100)
+                    implied_prob = 100 / (demon_price + 100)
+                
+                # ========== PILLAR 3: Matchup / DvP (20%) ==========
+                # Placeholder: 0.5 = neutral matchup
+                # TODO: Integrate real DvP data
+                dvp_modifier = 0.5
+                
+                # ========== PILLAR 4: AI Context Shift (20%) ==========
+                # Pull from AiContextEngine cache, default 0.5 (neutral)
+                context_shift = ai_context_cache.get(player_name, 0.5)
+                
+                # ========== FINAL CALCULATION ==========
+                # demon_score = (ceiling_consistency * 0.40) + (implied_prob * 0.20) + 
+                #               (dvp_modifier * 0.20) + (context_shift * 0.20)
+                demon_score = (
+                    (ceiling_consistency * 0.40) +
+                    (implied_prob * 0.20) +
+                    (dvp_modifier * 0.20) +
+                    (context_shift * 0.20)
+                )
+                
+                # Calculate Gap Ratio for display
                 gap_ratio = demon_line / std_line if std_line > 0 else 1.0
-                gap_pct = (gap_ratio - 1) * 100  # Percentage above standard
+                gap_pct = (gap_ratio - 1) * 100
                 
-                # Calculate Weighted Probability (P)
-                # P = (L10 × 0.6) + (L5 × 0.4)
-                P = (h10 * 0.6) + (h5 * 0.4)
-                
-                # Calculate Final Score using Value Ratio
-                # Score = P / Gap_Ratio
-                radar_score = P / gap_ratio if gap_ratio > 0 else P
-                
-                # Calculate Heat Level (1-5 Flames)
+                # Calculate Heat Level (1-5 Flames) for visual indicator
                 heat_level = self._calculate_heat_level(h10, h5, h10_over, h5_over, h10_games, h5_games)
                 
-                # Streak detection (3+ consecutive games)
+                # Streak detection
                 is_hot_streak = h5_over >= 3 if h5_games >= 3 else False
                 
                 all_candidates.append({
-                    # PRIMARY KEY - player_id from nba_master_hub_2026 (via OddsApiMapper)
+                    # PRIMARY KEY
                     "player_id": player_data.get("player_id"),
                     "tank01_player_id": player_data.get("tank01_player_id") or player_data.get("tank01_id"),
                     
-                    # Player info (from centralized enrichment via OddsApiMapper)
+                    # Player info
                     "player_name": player_name,
                     "team": player_data.get("team", ""),
                     "team_name": player_data.get("team_name"),
                     "photo_url": player_data.get("photo_url") or player_data.get("headshot_url"),
                     "headshot_url": player_data.get("headshot_url") or player_data.get("photo_url"),
                     "nba_com_id": player_data.get("nba_com_id") or player_data.get("nba_id"),
+                    "nba_id": player_data.get("nba_id") or player_data.get("nba_com_id"),
                     "espn_id": player_data.get("espn_id"),
                     "position": player_data.get("position"),
                     
-                    # Social signals (pre-enriched)
+                    # Social signals
                     "volatility_flag": player_data.get("volatility_flag", False),
                     "revenge_game": player_data.get("revenge_game", False),
                     "is_verified": player_data.get("is_verified", False),
@@ -3139,8 +3181,9 @@ class DemonGoblinEngine:
                     "standard_line": round(std_line, 1),
                     "gap_ratio": round(gap_ratio, 3),
                     "gap_pct": round(gap_pct, 1),
+                    "price": demon_price,
                     
-                    # Hit rates
+                    # Hit rates (display as percentages)
                     "h10_rate": round(h10 * 100, 1),
                     "h5_rate": round(h5 * 100, 1),
                     "h10_over": h10_over,
@@ -3149,28 +3192,37 @@ class DemonGoblinEngine:
                     "h5_games": h5_games,
                     "season_avg": round(season_avg, 1),
                     
-                    # Calculated scores
-                    "hit_probability": round(P * 100, 1),
-                    "radar_score": round(radar_score, 4),
+                    # 4-Pillar Component Scores (for transparency/debugging)
+                    "pillar_1_ceiling": round(ceiling_consistency, 4),
+                    "pillar_2_vegas": round(implied_prob, 4),
+                    "pillar_3_dvp": round(dvp_modifier, 4),
+                    "pillar_4_context": round(context_shift, 4),
+                    
+                    # FINAL SCORE (0-1 scale, multiply by 100 for display)
+                    "demon_score": round(demon_score, 4),
+                    "radar_score": round(demon_score, 4),  # Alias for backward compatibility
+                    "demon_score_100": round(demon_score * 100, 1),
+                    
+                    # Visual indicators
                     "heat_level": heat_level,
                     "is_hot_streak": is_hot_streak,
-                    "radar_strength": min(100, max(0, round(P * 100, 1))),
-                    "price": demon.get("price", 100),
+                    "hit_probability": round(ceiling_consistency * 100, 1),
+                    "radar_strength": round(demon_score * 100, 1),
+                    
+                    # Meta
                     "is_radar_pick": True,
-                    "has_real_data": True,  # V3.2: All picks now have verified stats
+                    "is_demon": True,
+                    "has_real_data": True,
                     "synced_at": sync_time.isoformat()
                 })
         
-        # Dynamic Threshold: Start strict (70%), lower if needed
-        radar_picks = self._apply_dynamic_threshold(all_candidates)
+        # Sort by demon_score descending (the final 4-Pillar score)
+        all_candidates.sort(key=lambda x: x["demon_score"], reverse=True)
         
-        # Sort by radar_score descending
-        radar_picks.sort(key=lambda x: x["radar_score"], reverse=True)
-        
-        # V3.2 FIX: De-duplicate - one pick per player (take their best prop)
+        # De-duplicate: one pick per player (take their best prop)
         seen_players = set()
         unique_picks = []
-        for pick in radar_picks:
+        for pick in all_candidates:
             player_name = pick["player_name"]
             if player_name not in seen_players:
                 seen_players.add(player_name)
@@ -3185,18 +3237,15 @@ class DemonGoblinEngine:
             await self.radar_picks.insert_many(top_10)
         
         # Log summary
-        strict_count = len([p for p in all_candidates if p["hit_probability"] >= 70])
-        opportunity_count = len([p for p in all_candidates if 55 <= p["hit_probability"] < 70])
+        logger.info(f"[WAR ZONE v3.0] Generated {len(top_10)} top picks (4-Pillar Ceiling Formula)")
+        logger.info(f"  Hard Filter: L10 >= 20% hit rate required")
+        logger.info(f"  Total candidates passed filter: {len(all_candidates)}")
         
-        logger.info(f"[WAR ZONE v2.0] Generated {len(top_10)} top picks")
-        logger.info(f"  Strict (P>=70%): {strict_count} | Opportunity (P>=55%): {opportunity_count}")
-        logger.info(f"  Total candidates: {len(all_candidates)}")
-        
-        # Log top 3 with heat levels
+        # Log top 3 with pillar breakdown
         for i, pick in enumerate(top_10[:3]):
             flames = "🔥" * pick['heat_level']
-            logger.info(f"  #{i+1}: {pick['player_name']} - {pick['stat_type']} {pick['demon_line']} "
-                       f"(P: {pick['hit_probability']}%, Score: {pick['radar_score']:.3f}) {flames}")
+            logger.info(f"  #{i+1}: {pick['player_name']} - {pick['stat_type']} {pick['demon_line']}")
+            logger.info(f"       Score: {pick['demon_score_100']:.1f}/100 | P1:{pick['pillar_1_ceiling']:.2f} P2:{pick['pillar_2_vegas']:.2f} P3:{pick['pillar_3_dvp']:.2f} P4:{pick['pillar_4_context']:.2f} {flames}")
     
     def _calculate_heat_level(self, h10: float, h5: float, h10_over: int, h5_over: int, h10_games: int, h5_games: int) -> int:
         """
