@@ -2231,142 +2231,187 @@ const PARLAY_MATRIX = {
 
 /**
  * DFS COMPLIANCE ENGINE - Validates tickets against PrizePicks rules
- * @param {Array} ticketPicks - Array of picks for this ticket
- * @param {Array} fullPool - Full pool of available picks (backup source)
+ * 
+ * CORE MANDATE: TRUST THE EV RANKINGS!
+ * - Aggressively STACK same-player props when legally possible
+ * - Only reject picks for HARD DFS violations, not "visual variety"
+ * 
+ * @param {Array} ticketPicks - Array of picks mapped from matrix indices
+ * @param {Array} fullPool - Full EV-sorted pool (backup source for replacements)
  * @param {number} ticketSize - Target ticket size (2-6)
  * @returns {Array} - Validated, compliant ticket array
  */
 const validateTicket = (ticketPicks, fullPool, ticketSize) => {
   if (!ticketPicks || ticketPicks.length === 0) return [];
   
-  let validatedPicks = [...ticketPicks];
-  const usedPlayerIds = new Set();
-  const playerStatCounts = {}; // Track stat types per player
-  const teamCounts = {};
-  
-  // Helper: Get unique identifier for a pick
+  // Helper: Get unique identifier for a pick (player + stat + line)
   const getPickId = (pick) => `${pick.player_name}-${pick.stat_type}-${pick.line}`;
   
-  // Helper: Find next valid replacement from pool
-  const findReplacement = (excludeIds, excludeTeams = null, requireDifferentTeam = false) => {
-    for (const pick of fullPool) {
-      const pickId = getPickId(pick);
-      if (excludeIds.has(pickId)) continue;
-      
-      if (requireDifferentTeam && excludeTeams && excludeTeams.has(pick.team)) continue;
-      
-      // Check if adding this player would exceed stack limits
-      const playerName = pick.player_name;
-      const existingStats = playerStatCounts[playerName] || [];
-      if (existingStats.length >= 3) continue; // Max 3 stacks per player
-      if (existingStats.includes(pick.stat_type)) continue; // No duplicate stat types
-      
-      return pick;
-    }
-    return null;
-  };
-  
   // ===== STRICT 2-LEG RULES: No Stacks Allowed =====
+  // PrizePicks requires 2 DIFFERENT teams for 2-leg entries
+  // Cannot contain any stack (same player)
   if (ticketSize === 2) {
-    const usedIds = new Set();
+    const usedPlayers = new Set();
     const usedTeams = new Set();
+    const usedPickIds = new Set();
     const finalPicks = [];
     
-    for (const pick of validatedPicks) {
+    // First pass: try to use matrix-mapped picks
+    for (const pick of ticketPicks) {
+      if (finalPicks.length >= 2) break;
+      
       const pickId = getPickId(pick);
       
-      // Must be different player AND different team
-      if (usedIds.has(pick.player_name) || usedTeams.has(pick.team)) {
-        // Find replacement from different team and different player
-        const replacement = findReplacement(
-          new Set([...usedIds, pickId].map(p => typeof p === 'string' ? p : getPickId(p))),
-          usedTeams,
-          true // Require different team
-        );
-        if (replacement) {
-          finalPicks.push(replacement);
-          usedIds.add(replacement.player_name);
-          usedTeams.add(replacement.team);
-        }
-      } else {
-        finalPicks.push(pick);
-        usedIds.add(pick.player_name);
-        usedTeams.add(pick.team);
+      // HARD RULES for 2-leg: Different player AND different team
+      if (usedPlayers.has(pick.player_name) || usedTeams.has(pick.team)) {
+        continue; // Skip - violates 2-leg rules
       }
       
-      if (finalPicks.length >= 2) break;
+      finalPicks.push(pick);
+      usedPlayers.add(pick.player_name);
+      usedTeams.add(pick.team);
+      usedPickIds.add(pickId);
     }
     
-    return finalPicks;
+    // Second pass: fill from pool if needed
+    if (finalPicks.length < 2) {
+      for (const pick of fullPool) {
+        if (finalPicks.length >= 2) break;
+        
+        const pickId = getPickId(pick);
+        if (usedPickIds.has(pickId)) continue;
+        if (usedPlayers.has(pick.player_name)) continue;
+        if (usedTeams.has(pick.team)) continue;
+        
+        finalPicks.push(pick);
+        usedPlayers.add(pick.player_name);
+        usedTeams.add(pick.team);
+        usedPickIds.add(pickId);
+      }
+    }
+    
+    return finalPicks.slice(0, 2);
   }
   
-  // ===== 3-6 LEG RULES: Stacks Allowed with Limits =====
+  // ===== 3-6 LEG RULES: AGGRESSIVE STACKING ALLOWED =====
+  // TRUST THE EV - Accept picks unless they violate HARD rules:
+  // 1. Same stat_type already in ticket for this player
+  // 2. Player already has 3 entries (max stacks reached)
+  // 3. Final leg AND only 1 team (need 2nd team for min 2 teams rule)
+  
+  const playerStatTypes = {}; // player_name -> [stat_types already used]
+  const teamCounts = {};      // team -> count
   const usedPickIds = new Set();
   const finalPicks = [];
   
-  for (const pick of validatedPicks) {
-    const pickId = getPickId(pick);
+  // Helper: Check if pick violates hard rules
+  const violatesHardRules = (pick, isLastSlot, currentTeamCount) => {
     const playerName = pick.player_name;
+    const existingStats = playerStatTypes[playerName] || [];
+    
+    // Rule 1: Duplicate stat_type for same player
+    if (existingStats.includes(pick.stat_type)) {
+      return 'DUPLICATE_STAT';
+    }
+    
+    // Rule 2: Max 3 stacks per player
+    if (existingStats.length >= 3) {
+      return 'MAX_STACKS';
+    }
+    
+    // Rule 3: Final slot needs 2nd team (only if we have just 1 team so far)
+    if (isLastSlot && currentTeamCount === 1) {
+      const existingTeam = Object.keys(teamCounts)[0];
+      if (pick.team === existingTeam) {
+        return 'NEED_SECOND_TEAM';
+      }
+    }
+    
+    return null; // No violation - ACCEPT THIS PICK
+  };
+  
+  // First pass: Accept all matrix-mapped picks that don't violate hard rules
+  for (let i = 0; i < ticketPicks.length; i++) {
+    const pick = ticketPicks[i];
+    const pickId = getPickId(pick);
     
     // Skip exact duplicates
     if (usedPickIds.has(pickId)) continue;
     
-    // Initialize player stat tracking
-    if (!playerStatCounts[playerName]) {
-      playerStatCounts[playerName] = [];
-    }
+    const isLastSlot = (finalPicks.length === ticketSize - 1);
+    const currentTeamCount = Object.keys(teamCounts).length;
     
-    // Rule 1: Max 3 stacks per player with unique stat types
-    if (playerStatCounts[playerName].length >= 3) {
-      // Player already has 3 entries - skip and find replacement
+    const violation = violatesHardRules(pick, isLastSlot, currentTeamCount);
+    
+    if (violation) {
+      // Skip this pick - but DON'T replace yet, continue through matrix
       continue;
     }
     
-    if (playerStatCounts[playerName].includes(pick.stat_type)) {
-      // Duplicate stat type for this player - skip
-      continue;
-    }
-    
-    // Track this pick
+    // ACCEPT THE PICK - Trust the EV ranking!
     finalPicks.push(pick);
     usedPickIds.add(pickId);
-    playerStatCounts[playerName].push(pick.stat_type);
+    
+    if (!playerStatTypes[pick.player_name]) {
+      playerStatTypes[pick.player_name] = [];
+    }
+    playerStatTypes[pick.player_name].push(pick.stat_type);
     teamCounts[pick.team] = (teamCounts[pick.team] || 0) + 1;
+    
+    if (finalPicks.length >= ticketSize) break;
   }
   
-  // Rule 2: Min 2 teams required
+  // Second pass: Fill remaining slots from full pool (in EV order)
+  if (finalPicks.length < ticketSize) {
+    for (const pick of fullPool) {
+      if (finalPicks.length >= ticketSize) break;
+      
+      const pickId = getPickId(pick);
+      if (usedPickIds.has(pickId)) continue;
+      
+      const isLastSlot = (finalPicks.length === ticketSize - 1);
+      const currentTeamCount = Object.keys(teamCounts).length;
+      
+      const violation = violatesHardRules(pick, isLastSlot, currentTeamCount);
+      if (violation) continue;
+      
+      // Accept this backup pick
+      finalPicks.push(pick);
+      usedPickIds.add(pickId);
+      
+      if (!playerStatTypes[pick.player_name]) {
+        playerStatTypes[pick.player_name] = [];
+      }
+      playerStatTypes[pick.player_name].push(pick.stat_type);
+      teamCounts[pick.team] = (teamCounts[pick.team] || 0) + 1;
+    }
+  }
+  
+  // Final check: Ensure min 2 teams (replace lowest EV single-team pick if needed)
   const uniqueTeams = Object.keys(teamCounts);
   if (uniqueTeams.length < 2 && finalPicks.length >= 2) {
-    // Find the lowest EV pick and replace with different team player
+    // Find lowest EV pick from the single team
     const singleTeam = uniqueTeams[0];
-    
-    // Sort by EV/score to find lowest
-    const sortedPicks = [...finalPicks].sort((a, b) => 
-      (a.final_ev_score || a.popularity_score || 0) - (b.final_ev_score || b.popularity_score || 0)
+    const sortedByEV = [...finalPicks].sort((a, b) => 
+      (a.final_ev_score || a.score || 0) - (b.final_ev_score || b.score || 0)
     );
     
-    const lowestPick = sortedPicks[0];
+    const lowestPick = sortedByEV[0];
     const lowestIdx = finalPicks.indexOf(lowestPick);
     
     // Find replacement from different team
-    const replacement = findReplacement(usedPickIds, new Set([singleTeam]), true);
-    
-    if (replacement && lowestIdx !== -1) {
-      finalPicks[lowestIdx] = replacement;
-    }
-  }
-  
-  // Ensure we have exactly ticketSize picks
-  while (finalPicks.length < ticketSize && fullPool.length > 0) {
-    const replacement = findReplacement(usedPickIds);
-    if (replacement) {
-      finalPicks.push(replacement);
-      usedPickIds.add(getPickId(replacement));
-      const pn = replacement.player_name;
-      if (!playerStatCounts[pn]) playerStatCounts[pn] = [];
-      playerStatCounts[pn].push(replacement.stat_type);
-    } else {
-      break; // No more valid replacements
+    for (const pick of fullPool) {
+      const pickId = getPickId(pick);
+      if (usedPickIds.has(pickId)) continue;
+      if (pick.team === singleTeam) continue; // Need different team
+      
+      const existingStats = playerStatTypes[pick.player_name] || [];
+      if (existingStats.length >= 3) continue;
+      if (existingStats.includes(pick.stat_type)) continue;
+      
+      // Found valid replacement from different team
+      finalPicks[lowestIdx] = pick;
+      break;
     }
   }
   
