@@ -1742,11 +1742,21 @@ const UniversalPickCard = memo(({
       {hasVisionGlow && <VisionBadge type={colorTheme === 'green' ? 'goblin' : 'demon'} hasVision={true} />}
       
       <div className="p-3">
-        {/* Header: Emblem + Headshot + Rank + Name */}
+        {/* Header: Demon/Goblin Icon + Headshot + Rank + Name */}
         <div className="flex items-center gap-2 mb-2">
-          {/* Tier Emblem */}
+          {/* Demon/Goblin Icon based on pick type or tier default */}
+          {/* War Zone (red) = demon by default, Safe Haven (green) = goblin by default */}
+          {/* Front Lines (amber) = show based on is_demon/is_goblin flag */}
           <div className="flex-shrink-0">
-            {renderEmblem()}
+            {pick.is_demon ? (
+              <DemonIcon size={20} hasVision={hasVisionGlow} />
+            ) : pick.is_goblin ? (
+              <GoblinIcon size={20} hasVision={hasVisionGlow} />
+            ) : colorTheme === 'red' ? (
+              <DemonIcon size={20} hasVision={hasVisionGlow} />
+            ) : colorTheme === 'green' ? (
+              <GoblinIcon size={20} hasVision={hasVisionGlow} />
+            ) : null}
           </div>
           
           {/* Headshot with Rank Badge */}
@@ -1796,7 +1806,7 @@ const UniversalPickCard = memo(({
           </div>
         </div>
         
-        {/* Indicator Row (Fire/Bullet/Gem based on tier) */}
+        {/* Tier Emblem Indicator Row (Fire/Bullet/Gem) - UNDER the header */}
         {displayLevel > 0 && (
           <div className="flex items-center justify-between mb-2 px-1">
             {renderIndicators()}
