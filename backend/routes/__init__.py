@@ -4,6 +4,7 @@ from .parlays import router as parlays_router, set_engine as set_parlays_engine
 from .board import router as board_router, set_engine as set_board_engine
 from .intel import router as intel_router, set_engine as set_intel_engine
 from .board_intel import router as board_intel_router, set_engine as set_board_intel_engine
+from .board_intel_v2 import router as board_intel_v2_router, set_board_intel_deps
 from .auth import router as auth_router, profile_router
 from .injuries import router as injuries_router, set_injury_service
 from .vision import router as vision_router, set_vision_service
@@ -26,7 +27,7 @@ def register_all_routes(app, engine, game_lock_engine=None, db=None,
                         live_scores_engine=None, ai_context_engine_class=None,
                         master_hub_funcs=None, get_odds_mapper_func=None,
                         demon_tracker=None, raw_stat_fetcher=None,
-                        social_signal_engine=None):
+                        social_signal_engine=None, demon_goblin_engine_class=None):
     """Register all route modules and set engine
     
     Note: Some routes (sync, lock) remain in server.py because they have
@@ -59,6 +60,8 @@ def register_all_routes(app, engine, game_lock_engine=None, db=None,
         set_raw_stat_fetcher(raw_stat_fetcher)
     if social_signal_engine is not None:
         set_social_signal_engine(social_signal_engine)
+    if db is not None and demon_goblin_engine_class is not None:
+        set_board_intel_deps(db, demon_goblin_engine_class)
     
     # Include routers with /api prefix to match frontend expectations
     app.include_router(picks_router, prefix="/api")
@@ -83,8 +86,9 @@ def register_all_routes(app, engine, game_lock_engine=None, db=None,
     app.include_router(odds_mapper_router, prefix="/api")
     app.include_router(demon_tracker_router, prefix="/api")
     
-    # New routes (Phase 14 extraction)
+    # New routes (Phase 14-15 extraction)
     app.include_router(payouts_router, prefix="/api")
     app.include_router(validation_router, prefix="/api")
     app.include_router(social_router, prefix="/api")
     app.include_router(roster_sync_router, prefix="/api")
+    app.include_router(board_intel_v2_router, prefix="/api")

@@ -291,9 +291,10 @@ async def startup_event():
         get_odds_mapper_func=get_odds_api_mapper,
         demon_tracker=demon_tracker,
         raw_stat_fetcher=raw_stat_fetcher,
-        social_signal_engine=social_signal_engine
+        social_signal_engine=social_signal_engine,
+        demon_goblin_engine_class=DemonGoblinEngine
     )
-    logger.info("[ROUTES] Modular routes registered from /routes/ directory (Phase 14: +4 new modules)")
+    logger.info("[ROUTES] Modular routes registered from /routes/ directory (Phase 15: +5 new modules)")
     
     # Start the adaptive sync engine (background polling)
     if ODDS_API_KEY:
@@ -430,6 +431,8 @@ async def get_current_user(token: str = Depends(verify_jwt)):
     except Exception as e:
         raise HTTPException(status_code=401, detail=f"Authentication failed: {str(e)}")
 
+# NOTE: Cache utilities below are duplicated in utils.py for modular use.
+# These local versions use the global `db` reference directly.
 async def get_cached_data(cache_key: str, ttl_hours: int = 24):
     cached = await db.cache.find_one({"key": cache_key})
     if cached:
@@ -445,6 +448,7 @@ async def set_cached_data(cache_key: str, data: Any):
         upsert=True
     )
 
+# NOTE: fuzzy_match_player also exists in utils.py
 def fuzzy_match_player(name1: str, name2: str, threshold: int = 80) -> bool:
     return fuzz.ratio(name1.lower(), name2.lower()) >= threshold
 
@@ -1716,199 +1720,10 @@ async def stop_adaptive_sync():
     return {"status": "stopped", "message": "Adaptive Sync Engine stopped"}
 
 
-# ==================== BOARD INTELLIGENCE ENDPOINTS ====================
-# Automated Board Intelligence & Sync System
 
-@api_router.get("/v3/board-intel/status")
-async def get_board_intel_status():
-    """
-    BOARD INTELLIGENCE STATUS
-    
-    Returns:
-    - last_sync_time: When data was last synced
-    - last_sync_type: "primary" (full + Vision) or "delta" (odds only)
-    - time_since_sync: "MM:SS" format
-    - time_since_sync_display: "Last Synced: MM:SS" for footer display
-    - next_scheduled_sync: Next sync time and type
-    - scheduler_running: Whether automated scheduler is active
-    """
-    try:
-        engine = get_board_intel_engine()
-        await engine.initialize()
-        status = await engine.get_sync_status()
-        return status
-    except Exception as e:
-        return {
-            "error": str(e),
-            "time_since_sync_display": "Sync status unavailable",
-            "scheduler_running": False
-        }
-
-
-@api_router.post("/v3/board-intel/primary-sync")
-async def run_primary_sync():
-    """
-    PRIMARY SYNC (Manual Trigger)
-    
-    Runs a full global fetch with Vision AI for all Goblins and Demons.
-    Normally scheduled for 10:30 AM ET.
-    """
-    try:
-        board_intel = get_board_intel_engine()
-        await board_intel.initialize()
-        
-        # Get the demon goblin engine (uses global db instance)
-        dg_engine = DemonGoblinEngine(db)
-        
-        result = await board_intel.run_primary_sync(dg_engine)
-        return result
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@api_router.post("/v3/board-intel/delta-refresh")
-async def run_delta_refresh():
-    """
-    DELTA REFRESH (Manual Trigger)
-    
-    Updates line and price values for existing players.
-    - New Entry: Triggers one-time Vision AI for new players
-    - Removal: Removes players whose lines are pulled
-    
-    Normally scheduled for 1:45 PM, 4:00 PM, 5:45 PM, 7:00 PM ET.
-    """
-    try:
-        board_intel = get_board_intel_engine()
-        await board_intel.initialize()
-        
-        dg_engine = DemonGoblinEngine(db)
-        
-        result = await board_intel.run_delta_refresh(dg_engine)
-        return result
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@api_router.post("/v3/board-intel/start-scheduler")
-async def start_board_intel_scheduler():
-    """
-    START AUTOMATED SCHEDULER
-    
-    Starts background tasks for:
-    - Primary Sync at 10:30 AM ET
-    - Delta Refreshes at 1:45 PM, 4:00 PM, 5:45 PM, 7:00 PM ET
-    - Live Ticker handover every 60 seconds
-    """
-    try:
-        board_intel = get_board_intel_engine()
-        await board_intel.initialize()
-        
-        dg_engine = DemonGoblinEngine(db)
-        
-        lock_engine = get_game_lock_engine()
-        
-        await board_intel.start_scheduler(dg_engine, lock_engine)
-        
-        return {
-            "status": "started",
-            "message": "Board Intelligence scheduler started",
-            "schedule": {
-                "primary_sync": "10:30 AM ET (Full + Vision AI)",
-                "delta_refreshes": ["1:45 PM", "4:00 PM", "5:45 PM", "7:00 PM"],
-                "live_ticker": "Every 60 seconds"
-            }
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@api_router.post("/v3/board-intel/stop-scheduler")
-async def stop_board_intel_scheduler():
-    """Stop the automated scheduler."""
-    try:
-        board_intel = get_board_intel_engine()
-        board_intel.stop_scheduler()
-        return {"status": "stopped", "message": "Board Intelligence scheduler stopped"}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@api_router.get("/v3/live-ticker")
-async def get_live_ticker():
-    """
-    LIVE TICKER - Games that have started
-    
-    Returns games that have been moved from the betting board to the live ticker.
-    Updated every 60 seconds when games start.
-    """
-    try:
-        board_intel = get_board_intel_engine()
-        await board_intel.initialize()
-        games = await board_intel.get_live_ticker_games()
-        return {
-            "live_games": games,
-            "count": len(games)
-        }
-    except Exception as e:
-        return {"live_games": [], "count": 0, "error": str(e)}
-
-
-@api_router.post("/v3/board-intel/early-bird")
-async def run_early_bird_scan():
-    """
-    EARLY BIRD SCAN (8:15 AM ET - Manual Trigger)
-    
-    - First global fetch for star players
-    - Creates "Scouting Mission Briefing" cards for games without lines
-    - Smart Anchor Vision: Analyzes Season Avg vs Opponent Defense
-    
-    Returns projections for players awaiting official lines.
-    """
-    try:
-        board_intel = get_board_intel_engine()
-        await board_intel.initialize()
-        
-        dg_engine = DemonGoblinEngine(db)
-        
-        result = await board_intel.run_early_bird_scan(dg_engine)
-        return result
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@api_router.get("/v3/scouting-projections")
-async def get_scouting_projections():
-    """
-    SCOUTING PROJECTIONS
-    
-    Returns "Scouting Mission Briefing" cards for players awaiting official lines.
-    These are star players with projected stats but no live betting lines yet.
-    
-    Display with "Scouting" badge (orange themed) in the UI.
-    
-    Each projection includes:
-    - player_name
-    - team, opponent
-    - status: "Awaiting Official Mission Parameters"
-    - projections: {points, rebounds, assists, pra}
-    - season_avg: Player's season averages
-    - last_3_avg: Performance in last 3 games
-    - smart_anchor_vision: AI analysis of expected line
-    """
-    try:
-        board_intel = get_board_intel_engine()
-        await board_intel.initialize()
-        
-        projections = await board_intel.get_scouting_projections()
-        
-        return {
-            "projections": projections,
-            "count": len(projections),
-            "status": "early_bird_active" if len(projections) > 0 else "full_drop_complete"
-        }
-    except Exception as e:
-        return {"projections": [], "count": 0, "error": str(e)}
-
+# NOTE: Board Intelligence routes moved to routes/board_intel_v2.py (Phase 15)
+# Includes: /v3/board-intel/status, primary-sync, delta-refresh, start-scheduler,
+# stop-scheduler, live-ticker, early-bird, scouting-projections
 
 # NOTE: MASTER_HUB routes moved to routes/ directory
 
