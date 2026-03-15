@@ -17,9 +17,8 @@ from .payouts import router as payouts_router
 from .validation import router as validation_router, set_raw_stat_fetcher
 from .social import router as social_router, set_social_signal_engine
 from .roster_sync import router as roster_sync_router, set_demon_goblin_engine as set_roster_engine
-
-# Note: sync.py routes are NOT registered here because server.py has richer implementations
-# with game lock integration. Sync routes will be migrated once server.py is thinned.
+from .game_lock import router as game_lock_router
+from .adaptive_sync import router as adaptive_sync_router
 
 
 def register_all_routes(app, engine, game_lock_engine=None, db=None, 
@@ -86,9 +85,11 @@ def register_all_routes(app, engine, game_lock_engine=None, db=None,
     app.include_router(odds_mapper_router, prefix="/api")
     app.include_router(demon_tracker_router, prefix="/api")
     
-    # New routes (Phase 14-15 extraction)
+    # New routes (Phase 14-16 extraction)
     app.include_router(payouts_router, prefix="/api")
     app.include_router(validation_router, prefix="/api")
     app.include_router(social_router, prefix="/api")
     app.include_router(roster_sync_router, prefix="/api")
     app.include_router(board_intel_v2_router, prefix="/api")
+    app.include_router(game_lock_router, prefix="/api")
+    app.include_router(adaptive_sync_router, prefix="/api")
