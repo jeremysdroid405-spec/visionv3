@@ -3,40 +3,27 @@
 ## Overview
 PickVision is a high-performance NBA Player Prop Dashboard with a "military tech" aesthetic. The application delivers AI-driven betting insights by identifying "Demons" (high-payout props) and "Goblins" (safer props).
 
-## Latest Update: 2026-12-XX - Backend Test Suite Complete
+## Latest Update: 2026-12-XX - Server.py Refactoring Phase 14 Complete
 
-### Comprehensive Backend Test Suite Implemented ✅
+### Backend Test Suite Implemented ✅
 - **File:** `/app/backend/tests/test_critical_backend.py`
 - **Tests:** 16 tests across 6 categories - ALL PASSING
 
-#### Test Categories:
-1. **PropProcessorService (Unit Tests - 3 tests)**
-   - ✅ Poisoned data handling (zero line demons)
-   - ✅ Missing player stats handling
-   - ✅ Hit rate boundary conditions
+### Server.py Refactoring Phase 14 Complete ✅
+- **server.py reduced:** 2,621 → 2,054 lines (**-567 lines, 22% reduction**)
+- **Route handlers reduced:** 81 → 59 (**-22 handlers**)
+- **New Route Modules Created:**
+  - `routes/payouts.py` - Payout calculation endpoints
+  - `routes/validation.py` - Raw stat validation endpoints
+  - `routes/social.py` - Social signal endpoints
+  - `routes/roster_sync.py` - Roster & stats sync endpoints
+- **Total route files:** 18 modular route modules
 
-2. **EnvironmentalEngine (Unit Tests - 2 tests)**
-   - ✅ Away PPG deficit penalties
-   - ✅ DvP matchup adjustments
-
-3. **InjuryRippleEffect (Integration Tests - 2 tests)**
-   - ✅ Usage recalculation on injury updates
-   - ✅ Alert propagation timing (<5 seconds)
-
-4. **DatabaseIntegrity (ACID Tests - 3 tests)**
-   - ✅ 100 concurrent API reads (95%+ success rate)
-   - ✅ Data consistency across endpoints
-   - ✅ No duplicate entries validation
-
-5. **AIBriefingValidation (Target-Lock - 2 tests)**
-   - ✅ Rebounds briefing relevance check
-   - ✅ AI insight structure validation
-
-6. **PerformanceBenchmarks (4 tests)**
-   - ✅ Cached response time <500ms
-   - ✅ War Zone response time <1000ms
-   - ✅ Popular bets response time <1000ms
-   - ✅ Concurrent endpoint performance
+#### Cumulative Backend Metrics:
+- **server.py:** 3,566 → 2,054 lines (42% reduction from original)
+- **demon_goblin_engine.py:** 8,252 → 1,514 lines (82% reduction)
+- **Routes extracted:** 18 modular files in `/routes/`
+- **Services extracted:** 12+ service classes in `/services/`
 
 ## Core Architecture
 
@@ -51,7 +38,7 @@ _build_cached_board() in demon_goblin_engine.py
 dg_cached_board → dg_radar_picks (War Zone) → dg_goblin_vault → dg_goblin_recon
 ```
 
-### Backend Modular Architecture (New)
+### Backend Modular Architecture (Updated Phase 14)
 ```
 /backend
 ├── config/              # Centralized configuration
@@ -78,7 +65,7 @@ dg_cached_board → dg_radar_picks (War Zone) → dg_goblin_vault → dg_goblin_
 │   ├── sync_service.py          # Sync utilities
 │   ├── data_scraper.py          # External API fetching
 │   └── social_scout.py          # Social signals & sentiment
-├── routes/              # API route handlers (2,018 lines across 15 modules)
+├── routes/              # API route handlers (18 modules, 2,500+ lines)
 │   ├── picks.py         # War Zone, Safe Haven, Front Lines
 │   ├── parlays.py       # Parlay builder endpoints
 │   ├── board.py         # Player board & search
@@ -92,10 +79,16 @@ dg_cached_board → dg_radar_picks (War Zone) → dg_goblin_vault → dg_goblin_
 │   ├── ai_context.py    # AI context evaluation
 │   ├── master_hub.py    # NBA Master Hub SSOT endpoints
 │   ├── odds_mapper.py   # Odds API V4 mapping
-│   └── demon_tracker.py # Color-coded demon cards
-├── utils.py             # Common utility functions (90 lines)
-├── server.py            # Main entry (middleware, startup) ~2,619 lines (reduced from 3,556)
-└── demon_goblin_engine.py # Core engine class (~1,514 lines, 82% reduction from 8,252)
+│   ├── demon_tracker.py # Color-coded demon cards
+│   ├── payouts.py       # Payout calculation (NEW Phase 14)
+│   ├── validation.py    # Raw stat validation (NEW Phase 14)
+│   ├── social.py        # Social signals (NEW Phase 14)
+│   └── roster_sync.py   # Roster & stats sync (NEW Phase 14)
+├── tests/               # Pytest test suites
+│   └── test_critical_backend.py # 16 tests, all passing
+├── utils.py             # Common utility functions (101 lines)
+├── server.py            # Main entry (middleware, startup) ~2,054 lines
+└── demon_goblin_engine.py # Core engine class (~1,514 lines)
 ```
 
 ### Tech Stack

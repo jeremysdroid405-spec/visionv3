@@ -12,6 +12,10 @@ from .ai_context import router as ai_context_router, set_ai_context_deps
 from .master_hub import router as master_hub_router, set_master_hub_deps
 from .odds_mapper import router as odds_mapper_router, set_odds_mapper_deps
 from .demon_tracker import router as demon_tracker_router, set_demon_tracker
+from .payouts import router as payouts_router
+from .validation import router as validation_router, set_raw_stat_fetcher
+from .social import router as social_router, set_social_signal_engine
+from .roster_sync import router as roster_sync_router, set_demon_goblin_engine as set_roster_engine
 
 # Note: sync.py routes are NOT registered here because server.py has richer implementations
 # with game lock integration. Sync routes will be migrated once server.py is thinned.
@@ -21,7 +25,8 @@ def register_all_routes(app, engine, game_lock_engine=None, db=None,
                         injury_service=None, vision_service=None, 
                         live_scores_engine=None, ai_context_engine_class=None,
                         master_hub_funcs=None, get_odds_mapper_func=None,
-                        demon_tracker=None):
+                        demon_tracker=None, raw_stat_fetcher=None,
+                        social_signal_engine=None):
     """Register all route modules and set engine
     
     Note: Some routes (sync, lock) remain in server.py because they have
@@ -33,6 +38,7 @@ def register_all_routes(app, engine, game_lock_engine=None, db=None,
     set_board_engine(engine)
     set_intel_engine(engine)
     set_board_intel_engine(engine)
+    set_roster_engine(engine)
     
     # Set services for new routes
     if injury_service is not None:
@@ -49,6 +55,10 @@ def register_all_routes(app, engine, game_lock_engine=None, db=None,
         set_odds_mapper_deps(db, get_odds_mapper_func)
     if demon_tracker is not None:
         set_demon_tracker(demon_tracker)
+    if raw_stat_fetcher is not None:
+        set_raw_stat_fetcher(raw_stat_fetcher)
+    if social_signal_engine is not None:
+        set_social_signal_engine(social_signal_engine)
     
     # Include routers with /api prefix to match frontend expectations
     app.include_router(picks_router, prefix="/api")
@@ -72,3 +82,9 @@ def register_all_routes(app, engine, game_lock_engine=None, db=None,
     app.include_router(master_hub_router, prefix="/api")
     app.include_router(odds_mapper_router, prefix="/api")
     app.include_router(demon_tracker_router, prefix="/api")
+    
+    # New routes (Phase 14 extraction)
+    app.include_router(payouts_router, prefix="/api")
+    app.include_router(validation_router, prefix="/api")
+    app.include_router(social_router, prefix="/api")
+    app.include_router(roster_sync_router, prefix="/api")
