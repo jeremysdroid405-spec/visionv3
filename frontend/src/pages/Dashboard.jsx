@@ -18,7 +18,8 @@ import { Badge } from '../components/ui/badge';
 import { Card } from '../components/ui/card';
 import { 
   Search, X, LogOut, Crown, User, Radio, AlertTriangle, Activity, 
-  RefreshCw, ChevronRight, Eye, Zap, ChevronDown, Flame, ArrowLeft, Target
+  RefreshCw, ChevronRight, Eye, Zap, ChevronDown, Flame, ArrowLeft, Target,
+  TrendingUp, Newspaper, Clock
 } from 'lucide-react';
 
 // Dashboard Components
@@ -132,6 +133,156 @@ const SectionHeader = memo(({ icon, title, subtitle, badgeText, badgeColor = 're
           {badgeText}
         </div>
       )}
+    </div>
+  );
+});
+
+// ==================== LIVE TICKERS ====================
+
+// Live Scores Ticker
+const LiveScoresTicker = memo(() => {
+  const [scores, setScores] = useState([]);
+  const [loading, setLoading] = useState(true);
+  
+  useEffect(() => {
+    const fetchScores = async () => {
+      try {
+        const API = process.env.REACT_APP_BACKEND_URL;
+        const response = await fetch(`${API}/api/live/scores`);
+        if (response.ok) {
+          const data = await response.json();
+          setScores(data.games || []);
+        }
+      } catch (err) {
+        console.log('Live scores unavailable');
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    fetchScores();
+    const interval = setInterval(fetchScores, 30000); // Refresh every 30s
+    return () => clearInterval(interval);
+  }, []);
+  
+  if (loading) {
+    return (
+      <div className="bg-zinc-900/80 border-b border-zinc-800 py-2 px-3">
+        <div className="flex items-center gap-2 text-zinc-500 text-xs">
+          <Activity className="w-3 h-3 animate-pulse" />
+          <span>Loading live scores...</span>
+        </div>
+      </div>
+    );
+  }
+  
+  if (!scores.length) {
+    return (
+      <div className="bg-zinc-900/80 border-b border-zinc-800 py-2 px-3">
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-1.5 px-2 py-1 bg-zinc-800 rounded">
+            <div className="w-2 h-2 rounded-full bg-zinc-600" />
+            <span className="text-[10px] font-bold text-zinc-500">NO LIVE GAMES</span>
+          </div>
+          <span className="text-xs text-zinc-600">Check back when games tip off</span>
+        </div>
+      </div>
+    );
+  }
+  
+  return (
+    <div className="bg-zinc-900/80 border-b border-zinc-800 py-2 overflow-hidden" data-testid="live-scores-ticker">
+      <div className="flex items-center gap-2 px-3 mb-1">
+        <div className="flex items-center gap-1 px-1.5 py-0.5 bg-red-500/20 rounded">
+          <div className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
+          <span className="text-[9px] font-bold text-red-400">LIVE</span>
+        </div>
+        <span className="text-[10px] text-zinc-500 font-medium">SCORES</span>
+      </div>
+      <div className="ticker-scroll">
+        <div className="ticker-content">
+          {[...scores, ...scores].map((game, idx) => (
+            <div key={`score-${idx}`} className="flex items-center gap-3 px-4 py-1 border-r border-zinc-800">
+              <div className="flex items-center gap-2">
+                <img src={TEAM_LOGOS[game.away_team]} alt={game.away_team} className="w-5 h-5" onError={(e) => e.target.style.display='none'} />
+                <span className={`text-sm font-bold ${game.away_score > game.home_score ? 'text-white' : 'text-zinc-500'}`}>
+                  {game.away_team} {game.away_score}
+                </span>
+              </div>
+              <span className="text-zinc-600 text-xs">@</span>
+              <div className="flex items-center gap-2">
+                <span className={`text-sm font-bold ${game.home_score > game.away_score ? 'text-white' : 'text-zinc-500'}`}>
+                  {game.home_team} {game.home_score}
+                </span>
+                <img src={TEAM_LOGOS[game.home_team]} alt={game.home_team} className="w-5 h-5" onError={(e) => e.target.style.display='none'} />
+              </div>
+              <Badge className={`text-[9px] ${
+                game.status === 'live' ? 'bg-red-500/20 text-red-400 border-red-500/30' :
+                game.status === 'final' ? 'bg-zinc-700 text-zinc-400 border-zinc-600' :
+                'bg-amber-500/20 text-amber-400 border-amber-500/30'
+              }`}>
+                {game.period || game.status?.toUpperCase()}
+              </Badge>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+});
+
+// Breaking News Ticker
+const BreakingNewsTicker = memo(() => {
+  const [news, setNews] = useState([]);
+  const [loading, setLoading] = useState(true);
+  
+  useEffect(() => {
+    const fetchNews = async () => {
+      try {
+        const API = process.env.REACT_APP_BACKEND_URL;
+        const response = await fetch(`${API}/api/live/news`);
+        if (response.ok) {
+          const data = await response.json();
+          setNews(data.headlines || []);
+        }
+      } catch (err) {
+        console.log('News feed unavailable');
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    fetchNews();
+    const interval = setInterval(fetchNews, 60000); // Refresh every 60s
+    return () => clearInterval(interval);
+  }, []);
+  
+  // Default headlines if API not available
+  const displayNews = news.length > 0 ? news : [
+    { text: "NBA injury reports updated hourly", type: "info" },
+    { text: "Line movements tracked in real-time", type: "info" },
+    { text: "AI insights refresh with each game", type: "info" }
+  ];
+  
+  return (
+    <div className="bg-gradient-to-r from-amber-950/30 to-zinc-900 border-b border-amber-900/30 py-1.5 overflow-hidden" data-testid="news-ticker">
+      <div className="news-ticker-scroll">
+        <div className="news-ticker-content">
+          {[...displayNews, ...displayNews, ...displayNews].map((item, idx) => (
+            <div key={`news-${idx}`} className="flex items-center gap-2 px-6">
+              {item.type === 'breaking' ? (
+                <span className="px-1.5 py-0.5 bg-red-500/30 text-red-400 text-[9px] font-bold rounded">BREAKING</span>
+              ) : item.type === 'injury' ? (
+                <AlertTriangle className="w-3 h-3 text-amber-400" />
+              ) : (
+                <Newspaper className="w-3 h-3 text-amber-500/70" />
+              )}
+              <span className="text-xs text-amber-100/80 whitespace-nowrap">{item.text}</span>
+              <span className="text-zinc-700 mx-2">•</span>
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   );
 });
@@ -576,8 +727,15 @@ const Dashboard = () => {
         </div>
       </header>
       
+      {/* Live Tickers */}
+      <LiveScoresTicker />
+      <BreakingNewsTicker />
+      
       {/* Main Content */}
       <div className="p-3 space-y-4">
+        {/* Most Popular Bets - FIRST */}
+        <MostPopularBetsSection bets={popularBets} status={popularBetsStatus} onBetClick={handlePopularBetClick} />
+        
         {/* Safe Haven */}
         <SafeHavenSection picks={vaultPicks} onPickClick={handleVaultClick} onQuickAdd={handleQuickAdd} />
         
@@ -619,9 +777,6 @@ const Dashboard = () => {
           icon={<span className="text-lg">⚔️</span>}
           badgeColor="red"
         />
-        
-        {/* Most Popular Bets */}
-        <MostPopularBetsSection bets={popularBets} status={popularBetsStatus} onBetClick={handlePopularBetClick} />
         
         {/* Intel Search */}
         <div className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-4" data-testid="intel-search-section">

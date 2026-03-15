@@ -281,9 +281,30 @@
 }
 
 .ticker-scroll {
-  animation: ticker-scroll 30s linear infinite;
+  overflow: hidden;
 }
 
-.ticker-scroll:hover {
+.ticker-content {
+  display: flex;
+  animation: ticker-scroll 40s linear infinite;
+  width: fit-content;
+}
+
+.ticker-content:hover {
+  animation-play-state: paused;
+}
+
+/* News ticker - slower speed */
+.news-ticker-scroll {
+  overflow: hidden;
+}
+
+.news-ticker-content {
+  display: flex;
+  animation: ticker-scroll 60s linear infinite;
+  width: fit-content;
+}
+
+.news-ticker-content:hover {
   animation-play-state: paused;
 }

@@ -5,6 +5,18 @@ PickVision is a high-performance NBA Player Prop Dashboard with a "military tech
 
 ## Latest Update: 2026-03-15
 
+### Live Scores & Breaking News Tickers ✅
+- **Live Scores Ticker:** Real-time NBA game scores from BallDontLie API
+  - Auto-refreshes every 30 seconds
+  - Shows team abbreviations, scores, and game status (Q1, Q2, Final, Upcoming)
+  - Red "LIVE" badge with pulsing animation
+  - Scrolling horizontal ticker with hover-pause
+- **Breaking News Ticker:** Injury updates and system status
+  - Auto-refreshes every 60 seconds  
+  - Shows injury alerts, line movements, and AI feature highlights
+  - Amber gradient background with scrolling animation
+- **Layout Reorganization:** Most Popular section now at TOP of dashboard
+
 ### Quick-Add to Command Post ✅
 - **Feature:** One-click button on PickCards to add props directly to the Command Post simulator
 - **UI:** Cyan + icon button in card header (only visible when `onQuickAdd` prop provided)
