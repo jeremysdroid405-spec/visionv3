@@ -2,8 +2,11 @@
 Legacy Routes
 =============
 Backward-compatible legacy endpoints.
+
+⚠️ DEPRECATED: These endpoints will be removed in API v4.
+Use the v3 equivalents listed in the replacement field.
 """
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Response
 from typing import Optional
 import logging
 
@@ -13,6 +16,9 @@ router = APIRouter(tags=["Legacy"])
 # Reference to DemonGoblinEngine and stats_manager (set via dependency injection)
 _demon_goblin_engine = None
 _stats_manager = None
+
+# Deprecation warning header
+DEPRECATION_WARNING = "This endpoint is deprecated and will be removed in API v4."
 
 
 def set_legacy_deps(engine, stats_manager=None):
@@ -29,15 +35,28 @@ def get_engine():
     return _demon_goblin_engine
 
 
+def add_deprecation_headers(response: Response, replacement: str, sunset_date: str = "2026-01-01"):
+    """Add standard deprecation headers to response."""
+    response.headers["Deprecation"] = "true"
+    response.headers["Sunset"] = sunset_date
+    response.headers["Link"] = f'<{replacement}>; rel="successor-version"'
+    response.headers["X-Deprecation-Notice"] = DEPRECATION_WARNING
+
+
 @router.get("/full-board")
-async def get_full_board():
+async def get_full_board(response: Response):
     """
+    ⚠️ DEPRECATED: Use /api/v3/board instead.
+    
     LEGACY: Get full board with mock data for testing.
-    Use /v3/board or /v3/cached-props for production.
     """
+    add_deprecation_headers(response, "/api/v3/board")
+    
     return {
         "success": True,
-        "message": "Legacy endpoint - use /v3/board for production",
+        "message": "Legacy endpoint - use /api/v3/board for production",
+        "deprecation_notice": DEPRECATION_WARNING,
+        "replacement": "/api/v3/board",
         "data": {
             "players": [],
             "timestamp": None
@@ -47,23 +66,18 @@ async def get_full_board():
 
 @router.get("/calculate-hit-rate")
 async def calculate_hit_rate(
+    response: Response,
     player_name: str = Query(...),
     stat_type: str = Query(...),
     line: float = Query(...)
 ):
     """
+    ⚠️ DEPRECATED: Use /api/v3/player/{name} instead (includes hit rates).
+    
     Calculate hit rate for a specific player/stat/line combination.
-    
-    Args:
-    - player_name: Player name
-    - stat_type: Stat type (PTS, REB, AST, etc.)
-    - line: The betting line to check against
-    
-    Returns:
-    - hit_rate: Percentage of games over the line
-    - games_checked: Number of games analyzed
-    - last_5_values: Recent game values
     """
+    add_deprecation_headers(response, f"/api/v3/player/{player_name}")
+    
     engine = get_engine()
     
     # Get player stats from cache or BDL
@@ -77,7 +91,9 @@ async def calculate_hit_rate(
             "line": line,
             "hit_rate": 0,
             "games_checked": 0,
-            "message": "Player stats not found"
+            "message": "Player stats not found",
+            "deprecation_notice": DEPRECATION_WARNING,
+            "replacement": f"/api/v3/player/{player_name}"
         }
     
     # Calculate hit rate from game logs
@@ -92,7 +108,8 @@ async def calculate_hit_rate(
             "line": line,
             "hit_rate": 0,
             "games_checked": 0,
-            "message": "No game logs found"
+            "message": "No game logs found",
+            "deprecation_notice": DEPRECATION_WARNING
         }
     
     hits = sum(1 for g in game_logs if g.get(stat_key, 0) > line)
@@ -106,29 +123,26 @@ async def calculate_hit_rate(
         "hit_rate": round(hit_rate, 1),
         "games_checked": len(game_logs),
         "hits": hits,
-        "last_5_values": [g.get(stat_key, 0) for g in game_logs[:5]]
+        "last_5_values": [g.get(stat_key, 0) for g in game_logs[:5]],
+        "deprecation_notice": DEPRECATION_WARNING,
+        "replacement": f"/api/v3/player/{player_name}"
     }
 
 
 @router.get("/validate-demon")
 async def validate_demon(
+    response: Response,
     player_name: str = Query(...),
     prop_type: str = Query(...),
     demon_line: float = Query(...)
 ):
     """
+    ⚠️ DEPRECATED: Use /api/v3/demons instead.
+    
     Validate if a prop qualifies as a Demon pick.
-    
-    A Demon is identified when:
-    - Line is significantly above season average
-    - Player has shown ability to exceed this line
-    - Risk/reward ratio meets threshold
-    
-    Returns:
-    - is_valid_demon: Boolean
-    - reason: Explanation
-    - ev_score: Expected value score
     """
+    add_deprecation_headers(response, "/api/v3/demons")
+    
     engine = get_engine()
     
     # Get player from cached board
@@ -141,7 +155,9 @@ async def validate_demon(
         return {
             "is_valid_demon": False,
             "reason": f"Player '{player_name}' not found in cached board",
-            "ev_score": 0
+            "ev_score": 0,
+            "deprecation_notice": DEPRECATION_WARNING,
+            "replacement": "/api/v3/demons"
         }
     
     # Check if already tagged as demon
@@ -150,7 +166,9 @@ async def validate_demon(
             "is_valid_demon": True,
             "reason": "Already validated as Demon pick",
             "ev_score": player.get("ev_score", 0),
-            "hit_rate_10": player.get("hit_rate_10", 0)
+            "hit_rate_10": player.get("hit_rate_10", 0),
+            "deprecation_notice": DEPRECATION_WARNING,
+            "replacement": "/api/v3/demons"
         }
     
     # Validate based on criteria
@@ -169,7 +187,9 @@ async def validate_demon(
         "ev_score": player.get("ev_score", 0),
         "season_avg": season_avg,
         "demon_line": demon_line,
-        "hit_rate_10": hit_rate
+        "hit_rate_10": hit_rate,
+        "deprecation_notice": DEPRECATION_WARNING,
+        "replacement": "/api/v3/demons"
     }
 
 

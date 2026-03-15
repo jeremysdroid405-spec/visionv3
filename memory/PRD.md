@@ -3,11 +3,33 @@
 ## Overview
 PickVision is a high-performance NBA Player Prop Dashboard with a "military tech" aesthetic. The application delivers AI-driven betting insights by identifying "Demons" (high-payout props) and "Goblins" (safer props).
 
-## Latest Update: 2026-12-XX - Server.py Refactoring Phase 18 Complete 🎉
+## Latest Update: 2026-12-XX - API Documentation & Versioning Complete 🎉
 
 ### Backend Test Suite ✅
 - **File:** `/app/backend/tests/test_critical_backend.py`
 - **Tests:** 16 tests across 6 categories - ALL PASSING
+
+### API Documentation & Versioning Complete ✅
+- **OpenAPI 3.0 Documentation:**
+  - Title: "PickVision API"
+  - Version: 3.0.0
+  - 29 organized tag groups
+  - Full markdown description with tier explanations
+  - Contact and license info
+- **Deprecation Management:**
+  - RFC-compliant deprecation headers (Deprecation, Sunset, Link)
+  - X-Deprecation-Notice custom header
+  - Replacement endpoints documented
+  - Sunset date: 2026-01-01 for legacy endpoints
+- **API Versioning Config:**
+  - `config/api_versioning.py` - Centralized version management
+  - V4 breaking changes documented
+  - Migration guides included
+
+### API Documentation URLs:
+- Swagger UI: `/api/docs`
+- ReDoc: `/api/redoc`
+- OpenAPI JSON: `/api/openapi.json`
 
 ### Server.py Refactoring COMPLETE ✅
 - **server.py reduced:** 3,566 → 552 lines (**-3,014 lines, 85% reduction**)

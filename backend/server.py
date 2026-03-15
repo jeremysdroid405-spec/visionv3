@@ -97,7 +97,192 @@ DAILY_SYNC_MINUTE = 0
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_ANON_KEY) if SUPABASE_ANON_KEY else None
 
-app = FastAPI(title="NBA Best Bets API - Demon & Goblin Engine v3.0")
+# ==================== OPENAPI CONFIGURATION ====================
+# API Metadata and Documentation
+API_TITLE = "PickVision API"
+API_VERSION = "3.0.0"
+API_DESCRIPTION = """
+# PickVision - NBA Player Prop Intelligence Platform
+
+🏀 **Military-grade betting intelligence for NBA player props**
+
+## Overview
+PickVision delivers AI-driven betting insights by identifying:
+- **Demons** 🔴 High-risk, high-reward props with lines above season averages
+- **Goblins** 🟢 Safer, consistent props with high hit rates
+
+## API Tiers
+
+### War Zone (Demons)
+Aggressive plays for risk-tolerant bettors. High EV, lower hit rates.
+
+### Safe Haven (Goblins)
+Conservative plays for consistent returns. High hit rates, moderate payouts.
+
+### Front Lines
+Balanced mix of demons and goblins for diversified parlays.
+
+## Key Features
+- Real-time odds sync via Adaptive Sync Engine
+- AI-powered Vision briefings (Gemini 3 Flash)
+- Hit rate calculations from BallDontLie stats
+- Game lock protection for live games
+- Smart parlay builder with correlation data
+
+## Rate Limits
+- Standard: 100 requests/minute
+- Sync endpoints: 10 requests/minute
+- AI briefings: 5 requests/minute
+
+## Authentication
+Most read endpoints are public. Write operations require JWT authentication.
+"""
+
+# OpenAPI Tags with descriptions for documentation grouping
+OPENAPI_TAGS = [
+    # Core Data Endpoints
+    {
+        "name": "Core V3",
+        "description": "Primary data endpoints: status, players, demons, goblins, board"
+    },
+    {
+        "name": "Tiers",
+        "description": "War Zone, Safe Haven, Front Lines - tiered pick sections"
+    },
+    {
+        "name": "Cached Data",
+        "description": "Zero-API-call warehouse endpoints for instant data access"
+    },
+    # Intelligence & Analytics
+    {
+        "name": "Intel Sync",
+        "description": "Data synchronization and AI briefing generation"
+    },
+    {
+        "name": "Board Intelligence",
+        "description": "Smart board management with scheduled syncs"
+    },
+    {
+        "name": "vision",
+        "description": "AI Vision briefings powered by Claude Sonnet 4.5"
+    },
+    {
+        "name": "ai-context",
+        "description": "Contextual AI analysis for player props"
+    },
+    # Real-time Data
+    {
+        "name": "Adaptive Sync",
+        "description": "Mission-critical polling with tiered refresh rates"
+    },
+    {
+        "name": "live-scores",
+        "description": "Real-time game scores and updates"
+    },
+    {
+        "name": "Game Lock",
+        "description": "Auto-cleanup when games start, parlay validation"
+    },
+    # Parlay & Payouts
+    {
+        "name": "parlays",
+        "description": "Parlay builder and goblin recon combinations"
+    },
+    {
+        "name": "Payouts",
+        "description": "Payout calculations and estimates"
+    },
+    # Player Data
+    {
+        "name": "board",
+        "description": "Player board, search, and trending"
+    },
+    {
+        "name": "picks",
+        "description": "Most popular bets and pick recommendations"
+    },
+    {
+        "name": "Roster Sync",
+        "description": "Master roster and player photo management"
+    },
+    {
+        "name": "injuries",
+        "description": "Injury intelligence from ESPN and Tank01"
+    },
+    # External Data
+    {
+        "name": "master-hub",
+        "description": "NBA Master Hub - Single Source of Truth"
+    },
+    {
+        "name": "odds-mapper",
+        "description": "Odds API V4 mapping and normalization"
+    },
+    {
+        "name": "Social Signals",
+        "description": "News sentiment and revenge game detection"
+    },
+    # Administration
+    {
+        "name": "Admin",
+        "description": "Cache management, roster sync, rate limits"
+    },
+    {
+        "name": "Scheduler",
+        "description": "Scheduled job status and manual triggers"
+    },
+    {
+        "name": "Validation",
+        "description": "Raw stat validation for data integrity"
+    },
+    # Authentication
+    {
+        "name": "auth",
+        "description": "User authentication and profile management"
+    },
+    # Legacy & Compatibility
+    {
+        "name": "Legacy",
+        "description": "Backward-compatible endpoints (deprecated)"
+    },
+    {
+        "name": "demon-tracker",
+        "description": "Deep Ingestion Engine v2 (legacy)"
+    },
+    {
+        "name": "intel",
+        "description": "Intel briefings (use Intel Sync instead)"
+    },
+    {
+        "name": "sync",
+        "description": "Sync operations (use Board Intelligence instead)"
+    },
+    {
+        "name": "board-intel",
+        "description": "Board intel v1 (use Board Intelligence instead)"
+    },
+    {
+        "name": "command-center",
+        "description": "Command center operations"
+    },
+]
+
+app = FastAPI(
+    title=API_TITLE,
+    version=API_VERSION,
+    description=API_DESCRIPTION,
+    openapi_tags=OPENAPI_TAGS,
+    docs_url="/api/docs",
+    redoc_url="/api/redoc",
+    openapi_url="/api/openapi.json",
+    contact={
+        "name": "PickVision Support",
+        "url": "https://pickvision.app/support",
+    },
+    license_info={
+        "name": "Proprietary",
+    }
+)
 api_router = APIRouter(prefix="/api")
 security = HTTPBearer()
 
