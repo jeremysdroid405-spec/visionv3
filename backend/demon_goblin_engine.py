@@ -7535,7 +7535,9 @@ V3.1 TRUTH ENGINE - DATA INTEGRITY:
                         logger.warning(f"[MOST_POPULAR] Failed to parse commence_time: {commence_time_str} - {e}")
                         continue
                     
-                    # Calculate popularity score
+                    # Calculate popularity score - TYPE AGNOSTIC (no demon/goblin boost)
+                    # Uses popularity_order from PrizePicks if available (actual volume proxy)
+                    # Otherwise uses hash-based score for variety
                     hit_rates = prop.get("hit_rates", {}) or {}
                     l10_data = hit_rates.get("l10", {}) or {}
                     h10_rate = l10_data.get("hit_rate", 0) or 0
@@ -7544,11 +7546,16 @@ V3.1 TRUTH ENGINE - DATA INTEGRITY:
                     is_goblin = prop.get("is_goblin", False)
                     line_type = "demon" if is_demon else "goblin" if is_goblin else "standard"
                     
-                    type_boost = 30 if is_demon else 20 if is_goblin else 0
-                    hit_rate_score = h10_rate * 0.5
-                    gap_pct = abs(prop.get("gap_pct", 0) or 0)
-                    gap_score = min(gap_pct * 2, 40)
-                    popularity_score = type_boost + hit_rate_score + gap_score + (hash(player_name + str(prop.get("line", 0))) % 20)
+                    # PURE VOLUME SCORING - No type bias
+                    # popularity_order from PrizePicks indicates actual ticket volume (lower = more popular)
+                    pp_order = prop.get("popularity_order", 999)
+                    volume_score = max(0, 100 - pp_order)  # Convert to descending score
+                    
+                    # Add some variety with hit rate and hash
+                    hit_rate_score = h10_rate * 0.3
+                    hash_variety = (hash(player_name + str(prop.get("line", 0))) % 15)
+                    
+                    popularity_score = volume_score + hit_rate_score + hash_variety
                     
                     line = prop.get("demon_line") or prop.get("goblin_line") or prop.get("line")
                     stat_type = prop.get("stat_type") or prop.get("stat_type_extracted") or prop.get("market", "").replace("player_", "").upper()
@@ -7641,9 +7648,10 @@ V3.1 TRUTH ENGINE - DATA INTEGRITY:
                                 is_goblin = is_alternate and price != 100
                                 line_type = "demon" if is_demon else "goblin" if is_goblin else "standard"
                                 
-                                # Simple popularity score for odds_cache entries
-                                type_boost = 30 if is_demon else 20 if is_goblin else 0
-                                popularity_score = type_boost + (hash(player_name + str(line)) % 30) + 10
+                                # PURE VOLUME SCORING - No type bias for odds_cache entries
+                                # Use hash-based variety to simulate ticket volume distribution
+                                hash_variety = (hash(player_name + stat_type + str(line)) % 50)
+                                popularity_score = hash_variety + 20  # Base score + variety
                                 
                                 # Check if we already have this bet from cached_board
                                 existing = any(
