@@ -2524,6 +2524,184 @@ const TrendingSwipeSection = memo(({ players, linesLoaded, onPlayerClick, injury
 
 TrendingSwipeSection.displayName = 'TrendingSwipeSection';
 
+// ==================== MOST POPULAR BETS (LIVE TICKER) ====================
+// Shows Top 20 most heavily bet props with smart polling
+
+// Individual bet card for Most Popular section
+const PopularBetCard = memo(({ bet, rank, onClick }) => {
+  const lineType = bet.line_type || 'standard';
+  
+  // Theme based on line type
+  const themes = {
+    demon: { 
+      border: 'border-red-500/40', 
+      bg: 'from-red-950/30', 
+      badge: 'bg-red-500/20 text-red-400 border-red-500/30',
+      badgeText: 'DEMON',
+      glow: 'rgba(239, 68, 68, 0.2)'
+    },
+    goblin: { 
+      border: 'border-green-500/40', 
+      bg: 'from-green-950/30', 
+      badge: 'bg-green-500/20 text-green-400 border-green-500/30',
+      badgeText: 'GOBLIN',
+      glow: 'rgba(34, 197, 94, 0.2)'
+    },
+    standard: { 
+      border: 'border-zinc-700', 
+      bg: 'from-zinc-900/50', 
+      badge: 'bg-zinc-700/50 text-zinc-300 border-zinc-600/30',
+      badgeText: 'STANDARD',
+      glow: 'rgba(100, 100, 100, 0.1)'
+    }
+  };
+  const theme = themes[lineType];
+  
+  return (
+    <Card 
+      className={`bg-gradient-to-br ${theme.bg} to-zinc-950 ${theme.border} hover:scale-[1.02] transition-all cursor-pointer overflow-hidden`}
+      style={{ boxShadow: `0 0 15px ${theme.glow}` }}
+      onClick={onClick}
+      data-testid={`popular-bet-${rank}`}
+    >
+      <div className="p-3">
+        {/* Header with rank and line type badge */}
+        <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center gap-2">
+            <div className="w-6 h-6 rounded-full bg-orange-500/20 flex items-center justify-center">
+              <span className="text-xs font-bold text-orange-400">#{rank}</span>
+            </div>
+            <Badge className={`${theme.badge} text-[9px] border px-1.5 py-0.5`}>
+              {theme.badgeText}
+            </Badge>
+          </div>
+          <div className="text-[10px] text-zinc-500">
+            {bet.h10_rate}% L10
+          </div>
+        </div>
+        
+        {/* Player info */}
+        <div className="flex items-center gap-2 mb-2">
+          {bet.photo_url ? (
+            <img src={bet.photo_url} alt="" className="w-10 h-10 rounded-full object-cover bg-zinc-800" />
+          ) : (
+            <div className="w-10 h-10 rounded-full bg-zinc-800 flex items-center justify-center">
+              <User className="w-5 h-5 text-zinc-500" />
+            </div>
+          )}
+          <div className="min-w-0 flex-1">
+            <div className="text-sm font-semibold text-white truncate">{bet.player_name}</div>
+            <div className="text-[10px] text-zinc-500">{bet.team}</div>
+          </div>
+        </div>
+        
+        {/* Bet details */}
+        <div className="bg-zinc-900/50 rounded p-2 mb-2">
+          <div className="flex items-center justify-between">
+            <div className="text-xs text-zinc-400">{bet.stat_type}</div>
+            <div className="flex items-center gap-1">
+              <span className="text-sm font-bold text-white">{bet.line}</span>
+              <TrendingUp className="w-3 h-3 text-green-400" />
+              <span className="text-[10px] text-green-400 uppercase">{bet.direction}</span>
+            </div>
+          </div>
+        </div>
+        
+        {/* Popularity indicator */}
+        <div className="flex items-center justify-between text-[10px]">
+          <div className="flex items-center gap-1 text-orange-400">
+            <Flame className="w-3 h-3" />
+            <span>Hot Bet</span>
+          </div>
+          {bet.gap_pct && bet.gap_pct !== 0 && (
+            <span className="text-yellow-400">
+              {bet.gap_pct > 0 ? '+' : ''}{bet.gap_pct}% value
+            </span>
+          )}
+        </div>
+      </div>
+    </Card>
+  );
+});
+
+PopularBetCard.displayName = 'PopularBetCard';
+
+// Most Popular Bets Live Ticker Section
+const MostPopularBetsSection = memo(({ bets, lastUpdated, onBetClick, isLoading }) => {
+  const { containerRef, currentIndex, showHint } = useSwipeTracker(Math.min(bets.length, 20));
+  
+  // Format last updated time
+  const formatLastUpdated = (isoString) => {
+    if (!isoString) return '';
+    try {
+      const date = new Date(isoString);
+      const now = new Date();
+      const diffSeconds = Math.floor((now - date) / 1000);
+      if (diffSeconds < 60) return `${diffSeconds}s ago`;
+      if (diffSeconds < 3600) return `${Math.floor(diffSeconds / 60)}m ago`;
+      return date.toLocaleTimeString();
+    } catch {
+      return '';
+    }
+  };
+  
+  if (!bets || bets.length === 0) return null;
+  
+  return (
+    <div data-testid="most-popular-bets-section" className="mt-6">
+      <div className="flex items-center justify-between mb-2 px-4 sm:px-0">
+        <div className="flex items-center gap-2">
+          <Flame className="w-4 h-4 text-orange-500" />
+          <span className="text-sm font-bold text-white">MOST POPULAR BETS</span>
+          <Badge className="bg-orange-500/20 text-orange-400 border-orange-500/30 text-[10px] hidden sm:inline-flex">
+            LIVE TICKER
+          </Badge>
+          {isLoading && (
+            <div className="w-3 h-3 border border-orange-400 border-t-transparent rounded-full animate-spin" />
+          )}
+        </div>
+        <div className="text-[10px] text-zinc-500 flex items-center gap-1">
+          <Radio className="w-3 h-3 text-green-400 animate-pulse" />
+          <span>Updated {formatLastUpdated(lastUpdated)}</span>
+        </div>
+      </div>
+      
+      <div className="relative">
+        <SwipeHint show={showHint} accentColor="orange" />
+        <div 
+          ref={containerRef} 
+          className="flex overflow-x-auto snap-x snap-mandatory scrollbar-hide gap-3 px-4 pb-2 sm:grid sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 sm:overflow-visible sm:px-0 sm:gap-2"
+          style={{ WebkitOverflowScrolling: 'touch', scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+        >
+          {bets.slice(0, 20).map((bet, idx) => (
+            <div 
+              key={`${bet.player_name}-${bet.stat_type}-${bet.line}-${idx}`} 
+              className="snap-center flex-shrink-0 w-[calc(100vw-48px)] max-w-[280px] sm:w-auto sm:max-w-none"
+            >
+              <PopularBetCard 
+                bet={bet} 
+                rank={idx + 1}
+                onClick={() => onBetClick(bet)}
+              />
+            </div>
+          ))}
+        </div>
+      </div>
+      
+      <SwipeIndicator current={currentIndex} total={Math.min(bets.length, 20)} accentColor="orange" />
+      
+      {/* Legend */}
+      <div className="mt-2 hidden sm:flex items-center justify-center gap-4 text-[10px] text-zinc-500">
+        <span><span className="text-red-400">DEMON</span> = High Payout Lines</span>
+        <span><span className="text-green-400">GOBLIN</span> = High Probability Lines</span>
+        <span><span className="text-zinc-400">STANDARD</span> = Base Lines</span>
+      </div>
+    </div>
+  );
+});
+
+MostPopularBetsSection.displayName = 'MostPopularBetsSection';
+
 // ==================== EXPANDED PARLAY VIEW ====================
 // Shows all picks in a parlay with player cards and bet details
 
@@ -3870,6 +4048,11 @@ export const DemonGoblinDashboardOptimized = ({ isDemoMode = false }) => {
   const [reconData, setReconData] = useState({});  // Goblin Recon parlays
   const [expandedParlay, setExpandedParlay] = useState(null);  // Currently expanded parlay view
   
+  // Most Popular Bets Live Ticker state
+  const [popularBets, setPopularBets] = useState([]);
+  const [popularBetsLastUpdated, setPopularBetsLastUpdated] = useState(null);
+  const [popularBetsLoading, setPopularBetsLoading] = useState(false);
+  
   // Injury Intelligence state
   const [injuryAlerts, setInjuryAlerts] = useState({});  // player_name -> injury_info
   const [breakingNews, setBreakingNews] = useState([]);  // Breaking news ticker
@@ -3950,7 +4133,7 @@ export const DemonGoblinDashboardOptimized = ({ isDemoMode = false }) => {
       console.log('[CACHED] Loading from MongoDB...');
       
       // Load board, war zone, front lines, vault, parlays, recon, injuries, social signals, data status, sync status, live scores, and lock status in parallel
-      const [boardResponse, warZoneResponse, frontLinesResponse, vaultResponse, parlayResponse, reconResponse, injuryResponse, newsResponse, dataStatusResponse, socialSignalsResponse, syncStatusResponse, liveScoresResponse, lockStatusResponse, tMinusResponse, boardIntelResponse] = await Promise.all([
+      const [boardResponse, warZoneResponse, frontLinesResponse, vaultResponse, parlayResponse, reconResponse, injuryResponse, newsResponse, dataStatusResponse, socialSignalsResponse, syncStatusResponse, liveScoresResponse, lockStatusResponse, tMinusResponse, boardIntelResponse, popularBetsResponse] = await Promise.all([
         axios.get(`${API}/v3/cached-props`),
         axios.get(`${API}/v3/war-zone`),
         axios.get(`${API}/v3/front-lines`),
@@ -3965,7 +4148,8 @@ export const DemonGoblinDashboardOptimized = ({ isDemoMode = false }) => {
         axios.get(`${API}/v3/live-scores`).catch(() => ({ data: { success: false, games: [] }})),
         axios.get(`${API}/v3/lock-status`).catch(() => ({ data: { active_games: 0, locked_games: 0, t_minus_games: 0 }})),
         axios.get(`${API}/v3/t-minus-games`).catch(() => ({ data: { games: [], count: 0 }})),
-        axios.get(`${API}/v3/board-intel/status`).catch(() => ({ data: { time_since_sync_display: 'Not synced', scheduler_running: false }}))
+        axios.get(`${API}/v3/board-intel/status`).catch(() => ({ data: { time_since_sync_display: 'Not synced', scheduler_running: false }})),
+        axios.get(`${API}/v3/most-popular-bets`).catch(() => ({ data: { success: false, bets: [], last_updated: null }}))
       ]);
       
       // Social signals for applying to picks
@@ -4109,6 +4293,13 @@ export const DemonGoblinDashboardOptimized = ({ isDemoMode = false }) => {
         }
       }
       
+      // Most Popular Bets - Live Ticker (initial load)
+      if (popularBetsResponse.data?.success) {
+        setPopularBets(popularBetsResponse.data.bets || []);
+        setPopularBetsLastUpdated(popularBetsResponse.data.last_updated);
+        console.log(`[POPULAR BETS] Loaded ${popularBetsResponse.data.count || 0} most popular bets`);
+      }
+      
       // Fetch Scouting Projections (Early Bird cards)
       try {
         const scoutingResponse = await axios.get(`${API}/v3/scouting-projections`);
@@ -4222,6 +4413,34 @@ export const DemonGoblinDashboardOptimized = ({ isDemoMode = false }) => {
     return () => clearInterval(newsRefreshInterval);
   }, []);
   
+  // ==================== MOST POPULAR BETS LIVE TICKER POLLING ====================
+  // Smart polling every 45 seconds to update popularity rankings
+  // Auto-purges bets from games that have started
+  useEffect(() => {
+    const POLL_INTERVAL = 45000; // 45 seconds
+    
+    const fetchPopularBets = async () => {
+      try {
+        setPopularBetsLoading(true);
+        const response = await axios.get(`${API}/v3/most-popular-bets`);
+        if (response.data?.success) {
+          setPopularBets(response.data.bets || []);
+          setPopularBetsLastUpdated(response.data.last_updated);
+          console.log(`[POPULAR BETS] Live ticker updated: ${response.data.count || 0} bets`);
+        }
+      } catch (error) {
+        console.error('[POPULAR BETS] Polling error:', error);
+      } finally {
+        setPopularBetsLoading(false);
+      }
+    };
+    
+    // Start polling interval
+    const pollInterval = setInterval(fetchPopularBets, POLL_INTERVAL);
+    
+    return () => clearInterval(pollInterval);
+  }, []);
+  
   const handlePlayerClick = (playerName, highlight = null, highlightType = 'demon') => {
     setSelectedPlayer(playerName);
     setHighlightProp(highlight);
@@ -4258,6 +4477,22 @@ export const DemonGoblinDashboardOptimized = ({ isDemoMode = false }) => {
     setSelectedPlayer(null);
     setHighlightProp(null);
     setHighlightType('demon');
+  };
+  
+  // Handler for Popular Bet clicks - navigates to player with bet highlighted
+  const handlePopularBetClick = (bet) => {
+    const highlightType = bet.is_demon ? 'demon' : bet.is_goblin ? 'goblin' : 'standard';
+    const highlightParam = `${bet.stat_type}|${bet.line}|${bet.direction || 'over'}`;
+    handlePlayerClick(bet.player_name, highlightParam, highlightType);
+    
+    const typeLabel = bet.is_demon ? '🔥 Demon' : bet.is_goblin ? '💎 Goblin' : 'Standard';
+    toast.success(
+      `${bet.player_name} - ${bet.stat_type} ${bet.line}`, 
+      { 
+        description: `${typeLabel} | L10 Hit Rate: ${bet.h10_rate}%`,
+        duration: 2000 
+      }
+    );
   };
   
   // ==================== RENDER ====================
@@ -4524,13 +4759,23 @@ export const DemonGoblinDashboardOptimized = ({ isDemoMode = false }) => {
           />
         )}
 
-        {/* Trending 10 - Swipeable Cards */}
-        {trending.length > 0 && (
+        {/* Trending 10 - Swipeable Cards (Legacy - kept for players without bets) */}
+        {trending.length > 0 && popularBets.length === 0 && (
           <TrendingSwipeSection 
             players={trending.slice(0, 10)}
             linesLoaded={linesLoaded}
             onPlayerClick={handlePlayerClick}
             injuryAlerts={injuryAlerts}
+          />
+        )}
+        
+        {/* MOST POPULAR BETS - Live Ticker (Top 20 hottest bets) */}
+        {popularBets.length > 0 && (
+          <MostPopularBetsSection 
+            bets={popularBets}
+            lastUpdated={popularBetsLastUpdated}
+            onBetClick={handlePopularBetClick}
+            isLoading={popularBetsLoading}
           />
         )}
 

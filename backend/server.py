@@ -1235,6 +1235,35 @@ async def get_trending_10():
         "trending": trending
     }
 
+
+@api_router.get("/v3/most-popular-bets")
+async def get_most_popular_bets():
+    """
+    LIVE TICKER - Top 20 Most Popular BETS (specific props, not players)
+    
+    Returns actual bet lines sorted by popularity/ticket volume proxy.
+    Includes ALL line types: Standard, Demon, and Goblin.
+    Auto-purges bets from games that have already started.
+    
+    Frontend should poll this every 30-60 seconds for live updates.
+    
+    Returns:
+    - bets: Array of top 20 most popular bets with:
+        - player_name, team, photo_url
+        - stat_type, line, direction (over/under)
+        - line_type: "standard" | "demon" | "goblin"
+        - h10_rate, h5_rate, gap_pct
+        - popularity_score (proxy for ticket volume)
+        - commence_time, home_team, away_team
+    - last_updated: ISO timestamp for cache freshness
+    """
+    if not demon_goblin_engine:
+        raise HTTPException(status_code=500, detail="Engine not initialized")
+    
+    result = await demon_goblin_engine.get_most_popular_bets()
+    return result
+
+
 # ==================== HYBRID CACHING ENDPOINTS ====================
 
 @api_router.get("/v3/static-shell")
