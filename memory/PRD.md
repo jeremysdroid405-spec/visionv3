@@ -55,11 +55,12 @@ dg_cached_board → dg_radar_picks (War Zone) → dg_goblin_vault → dg_goblin_
 │   ├── vision.py        # Vision AI endpoints
 │   ├── live_scores.py   # Live scores & command center
 │   ├── ai_context.py    # AI context evaluation
-│   ├── master_hub.py    # NBA Master Hub SSOT endpoints NEW
-│   ├── odds_mapper.py   # Odds API V4 mapping NEW
-│   └── demon_tracker.py # Color-coded demon cards NEW
-├── server.py            # Main entry (middleware, startup) ~3,067 lines
-└── demon_goblin_engine.py # Core engine class (~1,514 lines, 82% reduction)
+│   ├── master_hub.py    # NBA Master Hub SSOT endpoints
+│   ├── odds_mapper.py   # Odds API V4 mapping
+│   └── demon_tracker.py # Color-coded demon cards
+├── utils.py             # Common utility functions (90 lines)
+├── server.py            # Main entry (middleware, startup) ~2,619 lines (reduced from 3,556)
+└── demon_goblin_engine.py # Core engine class (~1,514 lines, 82% reduction from 8,252)
 ```
 
 ### Tech Stack
