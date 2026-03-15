@@ -45,6 +45,24 @@ dg_cached_board → dg_radar_picks (War Zone) → dg_goblin_vault → dg_goblin_
 
 ## What's Been Implemented
 
+### 2026-03-15: Backend Engine Deconstruction (Phase 10 - Stats Enrichment Service)
+- **Engine Reduction:** 3,313 → 2,885 lines (**428 lines extracted, 13% additional reduction**)
+- **Cumulative Reduction:** 8,252 → 2,885 lines (**~65% total reduction**)
+- **New Services Created:**
+  - `DataIntegrityService` (181 lines): Verification logging, integrity status, NAJI safeguard
+  - `StatsEnrichmentService` (466 lines): Multi-source stats fetching (BDL, Tank01, NBA.com)
+- **Methods Proxied in Engine:**
+  - `_log_verification_failure()` → DataIntegrityService
+  - `get_data_integrity_status()` → DataIntegrityService
+  - `verify_player_roster_match()` → DataIntegrityService
+  - `_enrich_props_with_stats()` → StatsEnrichmentService
+  - `_fetch_player_season_stats()` → StatsEnrichmentService
+  - `_get_bdl_player_id()` → StatsEnrichmentService
+  - `_fetch_nba_api_stats()` → StatsEnrichmentService
+  - `_fetch_tank01_player_stats()` → StatsEnrichmentService
+- **Total Services:** 8,561 lines of modular, reusable code
+- **Test Results:** All API endpoints verified working
+
 ### 2026-03-15: Backend Engine Deconstruction (Phase 9 - Picks Getter Service)
 - **Engine Reduction:** 3,823 → 3,432 lines (**391 lines extracted, 10% additional reduction**)
 - **Cumulative Reduction:** 8,252 → 3,432 lines (**~58% total reduction**)

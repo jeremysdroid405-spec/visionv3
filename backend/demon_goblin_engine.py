@@ -384,7 +384,8 @@ class DemonGoblinEngine:
         from services import (
             RosterService, PhotoService, PropsService, SyncService, 
             TierBuilderService, ParlayBuilderService, CachedBoardBuilderService,
-            OddsApiService, StatsApiService, Tank01Service, PicksGetterService
+            OddsApiService, StatsApiService, Tank01Service, PicksGetterService,
+            DataIntegrityService, StatsEnrichmentService
         )
         self.roster_service = RosterService(self.repo, db)
         self.photo_service = PhotoService(db)
@@ -399,6 +400,8 @@ class DemonGoblinEngine:
         self.stats_api_service = StatsApiService(db)
         self.tank01_service = Tank01Service(db)
         self.picks_getter_service = PicksGetterService(db)
+        self.data_integrity_service = DataIntegrityService(db)
+        self.stats_enrichment_service = StatsEnrichmentService(db)
         
         # Legacy direct collection access (gradually migrating to repo)
         self.events_cache = db.dg_events_cache
@@ -911,455 +914,26 @@ class DemonGoblinEngine:
         return results
     
     async def _enrich_props_with_stats(self, props: List[Dict], player_names: List[str]) -> List[Dict]:
-        """
-        Enrich props with hit rates from CACHED player stats in MongoDB.
-        
-        Reads from dg_player_stats collection (populated by sync_player_stats).
-        Falls back to live API calls only if cache is empty.
-        
-        Calculates:
-        - L5: Last 5 games hit rate
-        - L10: Last 10 games hit rate
-        - Season: Full season hit rate
-        """
-        logger.info(f"[STATS ENRICHMENT] Starting enrichment for {len(player_names)} players from cache...")
-        
-        # Load all cached stats in one query for efficiency
-        player_stats_cache = {}
-        enriched_count = 0
-        cache_hits = 0
-        api_fallbacks = 0
-        
-        # Batch load from MongoDB
-        normalized_names = [self.sanitize_player_name(name) for name in player_names]
-        cached_docs = await self.player_stats.find(
-            {"normalized_name": {"$in": normalized_names}},
-            {"_id": 0}
-        ).to_list(None)
-        
-        # Build cache from MongoDB results
-        for doc in cached_docs:
-            player_stats_cache[doc.get("player_name")] = doc
-            cache_hits += 1
-        
-        logger.info(f"[STATS ENRICHMENT] Loaded {cache_hits} players from MongoDB cache")
-        
-        # For players not in cache, try live API (fallback)
-        missing_players = [name for name in player_names if name not in player_stats_cache]
-        if missing_players:
-            logger.info(f"[STATS ENRICHMENT] {len(missing_players)} players not in cache, fetching from API...")
-            
-            for player_name in missing_players[:20]:  # Limit API calls
-                try:
-                    stats = await self._fetch_player_season_stats(player_name)
-                    if stats and stats.get("games"):
-                        player_stats_cache[player_name] = stats
-                        api_fallbacks += 1
-                        
-                        # Also save to cache for next time
-                        doc = {
-                            "player_name": player_name,
-                            "normalized_name": self.sanitize_player_name(player_name),
-                            "games": stats.get("games", []),
-                            "total_games": len(stats.get("games", [])),
-                            "source": stats.get("source", "api_fallback"),
-                            "synced_at": datetime.now(timezone.utc).isoformat()
-                        }
-                        await self.player_stats.update_one(
-                            {"normalized_name": doc["normalized_name"]},
-                            {"$set": doc},
-                            upsert=True
-                        )
-                except Exception as e:
-                    logger.debug(f"[STATS] Error fetching stats for {player_name}: {e}")
-                
-                await asyncio.sleep(0.1)
-        
-        enriched_count = len(player_stats_cache)
-        logger.info(f"[STATS ENRICHMENT] Total stats: {enriched_count} (cache: {cache_hits}, API: {api_fallbacks})")
-        
-        # Enrich props with hit rates
-        for prop in props:
-            player_name = prop.get("player_name")
-            player_stats = player_stats_cache.get(player_name, {})
-            
-            if not player_stats:
-                continue
-            
-            # Extract stat type from market
-            stat_type = self._extract_stat_type(prop.get("market", ""))
-            line_value = prop.get("line", 0)
-            
-            if not stat_type or line_value <= 0:
-                continue
-            
-            # Calculate hit rates for this line
-            hit_rates = self._calculate_hit_rates(player_stats, stat_type, line_value)
-            
-            if hit_rates:
-                prop["hit_rates"] = hit_rates
-        
-        return props
+        """PROXY: Enrich props with stats - delegated to StatsEnrichmentService."""
+        return await self.stats_enrichment_service.enrich_props_with_stats(
+            props, player_names, self._extract_stat_type, self._calculate_hit_rates
+        )
     
     async def _fetch_player_season_stats(self, player_name: str) -> Dict[str, Any]:
-        """
-        Fetch a player's season stats from BallDontLie API.
-        Falls back to NBA.com official API if BallDontLie doesn't have data.
-        Returns game-by-game stats for hit rate calculation.
-        """
-        # Try BallDontLie first
-        try:
-            # First, find the player ID
-            player_id = await self._get_bdl_player_id(player_name)
-            if player_id:
-                # Fetch season stats
-                url = f"{BDL_BASE_URL}/stats"
-                params = {
-                    "player_ids[]": player_id,
-                    "seasons[]": CURRENT_SEASON,
-                    "per_page": 100
-                }
-                headers = {"Authorization": BDL_API_KEY}
-                
-                async with httpx.AsyncClient() as client:
-                    response = await client.get(url, params=params, headers=headers, timeout=15.0)
-                    
-                    if response.status_code == 200:
-                        data = response.json()
-                        games = data.get("data", [])
-                        
-                        if games:
-                            return {
-                                "player_name": player_name,
-                                "player_id": player_id,
-                                "games": games,
-                                "total_games": len(games),
-                                "source": "balldontlie"
-                            }
-        except Exception as e:
-            logger.debug(f"[BDL] Error fetching stats for {player_name}: {e}")
-        
-        # Fallback 1: Tank01 API (secondary - user has subscription)
-        logger.debug(f"[STATS] BallDontLie has no data for {player_name}, trying Tank01...")
-        tank_stats = await self._fetch_tank01_player_stats(player_name)
-        if tank_stats and tank_stats.get("games"):
-            return tank_stats
-        
-        # Fallback 2: NBA.com API (tertiary)
-        logger.debug(f"[STATS] Tank01 has no data for {player_name}, trying NBA.com API...")
-        nba_stats = self._fetch_nba_api_stats(player_name)
-        if nba_stats and nba_stats.get("games"):
-            return nba_stats
-        
-        return {}
+        """PROXY: Fetch player season stats - delegated to StatsEnrichmentService."""
+        return await self.stats_enrichment_service.fetch_player_season_stats(player_name)
     
     async def _get_bdl_player_id(self, player_name: str) -> Optional[int]:
-        """Get BallDontLie player ID from name (with caching)"""
-        # Check cache first
-        if player_name in self._player_name_map:
-            return self._player_name_map[player_name].get("id")
-        
-        try:
-            url = f"{BDL_BASE_URL}/players"
-            headers = {"Authorization": BDL_API_KEY}
-            
-            # Normalize name for search (handle G.G., Jr., etc.)
-            normalized_name = player_name.replace(".", "").strip()
-            name_parts = normalized_name.split()
-            first_name = name_parts[0] if name_parts else ""
-            last_name = name_parts[-1] if len(name_parts) > 1 else ""
-            
-            # Search strategies: first name is most reliable for unique names
-            search_terms = [
-                first_name if first_name else normalized_name,  # First name first (most reliable)
-                normalized_name,  # Full name
-                last_name if last_name else normalized_name,  # Last name (fallback)
-            ]
-            
-            async with httpx.AsyncClient() as client:
-                for search_term in search_terms:
-                    if not search_term:
-                        continue
-                        
-                    params = {"search": search_term, "per_page": 100}
-                    response = await client.get(url, params=params, headers=headers, timeout=10.0)
-                    
-                    if response.status_code != 200:
-                        continue
-                    
-                    data = response.json()
-                    players = data.get("data", [])
-                    
-                    if not players:
-                        continue
-                    
-                    # Find best match with scoring
-                    best_match = None
-                    best_score = 0
-                    
-                    for player in players:
-                        full_name = f"{player.get('first_name', '')} {player.get('last_name', '')}".strip()
-                        normalized_full = full_name.replace(".", "").strip()
-                        
-                        # Exact first+last name match gets bonus
-                        player_first = player.get('first_name', '').replace(".", "").strip().lower()
-                        player_last = player.get('last_name', '').replace(".", "").strip().lower()
-                        
-                        # Check for exact first and last name match
-                        exact_first = player_first == first_name.lower() if first_name else False
-                        exact_last = player_last == last_name.lower() if last_name else False
-                        
-                        # Also check if first name starts with search term (Alex -> Alexandre)
-                        starts_with_first = player_first.startswith(first_name.lower()) if first_name and len(first_name) >= 3 else False
-                        
-                        # If both first and last names match exactly, this is our player
-                        if exact_first and exact_last:
-                            self._player_name_map[player_name] = player
-                            return player.get("id")
-                        
-                        # If last name is exact and first name starts with search, also accept
-                        if exact_last and starts_with_first:
-                            self._player_name_map[player_name] = player
-                            return player.get("id")
-                        
-                        # Calculate similarity scores
-                        ratio = fuzz.ratio(normalized_name.lower(), normalized_full.lower())
-                        partial = fuzz.partial_ratio(normalized_name.lower(), normalized_full.lower())
-                        token_sort = fuzz.token_sort_ratio(normalized_name.lower(), normalized_full.lower())
-                        
-                        # Use the best of all metrics
-                        score = max(ratio, partial, token_sort)
-                        
-                        # Bonus for matching first name
-                        if exact_first:
-                            score += 10
-                        
-                        if score > best_score:
-                            best_score = score
-                            best_match = player
-                    
-                    # Accept if score is high enough (80% threshold after bonuses)
-                    if best_match and best_score >= 80:
-                        self._player_name_map[player_name] = best_match
-                        return best_match.get("id")
-                        
-        except Exception as e:
-            logger.debug(f"[BDL] Error searching for {player_name}: {e}")
-        
-        return None
+        """PROXY: Get BDL player ID - delegated to StatsEnrichmentService."""
+        return await self.stats_enrichment_service._get_bdl_player_id(player_name)
     
     def _fetch_nba_api_stats(self, player_name: str) -> Dict[str, Any]:
-        """
-        Fetch player stats from NBA.com official API as a fallback.
-        This is a synchronous function using the nba_api library.
-        
-        Returns stats in the same format as BallDontLie for compatibility.
-        """
-        if not NBA_API_AVAILABLE:
-            return {}
-        
-        try:
-            # Find player in NBA database
-            all_players = nba_players.get_players()
-            
-            # Try exact name match first
-            player_match = None
-            normalized_search = player_name.lower().strip()
-            
-            for p in all_players:
-                if p['full_name'].lower() == normalized_search:
-                    player_match = p
-                    break
-            
-            # If no exact match, try partial matching
-            if not player_match:
-                for p in all_players:
-                    if normalized_search in p['full_name'].lower():
-                        player_match = p
-                        break
-            
-            if not player_match:
-                logger.debug(f"[NBA_API] Player not found: {player_name}")
-                return {}
-            
-            player_id = player_match['id']
-            
-            # Fetch game logs (with rate limiting)
-            import time
-            time.sleep(0.6)  # NBA.com rate limit
-            
-            # Determine current NBA season dynamically
-            # NBA season runs Oct-Jun, so if month >= 10, it's the new season
-            from datetime import datetime
-            now = datetime.now()
-            if now.month >= 10:
-                season_year = now.year
-            else:
-                season_year = now.year - 1
-            current_season = f"{season_year}-{str(season_year + 1)[-2:]}"
-            
-            logger.debug(f"[NBA_API] Fetching {player_name} for season {current_season}")
-            
-            gamelog = playergamelog.PlayerGameLog(
-                player_id=player_id, 
-                season=current_season,
-                season_type_all_star='Regular Season'
-            )
-            df = gamelog.get_data_frames()[0]
-            
-            if df.empty:
-                logger.debug(f"[NBA_API] No games found for {player_name} in {current_season}")
-                return {}
-            
-            # Convert to BallDontLie-compatible format
-            games = []
-            for _, row in df.iterrows():
-                games.append({
-                    "pts": row.get('PTS', 0),
-                    "reb": row.get('REB', 0),
-                    "ast": row.get('AST', 0),
-                    "fg3m": row.get('FG3M', 0),
-                    "blk": row.get('BLK', 0),
-                    "stl": row.get('STL', 0),
-                    "turnover": row.get('TOV', 0),
-                    "game": {
-                        "date": row.get('GAME_DATE', ''),
-                        "matchup": row.get('MATCHUP', '')
-                    }
-                })
-            
-            logger.info(f"[NBA_API] Fetched {len(games)} games for {player_name} (season {current_season})")
-            
-            return {
-                "games": games,
-                "player_name": player_name,
-                "source": "nba_api"
-            }
-            
-        except Exception as e:
-            logger.debug(f"[NBA_API] Error fetching stats for {player_name}: {e}")
-            return {}
+        """PROXY: Fetch NBA API stats - delegated to StatsEnrichmentService."""
+        return self.stats_enrichment_service._fetch_nba_api_stats(player_name)
     
     async def _fetch_tank01_player_stats(self, player_name: str) -> Dict[str, Any]:
-        """
-        Fetch player stats from Tank01 API as secondary fallback.
-        
-        Tank01 provides box scores via getNBABoxScore endpoint.
-        We fetch recent game dates and get the player's stats from box scores.
-        
-        Returns stats in the same format as BallDontLie for compatibility.
-        """
-        try:
-            headers = {
-                "x-rapidapi-key": TANK01_API_KEY,
-                "x-rapidapi-host": TANK01_HOST
-            }
-            
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                # Step 1: Get player info to find their team
-                search_url = f"{TANK01_BASE}/getNBAPlayerInfo"
-                response = await client.get(
-                    search_url,
-                    params={"playerName": player_name},
-                    headers=headers
-                )
-                
-                if response.status_code != 200:
-                    logger.debug(f"[TANK01] Player search failed: {response.status_code}")
-                    return {}
-                
-                data = response.json()
-                body = data.get("body", [])
-                if not body or not isinstance(body, list):
-                    logger.debug(f"[TANK01] Player not found: {player_name}")
-                    return {}
-                
-                player = body[0]
-                team_abv = player.get("team")
-                tank_player_id = player.get("playerID")
-                player_espn_name = player.get("espnName", player_name)
-                
-                if not team_abv:
-                    logger.debug(f"[TANK01] No team found for {player_name}")
-                    return {}
-                
-                # Step 2: Get team schedule to find recent completed games
-                schedule_url = f"{TANK01_BASE}/getNBATeamSchedule"
-                response = await client.get(
-                    schedule_url,
-                    params={"teamAbv": team_abv, "season": CURRENT_SEASON},
-                    headers=headers
-                )
-                
-                if response.status_code != 200:
-                    logger.debug(f"[TANK01] Schedule fetch failed: {response.status_code}")
-                    return {}
-                
-                schedule_data = response.json()
-                schedule = schedule_data.get("body", {}).get("schedule", [])
-                
-                # Get last 15 completed games
-                completed_games = [g for g in schedule if g.get("gameStatus") == "Completed"]
-                recent_games = completed_games[-15:]  # Most recent 15
-                
-                if not recent_games:
-                    logger.debug(f"[TANK01] No completed games for {team_abv}")
-                    return {}
-                
-                # Step 3: Fetch box scores and extract player stats
-                games = []
-                for game in recent_games[-10:]:  # Limit to 10 games to reduce API calls
-                    game_id = game.get("gameID")
-                    if not game_id:
-                        continue
-                    
-                    box_url = f"{TANK01_BASE}/getNBABoxScore"
-                    box_response = await client.get(
-                        box_url,
-                        params={"gameID": game_id},
-                        headers=headers
-                    )
-                    
-                    if box_response.status_code != 200:
-                        continue
-                    
-                    box_data = box_response.json()
-                    player_stats = box_data.get("body", {}).get("playerStats", {})
-                    
-                    # Find our player in the box score
-                    for pid, stats in player_stats.items():
-                        stat_name = stats.get("longName", "").lower()
-                        if player_name.lower() in stat_name or stat_name in player_name.lower():
-                            games.append({
-                                "pts": int(stats.get("pts", 0) or 0),
-                                "reb": int(stats.get("reb", 0) or 0),
-                                "ast": int(stats.get("ast", 0) or 0),
-                                "fg3m": int(stats.get("tptfgm", 0) or 0),  # 3PM
-                                "blk": int(stats.get("blk", 0) or 0),
-                                "stl": int(stats.get("stl", 0) or 0),
-                                "turnover": int(stats.get("TOV", 0) or 0),
-                                "game": {
-                                    "date": game.get("gameDate", ""),
-                                    "id": game_id
-                                }
-                            })
-                            break
-                    
-                    await asyncio.sleep(0.1)  # Rate limiting
-                
-                if games:
-                    logger.info(f"[TANK01] Fetched {len(games)} games for {player_name}")
-                    return {
-                        "games": games,
-                        "player_name": player_name,
-                        "source": "tank01"
-                    }
-                
-                return {}
-                
-        except Exception as e:
-            logger.debug(f"[TANK01] Error fetching stats for {player_name}: {e}")
-            return {}
+        """PROXY: Fetch Tank01 player stats - delegated to StatsEnrichmentService."""
+        return await self.stats_enrichment_service._fetch_tank01_player_stats(player_name)
     
     def _calculate_hit_rates(self, player_stats: Dict, stat_type: str, line_value: float) -> Dict[str, Any]:
         """
@@ -1508,141 +1082,20 @@ class DemonGoblinEngine:
         return self.stats_api_service.extract_l10_values(games, market)
     
     async def _log_verification_failure(self, player_name: str, failure_type: str, details: Dict[str, Any]):
-        """
-        Log verification failures to MongoDB for audit and data status reporting.
-        
-        V3.1 Truth Engine: All failures are logged for the data status endpoint.
-        """
-        try:
-            failure_doc = {
-                "player_name": player_name,
-                "failure_type": failure_type,
-                "details": details,
-                "logged_at": datetime.now(timezone.utc).isoformat(),
-                "sync_date": self.get_current_date()
-            }
-            
-            await self.db.dg_verification_failures.insert_one(failure_doc)
-            logger.info(f"[VERIFICATION LOG] Logged {failure_type} failure for {player_name}")
-        except Exception as e:
-            logger.error(f"[VERIFICATION LOG] Failed to log failure: {e}")
+        """PROXY: Log verification failure - delegated to DataIntegrityService."""
+        return await self.data_integrity_service.log_verification_failure(
+            player_name, failure_type, details, self.get_current_date()
+        )
     
     async def get_data_integrity_status(self) -> Dict[str, Any]:
-        """
-        V3.1 Truth Engine: Report data integrity status for the latest sync.
-        
-        Used by /api/v3/data-status endpoint for the frontend status light.
-        
-        Returns:
-            - status: "verified" | "discrepancy_found" | "no_data"
-            - verified_count: Number of props that passed verification
-            - failed_count: Number of props that failed verification
-            - failure_details: Recent failures with types
-            - last_sync: Timestamp of last sync
-        """
-        try:
-            current_date = self.get_current_date()
-            
-            # Count verified vs failed props in cached_board
-            total_props = 0
-            verified_props = 0
-            failed_props = 0
-            unverified_props = 0
-            
-            # Get all players from cached board
-            players = await self.cached_board.find({}).to_list(None)
-            
-            for player in players:
-                for prop in player.get("props", []):
-                    total_props += 1
-                    if prop.get("source_verified"):
-                        verified_props += 1
-                    elif prop.get("verification_status") in ["HALLUCINATION_DETECTED", "DISCREPANCY", "NAJI_SAFEGUARD_FAILED"]:
-                        failed_props += 1
-                    else:
-                        unverified_props += 1
-            
-            # Get recent verification failures
-            recent_failures = await self.db.dg_verification_failures.find(
-                {"sync_date": current_date},
-                {"_id": 0}
-            ).sort("logged_at", -1).limit(10).to_list(None)
-            
-            # Count failure types
-            failure_types = {}
-            for failure in recent_failures:
-                ftype = failure.get("failure_type", "unknown")
-                failure_types[ftype] = failure_types.get(ftype, 0) + 1
-            
-            # Get last sync time
-            sync_log = await self.sync_log.find_one(
-                {"type": "cached_board"},
-                {"_id": 0, "synced_at": 1}
-            )
-            last_sync = sync_log.get("synced_at") if sync_log else None
-            
-            # Determine overall status
-            if total_props == 0:
-                status = "no_data"
-            elif failed_props > 0:
-                status = "discrepancy_found"
-            elif verified_props > 0:
-                status = "verified"
-            else:
-                status = "pending_verification"
-            
-            return {
-                "success": True,
-                "status": status,
-                "sync_date": current_date,
-                "last_sync": last_sync,
-                "total_props": total_props,
-                "verified_count": verified_props,
-                "failed_count": failed_props,
-                "unverified_count": unverified_props,
-                "verification_rate": round((verified_props / total_props * 100), 2) if total_props > 0 else 0,
-                "failure_types": failure_types,
-                "recent_failures": recent_failures[:5],  # Limit to 5 for response size
-                "naji_safeguard_enabled": True
-            }
-            
-        except Exception as e:
-            logger.error(f"[DATA STATUS] Error getting integrity status: {e}")
-            return {
-                "success": False,
-                "status": "error",
-                "error": str(e)
-            }
+        """PROXY: Get data integrity status - delegated to DataIntegrityService."""
+        return await self.data_integrity_service.get_data_integrity_status(self.get_current_date())
     
     async def verify_player_roster_match(self, player_name: str, player_id: int, team_abbrev: str) -> bool:
-        """
-        NAJI SAFEGUARD: Verify player ID matches active roster for today.
-        If name matches but playerID doesn't match today's roster, KILL the data.
-        """
-        try:
-            # Check if player is in master roster with matching ID
-            roster_player = await self.master_roster.find_one({
-                "player_name": {"$regex": f"^{player_name}$", "$options": "i"},
-                "team": team_abbrev
-            })
-            
-            if not roster_player:
-                logger.warning(f"[NAJI SAFEGUARD] {player_name} not found in master roster")
-                return False
-            
-            # If we have a BDL ID stored, verify it matches
-            stored_id = roster_player.get("bdl_player_id")
-            if stored_id and stored_id != player_id:
-                logger.error(
-                    f"[NAJI SAFEGUARD] ID MISMATCH: {player_name} - "
-                    f"Roster ID: {stored_id}, Provided ID: {player_id} - DATA KILLED"
-                )
-                return False
-            
-            return True
-        except Exception as e:
-            logger.error(f"[NAJI SAFEGUARD] Verification error for {player_name}: {e}")
-            return False
+        """PROXY: Verify player roster match - delegated to DataIntegrityService."""
+        return await self.data_integrity_service.verify_player_roster_match(
+            player_name, player_id, team_abbrev
+        )
     
     # ==================== PILLAR 3: TANK01 API (with Exponential Backoff) ====================
     

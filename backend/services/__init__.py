@@ -55,3 +55,5 @@ from .odds_api_service import OddsApiService
 from .stats_api_service import StatsApiService
 from .tank01_service import Tank01Service
 from .picks_getter_service import PicksGetterService
+from .data_integrity_service import DataIntegrityService
+from .stats_enrichment_service import StatsEnrichmentService
