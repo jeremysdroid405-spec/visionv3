@@ -3101,290 +3101,7 @@ MostPopularBetsSection.displayName = 'MostPopularBetsSection';
 // ============================================================================
 
 // ==================== EXPANDED PARLAY VIEW ====================
-// Shows all picks in a parlay with player cards and bet details
-
-// Individual pick card with expandable hit rate dropdown
-const ParlayPickCard = memo(({ pick, idx, isRecon, colors, playerData, onPickClick }) => {
-  const [isExpanded, setIsExpanded] = useState(false);
-  
-  // Get hit rate data from pick
-  const h5Over = pick.h5_over || 0;
-  const h5Games = pick.h5_games || 0;
-  const h10Over = pick.h10_over || 0;
-  const h10Games = pick.h10_games || 0;
-  const seasonAvg = pick.season_avg || 0;
-  
-  // Calculate percentages
-  const h5Pct = h5Games > 0 ? Math.round((h5Over / h5Games) * 100) : 0;
-  const h10Pct = h10Games > 0 ? Math.round((h10Over / h10Games) * 100) : (pick.h10_rate || 0);
-  const weightedPct = pick.weighted_hit_rate || h10Pct;
-  
-  // Color helper for percentages
-  const getPctColor = (pct) => {
-    if (pct >= 70) return 'text-green-400';
-    if (pct >= 50) return 'text-yellow-400';
-    if (pct >= 30) return 'text-orange-400';
-    return 'text-red-400';
-  };
-  
-  return (
-    <div 
-      className={`
-        bg-zinc-900/70 rounded-xl border border-zinc-800 overflow-hidden
-        hover:border-${colors.accent}-500/50 transition-all
-      `}
-      data-testid={`parlay-pick-${idx}`}
-    >
-      {/* Main Pick Info - Clickable to expand */}
-      <div 
-        className="p-3 cursor-pointer"
-        onClick={() => setIsExpanded(!isExpanded)}
-      >
-        {/* Player Info Row */}
-        <div className="flex items-center gap-3 mb-3">
-          {/* Player Headshot */}
-          <PlayerHeadshot 
-            nbaId={pick.nba_id || playerData?.nba_id}
-            playerName={pick.player_name}
-            team={pick.team}
-            photoUrl={pick.photo_url || playerData?.photo_url}
-            size="lg"
-            className="ring-2 ring-zinc-700"
-          />
-          
-          {/* Player Details */}
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2">
-              <span 
-                className="text-white font-bold text-lg truncate hover:text-amber-400 hover:underline cursor-pointer transition-colors"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  if (onPickClick) {
-                    // Pass the pick object - the parent handler will extract what it needs
-                    onPickClick({
-                      ...pick,
-                      line: pick.demon_line || pick.goblin_line || pick.line,
-                      direction: pick.direction || 'over'
-                    });
-                  }
-                }}
-                title="Click to view all player props"
-              >
-                {pick.player_name}
-              </span>
-              <span className="text-xs text-zinc-500 bg-zinc-800 px-1.5 py-0.5 rounded">{pick.team}</span>
-            </div>
-            {pick.opponent_team && (
-              <div className="text-xs text-zinc-500 mt-0.5">
-                vs {pick.opponent_team}
-              </div>
-            )}
-          </div>
-          
-          {/* Pick Number Badge + Expand Icon */}
-          <div className="flex items-center gap-2">
-            <ChevronDown className={`w-5 h-5 text-zinc-500 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
-            <div className={`w-8 h-8 rounded-full bg-${colors.accent}-500/30 flex items-center justify-center`}>
-              <span className={`text-sm font-bold ${colors.text}`}>#{idx + 1}</span>
-            </div>
-          </div>
-        </div>
-        
-        {/* Bet Details */}
-        <div className={`
-          flex items-center justify-between
-          bg-zinc-800/50 rounded-lg px-3 py-2
-          border-l-4 ${isRecon ? 'border-green-500' : 'border-red-500'}
-        `}>
-          <div className="flex items-center gap-3">
-            {isRecon ? (
-              <GoblinIcon size={20} />
-            ) : (
-              <DemonIcon size={20} />
-            )}
-            <div>
-              <div className="text-white font-bold text-xl">
-                {pick.line} <span className="text-green-400 text-sm">{pick.direction || 'Over'}</span>
-              </div>
-              <div className="text-xs text-zinc-400">{pick.stat_type}</div>
-            </div>
-          </div>
-          
-          {/* Quick Hit Rate */}
-          <div className="text-right flex items-center gap-2">
-            <div className="flex items-center gap-1">
-              <span className="text-xs text-zinc-500">L10:</span>
-              <span className={`text-lg font-bold ${getPctColor(h10Pct)}`}>
-                {h10Pct}%
-              </span>
-            </div>
-            {pick.is_recon_lock && (
-              <Badge className="bg-emerald-500/30 text-emerald-300 border-none text-[10px]">
-                LOCK
-              </Badge>
-            )}
-            {pick.has_heat_boost && (
-              <Flame className="w-4 h-4 text-orange-400" />
-            )}
-          </div>
-        </div>
-        
-        {/* THE VISION - AI Insight Preview (Always visible) */}
-        {(pick.intel_briefing || pick.insight_summary) && (
-          <div className="mt-2 bg-gradient-to-r from-purple-950/40 via-zinc-900/50 to-purple-950/40 rounded-lg px-3 py-2 border border-purple-800/30">
-            <div className="flex items-center gap-1.5 mb-1">
-              <Zap className="w-3 h-3 text-purple-400" />
-              <span className="text-[9px] text-purple-400 uppercase tracking-wider font-semibold">The Vision</span>
-            </div>
-            <p className="text-[11px] text-purple-200/80 leading-relaxed italic">
-              "{pick.intel_briefing || pick.insight_summary}"
-            </p>
-          </div>
-        )}
-      </div>
-      
-      {/* Expanded Hit Rate Dropdown */}
-      {isExpanded && (
-        <div className="px-3 pb-3 border-t border-zinc-700/50">
-          <div className="bg-zinc-950/70 rounded-lg p-3 mt-2 space-y-2">
-            <div className="text-[10px] text-zinc-500 uppercase tracking-wider font-semibold mb-2">
-              Stat Insight for {pick.line}+ {pick.direction || 'Over'}
-            </div>
-            
-            {/* L5 Hit Rate */}
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-zinc-400 w-24">Last 5 Games:</span>
-                <span className={`text-sm font-bold ${getPctColor(h5Pct)}`}>
-                  {h5Games > 0 ? `${h5Over}/${h5Games}` : '---'}
-                </span>
-              </div>
-              <div className={`text-lg font-bold ${getPctColor(h5Pct)}`}>
-                {h5Games > 0 ? `${h5Pct}%` : '---'}
-              </div>
-            </div>
-            
-            {/* L10 Hit Rate */}
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-zinc-400 w-24">Last 10 Games:</span>
-                <span className={`text-sm font-bold ${getPctColor(h10Pct)}`}>
-                  {h10Games > 0 ? `${h10Over}/${h10Games}` : '---'}
-                </span>
-              </div>
-              <div className={`text-lg font-bold ${getPctColor(h10Pct)}`}>
-                {h10Games > 0 ? `${h10Pct}%` : '---'}
-              </div>
-            </div>
-            
-            {/* Weighted Hit Rate (for Recon) */}
-            {isRecon && weightedPct > 0 && (
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-zinc-400 w-24">Weighted Rate:</span>
-                  <span className={`text-sm font-bold ${getPctColor(weightedPct)}`}>
-                    L5×2 + L10
-                  </span>
-                </div>
-                <div className={`text-lg font-bold ${getPctColor(weightedPct)}`}>
-                  {weightedPct}%
-                </div>
-              </div>
-            )}
-            
-            {/* Season Average */}
-            <div className="flex items-center justify-between bg-zinc-800/50 rounded px-2 py-1.5 mt-2">
-              <span className="text-xs text-zinc-400">Season Average</span>
-              <div className="flex items-center gap-2">
-                <span className="text-white font-bold">{seasonAvg > 0 ? seasonAvg.toFixed(1) : '---'}</span>
-                {seasonAvg > 0 && (
-                  <span className={`text-xs px-1.5 py-0.5 rounded ${seasonAvg > pick.line ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>
-                    {seasonAvg > pick.line ? `+${(seasonAvg - pick.line).toFixed(1)} above` : `${(seasonAvg - pick.line).toFixed(1)} below`}
-                  </span>
-                )}
-              </div>
-            </div>
-            
-            {/* Floor Score (for Recon) */}
-            {isRecon && pick.floor_score !== undefined && (
-              <div className="flex items-center justify-between bg-emerald-950/30 rounded px-2 py-1.5 border border-emerald-800/30">
-                <span className="text-xs text-emerald-400">Floor Score</span>
-                <div className="flex items-center gap-2">
-                  <span className="text-emerald-300 font-bold">{pick.floor_score?.toFixed(1) || '---'}</span>
-                  {pick.is_recon_lock && (
-                    <Badge className="bg-emerald-500/30 text-emerald-300 border-none text-[9px]">
-                      FLOOR ≥ LINE
-                    </Badge>
-                  )}
-                </div>
-              </div>
-            )}
-            
-            {/* THE VISION - Full AI Analysis Section */}
-            {(pick.intel_briefing || pick.insight_summary) && (
-              <div className="mt-3 pt-3 border-t border-purple-800/30">
-                <div className="flex items-center gap-1.5 mb-2">
-                  <Zap className="w-3.5 h-3.5 text-purple-400" />
-                  <span className="text-[10px] text-purple-400 uppercase tracking-wider font-semibold">THE VISION</span>
-                  <span className="text-[9px] text-zinc-600">AI Analysis</span>
-                </div>
-                
-                {/* AI Insight Box */}
-                <div className="bg-gradient-to-r from-purple-950/50 via-zinc-900 to-purple-950/50 rounded-lg px-3 py-2.5 border border-purple-700/40 relative overflow-hidden">
-                  <div className="absolute top-0 left-0 w-1 h-full bg-gradient-to-b from-purple-500 to-purple-700" />
-                  <p className="text-sm text-purple-200 leading-relaxed pl-2 italic">
-                    "{pick.intel_briefing || pick.insight_summary}"
-                  </p>
-                </div>
-                
-                {/* AI Confidence Meter */}
-                {pick.ai_confidence_rating !== undefined && (
-                  <div className="mt-2">
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="text-[9px] text-zinc-500 uppercase tracking-wider">AI Confidence</span>
-                      <span className={`text-xs font-bold ${
-                        pick.ai_confidence_rating >= 80 ? 'text-green-400' :
-                        pick.ai_confidence_rating >= 60 ? 'text-yellow-400' :
-                        pick.ai_confidence_rating >= 40 ? 'text-orange-400' :
-                        'text-red-400'
-                      }`}>
-                        {pick.ai_confidence_rating}%
-                      </span>
-                    </div>
-                    <div className="h-1.5 bg-zinc-800 rounded-full overflow-hidden">
-                      <div 
-                        className={`h-full rounded-full transition-all ${
-                          pick.ai_confidence_rating >= 80 ? 'bg-gradient-to-r from-green-600 to-green-400' :
-                          pick.ai_confidence_rating >= 60 ? 'bg-gradient-to-r from-yellow-600 to-yellow-400' :
-                          pick.ai_confidence_rating >= 40 ? 'bg-gradient-to-r from-orange-600 to-orange-400' :
-                          'bg-gradient-to-r from-red-600 to-red-400'
-                        }`}
-                        style={{ width: `${pick.ai_confidence_rating}%` }}
-                      />
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-          
-          {/* Click to view full ladder */}
-          <button 
-            onClick={(e) => {
-              e.stopPropagation();
-              onPickClick(pick);
-            }}
-            className="w-full mt-2 py-2 text-center text-xs text-zinc-400 hover:text-white bg-zinc-800/30 hover:bg-zinc-800/50 rounded transition-colors"
-          >
-            View {pick.player_name}'s full prop ladder →
-          </button>
-        </div>
-      )}
-    </div>
-  );
-});
-
-ParlayPickCard.displayName = 'ParlayPickCard';
+// Shows all picks in a parlay using the UniversalPickCard component
 
 const ExpandedParlayView = memo(({ parlay, type, onClose, onPickClick, players }) => {
   if (!parlay) return null;
@@ -3469,17 +3186,27 @@ const ExpandedParlayView = memo(({ parlay, type, onClose, onPickClick, players }
           </div>
           
           {picks.map((pick, idx) => {
-            const playerData = players?.find(p => p.player_name === pick.player_name);
+            // Map pick data to UniversalPickCard format
+            const mappedPick = {
+              ...pick,
+              // Ensure line value is set for display
+              line: pick.demon_line || pick.goblin_line || pick.line,
+              // Ensure photo_url is populated
+              photo_url: pick.photo_url || players?.find(p => p.player_name === pick.player_name)?.photo_url,
+              nba_id: pick.nba_id || players?.find(p => p.player_name === pick.player_name)?.nba_id
+            };
             
             return (
-              <ParlayPickCard
+              <UniversalPickCard
                 key={`${pick.player_name}-${pick.stat_type}-${idx}`}
-                pick={pick}
-                idx={idx}
-                isRecon={isRecon}
-                colors={colors}
-                playerData={playerData}
-                onPickClick={onPickClick}
+                pick={mappedPick}
+                rank={idx + 1}
+                onClick={() => onPickClick && onPickClick({
+                  ...mappedPick,
+                  direction: pick.direction || 'over'
+                })}
+                colorTheme={isRecon ? 'green' : 'amber'}
+                emblem={isRecon ? 'gem' : 'fire'}
               />
             );
           })}
@@ -5259,9 +4986,9 @@ export const DemonGoblinDashboardOptimized = ({ isDemoMode = false }) => {
             setExpandedParlay(null);
             const lineValue = pick.demon_line || pick.goblin_line || pick.line;
             const highlightKey = `${pick.stat_type}|${lineValue}|${pick.direction || 'Over'}`;
-            setHighlightProp(highlightKey);
-            setHighlightType(expandedParlay.type === 'recon' ? 'goblin' : 'demon');
-            handlePlayerClick(pick.player_name);
+            const pickHighlightType = expandedParlay.type === 'recon' ? 'goblin' : 'demon';
+            // Pass highlight params directly to avoid them being overwritten by defaults
+            handlePlayerClick(pick.player_name, highlightKey, pickHighlightType);
           }}
           players={players}
         />
