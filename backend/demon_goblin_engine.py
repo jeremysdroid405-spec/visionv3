@@ -62,7 +62,12 @@ from services.dvp_service import calculate_dvp_modifier as dvp_calculate_modifie
 from services.insights_service import (
     generate_insight_summary as insights_generate_summary,
     calculate_confidence_rating as insights_calculate_confidence,
-    build_player_insights as insights_build_player
+    build_player_insights as insights_build_player,
+    calculate_volatility as insights_calculate_volatility,
+    get_team_pace as insights_get_team_pace,
+    calculate_pace_factor as insights_calculate_pace_factor,
+    get_high_usage_players as insights_get_high_usage,
+    calculate_usage_bump_simple as insights_calculate_usage_bump
 )
 
 # Payout Calculation Engine
@@ -471,48 +476,11 @@ def get_nba_player_id(player_name: str) -> Optional[int]:
 
 async def fetch_with_backoff(url: str, headers: Dict, params: Dict = None, max_retries: int = MAX_RETRIES) -> Optional[Dict]:
     """
-    Fetch with exponential backoff for rate-limited APIs
-    
-    Retry delays: 1s -> 2s -> 4s -> 8s (with jitter)
+    Fetch with exponential backoff for rate-limited APIs.
+    PROXY: Delegates to services.data_scraper.fetch_with_backoff
     """
-    for attempt in range(max_retries):
-        try:
-            async with httpx.AsyncClient() as client:
-                response = await client.get(url, headers=headers, params=params, timeout=30.0)
-                
-                if response.status_code == 200:
-                    return response.json()
-                
-                elif response.status_code == 429:
-                    # Rate limited - calculate backoff delay
-                    delay = min(BASE_DELAY * (2 ** attempt), MAX_DELAY)
-                    jitter = random.uniform(0, delay * 0.1)  # Add 0-10% jitter
-                    total_delay = delay + jitter
-                    
-                    logger.warning(f"[BACKOFF] Rate limited. Attempt {attempt + 1}/{max_retries}. Waiting {total_delay:.1f}s")
-                    await asyncio.sleep(total_delay)
-                    continue
-                
-                elif response.status_code >= 500:
-                    # Server error - retry with backoff
-                    delay = min(BASE_DELAY * (2 ** attempt), MAX_DELAY)
-                    logger.warning(f"[BACKOFF] Server error {response.status_code}. Retrying in {delay:.1f}s")
-                    await asyncio.sleep(delay)
-                    continue
-                
-                else:
-                    logger.error(f"[BACKOFF] Request failed with status {response.status_code}")
-                    return None
-                    
-        except httpx.TimeoutException:
-            delay = min(BASE_DELAY * (2 ** attempt), MAX_DELAY)
-            logger.warning(f"[BACKOFF] Timeout. Attempt {attempt + 1}/{max_retries}. Retrying in {delay:.1f}s")
-            await asyncio.sleep(delay)
-        except Exception as e:
-            logger.error(f"[BACKOFF] Request error: {e}")
-            return None
-    
-    logger.error(f"[BACKOFF] Max retries ({max_retries}) exceeded for {url}")
+    from services.data_scraper import fetch_with_backoff as scraper_fetch_with_backoff
+    return await scraper_fetch_with_backoff(url, headers, params, max_retries)
     return None
 
 
@@ -525,49 +493,9 @@ Data source: NBA.com team stats, updated seasonally.
 # 2024-25 NBA Team Defensive Rankings by Stat Category
 # Rankings 1-30 where 1 = BEST defense (allows LEAST), 30 = WORST (allows MOST)
 # Lower rank = harder matchup for offense
-DVP_RANKINGS_2024_25 = {
-    "PTS": {
-        "CLE": 1, "OKC": 2, "HOU": 3, "MEM": 4, "ORL": 5, "MIN": 6, "BOS": 7, "NYK": 8,
-        "MIA": 9, "DEN": 10, "LAL": 11, "GSW": 12, "PHX": 13, "DAL": 14, "SAC": 15,
-        "NOP": 16, "MIL": 17, "IND": 18, "ATL": 19, "CHI": 20, "DET": 21, "TOR": 22,
-        "CHA": 23, "SAS": 24, "POR": 25, "BKN": 26, "LAC": 27, "PHI": 28, "UTA": 29, "WAS": 30
-    },
-    "AST": {
-        "OKC": 1, "CLE": 2, "HOU": 3, "ORL": 4, "MEM": 5, "MIN": 6, "NYK": 7, "BOS": 8,
-        "MIA": 9, "GSW": 10, "LAL": 11, "DEN": 12, "PHX": 13, "DAL": 14, "MIL": 15,
-        "SAC": 16, "NOP": 17, "IND": 18, "ATL": 19, "CHI": 20, "TOR": 21, "CHA": 22,
-        "DET": 23, "SAS": 24, "POR": 25, "LAC": 26, "PHI": 27, "BKN": 28, "UTA": 29, "WAS": 30
-    },
-    "REB": {
-        "BOS": 1, "CLE": 2, "OKC": 3, "MEM": 4, "MIN": 5, "HOU": 6, "ORL": 7, "NYK": 8,
-        "LAL": 9, "DEN": 10, "MIA": 11, "GSW": 12, "PHX": 13, "DAL": 14, "MIL": 15,
-        "SAC": 16, "NOP": 17, "IND": 18, "ATL": 19, "TOR": 20, "CHI": 21, "CHA": 22,
-        "DET": 23, "SAS": 24, "POR": 25, "LAC": 26, "PHI": 27, "BKN": 28, "UTA": 29, "WAS": 30
-    },
-    "3PM": {
-        "CLE": 1, "OKC": 2, "BOS": 3, "HOU": 4, "MEM": 5, "ORL": 6, "MIN": 7, "NYK": 8,
-        "MIA": 9, "DEN": 10, "LAL": 11, "GSW": 12, "DAL": 13, "PHX": 14, "MIL": 15,
-        "SAC": 16, "NOP": 17, "IND": 18, "ATL": 19, "CHI": 20, "TOR": 21, "DET": 22,
-        "CHA": 23, "SAS": 24, "POR": 25, "LAC": 26, "PHI": 27, "BKN": 28, "UTA": 29, "WAS": 30
-    },
-    "BLK": {
-        "OKC": 1, "CLE": 2, "HOU": 3, "MIN": 4, "MEM": 5, "ORL": 6, "BOS": 7, "NYK": 8,
-        "MIA": 9, "LAL": 10, "DEN": 11, "GSW": 12, "PHX": 13, "DAL": 14, "MIL": 15,
-        "SAC": 16, "NOP": 17, "IND": 18, "ATL": 19, "CHI": 20, "TOR": 21, "CHA": 22,
-        "DET": 23, "SAS": 24, "POR": 25, "LAC": 26, "PHI": 27, "BKN": 28, "UTA": 29, "WAS": 30
-    },
-    "STL": {
-        "MIN": 1, "OKC": 2, "CLE": 3, "HOU": 4, "MEM": 5, "ORL": 6, "BOS": 7, "NYK": 8,
-        "MIA": 9, "DEN": 10, "LAL": 11, "GSW": 12, "PHX": 13, "DAL": 14, "MIL": 15,
-        "SAC": 16, "NOP": 17, "IND": 18, "ATL": 19, "CHI": 20, "TOR": 21, "CHA": 22,
-        "DET": 23, "SAS": 24, "POR": 25, "LAC": 26, "PHI": 27, "BKN": 28, "UTA": 29, "WAS": 30
-    },
-    # Combo stats use average of component stats
-    "PRA": None,  # Calculated from PTS + REB + AST
-    "P+R": None,
-    "P+A": None,
-    "R+A": None,
-}
+# DVP Rankings are now in config/settings.py (imported by dvp_service)
+# This reference is kept for backward compatibility
+from config.settings import DVP_RANKINGS
 
 # Stat type mapping from market names
 STAT_TYPE_MAP = {
@@ -6320,89 +6248,32 @@ class DemonGoblinEngine:
     def calculate_volatility(self, game_values: List[float]) -> Tuple[str, float]:
         """
         Calculate volatility score from recent game values.
-        
-        Returns:
-            (volatility_label "Low"/"Med"/"High", standard_deviation)
+        PROXY: Delegates to services.insights_service.calculate_volatility
         """
-        if not game_values or len(game_values) < 3:
-            return ("Low", 0.0)
-        
-        try:
-            stddev = statistics.stdev(game_values)
-            
-            if stddev > self.VOLATILITY_HIGH_THRESHOLD:
-                return ("High", round(stddev, 2))
-            elif stddev > self.VOLATILITY_MED_THRESHOLD:
-                return ("Med", round(stddev, 2))
-            else:
-                return ("Low", round(stddev, 2))
-        except:
-            return ("Low", 0.0)
+        return insights_calculate_volatility(game_values)
     
     def get_team_pace(self, team: str) -> float:
-        """Get team's pace (possessions per 48 minutes)."""
+        """Get team's pace (possessions per 48 minutes).
+        PROXY: Delegates to services.insights_service.get_team_pace
+        """
         if team in self._team_pace_cache:
             return self._team_pace_cache[team]
-        
-        # 2024-25 season pace values
-        TEAM_PACE = {
-            "IND": 103.5, "ATL": 102.8, "MIL": 102.2, "SAC": 101.9, "MIN": 101.5,
-            "DEN": 101.2, "BOS": 100.8, "PHX": 100.6, "GSW": 100.4, "LAL": 100.2,
-            "DAL": 100.0, "OKC": 99.8, "NOP": 99.6, "POR": 99.4, "HOU": 99.2,
-            "TOR": 99.0, "CHI": 98.8, "WAS": 98.6, "BKN": 98.4, "CHA": 98.2,
-            "SAS": 98.0, "UTA": 97.8, "DET": 97.6, "ORL": 97.4, "MEM": 97.2,
-            "PHI": 97.0, "CLE": 96.8, "MIA": 96.6, "NYK": 96.4, "LAC": 96.2
-        }
-        
-        pace = TEAM_PACE.get(team, self.LEAGUE_AVG_PACE)
+        pace = insights_get_team_pace(team)
         self._team_pace_cache[team] = pace
         return pace
     
     def calculate_pace_factor(self, team: str, opponent: str) -> float:
         """
         Calculate pace adjustment factor.
-        Formula: (Team_Pace + Opponent_Pace) / (2 * League_Avg_Pace)
+        PROXY: Delegates to services.insights_service.calculate_pace_factor
         """
-        team_pace = self.get_team_pace(team)
-        opp_pace = self.get_team_pace(opponent)
-        combined_pace = (team_pace + opp_pace) / 2
-        return round(combined_pace / self.LEAGUE_AVG_PACE, 3)
+        return insights_calculate_pace_factor(team, opponent)
     
     def get_high_usage_players(self, team: str) -> List[str]:
-        """Get list of high-usage players (>25% usage rate) on a team."""
-        HIGH_USAGE_BY_TEAM = {
-            "ATL": ["Trae Young", "Dejounte Murray"],
-            "BOS": ["Jayson Tatum", "Jaylen Brown", "Derrick White"],
-            "BKN": ["Cam Thomas", "Dennis Schroder"],
-            "CHA": ["LaMelo Ball", "Brandon Miller"],
-            "CHI": ["Zach LaVine", "Coby White"],
-            "CLE": ["Donovan Mitchell", "Darius Garland"],
-            "DAL": ["Luka Doncic", "Kyrie Irving"],
-            "DEN": ["Nikola Jokic", "Jamal Murray"],
-            "DET": ["Cade Cunningham", "Jaden Ivey"],
-            "GSW": ["Stephen Curry", "Andrew Wiggins"],
-            "HOU": ["Jalen Green", "Alperen Sengun", "Kevin Durant"],
-            "IND": ["Tyrese Haliburton", "Pascal Siakam"],
-            "LAC": ["James Harden", "Kawhi Leonard"],
-            "LAL": ["LeBron James", "Anthony Davis"],
-            "MEM": ["Ja Morant", "Desmond Bane"],
-            "MIA": ["Jimmy Butler", "Bam Adebayo"],
-            "MIL": ["Giannis Antetokounmpo", "Damian Lillard"],
-            "MIN": ["Anthony Edwards", "Karl-Anthony Towns"],
-            "NOP": ["Zion Williamson", "Brandon Ingram", "Trey Murphy III"],
-            "NYK": ["Jalen Brunson", "Julius Randle"],
-            "OKC": ["Shai Gilgeous-Alexander", "Jalen Williams"],
-            "ORL": ["Paolo Banchero", "Franz Wagner"],
-            "PHI": ["Joel Embiid", "Tyrese Maxey"],
-            "PHX": ["Devin Booker", "Bradley Beal"],
-            "POR": ["Anfernee Simons", "Scoot Henderson"],
-            "SAC": ["De'Aaron Fox", "Domantas Sabonis"],
-            "SAS": ["Victor Wembanyama", "Devin Vassell"],
-            "TOR": ["Scottie Barnes", "RJ Barrett"],
-            "UTA": ["Lauri Markkanen", "Collin Sexton"],
-            "WAS": ["Jordan Poole", "Kyle Kuzma"]
-        }
-        return HIGH_USAGE_BY_TEAM.get(team, [])
+        """Get list of high-usage players (>25% usage rate) on a team.
+        PROXY: Delegates to services.insights_service.get_high_usage_players
+        """
+        return insights_get_high_usage(team)
     
     def calculate_usage_bump(
         self, 
@@ -6412,25 +6283,9 @@ class DemonGoblinEngine:
     ) -> Tuple[float, List[str]]:
         """
         Calculate usage bump when high-usage teammates are out.
-        
-        Returns:
-            (usage_bump_percent, list of injured high-usage teammates)
+        PROXY: Delegates to services.insights_service.calculate_usage_bump_simple
         """
-        high_usage = self.get_high_usage_players(team)
-        
-        # Find injured high-usage players (excluding current player)
-        injured_stars = [p for p in injured_teammates if p in high_usage and p != player_name]
-        
-        if not injured_stars:
-            return (0.0, [])
-        
-        # Calculate usage bump with diminishing returns
-        usage_bump = 0.0
-        for i, _ in enumerate(injured_stars):
-            multiplier = 1.0 / (i + 1)
-            usage_bump += self.USAGE_REDISTRIBUTION_BASE * multiplier
-        
-        return (round(usage_bump, 1), injured_stars)
+        return insights_calculate_usage_bump(player_name, team, injured_teammates)
     
     def generate_insight_summary(
         self,

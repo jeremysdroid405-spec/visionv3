@@ -4,7 +4,13 @@ Insights Service - Player Analytics and AI Summaries
 Extracted from demon_goblin_engine.py for modularity.
 """
 from typing import Dict, Any, List, Tuple, Optional
+import statistics
 import logging
+
+from config.settings import (
+    LEAGUE_AVG_PACE, VOLATILITY_HIGH_THRESHOLD, VOLATILITY_MED_THRESHOLD,
+    USAGE_REDISTRIBUTION_BASE, TEAM_PACE, HIGH_USAGE_PLAYERS
+)
 
 logger = logging.getLogger(__name__)
 
@@ -81,11 +87,44 @@ def calculate_confidence_rating(
     return max(0, min(100, confidence))
 
 
+def calculate_volatility(game_values: List[float]) -> Tuple[str, float]:
+    """
+    Calculate volatility score from recent game values.
+    
+    Returns:
+        (volatility_label "Low"/"Med"/"High", standard_deviation)
+    """
+    if not game_values or len(game_values) < 3:
+        return ("Low", 0.0)
+    
+    try:
+        stddev = statistics.stdev(game_values)
+        
+        if stddev > VOLATILITY_HIGH_THRESHOLD:
+            return ("High", round(stddev, 2))
+        elif stddev > VOLATILITY_MED_THRESHOLD:
+            return ("Med", round(stddev, 2))
+        else:
+            return ("Low", round(stddev, 2))
+    except:
+        return ("Low", 0.0)
+
+
+def get_team_pace(team: str) -> float:
+    """Get team's pace (possessions per 48 minutes)."""
+    return TEAM_PACE.get(team, LEAGUE_AVG_PACE)
+
+
+def get_high_usage_players(team: str) -> List[str]:
+    """Get list of high-usage players (>25% usage rate) on a team."""
+    return HIGH_USAGE_PLAYERS.get(team, [])
+
+
 def calculate_usage_bump(
     player_name: str,
     team: str,
     injured_players: List[Dict],
-    high_usage_players: Dict[str, List[str]]
+    high_usage_players: Dict[str, List[str]] = None
 ) -> Tuple[float, List[str]]:
     """
     Calculate usage bump based on injured teammates.
@@ -95,6 +134,10 @@ def calculate_usage_bump(
     """
     usage_bump = 0.0
     injured_teammates = []
+    
+    # Use config if not provided
+    if high_usage_players is None:
+        high_usage_players = HIGH_USAGE_PLAYERS
     
     # Get high usage players for this team
     team_high_usage = high_usage_players.get(team, [])
@@ -120,26 +163,57 @@ def calculate_usage_bump(
     return usage_bump, injured_teammates
 
 
-def calculate_pace_factor(team: str, opponent: str, team_pace_data: Dict[str, float]) -> float:
+def calculate_usage_bump_simple(
+    player_name: str, 
+    team: str,
+    injured_teammates: List[str]
+) -> Tuple[float, List[str]]:
+    """
+    Calculate usage bump when high-usage teammates are out.
+    Simpler version that takes direct list of injured players.
+    
+    Returns:
+        (usage_bump_percent, list of injured high-usage teammates)
+    """
+    high_usage = get_high_usage_players(team)
+    
+    # Find injured high-usage players (excluding current player)
+    injured_stars = [p for p in injured_teammates if p in high_usage and p != player_name]
+    
+    if not injured_stars:
+        return (0.0, [])
+    
+    # Calculate usage bump with diminishing returns
+    usage_bump = 0.0
+    for i, _ in enumerate(injured_stars):
+        multiplier = 1.0 / (i + 1)
+        usage_bump += USAGE_REDISTRIBUTION_BASE * multiplier
+    
+    return (round(usage_bump, 1), injured_stars)
+
+
+def calculate_pace_factor(team: str, opponent: str, team_pace_data: Dict[str, float] = None) -> float:
     """
     Calculate pace factor for a matchup.
     
     Args:
         team: Player's team
         opponent: Opposing team
-        team_pace_data: Dict of team -> pace value
+        team_pace_data: Dict of team -> pace value (uses config if None)
     
     Returns:
         Pace factor (1.0 = neutral, >1.0 = faster, <1.0 = slower)
     """
-    league_avg_pace = 100.0
+    # Use config if not provided
+    if team_pace_data is None:
+        team_pace_data = TEAM_PACE
     
-    team_pace = team_pace_data.get(team, league_avg_pace)
-    opp_pace = team_pace_data.get(opponent, league_avg_pace)
+    team_pace = team_pace_data.get(team, LEAGUE_AVG_PACE)
+    opp_pace = team_pace_data.get(opponent, LEAGUE_AVG_PACE)
     
     # Average both teams' pace relative to league average
     combined_pace = (team_pace + opp_pace) / 2
-    pace_factor = combined_pace / league_avg_pace
+    pace_factor = combined_pace / LEAGUE_AVG_PACE
     
     return round(pace_factor, 3)
 

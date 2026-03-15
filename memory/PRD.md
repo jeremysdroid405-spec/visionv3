@@ -46,37 +46,25 @@ dg_cached_board → dg_radar_picks (War Zone) → dg_goblin_vault → dg_goblin_
 ## What's Been Implemented
 
 ### 2026-03-15: Backend Modular Architecture Refactor (Phase 2)
-- **Archive Move:** Moved 8,252-line `demon_goblin_engine.py` to `/backend/legacy_archive/demon_goblin_engine.backup`
-  - Changed extension to `.backup` to prevent accidental imports
-- **Entry Point Update:** Added route registration in `server.py` startup:
-  - `from routes import register_all_routes`
-  - Modular routes now registered from `/routes/` directory with `/api` prefix
+- **Archive Move:** Moved original `demon_goblin_engine.py` to `/backend/legacy_archive/demon_goblin_engine.backup`
 - **The Proxy Shift - Engine Deconstruction:**
-  - Created `services/stats_service.py` (221 lines) with:
-    - `calculate_hit_rates()` - L5/L10/Season hit rate calculation
-    - `calculate_heat_level()` - Demon flame level (0-5)
-    - `calculate_safety_level()` - Goblin shield level (0-5)
-    - `calculate_bullet_level()` - Front Lines bullet level (1-6)
-    - `calculate_volatility()` - Performance variance calculation
-  - Created `services/insights_service.py` (298 lines) with:
-    - `generate_insight_summary()` - AI-powered insight text
-    - `calculate_confidence_rating()` - AI confidence (0-100)
-    - `calculate_usage_bump()` - Usage increase from injuries
-    - `calculate_pace_factor()` - Matchup pace analysis
-    - `build_player_insights()` - Complete player analytics package
-  - Updated `services/parlay_service.py` (+107 lines) with:
-    - `build_correlated_parlay()` - Game correlation logic
-    - `calculate_weighted_parlay_probability()` - Weighted hit probability
-    - `calculate_live_payout()` - Live payout estimation
-  - Engine methods proxied to services (8,011 lines, down from 8,252)
-- **Environment Variables Audit:**
-  - API keys (ODDS_API_KEY, BDL_API_KEY, GOOGLE_API_KEY) read from `.env` via `os.environ.get()`
-  - Centralized config in `/backend/config/settings.py` (DB settings, collection names, DVP rankings)
-- **Current Architecture Status:**
-  - Modular routes: `/backend/routes/` (picks, parlays, board, intel, board_intel)
-  - Services: ~1,600 lines total (6 service files)
-  - Engine: 8,011 lines (241 lines extracted, ~3% reduction)
-  - server.py handles core endpoints with game lock logic
+  - **stats_service.py** (221 lines): Hit rates, heat/safety/bullet levels, volatility
+  - **insights_service.py** (372 lines): AI summaries, confidence ratings, pace factor, usage bump
+  - **parlay_service.py** (402 lines): Correlated parlays, weighted probability, live payout
+  - **dvp_service.py** (95 lines): Defense vs Position calculations
+  - **data_scraper.py** (298 lines): External API fetching with backoff
+  - **config/settings.py** (211 lines): Centralized constants (TEAM_PACE, HIGH_USAGE_PLAYERS, DVP_RANKINGS)
+  - Engine methods proxied to services:
+    - `calculate_hit_rates()`, `calculate_heat_level()`, `calculate_safety_level()`, `calculate_bullet_level()`
+    - `calculate_volatility()`, `get_team_pace()`, `calculate_pace_factor()`, `calculate_usage_bump()`
+    - `generate_insight_summary()`, `calculate_confidence_rating()`
+    - `calculate_dvp_modifier()`, `fetch_with_backoff()`
+    - `_build_correlated_parlay()`, `_calculate_parlay_probability()`
+  - Removed duplicate DVP_RANKINGS and TEAM_PACE constants from engine
+- **Current Stats:**
+  - Engine: 7,866 lines (down from 8,252 = 386 lines extracted, 4.7%)
+  - Services: ~1,693 lines total
+  - Config: 211 lines
 
 ### 2026-03-15: P0 PickCard UI Enhancement - L5/L10/Season/AI Confidence
 - **Backend Fix:** Updated `get_war_zone()`, `get_goblin_vault()`, and `get_front_lines()` methods in `demon_goblin_engine.py`

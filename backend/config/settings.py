@@ -89,6 +89,56 @@ SCORING_WEIGHTS = {
     }
 }
 
+# ==================== ANALYTICS CONSTANTS ====================
+LEAGUE_AVG_PACE = 100.0
+VOLATILITY_HIGH_THRESHOLD = 10.0
+VOLATILITY_MED_THRESHOLD = 5.0
+USAGE_REDISTRIBUTION_BASE = 12.0
+
+# 2024-25 Team Pace Values (possessions per 48 min)
+TEAM_PACE = {
+    "IND": 103.5, "ATL": 102.8, "MIL": 102.2, "SAC": 101.9, "MIN": 101.5,
+    "DEN": 101.2, "BOS": 100.8, "PHX": 100.6, "GSW": 100.4, "LAL": 100.2,
+    "DAL": 100.0, "OKC": 99.8, "NOP": 99.6, "POR": 99.4, "HOU": 99.2,
+    "TOR": 99.0, "CHI": 98.8, "WAS": 98.6, "BKN": 98.4, "CHA": 98.2,
+    "SAS": 98.0, "UTA": 97.8, "DET": 97.6, "ORL": 97.4, "MEM": 97.2,
+    "PHI": 97.0, "CLE": 96.8, "MIA": 96.6, "NYK": 96.4, "LAC": 96.2
+}
+
+# High-usage players by team (>25% usage rate)
+HIGH_USAGE_PLAYERS = {
+    "ATL": ["Trae Young", "Dejounte Murray"],
+    "BOS": ["Jayson Tatum", "Jaylen Brown", "Derrick White"],
+    "BKN": ["Cam Thomas", "Dennis Schroder"],
+    "CHA": ["LaMelo Ball", "Brandon Miller"],
+    "CHI": ["Zach LaVine", "Coby White"],
+    "CLE": ["Donovan Mitchell", "Darius Garland"],
+    "DAL": ["Luka Doncic", "Kyrie Irving"],
+    "DEN": ["Nikola Jokic", "Jamal Murray"],
+    "DET": ["Cade Cunningham", "Jaden Ivey"],
+    "GSW": ["Stephen Curry", "Andrew Wiggins"],
+    "HOU": ["Jalen Green", "Alperen Sengun", "Kevin Durant"],
+    "IND": ["Tyrese Haliburton", "Pascal Siakam"],
+    "LAC": ["James Harden", "Kawhi Leonard"],
+    "LAL": ["LeBron James", "Anthony Davis"],
+    "MEM": ["Ja Morant", "Desmond Bane"],
+    "MIA": ["Jimmy Butler", "Bam Adebayo"],
+    "MIL": ["Giannis Antetokounmpo", "Damian Lillard"],
+    "MIN": ["Anthony Edwards", "Karl-Anthony Towns"],
+    "NOP": ["Zion Williamson", "Brandon Ingram", "Trey Murphy III"],
+    "NYK": ["Jalen Brunson", "Julius Randle"],
+    "OKC": ["Shai Gilgeous-Alexander", "Jalen Williams"],
+    "ORL": ["Paolo Banchero", "Franz Wagner"],
+    "PHI": ["Joel Embiid", "Tyrese Maxey"],
+    "PHX": ["Devin Booker", "Bradley Beal"],
+    "POR": ["Anfernee Simons", "Scoot Henderson"],
+    "SAC": ["De'Aaron Fox", "Domantas Sabonis"],
+    "SAS": ["Victor Wembanyama", "Devin Vassell"],
+    "TOR": ["Scottie Barnes", "RJ Barrett"],
+    "UTA": ["Lauri Markkanen", "Collin Sexton"],
+    "WAS": ["Jordan Poole", "Kyle Kuzma"]
+}
+
 # ==================== TEAM ABBREVIATIONS ====================
 TEAM_ABBREV_MAP = {
     "Atlanta Hawks": "ATL", "Boston Celtics": "BOS", "Brooklyn Nets": "BKN",
