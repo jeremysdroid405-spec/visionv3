@@ -1841,21 +1841,13 @@ const UniversalPickCard = memo(({
           <div className="mt-2">
             <div className="flex items-center justify-between text-[10px] mb-1">
               <span className="text-zinc-500">Value Score</span>
-              <span className={`font-bold ${
-                scoreValue >= 0.70 ? 'text-green-400' :
-                scoreValue >= 0.55 ? 'text-yellow-400' :
-                'text-zinc-400'
-              }`}>
+              <span className={`font-bold ${theme.text}`}>
                 {(scoreValue * 100).toFixed(1)}%
               </span>
             </div>
             <div className="h-1.5 bg-zinc-800 rounded-full overflow-hidden">
               <div 
-                className={`h-full rounded-full transition-all bg-gradient-to-r ${
-                  scoreValue >= 0.70 ? theme.scoreBarHigh :
-                  scoreValue >= 0.55 ? theme.scoreBarMid :
-                  'from-zinc-500 to-zinc-400'
-                }`}
+                className={`h-full rounded-full transition-all bg-gradient-to-r ${theme.scoreBarHigh}`}
                 style={{ width: `${Math.min(100, scoreValue * 100)}%` }}
               />
             </div>
