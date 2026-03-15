@@ -25,6 +25,7 @@ import {
 import { DemonIcon, GoblinIcon, VisionBadge } from '../components/dashboard/Icons';
 import { PickCard } from '../components/dashboard/PickCard';
 import { ParlayTicket } from '../components/dashboard/ParlayTicket';
+import { PlayerDetailPage } from '../components/dashboard/PlayerDetailPage';
 import { 
   TEAM_LOGOS, NBA_HEADSHOT_URL, STAT_CATEGORIES, getCategoryKey 
 } from '../components/dashboard/constants';
@@ -379,13 +380,18 @@ const Dashboard = () => {
   const [expandedParlay, setExpandedParlay] = useState(null);
   const [highlightProp, setHighlightProp] = useState(null);
   const [highlightType, setHighlightType] = useState('demon');
+  const [selectedPlayer, setSelectedPlayer] = useState(null);
   
   // Navigation handlers
   const handlePlayerClick = useCallback((playerName, highlight = null, type = 'demon') => {
     setHighlightProp(highlight);
     setHighlightType(type);
-    // TODO: Navigate to player detail page
-    toast.info(`Viewing ${playerName}'s props...`);
+    setSelectedPlayer(playerName);
+  }, []);
+  
+  const handleBackFromPlayer = useCallback(() => {
+    setSelectedPlayer(null);
+    setHighlightProp(null);
   }, []);
   
   const handleRadarClick = useCallback((pick) => {
@@ -432,6 +438,18 @@ const Dashboard = () => {
     const search = searchTerm.toLowerCase();
     return p.player_name?.toLowerCase().includes(search) || p.team?.toLowerCase().includes(search);
   });
+  
+  // If player is selected, show detail page
+  if (selectedPlayer) {
+    return (
+      <PlayerDetailPage 
+        playerName={selectedPlayer}
+        onBack={handleBackFromPlayer}
+        highlightProp={highlightProp}
+        highlightType={highlightType}
+      />
+    );
+  }
   
   return (
     <div className="min-h-screen bg-zinc-950 pb-16">

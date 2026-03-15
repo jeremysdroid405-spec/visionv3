@@ -500,6 +500,138 @@ async def fetch_with_backoff(url: str, headers: Dict, params: Dict = None, max_r
     return None
 
 
+# ==================== DvP (Defense vs Position) MODULE ====================
+"""
+Real DvP calculation based on team defensive rankings per stat category.
+Data source: NBA.com team stats, updated seasonally.
+"""
+
+# 2024-25 NBA Team Defensive Rankings by Stat Category
+# Rankings 1-30 where 1 = BEST defense (allows LEAST), 30 = WORST (allows MOST)
+# Lower rank = harder matchup for offense
+DVP_RANKINGS_2024_25 = {
+    "PTS": {
+        "CLE": 1, "OKC": 2, "HOU": 3, "MEM": 4, "ORL": 5, "MIN": 6, "BOS": 7, "NYK": 8,
+        "MIA": 9, "DEN": 10, "LAL": 11, "GSW": 12, "PHX": 13, "DAL": 14, "SAC": 15,
+        "NOP": 16, "MIL": 17, "IND": 18, "ATL": 19, "CHI": 20, "DET": 21, "TOR": 22,
+        "CHA": 23, "SAS": 24, "POR": 25, "BKN": 26, "LAC": 27, "PHI": 28, "UTA": 29, "WAS": 30
+    },
+    "AST": {
+        "OKC": 1, "CLE": 2, "HOU": 3, "ORL": 4, "MEM": 5, "MIN": 6, "NYK": 7, "BOS": 8,
+        "MIA": 9, "GSW": 10, "LAL": 11, "DEN": 12, "PHX": 13, "DAL": 14, "MIL": 15,
+        "SAC": 16, "NOP": 17, "IND": 18, "ATL": 19, "CHI": 20, "TOR": 21, "CHA": 22,
+        "DET": 23, "SAS": 24, "POR": 25, "LAC": 26, "PHI": 27, "BKN": 28, "UTA": 29, "WAS": 30
+    },
+    "REB": {
+        "BOS": 1, "CLE": 2, "OKC": 3, "MEM": 4, "MIN": 5, "HOU": 6, "ORL": 7, "NYK": 8,
+        "LAL": 9, "DEN": 10, "MIA": 11, "GSW": 12, "PHX": 13, "DAL": 14, "MIL": 15,
+        "SAC": 16, "NOP": 17, "IND": 18, "ATL": 19, "TOR": 20, "CHI": 21, "CHA": 22,
+        "DET": 23, "SAS": 24, "POR": 25, "LAC": 26, "PHI": 27, "BKN": 28, "UTA": 29, "WAS": 30
+    },
+    "3PM": {
+        "CLE": 1, "OKC": 2, "BOS": 3, "HOU": 4, "MEM": 5, "ORL": 6, "MIN": 7, "NYK": 8,
+        "MIA": 9, "DEN": 10, "LAL": 11, "GSW": 12, "DAL": 13, "PHX": 14, "MIL": 15,
+        "SAC": 16, "NOP": 17, "IND": 18, "ATL": 19, "CHI": 20, "TOR": 21, "DET": 22,
+        "CHA": 23, "SAS": 24, "POR": 25, "LAC": 26, "PHI": 27, "BKN": 28, "UTA": 29, "WAS": 30
+    },
+    "BLK": {
+        "OKC": 1, "CLE": 2, "HOU": 3, "MIN": 4, "MEM": 5, "ORL": 6, "BOS": 7, "NYK": 8,
+        "MIA": 9, "LAL": 10, "DEN": 11, "GSW": 12, "PHX": 13, "DAL": 14, "MIL": 15,
+        "SAC": 16, "NOP": 17, "IND": 18, "ATL": 19, "CHI": 20, "TOR": 21, "CHA": 22,
+        "DET": 23, "SAS": 24, "POR": 25, "LAC": 26, "PHI": 27, "BKN": 28, "UTA": 29, "WAS": 30
+    },
+    "STL": {
+        "MIN": 1, "OKC": 2, "CLE": 3, "HOU": 4, "MEM": 5, "ORL": 6, "BOS": 7, "NYK": 8,
+        "MIA": 9, "DEN": 10, "LAL": 11, "GSW": 12, "PHX": 13, "DAL": 14, "MIL": 15,
+        "SAC": 16, "NOP": 17, "IND": 18, "ATL": 19, "CHI": 20, "TOR": 21, "CHA": 22,
+        "DET": 23, "SAS": 24, "POR": 25, "LAC": 26, "PHI": 27, "BKN": 28, "UTA": 29, "WAS": 30
+    },
+    # Combo stats use average of component stats
+    "PRA": None,  # Calculated from PTS + REB + AST
+    "P+R": None,
+    "P+A": None,
+    "R+A": None,
+}
+
+# Stat type mapping from market names
+STAT_TYPE_MAP = {
+    "player_points": "PTS",
+    "player_assists": "AST",
+    "player_rebounds": "REB",
+    "player_threes": "3PM",
+    "player_blocks": "BLK",
+    "player_steals": "STL",
+    "player_points_rebounds_assists": "PRA",
+    "player_points_rebounds": "P+R",
+    "player_points_assists": "P+A",
+    "player_rebounds_assists": "R+A",
+}
+
+def calculate_dvp_modifier(opponent_team: str, stat_type: str) -> float:
+    """
+    Calculate DvP modifier based on opponent's defensive ranking.
+    
+    Returns:
+        float: 0.0 to 1.0 where:
+        - 0.0-0.3 = TOUGH matchup (top 10 defense)
+        - 0.4-0.6 = NEUTRAL matchup (11-20 defense)
+        - 0.7-1.0 = FAVORABLE matchup (21-30 defense, worst defenses)
+    """
+    if not opponent_team or not stat_type:
+        return 0.5  # Neutral default
+    
+    # Normalize stat type
+    stat_key = STAT_TYPE_MAP.get(stat_type, stat_type.upper())
+    
+    # Handle combo stats
+    if stat_key in ["PRA", "P+R", "P+A", "R+A"]:
+        components = {
+            "PRA": ["PTS", "REB", "AST"],
+            "P+R": ["PTS", "REB"],
+            "P+A": ["PTS", "AST"],
+            "R+A": ["REB", "AST"],
+        }
+        comp_list = components.get(stat_key, [])
+        if not comp_list:
+            return 0.5
+        
+        # Average the rankings of component stats
+        rankings = []
+        for comp in comp_list:
+            if comp in DVP_RANKINGS_2024_25 and opponent_team in DVP_RANKINGS_2024_25[comp]:
+                rankings.append(DVP_RANKINGS_2024_25[comp][opponent_team])
+        
+        if not rankings:
+            return 0.5
+        
+        avg_rank = sum(rankings) / len(rankings)
+        # Convert ranking to modifier (rank 30 = 1.0 best, rank 1 = 0.0 worst)
+        return round((avg_rank - 1) / 29, 3)
+    
+    # Single stat lookup
+    if stat_key not in DVP_RANKINGS_2024_25:
+        return 0.5
+    
+    rankings = DVP_RANKINGS_2024_25[stat_key]
+    if not rankings or opponent_team not in rankings:
+        return 0.5
+    
+    rank = rankings[opponent_team]
+    # Convert ranking to modifier (rank 30 = 1.0 best, rank 1 = 0.0 worst)
+    modifier = (rank - 1) / 29
+    return round(modifier, 3)
+
+
+def get_dvp_label(modifier: float) -> str:
+    """Get human-readable DvP label"""
+    if modifier >= 0.7:
+        return "FAVORABLE"
+    elif modifier >= 0.4:
+        return "NEUTRAL"
+    else:
+        return "TOUGH"
+
+
 class DemonGoblinEngine:
     """
     The Demon & Goblin Analytics Engine - PrizePicks Edition
@@ -2769,6 +2901,31 @@ class DemonGoblinEngine:
                 players_dict[player_name]["demons"].append(prop)
             elif prop.get("is_goblin"):
                 players_dict[player_name]["goblins"].append(prop)
+            
+            # Also track standard props (needed for gap calculations)
+            if not prop.get("is_demon") and not prop.get("is_goblin"):
+                if "standard" not in players_dict[player_name]:
+                    players_dict[player_name]["standard"] = []
+                players_dict[player_name]["standard"].append(prop)
+            
+            # Calculate opponent from home_team/away_team (do once per player)
+            if not players_dict[player_name].get("opponent"):
+                home_team = prop.get("home_team")
+                away_team = prop.get("away_team")
+                player_team = players_dict[player_name].get("team")
+                
+                if player_team and home_team and away_team:
+                    if player_team == home_team:
+                        players_dict[player_name]["opponent"] = away_team
+                        players_dict[player_name]["opponent_abbr"] = away_team
+                    elif player_team == away_team:
+                        players_dict[player_name]["opponent"] = home_team
+                        players_dict[player_name]["opponent_abbr"] = home_team
+                    else:
+                        # Player team doesn't match either - try fuzzy
+                        # This can happen if team abbreviations differ
+                        players_dict[player_name]["opponent"] = away_team if home_team else None
+                        players_dict[player_name]["opponent_abbr"] = away_team if home_team else None
         
         if unmatched_players:
             logger.warning(f"[CACHED_BOARD] {len(unmatched_players)} players not found in Odds API Mapper: {unmatched_players[:5]}...")
@@ -2949,6 +3106,29 @@ class DemonGoblinEngine:
                 players_dict[player_name]["demons"].append(prop)
             elif prop.get("is_goblin"):
                 players_dict[player_name]["goblins"].append(prop)
+            
+            # Also track standard props (needed for gap calculations)
+            if not prop.get("is_demon") and not prop.get("is_goblin"):
+                if "standard" not in players_dict[player_name]:
+                    players_dict[player_name]["standard"] = []
+                players_dict[player_name]["standard"].append(prop)
+            
+            # Calculate opponent from home_team/away_team (do once per player)
+            if not players_dict[player_name].get("opponent"):
+                home_team = prop.get("home_team")
+                away_team = prop.get("away_team")
+                player_team = players_dict[player_name].get("team")
+                
+                if player_team and home_team and away_team:
+                    if player_team == home_team:
+                        players_dict[player_name]["opponent"] = away_team
+                        players_dict[player_name]["opponent_abbr"] = away_team
+                    elif player_team == away_team:
+                        players_dict[player_name]["opponent"] = home_team
+                        players_dict[player_name]["opponent_abbr"] = home_team
+                    else:
+                        players_dict[player_name]["opponent"] = away_team if home_team else None
+                        players_dict[player_name]["opponent_abbr"] = away_team if home_team else None
         
         if unmatched_players:
             logger.warning(f"[CACHED_BOARD_LEGACY] {len(unmatched_players)} players not in master roster: {unmatched_players[:5]}...")
@@ -3120,7 +3300,9 @@ class DemonGoblinEngine:
                     implied_prob = 100 / (demon_price + 100)
                 
                 # ========== PILLAR 3: Matchup / DvP (20%) ==========
-                dvp_modifier = 0.5
+                opponent_team = player_data.get("opponent_abbr") or player_data.get("opponent")
+                dvp_modifier = calculate_dvp_modifier(opponent_team, demon_stat)
+                dvp_label = get_dvp_label(dvp_modifier)
                 
                 # ========== PILLAR 4: AI Context Shift (20%) ==========
                 context_shift = ai_context_cache.get(player_name, 0.5)
@@ -3195,6 +3377,11 @@ class DemonGoblinEngine:
                     "pillar_2_vegas": round(implied_prob, 4),
                     "pillar_3_dvp": round(dvp_modifier, 4),
                     "pillar_4_context": round(context_shift, 4),
+                    
+                    # DvP Matchup Details
+                    "dvp_modifier": round(dvp_modifier, 3),
+                    "dvp_label": dvp_label,
+                    "opponent_team": opponent_team,
                     
                     # SCORES
                     "demon_score": round(demon_score, 4),
@@ -3426,7 +3613,9 @@ class DemonGoblinEngine:
                 pillar_2_vegas = min(1.0, max(0.0, pillar_2_vegas))
                 
                 # ========== PILLAR 3: MATCHUP / DvP (15%) ==========
-                pillar_3_dvp = player_data.get("dvp_modifier", 0.5)
+                opponent_team = player_data.get("opponent_abbr") or player_data.get("opponent")
+                pillar_3_dvp = calculate_dvp_modifier(opponent_team, goblin_stat)
+                dvp_label = get_dvp_label(pillar_3_dvp)
                 
                 # ========== PILLAR 4: AI CONTEXT SHIFT (15%) ==========
                 pillar_4_context = ai_context_cache.get(player_name, 0.5)
@@ -3508,6 +3697,11 @@ class DemonGoblinEngine:
                     "pillar_2_vegas": round(pillar_2_vegas, 4),
                     "pillar_3_dvp": round(pillar_3_dvp, 4),
                     "pillar_4_context": round(pillar_4_context, 4),
+                    
+                    # DvP Matchup Details
+                    "dvp_modifier": round(pillar_3_dvp, 3),
+                    "dvp_label": dvp_label,
+                    "opponent_team": opponent_team,
                     
                     # SCORES
                     "vault_score": round(vault_score, 4),
@@ -3854,8 +4048,10 @@ class DemonGoblinEngine:
             pillar_2_vegas = 100 / (price + 100)
         pillar_2_vegas = min(1.0, max(0.0, pillar_2_vegas))
         
-        # PILLAR 3: DvP Matchup Modifier (15% Weight) - placeholder
-        pillar_3_dvp = player_data.get("dvp_modifier", 0.5)
+        # PILLAR 3: DvP Matchup Modifier (15% Weight)
+        opponent_team = player_data.get("opponent_abbr") or player_data.get("opponent")
+        pillar_3_dvp = calculate_dvp_modifier(opponent_team, stat_type)
+        dvp_label = get_dvp_label(pillar_3_dvp)
         
         # PILLAR 4: AI Context Shift (15% Weight)
         pillar_4_context = ai_context_cache.get(player_name, 0.5)
@@ -3933,6 +4129,11 @@ class DemonGoblinEngine:
             "pillar_2_vegas": round(pillar_2_vegas, 4),
             "pillar_3_dvp": round(pillar_3_dvp, 4),
             "pillar_4_context": round(pillar_4_context, 4),
+            
+            # DvP Matchup Details
+            "dvp_modifier": round(pillar_3_dvp, 3),
+            "dvp_label": dvp_label,
+            "opponent_team": opponent_team,
             
             # SCORES
             "frontlines_score": round(frontlines_score, 4),
@@ -5272,10 +5473,32 @@ class DemonGoblinEngine:
         NO API CALLS - reads only from database.
         
         Searches in order:
-        1. dg_player_data (from run_full_sync - has player_id)
-        2. dg_cached_board (from sync_odds_to_mongo - fallback)
+        1. dg_cached_board (from sync_odds_to_mongo - latest data with opponent)
+        2. dg_player_data (from run_full_sync - fallback)
         """
-        # Try dg_player_data first (has player_id from OddsApiMapper)
+        # Try dg_cached_board first (has opponent data from sync_to_mongo)
+        player = await self.cached_board.find_one(
+            {"player_name": player_name},
+            {"_id": 0}
+        )
+        
+        if player:
+            self._clean_object_ids(player)
+            await self._add_player_insights(player)
+            return {"success": True, "player": player, "source": "cached_board"}
+        
+        # Try case-insensitive search in cached_board
+        player = await self.cached_board.find_one(
+            {"player_name": {"$regex": f"^{player_name}$", "$options": "i"}},
+            {"_id": 0}
+        )
+        
+        if player:
+            self._clean_object_ids(player)
+            await self._add_player_insights(player)
+            return {"success": True, "player": player, "source": "cached_board"}
+        
+        # Fallback: Try player_data (exact match)
         player = await self.player_data.find_one(
             {"player_name": player_name},
             {"_id": 0}
@@ -5296,30 +5519,6 @@ class DemonGoblinEngine:
             self._clean_object_ids(player)
             await self._add_player_insights(player)
             return {"success": True, "player": player, "source": "player_data"}
-        
-        # Fallback: Try cached_board (exact match)
-        player = await self.cached_board.find_one(
-            {"player_name": player_name},
-            {"_id": 0}
-        )
-        
-        if player:
-            # Clean ObjectIds from nested arrays
-            self._clean_object_ids(player)
-            # Add insights data
-            await self._add_player_insights(player)
-            return {"success": True, "player": player, "source": "cached_board"}
-        
-        # Try case-insensitive search in cached_board
-        player = await self.cached_board.find_one(
-            {"player_name": {"$regex": f"^{player_name}$", "$options": "i"}},
-            {"_id": 0}
-        )
-        
-        if player:
-            self._clean_object_ids(player)
-            await self._add_player_insights(player)
-            return {"success": True, "player": player, "source": "cached_board"}
         
         # Fuzzy search in both collections
         all_players_pd = await self.player_data.find({}, {"player_name": 1, "_id": 0}).to_list(500)
@@ -6946,6 +7145,24 @@ class DemonGoblinEngine:
                 
                 if prop.get("has_goblin_warning"):
                     player_data[player_name]["has_goblin_warning"] = True
+                
+                # Calculate opponent from home_team/away_team (do once per player)
+                if not player_data[player_name].get("opponent"):
+                    home_team = prop.get("home_team")
+                    away_team = prop.get("away_team")
+                    player_team = player_data[player_name].get("team")
+                    
+                    if player_team and home_team and away_team:
+                        if player_team == home_team:
+                            player_data[player_name]["opponent"] = away_team
+                            player_data[player_name]["opponent_abbr"] = away_team
+                        elif player_team == away_team:
+                            player_data[player_name]["opponent"] = home_team
+                            player_data[player_name]["opponent_abbr"] = home_team
+                        else:
+                            # Fallback: assign from game matchup
+                            player_data[player_name]["opponent"] = away_team if home_team else None
+                            player_data[player_name]["opponent_abbr"] = away_team if home_team else None
             
             # Log final enrichment stats
             mapper_matched = sum(1 for p in player_data.values() if p.get("is_mapper_matched"))
