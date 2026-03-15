@@ -385,7 +385,7 @@ class DemonGoblinEngine:
             RosterService, PhotoService, PropsService, SyncService, 
             TierBuilderService, ParlayBuilderService, CachedBoardBuilderService,
             OddsApiService, StatsApiService, Tank01Service, PicksGetterService,
-            DataIntegrityService, StatsEnrichmentService
+            DataIntegrityService, StatsEnrichmentService, OddsSyncService
         )
         self.roster_service = RosterService(self.repo, db)
         self.photo_service = PhotoService(db)
@@ -402,6 +402,7 @@ class DemonGoblinEngine:
         self.picks_getter_service = PicksGetterService(db)
         self.data_integrity_service = DataIntegrityService(db)
         self.stats_enrichment_service = StatsEnrichmentService(db)
+        self.odds_sync_service = OddsSyncService(db)
         
         # Legacy direct collection access (gradually migrating to repo)
         self.events_cache = db.dg_events_cache
@@ -715,203 +716,22 @@ class DemonGoblinEngine:
     
     async def sync_odds_to_mongo(self) -> Dict[str, Any]:
         """
-        THE ONLY API CALL - Single batch fetch to MongoDB
-        
-        DATABASE NORMALIZATION (v2.0):
-        1. Team names converted to 3-letter abbreviations (LAL, BKN, etc.)
-        2. Player names sanitized and normalized (Nic → Nicolas, etc.)
-        3. Composite key: player_name + stat_type + game_date for deduplication
-        4. UPSERT mode: Update existing records instead of duplicating
-        
-        Frontend reads ONLY from MongoDB after this.
+        PROXY: Main sync orchestration - delegated to OddsSyncService.
+        THE ONLY API CALL - Single batch fetch to MongoDB.
         """
-        sync_start = datetime.now(timezone.utc)
-        self._current_date = self.get_current_date()
-        
-        logger.info("=" * 70)
-        logger.info("[SYNC_ODDS_TO_MONGO] Starting normalized batch sync v2.0...")
-        logger.info(f"[SYNC_ODDS_TO_MONGO] Date: {self._current_date}")
-        logger.info("=" * 70)
-        
-        results = {
-            "success": True,
-            "synced_at": sync_start.isoformat(),
-            "events_count": 0,
-            "total_props": 0,
-            "unique_players": 0,
-            "standard_count": 0,
-            "demons_count": 0,
-            "goblins_count": 0,
-            "api_calls_made": 0,
-            "duplicates_prevented": 0,
-            "names_normalized": 0,
-            "teams_normalized": 0,
-            "errors": []
-        }
-        
-        try:
-            # Step 0: Load Master Roster cache for team lookups
-            await self.load_master_roster_cache()
-            
-            # Check if master roster exists
-            roster_count = await self.master_roster.count_documents({})
-            if roster_count == 0:
-                logger.warning("[SYNC_ODDS_TO_MONGO] Master roster is empty! Running initial sync...")
-                await self.sync_master_roster()
-            else:
-                logger.info(f"[SYNC_ODDS_TO_MONGO] Master roster loaded: {roster_count} players")
-            
-            # Step 1: Fetch events (1 API call)
-            events = await self.fetch_todays_events()
-            results["events_count"] = len(events)
-            results["api_calls_made"] += 1
-            
-            if not events:
-                logger.warning("[SYNC_ODDS_TO_MONGO] No events found")
-                results["success"] = False
-                results["errors"].append("No NBA events found")
-                return results
-            
-            # Step 2: Fetch odds for each event (1 API call per event)
-            all_props = []
-            seen_players_raw = set()
-            seen_players_normalized = set()
-            
-            for event in events:
-                event_id = event.get("id")
-                if not event_id:
-                    continue
-                
-                odds_data = await self.fetch_prizepicks_odds(event_id, event)
-                results["api_calls_made"] += 1
-                
-                if odds_data:
-                    props = self.extract_prizepicks_props(odds_data)
-                    all_props.extend(props)
-                    
-                    for prop in props:
-                        seen_players_raw.add(prop.get("player_name"))
-                
-                # Small delay to avoid rate limiting
-                await asyncio.sleep(0.3)
-            
-            # Step 3: Normalize all props (team names, player names)
-            logger.info(f"[NORMALIZATION] Processing {len(all_props)} props...")
-            normalized_props = []
-            
-            for prop in all_props:
-                # Normalize team names to 3-letter abbreviations
-                original_home = prop.get("home_team", "")
-                original_away = prop.get("away_team", "")
-                
-                prop["home_team"] = self.normalize_team_name(original_home)
-                prop["away_team"] = self.normalize_team_name(original_away)
-                prop["home_team_full"] = original_home  # Keep original for reference
-                prop["away_team_full"] = original_away
-                
-                if prop["home_team"] != original_home:
-                    results["teams_normalized"] += 1
-                
-                # Normalize player names
-                original_name = prop.get("player_name", "")
-                normalized_name = self.sanitize_player_name(original_name)
-                
-                if normalized_name != original_name:
-                    results["names_normalized"] += 1
-                    logger.debug(f"[NORMALIZE] '{original_name}' → '{normalized_name}'")
-                
-                prop["player_name"] = normalized_name
-                prop["player_name_raw"] = original_name  # Keep original for debugging
-                
-                seen_players_normalized.add(normalized_name)
-                
-                # Extract stat type for composite key
-                market = prop.get("market", "")
-                stat_type = self._extract_stat_type(market)
-                
-                # Create composite key: player_name + stat_type + line + direction + game_date
-                composite_key = f"{normalized_name}|{stat_type}|{prop.get('line', 0)}|{prop.get('direction', '')}|{self._current_date}"
-                prop["_composite_key"] = composite_key
-                prop["stat_type_extracted"] = stat_type
-                prop["game_date"] = self._current_date
-                prop["synced_at"] = sync_start.isoformat()
-                
-                normalized_props.append(prop)
-            
-            results["unique_players"] = len(seen_players_normalized)
-            logger.info(f"[NORMALIZATION] Normalized {results['names_normalized']} names, {results['teams_normalized']} teams")
-            logger.info(f"[NORMALIZATION] Raw players: {len(seen_players_raw)} → Normalized: {len(seen_players_normalized)}")
-            
-            # Step 4: Enrich props with BallDontLie hit rates
-            logger.info(f"[SYNC_ODDS_TO_MONGO] Enriching {len(seen_players_normalized)} players with BallDontLie stats...")
-            enriched_props = await self._enrich_props_with_stats(normalized_props, list(seen_players_normalized))
-            results["stats_enriched"] = len([p for p in enriched_props if p.get("hit_rates")])
-            
-            # Step 5: Wipe dirty data and insert clean normalized data with UPSERT
-            if enriched_props:
-                # Clear old data to start fresh (clean slate approach)
-                deleted = await self.live_props.delete_many({})
-                logger.info(f"[CLEANUP] Wiped {deleted.deleted_count} old records")
-                
-                # Deduplicate using composite key
-                deduplicated = {}
-                for prop in enriched_props:
-                    key = prop.get("_composite_key", "")
-                    if key:
-                        if key in deduplicated:
-                            results["duplicates_prevented"] += 1
-                        # Keep latest version (overwrites duplicates)
-                        deduplicated[key] = prop
-                
-                # Insert deduplicated props
-                props_list = list(deduplicated.values())
-                for prop in props_list:
-                    prop.pop("_id", None)  # Remove any existing _id
-                
-                if props_list:
-                    # Create unique index on composite key for future upserts
-                    try:
-                        await self.live_props.create_index("_composite_key", unique=True, sparse=True)
-                    except Exception:
-                        pass  # Index may already exist
-                    
-                    await self.live_props.insert_many(props_list)
-                
-                results["total_props"] = len(props_list)
-                results["standard_count"] = sum(1 for p in props_list if p.get("prop_type") == "standard")
-                results["demons_count"] = sum(1 for p in props_list if p.get("is_demon"))
-                results["goblins_count"] = sum(1 for p in props_list if p.get("is_goblin"))
-                
-                logger.info(f"[SYNC_ODDS_TO_MONGO] Stored {len(props_list)} clean, deduplicated props")
-                logger.info(f"[SYNC_ODDS_TO_MONGO] Duplicates prevented: {results['duplicates_prevented']}")
-            
-            # Step 6: Build cached board for frontend (grouped by player)
-            await self._build_cached_board(props_list, sync_start)
-            
-        except Exception as e:
-            logger.error(f"[SYNC_ODDS_TO_MONGO] Error: {e}")
-            import traceback
-            logger.error(traceback.format_exc())
-            results["success"] = False
-            results["errors"].append(str(e))
-        
-        duration = (datetime.now(timezone.utc) - sync_start).total_seconds()
-        results["duration_seconds"] = duration
-        
-        logger.info("=" * 70)
-        logger.info(f"[SYNC_ODDS_TO_MONGO] COMPLETE (Normalized v2.0)")
-        logger.info(f"  Duration: {duration:.1f}s")
-        logger.info(f"  API Calls Made: {results['api_calls_made']}")
-        logger.info(f"  Props Stored: {results['total_props']}")
-        logger.info(f"  Props Enriched: {results.get('stats_enriched', 0)}")
-        logger.info(f"  Players: {results['unique_players']}")
-        logger.info(f"  Names Normalized: {results['names_normalized']}")
-        logger.info(f"  Teams Normalized: {results['teams_normalized']}")
-        logger.info(f"  Duplicates Prevented: {results['duplicates_prevented']}")
-        logger.info(f"  Standard: {results['standard_count']} | Demons: {results['demons_count']} | Goblins: {results['goblins_count']}")
-        logger.info("=" * 70)
-        
-        return results
+        return await self.odds_sync_service.sync_odds_to_mongo(
+            get_current_date=self.get_current_date,
+            load_master_roster_cache=self.load_master_roster_cache,
+            fetch_todays_events=self.fetch_todays_events,
+            fetch_prizepicks_odds=self.fetch_prizepicks_odds,
+            extract_prizepicks_props=self.extract_prizepicks_props,
+            normalize_team_name=self.normalize_team_name,
+            sanitize_player_name=self.sanitize_player_name,
+            extract_stat_type=self._extract_stat_type,
+            enrich_props_with_stats=self._enrich_props_with_stats,
+            build_cached_board=self._build_cached_board,
+            sync_master_roster=self.sync_master_roster
+        )
     
     async def _enrich_props_with_stats(self, props: List[Dict], player_names: List[str]) -> List[Dict]:
         """PROXY: Enrich props with stats - delegated to StatsEnrichmentService."""
