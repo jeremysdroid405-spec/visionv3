@@ -5199,7 +5199,11 @@ class DemonGoblinEngine:
             )
             if insight:
                 pick['insight_summary'] = insight.get('insight_summary', '')
-                pick['ai_confidence'] = insight.get('ai_confidence_rating', 50)
+                pick['ai_confidence_rating'] = insight.get('ai_confidence_rating', 50)
+            else:
+                # Fallback: Calculate AI confidence from pillar_4_context (0-1) -> (0-100)
+                pillar_4 = pick.get('pillar_4_context', 0.5)
+                pick['ai_confidence_rating'] = int(pillar_4 * 100)
             
             # Get new intel_briefing from cached_board or intel_briefings
             board_entry = await self.cached_board.find_one(
@@ -5244,7 +5248,11 @@ class DemonGoblinEngine:
             )
             if insight:
                 pick['insight_summary'] = insight.get('insight_summary', '')
-                pick['ai_confidence'] = insight.get('ai_confidence_rating', 50)
+                pick['ai_confidence_rating'] = insight.get('ai_confidence_rating', 50)
+            else:
+                # Fallback: Calculate AI confidence from pillar_4_context (0-1) -> (0-100)
+                pillar_4 = pick.get('pillar_4_context', 0.5)
+                pick['ai_confidence_rating'] = int(pillar_4 * 100)
             
             # Get new intel_briefing from cached_board
             board_entry = await self.cached_board.find_one(
@@ -5295,7 +5303,11 @@ class DemonGoblinEngine:
             )
             if insight:
                 pick['insight_summary'] = insight.get('insight_summary', '')
-                pick['ai_confidence'] = insight.get('ai_confidence_rating', 50)
+                pick['ai_confidence_rating'] = insight.get('ai_confidence_rating', 50)
+            else:
+                # Fallback: Calculate AI confidence from pillar_4_context (0-1) -> (0-100)
+                pillar_4 = pick.get('pillar_4_context', 0.5)
+                pick['ai_confidence_rating'] = int(pillar_4 * 100)
             
             # Get intel_briefing from cached_board
             board_entry = await self.cached_board.find_one(

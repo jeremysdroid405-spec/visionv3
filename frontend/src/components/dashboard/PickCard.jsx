@@ -100,6 +100,30 @@ const LockedBadge = memo(({ isLocked }) => {
   );
 });
 
+// Hit rate color helper
+const getHitRateColor = (rate) => {
+  if (rate >= 80) return 'text-green-400';
+  if (rate >= 60) return 'text-yellow-400';
+  if (rate >= 40) return 'text-orange-400';
+  return 'text-red-400';
+};
+
+// AI Confidence color helper
+const getConfidenceColor = (confidence) => {
+  if (confidence >= 80) return 'text-green-400';
+  if (confidence >= 60) return 'text-purple-400';
+  if (confidence >= 40) return 'text-yellow-400';
+  return 'text-red-400';
+};
+
+// AI Confidence gradient helper
+const getConfidenceGradient = (confidence) => {
+  if (confidence >= 80) return 'bg-gradient-to-r from-green-500 to-emerald-400';
+  if (confidence >= 60) return 'bg-gradient-to-r from-purple-500 to-purple-400';
+  if (confidence >= 40) return 'bg-gradient-to-r from-yellow-500 to-amber-400';
+  return 'bg-gradient-to-r from-red-500 to-red-400';
+};
+
 // Heat level labels
 const getLevelLabel = (level, emblem) => {
   if (emblem === 'gem') {
