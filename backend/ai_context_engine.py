@@ -25,7 +25,7 @@ logger = logging.getLogger("ai_context_engine")
 
 # Environment variables
 MONGO_URL = os.environ.get("MONGO_URL")
-DB_NAME = os.environ.get("DB_NAME", "pickvision")
+DB_NAME = os.environ.get("DB_NAME", "test_database")
 GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY")
 
 

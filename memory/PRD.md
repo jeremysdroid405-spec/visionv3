@@ -24,6 +24,15 @@ dg_cached_board → dg_radar_picks (War Zone) → dg_goblin_vault → dg_goblin_
 
 ## What's Been Implemented
 
+### 2025-12: P0 Database Configuration Fix
+- Fixed hardcoded `MONGO_URL` and `DB_NAME` in `backend/.env`
+- Removed quotes from env values (can cause parsing issues in some environments)
+- Standardized default DB_NAME to `test_database` across all backend files:
+  - `ai_context_engine.py`
+  - `board_intelligence_engine.py`
+  - `nba_master_hub.py`
+- Backend now uses `os.environ['MONGO_URL']` (fails fast if missing) vs `os.environ.get()` (silent fallback)
+
 ### 2026-03-15: Unified 3-Tier Card UI
 - Created `UniversalPickCard` component as single template for all 30 picks
 - Deleted legacy `VaultCard` and `FrontLinesCard` components
