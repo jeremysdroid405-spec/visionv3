@@ -45,6 +45,16 @@ dg_cached_board → dg_radar_picks (War Zone) → dg_goblin_vault → dg_goblin_
 
 ## What's Been Implemented
 
+### 2026-03-15: Backend Engine Deconstruction (Phase 11 - Odds Sync Service)
+- **Engine Reduction:** 2,885 → 2,705 lines (**180 lines extracted, 6% additional reduction**)
+- **Cumulative Reduction:** 8,252 → 2,705 lines (**~67% total reduction**)
+- **New Service Created:**
+  - `OddsSyncService` (244 lines): Main sync orchestration with callbacks
+- **Methods Proxied in Engine:**
+  - `sync_odds_to_mongo()` → OddsSyncService (callback-based delegation)
+- **Total Services:** 8,806 lines of modular, reusable code
+- **Test Results:** ALL 114 TESTS PASSED (full regression verified)
+
 ### 2026-03-15: Backend Engine Deconstruction (Phase 10 - Stats Enrichment Service)
 - **Engine Reduction:** 3,313 → 2,885 lines (**428 lines extracted, 13% additional reduction**)
 - **Cumulative Reduction:** 8,252 → 2,885 lines (**~65% total reduction**)
