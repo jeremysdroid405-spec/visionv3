@@ -22,6 +22,10 @@ from .adaptive_sync import router as adaptive_sync_router
 from .admin import router as admin_router, set_admin_deps
 from .cached_data import router as cached_data_router, set_cached_data_engine
 from .scheduler import router as scheduler_router, set_scheduler_deps
+from .core_v3 import router as core_v3_router, set_core_v3_engine
+from .tiers import router as tiers_router, set_tier_engine
+from .intel_sync import router as intel_sync_router, set_intel_sync_engine
+from .legacy import router as legacy_router, set_legacy_deps
 
 
 def register_all_routes(app, engine, game_lock_engine=None, db=None, 
@@ -40,6 +44,10 @@ def register_all_routes(app, engine, game_lock_engine=None, db=None,
     set_board_intel_engine(engine)
     set_roster_engine(engine)
     set_cached_data_engine(engine)
+    set_core_v3_engine(engine)
+    set_tier_engine(engine)
+    set_intel_sync_engine(engine)
+    set_legacy_deps(engine, stats_manager)
     
     # Set services for new routes
     if injury_service is not None:
@@ -90,7 +98,7 @@ def register_all_routes(app, engine, game_lock_engine=None, db=None,
     app.include_router(odds_mapper_router, prefix="/api")
     app.include_router(demon_tracker_router, prefix="/api")
     
-    # New routes (Phase 14-17 extraction)
+    # Phase 14-17 extraction
     app.include_router(payouts_router, prefix="/api")
     app.include_router(validation_router, prefix="/api")
     app.include_router(social_router, prefix="/api")
@@ -101,3 +109,9 @@ def register_all_routes(app, engine, game_lock_engine=None, db=None,
     app.include_router(admin_router, prefix="/api")
     app.include_router(cached_data_router, prefix="/api")
     app.include_router(scheduler_router, prefix="/api")
+    
+    # Phase 18 extraction - Core V3 routes
+    app.include_router(core_v3_router, prefix="/api")
+    app.include_router(tiers_router, prefix="/api")
+    app.include_router(intel_sync_router, prefix="/api")
+    app.include_router(legacy_router, prefix="/api")

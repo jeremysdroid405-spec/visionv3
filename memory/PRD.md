@@ -3,27 +3,28 @@
 ## Overview
 PickVision is a high-performance NBA Player Prop Dashboard with a "military tech" aesthetic. The application delivers AI-driven betting insights by identifying "Demons" (high-payout props) and "Goblins" (safer props).
 
-## Latest Update: 2026-12-XX - Server.py Refactoring Phase 17 Complete
+## Latest Update: 2026-12-XX - Server.py Refactoring Phase 18 Complete 🎉
 
 ### Backend Test Suite ✅
 - **File:** `/app/backend/tests/test_critical_backend.py`
 - **Tests:** 16 tests across 6 categories - ALL PASSING
 
-### Server.py Refactoring Phase 17 Complete ✅
-- **server.py reduced:** 2,621 → 1,258 lines (**-1,363 lines, 52% reduction**)
-- **Route handlers reduced:** 81 → 22 (**-59 handlers, 73% reduction**)
-- **New Route Modules Created (Phase 17):**
-  - `routes/admin.py` - Cache management & roster sync
-  - `routes/cached_data.py` - Zero-API-call warehouse endpoints
-  - `routes/scheduler.py` - Scheduler status & breaking news
-- **Total route modules:** 25 files in `/routes/`
+### Server.py Refactoring COMPLETE ✅
+- **server.py reduced:** 3,566 → 552 lines (**-3,014 lines, 85% reduction**)
+- **Route handlers reduced:** 81 → 0 (**100% extraction complete**)
+- **New Route Modules Created (Phase 18):**
+  - `routes/core_v3.py` - V3 status, players, demons, goblins, search, board, trending
+  - `routes/tiers.py` - War Zone, Goblin Vault, Front Lines, Parlay Builder
+  - `routes/intel_sync.py` - Sync-to-mongo, intel briefings
+  - `routes/legacy.py` - Backward-compatible legacy endpoints
+- **Total route modules:** 29 files in `/routes/`
 - **Total services:** 27 files in `/services/`
-- **Helper functions:** Documented duplicate utilities in server.py & utils.py
+- **Utils cache initialized:** ✅ At startup for external module usage
 
 #### Cumulative Backend Metrics:
-- **server.py:** 3,566 → 1,258 lines (65% reduction from original)
+- **server.py:** 3,566 → 552 lines (85% reduction) - NOW PURELY INFRASTRUCTURE
 - **demon_goblin_engine.py:** 8,252 → 1,514 lines (82% reduction)
-- **Routes extracted:** 25 modular files in `/routes/`
+- **Routes extracted:** 29 modular files in `/routes/`
 - **Services:** 27 service classes in `/services/`
 
 ## Core Architecture
@@ -39,7 +40,7 @@ _build_cached_board() in demon_goblin_engine.py
 dg_cached_board → dg_radar_picks (War Zone) → dg_goblin_vault → dg_goblin_recon
 ```
 
-### Backend Modular Architecture (Updated Phase 17)
+### Backend Modular Architecture (Final - Phase 18)
 ```
 /backend
 ├── config/              # Centralized configuration
@@ -90,11 +91,15 @@ dg_cached_board → dg_radar_picks (War Zone) → dg_goblin_vault → dg_goblin_
 │   ├── adaptive_sync.py # Adaptive sync & freshness (NEW Phase 16)
 │   ├── admin.py         # Cache & roster management (NEW Phase 17)
 │   ├── cached_data.py   # Zero-API warehouse endpoints (NEW Phase 17)
-│   └── scheduler.py     # Scheduler status & news (NEW Phase 17)
+│   ├── scheduler.py     # Scheduler status & news (NEW Phase 17)
+│   ├── core_v3.py       # V3 status, players, search, board (NEW Phase 18)
+│   ├── tiers.py         # War Zone, Goblin Vault, Front Lines (NEW Phase 18)
+│   ├── intel_sync.py    # Sync-to-mongo, intel briefings (NEW Phase 18)
+│   └── legacy.py        # Backward-compatible endpoints (NEW Phase 18)
 ├── tests/               # Pytest test suites
 │   └── test_critical_backend.py # 16 tests, all passing
 ├── utils.py             # Common utility functions (101 lines)
-├── server.py            # Main entry (middleware, startup) ~1,258 lines
+├── server.py            # Main entry (INFRASTRUCTURE ONLY) ~552 lines
 └── demon_goblin_engine.py # Core engine class (~1,514 lines)
 ```
 
