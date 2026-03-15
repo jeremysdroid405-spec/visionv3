@@ -2530,31 +2530,24 @@ TrendingSwipeSection.displayName = 'TrendingSwipeSection';
 // Individual bet card for Most Popular section
 const PopularBetCard = memo(({ bet, rank, onClick }) => {
   const lineType = bet.line_type || 'standard';
+  const isDemon = lineType === 'demon';
+  const isGoblin = lineType === 'goblin';
   
-  // Theme based on line type - symbols only, no text
+  // Theme based on line type
   const themes = {
     demon: { 
       border: 'border-red-500/40', 
       bg: 'from-red-950/30', 
-      badge: 'bg-red-500/20 text-red-400 border-red-500/30',
-      symbol: '🔥',
-      showBadge: true,
       glow: 'rgba(239, 68, 68, 0.2)'
     },
     goblin: { 
       border: 'border-green-500/40', 
       bg: 'from-green-950/30', 
-      badge: 'bg-green-500/20 text-green-400 border-green-500/30',
-      symbol: '💎',
-      showBadge: true,
       glow: 'rgba(34, 197, 94, 0.2)'
     },
     standard: { 
       border: 'border-zinc-700', 
       bg: 'from-zinc-900/50', 
-      badge: '',
-      symbol: '',
-      showBadge: false,
       glow: 'rgba(100, 100, 100, 0.1)'
     }
   };
@@ -2568,15 +2561,14 @@ const PopularBetCard = memo(({ bet, rank, onClick }) => {
       data-testid={`popular-bet-${rank}`}
     >
       <div className="p-3">
-        {/* Header with rank and line type symbol */}
+        {/* Header with rank and line type icon */}
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-2">
             <div className="w-6 h-6 rounded-full bg-orange-500/20 flex items-center justify-center">
               <span className="text-xs font-bold text-orange-400">#{rank}</span>
             </div>
-            {theme.showBadge && (
-              <span className="text-sm">{theme.symbol}</span>
-            )}
+            {isDemon && <DemonIcon size={16} />}
+            {isGoblin && <GoblinIcon size={16} />}
           </div>
           <div className="text-[10px] text-zinc-500">
             {bet.h10_rate}% L10
