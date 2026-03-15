@@ -2531,27 +2531,30 @@ TrendingSwipeSection.displayName = 'TrendingSwipeSection';
 const PopularBetCard = memo(({ bet, rank, onClick }) => {
   const lineType = bet.line_type || 'standard';
   
-  // Theme based on line type
+  // Theme based on line type - symbols only, no text
   const themes = {
     demon: { 
       border: 'border-red-500/40', 
       bg: 'from-red-950/30', 
       badge: 'bg-red-500/20 text-red-400 border-red-500/30',
-      badgeText: 'DEMON',
+      symbol: '🔥',
+      showBadge: true,
       glow: 'rgba(239, 68, 68, 0.2)'
     },
     goblin: { 
       border: 'border-green-500/40', 
       bg: 'from-green-950/30', 
       badge: 'bg-green-500/20 text-green-400 border-green-500/30',
-      badgeText: 'GOBLIN',
+      symbol: '💎',
+      showBadge: true,
       glow: 'rgba(34, 197, 94, 0.2)'
     },
     standard: { 
       border: 'border-zinc-700', 
       bg: 'from-zinc-900/50', 
-      badge: 'bg-zinc-700/50 text-zinc-300 border-zinc-600/30',
-      badgeText: 'STANDARD',
+      badge: '',
+      symbol: '',
+      showBadge: false,
       glow: 'rgba(100, 100, 100, 0.1)'
     }
   };
@@ -2565,15 +2568,15 @@ const PopularBetCard = memo(({ bet, rank, onClick }) => {
       data-testid={`popular-bet-${rank}`}
     >
       <div className="p-3">
-        {/* Header with rank and line type badge */}
+        {/* Header with rank and line type symbol */}
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-2">
             <div className="w-6 h-6 rounded-full bg-orange-500/20 flex items-center justify-center">
               <span className="text-xs font-bold text-orange-400">#{rank}</span>
             </div>
-            <Badge className={`${theme.badge} text-[9px] border px-1.5 py-0.5`}>
-              {theme.badgeText}
-            </Badge>
+            {theme.showBadge && (
+              <span className="text-sm">{theme.symbol}</span>
+            )}
           </div>
           <div className="text-[10px] text-zinc-500">
             {bet.h10_rate}% L10
