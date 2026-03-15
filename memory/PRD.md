@@ -16,6 +16,27 @@ _build_cached_board() in demon_goblin_engine.py
 dg_cached_board → dg_radar_picks (War Zone) → dg_goblin_vault → dg_goblin_recon
 ```
 
+### Backend Modular Architecture (New)
+```
+/backend
+├── config/              # Centralized configuration
+│   └── settings.py      # DB, API keys, constants, DVP rankings
+├── services/            # Business logic services
+│   ├── dvp_service.py   # DvP matchup calculation
+│   ├── parlay_service.py # Matrix & DFS compliance
+│   ├── data_scraper.py  # External API fetching
+│   └── social_scout.py  # Social signals & sentiment
+├── routes/              # API route handlers
+│   ├── picks.py         # War Zone, Safe Haven, Front Lines
+│   ├── parlays.py       # Parlay builder endpoints
+│   ├── board.py         # Player board & search
+│   ├── sync.py          # Sync operations
+│   ├── intel.py         # AI briefings & insights
+│   └── board_intel.py   # Primary sync operations
+├── server.py            # Main entry (middleware, startup)
+└── demon_goblin_engine.py # Core engine class
+```
+
 ### Tech Stack
 - **Frontend:** React 18 with Shadcn/UI components
 - **Backend:** FastAPI (Python 3.11)
@@ -58,6 +79,23 @@ dg_cached_board → dg_radar_picks (War Zone) → dg_goblin_vault → dg_goblin_
   - Removed unused `RadarCard` alias
   - Removed unused state: `syncedAt`, `parlayData`, `reconData` and their setters
 - **Data integrity:** Picks missing required fields are now filtered before reaching parlay matrix
+
+### 2026-03-15: Backend Modular Refactor
+- **Created service-oriented architecture:**
+  - `/backend/config/settings.py` (161 lines) - Centralized config, DB, API keys, DVP rankings
+  - `/backend/services/dvp_service.py` (95 lines) - DvP matchup calculation
+  - `/backend/services/parlay_service.py` (294 lines) - Matrix & DFS compliance
+  - `/backend/services/data_scraper.py` (298 lines) - External API fetching
+  - `/backend/services/social_scout.py` (275 lines) - Social signals & sentiment
+- **Created modular route handlers:**
+  - `/backend/routes/picks.py` (112 lines) - War Zone, Safe Haven, Front Lines
+  - `/backend/routes/parlays.py` (68 lines) - Parlay builder endpoints
+  - `/backend/routes/board.py` (146 lines) - Player board & search
+  - `/backend/routes/sync.py` (146 lines) - Sync operations
+  - `/backend/routes/intel.py` (118 lines) - AI briefings & insights
+  - `/backend/routes/board_intel.py` (100 lines) - Primary sync operations
+- **Total modular code: 1,865 lines** (extracted from 8,000+ line engine)
+- **API endpoints preserved** - No breaking changes to frontend
 
 ### 2026-03-15: P1 Tasks - PlayerDetailPage & Real DvP Data
 - **PlayerDetailPage Connected:**
