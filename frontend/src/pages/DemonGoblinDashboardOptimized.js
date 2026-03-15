@@ -2403,6 +2403,15 @@ FrontLinesSwipeSection.displayName = 'FrontLinesSwipeSection';
 const FrontLinesParlaySection = memo(({ picks, onParlayClick }) => {
   const { containerRef, currentIndex, showHint } = useSwipeTracker(5); // 5 parlay tiers
   
+  // Parlay tier names for The Strike
+  const parlayNames = {
+    2: { name: 'Quick Strike', description: '2 tactical picks - fast execution' },
+    3: { name: 'Triple Tap', description: '3 picks diversified across games' },
+    4: { name: 'Fire Squad', description: '4 picks for balanced firepower' },
+    5: { name: 'Full Clip', description: '5 picks stacked for premium payout' },
+    6: { name: 'Armory', description: 'PrizePicks Flex Play - Win on 5 OR 6 hits!' }
+  };
+  
   // Generate parlay data from picks (2-leg through 6-leg)
   const generateParlays = () => {
     if (!picks || picks.length < 2) return [];
@@ -2421,9 +2430,11 @@ const FrontLinesParlaySection = memo(({ picks, onParlayClick }) => {
       // Estimate payout multiplier
       const payoutMultiplier = Math.round(Math.pow(1.8, count) * 10) / 10;
       
+      const tierInfo = parlayNames[count];
+      
       return {
-        name: `${count}-PICK TACTICAL`,
-        description: `${count} Front Lines Picks`,
+        name: tierInfo.name,
+        description: tierInfo.description,
         picks: parlayPicks,
         estimated_payout: payoutMultiplier,
         combined_probability: Math.round(combinedProb * 10) / 10,
@@ -2432,7 +2443,7 @@ const FrontLinesParlaySection = memo(({ picks, onParlayClick }) => {
         lineup_valid: true,
         lineup_status: 'Valid (Multi-Team)',
         team_count: new Set(parlayPicks.map(p => p.team)).size,
-        badge: count === 2 ? 'SAFE' : count === 6 ? 'MAX RISK' : ''
+        badge: count === 2 ? 'QUICK' : count === 6 ? 'FLEX' : ''
       };
     }).filter(Boolean);
   };
@@ -2442,17 +2453,16 @@ const FrontLinesParlaySection = memo(({ picks, onParlayClick }) => {
   if (parlays.length === 0) return null;
   
   return (
-    <div data-testid="front-lines-parlays" className="mt-6">
+    <div data-testid="the-strike-section" className="mt-6">
       <div className="flex items-center justify-between mb-3 px-4 sm:px-0">
         <div className="flex items-center gap-2">
-          <BulletEmblem size={20} />
-          <span className="text-sm font-bold text-amber-400">THE FRONT LINES PARLAYS</span>
+          <span className="text-sm font-bold text-amber-400">THE STRIKE</span>
           <Badge className="bg-amber-950/50 text-amber-400 border-amber-800/50 text-[10px] hidden sm:inline-flex">
-            2-6 LEG BUILDS
+            TACTICAL PARLAYS
           </Badge>
         </div>
         <div className="text-[10px] text-zinc-500 hidden sm:block">
-          Tactical Parlay Combinations
+          Front Lines Parlay Combinations
         </div>
       </div>
       
@@ -2465,7 +2475,7 @@ const FrontLinesParlaySection = memo(({ picks, onParlayClick }) => {
         >
           {parlays.map((parlay, idx) => (
             <div 
-              key={`frontlines-parlay-${idx + 2}`} 
+              key={`strike-parlay-${idx + 2}`} 
               className="snap-center flex-shrink-0 w-[calc(100vw-48px)] max-w-[340px] sm:w-auto sm:max-w-none"
             >
               <UniversalParlayTicket
