@@ -2052,7 +2052,7 @@ const UniversalParlayTicket = memo(({
                 </div>
                 <div className="flex items-center gap-1.5">
                   <span className="text-[10px] text-zinc-400">{pick.stat_type}</span>
-                  <span className="text-xs font-bold text-white">{pick.line}</span>
+                  <span className="text-xs font-bold text-white">{pick.demon_line || pick.goblin_line || pick.line}</span>
                   {(pick.intel_briefing || pick.insight_summary) && (
                     <Zap className="w-3 h-3 text-purple-400" title="Has AI Vision" />
                   )}
@@ -2245,7 +2245,10 @@ const validateTicket = (ticketPicks, fullPool, ticketSize) => {
   if (!ticketPicks || ticketPicks.length === 0) return [];
   
   // Helper: Get unique identifier for a pick (player + stat + line)
-  const getPickId = (pick) => `${pick.player_name}-${pick.stat_type}-${pick.line}`;
+  const getPickId = (pick) => {
+    const lineValue = pick.demon_line || pick.goblin_line || pick.line || 0;
+    return `${pick.player_name}-${pick.stat_type}-${lineValue}`;
+  };
   
   // ===== STRICT 2-LEG RULES: No Stacks Allowed =====
   // PrizePicks requires 2 DIFFERENT teams for 2-leg entries
