@@ -3604,23 +3604,28 @@ class DemonGoblinEngine:
     
     async def _build_front_lines(self, players_dict: Dict[str, Dict], sync_time: datetime):
         """
-        THE FRONT LINES - Forced 50/50 Goblin/Demon Split
-        ==================================================
+        THE FRONT LINES - 4-PILLAR TACTICAL FORMULA v3.0
+        =================================================
         
-        PROBLEM: Sorting by raw vault_score causes Goblins (easier lines) to dominate
-        because their base hit probabilities are naturally higher.
+        Mid-tier picks bridging Safe Haven (high probability) and War Zone (high ceiling).
         
-        SOLUTION: Force a 50/50 split via two distinct drafts:
+        HARD FILTER (The Bouncer):
+        - Reject if L10_Hit_Frequency < 0.50 (must hit at least 5/10 games)
         
-        Draft A (Mild Goblins): 5-18% gap BELOW standard, Top 5 by vault_score
-        Draft B (Mild Demons): 5-18% gap ABOVE standard, Top 5 by vault_score
+        4-PILLAR BALANCED FORMULA:
+        - Pillar 1: Base Consistency (45%) = (L10 * 0.6) + (L5 * 0.4)
+        - Pillar 2: Vegas Implied Prob (25%)
+        - Pillar 3: DvP Matchup (15%) - placeholder
+        - Pillar 4: AI Context (15%)
         
-        Final merge: Combine 10 picks, sort by Expected Value (EV) / Edge.
+        frontlines_score = (P1 * 0.45) + (P2 * 0.25) + (P3 * 0.15) + (P4 * 0.15)
         
-        Uses "God-Tier" 4-Pillar Formula for individual scoring:
-        vault_score = (consistency * 0.50) + (vegas * 0.20) + (dvp * 0.15) + (context * 0.15)
+        FORCED 50/50 SPLIT:
+        - Draft A (Mild Goblins): Top 5 from 5-18% gap BELOW standard
+        - Draft B (Mild Demons): Top 5 from 5-18% gap ABOVE standard
+        - Final merge: Randomize combined 10 picks
         """
-        logger.info("[FRONT LINES] Building with FORCED 50/50 Goblin/Demon split...")
+        logger.info("[FRONT LINES v3.0] Building with 4-Pillar Tactical Formula + 50/50 Split...")
         
         goblin_candidates = []  # Draft A: Mild Goblins (5-18% below standard)
         demon_candidates = []   # Draft B: Mild Demons (5-18% above standard)
@@ -3730,15 +3735,16 @@ class DemonGoblinEngine:
         demon_count = len([p for p in top_10 if p.get("is_demon")])
         goblin_count = len([p for p in top_10 if p.get("is_goblin")])
         
-        logger.info(f"[FRONT LINES] Generated {len(top_10)} picks with FORCED 50/50 SPLIT")
+        logger.info(f"[FRONT LINES v3.0] Generated {len(top_10)} picks (4-Pillar Tactical Formula)")
+        logger.info(f"  Hard Filter: L10 >= 50% hit rate required")
+        logger.info(f"  Formula: (Consistency * 0.45) + (Vegas * 0.25) + (DvP * 0.15) + (AI * 0.15)")
         logger.info(f"  Draft A (Goblins): {len(draft_a)} selected | Draft B (Demons): {len(draft_b)} selected")
         logger.info(f"  Final Mix - Demons: {demon_count} | Goblins: {goblin_count}")
-        logger.info(f"  Total Goblin candidates: {len(goblin_candidates)} | Total Demon candidates: {len(demon_candidates)}")
         
-        for i, pick in enumerate(top_10[:5]):
+        for i, pick in enumerate(top_10[:3]):
             prop_type = "DEMON" if pick.get("is_demon") else "GOBLIN"
             logger.info(f"  #{i+1}: {pick['player_name']} [{prop_type}] - {pick['stat_type']} {pick['line']}")
-            logger.info(f"       Score: {pick['vault_score_100']:.1f}/100 | Gap: {pick['gap_pct']:.1f}% | EV: {pick.get('ev_edge', 0):.3f}")
+            logger.info(f"       Score: {pick.get('frontlines_score_100', 0):.1f}/100 | P1:{pick.get('pillar_1_consistency', 0):.2f} P2:{pick.get('pillar_2_vegas', 0):.2f} P3:{pick.get('pillar_3_dvp', 0):.2f} P4:{pick.get('pillar_4_context', 0):.2f}")
     
     def _evaluate_front_lines_prop(
         self, prop: Dict, player_name: str, player_data: Dict, 
@@ -3746,7 +3752,36 @@ class DemonGoblinEngine:
         is_demon: bool
     ) -> Optional[Dict]:
         """
+        THE FRONT LINES - 4-PILLAR TACTICAL FORMULA v3.0
+        =================================================
+        
         Evaluate a single prop for Front Lines eligibility.
+        This formula bridges the gap between Safe Haven (high probability) 
+        and War Zone (high ceiling), using a balanced 4-pillar architecture.
+        
+        HARD FILTER (The Bouncer):
+        - Reject if L10_Hit_Frequency < 0.50 (must hit at least 5/10 games)
+        - Uses binary hit frequency, NOT averages
+        
+        4-PILLAR BALANCED FORMULA:
+        
+        Pillar 1: Base Consistency (45% Weight)
+        consistency_score = (L10 * 0.6) + (L5 * 0.4)
+        
+        Pillar 2: Vegas Implied Probability (25% Weight)
+        - Negative odds: implied_prob = abs(odds) / (abs(odds) + 100)
+        - Positive odds: implied_prob = 100 / (odds + 100)
+        
+        Pillar 3: Matchup / DvP (15% Weight)
+        - Range: 0.0 to 1.0 (0.5 = neutral)
+        - Placeholder for now
+        
+        Pillar 4: AI Context Shift (15% Weight)
+        - Range: 0.0 to 1.0 (0.5 = neutral)
+        - From AiContextEngine
+        
+        FINAL CALCULATION:
+        frontlines_score = (P1 * 0.45) + (P2 * 0.25) + (P3 * 0.15) + (P4 * 0.15)
         
         Returns None if prop doesn't qualify (wrong gap range, no data, etc.)
         Returns candidate dict if it qualifies.
@@ -3806,32 +3841,41 @@ class DemonGoblinEngine:
         if h10_games == 0 and h5_games == 0:
             return None
         
-        # ==================== 4-PILLAR GOD-TIER SCORING ====================
+        # ========== HARD FILTER (The Bouncer) ==========
+        # Reject if L10_Hit_Frequency < 0.50 (must hit at least 5/10 games)
+        if h10 < 0.50:
+            return None
         
-        # PILLAR 1: Base Consistency (50%)
+        # ========== 4-PILLAR TACTICAL FORMULA v3.0 ==========
+        
+        # PILLAR 1: Base Consistency (45% Weight)
+        # consistency_score = (L10 * 0.6) + (L5 * 0.4)
         pillar_1_consistency = (h10 * 0.6) + (h5 * 0.4)
         
-        # PILLAR 2: Vegas Implied Probability (20%)
+        # PILLAR 2: Vegas Implied Probability (25% Weight)
         if price < 0:
+            # Negative odds: implied_prob = abs(odds) / (abs(odds) + 100)
             pillar_2_vegas = abs(price) / (abs(price) + 100)
         else:
+            # Positive odds: implied_prob = 100 / (odds + 100)
             pillar_2_vegas = 100 / (price + 100)
         pillar_2_vegas = min(1.0, max(0.0, pillar_2_vegas))
         
-        # PILLAR 3: DvP Matchup Modifier (15%) - placeholder
+        # PILLAR 3: DvP Matchup Modifier (15% Weight) - placeholder
         pillar_3_dvp = player_data.get("dvp_modifier", 0.5)
         
-        # PILLAR 4: AI Context Shift (15%)
+        # PILLAR 4: AI Context Shift (15% Weight)
         pillar_4_context = ai_context_cache.get(player_name, 0.5)
         
-        # FINAL VAULT SCORE (same formula as Safe Haven)
-        vault_score = (
-            (pillar_1_consistency * 0.50) +
-            (pillar_2_vegas * 0.20) +
+        # ========== FINAL CALCULATION ==========
+        # frontlines_score = (P1 * 0.45) + (P2 * 0.25) + (P3 * 0.15) + (P4 * 0.15)
+        frontlines_score = (
+            (pillar_1_consistency * 0.45) +
+            (pillar_2_vegas * 0.25) +
             (pillar_3_dvp * 0.15) +
             (pillar_4_context * 0.15)
         )
-        vault_score_100 = vault_score * 100
+        frontlines_score_100 = frontlines_score * 100
         
         # Build candidate
         return {
@@ -3844,6 +3888,7 @@ class DemonGoblinEngine:
             "team_abbr": player_data.get("team_abbr"),
             "photo_url": player_data.get("headshot_url"),
             "headshot_url": player_data.get("headshot_url"),
+            "nba_id": player_data.get("nba_id") or player_data.get("nba_com_id"),
             "opponent": player_data.get("opponent"),
             "opponent_abbr": player_data.get("opponent_abbr"),
             "game_id": player_data.get("game_id"),
@@ -3881,15 +3926,17 @@ class DemonGoblinEngine:
             "h5_games": h5_games,
             "season_avg": round(season_avg, 1),
             
-            # 4-PILLAR BREAKDOWN
+            # 4-PILLAR BREAKDOWN (Tactical Formula v3.0)
             "pillar_1_consistency": round(pillar_1_consistency, 4),
             "pillar_2_vegas": round(pillar_2_vegas, 4),
             "pillar_3_dvp": round(pillar_3_dvp, 4),
             "pillar_4_context": round(pillar_4_context, 4),
             
-            # FINAL SCORES
-            "vault_score": round(vault_score, 4),
-            "vault_score_100": round(vault_score_100, 1),
+            # FINAL SCORES - Use frontlines_score as primary
+            "frontlines_score": round(frontlines_score, 4),
+            "frontlines_score_100": round(frontlines_score_100, 1),
+            "vault_score": round(frontlines_score, 4),  # Alias for sorting compatibility
+            "vault_score_100": round(frontlines_score_100, 1),  # Alias for UI compatibility
             "hit_probability": round(h10 * 100, 1),
             
             # Front Lines specific
