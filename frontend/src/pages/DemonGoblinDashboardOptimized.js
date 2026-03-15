@@ -2281,20 +2281,20 @@ const GauntletSwipeSection = memo(({ parlayData, onParlayClick }) => {
 
 GauntletSwipeSection.displayName = 'GauntletSwipeSection';
 
-// Safe Haven Swipeable Section - High Reliability Parlays
-const SafeHavenSwipeSection = memo(({ reconData, onParlayClick }) => {
+// The Shield Swipeable Section - High Reliability Parlays (under Safe Haven)
+const TheShieldSwipeSection = memo(({ reconData, onParlayClick }) => {
   const tiers = ['daily_double', 'green_ladder_3', 'green_ladder_4', 'green_stack_5', 'fortress_flex'];
   const parlays = tiers.map(t => reconData[t]).filter(Boolean);
   const { containerRef, currentIndex, showHint } = useSwipeTracker(parlays.length);
   
   return (
-    <div data-testid="safehaven-section" className="mt-6">
+    <div data-testid="the-shield-section" className="mt-6">
       <div className="flex items-center justify-between mb-3 px-4 sm:px-0">
         <div className="flex items-center gap-2">
           <Shield className="w-5 h-5 text-emerald-400" />
-          <span className="text-sm font-bold text-emerald-400">THE SAFE HAVEN</span>
+          <span className="text-sm font-bold text-emerald-400">THE SHIELD</span>
           <Badge className="bg-emerald-950/50 text-emerald-400 border-emerald-800/50 text-[10px] hidden sm:inline-flex">
-            HIGH RELIABILITY
+            HIGH RELIABILITY PARLAYS
           </Badge>
         </div>
         <div className="text-[10px] text-zinc-500 hidden sm:block">
@@ -2347,7 +2347,7 @@ const SafeHavenSwipeSection = memo(({ reconData, onParlayClick }) => {
   );
 });
 
-SafeHavenSwipeSection.displayName = 'SafeHavenSwipeSection';
+TheShieldSwipeSection.displayName = 'TheShieldSwipeSection';
 
 // Front Lines Swipeable Section - AMBER theme + BULLET emblem (5-18% gap)
 const FrontLinesSwipeSection = memo(({ picks, onPickClick, tMinusGames = [] }) => {
@@ -4492,6 +4492,14 @@ export const DemonGoblinDashboardOptimized = ({ isDemoMode = false }) => {
           />
         )}
 
+        {/* THE SHIELD - Safe Haven Parlay Generator (directly under Safe Haven) */}
+        {Object.keys(reconData).length > 0 && (
+          <TheShieldSwipeSection 
+            reconData={reconData}
+            onParlayClick={(parlay) => setExpandedParlay({ parlay, type: 'recon' })}
+          />
+        )}
+
         {/* THE FRONT LINES - Middle Tier (Mild Alternates 5-18% from standard) */}
         {frontLinesPicks.length > 0 && (
           <FrontLinesSwipeSection 
@@ -4523,14 +4531,6 @@ export const DemonGoblinDashboardOptimized = ({ isDemoMode = false }) => {
           <GauntletSwipeSection 
             parlayData={parlayData}
             onParlayClick={(parlay) => setExpandedParlay({ parlay, type: 'builder' })}
-          />
-        )}
-
-        {/* Goblin Parlay Generator */}
-        {Object.keys(reconData).length > 0 && (
-          <SafeHavenSwipeSection 
-            reconData={reconData}
-            onParlayClick={(parlay) => setExpandedParlay({ parlay, type: 'recon' })}
           />
         )}
 
