@@ -50,3 +50,5 @@ from .props_service import PropsService
 from .sync_service import SyncService
 from .tier_builder_service import TierBuilderService
 from .parlay_builder_service import ParlayBuilderService
+from .cached_board_builder_service import CachedBoardBuilderService
+from .odds_api_service import OddsApiService

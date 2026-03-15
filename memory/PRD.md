@@ -45,6 +45,23 @@ dg_cached_board → dg_radar_picks (War Zone) → dg_goblin_vault → dg_goblin_
 
 ## What's Been Implemented
 
+### 2026-03-15: Backend Engine Deconstruction (Phase 7 - Odds API & Cached Board Services)
+- **Engine Reduction:** 5,049 → 4,196 lines (**853 lines extracted, 17% additional reduction**)
+- **Cumulative Reduction:** 8,252 → 4,196 lines (**~49% total reduction**)
+- **New Services Created:**
+  - `CachedBoardBuilderService` (522 lines): Centralized board building from props
+  - `OddsApiService` (328 lines): The Odds API interactions, prop classification
+- **Methods Proxied in Engine:**
+  - `_build_cached_board()` → CachedBoardBuilderService
+  - `_build_cached_board_legacy()` → CachedBoardBuilderService
+  - `fetch_todays_events()` → OddsApiService
+  - `fetch_prizepicks_odds()` → OddsApiService
+  - `fetch_standard_odds()` → OddsApiService
+  - `extract_prizepicks_props()` → OddsApiService
+- **Dead Code Removed:** ~230 lines of unreachable legacy code after proxy conversions
+- **Total Services:** 6,927 lines of modular, reusable code
+- **Test Results:** All API endpoints verified working
+
 ### 2026-03-15: Backend Engine Deconstruction (Phase 5 - Parlay Builder Service)
 - **Engine Reduction:** 7,509 → 5,105 lines (**2,404 lines extracted, 32% reduction**)
 - **New ParlayBuilderService (809 lines):**
