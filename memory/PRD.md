@@ -45,6 +45,21 @@ dg_cached_board → dg_radar_picks (War Zone) → dg_goblin_vault → dg_goblin_
   - Shows "VISION PICK" badge on highlighted row
   - Bug was: `handlePlayerClick()` default params were overwriting highlight values
 
+### 2026-03-15: Modular Architecture Refactor (Phase 1)
+- **Created modular file structure:**
+  - `/src/logic/matrixEngine.js` (252 lines) - Parlay matrix and DFS validation engine
+  - `/src/hooks/useDFSData.js` (230 lines) - Central data fetching hook
+  - `/src/components/dashboard/PickCard.jsx` (297 lines) - Universal pick card component
+  - `/src/components/dashboard/ParlayTicket.jsx` (158 lines) - Parlay ticket component
+  - `/src/components/dashboard/SectionContainer.jsx` (248 lines) - Section wrapper components
+  - `/src/pages/Dashboard.jsx` (324 lines) - New clean controller (<400 lines)
+- **Dead code eliminated:**
+  - Removed unused `ScoutingBadge` component (26 lines)
+  - Removed unused `RadarCard` alias
+  - Removed unused state: `syncedAt`, `parlayData`, `reconData` and their setters
+  - Monolith reduced from 5035 → 4987 lines (48 lines removed)
+- **Data integrity:** Picks missing required fields are now filtered before reaching parlay matrix
+
 ### 2026-03-15: Unified 3-Tier Card UI
 - Created `UniversalPickCard` component as single template for all 30 picks
 - Deleted legacy `VaultCard` and `FrontLinesCard` components

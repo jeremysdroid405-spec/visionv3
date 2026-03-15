@@ -648,33 +648,6 @@ LockedBadge.displayName = 'LockedBadge';
 
 // ==================== SCOUTING BADGE - Projection Cards ====================
 // Orange themed badge for players awaiting official lines
-const ScoutingBadge = memo(({ isProjection, status }) => {
-  if (!isProjection) return null;
-  
-  return (
-    <div className="absolute top-2 right-2 z-10">
-      <div 
-        className="badge-scouting px-2 py-1 rounded-md flex items-center gap-1.5 animate-pulse"
-        style={{
-          background: 'rgba(255, 165, 0, 0.2)',
-          border: '1px solid #FFA500',
-          color: '#FFA500'
-        }}
-      >
-        <Eye className="w-3 h-3" />
-        <span className="text-[10px] font-bold uppercase tracking-wider">SCOUTING</span>
-      </div>
-      {status && (
-        <div className="mt-1 text-[9px] text-orange-400/80 text-center font-mono">
-          {status}
-        </div>
-      )}
-    </div>
-  );
-});
-
-ScoutingBadge.displayName = 'ScoutingBadge';
-
 // ==================== SCOUTING MISSION BRIEFING CARD ====================
 // Placeholder card for games without live lines yet
 const ScoutingMissionCard = memo(({ projection, onClick }) => {
@@ -1883,10 +1856,6 @@ const UniversalPickCard = memo(({
 });
 
 UniversalPickCard.displayName = 'UniversalPickCard';
-
-// Legacy alias for backward compatibility
-const RadarCard = UniversalPickCard;
-
 
 // ==================== UNIVERSAL PARLAY TICKET ====================
 // Single unified ticket template for all 3 tiers (War Zone, Front Lines, Safe Haven)
@@ -4186,9 +4155,6 @@ export const DemonGoblinDashboardOptimized = ({ isDemoMode = false }) => {
   const [syncing, setSyncing] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState('all');
-  const [syncedAt, setSyncedAt] = useState(null);
-  const [parlayData, setParlayData] = useState({});
-  const [reconData, setReconData] = useState({});  // Goblin Recon parlays
   const [expandedParlay, setExpandedParlay] = useState(null);  // Currently expanded parlay view
   
   // Most Popular Bets Live Ticker state
@@ -4320,7 +4286,6 @@ export const DemonGoblinDashboardOptimized = ({ isDemoMode = false }) => {
       if (boardResponse.data.success && boardResponse.data.players_count > 0) {
         setPlayers(boardResponse.data.players || []);
         setTrending(boardResponse.data.trending || []);
-        setSyncedAt(boardResponse.data.synced_at);
         setStaticLoaded(true);
         setLinesLoaded(true);
         console.log(`[CACHED] Loaded ${boardResponse.data.players_count} players from MongoDB`);
@@ -4349,18 +4314,6 @@ export const DemonGoblinDashboardOptimized = ({ isDemoMode = false }) => {
         const picksWithSignals = applySignals(frontLinesResponse.data.picks || []);
         setFrontLinesPicks(picksWithSignals);
         console.log(`[FRONT LINES] Loaded ${frontLinesResponse.data.picks_count} front lines picks`);
-      }
-      
-      // Load parlay data
-      if (parlayResponse.data.success) {
-        setParlayData(parlayResponse.data.parlays || {});
-        console.log(`[PARLAY] Loaded ${Object.keys(parlayResponse.data.parlays || {}).length} parlay types`);
-      }
-      
-      // Load Goblin Recon data
-      if (reconResponse.data.success) {
-        setReconData(reconResponse.data.parlays || {});
-        console.log(`[RECON] Loaded ${Object.keys(reconResponse.data.parlays || {}).length} recon tiers`);
       }
       
       // Load injury alerts
