@@ -73,9 +73,20 @@ from odds_api_mapper import (
 )
 from ai_context_engine import AiContextEngine
 from routes import register_all_routes
+from middleware import (
+    RateLimitMiddleware,
+    RequestTracerMiddleware,
+    get_request_id,
+    setup_tracing_logger,
+    TracingFormatter,
+    RequestIdFilter,
+)
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
+
+# Enable rate limiting (set to False to disable)
+RATE_LIMITING_ENABLED = os.environ.get("RATE_LIMITING_ENABLED", "true").lower() == "true"
 
 CURRENT_SEASON = "2025"  # 2025-26 NBA season
 
@@ -286,8 +297,57 @@ app = FastAPI(
 api_router = APIRouter(prefix="/api")
 security = HTTPBearer()
 
-logging.basicConfig(level=logging.INFO)
+# ==================== LOGGING CONFIGURATION ====================
+# Configure logging with request ID tracing
+def setup_logging():
+    """Configure logging with request ID tracing support."""
+    # Create formatter with request ID support
+    formatter = TracingFormatter(
+        fmt="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S"
+    )
+    
+    # Configure root logger
+    root_logger = logging.getLogger()
+    root_logger.setLevel(logging.INFO)
+    
+    # Remove existing handlers
+    for handler in root_logger.handlers[:]:
+        root_logger.removeHandler(handler)
+    
+    # Add console handler with tracing formatter
+    console_handler = logging.StreamHandler()
+    console_handler.setFormatter(formatter)
+    console_handler.addFilter(RequestIdFilter())
+    root_logger.addHandler(console_handler)
+    
+    return root_logger
+
+# Initialize logging
+setup_logging()
 logger = logging.getLogger(__name__)
+
+# ==================== MIDDLEWARE CONFIGURATION ====================
+# Add CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Add Request Tracer middleware (generates X-Request-ID)
+app.add_middleware(RequestTracerMiddleware)
+
+# Add Rate Limiter middleware (X-RateLimit-* headers)
+if RATE_LIMITING_ENABLED:
+    app.add_middleware(RateLimitMiddleware, enabled=True)
+    logger.info("[MIDDLEWARE] Rate limiting ENABLED")
+else:
+    logger.info("[MIDDLEWARE] Rate limiting DISABLED")
+
+logger.info("[MIDDLEWARE] Request tracing ENABLED (X-Request-ID)")
 
 stats_manager = None
 demon_tracker = None

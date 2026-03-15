@@ -100,10 +100,37 @@ async def sync_lakers_test():
 
 @router.get("/rate-limit-status")
 async def get_rate_limit_status():
-    """Get current API rate limit status"""
-    stats = get_stats_manager()
-    status = stats.rate_limit.get_status()
-    return {"success": True, "rate_limit": status}
+    """
+    Get current API rate limit status.
+    
+    Returns:
+    - active_buckets: Number of active rate limit buckets
+    - tiers: Configuration for each rate limit tier
+    - enabled: Whether rate limiting is active
+    """
+    from middleware import get_rate_limit_storage, RATE_LIMIT_TIERS
+    import os
+    
+    storage = get_rate_limit_storage()
+    stats = storage.get_stats()
+    
+    tiers = {
+        tier: {
+            "requests_per_minute": config.requests_per_minute,
+            "burst_size": config.burst_size
+        }
+        for tier, config in RATE_LIMIT_TIERS.items()
+    }
+    
+    return {
+        "success": True,
+        "rate_limit": {
+            "enabled": os.environ.get("RATE_LIMITING_ENABLED", "true").lower() == "true",
+            "active_buckets": stats["active_buckets"],
+            "last_cleanup": stats["last_cleanup"],
+            "tiers": tiers
+        }
+    }
 
 
 @router.get("/roster-status")

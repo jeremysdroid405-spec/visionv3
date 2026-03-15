@@ -3,33 +3,35 @@
 ## Overview
 PickVision is a high-performance NBA Player Prop Dashboard with a "military tech" aesthetic. The application delivers AI-driven betting insights by identifying "Demons" (high-payout props) and "Goblins" (safer props).
 
-## Latest Update: 2026-12-XX - API Documentation & Versioning Complete 🎉
+## Latest Update: 2026-12-XX - Rate Limiting & Request Tracing Complete 🎉
 
 ### Backend Test Suite ✅
 - **File:** `/app/backend/tests/test_critical_backend.py`
 - **Tests:** 16 tests across 6 categories - ALL PASSING
 
-### API Documentation & Versioning Complete ✅
-- **OpenAPI 3.0 Documentation:**
-  - Title: "PickVision API"
-  - Version: 3.0.0
-  - 29 organized tag groups
-  - Full markdown description with tier explanations
-  - Contact and license info
-- **Deprecation Management:**
-  - RFC-compliant deprecation headers (Deprecation, Sunset, Link)
-  - X-Deprecation-Notice custom header
-  - Replacement endpoints documented
-  - Sunset date: 2026-01-01 for legacy endpoints
-- **API Versioning Config:**
-  - `config/api_versioning.py` - Centralized version management
-  - V4 breaking changes documented
-  - Migration guides included
+### Rate Limiting & Request Tracing Complete ✅
+- **Rate Limiting Middleware** (`middleware/rate_limiter.py`):
+  - Token Bucket algorithm for smooth rate limiting
+  - In-memory storage (no database hits)
+  - Per-endpoint tiered limits (default: 100/min, sync: 10/min, AI: 20/min)
+  - Standard 2026 headers: `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`, `Retry-After`
+- **Request Tracer Middleware** (`middleware/tracer.py`):
+  - UUIDv4 generation for every request
+  - `X-Request-ID` header in all responses
+  - `X-Response-Time` header with millisecond precision
+  - Logger integration with automatic request ID prepending
+- **DvP Data Service Enhancement** (`services/dvp_service.py`):
+  - `fetch_live_dvp()` placeholder for P2 live data
+  - `X-Data-Source: static-fallback` header for maintenance mode detection
+  - Ready for live API integration
 
-### API Documentation URLs:
-- Swagger UI: `/api/docs`
-- ReDoc: `/api/redoc`
-- OpenAPI JSON: `/api/openapi.json`
+### Middleware Headers (All Responses):
+- `X-Request-ID: <uuid>` - Unique request identifier
+- `X-Response-Time: <ms>` - Processing time
+- `X-RateLimit-Limit: <n>` - Max requests per window
+- `X-RateLimit-Remaining: <n>` - Remaining requests
+- `X-RateLimit-Reset: <unix>` - Reset timestamp
+- `X-RateLimit-Tier: <tier>` - Rate limit tier applied
 
 ### Server.py Refactoring COMPLETE ✅
 - **server.py reduced:** 3,566 → 552 lines (**-3,014 lines, 85% reduction**)
@@ -62,11 +64,16 @@ _build_cached_board() in demon_goblin_engine.py
 dg_cached_board → dg_radar_picks (War Zone) → dg_goblin_vault → dg_goblin_recon
 ```
 
-### Backend Modular Architecture (Final - Phase 18)
+### Backend Modular Architecture (Final - Phase 19)
 ```
 /backend
 ├── config/              # Centralized configuration
-│   └── settings.py      # DB, API keys, constants, DVP rankings
+│   ├── settings.py      # DB, API keys, constants, DVP rankings
+│   └── api_versioning.py # API version management (NEW)
+├── middleware/          # Request processing middleware (NEW)
+│   ├── __init__.py
+│   ├── rate_limiter.py  # Token Bucket rate limiting
+│   └── tracer.py        # Request ID tracing
 ├── services/            # Business logic services (27 modules)
 │   ├── picks_getter_service.py  # War Zone, Goblin Vault, Front Lines, Most Popular Bets
 │   ├── cached_board_builder_service.py  # Board building & tier construction
