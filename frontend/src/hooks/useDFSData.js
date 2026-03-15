@@ -14,9 +14,10 @@ const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 export const useDFSData = () => {
   // Core pick data
   const [players, setPlayers] = useState([]);
-  const [radarPicks, setRadarPicks] = useState([]);     // War Zone
-  const [vaultPicks, setVaultPicks] = useState([]);     // Safe Haven
-  const [frontLinesPicks, setFrontLinesPicks] = useState([]); // Front Lines
+  const [trending, setTrending] = useState([]);
+  const [radarPicks, setRadarPicks] = useState([]);     // War Zone (Demons)
+  const [vaultPicks, setVaultPicks] = useState([]);     // Safe Haven (Goblins)
+  const [frontLinesPicks, setFrontLinesPicks] = useState([]); // Front Lines (Mixed)
   
   // Popular bets (live ticker)
   const [popularBets, setPopularBets] = useState([]);
@@ -28,14 +29,28 @@ export const useDFSData = () => {
   const [liveScores, setLiveScores] = useState([]);
   const [breakingNews, setBreakingNews] = useState([]);
   const [tMinusGames, setTMinusGames] = useState([]);
+  const [injuryAlerts, setInjuryAlerts] = useState({});
+  
+  // Scouting projections (early bird)
+  const [scoutingProjections, setScoutingProjections] = useState([]);
+  const [isEarlyBirdActive, setIsEarlyBirdActive] = useState(false);
   
   // Status tracking
   const [linesLoaded, setLinesLoaded] = useState(false);
+  const [staticLoaded, setStaticLoaded] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [boardIntelStatus, setBoardIntelStatus] = useState({
     time_since_sync_display: 'Loading...',
     last_sync_type: null,
-    scheduler_running: false
+    scheduler_running: false,
+    next_scheduled_sync: null
+  });
+  const [syncStatus, setSyncStatus] = useState({
+    engine_status: 'loading',
+    sync_age_display: '...',
+    seconds_since_sync: 0,
+    mission_critical_games: 0,
+    has_stale_intel: false
   });
   
   // Helper to apply social signals to picks
@@ -55,15 +70,73 @@ export const useDFSData = () => {
     });
   };
   
-  // Filter picks with missing required data
-  const filterValidPicks = (picks) => {
-    return picks.filter(pick => {
-      // Must have player_name, team, stat_type, and a line value
-      if (!pick.player_name || !pick.team || !pick.stat_type) return false;
-      const line = pick.demon_line || pick.goblin_line || pick.line;
-      if (line === undefined || line === null) return false;
-      return true;
-    });
+  /**
+   * CRITICAL: Filter picks with missing required data
+   * Specifically hunts for Demon attributes that cause blackout
+   * 
+   * @param {Array} picks - Raw picks array
+   * @param {string} pickType - 'demon' | 'goblin' | 'mixed' for logging
+   * @returns {Array} - Validated picks only
+   */
+  const filterValidPicks = (picks, pickType = 'unknown') => {
+    const validPicks = [];
+    const droppedPicks = [];
+    
+    for (const pick of picks) {
+      const issues = [];
+      
+      // Required fields check
+      if (!pick.player_name) issues.push('missing player_name');
+      if (!pick.team) issues.push('missing team');
+      if (!pick.stat_type) issues.push('missing stat_type');
+      
+      // LINE VALUE CHECK - Critical for Demons
+      const lineValue = pick.demon_line || pick.goblin_line || pick.line;
+      if (lineValue === undefined || lineValue === null) {
+        issues.push('missing line value (demon_line/goblin_line/line)');
+      }
+      
+      // DEMON-SPECIFIC VALIDATION
+      if (pick.is_demon || pickType === 'demon') {
+        // Demon must have demon_line
+        if (!pick.demon_line && pick.demon_line !== 0) {
+          issues.push('DEMON DATA MISMATCH: is_demon=true but no demon_line');
+        }
+        // Demon should have scoring data
+        if (!pick.radar_score && pick.radar_score !== 0) {
+          issues.push('DEMON DATA MISMATCH: missing radar_score');
+        }
+      }
+      
+      // GOBLIN-SPECIFIC VALIDATION
+      if (pick.is_goblin || pickType === 'goblin') {
+        if (!pick.goblin_line && pick.goblin_line !== 0) {
+          issues.push('GOBLIN DATA MISMATCH: is_goblin=true but no goblin_line');
+        }
+      }
+      
+      // Win probability check (important for EV calculation)
+      if (pick.win_probability === undefined && pick.h10_rate === undefined) {
+        issues.push('missing win_probability and h10_rate');
+      }
+      
+      if (issues.length > 0) {
+        droppedPicks.push({ player: pick.player_name, stat: pick.stat_type, issues });
+      } else {
+        validPicks.push(pick);
+      }
+    }
+    
+    // Log data mismatches for debugging
+    if (droppedPicks.length > 0) {
+      console.warn(`[DATA MISMATCH] ${pickType.toUpperCase()} - Dropped ${droppedPicks.length} picks BEFORE matrix:`);
+      droppedPicks.forEach(d => {
+        console.warn(`  • ${d.player} (${d.stat}): ${d.issues.join(', ')}`);
+      });
+    }
+    
+    console.log(`[${pickType.toUpperCase()}] Valid: ${validPicks.length}/${picks.length} picks passed validation`);
+    return validPicks;
   };
   
   // Main data loader
@@ -72,69 +145,97 @@ export const useDFSData = () => {
       console.log('[DFS DATA] Loading from MongoDB...');
       
       const [
+        boardResponse,
         warZoneResponse,
         frontLinesResponse,
         vaultResponse,
-        boardResponse,
         socialSignalsResponse,
         liveScoresResponse,
         newsResponse,
         tMinusResponse,
         boardIntelResponse,
-        popularBetsResponse
+        popularBetsResponse,
+        injuryResponse,
+        syncStatusResponse,
+        scoutingResponse
       ] = await Promise.all([
+        axios.get(`${API}/v3/cached-props`),
         axios.get(`${API}/v3/war-zone`),
         axios.get(`${API}/v3/front-lines`),
         axios.get(`${API}/v3/goblin-vault`),
-        axios.get(`${API}/v3/cached-props`),
         axios.get(`${API}/v3/social-signals`).catch(() => ({ data: { signals: {} }})),
         axios.get(`${API}/v3/live-scores`).catch(() => ({ data: { games: [] }})),
         axios.get(`${API}/v3/breaking-news`).catch(() => ({ data: { news: [] }})),
         axios.get(`${API}/v3/t-minus-games`).catch(() => ({ data: { games: [] }})),
         axios.get(`${API}/v3/board-intel/status`).catch(() => ({ data: {} })),
-        axios.get(`${API}/v3/most-popular-bets`).catch(() => ({ data: { bets: [] }}))
+        axios.get(`${API}/v3/most-popular-bets`).catch(() => ({ data: { bets: [] }})),
+        axios.get(`${API}/v3/injuries/alerts`).catch(() => ({ data: { alerts: {} }})),
+        axios.get(`${API}/v3/sync-status`).catch(() => ({ data: {} })),
+        axios.get(`${API}/v3/scouting-projections`).catch(() => ({ data: { projections: [] }}))
       ]);
       
       const socialSignals = socialSignalsResponse.data?.signals || {};
       
-      // Process and set War Zone picks
-      if (warZoneResponse.data.success) {
-        const picks = applySignals(warZoneResponse.data.picks || [], socialSignals);
-        setRadarPicks(filterValidPicks(picks));
-        console.log(`[WAR ZONE] ${picks.length} picks loaded`);
-      }
-      
-      // Process and set Safe Haven picks
-      if (vaultResponse.data.success) {
-        const picks = applySignals(vaultResponse.data.picks || [], socialSignals);
-        setVaultPicks(filterValidPicks(picks));
-        console.log(`[SAFE HAVEN] ${picks.length} picks loaded`);
-      }
-      
-      // Process and set Front Lines picks
-      if (frontLinesResponse.data.success) {
-        const picks = applySignals(frontLinesResponse.data.picks || [], socialSignals);
-        setFrontLinesPicks(filterValidPicks(picks));
-        console.log(`[FRONT LINES] ${picks.length} picks loaded`);
-      }
-      
-      // Board data
-      if (boardResponse.data.success) {
+      // Process and set board data
+      if (boardResponse.data.success && boardResponse.data.players_count > 0) {
         setPlayers(boardResponse.data.players || []);
+        setTrending(boardResponse.data.trending || []);
+        setStaticLoaded(true);
         setLinesLoaded(true);
+        console.log(`[BOARD] Loaded ${boardResponse.data.players_count} players`);
+      } else {
+        setStaticLoaded(true);
+        setLinesLoaded(false);
+      }
+      
+      // Process War Zone (Demons) with strict validation
+      if (warZoneResponse.data.success) {
+        const rawPicks = warZoneResponse.data.picks || [];
+        const picksWithSignals = applySignals(rawPicks, socialSignals);
+        const validPicks = filterValidPicks(picksWithSignals, 'demon');
+        setRadarPicks(validPicks);
+      }
+      
+      // Process Safe Haven (Goblins) with validation
+      if (vaultResponse.data.success) {
+        const rawPicks = vaultResponse.data.picks || [];
+        const picksWithSignals = applySignals(rawPicks, socialSignals);
+        const validPicks = filterValidPicks(picksWithSignals, 'goblin');
+        setVaultPicks(validPicks);
+      }
+      
+      // Process Front Lines (Mixed) with validation
+      if (frontLinesResponse.data.success) {
+        const rawPicks = frontLinesResponse.data.picks || [];
+        const picksWithSignals = applySignals(rawPicks, socialSignals);
+        const validPicks = filterValidPicks(picksWithSignals, 'mixed');
+        setFrontLinesPicks(validPicks);
       }
       
       // Live data
       setLiveScores(liveScoresResponse.data?.games || []);
       setBreakingNews(newsResponse.data?.news || []);
       setTMinusGames(tMinusResponse.data?.games || []);
+      setInjuryAlerts(injuryResponse.data?.alerts || {});
       
       // Board intel status
       if (boardIntelResponse.data) {
         setBoardIntelStatus({
           time_since_sync_display: boardIntelResponse.data.time_since_sync_display || 'Not synced',
           last_sync_type: boardIntelResponse.data.last_sync_type,
-          scheduler_running: boardIntelResponse.data.scheduler_running || false
+          scheduler_running: boardIntelResponse.data.scheduler_running || false,
+          next_scheduled_sync: boardIntelResponse.data.next_scheduled_sync
+        });
+      }
+      
+      // Sync status
+      if (syncStatusResponse.data) {
+        setSyncStatus({
+          engine_status: syncStatusResponse.data.engine_status || 'offline',
+          sync_age_display: syncStatusResponse.data.sync_age_display || 'N/A',
+          seconds_since_sync: syncStatusResponse.data.seconds_since_sync || 0,
+          mission_critical_games: syncStatusResponse.data.mission_critical_games || 0,
+          has_stale_intel: (syncStatusResponse.data.seconds_since_sync || 0) > 300
         });
       }
       
@@ -145,8 +246,15 @@ export const useDFSData = () => {
         setPopularBetsStatus(popularBetsResponse.data.status || 'awaiting_action');
       }
       
+      // Scouting projections
+      if (scoutingResponse.data?.projections) {
+        setScoutingProjections(scoutingResponse.data.projections || []);
+        setIsEarlyBirdActive(scoutingResponse.data.status === 'early_bird_active');
+      }
+      
     } catch (error) {
       console.error('[DFS DATA] Load error:', error);
+      setStaticLoaded(true);
     }
   }, []);
   
@@ -200,9 +308,29 @@ export const useDFSData = () => {
     return () => clearInterval(pollInterval);
   }, [pollPopularBets]);
   
+  // Live scores refresh when games are in progress
+  useEffect(() => {
+    const hasLiveGames = liveScores.some(g => g.status === 'in_play');
+    if (!hasLiveGames) return;
+    
+    const refreshInterval = setInterval(async () => {
+      try {
+        const response = await axios.get(`${API}/v3/live-scores`);
+        if (response.data.success) {
+          setLiveScores(response.data.games || []);
+        }
+      } catch (e) {
+        console.error('[LIVE SCORES] Refresh error:', e);
+      }
+    }, 60000);
+    
+    return () => clearInterval(refreshInterval);
+  }, [liveScores]);
+  
   return {
     // Pick data
     players,
+    trending,
     radarPicks,
     vaultPicks,
     frontLinesPicks,
@@ -217,11 +345,18 @@ export const useDFSData = () => {
     liveScores,
     breakingNews,
     tMinusGames,
+    injuryAlerts,
+    
+    // Scouting
+    scoutingProjections,
+    isEarlyBirdActive,
     
     // Status
     linesLoaded,
+    staticLoaded,
     syncing,
     boardIntelStatus,
+    syncStatus,
     
     // Actions
     triggerSync,

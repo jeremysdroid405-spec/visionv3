@@ -48,17 +48,38 @@ dg_cached_board → dg_radar_picks (War Zone) → dg_goblin_vault → dg_goblin_
 ### 2026-03-15: Modular Architecture Refactor (Phase 1)
 - **Created modular file structure:**
   - `/src/logic/matrixEngine.js` (252 lines) - Parlay matrix and DFS validation engine
-  - `/src/hooks/useDFSData.js` (230 lines) - Central data fetching hook
+  - `/src/hooks/useDFSData.js` (365 lines) - Central data fetching hook with Demon validation
   - `/src/components/dashboard/PickCard.jsx` (297 lines) - Universal pick card component
   - `/src/components/dashboard/ParlayTicket.jsx` (158 lines) - Parlay ticket component
   - `/src/components/dashboard/SectionContainer.jsx` (248 lines) - Section wrapper components
-  - `/src/pages/Dashboard.jsx` (324 lines) - New clean controller (<400 lines)
+  - `/src/pages/Dashboard.jsx` (606 lines) - New complete controller
 - **Dead code eliminated:**
   - Removed unused `ScoutingBadge` component (26 lines)
   - Removed unused `RadarCard` alias
   - Removed unused state: `syncedAt`, `parlayData`, `reconData` and their setters
-  - Monolith reduced from 5035 → 4987 lines (48 lines removed)
 - **Data integrity:** Picks missing required fields are now filtered before reaching parlay matrix
+
+### 2026-03-15: Complete Architectural Decoupling (Phase 2)
+- **Monolith decommissioned:**
+  - Moved 5,000-line `DemonGoblinDashboardOptimized.js` to `/src/legacy_archive/dashboard_monolith.backup`
+  - Changed extension to `.backup` so bundler ignores it
+- **App.js rewired:**
+  - Primary route `/dashboard` now uses new `Dashboard.jsx`
+  - All legacy routes redirect to new dashboard
+- **useDFSData.js enhanced:**
+  - Added `filterValidPicks()` with specific Demon attribute validation
+  - Logs "DATA MISMATCH" warnings for drops (e.g., `is_demon=true` but no `demon_line`)
+  - Filters picks BEFORE matrix engine receives them
+- **CSS Consolidated:**
+  - Created `/src/styles/components.css` with all animations and section glows
+  - Removed inline `<style>` blocks from components
+- **Final file counts:**
+  - Logic layer: 252 lines
+  - Hooks layer: 520 lines (including use-toast)
+  - Dashboard components: 1,333 lines
+  - Centralized styles: 726 lines
+  - Main controller: 606 lines
+  - **Total active code: ~3,437 lines** (vs 5,000+ in monolith)
 
 ### 2026-03-15: Unified 3-Tier Card UI
 - Created `UniversalPickCard` component as single template for all 30 picks
@@ -203,9 +224,9 @@ dg_cached_board → dg_radar_picks (War Zone) → dg_goblin_vault → dg_goblin_
 - Real Google/Apple OAuth (currently placeholders)
 
 ## Known Issues
-- Old dashboard (`DemonGoblinDashboardOptimized.js`, ~5000 lines) still in use on main route
-- Google/Apple auth buttons are placeholders
 - DvP (Defense vs Position) pillar uses placeholder value of 0.5
+- Google/Apple auth buttons are placeholders
+- Player detail page navigation needs to be connected to full PlayerDetailPage component
 
 ## File Structure
 ```

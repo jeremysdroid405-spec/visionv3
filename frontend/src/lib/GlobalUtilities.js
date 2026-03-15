@@ -2,7 +2,7 @@
  * PICKVISION AI GLOBAL UTILITIES
  * ===========================
  * Shared components, hooks, and utilities for the PickVision AI dashboard.
- * Consolidated from DemonGoblinDashboardOptimized.js
+ * Migrated to modular architecture - see /logic/, /hooks/, /components/dashboard/
  */
 
 import React, { memo, useState, useEffect, useCallback } from 'react';

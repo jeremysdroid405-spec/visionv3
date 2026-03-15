@@ -4,14 +4,11 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { Auth } from './pages/Auth';
-import { Dashboard } from './pages/Dashboard';
-import { DashboardDemo } from './pages/DashboardDemo';
-import { FullBoard } from './pages/FullBoard';
-import DemonGoblinDashboardOptimized from './pages/DemonGoblinDashboardOptimized';
+import Dashboard from './pages/Dashboard';
 import { Toaster } from 'sonner';
 
 // Demo mode wrapper - passes isDemoMode prop to dashboard
-const DemoModeWrapper = () => <DemonGoblinDashboardOptimized isDemoMode={true} />;
+const DemoModeWrapper = () => <Dashboard isDemoMode={true} />;
 
 function App() {
   return (
@@ -39,15 +36,7 @@ function App() {
               path="/dashboard" 
               element={
                 <ProtectedRoute>
-                  <DemonGoblinDashboardOptimized />
-                </ProtectedRoute>
-              } 
-            />
-            <Route 
-              path="/full-board" 
-              element={
-                <ProtectedRoute>
-                  <FullBoard />
+                  <Dashboard />
                 </ProtectedRoute>
               } 
             />
@@ -56,6 +45,7 @@ function App() {
             <Route path="/v3" element={<Navigate to="/dashboard" replace />} />
             <Route path="/v3-legacy" element={<Navigate to="/dashboard" replace />} />
             <Route path="/v4/demo" element={<Navigate to="/demo" replace />} />
+            <Route path="/full-board" element={<Navigate to="/dashboard" replace />} />
             
             {/* Demo page - public for testing */}
             <Route path="/demo" element={<DemoModeWrapper />} />

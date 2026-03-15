@@ -1,0 +1,289 @@
+/* ==================== PickVision Component Styles ==================== */
+/* Centralized CSS for all dashboard components */
+
+/* ==================== WAR ZONE - Gold/Orange Beacon ==================== */
+@keyframes beacon-glow-pulse {
+  0% { 
+    box-shadow: 0 0 5px #FFD700, 0 0 10px rgba(255, 215, 0, 0.3); 
+    border-color: #FFD700; 
+  }
+  50% { 
+    box-shadow: 0 0 20px #FF4500, 0 0 40px rgba(255, 69, 0, 0.4); 
+    border-color: #FF4500; 
+  }
+  100% { 
+    box-shadow: 0 0 5px #FFD700, 0 0 10px rgba(255, 215, 0, 0.3); 
+    border-color: #FFD700; 
+  }
+}
+
+.beacon-glow {
+  animation: beacon-glow-pulse 2s ease-in-out infinite;
+  border-width: 2px;
+  border-style: solid;
+}
+
+.beacon-glow-subtle {
+  animation: beacon-glow-pulse 3s ease-in-out infinite;
+  opacity: 0.9;
+}
+
+/* ==================== GOBLIN RECON - Emerald Green Beacon ==================== */
+@keyframes emerald-glow-pulse {
+  0% { 
+    box-shadow: 0 0 5px #90EE90, 0 0 10px rgba(144, 238, 144, 0.3); 
+    border-color: #90EE90; 
+  }
+  50% { 
+    box-shadow: 0 0 20px #228B22, 0 0 40px rgba(34, 139, 34, 0.5); 
+    border-color: #228B22; 
+  }
+  100% { 
+    box-shadow: 0 0 5px #90EE90, 0 0 10px rgba(144, 238, 144, 0.3); 
+    border-color: #90EE90; 
+  }
+}
+
+.emerald-glow {
+  animation: emerald-glow-pulse 2s ease-in-out infinite;
+  border-width: 2px;
+  border-style: solid;
+}
+
+.emerald-glow-subtle {
+  animation: emerald-glow-pulse 3s ease-in-out infinite;
+  opacity: 0.9;
+}
+
+/* ==================== FRONT LINES - Tactical Amber/Yellow ==================== */
+@keyframes amber-glow-pulse {
+  0% { 
+    box-shadow: 0 0 5px #FCD34D, 0 0 10px rgba(252, 211, 77, 0.3); 
+    border-color: #FCD34D; 
+  }
+  50% { 
+    box-shadow: 0 0 20px #F59E0B, 0 0 40px rgba(245, 158, 11, 0.5); 
+    border-color: #F59E0B; 
+  }
+  100% { 
+    box-shadow: 0 0 5px #FCD34D, 0 0 10px rgba(252, 211, 77, 0.3); 
+    border-color: #FCD34D; 
+  }
+}
+
+.amber-glow {
+  animation: amber-glow-pulse 2s ease-in-out infinite;
+  border-width: 2px;
+  border-style: solid;
+}
+
+/* ==================== SECTION BACKGROUND GLOWS ==================== */
+.war-zone-section {
+  position: relative;
+  background: linear-gradient(135deg, rgba(220, 38, 38, 0.15) 0%, rgba(15, 15, 15, 0.95) 50%, rgba(220, 38, 38, 0.1) 100%);
+  border-radius: 16px;
+  padding: 16px;
+  border: 1px solid rgba(239, 68, 68, 0.4);
+  box-shadow: 0 0 30px rgba(239, 68, 68, 0.2), inset 0 0 60px rgba(239, 68, 68, 0.05);
+}
+
+.war-zone-section::before {
+  content: '';
+  position: absolute;
+  inset: -4px;
+  border-radius: 20px;
+  background: linear-gradient(135deg, rgba(239, 68, 68, 0.4), transparent 40%, transparent 60%, rgba(239, 68, 68, 0.3));
+  filter: blur(12px);
+  z-index: -1;
+  animation: radar-pulse 2.5s ease-in-out infinite;
+}
+
+@keyframes radar-pulse {
+  0%, 100% { opacity: 0.6; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.01); }
+}
+
+.goblin-recon-section {
+  position: relative;
+  background: linear-gradient(135deg, rgba(34, 197, 94, 0.15) 0%, rgba(15, 15, 15, 0.95) 50%, rgba(34, 197, 94, 0.1) 100%);
+  border-radius: 16px;
+  padding: 16px;
+  border: 1px solid rgba(34, 197, 94, 0.4);
+  box-shadow: 0 0 30px rgba(34, 197, 94, 0.2), inset 0 0 60px rgba(34, 197, 94, 0.05);
+}
+
+.goblin-recon-section::before {
+  content: '';
+  position: absolute;
+  inset: -4px;
+  border-radius: 20px;
+  background: linear-gradient(135deg, rgba(34, 197, 94, 0.4), transparent 40%, transparent 60%, rgba(34, 197, 94, 0.3));
+  filter: blur(12px);
+  z-index: -1;
+  animation: recon-pulse 2.5s ease-in-out infinite;
+}
+
+@keyframes recon-pulse {
+  0%, 100% { opacity: 0.6; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.01); }
+}
+
+.front-lines-section {
+  position: relative;
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.15) 0%, rgba(15, 15, 15, 0.95) 50%, rgba(245, 158, 11, 0.1) 100%);
+  border-radius: 16px;
+  padding: 16px;
+  border: 1px solid rgba(245, 158, 11, 0.4);
+  box-shadow: 0 0 30px rgba(245, 158, 11, 0.2), inset 0 0 60px rgba(245, 158, 11, 0.05);
+}
+
+.front-lines-section::before {
+  content: '';
+  position: absolute;
+  inset: -4px;
+  border-radius: 20px;
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.4), transparent 40%, transparent 60%, rgba(245, 158, 11, 0.3));
+  filter: blur(12px);
+  z-index: -1;
+  animation: frontlines-pulse 2.5s ease-in-out infinite;
+}
+
+@keyframes frontlines-pulse {
+  0%, 100% { opacity: 0.6; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.01); }
+}
+
+/* ==================== CARD GLOW EFFECTS ==================== */
+.demon-card-glow {
+  background: linear-gradient(135deg, rgba(127, 29, 29, 0.6) 0%, rgba(24, 24, 27, 0.95) 100%) !important;
+  border: 1px solid rgba(239, 68, 68, 0.5) !important;
+  box-shadow: 0 0 20px rgba(239, 68, 68, 0.3), 0 0 40px rgba(239, 68, 68, 0.1) !important;
+}
+
+.goblin-card-glow {
+  background: linear-gradient(135deg, rgba(20, 83, 45, 0.6) 0%, rgba(24, 24, 27, 0.95) 100%) !important;
+  border: 1px solid rgba(34, 197, 94, 0.5) !important;
+  box-shadow: 0 0 20px rgba(34, 197, 94, 0.3), 0 0 40px rgba(34, 197, 94, 0.1) !important;
+}
+
+.front-lines-card-glow {
+  background: linear-gradient(135deg, rgba(120, 80, 10, 0.6) 0%, rgba(24, 24, 27, 0.95) 100%) !important;
+  border: 1px solid rgba(245, 158, 11, 0.5) !important;
+  box-shadow: 0 0 20px rgba(245, 158, 11, 0.3), 0 0 40px rgba(245, 158, 11, 0.1) !important;
+}
+
+/* ==================== MOBILE SWIPE CARDS ==================== */
+.swipe-container {
+  display: flex !important;
+  flex-direction: row !important;
+  overflow-x: auto !important;
+  scroll-snap-type: x mandatory;
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  gap: 12px;
+  padding: 4px 16px;
+}
+
+.swipe-container::-webkit-scrollbar {
+  display: none;
+}
+
+.swipe-card {
+  scroll-snap-align: center;
+  flex-shrink: 0 !important;
+  width: calc(100vw - 48px) !important;
+  max-width: 340px !important;
+  min-width: calc(100vw - 48px) !important;
+}
+
+@media (min-width: 640px) {
+  .swipe-container {
+    display: grid !important;
+    grid-template-columns: repeat(2, 1fr) !important;
+    overflow-x: visible !important;
+    scroll-snap-type: none;
+    padding: 0;
+    gap: 8px;
+  }
+  
+  .swipe-card {
+    width: auto !important;
+    max-width: none !important;
+    min-width: 0 !important;
+  }
+}
+
+@media (min-width: 1024px) {
+  .swipe-container {
+    grid-template-columns: repeat(3, 1fr) !important;
+  }
+}
+
+@media (min-width: 1280px) {
+  .swipe-container {
+    grid-template-columns: repeat(4, 1fr) !important;
+  }
+}
+
+@media (min-width: 1536px) {
+  .swipe-container {
+    grid-template-columns: repeat(5, 1fr) !important;
+  }
+}
+
+/* ==================== VISION SPARKLE EFFECTS ==================== */
+.vision-sparkle {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  width: 8px;
+  height: 8px;
+  background: radial-gradient(circle, #a855f7 0%, transparent 70%);
+  border-radius: 50%;
+  animation: sparkle 1.5s ease-in-out infinite;
+}
+
+.vision-sparkle-green {
+  background: radial-gradient(circle, #22c55e 0%, transparent 70%);
+}
+
+@keyframes sparkle {
+  0%, 100% { transform: scale(1); opacity: 0.8; }
+  50% { transform: scale(1.5); opacity: 1; }
+}
+
+/* ==================== DEMON/GOBLIN ICON ANIMATIONS ==================== */
+.demon-scanning {
+  animation: demon-scan 2s ease-in-out infinite;
+}
+
+@keyframes demon-scan {
+  0%, 100% { filter: drop-shadow(0 0 4px rgba(239, 68, 68, 0.5)); }
+  50% { filter: drop-shadow(0 0 12px rgba(239, 68, 68, 0.8)); }
+}
+
+.goblin-pulse {
+  animation: goblin-pulse-anim 0.5s ease-out;
+}
+
+@keyframes goblin-pulse-anim {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.2); }
+  100% { transform: scale(1); }
+}
+
+/* ==================== TICKER ANIMATIONS ==================== */
+@keyframes ticker-scroll {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+
+.ticker-scroll {
+  animation: ticker-scroll 30s linear infinite;
+}
+
+.ticker-scroll:hover {
+  animation-play-state: paused;
+}
