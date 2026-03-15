@@ -1996,9 +1996,6 @@ const UniversalParlayTicket = memo(({
         {/* Header */}
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-2">
-            <div className={`w-8 h-8 rounded-full ${theme.badge} flex items-center justify-center`}>
-              {renderEmblem(18)}
-            </div>
             <div>
               <div className={`text-sm font-bold ${theme.text}`}>
                 {parlay?.name || `${pickCount}-PICK`}
@@ -2063,7 +2060,6 @@ const UniversalParlayTicket = memo(({
             >
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2 min-w-0">
-                  {renderPickEmblem(pick)}
                   <span className="text-xs text-white truncate">{pick.player_name}</span>
                   <span className="text-[10px] text-zinc-500">{pick.team}</span>
                 </div>
