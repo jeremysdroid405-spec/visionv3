@@ -18,7 +18,7 @@ import { Badge } from '../components/ui/badge';
 import { Card } from '../components/ui/card';
 import { 
   Search, X, LogOut, Crown, User, Radio, AlertTriangle, Activity, 
-  RefreshCw, ChevronRight, Eye, Zap, ChevronDown, Flame, ArrowLeft
+  RefreshCw, ChevronRight, Eye, Zap, ChevronDown, Flame, ArrowLeft, Target
 } from 'lucide-react';
 
 // Dashboard Components
@@ -26,6 +26,7 @@ import { DemonIcon, GoblinIcon, VisionBadge } from '../components/dashboard/Icon
 import { PickCard } from '../components/dashboard/PickCard';
 import { ParlayTicket } from '../components/dashboard/ParlayTicket';
 import { PlayerDetailPage } from '../components/dashboard/PlayerDetailPage';
+import CommandPost from '../components/dashboard/CommandPost';
 import { 
   TEAM_LOGOS, NBA_HEADSHOT_URL, STAT_CATEGORIES, getCategoryKey 
 } from '../components/dashboard/constants';
@@ -381,6 +382,7 @@ const Dashboard = () => {
   const [highlightProp, setHighlightProp] = useState(null);
   const [highlightType, setHighlightType] = useState('demon');
   const [selectedPlayer, setSelectedPlayer] = useState(null);
+  const [showCommandPost, setShowCommandPost] = useState(false);
   
   // Navigation handlers
   const handlePlayerClick = useCallback((playerName, highlight = null, type = 'demon') => {
@@ -465,6 +467,16 @@ const Dashboard = () => {
           </div>
           
           <div className="flex items-center gap-2">
+            {/* Command Post Button */}
+            <button 
+              onClick={() => setShowCommandPost(true)} 
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-cyan-600/20 hover:bg-cyan-600/30 border border-cyan-500/30 transition-colors"
+              data-testid="command-post-btn"
+            >
+              <Target className="w-4 h-4 text-cyan-400" />
+              <span className="text-xs font-medium text-cyan-400 hidden sm:inline">Command Post</span>
+            </button>
+            
             <button onClick={triggerSync} disabled={syncing} className="p-2 rounded-lg bg-zinc-800/50 hover:bg-zinc-800" data-testid="sync-btn">
               <RefreshCw className={`w-4 h-4 text-zinc-400 ${syncing ? 'animate-spin' : ''}`} />
             </button>
@@ -617,6 +629,12 @@ const Dashboard = () => {
           <span className="text-zinc-600">PickVision AI</span>
         </div>
       </div>
+      
+      {/* Command Post Sidebar */}
+      <CommandPost 
+        isOpen={showCommandPost} 
+        onClose={() => setShowCommandPost(false)} 
+      />
     </div>
   );
 };
