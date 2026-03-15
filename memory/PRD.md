@@ -59,6 +59,25 @@ dg_cached_board → dg_radar_picks (War Zone) → dg_goblin_vault → dg_goblin_
   - Removed unused state: `syncedAt`, `parlayData`, `reconData` and their setters
 - **Data integrity:** Picks missing required fields are now filtered before reaching parlay matrix
 
+### 2026-03-15: P1 Tasks - PlayerDetailPage & Real DvP Data
+- **PlayerDetailPage Connected:**
+  - Created `/src/components/dashboard/PlayerDetailPage.jsx` (400+ lines)
+  - Full prop ladder with category accordions (PTS, AST, REB, 3PM, BLK, STL, combos)
+  - Demon/Goblin icon badges on each prop row
+  - Line values, direction, L10/L5 hit rates displayed
+  - Highlight support with beacon-glow/emerald-glow animations
+  - Back button navigation to dashboard
+  - Expand All / Collapse All functionality
+- **Real DvP Data Implemented:**
+  - Added `DVP_RANKINGS_2024_25` dictionary with NBA team defensive rankings by stat category
+  - `calculate_dvp_modifier(opponent_team, stat_type)` converts rank (1-30) to modifier (0.0-1.0)
+  - DvP labels: FAVORABLE (0.7+), NEUTRAL (0.4-0.7), TOUGH (<0.4)
+  - Combo stats (PRA, P+R, P+A, R+A) use average of component stat rankings
+  - Picks now include `dvp_modifier`, `dvp_label`, `opponent_team` in response data
+- **Backend Enhancement:**
+  - Opponent team calculated from home_team/away_team in _build_cached_board()
+  - get_cached_player() reads from cached_board first for latest opponent data
+
 ### 2026-03-15: Complete Architectural Decoupling (Phase 2)
 - **Monolith decommissioned:**
   - Moved 5,000-line `DemonGoblinDashboardOptimized.js` to `/src/legacy_archive/dashboard_monolith.backup`
@@ -224,9 +243,8 @@ dg_cached_board → dg_radar_picks (War Zone) → dg_goblin_vault → dg_goblin_
 - Real Google/Apple OAuth (currently placeholders)
 
 ## Known Issues
-- DvP (Defense vs Position) pillar uses placeholder value of 0.5
 - Google/Apple auth buttons are placeholders
-- Player detail page navigation needs to be connected to full PlayerDetailPage component
+- DvP rankings are hardcoded (DVP_RANKINGS_2024_25) - needs manual update each season
 
 ## File Structure
 ```
