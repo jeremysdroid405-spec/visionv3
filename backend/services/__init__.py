@@ -40,3 +40,7 @@ from .social_scout import (
     generate_insight_summary as social_generate_insight_summary,
     calculate_confidence_rating as social_calculate_confidence_rating
 )
+
+# High-level services using repository pattern
+from .picks_service import PicksService
+from .board_service import BoardService

@@ -375,6 +375,12 @@ class DemonGoblinEngine:
     
     def __init__(self, db: AsyncIOMotorDatabase):
         self.db = db
+        
+        # Initialize Repository Manager for clean data access
+        from repositories import RepositoryManager
+        self.repo = RepositoryManager(db)
+        
+        # Legacy direct collection access (gradually migrating to repo)
         self.events_cache = db.dg_events_cache
         self.odds_cache = db.dg_odds_cache
         self.player_data = db.dg_player_data
@@ -383,7 +389,7 @@ class DemonGoblinEngine:
         self.trending_cache = db.dg_trending
         self.line_history = db.dg_line_history
         
-        # WAREHOUSE MODEL COLLECTIONS
+        # WAREHOUSE MODEL COLLECTIONS (migrating to repo.picks, repo.board)
         self.live_props = db.dg_live_props  # Master props collection (deduplicated)
         self.radar_picks = db.dg_radar_picks  # War Zone top 10 picks
         self.goblin_vault = db.dg_goblin_vault  # Goblin Vault top 10 safe picks
@@ -413,13 +419,17 @@ class DemonGoblinEngine:
         self._master_roster_cache: Dict[str, str] = {}  # In-memory cache for quick lookups
         self._team_pace_cache: Dict[str, float] = {}  # Team pace cache for analytics
         
-        # Advanced Analytics Constants
-        self.LEAGUE_AVG_PACE = 100.0
+        # Advanced Analytics Constants (from config)
+        from config.settings import (
+            LEAGUE_AVG_PACE, VOLATILITY_HIGH_THRESHOLD, 
+            VOLATILITY_MED_THRESHOLD, USAGE_REDISTRIBUTION_BASE
+        )
+        self.LEAGUE_AVG_PACE = LEAGUE_AVG_PACE
         self.B2B_PENALTY = 0.95
         self.THREE_IN_FOUR_PENALTY = 0.92
-        self.VOLATILITY_HIGH_THRESHOLD = 10.0
-        self.VOLATILITY_MED_THRESHOLD = 5.0
-        self.USAGE_REDISTRIBUTION_BASE = 12.0
+        self.VOLATILITY_HIGH_THRESHOLD = VOLATILITY_HIGH_THRESHOLD
+        self.VOLATILITY_MED_THRESHOLD = VOLATILITY_MED_THRESHOLD
+        self.USAGE_REDISTRIBUTION_BASE = USAGE_REDISTRIBUTION_BASE
         
         # Odds API Mapper - will be initialized on first sync
         self._odds_mapper = None
