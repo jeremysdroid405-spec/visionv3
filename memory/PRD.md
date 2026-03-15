@@ -21,11 +21,26 @@ dg_cached_board → dg_radar_picks (War Zone) → dg_goblin_vault → dg_goblin_
 /backend
 ├── config/              # Centralized configuration
 │   └── settings.py      # DB, API keys, constants, DVP rankings
-├── services/            # Business logic services
-│   ├── dvp_service.py   # DvP matchup calculation
-│   ├── parlay_service.py # Matrix & DFS compliance
-│   ├── data_scraper.py  # External API fetching
-│   └── social_scout.py  # Social signals & sentiment
+├── services/            # Business logic services (9,400+ lines extracted)
+│   ├── picks_getter_service.py  # War Zone, Goblin Vault, Front Lines, Most Popular Bets
+│   ├── cached_board_builder_service.py  # Board building & tier construction
+│   ├── odds_api_service.py      # External odds API calls
+│   ├── stats_api_service.py     # BallDontLie stats fetching
+│   ├── tank01_service.py        # Injury & news data
+│   ├── data_integrity_service.py # Verification & NAJI safeguard
+│   ├── stats_enrichment_service.py # Multi-source stats enrichment
+│   ├── odds_sync_service.py     # Odds sync orchestration
+│   ├── sync_orchestration_service.py # Full/delta sync (created, needs integration)
+│   ├── dvp_service.py           # DvP matchup calculation
+│   ├── parlay_service.py        # Matrix & DFS compliance
+│   ├── parlay_builder_service.py # Parlay construction
+│   ├── tier_builder_service.py  # Tier building logic
+│   ├── photo_service.py         # Player photos
+│   ├── roster_service.py        # Roster management
+│   ├── props_service.py         # Props handling
+│   ├── sync_service.py          # Sync utilities
+│   ├── data_scraper.py          # External API fetching
+│   └── social_scout.py          # Social signals & sentiment
 ├── routes/              # API route handlers
 │   ├── picks.py         # War Zone, Safe Haven, Front Lines
 │   ├── parlays.py       # Parlay builder endpoints
@@ -34,7 +49,7 @@ dg_cached_board → dg_radar_picks (War Zone) → dg_goblin_vault → dg_goblin_
 │   ├── intel.py         # AI briefings & insights
 │   └── board_intel.py   # Primary sync operations
 ├── server.py            # Main entry (middleware, startup)
-└── demon_goblin_engine.py # Core engine class
+└── demon_goblin_engine.py # Core engine class (~2,443 lines)
 ```
 
 ### Tech Stack
@@ -44,6 +59,20 @@ dg_cached_board → dg_radar_picks (War Zone) → dg_goblin_vault → dg_goblin_
 - **External APIs:** The Odds API V4, Tank01, BallDontLie, Google Gemini
 
 ## What's Been Implemented
+
+### 2026-03-15: Backend Engine Recovery & Continued Extraction (Phase 12)
+- **Recovery:** Restored corrupted `demon_goblin_engine.py` from commit `79209ff`
+- **Engine Reduction:** 2,707 → 2,443 lines (**264 lines extracted, 10% additional reduction**)
+- **Cumulative Reduction:** 8,252 → 2,443 lines (**~70% total reduction**)
+- **New Extraction:**
+  - `get_most_popular_bets()` (267 lines) → `PicksGetterService`
+- **PicksGetterService Updated:** Now 663 lines (includes Most Popular Bets functionality)
+- **All API Endpoints Verified Working:**
+  - `/api/v3/status` ✅
+  - `/api/v3/war-zone` ✅
+  - `/api/v3/goblin-vault` ✅
+  - `/api/v3/front-lines` ✅
+  - `/api/v3/most-popular-bets` ✅
 
 ### 2026-03-15: Backend Engine Deconstruction (Phase 11 - Odds Sync Service)
 - **Engine Reduction:** 2,885 → 2,705 lines (**180 lines extracted, 6% additional reduction**)

@@ -385,9 +385,9 @@ class DemonGoblinEngine:
             RosterService, PhotoService, PropsService, SyncService, 
             TierBuilderService, ParlayBuilderService, CachedBoardBuilderService,
             OddsApiService, StatsApiService, Tank01Service, PicksGetterService,
-            DataIntegrityService, StatsEnrichmentService, OddsSyncService,
-            SyncOrchestrationService
+            DataIntegrityService, StatsEnrichmentService, OddsSyncService
         )
+        from services.sync_orchestration_service import SyncOrchestrationService
         self.roster_service = RosterService(self.repo, db)
         self.photo_service = PhotoService(db)
         self.props_service = PropsService(db)
@@ -1346,43 +1346,183 @@ class DemonGoblinEngine:
         return doc
     
     async def run_full_sync(self) -> Dict[str, Any]:
-        """PROXY: Execute full 3-pillar sync - delegated to SyncOrchestrationService."""
+        """Execute the full three-pillar sync with PrizePicks data"""
+        sync_start = datetime.now(timezone.utc)
         self._current_date = self.get_current_date()
-        return await self.sync_orchestration_service.run_full_sync(
-            current_date=self._current_date,
-            prizepicks_region=PRIZEPICKS_REGION,
-            prizepicks_bookmaker=PRIZEPICKS_BOOKMAKER,
-            fetch_todays_events=self.fetch_todays_events,
-            fetch_prizepicks_odds=self.fetch_prizepicks_odds,
-            extract_prizepicks_props=self.extract_prizepicks_props,
-            fetch_injuries=self.fetch_injuries,
-            fetch_news=self.fetch_news,
-            process_player_prop=self.process_player_prop,
-            ensure_odds_mapper_loaded=self._ensure_odds_mapper_loaded,
-            get_odds_mapper=lambda: self._odds_mapper,
-            build_cached_board=self._build_cached_board,
-            build_war_zone=self._build_war_zone,
-            build_front_lines=self._build_front_lines,
-            build_goblin_vault=self._build_goblin_vault,
-            build_parlay_builder=self._build_parlay_builder,
-            build_goblin_recon=self._build_goblin_recon
-        )
-    
-    async def run_delta_sync(self) -> Dict[str, Any]:
-        """
-        PROXY: Execute delta sync (odds-only) - delegated to SyncOrchestrationService.
-        """
-        self._current_date = self.get_current_date()
-        return await self.sync_orchestration_service.run_delta_sync(
-            current_date=self._current_date,
-            fetch_todays_events=self.fetch_todays_events,
-            fetch_prizepicks_odds=self.fetch_prizepicks_odds,
-            build_war_zone=self._build_war_zone,
-            build_front_lines=self._build_front_lines,
-            build_goblin_vault=self._build_goblin_vault
-        )
-    
-    # ==================== DATA ACCESS ====================
+        
+        logger.info("=" * 70)
+        logger.info(f"DEMON & GOBLIN ENGINE v3.0 - PRIZEPICKS SYNC")
+        logger.info(f"Date: {self._current_date}")
+        logger.info(f"Region: {PRIZEPICKS_REGION} | Bookmaker: {PRIZEPICKS_BOOKMAKER}")
+        logger.info("=" * 70)
+        
+        results = {
+            "success": True,
+            "sync_date": self._current_date,
+            "sync_time": sync_start.isoformat(),
+            "events_count": 0,
+            "total_props": 0,
+            "unique_players": 0,
+            "standard_count": 0,
+            "demons_count": 0,
+            "goblins_count": 0,
+            "stats_fetched": 0,
+            "injuries_found": 0,
+            "goblin_warnings": 0,
+            # V3.1 Truth Engine verification stats
+            "verification_stats": {
+                "verified_count": 0,
+                "failed_count": 0,
+                "naji_safeguard_failures": 0,
+                "hallucinations_detected": 0,
+                "discrepancies_found": 0
+            },
+            "errors": [],
+            "duration": 0
+        }
+        
+        try:
+            # V3.1 Truth Engine: Clear previous verification failures for today's sync
+            await self.db.dg_verification_failures.delete_many({"sync_date": self._current_date})
+            logger.info("[TRUTH ENGINE] Cleared previous verification failures for today")
+            
+            # ===== PILLAR 1: FETCH EVENTS AND PRIZEPICKS ODDS =====
+            logger.info("\n[PILLAR 1] Fetching NBA events and PrizePicks lines...")
+            logger.info(f"  Using region={PRIZEPICKS_REGION}, bookmaker={PRIZEPICKS_BOOKMAKER}")
+            
+            events = await self.fetch_todays_events()
+            results["events_count"] = len(events)
+            
+            if not events:
+                results["success"] = False
+                results["errors"].append("No NBA events found")
+                return results
+            
+            all_props = []
+            all_players: Set[str] = set()
+            
+            # Fetch PrizePicks odds for EVERY event
+            for event in events:
+                event_id = event.get("id")
+                if event_id:
+                    # Fetch PrizePicks alternate lines
+                    odds_data = await self.fetch_prizepicks_odds(event_id, event)
+                    if odds_data:
+                        props = self.extract_prizepicks_props(odds_data)
+                        all_props.extend(props)
+                        for p in props:
+                            all_players.add(p.get("player_name", ""))
+                    
+                    await asyncio.sleep(0.3)  # Rate limiting
+            
+            results["total_props"] = len(all_props)
+            results["unique_players"] = len(all_players)
+            results["standard_count"] = sum(1 for p in all_props if p.get("prop_type") == "standard")
+            results["demons_count"] = sum(1 for p in all_props if p.get("is_demon"))
+            results["goblins_count"] = sum(1 for p in all_props if p.get("is_goblin"))
+            
+            logger.info(f"\n[PILLAR 1] PRIZEPICKS DATA COMPLETE:")
+            logger.info(f"  Total Props: {len(all_props)}")
+            logger.info(f"  Unique Players: {len(all_players)}")
+            logger.info(f"  STANDARD (Main Markets): {results['standard_count']}")
+            logger.info(f"  DEMONS (Alternate +100): {results['demons_count']}")
+            logger.info(f"  GOBLINS (Alternate ≠+100): {results['goblins_count']}")
+            
+            # ===== PILLAR 3: FETCH INJURIES FIRST =====
+            logger.info("\n[PILLAR 3] Fetching injury data from Tank01...")
+            
+            injuries = await self.fetch_injuries()
+            await self.fetch_news()
+            results["injuries_found"] = len(injuries)
+            
+            # ===== PILLAR 2: PROCESS STATS =====
+            logger.info("\n[PILLAR 2] Processing stats from BallDontLie...")
+            
+            # Deduplicate by player+market+line+direction
+            unique_props = {}
+            for prop in all_props:
+                key = f"{prop['player_name']}|{prop['market']}|{prop['line']}|{prop['direction']}"
+                if key not in unique_props:
+                    unique_props[key] = prop
+            
+            # Process ALL unique props - no limit!
+            processed_props = []
+            prop_list = list(unique_props.values())
+            batch_size = 50
+            
+            logger.info(f"  Processing {len(prop_list)} unique props...")
+            
+            for i in range(0, len(prop_list), batch_size):
+                batch = prop_list[i:i+batch_size]
+                
+                for prop in batch:
+                    try:
+                        processed = await self.process_player_prop(prop)
+                        processed_props.append(processed)
+                        
+                        if processed.get("bdl_player_id"):
+                            results["stats_fetched"] += 1
+                        
+                        if processed.get("has_goblin_warning"):
+                            results["goblin_warnings"] += 1
+                        
+                        # V3.1 Truth Engine - Track verification stats
+                        if processed.get("source_verified"):
+                            results["verification_stats"]["verified_count"] += 1
+                        else:
+                            verification_status = processed.get("verification_status", "")
+                            if verification_status == "NAJI_SAFEGUARD_FAILED":
+                                results["verification_stats"]["naji_safeguard_failures"] += 1
+                                results["verification_stats"]["failed_count"] += 1
+                            elif verification_status == "HALLUCINATION_DETECTED":
+                                results["verification_stats"]["hallucinations_detected"] += 1
+                                results["verification_stats"]["failed_count"] += 1
+                            elif verification_status == "DISCREPANCY":
+                                results["verification_stats"]["discrepancies_found"] += 1
+                                results["verification_stats"]["failed_count"] += 1
+                        
+                        await asyncio.sleep(0.1)
+                        
+                    except Exception as e:
+                        results["errors"].append(f"Prop error: {str(e)[:50]}")
+                
+                logger.info(f"  Processed {min(i+batch_size, len(prop_list))}/{len(prop_list)} props")
+            
+            # ===== STORE RESULTS GROUPED BY PLAYER (VIA ODDS API MAPPER) =====
+            logger.info("\n[STORAGE] Organizing data by player via OddsApiMapper...")
+            
+            # Initialize OddsApiMapper - REQUIRED for player enrichment
+            mapper_ready = await self._ensure_odds_mapper_loaded()
+            if not mapper_ready or not self._odds_mapper:
+                logger.error("[STORAGE] CRITICAL: OddsApiMapper not available!")
+                results["errors"].append("OddsApiMapper initialization failed")
+            else:
+                logger.info("[STORAGE] OddsApiMapper loaded - enriching all players from nba_master_hub_2026")
+            
+            # Collect unique player names for batch lookup
+            unique_players = set(prop.get("player_name", "Unknown") for prop in processed_props)
+            logger.info(f"[STORAGE] Found {len(unique_players)} unique players to enrich")
+            
+            # Batch lookup all players via mapper (pre-fetch for efficiency)
+            player_hub_data = {}
+            unmatched_players = []
+            
+            if mapper_ready and self._odds_mapper:
+                for player_name in unique_players:
+                    # Use getPlayerIdFromOddsName() then getFullPlayerData()
+                    player_id = self._odds_mapper.getPlayerIdFromOddsName(player_name)
+                    if player_id:
+                        hub_data = self._odds_mapper.getFullPlayerData(player_name)
+                        if hub_data:
+                            player_hub_data[player_name] = hub_data
+                        else:
+                            unmatched_players.append(player_name)
+                    else:
+                        unmatched_players.append(player_name)
+                
+                logger.info(f"[STORAGE] Mapper matched: {len(player_hub_data)}/{len(unique_players)} players")
+                if unmatched_players:
+                    logger.warning(f"[STORAGE] Unmatched players ({len(unmatched_players)}): {unmatched_players[:10]}...")
             
             # Group props by player with full Hub enrichment
             player_data = {}
@@ -2031,272 +2171,8 @@ V3.1 TRUTH ENGINE - DATA INTEGRITY:
         return enriched
 
     async def get_most_popular_bets(self) -> Dict[str, Any]:
-        """
-        Get Top 20 Most Popular BETS (specific props, not just players)
-        Returns actual bet lines with ticket volume/popularity scoring
-        Includes Standard, Demon, and Goblin lines
-        Auto-purges games that have already started
-        
-        48-HOUR HORIZON: Pulls from both cached_board AND odds_cache
-        to ensure we always have upcoming games even if board isn't synced
-        """
-        try:
-            now = datetime.now(timezone.utc)
-            now_epoch = now.timestamp()  # Convert to Unix epoch for precise comparison
-            horizon_48h = now + timedelta(hours=48)  # Look 48 hours ahead
-            popular_bets = []
-            games_filtered = 0
-            games_included = 0
-            
-            # STRATEGY 1: Get bets from cached board (fully processed with hit rates)
-            cursor = self.cached_board.find({}, {"_id": 0})
-            players = await cursor.to_list(None)
-            
-            for player in players:
-                player_name = player.get("player_name", "")
-                team = player.get("team", "")
-                photo_url = player.get("photo_url", "")
-                
-                props = player.get("props", [])
-                for prop in props:
-                    # STRICT LIVE FILTER: Only show bets that are CURRENTLY BETTABLE
-                    commence_time_str = prop.get("commence_time")
-                    
-                    if not commence_time_str:
-                        continue
-                    
-                    try:
-                        commence_time = datetime.fromisoformat(commence_time_str.replace('Z', '+00:00'))
-                        game_epoch = commence_time.timestamp()
-                        
-                        # Game must NOT have started yet
-                        if game_epoch <= now_epoch:
-                            games_filtered += 1
-                            continue
-                            
-                        games_included += 1
-                    except Exception as e:
-                        logger.warning(f"[MOST_POPULAR] Failed to parse commence_time: {commence_time_str} - {e}")
-                        continue
-                    
-                    # Calculate popularity score - TYPE AGNOSTIC (no demon/goblin boost)
-                    # Uses popularity_order from PrizePicks if available (actual volume proxy)
-                    # Otherwise uses hash-based score for variety
-                    hit_rates = prop.get("hit_rates", {}) or {}
-                    l10_data = hit_rates.get("l10", {}) or {}
-                    h10_rate = l10_data.get("hit_rate", 0) or 0
-                    
-                    is_demon = prop.get("is_demon", False)
-                    is_goblin = prop.get("is_goblin", False)
-                    line_type = "demon" if is_demon else "goblin" if is_goblin else "standard"
-                    
-                    # PURE VOLUME SCORING - No type bias
-                    # popularity_order from PrizePicks indicates actual ticket volume (lower = more popular)
-                    pp_order = prop.get("popularity_order", 999)
-                    volume_score = max(0, 100 - pp_order)  # Convert to descending score
-                    
-                    # Add some variety with hit rate and hash
-                    hit_rate_score = h10_rate * 0.3
-                    hash_variety = (hash(player_name + str(prop.get("line", 0))) % 15)
-                    
-                    popularity_score = volume_score + hit_rate_score + hash_variety
-                    
-                    line = prop.get("demon_line") or prop.get("goblin_line") or prop.get("line")
-                    stat_type = prop.get("stat_type") or prop.get("stat_type_extracted") or prop.get("market", "").replace("player_", "").upper()
-                    
-                    popular_bets.append({
-                        "player_name": player_name,
-                        "team": team,
-                        "photo_url": photo_url,
-                        "stat_type": stat_type,
-                        "line": line,
-                        "line_type": line_type,
-                        "is_demon": is_demon,
-                        "is_goblin": is_goblin,
-                        "direction": prop.get("direction", "over").lower(),
-                        "h10_rate": h10_rate,
-                        "h5_rate": (hit_rates.get("l5", {}) or {}).get("hit_rate", 0) or 0,
-                        "gap_pct": prop.get("gap_pct", 0),
-                        "popularity_score": round(popularity_score, 1),
-                        "odds": prop.get("demon_odds") if is_demon else prop.get("goblin_odds") if is_goblin else prop.get("odds"),
-                        "commence_time": commence_time_str,
-                        "home_team": prop.get("home_team", ""),
-                        "away_team": prop.get("away_team", ""),
-                        "event_id": prop.get("event_id", ""),
-                        "source": "cached_board"
-                    })
-            
-            # STRATEGY 2: If we have <20 bets, supplement from odds_cache for upcoming games
-            if len(popular_bets) < 20:
-                logger.info(f"[MOST_POPULAR] Only {len(popular_bets)} from cached_board, checking odds_cache for upcoming games...")
-                
-                # Get upcoming events from events cache
-                events_cursor = self.events_cache.find({}, {"_id": 0})
-                events = await events_cursor.to_list(None)
-                
-                for event in events:
-                    event_commence = event.get("commence_time", "")
-                    if not event_commence:
-                        continue
-                    
-                    try:
-                        event_time = datetime.fromisoformat(event_commence.replace('Z', '+00:00'))
-                        event_epoch = event_time.timestamp()
-                        
-                        # Skip if game already started or too far in future
-                        if event_epoch <= now_epoch:
-                            continue
-                        if event_time > horizon_48h:
-                            continue
-                            
-                    except:
-                        continue
-                    
-                    event_id = event.get("id")
-                    home_team = event.get("home_team", "")
-                    away_team = event.get("away_team", "")
-                    
-                    # Get odds for this event
-                    odds_doc = await self.odds_cache.find_one({"event_id": event_id}, {"_id": 0})
-                    if not odds_doc:
-                        continue
-                    
-                    # Parse bookmaker data
-                    for bookmaker in odds_doc.get("bookmakers", []):
-                        for market in bookmaker.get("markets", []):
-                            market_key = market.get("key", "")
-                            is_alternate = "alternate" in market_key.lower()
-                            
-                            # Extract stat type from market key
-                            stat_type_raw = market_key.replace("player_", "").replace("_alternate", "").upper()
-                            stat_map = {
-                                "POINTS": "PTS", "REBOUNDS": "REB", "ASSISTS": "AST",
-                                "THREES": "3PM", "STEALS": "STL", "BLOCKS": "BLK",
-                                "TURNOVERS": "TO", "DOUBLE_DOUBLES": "DD",
-                                "POINTS_REBOUNDS": "P+R", "POINTS_ASSISTS": "P+A",
-                                "REBOUNDS_ASSISTS": "R+A", "POINTS_REBOUNDS_ASSISTS": "PRA"
-                            }
-                            stat_type = stat_map.get(stat_type_raw, stat_type_raw[:3])
-                            
-                            for outcome in market.get("outcomes", []):
-                                player_name = outcome.get("description", "")
-                                if not player_name:
-                                    continue
-                                
-                                line = outcome.get("point")
-                                price = outcome.get("price", 0)
-                                direction = outcome.get("name", "Over").lower()
-                                
-                                # Classify: alternate + price=100 = demon, alternate + price!=100 = goblin
-                                is_demon = is_alternate and price == 100
-                                is_goblin = is_alternate and price != 100
-                                line_type = "demon" if is_demon else "goblin" if is_goblin else "standard"
-                                
-                                # PURE VOLUME SCORING - No type bias for odds_cache entries
-                                # Use hash-based variety to simulate ticket volume distribution
-                                hash_variety = (hash(player_name + stat_type + str(line)) % 50)
-                                popularity_score = hash_variety + 20  # Base score + variety
-                                
-                                # Check if we already have this bet from cached_board
-                                existing = any(
-                                    b["player_name"] == player_name and 
-                                    b["stat_type"] == stat_type and 
-                                    b["line"] == line 
-                                    for b in popular_bets
-                                )
-                                if existing:
-                                    continue
-                                
-                                popular_bets.append({
-                                    "player_name": player_name,
-                                    "team": "",  # Not available in odds_cache
-                                    "photo_url": "",  # Not available
-                                    "stat_type": stat_type,
-                                    "line": line,
-                                    "line_type": line_type,
-                                    "is_demon": is_demon,
-                                    "is_goblin": is_goblin,
-                                    "direction": direction,
-                                    "h10_rate": 0,  # Not available without full sync
-                                    "h5_rate": 0,
-                                    "gap_pct": 0,
-                                    "popularity_score": round(popularity_score, 1),
-                                    "odds": price,
-                                    "commence_time": event_commence,
-                                    "home_team": home_team,
-                                    "away_team": away_team,
-                                    "event_id": event_id,
-                                    "source": "odds_cache"
-                                })
-            
-            # Sort by popularity score (descending) and take top 20
-            popular_bets.sort(key=lambda x: x["popularity_score"], reverse=True)
-            top_20 = popular_bets[:20]
-            
-            # ENRICH: Add photos and team info for bets missing them (from odds_cache)
-            # Build a lookup from cached_board for player metadata
-            player_metadata = {}
-            for player in players:
-                pname = player.get("player_name", "")
-                if pname:
-                    player_metadata[pname.lower()] = {
-                        "photo_url": player.get("photo_url", ""),
-                        "team": player.get("team", "")
-                    }
-            
-            # Also check player_data collection for more photos
-            player_data_cursor = self.player_data.find({}, {"_id": 0, "player_name": 1, "photo_url": 1, "team": 1})
-            player_data_list = await player_data_cursor.to_list(None)
-            for pd in player_data_list:
-                pname = pd.get("player_name", "")
-                if pname and pname.lower() not in player_metadata:
-                    player_metadata[pname.lower()] = {
-                        "photo_url": pd.get("photo_url", ""),
-                        "team": pd.get("team", "")
-                    }
-            
-            # Enrich top 20 with missing metadata
-            for bet in top_20:
-                if not bet.get("photo_url") or not bet.get("team"):
-                    pname_lower = bet["player_name"].lower()
-                    if pname_lower in player_metadata:
-                        if not bet.get("photo_url"):
-                            bet["photo_url"] = player_metadata[pname_lower].get("photo_url", "")
-                        if not bet.get("team"):
-                            bet["team"] = player_metadata[pname_lower].get("team", "")
-            
-            board_count = sum(1 for b in top_20 if b.get("source") == "cached_board")
-            odds_count = sum(1 for b in top_20 if b.get("source") == "odds_cache")
-            
-            logger.info(f"[MOST_POPULAR] Live filter: {games_included} upcoming from board, {games_filtered} tipped-off filtered")
-            logger.info(f"[MOST_POPULAR] Final mix: {board_count} from cached_board, {odds_count} from odds_cache")
-            
-            return {
-                "success": True,
-                "count": len(top_20),
-                "total_live_bets": len(popular_bets),
-                "games_filtered": games_filtered,
-                "board_source_count": board_count,
-                "odds_source_count": odds_count,
-                "last_updated": now.isoformat(),
-                "status": "live" if len(top_20) > 0 else "awaiting_action",
-                "bets": top_20
-            }
-            
-        except Exception as e:
-            logger.error(f"[MOST_POPULAR] Error getting popular bets: {e}")
-            import traceback
-            traceback.print_exc()
-            return {
-                "success": True,
-                "count": 0,
-                "total_live_bets": 0,
-                "games_filtered": 0,
-                "last_updated": datetime.now(timezone.utc).isoformat(),
-                "status": "awaiting_action",
-                "bets": [],
-                "error": str(e)
-            }
+        """Proxy to PicksGetterService.get_most_popular_bets()"""
+        return await self.picks_getter_service.get_most_popular_bets()
 
     
     # ==================== HYBRID CACHING LAYER ====================

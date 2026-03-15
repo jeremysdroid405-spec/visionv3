@@ -12,6 +12,7 @@ Handles fetching picks data from MongoDB for all tier endpoints:
 - Cached Board & Player lookups
 """
 from typing import Dict, List, Any, Optional
+from datetime import datetime, timezone, timedelta
 import logging
 
 from motor.motor_asyncio import AsyncIOMotorDatabase
@@ -41,6 +42,8 @@ class PicksGetterService:
         self.player_data = db.dg_player_data
         self.daily_insights = db.dg_daily_insights
         self.sync_log = db.dg_sync_log
+        self.events_cache = db.dg_events_cache
+        self.odds_cache = db.dg_odds_cache
     
     async def get_war_zone(self) -> Dict[str, Any]:
         """
@@ -340,6 +343,259 @@ class PicksGetterService:
             "message": "Lines loading... Player not in cache.",
             "player": None
         }
+    
+    async def get_most_popular_bets(self) -> Dict[str, Any]:
+        """
+        Get Top 20 Most Popular BETS (specific props, not just players)
+        Returns actual bet lines with ticket volume/popularity scoring
+        Includes Standard, Demon, and Goblin lines
+        Auto-purges games that have already started
+        
+        48-HOUR HORIZON: Pulls from both cached_board AND odds_cache
+        to ensure we always have upcoming games even if board isn't synced
+        """
+        try:
+            now = datetime.now(timezone.utc)
+            now_epoch = now.timestamp()
+            horizon_48h = now + timedelta(hours=48)
+            popular_bets = []
+            games_filtered = 0
+            games_included = 0
+            
+            # STRATEGY 1: Get bets from cached board (fully processed with hit rates)
+            cursor = self.cached_board.find({}, {"_id": 0})
+            players = await cursor.to_list(None)
+            
+            for player in players:
+                player_name = player.get("player_name", "")
+                team = player.get("team", "")
+                photo_url = player.get("photo_url", "")
+                
+                props = player.get("props", [])
+                for prop in props:
+                    # STRICT LIVE FILTER: Only show bets that are CURRENTLY BETTABLE
+                    commence_time_str = prop.get("commence_time")
+                    
+                    if not commence_time_str:
+                        continue
+                    
+                    try:
+                        commence_time = datetime.fromisoformat(commence_time_str.replace('Z', '+00:00'))
+                        game_epoch = commence_time.timestamp()
+                        
+                        # Game must NOT have started yet
+                        if game_epoch <= now_epoch:
+                            games_filtered += 1
+                            continue
+                            
+                        games_included += 1
+                    except Exception as e:
+                        logger.warning(f"[MOST_POPULAR] Failed to parse commence_time: {commence_time_str} - {e}")
+                        continue
+                    
+                    # Calculate popularity score - TYPE AGNOSTIC (no demon/goblin boost)
+                    hit_rates = prop.get("hit_rates", {}) or {}
+                    l10_data = hit_rates.get("l10", {}) or {}
+                    h10_rate = l10_data.get("hit_rate", 0) or 0
+                    
+                    is_demon = prop.get("is_demon", False)
+                    is_goblin = prop.get("is_goblin", False)
+                    line_type = "demon" if is_demon else "goblin" if is_goblin else "standard"
+                    
+                    # PURE VOLUME SCORING - No type bias
+                    pp_order = prop.get("popularity_order", 999)
+                    volume_score = max(0, 100 - pp_order)
+                    
+                    hit_rate_score = h10_rate * 0.3
+                    hash_variety = (hash(player_name + str(prop.get("line", 0))) % 15)
+                    
+                    popularity_score = volume_score + hit_rate_score + hash_variety
+                    
+                    line = prop.get("demon_line") or prop.get("goblin_line") or prop.get("line")
+                    stat_type = prop.get("stat_type") or prop.get("stat_type_extracted") or prop.get("market", "").replace("player_", "").upper()
+                    
+                    popular_bets.append({
+                        "player_name": player_name,
+                        "team": team,
+                        "photo_url": photo_url,
+                        "stat_type": stat_type,
+                        "line": line,
+                        "line_type": line_type,
+                        "is_demon": is_demon,
+                        "is_goblin": is_goblin,
+                        "direction": prop.get("direction", "over").lower(),
+                        "h10_rate": h10_rate,
+                        "h5_rate": (hit_rates.get("l5", {}) or {}).get("hit_rate", 0) or 0,
+                        "gap_pct": prop.get("gap_pct", 0),
+                        "popularity_score": round(popularity_score, 1),
+                        "odds": prop.get("demon_odds") if is_demon else prop.get("goblin_odds") if is_goblin else prop.get("odds"),
+                        "commence_time": commence_time_str,
+                        "home_team": prop.get("home_team", ""),
+                        "away_team": prop.get("away_team", ""),
+                        "event_id": prop.get("event_id", ""),
+                        "source": "cached_board"
+                    })
+            
+            # STRATEGY 2: If we have <20 bets, supplement from odds_cache for upcoming games
+            if len(popular_bets) < 20:
+                logger.info(f"[MOST_POPULAR] Only {len(popular_bets)} from cached_board, checking odds_cache for upcoming games...")
+                
+                events_cursor = self.events_cache.find({}, {"_id": 0})
+                events = await events_cursor.to_list(None)
+                
+                for event in events:
+                    event_commence = event.get("commence_time", "")
+                    if not event_commence:
+                        continue
+                    
+                    try:
+                        event_time = datetime.fromisoformat(event_commence.replace('Z', '+00:00'))
+                        event_epoch = event_time.timestamp()
+                        
+                        if event_epoch <= now_epoch:
+                            continue
+                        if event_time > horizon_48h:
+                            continue
+                            
+                    except:
+                        continue
+                    
+                    event_id = event.get("id")
+                    home_team = event.get("home_team", "")
+                    away_team = event.get("away_team", "")
+                    
+                    odds_doc = await self.odds_cache.find_one({"event_id": event_id}, {"_id": 0})
+                    if not odds_doc:
+                        continue
+                    
+                    for bookmaker in odds_doc.get("bookmakers", []):
+                        for market in bookmaker.get("markets", []):
+                            market_key = market.get("key", "")
+                            is_alternate = "alternate" in market_key.lower()
+                            
+                            stat_type_raw = market_key.replace("player_", "").replace("_alternate", "").upper()
+                            stat_map = {
+                                "POINTS": "PTS", "REBOUNDS": "REB", "ASSISTS": "AST",
+                                "THREES": "3PM", "STEALS": "STL", "BLOCKS": "BLK",
+                                "TURNOVERS": "TO", "DOUBLE_DOUBLES": "DD",
+                                "POINTS_REBOUNDS": "P+R", "POINTS_ASSISTS": "P+A",
+                                "REBOUNDS_ASSISTS": "R+A", "POINTS_REBOUNDS_ASSISTS": "PRA"
+                            }
+                            stat_type = stat_map.get(stat_type_raw, stat_type_raw[:3])
+                            
+                            for outcome in market.get("outcomes", []):
+                                player_name = outcome.get("description", "")
+                                if not player_name:
+                                    continue
+                                
+                                line = outcome.get("point")
+                                price = outcome.get("price", 0)
+                                direction = outcome.get("name", "Over").lower()
+                                
+                                is_demon = is_alternate and price == 100
+                                is_goblin = is_alternate and price != 100
+                                line_type = "demon" if is_demon else "goblin" if is_goblin else "standard"
+                                
+                                hash_variety = (hash(player_name + stat_type + str(line)) % 50)
+                                popularity_score = hash_variety + 20
+                                
+                                existing = any(
+                                    b["player_name"] == player_name and 
+                                    b["stat_type"] == stat_type and 
+                                    b["line"] == line 
+                                    for b in popular_bets
+                                )
+                                if existing:
+                                    continue
+                                
+                                popular_bets.append({
+                                    "player_name": player_name,
+                                    "team": "",
+                                    "photo_url": "",
+                                    "stat_type": stat_type,
+                                    "line": line,
+                                    "line_type": line_type,
+                                    "is_demon": is_demon,
+                                    "is_goblin": is_goblin,
+                                    "direction": direction,
+                                    "h10_rate": 0,
+                                    "h5_rate": 0,
+                                    "gap_pct": 0,
+                                    "popularity_score": round(popularity_score, 1),
+                                    "odds": price,
+                                    "commence_time": event_commence,
+                                    "home_team": home_team,
+                                    "away_team": away_team,
+                                    "event_id": event_id,
+                                    "source": "odds_cache"
+                                })
+            
+            # Sort by popularity score (descending) and take top 20
+            popular_bets.sort(key=lambda x: x["popularity_score"], reverse=True)
+            top_20 = popular_bets[:20]
+            
+            # ENRICH: Add photos and team info for bets missing them
+            player_metadata = {}
+            for player in players:
+                pname = player.get("player_name", "")
+                if pname:
+                    player_metadata[pname.lower()] = {
+                        "photo_url": player.get("photo_url", ""),
+                        "team": player.get("team", "")
+                    }
+            
+            player_data_cursor = self.player_data.find({}, {"_id": 0, "player_name": 1, "photo_url": 1, "team": 1})
+            player_data_list = await player_data_cursor.to_list(None)
+            for pd in player_data_list:
+                pname = pd.get("player_name", "")
+                if pname and pname.lower() not in player_metadata:
+                    player_metadata[pname.lower()] = {
+                        "photo_url": pd.get("photo_url", ""),
+                        "team": pd.get("team", "")
+                    }
+            
+            # Enrich top 20 with missing metadata
+            for bet in top_20:
+                if not bet.get("photo_url") or not bet.get("team"):
+                    pname_lower = bet["player_name"].lower()
+                    if pname_lower in player_metadata:
+                        if not bet.get("photo_url"):
+                            bet["photo_url"] = player_metadata[pname_lower].get("photo_url", "")
+                        if not bet.get("team"):
+                            bet["team"] = player_metadata[pname_lower].get("team", "")
+            
+            board_count = sum(1 for b in top_20 if b.get("source") == "cached_board")
+            odds_count = sum(1 for b in top_20 if b.get("source") == "odds_cache")
+            
+            logger.info(f"[MOST_POPULAR] Live filter: {games_included} upcoming from board, {games_filtered} tipped-off filtered")
+            logger.info(f"[MOST_POPULAR] Final mix: {board_count} from cached_board, {odds_count} from odds_cache")
+            
+            return {
+                "success": True,
+                "count": len(top_20),
+                "total_live_bets": len(popular_bets),
+                "games_filtered": games_filtered,
+                "board_source_count": board_count,
+                "odds_source_count": odds_count,
+                "last_updated": now.isoformat(),
+                "status": "live" if len(top_20) > 0 else "awaiting_action",
+                "bets": top_20
+            }
+            
+        except Exception as e:
+            logger.error(f"[MOST_POPULAR] Error getting popular bets: {e}")
+            import traceback
+            traceback.print_exc()
+            return {
+                "success": True,
+                "count": 0,
+                "total_live_bets": 0,
+                "games_filtered": 0,
+                "last_updated": datetime.now(timezone.utc).isoformat(),
+                "status": "awaiting_action",
+                "bets": [],
+                "error": str(e)
+            }
     
     # ==================== PRIVATE HELPER METHODS ====================
     
