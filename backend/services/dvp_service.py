@@ -329,16 +329,27 @@ async def _load_from_mongodb() -> Optional[DvPCacheEntry]:
             return None
         
         expires_at = doc.get("expires_at")
-        if expires_at and datetime.now(timezone.utc) > expires_at:
-            logger.info("[DVP] MongoDB cache expired")
-            return None
+        
+        # Handle timezone-aware comparison
+        now = datetime.now(timezone.utc)
+        if expires_at:
+            # Make sure expires_at is timezone-aware
+            if expires_at.tzinfo is None:
+                expires_at = expires_at.replace(tzinfo=timezone.utc)
+            if now > expires_at:
+                logger.info("[DVP] MongoDB cache expired")
+                return None
+        
+        fetched_at = doc.get("fetched_at", now)
+        if fetched_at.tzinfo is None:
+            fetched_at = fetched_at.replace(tzinfo=timezone.utc)
         
         return DvPCacheEntry(
             rankings=doc.get("rankings", {}),
             source=DvPDataSource.MONGODB,
-            fetched_at=doc.get("fetched_at", datetime.now(timezone.utc)),
+            fetched_at=fetched_at,
             season=doc.get("season", get_current_season_str()),
-            expires_at=expires_at or datetime.now(timezone.utc) + timedelta(hours=DVP_CACHE_TTL_HOURS)
+            expires_at=expires_at or now + timedelta(hours=DVP_CACHE_TTL_HOURS)
         )
         
     except Exception as e:
