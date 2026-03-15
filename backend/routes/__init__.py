@@ -26,6 +26,7 @@ from .core_v3 import router as core_v3_router, set_core_v3_engine
 from .tiers import router as tiers_router, set_tier_engine
 from .intel_sync import router as intel_sync_router, set_intel_sync_engine
 from .legacy import router as legacy_router, set_legacy_deps
+from .command import router as command_router
 
 
 def register_all_routes(app, engine, game_lock_engine=None, db=None, 
@@ -115,3 +116,6 @@ def register_all_routes(app, engine, game_lock_engine=None, db=None,
     app.include_router(tiers_router, prefix="/api")
     app.include_router(intel_sync_router, prefix="/api")
     app.include_router(legacy_router, prefix="/api")
+    
+    # Command Post - Risk Assessment Hub
+    app.include_router(command_router, prefix="/api")
