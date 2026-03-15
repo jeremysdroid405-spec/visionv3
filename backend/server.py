@@ -278,6 +278,9 @@ async def startup_event():
         "get_master_hub": lambda: get_master_hub(db)
     }
     
+    # Initialize APScheduler for daily and weekly syncs
+    scheduler = AsyncIOScheduler(timezone=SCHEDULER_TIMEZONE)
+    
     register_all_routes(
         app, 
         demon_goblin_engine, 
@@ -292,9 +295,15 @@ async def startup_event():
         demon_tracker=demon_tracker,
         raw_stat_fetcher=raw_stat_fetcher,
         social_signal_engine=social_signal_engine,
-        demon_goblin_engine_class=DemonGoblinEngine
+        demon_goblin_engine_class=DemonGoblinEngine,
+        stats_manager=stats_manager,
+        scheduler=scheduler
     )
-    logger.info("[ROUTES] Modular routes registered from /routes/ directory (Phase 15: +5 new modules)")
+    logger.info("[ROUTES] Modular routes registered from /routes/ directory (Phase 17: +3 new modules)")
+    
+    # Include the remaining api_router routes that are still in server.py
+    app.include_router(api_router)
+    logger.info("[ROUTES] Core api_router routes included")
     
     # Start the adaptive sync engine (background polling)
     if ODDS_API_KEY:
@@ -302,9 +311,6 @@ async def startup_event():
         logger.info("[ADAPTIVE_SYNC] Background polling STARTED")
     else:
         logger.warning("[ADAPTIVE_SYNC] No Odds API key - adaptive sync disabled")
-    
-    # Initialize APScheduler for daily and weekly syncs
-    scheduler = AsyncIOScheduler(timezone=SCHEDULER_TIMEZONE)
     
     # Daily sync at 4:00 AM EST (9:00 AM UTC) for static stats
     # Note: 04:00 EST = 09:00 UTC during standard time
@@ -431,9 +437,11 @@ async def get_current_user(token: str = Depends(verify_jwt)):
     except Exception as e:
         raise HTTPException(status_code=401, detail=f"Authentication failed: {str(e)}")
 
-# NOTE: Cache utilities below are duplicated in utils.py for modular use.
-# These local versions use the global `db` reference directly.
+# NOTE: Cache utilities below are LOCAL to server.py and use the global `db` reference.
+# Similar functions exist in utils.py but require initialization via set_cache_collection().
+# These are kept here for Tank01 API calls which depend on the global db.
 async def get_cached_data(cache_key: str, ttl_hours: int = 24):
+    """Get data from cache if not expired. Uses server.py global db."""
     cached = await db.cache.find_one({"key": cache_key})
     if cached:
         cached_time = datetime.fromisoformat(cached["cached_at"])
@@ -442,14 +450,16 @@ async def get_cached_data(cache_key: str, ttl_hours: int = 24):
     return None
 
 async def set_cached_data(cache_key: str, data: Any):
+    """Store data in cache. Uses server.py global db."""
     await db.cache.update_one(
         {"key": cache_key},
         {"$set": {"key": cache_key, "data": data, "cached_at": datetime.now(timezone.utc).isoformat()}},
         upsert=True
     )
 
-# NOTE: fuzzy_match_player also exists in utils.py
+# NOTE: fuzzy_match_player is also defined in utils.py for external module use
 def fuzzy_match_player(name1: str, name2: str, threshold: int = 80) -> bool:
+    """Fuzzy match two player names."""
     return fuzz.ratio(name1.lower(), name2.lower()) >= threshold
 
 async def fetch_tank01_injuries():
@@ -645,123 +655,8 @@ async def validate_demon_endpoint(
         "hit_rate_data": hit_rate_data
     }
 
-@api_router.get("/cache-status")
-async def get_cache_status():
-    """Get cache statistics"""
-    if not stats_manager:
-        raise HTTPException(status_code=500, detail="Stats manager not initialized")
-    
-    status = await stats_manager.get_cache_status()
-    return {"success": True, "data": status}
+# NOTE: Admin routes (cache-status, sync-rosters, etc.) moved to routes/admin.py (Phase 17)
 
-@api_router.post("/clear-expired-cache")
-async def clear_expired_cache():
-    """Clear expired cache entries"""
-    if not stats_manager:
-        raise HTTPException(status_code=500, detail="Stats manager not initialized")
-    
-    deleted_count = await stats_manager.clear_expired_cache()
-    return {"success": True, "deleted_count": deleted_count}
-
-@api_router.post("/sync-rosters")
-async def sync_rosters(force: bool = False):
-    """
-    Sync NBA rosters for all 30 teams
-    This creates a global player database for fast lookups
-    """
-    if not stats_manager:
-        raise HTTPException(status_code=500, detail="Stats manager not initialized")
-    
-    result = await stats_manager.sync_nba_rosters(force=force)
-    return {"success": True, "sync_result": result}
-
-@api_router.post("/clear-all-cache")
-async def clear_all_cache():
-    """Clear ALL cache (use when changing seasons)"""
-    if not stats_manager:
-        raise HTTPException(status_code=500, detail="Stats manager not initialized")
-    
-    deleted_count = await stats_manager.clear_all_cache()
-    return {"success": True, "deleted_count": deleted_count, "reason": "Season change - cleared all 2024 data"}
-
-@api_router.get("/todays-games")
-async def get_todays_games():
-    """Get today's NBA games from BallDontLie"""
-    if not stats_manager:
-        raise HTTPException(status_code=500, detail="Stats manager not initialized")
-    
-    result = await stats_manager.get_todays_games_summary()
-    return result
-
-@api_router.post("/trigger-daily-sync")
-async def trigger_daily_sync():
-    """Manually trigger the autonomous daily sync"""
-    if not stats_manager:
-        raise HTTPException(status_code=500, detail="Stats manager not initialized")
-    
-    result = await stats_manager.autonomous_daily_sync()
-    return {"success": True, "sync_result": result}
-
-@api_router.post("/sync-lakers-test")
-async def sync_lakers_test():
-    """
-    Test Lakers roster sync for season 2025 using BallDontLie
-    """
-    if not stats_manager:
-        raise HTTPException(status_code=500, detail="Stats manager not initialized")
-    
-    logger.info("🏀 Testing Lakers roster sync for season 2025 (BallDontLie)...")
-    
-    # Lakers team ID in BallDontLie is 14
-    player_ids = await stats_manager.sync_players_for_team(14)
-    
-    return {
-        "success": True,
-        "message": "Lakers roster synced successfully via BallDontLie",
-        "players_synced": len(player_ids),
-        "data_source": "BallDontLie API"
-    }
-
-@api_router.get("/rate-limit-status")
-async def get_rate_limit_status():
-    """Get current API rate limit status"""
-    if not stats_manager:
-        raise HTTPException(status_code=500, detail="Stats manager not initialized")
-    
-    status = stats_manager.rate_limit.get_status()
-    return {"success": True, "rate_limit": status}
-
-@api_router.get("/roster-status")
-async def get_roster_status():
-    """Get roster sync status and statistics"""
-    if not stats_manager:
-        raise HTTPException(status_code=500, detail="Stats manager not initialized")
-    
-    try:
-        total_players = await stats_manager.league_roster.count_documents({})
-        
-        # Get teams count
-        teams = await stats_manager.league_roster.distinct("team_name")
-        
-        # Get last sync time
-        latest = await stats_manager.league_roster.find_one(
-            {},
-            sort=[("synced_at", -1)]
-        )
-        
-        last_synced = latest.get("synced_at") if latest else None
-        
-        return {
-            "success": True,
-            "total_players": total_players,
-            "total_teams": len(teams),
-            "teams": sorted(teams),
-            "last_synced": last_synced,
-            "season": CURRENT_SEASON
-        }
-    except Exception as e:
-        logger.error(f"Roster status error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
 
 @api_router.get("/")
 async def root():
@@ -967,143 +862,7 @@ async def get_most_popular_bets():
 
 # ==================== HYBRID CACHING ENDPOINTS ====================
 
-@api_router.get("/v3/static-shell")
-async def get_static_shell():
-    """
-    Get STATIC SHELL data (24h TTL)
-    Contains: Player metadata, teams, positions, historical stats
-    Does NOT contain: Live betting lines
-    
-    Use this for initial page load - instant render of player cards
-    """
-    if not demon_goblin_engine:
-        raise HTTPException(status_code=500, detail="Engine not initialized")
-    
-    shell = await demon_goblin_engine.get_static_shell()
-    
-    return {
-        "success": True,
-        "cache_hit": shell.get("cache_hit", False),
-        "cache_age_seconds": shell.get("cache_age_seconds", 0),
-        "sync_date": shell.get("sync_date"),
-        "players_count": len(shell.get("players", [])),
-        "players": shell.get("players", []),
-        "trending": shell.get("trending", [])
-    }
-
-@api_router.get("/v3/live-lines")
-async def get_live_lines():
-    """
-    Get DYNAMIC PULSE data (60s TTL)
-    Contains ONLY: Live betting lines (price, point, demon/goblin tags)
-    
-    Use this to hydrate cards with live data after initial render
-    Lightweight endpoint - minimal payload
-    """
-    if not demon_goblin_engine:
-        raise HTTPException(status_code=500, detail="Engine not initialized")
-    
-    lines = await demon_goblin_engine.get_live_lines()
-    
-    # Count totals
-    total_lines = sum(len(v) for v in lines.get("lines", {}).values())
-    total_demons = sum(
-        sum(1 for line in player_lines if line.get("is_demon"))
-        for player_lines in lines.get("lines", {}).values()
-    )
-    total_goblins = sum(
-        sum(1 for line in player_lines if line.get("is_goblin"))
-        for player_lines in lines.get("lines", {}).values()
-    )
-    
-    return {
-        "success": True,
-        "cache_hit": lines.get("cache_hit", False),
-        "cache_age_seconds": lines.get("cache_age_seconds", 0),
-        "last_update": lines.get("last_update"),
-        "total_lines": total_lines,
-        "total_demons": total_demons,
-        "total_goblins": total_goblins,
-        "players_count": len(lines.get("lines", {})),
-        "lines": lines.get("lines", {})
-    }
-
-@api_router.get("/v3/hydrated-board")
-async def get_hydrated_board():
-    """
-    DEPRECATED - Use /api/v3/cached-props instead.
-    Redirects to cached board for backward compatibility.
-    """
-    return await get_cached_props()
-
-
-# ==================== WAREHOUSE MODEL ENDPOINTS (ZERO API CALLS) ====================
-
-@api_router.get("/v3/cached-props")
-async def get_cached_props(include_locked: bool = True):
-    """
-    THE PRIMARY ENDPOINT - Reads ONLY from MongoDB.
-    NO Odds API calls. Zero credit usage.
-    
-    Returns the full cached board with:
-    - All players grouped by props (with locked status marked)
-    - Trending 10
-    - synced_at timestamp
-    - t_minus_games: Games starting in <15 minutes (for countdown timers)
-    - lock_status: Overview of active/locked games
-    
-    Query params:
-    - include_locked: If true (default), includes locked players with locked=true flag
-    """
-    if not demon_goblin_engine:
-        raise HTTPException(status_code=500, detail="Engine not initialized")
-    
-    board = await demon_goblin_engine.get_cached_board()
-    
-    if game_lock_engine:
-        # Get list of locked event IDs
-        locked_games = await game_lock_engine.get_locked_games()
-        locked_event_ids = {g.get("event_id") for g in locked_games}
-        
-        # Mark players as locked if their event is locked
-        if board.get("players"):
-            for player in board["players"]:
-                # Check if any of the player's props are from locked events
-                player_props = player.get("props", [])
-                for prop in player_props:
-                    if prop.get("event_id") in locked_event_ids:
-                        player["locked"] = True
-                        player["commence_time"] = prop.get("commence_time")
-                        break
-            
-            # Filter out locked if requested
-            if not include_locked:
-                board["players"] = [p for p in board["players"] if not p.get("locked")]
-        
-        # Add lock status and t-minus info
-        lock_status = await game_lock_engine.get_lock_status()
-        board["lock_status"] = lock_status
-        board["t_minus_games"] = lock_status.get("t_minus_details", [])
-        board["locked_count"] = len(locked_event_ids)
-    
-    return board
-
-
-@api_router.get("/v3/cached-player/{player_name}")
-async def get_cached_player(player_name: str):
-    """
-    Get a single player from the CACHED database.
-    NO Odds API calls. Zero credit usage.
-    
-    If player not found, returns "Lines loading..." message.
-    Does NOT trigger any API call.
-    """
-    if not demon_goblin_engine:
-        raise HTTPException(status_code=500, detail="Engine not initialized")
-    
-    result = await demon_goblin_engine.get_cached_player(player_name)
-    
-    return result
+# NOTE: Cached data routes (static-shell, live-lines, cached-props) moved to routes/cached_data.py (Phase 17)
 
 
 @api_router.post("/v3/sync-to-mongo")
@@ -1499,135 +1258,5 @@ async def get_goblin_recon():
 # - Roster Sync routes → routes/roster_sync.py
 # - Payout routes → routes/payouts.py
 
-@api_router.get("/v3/scheduler-status")
-async def get_scheduler_status():
-    """
-    Get the status of the daily sync scheduler
-    Shows next run time, job info, and scheduler state
-    """
-    global scheduler
-    
-    if not scheduler:
-        return {
-            "success": False,
-            "error": "Scheduler not initialized"
-        }
-    
-    jobs = scheduler.get_jobs()
-    job_info = []
-    
-    for job in jobs:
-        job_info.append({
-            "id": job.id,
-            "name": job.name,
-            "next_run_time": job.next_run_time.isoformat() if job.next_run_time else None,
-            "trigger": str(job.trigger)
-        })
-    
-    return {
-        "success": True,
-        "scheduler_running": scheduler.running,
-        "timezone": SCHEDULER_TIMEZONE,
-        "daily_sync_time": f"{DAILY_SYNC_HOUR:02d}:{DAILY_SYNC_MINUTE:02d} UTC",
-        "jobs_count": len(jobs),
-        "jobs": job_info,
-        "current_time_utc": datetime.now(timezone.utc).isoformat()
-    }
+# NOTE: Scheduler routes (scheduler-status, breaking-news) moved to routes/scheduler.py (Phase 17)
 
-
-@api_router.post("/v3/trigger-scheduled-sync")
-async def trigger_scheduled_sync_manually():
-    """
-    Manually trigger the scheduled daily sync
-    Useful for testing or forcing an immediate refresh
-    """
-    if not demon_goblin_engine:
-        raise HTTPException(status_code=500, detail="Engine not initialized")
-    
-    logger.info("[MANUAL TRIGGER] Triggering scheduled sync manually")
-    
-    # Run the sync
-    result = await demon_goblin_engine.run_full_sync()
-    
-    return {
-        "success": True,
-        "message": "Manual sync triggered successfully",
-        "result": {
-            "unique_players": result.get("unique_players", 0),
-            "total_props": result.get("total_props", 0),
-            "standard_count": result.get("standard_count", 0),
-            "demons_count": result.get("demons_count", 0),
-            "goblins_count": result.get("goblins_count", 0),
-            "duration": result.get("duration", 0)
-        }
-    }
-
-
-# NOTE: Vision AI, Injury, Live Scores, Command Center, and AI Context routes 
-# have been moved to modular route files in /routes/ directory
-
-@api_router.get("/v3/breaking-news")
-async def get_breaking_news(injury_only: bool = False):
-    """
-    Get breaking NBA news from multiple sources.
-    
-    Uses live_scores_engine for RSS feeds + ESPN news.
-    
-    Args:
-        injury_only: If true, prioritize injury-related news
-    """
-    # Try live_scores_engine first (has RSS feeds)
-    if live_scores_engine:
-        result = await live_scores_engine.fetch_breaking_news()
-        if result.get("success") and result.get("news"):
-            news = result.get("news", [])
-            if injury_only:
-                # Filter for injury-related news
-                injury_keywords = ["injury", "out", "questionable", "doubtful", "probable", "day-to-day", "ruled out", "ankle", "knee", "back", "hamstring"]
-                news = [n for n in news if any(kw in (n.get("title", "") + n.get("headline", "")).lower() for kw in injury_keywords)]
-            
-            return {
-                "success": True,
-                "news_count": len(news),
-                "injury_filter": injury_only,
-                "news": news[:15]
-            }
-    
-    # Fallback to injury_service
-    if injury_service:
-        news = await injury_service.get_breaking_news(injury_only=injury_only)
-        return {
-            "success": True,
-            "news_count": len(news),
-            "injury_filter": injury_only,
-            "news": news
-        }
-    
-    return {"success": False, "news": [], "news_count": 0}
-
-
-# NOTE: Live Scores (/v3/live-scores/*) and Command Center (/v3/command-center/*) 
-# routes moved to routes/live_scores.py
-
-# NOTE: AI Context (/v3/ai-context/*) routes moved to routes/ai_context.py
-
-
-app.include_router(api_router)
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_credentials=True,
-    allow_origins=os.environ.get('CORS_ORIGINS', '*').split(','),
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-@app.on_event("shutdown")
-async def shutdown_db_client():
-    # Shutdown scheduler
-    global scheduler
-    if scheduler:
-        scheduler.shutdown(wait=False)
-        logger.info("[SCHEDULER] APScheduler shutdown")
-    
-    client.close()

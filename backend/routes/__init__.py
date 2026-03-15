@@ -19,6 +19,9 @@ from .social import router as social_router, set_social_signal_engine
 from .roster_sync import router as roster_sync_router, set_demon_goblin_engine as set_roster_engine
 from .game_lock import router as game_lock_router
 from .adaptive_sync import router as adaptive_sync_router
+from .admin import router as admin_router, set_admin_deps
+from .cached_data import router as cached_data_router, set_cached_data_engine
+from .scheduler import router as scheduler_router, set_scheduler_deps
 
 
 def register_all_routes(app, engine, game_lock_engine=None, db=None, 
@@ -26,12 +29,9 @@ def register_all_routes(app, engine, game_lock_engine=None, db=None,
                         live_scores_engine=None, ai_context_engine_class=None,
                         master_hub_funcs=None, get_odds_mapper_func=None,
                         demon_tracker=None, raw_stat_fetcher=None,
-                        social_signal_engine=None, demon_goblin_engine_class=None):
-    """Register all route modules and set engine
-    
-    Note: Some routes (sync, lock) remain in server.py because they have
-    additional game_lock_engine integration that needs to be migrated.
-    """
+                        social_signal_engine=None, demon_goblin_engine_class=None,
+                        stats_manager=None, scheduler=None):
+    """Register all route modules and set engine"""
     # Set engine for all route modules
     set_picks_engine(engine)
     set_parlays_engine(engine)
@@ -39,6 +39,7 @@ def register_all_routes(app, engine, game_lock_engine=None, db=None,
     set_intel_engine(engine)
     set_board_intel_engine(engine)
     set_roster_engine(engine)
+    set_cached_data_engine(engine)
     
     # Set services for new routes
     if injury_service is not None:
@@ -61,6 +62,10 @@ def register_all_routes(app, engine, game_lock_engine=None, db=None,
         set_social_signal_engine(social_signal_engine)
     if db is not None and demon_goblin_engine_class is not None:
         set_board_intel_deps(db, demon_goblin_engine_class)
+    if stats_manager is not None and db is not None:
+        set_admin_deps(stats_manager, db)
+    if engine is not None and live_scores_engine is not None:
+        set_scheduler_deps(engine, live_scores_engine, scheduler)
     
     # Include routers with /api prefix to match frontend expectations
     app.include_router(picks_router, prefix="/api")
@@ -85,7 +90,7 @@ def register_all_routes(app, engine, game_lock_engine=None, db=None,
     app.include_router(odds_mapper_router, prefix="/api")
     app.include_router(demon_tracker_router, prefix="/api")
     
-    # New routes (Phase 14-16 extraction)
+    # New routes (Phase 14-17 extraction)
     app.include_router(payouts_router, prefix="/api")
     app.include_router(validation_router, prefix="/api")
     app.include_router(social_router, prefix="/api")
@@ -93,3 +98,6 @@ def register_all_routes(app, engine, game_lock_engine=None, db=None,
     app.include_router(board_intel_v2_router, prefix="/api")
     app.include_router(game_lock_router, prefix="/api")
     app.include_router(adaptive_sync_router, prefix="/api")
+    app.include_router(admin_router, prefix="/api")
+    app.include_router(cached_data_router, prefix="/api")
+    app.include_router(scheduler_router, prefix="/api")

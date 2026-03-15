@@ -1,0 +1,139 @@
+"""
+Admin Routes
+=============
+Administrative and cache management endpoints.
+"""
+from fastapi import APIRouter, HTTPException
+import logging
+
+logger = logging.getLogger(__name__)
+router = APIRouter(tags=["Admin"])
+
+# References set via dependency injection
+_stats_manager = None
+_db = None
+
+
+def set_admin_deps(stats_manager, db):
+    """Set admin route dependencies."""
+    global _stats_manager, _db
+    _stats_manager = stats_manager
+    _db = db
+
+
+def get_stats_manager():
+    """Get the stats manager instance."""
+    if _stats_manager is None:
+        raise HTTPException(status_code=500, detail="Stats manager not initialized")
+    return _stats_manager
+
+
+@router.get("/cache-status")
+async def get_cache_status():
+    """Get cache statistics"""
+    stats = get_stats_manager()
+    status = await stats.get_cache_status()
+    return {"success": True, "data": status}
+
+
+@router.post("/clear-expired-cache")
+async def clear_expired_cache():
+    """Clear expired cache entries"""
+    stats = get_stats_manager()
+    deleted_count = await stats.clear_expired_cache()
+    return {"success": True, "deleted_count": deleted_count}
+
+
+@router.post("/sync-rosters")
+async def sync_rosters(force: bool = False):
+    """
+    Sync NBA rosters for all 30 teams
+    This creates a global player database for fast lookups
+    """
+    stats = get_stats_manager()
+    result = await stats.sync_nba_rosters(force=force)
+    return {"success": True, "sync_result": result}
+
+
+@router.post("/clear-all-cache")
+async def clear_all_cache():
+    """Clear ALL cache (use when changing seasons)"""
+    stats = get_stats_manager()
+    deleted_count = await stats.clear_all_cache()
+    return {"success": True, "deleted_count": deleted_count, "reason": "Season change - cleared all 2024 data"}
+
+
+@router.get("/todays-games")
+async def get_todays_games():
+    """Get today's NBA games from BallDontLie"""
+    stats = get_stats_manager()
+    result = await stats.get_todays_games_summary()
+    return result
+
+
+@router.post("/trigger-daily-sync")
+async def trigger_daily_sync():
+    """Manually trigger the autonomous daily sync"""
+    stats = get_stats_manager()
+    result = await stats.autonomous_daily_sync()
+    return {"success": True, "sync_result": result}
+
+
+@router.post("/sync-lakers-test")
+async def sync_lakers_test():
+    """
+    Test Lakers roster sync for season 2025 using BallDontLie
+    """
+    stats = get_stats_manager()
+    logger.info("Testing Lakers roster sync for season 2025 (BallDontLie)...")
+    
+    # Lakers team ID in BallDontLie is 14
+    player_ids = await stats.sync_players_for_team(14)
+    
+    return {
+        "success": True,
+        "message": "Lakers roster synced successfully via BallDontLie",
+        "players_synced": len(player_ids),
+        "data_source": "BallDontLie API"
+    }
+
+
+@router.get("/rate-limit-status")
+async def get_rate_limit_status():
+    """Get current API rate limit status"""
+    stats = get_stats_manager()
+    status = stats.rate_limit.get_status()
+    return {"success": True, "rate_limit": status}
+
+
+@router.get("/roster-status")
+async def get_roster_status():
+    """Get roster sync status and statistics"""
+    stats = get_stats_manager()
+    from config.settings import CURRENT_SEASON
+    
+    try:
+        total_players = await stats.league_roster.count_documents({})
+        
+        # Get teams count
+        teams = await stats.league_roster.distinct("team_name")
+        
+        # Get last sync time
+        latest = await stats.league_roster.find_one(
+            {},
+            sort=[("synced_at", -1)]
+        )
+        
+        last_synced = latest.get("synced_at") if latest else None
+        
+        return {
+            "success": True,
+            "total_players": total_players,
+            "total_teams": len(teams),
+            "teams": sorted(teams),
+            "last_synced": last_synced,
+            "season": CURRENT_SEASON
+        }
+    except Exception as e:
+        logger.error(f"Roster status error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
