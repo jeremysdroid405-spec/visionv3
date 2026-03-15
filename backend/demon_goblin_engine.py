@@ -385,7 +385,8 @@ class DemonGoblinEngine:
             RosterService, PhotoService, PropsService, SyncService, 
             TierBuilderService, ParlayBuilderService, CachedBoardBuilderService,
             OddsApiService, StatsApiService, Tank01Service, PicksGetterService,
-            DataIntegrityService, StatsEnrichmentService, OddsSyncService
+            DataIntegrityService, StatsEnrichmentService, OddsSyncService,
+            PropProcessorService, InsightsSyncService
         )
         from services.sync_orchestration_service import SyncOrchestrationService
         self.roster_service = RosterService(self.repo, db)
@@ -405,7 +406,11 @@ class DemonGoblinEngine:
         self.stats_enrichment_service = StatsEnrichmentService(db)
         self.odds_sync_service = OddsSyncService(db)
         self.sync_orchestration_service = SyncOrchestrationService(db)
-        self.sync_orchestration_service.set_engine(self)  # Set engine reference
+        self.sync_orchestration_service.set_engine(self)
+        self.prop_processor_service = PropProcessorService(db)
+        self.prop_processor_service.set_engine(self)
+        self.insights_sync_service = InsightsSyncService(db)
+        self.insights_sync_service.set_engine(self)
         
         # Legacy direct collection access (gradually migrating to repo)
         self.events_cache = db.dg_events_cache
@@ -946,144 +951,8 @@ class DemonGoblinEngine:
     # ==================== MAIN ORCHESTRATION ====================
     
     async def process_player_prop(self, prop: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Process a single prop through all three pillars with V3.1 "Truth Engine" verification.
-        
-        V3.1 NAJI SAFEGUARD:
-        - Verify playerID from game logs matches playerID from active daily roster
-        - Discard data if mismatch (prevents wrong player stats)
-        - Log all discrepancies for audit
-        """
-        player_name = prop.get("player_name", "")
-        market = prop.get("market", "")
-        line = prop.get("line", 0)
-        
-        result = {
-            **prop,
-            "bdl_player_id": None,
-            "bdl_team": None,
-            "position": None,
-            "hit_rates": None,
-            "injury_info": {"warning_level": "none"},
-            "has_goblin_warning": False,  # High hit rate + Questionable
-            "source_verified": False,  # V3.1: Data integrity flag
-            "verification_status": "unverified",  # V3.1: Verification status
-            "verification_details": {},  # V3.1: Detailed verification info
-            "naji_safeguard_passed": None,  # V3.1: Naji Safeguard result
-            "processed_at": datetime.now(timezone.utc).isoformat()
-        }
-        
-        # Pillar 2: BallDontLie stats
-        bdl_player = await self.search_bdl_player(player_name)
-        if bdl_player:
-            bdl_player_id = bdl_player.get("id")
-            result["bdl_player_id"] = bdl_player_id
-            result["bdl_team"] = bdl_player.get("team", {}).get("abbreviation", "")
-            result["position"] = bdl_player.get("position", "")
-            
-            # Convert market name for stats lookup (remove _alternate suffix)
-            stat_market = market.replace("_alternate", "")
-            
-            games = await self.fetch_player_season_stats(bdl_player_id)
-            if games:
-                # ==================== V3.1 NAJI SAFEGUARD ====================
-                # Verify that game log playerIDs match the expected BDL player ID
-                # This prevents data from wrong players (e.g., Naji Marshall issue)
-                naji_safeguard_passed = True
-                mismatched_games = []
-                
-                for game in games:
-                    # BallDontLie game logs contain player reference in "player" field
-                    game_player = game.get("player", {})
-                    game_player_id = game_player.get("id") if isinstance(game_player, dict) else None
-                    
-                    # If game log has player ID, verify it matches
-                    if game_player_id is not None and game_player_id != bdl_player_id:
-                        naji_safeguard_passed = False
-                        mismatched_games.append({
-                            "expected_id": bdl_player_id,
-                            "found_id": game_player_id,
-                            "game_date": game.get("game", {}).get("date", "unknown")
-                        })
-                
-                result["naji_safeguard_passed"] = naji_safeguard_passed
-                
-                if not naji_safeguard_passed:
-                    # DISCARD DATA - Player ID mismatch detected
-                    result["source_verified"] = False
-                    result["verification_status"] = "NAJI_SAFEGUARD_FAILED"
-                    result["verification_details"] = {
-                        "reason": "Player ID mismatch in game logs",
-                        "expected_player_id": bdl_player_id,
-                        "mismatched_games": mismatched_games[:5]  # Limit to 5 for log size
-                    }
-                    logger.error(
-                        f"[NAJI SAFEGUARD] FAILED for {player_name}: "
-                        f"Expected ID {bdl_player_id}, found mismatched games: {len(mismatched_games)}"
-                    )
-                    # Store the failure for audit
-                    await self._log_verification_failure(player_name, "naji_safeguard", result["verification_details"])
-                else:
-                    # Naji Safeguard passed - proceed with hit rate calculation
-                    hit_rates = self.calculate_hit_rates(games, stat_market, line)
-                    result["hit_rates"] = hit_rates
-                    
-                    # V3.1: Triple-check verification
-                    l10_data = self._extract_l10_values(games[:10], stat_market)
-                    if l10_data:
-                        calculated_hits = sum(1 for v in l10_data if v > line)
-                        calculated_rate = (calculated_hits / len(l10_data) * 100) if l10_data else 0
-                        claimed_rate = hit_rates.get("l10", {}).get("hit_rate", 0) * 100
-                        raw_avg = sum(l10_data) / len(l10_data) if l10_data else 0
-                        
-                        # Store verification details for audit
-                        result["verification_details"] = {
-                            "calculated_hits": calculated_hits,
-                            "calculated_rate": round(calculated_rate, 2),
-                            "claimed_rate": round(claimed_rate, 2),
-                            "raw_avg": round(raw_avg, 2),
-                            "line": line,
-                            "games_analyzed": len(l10_data)
-                        }
-                        
-                        # Verification Gate: Detect hallucinations
-                        is_hallucinated = (
-                            claimed_rate > 80 and 
-                            raw_avg < line and 
-                            calculated_rate < 50
-                        )
-                        
-                        major_discrepancy = abs(claimed_rate - calculated_rate) > 20
-                        
-                        if is_hallucinated or major_discrepancy:
-                            result["source_verified"] = False
-                            result["verification_status"] = "HALLUCINATION_DETECTED" if is_hallucinated else "DISCREPANCY"
-                            logger.warning(
-                                f"[VERIFY FAIL] {player_name} {stat_market}: "
-                                f"Claimed {claimed_rate:.1f}% vs Calculated {calculated_rate:.1f}% "
-                                f"(avg {raw_avg:.1f} vs line {line})"
-                            )
-                            # Log failure for audit
-                            await self._log_verification_failure(player_name, result["verification_status"], result["verification_details"])
-                        else:
-                            result["source_verified"] = True
-                            result["verification_status"] = "verified"
-                    else:
-                        result["verification_status"] = "no_game_data"
-            else:
-                result["verification_status"] = "no_games_found"
-        
-        # Pillar 3: Injury check
-        injury_info = self.get_player_injury_status(player_name)
-        result["injury_info"] = injury_info
-        
-        # Special warning: Goblin with high hit rate but Questionable
-        if prop.get("is_goblin") and result.get("hit_rates"):
-            l10_hit_rate = result["hit_rates"].get("l10", {}).get("hit_rate", 0)
-            if l10_hit_rate >= GOBLIN_HIT_RATE_WARNING and injury_info["warning_level"] == "questionable":
-                result["has_goblin_warning"] = True
-        
-        return result
+        """Process a single prop through all three pillars. Delegated to PropProcessorService."""
+        return await self.prop_processor_service.process_player_prop(prop)
     
     # ==================== ADVANCED ANALYTICS ENGINE v3.1 ====================
     
@@ -1168,183 +1037,18 @@ class DemonGoblinEngine:
         game_stats: List[Dict],
         stat_type: str = "pts"
     ) -> Dict[str, Any]:
-        """
-        Calculate all advanced analytics for a player.
-        
-        Args:
-            player_name: Player name
-            team: Player's team abbreviation
-            opponent: Opponent team abbreviation
-            game_stats: List of recent game stats [{pts, reb, ast, ...}, ...]
-            stat_type: Which stat to calculate volatility for
-        
-        Returns:
-            Complete insights dictionary
-        """
-        # Extract stat values for volatility calculation
-        stat_key_map = {
-            "pts": "pts", "points": "pts",
-            "reb": "reb", "rebounds": "reb",
-            "ast": "ast", "assists": "ast",
-            "fg3m": "fg3m", "3pm": "fg3m", "threes": "fg3m"
-        }
-        stat_key = stat_key_map.get(stat_type.lower(), "pts")
-        
-        recent_values = []
-        for game in game_stats[:10]:
-            val = game.get(stat_key, 0)
-            if val is not None:
-                recent_values.append(float(val))
-        
-        # Calculate volatility
-        volatility, stddev = self.calculate_volatility(recent_values)
-        
-        # Calculate pace factor
-        pace_factor = self.calculate_pace_factor(team, opponent) if opponent else 1.0
-        
-        # Get injured teammates (simplified - would need injury API integration)
-        # For now, use empty list; will be populated by Tank01 in production
-        injured_teammates = []
-        
-        # Calculate usage bump
-        usage_bump, injured_stars = self.calculate_usage_bump(player_name, team, injured_teammates)
-        
-        # Determine schedule density (simplified)
-        # In production, would check actual schedule
-        days_rest = 2  # Default
-        is_b2b = False
-        is_3in4 = False
-        density_factor = 1.0
-        
-        # Generate summary
-        summary = self.generate_insight_summary(
-            player_name=player_name,
-            pace_factor=pace_factor,
-            usage_bump=usage_bump,
-            volatility=volatility,
-            days_rest=days_rest,
-            is_b2b=is_b2b,
-            is_3in4=is_3in4,
-            injured_teammates=injured_stars,
-            opponent=opponent or "TBD"
+        """Calculate all advanced analytics for a player. Delegated to InsightsSyncService."""
+        return await self.insights_sync_service.calculate_player_insights(
+            player_name, team, opponent, game_stats, stat_type
         )
-        
-        # Calculate confidence
-        confidence = self.calculate_confidence_rating(density_factor, volatility, len(recent_values))
-        
-        return {
-            "schedule_density_factor": density_factor,
-            "pace_adjustment_factor": pace_factor,
-            "usage_bump_percent": usage_bump,
-            "volatility_score": volatility,
-            "volatility_stddev": stddev,
-            "insight_summary": summary,
-            "ai_confidence_rating": confidence,
-            "is_back_to_back": is_b2b,
-            "is_three_in_four": is_3in4,
-            "days_rest": days_rest,
-            "injured_teammates": injured_stars
-        }
     
     async def sync_daily_insights(self) -> Dict[str, Any]:
-        """
-        Sync daily insights for all players with active props.
-        Calculates advanced analytics and stores in MongoDB.
-        Should be run daily at 8:00 AM EST.
-        """
-        sync_start = datetime.now(timezone.utc)
-        logger.info("[INSIGHTS SYNC] Starting daily insights calculation...")
-        
-        insights_calculated = 0
-        errors = []
-        
-        try:
-            # Get all players from cached board
-            players = await self.cached_board.find({}, {"_id": 0}).to_list(None)
-            
-            if not players:
-                return {"success": True, "insights_calculated": 0, "message": "No players to process"}
-            
-            logger.info(f"[INSIGHTS SYNC] Processing {len(players)} players...")
-            
-            for player in players:
-                try:
-                    player_name = player.get("player_name", "")
-                    team = player.get("team", "")
-                    
-                    # Get opponent from props (if available)
-                    opponent = ""
-                    if player.get("props"):
-                        first_prop = player["props"][0]
-                        opponent = first_prop.get("opponent", first_prop.get("away_team", ""))
-                    
-                    # Get cached stats for this player
-                    stats_doc = await self.player_stats.find_one(
-                        {"normalized_name": self.sanitize_player_name(player_name)},
-                        {"_id": 0}
-                    )
-                    
-                    game_stats = []
-                    if stats_doc:
-                        game_stats = stats_doc.get("games", [])[:10]
-                    
-                    # Calculate insights
-                    insights = await self.calculate_player_insights(
-                        player_name=player_name,
-                        team=team,
-                        opponent=opponent,
-                        game_stats=game_stats,
-                        stat_type="pts"
-                    )
-                    
-                    # Add metadata
-                    insights["player_name"] = player_name
-                    insights["team"] = team
-                    insights["opponent"] = opponent
-                    insights["synced_at"] = sync_start.isoformat()
-                    
-                    # Store in MongoDB
-                    await self.daily_insights.update_one(
-                        {"player_name": player_name},
-                        {"$set": insights},
-                        upsert=True
-                    )
-                    
-                    insights_calculated += 1
-                    
-                except Exception as e:
-                    errors.append(f"{player.get('player_name', 'Unknown')}: {str(e)}")
-            
-            # Create indexes
-            await self.daily_insights.create_index("player_name", unique=True)
-            await self.daily_insights.create_index("team")
-            
-            duration = (datetime.now(timezone.utc) - sync_start).total_seconds()
-            logger.info(f"[INSIGHTS SYNC] Completed: {insights_calculated} players in {duration:.1f}s")
-            
-            return {
-                "success": True,
-                "insights_calculated": insights_calculated,
-                "duration_seconds": duration,
-                "errors": errors[:5],
-                "synced_at": sync_start.isoformat()
-            }
-            
-        except Exception as e:
-            logger.error(f"[INSIGHTS SYNC] Failed: {e}")
-            return {
-                "success": False,
-                "error": str(e),
-                "insights_calculated": insights_calculated
-            }
+        """Sync daily insights for all players. Delegated to InsightsSyncService."""
+        return await self.insights_sync_service.sync_daily_insights()
     
     async def get_player_insights(self, player_name: str) -> Optional[Dict[str, Any]]:
-        """Get cached insights for a player."""
-        doc = await self.daily_insights.find_one(
-            {"player_name": player_name},
-            {"_id": 0}
-        )
-        return doc
+        """Get cached insights for a player. Delegated to InsightsSyncService."""
+        return await self.insights_sync_service.get_player_insights(player_name)
     
     async def run_full_sync(self) -> Dict[str, Any]:
         """Execute the full three-pillar sync with PrizePicks data. Delegated to SyncOrchestrationService."""

@@ -59,3 +59,5 @@ from .data_integrity_service import DataIntegrityService
 from .stats_enrichment_service import StatsEnrichmentService
 from .odds_sync_service import OddsSyncService
 from .sync_orchestration_service import SyncOrchestrationService
+from .prop_processor_service import PropProcessorService
+from .insights_sync_service import InsightsSyncService

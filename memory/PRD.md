@@ -60,16 +60,21 @@ dg_cached_board → dg_radar_picks (War Zone) → dg_goblin_vault → dg_goblin_
 
 ## What's Been Implemented
 
-### 2026-03-15: Backend Engine Recovery & Continued Extraction (Phase 12)
+### 2026-03-15: Backend Engine Recovery & Continued Extraction (Phase 12-13)
 - **Recovery:** Restored corrupted `demon_goblin_engine.py` from commit `79209ff`
-- **Engine Reduction:** 2,707 → 1,810 lines (**897 lines extracted, 33% additional reduction**)
-- **Cumulative Reduction:** 8,252 → 1,810 lines (**~78% total reduction**)
+- **Engine Reduction:** 2,707 → 1,514 lines (**1,193 lines extracted, 44% additional reduction**)
+- **Cumulative Reduction:** 8,252 → 1,514 lines (**~82% total reduction**)
 - **Extractions Completed:**
   - `get_most_popular_bets()` (267 lines) → `PicksGetterService`
   - `run_full_sync()` (471 lines) → `SyncOrchestrationService`
   - `run_delta_sync()` (177 lines) → `SyncOrchestrationService`
-- **PicksGetterService Updated:** Now 663 lines
-- **SyncOrchestrationService Updated:** Now 671 lines (engine dependency injection design)
+  - `process_player_prop()` (139 lines) → `PropProcessorService` (NEW)
+  - `calculate_player_insights()` (85 lines) → `InsightsSyncService` (NEW)
+  - `sync_daily_insights()` (91 lines) → `InsightsSyncService` (NEW)
+  - `get_player_insights()` → `InsightsSyncService` (NEW)
+- **New Services Created:**
+  - `PropProcessorService` (187 lines): NAJI Safeguard verification, hit rate calculation
+  - `InsightsSyncService` (176 lines): Daily insights sync, player analytics calculation
 - **All API Endpoints Verified Working:**
   - `/api/v3/status` ✅
   - `/api/v3/war-zone` ✅
