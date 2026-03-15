@@ -2200,10 +2200,294 @@ const GoblinReconSwipeSection = memo(({ picks, onPickClick, tMinusGames = [] }) 
 
 GoblinReconSwipeSection.displayName = 'GoblinReconSwipeSection';
 
-// Gauntlet (Demon Parlay) Swipeable Section
-const GauntletSwipeSection = memo(({ parlayData, onParlayClick }) => {
-  const parlays = [2, 3, 4, 5, 6].map(n => parlayData[`${n}_pick`]).filter(Boolean);
-  const { containerRef, currentIndex, showHint } = useSwipeTracker(parlays.length);
+// ==================== MASTER PARLAY MATRIX & DFS COMPLIANCE ENGINE ====================
+
+/**
+ * PARLAY OVERLAP MATRIX - Ensures strategic diversity across ticket sizes
+ * Maps indices from a 10-player pool to create optimized parlay combinations
+ */
+const PARLAY_MATRIX = {
+  2: [0, 1],
+  3: [0, 2, 3],
+  4: [1, 2, 4, 5],
+  5: [0, 3, 4, 6, 7],
+  6: [1, 3, 5, 7, 8, 9]
+};
+
+/**
+ * DFS COMPLIANCE ENGINE - Validates tickets against PrizePicks rules
+ * @param {Array} ticketPicks - Array of picks for this ticket
+ * @param {Array} fullPool - Full pool of available picks (backup source)
+ * @param {number} ticketSize - Target ticket size (2-6)
+ * @returns {Array} - Validated, compliant ticket array
+ */
+const validateTicket = (ticketPicks, fullPool, ticketSize) => {
+  if (!ticketPicks || ticketPicks.length === 0) return [];
+  
+  let validatedPicks = [...ticketPicks];
+  const usedPlayerIds = new Set();
+  const playerStatCounts = {}; // Track stat types per player
+  const teamCounts = {};
+  
+  // Helper: Get unique identifier for a pick
+  const getPickId = (pick) => `${pick.player_name}-${pick.stat_type}-${pick.line}`;
+  
+  // Helper: Find next valid replacement from pool
+  const findReplacement = (excludeIds, excludeTeams = null, requireDifferentTeam = false) => {
+    for (const pick of fullPool) {
+      const pickId = getPickId(pick);
+      if (excludeIds.has(pickId)) continue;
+      
+      if (requireDifferentTeam && excludeTeams && excludeTeams.has(pick.team)) continue;
+      
+      // Check if adding this player would exceed stack limits
+      const playerName = pick.player_name;
+      const existingStats = playerStatCounts[playerName] || [];
+      if (existingStats.length >= 3) continue; // Max 3 stacks per player
+      if (existingStats.includes(pick.stat_type)) continue; // No duplicate stat types
+      
+      return pick;
+    }
+    return null;
+  };
+  
+  // ===== STRICT 2-LEG RULES: No Stacks Allowed =====
+  if (ticketSize === 2) {
+    const usedIds = new Set();
+    const usedTeams = new Set();
+    const finalPicks = [];
+    
+    for (const pick of validatedPicks) {
+      const pickId = getPickId(pick);
+      
+      // Must be different player AND different team
+      if (usedIds.has(pick.player_name) || usedTeams.has(pick.team)) {
+        // Find replacement from different team and different player
+        const replacement = findReplacement(
+          new Set([...usedIds, pickId].map(p => typeof p === 'string' ? p : getPickId(p))),
+          usedTeams,
+          true // Require different team
+        );
+        if (replacement) {
+          finalPicks.push(replacement);
+          usedIds.add(replacement.player_name);
+          usedTeams.add(replacement.team);
+        }
+      } else {
+        finalPicks.push(pick);
+        usedIds.add(pick.player_name);
+        usedTeams.add(pick.team);
+      }
+      
+      if (finalPicks.length >= 2) break;
+    }
+    
+    return finalPicks;
+  }
+  
+  // ===== 3-6 LEG RULES: Stacks Allowed with Limits =====
+  const usedPickIds = new Set();
+  const finalPicks = [];
+  
+  for (const pick of validatedPicks) {
+    const pickId = getPickId(pick);
+    const playerName = pick.player_name;
+    
+    // Skip exact duplicates
+    if (usedPickIds.has(pickId)) continue;
+    
+    // Initialize player stat tracking
+    if (!playerStatCounts[playerName]) {
+      playerStatCounts[playerName] = [];
+    }
+    
+    // Rule 1: Max 3 stacks per player with unique stat types
+    if (playerStatCounts[playerName].length >= 3) {
+      // Player already has 3 entries - skip and find replacement
+      continue;
+    }
+    
+    if (playerStatCounts[playerName].includes(pick.stat_type)) {
+      // Duplicate stat type for this player - skip
+      continue;
+    }
+    
+    // Track this pick
+    finalPicks.push(pick);
+    usedPickIds.add(pickId);
+    playerStatCounts[playerName].push(pick.stat_type);
+    teamCounts[pick.team] = (teamCounts[pick.team] || 0) + 1;
+  }
+  
+  // Rule 2: Min 2 teams required
+  const uniqueTeams = Object.keys(teamCounts);
+  if (uniqueTeams.length < 2 && finalPicks.length >= 2) {
+    // Find the lowest EV pick and replace with different team player
+    const singleTeam = uniqueTeams[0];
+    
+    // Sort by EV/score to find lowest
+    const sortedPicks = [...finalPicks].sort((a, b) => 
+      (a.final_ev_score || a.popularity_score || 0) - (b.final_ev_score || b.popularity_score || 0)
+    );
+    
+    const lowestPick = sortedPicks[0];
+    const lowestIdx = finalPicks.indexOf(lowestPick);
+    
+    // Find replacement from different team
+    const replacement = findReplacement(usedPickIds, new Set([singleTeam]), true);
+    
+    if (replacement && lowestIdx !== -1) {
+      finalPicks[lowestIdx] = replacement;
+    }
+  }
+  
+  // Ensure we have exactly ticketSize picks
+  while (finalPicks.length < ticketSize && fullPool.length > 0) {
+    const replacement = findReplacement(usedPickIds);
+    if (replacement) {
+      finalPicks.push(replacement);
+      usedPickIds.add(getPickId(replacement));
+      const pn = replacement.player_name;
+      if (!playerStatCounts[pn]) playerStatCounts[pn] = [];
+      playerStatCounts[pn].push(replacement.stat_type);
+    } else {
+      break; // No more valid replacements
+    }
+  }
+  
+  return finalPicks.slice(0, ticketSize);
+};
+
+/**
+ * MATRIX MAPPER - Applies overlap matrix to pick pool
+ * @param {Array} pool - Sorted array of picks (by EV)
+ * @param {number} ticketSize - Target ticket size
+ * @returns {Array} - Picks mapped via matrix indices
+ */
+const applyParlayMatrix = (pool, ticketSize) => {
+  if (!pool || pool.length === 0) return [];
+  
+  const indices = PARLAY_MATRIX[ticketSize] || [];
+  const mapped = indices
+    .filter(idx => idx < pool.length)
+    .map(idx => pool[idx]);
+  
+  return mapped;
+};
+
+/**
+ * INTERLEAVE HELPER - For Front Lines (Goblin, Demon, Goblin, Demon...)
+ * @param {Array} goblins - Array of goblin picks
+ * @param {Array} demons - Array of demon picks
+ * @returns {Array} - Interleaved array
+ */
+const interleavePickArrays = (goblins, demons) => {
+  const result = [];
+  const maxLen = Math.max(goblins.length, demons.length);
+  
+  for (let i = 0; i < maxLen; i++) {
+    if (i < goblins.length) result.push(goblins[i]);
+    if (i < demons.length) result.push(demons[i]);
+  }
+  
+  return result;
+};
+
+/**
+ * MASTER PARLAY BUILDER - Builds all 5 tickets with matrix + validation
+ * @param {Array} fullPool - Full pool of picks sorted by EV
+ * @param {Object} options - Configuration options
+ * @returns {Object} - Object with tickets keyed by size (2-6)
+ */
+const buildMasterParlayTickets = (fullPool, options = {}) => {
+  const { sectionName = 'default', colorTheme = 'red' } = options;
+  
+  const ticketNames = {
+    safe_haven: {
+      2: { name: 'Daily Double', description: '2 high-floor picks' },
+      3: { name: 'Green Ladder', description: '3 picks - steady climb' },
+      4: { name: 'Green Ladder+', description: '4 picks - extended reach' },
+      5: { name: 'Green Stack', description: '5 picks - full stack' },
+      6: { name: '6-Pick Fortress', description: 'PrizePicks Flex - Win on 5 OR 6!' }
+    },
+    front_lines: {
+      2: { name: 'Quick Strike', description: '2 tactical picks' },
+      3: { name: 'Triple Tap', description: '3 diversified picks' },
+      4: { name: 'Fire Squad', description: '4 balanced picks' },
+      5: { name: 'Full Clip', description: '5 stacked picks' },
+      6: { name: 'Armory', description: 'PrizePicks Flex - Win on 5 OR 6!' }
+    },
+    war_zone: {
+      2: { name: 'Double Up', description: '2 demon picks' },
+      3: { name: 'Triple Threat', description: '3 high-upside picks' },
+      4: { name: 'Power Play', description: '4 ceiling plays' },
+      5: { name: 'Heavy Hitter', description: '5 max payout picks' },
+      6: { name: 'Jackpot', description: 'PrizePicks Flex - Win on 5 OR 6!' }
+    }
+  };
+  
+  const names = ticketNames[sectionName] || ticketNames.war_zone;
+  const tickets = {};
+  
+  for (const size of [2, 3, 4, 5, 6]) {
+    // Step 1: Apply matrix mapping
+    const mappedPicks = applyParlayMatrix(fullPool, size);
+    
+    // Step 2: Validate and auto-correct
+    const validatedPicks = validateTicket(mappedPicks, fullPool, size);
+    
+    if (validatedPicks.length < size) continue; // Skip if we can't fill
+    
+    // Step 3: Calculate combined probability and payout
+    const combinedProb = validatedPicks.reduce((acc, pick) => {
+      const rate = (pick.h10_rate || pick.reliability || 50) / 100;
+      return acc * rate;
+    }, 1) * 100;
+    
+    const payoutMultiplier = Math.round(Math.pow(1.8, size) * 10) / 10;
+    
+    tickets[size] = {
+      name: names[size].name,
+      description: names[size].description,
+      picks: validatedPicks,
+      pick_count: size,
+      estimated_payout: payoutMultiplier,
+      combined_probability: Math.round(combinedProb * 10) / 10,
+      reliability: Math.round(combinedProb * 10) / 10,
+      payout_range: `${payoutMultiplier - 1}x - ${payoutMultiplier + 2}x`,
+      lineup_valid: true,
+      lineup_status: 'Valid (Multi-Team)',
+      team_count: new Set(validatedPicks.map(p => p.team)).size,
+      validated: true
+    };
+  }
+  
+  return tickets;
+};
+
+// ==================== END PARLAY MATRIX ENGINE ====================
+
+// Gauntlet (War Zone Parlay) - Uses Matrix Engine with DFS Validation
+const GauntletSwipeSection = memo(({ picks, onParlayClick }) => {
+  // Build parlays using the Master Parlay Matrix Engine
+  const parlayTickets = useMemo(() => {
+    if (!picks || picks.length < 2) return {};
+    
+    // Sort picks by EV score (highest first) to ensure best picks get priority
+    const sortedPool = [...picks].sort((a, b) => 
+      (b.final_ev_score || b.score || 0) - (a.final_ev_score || a.score || 0)
+    );
+    
+    // Expand pool to top 20 for auto-correction backup
+    const fullPool = sortedPool.slice(0, 20);
+    
+    return buildMasterParlayTickets(fullPool, { sectionName: 'war_zone', colorTheme: 'red' });
+  }, [picks]);
+  
+  const parlayArray = [2, 3, 4, 5, 6].map(n => parlayTickets[n]).filter(Boolean);
+  const { containerRef, currentIndex, showHint } = useSwipeTracker(parlayArray.length);
+  
+  if (parlayArray.length === 0) return null;
   
   return (
     <div data-testid="gauntlet-section" className="mt-6">
@@ -2215,7 +2499,7 @@ const GauntletSwipeSection = memo(({ parlayData, onParlayClick }) => {
           </Badge>
         </div>
         <div className="text-[10px] text-zinc-500 hidden sm:block">
-          Whale Scoring + Correlation Filter
+          Matrix Mapped + DFS Validated
         </div>
       </div>
       
@@ -2227,17 +2511,15 @@ const GauntletSwipeSection = memo(({ parlayData, onParlayClick }) => {
           style={{ WebkitOverflowScrolling: 'touch', scrollbarWidth: 'none', msOverflowStyle: 'none' }}
         >
           {[2, 3, 4, 5, 6].map(pickCount => {
-            const parlay = parlayData[`${pickCount}_pick`];
+            const parlay = parlayTickets[pickCount];
             if (!parlay) return null;
-            // Force lineup_valid to true and has_opponent_pair to false for consistent red styling
-            const fixedParlay = { ...parlay, lineup_valid: true, lineup_status: 'Valid (Multi-Team)', has_opponent_pair: false };
             return (
               <div 
-                key={`parlay-${pickCount}`} 
+                key={`gauntlet-${pickCount}`} 
                 className="snap-center flex-shrink-0 w-[calc(100vw-48px)] max-w-[340px] sm:w-auto sm:max-w-none"
               >
                 <UniversalParlayTicket
-                  parlay={fixedParlay}
+                  parlay={parlay}
                   pickCount={pickCount}
                   onClick={() => onParlayClick(parlay)}
                   colorTheme="red"
@@ -2249,7 +2531,7 @@ const GauntletSwipeSection = memo(({ parlayData, onParlayClick }) => {
         </div>
       </div>
       
-      <SwipeIndicator current={currentIndex} total={parlays.length} accentColor="orange" />
+      <SwipeIndicator current={currentIndex} total={parlayArray.length} accentColor="orange" />
       
       {/* Parlay Legend - Desktop only */}
       <div className="mt-2 hidden sm:flex items-center justify-center gap-4 text-[10px] text-zinc-500">
@@ -2263,11 +2545,27 @@ const GauntletSwipeSection = memo(({ parlayData, onParlayClick }) => {
 
 GauntletSwipeSection.displayName = 'GauntletSwipeSection';
 
-// The Shield Swipeable Section - High Reliability Parlays (under Safe Haven)
-const TheShieldSwipeSection = memo(({ reconData, onParlayClick }) => {
-  const tiers = ['daily_double', 'green_ladder_3', 'green_ladder_4', 'green_stack_5', 'fortress_flex'];
-  const parlays = tiers.map(t => reconData[t]).filter(Boolean);
-  const { containerRef, currentIndex, showHint } = useSwipeTracker(parlays.length);
+// The Shield (Safe Haven Parlay) - Uses Matrix Engine with DFS Validation
+const TheShieldSwipeSection = memo(({ picks, onParlayClick }) => {
+  // Build parlays using the Master Parlay Matrix Engine
+  const parlayTickets = useMemo(() => {
+    if (!picks || picks.length < 2) return {};
+    
+    // Sort picks by EV score (highest first) to ensure best picks get priority
+    const sortedPool = [...picks].sort((a, b) => 
+      (b.final_ev_score || b.score || 0) - (a.final_ev_score || a.score || 0)
+    );
+    
+    // Expand pool to top 20 for auto-correction backup
+    const fullPool = sortedPool.slice(0, 20);
+    
+    return buildMasterParlayTickets(fullPool, { sectionName: 'safe_haven', colorTheme: 'green' });
+  }, [picks]);
+  
+  const parlayArray = [2, 3, 4, 5, 6].map(n => parlayTickets[n]).filter(Boolean);
+  const { containerRef, currentIndex, showHint } = useSwipeTracker(parlayArray.length);
+  
+  if (parlayArray.length === 0) return null;
   
   return (
     <div data-testid="the-shield-section" className="mt-6">
@@ -2279,7 +2577,7 @@ const TheShieldSwipeSection = memo(({ reconData, onParlayClick }) => {
           </Badge>
         </div>
         <div className="text-[10px] text-zinc-500 hidden sm:block">
-          Floor Scoring + 88%+ Hit Rate
+          Matrix Mapped + DFS Validated
         </div>
       </div>
       
@@ -2290,16 +2588,12 @@ const TheShieldSwipeSection = memo(({ reconData, onParlayClick }) => {
           className="flex overflow-x-auto snap-x snap-mandatory scrollbar-hide gap-3 px-4 pb-2 sm:grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 sm:overflow-visible sm:px-0 sm:gap-3"
           style={{ WebkitOverflowScrolling: 'touch', scrollbarWidth: 'none', msOverflowStyle: 'none' }}
         >
-          {tiers.map(tier => {
-            const parlay = reconData[tier];
+          {[2, 3, 4, 5, 6].map(pickCount => {
+            const parlay = parlayTickets[pickCount];
             if (!parlay) return null;
-            const pickCount = tier === 'daily_double' ? 2 : 
-                              tier === 'green_ladder_3' ? 3 : 
-                              tier === 'green_ladder_4' ? 4 : 
-                              tier === 'green_stack_5' ? 5 : 6;
             return (
               <div 
-                key={`recon-${tier}`} 
+                key={`shield-${pickCount}`} 
                 className="snap-center flex-shrink-0 w-[calc(100vw-48px)] max-w-[340px] sm:w-auto sm:max-w-none"
               >
                 <UniversalParlayTicket
@@ -2315,7 +2609,7 @@ const TheShieldSwipeSection = memo(({ reconData, onParlayClick }) => {
         </div>
       </div>
       
-      <SwipeIndicator current={currentIndex} total={parlays.length} accentColor="green" />
+      <SwipeIndicator current={currentIndex} total={parlayArray.length} accentColor="green" />
       
       {/* Sapphire Gem Legend - Desktop only */}
       <div className="mt-2 hidden sm:flex items-center justify-center gap-4 text-[10px] text-zinc-500">
@@ -2380,59 +2674,38 @@ const FrontLinesSwipeSection = memo(({ picks, onPickClick, tMinusGames = [] }) =
 
 FrontLinesSwipeSection.displayName = 'FrontLinesSwipeSection';
 
-// Front Lines Parlay Section - AMBER theme + BULLET emblem
-// Generates 2-leg through 6-leg parlay tickets from Front Lines picks
+// The Strike (Front Lines Parlay) - Uses Matrix Engine with INTERLEAVED Pool
+// Interleaves Goblins and Demons before matrix mapping for maximum diversity
 const FrontLinesParlaySection = memo(({ picks, onParlayClick }) => {
-  const { containerRef, currentIndex, showHint } = useSwipeTracker(5); // 5 parlay tiers
-  
-  // Parlay tier names for The Strike
-  const parlayNames = {
-    2: { name: 'Quick Strike', description: '2 tactical picks - fast execution' },
-    3: { name: 'Triple Tap', description: '3 picks diversified across games' },
-    4: { name: 'Fire Squad', description: '4 picks for balanced firepower' },
-    5: { name: 'Full Clip', description: '5 picks stacked for premium payout' },
-    6: { name: 'Armory', description: 'PrizePicks Flex Play - Win on 5 OR 6 hits!' }
-  };
-  
-  // Generate parlay data from picks (2-leg through 6-leg)
-  const generateParlays = () => {
-    if (!picks || picks.length < 2) return [];
+  // Build parlays using the Master Parlay Matrix Engine with interleaving
+  const parlayTickets = useMemo(() => {
+    if (!picks || picks.length < 2) return {};
     
-    const parlayTiers = [2, 3, 4, 5, 6];
-    return parlayTiers.map(count => {
-      const parlayPicks = picks.slice(0, count);
-      if (parlayPicks.length < count) return null;
-      
-      // Calculate combined probability
-      const combinedProb = parlayPicks.reduce((acc, pick) => {
-        const rate = (pick.h10_rate || 50) / 100;
-        return acc * rate;
-      }, 1) * 100;
-      
-      // Estimate payout multiplier
-      const payoutMultiplier = Math.round(Math.pow(1.8, count) * 10) / 10;
-      
-      const tierInfo = parlayNames[count];
-      
-      return {
-        name: tierInfo.name,
-        description: tierInfo.description,
-        picks: parlayPicks,
-        estimated_payout: payoutMultiplier,
-        combined_probability: Math.round(combinedProb * 10) / 10,
-        reliability: Math.round(combinedProb * 10) / 10,
-        payout_range: `${payoutMultiplier - 1}x - ${payoutMultiplier + 2}x`,
-        lineup_valid: true,
-        lineup_status: 'Valid (Multi-Team)',
-        team_count: new Set(parlayPicks.map(p => p.team)).size,
-        badge: count === 2 ? 'QUICK' : count === 6 ? 'FLEX' : ''
-      };
-    }).filter(Boolean);
-  };
+    // Separate goblins and demons from the picks
+    const goblins = picks.filter(p => p.is_goblin);
+    const demons = picks.filter(p => p.is_demon);
+    const standards = picks.filter(p => !p.is_goblin && !p.is_demon);
+    
+    // Sort each group by EV score
+    goblins.sort((a, b) => (b.final_ev_score || b.score || 0) - (a.final_ev_score || a.score || 0));
+    demons.sort((a, b) => (b.final_ev_score || b.score || 0) - (a.final_ev_score || a.score || 0));
+    standards.sort((a, b) => (b.final_ev_score || b.score || 0) - (a.final_ev_score || a.score || 0));
+    
+    // INTERLEAVE: Goblin, Demon, Goblin, Demon...
+    const interleaved = interleavePickArrays(goblins, demons);
+    
+    // Add any remaining standards at the end
+    const fullPool = [...interleaved, ...standards].slice(0, 20);
+    
+    if (fullPool.length < 2) return {};
+    
+    return buildMasterParlayTickets(fullPool, { sectionName: 'front_lines', colorTheme: 'amber' });
+  }, [picks]);
   
-  const parlays = generateParlays();
+  const parlayArray = [2, 3, 4, 5, 6].map(n => parlayTickets[n]).filter(Boolean);
+  const { containerRef, currentIndex, showHint } = useSwipeTracker(parlayArray.length);
   
-  if (parlays.length === 0) return null;
+  if (parlayArray.length === 0) return null;
   
   return (
     <div data-testid="the-strike-section" className="mt-6">
@@ -2444,7 +2717,7 @@ const FrontLinesParlaySection = memo(({ picks, onParlayClick }) => {
           </Badge>
         </div>
         <div className="text-[10px] text-zinc-500 hidden sm:block">
-          Front Lines Parlay Combinations
+          Matrix Mapped + DFS Validated
         </div>
       </div>
       
@@ -2455,24 +2728,28 @@ const FrontLinesParlaySection = memo(({ picks, onParlayClick }) => {
           className="flex overflow-x-auto snap-x snap-mandatory scrollbar-hide gap-3 px-4 pb-2 sm:grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 sm:overflow-visible sm:px-0 sm:gap-3"
           style={{ WebkitOverflowScrolling: 'touch', scrollbarWidth: 'none', msOverflowStyle: 'none' }}
         >
-          {parlays.map((parlay, idx) => (
-            <div 
-              key={`strike-parlay-${idx + 2}`} 
-              className="snap-center flex-shrink-0 w-[calc(100vw-48px)] max-w-[340px] sm:w-auto sm:max-w-none"
-            >
-              <UniversalParlayTicket
-                parlay={parlay}
-                pickCount={idx + 2}
-                onClick={() => onParlayClick(parlay)}
-                colorTheme="amber"
-                emblem="bullet"
-              />
-            </div>
-          ))}
+          {[2, 3, 4, 5, 6].map(pickCount => {
+            const parlay = parlayTickets[pickCount];
+            if (!parlay) return null;
+            return (
+              <div 
+                key={`strike-${pickCount}`} 
+                className="snap-center flex-shrink-0 w-[calc(100vw-48px)] max-w-[340px] sm:w-auto sm:max-w-none"
+              >
+                <UniversalParlayTicket
+                  parlay={parlay}
+                  pickCount={pickCount}
+                  onClick={() => onParlayClick(parlay)}
+                  colorTheme="amber"
+                  emblem="bullet"
+                />
+              </div>
+            );
+          })}
         </div>
       </div>
       
-      <SwipeIndicator current={currentIndex} total={parlays.length} accentColor="amber" />
+      <SwipeIndicator current={currentIndex} total={parlayArray.length} accentColor="amber" />
     </div>
   );
 });
@@ -4765,9 +5042,9 @@ export const DemonGoblinDashboardOptimized = ({ isDemoMode = false }) => {
         )}
 
         {/* THE SHIELD - Safe Haven Parlay Generator (directly under Safe Haven) */}
-        {Object.keys(reconData).length > 0 && (
+        {vaultPicks.length >= 2 && (
           <TheShieldSwipeSection 
-            reconData={reconData}
+            picks={vaultPicks}
             onParlayClick={(parlay) => setExpandedParlay({ parlay, type: 'recon' })}
           />
         )}
@@ -4781,10 +5058,10 @@ export const DemonGoblinDashboardOptimized = ({ isDemoMode = false }) => {
           />
         )}
 
-        {/* THE FRONT LINES PARLAYS - 2-6 Leg Builds */}
+        {/* THE STRIKE - Front Lines Parlay Generator (Interleaved Goblin/Demon) */}
         {frontLinesPicks.length >= 2 && (
           <FrontLinesParlaySection 
-            picks={frontLinesPicks.slice(0, 10)}
+            picks={frontLinesPicks}
             onParlayClick={(parlay) => setExpandedParlay({ parlay, type: 'builder' })}
           />
         )}
@@ -4798,10 +5075,10 @@ export const DemonGoblinDashboardOptimized = ({ isDemoMode = false }) => {
           />
         )}
 
-        {/* THE GAUNTLET - Demon Parlay Generator */}
-        {Object.keys(parlayData).length > 0 && (
+        {/* THE GAUNTLET - War Zone Parlay Generator */}
+        {radarPicks.length >= 2 && (
           <GauntletSwipeSection 
-            parlayData={parlayData}
+            picks={radarPicks}
             onParlayClick={(parlay) => setExpandedParlay({ parlay, type: 'builder' })}
           />
         )}
