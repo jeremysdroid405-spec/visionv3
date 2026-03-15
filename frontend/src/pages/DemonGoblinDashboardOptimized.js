@@ -2241,8 +2241,8 @@ const GauntletSwipeSection = memo(({ parlayData, onParlayClick }) => {
           {[2, 3, 4, 5, 6].map(pickCount => {
             const parlay = parlayData[`${pickCount}_pick`];
             if (!parlay) return null;
-            // Force lineup_valid to true for all cards
-            const fixedParlay = { ...parlay, lineup_valid: true, lineup_status: 'Valid (Multi-Team)' };
+            // Force lineup_valid to true and has_opponent_pair to false for consistent red styling
+            const fixedParlay = { ...parlay, lineup_valid: true, lineup_status: 'Valid (Multi-Team)', has_opponent_pair: false };
             return (
               <div 
                 key={`parlay-${pickCount}`} 
