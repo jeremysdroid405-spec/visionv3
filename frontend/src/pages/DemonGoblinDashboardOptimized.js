@@ -2626,9 +2626,48 @@ const PopularBetCard = memo(({ bet, rank, onClick }) => {
 
 PopularBetCard.displayName = 'PopularBetCard';
 
+// Awaiting Action Empty State for Most Popular section
+const AwaitingActionState = memo(() => (
+  <div 
+    data-testid="awaiting-action-state"
+    className="bg-gradient-to-br from-zinc-900/50 to-zinc-950 border border-zinc-800/50 rounded-lg p-8 text-center"
+  >
+    <div className="flex flex-col items-center gap-4">
+      {/* Pulsing radar animation */}
+      <div className="relative">
+        <div className="w-16 h-16 rounded-full bg-orange-500/10 flex items-center justify-center">
+          <Radio className="w-8 h-8 text-orange-400" />
+        </div>
+        <div className="absolute inset-0 rounded-full border-2 border-orange-400/30 animate-ping" />
+        <div className="absolute inset-[-8px] rounded-full border border-orange-400/20 animate-pulse" />
+      </div>
+      
+      {/* Status text */}
+      <div>
+        <h3 className="text-lg font-semibold text-white mb-1">Awaiting Public Action...</h3>
+        <p className="text-sm text-zinc-500">Compiling live bets from today's slate</p>
+      </div>
+      
+      {/* Scanning indicator */}
+      <div className="flex items-center gap-2 text-[11px] text-orange-400/80">
+        <div className="w-2 h-2 rounded-full bg-orange-400 animate-pulse" />
+        <span>Scanning PrizePicks for live lines</span>
+      </div>
+      
+      {/* Info text */}
+      <p className="text-[10px] text-zinc-600 max-w-xs">
+        Popular bets will appear here once today's games are posted and public action begins.
+        Check back closer to tip-off times.
+      </p>
+    </div>
+  </div>
+));
+
+AwaitingActionState.displayName = 'AwaitingActionState';
+
 // Most Popular Bets Live Ticker Section
-const MostPopularBetsSection = memo(({ bets, lastUpdated, onBetClick, isLoading }) => {
-  const { containerRef, currentIndex, showHint } = useSwipeTracker(Math.min(bets.length, 20));
+const MostPopularBetsSection = memo(({ bets, lastUpdated, onBetClick, isLoading, status }) => {
+  const { containerRef, currentIndex, showHint } = useSwipeTracker(Math.min(bets?.length || 0, 20));
   
   // Format last updated time
   const formatLastUpdated = (isoString) => {
@@ -2645,7 +2684,8 @@ const MostPopularBetsSection = memo(({ bets, lastUpdated, onBetClick, isLoading 
     }
   };
   
-  if (!bets || bets.length === 0) return null;
+  // Always render the section - show empty state if no bets
+  const hasBets = bets && bets.length > 0;
   
   return (
     <div data-testid="most-popular-bets-section" className="mt-6">
@@ -2653,31 +2693,36 @@ const MostPopularBetsSection = memo(({ bets, lastUpdated, onBetClick, isLoading 
         <div className="flex items-center gap-2">
           <Flame className="w-4 h-4 text-orange-500" />
           <span className="text-sm font-bold text-white">MOST POPULAR BETS</span>
-          <Badge className="bg-orange-500/20 text-orange-400 border-orange-500/30 text-[10px] hidden sm:inline-flex">
-            LIVE TICKER
+          <Badge className={`${hasBets ? 'bg-orange-500/20 text-orange-400 border-orange-500/30' : 'bg-zinc-700/50 text-zinc-400 border-zinc-600/30'} text-[10px] hidden sm:inline-flex`}>
+            {hasBets ? 'LIVE TICKER' : 'SCANNING'}
           </Badge>
           {isLoading && (
             <div className="w-3 h-3 border border-orange-400 border-t-transparent rounded-full animate-spin" />
           )}
         </div>
         <div className="text-[10px] text-zinc-500 flex items-center gap-1">
-          <Radio className="w-3 h-3 text-green-400 animate-pulse" />
-          <span>Updated {formatLastUpdated(lastUpdated)}</span>
+          <Radio className={`w-3 h-3 ${hasBets ? 'text-green-400' : 'text-yellow-400'} animate-pulse`} />
+          <span>{hasBets ? `Updated ${formatLastUpdated(lastUpdated)}` : 'Searching for live lines...'}</span>
         </div>
       </div>
       
-      <div className="relative">
-        <SwipeHint show={showHint} accentColor="orange" />
-        <div 
-          ref={containerRef} 
-          className="flex overflow-x-auto snap-x snap-mandatory scrollbar-hide gap-3 px-4 pb-2 sm:grid sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 sm:overflow-visible sm:px-0 sm:gap-2"
-          style={{ WebkitOverflowScrolling: 'touch', scrollbarWidth: 'none', msOverflowStyle: 'none' }}
-        >
-          {bets.slice(0, 20).map((bet, idx) => (
+      {/* Show empty state or bets */}
+      {!hasBets ? (
+        <AwaitingActionState />
+      ) : (
+        <>
+          <div className="relative">
+            <SwipeHint show={showHint} accentColor="orange" />
             <div 
-              key={`${bet.player_name}-${bet.stat_type}-${bet.line}-${idx}`} 
-              className="snap-center flex-shrink-0 w-[calc(100vw-48px)] max-w-[280px] sm:w-auto sm:max-w-none"
+              ref={containerRef} 
+              className="flex overflow-x-auto snap-x snap-mandatory scrollbar-hide gap-3 px-4 pb-2 sm:grid sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 sm:overflow-visible sm:px-0 sm:gap-2"
+              style={{ WebkitOverflowScrolling: 'touch', scrollbarWidth: 'none', msOverflowStyle: 'none' }}
             >
+              {bets.slice(0, 20).map((bet, idx) => (
+                <div 
+                  key={`${bet.player_name}-${bet.stat_type}-${bet.line}-${idx}`} 
+                  className="snap-center flex-shrink-0 w-[calc(100vw-48px)] max-w-[280px] sm:w-auto sm:max-w-none"
+                >
               <PopularBetCard 
                 bet={bet} 
                 rank={idx + 1}
@@ -2685,17 +2730,19 @@ const MostPopularBetsSection = memo(({ bets, lastUpdated, onBetClick, isLoading 
               />
             </div>
           ))}
-        </div>
-      </div>
-      
-      <SwipeIndicator current={currentIndex} total={Math.min(bets.length, 20)} accentColor="orange" />
-      
-      {/* Legend */}
-      <div className="mt-2 hidden sm:flex items-center justify-center gap-4 text-[10px] text-zinc-500">
-        <span><span className="text-red-400">DEMON</span> = High Payout Lines</span>
-        <span><span className="text-green-400">GOBLIN</span> = High Probability Lines</span>
-        <span><span className="text-zinc-400">STANDARD</span> = Base Lines</span>
-      </div>
+            </div>
+          </div>
+          
+          <SwipeIndicator current={currentIndex} total={Math.min(bets.length, 20)} accentColor="orange" />
+          
+          {/* Legend */}
+          <div className="mt-2 hidden sm:flex items-center justify-center gap-4 text-[10px] text-zinc-500">
+            <span><span className="text-red-400">DEMON</span> = High Payout Lines</span>
+            <span><span className="text-green-400">GOBLIN</span> = High Probability Lines</span>
+            <span><span className="text-zinc-400">STANDARD</span> = Base Lines</span>
+          </div>
+        </>
+      )}
     </div>
   );
 });
@@ -4052,6 +4099,7 @@ export const DemonGoblinDashboardOptimized = ({ isDemoMode = false }) => {
   const [popularBets, setPopularBets] = useState([]);
   const [popularBetsLastUpdated, setPopularBetsLastUpdated] = useState(null);
   const [popularBetsLoading, setPopularBetsLoading] = useState(false);
+  const [popularBetsStatus, setPopularBetsStatus] = useState('awaiting_action');  // 'live' or 'awaiting_action'
   
   // Injury Intelligence state
   const [injuryAlerts, setInjuryAlerts] = useState({});  // player_name -> injury_info
@@ -4294,10 +4342,12 @@ export const DemonGoblinDashboardOptimized = ({ isDemoMode = false }) => {
       }
       
       // Most Popular Bets - Live Ticker (initial load)
-      if (popularBetsResponse.data?.success) {
+      if (popularBetsResponse.data) {
         setPopularBets(popularBetsResponse.data.bets || []);
         setPopularBetsLastUpdated(popularBetsResponse.data.last_updated);
-        console.log(`[POPULAR BETS] Loaded ${popularBetsResponse.data.count || 0} most popular bets`);
+        setPopularBetsStatus(popularBetsResponse.data.status || 'awaiting_action');
+        const status = popularBetsResponse.data.status === 'live' ? '🟢 LIVE' : '🟡 AWAITING';
+        console.log(`[POPULAR BETS] ${status} - ${popularBetsResponse.data.count || 0} bets (${popularBetsResponse.data.games_filtered || 0} tipped-off filtered)`);
       }
       
       // Fetch Scouting Projections (Early Bird cards)
@@ -4415,7 +4465,7 @@ export const DemonGoblinDashboardOptimized = ({ isDemoMode = false }) => {
   
   // ==================== MOST POPULAR BETS LIVE TICKER POLLING ====================
   // Smart polling every 45 seconds to update popularity rankings
-  // Auto-purges bets from games that have started
+  // STRICT: Only shows upcoming/live bettable lines, auto-purges tipped-off games
   useEffect(() => {
     const POLL_INTERVAL = 45000; // 45 seconds
     
@@ -4423,10 +4473,12 @@ export const DemonGoblinDashboardOptimized = ({ isDemoMode = false }) => {
       try {
         setPopularBetsLoading(true);
         const response = await axios.get(`${API}/v3/most-popular-bets`);
-        if (response.data?.success) {
+        if (response.data) {
           setPopularBets(response.data.bets || []);
           setPopularBetsLastUpdated(response.data.last_updated);
-          console.log(`[POPULAR BETS] Live ticker updated: ${response.data.count || 0} bets`);
+          setPopularBetsStatus(response.data.status || 'awaiting_action');
+          const status = response.data.status === 'live' ? '🟢' : '🟡';
+          console.log(`[POPULAR BETS] ${status} Poll: ${response.data.count || 0} live bets (${response.data.games_filtered || 0} filtered)`);
         }
       } catch (error) {
         console.error('[POPULAR BETS] Polling error:', error);
@@ -4770,14 +4822,14 @@ export const DemonGoblinDashboardOptimized = ({ isDemoMode = false }) => {
         )}
         
         {/* MOST POPULAR BETS - Live Ticker (Top 20 hottest bets) */}
-        {popularBets.length > 0 && (
-          <MostPopularBetsSection 
-            bets={popularBets}
-            lastUpdated={popularBetsLastUpdated}
-            onBetClick={handlePopularBetClick}
-            isLoading={popularBetsLoading}
-          />
-        )}
+        {/* Always render - shows empty state when awaiting action */}
+        <MostPopularBetsSection 
+          bets={popularBets}
+          lastUpdated={popularBetsLastUpdated}
+          onBetClick={handlePopularBetClick}
+          isLoading={popularBetsLoading}
+          status={popularBetsStatus}
+        />
 
         {/* Search */}
         <div className="relative">

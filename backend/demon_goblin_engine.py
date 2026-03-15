@@ -7495,7 +7495,10 @@ V3.1 TRUTH ENGINE - DATA INTEGRITY:
         """
         try:
             now = datetime.now(timezone.utc)
+            now_epoch = now.timestamp()  # Convert to Unix epoch for precise comparison
             popular_bets = []
+            games_filtered = 0
+            games_included = 0
             
             # Get all cached board players
             cursor = self.cached_board.find({}, {"_id": 0})
@@ -7508,22 +7511,28 @@ V3.1 TRUTH ENGINE - DATA INTEGRITY:
                 
                 props = player.get("props", [])
                 for prop in props:
-                    # Check if game has started - auto-purge
-                    # In production with live data, this filters out games in progress
-                    # For demo: uses 48-hour window to show recent games
+                    # STRICT LIVE FILTER: Only show bets that are CURRENTLY BETTABLE
+                    # If game has tipped off, the line is no longer live - remove it
                     commence_time_str = prop.get("commence_time")
-                    game_started = False
-                    if commence_time_str:
-                        try:
-                            commence_time = datetime.fromisoformat(commence_time_str.replace('Z', '+00:00'))
-                            # Purge games older than 48 hours
-                            cutoff_time = now - timedelta(hours=48)
-                            if commence_time <= cutoff_time:
-                                continue  # Old game, skip
-                            elif commence_time <= now:
-                                game_started = True  # Started but recent
-                        except:
-                            pass
+                    
+                    if not commence_time_str:
+                        continue  # No tip-off time = can't verify if live, skip
+                    
+                    try:
+                        # Parse commence time and convert to Unix epoch (UTC)
+                        commence_time = datetime.fromisoformat(commence_time_str.replace('Z', '+00:00'))
+                        game_epoch = commence_time.timestamp()
+                        
+                        # STRICT CHECK: Game must NOT have started yet
+                        # If game_epoch <= now_epoch, the game has tipped off - NOT BETTABLE
+                        if game_epoch <= now_epoch:
+                            games_filtered += 1
+                            continue  # Game has started, line is dead, skip
+                            
+                        games_included += 1
+                    except Exception as e:
+                        logger.warning(f"[MOST_POPULAR] Failed to parse commence_time: {commence_time_str} - {e}")
+                        continue  # Can't verify tip-off status, skip for safety
                     
                     # Calculate popularity score based on available metrics
                     # Higher score = more popular
@@ -7581,19 +7590,27 @@ V3.1 TRUTH ENGINE - DATA INTEGRITY:
             popular_bets.sort(key=lambda x: x["popularity_score"], reverse=True)
             top_20 = popular_bets[:20]
             
+            logger.info(f"[MOST_POPULAR] Live filter: {games_included} upcoming, {games_filtered} tipped-off (filtered out)")
+            
             return {
                 "success": True,
                 "count": len(top_20),
+                "total_live_bets": len(popular_bets),
+                "games_filtered": games_filtered,
                 "last_updated": now.isoformat(),
+                "status": "live" if len(top_20) > 0 else "awaiting_action",
                 "bets": top_20
             }
             
         except Exception as e:
             logger.error(f"[MOST_POPULAR] Error getting popular bets: {e}")
             return {
-                "success": False,
+                "success": True,  # Still success, just no data
                 "count": 0,
+                "total_live_bets": 0,
+                "games_filtered": 0,
                 "last_updated": datetime.now(timezone.utc).isoformat(),
+                "status": "awaiting_action",
                 "bets": [],
                 "error": str(e)
             }
