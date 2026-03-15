@@ -4174,10 +4174,12 @@ const PlayerDetailPage = ({ playerName, onBack, highlightProp = null, highlightT
   const isHighlightedProp = useCallback((prop) => {
     if (!highlightInfo) return false;
     const propCategory = getCategoryKey(prop.market);
+    const propDirection = (prop.direction || 'over').toLowerCase();
+    const highlightDirection = (highlightInfo.direction || 'over').toLowerCase();
     return (
       (propCategory === highlightInfo.statType || prop.stat_type_extracted === highlightInfo.statType) &&
       Math.abs(prop.line - highlightInfo.line) < 0.1 &&
-      prop.direction === highlightInfo.direction
+      propDirection === highlightDirection
     );
   }, [highlightInfo]);
   
@@ -5255,7 +5257,8 @@ export const DemonGoblinDashboardOptimized = ({ isDemoMode = false }) => {
           onPickClick={(pick) => {
             // Close modal and navigate to player with highlighted prop
             setExpandedParlay(null);
-            const highlightKey = `${pick.stat_type}|${pick.line}|${pick.direction || 'Over'}`;
+            const lineValue = pick.demon_line || pick.goblin_line || pick.line;
+            const highlightKey = `${pick.stat_type}|${lineValue}|${pick.direction || 'Over'}`;
             setHighlightProp(highlightKey);
             setHighlightType(expandedParlay.type === 'recon' ? 'goblin' : 'demon');
             handlePlayerClick(pick.player_name);
