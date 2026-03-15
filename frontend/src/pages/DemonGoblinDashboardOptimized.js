@@ -3021,7 +3021,7 @@ const CategoryAccordion = memo(({ categoryKey, categoryName, props, isExpanded, 
               </span>
               <span className="text-zinc-500 text-xs">({props.length})</span>
               {hasHighlightedProp && (
-                <Badge className={`${highlightType === 'goblin' ? 'bg-purple-500/20 text-purple-400 border-purple-500/50' : 'bg-purple-500/20 text-purple-400 border-purple-500/50'} text-[10px]`}>
+                <Badge className="bg-yellow-500/20 text-yellow-400 border-yellow-500/50 shadow-[0_0_10px_rgba(234,179,8,0.5)] text-[10px]">
                   VISION TARGET
                 </Badge>
               )}
@@ -3289,7 +3289,7 @@ const LadderPropRow = memo(({ prop, categoryStats, isFirst, isLast, isHighlighte
           
           {/* Vision Pick Badge */}
           {isHighlighted && (
-            <Badge className="bg-purple-500/20 text-purple-400 border-purple-500/50 text-[10px] animate-pulse">
+            <Badge className="bg-yellow-500/20 text-yellow-400 border-yellow-500/50 shadow-[0_0_10px_rgba(234,179,8,0.5)] text-[10px] animate-pulse">
               VISION PICK
             </Badge>
           )}
