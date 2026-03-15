@@ -1818,31 +1818,6 @@ class DemonGoblinEngine:
         """
         return stats_calculate_heat_level(h10, h5, h10_over, h5_over, h10_games, h5_games)
     
-    def _apply_dynamic_threshold(self, candidates: List[Dict]) -> List[Dict]:
-        """
-        Dynamic Threshold Logic - ensures picks are never empty.
-        PROXY: Could be extracted to stats_service but keeping inline for now.
-        """
-        # First pass: Strict threshold (P >= 70%)
-        strict_picks = [c for c in candidates if c.get("hit_probability", 0) >= 70]
-        
-        if len(strict_picks) >= 10:
-            logger.info(f"[THRESHOLD] Using STRICT mode (P>=70%): {len(strict_picks)} candidates")
-            return strict_picks
-        
-        # Second pass: Lower to Opportunity threshold (P >= 55%)
-        opportunity_picks = [c for c in candidates if c.get("hit_probability", 0) >= 55]
-        
-        if len(opportunity_picks) >= 10:
-            logger.info(f"[THRESHOLD] Using OPPORTUNITY mode (P>=55%): {len(opportunity_picks)} candidates")
-            return opportunity_picks
-        
-        # Final pass: Take all with P >= 40% to ensure we have picks
-        final_picks = [c for c in candidates if c.get("hit_probability", 0) >= 40]
-        
-        logger.info(f"[THRESHOLD] Using MINIMUM mode (P>=40%): {len(final_picks)} candidates")
-        return final_picks
-    
     async def _build_goblin_vault(self, players_dict: Dict[str, Dict], sync_time: datetime):
         """
         PROXY: Safe Haven (Goblin Vault) tier building delegated to TierBuilderService.
@@ -2104,20 +2079,6 @@ class DemonGoblinEngine:
         """
         return await self.parlay_builder_service.build_parlay_builder(players_dict, sync_time)
     
-    def _build_correlated_parlay(self, all_demons: List[Dict], target_count: int, game_groups: Dict) -> List[Dict]:
-        """Build a parlay with game correlation where possible.
-        PROXY: Delegates to services.parlay_service.build_correlated_parlay
-        """
-        from services.parlay_service import build_correlated_parlay
-        return build_correlated_parlay(all_demons, target_count, game_groups)
-    
-    def _calculate_parlay_probability(self, picks: List[Dict]) -> float:
-        """Calculate combined probability of parlay hitting.
-        PROXY: Delegates to services.parlay_service.calculate_weighted_parlay_probability
-        """
-        from services.parlay_service import calculate_weighted_parlay_probability
-        return calculate_weighted_parlay_probability(picks)
-    
     async def _build_goblin_recon(self, players_dict: Dict[str, Dict], sync_time: datetime):
         """
         PROXY: Goblin Recon delegated to ParlayBuilderService.
@@ -2125,26 +2086,9 @@ class DemonGoblinEngine:
         return await self.parlay_builder_service.build_goblin_recon(players_dict, sync_time)
     
     def _extract_stat_type(self, market: str) -> str:
-        """Extract stat type from market name"""
-        # Remove _alternate suffix
-        market = market.replace("_alternate", "")
-        
-        # Map to stat types
-        stat_map = {
-            "player_points": "PTS",
-            "player_rebounds": "REB",
-            "player_assists": "AST",
-            "player_threes": "3PM",
-            "player_blocks": "BLK",
-            "player_steals": "STL",
-            "player_turnovers": "TO",
-            "player_points_rebounds": "P+R",
-            "player_points_assists": "P+A",
-            "player_rebounds_assists": "R+A",
-            "player_points_rebounds_assists": "PRA",
-        }
-        
-        return stat_map.get(market, "")
+        """PROXY: Extract stat type from market name - delegates to utils_service."""
+        from services.utils_service import extract_stat_type
+        return extract_stat_type(market)
     
     async def get_war_zone(self) -> Dict[str, Any]:
         """

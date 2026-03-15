@@ -261,3 +261,28 @@ def probability_to_american_odds(probability: float) -> int:
         return int(-100 * probability / (1 - probability))
     else:
         return int(100 * (1 - probability) / probability)
+
+
+# Stat type mapping
+STAT_TYPE_MAP = {
+    "player_points": "PTS",
+    "player_rebounds": "REB",
+    "player_assists": "AST",
+    "player_threes": "3PM",
+    "player_blocks": "BLK",
+    "player_steals": "STL",
+    "player_turnovers": "TO",
+    "player_points_rebounds": "P+R",
+    "player_points_assists": "P+A",
+    "player_rebounds_assists": "R+A",
+    "player_points_rebounds_assists": "PRA",
+}
+
+
+def extract_stat_type(market: str) -> str:
+    """Extract stat type from market name."""
+    if not market:
+        return ""
+    # Remove _alternate suffix
+    market = market.replace("_alternate", "")
+    return STAT_TYPE_MAP.get(market, "")
