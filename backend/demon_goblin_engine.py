@@ -385,7 +385,8 @@ class DemonGoblinEngine:
             RosterService, PhotoService, PropsService, SyncService, 
             TierBuilderService, ParlayBuilderService, CachedBoardBuilderService,
             OddsApiService, StatsApiService, Tank01Service, PicksGetterService,
-            DataIntegrityService, StatsEnrichmentService, OddsSyncService
+            DataIntegrityService, StatsEnrichmentService, OddsSyncService,
+            SyncOrchestrationService
         )
         self.roster_service = RosterService(self.repo, db)
         self.photo_service = PhotoService(db)
@@ -403,6 +404,7 @@ class DemonGoblinEngine:
         self.data_integrity_service = DataIntegrityService(db)
         self.stats_enrichment_service = StatsEnrichmentService(db)
         self.odds_sync_service = OddsSyncService(db)
+        self.sync_orchestration_service = SyncOrchestrationService(db)
         
         # Legacy direct collection access (gradually migrating to repo)
         self.events_cache = db.dg_events_cache
@@ -1344,183 +1346,43 @@ class DemonGoblinEngine:
         return doc
     
     async def run_full_sync(self) -> Dict[str, Any]:
-        """Execute the full three-pillar sync with PrizePicks data"""
-        sync_start = datetime.now(timezone.utc)
+        """PROXY: Execute full 3-pillar sync - delegated to SyncOrchestrationService."""
         self._current_date = self.get_current_date()
-        
-        logger.info("=" * 70)
-        logger.info(f"DEMON & GOBLIN ENGINE v3.0 - PRIZEPICKS SYNC")
-        logger.info(f"Date: {self._current_date}")
-        logger.info(f"Region: {PRIZEPICKS_REGION} | Bookmaker: {PRIZEPICKS_BOOKMAKER}")
-        logger.info("=" * 70)
-        
-        results = {
-            "success": True,
-            "sync_date": self._current_date,
-            "sync_time": sync_start.isoformat(),
-            "events_count": 0,
-            "total_props": 0,
-            "unique_players": 0,
-            "standard_count": 0,
-            "demons_count": 0,
-            "goblins_count": 0,
-            "stats_fetched": 0,
-            "injuries_found": 0,
-            "goblin_warnings": 0,
-            # V3.1 Truth Engine verification stats
-            "verification_stats": {
-                "verified_count": 0,
-                "failed_count": 0,
-                "naji_safeguard_failures": 0,
-                "hallucinations_detected": 0,
-                "discrepancies_found": 0
-            },
-            "errors": [],
-            "duration": 0
-        }
-        
-        try:
-            # V3.1 Truth Engine: Clear previous verification failures for today's sync
-            await self.db.dg_verification_failures.delete_many({"sync_date": self._current_date})
-            logger.info("[TRUTH ENGINE] Cleared previous verification failures for today")
-            
-            # ===== PILLAR 1: FETCH EVENTS AND PRIZEPICKS ODDS =====
-            logger.info("\n[PILLAR 1] Fetching NBA events and PrizePicks lines...")
-            logger.info(f"  Using region={PRIZEPICKS_REGION}, bookmaker={PRIZEPICKS_BOOKMAKER}")
-            
-            events = await self.fetch_todays_events()
-            results["events_count"] = len(events)
-            
-            if not events:
-                results["success"] = False
-                results["errors"].append("No NBA events found")
-                return results
-            
-            all_props = []
-            all_players: Set[str] = set()
-            
-            # Fetch PrizePicks odds for EVERY event
-            for event in events:
-                event_id = event.get("id")
-                if event_id:
-                    # Fetch PrizePicks alternate lines
-                    odds_data = await self.fetch_prizepicks_odds(event_id, event)
-                    if odds_data:
-                        props = self.extract_prizepicks_props(odds_data)
-                        all_props.extend(props)
-                        for p in props:
-                            all_players.add(p.get("player_name", ""))
-                    
-                    await asyncio.sleep(0.3)  # Rate limiting
-            
-            results["total_props"] = len(all_props)
-            results["unique_players"] = len(all_players)
-            results["standard_count"] = sum(1 for p in all_props if p.get("prop_type") == "standard")
-            results["demons_count"] = sum(1 for p in all_props if p.get("is_demon"))
-            results["goblins_count"] = sum(1 for p in all_props if p.get("is_goblin"))
-            
-            logger.info(f"\n[PILLAR 1] PRIZEPICKS DATA COMPLETE:")
-            logger.info(f"  Total Props: {len(all_props)}")
-            logger.info(f"  Unique Players: {len(all_players)}")
-            logger.info(f"  STANDARD (Main Markets): {results['standard_count']}")
-            logger.info(f"  DEMONS (Alternate +100): {results['demons_count']}")
-            logger.info(f"  GOBLINS (Alternate ≠+100): {results['goblins_count']}")
-            
-            # ===== PILLAR 3: FETCH INJURIES FIRST =====
-            logger.info("\n[PILLAR 3] Fetching injury data from Tank01...")
-            
-            injuries = await self.fetch_injuries()
-            await self.fetch_news()
-            results["injuries_found"] = len(injuries)
-            
-            # ===== PILLAR 2: PROCESS STATS =====
-            logger.info("\n[PILLAR 2] Processing stats from BallDontLie...")
-            
-            # Deduplicate by player+market+line+direction
-            unique_props = {}
-            for prop in all_props:
-                key = f"{prop['player_name']}|{prop['market']}|{prop['line']}|{prop['direction']}"
-                if key not in unique_props:
-                    unique_props[key] = prop
-            
-            # Process ALL unique props - no limit!
-            processed_props = []
-            prop_list = list(unique_props.values())
-            batch_size = 50
-            
-            logger.info(f"  Processing {len(prop_list)} unique props...")
-            
-            for i in range(0, len(prop_list), batch_size):
-                batch = prop_list[i:i+batch_size]
-                
-                for prop in batch:
-                    try:
-                        processed = await self.process_player_prop(prop)
-                        processed_props.append(processed)
-                        
-                        if processed.get("bdl_player_id"):
-                            results["stats_fetched"] += 1
-                        
-                        if processed.get("has_goblin_warning"):
-                            results["goblin_warnings"] += 1
-                        
-                        # V3.1 Truth Engine - Track verification stats
-                        if processed.get("source_verified"):
-                            results["verification_stats"]["verified_count"] += 1
-                        else:
-                            verification_status = processed.get("verification_status", "")
-                            if verification_status == "NAJI_SAFEGUARD_FAILED":
-                                results["verification_stats"]["naji_safeguard_failures"] += 1
-                                results["verification_stats"]["failed_count"] += 1
-                            elif verification_status == "HALLUCINATION_DETECTED":
-                                results["verification_stats"]["hallucinations_detected"] += 1
-                                results["verification_stats"]["failed_count"] += 1
-                            elif verification_status == "DISCREPANCY":
-                                results["verification_stats"]["discrepancies_found"] += 1
-                                results["verification_stats"]["failed_count"] += 1
-                        
-                        await asyncio.sleep(0.1)
-                        
-                    except Exception as e:
-                        results["errors"].append(f"Prop error: {str(e)[:50]}")
-                
-                logger.info(f"  Processed {min(i+batch_size, len(prop_list))}/{len(prop_list)} props")
-            
-            # ===== STORE RESULTS GROUPED BY PLAYER (VIA ODDS API MAPPER) =====
-            logger.info("\n[STORAGE] Organizing data by player via OddsApiMapper...")
-            
-            # Initialize OddsApiMapper - REQUIRED for player enrichment
-            mapper_ready = await self._ensure_odds_mapper_loaded()
-            if not mapper_ready or not self._odds_mapper:
-                logger.error("[STORAGE] CRITICAL: OddsApiMapper not available!")
-                results["errors"].append("OddsApiMapper initialization failed")
-            else:
-                logger.info("[STORAGE] OddsApiMapper loaded - enriching all players from nba_master_hub_2026")
-            
-            # Collect unique player names for batch lookup
-            unique_players = set(prop.get("player_name", "Unknown") for prop in processed_props)
-            logger.info(f"[STORAGE] Found {len(unique_players)} unique players to enrich")
-            
-            # Batch lookup all players via mapper (pre-fetch for efficiency)
-            player_hub_data = {}
-            unmatched_players = []
-            
-            if mapper_ready and self._odds_mapper:
-                for player_name in unique_players:
-                    # Use getPlayerIdFromOddsName() then getFullPlayerData()
-                    player_id = self._odds_mapper.getPlayerIdFromOddsName(player_name)
-                    if player_id:
-                        hub_data = self._odds_mapper.getFullPlayerData(player_name)
-                        if hub_data:
-                            player_hub_data[player_name] = hub_data
-                        else:
-                            unmatched_players.append(player_name)
-                    else:
-                        unmatched_players.append(player_name)
-                
-                logger.info(f"[STORAGE] Mapper matched: {len(player_hub_data)}/{len(unique_players)} players")
-                if unmatched_players:
-                    logger.warning(f"[STORAGE] Unmatched players ({len(unmatched_players)}): {unmatched_players[:10]}...")
+        return await self.sync_orchestration_service.run_full_sync(
+            current_date=self._current_date,
+            prizepicks_region=PRIZEPICKS_REGION,
+            prizepicks_bookmaker=PRIZEPICKS_BOOKMAKER,
+            fetch_todays_events=self.fetch_todays_events,
+            fetch_prizepicks_odds=self.fetch_prizepicks_odds,
+            extract_prizepicks_props=self.extract_prizepicks_props,
+            fetch_injuries=self.fetch_injuries,
+            fetch_news=self.fetch_news,
+            process_player_prop=self.process_player_prop,
+            ensure_odds_mapper_loaded=self._ensure_odds_mapper_loaded,
+            get_odds_mapper=lambda: self._odds_mapper,
+            build_cached_board=self._build_cached_board,
+            build_war_zone=self._build_war_zone,
+            build_front_lines=self._build_front_lines,
+            build_goblin_vault=self._build_goblin_vault,
+            build_parlay_builder=self._build_parlay_builder,
+            build_goblin_recon=self._build_goblin_recon
+        )
+    
+    async def run_delta_sync(self) -> Dict[str, Any]:
+        """
+        PROXY: Execute delta sync (odds-only) - delegated to SyncOrchestrationService.
+        """
+        self._current_date = self.get_current_date()
+        return await self.sync_orchestration_service.run_delta_sync(
+            current_date=self._current_date,
+            fetch_todays_events=self.fetch_todays_events,
+            fetch_prizepicks_odds=self.fetch_prizepicks_odds,
+            build_war_zone=self._build_war_zone,
+            build_front_lines=self._build_front_lines,
+            build_goblin_vault=self._build_goblin_vault
+        )
+    
+    # ==================== DATA ACCESS ====================
             
             # Group props by player with full Hub enrichment
             player_data = {}
