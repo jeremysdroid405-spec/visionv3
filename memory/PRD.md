@@ -33,6 +33,18 @@ dg_cached_board → dg_radar_picks (War Zone) → dg_goblin_vault → dg_goblin_
   - `nba_master_hub.py`
 - Backend now uses `os.environ['MONGO_URL']` (fails fast if missing) vs `os.environ.get()` (silent fallback)
 
+### 2026-03-15: Parlay Modal Refactor & Highlight Fix
+- **Refactored ExpandedParlayView** to use `UniversalPickCard` instead of custom `ParlayPickCard`
+  - Removed ~280 lines of duplicate code
+  - File reduced from 5308 lines to 5034 lines
+  - Parlay modal now uses same card component as main dashboard
+- **Fixed Highlight Feature Bug**: Clicking a player from parlay modal now correctly:
+  - Navigates to player detail page
+  - Auto-expands the category containing the selected prop
+  - Applies `emerald-glow` (goblin) or `beacon-glow` (demon) CSS animation
+  - Shows "VISION PICK" badge on highlighted row
+  - Bug was: `handlePlayerClick()` default params were overwriting highlight values
+
 ### 2026-03-15: Unified 3-Tier Card UI
 - Created `UniversalPickCard` component as single template for all 30 picks
 - Deleted legacy `VaultCard` and `FrontLinesCard` components
@@ -176,9 +188,9 @@ dg_cached_board → dg_radar_picks (War Zone) → dg_goblin_vault → dg_goblin_
 - Real Google/Apple OAuth (currently placeholders)
 
 ## Known Issues
-- Old dashboard (`DemonGoblinDashboardOptimized.js`, 4500+ lines) still in use on main route
-- `MONGO_URL` hardcoded in `backend/.env` (deployment blocker)
+- Old dashboard (`DemonGoblinDashboardOptimized.js`, ~5000 lines) still in use on main route
 - Google/Apple auth buttons are placeholders
+- DvP (Defense vs Position) pillar uses placeholder value of 0.5
 
 ## File Structure
 ```
