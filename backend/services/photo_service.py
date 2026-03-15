@@ -448,3 +448,117 @@ class PhotoService:
             "synced_at": sync_start.isoformat(),
             "duration_seconds": round(duration, 1)
         }
+    
+    # ==================== PHOTO AND TEAM LOOKUP ====================
+    
+    async def get_photo_and_team_from_roster(self, player_name: str) -> Optional[Dict]:
+        """
+        Look up a player's photo_url AND team from master roster with fuzzy matching.
+        
+        Returns dict with photo_url, team_abbreviation, nba_com_id or None if not found.
+        """
+        if not player_name:
+            return None
+        
+        normalized = sanitize_player_name(player_name)
+        
+        # Try exact normalized match first
+        doc = await self.master_roster.find_one(
+            {"normalized_name": normalized},
+            {"_id": 0, "photo_url": 1, "team_abbreviation": 1, "nba_com_id": 1, "player_name": 1}
+        )
+        
+        if doc:
+            return doc
+        
+        # Remove common suffixes for matching
+        name_without_suffix = player_name
+        for suffix in [" Jr.", " Jr", " III", " II", " IV", " Sr.", " Sr"]:
+            if player_name.endswith(suffix):
+                name_without_suffix = player_name[:-len(suffix)]
+                break
+        
+        # Also remove periods from initials (G.G. -> GG)
+        name_cleaned = name_without_suffix.replace(".", "")
+        
+        # Try matching without suffix
+        if name_without_suffix != player_name:
+            normalized_no_suffix = sanitize_player_name(name_without_suffix)
+            doc = await self.master_roster.find_one(
+                {"normalized_name": normalized_no_suffix},
+                {"_id": 0, "photo_url": 1, "team_abbreviation": 1, "nba_com_id": 1, "player_name": 1}
+            )
+            if doc:
+                return doc
+        
+        # Try regex matching with BOTH first AND last name
+        name_parts = name_cleaned.split()
+        if len(name_parts) >= 2:
+            first_name = name_parts[0]
+            last_name = name_parts[-1]
+            
+            # Skip if last name is a suffix we missed
+            if last_name.lower() in ["jr", "iii", "ii", "iv", "sr"]:
+                last_name = name_parts[-2] if len(name_parts) > 2 else first_name
+            
+            # STRICT: Match must have EXACT last name at word boundary
+            doc = await self.master_roster.find_one(
+                {
+                    "player_name": {
+                        "$regex": f"^{first_name}.*\\b{last_name}\\b",
+                        "$options": "i"
+                    }
+                },
+                {"_id": 0, "photo_url": 1, "team_abbreviation": 1, "nba_com_id": 1, "player_name": 1}
+            )
+            
+            if doc:
+                return doc
+            
+            # Try nickname/initial expansions for first name ONLY if last name matches exactly
+            first_name_variations = self._get_name_variations(first_name)
+            for variation in first_name_variations:
+                doc = await self.master_roster.find_one(
+                    {
+                        "player_name": {
+                            "$regex": f"^{variation}.*\\b{last_name}\\b",
+                            "$options": "i"
+                        }
+                    },
+                    {"_id": 0, "photo_url": 1, "team_abbreviation": 1, "nba_com_id": 1, "player_name": 1}
+                )
+                if doc:
+                    return doc
+        
+        return None
+    
+    def _get_name_variations(self, first_name: str) -> list:
+        """Get common variations/expansions for a first name."""
+        variations = []
+        
+        # Common nickname mappings
+        nickname_map = {
+            "gg": ["gregory", "george"],
+            "jj": ["james", "john", "junior"],
+            "tj": ["thomas", "timothy"],
+            "pj": ["paul", "peter"],
+            "cj": ["charles", "christopher"],
+            "aj": ["anthony", "andrew"],
+            "rj": ["robert", "richard"],
+            "herb": ["herbert"],
+            "mike": ["michael"],
+            "chris": ["christopher"],
+            "matt": ["matthew"],
+            "dan": ["daniel"],
+            "rob": ["robert"],
+            "will": ["william"],
+            "nick": ["nicholas"],
+            "alex": ["alexander"],
+        }
+        
+        # Check for nickname expansion
+        name_lower = first_name.lower().replace(".", "")
+        if name_lower in nickname_map:
+            variations.extend(nickname_map[name_lower])
+        
+        return variations

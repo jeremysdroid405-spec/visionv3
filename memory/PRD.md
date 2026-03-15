@@ -45,6 +45,32 @@ dg_cached_board → dg_radar_picks (War Zone) → dg_goblin_vault → dg_goblin_
 
 ## What's Been Implemented
 
+### 2026-03-15: Backend Engine Deconstruction (Phase 3 - Repository Pattern & Service Proxies)
+- **Engine Reduction:** 7,509 → 6,649 lines (**860 lines extracted, 11.5% reduction**)
+- **Repository Layer Created (708 lines):**
+  - `base.py` (122 lines): Abstract base repository class
+  - `picks_repo.py` (110 lines): War Zone, Goblin Vault, Front Lines data access
+  - `board_repo.py` (131 lines): Cached board operations
+  - `player_repo.py` (155 lines): Player/roster data access
+  - `sync_repo.py` (121 lines): Sync log operations
+- **New Services Created:**
+  - `roster_service.py` (579 lines): Master roster sync, player team lookups, stats caching
+  - `photo_service.py` (564 lines): ESPN/NBA CDN headshots, photo sync operations
+  - `props_service.py` (513 lines): Prop classification, scoring (War Zone/Goblin/Front Lines)
+  - `sync_service.py` (476 lines): Tier building orchestration, parlay generation
+- **Services Total:** 4,385 lines of modular, reusable code
+- **Methods Proxied to Services:**
+  - `sync_master_roster()` → RosterService
+  - `sync_player_stats()` → RosterService  
+  - `sync_player_photos()` → PhotoService
+  - `sync_active_players_with_photos()` → PhotoService
+  - `get_team_from_master_roster()` → RosterService
+  - `get_cached_player_stats()` → RosterService
+  - `flag_unknown_player()` → RosterService
+  - `get_photo_and_team_from_master_roster()` → PhotoService
+- **Test Results:** 38/38 tests passed (iteration_16.json)
+- **All Endpoints Verified:** Status, War Zone, Goblin Vault, Front Lines, Parlay Builder
+
 ### 2026-03-15: Backend Engine Deconstruction (Phase 2 - Comprehensive)
 - **Archive:** `demon_goblin_engine.py` (8,252 lines) backed up to `/backend/legacy_archive/demon_goblin_engine.backup`
 - **Engine Reduction:** 8,252 → 7,491 lines (**761 lines extracted, 9.2% reduction**)

@@ -535,213 +535,25 @@ class DemonGoblinEngine:
     
     async def get_cached_player_stats(self, player_name: str) -> Dict[str, Any]:
         """
-        Get player stats from MongoDB cache.
-        Returns empty dict if not found - caller should handle missing data.
+        PROXY: Get player stats from MongoDB cache.
         """
-        normalized = self.sanitize_player_name(player_name)
-        doc = await self.player_stats.find_one(
-            {"normalized_name": normalized},
-            {"_id": 0}
-        )
-        return doc if doc else {}
+        return await self.roster_service.get_cached_player_stats(player_name)
     
     async def get_team_from_master_roster(self, player_name: str) -> Optional[str]:
         """
-        Look up a player's team using priority order:
-        1. KNOWN_PLAYER_TEAMS (manual overrides for incorrect API data)
-        2. Master Roster from BallDontLie (may have errors)
-        3. Fuzzy matching
-        
-        Args:
-            player_name: The player's name to look up
-            
-        Returns:
-            Team abbreviation if found, None otherwise
+        PROXY: Look up player's team using RosterService.
         """
-        # PRIORITY 1: Check manual overrides FIRST (fixes BallDontLie errors)
-        # Example: BallDontLie shows Luka Doncic on LAL but he plays for DAL
-        if player_name in KNOWN_PLAYER_TEAMS:
-            return KNOWN_PLAYER_TEAMS[player_name]
-        
-        # Normalize the name for lookups
-        normalized = self.sanitize_player_name(player_name)
-        
-        # Check normalized version in manual overrides
-        for known_name, team in KNOWN_PLAYER_TEAMS.items():
-            if self.sanitize_player_name(known_name) == normalized:
-                return team
-        
-        # PRIORITY 2: Check in-memory master roster cache
-        if normalized in self._master_roster_cache:
-            return self._master_roster_cache[normalized]
-        
-        # PRIORITY 3: Query database directly
-        doc = await self.master_roster.find_one(
-            {"normalized_name": normalized},
-            {"_id": 0, "team_abbreviation": 1}
-        )
-        
-        if doc:
-            team = doc.get("team_abbreviation")
-            self._master_roster_cache[normalized] = team
-            return team
-        
-        # PRIORITY 4: Try fuzzy match
-        all_players = await self.master_roster.find(
-            {},
-            {"_id": 0, "player_name": 1, "normalized_name": 1, "team_abbreviation": 1}
-        ).to_list(None)
-        
-        best_match = None
-        best_ratio = 0
-        
-        for p in all_players:
-            # Check various name variations
-            ratio = 0
-            p_normalized = p.get("normalized_name", "")
-            p_full = p.get("player_name", "").lower()
-            
-            # Exact normalized match
-            if normalized == p_normalized:
-                best_match = p
-                break
-            
-            # Partial match check
-            if normalized in p_normalized or p_normalized in normalized:
-                ratio = 0.8
-            elif p_full in player_name.lower() or player_name.lower() in p_full:
-                ratio = 0.7
-            
-            if ratio > best_ratio:
-                best_ratio = ratio
-                best_match = p
-        
-        if best_match and best_ratio >= 0.7:
-            team = best_match.get("team_abbreviation")
-            self._master_roster_cache[normalized] = team
-            return team
-        
-        return None
+        return await self.roster_service.get_player_team(player_name)
     
     async def get_photo_and_team_from_master_roster(self, player_name: str) -> Optional[Dict]:
         """
-        Look up a player's photo_url AND team from master roster with fuzzy matching.
-        
-        Returns dict with photo_url, team_abbreviation, nba_com_id or None if not found.
-        
-        Handles name variations like:
-        - "Herb Jones" vs "Herbert Jones"
-        - "G.G. Jackson" vs "Gregory Jackson"  
-        - "Jaylen Wells" (exact match only - no partial first name matching)
-        - "Jabari Smith Jr." vs "Jabari Smith"
+        PROXY: Get photo and team from master roster delegated to PhotoService.
         """
-        if not player_name:
-            return None
-            
-        normalized = self.sanitize_player_name(player_name)
-        
-        # Try exact normalized match first
-        doc = await self.master_roster.find_one(
-            {"normalized_name": normalized},
-            {"_id": 0, "photo_url": 1, "team_abbreviation": 1, "nba_com_id": 1, "player_name": 1}
-        )
-        
-        if doc:
-            return doc
-        
-        # Remove common suffixes for matching
-        name_without_suffix = player_name
-        for suffix in [" Jr.", " Jr", " III", " II", " IV", " Sr.", " Sr"]:
-            if player_name.endswith(suffix):
-                name_without_suffix = player_name[:-len(suffix)]
-                break
-        
-        # Also remove periods from initials (G.G. -> GG)
-        name_cleaned = name_without_suffix.replace(".", "")
-        
-        # Try matching without suffix
-        if name_without_suffix != player_name:
-            normalized_no_suffix = self.sanitize_player_name(name_without_suffix)
-            doc = await self.master_roster.find_one(
-                {"normalized_name": normalized_no_suffix},
-                {"_id": 0, "photo_url": 1, "team_abbreviation": 1, "nba_com_id": 1, "player_name": 1}
-            )
-            if doc:
-                return doc
-        
-        # Try regex matching with BOTH first AND last name (must match both)
-        name_parts = name_cleaned.split()
-        if len(name_parts) >= 2:
-            first_name = name_parts[0]
-            last_name = name_parts[-1]
-            
-            # Skip if last name is a suffix we missed
-            if last_name.lower() in ["jr", "iii", "ii", "iv", "sr"]:
-                last_name = name_parts[-2] if len(name_parts) > 2 else first_name
-            
-            # STRICT: Match must have EXACT last name at word boundary
-            # This prevents "Jaylen Wells" from matching "Jaylen Brown"
-            doc = await self.master_roster.find_one(
-                {
-                    "player_name": {
-                        "$regex": f"^{first_name}.*\\b{last_name}\\b",
-                        "$options": "i"
-                    }
-                },
-                {"_id": 0, "photo_url": 1, "team_abbreviation": 1, "nba_com_id": 1, "player_name": 1}
-            )
-            
-            if doc:
-                return doc
-            
-            # Try nickname/initial expansions for first name ONLY if last name matches exactly
-            # G.G. -> Gregory, Herb -> Herbert, etc.
-            first_name_variations = self._get_name_variations(first_name)
-            for variation in first_name_variations:
-                doc = await self.master_roster.find_one(
-                    {
-                        "player_name": {
-                            "$regex": f"^{variation}.*\\b{last_name}\\b",
-                            "$options": "i"
-                        }
-                    },
-                    {"_id": 0, "photo_url": 1, "team_abbreviation": 1, "nba_com_id": 1, "player_name": 1}
-                )
-                if doc:
-                    return doc
-        
-        return None
+        return await self.photo_service.get_photo_and_team_from_roster(player_name)
     
     def _get_name_variations(self, first_name: str) -> list:
-        """Get common variations/expansions for a first name."""
-        variations = []
-        
-        # Common nickname mappings
-        nickname_map = {
-            "gg": ["gregory", "george"],
-            "jj": ["james", "john", "junior"],
-            "tj": ["thomas", "timothy"],
-            "pj": ["paul", "peter"],
-            "cj": ["charles", "christopher"],
-            "aj": ["anthony", "andrew"],
-            "rj": ["robert", "richard"],
-            "herb": ["herbert"],
-            "mike": ["michael"],
-            "chris": ["christopher"],
-            "matt": ["matthew"],
-            "dan": ["daniel"],
-            "rob": ["robert"],
-            "will": ["william"],
-            "nick": ["nicholas"],
-            "alex": ["alexander"],
-        }
-        
-        # Check for nickname expansion
-        name_lower = first_name.lower().replace(".", "")
-        if name_lower in nickname_map:
-            variations.extend(nickname_map[name_lower])
-        
-        return variations
+        """PROXY: Get name variations delegated to PhotoService."""
+        return self.photo_service._get_name_variations(first_name)
 
     async def get_photo_url_from_master_roster(self, player_name: str) -> Optional[str]:
         """
@@ -811,33 +623,9 @@ class DemonGoblinEngine:
     
     async def flag_unknown_player(self, player_name: str, odds_api_team: str, game_info: Dict):
         """
-        Flag a player not found in master roster for manual review.
-        
-        Args:
-            player_name: The player name from Odds API
-            odds_api_team: The team provided by Odds API (may be incorrect)
-            game_info: Additional context about the game
+        PROXY: Flag unknown player delegated to RosterService.
         """
-        normalized = self.sanitize_player_name(player_name)
-        
-        await self.flagged_players.update_one(
-            {"normalized_name": normalized},
-            {
-                "$set": {
-                    "player_name": player_name,
-                    "normalized_name": normalized,
-                    "odds_api_team": odds_api_team,
-                    "home_team": game_info.get("home_team", ""),
-                    "away_team": game_info.get("away_team", ""),
-                    "game_date": game_info.get("game_date", ""),
-                    "flagged_at": datetime.now(timezone.utc).isoformat(),
-                    "reviewed": False
-                }
-            },
-            upsert=True
-        )
-        
-        logger.warning(f"[FLAGGED] Unknown player: {player_name} (Odds API says: {odds_api_team})")
+        await self.roster_service.flag_unknown_player(player_name, odds_api_team, game_info)
     
     async def sync_player_photos(self) -> Dict[str, Any]:
         """
