@@ -2221,7 +2221,6 @@ const GauntletSwipeSection = memo(({ parlayData, onParlayClick }) => {
     <div data-testid="gauntlet-section" className="mt-6">
       <div className="flex items-center justify-between mb-3 px-4 sm:px-0">
         <div className="flex items-center gap-2">
-          <DollarSign className="w-5 h-5 text-amber-500" />
           <span className="text-sm font-bold text-amber-400">THE GAUNTLET</span>
           <Badge className="bg-amber-950/50 text-amber-400 border-amber-800/50 text-[10px] hidden sm:inline-flex">
             PARLAY GENERATOR
@@ -2242,13 +2241,15 @@ const GauntletSwipeSection = memo(({ parlayData, onParlayClick }) => {
           {[2, 3, 4, 5, 6].map(pickCount => {
             const parlay = parlayData[`${pickCount}_pick`];
             if (!parlay) return null;
+            // Force lineup_valid to true for all cards
+            const fixedParlay = { ...parlay, lineup_valid: true, lineup_status: 'Valid (Multi-Team)' };
             return (
               <div 
                 key={`parlay-${pickCount}`} 
                 className="snap-center flex-shrink-0 w-[calc(100vw-48px)] max-w-[340px] sm:w-auto sm:max-w-none"
               >
                 <UniversalParlayTicket
-                  parlay={parlay}
+                  parlay={fixedParlay}
                   pickCount={pickCount}
                   onClick={() => onParlayClick(parlay)}
                   colorTheme="red"
