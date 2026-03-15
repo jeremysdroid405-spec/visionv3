@@ -45,6 +45,23 @@ dg_cached_board → dg_radar_picks (War Zone) → dg_goblin_vault → dg_goblin_
 
 ## What's Been Implemented
 
+### 2026-03-15: Backend Modular Architecture Refactor (Phase 2)
+- **Archive Move:** Moved 8,252-line `demon_goblin_engine.py` to `/backend/legacy_archive/demon_goblin_engine.backup`
+  - Changed extension to `.backup` to prevent accidental imports
+- **Entry Point Update:** Added route registration in `server.py` startup:
+  - `from routes import register_all_routes`
+  - Modular routes now registered from `/routes/` directory with `/api` prefix
+- **Routes Module Updated:**
+  - `/routes/__init__.py` now includes routers with `/api` prefix for frontend compatibility
+  - Removed duplicate war-zone, goblin-vault, front-lines from picks.py (server.py versions have game lock logic)
+- **Environment Variables Audit:**
+  - API keys (ODDS_API_KEY, BDL_API_KEY, GOOGLE_API_KEY) read from `.env` via `os.environ.get()`
+  - Centralized config in `/backend/config/settings.py` (DB settings, collection names, DVP rankings)
+- **Current Architecture Status:**
+  - Modular routes: `/backend/routes/` (picks, parlays, board, sync, intel, board_intel)
+  - Services: `/backend/services/` (dvp_service, parlay_service, data_scraper, social_scout)
+  - server.py still handles main endpoints with game lock logic (to be progressively migrated)
+
 ### 2026-03-15: P0 PickCard UI Enhancement - L5/L10/Season/AI Confidence
 - **Backend Fix:** Updated `get_war_zone()`, `get_goblin_vault()`, and `get_front_lines()` methods in `demon_goblin_engine.py`
   - Changed from `ai_confidence` to `ai_confidence_rating` for frontend compatibility

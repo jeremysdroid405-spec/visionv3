@@ -17,10 +17,10 @@ def register_all_routes(app, engine):
     set_intel_engine(engine)
     set_board_intel_engine(engine)
     
-    # Include all routers
-    app.include_router(picks_router)
-    app.include_router(parlays_router)
-    app.include_router(board_router)
-    app.include_router(sync_router)
-    app.include_router(intel_router)
-    app.include_router(board_intel_router)
+    # Include all routers with /api prefix to match existing frontend expectations
+    app.include_router(picks_router, prefix="/api")
+    app.include_router(parlays_router, prefix="/api")
+    app.include_router(board_router, prefix="/api")
+    app.include_router(sync_router, prefix="/api")
+    app.include_router(intel_router, prefix="/api")
+    app.include_router(board_intel_router, prefix="/api")

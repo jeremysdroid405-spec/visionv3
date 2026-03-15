@@ -1,6 +1,8 @@
 """
 Picks Routes - War Zone, Safe Haven, Front Lines
 =================================================
+NOTE: War Zone, Goblin Vault, and Front Lines endpoints are defined in server.py
+because they have additional game lock logic. This file contains legacy/deprecated endpoints.
 """
 from fastapi import APIRouter, HTTPException
 from datetime import datetime
@@ -21,47 +23,7 @@ def set_engine(eng):
     engine = eng
 
 
-@router.get("/war-zone")
-async def get_war_zone() -> Dict[str, Any]:
-    """Get War Zone (Demon) picks - Top EV high-risk plays"""
-    if not engine:
-        raise HTTPException(status_code=500, detail="Engine not initialized")
-    
-    try:
-        result = await engine.get_war_zone()
-        return result
-    except Exception as e:
-        logger.error(f"Error getting war zone: {e}")
-        return {"success": False, "error": str(e), "picks": []}
-
-
-@router.get("/goblin-vault")
-async def get_goblin_vault() -> Dict[str, Any]:
-    """Get Safe Haven (Goblin) picks - Top EV high-floor plays"""
-    if not engine:
-        raise HTTPException(status_code=500, detail="Engine not initialized")
-    
-    try:
-        result = await engine.get_goblin_vault()
-        return result
-    except Exception as e:
-        logger.error(f"Error getting goblin vault: {e}")
-        return {"success": False, "error": str(e), "picks": []}
-
-
-@router.get("/front-lines")
-async def get_front_lines() -> Dict[str, Any]:
-    """Get Front Lines picks - Balanced demon/goblin mix"""
-    if not engine:
-        raise HTTPException(status_code=500, detail="Engine not initialized")
-    
-    try:
-        result = await engine.get_front_lines()
-        return result
-    except Exception as e:
-        logger.error(f"Error getting front lines: {e}")
-        return {"success": False, "error": str(e), "picks": []}
-
+# NOTE: /war-zone, /goblin-vault, /front-lines are defined in server.py with game lock logic
 
 @router.get("/most-popular-bets")
 async def get_most_popular_bets() -> Dict[str, Any]:

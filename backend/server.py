@@ -72,6 +72,7 @@ from odds_api_mapper import (
     rebuildMapping as rebuildOddsMapping
 )
 from ai_context_engine import AiContextEngine
+from routes import register_all_routes
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -263,6 +264,10 @@ async def startup_event():
     game_lock_engine = init_game_lock_engine(db)
     await game_lock_engine.start()
     logger.info("Game Lock Engine initialized (60s auto-cleanup)")
+    
+    # Register modular routes (from /routes/ directory)
+    register_all_routes(app, demon_goblin_engine)
+    logger.info("[ROUTES] Modular routes registered from /routes/ directory")
     
     # Start the adaptive sync engine (background polling)
     if ODDS_API_KEY:
