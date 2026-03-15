@@ -1485,37 +1485,192 @@ TrendingCard.displayName = 'TrendingCard';
 
 // ==================== DEMON RADAR CARD ====================
 
-const RadarCard = memo(({ pick, rank, onClick, isScanning = false, tMinusGames = [], colorTheme = 'red' }) => {
+// ==================== UNIVERSAL PICK CARD ====================
+// Single unified card template for all 3 tiers (War Zone, Front Lines, Safe Haven)
+// Only visual differences: colorTheme (red/amber/green) and emblem (fire/bullet/gem)
+
+// Bullet Emblem SVG Component (rifle ammunition graphic)
+const BulletEmblem = memo(({ size = 20 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <linearGradient id="bulletGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stopColor="#D4AF37" />
+        <stop offset="50%" stopColor="#FFD700" />
+        <stop offset="100%" stopColor="#B8860B" />
+      </linearGradient>
+      <linearGradient id="casingGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stopColor="#CD7F32" />
+        <stop offset="50%" stopColor="#DAA520" />
+        <stop offset="100%" stopColor="#8B4513" />
+      </linearGradient>
+    </defs>
+    {/* Bullet tip (projectile) */}
+    <path d="M12 2 L15 8 L15 10 L9 10 L9 8 Z" fill="url(#bulletGradient)" />
+    {/* Brass casing */}
+    <rect x="9" y="10" width="6" height="10" rx="0.5" fill="url(#casingGradient)" />
+    {/* Casing rim */}
+    <rect x="8" y="20" width="8" height="2" rx="0.5" fill="#8B4513" />
+    {/* Primer circle */}
+    <circle cx="12" cy="21" r="1.5" fill="#444" />
+    {/* Highlight on bullet */}
+    <path d="M10.5 3 L11.5 7 L10 7 Z" fill="rgba(255,255,255,0.3)" />
+  </svg>
+));
+BulletEmblem.displayName = 'BulletEmblem';
+
+// Fire Emblem Component
+const FireEmblem = memo(({ size = 20 }) => (
+  <span 
+    className="text-[20px]" 
+    style={{ 
+      fontSize: size,
+      filter: 'drop-shadow(0 0 4px #ff6b35) drop-shadow(0 0 8px #ff4500)',
+      animation: 'pulse 1.5s ease-in-out infinite'
+    }}
+  >
+    🔥
+  </span>
+));
+FireEmblem.displayName = 'FireEmblem';
+
+// Gem Emblem Component  
+const GemEmblem = memo(({ size = 20 }) => (
+  <span 
+    className="text-[20px]"
+    style={{ 
+      fontSize: size,
+      color: '#00BFFF',
+      filter: 'drop-shadow(0 0 4px #00BFFF) drop-shadow(0 0 8px #00CED1)',
+      animation: 'pulse 2s ease-in-out infinite'
+    }}
+  >
+    💎
+  </span>
+));
+GemEmblem.displayName = 'GemEmblem';
+
+const UniversalPickCard = memo(({ 
+  pick, 
+  rank, 
+  onClick, 
+  tMinusGames = [], 
+  colorTheme = 'red',  // 'red' | 'amber' | 'green'
+  emblem = 'fire'       // 'fire' | 'bullet' | 'gem'
+}) => {
   // Check if this has a special Vision insight (Master Tier)
   const hasVisionGlow = pick.has_high_conflict || 
     ((pick.intel_briefing || pick.insight_summary) && !(pick.intel_briefing || pick.insight_summary).toLowerCase().includes('standard'));
   
-  // Color theme variants
+  // Color theme variants - RED (War Zone), AMBER (Front Lines), GREEN (Safe Haven)
   const themeColors = {
-    red: { border: 'border-red-500/40', glow: 'rgba(239, 68, 68, 0.3)', text: 'text-red-400', bg: 'from-red-950/50' },
-    amber: { border: 'border-amber-500/40', glow: 'rgba(245, 158, 11, 0.3)', text: 'text-amber-400', bg: 'from-amber-950/50' }
+    red: { 
+      border: 'border-red-500/40', 
+      glow: 'rgba(239, 68, 68, 0.3)', 
+      text: 'text-red-400', 
+      bg: 'from-red-950/50',
+      ring: 'ring-red-800/50',
+      rankBg: 'bg-red-600',
+      priceColor: 'text-red-400',
+      borderLine: 'border-red-900/30',
+      scoreBarHigh: 'from-red-500 to-red-400',
+      scoreBarMid: 'from-orange-500 to-orange-400'
+    },
+    amber: { 
+      border: 'border-amber-500/40', 
+      glow: 'rgba(245, 158, 11, 0.3)', 
+      text: 'text-amber-400', 
+      bg: 'from-amber-950/50',
+      ring: 'ring-amber-800/50',
+      rankBg: 'bg-amber-600',
+      priceColor: 'text-amber-400',
+      borderLine: 'border-amber-900/30',
+      scoreBarHigh: 'from-amber-500 to-amber-400',
+      scoreBarMid: 'from-yellow-500 to-yellow-400'
+    },
+    green: { 
+      border: 'border-green-500/40', 
+      glow: 'rgba(34, 197, 94, 0.3)', 
+      text: 'text-green-400', 
+      bg: 'from-green-950/50',
+      ring: 'ring-green-800/50',
+      rankBg: 'bg-green-600',
+      priceColor: 'text-green-400',
+      borderLine: 'border-green-900/30',
+      scoreBarHigh: 'from-green-500 to-green-400',
+      scoreBarMid: 'from-emerald-500 to-emerald-400'
+    }
   };
   const theme = themeColors[colorTheme] || themeColors.red;
   
-  // Heat Level flame rendering
+  // Render the emblem based on tier
+  const renderEmblem = () => {
+    switch(emblem) {
+      case 'fire': return <FireEmblem size={20} />;
+      case 'bullet': return <BulletEmblem size={22} />;
+      case 'gem': return <GemEmblem size={20} />;
+      default: return <FireEmblem size={20} />;
+    }
+  };
+  
+  // Heat Level indicator rendering (works for all tiers)
   const heatLevel = pick.heat_level || 0;
-  const renderFlames = () => {
-    if (heatLevel === 0) return null;
+  const h10Rate = pick.h10_rate || 0;
+  
+  // Calculate display level based on hit rate for non-war-zone
+  const getDisplayLevel = () => {
+    if (emblem === 'fire') return heatLevel;
+    // For amber/green, calculate based on hit rate
+    if (h10Rate >= 100) return 5;
+    if (h10Rate >= 90) return 4;
+    if (h10Rate >= 80) return 3;
+    if (h10Rate >= 70) return 2;
+    if (h10Rate >= 60) return 1;
+    return 0;
+  };
+  
+  const displayLevel = getDisplayLevel();
+  
+  const renderIndicators = () => {
+    if (displayLevel === 0) return null;
+    const indicatorEmoji = emblem === 'fire' ? '🔥' : emblem === 'gem' ? '💎' : null;
+    
+    if (emblem === 'bullet') {
+      // Render mini bullets for Front Lines
+      return (
+        <div className="flex items-center gap-0.5" title={`${displayLevel} bullets - ${h10Rate}% hit rate`}>
+          {[...Array(Math.min(5, displayLevel))].map((_, i) => (
+            <BulletEmblem key={i} size={12} />
+          ))}
+        </div>
+      );
+    }
+    
     return (
-      <div className="flex items-center gap-0.5" title={getHeatDescription(heatLevel)}>
-        {[...Array(heatLevel)].map((_, i) => (
-          <Flame key={i} className={`w-3 h-3 ${
-            heatLevel >= 5 ? 'text-orange-400' :
-            heatLevel >= 4 ? 'text-orange-500' :
-            heatLevel >= 3 ? 'text-yellow-500' :
-            'text-yellow-600'
-          }`} fill="currentColor" />
+      <div className="flex items-center gap-0.5" title={getHeatDescription(displayLevel)}>
+        {[...Array(displayLevel)].map((_, i) => (
+          <span key={i} className="text-[12px]" style={{ 
+            filter: emblem === 'fire' 
+              ? 'drop-shadow(0 0 2px #ff6b35)' 
+              : 'drop-shadow(0 0 2px #00BFFF)'
+          }}>
+            {indicatorEmoji}
+          </span>
         ))}
       </div>
     );
   };
   
   const getHeatDescription = (level) => {
+    if (emblem === 'gem') {
+      switch(level) {
+        case 5: return 'FORTRESS! 100% L10 hit rate';
+        case 4: return 'DIAMOND! 90%+ L10 hit rate';
+        case 3: return 'VAULT! 80%+ L10 hit rate';
+        case 2: return 'SAFE! 70%+ L10 hit rate';
+        case 1: return 'BASE! 60%+ L10 hit rate';
+        default: return 'Below 60% hit rate';
+      }
+    }
     switch(level) {
       case 5: return 'ON FIRE! 9-10/10 games hit';
       case 4: return 'HOT! 80%+ L10 or 5-game streak';
@@ -1526,11 +1681,48 @@ const RadarCard = memo(({ pick, rank, onClick, isScanning = false, tMinusGames =
     }
   };
   
+  const getLevelLabel = (level) => {
+    if (emblem === 'gem') {
+      switch(level) {
+        case 5: return 'FORTRESS';
+        case 4: return 'DIAMOND';
+        case 3: return 'VAULT';
+        case 2: return 'SAFE';
+        case 1: return 'BASE';
+        default: return '';
+      }
+    }
+    if (emblem === 'bullet') {
+      switch(level) {
+        case 5: return 'ELITE';
+        case 4: return 'STRONG';
+        case 3: return 'SOLID';
+        case 2: return 'FAIR';
+        case 1: return 'BASE';
+        default: return '';
+      }
+    }
+    switch(level) {
+      case 5: return 'ON FIRE';
+      case 4: return 'HOT';
+      case 3: return 'WARM';
+      case 2: return 'MILD';
+      case 1: return 'COOL';
+      default: return '';
+    }
+  };
+  
+  // Get line value based on tier
+  const lineValue = pick.demon_line || pick.goblin_line || pick.line || 0;
+  const priceValue = pick.price || 100;
+  
+  // Get score value based on tier
+  const scoreValue = pick.radar_score || pick.vault_score || (pick.vault_score_100 ? pick.vault_score_100 / 100 : 0) || (h10Rate / 100);
+  
   return (
     <Card 
       className={`
         bg-gradient-to-br ${theme.bg} to-zinc-900 border ${theme.border}
-        shadow-[0_0_20px_${theme.glow}]
         hover:scale-[1.02] transition-all duration-300
         cursor-pointer active:scale-[0.98] relative overflow-visible
         min-h-[280px]
@@ -1538,7 +1730,7 @@ const RadarCard = memo(({ pick, rank, onClick, isScanning = false, tMinusGames =
       `}
       style={{ boxShadow: `0 0 20px ${theme.glow}` }}
       onClick={pick.locked ? undefined : onClick}
-      data-testid={`radar-card-${rank}`}
+      data-testid={`pick-card-${colorTheme}-${rank}`}
     >
       {/* LOCKED Badge - Game In Progress */}
       <LockedBadge isLocked={pick.locked} commenceTime={pick.commence_time} />
@@ -1547,17 +1739,17 @@ const RadarCard = memo(({ pick, rank, onClick, isScanning = false, tMinusGames =
       <TMinusBadge commenceTime={pick.commence_time} tMinusGames={tMinusGames} />
       
       {/* Vision Synergy Badge */}
-      {hasVisionGlow && <VisionBadge type="demon" hasVision={true} />}
+      {hasVisionGlow && <VisionBadge type={colorTheme === 'green' ? 'goblin' : 'demon'} hasVision={true} />}
       
       <div className="p-3">
-        {/* Header: Demon Icon + Headshot + Rank + Name */}
+        {/* Header: Emblem + Headshot + Rank + Name */}
         <div className="flex items-center gap-2 mb-2">
-          {/* Demon Icon with breathing glow - add Vision sparkle if has insight */}
+          {/* Tier Emblem */}
           <div className="flex-shrink-0">
-            <DemonIcon size={20} isScanning={isScanning} hasVision={hasVisionGlow} />
+            {renderEmblem()}
           </div>
           
-          {/* Headshot with Radar Badge */}
+          {/* Headshot with Rank Badge */}
           <div className="relative">
             <PlayerHeadshot 
               nbaId={pick.nba_id} 
@@ -1565,11 +1757,11 @@ const RadarCard = memo(({ pick, rank, onClick, isScanning = false, tMinusGames =
               team={pick.team}
               photoUrl={pick.photo_url}
               size="md"
-              className="ring-2 ring-red-800/50"
+              className={`ring-2 ${theme.ring}`}
             />
-            {/* Rank Badge with Radar icon */}
-            <div className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full flex items-center justify-center 
-                          font-bold text-[10px] border-2 border-zinc-900 bg-red-600 text-white">
+            {/* Rank Badge */}
+            <div className={`absolute -bottom-1 -right-1 w-5 h-5 rounded-full flex items-center justify-center 
+                          font-bold text-[10px] border-2 border-zinc-900 ${theme.rankBg} text-white`}>
               {rank}
             </div>
           </div>
@@ -1598,85 +1790,81 @@ const RadarCard = memo(({ pick, rank, onClick, isScanning = false, tMinusGames =
               )}
             </div>
             <div className="flex items-center gap-1 text-[10px] text-zinc-500">
-              <span className="font-mono">{pick.team || '---'}</span>
+              <span className="font-mono">{pick.team || pick.team_abbr || '---'}</span>
               <span>· {pick.stat_type}</span>
             </div>
           </div>
         </div>
         
-        {/* Heat Level Flames */}
-        {heatLevel > 0 && (
+        {/* Indicator Row (Fire/Bullet/Gem based on tier) */}
+        {displayLevel > 0 && (
           <div className="flex items-center justify-between mb-2 px-1">
-            {renderFlames()}
-            <span className={`text-[10px] font-medium ${
-              heatLevel >= 5 ? 'text-orange-400' :
-              heatLevel >= 4 ? 'text-orange-500' :
-              heatLevel >= 3 ? 'text-yellow-500' :
-              'text-yellow-600'
-            }`}>
-              {heatLevel >= 5 ? 'ON FIRE' :
-               heatLevel >= 4 ? 'HOT' :
-               heatLevel >= 3 ? 'WARM' :
-               heatLevel >= 2 ? 'MILD' : 'COOL'}
+            {renderIndicators()}
+            <span className={`text-[10px] font-medium ${theme.text}`}>
+              {getLevelLabel(displayLevel)}
             </span>
           </div>
         )}
         
-        {/* Radar Stats */}
+        {/* Stats Section */}
         <div className="space-y-1.5">
           {/* Line Info */}
           <div className="flex items-center justify-between text-xs">
             <span className="text-zinc-400">Line:</span>
             <div className="flex items-center gap-1">
-              <span className="text-white font-bold">{pick.demon_line}</span>
-              <span className="text-red-400 font-mono">+100</span>
+              <span className="text-white font-bold">{lineValue}</span>
+              <span className={`${theme.priceColor} font-mono`}>
+                {priceValue > 0 ? `+${priceValue}` : priceValue}
+              </span>
             </div>
           </div>
           
-          {/* Gap Ratio (New v2.0 metric) */}
+          {/* Gap Ratio */}
           <div className="flex items-center justify-between text-xs">
             <span className="text-zinc-400">Gap:</span>
             <span className="text-yellow-400 font-medium">
-              {pick.gap_pct > 0 ? '+' : ''}{pick.gap_pct}% above std
+              {pick.gap_pct > 0 ? '+' : ''}{pick.gap_pct || 0}% above std
             </span>
           </div>
           
-          {/* Radar Score (Value Ratio) */}
+          {/* Value Score Bar */}
           <div className="mt-2">
             <div className="flex items-center justify-between text-[10px] mb-1">
               <span className="text-zinc-500">Value Score</span>
               <span className={`font-bold ${
-                pick.radar_score >= 0.70 ? 'text-green-400' :
-                pick.radar_score >= 0.55 ? 'text-yellow-400' :
+                scoreValue >= 0.70 ? 'text-green-400' :
+                scoreValue >= 0.55 ? 'text-yellow-400' :
                 'text-zinc-400'
               }`}>
-                {(pick.radar_score * 100).toFixed(1)}%
+                {(scoreValue * 100).toFixed(1)}%
               </span>
             </div>
             <div className="h-1.5 bg-zinc-800 rounded-full overflow-hidden">
               <div 
-                className={`h-full rounded-full transition-all ${
-                  pick.radar_score >= 0.70 ? 'bg-gradient-to-r from-green-500 to-green-400' :
-                  pick.radar_score >= 0.55 ? 'bg-gradient-to-r from-yellow-500 to-yellow-400' :
-                  'bg-gradient-to-r from-zinc-500 to-zinc-400'
+                className={`h-full rounded-full transition-all bg-gradient-to-r ${
+                  scoreValue >= 0.70 ? theme.scoreBarHigh :
+                  scoreValue >= 0.55 ? theme.scoreBarMid :
+                  'from-zinc-500 to-zinc-400'
                 }`}
-                style={{ width: `${Math.min(100, pick.radar_score * 100)}%` }}
+                style={{ width: `${Math.min(100, scoreValue * 100)}%` }}
               />
             </div>
           </div>
           
           {/* Hit Rate Info */}
           <div className="flex items-center justify-between text-[10px] text-zinc-500 mt-1">
-            <span>L10: <span className="text-white">{pick.h10_rate}%</span></span>
-            <span>L5: <span className="text-white">{pick.h5_rate}%</span></span>
+            <span>L10: <span className="text-white">{pick.h10_rate || 0}%</span></span>
+            <span>L5: <span className="text-white">{pick.h5_rate || 0}%</span></span>
             {pick.is_hot_streak && (
-              <span className="text-orange-400 font-medium">🔥 STREAK</span>
+              <span className={`${theme.text} font-medium`}>
+                {emblem === 'fire' ? '🔥' : emblem === 'gem' ? '💎' : '🎯'} STREAK
+              </span>
             )}
           </div>
           
-          {/* AI Explainer - Why this Demon? */}
+          {/* AI Explainer - The Vision */}
           {(pick.intel_briefing || pick.insight_summary) && (
-            <div className="mt-2 pt-2 border-t border-red-900/30">
+            <div className={`mt-2 pt-2 border-t ${theme.borderLine}`}>
               <div className="flex items-center gap-1 mb-1">
                 <Zap className="w-2.5 h-2.5 text-purple-400" />
                 <span className="text-[9px] text-purple-400 uppercase tracking-wider font-semibold">The Vision</span>
@@ -1692,236 +1880,14 @@ const RadarCard = memo(({ pick, rank, onClick, isScanning = false, tMinusGames =
   );
 });
 
-RadarCard.displayName = 'RadarCard';
+UniversalPickCard.displayName = 'UniversalPickCard';
 
-// ==================== GOBLIN RECON CARD ====================
+// Legacy alias for backward compatibility
+const RadarCard = UniversalPickCard;
 
-const VaultCard = memo(({ pick, rank, onClick, tMinusGames = [] }) => {
-  const [isClicked, setIsClicked] = useState(false);
-  
-  // Check if this has a special Vision insight
-  const hasVisionGlow = pick.has_high_conflict || 
-    ((pick.intel_briefing || pick.insight_summary) && !(pick.intel_briefing || pick.insight_summary).toLowerCase().includes('standard'));
-  
-  // Social Signals
-  const hasVolatility = pick.volatility_flag;
-  const hasRevengeGame = pick.revenge_game;
-  
-  // Calculate gem count based on L10 hit rate (like fire streaks for demons)
-  // 1 Gem = 70%, 2 Gems = 80%, 3 Gems = 90%, 4 Gems = 100%
-  // MODIFIER: -1 for volatility, +1 for revenge game
-  const h10Rate = pick.h10_rate || 0;
-  const gemModifier = pick.gem_modifier || ((hasRevengeGame ? 1 : 0) + (hasVolatility ? -1 : 0));
-  
-  const getBaseGemCount = () => {
-    if (h10Rate >= 100) return 4;
-    if (h10Rate >= 90) return 3;
-    if (h10Rate >= 80) return 2;
-    if (h10Rate >= 70) return 1;
-    return 0;
-  };
-  
-  const baseGemCount = getBaseGemCount();
-  const gemCount = Math.max(0, Math.min(4, baseGemCount + gemModifier));
-  
-  // Sapphire Blue Gems rendering
-  const renderGems = () => {
-    if (baseGemCount === 0) return null;
-    return (
-      <div className="flex items-center gap-0.5" title={getGemDescription(gemCount, gemModifier)}>
-        {[...Array(gemCount)].map((_, i) => (
-          <span 
-            key={i} 
-            className="text-[12px]"
-            style={{ 
-              color: '#00BFFF',
-              textShadow: '0 0 4px #00BFFF, 0 0 8px #00BFFF40'
-            }}
-          >
-            💎
-          </span>
-        ))}
-        {/* Show modifier indicator */}
-        {gemModifier !== 0 && (
-          <span className={`text-[10px] ml-1 ${gemModifier > 0 ? 'text-green-400' : 'text-red-400'}`}>
-            {gemModifier > 0 ? '+1' : '-1'}
-          </span>
-        )}
-      </div>
-    );
-  };
-  
-  const getGemDescription = (count, modifier) => {
-    let base = '';
-    switch(count) {
-      case 4: base = 'FORTRESS! 100% L10 hit rate'; break;
-      case 3: base = 'DIAMOND! 90%+ L10 hit rate'; break;
-      case 2: base = 'VAULT! 80%+ L10 hit rate'; break;
-      case 1: base = 'SAFE! 70%+ L10 hit rate'; break;
-      default: base = 'Below 70% hit rate';
-    }
-    if (modifier > 0) base += ' (Revenge Game Bonus!)';
-    if (modifier < 0) base += ' (Volatility Warning)';
-    return base;
-  };
-  
-  const getGemLabel = (count) => {
-    switch(count) {
-      case 4: return 'FORTRESS';
-      case 3: return 'DIAMOND';
-      case 2: return 'VAULT';
-      case 1: return 'SAFE';
-      default: return '';
-    }
-  };
-  
-  const handleClick = () => {
-    if (pick.locked) return;
-    setIsClicked(true);
-    setTimeout(() => setIsClicked(false), 400);
-    onClick?.();
-  };
-  
-  return (
-    <Card 
-      className={`
-        bg-gradient-to-br from-green-950/50 to-zinc-900 border border-green-500/40
-        shadow-[0_0_20px_rgba(34,197,94,0.3)]
-        hover:scale-[1.02] transition-all duration-300
-        cursor-pointer active:scale-[0.98] relative overflow-visible
-        min-h-[280px]
-        ${pick.locked ? 'pointer-events-none' : ''}
-      `}
-      onClick={handleClick}
-      data-testid={`vault-card-${rank}`}
-    >
-      {/* LOCKED Badge - Game In Progress */}
-      <LockedBadge isLocked={pick.locked} commenceTime={pick.commence_time} />
-      
-      {/* T-Minus Countdown Badge */}
-      <TMinusBadge commenceTime={pick.commence_time} tMinusGames={tMinusGames} />
-      
-      {/* Vision Synergy Badge */}
-      {hasVisionGlow && <VisionBadge type="goblin" hasVision={true} />}
-      
-      <div className="p-3">
-        {/* Header: Goblin Icon + Headshot + Rank + Name */}
-        <div className="flex items-center gap-2 mb-2">
-          {/* Goblin Icon with pulse on click - add Vision sparkle if has insight */}
-          <div className="flex-shrink-0">
-            <GoblinIcon size={20} isClicked={isClicked} hasVision={hasVisionGlow} />
-          </div>
-          
-          {/* Headshot with Vault Badge */}
-          <div className="relative">
-            <PlayerHeadshot 
-              nbaId={pick.nba_id} 
-              playerName={pick.player_name}
-              team={pick.team}
-              photoUrl={pick.photo_url}
-              size="md"
-              className="ring-2 ring-green-800/50"
-            />
-            {/* Rank Badge */}
-            <div className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full flex items-center justify-center 
-                          font-bold text-[10px] border-2 border-zinc-900 bg-green-600 text-white">
-              {rank}
-            </div>
-          </div>
-          
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-1">
-              <span className="font-bold text-white text-sm truncate">{pick.player_name}</span>
-              {/* Social Signal Icons */}
-              {hasVolatility && (
-                <span 
-                  className="text-[14px] cursor-help" 
-                  title={`Intel: ${pick.volatility_reason || 'Volatility detected'}`}
-                  style={{ filter: 'drop-shadow(0 0 2px #f97316)' }}
-                >
-                  🗞️
-                </span>
-              )}
-              {hasRevengeGame && (
-                <span 
-                  className="text-[14px] cursor-help" 
-                  title={`Revenge Game vs ${pick.revenge_opponent || 'former team'}`}
-                  style={{ filter: 'drop-shadow(0 0 2px #22c55e)' }}
-                >
-                  🗡️
-                </span>
-              )}
-            </div>
-            <div className="flex items-center gap-1 text-[10px] text-zinc-500">
-              <span className="font-mono">{pick.team || '---'}</span>
-              <span>· {pick.stat_type}</span>
-            </div>
-          </div>
-        </div>
-        
-        {/* Sapphire Gem Streak (like fire streaks for demons) */}
-        {gemCount > 0 && (
-          <div className="flex items-center justify-between mb-2 px-1">
-            {renderGems()}
-            <span 
-              className="text-[10px] font-medium"
-              style={{ color: '#00BFFF' }}
-            >
-              {getGemLabel(gemCount)}
-            </span>
-          </div>
-        )}
-        
-        {/* Vault Stats */}
-        <div className="space-y-1.5">
-          {/* Line Info */}
-          <div className="flex items-center justify-between text-xs">
-            <span className="text-zinc-400">Line:</span>
-            <div className="flex items-center gap-1">
-              <span className="text-white font-bold">{pick.goblin_line}</span>
-              <span className="text-green-400 font-mono">{pick.price > 0 ? `+${pick.price}` : pick.price}</span>
-            </div>
-          </div>
-          
-          {/* Clean Hit Rate Display */}
-          <div className="flex items-center justify-between text-xs">
-            <span className="text-zinc-400">L10:</span>
-            <span className="text-white font-bold">{pick.h10_rate}%</span>
-            <span className="text-zinc-500 text-[10px]">({pick.h10_over}/{pick.h10_games})</span>
-          </div>
-          
-          {/* Vault Score Bar */}
-          <div className="mt-2">
-            <div className="h-1.5 bg-zinc-800 rounded-full overflow-hidden">
-              <div 
-                className="h-full rounded-full transition-all"
-                style={{ 
-                  width: `${Math.min(100, pick.h10_rate || 0)}%`,
-                  background: 'linear-gradient(to right, #00BFFF, #00CED1)'
-                }}
-              />
-            </div>
-          </div>
-          
-          {/* AI Explainer - Why this Goblin? */}
-          {(pick.intel_briefing || pick.insight_summary) && (
-            <div className="mt-2 pt-2 border-t border-green-900/30">
-              <div className="flex items-center gap-1 mb-1">
-                <Zap className="w-2.5 h-2.5 text-purple-400" />
-                <span className="text-[9px] text-purple-400 uppercase tracking-wider font-semibold">The Vision</span>
-              </div>
-              <p className="text-[10px] text-purple-300/80 leading-relaxed italic">
-                "{pick.intel_briefing || pick.insight_summary}"
-              </p>
-            </div>
-          )}
-        </div>
-      </div>
-    </Card>
-  );
-});
 
-VaultCard.displayName = 'VaultCard';
+// VaultCard - Now uses UniversalPickCard with green theme + gem emblem
+// (Legacy VaultCard code deleted - unified to UniversalPickCard)
 
 // ==================== PARLAY CARD ====================
 
@@ -2238,7 +2204,7 @@ ReconCard.displayName = 'ReconCard';
 // ==================== SWIPEABLE SECTION COMPONENTS ====================
 // Mobile-first swipeable card sections with Tinder-style navigation
 
-// War Zone Swipeable Section
+// War Zone Swipeable Section - RED theme + FIRE emblem
 const WarZoneSwipeSection = memo(({ picks, onPickClick, tMinusGames = [] }) => {
   const { containerRef, currentIndex, showHint } = useSwipeTracker(picks.length);
   
@@ -2246,7 +2212,7 @@ const WarZoneSwipeSection = memo(({ picks, onPickClick, tMinusGames = [] }) => {
     <div data-testid="war-zone-section" className="war-zone-section">
       <div className="flex items-center justify-between mb-2 px-4 sm:px-0">
         <div className="flex items-center gap-2">
-          <DemonIcon size={24} isScanning={true} />
+          <FireEmblem size={24} />
           <span className="text-sm font-bold text-red-400">THE WAR ZONE</span>
           <Badge className="bg-red-950/50 text-red-400 border-red-800/50 text-[10px] hidden sm:inline-flex">
             TOP 10 DEMON PLAYS
@@ -2270,12 +2236,13 @@ const WarZoneSwipeSection = memo(({ picks, onPickClick, tMinusGames = [] }) => {
               key={`${pick.player_name}-${pick.stat_type}-${pick.demon_line}-${idx}`} 
               className="snap-center flex-shrink-0 w-[calc(100vw-48px)] max-w-[340px] sm:w-auto sm:max-w-none"
             >
-              <RadarCard 
+              <UniversalPickCard 
                 pick={pick} 
                 rank={idx + 1}
                 onClick={() => onPickClick(pick)}
-                isScanning={true}
                 tMinusGames={tMinusGames}
+                colorTheme="red"
+                emblem="fire"
               />
             </div>
           ))}
@@ -2297,10 +2264,10 @@ const GoblinReconSwipeSection = memo(({ picks, onPickClick, tMinusGames = [] }) 
     <div data-testid="recon-section" className="goblin-recon-section">
       <div className="flex items-center justify-between mb-2 px-4 sm:px-0">
         <div className="flex items-center gap-2">
-          <GoblinIcon size={24} />
+          <GemEmblem size={24} />
           <span className="text-sm font-bold text-green-400">THE SAFE HAVEN</span>
           <Badge className="bg-green-950/50 text-green-400 border-green-800/50 text-[10px] hidden sm:inline-flex">
-            TOP 10 GOBLIN PLAYS
+            TOP 10 FORTRESS PLAYS
           </Badge>
         </div>
         <div className="text-[10px] text-zinc-500 hidden sm:block">
@@ -2320,11 +2287,13 @@ const GoblinReconSwipeSection = memo(({ picks, onPickClick, tMinusGames = [] }) 
             key={`${pick.player_name}-${pick.stat_type}-${pick.goblin_line}-${idx}`} 
             className="snap-center flex-shrink-0 w-[calc(100vw-48px)] max-w-[340px] sm:w-auto sm:max-w-none"
           >
-            <VaultCard 
+            <UniversalPickCard 
               pick={pick} 
               rank={idx + 1}
               onClick={() => onPickClick(pick)}
               tMinusGames={tMinusGames}
+              colorTheme="green"
+              emblem="gem"
             />
           </div>
         ))}
@@ -2460,32 +2429,22 @@ const SafeHavenSwipeSection = memo(({ reconData, onParlayClick }) => {
 
 SafeHavenSwipeSection.displayName = 'SafeHavenSwipeSection';
 
-// Front Lines Swipeable Section - Mild Goblins + Mild Demons (5-18% gap)
+// Front Lines Swipeable Section - AMBER theme + BULLET emblem (5-18% gap)
 const FrontLinesSwipeSection = memo(({ picks, onPickClick, tMinusGames = [] }) => {
   const { containerRef, currentIndex, showHint } = useSwipeTracker(picks.length);
-  
-  // Render bullet ranking
-  const renderBullets = (bulletLevel) => {
-    const bullets = Math.min(6, Math.max(1, bulletLevel || 2));
-    return (
-      <span className="text-amber-400 font-bold tracking-tighter">
-        {'•'.repeat(bullets)}
-      </span>
-    );
-  };
   
   return (
     <div data-testid="front-lines-section" className="front-lines-section">
       <div className="flex items-center justify-between mb-2 px-4 sm:px-0">
         <div className="flex items-center gap-2">
-          <Target className="w-5 h-5 text-amber-400" />
+          <BulletEmblem size={24} />
           <span className="text-sm font-bold text-amber-400">THE FRONT LINES</span>
           <Badge className="bg-amber-950/50 text-amber-400 border-amber-800/50 text-[10px] hidden sm:inline-flex">
-            TOP 10 MILD ALTERNATES
+            TOP 10 MID-TIER PLAYS
           </Badge>
         </div>
         <div className="text-[10px] text-zinc-500 hidden sm:block">
-          Mild Goblins + Mild Demons | 5-18% from Standard
+          Tactical Alternates | 5-18% from Standard
         </div>
       </div>
       
@@ -2493,7 +2452,7 @@ const FrontLinesSwipeSection = memo(({ picks, onPickClick, tMinusGames = [] }) =
         <SwipeHint show={showHint} accentColor="amber" />
         <div 
           ref={containerRef} 
-          className="flex overflow-x-auto snap-x snap-mandatory scrollbar-hide gap-3 px-4 pb-2 sm:grid sm:grid-cols-2 lg:grid-cols-5 xl:grid-cols-5 sm:overflow-visible sm:px-0 sm:gap-2"
+          className="flex overflow-x-auto snap-x snap-mandatory scrollbar-hide gap-3 px-4 pb-2 sm:grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 sm:overflow-visible sm:px-0 sm:gap-2"
           style={{ WebkitOverflowScrolling: 'touch', scrollbarWidth: 'none', msOverflowStyle: 'none' }}
         >
           {picks.slice(0, 10).map((pick, idx) => (
@@ -2501,12 +2460,13 @@ const FrontLinesSwipeSection = memo(({ picks, onPickClick, tMinusGames = [] }) =
               key={`${pick.player_name}-${pick.stat_type}-${pick.line}-${idx}`} 
               className="snap-center flex-shrink-0 w-[calc(100vw-48px)] max-w-[340px] sm:w-auto sm:max-w-none"
             >
-              <FrontLinesCard 
+              <UniversalPickCard 
                 pick={pick} 
                 rank={idx + 1}
-                bulletLevel={pick.bullet_level || (6 - Math.floor(idx / 2))}
                 onClick={() => onPickClick(pick)}
                 tMinusGames={tMinusGames}
+                colorTheme="amber"
+                emblem="bullet"
               />
             </div>
           ))}
@@ -2514,129 +2474,13 @@ const FrontLinesSwipeSection = memo(({ picks, onPickClick, tMinusGames = [] }) =
       </div>
       
       <SwipeIndicator current={currentIndex} total={Math.min(picks.length, 10)} accentColor="amber" />
-      
-      {/* Bullet Legend */}
-      <div className="mt-2 hidden sm:flex items-center justify-center gap-3 text-[10px] text-zinc-500">
-        <span className="text-amber-400">••••••</span><span>= Top 2</span>
-        <span className="text-amber-400">•••••</span><span>= 3-4</span>
-        <span className="text-amber-400">••••</span><span>= 5-6</span>
-        <span className="text-amber-400">•••</span><span>= 7-8</span>
-        <span className="text-amber-400">••</span><span>= 9-10</span>
-      </div>
     </div>
   );
 });
 
 FrontLinesSwipeSection.displayName = 'FrontLinesSwipeSection';
 
-// Front Lines Card - Shows Goblin (green) or Demon (red) icon
-const FrontLinesCard = memo(({ pick, rank, bulletLevel, onClick, tMinusGames = [] }) => {
-  const isDemon = pick.is_demon || pick.prop_type === 'demon';
-  const isGoblin = pick.is_goblin || pick.prop_type === 'goblin';
-  
-  // Color based on prop type
-  const iconColor = isDemon ? 'text-red-400' : 'text-emerald-400';
-  const borderColor = isDemon ? 'border-red-500/30' : 'border-emerald-500/30';
-  const glowColor = isDemon ? 'rgba(239, 68, 68, 0.2)' : 'rgba(16, 185, 129, 0.2)';
-  
-  // Render bullets
-  const bullets = '•'.repeat(Math.min(6, bulletLevel || 2));
-  
-  return (
-    <Card 
-      className={`
-        bg-gradient-to-br from-amber-950/40 to-zinc-900 border border-amber-500/30
-        hover:scale-[1.02] transition-all duration-300
-        cursor-pointer active:scale-[0.98] relative overflow-visible
-        min-h-[260px]
-        ${pick.locked ? 'pointer-events-none opacity-60' : ''}
-      `}
-      style={{ boxShadow: `0 0 15px rgba(245, 158, 11, 0.2)` }}
-      onClick={pick.locked ? undefined : onClick}
-      data-testid={`front-lines-card-${rank}`}
-    >
-      {/* LOCKED Badge */}
-      <LockedBadge isLocked={pick.locked} commenceTime={pick.commence_time} />
-      
-      {/* T-Minus Badge */}
-      <TMinusBadge commenceTime={pick.commence_time} tMinusGames={tMinusGames} />
-      
-      <div className="p-3">
-        {/* Header: Rank + Type Icon + Headshot + Name */}
-        <div className="flex items-center gap-2 mb-2">
-          {/* Rank Badge */}
-          <div className="flex-shrink-0 w-6 h-6 rounded-full bg-amber-500/30 flex items-center justify-center border border-amber-500/50">
-            <span className="text-xs font-bold text-amber-400">{rank}</span>
-          </div>
-          
-          {/* Demon/Goblin Icon */}
-          <div className={`flex-shrink-0 ${iconColor}`}>
-            {isDemon ? <DemonIcon size={18} /> : <GoblinIcon size={18} />}
-          </div>
-          
-          {/* Headshot */}
-          <div className="relative">
-            <PlayerHeadshot 
-              nbaId={pick.nba_id} 
-              playerName={pick.player_name}
-              headshotUrl={pick.headshot_url}
-              playerId={pick.player_id}
-              size={32}
-            />
-          </div>
-          
-          {/* Name + Team */}
-          <div className="flex-1 min-w-0">
-            <div className="text-xs font-bold text-white truncate">{pick.player_name}</div>
-            <div className="text-[10px] text-zinc-500">{pick.team_abbr} • {pick.stat_type}</div>
-          </div>
-        </div>
-        
-        {/* Line Info */}
-        <div className="bg-zinc-900/60 rounded-lg p-2 mb-2">
-          <div className="flex items-center justify-between">
-            <span className="text-zinc-400 text-xs">Line:</span>
-            <span className="text-white font-bold">{pick.line}</span>
-          </div>
-          <div className="flex items-center justify-between mt-1">
-            <span className="text-zinc-400 text-xs">Gap from Std:</span>
-            <span className="text-amber-400 font-bold">{pick.gap_pct}%</span>
-          </div>
-          <div className="flex items-center justify-between mt-1">
-            <span className="text-zinc-400 text-xs">Score:</span>
-            <span className="text-amber-400 font-bold">{pick.vault_score_100?.toFixed(1) || '-'}/100</span>
-          </div>
-        </div>
-        
-        {/* Stats Bar */}
-        <div className="flex items-center justify-between text-[10px] mb-2">
-          <div>
-            <span className="text-zinc-500">L10: </span>
-            <span className="text-white">{pick.h10_rate}%</span>
-          </div>
-          <div>
-            <span className="text-zinc-500">L5: </span>
-            <span className="text-white">{pick.h5_rate}%</span>
-          </div>
-          <div>
-            <span className="text-zinc-500">Avg: </span>
-            <span className="text-white">{pick.season_avg}</span>
-          </div>
-        </div>
-        
-        {/* Bullet Ranking + Type Badge */}
-        <div className="flex items-center justify-between">
-          <span className="text-amber-400 font-bold text-lg tracking-tighter">{bullets}</span>
-          <Badge className={`${isDemon ? 'bg-red-950/50 text-red-400 border-red-800/50' : 'bg-emerald-950/50 text-emerald-400 border-emerald-800/50'} text-[10px]`}>
-            {isDemon ? 'DEMON' : 'GOBLIN'}
-          </Badge>
-        </div>
-      </div>
-    </Card>
-  );
-});
-
-FrontLinesCard.displayName = 'FrontLinesCard';
+// FrontLinesCard - DELETED (now uses UniversalPickCard with amber theme + bullet emblem)
 
 // Trending Players Swipeable Section
 const TrendingSwipeSection = memo(({ players, linesLoaded, onPlayerClick, injuryAlerts }) => {

@@ -24,6 +24,15 @@ dg_cached_board → dg_radar_picks (War Zone) → dg_goblin_vault → dg_goblin_
 
 ## What's Been Implemented
 
+### 2026-03-15: Unified 3-Tier Card UI
+- Created `UniversalPickCard` component as single template for all 30 picks
+- Deleted legacy `VaultCard` and `FrontLinesCard` components
+- Only visual differences: `colorTheme` prop (red/amber/green) and `emblem` prop (fire/bullet/gem)
+- **War Zone**: Red theme + Fire emblem (🔥) + labels: ON FIRE, HOT, WARM
+- **Front Lines**: Amber theme + Bullet emblem (SVG ammunition graphic) + labels: ELITE, STRONG, SOLID
+- **Safe Haven**: Green theme + Gem emblem (💎) + labels: FORTRESS, DIAMOND, VAULT, SAFE
+- Consistent card layout, fonts, margins, padding across all sections
+
 ### 2026-03-15: THE FRONT LINES Section Complete
 - Implemented "THE FRONT LINES" mid-tier picks section
 - Backend: `_build_front_lines()` generates 10 "mild" alternates (5-18% gap from standard)
