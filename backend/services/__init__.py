@@ -44,3 +44,7 @@ from .social_scout import (
 # High-level services using repository pattern
 from .picks_service import PicksService
 from .board_service import BoardService
+from .roster_service import RosterService
+from .photo_service import PhotoService
+from .props_service import PropsService
+from .sync_service import SyncService
