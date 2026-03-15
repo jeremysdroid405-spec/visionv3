@@ -58,3 +58,4 @@ from .picks_getter_service import PicksGetterService
 from .data_integrity_service import DataIntegrityService
 from .stats_enrichment_service import StatsEnrichmentService
 from .odds_sync_service import OddsSyncService
+from .sync_orchestration_service import SyncOrchestrationService
