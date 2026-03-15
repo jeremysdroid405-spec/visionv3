@@ -1896,57 +1896,119 @@ UniversalPickCard.displayName = 'UniversalPickCard';
 const RadarCard = UniversalPickCard;
 
 
-// VaultCard - Now uses UniversalPickCard with green theme + gem emblem
-// (Legacy VaultCard code deleted - unified to UniversalPickCard)
+// ==================== UNIVERSAL PARLAY TICKET ====================
+// Single unified ticket template for all 3 tiers (War Zone, Front Lines, Safe Haven)
+// Only visual differences: colorTheme (red/amber/green) and emblem (fire/bullet/gem)
 
-// ==================== PARLAY CARD ====================
-
-const ParlayCard = memo(({ parlay, pickCount, onClick }) => {
+const UniversalParlayTicket = memo(({ 
+  parlay, 
+  pickCount, 
+  onClick,
+  colorTheme = 'red',  // 'red' | 'amber' | 'green'
+  emblem = 'fire'       // 'fire' | 'bullet' | 'gem'
+}) => {
   const picks = parlay?.picks || [];
   const payoutMultiplier = parlay?.estimated_payout || 0;
-  const combinedProb = parlay?.combined_probability || 0;
+  const combinedProb = parlay?.combined_probability || parlay?.reliability || 0;
   const payoutRange = parlay?.payout_range || '';
   const lineupValid = parlay?.lineup_valid ?? true;
   const lineupStatus = parlay?.lineup_status || 'Valid (Multi-Team)';
   const teamCount = parlay?.team_count || 0;
   const hasOpponentPair = parlay?.has_opponent_pair || false;
+  const badge = parlay?.badge || '';
   
-  // Color scheme based on pick count
-  const colorScheme = {
-    2: { bg: 'from-amber-950/40', border: 'border-amber-700/50', text: 'text-amber-400', badge: 'bg-amber-500/20' },
-    3: { bg: 'from-orange-950/40', border: 'border-orange-700/50', text: 'text-orange-400', badge: 'bg-orange-500/20' },
-    4: { bg: 'from-red-950/40', border: 'border-red-700/50', text: 'text-red-400', badge: 'bg-red-500/20' },
-    5: { bg: 'from-purple-950/40', border: 'border-purple-700/50', text: 'text-purple-400', badge: 'bg-purple-500/20' },
-    6: { bg: 'from-pink-950/40', border: 'border-pink-700/50', text: 'text-pink-400', badge: 'bg-pink-500/20' }
+  // Theme colors - RED (War Zone), AMBER (Front Lines), GREEN (Safe Haven)
+  const themeColors = {
+    red: { 
+      bg: 'from-red-950/50', 
+      border: 'border-red-500/40', 
+      text: 'text-red-400', 
+      badge: 'bg-red-500/20',
+      glow: 'rgba(239, 68, 68, 0.3)',
+      statusValid: 'bg-red-500/20 text-red-300',
+      meterHigh: 'from-red-500 to-red-400',
+      meterMid: 'from-orange-500 to-orange-400'
+    },
+    amber: { 
+      bg: 'from-amber-950/50', 
+      border: 'border-amber-500/40', 
+      text: 'text-amber-400', 
+      badge: 'bg-amber-500/20',
+      glow: 'rgba(245, 158, 11, 0.3)',
+      statusValid: 'bg-amber-500/20 text-amber-300',
+      meterHigh: 'from-amber-500 to-amber-400',
+      meterMid: 'from-yellow-500 to-yellow-400'
+    },
+    green: { 
+      bg: 'from-green-950/50', 
+      border: 'border-green-500/40', 
+      text: 'text-green-400', 
+      badge: 'bg-green-500/20',
+      glow: 'rgba(34, 197, 94, 0.3)',
+      statusValid: 'bg-green-500/20 text-green-300',
+      meterHigh: 'from-green-500 to-green-400',
+      meterMid: 'from-emerald-500 to-emerald-400'
+    }
+  };
+  const theme = themeColors[colorTheme] || themeColors.red;
+  
+  // Render emblem icon
+  const renderEmblem = (size = 16) => {
+    switch(emblem) {
+      case 'fire': return <FireEmblem size={size} />;
+      case 'bullet': return <BulletEmblem size={size + 2} />;
+      case 'gem': return <GemEmblem size={size} />;
+      default: return <FireEmblem size={size} />;
+    }
   };
   
-  const colors = colorScheme[pickCount] || colorScheme[2];
+  // Render pick emblem (smaller, for list items)
+  const renderPickEmblem = (pick) => {
+    // For picks, show fire/bullet/gem based on tier emblem
+    switch(emblem) {
+      case 'fire':
+        return pick.has_heat_boost ? (
+          <Flame className="w-3 h-3 text-orange-400 flex-shrink-0" fill="currentColor" />
+        ) : (
+          <span className="text-[10px]" style={{ filter: 'drop-shadow(0 0 2px #ff6b35)' }}>🔥</span>
+        );
+      case 'bullet':
+        return <BulletEmblem size={14} />;
+      case 'gem':
+        return <span className="text-[10px]" style={{ color: '#00BFFF', textShadow: '0 0 4px #00BFFF' }}>💎</span>;
+      default:
+        return <span className="text-[10px]">🔥</span>;
+    }
+  };
   
   return (
     <Card 
       className={`
-        bg-gradient-to-br ${colors.bg} to-zinc-950 ${colors.border}
+        bg-gradient-to-br ${theme.bg} to-zinc-950 ${theme.border}
         hover:scale-[1.02] transition-all duration-200 cursor-pointer
-        overflow-hidden ${!lineupValid ? 'opacity-60' : ''}
+        overflow-hidden min-h-[280px] ${!lineupValid ? 'opacity-60' : ''}
       `}
+      style={{ boxShadow: `0 0 20px ${theme.glow}` }}
       onClick={onClick}
-      data-testid={`parlay-card-${pickCount}`}
+      data-testid={`parlay-ticket-${colorTheme}-${pickCount}`}
     >
       <div className="p-3">
         {/* Header */}
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-2">
-            <div className={`w-8 h-8 rounded-full ${colors.badge} flex items-center justify-center`}>
-              <span className={`text-lg font-black ${colors.text}`}>{pickCount}</span>
+            <div className={`w-8 h-8 rounded-full ${theme.badge} flex items-center justify-center`}>
+              {renderEmblem(18)}
             </div>
             <div>
-              <div className={`text-sm font-bold ${colors.text}`}>{parlay?.name || `${pickCount}-PICK`}</div>
+              <div className={`text-sm font-bold ${theme.text}`}>
+                {parlay?.name || `${pickCount}-PICK`}
+              </div>
               <div className="text-[10px] text-zinc-500">{parlay?.description || ''}</div>
             </div>
           </div>
           
           {/* Payout Badge */}
-          <Badge className={`${colors.badge} ${colors.text} border-none text-xs font-bold px-2 py-1`}>
+          <Badge className={`${theme.badge} ${theme.text} border-none text-xs font-bold px-2 py-1`}>
             <DollarSign className="w-3 h-3 mr-0.5" />
             {payoutMultiplier}x
           </Badge>
@@ -1955,7 +2017,7 @@ const ParlayCard = memo(({ parlay, pickCount, onClick }) => {
         {/* Lineup Status Indicator */}
         <div className={`flex items-center gap-1 mb-2 text-[9px] px-2 py-0.5 rounded ${
           lineupValid 
-            ? hasOpponentPair ? 'bg-blue-500/20 text-blue-300' : 'bg-green-500/20 text-green-300'
+            ? hasOpponentPair ? 'bg-blue-500/20 text-blue-300' : theme.statusValid
             : 'bg-red-500/20 text-red-300'
         }`}>
           {lineupValid ? (
@@ -1972,7 +2034,27 @@ const ParlayCard = memo(({ parlay, pickCount, onClick }) => {
           )}
         </div>
         
-        {/* Picks List - Compact format like Safe Haven */}
+        {/* Reliability/Combined Prob Meter */}
+        <div className="mb-2">
+          <div className="flex items-center justify-between text-[10px] mb-1">
+            <span className="text-zinc-400">{emblem === 'gem' ? 'Reliability' : 'Combined Prob'}</span>
+            <span className={`font-bold ${combinedProb >= 50 ? 'text-green-400' : combinedProb >= 20 ? 'text-yellow-400' : 'text-zinc-400'}`}>
+              {combinedProb}%
+            </span>
+          </div>
+          <div className="w-full h-1.5 bg-zinc-800 rounded-full overflow-hidden">
+            <div 
+              className={`h-full transition-all duration-500 bg-gradient-to-r ${
+                combinedProb >= 50 ? theme.meterHigh : 
+                combinedProb >= 20 ? theme.meterMid : 
+                'from-zinc-500 to-zinc-400'
+              }`}
+              style={{ width: `${Math.min(combinedProb, 100)}%` }}
+            />
+          </div>
+        </div>
+        
+        {/* Picks List */}
         <div className="space-y-1.5 mb-3">
           {picks.slice(0, 4).map((pick, idx) => (
             <div 
@@ -1981,15 +2063,16 @@ const ParlayCard = memo(({ parlay, pickCount, onClick }) => {
             >
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2 min-w-0">
-                  <DemonIcon size={12} className="flex-shrink-0" />
+                  {renderPickEmblem(pick)}
                   <span className="text-xs text-white truncate">{pick.player_name}</span>
                   <span className="text-[10px] text-zinc-500">{pick.team}</span>
                 </div>
                 <div className="flex items-center gap-1.5">
                   <span className="text-[10px] text-zinc-400">{pick.stat_type}</span>
                   <span className="text-xs font-bold text-white">{pick.line}</span>
-                  {pick.has_heat_boost && <Flame className="w-3 h-3 text-orange-400" />}
-                  {(pick.intel_briefing || pick.insight_summary) && <Zap className="w-3 h-3 text-purple-400" title="Has AI Vision" />}
+                  {(pick.intel_briefing || pick.insight_summary) && (
+                    <Zap className="w-3 h-3 text-purple-400" title="Has AI Vision" />
+                  )}
                 </div>
               </div>
             </div>
@@ -2005,211 +2088,30 @@ const ParlayCard = memo(({ parlay, pickCount, onClick }) => {
         <div className="flex items-center justify-between pt-2 border-t border-zinc-800/50">
           <div className="flex items-center gap-1 text-[10px]">
             <Target className="w-3 h-3 text-zinc-500" />
-            <span className="text-zinc-500">Combined:</span>
-            <span className={`font-bold ${combinedProb >= 20 ? 'text-green-400' : combinedProb >= 10 ? 'text-yellow-400' : 'text-zinc-400'}`}>
-              {combinedProb}%
-            </span>
+            <span className="text-zinc-500">Picks:</span>
+            <span className={`font-bold ${theme.text}`}>{pickCount}</span>
           </div>
-          <div className="text-[10px] text-zinc-500">
-            Range: <span className="text-white">{payoutRange}</span>
-          </div>
-        </div>
-      </div>
-    </Card>
-  );
-});
-
-ParlayCard.displayName = 'ParlayCard';
-
-// ==================== GOBLIN RECON CARD ====================
-
-const ReconCard = memo(({ parlay, tier, onClick }) => {
-  const picks = parlay?.picks || [];
-  const reliability = parlay?.reliability || 0;
-  const payoutEstimate = parlay?.estimated_payout || 0;
-  const badge = parlay?.badge || '';
-  const flexProb = parlay?.flex_probability || null;
-  const lineupValid = parlay?.lineup_valid ?? true;
-  const lineupStatus = parlay?.lineup_status || 'Valid (Multi-Team)';
-  const teamCount = parlay?.team_count || 0;
-  
-  // Emerald green theme for Recon
-  const tierStyles = {
-    daily_double: { 
-      bg: 'from-emerald-950/60', 
-      border: 'border-emerald-500/50', 
-      text: 'text-emerald-400',
-      badge: 'bg-emerald-500/30',
-      number: 2
-    },
-    green_ladder_3: { 
-      bg: 'from-teal-950/60', 
-      border: 'border-teal-500/50', 
-      text: 'text-teal-400',
-      badge: 'bg-teal-500/30',
-      number: 3
-    },
-    green_ladder_4: { 
-      bg: 'from-cyan-950/60', 
-      border: 'border-cyan-500/50', 
-      text: 'text-cyan-400',
-      badge: 'bg-cyan-500/30',
-      number: 4
-    },
-    fortress_flex: { 
-      bg: 'from-green-950/60', 
-      border: 'border-green-500/50', 
-      text: 'text-green-400',
-      badge: 'bg-green-500/30',
-      number: 6
-    }
-  };
-  
-  const style = tierStyles[tier] || tierStyles.daily_double;
-  
-  return (
-    <Card 
-      className={`
-        bg-gradient-to-br from-green-950/50 to-zinc-900 border border-green-500/40
-        shadow-[0_0_20px_rgba(34,197,94,0.3)]
-        hover:scale-[1.02] transition-all duration-200 cursor-pointer
-        overflow-hidden min-h-[280px] ${!lineupValid ? 'opacity-60' : ''}
-      `}
-      onClick={onClick}
-      data-testid={`recon-card-${tier}`}
-    >
-      <div className="p-3">
-        {/* Header */}
-        <div className="flex items-center justify-between mb-2">
-          <div className="flex items-center gap-2">
-            <div className={`w-8 h-8 rounded-full ${style.badge} flex items-center justify-center`}>
-              <GoblinIcon size={16} />
+          {payoutRange && (
+            <div className="text-[10px] text-zinc-500">
+              Range: <span className="text-white">{payoutRange}</span>
             </div>
-            <div>
-              <div className={`text-sm font-bold ${style.text}`}>{parlay?.name || tier}</div>
-              <div className="text-[10px] text-zinc-400">{parlay?.description || ''}</div>
-            </div>
-          </div>
-          
-          {/* Badge */}
+          )}
           {badge && (
-            <Badge className={`${style.badge} ${style.text} border-none text-[10px] font-bold px-2 py-0.5`}>
+            <Badge className={`${theme.badge} ${theme.text} border-none text-[9px] px-1.5 py-0.5`}>
               {badge}
             </Badge>
           )}
         </div>
-        
-        {/* Lineup Status Indicator */}
-        <div className={`flex items-center gap-1 mb-2 text-[9px] px-2 py-0.5 rounded ${
-          lineupValid 
-            ? 'bg-emerald-500/20 text-emerald-300'
-            : 'bg-red-500/20 text-red-300'
-        }`}>
-          {lineupValid ? (
-            <>
-              <CheckCircle className="w-3 h-3" />
-              <span>{lineupStatus}</span>
-              {teamCount > 0 && <span className="text-zinc-400">({teamCount} teams)</span>}
-            </>
-          ) : (
-            <>
-              <XCircle className="w-3 h-3" />
-              <span>INVALID - Single Team</span>
-            </>
-          )}
-        </div>
-        
-        {/* Reliability Meter */}
-        <div className="mb-2">
-          <div className="flex items-center justify-between text-[10px] mb-1">
-            <span className="text-zinc-400">Reliability</span>
-            <span className={`font-bold ${reliability >= 70 ? 'text-emerald-400' : reliability >= 50 ? 'text-yellow-400' : 'text-red-400'}`}>
-              {reliability}%
-            </span>
-          </div>
-          <div className="w-full h-2 bg-zinc-800 rounded-full overflow-hidden">
-            <div 
-              className={`h-full transition-all duration-500 ${
-                reliability >= 70 ? 'bg-gradient-to-r from-emerald-500 to-green-400' : 
-                reliability >= 50 ? 'bg-gradient-to-r from-yellow-500 to-amber-400' : 
-                'bg-gradient-to-r from-red-500 to-orange-400'
-              }`}
-              style={{ width: `${Math.min(reliability, 100)}%` }}
-            />
-          </div>
-        </div>
-        
-        {/* Picks List with Sapphire Gems */}
-        <div className="space-y-1.5 mb-3">
-          {picks.slice(0, 4).map((pick, idx) => {
-            // Calculate gem count based on L10 hit rate
-            const h10Rate = pick.h10_rate || (pick.h10_games > 0 ? (pick.h10_over / pick.h10_games) * 100 : 0);
-            const gemCount = h10Rate >= 100 ? 4 : h10Rate >= 90 ? 3 : h10Rate >= 80 ? 2 : h10Rate >= 70 ? 1 : 0;
-            
-            return (
-              <div 
-                key={`${pick.player_name}-${pick.stat_type}-${idx}`}
-                className="bg-zinc-900/50 rounded px-2 py-1"
-              >
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2 min-w-0">
-                    {/* Sapphire Gems instead of goblin icon */}
-                    {gemCount > 0 ? (
-                      <div className="flex items-center gap-0.5 flex-shrink-0">
-                        {[...Array(Math.min(gemCount, 4))].map((_, i) => (
-                          <span 
-                            key={i} 
-                            className="text-[10px]"
-                            style={{ 
-                              color: '#00BFFF',
-                              textShadow: '0 0 4px #00BFFF'
-                            }}
-                          >💎</span>
-                        ))}
-                      </div>
-                    ) : (
-                      <GoblinIcon size={12} className="flex-shrink-0" />
-                    )}
-                    <span className="text-xs text-white truncate">{pick.player_name}</span>
-                    <span className="text-[10px] text-zinc-500">{pick.team}</span>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-[10px] text-zinc-400">{pick.stat_type}</span>
-                    <span className="text-xs font-bold text-emerald-300">{pick.line}</span>
-                    {pick.is_recon_lock && (
-                      <span className="text-[8px] bg-emerald-500/30 text-emerald-300 px-1 rounded">LOCK</span>
-                    )}
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-          {picks.length > 4 && (
-            <div className="text-[10px] text-zinc-500 text-center">
-              +{picks.length - 4} more picks
-            </div>
-          )}
-        </div>
-        
-        {/* Stats Footer */}
-        <div className="flex items-center justify-between pt-2 border-t border-zinc-800/50">
-          <div className="flex items-center gap-1 text-[10px]">
-            <DollarSign className="w-3 h-3 text-emerald-500" />
-            <span className="text-zinc-400">Est. Payout:</span>
-            <span className="font-bold text-white">~{payoutEstimate}x</span>
-          </div>
-          {flexProb && (
-            <div className="text-[10px] text-zinc-400">
-              Flex (5/6): <span className="text-emerald-300 font-bold">{flexProb}%</span>
-            </div>
-          )}
-        </div>
       </div>
     </Card>
   );
 });
 
-ReconCard.displayName = 'ReconCard';
+UniversalParlayTicket.displayName = 'UniversalParlayTicket';
+
+// ParlayCard - DELETED (now uses UniversalParlayTicket)
+// ReconCard - DELETED (now uses UniversalParlayTicket)
+
 
 // ==================== SWIPEABLE SECTION COMPONENTS ====================
 // Mobile-first swipeable card sections with Tinder-style navigation
@@ -2352,10 +2254,12 @@ const GauntletSwipeSection = memo(({ parlayData, onParlayClick }) => {
                 key={`parlay-${pickCount}`} 
                 className="snap-center flex-shrink-0 w-[calc(100vw-48px)] max-w-[340px] sm:w-auto sm:max-w-none"
               >
-                <ParlayCard
+                <UniversalParlayTicket
                   parlay={parlay}
                   pickCount={pickCount}
                   onClick={() => onParlayClick(parlay)}
+                  colorTheme="red"
+                  emblem="fire"
                 />
               </div>
             );
@@ -2408,15 +2312,21 @@ const SafeHavenSwipeSection = memo(({ reconData, onParlayClick }) => {
           {tiers.map(tier => {
             const parlay = reconData[tier];
             if (!parlay) return null;
+            const pickCount = tier === 'daily_double' ? 2 : 
+                              tier === 'green_ladder_3' ? 3 : 
+                              tier === 'green_ladder_4' ? 4 : 
+                              tier === 'green_stack_5' ? 5 : 6;
             return (
               <div 
                 key={`recon-${tier}`} 
                 className="snap-center flex-shrink-0 w-[calc(100vw-48px)] max-w-[340px] sm:w-auto sm:max-w-none"
               >
-                <ReconCard
+                <UniversalParlayTicket
                   parlay={parlay}
-                  tier={tier}
+                  pickCount={pickCount}
                   onClick={() => onParlayClick(parlay)}
+                  colorTheme="green"
+                  emblem="gem"
                 />
               </div>
             );
@@ -2489,6 +2399,95 @@ const FrontLinesSwipeSection = memo(({ picks, onPickClick, tMinusGames = [] }) =
 });
 
 FrontLinesSwipeSection.displayName = 'FrontLinesSwipeSection';
+
+// Front Lines Parlay Section - AMBER theme + BULLET emblem
+// Generates 2-leg through 6-leg parlay tickets from Front Lines picks
+const FrontLinesParlaySection = memo(({ picks, onParlayClick }) => {
+  const { containerRef, currentIndex, showHint } = useSwipeTracker(5); // 5 parlay tiers
+  
+  // Generate parlay data from picks (2-leg through 6-leg)
+  const generateParlays = () => {
+    if (!picks || picks.length < 2) return [];
+    
+    const parlayTiers = [2, 3, 4, 5, 6];
+    return parlayTiers.map(count => {
+      const parlayPicks = picks.slice(0, count);
+      if (parlayPicks.length < count) return null;
+      
+      // Calculate combined probability
+      const combinedProb = parlayPicks.reduce((acc, pick) => {
+        const rate = (pick.h10_rate || 50) / 100;
+        return acc * rate;
+      }, 1) * 100;
+      
+      // Estimate payout multiplier
+      const payoutMultiplier = Math.round(Math.pow(1.8, count) * 10) / 10;
+      
+      return {
+        name: `${count}-PICK TACTICAL`,
+        description: `${count} Front Lines Picks`,
+        picks: parlayPicks,
+        estimated_payout: payoutMultiplier,
+        combined_probability: Math.round(combinedProb * 10) / 10,
+        reliability: Math.round(combinedProb * 10) / 10,
+        payout_range: `${payoutMultiplier - 1}x - ${payoutMultiplier + 2}x`,
+        lineup_valid: true,
+        lineup_status: 'Valid (Multi-Team)',
+        team_count: new Set(parlayPicks.map(p => p.team)).size,
+        badge: count === 2 ? 'SAFE' : count === 6 ? 'MAX RISK' : ''
+      };
+    }).filter(Boolean);
+  };
+  
+  const parlays = generateParlays();
+  
+  if (parlays.length === 0) return null;
+  
+  return (
+    <div data-testid="front-lines-parlays" className="mt-6">
+      <div className="flex items-center justify-between mb-3 px-4 sm:px-0">
+        <div className="flex items-center gap-2">
+          <BulletEmblem size={20} />
+          <span className="text-sm font-bold text-amber-400">THE FRONT LINES PARLAYS</span>
+          <Badge className="bg-amber-950/50 text-amber-400 border-amber-800/50 text-[10px] hidden sm:inline-flex">
+            2-6 LEG BUILDS
+          </Badge>
+        </div>
+        <div className="text-[10px] text-zinc-500 hidden sm:block">
+          Tactical Parlay Combinations
+        </div>
+      </div>
+      
+      <div className="relative">
+        <SwipeHint show={showHint} accentColor="amber" />
+        <div 
+          ref={containerRef} 
+          className="flex overflow-x-auto snap-x snap-mandatory scrollbar-hide gap-3 px-4 pb-2 sm:grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 sm:overflow-visible sm:px-0 sm:gap-3"
+          style={{ WebkitOverflowScrolling: 'touch', scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+        >
+          {parlays.map((parlay, idx) => (
+            <div 
+              key={`frontlines-parlay-${idx + 2}`} 
+              className="snap-center flex-shrink-0 w-[calc(100vw-48px)] max-w-[340px] sm:w-auto sm:max-w-none"
+            >
+              <UniversalParlayTicket
+                parlay={parlay}
+                pickCount={idx + 2}
+                onClick={() => onParlayClick(parlay)}
+                colorTheme="amber"
+                emblem="bullet"
+              />
+            </div>
+          ))}
+        </div>
+      </div>
+      
+      <SwipeIndicator current={currentIndex} total={parlays.length} accentColor="amber" />
+    </div>
+  );
+});
+
+FrontLinesParlaySection.displayName = 'FrontLinesParlaySection';
 
 // FrontLinesCard - DELETED (now uses UniversalPickCard with amber theme + bullet emblem)
 
@@ -4499,6 +4498,14 @@ export const DemonGoblinDashboardOptimized = ({ isDemoMode = false }) => {
             picks={frontLinesPicks.slice(0, 10)}
             onPickClick={handleRadarClick}
             tMinusGames={tMinusGames}
+          />
+        )}
+
+        {/* THE FRONT LINES PARLAYS - 2-6 Leg Builds */}
+        {frontLinesPicks.length >= 2 && (
+          <FrontLinesParlaySection 
+            picks={frontLinesPicks.slice(0, 10)}
+            onParlayClick={(parlay) => setExpandedParlay({ parlay, type: 'builder' })}
           />
         )}
 
