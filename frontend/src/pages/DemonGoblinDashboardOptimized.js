@@ -2034,17 +2034,13 @@ const UniversalParlayTicket = memo(({
         <div className="mb-2">
           <div className="flex items-center justify-between text-[10px] mb-1">
             <span className="text-zinc-400">{emblem === 'gem' ? 'Reliability' : 'Combined Prob'}</span>
-            <span className={`font-bold ${combinedProb >= 50 ? 'text-green-400' : combinedProb >= 20 ? 'text-yellow-400' : 'text-zinc-400'}`}>
+            <span className={`font-bold ${theme.text}`}>
               {combinedProb}%
             </span>
           </div>
           <div className="w-full h-1.5 bg-zinc-800 rounded-full overflow-hidden">
             <div 
-              className={`h-full transition-all duration-500 bg-gradient-to-r ${
-                combinedProb >= 50 ? theme.meterHigh : 
-                combinedProb >= 20 ? theme.meterMid : 
-                'from-zinc-500 to-zinc-400'
-              }`}
+              className={`h-full transition-all duration-500 bg-gradient-to-r ${theme.meterHigh}`}
               style={{ width: `${Math.min(combinedProb, 100)}%` }}
             />
           </div>
