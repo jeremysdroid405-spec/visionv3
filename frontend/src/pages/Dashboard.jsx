@@ -384,6 +384,11 @@ const Dashboard = () => {
   const [selectedPlayer, setSelectedPlayer] = useState(null);
   const [showCommandPost, setShowCommandPost] = useState(false);
   
+  // Intel Search state (API-driven)
+  const [searchResults, setSearchResults] = useState([]);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [searchError, setSearchError] = useState(null);
+  
   // Navigation handlers
   const handlePlayerClick = useCallback((playerName, highlight = null, type = 'demon') => {
     setHighlightProp(highlight);
@@ -434,12 +439,54 @@ const Dashboard = () => {
     return () => document.removeEventListener('click', handleClickOutside);
   }, [showUserMenu]);
   
-  // Filter players by search
-  const filteredPlayers = players.filter(p => {
-    if (!searchTerm) return true;
-    const search = searchTerm.toLowerCase();
-    return p.player_name?.toLowerCase().includes(search) || p.team?.toLowerCase().includes(search);
-  });
+  // API-driven Intel Search with debounce
+  useEffect(() => {
+    const controller = new AbortController();
+    
+    const searchPlayers = async () => {
+      if (searchTerm.length < 2) {
+        setSearchResults([]);
+        setSearchError(null);
+        return;
+      }
+      
+      setSearchLoading(true);
+      setSearchError(null);
+      
+      try {
+        const API = process.env.REACT_APP_BACKEND_URL;
+        const response = await fetch(`${API}/api/command/search?query=${encodeURIComponent(searchTerm)}&limit=15`, {
+          signal: controller.signal
+        });
+        
+        if (!response.ok) throw new Error('Search failed');
+        
+        const data = await response.json();
+        
+        if (data.success) {
+          setSearchResults(data.players || []);
+        } else {
+          setSearchError(data.error || 'Search unavailable');
+          setSearchResults([]);
+        }
+      } catch (err) {
+        if (err.name !== 'AbortError') {
+          setSearchError('Search failed. Try again.');
+          setSearchResults([]);
+        }
+      } finally {
+        setSearchLoading(false);
+      }
+    };
+    
+    // Debounce search by 300ms
+    const timer = setTimeout(searchPlayers, 300);
+    
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [searchTerm]);
   
   // If player is selected, show detail page
   if (selectedPlayer) {
@@ -588,26 +635,38 @@ const Dashboard = () => {
           {/* Search Results - Only show when searching */}
           {searchTerm.length >= 2 && (
             <div className="mt-3 rounded-lg border border-zinc-700 overflow-hidden" data-testid="intel-search-results">
-              {!staticLoaded ? (
+              {searchLoading ? (
                 <div className="p-4 text-center">
                   <Activity className="w-5 h-5 text-cyan-400 mx-auto mb-2 animate-pulse" />
-                  <p className="text-zinc-400 text-xs">Loading...</p>
+                  <p className="text-zinc-400 text-xs">Searching player database...</p>
                 </div>
-              ) : filteredPlayers.length === 0 ? (
+              ) : searchError ? (
+                <div className="p-4 text-center">
+                  <AlertTriangle className="w-5 h-5 text-amber-400 mx-auto mb-2" />
+                  <p className="text-amber-400 text-sm">{searchError}</p>
+                </div>
+              ) : searchResults.length === 0 ? (
                 <div className="p-4 text-center">
                   <p className="text-zinc-500 text-sm">No players found for "{searchTerm}"</p>
-                  <p className="text-zinc-600 text-xs mt-1">Try searching by full name</p>
+                  <p className="text-zinc-600 text-xs mt-1">Try searching by full name or team</p>
                 </div>
               ) : (
                 <div className="max-h-64 overflow-y-auto">
-                  {filteredPlayers.slice(0, 10).map((player) => (
-                    <PlayerRow key={player.player_name} player={player} onClick={() => handlePlayerClick(player.player_name)} linesLoaded={linesLoaded} />
-                  ))}
-                  {filteredPlayers.length > 10 && (
-                    <div className="p-2 text-center text-xs text-zinc-500 border-t border-zinc-800">
-                      +{filteredPlayers.length - 10} more results
+                  {searchResults.map((player) => (
+                    <div 
+                      key={player.id || player.player_name}
+                      className="flex items-center gap-3 p-3 hover:bg-zinc-800/50 cursor-pointer border-b border-zinc-800/50 last:border-0"
+                      onClick={() => handlePlayerClick(player.player_name)}
+                      data-testid={`player-row-${player.player_name?.replace(/\s/g, '-')}`}
+                    >
+                      <PlayerHeadshot playerName={player.player_name} team={player.team} size="md" />
+                      <div className="flex-1 min-w-0">
+                        <div className="font-medium text-white truncate">{player.player_name}</div>
+                        <div className="text-xs text-zinc-500">{player.team_name || player.team} • {player.position}</div>
+                      </div>
+                      <ChevronRight className="w-4 h-4 text-zinc-500" />
                     </div>
-                  )}
+                  ))}
                 </div>
               )}
             </div>
