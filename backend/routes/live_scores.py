@@ -20,6 +20,7 @@ def set_live_scores_engine(engine):
     """Set the live scores engine reference."""
     global _live_scores_engine
     _live_scores_engine = engine
+    logger.info(f"[LIVE_SCORES] Engine set: {type(engine).__name__}")
 
 
 @router.get("")
@@ -35,7 +36,7 @@ async def get_live_scores(refresh: bool = False):
         - live_count: Number of games currently in play
         - upcoming_count: Number of games not yet started
     """
-    if not _live_scores_engine:
+    if _live_scores_engine is None:
         raise HTTPException(status_code=500, detail="Live Scores Engine not initialized")
     
     if refresh:
@@ -51,7 +52,7 @@ async def get_live_scores(refresh: bool = False):
 @router.post("/refresh")
 async def refresh_live_scores():
     """Force refresh live scores from The Odds API."""
-    if not _live_scores_engine:
+    if _live_scores_engine is None:
         raise HTTPException(status_code=500, detail="Live Scores Engine not initialized")
     
     result = await _live_scores_engine.fetch_live_scores()
@@ -68,7 +69,7 @@ async def get_command_center_news(custom_headlines: Optional[str] = None):
     Args:
         custom_headlines: Pipe-separated list of custom headlines to include
     """
-    if not _live_scores_engine:
+    if _live_scores_engine is None:
         raise HTTPException(status_code=500, detail="Live Scores Engine not initialized")
     
     headlines = None
@@ -87,7 +88,7 @@ async def get_ticker_data():
     Returns both live scores and breaking news in a single call,
     optimized for the frontend ticker display.
     """
-    if not _live_scores_engine:
+    if _live_scores_engine is None:
         raise HTTPException(status_code=500, detail="Live Scores Engine not initialized")
     
     # Get scores (from cache)

@@ -43,7 +43,7 @@ dg_cached_board → dg_radar_picks (War Zone) → dg_goblin_vault → dg_goblin_
 │   ├── sync_service.py          # Sync utilities
 │   ├── data_scraper.py          # External API fetching
 │   └── social_scout.py          # Social signals & sentiment
-├── routes/              # API route handlers (1,436 lines across 12 modules)
+├── routes/              # API route handlers (1,437 lines across 12 modules)
 │   ├── picks.py         # War Zone, Safe Haven, Front Lines
 │   ├── parlays.py       # Parlay builder endpoints
 │   ├── board.py         # Player board & search
@@ -55,7 +55,7 @@ dg_cached_board → dg_radar_picks (War Zone) → dg_goblin_vault → dg_goblin_
 │   ├── vision.py        # Vision AI endpoints NEW
 │   ├── live_scores.py   # Live scores & command center NEW
 │   └── ai_context.py    # AI context evaluation NEW
-├── server.py            # Main entry (middleware, startup) ~3,566 lines
+├── server.py            # Main entry (middleware, startup) ~3,067 lines (reduced from 3,566)
 └── demon_goblin_engine.py # Core engine class (~1,514 lines, 82% reduction)
 ```
 

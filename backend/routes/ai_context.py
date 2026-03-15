@@ -33,7 +33,7 @@ async def run_ai_context_engine(limit: Optional[int] = Query(None, description="
     2. Send to LLM for impact evaluation
     3. Update nba_master_hub_2026 with ai_context_score and ai_context_reason
     """
-    if not _db or not _ai_context_engine_class:
+    if _db is None or _ai_context_engine_class is None:
         raise HTTPException(status_code=500, detail="AI Context Engine not configured")
     
     engine = _ai_context_engine_class(_db)
@@ -44,7 +44,7 @@ async def run_ai_context_engine(limit: Optional[int] = Query(None, description="
 @router.post("/evaluate/{player_name}")
 async def evaluate_player_context(player_name: str):
     """Evaluate and update context for a single player."""
-    if not _db or not _ai_context_engine_class:
+    if _db is None or _ai_context_engine_class is None:
         raise HTTPException(status_code=500, detail="AI Context Engine not configured")
     
     engine = _ai_context_engine_class(_db)
@@ -55,7 +55,7 @@ async def evaluate_player_context(player_name: str):
 @router.get("/status")
 async def get_ai_context_status():
     """Get status of AI context scores in the master hub."""
-    if not _db:
+    if _db is None:
         raise HTTPException(status_code=500, detail="Database not configured")
     
     total = await _db.nba_master_hub_2026.count_documents({})
@@ -89,7 +89,7 @@ async def get_ai_context_status():
 @router.get("/player/{player_name}")
 async def get_player_context(player_name: str):
     """Get AI context data for a specific player."""
-    if not _db:
+    if _db is None:
         raise HTTPException(status_code=500, detail="Database not configured")
     
     player = await _db.nba_master_hub_2026.find_one(

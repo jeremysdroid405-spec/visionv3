@@ -48,7 +48,7 @@ async def generate_vision_insight(request: VisionInsightRequest):
     Uses Claude Sonnet 4.5 to generate a "badass" 1-sentence insight.
     Only use for Demons, Goblins, or High Volatility players to manage costs.
     """
-    if not _vision_service:
+    if _vision_service is None:
         raise HTTPException(status_code=500, detail="Vision AI Service not initialized")
     
     result = await _vision_service.generate_single_insight(
@@ -83,7 +83,7 @@ async def trigger_vision_batch():
     
     Should be called AFTER daily sync completes.
     """
-    if not _vision_service:
+    if _vision_service is None:
         raise HTTPException(status_code=500, detail="Vision AI Service not initialized")
     
     logger.info("[VISION] Batch insight generation triggered")
@@ -107,7 +107,7 @@ async def get_vision_status():
     emergent_key_configured = bool(os.environ.get('EMERGENT_LLM_KEY'))
     
     ai_insights_count = 0
-    if _vision_service and _db:
+    if _vision_service is not None and _db is not None:
         ai_insights_count = await _db.dg_daily_insights.count_documents({
             "ai_generated_at": {"$exists": True}
         })

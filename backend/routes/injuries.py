@@ -32,7 +32,7 @@ async def sync_injuries():
     
     Should be called periodically (every 30 mins during game days).
     """
-    if not _injury_service:
+    if _injury_service is None:
         raise HTTPException(status_code=500, detail="Injury Service not initialized")
     
     logger.info("[INJURY] Manual injury sync triggered")
@@ -55,7 +55,7 @@ async def get_all_injuries():
     - medium_risk: Questionable, Day-To-Day, GTD players
     - low_risk: Probable players
     """
-    if not _injury_service:
+    if _injury_service is None:
         raise HTTPException(status_code=500, detail="Injury Service not initialized")
     
     return await _injury_service.get_all_injuries()
@@ -64,7 +64,7 @@ async def get_all_injuries():
 @router.get("/player/{player_name}")
 async def get_player_injury(player_name: str):
     """Get injury status for a specific player."""
-    if not _injury_service:
+    if _injury_service is None:
         raise HTTPException(status_code=500, detail="Injury Service not initialized")
     
     injury = await _injury_service.get_player_injury_status(player_name)
@@ -78,7 +78,7 @@ async def get_player_injury(player_name: str):
 @router.get("/team/{team_abbr}")
 async def get_team_injuries(team_abbr: str):
     """Get all injuries for a specific team."""
-    if not _injury_service:
+    if _injury_service is None:
         raise HTTPException(status_code=500, detail="Injury Service not initialized")
     
     injuries = await _injury_service.get_team_injuries(team_abbr)
@@ -98,7 +98,7 @@ async def get_injury_alerts():
     Returns a dict mapping player_name -> injury_info for quick lookup.
     Used by frontend to display injury badges on player cards.
     """
-    if not _injury_service:
+    if _injury_service is None:
         raise HTTPException(status_code=500, detail="Injury Service not initialized")
     
     alerts = await _injury_service.get_injury_alerts_for_board()
