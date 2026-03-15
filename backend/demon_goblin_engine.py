@@ -7689,6 +7689,38 @@ V3.1 TRUTH ENGINE - DATA INTEGRITY:
             popular_bets.sort(key=lambda x: x["popularity_score"], reverse=True)
             top_20 = popular_bets[:20]
             
+            # ENRICH: Add photos and team info for bets missing them (from odds_cache)
+            # Build a lookup from cached_board for player metadata
+            player_metadata = {}
+            for player in players:
+                pname = player.get("player_name", "")
+                if pname:
+                    player_metadata[pname.lower()] = {
+                        "photo_url": player.get("photo_url", ""),
+                        "team": player.get("team", "")
+                    }
+            
+            # Also check player_data collection for more photos
+            player_data_cursor = self.player_data.find({}, {"_id": 0, "player_name": 1, "photo_url": 1, "team": 1})
+            player_data_list = await player_data_cursor.to_list(None)
+            for pd in player_data_list:
+                pname = pd.get("player_name", "")
+                if pname and pname.lower() not in player_metadata:
+                    player_metadata[pname.lower()] = {
+                        "photo_url": pd.get("photo_url", ""),
+                        "team": pd.get("team", "")
+                    }
+            
+            # Enrich top 20 with missing metadata
+            for bet in top_20:
+                if not bet.get("photo_url") or not bet.get("team"):
+                    pname_lower = bet["player_name"].lower()
+                    if pname_lower in player_metadata:
+                        if not bet.get("photo_url"):
+                            bet["photo_url"] = player_metadata[pname_lower].get("photo_url", "")
+                        if not bet.get("team"):
+                            bet["team"] = player_metadata[pname_lower].get("team", "")
+            
             board_count = sum(1 for b in top_20 if b.get("source") == "cached_board")
             odds_count = sum(1 for b in top_20 if b.get("source") == "odds_cache")
             
