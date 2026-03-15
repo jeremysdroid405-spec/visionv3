@@ -45,6 +45,21 @@ dg_cached_board → dg_radar_picks (War Zone) → dg_goblin_vault → dg_goblin_
 
 ## What's Been Implemented
 
+### 2026-03-15: P0 PickCard UI Enhancement - L5/L10/Season/AI Confidence
+- **Backend Fix:** Updated `get_war_zone()`, `get_goblin_vault()`, and `get_front_lines()` methods in `demon_goblin_engine.py`
+  - Changed from `ai_confidence` to `ai_confidence_rating` for frontend compatibility
+  - Added fallback calculation: `ai_confidence_rating = int(pillar_4_context * 100)` when no daily_insights exist
+- **Frontend Fix:** Added missing helper functions to `PickCard.jsx`:
+  - `getHitRateColor(rate)` - Color codes hit rates (green ≥80%, yellow ≥60%, orange ≥40%, red <40%)
+  - `getConfidenceColor(confidence)` - Color codes AI confidence (green ≥80%, purple ≥60%, yellow ≥40%, red <40%)
+  - `getConfidenceGradient(confidence)` - Gradient styling for progress bar
+- **PickCard now displays:**
+  - L5 hit rate percentage + count (e.g., "100% - 5/5")
+  - L10 hit rate percentage + count (e.g., "90% - 9/10")
+  - Season average with visual comparison to line
+  - AI Confidence meter with color-coded progress bar
+- **Tested:** All 3 endpoints verified, 25+ PickCard components validated via testing agent
+
 ### 2025-12: P0 Database Configuration Fix
 - Fixed hardcoded `MONGO_URL` and `DB_NAME` in `backend/.env`
 - Removed quotes from env values (can cause parsing issues in some environments)
