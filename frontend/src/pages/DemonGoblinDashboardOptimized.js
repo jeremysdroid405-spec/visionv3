@@ -2006,7 +2006,6 @@ const UniversalParlayTicket = memo(({
           
           {/* Payout Badge */}
           <Badge className={`${theme.badge} ${theme.text} border-none text-xs font-bold px-2 py-1`}>
-            <DollarSign className="w-3 h-3 mr-0.5" />
             {payoutMultiplier}x
           </Badge>
         </div>
@@ -2285,7 +2284,6 @@ const TheShieldSwipeSection = memo(({ reconData, onParlayClick }) => {
     <div data-testid="the-shield-section" className="mt-6">
       <div className="flex items-center justify-between mb-3 px-4 sm:px-0">
         <div className="flex items-center gap-2">
-          <Shield className="w-5 h-5 text-emerald-400" />
           <span className="text-sm font-bold text-emerald-400">THE SHIELD</span>
           <Badge className="bg-emerald-950/50 text-emerald-400 border-emerald-800/50 text-[10px] hidden sm:inline-flex">
             HIGH RELIABILITY PARLAYS
