@@ -144,7 +144,7 @@ const SwipeContainer = memo(({ children, className = '' }) => (
 ));
 
 // War Zone Section (Demons)
-const WarZoneSection = memo(({ picks, onPickClick }) => {
+const WarZoneSection = memo(({ picks, onPickClick, onQuickAdd }) => {
   if (!picks?.length) return null;
   return (
     <div className="war-zone-section mb-4">
@@ -158,7 +158,7 @@ const WarZoneSection = memo(({ picks, onPickClick }) => {
       <SwipeContainer>
         {picks.slice(0, 10).map((pick, idx) => (
           <div key={`warzone-${pick.player_name}-${pick.stat_type}-${idx}`} className="swipe-card">
-            <PickCard pick={pick} rank={idx + 1} onClick={() => onPickClick(pick)} colorTheme="red" emblem="fire" />
+            <PickCard pick={pick} rank={idx + 1} onClick={() => onPickClick(pick)} colorTheme="red" emblem="fire" onQuickAdd={onQuickAdd} />
           </div>
         ))}
       </SwipeContainer>
@@ -167,7 +167,7 @@ const WarZoneSection = memo(({ picks, onPickClick }) => {
 });
 
 // Safe Haven Section (Goblins)
-const SafeHavenSection = memo(({ picks, onPickClick }) => {
+const SafeHavenSection = memo(({ picks, onPickClick, onQuickAdd }) => {
   if (!picks?.length) return null;
   return (
     <div className="goblin-recon-section mb-4">
@@ -181,7 +181,7 @@ const SafeHavenSection = memo(({ picks, onPickClick }) => {
       <SwipeContainer>
         {picks.slice(0, 10).map((pick, idx) => (
           <div key={`safehaven-${pick.player_name}-${pick.stat_type}-${idx}`} className="swipe-card">
-            <PickCard pick={pick} rank={idx + 1} onClick={() => onPickClick(pick)} colorTheme="green" emblem="gem" />
+            <PickCard pick={pick} rank={idx + 1} onClick={() => onPickClick(pick)} colorTheme="green" emblem="gem" onQuickAdd={onQuickAdd} />
           </div>
         ))}
       </SwipeContainer>
@@ -190,7 +190,7 @@ const SafeHavenSection = memo(({ picks, onPickClick }) => {
 });
 
 // Front Lines Section (Mixed)
-const FrontLinesSection = memo(({ picks, onPickClick }) => {
+const FrontLinesSection = memo(({ picks, onPickClick, onQuickAdd }) => {
   if (!picks?.length) return null;
   return (
     <div className="front-lines-section mb-4">
@@ -204,7 +204,7 @@ const FrontLinesSection = memo(({ picks, onPickClick }) => {
       <SwipeContainer>
         {picks.slice(0, 10).map((pick, idx) => (
           <div key={`frontlines-${pick.player_name}-${pick.stat_type}-${idx}`} className="swipe-card">
-            <PickCard pick={pick} rank={idx + 1} onClick={() => onPickClick(pick)} colorTheme="amber" emblem="bullet" />
+            <PickCard pick={pick} rank={idx + 1} onClick={() => onPickClick(pick)} colorTheme="amber" emblem="bullet" onQuickAdd={onQuickAdd} />
           </div>
         ))}
       </SwipeContainer>
@@ -389,6 +389,21 @@ const Dashboard = () => {
   const [searchLoading, setSearchLoading] = useState(false);
   const [searchError, setSearchError] = useState(null);
   
+  // Command Post Quick-Add state
+  const [pendingLeg, setPendingLeg] = useState(null);
+  
+  // Quick-Add handler - opens Command Post and queues the leg
+  const handleQuickAdd = useCallback((pick) => {
+    setPendingLeg(pick);
+    setShowCommandPost(true);
+    toast.success(`Added ${pick.player_name} to Command Post`);
+  }, []);
+  
+  // Called by CommandPost after processing the pending leg
+  const handlePendingLegProcessed = useCallback(() => {
+    setPendingLeg(null);
+  }, []);
+  
   // Navigation handlers
   const handlePlayerClick = useCallback((playerName, highlight = null, type = 'demon') => {
     setHighlightProp(highlight);
@@ -564,7 +579,7 @@ const Dashboard = () => {
       {/* Main Content */}
       <div className="p-3 space-y-4">
         {/* Safe Haven */}
-        <SafeHavenSection picks={vaultPicks} onPickClick={handleVaultClick} />
+        <SafeHavenSection picks={vaultPicks} onPickClick={handleVaultClick} onQuickAdd={handleQuickAdd} />
         
         {/* Shield Parlays */}
         <ParlaySection 
@@ -578,7 +593,7 @@ const Dashboard = () => {
         />
         
         {/* Front Lines */}
-        <FrontLinesSection picks={frontLinesPicks} onPickClick={handleRadarClick} />
+        <FrontLinesSection picks={frontLinesPicks} onPickClick={handleRadarClick} onQuickAdd={handleQuickAdd} />
         
         {/* Strike Parlays */}
         <ParlaySection 
@@ -592,7 +607,7 @@ const Dashboard = () => {
         />
         
         {/* War Zone */}
-        <WarZoneSection picks={radarPicks} onPickClick={handleRadarClick} />
+        <WarZoneSection picks={radarPicks} onPickClick={handleRadarClick} onQuickAdd={handleQuickAdd} />
         
         {/* Gauntlet Parlays */}
         <ParlaySection 
@@ -717,7 +732,9 @@ const Dashboard = () => {
       {/* Command Post Sidebar */}
       <CommandPost 
         isOpen={showCommandPost} 
-        onClose={() => setShowCommandPost(false)} 
+        onClose={() => setShowCommandPost(false)}
+        pendingLeg={pendingLeg}
+        onPendingLegProcessed={handlePendingLegProcessed}
       />
     </div>
   );

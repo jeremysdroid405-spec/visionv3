@@ -3,7 +3,20 @@
 ## Overview
 PickVision is a high-performance NBA Player Prop Dashboard with a "military tech" aesthetic. The application delivers AI-driven betting insights by identifying "Demons" (high-payout props) and "Goblins" (safer props).
 
-## Latest Update: 2026-03-15 - Full DvP Integration Complete 🎉
+## Latest Update: 2026-03-15
+
+### Quick-Add to Command Post ✅
+- **Feature:** One-click button on PickCards to add props directly to the Command Post simulator
+- **UI:** Cyan + icon button in card header (only visible when `onQuickAdd` prop provided)
+- **Behavior:** Opens Command Post sidebar and automatically adds the prop as a leg
+- **Duplicate Prevention:** Checks if leg already exists before adding
+- **Toast Notification:** Shows confirmation "Added [Player] to Command Post"
+
+### Intel Search API Integration ✅
+- **Fixed:** Intel Search now uses live BallDontLie API instead of filtering empty local cache
+- **Endpoint:** `GET /api/command/search?query={name}`
+- **Features:** 300ms debounce, loading states, error handling
+- **Result:** Can now search full NBA player database regardless of game day availability
 
 ### DvP (Defense vs Position) System - FULLY INTEGRATED ✅
 

@@ -1,6 +1,6 @@
 import React, { memo } from 'react';
 import { Card } from '../ui/card';
-import { Zap, Shield } from 'lucide-react';
+import { Zap, Shield, Plus } from 'lucide-react';
 import { DemonIcon, GoblinIcon, VisionBadge } from './Icons';
 import { NBA_HEADSHOT_URL } from './constants';
 
@@ -172,13 +172,15 @@ const getLevelLabel = (level, emblem) => {
  * @param {Function} onClick - Click handler
  * @param {string} colorTheme - 'red' | 'amber' | 'green'
  * @param {string} emblem - 'fire' | 'bullet' | 'gem'
+ * @param {Function} onQuickAdd - Quick-add to Command Post handler
  */
 export const PickCard = memo(({ 
   pick, 
   rank, 
   onClick, 
   colorTheme = 'red',
-  emblem = 'fire'
+  emblem = 'fire',
+  onQuickAdd
 }) => {
   const theme = THEME_COLORS[colorTheme] || THEME_COLORS.red;
   const h10Rate = pick.h10_rate || 0;
@@ -281,6 +283,24 @@ export const PickCard = memo(({
               {pick.dvp_rank && <DvPBadge rank={pick.dvp_rank} color={pick.dvp_rank_color} />}
             </div>
           </div>
+          
+          {/* Quick-Add Button */}
+          {onQuickAdd && !pick.locked && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onQuickAdd(pick);
+              }}
+              className="flex-shrink-0 w-7 h-7 rounded-full bg-cyan-500/20 border border-cyan-500/40 
+                         flex items-center justify-center text-cyan-400 
+                         hover:bg-cyan-500/30 hover:border-cyan-500/60 hover:scale-110
+                         transition-all duration-200"
+              title="Quick-Add to Command Post"
+              data-testid={`quick-add-${pick.player_name?.replace(/\s/g, '-')}`}
+            >
+              <Plus className="w-4 h-4" />
+            </button>
+          )}
         </div>
         
         {/* Tier Indicators */}

@@ -163,13 +163,47 @@ const RiskFlags = memo(({ flags }) => {
 });
 
 // Main Command Post Component
-const CommandPost = memo(({ isOpen, onClose }) => {
+const CommandPost = memo(({ isOpen, onClose, pendingLeg, onPendingLegProcessed }) => {
   const [legs, setLegs] = useState([]);
   const [simulation, setSimulation] = useState(null);
   const [loading, setLoading] = useState(false);
   const [selectedProfile, setSelectedProfile] = useState(null);
   const [profileLoading, setProfileLoading] = useState(false);
   const [expanded, setExpanded] = useState(true);
+
+  // Process incoming pendingLeg from Quick-Add
+  React.useEffect(() => {
+    if (pendingLeg && onPendingLegProcessed) {
+      const newLeg = {
+        player_name: pendingLeg.player_name,
+        player_id: pendingLeg.player_id,
+        stat_type: pendingLeg.stat_type,
+        line: pendingLeg.demon_line || pendingLeg.goblin_line || pendingLeg.line || 0,
+        direction: pendingLeg.direction || 'over',
+        team: pendingLeg.team || '',
+        opponent: pendingLeg.opponent || pendingLeg.opponent_abbr || '',
+        is_home: pendingLeg.is_home ?? true,
+        h10_rate: pendingLeg.h10_rate || 50,
+        h5_rate: pendingLeg.h5_rate || 50,
+        usage_bump_percent: pendingLeg.usage_bump_percent || 0,
+        dvp_rank: pendingLeg.dvp_rank,
+        dvp_rank_color: pendingLeg.dvp_rank_color
+      };
+      
+      // Check if leg already exists
+      const exists = legs.some(l => 
+        l.player_name === newLeg.player_name && 
+        l.stat_type === newLeg.stat_type && 
+        l.line === newLeg.line
+      );
+      
+      if (!exists) {
+        setLegs(prev => [...prev, newLeg]);
+      }
+      
+      onPendingLegProcessed();
+    }
+  }, [pendingLeg, onPendingLegProcessed, legs]);
 
   // Fetch player profile
   const fetchProfile = useCallback(async (player) => {
