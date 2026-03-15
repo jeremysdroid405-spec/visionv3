@@ -3105,36 +3105,27 @@ class DemonGoblinEngine:
                 if not has_real_data:
                     continue
                 
-                # ========== HARD FILTER (The Bouncer) ==========
-                # Reject if L10_Hit_Frequency < 0.20 (must hit at least 2/10 games)
-                if h10 < 0.20:
+                # ========== HARD FILTER (The Bouncer) - LOWERED TO 10% ==========
+                # Reject if L10_Hit_Frequency < 0.10 (allows evaluation of massive line premiums)
+                if h10 < 0.10:
                     continue
                 
                 # ========== PILLAR 1: Base Ceiling Consistency (40%) ==========
-                # ceiling_consistency = (L10_Hit_Frequency * 0.6) + (L5_Hit_Frequency * 0.4)
                 ceiling_consistency = (h10 * 0.6) + (h5 * 0.4)
                 
                 # ========== PILLAR 2: Vegas Implied Probability (20%) ==========
-                # Calculate from live odds
                 if demon_price < 0:
-                    # Negative odds: implied_prob = abs(odds) / (abs(odds) + 100)
                     implied_prob = abs(demon_price) / (abs(demon_price) + 100)
                 else:
-                    # Positive odds: implied_prob = 100 / (odds + 100)
                     implied_prob = 100 / (demon_price + 100)
                 
                 # ========== PILLAR 3: Matchup / DvP (20%) ==========
-                # Placeholder: 0.5 = neutral matchup
-                # TODO: Integrate real DvP data
                 dvp_modifier = 0.5
                 
                 # ========== PILLAR 4: AI Context Shift (20%) ==========
-                # Pull from AiContextEngine cache, default 0.5 (neutral)
                 context_shift = ai_context_cache.get(player_name, 0.5)
                 
-                # ========== FINAL CALCULATION ==========
-                # demon_score = (ceiling_consistency * 0.40) + (implied_prob * 0.20) + 
-                #               (dvp_modifier * 0.20) + (context_shift * 0.20)
+                # ========== BASE DEMON SCORE ==========
                 demon_score = (
                     (ceiling_consistency * 0.40) +
                     (implied_prob * 0.20) +
@@ -3142,9 +3133,15 @@ class DemonGoblinEngine:
                     (context_shift * 0.20)
                 )
                 
-                # Calculate Gap Ratio for display
+                # ========== VALUE GAP CALCULATION ==========
+                # Gap = how much ABOVE standard the demon line is (premium)
                 gap_ratio = demon_line / std_line if std_line > 0 else 1.0
-                gap_pct = (gap_ratio - 1) * 100
+                value_gap_pct = gap_ratio - 1  # e.g., 1.20 -> 0.20 (20% above)
+                gap_pct = value_gap_pct * 100  # For display
+                
+                # ========== FINAL EV SCORE (True Value Ranking) ==========
+                # final_ev_score = base_score * (1 + value_gap_pct)
+                final_ev_score = demon_score * (1 + value_gap_pct)
                 
                 # Calculate Heat Level (1-5 Flames) for visual indicator
                 heat_level = self._calculate_heat_level(h10, h5, h10_over, h5_over, h10_games, h5_games)
@@ -3181,6 +3178,7 @@ class DemonGoblinEngine:
                     "standard_line": round(std_line, 1),
                     "gap_ratio": round(gap_ratio, 3),
                     "gap_pct": round(gap_pct, 1),
+                    "value_gap_pct": round(value_gap_pct, 4),
                     "price": demon_price,
                     
                     # Hit rates (display as percentages)
@@ -3192,16 +3190,18 @@ class DemonGoblinEngine:
                     "h5_games": h5_games,
                     "season_avg": round(season_avg, 1),
                     
-                    # 4-Pillar Component Scores (for transparency/debugging)
+                    # 4-Pillar Component Scores
                     "pillar_1_ceiling": round(ceiling_consistency, 4),
                     "pillar_2_vegas": round(implied_prob, 4),
                     "pillar_3_dvp": round(dvp_modifier, 4),
                     "pillar_4_context": round(context_shift, 4),
                     
-                    # FINAL SCORE (0-1 scale, multiply by 100 for display)
+                    # SCORES
                     "demon_score": round(demon_score, 4),
-                    "radar_score": round(demon_score, 4),  # Alias for backward compatibility
+                    "radar_score": round(demon_score, 4),
                     "demon_score_100": round(demon_score * 100, 1),
+                    "final_ev_score": round(final_ev_score, 4),
+                    "final_ev_score_100": round(final_ev_score * 100, 1),
                     
                     # Visual indicators
                     "heat_level": heat_level,
@@ -3216,8 +3216,8 @@ class DemonGoblinEngine:
                     "synced_at": sync_time.isoformat()
                 })
         
-        # Sort by demon_score descending (the final 4-Pillar score)
-        all_candidates.sort(key=lambda x: x["demon_score"], reverse=True)
+        # ========== SORT BY FINAL EV SCORE (True Value Ranking) ==========
+        all_candidates.sort(key=lambda x: x["final_ev_score"], reverse=True)
         
         # De-duplicate: one pick per player (take their best prop)
         seen_players = set()
@@ -3237,15 +3237,15 @@ class DemonGoblinEngine:
             await self.radar_picks.insert_many(top_10)
         
         # Log summary
-        logger.info(f"[WAR ZONE v3.0] Generated {len(top_10)} top picks (4-Pillar Ceiling Formula)")
-        logger.info(f"  Hard Filter: L10 >= 20% hit rate required")
-        logger.info(f"  Total candidates passed filter: {len(all_candidates)}")
+        logger.info(f"[WAR ZONE v3.1] Generated {len(top_10)} top picks (EV Multiplier sorted)")
+        logger.info(f"  Bouncer: L10 >= 10% | Total candidates: {len(all_candidates)}")
+        logger.info(f"  Sorting: final_ev_score = base_score * (1 + value_gap_pct)")
         
-        # Log top 3 with pillar breakdown
+        # Log top 3 with EV breakdown
         for i, pick in enumerate(top_10[:3]):
             flames = "🔥" * pick['heat_level']
             logger.info(f"  #{i+1}: {pick['player_name']} - {pick['stat_type']} {pick['demon_line']}")
-            logger.info(f"       Score: {pick['demon_score_100']:.1f}/100 | P1:{pick['pillar_1_ceiling']:.2f} P2:{pick['pillar_2_vegas']:.2f} P3:{pick['pillar_3_dvp']:.2f} P4:{pick['pillar_4_context']:.2f} {flames}")
+            logger.info(f"       Base: {pick['demon_score_100']:.1f} | Gap: {pick['gap_pct']:.1f}% | EV: {pick['final_ev_score_100']:.1f} {flames}")
     
     def _calculate_heat_level(self, h10: float, h5: float, h10_over: int, h5_over: int, h10_games: int, h5_games: int) -> int:
         """
@@ -3317,34 +3317,25 @@ class DemonGoblinEngine:
     
     async def _build_goblin_vault(self, players_dict: Dict[str, Dict], sync_time: datetime):
         """
-        THE GOBLIN VAULT "GOD-TIER" 4-PILLAR ALGORITHM
-        ================================================
+        THE SAFE HAVEN - GOD-TIER 4-PILLAR + EV MULTIPLIER v3.1
+        =======================================================
         
-        Hard Filter (The Bouncer):
-        - L10 Hit Frequency must be >= 0.80 (80%)
-        - Uses BINARY hit frequency, not averages
+        Hard Filter (The Bouncer) - LOWERED TO 70%:
+        - L10 Hit Frequency must be >= 0.70 (70%)
+        - Allows evaluation of massive line discounts
         
         4-Pillar Weighted Formula:
-        --------------------------
-        Pillar 1 (50%): Base Consistency
-            = (L10_Hit_Frequency * 0.6) + (L5_Hit_Frequency * 0.4)
+        - Pillar 1 (50%): Base Consistency = (L10 * 0.6) + (L5 * 0.4)
+        - Pillar 2 (20%): Vegas Implied Probability
+        - Pillar 3 (15%): DvP Modifier (placeholder)
+        - Pillar 4 (15%): AI Context Shift
         
-        Pillar 2 (20%): Vegas Implied Probability
-            - Negative odds: implied_prob = abs(odds) / (abs(odds) + 100)
-            - Positive odds: implied_prob = 100 / (odds + 100)
+        VALUE GAP MULTIPLIER (True EV Score):
+        final_ev_score = base_score * (1 + value_gap_pct)
         
-        Pillar 3 (15%): Matchup / DvP Modifier
-            - Range: 0.0 to 1.0 (0.5 = neutral)
-            - Placeholder for future DvP integration
-        
-        Pillar 4 (15%): AI Context Shift
-            - From AiContextEngine
-            - Range: 0.0 to 1.0 (0.5 = neutral)
-        
-        Final Score:
-        vault_score = (consistency * 0.50) + (implied_prob * 0.20) + (dvp * 0.15) + (context * 0.15)
+        Sort by final_ev_score descending -> Slice Top 10
         """
-        logger.info("[GOBLIN VAULT] Calculating GOD-TIER 4-Pillar scores...")
+        logger.info("[SAFE HAVEN v3.1] Building with EV Multiplier sorting...")
         
         all_candidates = []
         
@@ -3360,7 +3351,7 @@ class DemonGoblinEngine:
                 if name:
                     ai_context_cache[name] = doc.get("ai_context_score", 0.5)
         except Exception as e:
-            logger.warning(f"[GOBLIN VAULT] Could not fetch AI context cache: {e}")
+            logger.warning(f"[SAFE HAVEN] Could not fetch AI context cache: {e}")
         
         for player_name, player_data in players_dict.items():
             if player_data is None:
@@ -3419,38 +3410,28 @@ class DemonGoblinEngine:
                 if h10_games == 0 and h5_games == 0:
                     continue
                 
-                # ==================== THE BOUNCER ====================
-                # Hard filter: L10 Hit Frequency MUST be >= 0.80 (80%)
-                if h10 < 0.80:
+                # ========== THE BOUNCER (LOWERED TO 70%) ==========
+                # Hard filter: L10 Hit Frequency MUST be >= 0.70
+                if h10 < 0.70:
                     continue
                 
-                # ==================== PILLAR 1: BASE CONSISTENCY (50%) ====================
-                # consistency_score = (L10_Hit_Frequency * 0.6) + (L5_Hit_Frequency * 0.4)
+                # ========== PILLAR 1: BASE CONSISTENCY (50%) ==========
                 pillar_1_consistency = (h10 * 0.6) + (h5 * 0.4)
                 
-                # ==================== PILLAR 2: VEGAS IMPLIED PROBABILITY (20%) ====================
-                # Formula for negative odds: implied_prob = abs(odds) / (abs(odds) + 100)
-                # Formula for positive odds: implied_prob = 100 / (odds + 100)
+                # ========== PILLAR 2: VEGAS IMPLIED PROBABILITY (20%) ==========
                 if goblin_price < 0:
                     pillar_2_vegas = abs(goblin_price) / (abs(goblin_price) + 100)
                 else:
                     pillar_2_vegas = 100 / (goblin_price + 100)
-                
-                # Normalize to 0-1 range (typical implied prob is 0.4-0.7)
                 pillar_2_vegas = min(1.0, max(0.0, pillar_2_vegas))
                 
-                # ==================== PILLAR 3: MATCHUP / DvP MODIFIER (15%) ====================
-                # Placeholder - 0.5 is neutral, 1.0 is best matchup, 0.0 is worst
-                # Future: integrate actual DvP data from stats providers
-                dvp_modifier = player_data.get("dvp_modifier", 0.5)
-                pillar_3_dvp = dvp_modifier
+                # ========== PILLAR 3: MATCHUP / DvP (15%) ==========
+                pillar_3_dvp = player_data.get("dvp_modifier", 0.5)
                 
-                # ==================== PILLAR 4: AI CONTEXT SHIFT (15%) ====================
-                # Pull from AiContextEngine cache or default to 0.5 (neutral)
+                # ========== PILLAR 4: AI CONTEXT SHIFT (15%) ==========
                 pillar_4_context = ai_context_cache.get(player_name, 0.5)
                 
-                # ==================== FINAL VAULT SCORE ====================
-                # vault_score = (consistency * 0.50) + (implied_prob * 0.20) + (dvp * 0.15) + (context * 0.15)
+                # ========== BASE VAULT SCORE ==========
                 vault_score = (
                     (pillar_1_consistency * 0.50) +
                     (pillar_2_vegas * 0.20) +
@@ -3458,17 +3439,23 @@ class DemonGoblinEngine:
                     (pillar_4_context * 0.15)
                 )
                 
+                # ========== VALUE GAP CALCULATION ==========
+                # Gap = how much BELOW standard the goblin line is (discount)
+                gap_below_std = std_line - goblin_line
+                value_gap_pct = (gap_below_std / std_line) if std_line > 0 else 0
+                
+                # ========== FINAL EV SCORE (True Value Ranking) ==========
+                # final_ev_score = base_score * (1 + value_gap_pct)
+                final_ev_score = vault_score * (1 + value_gap_pct)
+                
                 # Scale to 0-100 for readability
                 vault_score_100 = vault_score * 100
+                final_ev_score_100 = final_ev_score * 100
                 
                 # Safety level and streak detection
                 safety_level = self._calculate_safety_level(h10, h5, h10_over, h5_over, h10_games, h5_games)
                 is_perfect_streak = h10_games >= 5 and h10_over == h10_games
                 safety_string = f"{h10_over}/{h10_games}" if h10_games > 0 else "---"
-                
-                # Gap calculation for display
-                gap_below_std = std_line - goblin_line
-                gap_pct = (gap_below_std / std_line) * 100 if std_line > 0 else 0
                 
                 all_candidates.append({
                     # Player identification
@@ -3481,6 +3468,7 @@ class DemonGoblinEngine:
                     "photo_url": player_data.get("photo_url") or player_data.get("headshot_url"),
                     "headshot_url": player_data.get("headshot_url") or player_data.get("photo_url"),
                     "nba_com_id": player_data.get("nba_com_id") or player_data.get("nba_id"),
+                    "nba_id": player_data.get("nba_id") or player_data.get("nba_com_id"),
                     "espn_id": player_data.get("espn_id"),
                     "position": player_data.get("position"),
                     "opponent": player_data.get("opponent"),
@@ -3493,6 +3481,7 @@ class DemonGoblinEngine:
                     "revenge_game": player_data.get("revenge_game", False),
                     "is_verified": player_data.get("is_verified", False),
                     "is_mapper_matched": player_data.get("is_mapper_matched", False),
+                    "is_goblin": True,
                     
                     # Prop data
                     "stat_type": goblin_stat,
@@ -3501,7 +3490,8 @@ class DemonGoblinEngine:
                     "line": goblin_line,
                     "standard_line": round(std_line, 1),
                     "gap_below_std": round(gap_below_std, 1),
-                    "gap_pct": round(gap_pct, 1),
+                    "gap_pct": round(value_gap_pct * 100, 1),  # As percentage for display
+                    "value_gap_pct": round(value_gap_pct, 4),  # As decimal for calculations
                     "price": goblin_price,
                     
                     # Raw hit rates
@@ -3513,16 +3503,18 @@ class DemonGoblinEngine:
                     "h5_games": h5_games,
                     "season_avg": round(season_avg, 1),
                     
-                    # 4-PILLAR BREAKDOWN (for transparency)
+                    # 4-PILLAR BREAKDOWN
                     "pillar_1_consistency": round(pillar_1_consistency, 4),
                     "pillar_2_vegas": round(pillar_2_vegas, 4),
                     "pillar_3_dvp": round(pillar_3_dvp, 4),
                     "pillar_4_context": round(pillar_4_context, 4),
                     
-                    # FINAL SCORES
+                    # SCORES
                     "vault_score": round(vault_score, 4),
                     "vault_score_100": round(vault_score_100, 1),
-                    "hit_probability": round(h10 * 100, 1),  # For backwards compatibility
+                    "final_ev_score": round(final_ev_score, 4),
+                    "final_ev_score_100": round(final_ev_score_100, 1),
+                    "hit_probability": round(h10 * 100, 1),
                     
                     # Safety metrics
                     "safety_level": safety_level,
@@ -3534,10 +3526,10 @@ class DemonGoblinEngine:
                     "synced_at": sync_time.isoformat()
                 })
         
-        # Sort by vault_score descending (God-Tier first)
-        all_candidates.sort(key=lambda x: x["vault_score"], reverse=True)
+        # ========== SORT BY FINAL EV SCORE (True Value Ranking) ==========
+        all_candidates.sort(key=lambda x: x["final_ev_score"], reverse=True)
         
-        # De-duplicate: one pick per player (best score)
+        # De-duplicate: one pick per player (best EV score)
         seen_players = set()
         unique_picks = []
         for pick in all_candidates:
@@ -3555,9 +3547,13 @@ class DemonGoblinEngine:
             await self.goblin_vault.insert_many(top_10)
         
         # Log summary
-        logger.info(f"[GOBLIN VAULT] GOD-TIER: {len(top_10)} picks passed 80% bouncer")
-        logger.info(f"  Total candidates evaluated: {len(all_candidates)}")
-        logger.info(f"  4-Pillar Formula: 50% Consistency + 20% Vegas + 15% DvP + 15% AI Context")
+        logger.info(f"[SAFE HAVEN v3.1] Generated {len(top_10)} picks (EV Multiplier sorted)")
+        logger.info(f"  Bouncer: L10 >= 70% | Total candidates: {len(all_candidates)}")
+        logger.info(f"  Sorting: final_ev_score = base_score * (1 + value_gap_pct)")
+        
+        for i, pick in enumerate(top_10[:3]):
+            logger.info(f"  #{i+1}: {pick['player_name']} - {pick['stat_type']} {pick['goblin_line']}")
+            logger.info(f"       Base: {pick['vault_score_100']:.1f} | Gap: {pick['gap_pct']:.1f}% | EV: {pick['final_ev_score_100']:.1f}")
         
         for i, pick in enumerate(top_10[:3]):
             logger.info(f"  #{i+1}: {pick['player_name']} - {pick['stat_type']} {pick['goblin_line']}")
@@ -3681,8 +3677,8 @@ class DemonGoblinEngine:
                 if candidate:
                     goblin_candidates.append(candidate)
         
-        # ========== DRAFT A: Top 5 Mild Goblins ==========
-        goblin_candidates.sort(key=lambda x: x["vault_score"], reverse=True)
+        # ========== DRAFT A: Top 5 Mild Goblins (sorted by EV) ==========
+        goblin_candidates.sort(key=lambda x: x.get("final_ev_score", 0), reverse=True)
         seen_goblin_players = set()
         draft_a = []
         for pick in goblin_candidates:
@@ -3691,8 +3687,8 @@ class DemonGoblinEngine:
                 seen_goblin_players.add(pname)
                 draft_a.append(pick)
         
-        # ========== DRAFT B: Top 5 Mild Demons ==========
-        demon_candidates.sort(key=lambda x: x["vault_score"], reverse=True)
+        # ========== DRAFT B: Top 5 Mild Demons (sorted by EV) ==========
+        demon_candidates.sort(key=lambda x: x.get("final_ev_score", 0), reverse=True)
         seen_demon_players = set()
         draft_b = []
         for pick in demon_candidates:
@@ -3735,16 +3731,16 @@ class DemonGoblinEngine:
         demon_count = len([p for p in top_10 if p.get("is_demon")])
         goblin_count = len([p for p in top_10 if p.get("is_goblin")])
         
-        logger.info(f"[FRONT LINES v3.0] Generated {len(top_10)} picks (4-Pillar Tactical Formula)")
-        logger.info(f"  Hard Filter: L10 >= 50% hit rate required")
-        logger.info(f"  Formula: (Consistency * 0.45) + (Vegas * 0.25) + (DvP * 0.15) + (AI * 0.15)")
-        logger.info(f"  Draft A (Goblins): {len(draft_a)} selected | Draft B (Demons): {len(draft_b)} selected")
+        logger.info(f"[FRONT LINES v3.1] Generated {len(top_10)} picks (EV Multiplier sorted)")
+        logger.info(f"  Bouncer: L10 >= 40% | Draft sorted by final_ev_score")
+        logger.info(f"  Sorting: final_ev_score = base_score * (1 + value_gap_pct)")
+        logger.info(f"  Draft A (Goblins): {len(draft_a)} | Draft B (Demons): {len(draft_b)}")
         logger.info(f"  Final Mix - Demons: {demon_count} | Goblins: {goblin_count}")
         
         for i, pick in enumerate(top_10[:3]):
             prop_type = "DEMON" if pick.get("is_demon") else "GOBLIN"
             logger.info(f"  #{i+1}: {pick['player_name']} [{prop_type}] - {pick['stat_type']} {pick['line']}")
-            logger.info(f"       Score: {pick.get('frontlines_score_100', 0):.1f}/100 | P1:{pick.get('pillar_1_consistency', 0):.2f} P2:{pick.get('pillar_2_vegas', 0):.2f} P3:{pick.get('pillar_3_dvp', 0):.2f} P4:{pick.get('pillar_4_context', 0):.2f}")
+            logger.info(f"       Base: {pick.get('frontlines_score_100', 0):.1f} | Gap: {pick['gap_pct']:.1f}% | EV: {pick.get('final_ev_score_100', 0):.1f}")
     
     def _evaluate_front_lines_prop(
         self, prop: Dict, player_name: str, player_data: Dict, 
@@ -3841,23 +3837,20 @@ class DemonGoblinEngine:
         if h10_games == 0 and h5_games == 0:
             return None
         
-        # ========== HARD FILTER (The Bouncer) ==========
-        # Reject if L10_Hit_Frequency < 0.50 (must hit at least 5/10 games)
-        if h10 < 0.50:
+        # ========== HARD FILTER (The Bouncer) - LOWERED TO 40% ==========
+        # Reject if L10_Hit_Frequency < 0.40 (allows evaluation of massive line discounts)
+        if h10 < 0.40:
             return None
         
-        # ========== 4-PILLAR TACTICAL FORMULA v3.0 ==========
+        # ========== 4-PILLAR TACTICAL FORMULA v3.1 ==========
         
         # PILLAR 1: Base Consistency (45% Weight)
-        # consistency_score = (L10 * 0.6) + (L5 * 0.4)
         pillar_1_consistency = (h10 * 0.6) + (h5 * 0.4)
         
         # PILLAR 2: Vegas Implied Probability (25% Weight)
         if price < 0:
-            # Negative odds: implied_prob = abs(odds) / (abs(odds) + 100)
             pillar_2_vegas = abs(price) / (abs(price) + 100)
         else:
-            # Positive odds: implied_prob = 100 / (odds + 100)
             pillar_2_vegas = 100 / (price + 100)
         pillar_2_vegas = min(1.0, max(0.0, pillar_2_vegas))
         
@@ -3867,15 +3860,24 @@ class DemonGoblinEngine:
         # PILLAR 4: AI Context Shift (15% Weight)
         pillar_4_context = ai_context_cache.get(player_name, 0.5)
         
-        # ========== FINAL CALCULATION ==========
-        # frontlines_score = (P1 * 0.45) + (P2 * 0.25) + (P3 * 0.15) + (P4 * 0.15)
+        # ========== BASE FRONTLINES SCORE ==========
         frontlines_score = (
             (pillar_1_consistency * 0.45) +
             (pillar_2_vegas * 0.25) +
             (pillar_3_dvp * 0.15) +
             (pillar_4_context * 0.15)
         )
+        
+        # ========== VALUE GAP CALCULATION ==========
+        # For Front Lines, value_gap_pct is already calculated as absolute gap percentage
+        value_gap_pct = gap_pct / 100  # Convert from display percentage to decimal
+        
+        # ========== FINAL EV SCORE (True Value Ranking) ==========
+        # final_ev_score = base_score * (1 + value_gap_pct)
+        final_ev_score = frontlines_score * (1 + value_gap_pct)
+        
         frontlines_score_100 = frontlines_score * 100
+        final_ev_score_100 = final_ev_score * 100
         
         # Build candidate
         return {
@@ -3926,17 +3928,20 @@ class DemonGoblinEngine:
             "h5_games": h5_games,
             "season_avg": round(season_avg, 1),
             
-            # 4-PILLAR BREAKDOWN (Tactical Formula v3.0)
+            # 4-PILLAR BREAKDOWN (Tactical Formula v3.1)
             "pillar_1_consistency": round(pillar_1_consistency, 4),
             "pillar_2_vegas": round(pillar_2_vegas, 4),
             "pillar_3_dvp": round(pillar_3_dvp, 4),
             "pillar_4_context": round(pillar_4_context, 4),
             
-            # FINAL SCORES - Use frontlines_score as primary
+            # SCORES
             "frontlines_score": round(frontlines_score, 4),
             "frontlines_score_100": round(frontlines_score_100, 1),
-            "vault_score": round(frontlines_score, 4),  # Alias for sorting compatibility
-            "vault_score_100": round(frontlines_score_100, 1),  # Alias for UI compatibility
+            "final_ev_score": round(final_ev_score, 4),
+            "final_ev_score_100": round(final_ev_score_100, 1),
+            "vault_score": round(frontlines_score, 4),  # Alias for UI compatibility
+            "vault_score_100": round(frontlines_score_100, 1),
+            "value_gap_pct": round(value_gap_pct, 4),
             "hit_probability": round(h10 * 100, 1),
             
             # Front Lines specific
