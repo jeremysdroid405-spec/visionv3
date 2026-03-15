@@ -3,7 +3,57 @@
 ## Overview
 PickVision is a high-performance NBA Player Prop Dashboard with a "military tech" aesthetic. The application delivers AI-driven betting insights by identifying "Demons" (high-payout props) and "Goblins" (safer props).
 
-## Latest Update: 2026-12-XX - Rate Limiting & Request Tracing Complete 🎉
+## Latest Update: 2026-03-15 - Dynamic DvP Service Complete 🎉
+
+### Dynamic DvP (Defense vs Position) Service ✅
+- **File:** `/app/backend/services/dvp_service.py` (Complete rewrite)
+- **Tests:** `/app/backend/tests/test_dvp_service.py` - 22 tests PASSING
+
+#### Features Implemented:
+1. **Live Data Fetching from BallDontLie API**:
+   - Endpoint: `GET /nba/v1/team_season_averages/general?type=opponent`
+   - Fetches opponent stats: `pts_allowed`, `reb_allowed`, `ast_allowed`, `fg3m_allowed`, `blk`, `stl`
+   - Requires GOAT tier subscription ($39.99/mo) or valid API key
+
+2. **Ranking Engine**:
+   - Ranks all 30 teams from 1 (Best Defense) to 30 (Worst Defense) for each stat category
+   - Lower allowed stats = better defense = rank 1
+   - Higher allowed stats = worse defense = rank 30 (best matchup for players!)
+
+3. **MongoDB Storage with Daily Refresh**:
+   - Scheduled job at 8:00 AM EST (13:00 UTC) via APScheduler
+   - 24-hour cache TTL
+   - Collection: `dvp_rankings`
+
+4. **Position-Based Matchup Multiplier**:
+   - Centers (C): REB, BLK stats boost
+   - Point Guards (PG): AST, PTS, STL stats boost
+   - Shooting Guards (SG): PTS, 3PM, AST stats boost
+   - If opponent rank > 25 (Bottom 5 defense): +12% "Over" probability boost
+   - If opponent rank < 6 (Top 5 defense): +12% "Under" probability boost
+
+5. **Fallback Logic**:
+   - Falls back to hardcoded `DVP_RANKINGS` in `config/settings.py` if API fails
+   - Graceful degradation with proper logging
+
+6. **Header Flags**:
+   - Success: `dvp_type: "dynamic_live"`, `X-Data-Source: "dynamic_live"`
+   - Fallback: `dvp_type: "static_fallback"`, `X-Data-Source: "static-fallback"`
+
+#### API Endpoints:
+- `GET /api/dvp-status` - Service health & configuration
+- `GET /api/dvp-rankings` - Full rankings data with headers
+- `GET /api/dvp-analysis/{team}/{stat}?player_position={pos}` - Specific matchup analysis
+- `POST /api/dvp-refresh` - Manual refresh trigger
+
+#### Integration Ready:
+- `apply_dvp_to_prop(prop_data)` - Apply DvP analysis to props (for parlay_service.py)
+- `calculate_matchup_multiplier(position, team, stat, direction)` - Get position-based boost
+
+#### Environment Variables:
+- `BALLDONTLIE_API_KEY` or `BDL_API_KEY` - Required for live data (GOAT tier)
+
+### Previous Updates
 
 ### Backend Test Suite ✅
 - **File:** `/app/backend/tests/test_critical_backend.py`

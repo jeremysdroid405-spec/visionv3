@@ -164,3 +164,93 @@ async def get_roster_status():
     except Exception as e:
         logger.error(f"Roster status error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ==================== DVP MANAGEMENT ====================
+
+@router.get("/dvp-status")
+async def get_dvp_status():
+    """
+    Get DvP (Defense vs Position) service status.
+    
+    Returns current data source, cache age, and configuration.
+    """
+    from services.dvp_service import get_dvp_status as dvp_status
+    
+    status = dvp_status()
+    return {
+        "success": True,
+        "dvp": status
+    }
+
+
+@router.post("/dvp-refresh")
+async def trigger_dvp_refresh():
+    """
+    Manually trigger a DvP data refresh.
+    
+    This forces a fresh fetch from the BallDontLie API and updates
+    both the in-memory cache and MongoDB storage.
+    """
+    from services.dvp_service import force_refresh_dvp
+    
+    try:
+        result = await force_refresh_dvp()
+        return {
+            "success": result["success"],
+            "message": "DvP refresh completed",
+            "result": result
+        }
+    except Exception as e:
+        logger.error(f"DvP refresh error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/dvp-rankings")
+async def get_dvp_rankings():
+    """
+    Get current DvP rankings data.
+    
+    Returns the full defensive rankings for all teams and stat categories.
+    """
+    from services.dvp_service import get_dvp_rankings_with_source
+    
+    try:
+        rankings, headers = await get_dvp_rankings_with_source()
+        
+        return {
+            "success": True,
+            "headers": headers,
+            "rankings": rankings,
+            "stat_types": list(rankings.keys()) if rankings else [],
+            "teams_count": len(next(iter(rankings.values()))) if rankings else 0
+        }
+    except Exception as e:
+        logger.error(f"DvP rankings error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/dvp-analysis/{opponent_team}/{stat_type}")
+async def get_dvp_analysis(opponent_team: str, stat_type: str, player_position: str = None):
+    """
+    Get DvP analysis for a specific matchup.
+    
+    Args:
+        opponent_team: 3-letter team abbreviation (e.g., "LAL", "BOS")
+        stat_type: Stat type (e.g., "PTS", "REB", "player_points")
+        player_position: Optional player position for matchup multiplier (e.g., "C", "PG")
+    
+    Returns:
+        Complete DvP analysis including modifier, label, rank, and matchup multiplier.
+    """
+    from services.dvp_service import get_full_dvp_analysis
+    
+    try:
+        analysis = get_full_dvp_analysis(opponent_team.upper(), stat_type, player_position)
+        return {
+            "success": True,
+            "analysis": analysis
+        }
+    except Exception as e:
+        logger.error(f"DvP analysis error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))

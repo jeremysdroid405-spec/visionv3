@@ -494,6 +494,11 @@ async def startup_event():
     social_signal_engine = get_social_signal_engine(db)
     logger.info("Social Signal Engine initialized (News + Revenge Detection)")
     
+    # Initialize DvP Service with MongoDB reference for persistent storage
+    from services.dvp_service import set_db_reference as set_dvp_db_reference
+    set_dvp_db_reference(db)
+    logger.info("DvP Service initialized (MongoDB-backed DvP rankings)")
+    
     # Initialize Adaptive Sync Engine - Mission-critical polling
     adaptive_sync = init_adaptive_sync_engine(db, ODDS_API_KEY)
     logger.info("Adaptive Sync Engine initialized (Mission-Critical Polling)")
@@ -582,9 +587,20 @@ async def startup_event():
         replace_existing=True
     )
     
+    # Daily DvP rankings refresh at 8:00 AM EST (13:00 UTC)
+    from services.dvp_service import scheduled_dvp_refresh
+    scheduler.add_job(
+        scheduled_dvp_refresh,
+        CronTrigger(hour=13, minute=0, timezone=SCHEDULER_TIMEZONE),  # 8:00 AM EST = 13:00 UTC
+        id='daily_dvp_refresh',
+        name='8:00 AM EST DvP Rankings Refresh',
+        replace_existing=True
+    )
+    
     scheduler.start()
     logger.info(f"[SCHEDULER] APScheduler started - Daily stats sync at 04:00 EST (09:00 UTC)")
     logger.info(f"[SCHEDULER] Weekly roster sync scheduled: Sunday 00:00 UTC")
+    logger.info(f"[SCHEDULER] Daily DvP refresh scheduled: 08:00 EST (13:00 UTC)")
     
     # DISABLED: Full auto-sync on startup to prevent credit drain
     # The adaptive sync engine handles real-time odds polling

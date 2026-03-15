@@ -4,15 +4,16 @@ DvP (Defense vs Position) Service
 Dynamic, real-time DvP data fetching with intelligent fallback.
 
 Features:
-- Live data from NBA.com and BallDontLie APIs
-- 24-hour cache with morning refresh
-- Position-specific defensive rankings
+- Live data from BallDontLie API (team_season_averages/general?type=opponent)
+- MongoDB storage with 24-hour refresh cycle
+- Position-specific defensive rankings with matchup multipliers
 - Automatic fallback to hardcoded data
 - X-Data-Source and dvp_type metadata headers
 """
 import httpx
 import asyncio
 import logging
+import os
 from typing import Optional, Dict, Any, Tuple, List
 from datetime import datetime, timezone, timedelta
 from dataclasses import dataclass, field
@@ -22,51 +23,39 @@ logger = logging.getLogger(__name__)
 
 # ==================== CONFIGURATION ====================
 
-# NBA.com API endpoints
-NBA_STATS_BASE = "https://stats.nba.com/stats"
-NBA_TEAM_STATS_ENDPOINT = f"{NBA_STATS_BASE}/leaguedashteamstats"
-
-# BallDontLie API (backup source)
-BDL_API_BASE = "https://api.balldontlie.io/v1"
+# BallDontLie API v1 endpoint for team season averages
+BDL_API_BASE = "https://api.balldontlie.io/nba/v1"
+BDL_TEAM_SEASON_AVERAGES = f"{BDL_API_BASE}/team_season_averages/general"
 
 # Cache settings
 DVP_CACHE_TTL_HOURS = 24
-DVP_REFRESH_HOUR = 8  # 8:00 AM local time for morning refresh
+DVP_REFRESH_HOUR_EST = 8  # 8:00 AM EST for morning refresh
+DVP_REFRESH_HOUR_UTC = 13  # 8:00 AM EST = 13:00 UTC (standard time)
 
-# NBA.com required headers
-NBA_HEADERS = {
-    "Host": "stats.nba.com",
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-    "Accept": "application/json, text/plain, */*",
-    "Accept-Language": "en-US,en;q=0.9",
-    "Accept-Encoding": "gzip, deflate, br",
-    "Connection": "keep-alive",
-    "Referer": "https://www.nba.com/",
-    "Origin": "https://www.nba.com",
-    "x-nba-stats-origin": "stats",
-    "x-nba-stats-token": "true",
+# MongoDB collection name for DvP data
+DVP_COLLECTION = "dvp_rankings"
+
+# Position to stat mapping for matchup calculations
+POSITION_STAT_MAP = {
+    "C": ["REB", "BLK"],  # Centers affect rebounds and blocks
+    "PF": ["REB", "PTS"],  # Power Forwards affect rebounds and points
+    "SF": ["PTS", "3PM"],  # Small Forwards affect points and 3PM
+    "SG": ["PTS", "3PM", "AST"],  # Shooting Guards affect points, 3s, assists
+    "PG": ["AST", "PTS", "STL"],  # Point Guards affect assists, points, steals
+    "G": ["AST", "PTS", "3PM"],  # Generic Guard
+    "F": ["REB", "PTS"],  # Generic Forward
+    "G-F": ["PTS", "REB", "AST"],  # Combo Guard-Forward
+    "F-C": ["REB", "BLK", "PTS"],  # Combo Forward-Center
 }
 
-# Team ID to Abbreviation mapping (NBA.com uses numeric IDs)
-NBA_TEAM_ID_MAP = {
-    1610612737: "ATL", 1610612738: "BOS", 1610612751: "BKN", 1610612766: "CHA",
-    1610612741: "CHI", 1610612739: "CLE", 1610612742: "DAL", 1610612743: "DEN",
-    1610612765: "DET", 1610612744: "GSW", 1610612745: "HOU", 1610612754: "IND",
-    1610612746: "LAC", 1610612747: "LAL", 1610612763: "MEM", 1610612748: "MIA",
-    1610612749: "MIL", 1610612750: "MIN", 1610612740: "NOP", 1610612752: "NYK",
-    1610612760: "OKC", 1610612753: "ORL", 1610612755: "PHI", 1610612756: "PHX",
-    1610612757: "POR", 1610612758: "SAC", 1610612759: "SAS", 1610612761: "TOR",
-    1610612762: "UTA", 1610612764: "WAS"
-}
-
-# NBA Team abbreviation mapping (from API names)
-NBA_TEAM_ABBREV_MAP = {
-    "ATL": "ATL", "BOS": "BOS", "BKN": "BKN", "CHA": "CHA", "CHI": "CHI",
-    "CLE": "CLE", "DAL": "DAL", "DEN": "DEN", "DET": "DET", "GSW": "GSW",
-    "HOU": "HOU", "IND": "IND", "LAC": "LAC", "LAL": "LAL", "MEM": "MEM",
-    "MIA": "MIA", "MIL": "MIL", "MIN": "MIN", "NOP": "NOP", "NYK": "NYK",
-    "OKC": "OKC", "ORL": "ORL", "PHI": "PHI", "PHX": "PHX", "POR": "POR",
-    "SAC": "SAC", "SAS": "SAS", "TOR": "TOR", "UTA": "UTA", "WAS": "WAS"
+# BDL Team ID to Abbreviation mapping
+BDL_TEAM_ID_MAP = {
+    1: "ATL", 2: "BOS", 3: "BKN", 4: "CHA", 5: "CHI",
+    6: "CLE", 7: "DAL", 8: "DEN", 9: "DET", 10: "GSW",
+    11: "HOU", 12: "IND", 13: "LAC", 14: "LAL", 15: "MEM",
+    16: "MIA", 17: "MIL", 18: "MIN", 19: "NOP", 20: "NYK",
+    21: "OKC", 22: "ORL", 23: "PHI", 24: "PHX", 25: "POR",
+    26: "SAC", 27: "SAS", 28: "TOR", 29: "UTA", 30: "WAS"
 }
 
 
@@ -96,8 +85,8 @@ class DvPDataSource:
     STATIC_FALLBACK = "static-fallback"
     DYNAMIC_LIVE = "dynamic_live"
     CACHED = "cached"
-    NBA_API = "nba_api"
     BDL_API = "bdl_api"
+    MONGODB = "mongodb"
     MAINTENANCE = "maintenance"
 
 
@@ -107,18 +96,32 @@ _dvp_cache: Optional[DvPCacheEntry] = None
 _fetch_lock = asyncio.Lock()
 _last_fetch_attempt: Optional[datetime] = None
 _fetch_failures: int = 0
+_db_ref = None  # MongoDB reference (set during startup)
+
+
+def set_db_reference(db):
+    """Set MongoDB reference for persistent storage."""
+    global _db_ref
+    _db_ref = db
+    logger.info("[DVP] MongoDB reference set for persistent storage")
 
 
 # ==================== CORE FUNCTIONS ====================
 
-def get_current_season() -> str:
-    """Get current NBA season string (e.g., '2024-25')."""
+def get_current_season() -> int:
+    """Get current NBA season year (e.g., 2024 for 2024-25 season)."""
     now = datetime.now()
     # NBA season starts in October
     if now.month >= 10:
-        return f"{now.year}-{str(now.year + 1)[-2:]}"
+        return now.year
     else:
-        return f"{now.year - 1}-{str(now.year)[-2:]}"
+        return now.year - 1
+
+
+def get_current_season_str() -> str:
+    """Get current NBA season string (e.g., '2024-25')."""
+    year = get_current_season()
+    return f"{year}-{str(year + 1)[-2:]}"
 
 
 def get_data_source() -> str:
@@ -144,129 +147,128 @@ def get_data_source_header() -> Dict[str, str]:
     return headers
 
 
-async def fetch_nba_defensive_stats() -> Optional[Dict[str, Dict[str, float]]]:
+def _get_bdl_api_key() -> Optional[str]:
+    """Get BallDontLie API key from environment."""
+    key = os.environ.get("BALLDONTLIE_API_KEY") or os.environ.get("BDL_API_KEY")
+    if not key:
+        logger.warning("[DVP] No BallDontLie API key found in environment (BALLDONTLIE_API_KEY or BDL_API_KEY)")
+    return key
+
+
+async def _fetch_bdl_defensive_stats() -> Optional[Dict[str, Dict[str, float]]]:
     """
-    Fetch defensive stats from NBA.com API.
+    Fetch defensive stats (opponent stats) from BallDontLie API.
     
-    Returns raw opponent stats (points allowed, assists allowed, etc.)
+    Endpoint: GET /nba/v1/team_season_averages/general?type=opponent
+    
+    Returns raw opponent stats per team: pts_allowed, ast_allowed, reb_allowed, etc.
     """
+    api_key = _get_bdl_api_key()
+    if not api_key:
+        logger.warning("[DVP] Cannot fetch from BDL API - no API key")
+        return None
+    
+    season = get_current_season()
+    
     try:
-        season = get_current_season()
-        
         params = {
-            "Conference": "",
-            "DateFrom": "",
-            "DateTo": "",
-            "Division": "",
-            "GameScope": "",
-            "GameSegment": "",
-            "Height": "",
-            "LastNGames": "0",
-            "LeagueID": "00",
-            "Location": "",
-            "MeasureType": "Opponent",  # Key: Get opponent stats (defensive)
-            "Month": "0",
-            "OpponentTeamID": "0",
-            "Outcome": "",
-            "PORound": "0",
-            "PaceAdjust": "N",
-            "PerMode": "PerGame",
-            "Period": "0",
-            "PlayerExperience": "",
-            "PlayerPosition": "",
-            "PlusMinus": "N",
-            "Rank": "N",
-            "Season": season,
-            "SeasonSegment": "",
-            "SeasonType": "Regular Season",
-            "ShotClockRange": "",
-            "StarterBench": "",
-            "TeamID": "0",
-            "TwoWay": "0",
-            "VsConference": "",
-            "VsDivision": "",
+            "season": season,
+            "season_type": "regular",
+            "type": "opponent",  # Get opponent stats = defensive stats
+            "per_page": 100  # Get all 30 teams
         }
         
-        logger.info(f"[DVP] Fetching NBA.com defensive stats for {season}")
+        headers = {
+            "Authorization": api_key  # BDL uses API key directly, not Bearer
+        }
         
-        async with httpx.AsyncClient(timeout=15.0) as client:
+        logger.info(f"[DVP] Fetching BallDontLie opponent stats for season {season}")
+        
+        async with httpx.AsyncClient(timeout=20.0) as client:
             response = await client.get(
-                NBA_TEAM_STATS_ENDPOINT,
+                BDL_TEAM_SEASON_AVERAGES,
                 params=params,
-                headers=NBA_HEADERS
+                headers=headers
             )
             
             if response.status_code == 200:
                 data = response.json()
-                return _parse_nba_team_stats(data)
+                return _parse_bdl_opponent_stats(data)
+            elif response.status_code == 401:
+                logger.error("[DVP] BallDontLie API key unauthorized - check tier (GOAT required for team_season_averages)")
+                return None
+            elif response.status_code == 429:
+                logger.warning("[DVP] BallDontLie rate limited - backing off")
+                return None
             else:
-                logger.warning(f"[DVP] NBA.com returned status {response.status_code}")
+                logger.warning(f"[DVP] BallDontLie returned status {response.status_code}: {response.text[:200]}")
                 return None
                 
+    except httpx.TimeoutException:
+        logger.error("[DVP] BallDontLie API timeout")
+        return None
     except Exception as e:
-        logger.error(f"[DVP] NBA.com fetch error: {e}")
+        logger.error(f"[DVP] BallDontLie fetch error: {e}")
         return None
 
 
-def _parse_nba_team_stats(data: Dict) -> Optional[Dict[str, Dict[str, float]]]:
+def _parse_bdl_opponent_stats(data: Dict) -> Optional[Dict[str, Dict[str, float]]]:
     """
-    Parse NBA.com leaguedashteamstats response.
+    Parse BallDontLie team_season_averages response (type=opponent).
     
-    Converts raw stats to per-team values for each stat category.
+    The 'stats' object contains opponent stats like:
+    - opp_pts: Opponent points allowed
+    - opp_ast: Opponent assists allowed
+    - opp_reb: Opponent rebounds allowed
+    - opp_fg3m: Opponent 3-pointers made allowed
+    - opp_blk: Opponent blocks 
+    - opp_stl: Opponent steals
     """
     try:
-        result_sets = data.get("resultSets", [])
-        if not result_sets:
+        teams_data = data.get("data", [])
+        if not teams_data:
+            logger.warning("[DVP] No team data in BDL response")
             return None
         
-        headers = result_sets[0].get("headers", [])
-        rows = result_sets[0].get("rowSet", [])
-        
-        if not headers or not rows:
-            return None
-        
-        # Find column indices
-        team_id_idx = headers.index("TEAM_ID") if "TEAM_ID" in headers else None
-        team_abbrev_idx = headers.index("TEAM_ABBREVIATION") if "TEAM_ABBREVIATION" in headers else None
-        
-        # Stat column indices (opponent stats = defensive)
-        stat_columns = {
-            "PTS": "OPP_PTS" if "OPP_PTS" in headers else "PTS",
-            "AST": "OPP_AST" if "OPP_AST" in headers else "AST",
-            "REB": "OPP_REB" if "OPP_REB" in headers else "REB",
-            "3PM": "OPP_FG3M" if "OPP_FG3M" in headers else "FG3M",
-            "BLK": "OPP_BLK" if "OPP_BLK" in headers else "BLK",
-            "STL": "OPP_STL" if "OPP_STL" in headers else "STL",
-            "TO": "OPP_TOV" if "OPP_TOV" in headers else "TOV",
-        }
-        
-        # Get column indices for each stat
-        stat_indices = {}
-        for stat_key, col_name in stat_columns.items():
-            if col_name in headers:
-                stat_indices[stat_key] = headers.index(col_name)
-        
-        # Build raw stats per team
         team_stats: Dict[str, Dict[str, float]] = {}
         
-        for row in rows:
-            # Get team abbreviation
-            if team_abbrev_idx is not None:
-                team = row[team_abbrev_idx]
-            elif team_id_idx is not None:
-                team_id = row[team_id_idx]
-                team = NBA_TEAM_ID_MAP.get(team_id)
-            else:
+        for team_entry in teams_data:
+            team_info = team_entry.get("team", {})
+            team_abbrev = team_info.get("abbreviation")
+            
+            if not team_abbrev:
+                # Try to map from ID
+                team_id = team_info.get("id")
+                team_abbrev = BDL_TEAM_ID_MAP.get(team_id)
+            
+            if not team_abbrev:
                 continue
             
-            if not team:
-                continue
+            stats = team_entry.get("stats", {})
             
-            team_stats[team] = {}
-            for stat_key, idx in stat_indices.items():
-                team_stats[team][stat_key] = float(row[idx]) if row[idx] else 0.0
+            # Map BDL stat names to our internal names
+            # For opponent stats, we want:
+            # - pts (opponent points allowed to them) - lower is better defense
+            # - ast (opponent assists allowed to them)
+            # - reb (opponent rebounds allowed to them)
+            # - fg3m (opponent 3PM allowed to them)
+            # - blk (opponent blocks - this is what the opposing team blocked)
+            # - stl (opponent steals - this is what opposing team stole)
+            
+            team_stats[team_abbrev] = {
+                "PTS": float(stats.get("pts", stats.get("opp_pts", 0))) if stats.get("pts") or stats.get("opp_pts") else 0.0,
+                "AST": float(stats.get("ast", stats.get("opp_ast", 0))) if stats.get("ast") or stats.get("opp_ast") else 0.0,
+                "REB": float(stats.get("reb", stats.get("opp_reb", 0))) if stats.get("reb") or stats.get("opp_reb") else 0.0,
+                "3PM": float(stats.get("fg3m", stats.get("opp_fg3m", 0))) if stats.get("fg3m") or stats.get("opp_fg3m") else 0.0,
+                "BLK": float(stats.get("blk", stats.get("opp_blk", 0))) if stats.get("blk") or stats.get("opp_blk") else 0.0,
+                "STL": float(stats.get("stl", stats.get("opp_stl", 0))) if stats.get("stl") or stats.get("opp_stl") else 0.0,
+            }
         
-        logger.info(f"[DVP] Parsed stats for {len(team_stats)} teams")
+        if len(team_stats) < 20:
+            logger.warning(f"[DVP] Only got {len(team_stats)} teams from BDL, expected ~30")
+            return None
+        
+        logger.info(f"[DVP] Parsed opponent stats for {len(team_stats)} teams")
         return team_stats
         
     except Exception as e:
@@ -278,14 +280,18 @@ def _convert_stats_to_rankings(raw_stats: Dict[str, Dict[str, float]]) -> Dict[s
     """
     Convert raw defensive stats to rankings (1-30).
     
-    Lower allowed stats = better defense = lower rank (1 is best defense)
-    """
-    rankings = {}
+    For opponent stats (pts allowed, ast allowed, etc.):
+    - Lower allowed stats = better defense = rank 1 (best)
+    - Higher allowed stats = worse defense = rank 30 (worst)
     
-    # Get all stat types
+    So rank 30 (worst defense) = best matchup for players!
+    """
     if not raw_stats:
         return {}
     
+    rankings: Dict[str, Dict[str, int]] = {}
+    
+    # Get all stat types from first team
     sample_team = next(iter(raw_stats.values()))
     stat_types = list(sample_team.keys())
     
@@ -293,13 +299,16 @@ def _convert_stats_to_rankings(raw_stats: Dict[str, Dict[str, float]]) -> Dict[s
         # Collect values for this stat
         team_values = []
         for team, stats in raw_stats.items():
-            if stat_type in stats:
+            if stat_type in stats and stats[stat_type] > 0:
                 team_values.append((team, stats[stat_type]))
         
-        # Sort by value (ascending = less points allowed = better defense)
+        if not team_values:
+            continue
+        
+        # Sort by value (ascending = less allowed = better defense = rank 1)
         team_values.sort(key=lambda x: x[1])
         
-        # Assign ranks (1 = best defense = lowest allowed)
+        # Assign ranks (1 = best defense, 30 = worst defense)
         rankings[stat_type] = {}
         for rank, (team, value) in enumerate(team_values, 1):
             rankings[stat_type][team] = rank
@@ -307,9 +316,80 @@ def _convert_stats_to_rankings(raw_stats: Dict[str, Dict[str, float]]) -> Dict[s
     return rankings
 
 
+async def _load_from_mongodb() -> Optional[DvPCacheEntry]:
+    """Load cached DvP rankings from MongoDB."""
+    if _db_ref is None:
+        return None
+    
+    try:
+        collection = _db_ref[DVP_COLLECTION]
+        doc = await collection.find_one({"type": "dvp_rankings"})
+        
+        if not doc:
+            return None
+        
+        expires_at = doc.get("expires_at")
+        if expires_at and datetime.now(timezone.utc) > expires_at:
+            logger.info("[DVP] MongoDB cache expired")
+            return None
+        
+        return DvPCacheEntry(
+            rankings=doc.get("rankings", {}),
+            source=DvPDataSource.MONGODB,
+            fetched_at=doc.get("fetched_at", datetime.now(timezone.utc)),
+            season=doc.get("season", get_current_season_str()),
+            expires_at=expires_at or datetime.now(timezone.utc) + timedelta(hours=DVP_CACHE_TTL_HOURS)
+        )
+        
+    except Exception as e:
+        logger.error(f"[DVP] MongoDB load error: {e}")
+        return None
+
+
+async def _save_to_mongodb(rankings: Dict[str, Dict[str, int]], source: str):
+    """Save DvP rankings to MongoDB for persistence."""
+    if _db_ref is None:
+        logger.warning("[DVP] Cannot save to MongoDB - no db reference")
+        return
+    
+    try:
+        collection = _db_ref[DVP_COLLECTION]
+        now = datetime.now(timezone.utc)
+        expires_at = now + timedelta(hours=DVP_CACHE_TTL_HOURS)
+        
+        doc = {
+            "type": "dvp_rankings",
+            "rankings": rankings,
+            "source": source,
+            "fetched_at": now,
+            "season": get_current_season_str(),
+            "expires_at": expires_at,
+            "updated_at": now
+        }
+        
+        await collection.update_one(
+            {"type": "dvp_rankings"},
+            {"$set": doc},
+            upsert=True
+        )
+        
+        logger.info(f"[DVP] Saved rankings to MongoDB (expires: {expires_at.isoformat()})")
+        
+    except Exception as e:
+        logger.error(f"[DVP] MongoDB save error: {e}")
+
+
 async def fetch_live_dvp() -> Tuple[Dict[str, Dict[str, int]], str, Dict[str, Any]]:
     """
-    Fetch live DvP rankings from external APIs.
+    Fetch live DvP rankings from BallDontLie API.
+    
+    This is the main entry point for getting DvP data.
+    
+    Priority:
+    1. In-memory cache (if valid)
+    2. MongoDB cache (if valid)
+    3. Live BallDontLie API fetch
+    4. Static fallback data
     
     Returns:
         Tuple of (rankings_dict, source_type, metadata)
@@ -317,13 +397,25 @@ async def fetch_live_dvp() -> Tuple[Dict[str, Dict[str, int]], str, Dict[str, An
     global _dvp_cache, _last_fetch_attempt, _fetch_failures
     
     async with _fetch_lock:
-        # Check if cached data is still valid
+        # Check in-memory cache first
         if _dvp_cache and not _dvp_cache.is_expired:
-            logger.debug(f"[DVP] Using cached data (age: {_dvp_cache.age_hours:.1f}h)")
+            logger.debug(f"[DVP] Using in-memory cache (age: {_dvp_cache.age_hours:.1f}h)")
             return _dvp_cache.rankings, DvPDataSource.CACHED, {
                 "dvp_type": "dynamic_live",
                 "cache_hit": True,
                 "cache_age_hours": _dvp_cache.age_hours
+            }
+        
+        # Check MongoDB cache
+        mongo_cache = await _load_from_mongodb()
+        if mongo_cache:
+            _dvp_cache = mongo_cache
+            logger.info(f"[DVP] Loaded from MongoDB (age: {mongo_cache.age_hours:.1f}h)")
+            return mongo_cache.rankings, DvPDataSource.MONGODB, {
+                "dvp_type": "dynamic_live",
+                "cache_hit": True,
+                "from_mongodb": True,
+                "cache_age_hours": mongo_cache.age_hours
             }
         
         # Rate limit fetch attempts (max 1 per 5 minutes on failure)
@@ -338,32 +430,35 @@ async def fetch_live_dvp() -> Tuple[Dict[str, Dict[str, int]], str, Dict[str, An
         
         _last_fetch_attempt = datetime.now(timezone.utc)
         
-        # Try NBA.com API first
-        logger.info("[DVP] Attempting live data fetch from NBA.com")
-        raw_stats = await fetch_nba_defensive_stats()
+        # Try BallDontLie API
+        logger.info("[DVP] Attempting live data fetch from BallDontLie API")
+        raw_stats = await _fetch_bdl_defensive_stats()
         
         if raw_stats:
             rankings = _convert_stats_to_rankings(raw_stats)
             
-            if rankings and len(rankings) >= 3:  # At least 3 stat types
-                # Cache the results
+            if rankings and len(rankings) >= 3:  # At least PTS, AST, REB
+                # Save to MongoDB for persistence
+                await _save_to_mongodb(rankings, DvPDataSource.BDL_API)
+                
+                # Update in-memory cache
                 _dvp_cache = DvPCacheEntry(
                     rankings=rankings,
                     source=DvPDataSource.DYNAMIC_LIVE,
                     fetched_at=datetime.now(timezone.utc),
-                    season=get_current_season(),
+                    season=get_current_season_str(),
                     expires_at=datetime.now(timezone.utc) + timedelta(hours=DVP_CACHE_TTL_HOURS)
                 )
                 _fetch_failures = 0
                 
-                logger.info(f"[DVP] Live data fetched successfully: {len(rankings)} stat types, {len(next(iter(rankings.values())))} teams")
+                logger.info(f"[DVP] Live data fetched: {len(rankings)} stat types, {len(next(iter(rankings.values())))} teams")
                 
                 return rankings, DvPDataSource.DYNAMIC_LIVE, {
                     "dvp_type": "dynamic_live",
                     "cache_hit": False,
                     "teams_count": len(next(iter(rankings.values()))),
                     "stat_types": list(rankings.keys()),
-                    "season": get_current_season()
+                    "season": get_current_season_str()
                 }
         
         # Fallback to hardcoded data
@@ -393,6 +488,7 @@ async def get_dvp_rankings_with_source() -> Tuple[Dict[str, Dict[str, int]], Dic
     }
     
     if source == DvPDataSource.STATIC_FALLBACK:
+        headers["X-Data-Source"] = "static-fallback"
         headers["X-Data-Source-Warning"] = "Using static fallback data. Live API may be unavailable."
     
     return rankings, headers
@@ -416,7 +512,7 @@ def calculate_dvp_modifier(opponent_team: str, stat_type: str) -> float:
     
     Returns:
         float: 0.0 to 1.0 where:
-        - 0.0-0.3 = TOUGH matchup (top 10 defense)
+        - 0.0-0.3 = TOUGH matchup (top 10 defense, rank 1-10)
         - 0.4-0.6 = NEUTRAL matchup (11-20 defense)
         - 0.7-1.0 = FAVORABLE matchup (21-30 defense, worst defenses)
     """
@@ -467,6 +563,68 @@ def calculate_dvp_modifier(opponent_team: str, stat_type: str) -> float:
     return round(modifier, 3)
 
 
+def calculate_matchup_multiplier(
+    player_position: str, 
+    opponent_team: str, 
+    stat_type: str,
+    direction: str = "over"
+) -> float:
+    """
+    Calculate matchup multiplier for probability adjustment.
+    
+    This implements the position-based matchup boost logic:
+    - If player is a Center and opponent rank for REB is >25 (Bottom 5), boost "Over" by 12%
+    - Similar logic for other positions and stats
+    
+    Args:
+        player_position: Player's position (C, PF, SF, SG, PG, G, F)
+        opponent_team: Opponent's 3-letter abbreviation
+        stat_type: Stat type being bet on
+        direction: "over" or "under"
+    
+    Returns:
+        float: Multiplier (1.0 = no change, 1.12 = 12% boost)
+    """
+    if not player_position or not opponent_team or not stat_type:
+        return 1.0
+    
+    # Get rankings
+    rankings = _dvp_cache.rankings if _dvp_cache and not _dvp_cache.is_expired else DVP_RANKINGS
+    
+    # Normalize stat type
+    stat_key = STAT_TYPE_MAP.get(stat_type, stat_type.upper())
+    
+    # Get opponent's rank for this stat
+    if stat_key not in rankings or opponent_team not in rankings.get(stat_key, {}):
+        return 1.0
+    
+    rank = rankings[stat_key].get(opponent_team, 15)  # Default to middle
+    
+    # Check if this stat is relevant for the player's position
+    position = player_position.upper()
+    relevant_stats = POSITION_STAT_MAP.get(position, [])
+    
+    if stat_key not in relevant_stats:
+        return 1.0  # This stat isn't position-relevant
+    
+    # Apply boost logic based on rank
+    # Rank > 25 (Bottom 5 defense) = 12% boost for "Over"
+    # Rank < 6 (Top 5 defense) = 12% boost for "Under"
+    
+    if direction.lower() == "over":
+        if rank > 25:  # Bottom 5 worst defense
+            return 1.12  # 12% boost
+        elif rank > 20:  # Bottom 10
+            return 1.06  # 6% boost
+    elif direction.lower() == "under":
+        if rank < 6:  # Top 5 best defense
+            return 1.12  # 12% boost
+        elif rank < 11:  # Top 10
+            return 1.06  # 6% boost
+    
+    return 1.0
+
+
 def get_dvp_label(modifier: float) -> str:
     """Get human-readable DvP label."""
     if modifier >= 0.7:
@@ -477,15 +635,22 @@ def get_dvp_label(modifier: float) -> str:
         return "TOUGH"
 
 
-def get_full_dvp_analysis(opponent_team: str, stat_type: str) -> Dict[str, Any]:
+def get_full_dvp_analysis(opponent_team: str, stat_type: str, player_position: Optional[str] = None) -> Dict[str, Any]:
     """
     Get complete DvP analysis for a matchup.
     
     Returns:
-        Dict with modifier, label, rank, and data source info
+        Dict with modifier, label, rank, multiplier, and data source info
     """
     modifier = calculate_dvp_modifier(opponent_team, stat_type)
     rank = _get_defensive_rank(opponent_team, stat_type)
+    
+    # Calculate position-based multiplier if position provided
+    over_multiplier = 1.0
+    under_multiplier = 1.0
+    if player_position:
+        over_multiplier = calculate_matchup_multiplier(player_position, opponent_team, stat_type, "over")
+        under_multiplier = calculate_matchup_multiplier(player_position, opponent_team, stat_type, "under")
     
     return {
         "dvp_modifier": modifier,
@@ -493,6 +658,9 @@ def get_full_dvp_analysis(opponent_team: str, stat_type: str) -> Dict[str, Any]:
         "opponent_team": opponent_team,
         "stat_type": stat_type,
         "defensive_rank": rank,
+        "over_multiplier": over_multiplier,
+        "under_multiplier": under_multiplier,
+        "player_position": player_position,
         "dvp_type": "dynamic_live" if _dvp_cache and not _dvp_cache.is_expired else "static_fallback",
         "data_source": get_data_source(),
         "data_age_hours": _dvp_cache.age_hours if _dvp_cache else None
@@ -511,19 +679,35 @@ def _get_defensive_rank(opponent_team: str, stat_type: str) -> Optional[int]:
 
 # ==================== SCHEDULED REFRESH ====================
 
-async def schedule_dvp_refresh():
+async def scheduled_dvp_refresh():
     """
-    Schedule daily DvP data refresh.
+    Daily DvP data refresh at 8:00 AM EST.
     
-    Call this from the application startup to ensure fresh data each morning.
+    This should be called by the APScheduler job in server.py.
+    It forces a fresh fetch from the BallDontLie API and saves to MongoDB.
     """
-    logger.info("[DVP] Scheduling daily refresh")
+    global _dvp_cache
     
-    # Initial fetch on startup
-    await fetch_live_dvp()
+    logger.info("=" * 50)
+    logger.info("[DVP] SCHEDULED 8:00 AM EST REFRESH STARTED")
+    logger.info("=" * 50)
     
-    # Note: Actual scheduling should be done via APScheduler in server.py
-    # This function just performs the initial fetch
+    # Clear cache to force refetch
+    _dvp_cache = None
+    
+    # Fetch fresh data
+    rankings, source, metadata = await fetch_live_dvp()
+    
+    if source == DvPDataSource.DYNAMIC_LIVE:
+        logger.info(f"[DVP] Refresh SUCCESS: {len(rankings)} stat categories, {len(next(iter(rankings.values())))} teams")
+    else:
+        logger.warning(f"[DVP] Refresh FAILED: Using {source}")
+    
+    return {
+        "success": source != DvPDataSource.STATIC_FALLBACK,
+        "source": source,
+        "metadata": metadata
+    }
 
 
 async def force_refresh_dvp() -> Dict[str, Any]:
@@ -533,6 +717,8 @@ async def force_refresh_dvp() -> Dict[str, Any]:
     Useful for manual refresh or testing.
     """
     global _dvp_cache
+    
+    logger.info("[DVP] MANUAL FORCE REFRESH TRIGGERED")
     
     # Clear cache to force refetch
     _dvp_cache = None
@@ -556,7 +742,57 @@ def get_dvp_status() -> Dict[str, Any]:
         "dvp_type": "dynamic_live" if _dvp_cache and not _dvp_cache.is_expired else "static_fallback",
         "cache_age_hours": _dvp_cache.age_hours if _dvp_cache else None,
         "cache_expires_at": _dvp_cache.expires_at.isoformat() if _dvp_cache else None,
-        "season": _dvp_cache.season if _dvp_cache else get_current_season(),
+        "season": _dvp_cache.season if _dvp_cache else get_current_season_str(),
         "fetch_failures": _fetch_failures,
-        "last_fetch_attempt": _last_fetch_attempt.isoformat() if _last_fetch_attempt else None
+        "last_fetch_attempt": _last_fetch_attempt.isoformat() if _last_fetch_attempt else None,
+        "api_key_configured": bool(_get_bdl_api_key()),
+        "mongodb_configured": _db_ref is not None
     }
+
+
+# ==================== INTEGRATION WITH PARLAY SERVICE ====================
+
+def apply_dvp_to_prop(prop_data: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Apply DvP analysis to a prop pick.
+    
+    This function should be called by parlay_service.py when processing picks.
+    It adds DvP-based probability adjustments to the prop.
+    
+    Args:
+        prop_data: Dict containing at minimum:
+            - opponent: Opponent team abbreviation
+            - stat_type: Stat market type
+            - player_position: Player's position (optional)
+            - hit_probability: Base hit probability (optional)
+    
+    Returns:
+        prop_data enhanced with DvP analysis
+    """
+    opponent = prop_data.get("opponent") or prop_data.get("opponent_team")
+    stat_type = prop_data.get("stat_type") or prop_data.get("market")
+    player_position = prop_data.get("player_position") or prop_data.get("position")
+    
+    if not opponent or not stat_type:
+        return prop_data
+    
+    # Get full DvP analysis
+    dvp_analysis = get_full_dvp_analysis(opponent, stat_type, player_position)
+    
+    # Apply matchup multiplier to probability if present
+    base_prob = prop_data.get("hit_probability", 50)
+    direction = prop_data.get("direction", "over")
+    
+    multiplier = dvp_analysis.get("over_multiplier", 1.0) if direction == "over" else dvp_analysis.get("under_multiplier", 1.0)
+    
+    adjusted_prob = min(99, base_prob * multiplier)  # Cap at 99%
+    
+    # Enhance prop data
+    prop_data["dvp_modifier"] = dvp_analysis["dvp_modifier"]
+    prop_data["dvp_label"] = dvp_analysis["dvp_label"]
+    prop_data["defensive_rank"] = dvp_analysis["defensive_rank"]
+    prop_data["matchup_multiplier"] = multiplier
+    prop_data["adjusted_hit_probability"] = round(adjusted_prob, 1)
+    prop_data["dvp_type"] = dvp_analysis["dvp_type"]
+    
+    return prop_data

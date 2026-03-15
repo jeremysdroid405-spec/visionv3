@@ -36,6 +36,7 @@ async def close_database():
 # ==================== API KEYS ====================
 ODDS_API_KEY = os.environ.get("ODDS_API_KEY", "")
 BDL_API_KEY = os.environ.get("BDL_API_KEY", "")
+BALLDONTLIE_API_KEY = os.environ.get("BALLDONTLIE_API_KEY", "") or os.environ.get("BDL_API_KEY", "")
 GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY", "")
 JWT_SECRET = os.environ.get("JWT_SECRET", "your-secret-key-here")
 
