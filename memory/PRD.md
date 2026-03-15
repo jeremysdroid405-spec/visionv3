@@ -45,6 +45,20 @@ dg_cached_board → dg_radar_picks (War Zone) → dg_goblin_vault → dg_goblin_
 
 ## What's Been Implemented
 
+### 2026-03-15: Backend Engine Deconstruction (Phase 5 - Parlay Builder Service)
+- **Engine Reduction:** 7,509 → 5,105 lines (**2,404 lines extracted, 32% reduction**)
+- **New ParlayBuilderService (809 lines):**
+  - Big Money Builder: High-probability demon parlays
+  - Goblin Recon: High-consistency goblin parlays
+  - PrizePicks 2-Team Rule compliance
+  - Game correlation and diversification logic
+  - 2-6 pick parlay generation with payout calculations
+- **Dead Code Removed:**
+  - `_evaluate_front_lines_prop()` - 216 lines (replaced by TierBuilderService)
+  - `_build_parlay_builder()` - ~400 lines (delegated to service)
+  - `_build_goblin_recon()` - ~350 lines (delegated to service)
+- **Test Results:** All 5 API endpoints verified working (Status, War Zone, Goblin Vault, Front Lines, Parlay Builder)
+
 ### 2026-03-15: Backend Engine Deconstruction (Phase 4 - Tier Builder Service)
 - **Engine Reduction:** 7,509 → 6,238 lines (**1,271 lines extracted, 16.9% reduction**)
 - **New TierBuilderService (855 lines):**
