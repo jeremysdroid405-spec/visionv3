@@ -109,6 +109,45 @@ class TestDvPServiceFunctions:
         multiplier = calculate_matchup_multiplier("C", "WAS", "AST", "over")
         assert multiplier == 1.0  # No boost
     
+    def test_get_dvp_rank(self):
+        """Test getting raw DvP rank."""
+        from services.dvp_service import get_dvp_rank
+        
+        # Washington has rank 30 for PTS (worst defense)
+        rank = get_dvp_rank("WAS", "PTS")
+        assert rank == 30
+        
+        # Unknown team returns default 15
+        rank = get_dvp_rank("XXX", "PTS")
+        assert rank == 15
+    
+    def test_get_dvp_rank_color(self):
+        """Test DvP rank color assignment."""
+        from services.dvp_service import get_dvp_rank_color
+        
+        assert get_dvp_rank_color(30) == "green"  # Bottom 5 (worst defense)
+        assert get_dvp_rank_color(25) == "green"  # Bottom 5
+        assert get_dvp_rank_color(24) == "yellow"  # Middle
+        assert get_dvp_rank_color(10) == "yellow"  # Middle
+        assert get_dvp_rank_color(9) == "red"  # Top 10 (best defense)
+        assert get_dvp_rank_color(1) == "red"  # Top 10
+    
+    def test_calculate_dvp_certainty_multiplier(self):
+        """Test DvP certainty multiplier calculation."""
+        from services.dvp_service import calculate_dvp_certainty_multiplier
+        
+        # Bottom 5 defense (rank >= 25) = +10% boost
+        assert calculate_dvp_certainty_multiplier(30) == 1.10
+        assert calculate_dvp_certainty_multiplier(25) == 1.10
+        
+        # Top 5 defense (rank <= 5) = -15% penalty
+        assert calculate_dvp_certainty_multiplier(1) == 0.85
+        assert calculate_dvp_certainty_multiplier(5) == 0.85
+        
+        # Middle = no change
+        assert calculate_dvp_certainty_multiplier(15) == 1.0
+        assert calculate_dvp_certainty_multiplier(10) == 1.0
+    
     def test_get_dvp_label(self):
         """Test DvP label generation."""
         from services.dvp_service import get_dvp_label
@@ -252,15 +291,21 @@ class TestDvPStatsConversion:
 
 @pytest.mark.asyncio
 async def test_fetch_live_dvp_fallback():
-    """Test that fetch_live_dvp falls back to static data when no API key."""
+    """Test that fetch_live_dvp returns valid rankings (live or fallback)."""
     from services.dvp_service import fetch_live_dvp, DvPDataSource
     
     rankings, source, metadata = await fetch_live_dvp()
     
-    # Without API key, should fall back to static
+    # Should return valid rankings (either live or fallback)
     assert rankings is not None
     assert len(rankings) >= 3  # At least PTS, AST, REB
-    assert source in [DvPDataSource.STATIC_FALLBACK, DvPDataSource.CACHED, DvPDataSource.MONGODB]
+    # Source can be dynamic_live (if API key works), cached, mongodb, or static-fallback
+    assert source in [
+        DvPDataSource.STATIC_FALLBACK, 
+        DvPDataSource.CACHED, 
+        DvPDataSource.MONGODB,
+        DvPDataSource.DYNAMIC_LIVE
+    ]
 
 
 @pytest.mark.asyncio

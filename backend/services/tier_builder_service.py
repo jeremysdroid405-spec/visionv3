@@ -17,7 +17,13 @@ from services.stats_service import (
     calculate_safety_level as stats_calculate_safety_level,
     calculate_bullet_level as stats_calculate_bullet_level
 )
-from services.dvp_service import calculate_dvp_modifier, get_dvp_label
+from services.dvp_service import (
+    calculate_dvp_modifier, 
+    get_dvp_label,
+    get_dvp_rank,
+    get_dvp_rank_color,
+    calculate_dvp_certainty_multiplier
+)
 from services.parlay_service import build_parlay_tickets, interleave_pick_arrays
 
 logger = logging.getLogger(__name__)
@@ -249,6 +255,9 @@ class TierBuilderService:
         opponent_team = player_data.get("opponent_abbr") or player_data.get("opponent")
         dvp_modifier = calculate_dvp_modifier(opponent_team, demon_stat)
         dvp_label = get_dvp_label(dvp_modifier)
+        dvp_rank = get_dvp_rank(opponent_team, demon_stat)
+        dvp_rank_color = get_dvp_rank_color(dvp_rank)
+        dvp_certainty_mult = calculate_dvp_certainty_multiplier(dvp_rank)
         
         # Pillar 4: AI Context (20%)
         context_shift = ai_context_cache.get(player_name, 0.5)
@@ -261,13 +270,17 @@ class TierBuilderService:
             (context_shift * 0.20)
         )
         
+        # Apply DvP certainty multiplier to the score
+        # Rank >= 25 (Bottom 5): +10% boost | Rank <= 5 (Top 5): -15% penalty
+        demon_score_adjusted = demon_score * dvp_certainty_mult
+        
         # Value gap calculation
         gap_ratio = demon_line / std_line if std_line > 0 else 1.0
         value_gap_pct = gap_ratio - 1
         gap_pct = value_gap_pct * 100
         
-        # Final EV score
-        final_ev_score = demon_score * (1 + value_gap_pct)
+        # Final EV score (using DvP-adjusted score)
+        final_ev_score = demon_score_adjusted * (1 + value_gap_pct)
         
         # Heat level
         heat_level = stats_calculate_heat_level(h10, h5, h10_over, h5_over, h10_games, h5_games)
@@ -310,10 +323,14 @@ class TierBuilderService:
             "pillar_4_context": round(context_shift, 4),
             "dvp_modifier": round(dvp_modifier, 3),
             "dvp_label": dvp_label,
+            "dvp_rank": dvp_rank,
+            "dvp_rank_color": dvp_rank_color,
+            "dvp_certainty_mult": dvp_certainty_mult,
             "opponent_team": opponent_team,
             "demon_score": round(demon_score, 4),
-            "radar_score": round(demon_score, 4),
-            "demon_score_100": round(demon_score * 100, 1),
+            "demon_score_adjusted": round(demon_score_adjusted, 4),
+            "radar_score": round(demon_score_adjusted, 4),
+            "demon_score_100": round(demon_score_adjusted * 100, 1),
             "final_ev_score": round(final_ev_score, 4),
             "final_ev_score_100": round(final_ev_score * 100, 1),
             "heat_level": heat_level,
@@ -453,6 +470,9 @@ class TierBuilderService:
         opponent_team = player_data.get("opponent_abbr") or player_data.get("opponent")
         pillar_3_dvp = calculate_dvp_modifier(opponent_team, goblin_stat)
         dvp_label = get_dvp_label(pillar_3_dvp)
+        dvp_rank = get_dvp_rank(opponent_team, goblin_stat)
+        dvp_rank_color = get_dvp_rank_color(dvp_rank)
+        dvp_certainty_mult = calculate_dvp_certainty_multiplier(dvp_rank)
         
         # Pillar 4: AI Context (15%)
         pillar_4_context = ai_context_cache.get(player_name, 0.5)
@@ -465,14 +485,17 @@ class TierBuilderService:
             (pillar_4_context * 0.15)
         )
         
+        # Apply DvP certainty multiplier
+        vault_score_adjusted = vault_score * dvp_certainty_mult
+        
         # Value gap calculation
         gap_below_std = std_line - goblin_line
         value_gap_pct = (gap_below_std / std_line) if std_line > 0 else 0
         
-        # Final EV score
-        final_ev_score = vault_score * (1 + value_gap_pct)
+        # Final EV score (using DvP-adjusted score)
+        final_ev_score = vault_score_adjusted * (1 + value_gap_pct)
         
-        vault_score_100 = vault_score * 100
+        vault_score_100 = vault_score_adjusted * 100
         final_ev_score_100 = final_ev_score * 100
         
         # Safety metrics
@@ -524,8 +547,12 @@ class TierBuilderService:
             "pillar_4_context": round(pillar_4_context, 4),
             "dvp_modifier": round(pillar_3_dvp, 3),
             "dvp_label": dvp_label,
+            "dvp_rank": dvp_rank,
+            "dvp_rank_color": dvp_rank_color,
+            "dvp_certainty_mult": dvp_certainty_mult,
             "opponent_team": opponent_team,
             "vault_score": round(vault_score, 4),
+            "vault_score_adjusted": round(vault_score_adjusted, 4),
             "vault_score_100": round(vault_score_100, 1),
             "final_ev_score": round(final_ev_score, 4),
             "final_ev_score_100": round(final_ev_score_100, 1),
@@ -682,6 +709,11 @@ class TierBuilderService:
         pillar_3 = calculate_dvp_modifier(opponent, demon_stat)
         pillar_4 = ai_context_cache.get(player_name, 0.5)
         
+        # Get DvP rank and color for badge display
+        dvp_rank = get_dvp_rank(opponent, demon_stat)
+        dvp_rank_color = get_dvp_rank_color(dvp_rank)
+        dvp_certainty_mult = calculate_dvp_certainty_multiplier(dvp_rank)
+        
         frontlines_score = (
             (pillar_1 * 0.40) +
             (pillar_2 * 0.20) +
@@ -689,10 +721,13 @@ class TierBuilderService:
             (pillar_4 * 0.20)
         )
         
+        # Apply DvP certainty multiplier
+        frontlines_score_adjusted = frontlines_score * dvp_certainty_mult
+        
         # Value gap
         gap_ratio = demon_line / std_line if std_line > 0 else 1.0
         value_gap_pct = gap_ratio - 1
-        final_ev = frontlines_score * (1 + value_gap_pct)
+        final_ev = frontlines_score_adjusted * (1 + value_gap_pct)
         
         bullet_level = stats_calculate_bullet_level(h10, h5, h10_over, h5_over, h10_games, h5_games)
         
@@ -726,9 +761,13 @@ class TierBuilderService:
             "pillar_4_context": round(pillar_4, 4),
             "dvp_modifier": round(pillar_3, 3),
             "dvp_label": get_dvp_label(pillar_3),
+            "dvp_rank": dvp_rank,
+            "dvp_rank_color": dvp_rank_color,
+            "dvp_certainty_mult": dvp_certainty_mult,
             "opponent_team": opponent,
             "frontlines_score": round(frontlines_score, 4),
-            "frontlines_score_100": round(frontlines_score * 100, 1),
+            "frontlines_score_adjusted": round(frontlines_score_adjusted, 4),
+            "frontlines_score_100": round(frontlines_score_adjusted * 100, 1),
             "final_ev_score": round(final_ev, 4),
             "final_ev_score_100": round(final_ev * 100, 1),
             "hit_probability": round(h10 * 100, 1),
@@ -796,6 +835,11 @@ class TierBuilderService:
         pillar_3 = calculate_dvp_modifier(opponent, goblin_stat)
         pillar_4 = ai_context_cache.get(player_name, 0.5)
         
+        # Get DvP rank and color for badge display
+        dvp_rank = get_dvp_rank(opponent, goblin_stat)
+        dvp_rank_color = get_dvp_rank_color(dvp_rank)
+        dvp_certainty_mult = calculate_dvp_certainty_multiplier(dvp_rank)
+        
         frontlines_score = (
             (pillar_1 * 0.40) +
             (pillar_2 * 0.20) +
@@ -803,10 +847,13 @@ class TierBuilderService:
             (pillar_4 * 0.20)
         )
         
+        # Apply DvP certainty multiplier
+        frontlines_score_adjusted = frontlines_score * dvp_certainty_mult
+        
         # Value gap
         gap_below_std = std_line - goblin_line
         value_gap_pct = (gap_below_std / std_line) if std_line > 0 else 0
-        final_ev = frontlines_score * (1 + value_gap_pct)
+        final_ev = frontlines_score_adjusted * (1 + value_gap_pct)
         
         bullet_level = stats_calculate_bullet_level(h10, h5, h10_over, h5_over, h10_games, h5_games)
         
@@ -840,9 +887,13 @@ class TierBuilderService:
             "pillar_4_context": round(pillar_4, 4),
             "dvp_modifier": round(pillar_3, 3),
             "dvp_label": get_dvp_label(pillar_3),
+            "dvp_rank": dvp_rank,
+            "dvp_rank_color": dvp_rank_color,
+            "dvp_certainty_mult": dvp_certainty_mult,
             "opponent_team": opponent,
             "frontlines_score": round(frontlines_score, 4),
-            "frontlines_score_100": round(frontlines_score * 100, 1),
+            "frontlines_score_adjusted": round(frontlines_score_adjusted, 4),
+            "frontlines_score_100": round(frontlines_score_adjusted * 100, 1),
             "final_ev_score": round(final_ev, 4),
             "final_ev_score_100": round(final_ev * 100, 1),
             "hit_probability": round(h10 * 100, 1),

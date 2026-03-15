@@ -219,11 +219,16 @@ Examples of good insights:
         spread: float = 0,
         is_home: bool = True,
         is_back_to_back: bool = False,
-        injured_teammates: List[str] = None
+        injured_teammates: List[str] = None,
+        # DvP parameters
+        opponent_team: str = "",
+        dvp_rank: int = 15,
+        position: str = ""
     ) -> Dict[str, Any]:
         """
         Generate a single AI insight for a player prop.
         Now includes CONFLICT FINDER logic to detect anomalies.
+        Now includes mandatory DvP defensive ranking context.
         """
         if not EMERGENT_LLM_KEY:
             return {
@@ -235,6 +240,10 @@ Examples of good insights:
         try:
             # Determine player classification
             player_type = "DEMON (High Payout)" if is_demon else "GOBLIN (High Safety)" if is_goblin else "Standard"
+            
+            # Build DvP friction context sentence (MANDATORY)
+            friction_level = "Low" if dvp_rank >= 25 else "High" if dvp_rank <= 5 else "Medium"
+            dvp_context_sentence = f"The {opponent_team or 'opponent'} are currently ranked #{dvp_rank} against {position or 'this position'} in {stat_type.upper()}, creating a {friction_level} friction environment for this line."
             
             # RUN THE CONFLICT FINDER
             conflicts = self._detect_conflicts(
@@ -278,13 +287,18 @@ TEAM: {team}
 PROP TYPE: {stat_type.upper()}
 CLASSIFICATION: {player_type}
 CURRENT LINE: {current_line}
+POSITION: {position or 'N/A'}
 
 === PERFORMANCE DATA ===
 Season Average: {f'{season_avg:.1f}' if season_avg > 0 else 'N/A'}
 L10 Hit Rate: {l10_rate}%
 L5 Hit Rate: {l5_rate if l5_rate > 0 else l10_rate}%
 
+=== DEFENSIVE MATCHUP (DvP) ===
+{dvp_context_sentence}
+
 === GAME CONTEXT ===
+Opponent: {opponent_team or 'TBD'}
 Pace Factor: {'+' if pace_factor > 1 else ''}{((pace_factor - 1) * 100):.0f}% vs league avg
 Fatigue: {fatigue} {'(BACK-TO-BACK)' if is_back_to_back else ''}
 Usage Bump: {'+' if usage_bump > 0 else ''}{usage_bump:.0f}%
@@ -295,7 +309,7 @@ Volatility: {volatility}
 {injury_note}
 {conflict_context}
 
-Generate a 1-sentence VISION INSIGHT. Do NOT say "standard projection." Find the story."""
+Generate a 1-sentence VISION INSIGHT. You MUST include the DvP matchup context (friction level) in your insight. Do NOT say "standard projection." Find the story."""
 
             # Initialize Claude Sonnet 4.5 via Emergent
             chat = LlmChat(
@@ -321,6 +335,8 @@ Generate a 1-sentence VISION INSIGHT. Do NOT say "standard projection." Find the
                 "has_high_conflict": has_high_conflict,
                 "conflicts_count": len(conflicts),
                 "conflict_types": [c["type"] for c in conflicts],
+                "dvp_context": dvp_context_sentence,
+                "dvp_rank": dvp_rank,
                 "generated_at": datetime.now(timezone.utc).isoformat()
             }
             

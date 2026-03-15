@@ -1,8 +1,35 @@
 import React, { memo } from 'react';
 import { Card } from '../ui/card';
-import { Zap } from 'lucide-react';
+import { Zap, Shield } from 'lucide-react';
 import { DemonIcon, GoblinIcon, VisionBadge } from './Icons';
 import { NBA_HEADSHOT_URL } from './constants';
+
+// DvP Badge Component - Color coded defensive ranking badge
+const DvPBadge = memo(({ rank, color }) => {
+  if (!rank) return null;
+  
+  const colorClasses = {
+    green: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40',
+    yellow: 'bg-amber-500/20 text-amber-400 border-amber-500/40',
+    red: 'bg-red-500/20 text-red-400 border-red-500/40'
+  };
+  
+  const colorClass = colorClasses[color] || colorClasses.yellow;
+  const label = rank >= 25 ? 'Soft' : rank <= 9 ? 'Hard' : 'Avg';
+  
+  return (
+    <div 
+      className={`flex items-center gap-0.5 px-1 py-0.5 rounded text-[9px] font-medium border ${colorClass}`}
+      title={`DvP Rank #${rank}: ${rank >= 25 ? 'Favorable (Bottom 5 Defense)' : rank <= 9 ? 'Tough (Top 10 Defense)' : 'Neutral'}`}
+      data-testid="dvp-badge"
+    >
+      <Shield className="w-2 h-2" />
+      <span>#{rank}</span>
+    </div>
+  );
+});
+
+DvPBadge.displayName = 'DvPBadge';
 
 // Theme color configurations
 const THEME_COLORS = {
@@ -251,6 +278,7 @@ export const PickCard = memo(({
             <div className="flex items-center gap-1 text-[10px] text-zinc-500">
               <span className="font-mono">{pick.team || '---'}</span>
               <span>· {pick.stat_type}</span>
+              {pick.dvp_rank && <DvPBadge rank={pick.dvp_rank} color={pick.dvp_rank_color} />}
             </div>
           </div>
         </div>

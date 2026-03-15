@@ -677,6 +677,56 @@ def _get_defensive_rank(opponent_team: str, stat_type: str) -> Optional[int]:
     return None
 
 
+def get_dvp_rank(opponent_team: str, stat_type: str) -> int:
+    """
+    Get defensive rank for an opponent/stat combination.
+    
+    Returns:
+        int: 1-30 rank (1 = best defense, 30 = worst defense)
+        Returns 15 (neutral) if data not available
+    """
+    rank = _get_defensive_rank(opponent_team, stat_type)
+    return rank if rank is not None else 15
+
+
+def get_dvp_rank_color(rank: int) -> str:
+    """
+    Get color code for DvP rank badge.
+    
+    Returns:
+        str: 'green' (25-30, worst defense = best matchup),
+             'yellow' (10-24, neutral),
+             'red' (1-9, best defense = worst matchup)
+    """
+    if rank >= 25:
+        return "green"
+    elif rank >= 10:
+        return "yellow"
+    else:
+        return "red"
+
+
+def calculate_dvp_certainty_multiplier(rank: int) -> float:
+    """
+    Calculate the multiplier to apply to Statistical_Certainty based on DvP rank.
+    
+    Args:
+        rank: Opponent defensive rank (1-30)
+    
+    Returns:
+        float: Multiplier to apply
+            - Rank >= 25 (Bottom 5 Defense): +10% boost (1.10)
+            - Rank <= 5 (Top 5 Defense): -15% penalty (0.85)
+            - Else: No change (1.0)
+    """
+    if rank >= 25:  # Bottom 5 defense = best matchup
+        return 1.10  # +10% boost
+    elif rank <= 5:  # Top 5 defense = worst matchup
+        return 0.85  # -15% penalty
+    else:
+        return 1.0  # No change
+
+
 # ==================== SCHEDULED REFRESH ====================
 
 async def scheduled_dvp_refresh():

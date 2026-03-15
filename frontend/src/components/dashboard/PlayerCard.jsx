@@ -6,14 +6,44 @@
  * DATA PIPES (v4.0):
  * - Photos & Stats: From nba_master_hub_2026 via player_id
  * - Odds/Lines: From daily_slate_master (via cached_board)
+ * - DvP Rank: From dvp_service via tier builders
  */
 
 import React, { memo } from 'react';
-import { Flame, ChevronRight } from 'lucide-react';
+import { Flame, ChevronRight, Shield } from 'lucide-react';
 import { 
   PlayerPhoto, HeatIndicator, StatBadge, HitRateDisplay, 
   LockedBadge, VisionText, formatStatType, getTeamColor 
 } from '../../lib/GlobalUtilities';
+
+// DvP Rank Badge Component - Color coded based on defensive ranking
+const DvPBadge = memo(({ rank, color }) => {
+  if (!rank) return null;
+  
+  // Color mapping: green (25-30), yellow (10-24), red (1-9)
+  const colorClasses = {
+    green: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40',
+    yellow: 'bg-amber-500/20 text-amber-400 border-amber-500/40',
+    red: 'bg-red-500/20 text-red-400 border-red-500/40'
+  };
+  
+  const colorClass = colorClasses[color] || colorClasses.yellow;
+  const label = rank >= 25 ? 'Soft' : rank <= 9 ? 'Hard' : 'Avg';
+  
+  return (
+    <div 
+      className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium border ${colorClass}`}
+      title={`Defense vs Position Rank: #${rank} (${rank >= 25 ? 'Favorable - Bottom 5 Defense' : rank <= 9 ? 'Tough - Top 10 Defense' : 'Neutral'})`}
+      data-testid="dvp-badge"
+    >
+      <Shield className="w-2.5 h-2.5" />
+      <span>#{rank}</span>
+      <span className="opacity-70">{label}</span>
+    </div>
+  );
+});
+
+DvPBadge.displayName = 'DvPBadge';
 
 const PlayerCard = memo(({ 
   pick, 
@@ -52,7 +82,13 @@ const PlayerCard = memo(({
     hit_probability,
     price,
     vision_text,
-    locked
+    locked,
+    
+    // DvP (Defense vs Position) data
+    dvp_rank,
+    dvp_rank_color,
+    dvp_label,
+    opponent_team
   } = pick;
   
   // Use headshot_url first (from hub), then photo_url
@@ -76,7 +112,10 @@ const PlayerCard = memo(({
         <PlayerPhoto photoUrl={displayPhotoUrl} playerName={player_name} size="sm" />
         <div className="flex-1 min-w-0">
           <p className="text-xs font-medium text-white truncate">{player_name}</p>
-          <p className={`text-[10px] ${accentColor}`}>{stat_type} {direction} {displayLine}</p>
+          <div className="flex items-center gap-1.5">
+            <p className={`text-[10px] ${accentColor}`}>{stat_type} {direction} {displayLine}</p>
+            {dvp_rank && <DvPBadge rank={dvp_rank} color={dvp_rank_color} />}
+          </div>
         </div>
         {heat_level >= 4 && <Flame className="w-3 h-3 text-orange-400" />}
       </div>
@@ -97,6 +136,7 @@ const PlayerCard = memo(({
           <div className="flex items-center gap-2">
             <p className="text-sm font-bold text-white truncate">{player_name}</p>
             <span className="text-[10px] text-zinc-500">{team}</span>
+            {dvp_rank && <DvPBadge rank={dvp_rank} color={dvp_rank_color} />}
           </div>
           <div className="flex items-center gap-2 mt-0.5">
             <StatBadge stat={stat_type} line={displayLine} direction={direction} isDemon={isDemon} isGoblin={!isDemon} />
@@ -125,9 +165,13 @@ const PlayerCard = memo(({
             <h3 className="text-sm font-bold text-white truncate">{player_name}</h3>
             <HeatIndicator level={heat_level} showLabel />
           </div>
-          <p className="text-xs text-zinc-500">{team}</p>
-          <div className="mt-1">
+          <div className="flex items-center gap-2">
+            <p className="text-xs text-zinc-500">{team}</p>
+            {opponent_team && <span className="text-xs text-zinc-600">vs {opponent_team}</span>}
+          </div>
+          <div className="flex items-center gap-2 mt-1">
             <StatBadge stat={stat_type} line={displayLine} direction={direction} isDemon={isDemon} isGoblin={!isDemon} />
+            {dvp_rank && <DvPBadge rank={dvp_rank} color={dvp_rank_color} />}
           </div>
         </div>
       </div>
