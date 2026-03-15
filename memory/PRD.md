@@ -51,16 +51,29 @@ dg_cached_board → dg_radar_picks (War Zone) → dg_goblin_vault → dg_goblin_
 - **Entry Point Update:** Added route registration in `server.py` startup:
   - `from routes import register_all_routes`
   - Modular routes now registered from `/routes/` directory with `/api` prefix
-- **Routes Module Updated:**
-  - `/routes/__init__.py` now includes routers with `/api` prefix for frontend compatibility
-  - Removed duplicate war-zone, goblin-vault, front-lines from picks.py (server.py versions have game lock logic)
+- **The Proxy Shift - Engine Deconstruction:**
+  - Created `services/stats_service.py` (221 lines) with:
+    - `calculate_hit_rates()` - L5/L10/Season hit rate calculation
+    - `calculate_heat_level()` - Demon flame level (0-5)
+    - `calculate_safety_level()` - Goblin shield level (0-5)
+    - `calculate_bullet_level()` - Front Lines bullet level (1-6)
+    - `calculate_volatility()` - Performance variance calculation
+  - Updated engine methods to proxy to services:
+    - `_calculate_hit_rates()` → `stats_service.calculate_hit_rates()`
+    - `_calculate_heat_level()` → `stats_service.calculate_heat_level()`
+    - `_calculate_safety_level()` → `stats_service.calculate_safety_level()`
+    - `_calculate_bullet_level()` → `stats_service.calculate_bullet_level()`
+    - `calculate_dvp_modifier()` → `dvp_service.calculate_dvp_modifier()`
+  - Removed ~170 lines of duplicate logic from engine
 - **Environment Variables Audit:**
   - API keys (ODDS_API_KEY, BDL_API_KEY, GOOGLE_API_KEY) read from `.env` via `os.environ.get()`
   - Centralized config in `/backend/config/settings.py` (DB settings, collection names, DVP rankings)
 - **Current Architecture Status:**
-  - Modular routes: `/backend/routes/` (picks, parlays, board, sync, intel, board_intel)
-  - Services: `/backend/services/` (dvp_service, parlay_service, data_scraper, social_scout)
-  - server.py still handles main endpoints with game lock logic (to be progressively migrated)
+  - Modular routes: `/backend/routes/` (picks, parlays, board, intel, board_intel)
+  - Services: `/backend/services/` (~1,200 lines total)
+    - dvp_service.py, stats_service.py, parlay_service.py, data_scraper.py, social_scout.py
+  - Engine: 8,083 lines (down from 8,252)
+  - server.py handles core endpoints with game lock logic
 
 ### 2026-03-15: P0 PickCard UI Enhancement - L5/L10/Season/AI Confidence
 - **Backend Fix:** Updated `get_war_zone()`, `get_goblin_vault()`, and `get_front_lines()` methods in `demon_goblin_engine.py`

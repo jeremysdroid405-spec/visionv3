@@ -49,6 +49,17 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 # Data Integrity Module
 from data_integrity import DataIntegrityVerifier, create_verified_insight
 
+# Services - Extracted logic for modularity
+from services.stats_service import (
+    calculate_hit_rates as stats_calculate_hit_rates,
+    calculate_heat_level as stats_calculate_heat_level,
+    calculate_safety_level as stats_calculate_safety_level,
+    calculate_bullet_level as stats_calculate_bullet_level,
+    calculate_volatility as stats_calculate_volatility,
+    STAT_FIELD_MAP
+)
+from services.dvp_service import calculate_dvp_modifier as dvp_calculate_modifier
+
 # Payout Calculation Engine
 from payout_engine import (
     calculate_payout_from_picks,
@@ -567,59 +578,14 @@ STAT_TYPE_MAP = {
     "player_rebounds_assists": "R+A",
 }
 
+# DVP calculation is now handled by services.dvp_service (imported at top)
+# Keeping this as a proxy for backward compatibility
 def calculate_dvp_modifier(opponent_team: str, stat_type: str) -> float:
     """
     Calculate DvP modifier based on opponent's defensive ranking.
-    
-    Returns:
-        float: 0.0 to 1.0 where:
-        - 0.0-0.3 = TOUGH matchup (top 10 defense)
-        - 0.4-0.6 = NEUTRAL matchup (11-20 defense)
-        - 0.7-1.0 = FAVORABLE matchup (21-30 defense, worst defenses)
+    PROXY: Delegates to services.dvp_service.calculate_dvp_modifier
     """
-    if not opponent_team or not stat_type:
-        return 0.5  # Neutral default
-    
-    # Normalize stat type
-    stat_key = STAT_TYPE_MAP.get(stat_type, stat_type.upper())
-    
-    # Handle combo stats
-    if stat_key in ["PRA", "P+R", "P+A", "R+A"]:
-        components = {
-            "PRA": ["PTS", "REB", "AST"],
-            "P+R": ["PTS", "REB"],
-            "P+A": ["PTS", "AST"],
-            "R+A": ["REB", "AST"],
-        }
-        comp_list = components.get(stat_key, [])
-        if not comp_list:
-            return 0.5
-        
-        # Average the rankings of component stats
-        rankings = []
-        for comp in comp_list:
-            if comp in DVP_RANKINGS_2024_25 and opponent_team in DVP_RANKINGS_2024_25[comp]:
-                rankings.append(DVP_RANKINGS_2024_25[comp][opponent_team])
-        
-        if not rankings:
-            return 0.5
-        
-        avg_rank = sum(rankings) / len(rankings)
-        # Convert ranking to modifier (rank 30 = 1.0 best, rank 1 = 0.0 worst)
-        return round((avg_rank - 1) / 29, 3)
-    
-    # Single stat lookup
-    if stat_key not in DVP_RANKINGS_2024_25:
-        return 0.5
-    
-    rankings = DVP_RANKINGS_2024_25[stat_key]
-    if not rankings or opponent_team not in rankings:
-        return 0.5
-    
-    rank = rankings[opponent_team]
-    # Convert ranking to modifier (rank 30 = 1.0 best, rank 1 = 0.0 worst)
-    modifier = (rank - 1) / 29
-    return round(modifier, 3)
+    return dvp_calculate_modifier(opponent_team, stat_type)
 
 
 def get_dvp_label(modifier: float) -> str:
@@ -2667,63 +2633,9 @@ class DemonGoblinEngine:
     def _calculate_hit_rates(self, player_stats: Dict, stat_type: str, line_value: float) -> Dict[str, Any]:
         """
         Calculate hit rates for a specific line.
-        
-        Returns:
-        - l5: Last 5 games hit rate
-        - l10: Last 10 games hit rate  
-        - season: Full season hit rate
+        PROXY: Delegates to stats_service.calculate_hit_rates
         """
-        games = player_stats.get("games", [])
-        if not games:
-            return {}
-        
-        # Map stat type to BallDontLie field
-        stat_field_map = {
-            "PTS": "pts",
-            "REB": "reb",
-            "AST": "ast",
-            "3PM": "fg3m",
-            "BLK": "blk",
-            "STL": "stl",
-            "TO": "turnover",
-            "P+R": ["pts", "reb"],
-            "P+A": ["pts", "ast"],
-            "R+A": ["reb", "ast"],
-            "PRA": ["pts", "reb", "ast"]
-        }
-        
-        fields = stat_field_map.get(stat_type)
-        if not fields:
-            return {}
-        
-        # Sort games by date (most recent first)
-        sorted_games = sorted(games, key=lambda g: g.get("game", {}).get("date", ""), reverse=True)
-        
-        def get_stat_value(game):
-            if isinstance(fields, list):
-                return sum(game.get(f, 0) or 0 for f in fields)
-            return game.get(fields, 0) or 0
-        
-        def calc_hit_rate(game_list):
-            if not game_list:
-                return {"hit_rate": 0, "games_over": 0, "total_games": 0, "avg": 0}
-            
-            values = [get_stat_value(g) for g in game_list]
-            games_over = sum(1 for v in values if v >= line_value)
-            avg = sum(values) / len(values) if values else 0
-            
-            return {
-                "hit_rate": games_over / len(game_list) if game_list else 0,
-                "games_over": games_over,
-                "total_games": len(game_list),
-                "avg": round(avg, 1)
-            }
-        
-        return {
-            "l5": calc_hit_rate(sorted_games[:5]),
-            "l10": calc_hit_rate(sorted_games[:10]),
-            "season": calc_hit_rate(sorted_games)
-        }
+        return stats_calculate_hit_rates(player_stats, stat_type, line_value)
     
     async def _build_cached_board(self, props: List[Dict], sync_time: datetime):
         """
@@ -3436,44 +3348,10 @@ class DemonGoblinEngine:
     
     def _calculate_heat_level(self, h10: float, h5: float, h10_over: int, h5_over: int, h10_games: int, h5_games: int) -> int:
         """
-        Calculate Heat Level (1-5 Flames) based on performance:
-        - 5 Flames: L10 >= 90% (9-10/10 games hit) - FIRE
-        - 4 Flames: L10 >= 80% OR on perfect 5-game streak - HOT
-        - 3 Flames: L10 >= 70% OR L5 >= 80% - WARM
-        - 2 Flames: L10 >= 60% - MILD
-        - 1 Flame:  L10 >= 50% - COOL
-        - 0 Flames: L10 < 50% - COLD
+        Calculate Heat Level (1-5 Flames) based on performance.
+        PROXY: Delegates to stats_service.calculate_heat_level
         """
-        # 5 Flames: 9-10 out of 10 games hit
-        if h10_games >= 10 and h10_over >= 9:
-            return 5
-        if h10 >= 0.90:
-            return 5
-        
-        # 4 Flames: 80%+ L10 OR perfect 5-game streak
-        if h10 >= 0.80:
-            return 4
-        if h5_games >= 5 and h5_over == 5:  # Perfect last 5
-            return 4
-        
-        # 3 Flames: 70%+ L10 OR 80%+ L5 (hot streak)
-        if h10 >= 0.70:
-            return 3
-        if h5 >= 0.80:
-            return 3
-        if h5_games >= 3 and h5_over >= 3:  # 3+ game streak
-            return 3
-        
-        # 2 Flames: 60%+ L10
-        if h10 >= 0.60:
-            return 2
-        
-        # 1 Flame: 50%+ L10
-        if h10 >= 0.50:
-            return 1
-        
-        # 0 Flames: Cold
-        return 0
+        return stats_calculate_heat_level(h10, h5, h10_over, h5_over, h10_games, h5_games)
     
     def _apply_dynamic_threshold(self, candidates: List[Dict]) -> List[Dict]:
         """
@@ -3755,42 +3633,10 @@ class DemonGoblinEngine:
     
     def _calculate_safety_level(self, h10: float, h5: float, h10_over: int, h5_over: int, h10_games: int, h5_games: int) -> int:
         """
-        Calculate Safety Level (1-5 Shields) based on consistency:
-        - 5 Shields: Perfect 10/10 or 95%+ hit rate - FORTRESS
-        - 4 Shields: 90%+ hit rate OR perfect 5/5 - VAULT
-        - 3 Shields: 85%+ hit rate - SAFE
-        - 2 Shields: 80%+ hit rate - RELIABLE
-        - 1 Shield:  70%+ hit rate - MODERATE
-        - 0 Shields: < 70% hit rate - RISKY
+        Calculate Safety Level (1-5 Shields) based on consistency.
+        PROXY: Delegates to stats_service.calculate_safety_level
         """
-        # 5 Shields: Perfect 10/10 or 95%+
-        if h10_games >= 10 and h10_over == 10:
-            return 5
-        if h10 >= 0.95:
-            return 5
-        
-        # 4 Shields: 90%+ OR perfect 5/5
-        if h10 >= 0.90:
-            return 4
-        if h5_games >= 5 and h5_over == 5:
-            return 4
-        
-        # 3 Shields: 85%+
-        if h10 >= 0.85:
-            return 3
-        if h5 >= 0.90:
-            return 3
-        
-        # 2 Shields: 80%+
-        if h10 >= 0.80:
-            return 2
-        
-        # 1 Shield: 70%+
-        if h10 >= 0.70:
-            return 1
-        
-        # 0 Shields: Below 70%
-        return 0
+        return stats_calculate_safety_level(h10, h5, h10_over, h5_over, h10_games, h5_games)
     
     async def _build_front_lines(self, players_dict: Dict[str, Dict], sync_time: datetime):
         """
@@ -4153,25 +3999,10 @@ class DemonGoblinEngine:
     
     def _calculate_bullet_level(self, h10: float, h5: float, h10_over: int, h5_over: int, h10_games: int, h5_games: int) -> int:
         """
-        Calculate Bullet Level (1-6 Bullets) based on reliability:
-        - 6 Bullets: 85%+ hit rate - ELITE
-        - 5 Bullets: 80%+ hit rate - STRONG
-        - 4 Bullets: 75%+ hit rate - SOLID
-        - 3 Bullets: 70%+ hit rate - GOOD
-        - 2 Bullets: 65%+ hit rate - FAIR
-        - 1 Bullet:  60%+ hit rate - BASE
+        Calculate Bullet Level (1-6 Bullets) based on reliability.
+        PROXY: Delegates to stats_service.calculate_bullet_level
         """
-        if h10 >= 0.85:
-            return 6
-        if h10 >= 0.80:
-            return 5
-        if h10 >= 0.75:
-            return 4
-        if h10 >= 0.70:
-            return 3
-        if h10 >= 0.65:
-            return 2
-        return 1
+        return stats_calculate_bullet_level(h10, h5, h10_over, h5_over, h10_games, h5_games)
 
     async def _build_parlay_builder(self, players_dict: Dict[str, Dict], sync_time: datetime):
         """

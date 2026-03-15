@@ -1,5 +1,10 @@
 """Services module initialization"""
 from .dvp_service import calculate_dvp_modifier, get_dvp_label, get_full_dvp_analysis
+from .stats_service import (
+    calculate_hit_rates, calculate_heat_level, calculate_safety_level,
+    calculate_bullet_level, calculate_volatility, calculate_season_average,
+    STAT_FIELD_MAP
+)
 from .parlay_service import (
     build_parlay_tickets, validate_ticket, apply_parlay_matrix,
     calculate_parlay_probability, calculate_payout_multiplier,
@@ -11,6 +16,6 @@ from .data_scraper import (
 )
 from .social_scout import (
     SocialSignalAnalyzer, get_team_pace, calculate_pace_factor,
-    get_high_usage_players, calculate_usage_bump, calculate_volatility,
+    get_high_usage_players, calculate_usage_bump, calculate_volatility as social_calculate_volatility,
     generate_insight_summary, calculate_confidence_rating
 )
