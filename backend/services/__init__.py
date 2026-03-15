@@ -48,3 +48,4 @@ from .roster_service import RosterService
 from .photo_service import PhotoService
 from .props_service import PropsService
 from .sync_service import SyncService
+from .tier_builder_service import TierBuilderService

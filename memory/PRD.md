@@ -45,6 +45,22 @@ dg_cached_board → dg_radar_picks (War Zone) → dg_goblin_vault → dg_goblin_
 
 ## What's Been Implemented
 
+### 2026-03-15: Backend Engine Deconstruction (Phase 4 - Tier Builder Service)
+- **Engine Reduction:** 7,509 → 6,238 lines (**1,271 lines extracted, 16.9% reduction**)
+- **New TierBuilderService (855 lines):**
+  - Complete 4-Pillar scoring implementation for all tiers
+  - War Zone: `build_war_zone()` - high-ceiling demon plays
+  - Safe Haven: `build_goblin_vault()` - high-consistency goblin plays
+  - Front Lines: `build_front_lines()` - balanced mix with 50/50 split
+  - All scoring formulas: ceiling consistency, Vegas implied, DvP matchup, AI context
+- **Methods Proxied in Engine:**
+  - `_build_war_zone()` → TierBuilderService
+  - `_build_goblin_vault()` → TierBuilderService
+  - `_build_front_lines()` → TierBuilderService
+- **Total Services:** 5,241 lines of modular, reusable code
+- **Total Repositories:** 708 lines of database abstraction
+- **Test Results:** All 3 tier endpoints verified working (10 picks each)
+
 ### 2026-03-15: Backend Engine Deconstruction (Phase 3 - Repository Pattern & Service Proxies)
 - **Engine Reduction:** 7,509 → 6,649 lines (**860 lines extracted, 11.5% reduction**)
 - **Repository Layer Created (708 lines):**
