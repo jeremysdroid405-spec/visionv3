@@ -69,6 +69,13 @@ from services.insights_service import (
     get_high_usage_players as insights_get_high_usage,
     calculate_usage_bump_simple as insights_calculate_usage_bump
 )
+from services.utils_service import (
+    normalize_team_name as utils_normalize_team,
+    sanitize_player_name as utils_sanitize_player,
+    create_composite_key as utils_create_key,
+    get_current_date as utils_get_current_date,
+    get_player_photo_url as utils_get_player_photo
+)
 
 # Payout Calculation Engine
 from payout_engine import (
@@ -171,49 +178,8 @@ GOBLIN_HIT_RATE_WARNING = 0.90  # 90% hit rate
 
 # ==================== NBA TEAM MAPPING ====================
 # Full team names to 3-letter abbreviations
-NBA_TEAM_MAP = {
-    # Atlantic Division
-    "Boston Celtics": "BOS",
-    "Brooklyn Nets": "BKN",
-    "New York Knicks": "NYK",
-    "Philadelphia 76ers": "PHI",
-    "Toronto Raptors": "TOR",
-    # Central Division
-    "Chicago Bulls": "CHI",
-    "Cleveland Cavaliers": "CLE",
-    "Detroit Pistons": "DET",
-    "Indiana Pacers": "IND",
-    "Milwaukee Bucks": "MIL",
-    # Southeast Division
-    "Atlanta Hawks": "ATL",
-    "Charlotte Hornets": "CHA",
-    "Miami Heat": "MIA",
-    "Orlando Magic": "ORL",
-    "Washington Wizards": "WAS",
-    # Northwest Division
-    "Denver Nuggets": "DEN",
-    "Minnesota Timberwolves": "MIN",
-    "Oklahoma City Thunder": "OKC",
-    "Portland Trail Blazers": "POR",
-    "Utah Jazz": "UTA",
-    # Pacific Division
-    "Golden State Warriors": "GSW",
-    "LA Clippers": "LAC",
-    "Los Angeles Clippers": "LAC",
-    "Los Angeles Lakers": "LAL",
-    "LA Lakers": "LAL",
-    "Phoenix Suns": "PHX",
-    "Sacramento Kings": "SAC",
-    # Southwest Division
-    "Dallas Mavericks": "DAL",
-    "Houston Rockets": "HOU",
-    "Memphis Grizzlies": "MEM",
-    "New Orleans Pelicans": "NOP",
-    "San Antonio Spurs": "SAS",
-}
-
-# Reverse map for lookups
-NBA_TEAM_ABBREV_TO_FULL = {v: k for k, v in NBA_TEAM_MAP.items()}
+# NBA Team mapping is now in services.utils_service
+from services.utils_service import NBA_TEAM_MAP, NBA_TEAM_ABBREV_TO_FULL, NAME_ALIASES
 
 # ==================== KNOWN PLAYER-TEAM MAPPING ====================
 # Hardcoded for star players to ensure correct team assignment
@@ -312,33 +278,7 @@ KNOWN_PLAYER_TEAMS = {
 }
 
 # ==================== NAME NORMALIZATION ====================
-# Common name variations/nicknames to canonical names
-NAME_ALIASES = {
-    # First name variations
-    "nic": "nicolas",
-    "nick": "nicolas", 
-    "mike": "michael",
-    "will": "william",
-    "chris": "christopher",
-    "rob": "robert",
-    "bob": "robert",
-    "dan": "daniel",
-    "danny": "daniel",
-    "tony": "anthony",
-    "alex": "alexandre",
-    "tj": "t.j.",
-    "pj": "p.j.",
-    "cj": "c.j.",
-    "jt": "j.t.",
-    "aj": "a.j.",
-    "rj": "r.j.",
-    "dj": "d.j.",
-    "gg": "g.g.",
-    # Common last name issues
-    "gilgeous alexander": "gilgeous-alexander",
-    "porter jr": "porter jr.",
-    "payton ii": "payton ii",
-}
+# Name aliases are now imported from services.utils_service
 
 INJURY_KEYWORDS = [
     "injury", "injured", "out", "questionable", "doubtful", "probable",
@@ -348,124 +288,8 @@ INJURY_KEYWORDS = [
 ]
 
 # ==================== NBA PLAYER ID MAPPING ====================
-# NBA CDN headshot URL format: https://cdn.nba.com/headshots/nba/latest/1040x760/{nba_id}.png
-# These IDs are from the official NBA stats API
-
-NBA_PLAYER_IDS = {
-    # Superstars
-    "Shai Gilgeous-Alexander": 1628983,
-    "Giannis Antetokounmpo": 203507,
-    "Luka Doncic": 1629029,
-    "Nikola Jokic": 203999,
-    "Joel Embiid": 203954,
-    "LeBron James": 2544,
-    "Stephen Curry": 201939,
-    "Kevin Durant": 201142,
-    "Jayson Tatum": 1628369,
-    "Anthony Davis": 203076,
-    "Damian Lillard": 203081,
-    "Devin Booker": 1626164,
-    "Anthony Edwards": 1630162,
-    "Ja Morant": 1629630,
-    "Donovan Mitchell": 1628378,
-    "Trae Young": 1629027,
-    "Kyrie Irving": 202681,
-    "Jimmy Butler": 202710,
-    "Paul George": 202331,
-    "Kawhi Leonard": 202695,
-    "Zion Williamson": 1629627,
-    "Jaylen Brown": 1627759,
-    "Domantas Sabonis": 1627734,
-    "De'Aaron Fox": 1628368,
-    "LaMelo Ball": 1630163,
-    "Karl-Anthony Towns": 1626157,
-    "Bam Adebayo": 1628389,
-    "Cade Cunningham": 1630595,
-    "Paolo Banchero": 1631094,
-    "Victor Wembanyama": 1641705,
-    "Tyrese Haliburton": 1630169,
-    "Tyrese Maxey": 1630178,
-    "Jalen Brunson": 1628973,
-    "Scottie Barnes": 1630567,
-    "Franz Wagner": 1630532,
-    "Alperen Sengun": 1630578,
-    "Evan Mobley": 1630596,
-    "Desmond Bane": 1630217,
-    "Anfernee Simons": 1629014,
-    "Mikal Bridges": 1628969,
-    "OG Anunoby": 1628384,
-    "Tyler Herro": 1629639,
-    "Jaren Jackson Jr.": 1628991,
-    "DeMar DeRozan": 201942,
-    "Bradley Beal": 203078,
-    "Zach LaVine": 203897,
-    "Julius Randle": 203944,
-    "Lauri Markkanen": 1628374,
-    "Dejounte Murray": 1627749,
-    "Fred VanVleet": 1627832,
-    "Pascal Siakam": 1627783,
-    "Khris Middleton": 203114,
-    "Brandon Ingram": 1627742,
-    "CJ McCollum": 203468,
-    "Derrick White": 1628401,
-    "Jrue Holiday": 201950,
-    "Draymond Green": 203110,
-    "Chris Paul": 101108,
-    "Russell Westbrook": 201566,
-    "James Harden": 201935,
-    "Klay Thompson": 202691,
-    "Andrew Wiggins": 203952,
-    "Austin Reaves": 1630559,
-    "Jalen Williams": 1631114,
-    "Chet Holmgren": 1631096,
-    "Jamal Murray": 1627750,
-    "Michael Porter Jr.": 1629008,
-    "Aaron Gordon": 203932,
-    "Myles Turner": 1626167,
-    "Brook Lopez": 201572,
-    "Rudy Gobert": 203497,
-    "Clint Capela": 203991,
-    "Nikola Vucevic": 202696,
-    "Jonas Valanciunas": 202685,
-    "Deandre Ayton": 1629028,
-    "Jarrett Allen": 1628386,
-    "Onyeka Okongwu": 1630168,
-    "Mark Williams": 1631109,
-    "Walker Kessler": 1631117,
-    "Jalen Suggs": 1630591,
-    "Tre Mann": 1630544,
-    "Cam Thomas": 1630560,
-    "Immanuel Quickley": 1630193,
-    "Coby White": 1629632,
-    "Collin Sexton": 1629012,
-    "Keldon Johnson": 1629640,
-    "Herbert Jones": 1630546,
-    "Josh Giddey": 1630581,
-    "Keegan Murray": 1631099,
-    "Bennedict Mathurin": 1631097,
-    "Jaden Ivey": 1631093,
-    "Shaedon Sharpe": 1631101,
-    "Jabari Smith Jr.": 1631095,
-    "Tari Eason": 1631106,
-    "Dyson Daniels": 1631098,
-    "Jeremy Sochan": 1631110,
-    "Jalen Duren": 1631105,
-    "AJ Griffin": 1631100,
-    "Malaki Branham": 1631107,
-    "Ochai Agbaji": 1631104,
-    "Johnny Davis": 1631102,
-    "MarJon Beauchamp": 1631173,
-    "Nikola Jovic": 1631108,
-    "Peyton Watson": 1631213,
-    "Cooper Flagg": 1642355,
-    "Dylan Harper": 1642356,
-    "Ace Bailey": 1642357,
-    "Grayson Allen": 1628960,
-    "Collin Gillespie": 1631208,
-    "Jalen Johnson": 1630552,
-    "Cam Spencer": 1641734,
-    "Danny Wolf": 1642358,
-}
+# NBA Player IDs are now in config/settings.py
+from config.settings import NBA_PLAYER_IDS
 
 def get_nba_player_id(player_name: str) -> Optional[int]:
     """Get NBA player ID from static mapping or return None"""
@@ -481,7 +305,6 @@ async def fetch_with_backoff(url: str, headers: Dict, params: Dict = None, max_r
     """
     from services.data_scraper import fetch_with_backoff as scraper_fetch_with_backoff
     return await scraper_fetch_with_backoff(url, headers, params, max_retries)
-    return None
 
 
 # ==================== DvP (Defense vs Position) MODULE ====================
@@ -497,7 +320,8 @@ Data source: NBA.com team stats, updated seasonally.
 # This reference is kept for backward compatibility
 from config.settings import DVP_RANKINGS
 
-# Stat type mapping from market names
+# Stat type mapping - now imported from services
+from services.stats_service import STAT_FIELD_MAP
 STAT_TYPE_MAP = {
     "player_points": "PTS",
     "player_assists": "AST",
@@ -522,13 +346,11 @@ def calculate_dvp_modifier(opponent_team: str, stat_type: str) -> float:
 
 
 def get_dvp_label(modifier: float) -> str:
-    """Get human-readable DvP label"""
-    if modifier >= 0.7:
-        return "FAVORABLE"
-    elif modifier >= 0.4:
-        return "NEUTRAL"
-    else:
-        return "TOUGH"
+    """Get human-readable DvP label.
+    PROXY: Delegates to services.dvp_service.get_dvp_label
+    """
+    from services.dvp_service import get_dvp_label as dvp_get_label
+    return dvp_get_label(modifier)
 
 
 class DemonGoblinEngine:
@@ -1285,39 +1107,8 @@ class DemonGoblinEngine:
         logo_fallbacks = 0
         total_processed = 0
         
-        # NBA Team Logo URLs (final fallback - NO GRAY SILHOUETTES)
-        TEAM_LOGOS = {
-            "ATL": "https://cdn.nba.com/logos/nba/1610612737/global/L/logo.svg",
-            "BOS": "https://cdn.nba.com/logos/nba/1610612738/global/L/logo.svg",
-            "BKN": "https://cdn.nba.com/logos/nba/1610612751/global/L/logo.svg",
-            "CHA": "https://cdn.nba.com/logos/nba/1610612766/global/L/logo.svg",
-            "CHI": "https://cdn.nba.com/logos/nba/1610612741/global/L/logo.svg",
-            "CLE": "https://cdn.nba.com/logos/nba/1610612739/global/L/logo.svg",
-            "DAL": "https://cdn.nba.com/logos/nba/1610612742/global/L/logo.svg",
-            "DEN": "https://cdn.nba.com/logos/nba/1610612743/global/L/logo.svg",
-            "DET": "https://cdn.nba.com/logos/nba/1610612765/global/L/logo.svg",
-            "GSW": "https://cdn.nba.com/logos/nba/1610612744/global/L/logo.svg",
-            "HOU": "https://cdn.nba.com/logos/nba/1610612745/global/L/logo.svg",
-            "IND": "https://cdn.nba.com/logos/nba/1610612754/global/L/logo.svg",
-            "LAC": "https://cdn.nba.com/logos/nba/1610612746/global/L/logo.svg",
-            "LAL": "https://cdn.nba.com/logos/nba/1610612747/global/L/logo.svg",
-            "MEM": "https://cdn.nba.com/logos/nba/1610612763/global/L/logo.svg",
-            "MIA": "https://cdn.nba.com/logos/nba/1610612748/global/L/logo.svg",
-            "MIL": "https://cdn.nba.com/logos/nba/1610612749/global/L/logo.svg",
-            "MIN": "https://cdn.nba.com/logos/nba/1610612750/global/L/logo.svg",
-            "NOP": "https://cdn.nba.com/logos/nba/1610612740/global/L/logo.svg",
-            "NYK": "https://cdn.nba.com/logos/nba/1610612752/global/L/logo.svg",
-            "OKC": "https://cdn.nba.com/logos/nba/1610612760/global/L/logo.svg",
-            "ORL": "https://cdn.nba.com/logos/nba/1610612753/global/L/logo.svg",
-            "PHI": "https://cdn.nba.com/logos/nba/1610612755/global/L/logo.svg",
-            "PHX": "https://cdn.nba.com/logos/nba/1610612756/global/L/logo.svg",
-            "POR": "https://cdn.nba.com/logos/nba/1610612757/global/L/logo.svg",
-            "SAC": "https://cdn.nba.com/logos/nba/1610612758/global/L/logo.svg",
-            "SAS": "https://cdn.nba.com/logos/nba/1610612759/global/L/logo.svg",
-            "TOR": "https://cdn.nba.com/logos/nba/1610612761/global/L/logo.svg",
-            "UTA": "https://cdn.nba.com/logos/nba/1610612762/global/L/logo.svg",
-            "WAS": "https://cdn.nba.com/logos/nba/1610612764/global/L/logo.svg",
-        }
+        # NBA Team Logo URLs (from config)
+        from config.settings import TEAM_LOGOS
         
         # ==================== STEP 1: FETCH ALL PLAYERS FROM TANK01 ====================
         logger.info("[PHOTO SYNC] Step 1: Fetching player list from Tank01 API...")
@@ -1552,39 +1343,8 @@ class DemonGoblinEngine:
             "SA": "SAS",    # San Antonio Spurs
         }
         
-        # Team logos for fallback (using standard NBA abbreviations)
-        TEAM_LOGOS = {
-            "ATL": "https://cdn.nba.com/logos/nba/1610612737/global/L/logo.svg",
-            "BOS": "https://cdn.nba.com/logos/nba/1610612738/global/L/logo.svg",
-            "BKN": "https://cdn.nba.com/logos/nba/1610612751/global/L/logo.svg",
-            "CHA": "https://cdn.nba.com/logos/nba/1610612766/global/L/logo.svg",
-            "CHI": "https://cdn.nba.com/logos/nba/1610612741/global/L/logo.svg",
-            "CLE": "https://cdn.nba.com/logos/nba/1610612739/global/L/logo.svg",
-            "DAL": "https://cdn.nba.com/logos/nba/1610612742/global/L/logo.svg",
-            "DEN": "https://cdn.nba.com/logos/nba/1610612743/global/L/logo.svg",
-            "DET": "https://cdn.nba.com/logos/nba/1610612765/global/L/logo.svg",
-            "GSW": "https://cdn.nba.com/logos/nba/1610612744/global/L/logo.svg",
-            "HOU": "https://cdn.nba.com/logos/nba/1610612745/global/L/logo.svg",
-            "IND": "https://cdn.nba.com/logos/nba/1610612754/global/L/logo.svg",
-            "LAC": "https://cdn.nba.com/logos/nba/1610612746/global/L/logo.svg",
-            "LAL": "https://cdn.nba.com/logos/nba/1610612747/global/L/logo.svg",
-            "MEM": "https://cdn.nba.com/logos/nba/1610612763/global/L/logo.svg",
-            "MIA": "https://cdn.nba.com/logos/nba/1610612748/global/L/logo.svg",
-            "MIL": "https://cdn.nba.com/logos/nba/1610612749/global/L/logo.svg",
-            "MIN": "https://cdn.nba.com/logos/nba/1610612750/global/L/logo.svg",
-            "NOP": "https://cdn.nba.com/logos/nba/1610612740/global/L/logo.svg",
-            "NYK": "https://cdn.nba.com/logos/nba/1610612752/global/L/logo.svg",
-            "OKC": "https://cdn.nba.com/logos/nba/1610612760/global/L/logo.svg",
-            "ORL": "https://cdn.nba.com/logos/nba/1610612753/global/L/logo.svg",
-            "PHI": "https://cdn.nba.com/logos/nba/1610612755/global/L/logo.svg",
-            "PHX": "https://cdn.nba.com/logos/nba/1610612756/global/L/logo.svg",
-            "POR": "https://cdn.nba.com/logos/nba/1610612757/global/L/logo.svg",
-            "SAC": "https://cdn.nba.com/logos/nba/1610612758/global/L/logo.svg",
-            "SAS": "https://cdn.nba.com/logos/nba/1610612759/global/L/logo.svg",
-            "TOR": "https://cdn.nba.com/logos/nba/1610612761/global/L/logo.svg",
-            "UTA": "https://cdn.nba.com/logos/nba/1610612762/global/L/logo.svg",
-            "WAS": "https://cdn.nba.com/logos/nba/1610612764/global/L/logo.svg",
-        }
+        # Team logos for fallback (from config)
+        from config.settings import TEAM_LOGOS
         
         try:
             headers = {
@@ -1731,184 +1491,52 @@ class DemonGoblinEngine:
         }
     
     def get_player_photo_url(self, player_name: str, team: str = None, nba_id: int = None) -> Dict[str, str]:
+        """Get the best available photo URL for a player.
+        PROXY: Delegates to services.utils_service.get_player_photo_url
         """
-        Get the best available photo URL for a player.
-        
-        Priority:
-        1. NBA CDN headshot (if nba_id available)
-        2. Team logo (fallback)
-        
-        Returns:
-            Dict with photo_url and fallback_url
-        """
-        # Team logos for fallback
-        TEAM_LOGOS = {
-            "ATL": "https://cdn.nba.com/logos/nba/1610612737/global/L/logo.svg",
-            "BOS": "https://cdn.nba.com/logos/nba/1610612738/global/L/logo.svg",
-            "BKN": "https://cdn.nba.com/logos/nba/1610612751/global/L/logo.svg",
-            "CHA": "https://cdn.nba.com/logos/nba/1610612766/global/L/logo.svg",
-            "CHI": "https://cdn.nba.com/logos/nba/1610612741/global/L/logo.svg",
-            "CLE": "https://cdn.nba.com/logos/nba/1610612739/global/L/logo.svg",
-            "DAL": "https://cdn.nba.com/logos/nba/1610612742/global/L/logo.svg",
-            "DEN": "https://cdn.nba.com/logos/nba/1610612743/global/L/logo.svg",
-            "DET": "https://cdn.nba.com/logos/nba/1610612765/global/L/logo.svg",
-            "GSW": "https://cdn.nba.com/logos/nba/1610612744/global/L/logo.svg",
-            "HOU": "https://cdn.nba.com/logos/nba/1610612745/global/L/logo.svg",
-            "IND": "https://cdn.nba.com/logos/nba/1610612754/global/L/logo.svg",
-            "LAC": "https://cdn.nba.com/logos/nba/1610612746/global/L/logo.svg",
-            "LAL": "https://cdn.nba.com/logos/nba/1610612747/global/L/logo.svg",
-            "MEM": "https://cdn.nba.com/logos/nba/1610612763/global/L/logo.svg",
-            "MIA": "https://cdn.nba.com/logos/nba/1610612748/global/L/logo.svg",
-            "MIL": "https://cdn.nba.com/logos/nba/1610612749/global/L/logo.svg",
-            "MIN": "https://cdn.nba.com/logos/nba/1610612750/global/L/logo.svg",
-            "NOP": "https://cdn.nba.com/logos/nba/1610612740/global/L/logo.svg",
-            "NYK": "https://cdn.nba.com/logos/nba/1610612752/global/L/logo.svg",
-            "OKC": "https://cdn.nba.com/logos/nba/1610612760/global/L/logo.svg",
-            "ORL": "https://cdn.nba.com/logos/nba/1610612753/global/L/logo.svg",
-            "PHI": "https://cdn.nba.com/logos/nba/1610612755/global/L/logo.svg",
-            "PHX": "https://cdn.nba.com/logos/nba/1610612756/global/L/logo.svg",
-            "POR": "https://cdn.nba.com/logos/nba/1610612757/global/L/logo.svg",
-            "SAC": "https://cdn.nba.com/logos/nba/1610612758/global/L/logo.svg",
-            "SAS": "https://cdn.nba.com/logos/nba/1610612759/global/L/logo.svg",
-            "TOR": "https://cdn.nba.com/logos/nba/1610612761/global/L/logo.svg",
-            "UTA": "https://cdn.nba.com/logos/nba/1610612762/global/L/logo.svg",
-            "WAS": "https://cdn.nba.com/logos/nba/1610612764/global/L/logo.svg",
-        }
-        
-        photo_url = None
-        fallback_url = TEAM_LOGOS.get(team, "")
+        from config.settings import TEAM_LOGOS
         
         # Get NBA ID if not provided
         if not nba_id:
             nba_id = NBA_PLAYER_IDS.get(player_name)
         
-        # Build photo URL
-        if nba_id:
-            photo_url = f"https://cdn.nba.com/headshots/nba/latest/1040x760/{nba_id}.png"
+        result = utils_get_player_photo(player_name, team, nba_id)
+        
+        # Add fallback from TEAM_LOGOS
+        fallback_url = TEAM_LOGOS.get(team, "") if team else ""
         
         return {
-            "photo_url": photo_url,
-            "fallback_url": fallback_url,
-            "has_photo": photo_url is not None
+            "photo_url": result.get("nba_headshot") or result.get("espn"),
+            "fallback_url": fallback_url or result.get("fallback"),
+            "has_photo": bool(result.get("nba_headshot") or result.get("espn"))
         }
     
     def get_current_date(self) -> str:
-        """Auto-derive today's date from system clock"""
-        return datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        """Auto-derive today's date from system clock.
+        PROXY: Delegates to services.utils_service.get_current_date
+        """
+        return utils_get_current_date()
     
     # ==================== DATABASE NORMALIZATION ====================
     
     def normalize_team_name(self, team_name: str) -> str:
+        """Convert full team name to 3-letter abbreviation.
+        PROXY: Delegates to services.utils_service.normalize_team_name
         """
-        Convert full team name to 3-letter abbreviation.
-        Examples:
-        - "Los Angeles Lakers" → "LAL"
-        - "Brooklyn Nets" → "BKN"
-        - "LAL" → "LAL" (already abbreviated)
-        """
-        if not team_name:
-            return ""
-        
-        # Check if already abbreviated (3 letters)
-        if len(team_name) <= 3:
-            return team_name.upper()
-        
-        # Lookup in team map
-        if team_name in NBA_TEAM_MAP:
-            return NBA_TEAM_MAP[team_name]
-        
-        # Try case-insensitive match
-        team_lower = team_name.lower()
-        for full_name, abbrev in NBA_TEAM_MAP.items():
-            if full_name.lower() == team_lower:
-                return abbrev
-        
-        # Partial match (e.g., "Lakers" → "LAL")
-        for full_name, abbrev in NBA_TEAM_MAP.items():
-            if team_lower in full_name.lower() or full_name.lower() in team_lower:
-                return abbrev
-        
-        # Return first 3 letters as fallback
-        return team_name[:3].upper()
+        return utils_normalize_team(team_name)
     
     def sanitize_player_name(self, name: str) -> str:
+        """Sanitize and normalize player name for consistent storage.
+        PROXY: Delegates to services.utils_service.sanitize_player_name
         """
-        Sanitize and normalize player name for consistent storage.
-        
-        Handles:
-        - Case normalization (Title Case)
-        - Special character handling (G.G. → GG)
-        - Common nickname variations (Nic → Nicolas)
-        - Suffix standardization (Jr → Jr.)
-        
-        Returns canonical name format for database storage.
-        """
-        if not name:
-            return ""
-        
-        # Check cache first
-        if name in self._canonical_names:
-            return self._canonical_names[name]
-        
-        # Step 1: Basic cleanup
-        cleaned = name.strip()
-        
-        # Step 2: Handle special characters (periods, hyphens)
-        # Normalize "G.G." to "G.G." (keep periods for proper names)
-        # But normalize "Gilgeous Alexander" to "Gilgeous-Alexander"
-        
-        # Step 3: Split into parts for processing
-        parts = cleaned.split()
-        normalized_parts = []
-        
-        for part in parts:
-            part_lower = part.lower().strip()
-            
-            # Check for known aliases
-            for alias, canonical in NAME_ALIASES.items():
-                if part_lower == alias or part_lower.replace(".", "") == alias.replace(".", ""):
-                    part = canonical.title()
-                    break
-            
-            # Capitalize properly (handle Jr., II, III)
-            if part_lower in ["jr", "jr.", "sr", "sr."]:
-                part = part_lower.rstrip(".").title() + "."
-            elif part_lower in ["ii", "iii", "iv", "v"]:
-                part = part.upper()
-            elif len(part) <= 3 and "." in part:
-                # Keep initials as-is (J.J., P.J., etc.)
-                part = part.upper()
-            else:
-                part = part.title()
-            
-            normalized_parts.append(part)
-        
-        # Step 4: Join and handle hyphenated names
-        result = " ".join(normalized_parts)
-        
-        # Fix known hyphenation issues
-        result = result.replace("Gilgeous Alexander", "Gilgeous-Alexander")
-        result = result.replace("Porter Jr", "Porter Jr.")
-        result = result.replace("Payton Ii", "Payton II")
-        
-        # Cache the result
-        self._canonical_names[name] = result
-        
-        return result
+        # Use instance cache for efficiency
+        return utils_sanitize_player(name, self._canonical_names)
     
     def create_composite_key(self, player_name: str, stat_type: str, game_date: str) -> str:
+        """Create a unique composite key for deduplication.
+        PROXY: Delegates to services.utils_service.create_composite_key
         """
-        Create a unique composite key for deduplication.
-        
-        Format: {sanitized_player_name}|{stat_type}|{game_date}
-        
-        Example: "lebron-james|PTS|2026-03-12"
-        """
-        # Sanitize player name for key (lowercase, no spaces/special chars)
-        safe_name = player_name.lower().replace(" ", "-").replace(".", "").replace("'", "")
-        safe_stat = stat_type.lower().replace("_", "-")
-        
-        return f"{safe_name}|{safe_stat}|{game_date}"
+        return utils_create_key(player_name, stat_type, game_date)
     
     # ==================== WAREHOUSE MODEL: SINGLE BATCH SYNC ====================
     
@@ -3288,27 +2916,25 @@ class DemonGoblinEngine:
     
     def _apply_dynamic_threshold(self, candidates: List[Dict]) -> List[Dict]:
         """
-        Dynamic Threshold Logic:
-        1. Start with STRICT threshold (P >= 70%)
-        2. If fewer than 10 picks, lower to OPPORTUNITY threshold (P >= 55%)
-        3. Ensures War Zone is NEVER empty
+        Dynamic Threshold Logic - ensures picks are never empty.
+        PROXY: Could be extracted to stats_service but keeping inline for now.
         """
         # First pass: Strict threshold (P >= 70%)
-        strict_picks = [c for c in candidates if c["hit_probability"] >= 70]
+        strict_picks = [c for c in candidates if c.get("hit_probability", 0) >= 70]
         
         if len(strict_picks) >= 10:
             logger.info(f"[THRESHOLD] Using STRICT mode (P>=70%): {len(strict_picks)} candidates")
             return strict_picks
         
         # Second pass: Lower to Opportunity threshold (P >= 55%)
-        opportunity_picks = [c for c in candidates if c["hit_probability"] >= 55]
+        opportunity_picks = [c for c in candidates if c.get("hit_probability", 0) >= 55]
         
         if len(opportunity_picks) >= 10:
             logger.info(f"[THRESHOLD] Using OPPORTUNITY mode (P>=55%): {len(opportunity_picks)} candidates")
             return opportunity_picks
         
         # Final pass: Take all with P >= 40% to ensure we have picks
-        final_picks = [c for c in candidates if c["hit_probability"] >= 40]
+        final_picks = [c for c in candidates if c.get("hit_probability", 0) >= 40]
         
         logger.info(f"[THRESHOLD] Using MINIMUM mode (P>=40%): {len(final_picks)} candidates")
         return final_picks
