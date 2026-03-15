@@ -462,7 +462,27 @@ CREATE INDEX IF NOT EXISTS idx_daily_insights_team ON public.daily_insights (tea
         
         # Combine insights (max 2 for readability)
         if not insights:
-            return f"📈 Standard projection for {player_name}. No significant modifiers detected."
+            # DYNAMIC FALLBACK: Build data-driven summary instead of generic text
+            fallback_parts = []
+            
+            # Pace context
+            if pace_factor >= 1.0 and pace_factor <= 1.05:
+                fallback_parts.append(f"Neutral pace vs {opponent}")
+            
+            # Rest context  
+            if days_rest == 1:
+                fallback_parts.append("Normal rest")
+            elif days_rest == 2:
+                fallback_parts.append("2-day turnaround")
+            
+            # Schedule context
+            if schedule_density < 1.0:
+                fallback_parts.append("Light schedule week")
+            
+            if fallback_parts:
+                return " | ".join(fallback_parts)
+            else:
+                return f"Baseline conditions for {player_name} | Monitor pre-game for updates"
         
         return " | ".join(insights[:2])
     

@@ -8,6 +8,7 @@ Handles the core prop processing logic including:
 - NAJI Safeguard verification
 - Hit rate calculation
 - Injury status enrichment
+- Social Signal multipliers (revenge game boost, volatility penalty)
 """
 from typing import Dict, List, Any, Optional, TYPE_CHECKING
 from datetime import datetime, timezone
@@ -22,6 +23,71 @@ logger = logging.getLogger(__name__)
 
 # Constants
 GOBLIN_HIT_RATE_WARNING = 0.90
+
+# Social Signal Multipliers
+REVENGE_GAME_BOOST = 1.07      # +7% boost for revenge games
+VOLATILITY_PENALTY = 0.90      # -10% penalty for off-court volatility
+USAGE_BUMP_MULTIPLIER = 0.005  # Each 1% usage bump = 0.5% probability boost
+
+
+def apply_social_boost(base_prob: float, sentiment_data: Dict[str, Any]) -> tuple:
+    """
+    Apply social signal multipliers to base probability.
+    
+    Multipliers:
+    - Revenge Game: +7% boost (player vs former team)
+    - Off-Court Volatility: -10% penalty (trade rumors, suspensions, etc.)
+    - Usage Bump: +0.5% per 1% usage increase (teammate injured)
+    
+    Args:
+        base_prob: Base probability (0-100 scale)
+        sentiment_data: Dict with revenge_game, volatility_flag, usage_bump_percent
+    
+    Returns:
+        tuple: (adjusted_prob, multipliers_applied)
+    """
+    if not sentiment_data:
+        return base_prob, []
+    
+    multipliers_applied = []
+    adjusted_prob = base_prob
+    
+    # Revenge Game Boost (+7%)
+    if sentiment_data.get("revenge_game", False):
+        adjusted_prob *= REVENGE_GAME_BOOST
+        multipliers_applied.append({
+            "type": "revenge_game",
+            "multiplier": REVENGE_GAME_BOOST,
+            "reason": "Player vs former team - motivation boost"
+        })
+        logger.debug(f"[SOCIAL_BOOST] Revenge game: {base_prob:.1f}% -> {adjusted_prob:.1f}%")
+    
+    # Volatility Penalty (-10%)
+    if sentiment_data.get("volatility_flag", False):
+        adjusted_prob *= VOLATILITY_PENALTY
+        multipliers_applied.append({
+            "type": "volatility_penalty",
+            "multiplier": VOLATILITY_PENALTY,
+            "reason": sentiment_data.get("volatility_reason", "Off-court volatility detected")
+        })
+        logger.debug(f"[SOCIAL_BOOST] Volatility penalty: {base_prob:.1f}% -> {adjusted_prob:.1f}%")
+    
+    # Usage Bump Boost (from injured teammates)
+    usage_bump = sentiment_data.get("usage_bump_percent", 0)
+    if usage_bump > 0:
+        usage_multiplier = 1.0 + (usage_bump * USAGE_BUMP_MULTIPLIER)
+        adjusted_prob *= usage_multiplier
+        multipliers_applied.append({
+            "type": "usage_ripple",
+            "multiplier": usage_multiplier,
+            "reason": sentiment_data.get("usage_bump_reason", f"+{usage_bump:.1f}% usage from teammate injury")
+        })
+        logger.debug(f"[SOCIAL_BOOST] Usage ripple: {base_prob:.1f}% -> {adjusted_prob:.1f}%")
+    
+    # Cap at 99%
+    adjusted_prob = min(99.0, adjusted_prob)
+    
+    return adjusted_prob, multipliers_applied
 
 
 class PropProcessorService:

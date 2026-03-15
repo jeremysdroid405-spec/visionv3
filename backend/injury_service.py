@@ -145,21 +145,27 @@ class InjuryIntelligenceService:
         """
         Calculate usage bump for teammates of injured star players.
         When a high-usage player is out, their teammates get more opportunities.
+        
+        TRIGGER-BASED CACHE INVALIDATION:
+        After updating daily_insights, we invalidate the cached_board to force
+        a rebuild with the fresh usage_bump data on next request.
         """
         updates = 0
+        teams_affected = set()
         
         for injured in injured_players:
             team = injured['team']
             injured_name = injured['player_name']
+            teams_affected.add(team)
             
-            # Check if this is a high-usage player (star)
+            # Check if this is a high-usage player (star) and get their usage rate
             injured_insight = await self.daily_insights.find_one(
                 {"player_name": injured_name},
-                {"_id": 0}
+                {"_id": 0, "usage_rate": 1}
             )
             
-            # If the injured player isn't in our system, assume moderate usage
-            base_usage = 20  # Default usage percentage
+            # Use actual usage rate if available, otherwise default to moderate
+            base_usage = injured_insight.get("usage_rate", 20) if injured_insight else 20
             
             # Find teammates and bump their usage
             teammates = await self.cached_board.find(
@@ -179,11 +185,44 @@ class InjuryIntelligenceService:
                         "$set": {
                             "usage_bump_percent": usage_bump,
                             "usage_bump_reason": f"{injured_name} is {injured['status']}",
-                            "injured_teammates": [injured_name]
+                            "injured_teammates": [injured_name],
+                            "ripple_detected": True,
+                            "ripple_updated_at": datetime.now(timezone.utc)
                         }
                     }
                 )
                 updates += 1
+        
+        # CACHE INVALIDATION: If any ripples were detected, invalidate the cached board
+        # This forces next request to rebuild with fresh usage_bump data
+        if updates > 0:
+            logger.info(f"[RIPPLE] {updates} usage bumps applied. Invalidating cached board for teams: {teams_affected}")
+            
+            # Clear the cached board entries for affected teams to force rebuild
+            for team in teams_affected:
+                await self.cached_board.update_many(
+                    {"team_abbreviation": team},
+                    {
+                        "$set": {
+                            "cache_invalidated": True,
+                            "invalidation_reason": "usage_ripple_update",
+                            "invalidated_at": datetime.now(timezone.utc)
+                        }
+                    }
+                )
+            
+            # Also update the cache metadata to signal a rebuild is needed
+            await self.db.dg_cache_meta.update_one(
+                {"key": "cached_board"},
+                {
+                    "$set": {
+                        "ripple_invalidated": True,
+                        "ripple_invalidated_at": datetime.now(timezone.utc),
+                        "teams_affected": list(teams_affected)
+                    }
+                },
+                upsert=True
+            )
         
         return updates
     

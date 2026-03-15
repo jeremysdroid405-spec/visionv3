@@ -7,6 +7,11 @@ Handles the 4-Pillar scoring formulas for each tier:
 - War Zone: High-ceiling demon plays
 - Safe Haven: High-consistency goblin plays  
 - Front Lines: Balanced mix of demons and goblins
+
+Social Signal Integration:
+- Revenge Game: +7% boost to probability
+- Off-Court Volatility: -10% penalty
+- Usage Ripple: Variable boost based on teammate injuries
 """
 from typing import Dict, List, Optional, Any, Set
 from datetime import datetime, timezone
@@ -25,6 +30,7 @@ from services.dvp_service import (
     calculate_dvp_certainty_multiplier
 )
 from services.parlay_service import build_parlay_tickets, interleave_pick_arrays
+from services.prop_processor_service import apply_social_boost
 
 logger = logging.getLogger(__name__)
 
@@ -274,6 +280,24 @@ class TierBuilderService:
         # Rank >= 25 (Bottom 5): +10% boost | Rank <= 5 (Top 5): -15% penalty
         demon_score_adjusted = demon_score * dvp_certainty_mult
         
+        # Apply Social Signal multipliers (Revenge Game, Volatility, Usage Ripple)
+        sentiment_data = {
+            "revenge_game": player_data.get("revenge_game", False),
+            "volatility_flag": player_data.get("volatility_flag", False),
+            "volatility_reason": player_data.get("volatility_reason"),
+            "usage_bump_percent": player_data.get("usage_bump_percent", 0),
+            "usage_bump_reason": player_data.get("usage_bump_reason")
+        }
+        base_hit_prob = ceiling_consistency * 100
+        adjusted_hit_prob, social_multipliers = apply_social_boost(base_hit_prob, sentiment_data)
+        
+        # Apply social multipliers to the score
+        if social_multipliers:
+            total_social_mult = 1.0
+            for mult in social_multipliers:
+                total_social_mult *= mult["multiplier"]
+            demon_score_adjusted *= total_social_mult
+        
         # Value gap calculation
         gap_ratio = demon_line / std_line if std_line > 0 else 1.0
         value_gap_pct = gap_ratio - 1
@@ -327,6 +351,13 @@ class TierBuilderService:
             "dvp_rank_color": dvp_rank_color,
             "dvp_certainty_mult": dvp_certainty_mult,
             "opponent_team": opponent_team,
+            # Social Signal data
+            "usage_bump_percent": player_data.get("usage_bump_percent", 0),
+            "usage_bump_reason": player_data.get("usage_bump_reason"),
+            "injured_teammates": player_data.get("injured_teammates", []),
+            "social_multipliers": social_multipliers,
+            "adjusted_hit_probability": round(adjusted_hit_prob, 1),
+            # Scoring
             "demon_score": round(demon_score, 4),
             "demon_score_adjusted": round(demon_score_adjusted, 4),
             "radar_score": round(demon_score_adjusted, 4),
@@ -488,6 +519,24 @@ class TierBuilderService:
         # Apply DvP certainty multiplier
         vault_score_adjusted = vault_score * dvp_certainty_mult
         
+        # Apply Social Signal multipliers (Revenge Game, Volatility, Usage Ripple)
+        sentiment_data = {
+            "revenge_game": player_data.get("revenge_game", False),
+            "volatility_flag": player_data.get("volatility_flag", False),
+            "volatility_reason": player_data.get("volatility_reason"),
+            "usage_bump_percent": player_data.get("usage_bump_percent", 0),
+            "usage_bump_reason": player_data.get("usage_bump_reason")
+        }
+        base_hit_prob = pillar_1_consistency * 100
+        adjusted_hit_prob, social_multipliers = apply_social_boost(base_hit_prob, sentiment_data)
+        
+        # Apply social multipliers to vault score
+        if social_multipliers:
+            total_social_mult = 1.0
+            for mult in social_multipliers:
+                total_social_mult *= mult["multiplier"]
+            vault_score_adjusted *= total_social_mult
+        
         # Value gap calculation
         gap_below_std = std_line - goblin_line
         value_gap_pct = (gap_below_std / std_line) if std_line > 0 else 0
@@ -551,6 +600,13 @@ class TierBuilderService:
             "dvp_rank_color": dvp_rank_color,
             "dvp_certainty_mult": dvp_certainty_mult,
             "opponent_team": opponent_team,
+            # Social Signal data
+            "usage_bump_percent": player_data.get("usage_bump_percent", 0),
+            "usage_bump_reason": player_data.get("usage_bump_reason"),
+            "injured_teammates": player_data.get("injured_teammates", []),
+            "social_multipliers": social_multipliers,
+            "adjusted_hit_probability": round(adjusted_hit_prob, 1),
+            # Scoring
             "vault_score": round(vault_score, 4),
             "vault_score_adjusted": round(vault_score_adjusted, 4),
             "vault_score_100": round(vault_score_100, 1),

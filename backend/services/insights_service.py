@@ -24,9 +24,18 @@ def generate_insight_summary(
     is_b2b: bool,
     is_3in4: bool,
     injured_teammates: List[str],
-    opponent: str
+    opponent: str,
+    # New params for dynamic fallback
+    l5_avg: float = 0,
+    l10_rate: float = 0,
+    dvp_rank: int = 15,
+    stat_type: str = ""
 ) -> str:
-    """Generate template-based insight summary prioritizing highest-impact factor."""
+    """
+    Generate template-based insight summary prioritizing highest-impact factor.
+    
+    NEVER returns hardcoded "Standard projection" - always generates data-driven summary.
+    """
     insights = []
     
     # Priority 1: Usage Bump (most impactful)
@@ -57,8 +66,46 @@ def generate_insight_summary(
     if volatility == "High":
         insights.append("High Variance: Inconsistent, proceed with caution")
     
+    # DYNAMIC FALLBACK: If no major modifiers, generate data-point summary
     if not insights:
-        return "Standard projection. No significant modifiers."
+        # Build dynamic template from available data
+        fallback_parts = []
+        
+        # L10 hit rate context
+        if l10_rate >= 80:
+            fallback_parts.append(f"Consistent floor: {l10_rate:.0f}% L10 hit rate")
+        elif l10_rate >= 60:
+            fallback_parts.append(f"Solid trending: {l10_rate:.0f}% L10")
+        elif l10_rate > 0:
+            fallback_parts.append(f"L10 rate: {l10_rate:.0f}%")
+        
+        # DvP context
+        if dvp_rank >= 25:
+            fallback_parts.append(f"{opponent} ranks #{dvp_rank} defense (soft matchup)")
+        elif dvp_rank <= 5:
+            fallback_parts.append(f"{opponent} ranks #{dvp_rank} defense (tough matchup)")
+        elif dvp_rank > 0:
+            fallback_parts.append(f"vs #{dvp_rank} defense")
+        
+        # L5 average if available
+        if l5_avg > 0:
+            fallback_parts.append(f"L5 avg: {l5_avg:.1f}")
+        
+        # Stat type context
+        if stat_type:
+            stat_upper = stat_type.upper()
+            if stat_upper == "PTS":
+                fallback_parts.append("scoring opportunity")
+            elif stat_upper == "REB":
+                fallback_parts.append("boards focus")
+            elif stat_upper == "AST":
+                fallback_parts.append("playmaking role")
+        
+        if fallback_parts:
+            return " | ".join(fallback_parts[:3])
+        else:
+            # Ultimate fallback - still data-driven
+            return f"Neutral matchup for {player_name}. Monitor lineups."
     
     return " | ".join(insights[:2])
 

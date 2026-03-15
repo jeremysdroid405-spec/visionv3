@@ -109,11 +109,11 @@ class AiContextEngine:
                     "sentiment": "positive"
                 })
         
-        # If no specific news, return generic neutral status
+        # If no specific news, return status with player name context
         if not news_items:
             news_items.append({
                 "source": "status_check",
-                "headline": f"No significant news for {player_name} - standard game expected",
+                "headline": f"{player_name} - active and available. No injury or lineup changes reported.",
                 "timestamp": datetime.now(timezone.utc).isoformat(),
                 "sentiment": "neutral"
             })
@@ -132,10 +132,10 @@ class AiContextEngine:
                 "reason": str (1-sentence explanation)
             }
         """
-        # Default neutral response
+        # Default neutral response - data-driven, not generic
         default_response = {
             "context_shift": 0.5,
-            "reason": "No significant contextual factors identified."
+            "reason": f"Baseline projection for {player_name}. No news-driven modifiers."
         }
         
         if not self._api_available:

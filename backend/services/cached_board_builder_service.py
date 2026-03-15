@@ -97,10 +97,11 @@ class CachedBoardBuilderService:
         # STEP 3: LOAD SUPPLEMENTARY DATA
         stats_map = await self._load_stats_map()
         signals_map = await self._load_signals_map()
+        ripple_map = await self._load_usage_ripple_map()  # NEW: Load Usage Ripple data
         
         # STEP 4: BUILD PLAYER DICT
         players_dict, unmatched_players = await self._build_players_dict(
-            props, player_data_map, stats_map, signals_map, sync_time
+            props, player_data_map, stats_map, signals_map, sync_time, ripple_map
         )
         
         # Flag unmatched players
@@ -282,13 +283,34 @@ class CachedBoardBuilderService:
             logger.warning(f"[CACHED_BOARD] Could not load social signals: {e}")
         return signals_map
     
+    async def _load_usage_ripple_map(self) -> Dict[str, Any]:
+        """Load usage ripple data from daily_insights indexed by player name"""
+        ripple_map = {}
+        try:
+            # Only get players with usage_bump data
+            ripple_cursor = self.db.dg_daily_insights.find(
+                {"usage_bump_percent": {"$gt": 0}},
+                {"_id": 0, "player_name": 1, "usage_bump_percent": 1, 
+                 "usage_bump_reason": 1, "injured_teammates": 1, "ripple_detected": 1}
+            )
+            async for insight in ripple_cursor:
+                player_name = insight.get("player_name", "")
+                if player_name:
+                    ripple_map[player_name.lower()] = insight
+            if ripple_map:
+                logger.info(f"[CACHED_BOARD] Loaded {len(ripple_map)} players with Usage Ripple boosts")
+        except Exception as e:
+            logger.warning(f"[CACHED_BOARD] Could not load usage ripple data: {e}")
+        return ripple_map
+    
     async def _build_players_dict(
         self,
         props: List[Dict],
         player_data_map: Dict[str, Any],
         stats_map: Dict[str, Any],
         signals_map: Dict[str, Any],
-        sync_time: datetime
+        sync_time: datetime,
+        ripple_map: Dict[str, Any] = None
     ) -> tuple:
         """Build players dictionary from props with mapper data"""
         players_dict = {}
@@ -307,7 +329,7 @@ class CachedBoardBuilderService:
                     )
                 else:
                     players_dict[player_name] = self._create_matched_player(
-                        player_name, hub_player, stats_map, signals_map, sync_time
+                        player_name, hub_player, stats_map, signals_map, sync_time, ripple_map
                     )
             
             # Add prop to player
@@ -347,7 +369,8 @@ class CachedBoardBuilderService:
         hub_player: Dict,
         stats_map: Dict[str, Any],
         signals_map: Dict[str, Any],
-        sync_time: datetime
+        sync_time: datetime,
+        ripple_map: Dict[str, Any] = None
     ) -> Dict[str, Any]:
         """Create player dict from mapper/hub data"""
         player_id = hub_player.get("player_id")
@@ -355,6 +378,7 @@ class CachedBoardBuilderService:
         
         player_stats = stats_map.get(normalized_name, {})
         social = signals_map.get(player_name.lower(), {})
+        ripple = (ripple_map or {}).get(player_name.lower(), {})
         
         hub_stats = hub_player.get("stats", {})
         season_avg = hub_stats.get("season_avg", {})
@@ -400,6 +424,12 @@ class CachedBoardBuilderService:
             "volatility_flag": social.get("volatility_flag", False),
             "revenge_game": social.get("revenge_game", False),
             "injury_status": hub_player.get("injury", {}).get("status") or social.get("injury_status"),
+            
+            # Usage Ripple data (from daily_insights)
+            "usage_bump_percent": ripple.get("usage_bump_percent", 0),
+            "usage_bump_reason": ripple.get("usage_bump_reason"),
+            "injured_teammates": ripple.get("injured_teammates", []),
+            "ripple_detected": ripple.get("ripple_detected", False),
             
             # Verification
             "is_verified": True,
