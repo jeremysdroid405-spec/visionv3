@@ -3555,27 +3555,26 @@ class DemonGoblinEngine:
     
     async def _build_front_lines(self, players_dict: Dict[str, Dict], sync_time: datetime):
         """
-        THE FRONT LINES - PrizePicks Ladder Logic (Mild Goblins + Mild Demons)
-        ======================================================================
+        THE FRONT LINES - Forced 50/50 Goblin/Demon Split
+        ==================================================
         
-        Target: "Mild" alternate lines - shifted from standard but NOT extreme.
+        PROBLEM: Sorting by raw vault_score causes Goblins (easier lines) to dominate
+        because their base hit probabilities are naturally higher.
         
-        The Proximity Filter (Value Gap):
-        - Exclude > 20% difference from standard (too extreme)
-        - Exclude 0% difference (standard lines)
-        - Target Zone: 5% to 18% difference from standard
+        SOLUTION: Force a 50/50 split via two distinct drafts:
         
-        Combines MILD GOBLINS (green) and MILD DEMONS (red) into one array.
+        Draft A (Mild Goblins): 5-18% gap BELOW standard, Top 5 by vault_score
+        Draft B (Mild Demons): 5-18% gap ABOVE standard, Top 5 by vault_score
         
-        Uses the exact same "God-Tier" 4-Pillar Formula:
+        Final merge: Combine 10 picks, sort by Expected Value (EV) / Edge.
+        
+        Uses "God-Tier" 4-Pillar Formula for individual scoring:
         vault_score = (consistency * 0.50) + (vegas * 0.20) + (dvp * 0.15) + (context * 0.15)
-        
-        Output: Top 10 picks sorted by combined score descending.
-        Each pick retains is_demon or is_goblin flag for UI icon color.
         """
-        logger.info("[FRONT LINES] Building Mild Goblins + Mild Demons with 4-Pillar scoring...")
+        logger.info("[FRONT LINES] Building with FORCED 50/50 Goblin/Demon split...")
         
-        all_candidates = []
+        goblin_candidates = []  # Draft A: Mild Goblins (5-18% below standard)
+        demon_candidates = []   # Draft B: Mild Demons (5-18% above standard)
         
         # Pre-fetch AI context scores for all players
         ai_context_cache = {}
@@ -3610,42 +3609,67 @@ class DemonGoblinEngine:
                     if key not in standard_map:
                         standard_map[key] = std_prop.get("line", 0)
             
-            # Process DEMONS (look for mild ones)
+            # DRAFT B: Process DEMONS (mild ones: 5-18% above standard)
             for prop in demons:
                 candidate = self._evaluate_front_lines_prop(
                     prop, player_name, player_data, standard_map, 
                     ai_context_cache, sync_time, is_demon=True
                 )
                 if candidate:
-                    all_candidates.append(candidate)
+                    demon_candidates.append(candidate)
             
-            # Process GOBLINS (look for mild ones)
+            # DRAFT A: Process GOBLINS (mild ones: 5-18% below standard)
             for prop in goblins:
                 candidate = self._evaluate_front_lines_prop(
                     prop, player_name, player_data, standard_map,
                     ai_context_cache, sync_time, is_demon=False
                 )
                 if candidate:
-                    all_candidates.append(candidate)
+                    goblin_candidates.append(candidate)
         
-        # Sort by vault_score descending (4-Pillar combined score)
-        all_candidates.sort(key=lambda x: x["vault_score"], reverse=True)
-        
-        # De-duplicate: one pick per player (best score)
-        seen_players = set()
-        unique_picks = []
-        for pick in all_candidates:
+        # ========== DRAFT A: Top 5 Mild Goblins ==========
+        goblin_candidates.sort(key=lambda x: x["vault_score"], reverse=True)
+        seen_goblin_players = set()
+        draft_a = []
+        for pick in goblin_candidates:
             pname = pick["player_name"]
-            if pname not in seen_players:
-                seen_players.add(pname)
-                unique_picks.append(pick)
+            if pname not in seen_goblin_players and len(draft_a) < 5:
+                seen_goblin_players.add(pname)
+                draft_a.append(pick)
         
-        # Take top 10
-        top_10 = unique_picks[:10]
+        # ========== DRAFT B: Top 5 Mild Demons ==========
+        demon_candidates.sort(key=lambda x: x["vault_score"], reverse=True)
+        seen_demon_players = set()
+        draft_b = []
+        for pick in demon_candidates:
+            pname = pick["player_name"]
+            if pname not in seen_demon_players and len(draft_b) < 5:
+                seen_demon_players.add(pname)
+                draft_b.append(pick)
+        
+        # ========== MERGE: Combine and sort by EV/Edge ==========
+        combined = draft_a + draft_b
+        
+        # Calculate EV/Edge for sorting: edge = (hit_rate * payout) - (miss_rate * stake)
+        # For +100 odds: EV = (hit_rate * 1.0) - (miss_rate * 1.0) = hit_rate - (1 - hit_rate) = 2*hit_rate - 1
+        # For other odds, we approximate using vault_score * gap_pct as "edge multiplier"
+        for pick in combined:
+            h10_rate = pick.get("h10_rate", 50) / 100  # Convert to decimal
+            gap_pct = abs(pick.get("gap_pct", 0)) / 100  # Convert to decimal
+            vault_score = pick.get("vault_score", 0.5)
+            
+            # EV calculation: combine hit probability with value gap (edge)
+            # Higher gap = more value, but must be weighted by hit probability
+            pick["ev_edge"] = vault_score * (1 + gap_pct)  # Score amplified by edge
+        
+        # Sort by EV/Edge descending
+        combined.sort(key=lambda x: x.get("ev_edge", 0), reverse=True)
+        
+        # Take final 10 (should already be 10 if we have enough candidates)
+        top_10 = combined[:10]
         
         # Assign bullet ranking (1-6 bullets based on position)
         for i, pick in enumerate(top_10):
-            # Bullet level based on rank: top 2 get 6 bullets, next 2 get 5, etc.
             if i < 2:
                 pick["bullet_level"] = 6
             elif i < 4:
@@ -3666,14 +3690,15 @@ class DemonGoblinEngine:
         demon_count = len([p for p in top_10 if p.get("is_demon")])
         goblin_count = len([p for p in top_10 if p.get("is_goblin")])
         
-        logger.info(f"[FRONT LINES] Generated {len(top_10)} mild picks (4-Pillar GOD-TIER)")
-        logger.info(f"  Demons: {demon_count} | Goblins: {goblin_count}")
-        logger.info(f"  Total candidates in 5-18% zone: {len(all_candidates)}")
+        logger.info(f"[FRONT LINES] Generated {len(top_10)} picks with FORCED 50/50 SPLIT")
+        logger.info(f"  Draft A (Goblins): {len(draft_a)} selected | Draft B (Demons): {len(draft_b)} selected")
+        logger.info(f"  Final Mix - Demons: {demon_count} | Goblins: {goblin_count}")
+        logger.info(f"  Total Goblin candidates: {len(goblin_candidates)} | Total Demon candidates: {len(demon_candidates)}")
         
-        for i, pick in enumerate(top_10[:3]):
+        for i, pick in enumerate(top_10[:5]):
             prop_type = "DEMON" if pick.get("is_demon") else "GOBLIN"
             logger.info(f"  #{i+1}: {pick['player_name']} [{prop_type}] - {pick['stat_type']} {pick['line']}")
-            logger.info(f"       Score: {pick['vault_score_100']:.1f}/100 | Gap: {pick['gap_pct']:.1f}%")
+            logger.info(f"       Score: {pick['vault_score_100']:.1f}/100 | Gap: {pick['gap_pct']:.1f}% | EV: {pick.get('ev_edge', 0):.3f}")
     
     def _evaluate_front_lines_prop(
         self, prop: Dict, player_name: str, player_data: Dict, 
