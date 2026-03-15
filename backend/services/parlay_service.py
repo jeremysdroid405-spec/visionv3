@@ -292,3 +292,111 @@ def interleave_pick_arrays(goblins: List[Dict], demons: List[Dict]) -> List[Dict
             result.append(demons[i])
     
     return result
+
+
+def build_correlated_parlay(all_picks: List[Dict], target_count: int, game_groups: Dict) -> List[Dict]:
+    """Build a parlay with game correlation where possible.
+    
+    Args:
+        all_picks: EV-sorted list of picks
+        target_count: Target number of picks
+        game_groups: Dict mapping game_key to list of picks in that game
+    
+    Returns:
+        List of selected picks with correlation priority
+    """
+    selected = []
+    used_players = set()
+    
+    # Start with top pick
+    if all_picks:
+        top = all_picks[0]
+        selected.append(top)
+        used_players.add(top.get("player_name", ""))
+    
+    # Try to add correlated picks from same games as selected
+    for pick in selected[:]:
+        game_key = pick.get("game_key", "")
+        if game_key and game_key in game_groups:
+            for corr in game_groups[game_key]:
+                if len(selected) >= target_count:
+                    break
+                player_name = corr.get("player_name", "")
+                if player_name not in used_players:
+                    selected.append(corr)
+                    used_players.add(player_name)
+    
+    # Fill remaining from top picks
+    for pick in all_picks:
+        if len(selected) >= target_count:
+            break
+        player_name = pick.get("player_name", "")
+        if player_name not in used_players:
+            selected.append(pick)
+            used_players.add(player_name)
+    
+    return selected[:target_count]
+
+
+def calculate_weighted_parlay_probability(picks: List[Dict]) -> float:
+    """Calculate combined probability using weighted hit probability.
+    
+    Uses actual hit_probability (L10*0.6 + L5*0.4) for accurate calculation.
+    """
+    if not picks:
+        return 0.0
+    
+    prob = 1.0
+    for pick in picks:
+        # Use hit_probability (the actual weighted probability)
+        p = pick.get("hit_probability", 50) / 100  # Convert from percentage
+        p = max(0.10, p)  # Only prevent division issues
+        prob *= p
+    
+    return round(prob * 100, 2)
+
+
+def calculate_live_payout(picks: List[Dict], base_multipliers: Dict = None) -> Dict:
+    """Calculate live payout estimation for a set of picks.
+    
+    Args:
+        picks: List of picks with leg_modifier
+        base_multipliers: Dict mapping leg count to base multiplier
+    
+    Returns:
+        Dict with payout details
+    """
+    if not picks:
+        return {"estimated_payout": 0, "breakdown": []}
+    
+    # Default base multipliers (PrizePicks standard)
+    if not base_multipliers:
+        base_multipliers = {
+            2: 3.0, 3: 5.0, 4: 10.0, 5: 20.0, 6: 25.0
+        }
+    
+    leg_count = len(picks)
+    base_mult = base_multipliers.get(leg_count, 2.0 ** leg_count)
+    
+    # Calculate modifier from individual legs
+    leg_product = 1.0
+    breakdown = []
+    for pick in picks:
+        leg_mod = pick.get("leg_modifier", 1.0)
+        leg_product *= leg_mod
+        breakdown.append({
+            "player": pick.get("player_name", ""),
+            "modifier": leg_mod
+        })
+    
+    # Apply leg product to base
+    estimated = round(base_mult * leg_product, 2)
+    
+    return {
+        "estimated_payout": estimated,
+        "base_multiplier": base_mult,
+        "leg_modifier_product": round(leg_product, 3),
+        "leg_count": leg_count,
+        "breakdown": breakdown
+    }
+

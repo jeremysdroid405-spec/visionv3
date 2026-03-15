@@ -58,21 +58,24 @@ dg_cached_board → dg_radar_picks (War Zone) → dg_goblin_vault → dg_goblin_
     - `calculate_safety_level()` - Goblin shield level (0-5)
     - `calculate_bullet_level()` - Front Lines bullet level (1-6)
     - `calculate_volatility()` - Performance variance calculation
-  - Updated engine methods to proxy to services:
-    - `_calculate_hit_rates()` → `stats_service.calculate_hit_rates()`
-    - `_calculate_heat_level()` → `stats_service.calculate_heat_level()`
-    - `_calculate_safety_level()` → `stats_service.calculate_safety_level()`
-    - `_calculate_bullet_level()` → `stats_service.calculate_bullet_level()`
-    - `calculate_dvp_modifier()` → `dvp_service.calculate_dvp_modifier()`
-  - Removed ~170 lines of duplicate logic from engine
+  - Created `services/insights_service.py` (298 lines) with:
+    - `generate_insight_summary()` - AI-powered insight text
+    - `calculate_confidence_rating()` - AI confidence (0-100)
+    - `calculate_usage_bump()` - Usage increase from injuries
+    - `calculate_pace_factor()` - Matchup pace analysis
+    - `build_player_insights()` - Complete player analytics package
+  - Updated `services/parlay_service.py` (+107 lines) with:
+    - `build_correlated_parlay()` - Game correlation logic
+    - `calculate_weighted_parlay_probability()` - Weighted hit probability
+    - `calculate_live_payout()` - Live payout estimation
+  - Engine methods proxied to services (8,011 lines, down from 8,252)
 - **Environment Variables Audit:**
   - API keys (ODDS_API_KEY, BDL_API_KEY, GOOGLE_API_KEY) read from `.env` via `os.environ.get()`
   - Centralized config in `/backend/config/settings.py` (DB settings, collection names, DVP rankings)
 - **Current Architecture Status:**
   - Modular routes: `/backend/routes/` (picks, parlays, board, intel, board_intel)
-  - Services: `/backend/services/` (~1,200 lines total)
-    - dvp_service.py, stats_service.py, parlay_service.py, data_scraper.py, social_scout.py
-  - Engine: 8,083 lines (down from 8,252)
+  - Services: ~1,600 lines total (6 service files)
+  - Engine: 8,011 lines (241 lines extracted, ~3% reduction)
   - server.py handles core endpoints with game lock logic
 
 ### 2026-03-15: P0 PickCard UI Enhancement - L5/L10/Season/AI Confidence

@@ -59,6 +59,11 @@ from services.stats_service import (
     STAT_FIELD_MAP
 )
 from services.dvp_service import calculate_dvp_modifier as dvp_calculate_modifier
+from services.insights_service import (
+    generate_insight_summary as insights_generate_summary,
+    calculate_confidence_rating as insights_calculate_confidence,
+    build_player_insights as insights_build_player
+)
 
 # Payout Calculation Engine
 from payout_engine import (
@@ -4438,54 +4443,18 @@ class DemonGoblinEngine:
             logger.info(f"  {ptype}: {pdata['name']} - {pdata['estimated_payout']}x | {pdata['combined_probability']:.1f}% | {status}")
     
     def _build_correlated_parlay(self, all_demons: List[Dict], target_count: int, game_groups: Dict) -> List[Dict]:
-        """Build a parlay with game correlation where possible"""
-        selected = []
-        used_players = set()
-        
-        # Start with top pick
-        if all_demons:
-            top = all_demons[0]
-            selected.append(top)
-            used_players.add(top["player_name"])
-        
-        # Try to add correlated picks from same games as selected
-        for demon in selected[:]:
-            game_key = demon.get("game_key", "")
-            if game_key and game_key in game_groups:
-                for corr in game_groups[game_key]:
-                    if len(selected) >= target_count:
-                        break
-                    if corr["player_name"] not in used_players:
-                        selected.append(corr)
-                        used_players.add(corr["player_name"])
-        
-        # Fill remaining from top demons
-        for demon in all_demons:
-            if len(selected) >= target_count:
-                break
-            if demon["player_name"] not in used_players:
-                selected.append(demon)
-                used_players.add(demon["player_name"])
-        
-        return selected[:target_count]
+        """Build a parlay with game correlation where possible.
+        PROXY: Delegates to services.parlay_service.build_correlated_parlay
+        """
+        from services.parlay_service import build_correlated_parlay
+        return build_correlated_parlay(all_demons, target_count, game_groups)
     
     def _calculate_parlay_probability(self, picks: List[Dict]) -> float:
         """Calculate combined probability of parlay hitting.
-        
-        Uses actual hit_probability (L10*0.6 + L5*0.4) for accurate calculation.
+        PROXY: Delegates to services.parlay_service.calculate_weighted_parlay_probability
         """
-        if not picks:
-            return 0
-        
-        prob = 1.0
-        for pick in picks:
-            # Use hit_probability (the actual weighted probability)
-            p = pick.get("hit_probability", 50) / 100  # Convert from percentage
-            # Don't cap - use actual probability
-            p = max(0.10, p)  # Only prevent division issues
-            prob *= p
-        
-        return round(prob * 100, 2)
+        from services.parlay_service import calculate_weighted_parlay_probability
+        return calculate_weighted_parlay_probability(picks)
     
     async def _build_goblin_recon(self, players_dict: Dict[str, Dict], sync_time: datetime):
         """
@@ -6475,41 +6444,13 @@ class DemonGoblinEngine:
         injured_teammates: List[str],
         opponent: str
     ) -> str:
-        """Generate template-based insight summary prioritizing highest-impact factor."""
-        insights = []
-        
-        # Priority 1: Usage Bump (most impactful)
-        if usage_bump > 10:
-            teammates_str = " & ".join(injured_teammates[:2])
-            insights.append(f"🚀 Usage Spike: With {teammates_str} out, usage +{usage_bump:.0f}%")
-        elif usage_bump > 5:
-            teammates_str = injured_teammates[0] if injured_teammates else "teammate"
-            insights.append(f"📈 Usage Up: {teammates_str} out, +{usage_bump:.0f}% opportunity")
-        
-        # Priority 2: Schedule Fatigue
-        if is_3in4:
-            insights.append("⚠️ 3-in-4 Fatigue: -8% performance expected")
-        elif is_b2b:
-            insights.append("⚠️ Back-to-Back: -5% fatigue factor")
-        
-        # Priority 3: Pace Matchup
-        if pace_factor > 1.05:
-            insights.append(f"🏃 Fast Pace vs {opponent}: +{(pace_factor-1)*100:.0f}% boost")
-        elif pace_factor < 0.95:
-            insights.append(f"🐢 Slow Pace vs {opponent}: {(pace_factor-1)*100:.0f}% drag")
-        
-        # Priority 4: Rest Advantage
-        if days_rest >= 3:
-            insights.append(f"😴 {days_rest} Days Rest: Fresh legs advantage")
-        
-        # Priority 5: Volatility Warning
-        if volatility == "High":
-            insights.append("📊 High Variance: Inconsistent, proceed with caution")
-        
-        if not insights:
-            return f"📈 Standard projection. No significant modifiers."
-        
-        return " | ".join(insights[:2])
+        """Generate template-based insight summary.
+        PROXY: Delegates to services.insights_service.generate_insight_summary
+        """
+        return insights_generate_summary(
+            player_name, pace_factor, usage_bump, volatility,
+            days_rest, is_b2b, is_3in4, injured_teammates, opponent
+        )
     
     def calculate_confidence_rating(
         self, 
@@ -6517,23 +6458,10 @@ class DemonGoblinEngine:
         volatility: str, 
         sample_size: int
     ) -> int:
-        """Calculate AI confidence rating (0-100)."""
-        confidence = 70
-        
-        if density_factor < 0.95:
-            confidence -= 10
-        
-        if volatility == "High":
-            confidence -= 20
-        elif volatility == "Med":
-            confidence -= 10
-        
-        if sample_size >= 10:
-            confidence += 10
-        elif sample_size < 5:
-            confidence -= 15
-        
-        return max(0, min(100, confidence))
+        """Calculate AI confidence rating (0-100).
+        PROXY: Delegates to services.insights_service.calculate_confidence_rating
+        """
+        return insights_calculate_confidence(density_factor, volatility, sample_size)
     
     async def calculate_player_insights(
         self,
