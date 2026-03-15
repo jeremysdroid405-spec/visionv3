@@ -62,11 +62,14 @@ dg_cached_board → dg_radar_picks (War Zone) → dg_goblin_vault → dg_goblin_
 
 ### 2026-03-15: Backend Engine Recovery & Continued Extraction (Phase 12)
 - **Recovery:** Restored corrupted `demon_goblin_engine.py` from commit `79209ff`
-- **Engine Reduction:** 2,707 → 2,443 lines (**264 lines extracted, 10% additional reduction**)
-- **Cumulative Reduction:** 8,252 → 2,443 lines (**~70% total reduction**)
-- **New Extraction:**
+- **Engine Reduction:** 2,707 → 1,810 lines (**897 lines extracted, 33% additional reduction**)
+- **Cumulative Reduction:** 8,252 → 1,810 lines (**~78% total reduction**)
+- **Extractions Completed:**
   - `get_most_popular_bets()` (267 lines) → `PicksGetterService`
-- **PicksGetterService Updated:** Now 663 lines (includes Most Popular Bets functionality)
+  - `run_full_sync()` (471 lines) → `SyncOrchestrationService`
+  - `run_delta_sync()` (177 lines) → `SyncOrchestrationService`
+- **PicksGetterService Updated:** Now 663 lines
+- **SyncOrchestrationService Updated:** Now 671 lines (engine dependency injection design)
 - **All API Endpoints Verified Working:**
   - `/api/v3/status` ✅
   - `/api/v3/war-zone` ✅
