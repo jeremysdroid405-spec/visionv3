@@ -45,6 +45,25 @@ dg_cached_board → dg_radar_picks (War Zone) → dg_goblin_vault → dg_goblin_
 
 ## What's Been Implemented
 
+### 2026-03-15: Backend Engine Deconstruction (Phase 9 - Picks Getter Service)
+- **Engine Reduction:** 3,823 → 3,432 lines (**391 lines extracted, 10% additional reduction**)
+- **Cumulative Reduction:** 8,252 → 3,432 lines (**~58% total reduction**)
+- **New Service Created:**
+  - `PicksGetterService` (407 lines): All tier data fetching (War Zone, Goblin Vault, Front Lines, Parlay Builder, Goblin Recon, Cached Board)
+- **Methods Proxied in Engine:**
+  - `get_war_zone()` → PicksGetterService
+  - `get_goblin_vault()` → PicksGetterService
+  - `get_front_lines()` → PicksGetterService
+  - `get_parlay_builder()` → PicksGetterService
+  - `get_goblin_recon()` → PicksGetterService
+  - `get_cached_board()` → PicksGetterService
+  - `get_cached_player()` → PicksGetterService
+- **Helper Methods Removed:**
+  - `_add_player_insights()` - moved to PicksGetterService
+  - `_clean_object_ids()` - moved to PicksGetterService
+- **Total Services:** 7,913 lines of modular, reusable code
+- **Test Results:** All API endpoints verified working
+
 ### 2026-03-15: Backend Engine Deconstruction (Phase 8 - Stats & Tank01 Services)
 - **Engine Reduction:** 4,196 → 3,823 lines (**373 lines extracted, 9% additional reduction**)
 - **Cumulative Reduction:** 8,252 → 3,823 lines (**~54% total reduction**)
