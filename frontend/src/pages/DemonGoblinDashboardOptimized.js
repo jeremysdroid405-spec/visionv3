@@ -2201,6 +2201,21 @@ const GoblinReconSwipeSection = memo(({ picks, onPickClick, tMinusGames = [] }) 
 GoblinReconSwipeSection.displayName = 'GoblinReconSwipeSection';
 
 // ==================== MASTER PARLAY MATRIX & DFS COMPLIANCE ENGINE ====================
+//
+// ⚠️  CRITICAL: This engine must ONLY be fed with EV-SORTED data arrays!
+//     - DO NOT pass popularity/volume-sorted data (e.g., Most Popular bets)
+//     - Parlays must be built from Expected Value rankings to preserve math integrity
+//
+// APPROVED DATA SOURCES:
+//   - vaultPicks (Safe Haven / THE SHIELD) - sorted by final_ev_score
+//   - frontLinesPicks (Front Lines / THE STRIKE) - sorted by final_ev_score
+//   - radarPicks (War Zone / THE GAUNTLET) - sorted by final_ev_score
+//
+// FORBIDDEN DATA SOURCES:
+//   - popularBets (Most Popular) - sorted by popularity_score (ticket volume)
+//   - Any public sentiment / betting volume data
+//
+// ======================================================================================
 
 /**
  * PARLAY OVERLAP MATRIX - Ensures strategic diversity across ticket sizes
@@ -3020,6 +3035,22 @@ const MostPopularBetsSection = memo(({ bets, lastUpdated, onBetClick, isLoading,
 });
 
 MostPopularBetsSection.displayName = 'MostPopularBetsSection';
+
+// ==================== IMPORTANT: DATA FLOW ARCHITECTURE ====================
+// 
+// PARLAY MATRIX ENGINE (buildMasterParlayTickets, validateTicket, applyParlayMatrix):
+// - ONLY runs on EV-SORTED data from these sections:
+//   1. THE SHIELD (Safe Haven) - Top EV Goblins (vaultPicks)
+//   2. THE STRIKE (Front Lines) - Top EV Mixed (frontLinesPicks interleaved)
+//   3. THE GAUNTLET (War Zone) - Top EV Demons (radarPicks)
+//
+// MOST POPULAR BETS SECTION:
+// - Renders ONLY single-card PopularBetCard components
+// - Shows public money flow / ticket volume heat map
+// - NO parlay generation - would contaminate EV math
+// - Data source: popularity_score (volume proxy), NOT final_ev_score
+//
+// ============================================================================
 
 // ==================== EXPANDED PARLAY VIEW ====================
 // Shows all picks in a parlay with player cards and bet details
