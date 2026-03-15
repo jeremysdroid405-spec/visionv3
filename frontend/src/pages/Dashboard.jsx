@@ -561,37 +561,62 @@ const Dashboard = () => {
         {/* Most Popular Bets */}
         <MostPopularBetsSection bets={popularBets} status={popularBetsStatus} onBetClick={handlePopularBetClick} />
         
-        {/* Search */}
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
-          <Input
-            placeholder="Search player..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="pl-9 py-2 bg-zinc-900 border-zinc-800 text-white text-sm"
-            data-testid="search-input"
-          />
-          {searchTerm && (
-            <button onClick={() => setSearchTerm('')} className="absolute right-3 top-1/2 -translate-y-1/2">
-              <X className="w-4 h-4 text-zinc-500 hover:text-white" />
-            </button>
-          )}
-        </div>
-        
-        {/* Players List */}
-        <div className="rounded-lg border border-zinc-800 overflow-hidden" data-testid="players-list">
-          {!staticLoaded ? (
-            <div className="p-6 text-center">
-              <Activity className="w-6 h-6 text-purple-500 mx-auto mb-2 animate-pulse" />
-              <p className="text-zinc-400 text-sm">Loading...</p>
+        {/* Intel Search */}
+        <div className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-4" data-testid="intel-search-section">
+          <div className="flex items-center gap-2 mb-3">
+            <Search className="w-4 h-4 text-cyan-400" />
+            <span className="text-sm font-medium text-white">INTEL SEARCH</span>
+            <span className="text-[10px] text-zinc-500">Search any player for tactical profile</span>
+          </div>
+          
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
+            <Input
+              placeholder="Search player name..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="pl-9 py-2.5 bg-zinc-800/50 border-zinc-700 text-white text-sm focus:border-cyan-500"
+              data-testid="intel-search-input"
+            />
+            {searchTerm && (
+              <button onClick={() => setSearchTerm('')} className="absolute right-3 top-1/2 -translate-y-1/2">
+                <X className="w-4 h-4 text-zinc-500 hover:text-white" />
+              </button>
+            )}
+          </div>
+          
+          {/* Search Results - Only show when searching */}
+          {searchTerm.length >= 2 && (
+            <div className="mt-3 rounded-lg border border-zinc-700 overflow-hidden" data-testid="intel-search-results">
+              {!staticLoaded ? (
+                <div className="p-4 text-center">
+                  <Activity className="w-5 h-5 text-cyan-400 mx-auto mb-2 animate-pulse" />
+                  <p className="text-zinc-400 text-xs">Loading...</p>
+                </div>
+              ) : filteredPlayers.length === 0 ? (
+                <div className="p-4 text-center">
+                  <p className="text-zinc-500 text-sm">No players found for "{searchTerm}"</p>
+                  <p className="text-zinc-600 text-xs mt-1">Try searching by full name</p>
+                </div>
+              ) : (
+                <div className="max-h-64 overflow-y-auto">
+                  {filteredPlayers.slice(0, 10).map((player) => (
+                    <PlayerRow key={player.player_name} player={player} onClick={() => handlePlayerClick(player.player_name)} linesLoaded={linesLoaded} />
+                  ))}
+                  {filteredPlayers.length > 10 && (
+                    <div className="p-2 text-center text-xs text-zinc-500 border-t border-zinc-800">
+                      +{filteredPlayers.length - 10} more results
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
-          ) : filteredPlayers.length === 0 ? (
-            <div className="p-6 text-center text-zinc-500 text-sm">No players found</div>
-          ) : (
-            <div className="max-h-[60vh] overflow-y-auto">
-              {filteredPlayers.map((player) => (
-                <PlayerRow key={player.player_name} player={player} onClick={() => handlePlayerClick(player.player_name)} linesLoaded={linesLoaded} />
-              ))}
+          )}
+          
+          {/* Empty state when not searching */}
+          {searchTerm.length < 2 && (
+            <div className="mt-3 text-center py-4">
+              <p className="text-zinc-500 text-xs">Enter at least 2 characters to search</p>
             </div>
           )}
         </div>
