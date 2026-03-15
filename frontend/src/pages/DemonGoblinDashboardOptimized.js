@@ -4639,10 +4639,10 @@ export const DemonGoblinDashboardOptimized = ({ isDemoMode = false }) => {
           />
         )}
 
-        {/* THE FRONT LINES - Middle Tier (50-70% hit rate) */}
+        {/* THE FRONT LINES - Middle Tier (Mild Alternates 5-18% from standard) */}
         {frontLinesPicks.length > 0 && (
           <FrontLinesSwipeSection 
-            picks={frontLinesPicks.slice(0, 6)}
+            picks={frontLinesPicks.slice(0, 10)}
             onPickClick={handleRadarClick}
             tMinusGames={tMinusGames}
           />
