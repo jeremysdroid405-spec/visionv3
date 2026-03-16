@@ -25,10 +25,13 @@ const PROP_LABELS = {
   'STL': 'Steals',
   'BLK': 'Blocks',
   'TO': 'Turnovers',
-  'PRA': 'PRA',  // Points + Rebounds + Assists
-  'PR': 'PR',    // Points + Rebounds
-  'PA': 'PA',    // Points + Assists
-  'RA': 'RA',    // Rebounds + Assists
+  'PRA': 'PRA',       // Points + Rebounds + Assists
+  'PR': 'PR',         // Points + Rebounds
+  'P+R': 'PR',        // Alternate format
+  'PA': 'PA',         // Points + Assists
+  'P+A': 'PA',        // Alternate format
+  'RA': 'RA',         // Rebounds + Assists
+  'R+A': 'RA',        // Alternate format
   'BLST': 'Blocks + Steals',
   'FGM': 'Field Goals Made',
   'FTM': 'Free Throws Made',
@@ -37,24 +40,34 @@ const PROP_LABELS = {
   'TD': 'Triple-Double',
 };
 
+// Normalize stat type to standard format (handles P+R -> PR, etc.)
+const normalizeStatType = (statType) => {
+  const normMap = { 'P+R': 'PR', 'P+A': 'PA', 'R+A': 'RA' };
+  return normMap[statType] || statType;
+};
+
 // Category order for sorting
 const CATEGORY_ORDER = ['PTS', 'REB', 'AST', 'PRA', 'PR', 'PA', 'RA', '3PM', 'STL', 'BLK', 'BLST', 'TO', 'FGM', 'FTM', 'MIN'];
 
 // ==================== HELPER FUNCTIONS ====================
 
 const getPropLabel = (statType) => {
-  return PROP_LABELS[statType] || statType;
+  const normalized = normalizeStatType(statType);
+  return PROP_LABELS[normalized] || PROP_LABELS[statType] || statType;
 };
 
 const groupPropsByCategory = (props) => {
   const groups = {};
   
   props.forEach(prop => {
-    const cat = prop.stat_type || 'OTHER';
+    // Normalize stat type (P+R -> PR, etc.)
+    const rawCat = prop.stat_type || 'OTHER';
+    const cat = normalizeStatType(rawCat);
     if (!groups[cat]) {
       groups[cat] = [];
     }
-    groups[cat].push(prop);
+    // Store the prop with normalized stat_type for consistency
+    groups[cat].push({ ...prop, stat_type: cat });
   });
   
   // Sort categories by predefined order

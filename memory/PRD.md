@@ -5,147 +5,45 @@ PickVision is a high-performance NBA Player Prop Dashboard with a "military tech
 
 ## Latest Update: 2026-03-16
 
-### Conditional State Highlighting ✅ (NEW - March 16, 2026)
-**Complete implementation of Target-Lock system for PropVision recommendations**
+### Prop Arsenal UI Rework - COMPLETED
+**Changed prop display from accordion to flat list layout**
 
-- **Backend:** `/api/command/profile/{player_name}` now fetches ALL props from `dg_live_props` and cross-references with PropVision recommendations (`dg_radar_picks`, `dg_goblin_vault`, `dg_front_lines`)
-- **Target-Lock Identification:** Each prop line includes `is_radar: true/false` flag
-- **Frontend Rendering:**
-  - **Target-Lock props (is_radar: true):**
-    - Neon Green glow + pulsing animation
-    - Crosshair icon + "OBJECTIVE" badge
-    - Click reveals **Full Intel Suite** (DvP, Pace Multiplier, Stability Index)
-  - **Standard props (is_radar: false):**
-    - Neutral/muted styling, no badge
-    - Click reveals **Basic Stats only** (L5/L10/Season avg)
-- **Example:** Search "LeBron James" - shows 50 props, 9 look normal, but "Points Over 25.5" glows green with crosshair = PropVision has a Target-Lock on that line
-- **Files Updated:**
-  - `/app/backend/routes/command.py` (completely rewritten profile endpoint)
-  - `/app/frontend/src/components/dashboard/TacticalPlayerCard.jsx` (targetLockCount, isRadar logic)
-  - `/app/frontend/src/components/dashboard/CommandPost.jsx` (passes is_radar flag)
+- **Before:** Props were displayed in nested accordions that required clicking to expand
+- **After:** Props are displayed as a flat list grouped by category headers
+- **Categories:** POINTS, REBOUNDS, ASSISTS, PRA (Points+Rebounds+Assists), PR, PA, RA, 3PM, STL, BLK, etc.
+- **Stat normalization:** API returns `P+R`, `P+A`, `R+A` - now normalized to `PR`, `PA`, `RA`
+- **L5/L10/SZN columns:** Display baseline stats from `nba_master_hub_2026`, showing "-" when data unavailable
+- **Target-Lock styling:** Recommended props highlighted with green border and "TARGET" badge
 
-### PropVision Command Post Implementation ✅
+**Files Updated:**
+- `/app/frontend/src/components/dashboard/TacticalPlayerCard.jsx`
+  - Added `normalizeStatType()` function for combined stat handling
+  - Updated `groupPropsByCategory()` to normalize stat types
+  - Enhanced `PROP_LABELS` with alternate formats (P+R, P+A, R+A)
 
-#### Tactical Player Card System
-- **TacticalPlayerCard Component:** Double-nested interactive military-style cards
-- **Prop Arsenal:** Expandable list of all props per player
-- **Standard vs Radar:** Visual distinction between regular props and PropVision Objectives
-- **Radar Picks:** Glowing neon green border with pulsing Target-Lock icon
-
-#### Stability Index (NEW)
-- **High Stability (80-100):** Low variance, consistent performer
-- **Moderate (50-79):** Average variance
-- **Volatile (0-49):** High variance, boom-or-bust player
-- Based on standard deviation / coefficient of variation
-
-#### Intelligence Suite (ONLY for Radar/OBJECTIVE picks)
-- L5, L10, and Season Averages
-- Usage Ripple™ (e.g., "+8% Volume Shift")
-- Live DvP (e.g., "Opponent Rank: #28")
-- Pace Multiplier (High-Tempo/Grind-Out/Standard)
-- Stability Index badge
-
-#### Tactical Conflict Detection
-- Detects mutually exclusive parameters (Over + Under on same player/stat)
-- UI "Redacts" conflicting legs with warning message
-- "Tactical Conflict: Mutually Exclusive Parameters"
-- Simulation blocked until conflicts resolved
-
-#### Military Terminology
-- "Infiltration Grade" (replaces Success)
-- "Stability Index" (replaces Safety)
-- "Objectives" (replaces Picks)
-- "Defensive Friction" (replaces DvP)
-- "Convergence Rate" (replaces Combined Probability)
-
-### Live Scores & Breaking News Tickers ✅
-- **Live Scores Ticker:** Real-time NBA game scores from BallDontLie API
-  - Auto-refreshes every 30 seconds
-  - Shows team abbreviations, scores, and game status (Q1, Q2, Final, Upcoming)
-  - Red "LIVE" badge with pulsing animation
-  - Scrolling horizontal ticker with hover-pause
-- **Breaking News Ticker:** Injury updates and system status
-  - Auto-refreshes every 60 seconds  
-  - Shows injury alerts, line movements, and AI feature highlights
-  - Amber gradient background with scrolling animation
-- **Layout Reorganization:** Most Popular section now at TOP of dashboard
-
-### Quick-Add to Command Post ✅
-- **Feature:** One-click button on PickCards to add props directly to the Command Post simulator
-- **UI:** Cyan + icon button in card header (only visible when `onQuickAdd` prop provided)
-- **Behavior:** Opens Command Post sidebar and automatically adds the prop as a leg
-- **Duplicate Prevention:** Checks if leg already exists before adding
-- **Toast Notification:** Shows confirmation "Added [Player] to Command Post"
-
-### Intel Search API Integration ✅
-- **Fixed:** Intel Search now uses live BallDontLie API instead of filtering empty local cache
-- **Endpoint:** `GET /api/command/search?query={name}`
-- **Features:** 300ms debounce, loading states, error handling
-- **Result:** Can now search full NBA player database regardless of game day availability
-
-### DvP (Defense vs Position) System - FULLY INTEGRATED ✅
-
-#### 1. Live Data Fetching (from BallDontLie API)
-- **Endpoint:** `GET /nba/v1/team_season_averages/general?type=opponent`
-- **Stats:** `pts_allowed`, `reb_allowed`, `ast_allowed`, `fg3m_allowed`, `blk`, `stl`
-- **Storage:** MongoDB `dvp_rankings` collection
-- **Refresh:** Daily at 8:00 AM EST via APScheduler
-- **API Key:** `BALLDONTLIE_API_KEY` in `.env` (GOAT tier required)
-
-#### 2. Ranking Engine
-- Ranks all 30 teams from **1 (Best Defense)** to **30 (Worst Defense)**
-- Lower allowed stats = better defense = lower rank
-
-#### 3. Success Multiplier (Statistical_Certainty)
-- **Rank >= 25** (Bottom 5 Defense): **+10% boost** (`dvp_certainty_mult: 1.10`)
-- **Rank <= 5** (Top 5 Defense): **-15% penalty** (`dvp_certainty_mult: 0.85`)
-- **Rank 6-24** (Neutral): No change (`dvp_certainty_mult: 1.0`)
-
-#### 4. AI Briefing Integration
-- Vision AI service now includes mandatory DvP context sentence
-- Format: "The [Opponent] are ranked #[Rank] against [Position] in [Stat], creating a [High/Low/Medium] friction environment."
-
-#### 5. Dashboard DvP Badge
-- Color-coded badge on every player card:
-  - **Green** (25-30): Favorable matchup (Bottom 5 Defense)
-  - **Yellow** (10-24): Neutral matchup
-  - **Red** (1-9): Tough matchup (Top 10 Defense)
-
-#### API Endpoints
-- `GET /api/dvp-status` - Service health & configuration
-- `GET /api/dvp-rankings` - Full team rankings data
-- `GET /api/dvp-analysis/{team}/{stat}?player_position={pos}` - Matchup analysis
-- `POST /api/dvp-refresh` - Manual refresh trigger
-
-### Backend Changes
-- **Files Updated:**
-  - `/app/backend/services/dvp_service.py` - Complete rewrite with live fetching
-  - `/app/backend/services/tier_builder_service.py` - DvP integration in scoring
-  - `/app/backend/vision_ai_service.py` - DvP context in AI briefings
-  - `/app/backend/routes/admin.py` - DvP management endpoints
-
-### Frontend Changes  
-- **Files Updated:**
-  - `/app/frontend/src/components/dashboard/PlayerCard.jsx` - DvPBadge component
-  - `/app/frontend/src/components/dashboard/PickCard.jsx` - DvPBadge component
-
-### Tests
-- `/app/backend/tests/test_dvp_service.py` - 25 tests PASSING
-- `/app/backend/tests/test_critical_backend.py` - 16 tests PASSING
+### Database Sync - Session Work
+- Synced `nba_master_hub_2026` collection with 1,124 players
+- Merged headshot URLs from `dg_master_roster` (535 photos)
+- Some players have `baseline_stats`, others pending daily CRON job sync
 
 ---
 
 ## Previous Updates
 
-### Backend Test Suite ✅
-- **File:** `/app/backend/tests/test_critical_backend.py`
-- **Tests:** 16 tests across 6 categories - ALL PASSING
+### Centralized Data Hub Implementation - COMPLETED
+- **nba_master_hub_2026**: Single source of truth for all player data
+- **Daily CRON job**: Syncs L5, L10, season averages via APScheduler
+- **Backend refactor**: All endpoints pull stats from master hub
 
-### Backend Refactoring Complete ✅
-- Deconstructed monolithic `server.py` from 2,619 to 552 lines
-- Extracted 81 route handlers into 29 modular files in `/app/backend/routes/`
-- Implemented rate limiting and request tracing middleware
-- Added API versioning infrastructure and OpenAPI documentation
+### Conditional State Highlighting - COMPLETED
+- Target-Lock system for PropVision recommendations
+- `is_radar: true/false` flag on each prop line
+- Full Intel Suite for Target-Lock props, basic stats for standard props
+
+### PropVision Command Post - COMPLETED
+- Tactical Player Card System
+- Parlay conflict detection engine
+- Military terminology (Infiltration Grade, Convergence Rate, etc.)
 
 ---
 
@@ -154,55 +52,38 @@ PickVision is a high-performance NBA Player Prop Dashboard with a "military tech
 ```
 /app
 ├── backend/
-│   ├── config/
-│   │   ├── api_versioning.py
-│   │   └── settings.py
-│   ├── middleware/
-│   │   ├── rate_limiter.py
-│   │   └── tracer.py
-│   ├── routes/ (29 modular files)
+│   ├── routes/
+│   │   ├── command.py      # Player profiles from master hub
+│   │   ├── master_hub.py   # Master hub status/sync routes
+│   │   └── tiers.py        # Board picks from master hub
 │   ├── services/
-│   │   ├── dvp_service.py (LIVE DvP data)
-│   │   ├── tier_builder_service.py (DvP scoring)
-│   │   └── ... (26 other services)
-│   ├── tests/
-│   │   ├── test_critical_backend.py
-│   │   └── test_dvp_service.py
-│   ├── server.py (552 lines, middleware only)
-│   └── vision_ai_service.py (DvP AI briefings)
+│   │   ├── picks_getter_service.py  # Enriches picks with hub data
+│   │   ├── master_hub_sync.py       # Daily stats sync
+│   │   └── cron_scheduler.py        # APScheduler setup
+│   └── server.py
 ├── frontend/
-│   └── src/components/dashboard/
-│       ├── PlayerCard.jsx (DvPBadge)
-│       └── PickCard.jsx (DvPBadge)
-└── memory/
-    └── PRD.md
-```
-
----
-
-## Environment Variables
-
-```env
-# BallDontLie API (GOAT tier required)
-BALLDONTLIE_API_KEY=your-key-here
-
-# Other existing keys
-GOOGLE_API_KEY=...
-ODDS_API_KEY=...
-TANK01_API_KEY=...
+│   └── src/
+│       ├── components/
+│       │   └── dashboard/
+│       │       ├── TacticalPlayerCard.jsx  # Flat list prop display
+│       │       ├── CommandPost.jsx         # Command Post panel
+│       │       └── PickCard.jsx            # Dashboard pick cards
+│       └── pages/
+│           └── Dashboard.jsx
+└── ...
 ```
 
 ---
 
 ## Pending Tasks
 
-### P0 - Immediate (Complete)
-- [x] Full Intel Suite display fix (only show for Radar/OBJECTIVE picks)
-- [x] Conflict Detection engine implementation
+### P0 - Immediate
+- [x] Prop Arsenal UI rework (flat list layout)
+- [ ] Test conflict detection (add Over + Under for same player prop)
 
 ### P1 - High Priority
-- [ ] Trigger data sync to populate DvP badges on existing picks
-- [ ] Helper function consolidation (remove duplicate cache functions from server.py)
+- [ ] Consolidate duplicate player lookup functions into `/app/backend/utils/`
+- [ ] Re-run baseline stats sync to populate more players
 
 ### P2/P3 - Future
 - [ ] Stripe integration & authentication
@@ -214,18 +95,37 @@ TANK01_API_KEY=...
 
 ---
 
+## Key API Endpoints
+
+- `GET /api/command/profile/{player_name}` - Full tactical profile with all props
+- `GET /api/v3/goblin-vault` - Safe Haven picks
+- `GET /api/v3/most-popular-bets` - Most Popular picks
+- `POST /api/v3/master-hub/sync` - Manual master hub sync
+- `POST /api/v3/sync-baseline-stats` - Baseline stats sync trigger
+
+---
+
 ## Data Flow
 
 ```
-BallDontLie API → dvp_service.py → MongoDB (dvp_rankings)
-                                        ↓
-                               tier_builder_service.py
-                               (applies dvp_certainty_mult)
-                                        ↓
-                               API Response with:
-                               - dvp_rank (1-30)
-                               - dvp_rank_color (green/yellow/red)
-                               - dvp_certainty_mult (0.85/1.0/1.10)
-                                        ↓
-                               Frontend (DvPBadge component)
+BallDontLie API → master_hub_sync.py → MongoDB (nba_master_hub_2026)
+                                            ↓
+                                   baseline_stats: {
+                                     PTS: {l5_avg, l10_avg, season_avg},
+                                     REB: {...},
+                                     AST: {...},
+                                     PRA: {...}
+                                   }
+                                            ↓
+                                   API Response → Frontend
+                                            ↓
+                                   TacticalPlayerCard (flat list)
 ```
+
+---
+
+## Testing Status
+- TacticalPlayerCard flat list layout: Verified via screenshots
+- L5/L10/SZN display: Shows values when available, "-" when null
+- Target-Lock styling: Green highlight + TARGET badge working
+- Stat type normalization: P+R → PR confirmed working
