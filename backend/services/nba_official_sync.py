@@ -14,18 +14,25 @@ Key Features:
 - Properly sorted by GAME_DATE descending
 - Rate-limited to respect NBA API (0.6s between requests)
 - Maps official NBA columns to master hub schema
+
+FILTERING (v2 - 2026-03-16):
+- Only processes players on active NBA teams (30 franchises)
+- Filters out G-League, free agents, and overseas players
+- Skips players with 0 minutes in current season
+- Reduces sync from ~1100 to ~450 active players
 """
 import asyncio
 import logging
 import time
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Set
 
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
 # NBA Official API
 from nba_api.stats.static import players as nba_players
-from nba_api.stats.endpoints import playergamelog, commonplayerinfo
+from nba_api.stats.static import teams as nba_teams
+from nba_api.stats.endpoints import playergamelog, commonplayerinfo, commonteamroster
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +42,46 @@ CURRENT_SEASON = "2024-25"  # Format for nba_api
 # Rate limiting (NBA API requires ~0.6s between requests)
 REQUEST_DELAY = 0.6
 
+# ============================================
+# ACTIVE NBA TEAM IDS (30 Franchises)
+# Excludes G-League, historical teams, etc.
+# ============================================
+ACTIVE_NBA_TEAM_IDS: Set[int] = {
+    1610612737,  # Atlanta Hawks
+    1610612738,  # Boston Celtics
+    1610612739,  # Cleveland Cavaliers
+    1610612740,  # New Orleans Pelicans
+    1610612741,  # Chicago Bulls
+    1610612742,  # Dallas Mavericks
+    1610612743,  # Denver Nuggets
+    1610612744,  # Golden State Warriors
+    1610612745,  # Houston Rockets
+    1610612746,  # LA Clippers
+    1610612747,  # Los Angeles Lakers
+    1610612748,  # Miami Heat
+    1610612749,  # Milwaukee Bucks
+    1610612750,  # Minnesota Timberwolves
+    1610612751,  # Brooklyn Nets
+    1610612752,  # New York Knicks
+    1610612753,  # Orlando Magic
+    1610612754,  # Indiana Pacers
+    1610612755,  # Philadelphia 76ers
+    1610612756,  # Phoenix Suns
+    1610612757,  # Portland Trail Blazers
+    1610612758,  # Sacramento Kings
+    1610612759,  # San Antonio Spurs
+    1610612760,  # Oklahoma City Thunder
+    1610612761,  # Toronto Raptors
+    1610612762,  # Utah Jazz
+    1610612763,  # Memphis Grizzlies
+    1610612764,  # Washington Wizards
+    1610612765,  # Detroit Pistons
+    1610612766,  # Charlotte Hornets
+}
+
+# Team abbreviation to ID mapping
+TEAM_ABBREV_TO_ID = {team['abbreviation']: team['id'] for team in nba_teams.get_teams()}
+
 
 class NBAOfficialSyncService:
     """
@@ -42,12 +89,18 @@ class NBAOfficialSyncService:
     
     This replaces Tank01 as the primary data source for player statistics.
     Uses the official NBA stats API via the nba_api package.
+    
+    FILTERING RULES:
+    1. Player must be on an active NBA team (30 franchises)
+    2. Player must have >0 minutes in current season
+    3. G-League and overseas players are excluded
     """
     
     def __init__(self, db: AsyncIOMotorDatabase):
         self.db = db
         self.hub = db.nba_master_hub_2026
         self._last_request_time = 0
+        self._active_players_cache: Optional[Set[int]] = None
     
     def _rate_limit(self):
         """Enforce rate limiting between NBA API requests."""
@@ -55,6 +108,55 @@ class NBAOfficialSyncService:
         if elapsed < REQUEST_DELAY:
             time.sleep(REQUEST_DELAY - elapsed)
         self._last_request_time = time.time()
+    
+    def _build_active_players_list(self) -> Set[int]:
+        """
+        Build list of active NBA player IDs by fetching rosters from all 30 teams.
+        
+        FILTERING LOGIC:
+        - Only includes players currently on an NBA roster
+        - Excludes G-League, free agents, and overseas players
+        
+        Returns:
+            Set of active NBA player IDs
+        """
+        if self._active_players_cache is not None:
+            return self._active_players_cache
+        
+        logger.info("[NBA_OFFICIAL_SYNC] Building active players list from team rosters...")
+        
+        active_player_ids: Set[int] = set()
+        
+        for team_id in ACTIVE_NBA_TEAM_IDS:
+            try:
+                self._rate_limit()
+                roster = commonteamroster.CommonTeamRoster(
+                    team_id=team_id,
+                    season=CURRENT_SEASON
+                )
+                df = roster.get_data_frames()[0]
+                
+                for _, row in df.iterrows():
+                    player_id = row.get('PLAYER_ID')
+                    if player_id:
+                        active_player_ids.add(int(player_id))
+                
+            except Exception as e:
+                logger.warning(f"[NBA_OFFICIAL_SYNC] Failed to fetch roster for team {team_id}: {e}")
+        
+        self._active_players_cache = active_player_ids
+        logger.info(f"[NBA_OFFICIAL_SYNC] Found {len(active_player_ids)} active NBA players across 30 teams")
+        
+        return active_player_ids
+    
+    def _is_active_nba_player(self, nba_player_id: int) -> bool:
+        """
+        Check if player is on an active NBA roster.
+        
+        FILTER: Excludes G-League, free agents, overseas players.
+        """
+        active_players = self._build_active_players_list()
+        return nba_player_id in active_players
     
     def _get_nba_player_id(self, player_name: str) -> Optional[int]:
         """
@@ -92,6 +194,7 @@ class NBAOfficialSyncService:
         Fetch game logs from official NBA API.
         
         Returns list of game log dictionaries sorted by date descending.
+        Returns empty list if player has 0 minutes (FILTER).
         """
         try:
             self._rate_limit()
@@ -108,12 +211,24 @@ class NBAOfficialSyncService:
             if df.empty:
                 return []
             
+            # FILTER: Check if player has any minutes this season
+            total_minutes = df['MIN'].sum() if 'MIN' in df.columns else 0
+            if total_minutes == 0:
+                logger.debug(f"[NBA_OFFICIAL_SYNC] Skipping player {nba_player_id}: 0 minutes played")
+                return []
+            
             # Sort by GAME_DATE descending (most recent first)
             df = df.sort_values('GAME_DATE', ascending=False)
             
             # Map NBA columns to our schema
             games = []
             for _, row in df.iterrows():
+                mins = int(row.get('MIN', 0))
+                
+                # Skip games where player didn't play
+                if mins == 0:
+                    continue
+                
                 game = {
                     "gameID": str(row.get('Game_ID', '')),
                     "game_date": row.get('GAME_DATE', ''),
@@ -128,7 +243,7 @@ class NBAOfficialSyncService:
                     "tov": int(row.get('TOV', 0)),
                     "tptfgm": int(row.get('FG3M', 0)),  # 3-pointers made
                     # Minutes
-                    "mins": int(row.get('MIN', 0)),
+                    "mins": mins,
                     # Shooting
                     "fgm": int(row.get('FGM', 0)),
                     "fga": int(row.get('FGA', 0)),
@@ -153,9 +268,13 @@ class NBAOfficialSyncService:
     
     async def sync_all_players(self, batch_size: int = 50) -> Dict[str, Any]:
         """
-        Sync game logs for all players in master hub using official NBA API.
+        Sync game logs for ACTIVE NBA players only.
         
-        This is the main entry point for the 0400 EST CRON job.
+        FILTERING APPLIED:
+        1. Only players on active NBA rosters (30 teams)
+        2. Only players with >0 minutes this season
+        
+        This reduces sync from ~1100 to ~450 players.
         
         Args:
             batch_size: Number of players to process per batch
@@ -164,23 +283,32 @@ class NBAOfficialSyncService:
             Sync results summary
         """
         started_at = datetime.now(timezone.utc)
-        logger.info(f"[NBA_OFFICIAL_SYNC] Starting full sync at {started_at.isoformat()}")
+        logger.info(f"[NBA_OFFICIAL_SYNC] Starting filtered sync at {started_at.isoformat()}")
         
         results = {
             "started_at": started_at.isoformat(),
+            "filter_mode": "active_nba_roster_only",
+            "players_in_db": 0,
+            "players_on_active_roster": 0,
             "players_processed": 0,
             "players_updated": 0,
-            "players_skipped": 0,
+            "players_skipped_not_on_roster": 0,
+            "players_skipped_no_minutes": 0,
+            "players_skipped_no_nba_id": 0,
             "players_failed": 0,
             "errors": []
         }
         
-        # Get all players from master hub
+        # STEP 1: Build active players list from team rosters
+        active_player_ids = self._build_active_players_list()
+        results["players_on_active_roster"] = len(active_player_ids)
+        
+        # STEP 2: Get all players from master hub
         cursor = self.hub.find({}, {"display_name": 1, "nba_player_id": 1, "team": 1})
         players = await cursor.to_list(length=2000)
         
-        total_players = len(players)
-        logger.info(f"[NBA_OFFICIAL_SYNC] Found {total_players} players to sync")
+        results["players_in_db"] = len(players)
+        logger.info(f"[NBA_OFFICIAL_SYNC] DB has {len(players)} players, {len(active_player_ids)} on active rosters")
         
         for i, player in enumerate(players):
             player_name = player.get("display_name", "Unknown")
@@ -198,16 +326,31 @@ class NBAOfficialSyncService:
                         )
                 
                 if not nba_id:
-                    logger.warning(f"[NBA_OFFICIAL_SYNC] No NBA ID found for: {player_name}")
-                    results["players_skipped"] += 1
+                    results["players_skipped_no_nba_id"] += 1
+                    continue
+                
+                # ===== FILTER 1: Active NBA Roster Check =====
+                # Skip if player is not on an active NBA team roster
+                if nba_id not in active_player_ids:
+                    results["players_skipped_not_on_roster"] += 1
+                    # Mark as inactive in DB
+                    await self.hub.update_one(
+                        {"_id": player["_id"]},
+                        {"$set": {"roster_status": "not_on_active_roster"}}
+                    )
                     continue
                 
                 # Fetch game logs from official NBA API
                 game_logs = self._fetch_game_logs(nba_id)
                 
+                # ===== FILTER 2: Minutes Played Check =====
+                # _fetch_game_logs returns [] if 0 minutes
                 if not game_logs:
-                    logger.debug(f"[NBA_OFFICIAL_SYNC] No game logs for: {player_name}")
-                    results["players_skipped"] += 1
+                    results["players_skipped_no_minutes"] += 1
+                    await self.hub.update_one(
+                        {"_id": player["_id"]},
+                        {"$set": {"roster_status": "active_zero_minutes"}}
+                    )
                     continue
                 
                 # Calculate baseline stats from game logs
@@ -222,7 +365,8 @@ class NBAOfficialSyncService:
                             "game_logs_source": "nba_official",
                             "game_logs_updated_at": datetime.now(timezone.utc).isoformat(),
                             "baseline_stats": baseline_stats,
-                            "baseline_stats_source": "nba_official"
+                            "baseline_stats_source": "nba_official",
+                            "roster_status": "active_playing"
                         }
                     }
                 )
@@ -233,8 +377,9 @@ class NBAOfficialSyncService:
                 # Progress logging
                 if (i + 1) % 25 == 0:
                     logger.info(
-                        f"[NBA_OFFICIAL_SYNC] Progress: {i + 1}/{total_players} "
-                        f"({results['players_updated']} updated)"
+                        f"[NBA_OFFICIAL_SYNC] Progress: {i + 1}/{len(players)} "
+                        f"({results['players_updated']} updated, "
+                        f"{results['players_skipped_not_on_roster']} filtered)"
                     )
                 
             except Exception as e:
@@ -251,7 +396,8 @@ class NBAOfficialSyncService:
         logger.info(
             f"[NBA_OFFICIAL_SYNC] Completed: "
             f"{results['players_updated']} updated, "
-            f"{results['players_skipped']} skipped, "
+            f"{results['players_skipped_not_on_roster']} filtered (not on roster), "
+            f"{results['players_skipped_no_minutes']} filtered (0 mins), "
             f"{results['players_failed']} failed "
             f"in {results['duration_seconds']:.1f}s"
         )
@@ -262,6 +408,7 @@ class NBAOfficialSyncService:
         """
         Sync game logs for a single player.
         
+        Bypasses roster filter for single player requests.
         Useful for on-demand updates or testing.
         """
         logger.info(f"[NBA_OFFICIAL_SYNC] Syncing single player: {player_name}")
@@ -282,11 +429,11 @@ class NBAOfficialSyncService:
             if not nba_id:
                 return {"success": False, "error": "Could not find NBA player ID"}
         
-        # Fetch game logs
+        # Fetch game logs (bypasses roster filter for single player)
         game_logs = self._fetch_game_logs(nba_id)
         
         if not game_logs:
-            return {"success": False, "error": "No game logs returned from NBA API"}
+            return {"success": False, "error": "No game logs returned (0 minutes played)"}
         
         # Calculate baseline stats
         baseline_stats = self._calculate_baseline_stats(game_logs)
