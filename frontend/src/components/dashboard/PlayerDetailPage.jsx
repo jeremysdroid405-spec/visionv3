@@ -12,21 +12,21 @@ import {
   TrendingUp, TrendingDown, AlertTriangle, Shield, Lock
 } from 'lucide-react';
 import { DemonIcon, GoblinIcon } from './Icons';
-import { STAT_CATEGORIES, getCategoryKey, TEAM_LOGOS, NBA_HEADSHOT_URL } from './constants';
+import { STAT_CATEGORIES, getCategoryKey, TEAM_LOGOS } from './constants';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
 // ==================== PLAYER HEADSHOT ====================
-const PlayerHeadshot = memo(({ nbaId, playerName, team, photoUrl, size = 'md', className = '' }) => {
+// Uses photo_url from nba_master_hub_2026 (no external API calls on render)
+const PlayerHeadshot = memo(({ playerName, team, photoUrl, size = 'md', className = '' }) => {
   const [error, setError] = useState(false);
   const sizeClasses = { sm: 'w-8 h-8', md: 'w-12 h-12', lg: 'w-16 h-16', xl: 'w-24 h-24' };
   const sizeClass = sizeClasses[size] || sizeClasses.md;
   
   const isValidPhotoUrl = photoUrl && !photoUrl.includes('nophoto');
-  const headshotUrl = isValidPhotoUrl ? photoUrl : (nbaId ? NBA_HEADSHOT_URL(nbaId) : null);
   const teamLogoUrl = team ? TEAM_LOGOS[team] : null;
   
-  if (!headshotUrl || error) {
+  if (!isValidPhotoUrl || error) {
     if (teamLogoUrl) {
       return (
         <div className={`${sizeClass} rounded-full overflow-hidden bg-zinc-800 flex items-center justify-center p-1.5 ${className}`}>
@@ -43,7 +43,7 @@ const PlayerHeadshot = memo(({ nbaId, playerName, team, photoUrl, size = 'md', c
   
   return (
     <div className={`${sizeClass} rounded-full overflow-hidden bg-zinc-800 ${className}`}>
-      <img src={headshotUrl} alt={playerName} onError={() => setError(true)} 
+      <img src={photoUrl} alt={playerName} onError={() => setError(true)} 
         className="w-full h-full object-cover" style={{ objectPosition: 'center 20%', transform: 'scale(1.3)' }} />
     </div>
   );

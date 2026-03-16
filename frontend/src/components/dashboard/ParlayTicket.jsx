@@ -2,7 +2,6 @@ import React, { memo } from 'react';
 import { Card } from '../ui/card';
 import { ChevronRight } from 'lucide-react';
 import { DemonIcon, GoblinIcon } from './Icons';
-import { NBA_HEADSHOT_URL } from './constants';
 
 // Get tier label based on size and section type
 const getTierLabel = (size, sectionType) => {

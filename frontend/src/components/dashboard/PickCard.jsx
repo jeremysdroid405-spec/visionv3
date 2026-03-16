@@ -2,7 +2,6 @@ import React, { memo } from 'react';
 import { Card } from '../ui/card';
 import { Zap, Shield, Plus } from 'lucide-react';
 import { DemonIcon, GoblinIcon, VisionBadge } from './Icons';
-import { NBA_HEADSHOT_URL } from './constants';
 
 // DvP Badge Component - Color coded defensive ranking badge
 const DvPBadge = memo(({ rank, color }) => {
@@ -94,11 +93,12 @@ const GemEmblem = memo(({ size = 20 }) => (
   <span style={{ fontSize: size, filter: 'drop-shadow(0 0 4px #00BFFF)' }}>💎</span>
 ));
 
-// Player headshot component
-const PlayerHeadshot = memo(({ nbaId, playerName, team, photoUrl, size = 'md', className = '' }) => {
+// Player headshot component - Uses photo_url from nba_master_hub_2026 (no external API calls)
+const PlayerHeadshot = memo(({ playerName, team, photoUrl, size = 'md', className = '' }) => {
   const sizeClasses = { sm: 'w-8 h-8', md: 'w-10 h-10', lg: 'w-12 h-12' };
   
-  const imgSrc = photoUrl || (nbaId ? NBA_HEADSHOT_URL(nbaId) : null);
+  // Use photo_url directly from master hub - no fallback to external API
+  const imgSrc = photoUrl;
   
   return (
     <div className={`${sizeClasses[size]} rounded-full overflow-hidden bg-zinc-800 flex-shrink-0 ${className}`}>
