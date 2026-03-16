@@ -5,6 +5,30 @@ PickVision is a high-performance NBA Player Prop Dashboard with a "military tech
 
 ## Latest Update: 2026-03-16
 
+### Vision Pick Highlight Feature - COMPLETED
+**When clicking a player from Safe Haven/War Zone, the specific bet is highlighted with VISION PICK styling**
+
+**Features:**
+- **Gold glow** - Amber gradient border with 20px glow shadow
+- **Crosshair icon** - Pulsing crosshair emblem on the left
+- **"VISION PICK" label** - Gold badge with crosshair icon
+- **"Tap to view Intel Suite"** - Click indicator
+- **Vision Intel Suite modal** - Full analysis panel on click
+
+**Modal Contents:**
+- Player name and stat type
+- Vision Pick line and odds
+- L5/L10/Season averages from master hub
+- Hit Rate Analysis (L10 and L5 percentages)
+- "VISION RECOMMENDS" badge
+
+**Files Updated:**
+- `/app/frontend/src/components/dashboard/PlayerDetailPage.jsx`
+  - Added `showIntelSuite` and `selectedVisionProp` state
+  - Updated `PropRow` with gold styling for highlighted props
+  - Added Vision Intel Suite modal component
+  - Fixed `isHighlightedProp` matching logic to use `stat_type_extracted`
+
 ### Stats Unified to Master Hub - COMPLETED
 **ALL player stats (L5/L10/SZN) now come exclusively from `nba_master_hub_2026.baseline_stats`**
 

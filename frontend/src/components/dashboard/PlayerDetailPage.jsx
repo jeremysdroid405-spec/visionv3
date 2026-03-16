@@ -92,7 +92,7 @@ const SkeletonPlayerDetail = () => (
 );
 
 // ==================== SINGLE PROP ROW ====================
-const PropRow = memo(({ prop, isHighlighted, highlightRef }) => {
+const PropRow = memo(({ prop, isHighlighted, highlightRef, onVisionClick }) => {
   const isDemon = prop.is_demon;
   const isGoblin = prop.is_goblin;
   const line = prop.line || 0;
@@ -117,54 +117,74 @@ const PropRow = memo(({ prop, isHighlighted, highlightRef }) => {
     return 'text-red-400';
   };
   
+  // Handle click for Vision Pick
+  const handleClick = () => {
+    if (isHighlighted && onVisionClick) {
+      onVisionClick(prop);
+    }
+  };
+  
   return (
     <div 
       ref={isHighlighted ? highlightRef : null}
+      onClick={handleClick}
       className={`flex items-center justify-between py-3 px-4 rounded-lg transition-all ${
-        isDemon 
-          ? 'bg-gradient-to-r from-red-950/40 to-zinc-900 border border-red-500/30' 
-          : isGoblin 
-            ? 'bg-gradient-to-r from-green-950/40 to-zinc-900 border border-green-500/30'
-            : isHighlighted
-              ? 'bg-amber-950/30 border border-amber-500/50 ring-1 ring-amber-500/30'
+        isHighlighted
+          ? 'bg-gradient-to-r from-amber-950/50 via-yellow-900/30 to-amber-950/50 border-2 border-amber-400 ring-2 ring-amber-400/50 shadow-[0_0_20px_rgba(251,191,36,0.3)] cursor-pointer hover:shadow-[0_0_30px_rgba(251,191,36,0.5)]' 
+          : isDemon 
+            ? 'bg-gradient-to-r from-red-950/40 to-zinc-900 border border-red-500/30' 
+            : isGoblin 
+              ? 'bg-gradient-to-r from-green-950/40 to-zinc-900 border border-green-500/30'
               : 'bg-zinc-800/30 border border-zinc-700/30'
       }`}
-      data-testid={`prop-row-${prop.stat_type}-${line}`}
+      data-testid={`prop-row-${prop.stat_type}-${line}${isHighlighted ? '-vision' : ''}`}
     >
       {/* Left: Type indicator + Line */}
       <div className="flex items-center gap-3">
         <div className="flex items-center gap-1.5">
-          {isDemon && <DemonIcon size={16} />}
-          {isGoblin && <GoblinIcon size={16} />}
-          {!isDemon && !isGoblin && <Target className="w-4 h-4 text-zinc-500" />}
+          {isHighlighted ? (
+            <Crosshair className="w-5 h-5 text-amber-400 animate-pulse" />
+          ) : isDemon ? (
+            <DemonIcon size={16} />
+          ) : isGoblin ? (
+            <GoblinIcon size={16} />
+          ) : (
+            <Target className="w-4 h-4 text-zinc-500" />
+          )}
         </div>
         
         <div>
           <div className="flex items-center gap-2">
             <span className={`text-base font-bold ${
-              isDemon ? 'text-red-400' : isGoblin ? 'text-green-400' : 'text-white'
+              isHighlighted ? 'text-amber-300' : isDemon ? 'text-red-400' : isGoblin ? 'text-green-400' : 'text-white'
             }`}>
               {direction} {line}
             </span>
-            {isDemon && (
+            {isHighlighted && (
+              <span className="px-2 py-0.5 text-[9px] font-black bg-gradient-to-r from-amber-500 to-yellow-400 text-black rounded-full flex items-center gap-1 animate-pulse">
+                <Crosshair className="w-3 h-3" />
+                VISION PICK
+              </span>
+            )}
+            {!isHighlighted && isDemon && (
               <span className="px-1.5 py-0.5 text-[8px] font-bold bg-red-500 text-white rounded">
                 DEMON
               </span>
             )}
-            {isGoblin && (
+            {!isHighlighted && isGoblin && (
               <span className="px-1.5 py-0.5 text-[8px] font-bold bg-green-500 text-black rounded">
                 GOBLIN
               </span>
             )}
-            {isHighlighted && !isDemon && !isGoblin && (
-              <span className="px-1.5 py-0.5 text-[8px] font-bold bg-amber-500 text-black rounded">
-                VISION
-              </span>
-            )}
           </div>
           {prop.price && (
-            <span className="text-[10px] text-zinc-500 font-mono">
+            <span className={`text-[10px] font-mono ${isHighlighted ? 'text-amber-400/70' : 'text-zinc-500'}`}>
               @ {prop.price > 0 ? '+' : ''}{prop.price}
+            </span>
+          )}
+          {isHighlighted && (
+            <span className="text-[10px] text-amber-400/80 mt-0.5 block">
+              Tap to view Intel Suite →
             </span>
           )}
         </div>
@@ -173,20 +193,20 @@ const PropRow = memo(({ prop, isHighlighted, highlightRef }) => {
       {/* Center: L5/L10/SZN Averages */}
       <div className="flex items-center gap-5 text-xs">
         <div className="text-center min-w-[40px]">
-          <div className="text-zinc-500 text-[9px]">L5</div>
-          <div className={`font-bold ${l5Avg != null ? 'text-white' : 'text-zinc-600'}`}>
+          <div className={`text-[9px] ${isHighlighted ? 'text-amber-400/70' : 'text-zinc-500'}`}>L5</div>
+          <div className={`font-bold ${isHighlighted ? 'text-amber-300' : l5Avg != null ? 'text-white' : 'text-zinc-600'}`}>
             {l5Avg != null ? l5Avg : '-'}
           </div>
         </div>
         <div className="text-center min-w-[40px]">
-          <div className="text-zinc-500 text-[9px]">L10</div>
-          <div className={`font-bold ${l10Avg != null ? 'text-white' : 'text-zinc-600'}`}>
+          <div className={`text-[9px] ${isHighlighted ? 'text-amber-400/70' : 'text-zinc-500'}`}>L10</div>
+          <div className={`font-bold ${isHighlighted ? 'text-amber-300' : l10Avg != null ? 'text-white' : 'text-zinc-600'}`}>
             {l10Avg != null ? l10Avg : '-'}
           </div>
         </div>
         <div className="text-center min-w-[40px]">
-          <div className="text-zinc-500 text-[9px]">SZN</div>
-          <div className={`font-bold ${seasonAvg != null ? 'text-white' : 'text-zinc-600'}`}>
+          <div className={`text-[9px] ${isHighlighted ? 'text-amber-400/70' : 'text-zinc-500'}`}>SZN</div>
+          <div className={`font-bold ${isHighlighted ? 'text-amber-300' : seasonAvg != null ? 'text-white' : 'text-zinc-600'}`}>
             {seasonAvg != null ? seasonAvg : '-'}
           </div>
         </div>
@@ -195,14 +215,14 @@ const PropRow = memo(({ prop, isHighlighted, highlightRef }) => {
       {/* Right: Hit Rates */}
       <div className="flex items-center gap-4 text-xs">
         <div className="text-center min-w-[35px]">
-          <div className="text-zinc-500 text-[9px]">L10 HR</div>
-          <div className={`font-bold ${getHitRateColor(h10Rate)}`}>
+          <div className={`text-[9px] ${isHighlighted ? 'text-amber-400/70' : 'text-zinc-500'}`}>L10 HR</div>
+          <div className={`font-bold ${isHighlighted ? 'text-amber-300' : getHitRateColor(h10Rate)}`}>
             {h10Rate > 0 ? `${h10Rate}%` : '-'}
           </div>
         </div>
         <div className="text-center min-w-[35px]">
-          <div className="text-zinc-500 text-[9px]">L5 HR</div>
-          <div className={`font-bold ${getHitRateColor(h5Rate)}`}>
+          <div className={`text-[9px] ${isHighlighted ? 'text-amber-400/70' : 'text-zinc-500'}`}>L5 HR</div>
+          <div className={`font-bold ${isHighlighted ? 'text-amber-300' : getHitRateColor(h5Rate)}`}>
             {h5Rate > 0 ? `${h5Rate}%` : '-'}
           </div>
         </div>
@@ -242,7 +262,15 @@ export const PlayerDetailPage = ({ playerName, onBack, highlightProp = null, hig
   const [player, setPlayer] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [showIntelSuite, setShowIntelSuite] = useState(false);
+  const [selectedVisionProp, setSelectedVisionProp] = useState(null);
   const highlightRef = useRef(null);
+  
+  // Handle Vision Pick click
+  const handleVisionClick = useCallback((prop) => {
+    setSelectedVisionProp(prop);
+    setShowIntelSuite(true);
+  }, []);
   
   // Parse highlight info (format: "stat_type|line|direction")
   const highlightInfo = useMemo(() => {
@@ -319,17 +347,22 @@ export const PlayerDetailPage = ({ playerName, onBack, highlightProp = null, hig
     }
   }, [highlightInfo, player]);
   
-  // Check if prop is highlighted
+  // Check if prop is highlighted (Vision Pick)
   const isHighlightedProp = useCallback((prop) => {
     if (!highlightInfo) return false;
-    const propCategory = normalizeStatType(getCategoryKey(prop.market) || prop.stat_type_extracted || '');
+    
+    // Use stat_type_extracted directly (PTS, REB, AST, etc.)
+    const propStatType = normalizeStatType(prop.stat_type_extracted || prop.stat_type || '');
+    const highlightStatType = normalizeStatType(highlightInfo.statType || '');
+    
     const propDirection = (prop.direction || 'over').toLowerCase();
     const highlightDirection = (highlightInfo.direction || 'over').toLowerCase();
-    return (
-      propCategory === highlightInfo.statType &&
-      Math.abs((prop.line || 0) - highlightInfo.line) < 0.1 &&
-      propDirection === highlightDirection
-    );
+    
+    const statMatch = propStatType.toUpperCase() === highlightStatType.toUpperCase();
+    const lineMatch = Math.abs((prop.line || 0) - highlightInfo.line) < 0.1;
+    const directionMatch = propDirection === highlightDirection;
+    
+    return statMatch && lineMatch && directionMatch;
   }, [highlightInfo]);
   
   // Count demons/goblins
@@ -449,6 +482,7 @@ export const PlayerDetailPage = ({ playerName, onBack, highlightProp = null, hig
                           prop={prop}
                           isHighlighted={isHighlightedProp(prop)}
                           highlightRef={highlightRef}
+                          onVisionClick={handleVisionClick}
                         />
                       ))}
                     </div>
@@ -465,6 +499,129 @@ export const PlayerDetailPage = ({ playerName, onBack, highlightProp = null, hig
           </div>
         )}
       </div>
+      
+      {/* Vision Intel Suite Modal */}
+      {showIntelSuite && selectedVisionProp && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm">
+          <div className="bg-zinc-900 border-2 border-amber-500/50 rounded-xl w-full max-w-2xl mx-4 max-h-[90vh] overflow-y-auto shadow-[0_0_50px_rgba(251,191,36,0.3)]">
+            {/* Header */}
+            <div className="sticky top-0 bg-gradient-to-r from-amber-950 via-yellow-900/50 to-amber-950 px-6 py-4 border-b border-amber-500/30">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <Crosshair className="w-8 h-8 text-amber-400 animate-pulse" />
+                  <div>
+                    <h2 className="text-xl font-black text-amber-300">VISION INTEL SUITE</h2>
+                    <p className="text-xs text-amber-400/70">{playerName} • {selectedVisionProp.stat_type || getPropLabel(selectedVisionProp.stat_type_extracted)}</p>
+                  </div>
+                </div>
+                <button 
+                  onClick={() => setShowIntelSuite(false)}
+                  className="p-2 hover:bg-amber-500/20 rounded-lg transition-colors"
+                >
+                  <ArrowLeft className="w-5 h-5 text-amber-400" />
+                </button>
+              </div>
+            </div>
+            
+            {/* Content */}
+            <div className="p-6 space-y-6">
+              {/* Vision Pick Summary */}
+              <div className="bg-gradient-to-r from-amber-950/50 to-zinc-900 border border-amber-500/30 rounded-lg p-4">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-12 h-12 rounded-full bg-amber-500/20 flex items-center justify-center">
+                      <Crosshair className="w-6 h-6 text-amber-400" />
+                    </div>
+                    <div>
+                      <div className="text-2xl font-black text-amber-300">
+                        {(selectedVisionProp.direction || 'OVER').toUpperCase()} {selectedVisionProp.line}
+                      </div>
+                      <div className="text-sm text-amber-400/70">
+                        {getPropLabel(selectedVisionProp.stat_type_extracted || selectedVisionProp.stat_type)}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-xs text-amber-400/50">ODDS</div>
+                    <div className="text-lg font-bold text-amber-300">
+                      {selectedVisionProp.price > 0 ? '+' : ''}{selectedVisionProp.price || '-110'}
+                    </div>
+                  </div>
+                </div>
+                
+                {/* Stats Grid */}
+                <div className="grid grid-cols-3 gap-4 pt-4 border-t border-amber-500/20">
+                  <div className="text-center">
+                    <div className="text-xs text-amber-400/50">L5 AVG</div>
+                    <div className="text-xl font-bold text-white">{selectedVisionProp.l5_avg || '-'}</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-xs text-amber-400/50">L10 AVG</div>
+                    <div className="text-xl font-bold text-white">{selectedVisionProp.l10_avg || '-'}</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-xs text-amber-400/50">SEASON AVG</div>
+                    <div className="text-xl font-bold text-white">{selectedVisionProp.season_avg || '-'}</div>
+                  </div>
+                </div>
+              </div>
+              
+              {/* Hit Rate Analysis */}
+              <div className="bg-zinc-800/50 border border-zinc-700 rounded-lg p-4">
+                <h3 className="text-sm font-bold text-white mb-3 flex items-center gap-2">
+                  <Zap className="w-4 h-4 text-cyan-400" />
+                  HIT RATE ANALYSIS
+                </h3>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="bg-zinc-900/50 rounded-lg p-3">
+                    <div className="text-xs text-zinc-500">LAST 10 GAMES</div>
+                    <div className="text-2xl font-bold text-green-400">
+                      {selectedVisionProp.hit_rates?.l10?.hit_rate != null 
+                        ? `${Math.round(selectedVisionProp.hit_rates.l10.hit_rate * 100)}%`
+                        : '-'}
+                    </div>
+                    <div className="text-xs text-zinc-500 mt-1">
+                      {selectedVisionProp.hit_rates?.l10?.games_over || 0}/{selectedVisionProp.hit_rates?.l10?.total_games || 0} games over
+                    </div>
+                  </div>
+                  <div className="bg-zinc-900/50 rounded-lg p-3">
+                    <div className="text-xs text-zinc-500">LAST 5 GAMES</div>
+                    <div className="text-2xl font-bold text-green-400">
+                      {selectedVisionProp.hit_rates?.l5?.hit_rate != null 
+                        ? `${Math.round(selectedVisionProp.hit_rates.l5.hit_rate * 100)}%`
+                        : '-'}
+                    </div>
+                    <div className="text-xs text-zinc-500 mt-1">
+                      {selectedVisionProp.hit_rates?.l5?.games_over || 0}/{selectedVisionProp.hit_rates?.l5?.total_games || 0} games over
+                    </div>
+                  </div>
+                </div>
+              </div>
+              
+              {/* AI Analysis (if available) */}
+              {player?.ai_vision && (
+                <div className="bg-zinc-800/50 border border-cyan-500/30 rounded-lg p-4">
+                  <h3 className="text-sm font-bold text-white mb-3 flex items-center gap-2">
+                    <Target className="w-4 h-4 text-cyan-400" />
+                    AI TACTICAL ANALYSIS
+                  </h3>
+                  <p className="text-sm text-zinc-300 leading-relaxed">
+                    {player.ai_vision}
+                  </p>
+                </div>
+              )}
+              
+              {/* Recommendation Badge */}
+              <div className="flex justify-center">
+                <div className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-amber-500 to-yellow-400 text-black rounded-full font-bold text-sm">
+                  <Crosshair className="w-4 h-4" />
+                  VISION RECOMMENDS: {(selectedVisionProp.direction || 'OVER').toUpperCase()} {selectedVisionProp.line}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
