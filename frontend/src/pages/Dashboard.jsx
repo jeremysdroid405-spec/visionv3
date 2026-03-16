@@ -278,20 +278,20 @@ const BreakingNewsTicker = memo(() => {
   ];
   
   return (
-    <div className="bg-gradient-to-r from-amber-950/30 to-zinc-900 border-b border-amber-900/30 py-1.5 overflow-hidden" data-testid="news-ticker">
+    <div className="bg-red-950/80 border-b border-red-900/50 py-1.5 overflow-hidden" data-testid="news-ticker">
       <div className="news-ticker-scroll">
         <div className="news-ticker-content">
           {[...displayNews, ...displayNews, ...displayNews].map((item, idx) => (
             <div key={`news-${idx}`} className="flex items-center gap-2 px-6">
               {item.type === 'breaking' ? (
-                <span className="px-1.5 py-0.5 bg-red-500/30 text-red-400 text-[9px] font-bold rounded">BREAKING</span>
+                <span className="px-1.5 py-0.5 bg-red-500 text-white text-[9px] font-bold rounded">BREAKING</span>
               ) : item.type === 'injury' ? (
-                <AlertTriangle className="w-3 h-3 text-amber-400" />
+                <AlertTriangle className="w-3 h-3 text-black" />
               ) : (
-                <Newspaper className="w-3 h-3 text-amber-500/70" />
+                <Newspaper className="w-3 h-3 text-black" />
               )}
-              <span className="text-xs text-amber-100/80 whitespace-nowrap">{item.text}</span>
-              <span className="text-zinc-700 mx-2">•</span>
+              <span className="text-xs text-red-100 whitespace-nowrap">{item.text}</span>
+              <span className="text-black mx-2">•</span>
             </div>
           ))}
         </div>
