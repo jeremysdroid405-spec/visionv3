@@ -44,6 +44,73 @@ class PicksGetterService:
         self.sync_log = db.dg_sync_log
         self.events_cache = db.dg_events_cache
         self.odds_cache = db.dg_odds_cache
+        
+        # Player lookup cache (loaded once)
+        self._player_lookup_cache = None
+    
+    async def _get_player_lookup(self) -> Dict[str, Dict]:
+        """
+        Build a cached lookup of player names -> master hub data.
+        Maps all name variations to ensure correct player_id -> photo_url matching.
+        """
+        if self._player_lookup_cache is not None:
+            return self._player_lookup_cache
+        
+        self._player_lookup_cache = {}
+        
+        # Load all players from master hub
+        master_hub = self.db.nba_master_hub_2026
+        players = await master_hub.find(
+            {},
+            {"_id": 0, "player_id": 1, "nba_id": 1, "espn_id": 1, "headshot_url": 1, "team": 1, "position": 1, "display_name": 1}
+        ).to_list(1000)
+        
+        for player in players:
+            display_name = player.get("display_name", "")
+            if not display_name:
+                continue
+            
+            # Store by exact name (lowercase for matching)
+            name_lower = display_name.lower()
+            self._player_lookup_cache[name_lower] = player
+            
+            # Also store common variations:
+            # "Derrick Jones Jr." -> also store "Derrick Jones"
+            # "PJ Washington" -> also store "P.J. Washington"
+            
+            # Without Jr./Sr. suffix
+            for suffix in [" jr.", " jr", " sr.", " sr", " ii", " iii", " iv"]:
+                if name_lower.endswith(suffix):
+                    base_name = name_lower[:-len(suffix)]
+                    if base_name not in self._player_lookup_cache:
+                        self._player_lookup_cache[base_name] = player
+            
+            # With/without periods (PJ <-> P.J.)
+            if "." in display_name:
+                no_periods = display_name.replace(".", "").lower()
+                if no_periods not in self._player_lookup_cache:
+                    self._player_lookup_cache[no_periods] = player
+            else:
+                # Add periods to initials (PJ -> P.J.)
+                words = display_name.split()
+                if words and len(words[0]) == 2 and words[0].isupper():
+                    with_periods = f"{words[0][0]}.{words[0][1]}. {' '.join(words[1:])}".lower()
+                    if with_periods not in self._player_lookup_cache:
+                        self._player_lookup_cache[with_periods] = player
+        
+        logger.info(f"[PLAYER_LOOKUP] Cached {len(self._player_lookup_cache)} name variations for {len(players)} players")
+        return self._player_lookup_cache
+    
+    async def _get_player_by_name(self, player_name: str) -> Dict:
+        """
+        Get player data from master hub by name using cached lookup.
+        Returns player_id, photo_url, team, position matched correctly.
+        """
+        if not player_name:
+            return None
+        
+        lookup = await self._get_player_lookup()
+        return lookup.get(player_name.lower())
     
     async def get_war_zone(self) -> Dict[str, Any]:
         """
@@ -453,15 +520,11 @@ class PicksGetterService:
                     unique_bets.append(bet)
             
             # ===== PLAYER DATA ENRICHMENT from nba_master_hub_2026 =====
-            # Ensures player_id is matched with photo_url
-            master_hub = self.db.nba_master_hub_2026
+            # Use cached lookup to ensure correct player_id -> photo_url matching
             for bet in unique_bets[:20]:
                 player_name = bet.get('player_name')
                 if player_name:
-                    master_player = await master_hub.find_one(
-                        {"display_name": {"$regex": f"^{player_name}$", "$options": "i"}},
-                        {"_id": 0, "player_id": 1, "nba_id": 1, "espn_id": 1, "headshot_url": 1}
-                    )
+                    master_player = await self._get_player_by_name(player_name)
                     if master_player:
                         bet['player_id'] = master_player.get('player_id')
                         bet['nba_id'] = master_player.get('nba_id')
@@ -493,12 +556,8 @@ class PicksGetterService:
             return
         
         # ===== PLAYER DATA ENRICHMENT from nba_master_hub_2026 =====
-        # Always fetch to ensure player_id is matched with photo_url
-        master_hub = self.db.nba_master_hub_2026
-        master_player = await master_hub.find_one(
-            {"display_name": {"$regex": f"^{player_name}$", "$options": "i"}},
-            {"_id": 0, "player_id": 1, "nba_id": 1, "espn_id": 1, "headshot_url": 1, "team": 1, "position": 1}
-        )
+        # Use cached lookup to ensure correct player_id -> photo_url matching
+        master_player = await self._get_player_by_name(player_name)
         if master_player:
             # Always set player_id from master hub (authoritative source)
             pick['player_id'] = master_player.get('player_id')
@@ -540,12 +599,8 @@ class PicksGetterService:
         player_name = player.get("player_name")
         
         # ===== PLAYER DATA ENRICHMENT from nba_master_hub_2026 =====
-        # Always fetch to ensure player_id is matched with photo_url
-        master_hub = self.db.nba_master_hub_2026
-        master_player = await master_hub.find_one(
-            {"display_name": {"$regex": f"^{player_name}$", "$options": "i"}},
-            {"_id": 0, "player_id": 1, "nba_id": 1, "espn_id": 1, "headshot_url": 1, "team": 1, "position": 1}
-        )
+        # Use cached lookup to ensure correct player_id -> photo_url matching
+        master_player = await self._get_player_by_name(player_name)
         if master_player:
             # Always set player_id from master hub (authoritative source)
             player['player_id'] = master_player.get('player_id')

@@ -168,6 +168,60 @@ async def search_players(
         return {"success": False, "players": [], "error": str(e)}
 
 
+# Cached player lookup for name -> master hub data
+_player_lookup_cache = None
+
+async def _build_player_lookup(db) -> dict:
+    """Build a cached lookup of player names -> master hub data."""
+    global _player_lookup_cache
+    if _player_lookup_cache is not None:
+        return _player_lookup_cache
+    
+    _player_lookup_cache = {}
+    players = await db.nba_master_hub_2026.find(
+        {},
+        {"_id": 0, "player_id": 1, "nba_id": 1, "espn_id": 1, "headshot_url": 1, "team": 1, "position": 1, "display_name": 1}
+    ).to_list(1000)
+    
+    for player in players:
+        display_name = player.get("display_name", "")
+        if not display_name:
+            continue
+        
+        name_lower = display_name.lower()
+        _player_lookup_cache[name_lower] = player
+        
+        # Store without Jr./Sr. suffix
+        for suffix in [" jr.", " jr", " sr.", " sr", " ii", " iii", " iv"]:
+            if name_lower.endswith(suffix):
+                base_name = name_lower[:-len(suffix)]
+                if base_name not in _player_lookup_cache:
+                    _player_lookup_cache[base_name] = player
+        
+        # Handle periods (PJ <-> P.J.)
+        if "." in display_name:
+            no_periods = display_name.replace(".", "").lower()
+            if no_periods not in _player_lookup_cache:
+                _player_lookup_cache[no_periods] = player
+        else:
+            words = display_name.split()
+            if words and len(words[0]) == 2 and words[0].isupper():
+                with_periods = f"{words[0][0]}.{words[0][1]}. {' '.join(words[1:])}".lower()
+                if with_periods not in _player_lookup_cache:
+                    _player_lookup_cache[with_periods] = player
+    
+    logger.info(f"[COMMAND] Built player lookup cache with {len(_player_lookup_cache)} name variations")
+    return _player_lookup_cache
+
+
+async def _get_player_by_name(db, player_name: str) -> dict:
+    """Get player data from master hub by name using cached lookup."""
+    if not player_name:
+        return None
+    lookup = await _build_player_lookup(db)
+    return lookup.get(player_name.lower())
+
+
 @router.get("/profile/{player_name}")
 async def get_tactical_profile(
     player_name: str,
@@ -241,6 +295,7 @@ async def get_tactical_profile(
                 target_lock_details[key] = pick
         
         # ===== STEP 4: Get player info from nba_master_hub_2026 =====
+        # Use cached lookup to ensure correct player_id -> photo_url matching
         player_team = ""
         player_position = ""
         photo_url = ""
@@ -249,11 +304,8 @@ async def get_tactical_profile(
         espn_id = None
         detected_opponent = opponent
         
-        # First, get player data from master roster (has headshot_url and player_id)
-        master_player = await db.nba_master_hub_2026.find_one(
-            {"display_name": player_name_regex},
-            {"_id": 0}
-        )
+        # Get player data from master roster using cached lookup
+        master_player = await _get_player_by_name(db, player_name)
         
         if master_player:
             photo_url = master_player.get("headshot_url", "")
