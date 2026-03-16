@@ -1,12 +1,19 @@
 """
 Master Hub CRON Scheduler
 =========================
-Schedules daily sync of NBA Master Hub at 0300 EST using Tank01 API.
+SINGLE SOURCE OF TRUTH (SSOT) Architecture - PIPE 1: Stats Vault
 
-This ensures the database is always up-to-date with:
-- Player baseline stats (L5, L10, season averages) calculated from real game logs
-- All prop categories pre-computed
-- Ready for instant client access
+Schedules daily sync of NBA Master Hub at 0400 EST using Tank01 API.
+This is the ONLY authorized script to call external stat APIs.
+
+Data Flow:
+  Tank01 API → 0400 CRON → nba_master_hub_2026 → All App Components
+
+CRITICAL RULES:
+1. This CRON is the ONLY code allowed to call Tank01/external stat APIs
+2. Sync ONLY overwrites: baseline_stats, game_logs, stats metadata
+3. Sync NEVER touches: player_id, player_name, display_name, photo_url, headshot_url
+4. All other components read from nba_master_hub_2026 ONLY
 
 Data Source: Tank01 Fantasy Stats API (RapidAPI)
 """
@@ -27,19 +34,26 @@ _scheduler: Optional[AsyncIOScheduler] = None
 
 async def run_daily_sync():
     """
-    Daily sync job - runs at 0300 EST.
+    Daily sync job - runs at 0400 EST (0900 UTC).
     
-    Uses Tank01 Fantasy Stats API to fetch real game logs and calculate:
-    - L5_avg: Last 5 games average
-    - L10_avg: Last 10 games average  
-    - season_avg: Full season average
+    SSOT PIPE 1: The ONLY authorized Tank01 caller.
     
-    Only counts games where minutes > 0 (actually played).
+    Updates ONLY statistical fields:
+    - baseline_stats: {PTS: {l5_avg, l10_avg, season_avg}, ...}
+    - game_logs: [{gameID, pts, reb, ast, ...}, ...]
+    - stats metadata: stats_source, baseline_stats_updated_at
+    
+    NEVER modifies structural fields:
+    - player_id, player_name, display_name
+    - photo_url, headshot_url
+    - team, position
     """
     from motor.motor_asyncio import AsyncIOMotorClient
     from services.tank01_stats_service import run_tank01_sync
     
-    logger.info("[CRON] Starting daily Master Hub sync (Tank01)...")
+    logger.info("[CRON] ========================================")
+    logger.info("[CRON] SSOT PIPE 1: Starting 0400 EST Tank01 sync")
+    logger.info("[CRON] ========================================")
     
     mongo_url = os.environ.get("MONGO_URL")
     db_name = os.environ.get("DB_NAME", "test_database")
@@ -52,20 +66,23 @@ async def run_daily_sync():
         client = AsyncIOMotorClient(mongo_url)
         db = client[db_name]
         
-        # Run Tank01 stats sync
+        # Run Tank01 stats sync (ONLY updates stats fields)
         result = await run_tank01_sync(db)
         
-        logger.info(f"[CRON] Daily sync completed: {result}")
+        logger.info(f"[CRON] SSOT sync completed: {result.get('updated', 0)} players updated")
+        logger.info("[CRON] ========================================")
         
     except Exception as e:
-        logger.error(f"[CRON] Daily sync failed: {e}")
+        logger.error(f"[CRON] SSOT sync failed: {e}")
 
 
 def start_scheduler():
     """
     Start the CRON scheduler for daily Master Hub sync.
     
-    Schedule: 0300 EST (0800 UTC) daily
+    Schedule: 0400 EST (0900 UTC) daily
+    
+    This scheduler manages PIPE 1 (Stats Vault) of the SSOT architecture.
     """
     global _scheduler
     
@@ -75,18 +92,18 @@ def start_scheduler():
     
     _scheduler = AsyncIOScheduler()
     
-    # Schedule daily sync at 0300 EST (0800 UTC)
-    # EST is UTC-5, so 3 AM EST = 8 AM UTC
+    # Schedule daily sync at 0400 EST (0900 UTC)
+    # EST is UTC-5, so 4 AM EST = 9 AM UTC
     _scheduler.add_job(
         run_daily_sync,
-        CronTrigger(hour=8, minute=0, timezone='UTC'),  # 0300 EST = 0800 UTC
+        CronTrigger(hour=9, minute=0, timezone='UTC'),  # 0400 EST = 0900 UTC
         id='master_hub_daily_sync',
-        name='NBA Master Hub Daily Sync',
+        name='SSOT PIPE 1: NBA Master Hub Daily Sync',
         replace_existing=True
     )
     
     _scheduler.start()
-    logger.info("[CRON] Scheduler started - Master Hub sync scheduled for 0300 EST daily")
+    logger.info("[CRON] SSOT Scheduler started - Tank01 sync at 0400 EST daily")
     
     return _scheduler
 

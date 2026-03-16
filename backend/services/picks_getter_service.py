@@ -1,7 +1,11 @@
 """
 Picks Getter Service
 ====================
-Extracted from demon_goblin_engine.py for modularity.
+SSOT ARCHITECTURE: This service reads from MongoDB ONLY.
+
+NO external API calls are made here. All stats come from:
+- PIPE 1: nba_master_hub_2026 (stats vault, populated by 0400 CRON)
+- PIPE 2: dg_cached_board (live lines, populated by Odds API polling)
 
 Handles fetching picks data from MongoDB for all tier endpoints:
 - War Zone (Demons)
@@ -23,50 +27,56 @@ logger = logging.getLogger(__name__)
 
 class PicksGetterService:
     """
-    Service for fetching pre-computed picks from MongoDB.
+    SSOT-Compliant Picks Service.
     
-    All data is PRE-ENRICHED during sync. These methods perform
-    NO runtime calculations - just read and return.
+    CRITICAL: This service reads from MongoDB ONLY.
+    - Stats from nba_master_hub_2026 (PIPE 1)
+    - Lines from dg_cached_board (PIPE 2)
+    
+    NO external API calls. NO secondary internal APIs.
     """
     
     def __init__(self, db: AsyncIOMotorDatabase):
         self.db = db
         
-        # Collection references
+        # PIPE 2: Live Lines (Odds API destination)
         self.radar_picks = db.dg_radar_picks
         self.goblin_vault = db.dg_goblin_vault
         self.front_lines = db.dg_front_lines
         self.parlay_builder = db.dg_parlay_builder
         self.goblin_recon = db.dg_goblin_recon
-        self.cached_board = db.dg_cached_board
+        self.cached_board = db.dg_cached_board  # Active Lines
         self.player_data = db.dg_player_data
         self.daily_insights = db.dg_daily_insights
         self.sync_log = db.dg_sync_log
         self.events_cache = db.dg_events_cache
         self.odds_cache = db.dg_odds_cache
         
-        # Player lookup cache (loaded once)
+        # PIPE 1: Stats Vault (Tank01 CRON destination)
+        self.master_hub = db.nba_master_hub_2026
+        
+        # Player lookup cache (loaded once from master hub)
         self._player_lookup_cache = None
     
     async def _get_player_lookup(self) -> Dict[str, Dict]:
         """
-        Build a cached lookup of player names -> master hub data.
-        Maps all name variations to ensure correct player_id -> photo_url -> stats matching.
+        SSOT PIPE 1: Build cached lookup from master hub.
         
-        Includes game_logs for coupled stat calculations (hit rate + avg from same games).
+        All player stats come from nba_master_hub_2026 ONLY.
+        Includes game_logs for coupled stat calculations.
         """
         if self._player_lookup_cache is not None:
             return self._player_lookup_cache
         
         self._player_lookup_cache = {}
         
-        # Load all players from master hub WITH baseline_stats and game_logs
-        master_hub = self.db.nba_master_hub_2026
-        players = await master_hub.find(
+        # SSOT: Load all players from master hub (PIPE 1)
+        # This is the ONLY source for player stats
+        players = await self.master_hub.find(
             {},
             {"_id": 0, "player_id": 1, "nba_id": 1, "espn_id": 1, "headshot_url": 1, 
              "team": 1, "position": 1, "display_name": 1, "baseline_stats": 1, "game_logs": 1}
-        ).to_list(1000)
+        ).to_list(1500)
         
         for player in players:
             display_name = player.get("display_name", "")
@@ -101,13 +111,13 @@ class PicksGetterService:
                     if with_periods not in self._player_lookup_cache:
                         self._player_lookup_cache[with_periods] = player
         
-        logger.info(f"[PLAYER_LOOKUP] Cached {len(self._player_lookup_cache)} name variations for {len(players)} players (with game_logs for coupled stats)")
+        logger.info(f"[SSOT] Player lookup cached: {len(self._player_lookup_cache)} name variations from {len(players)} players")
         return self._player_lookup_cache
     
     async def _get_player_by_name(self, player_name: str) -> Dict:
         """
-        Get player data from master hub by name using cached lookup.
-        Returns player_id, photo_url, team, position matched correctly.
+        SSOT: Get player data from master hub by name.
+        Returns player_id, photo_url, team, position, game_logs.
         """
         if not player_name:
             return None
@@ -423,50 +433,54 @@ class PicksGetterService:
     
     async def _enrich_player_with_master_hub_stats(self, player: Dict) -> None:
         """
-        Enrich player data with COUPLED stats from game logs in nba_master_hub_2026.
+        SSOT INTERSECTION: Join PIPE 1 stats with PIPE 2 lines.
         
-        CRITICAL: Hit rates and averages are calculated from the SAME game array
-        to guarantee mathematical consistency. The baseline_stats.l5_avg/l10_avg
-        are only used for season_avg as a fallback - all short-term stats come
-        from real-time calculation against the stored game_logs.
+        All stats come from nba_master_hub_2026 (PIPE 1).
+        Hit rates and averages are calculated from the SAME game_logs array
+        to guarantee mathematical consistency.
+        
+        This is the ONLY place where stats calculation happens.
+        NO external API calls. NO secondary stat sources.
         """
         if not player:
             return
         
         player_name = player.get("player_name", "")
+        
+        # SSOT: Get stats from master hub ONLY
         hub_player = await self._get_player_by_name(player_name)
         
         if not hub_player:
-            logger.debug(f"[STATS_ENRICH] No master hub data for: {player_name}")
+            logger.debug(f"[SSOT] No master hub data for: {player_name}")
             return
         
-        # Get baseline_stats and game_logs from master hub
+        # PIPE 1: Get baseline_stats and game_logs from master hub
         baseline_stats = hub_player.get("baseline_stats", {})
         game_logs = hub_player.get("game_logs", [])
         
-        # Add baseline_stats and photo to player object
+        # Add structural data (protected fields)
         player["baseline_stats"] = baseline_stats
         player["photo_url"] = hub_player.get("headshot_url") or player.get("photo_url")
         
-        # Import the coupled stats calculator
+        # Import the coupled stats calculator (uses game_logs from PIPE 1)
         from services.stats_service import calculate_coupled_stats
         
         # Import intel calculator for radar picks
         from services.intel_suite_calculator import get_intel_calculator
         intel_calculator = get_intel_calculator(self.db)
         
-        # Enrich each prop with COUPLED stats (hit rate + avg from same games)
+        # INTERSECTION: Enrich PIPE 2 lines with PIPE 1 stats
         props = player.get("props", [])
         for prop in props:
             stat_type = prop.get("stat_type_extracted", "") or prop.get("stat_type", "")
-            line_value = prop.get("line", 0)
+            line_value = prop.get("line", 0)  # Line comes from PIPE 2
             
             # Normalize stat type for lookup (P+R -> PR, etc.)
             stat_key = stat_type
             norm_map = {"P+R": "PR", "P+A": "PA", "R+A": "RA"}
             stat_key = norm_map.get(stat_type, stat_type)
             
-            # Calculate COUPLED stats from game_logs (hit rate + avg from SAME games)
+            # Calculate COUPLED stats from PIPE 1 game_logs
             if game_logs and line_value > 0:
                 coupled = calculate_coupled_stats(game_logs, stat_type, line_value)
                 
@@ -484,8 +498,9 @@ class PicksGetterService:
                 prop["season_avg"] = coupled["season"]["avg"] or baseline_stats.get(stat_key, {}).get("season_avg")
                 prop["season_hit_rate"] = coupled["season"]["hit_rate"]
                 
-                # Mark that stats are coupled/consistent
+                # Mark stats source
                 prop["stats_coupled"] = True
+                prop["stats_source"] = "ssot_game_logs"
             else:
                 # Fallback to baseline_stats if no game logs
                 stat_data = baseline_stats.get(stat_key, {})
@@ -493,6 +508,7 @@ class PicksGetterService:
                 prop["l10_avg"] = stat_data.get("l10_avg")
                 prop["season_avg"] = stat_data.get("season_avg")
                 prop["stats_coupled"] = False
+                prop["stats_source"] = "ssot_baseline"
             
             # If this is a radar pick (demon or goblin), add full intel_suite
             is_radar = prop.get("is_demon") or prop.get("is_goblin") or prop.get("is_radar_pick")
@@ -507,7 +523,7 @@ class PicksGetterService:
                 )
                 prop["intel_suite"] = intel_suite
         
-        logger.debug(f"[STATS_ENRICH] Enriched {len(props)} props for {player_name} with coupled stats")
+        logger.debug(f"[SSOT] Enriched {len(props)} props for {player_name}")
     
     async def get_most_popular_bets(self) -> Dict[str, Any]:
         """
@@ -662,20 +678,20 @@ class PicksGetterService:
     
     async def _add_insights_to_pick(self, pick: Dict) -> None:
         """
-        Add AI insights, headshot URL, player_id, and COUPLED STATS to a single pick.
+        SSOT: Enrich a single pick with stats from master hub.
         
-        CRITICAL: Hit rates and averages are calculated from the SAME game array
-        to guarantee mathematical consistency.
+        All stats come from nba_master_hub_2026 (PIPE 1).
+        Hit rates and averages are calculated from the SAME game_logs array.
+        NO external API calls.
         """
         player_name = pick.get('player_name')
         if not player_name:
             return
         
-        # ===== PLAYER DATA ENRICHMENT from nba_master_hub_2026 =====
-        # This is the SINGLE SOURCE OF TRUTH for all player data
+        # SSOT: Get player data from master hub ONLY
         master_player = await self._get_player_by_name(player_name)
         if master_player:
-            # Player identity
+            # Structural data (protected fields)
             pick['player_id'] = master_player.get('player_id')
             pick['nba_id'] = master_player.get('nba_id')
             pick['espn_id'] = master_player.get('espn_id')
@@ -686,13 +702,13 @@ class PicksGetterService:
             if not pick.get('position'):
                 pick['position'] = master_player.get('position')
             
-            # ===== COUPLED STATS from game_logs =====
+            # PIPE 1: Get stats from master hub
             baseline_stats = master_player.get('baseline_stats', {})
             game_logs = master_player.get('game_logs', [])
             stat_type = pick.get('stat_type', '')
             line_value = pick.get('line') or pick.get('demon_line') or pick.get('goblin_line') or 0
             
-            # Calculate coupled stats from game_logs
+            # Calculate coupled stats from PIPE 1 game_logs
             if game_logs and stat_type and line_value > 0:
                 from services.stats_service import calculate_coupled_stats
                 coupled = calculate_coupled_stats(game_logs, stat_type, line_value)
@@ -706,6 +722,7 @@ class PicksGetterService:
                 pick['l5_games_over'] = coupled["l5"]["games_over"]
                 pick['l10_games_over'] = coupled["l10"]["games_over"]
                 pick['stats_coupled'] = True
+                pick['stats_source'] = 'ssot_game_logs'
             elif stat_type and baseline_stats:
                 # Fallback to baseline_stats if no game logs
                 cat_stats = baseline_stats.get(stat_type, {})
@@ -714,6 +731,7 @@ class PicksGetterService:
                     pick['l10_avg'] = cat_stats.get('l10_avg')
                     pick['season_avg'] = cat_stats.get('season_avg')
                 pick['stats_coupled'] = False
+                pick['stats_source'] = 'ssot_baseline'
             
             # Store full baseline_stats for frontend access
             pick['baseline_stats'] = baseline_stats
@@ -741,19 +759,18 @@ class PicksGetterService:
     
     async def _add_player_insights(self, player: Dict) -> None:
         """
-        Fetch and add insights data, headshot, player_id, and BASELINE STATS to a player dict.
-        ALL STATS come from nba_master_hub_2026.baseline_stats.
+        SSOT: Add stats and insights from master hub to a player dict.
+        All stats come from nba_master_hub_2026 (PIPE 1).
         """
         if not player or not player.get("player_name"):
             return
         
         player_name = player.get("player_name")
         
-        # ===== PLAYER DATA ENRICHMENT from nba_master_hub_2026 =====
-        # This is the SINGLE SOURCE OF TRUTH for all player data
+        # SSOT: Get player data from master hub ONLY
         master_player = await self._get_player_by_name(player_name)
         if master_player:
-            # Player identity
+            # Structural data (protected fields)
             player['player_id'] = master_player.get('player_id')
             player['nba_id'] = master_player.get('nba_id')
             player['espn_id'] = master_player.get('espn_id')

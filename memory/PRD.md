@@ -5,6 +5,49 @@ PickVision is a high-performance NBA Player Prop Dashboard with a "military tech
 
 ## Latest Update: 2026-03-16
 
+### SSOT Architecture Implementation - COMPLETED
+**Implemented strict Single Source of Truth (SSOT) architecture with two isolated data pipelines**
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         SSOT DATA ARCHITECTURE                              │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  PIPE 1: Stats Vault (nba_master_hub_2026)                                 │
+│  ├─ Source: Tank01 API (0400 EST CRON ONLY)                                │
+│  ├─ Contains: baseline_stats, game_logs                                    │
+│  └─ Protected Fields: player_id, player_name, photo_url (NEVER overwritten)│
+│                                                                             │
+│  PIPE 2: Live Wire (dg_cached_board / Active_Lines)                        │
+│  ├─ Source: The Odds API (intraday adaptive polling)                       │
+│  ├─ Contains: Live lines, odds, game times                                 │
+│  └─ NO statistical calculations                                            │
+│                                                                             │
+│  INTERSECTION (UI Cards):                                                  │
+│  └─ Joined via player_name, hit rates calculated from PIPE 1 game_logs    │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+**Key Rules Enforced:**
+1. **FORBIDDEN:** Frontend/helpers calling external stat APIs (Tank01, BallDontLie)
+2. **FORBIDDEN:** Creating secondary internal APIs for stats
+3. **0400 EST CRON:** ONLY authorized Tank01 caller
+4. **Protected Fields:** player_id, player_name, photo_url NEVER modified by stats sync
+
+**Files Created/Modified:**
+- `NEW /app/backend/services/ssot_data_layer.py` - SSOT enforcement layer
+- `/app/backend/services/cron_scheduler.py` - Updated to 0400 EST, added SSOT docs
+- `/app/backend/services/picks_getter_service.py` - All methods now SSOT-compliant
+- `/app/backend/services/stats_service.py` - Coupled stats calculation
+
+**Verification:**
+```
+API Response shows: stats_source: "ssot_game_logs" or "ssot_baseline"
+```
+
+---
+
 ### Stats Coupling Bug Fix - COMPLETED
 **Fixed critical data inconsistency where hit rates and averages were calculated from different data sources**
 
