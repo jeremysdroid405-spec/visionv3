@@ -11,7 +11,6 @@ Endpoints:
 - GET /api/command/search - Search players from Master Hub
 - GET /api/command/profile/{player_name} - Get tactical profile for player
 """
-import os
 import logging
 from typing import List, Optional
 from datetime import datetime, timezone
@@ -22,14 +21,11 @@ from pydantic import BaseModel, Field
 from services.simulation_service import get_simulation_engine
 from services.dvp_service import get_dvp_rank, get_dvp_rank_color, calculate_dvp_modifier
 from services.intel_suite_calculator import get_intel_calculator
+from utils.player_lookup import build_player_lookup, get_player_by_name
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/command", tags=["Command Post"])
-
-# PURGED: BallDontLie API - all data now comes from Master Hub
-# BDL_API_KEY = REMOVED
-# BDL_BASE = REMOVED
 
 # Database reference (set via dependency injection)
 _db = None
@@ -118,7 +114,7 @@ async def search_players(
     
     try:
         # Build lookup cache if needed
-        lookup = await _build_player_lookup(_db)
+        lookup = await build_player_lookup(_db)
         
         # Search by name (case-insensitive)
         query_lower = query.lower()
@@ -152,59 +148,8 @@ async def search_players(
         return {"success": False, "players": [], "error": str(e)}
 
 
-# Cached player lookup for name -> master hub data
-_player_lookup_cache = None
-
-async def _build_player_lookup(db) -> dict:
-    """Build a cached lookup of player names -> master hub data (including baseline_stats)."""
-    global _player_lookup_cache
-    if _player_lookup_cache is not None:
-        return _player_lookup_cache
-    
-    _player_lookup_cache = {}
-    players = await db.nba_master_hub_2026.find(
-        {},
-        {"_id": 0, "player_id": 1, "nba_id": 1, "espn_id": 1, "headshot_url": 1, 
-         "team": 1, "position": 1, "display_name": 1, "baseline_stats": 1}
-    ).to_list(1000)
-    
-    for player in players:
-        display_name = player.get("display_name", "")
-        if not display_name:
-            continue
-        
-        name_lower = display_name.lower()
-        _player_lookup_cache[name_lower] = player
-        
-        # Store without Jr./Sr. suffix
-        for suffix in [" jr.", " jr", " sr.", " sr", " ii", " iii", " iv"]:
-            if name_lower.endswith(suffix):
-                base_name = name_lower[:-len(suffix)]
-                if base_name not in _player_lookup_cache:
-                    _player_lookup_cache[base_name] = player
-        
-        # Handle periods (PJ <-> P.J.)
-        if "." in display_name:
-            no_periods = display_name.replace(".", "").lower()
-            if no_periods not in _player_lookup_cache:
-                _player_lookup_cache[no_periods] = player
-        else:
-            words = display_name.split()
-            if words and len(words[0]) == 2 and words[0].isupper():
-                with_periods = f"{words[0][0]}.{words[0][1]}. {' '.join(words[1:])}".lower()
-                if with_periods not in _player_lookup_cache:
-                    _player_lookup_cache[with_periods] = player
-    
-    logger.info(f"[COMMAND] Built player lookup cache with {len(_player_lookup_cache)} name variations (with baseline_stats)")
-    return _player_lookup_cache
-
-
-async def _get_player_by_name(db, player_name: str) -> dict:
-    """Get player data from master hub by name using cached lookup."""
-    if not player_name:
-        return None
-    lookup = await _build_player_lookup(db)
-    return lookup.get(player_name.lower())
+# CONSOLIDATED: Player lookup moved to /app/backend/utils/player_lookup.py
+# Use: from utils.player_lookup import build_player_lookup, get_player_by_name
 
 
 @router.get("/profile/{player_name}")
@@ -290,8 +235,8 @@ async def get_tactical_profile(
         baseline_stats = {}
         detected_opponent = opponent
         
-        # Get player data from master roster using cached lookup
-        master_player = await _get_player_by_name(db, player_name)
+        # Get player data from master roster using shared lookup utility
+        master_player = await get_player_by_name(db, player_name)
         
         if master_player:
             photo_url = master_player.get("headshot_url", "")

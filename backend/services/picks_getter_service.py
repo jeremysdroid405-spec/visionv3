@@ -22,6 +22,9 @@ import logging
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from thefuzz import fuzz
 
+# CONSOLIDATED: Use shared player lookup utility
+from utils.player_lookup import build_player_lookup, get_player_by_name as shared_get_player_by_name
+
 logger = logging.getLogger(__name__)
 
 
@@ -54,76 +57,20 @@ class PicksGetterService:
         
         # PIPE 1: Stats Vault (Tank01 CRON destination)
         self.master_hub = db.nba_master_hub_2026
-        
-        # Player lookup cache (loaded once from master hub)
-        self._player_lookup_cache = None
     
     async def _get_player_lookup(self) -> Dict[str, Dict]:
         """
-        SSOT PIPE 1: Build cached lookup from master hub.
-        
-        All player stats come from nba_master_hub_2026 ONLY.
-        Includes game_logs for coupled stat calculations.
+        SSOT PIPE 1: Get player lookup from shared utility.
+        Uses consolidated lookup from /app/backend/utils/player_lookup.py
         """
-        if self._player_lookup_cache is not None:
-            return self._player_lookup_cache
-        
-        self._player_lookup_cache = {}
-        
-        # SSOT: Load all players from master hub (PIPE 1)
-        # This is the ONLY source for player stats
-        players = await self.master_hub.find(
-            {},
-            {"_id": 0, "player_id": 1, "nba_id": 1, "espn_id": 1, "headshot_url": 1, 
-             "team": 1, "position": 1, "display_name": 1, "baseline_stats": 1, "game_logs": 1}
-        ).to_list(1500)
-        
-        for player in players:
-            display_name = player.get("display_name", "")
-            if not display_name:
-                continue
-            
-            # Store by exact name (lowercase for matching)
-            name_lower = display_name.lower()
-            self._player_lookup_cache[name_lower] = player
-            
-            # Also store common variations:
-            # "Derrick Jones Jr." -> also store "Derrick Jones"
-            # "PJ Washington" -> also store "P.J. Washington"
-            
-            # Without Jr./Sr. suffix
-            for suffix in [" jr.", " jr", " sr.", " sr", " ii", " iii", " iv"]:
-                if name_lower.endswith(suffix):
-                    base_name = name_lower[:-len(suffix)]
-                    if base_name not in self._player_lookup_cache:
-                        self._player_lookup_cache[base_name] = player
-            
-            # With/without periods (PJ <-> P.J.)
-            if "." in display_name:
-                no_periods = display_name.replace(".", "").lower()
-                if no_periods not in self._player_lookup_cache:
-                    self._player_lookup_cache[no_periods] = player
-            else:
-                # Add periods to initials (PJ -> P.J.)
-                words = display_name.split()
-                if words and len(words[0]) == 2 and words[0].isupper():
-                    with_periods = f"{words[0][0]}.{words[0][1]}. {' '.join(words[1:])}".lower()
-                    if with_periods not in self._player_lookup_cache:
-                        self._player_lookup_cache[with_periods] = player
-        
-        logger.info(f"[SSOT] Player lookup cached: {len(self._player_lookup_cache)} name variations from {len(players)} players")
-        return self._player_lookup_cache
+        return await build_player_lookup(self.db)
     
     async def _get_player_by_name(self, player_name: str) -> Dict:
         """
         SSOT: Get player data from master hub by name.
-        Returns player_id, photo_url, team, position, game_logs.
+        Uses consolidated lookup from /app/backend/utils/player_lookup.py
         """
-        if not player_name:
-            return None
-        
-        lookup = await self._get_player_lookup()
-        return lookup.get(player_name.lower())
+        return await shared_get_player_by_name(self.db, player_name)
     
     async def get_war_zone(self) -> Dict[str, Any]:
         """
