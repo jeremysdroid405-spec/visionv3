@@ -22,6 +22,7 @@ from pydantic import BaseModel, Field
 from services.simulation_service import get_simulation_engine
 from services.dvp_service import get_dvp_rank, get_dvp_rank_color, calculate_dvp_modifier
 from services.intel_suite_calculator import get_intel_calculator
+from services.stats_service import calculate_coupled_stats  # CRITICAL: For hit rate math
 from utils.player_lookup import build_player_lookup, get_player_by_name
 
 logger = logging.getLogger(__name__)
@@ -264,9 +265,13 @@ async def get_tactical_profile(
                 photo_url = first_pick.get("photo_url", "")
             detected_opponent = first_pick.get("opponent_abbr") or first_pick.get("opponent") or detected_opponent
         
-        # ===== STEP 5: Build ALL prop lines with stats from MASTER HUB =====
+        # ===== STEP 5: Build ALL prop lines with COUPLED stats from MASTER HUB =====
+        # CRITICAL FIX: Both L5_avg and L5_hit_rate MUST come from the SAME array
         active_lines = []
         seen_props = set()  # Dedupe by stat_type + line + direction
+        
+        # Get game_logs from master hub for coupled calculations
+        game_logs = master_player.get("game_logs", []) if master_player else []
         
         for prop in all_props:
             stat = prop.get("stat_type_extracted") or prop.get("market", "").replace("player_", "").upper()
@@ -286,27 +291,68 @@ async def get_tactical_profile(
             target_key = f"{stat}|{line}|{direction}"
             is_radar = target_key in target_lock_keys
             
-            # ===== GET STATS FROM MASTER HUB baseline_stats =====
-            cat_stats = baseline_stats.get(stat, {})
-            l5_avg = cat_stats.get("l5_avg")
-            l10_avg = cat_stats.get("l10_avg")
-            season_avg = cat_stats.get("season_avg")
+            # ===== CRITICAL: COUPLED STATS CALCULATION =====
+            # Calculate L5/L10 avg AND hit_rate from the EXACT SAME game array
+            # This guarantees mathematical consistency (no more 80% hit rate with 8.0 avg)
+            coupled_stats = calculate_coupled_stats(game_logs, stat, line)
             
-            # Build base prop line with stats from master hub
+            l5_data = coupled_stats["l5"]
+            l10_data = coupled_stats["l10"]
+            season_data = coupled_stats["season"]
+            
+            # Log for verification
+            if l5_data["total_games"] > 0:
+                logger.debug(
+                    f"[COUPLED_MATH] {player_name} {stat} O{line}: "
+                    f"L5 avg={l5_data['avg']} hit_rate={l5_data['hit_rate']:.0%} "
+                    f"({l5_data['games_over']}/{l5_data['total_games']})"
+                )
+            
+            # Build base prop line with COUPLED stats (avg AND hit_rate from same source)
             prop_line = {
                 "stat_type": stat,
                 "line": line,
                 "direction": direction,
                 "odds": prop.get("price"),
                 "is_radar": is_radar,
-                "l5_avg": l5_avg,
-                "l10_avg": l10_avg,
-                "season_avg": season_avg,
+                # COUPLED averages
+                "l5_avg": l5_data["avg"],
+                "l10_avg": l10_data["avg"],
+                "season_avg": season_data["avg"],
+                # COUPLED hit rates (from SAME array as averages - GUARANTEED)
+                "h5_rate": round(l5_data["hit_rate"] * 100, 1),
+                "h10_rate": round(l10_data["hit_rate"] * 100, 1),
+                "season_hit_rate": round(season_data["hit_rate"] * 100, 1),
+                # Detailed hit_rates object for frontend
                 "hit_rates": {
-                    "l5_avg": l5_avg,
-                    "l10_avg": l10_avg,
-                    "season_avg": season_avg
-                }
+                    "l5": {
+                        "avg": l5_data["avg"],
+                        "hit_rate": l5_data["hit_rate"],
+                        "games_over": l5_data["games_over"],
+                        "total_games": l5_data["total_games"]
+                    },
+                    "l10": {
+                        "avg": l10_data["avg"],
+                        "hit_rate": l10_data["hit_rate"],
+                        "games_over": l10_data["games_over"],
+                        "total_games": l10_data["total_games"]
+                    },
+                    "season": {
+                        "avg": season_data["avg"],
+                        "hit_rate": season_data["hit_rate"],
+                        "games_over": season_data["games_over"],
+                        "total_games": season_data["total_games"]
+                    },
+                    # Convenience aliases
+                    "l5_avg": l5_data["avg"],
+                    "l10_avg": l10_data["avg"],
+                    "season_avg": season_data["avg"],
+                    "h5": round(l5_data["hit_rate"] * 100, 1),
+                    "h10": round(l10_data["hit_rate"] * 100, 1)
+                },
+                # Mark as coupled for debugging
+                "stats_coupled": True,
+                "stats_source": "game_logs_coupled"
             }
             
             # If Target-Lock, add Full Intel Suite data
