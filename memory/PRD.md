@@ -5,6 +5,49 @@ PickVision is a high-performance NBA Player Prop Dashboard with a "military tech
 
 ## Latest Update: 2026-03-16
 
+### Stats Coupling Bug Fix - COMPLETED
+**Fixed critical data inconsistency where hit rates and averages were calculated from different data sources**
+
+**Problem:**
+- Hit rates were calculated on-the-fly in `stats_service.py`
+- L5/L10 averages came from pre-calculated `baseline_stats` in master hub
+- This caused mathematically impossible scenarios (e.g., 100% hit rate on Over 9.5 with L5 avg of 8.2)
+
+**Solution:**
+1. **Refactored `stats_service.py`:**
+   - Added `calculate_coupled_stats()` function
+   - Both hit rate and average are now calculated from the **exact same** array of games
+   - Updated stat field mapping for Tank01 API format (e.g., `tptfgm` for 3PM, `TOV` for turnovers)
+
+2. **Updated `tank01_stats_service.py`:**
+   - Added `_fetch_game_logs()` method to store raw game logs
+   - Game logs are now saved to `nba_master_hub_2026.game_logs` during sync
+   - Each game includes: gameID, pts, reb, ast, tptfgm, stl, blk, TOV, mins
+
+3. **Updated `picks_getter_service.py`:**
+   - `_enrich_player_with_master_hub_stats()` now uses coupled calculation
+   - `_add_insights_to_pick()` also uses coupled calculation for War Zone/Safe Haven picks
+   - Props now include `stats_coupled: true` flag when using coupled calculation
+   - New fields: `l5_hit_rate`, `l10_hit_rate`, `l5_games_over`, `l10_games_over`
+
+4. **Added sync endpoint:**
+   - `POST /api/v3/master-hub/sync-player-logs/{player_name}` - Sync game logs for a single player
+
+**Verification:**
+```
+Test: L5 Avg 8.0 for PTS Over 9.5 line
+- L5 Hit Rate: 20% (1/5 games over)
+- CONSISTENT: Avg below line, hit rate < 50%
+```
+
+**Files Modified:**
+- `/app/backend/services/stats_service.py`
+- `/app/backend/services/tank01_stats_service.py`
+- `/app/backend/services/picks_getter_service.py`
+- `/app/backend/routes/master_hub.py`
+
+---
+
 ### API Provider Migration: BallDontLie → Tank01 - COMPLETED
 **Migrated primary data engine from BallDontLie to Tank01 Fantasy Stats API (RapidAPI)**
 
@@ -195,11 +238,12 @@ nba_master_hub_2026.baseline_stats → API enrichment → Frontend display
 
 ### P0 - Immediate
 - [x] Prop Arsenal UI rework (flat list layout)
+- [x] Fix stats coupling bug (hit rate + avg from same data source)
 - [ ] Test conflict detection (add Over + Under for same player prop)
+- [ ] Run full Tank01 sync with game_logs to enable coupled stats for all players
 
 ### P1 - High Priority
 - [ ] Consolidate duplicate player lookup functions into `/app/backend/utils/`
-- [ ] Re-run baseline stats sync to populate more players
 
 ### P2/P3 - Future
 - [ ] Stripe integration & authentication
@@ -224,18 +268,23 @@ nba_master_hub_2026.baseline_stats → API enrichment → Frontend display
 ## Data Flow
 
 ```
-BallDontLie API → master_hub_sync.py → MongoDB (nba_master_hub_2026)
-                                            ↓
-                                   baseline_stats: {
-                                     PTS: {l5_avg, l10_avg, season_avg},
-                                     REB: {...},
-                                     AST: {...},
-                                     PRA: {...}
-                                   }
-                                            ↓
-                                   API Response → Frontend
-                                            ↓
-                                   TacticalPlayerCard (flat list)
+Tank01 API → tank01_stats_service.py → MongoDB (nba_master_hub_2026)
+                                              ↓
+                                     baseline_stats: {
+                                       PTS: {l5_avg, l10_avg, season_avg},
+                                       REB: {...},
+                                       AST: {...},
+                                       PRA: {...}
+                                     }
+                                     game_logs: [
+                                       {gameID, pts, reb, ast, tptfgm, stl, blk, TOV, mins}
+                                     ]
+                                              ↓
+                                     calculate_coupled_stats(game_logs, stat_type, line)
+                                              ↓
+                                     API Response (with stats_coupled: true)
+                                              ↓
+                                     Frontend (L5 Avg + L5 Hit Rate consistent)
 ```
 
 ---
@@ -245,3 +294,4 @@ BallDontLie API → master_hub_sync.py → MongoDB (nba_master_hub_2026)
 - L5/L10/SZN display: Shows values when available, "-" when null
 - Target-Lock styling: Green highlight + TARGET badge working
 - Stat type normalization: P+R → PR confirmed working
+- Coupled stats consistency: Verified - avg and hit rate mathematically consistent

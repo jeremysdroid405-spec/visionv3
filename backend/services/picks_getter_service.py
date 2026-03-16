@@ -52,19 +52,20 @@ class PicksGetterService:
         """
         Build a cached lookup of player names -> master hub data.
         Maps all name variations to ensure correct player_id -> photo_url -> stats matching.
-        ALL STATS come from nba_master_hub_2026.baseline_stats.
+        
+        Includes game_logs for coupled stat calculations (hit rate + avg from same games).
         """
         if self._player_lookup_cache is not None:
             return self._player_lookup_cache
         
         self._player_lookup_cache = {}
         
-        # Load all players from master hub WITH baseline_stats
+        # Load all players from master hub WITH baseline_stats and game_logs
         master_hub = self.db.nba_master_hub_2026
         players = await master_hub.find(
             {},
             {"_id": 0, "player_id": 1, "nba_id": 1, "espn_id": 1, "headshot_url": 1, 
-             "team": 1, "position": 1, "display_name": 1, "baseline_stats": 1}
+             "team": 1, "position": 1, "display_name": 1, "baseline_stats": 1, "game_logs": 1}
         ).to_list(1000)
         
         for player in players:
@@ -100,7 +101,7 @@ class PicksGetterService:
                     if with_periods not in self._player_lookup_cache:
                         self._player_lookup_cache[with_periods] = player
         
-        logger.info(f"[PLAYER_LOOKUP] Cached {len(self._player_lookup_cache)} name variations for {len(players)} players (with baseline_stats)")
+        logger.info(f"[PLAYER_LOOKUP] Cached {len(self._player_lookup_cache)} name variations for {len(players)} players (with game_logs for coupled stats)")
         return self._player_lookup_cache
     
     async def _get_player_by_name(self, player_name: str) -> Dict:
@@ -422,10 +423,12 @@ class PicksGetterService:
     
     async def _enrich_player_with_master_hub_stats(self, player: Dict) -> None:
         """
-        Enrich player data with baseline_stats from nba_master_hub_2026.
+        Enrich player data with COUPLED stats from game logs in nba_master_hub_2026.
         
-        ALL stats (L5/L10/SZN averages) come from the master hub.
-        This replaces any hit_rates-based averages with the authoritative source.
+        CRITICAL: Hit rates and averages are calculated from the SAME game array
+        to guarantee mathematical consistency. The baseline_stats.l5_avg/l10_avg
+        are only used for season_avg as a fallback - all short-term stats come
+        from real-time calculation against the stored game_logs.
         """
         if not player:
             return
@@ -437,35 +440,59 @@ class PicksGetterService:
             logger.debug(f"[STATS_ENRICH] No master hub data for: {player_name}")
             return
         
-        # Get baseline_stats from master hub
+        # Get baseline_stats and game_logs from master hub
         baseline_stats = hub_player.get("baseline_stats", {})
+        game_logs = hub_player.get("game_logs", [])
         
-        # Add baseline_stats to player object for easy frontend access
+        # Add baseline_stats and photo to player object
         player["baseline_stats"] = baseline_stats
         player["photo_url"] = hub_player.get("headshot_url") or player.get("photo_url")
+        
+        # Import the coupled stats calculator
+        from services.stats_service import calculate_coupled_stats
         
         # Import intel calculator for radar picks
         from services.intel_suite_calculator import get_intel_calculator
         intel_calculator = get_intel_calculator(self.db)
         
-        # Enrich each prop with stats from master hub
+        # Enrich each prop with COUPLED stats (hit rate + avg from same games)
         props = player.get("props", [])
         for prop in props:
-            stat_type = prop.get("stat_type_extracted", "")
+            stat_type = prop.get("stat_type_extracted", "") or prop.get("stat_type", "")
+            line_value = prop.get("line", 0)
             
             # Normalize stat type for lookup (P+R -> PR, etc.)
             stat_key = stat_type
             norm_map = {"P+R": "PR", "P+A": "PA", "R+A": "RA"}
             stat_key = norm_map.get(stat_type, stat_type)
             
-            # Get stats for this stat type from baseline_stats
-            stat_data = baseline_stats.get(stat_key, {})
-            
-            # Add L5/L10/SZN averages directly to the prop
-            # These override any values from hit_rates
-            prop["l5_avg"] = stat_data.get("l5_avg")
-            prop["l10_avg"] = stat_data.get("l10_avg")
-            prop["season_avg"] = stat_data.get("season_avg")
+            # Calculate COUPLED stats from game_logs (hit rate + avg from SAME games)
+            if game_logs and line_value > 0:
+                coupled = calculate_coupled_stats(game_logs, stat_type, line_value)
+                
+                # Use coupled stats for L5 and L10 (guaranteed consistent)
+                prop["l5_avg"] = coupled["l5"]["avg"]
+                prop["l10_avg"] = coupled["l10"]["avg"]
+                prop["l5_hit_rate"] = coupled["l5"]["hit_rate"]
+                prop["l10_hit_rate"] = coupled["l10"]["hit_rate"]
+                prop["l5_games_over"] = coupled["l5"]["games_over"]
+                prop["l10_games_over"] = coupled["l10"]["games_over"]
+                prop["l5_total_games"] = coupled["l5"]["total_games"]
+                prop["l10_total_games"] = coupled["l10"]["total_games"]
+                
+                # Season avg from coupled calculation (or fallback to baseline)
+                prop["season_avg"] = coupled["season"]["avg"] or baseline_stats.get(stat_key, {}).get("season_avg")
+                prop["season_hit_rate"] = coupled["season"]["hit_rate"]
+                
+                # Mark that stats are coupled/consistent
+                prop["stats_coupled"] = True
+            else:
+                # Fallback to baseline_stats if no game logs
+                stat_data = baseline_stats.get(stat_key, {})
+                prop["l5_avg"] = stat_data.get("l5_avg")
+                prop["l10_avg"] = stat_data.get("l10_avg")
+                prop["season_avg"] = stat_data.get("season_avg")
+                prop["stats_coupled"] = False
             
             # If this is a radar pick (demon or goblin), add full intel_suite
             is_radar = prop.get("is_demon") or prop.get("is_goblin") or prop.get("is_radar_pick")
@@ -480,7 +507,7 @@ class PicksGetterService:
                 )
                 prop["intel_suite"] = intel_suite
         
-        logger.debug(f"[STATS_ENRICH] Enriched {len(props)} props for {player_name} with master hub stats")
+        logger.debug(f"[STATS_ENRICH] Enriched {len(props)} props for {player_name} with coupled stats")
     
     async def get_most_popular_bets(self) -> Dict[str, Any]:
         """
@@ -635,8 +662,10 @@ class PicksGetterService:
     
     async def _add_insights_to_pick(self, pick: Dict) -> None:
         """
-        Add AI insights, headshot URL, player_id, and BASELINE STATS to a single pick.
-        ALL STATS come from nba_master_hub_2026.baseline_stats.
+        Add AI insights, headshot URL, player_id, and COUPLED STATS to a single pick.
+        
+        CRITICAL: Hit rates and averages are calculated from the SAME game array
+        to guarantee mathematical consistency.
         """
         player_name = pick.get('player_name')
         if not player_name:
@@ -657,17 +686,34 @@ class PicksGetterService:
             if not pick.get('position'):
                 pick['position'] = master_player.get('position')
             
-            # ===== BASELINE STATS from master hub =====
+            # ===== COUPLED STATS from game_logs =====
             baseline_stats = master_player.get('baseline_stats', {})
+            game_logs = master_player.get('game_logs', [])
             stat_type = pick.get('stat_type', '')
+            line_value = pick.get('line') or pick.get('demon_line') or pick.get('goblin_line') or 0
             
-            # Get stats for this specific prop category
-            if stat_type and baseline_stats:
+            # Calculate coupled stats from game_logs
+            if game_logs and stat_type and line_value > 0:
+                from services.stats_service import calculate_coupled_stats
+                coupled = calculate_coupled_stats(game_logs, stat_type, line_value)
+                
+                # Use coupled stats (guaranteed consistent hit rate + avg)
+                pick['l5_avg'] = coupled["l5"]["avg"]
+                pick['l10_avg'] = coupled["l10"]["avg"]
+                pick['season_avg'] = coupled["season"]["avg"] or baseline_stats.get(stat_type, {}).get('season_avg')
+                pick['l5_hit_rate'] = coupled["l5"]["hit_rate"]
+                pick['l10_hit_rate'] = coupled["l10"]["hit_rate"]
+                pick['l5_games_over'] = coupled["l5"]["games_over"]
+                pick['l10_games_over'] = coupled["l10"]["games_over"]
+                pick['stats_coupled'] = True
+            elif stat_type and baseline_stats:
+                # Fallback to baseline_stats if no game logs
                 cat_stats = baseline_stats.get(stat_type, {})
                 if cat_stats:
                     pick['l5_avg'] = cat_stats.get('l5_avg')
                     pick['l10_avg'] = cat_stats.get('l10_avg')
                     pick['season_avg'] = cat_stats.get('season_avg')
+                pick['stats_coupled'] = False
             
             # Store full baseline_stats for frontend access
             pick['baseline_stats'] = baseline_stats

@@ -2,37 +2,59 @@
 Stats Service - Hit Rate and Statistical Calculations
 ======================================================
 Extracted from demon_goblin_engine.py for modularity.
+
+CRITICAL: All hit rates and averages MUST be calculated from the SAME
+array of games to prevent mathematical contradictions (e.g., 100% hit
+rate on Over 9.5 but L5 avg of 8.2).
 """
 from typing import Dict, Any, List, Tuple
 import logging
 
 logger = logging.getLogger(__name__)
 
-# Stat type to BallDontLie field mapping
+# Stat type to Tank01 field mapping
+# Tank01 uses different field names than BallDontLie
 STAT_FIELD_MAP = {
     "PTS": "pts",
     "REB": "reb",
     "AST": "ast",
-    "3PM": "fg3m",
+    "3PM": "tptfgm",  # Tank01 uses tptfgm for 3-pointers made
     "BLK": "blk",
     "STL": "stl",
-    "TO": "turnover",
+    "TO": "TOV",  # Tank01 uses TOV for turnovers
     "P+R": ["pts", "reb"],
     "P+A": ["pts", "ast"],
     "R+A": ["reb", "ast"],
-    "PRA": ["pts", "reb", "ast"]
+    "PRA": ["pts", "reb", "ast"],
+    # Normalized variants
+    "PR": ["pts", "reb"],
+    "PA": ["pts", "ast"],
+    "RA": ["reb", "ast"]
 }
 
 
+def safe_float(val) -> float:
+    """Safely convert value to float, handling None and strings."""
+    try:
+        return float(val) if val else 0
+    except (ValueError, TypeError):
+        return 0
+
+
 def get_stat_value(game: Dict, fields) -> float:
-    """Get combined stat value from a game"""
+    """Get combined stat value from a game (works with Tank01 format)"""
     if isinstance(fields, list):
-        return sum(game.get(f, 0) or 0 for f in fields)
-    return game.get(fields, 0) or 0
+        return sum(safe_float(game.get(f, 0)) for f in fields)
+    return safe_float(game.get(fields, 0))
 
 
 def calculate_hit_rate_for_games(games: List[Dict], fields, line_value: float) -> Dict[str, Any]:
-    """Calculate hit rate for a list of games"""
+    """
+    Calculate hit rate AND average for a list of games.
+    
+    CRITICAL: Both values are calculated from the EXACT SAME games array
+    to guarantee mathematical consistency.
+    """
     if not games:
         return {"hit_rate": 0, "games_over": 0, "total_games": 0, "avg": 0}
     
@@ -48,12 +70,84 @@ def calculate_hit_rate_for_games(games: List[Dict], fields, line_value: float) -
     }
 
 
+def calculate_coupled_stats(games: List[Dict], stat_type: str, line_value: float) -> Dict[str, Any]:
+    """
+    Calculate COUPLED hit rates and averages from the same game array.
+    
+    This is the SINGLE SOURCE OF TRUTH for both metrics. The L5/L10/Season
+    averages and hit rates are calculated from the EXACT SAME games list,
+    guaranteeing mathematical consistency.
+    
+    Args:
+        games: List of game dicts from Tank01 API (with pts, reb, ast, etc.)
+        stat_type: Type of stat (PTS, REB, AST, 3PM, PRA, etc.)
+        line_value: The prop line value
+    
+    Returns:
+        Dict with coupled l5, l10, and season stats where avg and hit_rate
+        are guaranteed to be mathematically consistent.
+    """
+    if not games:
+        return {
+            "l5": {"hit_rate": 0, "games_over": 0, "total_games": 0, "avg": 0},
+            "l10": {"hit_rate": 0, "games_over": 0, "total_games": 0, "avg": 0},
+            "season": {"hit_rate": 0, "games_over": 0, "total_games": 0, "avg": 0}
+        }
+    
+    # Normalize stat type for lookup
+    normalized_type = stat_type
+    norm_map = {"P+R": "PR", "P+A": "PA", "R+A": "RA"}
+    if stat_type in norm_map:
+        normalized_type = norm_map[stat_type]
+    
+    fields = STAT_FIELD_MAP.get(normalized_type) or STAT_FIELD_MAP.get(stat_type)
+    if not fields:
+        logger.warning(f"[COUPLED_STATS] Unknown stat type: {stat_type}")
+        return {
+            "l5": {"hit_rate": 0, "games_over": 0, "total_games": 0, "avg": 0},
+            "l10": {"hit_rate": 0, "games_over": 0, "total_games": 0, "avg": 0},
+            "season": {"hit_rate": 0, "games_over": 0, "total_games": 0, "avg": 0}
+        }
+    
+    # Filter to games with minutes > 0 (actually played)
+    played_games = []
+    for g in games:
+        mins_str = g.get("mins", "0") or "0"
+        try:
+            mins = float(mins_str) if mins_str else 0
+            if mins > 0:
+                played_games.append(g)
+        except (ValueError, TypeError):
+            pass
+    
+    if not played_games:
+        return {
+            "l5": {"hit_rate": 0, "games_over": 0, "total_games": 0, "avg": 0},
+            "l10": {"hit_rate": 0, "games_over": 0, "total_games": 0, "avg": 0},
+            "season": {"hit_rate": 0, "games_over": 0, "total_games": 0, "avg": 0}
+        }
+    
+    # Extract exact L5 and L10 game arrays
+    l5_games = played_games[:5]
+    l10_games = played_games[:10]
+    
+    # Calculate BOTH avg and hit_rate from the SAME arrays
+    return {
+        "l5": calculate_hit_rate_for_games(l5_games, fields, line_value),
+        "l10": calculate_hit_rate_for_games(l10_games, fields, line_value),
+        "season": calculate_hit_rate_for_games(played_games, fields, line_value)
+    }
+
+
 def calculate_hit_rates(player_stats: Dict, stat_type: str, line_value: float) -> Dict[str, Any]:
     """
     Calculate hit rates for a specific line.
     
+    DEPRECATED: Use calculate_coupled_stats() for new code to ensure
+    hit rate and average are calculated from the same data source.
+    
     Args:
-        player_stats: Dict containing "games" list from BDL
+        player_stats: Dict containing "games" list
         stat_type: Type of stat (PTS, REB, AST, etc.)
         line_value: The prop line value
     
@@ -64,12 +158,19 @@ def calculate_hit_rates(player_stats: Dict, stat_type: str, line_value: float) -
     if not games:
         return {}
     
-    fields = STAT_FIELD_MAP.get(stat_type)
+    # Normalize stat type
+    normalized_type = stat_type
+    norm_map = {"P+R": "PR", "P+A": "PA", "R+A": "RA"}
+    if stat_type in norm_map:
+        normalized_type = norm_map[stat_type]
+    
+    fields = STAT_FIELD_MAP.get(normalized_type) or STAT_FIELD_MAP.get(stat_type)
     if not fields:
         return {}
     
-    # Sort games by date (most recent first)
-    sorted_games = sorted(games, key=lambda g: g.get("game", {}).get("date", ""), reverse=True)
+    # Sort games by date/gameID (most recent first)
+    # Tank01 games have gameID like "20250115_LAL@DEN"
+    sorted_games = sorted(games, key=lambda g: g.get("gameID", g.get("game", {}).get("date", "")), reverse=True)
     
     return {
         "l5": calculate_hit_rate_for_games(sorted_games[:5], fields, line_value),

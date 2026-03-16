@@ -123,6 +123,58 @@ async def populate_tank01_ids():
     return result
 
 
+@router.post("/sync-player-logs/{player_name}")
+async def sync_player_game_logs(player_name: str):
+    """
+    Sync game logs for a single player.
+    
+    This fetches and stores game_logs from Tank01 for coupled stat calculations.
+    Use this to test the new coupled stats feature.
+    """
+    if _db is None:
+        raise HTTPException(status_code=500, detail="Database not initialized")
+    
+    from services.tank01_stats_service import get_tank01_service
+    service = get_tank01_service(_db)
+    
+    # First check if player exists and has tank01_id
+    player = await service.master_hub.find_one(
+        {"display_name": {"$regex": f"^{player_name}$", "$options": "i"}},
+        {"_id": 0, "display_name": 1, "tank01_id": 1, "playerID": 1}
+    )
+    
+    if not player:
+        raise HTTPException(status_code=404, detail=f"Player not found: {player_name}")
+    
+    tank01_id = player.get("tank01_id") or player.get("playerID")
+    if not tank01_id:
+        raise HTTPException(status_code=400, detail=f"No Tank01 ID for: {player_name}")
+    
+    import httpx
+    async with httpx.AsyncClient(timeout=30) as http:
+        # Fetch game logs
+        game_logs = await service._fetch_game_logs(http, tank01_id)
+        
+        if not game_logs:
+            return {"success": False, "message": "No game logs found", "player": player.get("display_name")}
+        
+        # Store game logs
+        await service.master_hub.update_one(
+            {"display_name": player.get("display_name")},
+            {"$set": {
+                "game_logs": game_logs,
+                "game_logs_updated_at": __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat()
+            }}
+        )
+        
+        return {
+            "success": True,
+            "player": player.get("display_name"),
+            "games_count": len(game_logs),
+            "sample_game": game_logs[0] if game_logs else None
+        }
+
+
 @router.post("/start-scheduler")
 async def start_hub_scheduler():
     """Start the 4:00 AM ET daily sync scheduler."""

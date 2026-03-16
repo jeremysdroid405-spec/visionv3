@@ -91,13 +91,23 @@ class Tank01StatsService:
                     baseline_stats = await self._fetch_and_calculate_stats(http, tank01_id)
                     
                     if baseline_stats:
+                        # Fetch and store game logs for coupled stat calculations
+                        game_logs = await self._fetch_game_logs(http, tank01_id)
+                        
+                        update_data = {
+                            "baseline_stats": baseline_stats,
+                            "baseline_stats_updated_at": datetime.now(timezone.utc).isoformat(),
+                            "stats_source": "tank01"
+                        }
+                        
+                        # Store game logs for on-the-fly coupled stat calculations
+                        if game_logs:
+                            update_data["game_logs"] = game_logs
+                            update_data["game_logs_updated_at"] = datetime.now(timezone.utc).isoformat()
+                        
                         await self.master_hub.update_one(
                             {"display_name": player_name},
-                            {"$set": {
-                                "baseline_stats": baseline_stats,
-                                "baseline_stats_updated_at": datetime.now(timezone.utc).isoformat(),
-                                "stats_source": "tank01"
-                            }}
+                            {"$set": update_data}
                         )
                         updated += 1
                     else:
@@ -179,11 +189,7 @@ class Tank01StatsService:
                 return None
             
             # Sort by gameID (format: YYYYMMDD_TEAM@TEAM) - newest first
-            game_ids = list(body.keys())
-            played_games.sort(
-                key=lambda g: game_ids[list(body.values()).index(g)] if g in body.values() else "",
-                reverse=True
-            )
+            played_games.sort(key=lambda g: g.get("gameID", ""), reverse=True)
             
             # Calculate L5, L10, Season averages
             baseline_stats = self._calculate_averages(played_games)
@@ -195,6 +201,78 @@ class Tank01StatsService:
             
         except Exception as e:
             logger.error(f"[TANK01] Error fetching stats for {player_id}: {e}")
+            return None
+    
+    async def _fetch_game_logs(
+        self,
+        http: httpx.AsyncClient,
+        player_id: str
+    ) -> Optional[List[Dict]]:
+        """
+        Fetch raw game logs from Tank01 for storage.
+        
+        These logs are stored in the master hub and used for on-the-fly
+        coupled stat calculations (hit rate + average from same games).
+        
+        Only includes games where minutes > 0 (actually played).
+        """
+        try:
+            response = await http.get(
+                f"{TANK01_BASE_URL}/getNBAGamesForPlayer",
+                params={"playerID": str(player_id), "season": CURRENT_SEASON},
+                headers=self.headers
+            )
+            
+            if response.status_code != 200:
+                return None
+            
+            data = response.json()
+            body = data.get("body", {})
+            
+            if not body:
+                return None
+            
+            # Body is dict with gameID as keys - convert to list
+            games = []
+            for game_id, game_data in body.items():
+                game_data["gameID"] = game_id  # Ensure gameID is stored
+                games.append(game_data)
+            
+            if not games:
+                return None
+            
+            # Filter to games with minutes > 0
+            played_games = []
+            for g in games:
+                mins_str = g.get("mins", "0") or "0"
+                try:
+                    mins = float(mins_str) if mins_str else 0
+                    if mins > 0:
+                        played_games.append(g)
+                except (ValueError, TypeError):
+                    pass
+            
+            # Sort by gameID (newest first)
+            played_games.sort(key=lambda g: g.get("gameID", ""), reverse=True)
+            
+            # Return only essential fields to minimize storage
+            return [
+                {
+                    "gameID": g.get("gameID"),
+                    "pts": g.get("pts"),
+                    "reb": g.get("reb"),
+                    "ast": g.get("ast"),
+                    "tptfgm": g.get("tptfgm"),  # 3PM
+                    "stl": g.get("stl"),
+                    "blk": g.get("blk"),
+                    "TOV": g.get("TOV"),  # Turnovers
+                    "mins": g.get("mins")
+                }
+                for g in played_games
+            ]
+            
+        except Exception as e:
+            logger.error(f"[TANK01] Error fetching game logs for {player_id}: {e}")
             return None
     
     def _calculate_averages(self, games: List[Dict]) -> Dict[str, Any]:
