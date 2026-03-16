@@ -6,20 +6,27 @@ PickVision is a high-performance NBA Player Prop Dashboard with a "military tech
 ## Latest Update: 2026-03-16
 
 ### Prop Arsenal UI Rework - COMPLETED
-**Changed prop display from accordion to flat list layout**
+**Changed prop display from accordion to flat list layout across ALL views**
 
 - **Before:** Props were displayed in nested accordions that required clicking to expand
 - **After:** Props are displayed as a flat list grouped by category headers
-- **Categories:** POINTS, REBOUNDS, ASSISTS, PRA (Points+Rebounds+Assists), PR, PA, RA, 3PM, STL, BLK, etc.
+- **Categories:** POINTS, REBOUNDS, ASSISTS, PRA (Points+Rebounds+Assists), PR, PA, RA, 3PM, STL, BLK, TO, etc.
 - **Stat normalization:** API returns `P+R`, `P+A`, `R+A` - now normalized to `PR`, `PA`, `RA`
-- **L5/L10/SZN columns:** Display baseline stats from `nba_master_hub_2026`, showing "-" when data unavailable
-- **Target-Lock styling:** Recommended props highlighted with green border and "TARGET" badge
+- **L5/L10/SZN columns:** Display actual averages from hit_rates data
+- **Hit Rate columns:** L10 HR and L5 HR percentages shown
+- **DEMON/GOBLIN badges:** Visual distinction for high-risk/safe picks
 
 **Files Updated:**
 - `/app/frontend/src/components/dashboard/TacticalPlayerCard.jsx`
   - Added `normalizeStatType()` function for combined stat handling
   - Updated `groupPropsByCategory()` to normalize stat types
   - Enhanced `PROP_LABELS` with alternate formats (P+R, P+A, R+A)
+  
+- `/app/frontend/src/components/dashboard/PlayerDetailPage.jsx` - **REWRITTEN**
+  - Changed from accordion-based `CategoryAccordion` to flat list with `CategoryHeader`
+  - Fixed data extraction to read from `hit_rates.l5.avg`, `hit_rates.l10.avg`, `hit_rates.season.avg`
+  - Added hit rate percentage display (L10 HR, L5 HR)
+  - Categories grouped by `stat_type_extracted` (PTS, REB, AST, PRA, PR, PA, RA, etc.)
 
 ### Database Sync - Session Work
 - Synced `nba_master_hub_2026` collection with 1,124 players

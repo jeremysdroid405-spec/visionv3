@@ -1,23 +1,56 @@
 /**
- * PlayerDetailPage - Complete player prop ladder view
- * Shows all props organized by category with highlight support
+ * PlayerDetailPage - Complete player prop view
+ * Shows ALL props as a flat list with category headers (not accordions)
  */
 import React, { useState, useEffect, useCallback, useMemo, useRef, memo } from 'react';
 import axios from 'axios';
-import { Card } from '../ui/card';
 import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
 import { 
-  ArrowLeft, ChevronDown, ChevronRight, Flame, Target, Zap, 
-  TrendingUp, TrendingDown, AlertTriangle, Shield, Lock
+  ArrowLeft, Target, Zap, Crosshair, Plus
 } from 'lucide-react';
 import { DemonIcon, GoblinIcon } from './Icons';
 import { STAT_CATEGORIES, getCategoryKey, TEAM_LOGOS } from './constants';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
+// ==================== PROP CATEGORY CONFIG ====================
+const PROP_LABELS = {
+  'PTS': 'Points',
+  'REB': 'Rebounds',
+  'AST': 'Assists',
+  '3PM': '3-Pointers Made',
+  'STL': 'Steals',
+  'BLK': 'Blocks',
+  'TO': 'Turnovers',
+  'PRA': 'PRA',
+  'PR': 'PR',
+  'P+R': 'PR',
+  'PA': 'PA',
+  'P+A': 'PA',
+  'RA': 'RA',
+  'R+A': 'RA',
+  'BLST': 'Blocks + Steals',
+  'FGM': 'Field Goals Made',
+  'FTM': 'Free Throws Made',
+  'MIN': 'Minutes',
+  'DD': 'Double-Double',
+  'TD': 'Triple-Double',
+};
+
+const CATEGORY_ORDER = ['PTS', 'REB', 'AST', 'PRA', 'PR', 'PA', 'RA', '3PM', 'STL', 'BLK', 'BLST', 'TO', 'FGM', 'FTM', 'MIN'];
+
+const normalizeStatType = (statType) => {
+  const normMap = { 'P+R': 'PR', 'P+A': 'PA', 'R+A': 'RA' };
+  return normMap[statType] || statType;
+};
+
+const getPropLabel = (statType) => {
+  const normalized = normalizeStatType(statType);
+  return PROP_LABELS[normalized] || PROP_LABELS[statType] || statType;
+};
+
 // ==================== PLAYER HEADSHOT ====================
-// Uses photo_url from nba_master_hub_2026 (no external API calls on render)
 const PlayerHeadshot = memo(({ playerName, team, photoUrl, size = 'md', className = '' }) => {
   const [error, setError] = useState(false);
   const sizeClasses = { sm: 'w-8 h-8', md: 'w-12 h-12', lg: 'w-16 h-16', xl: 'w-24 h-24' };
@@ -52,19 +85,31 @@ const PlayerHeadshot = memo(({ playerName, team, photoUrl, size = 'md', classNam
 // ==================== SKELETON LOADER ====================
 const SkeletonPlayerDetail = () => (
   <div className="space-y-4 animate-pulse">
-    {[1, 2, 3].map(i => (
-      <div key={i} className="bg-zinc-800/50 rounded-lg h-24" />
+    {[1, 2, 3, 4, 5].map(i => (
+      <div key={i} className="bg-zinc-800/50 rounded-lg h-16" />
     ))}
   </div>
 );
 
-// ==================== LADDER PROP ROW ====================
-const LadderPropRow = memo(({ prop, categoryStats, isFirst, isLast, isHighlighted, highlightRef, glowClass, highlightType, playerInsights }) => {
+// ==================== SINGLE PROP ROW ====================
+const PropRow = memo(({ prop, isHighlighted, highlightRef }) => {
   const isDemon = prop.is_demon;
   const isGoblin = prop.is_goblin;
-  const isStandard = !isDemon && !isGoblin;
+  const line = prop.line || 0;
+  const direction = (prop.direction || 'over').toUpperCase();
   
-  // Hit rate colors
+  // Stats from baseline or hit_rates (different API formats)
+  // Format 1: prop.l5_avg, prop.l10_avg, prop.season_avg
+  // Format 2: prop.hit_rates.l5.avg, prop.hit_rates.l10.avg, prop.hit_rates.season.avg
+  const hitRates = prop.hit_rates || {};
+  const l5Avg = prop.l5_avg ?? hitRates.l5?.avg ?? hitRates.l5_avg;
+  const l10Avg = prop.l10_avg ?? hitRates.l10?.avg ?? hitRates.l10_avg;
+  const seasonAvg = prop.season_avg ?? hitRates.season?.avg ?? hitRates.season_avg;
+  
+  // Hit rates (percentage)
+  const h10Rate = hitRates.l10?.hit_rate != null ? Math.round(hitRates.l10.hit_rate * 100) : (prop.h10_rate || 0);
+  const h5Rate = hitRates.l5?.hit_rate != null ? Math.round(hitRates.l5.hit_rate * 100) : (prop.h5_rate || 0);
+  
   const getHitRateColor = (rate) => {
     if (rate >= 80) return 'text-green-400';
     if (rate >= 60) return 'text-yellow-400';
@@ -72,199 +117,132 @@ const LadderPropRow = memo(({ prop, categoryStats, isFirst, isLast, isHighlighte
     return 'text-red-400';
   };
   
-  const h10Rate = prop.h10_rate || 0;
-  const h5Rate = prop.h5_rate || 0;
-  const line = prop.line || 0;
-  const seasonAvg = categoryStats?.season_avg || prop.season_avg || 0;
-  const gapFromAvg = seasonAvg > 0 ? ((seasonAvg - line) / line * 100).toFixed(1) : null;
-  
-  // Determine row styling
-  const rowBg = isDemon 
-    ? 'bg-gradient-to-r from-red-950/40 to-zinc-900 border-l-2 border-red-500'
-    : isGoblin 
-    ? 'bg-gradient-to-r from-green-950/40 to-zinc-900 border-l-2 border-green-500'
-    : 'bg-zinc-900/50 border-l-2 border-zinc-700';
-  
   return (
-    <div
+    <div 
       ref={isHighlighted ? highlightRef : null}
-      className={`
-        ${rowBg} rounded-lg p-3 transition-all
-        ${isHighlighted ? `${glowClass} ring-2 ${highlightType === 'goblin' ? 'ring-green-500' : 'ring-amber-500'}` : ''}
-        ${isFirst ? 'rounded-t-lg' : ''} ${isLast ? 'rounded-b-lg' : ''}
-      `}
-      data-highlighted={isHighlighted}
-      data-testid={`prop-row-${prop.market}-${line}`}
+      className={`flex items-center justify-between py-3 px-4 rounded-lg transition-all ${
+        isDemon 
+          ? 'bg-gradient-to-r from-red-950/40 to-zinc-900 border border-red-500/30' 
+          : isGoblin 
+            ? 'bg-gradient-to-r from-green-950/40 to-zinc-900 border border-green-500/30'
+            : isHighlighted
+              ? 'bg-amber-950/30 border border-amber-500/50 ring-1 ring-amber-500/30'
+              : 'bg-zinc-800/30 border border-zinc-700/30'
+      }`}
+      data-testid={`prop-row-${prop.stat_type}-${line}`}
     >
-      <div className="flex items-center justify-between">
-        {/* Left: Line + Direction */}
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-1.5">
-            {isDemon && <DemonIcon size={16} />}
-            {isGoblin && <GoblinIcon size={16} />}
-            {isStandard && <Target className="w-4 h-4 text-zinc-500" />}
-          </div>
-          
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="text-white font-bold text-lg">{line}</span>
-              <span className={`text-xs px-1.5 py-0.5 rounded ${
-                (prop.direction || 'over').toLowerCase() === 'over' 
-                  ? 'bg-green-500/20 text-green-400' 
-                  : 'bg-red-500/20 text-red-400'
-              }`}>
-                {prop.direction || 'Over'}
+      {/* Left: Type indicator + Line */}
+      <div className="flex items-center gap-3">
+        <div className="flex items-center gap-1.5">
+          {isDemon && <DemonIcon size={16} />}
+          {isGoblin && <GoblinIcon size={16} />}
+          {!isDemon && !isGoblin && <Target className="w-4 h-4 text-zinc-500" />}
+        </div>
+        
+        <div>
+          <div className="flex items-center gap-2">
+            <span className={`text-base font-bold ${
+              isDemon ? 'text-red-400' : isGoblin ? 'text-green-400' : 'text-white'
+            }`}>
+              {direction} {line}
+            </span>
+            {isDemon && (
+              <span className="px-1.5 py-0.5 text-[8px] font-bold bg-red-500 text-white rounded">
+                DEMON
               </span>
-              {isHighlighted && (
-                <Badge className="bg-purple-500/30 text-purple-300 border-none text-[9px] animate-pulse">
-                  VISION PICK
-                </Badge>
-              )}
-            </div>
-            
-            {/* Price/Odds */}
-            {prop.price && (
-              <span className="text-xs text-zinc-500 font-mono">
-                {prop.price > 0 ? '+' : ''}{prop.price}
+            )}
+            {isGoblin && (
+              <span className="px-1.5 py-0.5 text-[8px] font-bold bg-green-500 text-black rounded">
+                GOBLIN
+              </span>
+            )}
+            {isHighlighted && !isDemon && !isGoblin && (
+              <span className="px-1.5 py-0.5 text-[8px] font-bold bg-amber-500 text-black rounded">
+                VISION
               </span>
             )}
           </div>
-        </div>
-        
-        {/* Right: Hit Rates */}
-        <div className="flex items-center gap-4">
-          {/* Season Avg Comparison */}
-          {gapFromAvg && (
-            <div className="text-right">
-              <div className="text-[10px] text-zinc-500">vs Avg</div>
-              <div className={`text-sm font-medium ${parseFloat(gapFromAvg) > 0 ? 'text-green-400' : 'text-red-400'}`}>
-                {parseFloat(gapFromAvg) > 0 ? '+' : ''}{gapFromAvg}%
-              </div>
-            </div>
+          {prop.price && (
+            <span className="text-[10px] text-zinc-500 font-mono">
+              @ {prop.price > 0 ? '+' : ''}{prop.price}
+            </span>
           )}
-          
-          {/* L10 */}
-          <div className="text-right">
-            <div className="text-[10px] text-zinc-500">L10</div>
-            <div className={`text-sm font-bold ${getHitRateColor(h10Rate)}`}>{h10Rate}%</div>
+        </div>
+      </div>
+      
+      {/* Center: L5/L10/SZN Averages */}
+      <div className="flex items-center gap-5 text-xs">
+        <div className="text-center min-w-[40px]">
+          <div className="text-zinc-500 text-[9px]">L5</div>
+          <div className={`font-bold ${l5Avg != null ? 'text-white' : 'text-zinc-600'}`}>
+            {l5Avg != null ? l5Avg : '-'}
           </div>
-          
-          {/* L5 */}
-          <div className="text-right">
-            <div className="text-[10px] text-zinc-500">L5</div>
-            <div className={`text-sm font-bold ${getHitRateColor(h5Rate)}`}>{h5Rate}%</div>
+        </div>
+        <div className="text-center min-w-[40px]">
+          <div className="text-zinc-500 text-[9px]">L10</div>
+          <div className={`font-bold ${l10Avg != null ? 'text-white' : 'text-zinc-600'}`}>
+            {l10Avg != null ? l10Avg : '-'}
+          </div>
+        </div>
+        <div className="text-center min-w-[40px]">
+          <div className="text-zinc-500 text-[9px]">SZN</div>
+          <div className={`font-bold ${seasonAvg != null ? 'text-white' : 'text-zinc-600'}`}>
+            {seasonAvg != null ? seasonAvg : '-'}
           </div>
         </div>
       </div>
       
-      {/* AI Vision insight if available */}
-      {(prop.intel_briefing || playerInsights?.intel_briefing) && isHighlighted && (
-        <div className="mt-2 pt-2 border-t border-purple-800/30">
-          <div className="flex items-center gap-1 mb-1">
-            <Zap className="w-3 h-3 text-purple-400" />
-            <span className="text-[9px] text-purple-400 uppercase tracking-wider font-semibold">The Vision</span>
+      {/* Right: Hit Rates */}
+      <div className="flex items-center gap-4 text-xs">
+        <div className="text-center min-w-[35px]">
+          <div className="text-zinc-500 text-[9px]">L10 HR</div>
+          <div className={`font-bold ${getHitRateColor(h10Rate)}`}>
+            {h10Rate > 0 ? `${h10Rate}%` : '-'}
           </div>
-          <p className="text-[10px] text-purple-300/80 italic">
-            "{prop.intel_briefing || playerInsights?.intel_briefing}"
-          </p>
+        </div>
+        <div className="text-center min-w-[35px]">
+          <div className="text-zinc-500 text-[9px]">L5 HR</div>
+          <div className={`font-bold ${getHitRateColor(h5Rate)}`}>
+            {h5Rate > 0 ? `${h5Rate}%` : '-'}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+});
+
+// ==================== CATEGORY HEADER ====================
+const CategoryHeader = memo(({ category, count, hasDemon, hasGoblin }) => {
+  const label = getPropLabel(category);
+  
+  return (
+    <div className="flex items-center gap-2 py-2 px-1 border-b border-zinc-700/50 mt-4 first:mt-0">
+      <span className="text-sm font-bold uppercase tracking-wider text-zinc-300">
+        {label}
+      </span>
+      <span className="text-[10px] text-zinc-500">
+        ({count} line{count > 1 ? 's' : ''})
+      </span>
+      {hasDemon && (
+        <div className="flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-red-500/20">
+          <DemonIcon size={10} />
+        </div>
+      )}
+      {hasGoblin && (
+        <div className="flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-green-500/20">
+          <GoblinIcon size={10} />
         </div>
       )}
     </div>
   );
 });
 
-// ==================== CATEGORY ACCORDION ====================
-const CategoryAccordion = memo(({ 
-  categoryKey, categoryName, props, isExpanded, onToggle, stats, 
-  isHighlightedProp, highlightRef, glowClass, glowSubtleClass, highlightType, playerInsights 
-}) => {
-  // Count demons/goblins in this category
-  const demons = props.filter(p => p.is_demon);
-  const goblins = props.filter(p => p.is_goblin);
-  
-  // Sort props by line value
-  const sortedProps = [...props].sort((a, b) => (a.line || 0) - (b.line || 0));
-  
-  // Check if any prop in this category is highlighted
-  const hasHighlight = sortedProps.some(p => isHighlightedProp(p));
-  
-  return (
-    <Card className={`
-      bg-zinc-900/50 border-zinc-800 overflow-hidden
-      ${hasHighlight ? glowSubtleClass : ''}
-    `}>
-      {/* Accordion Header */}
-      <button
-        onClick={onToggle}
-        className="w-full flex items-center justify-between p-3 hover:bg-zinc-800/50 transition-colors"
-        data-testid={`category-${categoryKey}`}
-      >
-        <div className="flex items-center gap-2">
-          <span className="text-white font-bold">{categoryName}</span>
-          <span className="text-xs text-zinc-500">({props.length})</span>
-          
-          {demons.length > 0 && (
-            <div className="flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-red-500/20">
-              <DemonIcon size={12} />
-              <span className="text-[10px] text-red-400 font-bold">{demons.length}</span>
-            </div>
-          )}
-          
-          {goblins.length > 0 && (
-            <div className="flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-green-500/20">
-              <GoblinIcon size={12} />
-              <span className="text-[10px] text-green-400 font-bold">{goblins.length}</span>
-            </div>
-          )}
-        </div>
-        
-        <div className="flex items-center gap-2">
-          {stats?.season_avg && (
-            <span className="text-xs text-zinc-400">
-              Avg: <span className="text-white font-mono">{stats.season_avg.toFixed(1)}</span>
-            </span>
-          )}
-          {isExpanded ? (
-            <ChevronDown className="w-4 h-4 text-zinc-400" />
-          ) : (
-            <ChevronRight className="w-4 h-4 text-zinc-400" />
-          )}
-        </div>
-      </button>
-      
-      {/* Accordion Content */}
-      {isExpanded && (
-        <div className="px-3 pb-3 space-y-1">
-          {sortedProps.map((prop, idx) => (
-            <LadderPropRow
-              key={`${prop.market}-${prop.line}-${idx}`}
-              prop={prop}
-              categoryStats={stats}
-              isFirst={idx === 0}
-              isLast={idx === sortedProps.length - 1}
-              isHighlighted={isHighlightedProp(prop)}
-              highlightRef={highlightRef}
-              glowClass={glowClass}
-              highlightType={highlightType}
-              playerInsights={playerInsights}
-            />
-          ))}
-        </div>
-      )}
-    </Card>
-  );
-});
-
-// ==================== MAIN PLAYER DETAIL PAGE ====================
+// ==================== MAIN COMPONENT ====================
 export const PlayerDetailPage = ({ playerName, onBack, highlightProp = null, highlightType = 'demon' }) => {
   const [player, setPlayer] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [expandedCategories, setExpandedCategories] = useState(new Set(['PTS', 'AST', 'REB']));
   const highlightRef = useRef(null);
-  
-  const glowClass = highlightType === 'goblin' ? 'emerald-glow' : 'beacon-glow';
-  const glowSubtleClass = highlightType === 'goblin' ? 'emerald-glow-subtle' : 'beacon-glow-subtle';
   
   // Parse highlight info (format: "stat_type|line|direction")
   const highlightInfo = useMemo(() => {
@@ -303,94 +281,74 @@ export const PlayerDetailPage = ({ playerName, onBack, highlightProp = null, hig
     fetchPlayer();
   }, [playerName]);
   
-  // Group props by category
+  // Group props by normalized category - prioritize stat_type_extracted for specific categories
   const groupedProps = useMemo(() => {
     if (!player?.props) return {};
     
     const groups = {};
     player.props.forEach(prop => {
-      const categoryKey = getCategoryKey(prop.market);
-      if (!groups[categoryKey]) groups[categoryKey] = [];
-      groups[categoryKey].push(prop);
+      // Use stat_type_extracted (AST, PTS, PRA, etc.) as primary, fallback to generic category
+      const rawCat = prop.stat_type_extracted || getCategoryKey(prop.market) || 'OTHER';
+      const cat = normalizeStatType(rawCat);
+      if (!groups[cat]) groups[cat] = [];
+      groups[cat].push({ ...prop, stat_type: cat });
     });
     
     return groups;
   }, [player]);
   
-  // Auto-expand highlighted category
+  // Sort categories
+  const sortedCategories = useMemo(() => {
+    const keys = Object.keys(groupedProps);
+    return keys.sort((a, b) => {
+      const aIdx = CATEGORY_ORDER.indexOf(a);
+      const bIdx = CATEGORY_ORDER.indexOf(b);
+      if (aIdx === -1 && bIdx === -1) return a.localeCompare(b);
+      if (aIdx === -1) return 1;
+      if (bIdx === -1) return -1;
+      return aIdx - bIdx;
+    });
+  }, [groupedProps]);
+  
+  // Auto-scroll to highlighted prop
   useEffect(() => {
-    if (highlightInfo && Object.keys(groupedProps).length > 0) {
-      const matchingCategory = Object.entries(groupedProps).find(([key, props]) => {
-        return props.some(p => getCategoryKey(p.market) === highlightInfo.statType || key === highlightInfo.statType);
-      });
-      
-      if (matchingCategory) {
-        setExpandedCategories(prev => new Set([...prev, matchingCategory[0]]));
-      }
-      
+    if (highlightInfo && highlightRef.current) {
       setTimeout(() => {
-        if (highlightRef.current) {
-          highlightRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        }
+        highlightRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
       }, 300);
     }
-  }, [highlightInfo, groupedProps]);
+  }, [highlightInfo, player]);
   
   // Check if prop is highlighted
   const isHighlightedProp = useCallback((prop) => {
     if (!highlightInfo) return false;
-    const propCategory = getCategoryKey(prop.market);
+    const propCategory = normalizeStatType(getCategoryKey(prop.market) || prop.stat_type_extracted || '');
     const propDirection = (prop.direction || 'over').toLowerCase();
     const highlightDirection = (highlightInfo.direction || 'over').toLowerCase();
     return (
-      (propCategory === highlightInfo.statType || prop.stat_type_extracted === highlightInfo.statType) &&
-      Math.abs(prop.line - highlightInfo.line) < 0.1 &&
+      propCategory === highlightInfo.statType &&
+      Math.abs((prop.line || 0) - highlightInfo.line) < 0.1 &&
       propDirection === highlightDirection
     );
   }, [highlightInfo]);
   
-  // Order categories
-  const orderedCategories = useMemo(() => {
-    const keys = Object.keys(groupedProps);
-    const priorityOrder = ['PRA', 'P+R', 'P+A', 'R+A', 'PTS', 'AST', 'REB', '3PM', 'BLK', 'STL', 'TO'];
-    return keys.sort((a, b) => {
-      const aIdx = priorityOrder.indexOf(a);
-      const bIdx = priorityOrder.indexOf(b);
-      if (aIdx !== -1 && bIdx !== -1) return aIdx - bIdx;
-      if (aIdx !== -1) return -1;
-      if (bIdx !== -1) return 1;
-      return groupedProps[b].length - groupedProps[a].length;
-    });
-  }, [groupedProps]);
-  
-  const toggleCategory = (key) => {
-    setExpandedCategories(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(key)) newSet.delete(key);
-      else newSet.add(key);
-      return newSet;
-    });
-  };
-  
-  const expandAll = () => setExpandedCategories(new Set(orderedCategories));
-  const collapseAll = () => setExpandedCategories(new Set());
-  
+  // Count demons/goblins
   const demons = player?.props?.filter(p => p.is_demon) || [];
   const goblins = player?.props?.filter(p => p.is_goblin) || [];
-  
-  const getStatsForCategory = (categoryKey) => {
-    const category = STAT_CATEGORIES[categoryKey];
-    if (!category || !player?.stats_summary) return {};
-    const baseMarket = category.markets[0];
-    return player.stats_summary[baseMarket] || {};
-  };
+  const totalProps = player?.props?.length || 0;
   
   return (
     <div className="min-h-screen bg-zinc-950">
       {/* Header */}
-      <div className="sticky top-0 z-10 bg-zinc-950/95 backdrop-blur border-b border-zinc-800 px-3 py-3">
-        <div className="flex items-center gap-3">
-          <Button variant="ghost" size="sm" onClick={onBack} className="text-zinc-400 hover:text-white p-1" data-testid="back-btn">
+      <div className="sticky top-0 z-10 bg-zinc-950/95 backdrop-blur border-b border-zinc-800 px-4 py-3">
+        <div className="flex items-center gap-4">
+          <Button 
+            variant="ghost" 
+            size="sm" 
+            onClick={onBack} 
+            className="text-zinc-400 hover:text-white p-1" 
+            data-testid="back-btn"
+          >
             <ArrowLeft className="w-5 h-5" />
           </Button>
           
@@ -400,12 +358,11 @@ export const PlayerDetailPage = ({ playerName, onBack, highlightProp = null, hig
               team={player.team}
               photoUrl={player.photo_url}
               size="lg"
-              className="ring-2 ring-purple-500/50"
             />
           )}
           
           <div className="flex-1 min-w-0">
-            <h1 className="text-lg font-bold text-white truncate">{playerName}</h1>
+            <h1 className="text-xl font-bold text-white truncate">{playerName}</h1>
             {player && (
               <div className="flex items-center gap-2 text-xs text-zinc-400">
                 <span className="font-mono">{player.team}</span>
@@ -414,74 +371,96 @@ export const PlayerDetailPage = ({ playerName, onBack, highlightProp = null, hig
             )}
           </div>
           
+          {/* Stats badges */}
           {player && (
-            <div className="flex items-center gap-2 flex-shrink-0">
-              <div className="flex items-center gap-1">
-                <DemonIcon size={16} />
-                <span className="text-red-400 font-bold">{demons.length}</span>
+            <div className="flex items-center gap-3 flex-shrink-0">
+              <div className="text-center">
+                <div className="text-[10px] text-zinc-500">PROPS</div>
+                <div className="text-lg font-bold text-white">{totalProps}</div>
               </div>
-              <div className="flex items-center gap-1">
-                <GoblinIcon size={16} />
-                <span className="text-green-400 font-bold">{goblins.length}</span>
-              </div>
+              {demons.length > 0 && (
+                <div className="flex items-center gap-1 px-2 py-1 rounded bg-red-500/20 border border-red-500/30">
+                  <DemonIcon size={14} />
+                  <span className="text-red-400 font-bold text-sm">{demons.length}</span>
+                </div>
+              )}
+              {goblins.length > 0 && (
+                <div className="flex items-center gap-1 px-2 py-1 rounded bg-green-500/20 border border-green-500/30">
+                  <GoblinIcon size={14} />
+                  <span className="text-green-400 font-bold text-sm">{goblins.length}</span>
+                </div>
+              )}
             </div>
           )}
         </div>
       </div>
       
-      {/* Content */}
-      <div className="p-3">
+      {/* Content - Flat list with headers */}
+      <div className="p-4">
         {loading ? (
           <SkeletonPlayerDetail />
         ) : error ? (
           <div className="text-center py-8 text-zinc-400">
             <p>{error}</p>
-            <Button variant="outline" size="sm" onClick={onBack} className="mt-4">Go Back</Button>
+            <Button variant="outline" size="sm" onClick={onBack} className="mt-4">
+              Go Back
+            </Button>
           </div>
         ) : (
-          <div className="space-y-3">
-            {/* Quick Actions */}
-            <div className="flex items-center justify-between">
-              <div className="text-xs text-zinc-500">
-                {orderedCategories.length} categories · {player?.props?.length || 0} props
-              </div>
+          <div className="space-y-2">
+            {/* Summary bar */}
+            <div className="flex items-center justify-between pb-3 border-b border-zinc-800">
               <div className="flex items-center gap-2">
-                <button onClick={expandAll} className="text-xs text-zinc-400 hover:text-white">Expand All</button>
-                <span className="text-zinc-600">|</span>
-                <button onClick={collapseAll} className="text-xs text-zinc-400 hover:text-white">Collapse All</button>
+                <Target className="w-4 h-4 text-zinc-500" />
+                <span className="text-sm font-medium text-zinc-400">
+                  {sortedCategories.length} categories · {totalProps} total lines
+                </span>
               </div>
             </div>
             
-            {/* Category Accordions */}
-            {orderedCategories.map(categoryKey => {
-              const category = STAT_CATEGORIES[categoryKey];
-              const categoryProps = groupedProps[categoryKey] || [];
-              const categoryStats = getStatsForCategory(categoryKey);
-              
-              return (
-                <CategoryAccordion
-                  key={categoryKey}
-                  categoryKey={categoryKey}
-                  categoryName={category?.name || categoryKey}
-                  props={categoryProps}
-                  stats={categoryStats}
-                  isExpanded={expandedCategories.has(categoryKey)}
-                  onToggle={() => toggleCategory(categoryKey)}
-                  isHighlightedProp={isHighlightedProp}
-                  highlightRef={highlightRef}
-                  glowClass={glowClass}
-                  glowSubtleClass={glowSubtleClass}
-                  highlightType={highlightType}
-                  playerInsights={{
-                    ...player?.insights,
-                    intel_briefing: player?.intel_briefing
-                  }}
-                />
-              );
-            })}
-            
-            {orderedCategories.length === 0 && (
-              <div className="text-center py-8 text-zinc-500">No props available</div>
+            {/* Flat list grouped by category */}
+            {sortedCategories.length > 0 ? (
+              sortedCategories.map(category => {
+                const categoryProps = groupedProps[category] || [];
+                const hasDemon = categoryProps.some(p => p.is_demon);
+                const hasGoblin = categoryProps.some(p => p.is_goblin);
+                
+                // Sort: demons first, then goblins, then by line
+                const sortedProps = [...categoryProps].sort((a, b) => {
+                  if (a.is_demon && !b.is_demon) return -1;
+                  if (!a.is_demon && b.is_demon) return 1;
+                  if (a.is_goblin && !b.is_goblin) return -1;
+                  if (!a.is_goblin && b.is_goblin) return 1;
+                  return (a.line || 0) - (b.line || 0);
+                });
+                
+                return (
+                  <div key={category}>
+                    <CategoryHeader 
+                      category={category}
+                      count={categoryProps.length}
+                      hasDemon={hasDemon}
+                      hasGoblin={hasGoblin}
+                    />
+                    <div className="space-y-1.5 mt-2">
+                      {sortedProps.map((prop, idx) => (
+                        <PropRow
+                          key={`${prop.market}-${prop.line}-${prop.direction}-${idx}`}
+                          prop={prop}
+                          isHighlighted={isHighlightedProp(prop)}
+                          highlightRef={highlightRef}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                );
+              })
+            ) : (
+              <div className="text-center py-12 text-zinc-500">
+                <Target className="w-12 h-12 mx-auto mb-3 opacity-30" />
+                <p className="text-lg">No props available</p>
+                <p className="text-sm mt-1">Check back closer to game time</p>
+              </div>
             )}
           </div>
         )}
