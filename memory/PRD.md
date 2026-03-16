@@ -5,6 +5,41 @@ PickVision is a high-performance NBA Player Prop Dashboard with a "military tech
 
 ## Latest Update: 2026-03-16
 
+### Intel Suite Advanced Metrics - COMPLETED
+**Expanded backend schema to calculate and store advanced metrics for Radar Picks**
+
+**New Metrics (only for is_radar = true props):**
+1. **usage_ripple** (Operational Volume) - Projected Usage Rate changes based on lineup/injury data
+   - Shows "+X.X% Vol. Shift" or "Standard Volume"
+   - Includes injuries_affecting list
+
+2. **matchup_dvp** (Defensive Friction) - Opponent's Defense vs. Position ranking
+   - Shows "Rank #X vs. [Position]" (e.g., "Rank #14 vs. Scorers")
+   - Friction levels: Low/Medium/High with color coding
+
+3. **pace_delta** (Tempo Multiplier) - Projected game pace differential
+   - Shows "+/-X.X Possessions" compared to player's average
+   - Includes expected game pace calculation
+
+4. **stability_index** (Tactical Variance) - 1-100 consistency score
+   - Based on standard deviation of L10 games
+   - Labels: Elite/High/Medium/Low
+
+5. **vision_insight** (Target-Lock Rationale) - AI reasoning for flagging prop
+   - Primary insight + supporting reasons
+   - Confidence level (High/Medium-High/Medium)
+   - Tactical notes
+
+**Files Created:**
+- `/app/backend/services/intel_suite_calculator.py` - Full calculation logic
+
+**Files Updated:**
+- `/app/backend/routes/command.py` - Added intel_suite to profile response
+- `/app/backend/services/picks_getter_service.py` - Added intel_suite enrichment for radar picks
+- `/app/frontend/src/components/dashboard/PlayerDetailPage.jsx` - Display all metrics in modal
+
+**Security:** intel_suite data is ONLY returned when `is_radar = true` or `is_demon/is_goblin = true`
+
 ### Vision Pick Highlight Feature - COMPLETED
 **When clicking a player from Safe Haven/War Zone, the specific bet is highlighted with VISION PICK styling**
 

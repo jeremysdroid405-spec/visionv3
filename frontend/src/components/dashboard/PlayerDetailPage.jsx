@@ -566,6 +566,157 @@ export const PlayerDetailPage = ({ playerName, onBack, highlightProp = null, hig
                 </div>
               </div>
               
+              {/* ===== INTEL SUITE ADVANCED METRICS ===== */}
+              {selectedVisionProp.intel_suite && (
+                <div className="space-y-4">
+                  {/* Usage Ripple (Operational Volume) */}
+                  <div className="bg-gradient-to-r from-purple-950/40 to-zinc-900 border border-purple-500/30 rounded-lg p-4">
+                    <h3 className="text-sm font-bold text-white mb-2 flex items-center gap-2">
+                      <Zap className="w-4 h-4 text-purple-400" />
+                      OPERATIONAL VOLUME
+                    </h3>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <div className="text-2xl font-bold text-purple-300">
+                          {selectedVisionProp.intel_suite.usage_ripple?.display || 'Standard Volume'}
+                        </div>
+                        <div className="text-xs text-zinc-400 mt-1">
+                          {selectedVisionProp.intel_suite.usage_ripple?.reasoning}
+                        </div>
+                      </div>
+                      <div className={`px-3 py-1 rounded-full text-xs font-bold ${
+                        selectedVisionProp.intel_suite.usage_ripple?.bump_percent >= 5 
+                          ? 'bg-purple-500 text-white' 
+                          : selectedVisionProp.intel_suite.usage_ripple?.bump_percent >= 2
+                            ? 'bg-purple-500/50 text-purple-200'
+                            : 'bg-zinc-700 text-zinc-400'
+                      }`}>
+                        {selectedVisionProp.intel_suite.usage_ripple?.shift_label}
+                      </div>
+                    </div>
+                    {selectedVisionProp.intel_suite.usage_ripple?.injuries_affecting?.length > 0 && (
+                      <div className="mt-3 pt-3 border-t border-purple-500/20">
+                        <div className="text-xs text-zinc-500 mb-1">LINEUP IMPACT:</div>
+                        {selectedVisionProp.intel_suite.usage_ripple.injuries_affecting.map((inj, i) => (
+                          <div key={i} className="text-xs text-purple-300">
+                            • {inj.player} ({inj.status}) - {inj.injury}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  
+                  {/* Matchup DvP (Defensive Friction) */}
+                  <div className="bg-gradient-to-r from-cyan-950/40 to-zinc-900 border border-cyan-500/30 rounded-lg p-4">
+                    <h3 className="text-sm font-bold text-white mb-2 flex items-center gap-2">
+                      <Target className="w-4 h-4 text-cyan-400" />
+                      DEFENSIVE FRICTION
+                    </h3>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <div className="text-2xl font-bold text-cyan-300">
+                          {selectedVisionProp.intel_suite.matchup_dvp?.display || '-'}
+                        </div>
+                        <div className="text-xs text-zinc-400 mt-1">
+                          vs {selectedVisionProp.intel_suite.matchup_dvp?.opponent || 'Opponent'}
+                        </div>
+                      </div>
+                      <div className={`px-3 py-1 rounded-full text-xs font-bold ${
+                        selectedVisionProp.intel_suite.matchup_dvp?.color === 'green' 
+                          ? 'bg-green-500 text-white' 
+                          : selectedVisionProp.intel_suite.matchup_dvp?.color === 'red'
+                            ? 'bg-red-500 text-white'
+                            : 'bg-yellow-500 text-black'
+                      }`}>
+                        {selectedVisionProp.intel_suite.matchup_dvp?.friction_level} Friction
+                      </div>
+                    </div>
+                    <div className="text-xs text-cyan-400/70 mt-2">
+                      {selectedVisionProp.intel_suite.matchup_dvp?.friction_label}
+                    </div>
+                  </div>
+                  
+                  {/* Pace Delta (Tempo Multiplier) + Stability Index */}
+                  <div className="grid grid-cols-2 gap-4">
+                    {/* Pace Delta */}
+                    <div className="bg-zinc-800/50 border border-zinc-700 rounded-lg p-4">
+                      <h3 className="text-xs font-bold text-zinc-400 mb-2">TEMPO MULTIPLIER</h3>
+                      <div className={`text-2xl font-bold ${
+                        selectedVisionProp.intel_suite.pace_delta?.possessions >= 2 
+                          ? 'text-green-400' 
+                          : selectedVisionProp.intel_suite.pace_delta?.possessions <= -2
+                            ? 'text-red-400'
+                            : 'text-white'
+                      }`}>
+                        {selectedVisionProp.intel_suite.pace_delta?.display || '-'}
+                      </div>
+                      <div className="text-xs text-zinc-500 mt-1">
+                        {selectedVisionProp.intel_suite.pace_delta?.tempo_label}
+                      </div>
+                      <div className="text-[10px] text-zinc-600 mt-2">
+                        Game Pace: {selectedVisionProp.intel_suite.pace_delta?.expected_game_pace}
+                      </div>
+                    </div>
+                    
+                    {/* Stability Index */}
+                    <div className="bg-zinc-800/50 border border-zinc-700 rounded-lg p-4">
+                      <h3 className="text-xs font-bold text-zinc-400 mb-2">TACTICAL VARIANCE</h3>
+                      <div className={`text-2xl font-bold ${
+                        selectedVisionProp.intel_suite.stability_index?.score >= 75 
+                          ? 'text-green-400' 
+                          : selectedVisionProp.intel_suite.stability_index?.score >= 45
+                            ? 'text-yellow-400'
+                            : 'text-red-400'
+                      }`}>
+                        {selectedVisionProp.intel_suite.stability_index?.display || '-'}
+                      </div>
+                      <div className="text-xs text-zinc-500 mt-1">
+                        {selectedVisionProp.intel_suite.stability_index?.consistency}
+                      </div>
+                      {selectedVisionProp.intel_suite.stability_index?.std_dev && (
+                        <div className="text-[10px] text-zinc-600 mt-2">
+                          Std Dev: {selectedVisionProp.intel_suite.stability_index.std_dev}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  
+                  {/* Vision Insight (Target-Lock Rationale) */}
+                  <div className="bg-gradient-to-r from-amber-950/50 to-zinc-900 border border-amber-500/30 rounded-lg p-4">
+                    <h3 className="text-sm font-bold text-amber-300 mb-2 flex items-center gap-2">
+                      <Crosshair className="w-4 h-4 text-amber-400" />
+                      TARGET-LOCK RATIONALE
+                    </h3>
+                    <div className="text-sm text-white mb-3">
+                      {selectedVisionProp.intel_suite.vision_insight?.primary}
+                    </div>
+                    {selectedVisionProp.intel_suite.vision_insight?.reasons?.length > 1 && (
+                      <div className="space-y-1 mb-3">
+                        {selectedVisionProp.intel_suite.vision_insight.reasons.slice(1).map((reason, i) => (
+                          <div key={i} className="text-xs text-zinc-400 flex items-center gap-2">
+                            <span className="text-amber-400">•</span> {reason}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    <div className="flex items-center justify-between pt-3 border-t border-amber-500/20">
+                      <div className="text-xs text-zinc-500">
+                        {selectedVisionProp.intel_suite.vision_insight?.tactical_note}
+                      </div>
+                      <div className={`px-2 py-1 rounded text-[10px] font-bold ${
+                        selectedVisionProp.intel_suite.vision_insight?.confidence === 'High'
+                          ? 'bg-green-500 text-white'
+                          : selectedVisionProp.intel_suite.vision_insight?.confidence === 'Medium-High'
+                            ? 'bg-yellow-500 text-black'
+                            : 'bg-zinc-600 text-white'
+                      }`}>
+                        {selectedVisionProp.intel_suite.vision_insight?.confidence} Confidence
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+              
               {/* Hit Rate Analysis */}
               <div className="bg-zinc-800/50 border border-zinc-700 rounded-lg p-4">
                 <h3 className="text-sm font-bold text-white mb-3 flex items-center gap-2">

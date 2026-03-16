@@ -444,6 +444,10 @@ class PicksGetterService:
         player["baseline_stats"] = baseline_stats
         player["photo_url"] = hub_player.get("headshot_url") or player.get("photo_url")
         
+        # Import intel calculator for radar picks
+        from services.intel_suite_calculator import get_intel_calculator
+        intel_calculator = get_intel_calculator(self.db)
+        
         # Enrich each prop with stats from master hub
         props = player.get("props", [])
         for prop in props:
@@ -462,6 +466,19 @@ class PicksGetterService:
             prop["l5_avg"] = stat_data.get("l5_avg")
             prop["l10_avg"] = stat_data.get("l10_avg")
             prop["season_avg"] = stat_data.get("season_avg")
+            
+            # If this is a radar pick (demon or goblin), add full intel_suite
+            is_radar = prop.get("is_demon") or prop.get("is_goblin") or prop.get("is_radar_pick")
+            if is_radar:
+                intel_suite = await intel_calculator.calculate_intel_suite(
+                    player_name=player_name,
+                    stat_type=stat_key,
+                    line=prop.get("line", 0),
+                    direction=prop.get("direction", "over"),
+                    opponent=player.get("opponent"),
+                    board_pick=prop  # Pass prop as board_pick for additional context
+                )
+                prop["intel_suite"] = intel_suite
         
         logger.debug(f"[STATS_ENRICH] Enriched {len(props)} props for {player_name} with master hub stats")
     

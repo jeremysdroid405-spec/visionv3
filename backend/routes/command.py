@@ -19,6 +19,7 @@ from pydantic import BaseModel, Field
 
 from services.simulation_service import get_simulation_engine
 from services.dvp_service import get_dvp_rank, get_dvp_rank_color, calculate_dvp_modifier
+from services.intel_suite_calculator import get_intel_calculator
 
 logger = logging.getLogger(__name__)
 
@@ -396,6 +397,17 @@ async def get_tactical_profile(
                 else:
                     friction = "Standard Friction"
                 
+                # Calculate full Intel Suite using the calculator
+                intel_calculator = get_intel_calculator(db)
+                intel_suite = await intel_calculator.calculate_intel_suite(
+                    player_name=player_name,
+                    stat_type=stat,
+                    line=line,
+                    direction=direction,
+                    opponent=detected_opponent,
+                    board_pick=board_pick
+                )
+                
                 # Add Full Intel Suite data for Target-Lock props
                 prop_line.update({
                     "dvp_rank": dvp_rank,
@@ -404,7 +416,9 @@ async def get_tactical_profile(
                     "friction_label": friction,
                     "std_dev": board_pick.get("std_dev"),
                     "pace_factor": board_pick.get("pace_factor", 1.0),
-                    "usage_ripple": board_pick.get("usage_bump_percent", 0)
+                    "usage_ripple_legacy": board_pick.get("usage_bump_percent", 0),
+                    # === FULL INTEL SUITE (only for is_radar=true) ===
+                    "intel_suite": intel_suite
                 })
             
             active_lines.append(prop_line)
