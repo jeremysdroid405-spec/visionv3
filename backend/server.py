@@ -401,9 +401,19 @@ async def scheduled_daily_sync():
                     logger.error(f"[SCHEDULER] Injury sync failed (non-critical): {ie}")
             
             # Step 2: Sync player stats to cache
-            logger.info("[SCHEDULER] Step 2/5: Syncing player stats to cache...")
+            logger.info("[SCHEDULER] Step 2/6: Syncing player stats to cache...")
             stats_result = await demon_goblin_engine.sync_player_stats()
             logger.info(f"[SCHEDULER] Stats sync: {stats_result.get('stats_synced', 0)} players (BDL: {stats_result.get('from_balldontlie', 0)}, NBA: {stats_result.get('from_nba_api', 0)})")
+            
+            # Step 2b: Update Master Hub baseline stats (L5, L10, Season for all prop categories)
+            logger.info("[SCHEDULER] Step 2b/6: Updating Master Hub baseline stats...")
+            try:
+                from services.master_hub_sync import MasterHubSyncService
+                master_sync = MasterHubSyncService(db)
+                hub_result = await master_sync.run_full_sync(batch_size=100)
+                logger.info(f"[SCHEDULER] Master Hub: {hub_result.get('synced', 0)} players updated with baseline stats")
+            except Exception as he:
+                logger.error(f"[SCHEDULER] Master Hub sync failed (non-critical): {he}")
             
             # Step 3: Run full odds sync
             logger.info("[SCHEDULER] Step 3/5: Running full odds sync...")

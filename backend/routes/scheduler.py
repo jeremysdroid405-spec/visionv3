@@ -92,6 +92,47 @@ async def trigger_scheduled_sync(sync_type: str = "full"):
     }
 
 
+@router.post("/v3/sync-baseline-stats")
+async def sync_baseline_stats():
+    """
+    Manually trigger Master Hub baseline stats sync.
+    
+    Updates nba_master_hub_2026 with L5, L10, and season averages
+    for all prop categories (PTS, REB, AST, 3PM, PRA, etc.)
+    
+    This ensures the frontend can instantly access pre-computed
+    player stats without any external API calls.
+    """
+    import os
+    from motor.motor_asyncio import AsyncIOMotorClient
+    from services.master_hub_sync import MasterHubSyncService
+    
+    mongo_url = os.environ.get("MONGO_URL")
+    db_name = os.environ.get("DB_NAME", "test_database")
+    
+    if not mongo_url:
+        raise HTTPException(status_code=503, detail="Database not configured")
+    
+    logger.info("[MANUAL SYNC] Triggering Master Hub baseline stats sync...")
+    
+    try:
+        client = AsyncIOMotorClient(mongo_url)
+        db = client[db_name]
+        
+        service = MasterHubSyncService(db)
+        result = await service.run_full_sync(batch_size=50)
+        
+        return {
+            "success": True,
+            "sync_type": "baseline_stats",
+            "result": result,
+            "triggered_at": datetime.now(timezone.utc).isoformat()
+        }
+    except Exception as e:
+        logger.error(f"[MANUAL SYNC] Baseline stats sync failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/v3/breaking-news")
 async def get_breaking_news(limit: int = 10):
     """
