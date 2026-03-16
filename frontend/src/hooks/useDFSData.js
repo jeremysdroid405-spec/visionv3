@@ -6,10 +6,21 @@ import { toast } from 'sonner';
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
 /**
- * useDFSData - Central data fetching hook for PickVision
+ * useDFSData - CENTRAL DATA HUB for PickVision
+ * ============================================
  * 
- * HARD CUTOFF: Reads ONLY from MongoDB via cached endpoints.
- * NO direct Odds API calls from frontend.
+ * SSOT ARCHITECTURE NOTE:
+ * This hook is the APPROVED central data fetching layer.
+ * It reads ONLY from MongoDB via cached backend endpoints.
+ * NO direct external API calls (Tank01, BallDontLie, Odds API).
+ * 
+ * All data flows:
+ *   Backend (MongoDB) → useDFSData → Components
+ * 
+ * Components are FORBIDDEN from making their own fetch() calls.
+ * They must consume data from this hook or subscribe to Global Store.
+ * 
+ * TODO: Migrate to Global Store (Zustand/Redux) for reactive state management
  */
 export const useDFSData = () => {
   // Core pick data

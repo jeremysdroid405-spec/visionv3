@@ -1,9 +1,12 @@
 /**
  * PlayerDetailPage - Complete player prop view
  * Shows ALL props as a flat list with category headers (not accordions)
+ * 
+ * TODO: Subscribe to Global Store for [Player Data]
+ * PURGED: All localized fetch() and axios calls removed
  */
-import React, { useState, useEffect, useCallback, useMemo, useRef, memo } from 'react';
-import axios from 'axios';
+import React, { useState, useCallback, useMemo, useRef, memo } from 'react';
+// PURGED: axios import removed - no localized fetches allowed
 import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
 import { 
@@ -12,7 +15,8 @@ import {
 import { DemonIcon, GoblinIcon } from './Icons';
 import { STAT_CATEGORIES, getCategoryKey, TEAM_LOGOS } from './constants';
 
-const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
+// PURGED: API constant removed - no direct API calls from components
+// const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
 // ==================== PROP CATEGORY CONFIG ====================
 const PROP_LABELS = {
@@ -258,9 +262,13 @@ const CategoryHeader = memo(({ category, count, hasDemon, hasGoblin }) => {
 });
 
 // ==================== MAIN COMPONENT ====================
-export const PlayerDetailPage = ({ playerName, onBack, highlightProp = null, highlightType = 'demon' }) => {
-  const [player, setPlayer] = useState(null);
-  const [loading, setLoading] = useState(true);
+// TODO: Subscribe to Global Store for [Player Data]
+// playerData prop will come from Global Store subscription
+export const PlayerDetailPage = ({ playerName, playerData = null, onBack, highlightProp = null, highlightType = 'demon' }) => {
+  // PURGED: useState for player removed - will come from Global Store
+  // For now, use playerData prop or show loading
+  const [player, setPlayer] = useState(playerData);
+  const [loading, setLoading] = useState(!playerData);  // Only loading if no data passed
   const [error, setError] = useState(null);
   const [showIntelSuite, setShowIntelSuite] = useState(false);
   const [selectedVisionProp, setSelectedVisionProp] = useState(null);
@@ -286,28 +294,9 @@ export const PlayerDetailPage = ({ playerName, onBack, highlightProp = null, hig
     return null;
   }, [highlightProp]);
   
-  // Fetch player data
-  useEffect(() => {
-    const fetchPlayer = async () => {
-      try {
-        setLoading(true);
-        const response = await axios.get(`${API}/v3/cached-player/${encodeURIComponent(playerName)}`);
-        
-        if (response.data.success && response.data.player) {
-          setPlayer(response.data.player);
-        } else {
-          setError(response.data.message || 'Player not found in cache');
-        }
-      } catch (err) {
-        console.error('Error fetching player:', err);
-        setError('Failed to load player data');
-      } finally {
-        setLoading(false);
-      }
-    };
-    
-    fetchPlayer();
-  }, [playerName]);
+  // TODO: Subscribe to Global Store for [Player Data]
+  // PURGED: Localized useEffect fetch removed
+  // Player data will be passed as prop from parent or Global Store
   
   // Group props by normalized category - prioritize stat_type_extracted for specific categories
   const groupedProps = useMemo(() => {

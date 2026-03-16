@@ -139,30 +139,10 @@ const SectionHeader = memo(({ icon, title, subtitle, badgeText, badgeColor = 're
 // ==================== LIVE TICKERS ====================
 
 // Live Scores Ticker
+// TODO: Subscribe to Global Store for [Live Scores]
 const LiveScoresTicker = memo(() => {
-  const [scores, setScores] = useState([]);
-  const [loading, setLoading] = useState(true);
-  
-  useEffect(() => {
-    const fetchScores = async () => {
-      try {
-        const API = process.env.REACT_APP_BACKEND_URL;
-        const response = await fetch(`${API}/api/live/scores`);
-        if (response.ok) {
-          const data = await response.json();
-          setScores(data.games || []);
-        }
-      } catch (err) {
-        console.log('Live scores unavailable');
-      } finally {
-        setLoading(false);
-      }
-    };
-    
-    fetchScores();
-    const interval = setInterval(fetchScores, 30000); // Refresh every 30s
-    return () => clearInterval(interval);
-  }, []);
+  const [scores] = useState([]);  // TODO: Replace with global store subscription
+  const [loading] = useState(false);
   
   if (loading) {
     return (
@@ -244,30 +224,9 @@ const LiveScoresTicker = memo(() => {
 });
 
 // Breaking News Ticker
+// TODO: Subscribe to Global Store for [Breaking News]
 const BreakingNewsTicker = memo(() => {
-  const [news, setNews] = useState([]);
-  const [loading, setLoading] = useState(true);
-  
-  useEffect(() => {
-    const fetchNews = async () => {
-      try {
-        const API = process.env.REACT_APP_BACKEND_URL;
-        const response = await fetch(`${API}/api/live/news`);
-        if (response.ok) {
-          const data = await response.json();
-          setNews(data.headlines || []);
-        }
-      } catch (err) {
-        console.log('News feed unavailable');
-      } finally {
-        setLoading(false);
-      }
-    };
-    
-    fetchNews();
-    const interval = setInterval(fetchNews, 60000); // Refresh every 60s
-    return () => clearInterval(interval);
-  }, []);
+  const [news] = useState([]);  // TODO: Replace with global store subscription
   
   // Default headlines if API not available
   const displayNews = news.length > 0 ? news : [
@@ -648,52 +607,27 @@ const Dashboard = () => {
   }, [showUserMenu]);
   
   // API-driven Intel Search with debounce
+  // TODO: Subscribe to Global Store for [Player Search]
   useEffect(() => {
-    const controller = new AbortController();
-    
-    const searchPlayers = async () => {
-      if (searchTerm.length < 2) {
-        setSearchResults([]);
-        setSearchError(null);
-        return;
-      }
-      
-      setSearchLoading(true);
+    // PURGED: Localized fetch removed - will subscribe to Global Store
+    if (searchTerm.length < 2) {
+      setSearchResults([]);
       setSearchError(null);
-      
-      try {
-        const API = process.env.REACT_APP_BACKEND_URL;
-        const response = await fetch(`${API}/api/command/search?query=${encodeURIComponent(searchTerm)}&limit=15`, {
-          signal: controller.signal
-        });
-        
-        if (!response.ok) throw new Error('Search failed');
-        
-        const data = await response.json();
-        
-        if (data.success) {
-          setSearchResults(data.players || []);
-        } else {
-          setSearchError(data.error || 'Search unavailable');
-          setSearchResults([]);
-        }
-      } catch (err) {
-        if (err.name !== 'AbortError') {
-          setSearchError('Search failed. Try again.');
-          setSearchResults([]);
-        }
-      } finally {
-        setSearchLoading(false);
-      }
-    };
+      return;
+    }
     
-    // Debounce search by 300ms
-    const timer = setTimeout(searchPlayers, 300);
+    // TODO: Replace with global store search action
+    // For now, show loading state until Global Store is connected
+    setSearchLoading(true);
+    setSearchError('Search connecting to Global Store...');
     
-    return () => {
-      clearTimeout(timer);
-      controller.abort();
-    };
+    // Temporary timeout to show feedback
+    const timer = setTimeout(() => {
+      setSearchLoading(false);
+      setSearchResults([]);  // Empty until Global Store connected
+    }, 500);
+    
+    return () => clearTimeout(timer);
   }, [searchTerm]);
   
   // If player is selected, show detail page

@@ -2,7 +2,9 @@
  * COMMAND SEARCH COMPONENT
  * =========================
  * Global player search for Command Post.
- * Queries BallDontLie API to find players.
+ * 
+ * TODO: Subscribe to Global Store for [Player Search Results]
+ * PURGED: All localized fetch() calls removed
  */
 
 import React, { useState, useCallback, memo } from 'react';
@@ -10,7 +12,8 @@ import { Search, X, User, Loader2 } from 'lucide-react';
 import { Input } from '../ui/input';
 import debounce from 'lodash/debounce';
 
-const API_URL = process.env.REACT_APP_BACKEND_URL;
+// PURGED: API_URL constant removed - no direct API calls from components
+// const API_URL = process.env.REACT_APP_BACKEND_URL;
 
 const CommandSearch = memo(({ onPlayerSelect, placeholder = "Search players..." }) => {
   const [query, setQuery] = useState('');
@@ -18,32 +21,24 @@ const CommandSearch = memo(({ onPlayerSelect, placeholder = "Search players..." 
   const [loading, setLoading] = useState(false);
   const [showResults, setShowResults] = useState(false);
 
-  // Debounced search function
+  // TODO: Subscribe to Global Store for [Player Search]
+  // PURGED: Debounced search function - localized fetch removed
   const searchPlayers = useCallback(
-    debounce(async (searchQuery) => {
+    debounce((searchQuery) => {
       if (searchQuery.length < 2) {
         setResults([]);
         return;
       }
 
       setLoading(true);
-      try {
-        const response = await fetch(
-          `${API_URL}/api/command/search?query=${encodeURIComponent(searchQuery)}&limit=8`
-        );
-        const data = await response.json();
-        
-        if (data.success && data.players) {
-          setResults(data.players);
-        } else {
-          setResults([]);
-        }
-      } catch (error) {
-        console.error('Search error:', error);
-        setResults([]);
-      } finally {
+      // TODO: Dispatch action to Global Store to search players
+      console.log('[COMMAND SEARCH] Search fetch purged - awaiting Global Store:', searchQuery);
+      
+      // Temporary: simulate loading then show empty
+      setTimeout(() => {
         setLoading(false);
-      }
+        setResults([]);  // Results will come from Global Store subscription
+      }, 300);
     }, 300),
     []
   );

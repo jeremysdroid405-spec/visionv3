@@ -3,6 +3,9 @@
  * ======================
  * Risk Assessment Hub - Parlay Simulator
  * 
+ * TODO: Subscribe to Global Store for [Player Profiles, Simulation Results]
+ * PURGED: All localized fetch() calls removed
+ * 
  * Terminology (No "Certainty"):
  * - Convergence Rate: Combined tactical probability
  * - Infiltration Grade: Overall risk assessment (S/A/B/C/D)
@@ -10,7 +13,7 @@
  * - Defensive Friction: DvP-based resistance
  */
 
-import React, { useState, useCallback, memo, useMemo } from 'react';
+import React, { useState, useCallback, memo, useMemo, useEffect } from 'react';
 import { 
   Shield, AlertTriangle, TrendingUp, X, Plus, 
   Target, ChevronDown, ChevronUp, Trash2, RefreshCw, Lock
@@ -19,7 +22,8 @@ import { Button } from '../ui/button';
 import CommandSearch from './CommandSearch';
 import TacticalPlayerCard from './TacticalPlayerCard';
 
-const API_URL = process.env.REACT_APP_BACKEND_URL;
+// PURGED: API_URL constant removed - no direct API calls from components
+// const API_URL = process.env.REACT_APP_BACKEND_URL;
 
 // Grade colors and styles
 const GRADE_STYLES = {
@@ -249,25 +253,19 @@ const CommandPost = memo(({ isOpen, onClose, pendingLeg, onPendingLegProcessed }
     }
   }, [pendingLeg, onPendingLegProcessed, legs]);
 
-  // Fetch player profile
-  const fetchProfile = useCallback(async (player) => {
+  // TODO: Subscribe to Global Store for [Player Profiles]
+  // PURGED: fetchProfile function - localized fetch removed
+  const fetchProfile = useCallback((player) => {
     setProfileLoading(true);
-    try {
-      const response = await fetch(
-        `${API_URL}/api/command/profile/${encodeURIComponent(player.player_name)}`
-      );
-      const data = await response.json();
-      
-      if (data.success) {
-        setSelectedProfile(data);
-      } else {
-        console.error('Profile fetch failed:', data.error);
-      }
-    } catch (error) {
-      console.error('Profile error:', error);
-    } finally {
+    // TODO: Dispatch action to Global Store to fetch profile
+    // For now, show loading state until Global Store connected
+    console.log('[COMMAND POST] Profile fetch purged - awaiting Global Store:', player.player_name);
+    
+    // Temporary: simulate loading then show placeholder
+    setTimeout(() => {
       setProfileLoading(false);
-    }
+      // Profile data will come from Global Store subscription
+    }, 500);
   }, []);
 
   // Add leg from profile line selection
@@ -303,31 +301,20 @@ const CommandPost = memo(({ isOpen, onClose, pendingLeg, onPendingLegProcessed }
     setSimulation(null);
   }, []);
 
-  // Run simulation
-  const runSimulation = useCallback(async () => {
+  // TODO: Subscribe to Global Store for [Simulation Results]
+  // PURGED: runSimulation fetch - localized fetch removed
+  const runSimulation = useCallback(() => {
     if (legs.length === 0) return;
     
     setLoading(true);
-    try {
-      const response = await fetch(`${API_URL}/api/command/simulate`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ legs })
-      });
-      const data = await response.json();
-      
-      if (data.success) {
-        setSimulation(data.simulation);
-        // Update legs with simulation results
-        if (data.simulation.legs) {
-          setLegs(data.simulation.legs);
-        }
-      }
-    } catch (error) {
-      console.error('Simulation error:', error);
-    } finally {
+    // TODO: Dispatch action to Global Store to run simulation
+    console.log('[COMMAND POST] Simulation fetch purged - awaiting Global Store');
+    
+    // Temporary: simulate loading
+    setTimeout(() => {
       setLoading(false);
-    }
+      // Simulation results will come from Global Store subscription
+    }, 500);
   }, [legs]);
 
   // ==================== CONFLICT DETECTION ENGINE ====================
