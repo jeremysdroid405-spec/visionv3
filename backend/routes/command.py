@@ -240,22 +240,39 @@ async def get_tactical_profile(
                 target_lock_keys.add(key)
                 target_lock_details[key] = pick
         
-        # ===== STEP 4: Get player info from props or board =====
+        # ===== STEP 4: Get player info from nba_master_hub_2026 =====
         player_team = ""
         player_position = ""
         photo_url = ""
+        player_id = None
         detected_opponent = opponent
         
+        # First, get player data from master roster (has headshot_url)
+        master_player = await db.nba_master_hub_2026.find_one(
+            {"display_name": player_name_regex},
+            {"_id": 0}
+        )
+        
+        if master_player:
+            photo_url = master_player.get("headshot_url", "")
+            player_team = master_player.get("team", "")
+            player_position = master_player.get("position", "")
+            player_id = master_player.get("player_id") or master_player.get("nba_id")
+        
+        # Fallback to props data if needed
         if all_props:
             first_prop = all_props[0]
-            player_team = first_prop.get("home_team") if first_prop.get("direction") == "home" else first_prop.get("away_team", "")
+            if not player_team:
+                player_team = first_prop.get("home_team") if first_prop.get("direction") == "home" else first_prop.get("away_team", "")
             detected_opponent = first_prop.get("away_team") if player_team == first_prop.get("home_team") else first_prop.get("home_team", "")
         
+        # Override with board picks data if available
         if board_picks:
             first_pick = board_picks[0]
             player_team = first_pick.get("team") or player_team
-            player_position = first_pick.get("position", "")
-            photo_url = first_pick.get("photo_url", "")
+            player_position = first_pick.get("position") or player_position
+            if not photo_url:
+                photo_url = first_pick.get("photo_url", "")
             detected_opponent = first_pick.get("opponent_abbr") or first_pick.get("opponent") or detected_opponent
         
         # ===== STEP 5: Build ALL prop lines with Target-Lock identification =====
@@ -354,8 +371,8 @@ async def get_tactical_profile(
         
         return {
             "success": True,
-            "player_name": board_picks[0].get("player_name", player_name) if board_picks else player_name,
-            "player_id": board_picks[0].get("player_id") if board_picks else None,
+            "player_name": master_player.get("display_name") if master_player else (board_picks[0].get("player_name", player_name) if board_picks else player_name),
+            "player_id": player_id,
             "team": player_team,
             "position": player_position,
             "photo_url": photo_url,
