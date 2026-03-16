@@ -10,10 +10,10 @@
  * - Defensive Friction: DvP-based resistance
  */
 
-import React, { useState, useCallback, memo } from 'react';
+import React, { useState, useCallback, memo, useMemo } from 'react';
 import { 
   Shield, AlertTriangle, TrendingUp, X, Plus, 
-  Target, ChevronDown, ChevronUp, Trash2, RefreshCw 
+  Target, ChevronDown, ChevronUp, Trash2, RefreshCw, Lock
 } from 'lucide-react';
 import { Button } from '../ui/button';
 import CommandSearch from './CommandSearch';
@@ -84,12 +84,54 @@ const VolatilityDisplay = memo(({ index, label }) => {
 });
 
 // Single Leg Card in Configuration
-const LegCard = memo(({ leg, index, onRemove }) => {
+const LegCard = memo(({ leg, index, onRemove, hasConflict, conflictMessage }) => {
   const dvpColor = {
     green: 'text-emerald-400',
     yellow: 'text-amber-400',
     red: 'text-red-400'
   }[leg.dvp_rank_color] || 'text-zinc-400';
+
+  // If this leg has a conflict, show redacted state
+  if (hasConflict) {
+    return (
+      <div 
+        className="flex items-center gap-2 p-2 rounded bg-red-950/30 border-2 border-red-500/50 group relative"
+        data-testid={`leg-card-${index}-conflict`}
+      >
+        <div className="absolute inset-0 bg-red-500/5 pointer-events-none" 
+             style={{ backgroundImage: 'repeating-linear-gradient(45deg, transparent, transparent 5px, rgba(239,68,68,0.1) 5px, rgba(239,68,68,0.1) 10px)' }} />
+        
+        <Lock className="w-4 h-4 text-red-400 flex-shrink-0" />
+        
+        <div className="flex-1 min-w-0 relative z-10">
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-medium text-red-300 truncate line-through opacity-60">
+              {leg.player_name}
+            </span>
+            <span className="px-1.5 py-0.5 text-[9px] font-bold bg-red-500 text-white rounded">
+              REDACTED
+            </span>
+          </div>
+          <div className="flex items-center gap-2 mt-0.5">
+            <span className="text-[10px] text-red-400 font-medium line-through opacity-60">
+              {leg.stat_type} {leg.direction?.toUpperCase()} {leg.line}
+            </span>
+          </div>
+          <div className="mt-1 text-[10px] text-red-400 flex items-center gap-1">
+            <AlertTriangle className="w-3 h-3" />
+            {conflictMessage || 'Tactical Conflict: Mutually Exclusive Parameters'}
+          </div>
+        </div>
+        
+        <button
+          onClick={() => onRemove(index)}
+          className="p-1 text-red-400 hover:text-white transition-opacity"
+        >
+          <X className="w-3.5 h-3.5" />
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div 
@@ -109,21 +151,23 @@ const LegCard = memo(({ leg, index, onRemove }) => {
           <span className="text-[11px] text-cyan-400 font-medium">
             {leg.stat_type} {leg.direction?.toUpperCase()} {leg.line}
           </span>
-          <div className={`flex items-center gap-0.5 ${dvpColor}`}>
-            <Shield className="w-2.5 h-2.5" />
-            <span className="text-[10px]">#{leg.dvp_rank}</span>
-          </div>
+          {leg.dvp_rank && (
+            <div className={`flex items-center gap-0.5 ${dvpColor}`}>
+              <Shield className="w-2.5 h-2.5" />
+              <span className="text-[10px]">#{leg.dvp_rank}</span>
+            </div>
+          )}
         </div>
       </div>
       
       <div className="text-right">
         <div className="text-xs text-zinc-400">
           <span className={leg.volatility_label === 'High Volatility' ? 'text-red-400' : ''}>
-            {leg.tactical_probability?.toFixed(1)}%
+            {leg.tactical_probability?.toFixed(1) || leg.h10_rate?.toFixed(1) || '--'}%
           </span>
         </div>
         <div className="text-[10px] text-zinc-500">
-          {leg.friction_label?.split(' ')[0]}
+          {leg.friction_label?.split(' ')[0] || 'Standard'}
         </div>
       </div>
       
@@ -286,6 +330,60 @@ const CommandPost = memo(({ isOpen, onClose, pendingLeg, onPendingLegProcessed }
     }
   }, [legs]);
 
+  // ==================== CONFLICT DETECTION ENGINE ====================
+  // Detect mutually exclusive parameters (Over/Under on same player+stat)
+  const conflicts = useMemo(() => {
+    const conflictMap = new Map();
+    
+    legs.forEach((leg, idx) => {
+      // Create a unique key for player + stat type
+      const key = `${leg.player_name}-${leg.stat_type}`;
+      
+      if (conflictMap.has(key)) {
+        const existingIdx = conflictMap.get(key);
+        const existingLeg = legs[existingIdx];
+        
+        // Check if directions conflict (over vs under on same line)
+        if (existingLeg.direction?.toLowerCase() !== leg.direction?.toLowerCase()) {
+          return { 
+            indices: [existingIdx, idx], 
+            message: `Tactical Conflict: Cannot have OVER and UNDER on ${leg.player_name} ${leg.stat_type}`
+          };
+        }
+        
+        // Check if same direction but different lines (also a conflict)
+        if (existingLeg.line !== leg.line) {
+          return {
+            indices: [existingIdx, idx],
+            message: `Tactical Conflict: Duplicate objective on ${leg.player_name} ${leg.stat_type}`
+          };
+        }
+      }
+      
+      conflictMap.set(key, idx);
+    });
+    
+    // Build a map of index -> conflict info
+    const result = {};
+    legs.forEach((leg, idx) => {
+      const key = `${leg.player_name}-${leg.stat_type}`;
+      const otherLegs = legs.filter((l, i) => i !== idx && `${l.player_name}-${l.stat_type}` === key);
+      
+      if (otherLegs.length > 0) {
+        const otherLeg = otherLegs[0];
+        if (otherLeg.direction?.toLowerCase() !== leg.direction?.toLowerCase()) {
+          result[idx] = `Tactical Conflict: ${leg.direction?.toUpperCase()} conflicts with ${otherLeg.direction?.toUpperCase()}`;
+        } else if (otherLeg.line !== leg.line) {
+          result[idx] = `Tactical Conflict: Duplicate ${leg.stat_type} objective at different lines`;
+        }
+      }
+    });
+    
+    return result;
+  }, [legs]);
+
+  const hasAnyConflicts = Object.keys(conflicts).length > 0;
+
   if (!isOpen) return null;
 
   return (
@@ -401,6 +499,14 @@ const CommandPost = memo(({ isOpen, onClose, pendingLeg, onPendingLegProcessed }
 
         {expanded && (
           <div className="space-y-2">
+            {hasAnyConflicts && (
+              <div className="flex items-center gap-2 p-2 rounded bg-red-950/30 border border-red-500/30 mb-3">
+                <AlertTriangle className="w-4 h-4 text-red-400" />
+                <span className="text-xs text-red-400">
+                  Tactical conflicts detected - resolve before simulation
+                </span>
+              </div>
+            )}
             {legs.length > 0 ? (
               legs.map((leg, idx) => (
                 <LegCard 
@@ -408,12 +514,14 @@ const CommandPost = memo(({ isOpen, onClose, pendingLeg, onPendingLegProcessed }
                   leg={leg}
                   index={idx}
                   onRemove={removeLeg}
+                  hasConflict={!!conflicts[idx]}
+                  conflictMessage={conflicts[idx]}
                 />
               ))
             ) : (
               <div className="text-center py-8 text-zinc-500">
                 <Target className="w-8 h-8 mx-auto mb-2 opacity-30" />
-                <p className="text-sm">No legs configured</p>
+                <p className="text-sm">No objectives configured</p>
                 <p className="text-xs mt-1">Search and select players above</p>
               </div>
             )}
@@ -425,14 +533,23 @@ const CommandPost = memo(({ isOpen, onClose, pendingLeg, onPendingLegProcessed }
       <div className="p-4 border-t border-zinc-800 bg-zinc-900/50">
         <Button
           onClick={runSimulation}
-          disabled={legs.length === 0 || loading}
-          className="w-full bg-cyan-600 hover:bg-cyan-500 text-white font-medium"
+          disabled={legs.length === 0 || loading || hasAnyConflicts}
+          className={`w-full font-medium ${
+            hasAnyConflicts 
+              ? 'bg-red-900/50 text-red-400 cursor-not-allowed' 
+              : 'bg-cyan-600 hover:bg-cyan-500 text-white'
+          }`}
           data-testid="run-simulation-btn"
         >
           {loading ? (
             <>
               <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
               Simulating...
+            </>
+          ) : hasAnyConflicts ? (
+            <>
+              <Lock className="w-4 h-4 mr-2" />
+              Resolve Conflicts
             </>
           ) : (
             <>

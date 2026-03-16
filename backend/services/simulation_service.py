@@ -77,12 +77,21 @@ class SimulationLeg:
     environmental_delta: float = 1.0
     defensive_friction: float = 0.5
     dvp_rank: int = 15
+    dvp_rank_color: str = "yellow"
     volatility_index: float = 0.0
+    stability_index: int = 50  # NEW: 1-100 based on std deviation
+    
+    # Statistical fields for stability calculation
+    season_avg: float = 0.0
+    std_dev: float = 0.0
+    l5_avg: float = 0.0
+    l10_avg: float = 0.0
     
     # Final tactical probability
     tactical_probability: float = 0.0
     volatility_label: str = "Medium"
     friction_label: str = "Standard"
+    stability_label: str = "Moderate"  # NEW
 
 
 @dataclass
@@ -93,6 +102,8 @@ class SimulationResult:
     infiltration_grade: str
     grade_label: str
     volatility_index: float
+    stability_index: int  # NEW: Combined stability score
+    stability_label: str  # NEW
     correlation_penalty: float
     conflicts_detected: List[Dict]
     risk_flags: List[str]
@@ -148,10 +159,14 @@ class SimulationEngine:
         # 6. Calculate overall volatility index
         volatility_index = self._calculate_overall_volatility(processed_legs)
         
-        # 7. Generate risk flags
+        # 7. Calculate combined stability index
+        combined_stability = self._calculate_combined_stability(processed_legs)
+        stability_label = "HIGH STABILITY" if combined_stability >= 80 else "MODERATE" if combined_stability >= 50 else "VOLATILE"
+        
+        # 8. Generate risk flags
         risk_flags = self._generate_risk_flags(processed_legs, conflicts, volatility_index)
         
-        # 8. Generate environmental summary
+        # 9. Generate environmental summary
         env_summary = self._generate_environmental_summary(processed_legs)
         
         return {
@@ -164,6 +179,8 @@ class SimulationEngine:
                 "grade_label": grade_label,
                 "volatility_index": round(volatility_index, 2),
                 "volatility_label": self._get_volatility_label(volatility_index),
+                "stability_index": combined_stability,
+                "stability_label": stability_label,
                 "correlation_penalty": round((1 - correlation_penalty) * 100, 1),
                 "conflicts_detected": conflicts,
                 "risk_flags": risk_flags,
@@ -199,6 +216,12 @@ class SimulationEngine:
         # Get base hit rate from leg data or calculate
         leg.base_hit_rate = leg_data.get("h10_rate", leg_data.get("hit_probability", 50)) / 100
         
+        # Store statistical data for stability calculation
+        leg.season_avg = leg_data.get("season_avg", 0)
+        leg.std_dev = leg_data.get("std_dev", 0)
+        leg.l5_avg = leg_data.get("l5_avg", 0)
+        leg.l10_avg = leg_data.get("l10_avg", 0)
+        
         # Calculate Usage Ripple effect
         leg.usage_ripple = leg_data.get("usage_bump_percent", 0)
         usage_multiplier = 1.0 + (leg.usage_ripple * 0.005)  # +0.5% per 1% usage bump
@@ -208,6 +231,7 @@ class SimulationEngine:
         
         # Calculate Defensive Friction (DvP)
         leg.dvp_rank = get_dvp_rank(opponent, stat_type)
+        leg.dvp_rank_color = get_dvp_rank_color(leg.dvp_rank)
         leg.defensive_friction = calculate_dvp_modifier(opponent, stat_type)
         
         # Get friction label
@@ -236,6 +260,28 @@ class SimulationEngine:
             leg.volatility_label = "Medium Volatility"
         else:
             leg.volatility_label = "Low Volatility"
+        
+        # Calculate Stability Index (1-100, inverse of volatility)
+        # High Stability (80-100): Low variance, consistent
+        # Moderate (50-79): Average variance
+        # Volatile (0-49): High variance, boom-or-bust
+        if season_avg > 0 and std_dev > 0:
+            cv = (std_dev / season_avg) * 100  # Coefficient of variation
+            leg.stability_index = max(0, min(100, int(100 - (cv * 2))))
+        else:
+            # Estimate from hit rate consistency
+            h10 = leg_data.get("h10_rate", 50)
+            h5 = leg_data.get("h5_rate", 50)
+            consistency = 100 - abs(h10 - h5) * 2
+            leg.stability_index = max(0, min(100, int(consistency)))
+        
+        # Stability label
+        if leg.stability_index >= 80:
+            leg.stability_label = "HIGH STABILITY"
+        elif leg.stability_index >= 50:
+            leg.stability_label = "MODERATE"
+        else:
+            leg.stability_label = "VOLATILE"
         
         # Calculate final tactical probability
         # Base * Usage Ripple * Environmental * (1 + DvP Modifier * 0.2)
@@ -371,6 +417,28 @@ class SimulationEngine:
         # (weakest link principle)
         return max(volatilities) if volatilities else 0.0
     
+    def _calculate_combined_stability(self, legs: List[SimulationLeg]) -> int:
+        """Calculate combined stability index for the configuration.
+        
+        Uses the average stability, penalized by the lowest stability leg.
+        High Stability (80-100): Low variance, consistent
+        Moderate (50-79): Average variance
+        Volatile (0-49): High variance, boom-or-bust
+        """
+        if not legs:
+            return 50
+        
+        stabilities = [leg.stability_index for leg in legs]
+        
+        avg_stability = sum(stabilities) / len(stabilities)
+        min_stability = min(stabilities)
+        
+        # Combined score weights average (60%) and minimum (40%)
+        # This penalizes configurations with one volatile leg
+        combined = (avg_stability * 0.6) + (min_stability * 0.4)
+        
+        return int(min(100, max(0, combined)))
+    
     def _get_volatility_label(self, volatility: float) -> str:
         """Get volatility label from index."""
         if volatility >= VOLATILITY_HIGH:
@@ -451,11 +519,17 @@ class SimulationEngine:
             "environmental_delta": round(leg.environmental_delta, 3),
             "defensive_friction": round(leg.defensive_friction, 3),
             "dvp_rank": leg.dvp_rank,
-            "dvp_rank_color": get_dvp_rank_color(leg.dvp_rank),
+            "dvp_rank_color": leg.dvp_rank_color,
             "volatility_index": round(leg.volatility_index, 3),
             "volatility_label": leg.volatility_label,
             "friction_label": leg.friction_label,
-            "tactical_probability": round(leg.tactical_probability * 100, 1)
+            "tactical_probability": round(leg.tactical_probability * 100, 1),
+            # New stability fields
+            "stability_index": leg.stability_index,
+            "stability_label": leg.stability_label,
+            "season_avg": round(leg.season_avg, 1) if leg.season_avg else None,
+            "l5_avg": round(leg.l5_avg, 1) if leg.l5_avg else None,
+            "l10_avg": round(leg.l10_avg, 1) if leg.l10_avg else None
         }
     
     def _empty_result(self) -> Dict[str, Any]:

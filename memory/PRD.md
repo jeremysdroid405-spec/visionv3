@@ -1,9 +1,43 @@
 # PickVision - NBA Player Prop Dashboard
 
 ## Overview
-PickVision is a high-performance NBA Player Prop Dashboard with a "military tech" aesthetic. The application delivers AI-driven betting insights by identifying "Demons" (high-payout props) and "Goblins" (safer props).
+PickVision is a high-performance NBA Player Prop Dashboard with a "military tech" aesthetic. The application delivers AI-driven betting insights using PropVision Command Post technology.
 
-## Latest Update: 2026-03-15
+## Latest Update: 2026-03-16
+
+### PropVision Command Post Implementation ✅
+
+#### Tactical Player Card System
+- **TacticalPlayerCard Component:** Double-nested interactive military-style cards
+- **Prop Arsenal:** Expandable list of all props per player
+- **Standard vs Radar:** Visual distinction between regular props and PropVision Objectives
+- **Radar Picks:** Glowing neon green border with pulsing Target-Lock icon
+
+#### Stability Index (NEW)
+- **High Stability (80-100):** Low variance, consistent performer
+- **Moderate (50-79):** Average variance
+- **Volatile (0-49):** High variance, boom-or-bust player
+- Based on standard deviation / coefficient of variation
+
+#### Intelligence Suite (for Radar picks)
+- L5, L10, and Season Averages
+- Usage Ripple™ (e.g., "+8% Volume Shift")
+- Live DvP (e.g., "Opponent Rank: #28")
+- Pace Multiplier (High-Tempo/Grind-Out/Standard)
+- Stability Index badge
+
+#### Tactical Conflict Detection
+- Detects mutually exclusive parameters (Over + Under on same player/stat)
+- UI "Redacts" conflicting legs with warning message
+- "Tactical Conflict: Mutually Exclusive Parameters"
+- Simulation blocked until conflicts resolved
+
+#### Military Terminology
+- "Infiltration Grade" (replaces Success)
+- "Stability Index" (replaces Safety)
+- "Objectives" (replaces Picks)
+- "Defensive Friction" (replaces DvP)
+- "Convergence Rate" (replaces Combined Probability)
 
 ### Live Scores & Breaking News Tickers ✅
 - **Live Scores Ticker:** Real-time NBA game scores from BallDontLie API
