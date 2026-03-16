@@ -376,13 +376,17 @@ const TacticalPlayerCard = memo(({
     props = []
   } = player;
   
-  // Separate radar picks from standard props
+  // Count actual Target-Lock props (is_radar: true)
+  const targetLockCount = props.filter(p => p.is_radar === true).length;
+  
+  // Separate radar picks from standard props - Target-Lock first
   const sortedProps = [...props].sort((a, b) => {
-    const aIsRadar = a.is_radar || radarPicks.includes(a.stat_type);
-    const bIsRadar = b.is_radar || radarPicks.includes(b.stat_type);
+    const aIsRadar = a.is_radar === true;
+    const bIsRadar = b.is_radar === true;
     if (aIsRadar && !bIsRadar) return -1;
     if (!aIsRadar && bIsRadar) return 1;
-    return 0;
+    // Then sort by stat_type alphabetically
+    return (a.stat_type || '').localeCompare(b.stat_type || '');
   });
   
   return (
@@ -425,7 +429,7 @@ const TacticalPlayerCard = memo(({
             </div>
             
             {/* Radar indicator */}
-            {radarPicks.length > 0 && (
+            {targetLockCount > 0 && (
               <div className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-emerald-500 flex items-center justify-center animate-pulse">
                 <Crosshair className="w-3 h-3 text-black" />
               </div>
@@ -454,10 +458,10 @@ const TacticalPlayerCard = memo(({
           
           {/* Expand indicator */}
           <div className="flex items-center gap-2">
-            {radarPicks.length > 0 && (
+            {targetLockCount > 0 && (
               <div className="px-2 py-1 rounded bg-emerald-500/20 border border-emerald-500/40">
                 <span className="text-[10px] font-bold text-emerald-400">
-                  {radarPicks.length} OBJECTIVE{radarPicks.length > 1 ? 'S' : ''}
+                  {targetLockCount} OBJECTIVE{targetLockCount > 1 ? 'S' : ''}
                 </span>
               </div>
             )}
@@ -483,15 +487,16 @@ const TacticalPlayerCard = memo(({
           
           {sortedProps.length > 0 ? (
             sortedProps.map((prop) => {
-              // Use is_radar from prop directly (from API), fallback to radarPicks array check
-              const isRadar = prop.is_radar || radarPicks.includes(prop.stat_type);
+              // Use is_radar from prop directly (from API) - this is the only source of truth
+              // Only Target-Lock props (on the PropVision board) have is_radar: true
+              const isRadar = prop.is_radar === true;
               return (
                 <PropArsenalItem
-                  key={`${prop.stat_type}-${prop.line}`}
+                  key={`${prop.stat_type}-${prop.line}-${prop.direction}`}
                   prop={prop}
                   isRadar={isRadar}
-                  isExpanded={expandedProps[prop.stat_type]}
-                  onToggle={() => toggleProp(prop.stat_type)}
+                  isExpanded={expandedProps[`${prop.stat_type}-${prop.line}-${prop.direction}`]}
+                  onToggle={() => toggleProp(`${prop.stat_type}-${prop.line}-${prop.direction}`)}
                   onAddToPost={handleAddToPost}
                 />
               );

@@ -174,15 +174,17 @@ async def get_tactical_profile(
     opponent: str = Query("", description="Opponent team abbreviation for DvP calc")
 ):
     """
-    Get tactical profile for a player.
+    Get tactical profile for a player with ALL available props.
     
-    IMPORTANT: Full Intel Suite is ONLY for players on the board with 
-    PropVision recommendations. Other players get basic stats only.
+    CONDITIONAL STATE HIGHLIGHTING:
+    - Fetches ALL available props from dg_live_props
+    - Cross-references with PropVision recommendations (radar_picks, goblin_vault, front_lines)
+    - Target-Lock props (is_radar=true) get Full Intel Suite on click
+    - Standard props (is_radar=false) get basic L5/L10/Season stats on click
     
     Returns:
-    - is_on_board: Whether player has active PropVision recommendations
-    - lines: Prop lines (only recommended props get full intel)
-    - radar_picks: List of stat_types that are PropVision objectives
+    - lines: ALL prop lines with is_radar flag for Target-Lock identification
+    - radar_picks: List of {stat_type, line, direction} that are PropVision objectives
     """
     from motor.motor_asyncio import AsyncIOMotorClient
     
@@ -198,7 +200,13 @@ async def get_tactical_profile(
         
         player_name_regex = {"$regex": player_name, "$options": "i"}
         
-        # Check if player is on our board (has PropVision recommendations)
+        # ===== STEP 1: Fetch ALL available props from dg_live_props =====
+        all_props = await db.dg_live_props.find(
+            {"player_name": player_name_regex},
+            {"_id": 0}
+        ).to_list(100)
+        
+        # ===== STEP 2: Fetch PropVision recommendations (Target-Lock props) =====
         radar_picks = await db.dg_radar_picks.find(
             {"player_name": player_name_regex},
             {"_id": 0}
@@ -214,96 +222,124 @@ async def get_tactical_profile(
             {"_id": 0}
         ).to_list(20)
         
-        # These are the RECOMMENDED picks (on the board)
+        # Combine all recommendations
         board_picks = radar_picks + vault_picks + front_picks
-        is_on_board = len(board_picks) > 0
         
-        # Build set of recommended stat types (these get Full Intel Suite)
-        radar_stat_types = set()
-        for pick in board_picks:
-            stat = pick.get("stat_type", "")
-            if stat:
-                radar_stat_types.add(stat)
-        
-        if not is_on_board:
-            # Player NOT on board - return basic profile only
-            # They can still search but won't get Full Intel Suite
-            return {
-                "success": True,
-                "player_name": player_name,
-                "team": "",
-                "position": "",
-                "photo_url": "",
-                "opponent": "",
-                "is_on_board": False,
-                "lines": [],  # No lines for non-board players
-                "radar_picks": [],
-                "usage_ripple": None,
-                "message": "Player not on today's board. Full Intel Suite only available for PropVision recommendations."
-            }
-        
-        # Player IS on board - build full profile with recommended props only
-        first_pick = board_picks[0]
-        player_team = first_pick.get("team", "")
-        opponent = first_pick.get("opponent_abbr") or first_pick.get("opponent") or opponent
-        
-        # Build prop lines - ONLY for recommended props
-        seen_stats = set()
-        active_lines = []
+        # ===== STEP 3: Build Target-Lock lookup (stat_type + line + direction) =====
+        # This set identifies which specific props are PropVision recommendations
+        target_lock_keys = set()
+        target_lock_details = {}  # Store full intel for Target-Lock props
         
         for pick in board_picks:
             stat = pick.get("stat_type", "")
-            if not stat or stat in seen_stats:
-                continue
-            seen_stats.add(stat)
-            
             line = pick.get("demon_line") or pick.get("goblin_line") or pick.get("line", 0)
-            direction = pick.get("direction", "over")
+            direction = (pick.get("direction") or "over").lower()
             
-            # All board picks are radar (PropVision recommendations)
-            is_radar = True
+            if stat and line:
+                key = f"{stat}|{line}|{direction}"
+                target_lock_keys.add(key)
+                target_lock_details[key] = pick
+        
+        # ===== STEP 4: Get player info from props or board =====
+        player_team = ""
+        player_position = ""
+        photo_url = ""
+        detected_opponent = opponent
+        
+        if all_props:
+            first_prop = all_props[0]
+            player_team = first_prop.get("home_team") if first_prop.get("direction") == "home" else first_prop.get("away_team", "")
+            detected_opponent = first_prop.get("away_team") if player_team == first_prop.get("home_team") else first_prop.get("home_team", "")
+        
+        if board_picks:
+            first_pick = board_picks[0]
+            player_team = first_pick.get("team") or player_team
+            player_position = first_pick.get("position", "")
+            photo_url = first_pick.get("photo_url", "")
+            detected_opponent = first_pick.get("opponent_abbr") or first_pick.get("opponent") or detected_opponent
+        
+        # ===== STEP 5: Build ALL prop lines with Target-Lock identification =====
+        active_lines = []
+        seen_props = set()  # Dedupe by stat_type + line + direction
+        
+        for prop in all_props:
+            stat = prop.get("stat_type_extracted") or prop.get("market", "").replace("player_", "").upper()
+            line = prop.get("line", 0)
+            direction = (prop.get("direction") or "over").lower()
             
-            # Get DvP for this stat
-            dvp_rank = pick.get("dvp_rank") or (get_dvp_rank(opponent, stat) if opponent else 15)
-            dvp_color = pick.get("dvp_rank_color") or get_dvp_rank_color(dvp_rank)
-            dvp_mod = calculate_dvp_modifier(opponent, stat) if opponent else 0.5
+            if not stat or not line:
+                continue
             
-            # Determine friction level
-            if dvp_rank >= 25:
-                friction = "Low Friction (Soft Defense)"
-            elif dvp_rank <= 5:
-                friction = "High Friction (Elite Defense)"
-            else:
-                friction = "Standard Friction"
+            # Dedupe key
+            dedupe_key = f"{stat}|{line}|{direction}"
+            if dedupe_key in seen_props:
+                continue
+            seen_props.add(dedupe_key)
             
-            active_lines.append({
+            # Check if this prop is a Target-Lock (PropVision recommendation)
+            target_key = f"{stat}|{line}|{direction}"
+            is_radar = target_key in target_lock_keys
+            
+            # Get hit rates from prop
+            hit_rates = prop.get("hit_rates", {})
+            l5_data = hit_rates.get("l5", {})
+            l10_data = hit_rates.get("l10", {})
+            season_data = hit_rates.get("season", {})
+            
+            # Build base prop line (available for all props)
+            prop_line = {
                 "stat_type": stat,
                 "line": line,
                 "direction": direction,
-                "odds": pick.get("demon_odds") or pick.get("goblin_odds") or pick.get("odds"),
-                "is_radar": is_radar,  # True = Full Intel Suite
-                "dvp_rank": dvp_rank,
-                "dvp_rank_color": dvp_color,
-                "dvp_modifier": round(dvp_mod, 3),
-                "friction_label": friction,
-                "season_avg": pick.get("season_avg"),
-                "l5_avg": pick.get("l5_avg"),
-                "l10_avg": pick.get("l10_avg"),
-                "std_dev": pick.get("std_dev"),
+                "odds": prop.get("price"),
+                "is_radar": is_radar,
+                "l5_avg": l5_data.get("avg"),
+                "l10_avg": l10_data.get("avg"),
+                "season_avg": season_data.get("avg"),
                 "hit_rates": {
-                    "h5": pick.get("h5_rate", 0),
-                    "h10": pick.get("h10_rate", 0),
-                    "h5_over": pick.get("h5_over"),
-                    "h10_over": pick.get("h10_over"),
-                    "l5_avg": pick.get("l5_avg"),
-                    "l10_avg": pick.get("l10_avg"),
-                    "season_avg": pick.get("season_avg")
-                },
-                "pace_factor": pick.get("pace_factor", 1.0),
-                "usage_ripple": pick.get("usage_bump_percent", 0)
-            })
+                    "l5": l5_data.get("hit_rate", 0) * 100 if l5_data.get("hit_rate") else 0,
+                    "l10": l10_data.get("hit_rate", 0) * 100 if l10_data.get("hit_rate") else 0,
+                    "season": season_data.get("hit_rate", 0) * 100 if season_data.get("hit_rate") else 0,
+                    "l5_avg": l5_data.get("avg"),
+                    "l10_avg": l10_data.get("avg"),
+                    "season_avg": season_data.get("avg")
+                }
+            }
+            
+            # If Target-Lock, add Full Intel Suite data
+            if is_radar and target_key in target_lock_details:
+                board_pick = target_lock_details[target_key]
+                
+                # Get DvP for this stat
+                dvp_rank = board_pick.get("dvp_rank") or (get_dvp_rank(detected_opponent, stat) if detected_opponent else 15)
+                dvp_color = board_pick.get("dvp_rank_color") or get_dvp_rank_color(dvp_rank)
+                dvp_mod = calculate_dvp_modifier(detected_opponent, stat) if detected_opponent else 0.5
+                
+                # Determine friction level
+                if dvp_rank >= 25:
+                    friction = "Low Friction (Soft Defense)"
+                elif dvp_rank <= 5:
+                    friction = "High Friction (Elite Defense)"
+                else:
+                    friction = "Standard Friction"
+                
+                # Add Full Intel Suite data for Target-Lock props
+                prop_line.update({
+                    "dvp_rank": dvp_rank,
+                    "dvp_rank_color": dvp_color,
+                    "dvp_modifier": round(dvp_mod, 3),
+                    "friction_label": friction,
+                    "std_dev": board_pick.get("std_dev"),
+                    "pace_factor": board_pick.get("pace_factor", 1.0),
+                    "usage_ripple": board_pick.get("usage_bump_percent", 0)
+                })
+            
+            active_lines.append(prop_line)
         
-        # Get usage ripple info
+        # Sort: Target-Lock props first, then by stat_type
+        active_lines.sort(key=lambda x: (0 if x.get("is_radar") else 1, x.get("stat_type", "")))
+        
+        # ===== STEP 6: Get usage ripple info =====
         usage_ripple = None
         for pick in board_picks:
             if pick.get("usage_bump_percent", 0) > 0:
@@ -313,17 +349,21 @@ async def get_tactical_profile(
                 }
                 break
         
+        # Build radar_picks list (stat_type only for backward compat)
+        radar_stat_types = list(set(p.get("stat_type", "") for p in board_picks if p.get("stat_type")))
+        
         return {
             "success": True,
-            "player_name": first_pick.get("player_name", player_name),
-            "player_id": first_pick.get("player_id"),
+            "player_name": board_picks[0].get("player_name", player_name) if board_picks else player_name,
+            "player_id": board_picks[0].get("player_id") if board_picks else None,
             "team": player_team,
-            "position": first_pick.get("position", ""),
-            "photo_url": first_pick.get("photo_url", ""),
-            "opponent": opponent,
-            "is_on_board": True,
+            "position": player_position,
+            "photo_url": photo_url,
+            "opponent": detected_opponent,
+            "is_on_board": len(board_picks) > 0,
             "lines": active_lines,
-            "radar_picks": list(radar_stat_types),
+            "radar_picks": radar_stat_types,
+            "target_locks": [{"stat_type": k.split("|")[0], "line": float(k.split("|")[1]), "direction": k.split("|")[2]} for k in target_lock_keys],
             "usage_ripple": usage_ripple
         }
         
@@ -334,102 +374,6 @@ async def get_tactical_profile(
             "error": str(e),
             "player_name": player_name,
             "is_on_board": False
-        }
-        
-        # Get player info from first pick
-        first_pick = all_picks[0]
-        player_team = first_pick.get("team", "")
-        opponent = first_pick.get("opponent_abbr") or first_pick.get("opponent") or opponent
-        
-        # Build prop lines with DvP data - dedupe by stat type
-        seen_stats = set()
-        active_lines = []
-        radar_stat_types = []
-        
-        for pick in all_picks:
-            stat = pick.get("stat_type", "")
-            if not stat or stat in seen_stats:
-                continue
-            seen_stats.add(stat)
-            
-            line = pick.get("demon_line") or pick.get("goblin_line") or pick.get("line", 0)
-            direction = pick.get("direction", "over")
-            
-            # Check if this is a radar pick (demon or goblin)
-            is_radar = pick.get("is_demon") or pick.get("is_goblin") or \
-                       pick.get("radar_score", 0) > 0 or pick.get("vault_score", 0) > 0
-            
-            if is_radar:
-                radar_stat_types.append(stat)
-            
-            # Get DvP for this stat
-            dvp_rank = pick.get("dvp_rank") or (get_dvp_rank(opponent, stat) if opponent else 15)
-            dvp_color = pick.get("dvp_rank_color") or get_dvp_rank_color(dvp_rank)
-            dvp_mod = calculate_dvp_modifier(opponent, stat) if opponent else 0.5
-            
-            # Determine friction level
-            if dvp_rank >= 25:
-                friction = "Low Friction (Soft Defense)"
-            elif dvp_rank <= 5:
-                friction = "High Friction (Elite Defense)"
-            else:
-                friction = "Standard Friction"
-            
-            active_lines.append({
-                "stat_type": stat,
-                "line": line,
-                "direction": direction,
-                "odds": pick.get("demon_odds") or pick.get("goblin_odds") or pick.get("odds"),
-                "is_radar": is_radar,
-                "dvp_rank": dvp_rank,
-                "dvp_rank_color": dvp_color,
-                "dvp_modifier": round(dvp_mod, 3),
-                "friction_label": friction,
-                "season_avg": pick.get("season_avg"),
-                "l5_avg": pick.get("l5_avg"),
-                "l10_avg": pick.get("l10_avg"),
-                "std_dev": pick.get("std_dev"),
-                "hit_rates": {
-                    "h5": pick.get("h5_rate", 0),
-                    "h10": pick.get("h10_rate", 0),
-                    "h5_over": pick.get("h5_over"),
-                    "h10_over": pick.get("h10_over"),
-                    "l5_avg": pick.get("l5_avg"),
-                    "l10_avg": pick.get("l10_avg"),
-                    "season_avg": pick.get("season_avg")
-                },
-                "pace_factor": pick.get("pace_factor", 1.0)
-            })
-        
-        # Get usage ripple info if available
-        usage_ripple = None
-        for pick in all_picks:
-            if pick.get("usage_bump_percent", 0) > 0:
-                usage_ripple = {
-                    "bump_percent": pick.get("usage_bump_percent", 0),
-                    "source": pick.get("usage_source", "teammate injury")
-                }
-                break
-        
-        return {
-            "success": True,
-            "player_name": first_pick.get("player_name", player_name),
-            "player_id": first_pick.get("player_id"),
-            "team": player_team,
-            "position": first_pick.get("position", ""),
-            "photo_url": first_pick.get("photo_url", ""),
-            "opponent": opponent,
-            "lines": active_lines,
-            "radar_picks": radar_stat_types,
-            "usage_ripple": usage_ripple
-        }
-        
-    except Exception as e:
-        logger.error(f"[PROFILE] Error getting profile for {player_name}: {e}")
-        return {
-            "success": False,
-            "error": str(e),
-            "player_name": player_name
         }
 
 
