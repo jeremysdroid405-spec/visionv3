@@ -5,6 +5,25 @@ PickVision is a high-performance NBA Player Prop Dashboard with a "military tech
 
 ## Latest Update: 2026-03-16
 
+### Stats Unified to Master Hub - COMPLETED
+**ALL player stats (L5/L10/SZN) now come exclusively from `nba_master_hub_2026.baseline_stats`**
+
+**Changes:**
+- Updated `/app/backend/services/picks_getter_service.py`:
+  - Added `_enrich_player_with_master_hub_stats()` method
+  - Modified `get_cached_player()` to call enrichment before returning
+  - Props now receive `l5_avg`, `l10_avg`, `season_avg` from master hub, not from `hit_rates`
+  
+- **Before:** Stats came from individual prop `hit_rates` calculated per-line
+- **After:** Stats come from `baseline_stats` in master hub, consistent across all props of same type
+
+**Data Flow:**
+```
+nba_master_hub_2026.baseline_stats → API enrichment → Frontend display
+                                         ↓
+                              props[].l5_avg = baseline_stats[stat_type].l5_avg
+```
+
 ### Prop Arsenal UI Rework - COMPLETED
 **Changed prop display from accordion to flat list layout across ALL views**
 

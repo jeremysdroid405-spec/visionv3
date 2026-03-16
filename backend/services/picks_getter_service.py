@@ -337,6 +337,8 @@ class PicksGetterService:
         Get a single player from the CACHED board or player_data.
         Also includes advanced analytics insights.
         NO API CALLS - reads only from database.
+        
+        Stats (L5/L10/SZN) come EXCLUSIVELY from nba_master_hub_2026.baseline_stats.
         """
         # Try dg_cached_board first (has opponent data)
         player = await self.cached_board.find_one(
@@ -346,6 +348,7 @@ class PicksGetterService:
         
         if player:
             self._clean_object_ids(player)
+            await self._enrich_player_with_master_hub_stats(player)
             await self._add_player_insights(player)
             return {"success": True, "player": player, "source": "cached_board"}
         
@@ -357,6 +360,7 @@ class PicksGetterService:
         
         if player:
             self._clean_object_ids(player)
+            await self._enrich_player_with_master_hub_stats(player)
             await self._add_player_insights(player)
             return {"success": True, "player": player, "source": "cached_board"}
         
@@ -368,6 +372,7 @@ class PicksGetterService:
         
         if player:
             self._clean_object_ids(player)
+            await self._enrich_player_with_master_hub_stats(player)
             await self._add_player_insights(player)
             return {"success": True, "player": player, "source": "player_data"}
         
@@ -379,6 +384,7 @@ class PicksGetterService:
         
         if player:
             self._clean_object_ids(player)
+            await self._enrich_player_with_master_hub_stats(player)
             await self._add_player_insights(player)
             return {"success": True, "player": player, "source": "player_data"}
         
@@ -404,6 +410,7 @@ class PicksGetterService:
                 {"_id": 0}
             )
             self._clean_object_ids(player)
+            await self._enrich_player_with_master_hub_stats(player)
             await self._add_player_insights(player)
             return {"success": True, "player": player, "matched_name": best_match, "source": match_source}
         
@@ -412,6 +419,51 @@ class PicksGetterService:
             "message": "Lines loading... Player not in cache.",
             "player": None
         }
+    
+    async def _enrich_player_with_master_hub_stats(self, player: Dict) -> None:
+        """
+        Enrich player data with baseline_stats from nba_master_hub_2026.
+        
+        ALL stats (L5/L10/SZN averages) come from the master hub.
+        This replaces any hit_rates-based averages with the authoritative source.
+        """
+        if not player:
+            return
+        
+        player_name = player.get("player_name", "")
+        hub_player = await self._get_player_by_name(player_name)
+        
+        if not hub_player:
+            logger.debug(f"[STATS_ENRICH] No master hub data for: {player_name}")
+            return
+        
+        # Get baseline_stats from master hub
+        baseline_stats = hub_player.get("baseline_stats", {})
+        
+        # Add baseline_stats to player object for easy frontend access
+        player["baseline_stats"] = baseline_stats
+        player["photo_url"] = hub_player.get("headshot_url") or player.get("photo_url")
+        
+        # Enrich each prop with stats from master hub
+        props = player.get("props", [])
+        for prop in props:
+            stat_type = prop.get("stat_type_extracted", "")
+            
+            # Normalize stat type for lookup (P+R -> PR, etc.)
+            stat_key = stat_type
+            norm_map = {"P+R": "PR", "P+A": "PA", "R+A": "RA"}
+            stat_key = norm_map.get(stat_type, stat_type)
+            
+            # Get stats for this stat type from baseline_stats
+            stat_data = baseline_stats.get(stat_key, {})
+            
+            # Add L5/L10/SZN averages directly to the prop
+            # These override any values from hit_rates
+            prop["l5_avg"] = stat_data.get("l5_avg")
+            prop["l10_avg"] = stat_data.get("l10_avg")
+            prop["season_avg"] = stat_data.get("season_avg")
+        
+        logger.debug(f"[STATS_ENRICH] Enriched {len(props)} props for {player_name} with master hub stats")
     
     async def get_most_popular_bets(self) -> Dict[str, Any]:
         """
