@@ -69,44 +69,8 @@ class MasterHubSyncService:
             await self.http_client.aclose()
             self.http_client = None
     
-    async def fetch_all_players(self) -> List[Dict]:
-        """Fetch all active NBA players from BallDontLie API."""
-        client = await self._get_http_client()
-        all_players = []
-        cursor = None
-        
-        try:
-            while True:
-                params = {"per_page": 100}
-                if cursor:
-                    params["cursor"] = cursor
-                
-                headers = {"Authorization": BDL_API_KEY} if BDL_API_KEY else {}
-                response = await client.get(f"{BDL_BASE}/players", params=params, headers=headers)
-                
-                if response.status_code != 200:
-                    logger.error(f"[MASTER_HUB] Failed to fetch players: {response.status_code}")
-                    break
-                
-                data = response.json()
-                players = data.get("data", [])
-                all_players.extend(players)
-                
-                # Check for next page
-                meta = data.get("meta", {})
-                cursor = meta.get("next_cursor")
-                if not cursor:
-                    break
-            
-            logger.info(f"[MASTER_HUB] Fetched {len(all_players)} players from API")
-            return all_players
-            
-        except Exception as e:
-            logger.error(f"[MASTER_HUB] Error fetching players: {e}")
-            return []
-    
-    async def fetch_player_game_logs(self, player_id: int, num_games: int = 15) -> List[Dict]:
-        """Fetch recent game logs for a player."""
+    async def fetch_player_game_logs(self, player_id: int, num_games: int = 20) -> List[Dict]:
+        """Fetch recent game logs for a player from BallDontLie API."""
         client = await self._get_http_client()
         
         try:
@@ -231,71 +195,15 @@ class MasterHubSyncService:
             logger.error(f"[MASTER_HUB] Error extracting stat {category}: {e}")
             return None
     
-    async def sync_player(self, player: Dict) -> bool:
-        """
-        Sync a single player to the master hub.
-        
-        Updates:
-        - bdl_player_id
-        - baseline_stats (L5, L10, season for all props)
-        - baseline_stats_updated_at
-        """
-        try:
-            player_id = player.get("id")
-            first_name = player.get("first_name", "")
-            last_name = player.get("last_name", "")
-            player_name = f"{first_name} {last_name}".strip()
-            
-            if not player_name or not player_id:
-                return False
-            
-            # Check if player exists in master hub (with flexible matching)
-            existing = await self.master_hub.find_one(
-                {"$or": [
-                    {"display_name": {"$regex": f"^{player_name}$", "$options": "i"}},
-                    {"display_name": {"$regex": f"^{first_name}.*{last_name}", "$options": "i"}},
-                    {"bdl_player_id": player_id}
-                ]},
-                {"_id": 1, "display_name": 1}
-            )
-            
-            if not existing:
-                # Player not in master hub - skip (they don't have photos)
-                return False
-            
-            # Fetch game logs for baseline stats
-            game_logs = await self.fetch_player_game_logs(player_id, num_games=20)
-            baseline_stats = self.calculate_baseline_stats(game_logs)
-            
-            if not baseline_stats:
-                # No game logs available
-                return False
-            
-            # Update only baseline stats (don't overwrite existing data like photos)
-            result = await self.master_hub.update_one(
-                {"_id": existing["_id"]},
-                {"$set": {
-                    "bdl_player_id": player_id,
-                    "baseline_stats": baseline_stats,
-                    "baseline_stats_updated_at": datetime.now(timezone.utc).isoformat(),
-                }}
-            )
-            
-            return result.modified_count > 0
-            
-        except Exception as e:
-            logger.error(f"[MASTER_HUB] Error syncing player {player.get('id')}: {e}")
-            return False
-    
     async def run_full_sync(self, batch_size: int = 50) -> Dict[str, Any]:
         """
-        Run a full sync of all NBA players.
+        Run a full sync of baseline stats for ACTIVE NBA ROSTER ONLY.
         
-        This is designed to run daily at 0300 EST to keep the master hub
-        fully stocked with up-to-date baseline stats.
+        Only syncs players already in nba_master_hub_2026 (~530 active players).
+        This is designed to run daily at 0300 EST.
         """
         start_time = datetime.now(timezone.utc)
-        logger.info(f"[MASTER_HUB] Starting full sync at {start_time.isoformat()}")
+        logger.info(f"[MASTER_HUB] Starting baseline stats sync for active roster at {start_time.isoformat()}")
         
         results = {
             "started_at": start_time.isoformat(),
@@ -306,37 +214,42 @@ class MasterHubSyncService:
         }
         
         try:
-            # Fetch all players from API
-            players = await self.fetch_all_players()
-            results["total_players"] = len(players)
+            # Get all active players from master hub (NOT from external API)
+            active_players = await self.master_hub.find(
+                {"headshot_url": {"$ne": None, "$ne": ""}},  # Only players with photos
+                {"_id": 1, "display_name": 1, "bdl_player_id": 1}
+            ).to_list(600)
             
-            if not players:
-                logger.warning("[MASTER_HUB] No players fetched from API")
-                results["error"] = "No players fetched"
+            results["total_players"] = len(active_players)
+            logger.info(f"[MASTER_HUB] Found {len(active_players)} active players in roster")
+            
+            if not active_players:
+                logger.warning("[MASTER_HUB] No active players found in roster")
+                results["error"] = "No active players in roster"
                 return results
             
-            # Process in batches to avoid overwhelming the API
-            for i in range(0, len(players), batch_size):
-                batch = players[i:i + batch_size]
+            # Process in batches
+            for i in range(0, len(active_players), batch_size):
+                batch = active_players[i:i + batch_size]
                 
                 for player in batch:
-                    success = await self.sync_player(player)
+                    success = await self._sync_player_stats(player)
                     if success:
                         results["synced"] += 1
                     else:
                         results["skipped"] += 1
                     
                     # Small delay to respect rate limits
-                    await asyncio.sleep(0.1)
+                    await asyncio.sleep(0.05)
                 
-                logger.info(f"[MASTER_HUB] Processed {min(i + batch_size, len(players))}/{len(players)} players")
+                logger.info(f"[MASTER_HUB] Processed {min(i + batch_size, len(active_players))}/{len(active_players)} players")
                 
-                # Longer delay between batches
-                await asyncio.sleep(1)
+                # Small delay between batches
+                await asyncio.sleep(0.5)
             
             # Update sync status
             await self.db.master_hub_sync_status.update_one(
-                {"_id": "sync_status"},
+                {"_id": "baseline_sync_status"},
                 {
                     "$set": {
                         "last_sync": datetime.now(timezone.utc).isoformat(),
@@ -361,6 +274,92 @@ class MasterHubSyncService:
         
         logger.info(f"[MASTER_HUB] Sync completed: {results}")
         return results
+    
+    async def _sync_player_stats(self, player_doc: Dict) -> bool:
+        """
+        Sync baseline stats for a single player from the active roster.
+        
+        Args:
+            player_doc: Document from nba_master_hub_2026 with _id, display_name, bdl_player_id
+        """
+        try:
+            player_name = player_doc.get("display_name", "")
+            bdl_id = player_doc.get("bdl_player_id")
+            
+            if not player_name:
+                return False
+            
+            # If we don't have BallDontLie ID, search for it
+            if not bdl_id:
+                bdl_id = await self._find_bdl_player_id(player_name)
+                if not bdl_id:
+                    return False
+            
+            # Fetch game logs
+            game_logs = await self.fetch_player_game_logs(bdl_id, num_games=20)
+            if not game_logs:
+                return False
+            
+            # Calculate baseline stats
+            baseline_stats = self.calculate_baseline_stats(game_logs)
+            if not baseline_stats:
+                return False
+            
+            # Update the player document
+            result = await self.master_hub.update_one(
+                {"_id": player_doc["_id"]},
+                {"$set": {
+                    "bdl_player_id": bdl_id,
+                    "baseline_stats": baseline_stats,
+                    "baseline_stats_updated_at": datetime.now(timezone.utc).isoformat(),
+                }}
+            )
+            
+            return result.modified_count > 0
+            
+        except Exception as e:
+            logger.error(f"[MASTER_HUB] Error syncing stats for {player_doc.get('display_name')}: {e}")
+            return False
+    
+    async def _find_bdl_player_id(self, player_name: str) -> Optional[int]:
+        """Search BallDontLie API for player ID by name."""
+        client = await self._get_http_client()
+        
+        try:
+            # Extract last name for search
+            name_parts = player_name.split()
+            search_term = name_parts[-1] if name_parts else player_name
+            
+            headers = {"Authorization": BDL_API_KEY} if BDL_API_KEY else {}
+            response = await client.get(
+                f"{BDL_BASE}/players",
+                params={"search": search_term, "per_page": 25},
+                headers=headers
+            )
+            
+            if response.status_code != 200:
+                return None
+            
+            data = response.json()
+            players = data.get("data", [])
+            
+            # Find exact match
+            player_name_lower = player_name.lower()
+            for p in players:
+                full_name = f"{p.get('first_name', '')} {p.get('last_name', '')}".strip().lower()
+                if full_name == player_name_lower:
+                    return p.get("id")
+                # Also try without Jr./Sr.
+                if player_name_lower.replace(" jr.", "").replace(" sr.", "") == full_name:
+                    return p.get("id")
+                if full_name.replace(" jr.", "").replace(" sr.", "") == player_name_lower:
+                    return p.get("id")
+            
+            return None
+            
+        except Exception as e:
+            logger.error(f"[MASTER_HUB] Error finding BDL ID for {player_name}: {e}")
+            return None
 
 
 async def run_master_hub_sync():
