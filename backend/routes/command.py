@@ -172,7 +172,7 @@ async def search_players(
 _player_lookup_cache = None
 
 async def _build_player_lookup(db) -> dict:
-    """Build a cached lookup of player names -> master hub data."""
+    """Build a cached lookup of player names -> master hub data (including baseline_stats)."""
     global _player_lookup_cache
     if _player_lookup_cache is not None:
         return _player_lookup_cache
@@ -180,7 +180,8 @@ async def _build_player_lookup(db) -> dict:
     _player_lookup_cache = {}
     players = await db.nba_master_hub_2026.find(
         {},
-        {"_id": 0, "player_id": 1, "nba_id": 1, "espn_id": 1, "headshot_url": 1, "team": 1, "position": 1, "display_name": 1}
+        {"_id": 0, "player_id": 1, "nba_id": 1, "espn_id": 1, "headshot_url": 1, 
+         "team": 1, "position": 1, "display_name": 1, "baseline_stats": 1}
     ).to_list(1000)
     
     for player in players:
@@ -210,7 +211,7 @@ async def _build_player_lookup(db) -> dict:
                 if with_periods not in _player_lookup_cache:
                     _player_lookup_cache[with_periods] = player
     
-    logger.info(f"[COMMAND] Built player lookup cache with {len(_player_lookup_cache)} name variations")
+    logger.info(f"[COMMAND] Built player lookup cache with {len(_player_lookup_cache)} name variations (with baseline_stats)")
     return _player_lookup_cache
 
 
@@ -295,13 +296,14 @@ async def get_tactical_profile(
                 target_lock_details[key] = pick
         
         # ===== STEP 4: Get player info from nba_master_hub_2026 =====
-        # Use cached lookup to ensure correct player_id -> photo_url matching
+        # This is the SINGLE SOURCE OF TRUTH for all player data and stats
         player_team = ""
         player_position = ""
         photo_url = ""
         player_id = None
         nba_id = None
         espn_id = None
+        baseline_stats = {}
         detected_opponent = opponent
         
         # Get player data from master roster using cached lookup
@@ -314,6 +316,7 @@ async def get_tactical_profile(
             player_id = master_player.get("player_id")
             nba_id = master_player.get("nba_id")
             espn_id = master_player.get("espn_id")
+            baseline_stats = master_player.get("baseline_stats", {})
         
         # Fallback to props data if needed
         if all_props:
@@ -331,7 +334,7 @@ async def get_tactical_profile(
                 photo_url = first_pick.get("photo_url", "")
             detected_opponent = first_pick.get("opponent_abbr") or first_pick.get("opponent") or detected_opponent
         
-        # ===== STEP 5: Build ALL prop lines with Target-Lock identification =====
+        # ===== STEP 5: Build ALL prop lines with stats from MASTER HUB =====
         active_lines = []
         seen_props = set()  # Dedupe by stat_type + line + direction
         
@@ -353,29 +356,26 @@ async def get_tactical_profile(
             target_key = f"{stat}|{line}|{direction}"
             is_radar = target_key in target_lock_keys
             
-            # Get hit rates from prop
-            hit_rates = prop.get("hit_rates", {})
-            l5_data = hit_rates.get("l5", {})
-            l10_data = hit_rates.get("l10", {})
-            season_data = hit_rates.get("season", {})
+            # ===== GET STATS FROM MASTER HUB baseline_stats =====
+            cat_stats = baseline_stats.get(stat, {})
+            l5_avg = cat_stats.get("l5_avg")
+            l10_avg = cat_stats.get("l10_avg")
+            season_avg = cat_stats.get("season_avg")
             
-            # Build base prop line (available for all props)
+            # Build base prop line with stats from master hub
             prop_line = {
                 "stat_type": stat,
                 "line": line,
                 "direction": direction,
                 "odds": prop.get("price"),
                 "is_radar": is_radar,
-                "l5_avg": l5_data.get("avg"),
-                "l10_avg": l10_data.get("avg"),
-                "season_avg": season_data.get("avg"),
+                "l5_avg": l5_avg,
+                "l10_avg": l10_avg,
+                "season_avg": season_avg,
                 "hit_rates": {
-                    "l5": l5_data.get("hit_rate", 0) * 100 if l5_data.get("hit_rate") else 0,
-                    "l10": l10_data.get("hit_rate", 0) * 100 if l10_data.get("hit_rate") else 0,
-                    "season": season_data.get("hit_rate", 0) * 100 if season_data.get("hit_rate") else 0,
-                    "l5_avg": l5_data.get("avg"),
-                    "l10_avg": l10_data.get("avg"),
-                    "season_avg": season_data.get("avg")
+                    "l5_avg": l5_avg,
+                    "l10_avg": l10_avg,
+                    "season_avg": season_avg
                 }
             }
             
@@ -437,6 +437,7 @@ async def get_tactical_profile(
             "opponent": detected_opponent,
             "is_on_board": len(board_picks) > 0,
             "lines": active_lines,
+            "baseline_stats": baseline_stats,  # ALL stats from master hub
             "radar_picks": radar_stat_types,
             "target_locks": [{"stat_type": k.split("|")[0], "line": float(k.split("|")[1]), "direction": k.split("|")[2]} for k in target_lock_keys],
             "usage_ripple": usage_ripple

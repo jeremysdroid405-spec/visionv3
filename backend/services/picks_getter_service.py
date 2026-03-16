@@ -51,18 +51,20 @@ class PicksGetterService:
     async def _get_player_lookup(self) -> Dict[str, Dict]:
         """
         Build a cached lookup of player names -> master hub data.
-        Maps all name variations to ensure correct player_id -> photo_url matching.
+        Maps all name variations to ensure correct player_id -> photo_url -> stats matching.
+        ALL STATS come from nba_master_hub_2026.baseline_stats.
         """
         if self._player_lookup_cache is not None:
             return self._player_lookup_cache
         
         self._player_lookup_cache = {}
         
-        # Load all players from master hub
+        # Load all players from master hub WITH baseline_stats
         master_hub = self.db.nba_master_hub_2026
         players = await master_hub.find(
             {},
-            {"_id": 0, "player_id": 1, "nba_id": 1, "espn_id": 1, "headshot_url": 1, "team": 1, "position": 1, "display_name": 1}
+            {"_id": 0, "player_id": 1, "nba_id": 1, "espn_id": 1, "headshot_url": 1, 
+             "team": 1, "position": 1, "display_name": 1, "baseline_stats": 1}
         ).to_list(1000)
         
         for player in players:
@@ -98,7 +100,7 @@ class PicksGetterService:
                     if with_periods not in self._player_lookup_cache:
                         self._player_lookup_cache[with_periods] = player
         
-        logger.info(f"[PLAYER_LOOKUP] Cached {len(self._player_lookup_cache)} name variations for {len(players)} players")
+        logger.info(f"[PLAYER_LOOKUP] Cached {len(self._player_lookup_cache)} name variations for {len(players)} players (with baseline_stats)")
         return self._player_lookup_cache
     
     async def _get_player_by_name(self, player_name: str) -> Dict:
@@ -519,18 +521,31 @@ class PicksGetterService:
                     seen.add(key)
                     unique_bets.append(bet)
             
-            # ===== PLAYER DATA ENRICHMENT from nba_master_hub_2026 =====
-            # Use cached lookup to ensure correct player_id -> photo_url matching
+            # ===== PLAYER DATA & STATS ENRICHMENT from nba_master_hub_2026 =====
+            # ALL player data and stats come from master hub
             for bet in unique_bets[:20]:
                 player_name = bet.get('player_name')
+                stat_type = bet.get('stat_type', '')
                 if player_name:
                     master_player = await self._get_player_by_name(player_name)
                     if master_player:
+                        # Player identity & photo
                         bet['player_id'] = master_player.get('player_id')
                         bet['nba_id'] = master_player.get('nba_id')
                         bet['espn_id'] = master_player.get('espn_id')
                         bet['photo_url'] = master_player.get('headshot_url')
                         bet['headshot_url'] = master_player.get('headshot_url')
+                        
+                        # Baseline stats for this prop category
+                        baseline_stats = master_player.get('baseline_stats', {})
+                        if stat_type and baseline_stats:
+                            cat_stats = baseline_stats.get(stat_type, {})
+                            if cat_stats:
+                                bet['l5_avg'] = cat_stats.get('l5_avg')
+                                bet['l10_avg'] = cat_stats.get('l10_avg')
+                                bet['season_avg'] = cat_stats.get('season_avg')
+                        
+                        bet['baseline_stats'] = baseline_stats
             
             return {
                 "status": "live" if unique_bets else "awaiting_action",
@@ -550,16 +565,19 @@ class PicksGetterService:
     # ==================== PRIVATE HELPER METHODS ====================
     
     async def _add_insights_to_pick(self, pick: Dict) -> None:
-        """Add AI insights, headshot URL, and player_id to a single pick."""
+        """
+        Add AI insights, headshot URL, player_id, and BASELINE STATS to a single pick.
+        ALL STATS come from nba_master_hub_2026.baseline_stats.
+        """
         player_name = pick.get('player_name')
         if not player_name:
             return
         
         # ===== PLAYER DATA ENRICHMENT from nba_master_hub_2026 =====
-        # Use cached lookup to ensure correct player_id -> photo_url matching
+        # This is the SINGLE SOURCE OF TRUTH for all player data
         master_player = await self._get_player_by_name(player_name)
         if master_player:
-            # Always set player_id from master hub (authoritative source)
+            # Player identity
             pick['player_id'] = master_player.get('player_id')
             pick['nba_id'] = master_player.get('nba_id')
             pick['espn_id'] = master_player.get('espn_id')
@@ -569,6 +587,21 @@ class PicksGetterService:
                 pick['team'] = master_player.get('team')
             if not pick.get('position'):
                 pick['position'] = master_player.get('position')
+            
+            # ===== BASELINE STATS from master hub =====
+            baseline_stats = master_player.get('baseline_stats', {})
+            stat_type = pick.get('stat_type', '')
+            
+            # Get stats for this specific prop category
+            if stat_type and baseline_stats:
+                cat_stats = baseline_stats.get(stat_type, {})
+                if cat_stats:
+                    pick['l5_avg'] = cat_stats.get('l5_avg')
+                    pick['l10_avg'] = cat_stats.get('l10_avg')
+                    pick['season_avg'] = cat_stats.get('season_avg')
+            
+            # Store full baseline_stats for frontend access
+            pick['baseline_stats'] = baseline_stats
         
         # Get old insight_summary from daily_insights
         insight = await self.daily_insights.find_one(
@@ -592,17 +625,20 @@ class PicksGetterService:
             pick['intel_briefing'] = board_entry.get('intel_briefing')
     
     async def _add_player_insights(self, player: Dict) -> None:
-        """Fetch and add insights data, headshot, and player_id to a player dict."""
+        """
+        Fetch and add insights data, headshot, player_id, and BASELINE STATS to a player dict.
+        ALL STATS come from nba_master_hub_2026.baseline_stats.
+        """
         if not player or not player.get("player_name"):
             return
         
         player_name = player.get("player_name")
         
         # ===== PLAYER DATA ENRICHMENT from nba_master_hub_2026 =====
-        # Use cached lookup to ensure correct player_id -> photo_url matching
+        # This is the SINGLE SOURCE OF TRUTH for all player data
         master_player = await self._get_player_by_name(player_name)
         if master_player:
-            # Always set player_id from master hub (authoritative source)
+            # Player identity
             player['player_id'] = master_player.get('player_id')
             player['nba_id'] = master_player.get('nba_id')
             player['espn_id'] = master_player.get('espn_id')
@@ -612,6 +648,9 @@ class PicksGetterService:
                 player['team'] = master_player.get('team')
             if not player.get('position'):
                 player['position'] = master_player.get('position')
+            
+            # ===== BASELINE STATS from master hub =====
+            player['baseline_stats'] = master_player.get('baseline_stats', {})
         
         insights = await self.daily_insights.find_one(
             {"player_name": player_name},
