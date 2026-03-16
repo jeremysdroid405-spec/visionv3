@@ -5,6 +5,29 @@ PickVision is a high-performance NBA Player Prop Dashboard with a "military tech
 
 ## Latest Update: 2026-03-16
 
+### P2 Tech Debt Eradication - COMPLETED ✅
+**Final cleanup of legacy code and database collections**
+
+**Actions Completed:**
+1. ✅ **Dropped 5 legacy DB collections:** `stats_cache`, `dg_stats_cache`, `player_props`, `league_roster`, `demon_cards`
+2. ✅ **Re-synced `dg_cached_board`:** Purged stale `l5_stats`/`l10_stats` fields from schema
+3. ✅ **Consolidated backend code:** Created `/app/backend/utils/player_lookup.py` for DRY player lookup
+4. ✅ **Deleted legacy frontend file:** Removed `GlobalUtilities.js`, created `PickVisionUtils.jsx`
+5. ✅ **Fixed import shadowing:** Updated `utils/__init__.py` to re-export from `utils.py`
+
+**Files Created:**
+- `NEW /app/backend/utils/player_lookup.py` - Consolidated player lookup logic
+- `NEW /app/frontend/src/lib/PickVisionUtils.jsx` - Shared UI utility components
+
+**Files Deleted:**
+- `/app/frontend/src/lib/GlobalUtilities.js`
+- `/app/frontend/src/hooks/useDFSData.js`
+- `/app/frontend/src/pages/FullBoard.js`
+
+**Testing Status:** ✅ All tests passed (Backend 100%, Frontend 100%)
+
+---
+
 ### TanStack Query Global State Implementation - COMPLETED
 **Implemented Two-Pipe reactive architecture using TanStack Query (React Query)**
 
