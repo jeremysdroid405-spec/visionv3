@@ -245,9 +245,11 @@ async def get_tactical_profile(
         player_position = ""
         photo_url = ""
         player_id = None
+        nba_id = None
+        espn_id = None
         detected_opponent = opponent
         
-        # First, get player data from master roster (has headshot_url)
+        # First, get player data from master roster (has headshot_url and player_id)
         master_player = await db.nba_master_hub_2026.find_one(
             {"display_name": player_name_regex},
             {"_id": 0}
@@ -257,7 +259,9 @@ async def get_tactical_profile(
             photo_url = master_player.get("headshot_url", "")
             player_team = master_player.get("team", "")
             player_position = master_player.get("position", "")
-            player_id = master_player.get("player_id") or master_player.get("nba_id")
+            player_id = master_player.get("player_id")
+            nba_id = master_player.get("nba_id")
+            espn_id = master_player.get("espn_id")
         
         # Fallback to props data if needed
         if all_props:
@@ -373,6 +377,8 @@ async def get_tactical_profile(
             "success": True,
             "player_name": master_player.get("display_name") if master_player else (board_picks[0].get("player_name", player_name) if board_picks else player_name),
             "player_id": player_id,
+            "nba_id": nba_id,
+            "espn_id": espn_id,
             "team": player_team,
             "position": player_position,
             "photo_url": photo_url,

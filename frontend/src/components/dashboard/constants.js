@@ -2,10 +2,7 @@
 export const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 export const API = `${BACKEND_URL}/api`;
 
-// NBA CDN headshot URL
-export const NBA_HEADSHOT_URL = (nbaId) => `https://cdn.nba.com/headshots/nba/latest/1040x760/${nbaId}.png`;
-
-// Team Logo URLs (fallback for missing headshots)
+// Team Logo URLs (fallback for missing player headshots)
 export const TEAM_LOGOS = {
   "ATL": "https://cdn.nba.com/logos/nba/1610612737/global/L/logo.svg",
   "BOS": "https://cdn.nba.com/logos/nba/1610612738/global/L/logo.svg",

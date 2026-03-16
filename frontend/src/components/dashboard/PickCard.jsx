@@ -263,7 +263,6 @@ export const PickCard = memo(({
           
           <div className="relative">
             <PlayerHeadshot 
-              nbaId={pick.nba_id} 
               playerName={pick.player_name}
               photoUrl={pick.photo_url}
               size="md"

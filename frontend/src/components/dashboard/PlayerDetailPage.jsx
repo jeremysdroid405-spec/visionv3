@@ -396,7 +396,6 @@ export const PlayerDetailPage = ({ playerName, onBack, highlightProp = null, hig
           
           {player && (
             <PlayerHeadshot 
-              nbaId={player.nba_id} 
               playerName={playerName}
               team={player.team}
               photoUrl={player.photo_url}

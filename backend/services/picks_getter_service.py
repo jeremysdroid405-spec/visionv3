@@ -452,19 +452,22 @@ class PicksGetterService:
                     seen.add(key)
                     unique_bets.append(bet)
             
-            # ===== HEADSHOT ENRICHMENT from nba_master_hub_2026 =====
+            # ===== PLAYER DATA ENRICHMENT from nba_master_hub_2026 =====
+            # Ensures player_id is matched with photo_url
             master_hub = self.db.nba_master_hub_2026
             for bet in unique_bets[:20]:
-                if not bet.get('photo_url'):
-                    player_name = bet.get('player_name')
-                    if player_name:
-                        master_player = await master_hub.find_one(
-                            {"display_name": {"$regex": f"^{player_name}$", "$options": "i"}},
-                            {"_id": 0, "headshot_url": 1}
-                        )
-                        if master_player and master_player.get('headshot_url'):
-                            bet['photo_url'] = master_player.get('headshot_url')
-                            bet['headshot_url'] = master_player.get('headshot_url')
+                player_name = bet.get('player_name')
+                if player_name:
+                    master_player = await master_hub.find_one(
+                        {"display_name": {"$regex": f"^{player_name}$", "$options": "i"}},
+                        {"_id": 0, "player_id": 1, "nba_id": 1, "espn_id": 1, "headshot_url": 1}
+                    )
+                    if master_player:
+                        bet['player_id'] = master_player.get('player_id')
+                        bet['nba_id'] = master_player.get('nba_id')
+                        bet['espn_id'] = master_player.get('espn_id')
+                        bet['photo_url'] = master_player.get('headshot_url')
+                        bet['headshot_url'] = master_player.get('headshot_url')
             
             return {
                 "status": "live" if unique_bets else "awaiting_action",
@@ -484,25 +487,29 @@ class PicksGetterService:
     # ==================== PRIVATE HELPER METHODS ====================
     
     async def _add_insights_to_pick(self, pick: Dict) -> None:
-        """Add AI insights and headshot URL to a single pick."""
+        """Add AI insights, headshot URL, and player_id to a single pick."""
         player_name = pick.get('player_name')
         if not player_name:
             return
         
-        # ===== HEADSHOT ENRICHMENT from nba_master_hub_2026 =====
-        if not pick.get('headshot_url') and not pick.get('photo_url'):
-            master_hub = self.db.nba_master_hub_2026
-            master_player = await master_hub.find_one(
-                {"display_name": {"$regex": f"^{player_name}$", "$options": "i"}},
-                {"_id": 0, "headshot_url": 1, "team": 1, "position": 1}
-            )
-            if master_player:
-                pick['headshot_url'] = master_player.get('headshot_url')
-                pick['photo_url'] = master_player.get('headshot_url')  # Also set photo_url for compatibility
-                if not pick.get('team'):
-                    pick['team'] = master_player.get('team')
-                if not pick.get('position'):
-                    pick['position'] = master_player.get('position')
+        # ===== PLAYER DATA ENRICHMENT from nba_master_hub_2026 =====
+        # Always fetch to ensure player_id is matched with photo_url
+        master_hub = self.db.nba_master_hub_2026
+        master_player = await master_hub.find_one(
+            {"display_name": {"$regex": f"^{player_name}$", "$options": "i"}},
+            {"_id": 0, "player_id": 1, "nba_id": 1, "espn_id": 1, "headshot_url": 1, "team": 1, "position": 1}
+        )
+        if master_player:
+            # Always set player_id from master hub (authoritative source)
+            pick['player_id'] = master_player.get('player_id')
+            pick['nba_id'] = master_player.get('nba_id')
+            pick['espn_id'] = master_player.get('espn_id')
+            pick['headshot_url'] = master_player.get('headshot_url')
+            pick['photo_url'] = master_player.get('headshot_url')
+            if not pick.get('team'):
+                pick['team'] = master_player.get('team')
+            if not pick.get('position'):
+                pick['position'] = master_player.get('position')
         
         # Get old insight_summary from daily_insights
         insight = await self.daily_insights.find_one(
@@ -526,26 +533,30 @@ class PicksGetterService:
             pick['intel_briefing'] = board_entry.get('intel_briefing')
     
     async def _add_player_insights(self, player: Dict) -> None:
-        """Fetch and add insights data and headshot to a player dict."""
+        """Fetch and add insights data, headshot, and player_id to a player dict."""
         if not player or not player.get("player_name"):
             return
         
         player_name = player.get("player_name")
         
-        # ===== HEADSHOT ENRICHMENT from nba_master_hub_2026 =====
-        if not player.get('headshot_url') and not player.get('photo_url'):
-            master_hub = self.db.nba_master_hub_2026
-            master_player = await master_hub.find_one(
-                {"display_name": {"$regex": f"^{player_name}$", "$options": "i"}},
-                {"_id": 0, "headshot_url": 1, "team": 1, "position": 1}
-            )
-            if master_player:
-                player['headshot_url'] = master_player.get('headshot_url')
-                player['photo_url'] = master_player.get('headshot_url')
-                if not player.get('team'):
-                    player['team'] = master_player.get('team')
-                if not player.get('position'):
-                    player['position'] = master_player.get('position')
+        # ===== PLAYER DATA ENRICHMENT from nba_master_hub_2026 =====
+        # Always fetch to ensure player_id is matched with photo_url
+        master_hub = self.db.nba_master_hub_2026
+        master_player = await master_hub.find_one(
+            {"display_name": {"$regex": f"^{player_name}$", "$options": "i"}},
+            {"_id": 0, "player_id": 1, "nba_id": 1, "espn_id": 1, "headshot_url": 1, "team": 1, "position": 1}
+        )
+        if master_player:
+            # Always set player_id from master hub (authoritative source)
+            player['player_id'] = master_player.get('player_id')
+            player['nba_id'] = master_player.get('nba_id')
+            player['espn_id'] = master_player.get('espn_id')
+            player['headshot_url'] = master_player.get('headshot_url')
+            player['photo_url'] = master_player.get('headshot_url')
+            if not player.get('team'):
+                player['team'] = master_player.get('team')
+            if not player.get('position'):
+                player['position'] = master_player.get('position')
         
         insights = await self.daily_insights.find_one(
             {"player_name": player_name},
