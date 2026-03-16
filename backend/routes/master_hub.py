@@ -92,18 +92,20 @@ async def trigger_hub_sync():
 @router.post("/sync-tank01")
 async def trigger_tank01_sync():
     """
-    Trigger stats sync using Tank01 API.
+    DEPRECATED: Tank01 API has data quality issues.
+    Use /sync-nba-official instead.
     
-    Uses Tank01 Fantasy Stats API to fetch real game logs and calculate
-    accurate L5, L10, and Season averages for all players.
-    
-    This is the PRIMARY stats sync method (replaces legacy BallDontLie).
+    This endpoint is kept for backwards compatibility but will
+    redirect to the NBA Official sync.
     """
     if _db is None:
         raise HTTPException(status_code=500, detail="Database not initialized")
     
-    from services.tank01_stats_service import run_tank01_sync
-    result = await run_tank01_sync(_db)
+    # Redirect to NBA Official sync
+    from services.nba_official_sync import get_nba_official_sync_service
+    service = get_nba_official_sync_service(_db)
+    result = await service.sync_all_players()
+    result["note"] = "DEPRECATED: Tank01 bypassed. Using official NBA API."
     return result
 
 
@@ -184,3 +186,47 @@ async def start_hub_scheduler():
     hub = _hub_functions["get_master_hub"]()
     await hub.startDailyScheduler()
     return {"status": "started", "schedule": "4:00 AM ET daily"}
+
+
+# ============================================
+# NBA OFFICIAL API SYNC (Replaces Tank01)
+# ============================================
+
+@router.post("/sync-nba-official")
+async def trigger_nba_official_sync():
+    """
+    Trigger full sync using official NBA API.
+    
+    PRIMARY DATA SOURCE - Replaces Tank01 due to data quality issues.
+    Uses nba_api package to fetch official game logs.
+    
+    This is the method used by the 0400 EST CRON job.
+    """
+    if _db is None:
+        raise HTTPException(status_code=500, detail="Database not initialized")
+    
+    from services.nba_official_sync import get_nba_official_sync_service
+    service = get_nba_official_sync_service(_db)
+    result = await service.sync_all_players()
+    return result
+
+
+@router.post("/sync-nba-official/{player_name}")
+async def sync_single_player_nba(player_name: str):
+    """
+    Sync a single player using official NBA API.
+    
+    Useful for testing and on-demand updates.
+    """
+    if _db is None:
+        raise HTTPException(status_code=500, detail="Database not initialized")
+    
+    from services.nba_official_sync import get_nba_official_sync_service
+    service = get_nba_official_sync_service(_db)
+    result = await service.sync_single_player(player_name)
+    
+    if not result.get("success"):
+        raise HTTPException(status_code=404, detail=result.get("error"))
+    
+    return result
+

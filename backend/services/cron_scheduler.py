@@ -3,19 +3,22 @@ Master Hub CRON Scheduler
 =========================
 SINGLE SOURCE OF TRUTH (SSOT) Architecture - PIPE 1: Stats Vault
 
-Schedules daily sync of NBA Master Hub at 0400 EST using Tank01 API.
-This is the ONLY authorized script to call external stat APIs.
+Schedules daily sync of NBA Master Hub at 0400 EST using OFFICIAL NBA API.
+
+ENGINE SWAP (2026-03-16):
+- DEPRECATED: Tank01 Fantasy Stats API (data quality issues)
+- NEW: Official NBA API via nba_api package
 
 Data Flow:
-  Tank01 API → 0400 CRON → nba_master_hub_2026 → All App Components
+  NBA Official API → 0400 CRON → nba_master_hub_2026 → All App Components
 
 CRITICAL RULES:
-1. This CRON is the ONLY code allowed to call Tank01/external stat APIs
+1. This CRON is the ONLY code allowed to call external stat APIs
 2. Sync ONLY overwrites: baseline_stats, game_logs, stats metadata
 3. Sync NEVER touches: player_id, player_name, display_name, photo_url, headshot_url
 4. All other components read from nba_master_hub_2026 ONLY
 
-Data Source: Tank01 Fantasy Stats API (RapidAPI)
+Data Source: Official NBA Stats API (nba_api package)
 """
 
 import os
@@ -36,7 +39,9 @@ async def run_daily_sync():
     """
     Daily sync job - runs at 0400 EST (0900 UTC).
     
-    SSOT PIPE 1: The ONLY authorized Tank01 caller.
+    SSOT PIPE 1: The ONLY authorized external stats API caller.
+    
+    ENGINE: Official NBA API (replaces deprecated Tank01)
     
     Updates ONLY statistical fields:
     - baseline_stats: {PTS: {l5_avg, l10_avg, season_avg}, ...}
@@ -49,10 +54,11 @@ async def run_daily_sync():
     - team, position
     """
     from motor.motor_asyncio import AsyncIOMotorClient
-    from services.tank01_stats_service import run_tank01_sync
+    from services.nba_official_sync import get_nba_official_sync_service
     
     logger.info("[CRON] ========================================")
-    logger.info("[CRON] SSOT PIPE 1: Starting 0400 EST Tank01 sync")
+    logger.info("[CRON] SSOT PIPE 1: Starting 0400 EST Official NBA sync")
+    logger.info("[CRON] ENGINE: nba_api (Tank01 DEPRECATED)")
     logger.info("[CRON] ========================================")
     
     mongo_url = os.environ.get("MONGO_URL")
@@ -66,10 +72,12 @@ async def run_daily_sync():
         client = AsyncIOMotorClient(mongo_url)
         db = client[db_name]
         
-        # Run Tank01 stats sync (ONLY updates stats fields)
-        result = await run_tank01_sync(db)
+        # Run Official NBA API stats sync (ONLY updates stats fields)
+        service = get_nba_official_sync_service(db)
+        result = await service.sync_all_players()
         
-        logger.info(f"[CRON] SSOT sync completed: {result.get('updated', 0)} players updated")
+        logger.info(f"[CRON] SSOT sync completed: {result.get('players_updated', 0)} players updated")
+        logger.info(f"[CRON] Skipped: {result.get('players_skipped', 0)}, Failed: {result.get('players_failed', 0)}")
         logger.info("[CRON] ========================================")
         
     except Exception as e:
@@ -98,12 +106,12 @@ def start_scheduler():
         run_daily_sync,
         CronTrigger(hour=9, minute=0, timezone='UTC'),  # 0400 EST = 0900 UTC
         id='master_hub_daily_sync',
-        name='SSOT PIPE 1: NBA Master Hub Daily Sync',
+        name='SSOT PIPE 1: NBA Master Hub Daily Sync (Official NBA API)',
         replace_existing=True
     )
     
     _scheduler.start()
-    logger.info("[CRON] SSOT Scheduler started - Tank01 sync at 0400 EST daily")
+    logger.info("[CRON] SSOT Scheduler started - Official NBA sync at 0400 EST daily")
     
     return _scheduler
 
@@ -123,7 +131,7 @@ def get_scheduler_status():
     global _scheduler
     
     if _scheduler is None:
-        return {"running": False, "jobs": []}
+        return {"running": False, "jobs": [], "engine": "nba_official"}
     
     jobs = []
     for job in _scheduler.get_jobs():
@@ -135,5 +143,7 @@ def get_scheduler_status():
     
     return {
         "running": _scheduler.running,
-        "jobs": jobs
+        "jobs": jobs,
+        "engine": "nba_official",
+        "deprecated": "tank01"
     }
