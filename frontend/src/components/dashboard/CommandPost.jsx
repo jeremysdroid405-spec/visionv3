@@ -19,9 +19,10 @@
 import React, { useState, useCallback, memo, useMemo, useEffect } from 'react';
 import { 
   Shield, AlertTriangle, TrendingUp, X, Plus, 
-  Target, ChevronDown, ChevronUp, Trash2, RefreshCw, Lock
+  Target, ChevronDown, ChevronUp, Trash2, RefreshCw, Lock, Ban
 } from 'lucide-react';
 import { Button } from '../ui/button';
+import { toast } from 'sonner';
 import CommandSearch from './CommandSearch';
 import TacticalPlayerCard from './TacticalPlayerCard';
 
@@ -222,9 +223,29 @@ const CommandPost = memo(({ isOpen, onClose, pendingLeg, onPendingLegProcessed }
   const [profileLoading, setProfileLoading] = useState(false);
   const [expanded, setExpanded] = useState(true);
 
+  // ==================== STRICT CONFLICT ENGINE ====================
+  // Check if a player already exists in legs (BLOCK duplicate players entirely)
+  const isPlayerInLegs = useCallback((playerId, playerName) => {
+    return legs.some(leg => 
+      leg.player_id === playerId || 
+      leg.player_name?.toLowerCase() === playerName?.toLowerCase()
+    );
+  }, [legs]);
+
   // Process incoming pendingLeg from Quick-Add
   React.useEffect(() => {
     if (pendingLeg && onPendingLegProcessed) {
+      // STRICT CONFLICT CHECK: Block if player already exists
+      if (isPlayerInLegs(pendingLeg.player_id, pendingLeg.player_name)) {
+        toast.error(`Conflict: ${pendingLeg.player_name} is already in your Command Post`, {
+          description: 'Remove the existing prop first to add a different one.',
+          icon: <Ban className="w-4 h-4" />,
+          duration: 4000,
+        });
+        onPendingLegProcessed();
+        return;
+      }
+      
       const newLeg = {
         player_name: pendingLeg.player_name,
         player_id: pendingLeg.player_id,
@@ -236,25 +257,22 @@ const CommandPost = memo(({ isOpen, onClose, pendingLeg, onPendingLegProcessed }
         is_home: pendingLeg.is_home ?? true,
         h10_rate: pendingLeg.h10_rate || 50,
         h5_rate: pendingLeg.h5_rate || 50,
+        season_avg: pendingLeg.season_avg,
+        l5_avg: pendingLeg.l5_avg,
+        l10_avg: pendingLeg.l10_avg,
         usage_bump_percent: pendingLeg.usage_bump_percent || 0,
         dvp_rank: pendingLeg.dvp_rank,
         dvp_rank_color: pendingLeg.dvp_rank_color
       };
       
-      // Check if leg already exists
-      const exists = legs.some(l => 
-        l.player_name === newLeg.player_name && 
-        l.stat_type === newLeg.stat_type && 
-        l.line === newLeg.line
-      );
-      
-      if (!exists) {
-        setLegs(prev => [...prev, newLeg]);
-      }
+      setLegs(prev => [...prev, newLeg]);
+      toast.success(`Added: ${newLeg.player_name} ${newLeg.stat_type} ${newLeg.direction} ${newLeg.line}`, {
+        duration: 2000,
+      });
       
       onPendingLegProcessed();
     }
-  }, [pendingLeg, onPendingLegProcessed, legs]);
+  }, [pendingLeg, onPendingLegProcessed, isPlayerInLegs]);
 
   // State for profile fetching via hook
   const [profilePlayerName, setProfilePlayerName] = useState(null);
@@ -274,9 +292,19 @@ const CommandPost = memo(({ isOpen, onClose, pendingLeg, onPendingLegProcessed }
     setProfilePlayerName(player.player_name);
   }, []);
 
-  // Add leg from profile line selection
+  // Add leg from profile line selection (with STRICT conflict check)
   const addLegFromLine = useCallback((line) => {
     if (!selectedProfile || !line) return;
+    
+    // STRICT CONFLICT CHECK: Block if player already exists
+    if (isPlayerInLegs(selectedProfile.player_id, selectedProfile.player_name)) {
+      toast.error(`Conflict: ${selectedProfile.player_name} is already in your Command Post`, {
+        description: 'Remove the existing prop first to add a different one.',
+        icon: <Ban className="w-4 h-4" />,
+        duration: 4000,
+      });
+      return;
+    }
     
     const newLeg = {
       player_name: selectedProfile.player_name,
@@ -287,15 +315,23 @@ const CommandPost = memo(({ isOpen, onClose, pendingLeg, onPendingLegProcessed }
       team: selectedProfile.team,
       opponent: selectedProfile.opponent,
       is_home: true,
-      h10_rate: line.hit_rates?.h10 || 50,
-      h5_rate: line.hit_rates?.h5 || 50,
-      usage_bump_percent: selectedProfile.usage_ripple?.bump_percent || 0
+      h10_rate: line.h10_rate || line.hit_rates?.h10 || 50,
+      h5_rate: line.h5_rate || line.hit_rates?.h5 || 50,
+      season_avg: line.season_avg,
+      l5_avg: line.l5_avg,
+      l10_avg: line.l10_avg,
+      usage_bump_percent: selectedProfile.usage_ripple?.bump_percent || 0,
+      dvp_rank: line.dvp_rank,
+      dvp_rank_color: line.dvp_rank_color
     };
     
     setLegs(prev => [...prev, newLeg]);
+    toast.success(`Added: ${newLeg.player_name} ${newLeg.stat_type} ${newLeg.direction} ${newLeg.line}`, {
+      duration: 2000,
+    });
     setSelectedProfile(null);
     setProfilePlayerName(null);  // Clear to allow re-fetching
-  }, [selectedProfile]);
+  }, [selectedProfile, isPlayerInLegs]);
 
   // Remove leg
   const removeLeg = useCallback((index) => {
@@ -466,6 +502,16 @@ const CommandPost = memo(({ isOpen, onClose, pendingLeg, onPendingLegProcessed }
                 }}
                 radarPicks={selectedProfile.radar_picks || []}
                 onAddToPost={(prop) => {
+                  // STRICT CONFLICT CHECK: Block if player already exists
+                  if (isPlayerInLegs(selectedProfile.player_id, selectedProfile.player_name)) {
+                    toast.error(`Conflict: ${selectedProfile.player_name} is already in your Command Post`, {
+                      description: 'Remove the existing prop first to add a different one.',
+                      icon: <Ban className="w-4 h-4" />,
+                      duration: 4000,
+                    });
+                    return;
+                  }
+                  
                   const newLeg = {
                     player_name: selectedProfile.player_name,
                     player_id: selectedProfile.player_id,
@@ -484,7 +530,11 @@ const CommandPost = memo(({ isOpen, onClose, pendingLeg, onPendingLegProcessed }
                     dvp_rank: prop.dvp_rank,
                     dvp_rank_color: prop.dvp_rank_color
                   };
+                  
                   setLegs(prev => [...prev, newLeg]);
+                  toast.success(`Added: ${newLeg.player_name} ${newLeg.stat_type} ${newLeg.direction} ${newLeg.line}`, {
+                    duration: 2000,
+                  });
                 }}
                 defaultExpanded={true}
               />
