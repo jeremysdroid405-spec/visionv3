@@ -278,8 +278,83 @@ const SwipeContainer = memo(({ children, className = '' }) => (
 ));
 
 // War Zone Section (Demons)
-const WarZoneSection = memo(({ picks, onPickClick, onQuickAdd }) => {
-  if (!picks?.length) return null;
+// ==================== LOADING SKELETONS ====================
+
+// Loading skeleton for pick cards
+const PickCardSkeleton = () => (
+  <div className="swipe-card">
+    <div className="p-3 bg-zinc-900/50 border border-zinc-800/50 rounded-lg animate-pulse">
+      <div className="flex items-center gap-3 mb-3">
+        <div className="w-12 h-12 bg-zinc-800 rounded-full" />
+        <div className="flex-1">
+          <div className="h-4 bg-zinc-800 rounded w-24 mb-2" />
+          <div className="h-3 bg-zinc-800/50 rounded w-16" />
+        </div>
+      </div>
+      <div className="flex gap-2">
+        <div className="h-6 bg-zinc-800 rounded-full w-16" />
+        <div className="h-6 bg-zinc-800/50 rounded w-12" />
+      </div>
+      <div className="mt-3 flex justify-between">
+        <div className="h-3 bg-zinc-800/50 rounded w-20" />
+        <div className="h-3 bg-zinc-800/50 rounded w-16" />
+      </div>
+    </div>
+  </div>
+);
+
+// Loading section skeleton
+const SectionLoadingSkeleton = ({ title, icon, subtitle }) => (
+  <div className="mb-4">
+    <SectionHeader icon={icon} title={title} subtitle={subtitle} badgeText="LOADING..." badgeColor="zinc" />
+    <SwipeContainer>
+      {[1, 2, 3, 4, 5].map((i) => (
+        <PickCardSkeleton key={`skeleton-${i}`} />
+      ))}
+    </SwipeContainer>
+  </div>
+);
+
+// Empty state component
+const EmptyStateMessage = ({ icon, title, message }) => (
+  <div className="flex flex-col items-center justify-center py-8 text-center">
+    <div className="w-12 h-12 rounded-full bg-zinc-800/50 flex items-center justify-center mb-3">
+      {icon}
+    </div>
+    <p className="text-sm font-medium text-zinc-400">{title}</p>
+    <p className="text-xs text-zinc-500 mt-1">{message}</p>
+  </div>
+);
+
+// War Zone Section with Loading/Empty States
+const WarZoneSection = memo(({ picks, onPickClick, onQuickAdd, isLoading }) => {
+  if (isLoading) {
+    return <SectionLoadingSkeleton 
+      icon={<DemonIcon size={20} />} 
+      title="WAR ZONE" 
+      subtitle="Loading demon plays..." 
+    />;
+  }
+  
+  if (!picks?.length) {
+    return (
+      <div className="war-zone-section mb-4">
+        <SectionHeader 
+          icon={<DemonIcon size={20} />}
+          title="WAR ZONE"
+          subtitle="High-risk, high-reward demon plays"
+          badgeText="NO GAMES"
+          badgeColor="zinc"
+        />
+        <EmptyStateMessage 
+          icon={<AlertTriangle className="w-5 h-5 text-zinc-500" />}
+          title="No Demon Picks Available"
+          message="No games today or data still syncing"
+        />
+      </div>
+    );
+  }
+  
   return (
     <div className="war-zone-section mb-4">
       <SectionHeader 
@@ -300,9 +375,35 @@ const WarZoneSection = memo(({ picks, onPickClick, onQuickAdd }) => {
   );
 });
 
-// Safe Haven Section (Goblins)
-const SafeHavenSection = memo(({ picks, onPickClick, onQuickAdd }) => {
-  if (!picks?.length) return null;
+// Safe Haven Section with Loading/Empty States
+const SafeHavenSection = memo(({ picks, onPickClick, onQuickAdd, isLoading }) => {
+  if (isLoading) {
+    return <SectionLoadingSkeleton 
+      icon={<GoblinIcon size={20} />} 
+      title="SAFE HAVEN" 
+      subtitle="Loading goblin plays..." 
+    />;
+  }
+  
+  if (!picks?.length) {
+    return (
+      <div className="goblin-recon-section mb-4">
+        <SectionHeader 
+          icon={<GoblinIcon size={20} />}
+          title="SAFE HAVEN"
+          subtitle="High-floor goblin plays with best consistency"
+          badgeText="NO GAMES"
+          badgeColor="zinc"
+        />
+        <EmptyStateMessage 
+          icon={<Activity className="w-5 h-5 text-zinc-500" />}
+          title="No Goblin Picks Available"
+          message="No games today or data still syncing"
+        />
+      </div>
+    );
+  }
+  
   return (
     <div className="goblin-recon-section mb-4">
       <SectionHeader 
@@ -323,9 +424,35 @@ const SafeHavenSection = memo(({ picks, onPickClick, onQuickAdd }) => {
   );
 });
 
-// Front Lines Section (Mixed)
-const FrontLinesSection = memo(({ picks, onPickClick, onQuickAdd }) => {
-  if (!picks?.length) return null;
+// Front Lines Section with Loading/Empty States
+const FrontLinesSection = memo(({ picks, onPickClick, onQuickAdd, isLoading }) => {
+  if (isLoading) {
+    return <SectionLoadingSkeleton 
+      icon={<span className="text-lg">🎯</span>} 
+      title="FRONT LINES" 
+      subtitle="Loading tactical plays..." 
+    />;
+  }
+  
+  if (!picks?.length) {
+    return (
+      <div className="front-lines-section mb-4">
+        <SectionHeader 
+          icon={<span className="text-lg">🎯</span>}
+          title="FRONT LINES"
+          subtitle="Balanced demon/goblin mix for tactical plays"
+          badgeText="NO GAMES"
+          badgeColor="zinc"
+        />
+        <EmptyStateMessage 
+          icon={<Target className="w-5 h-5 text-zinc-500" />}
+          title="No Front Line Picks Available"
+          message="No games today or data still syncing"
+        />
+      </div>
+    );
+  }
+  
   return (
     <div className="front-lines-section mb-4">
       <SectionHeader 
@@ -758,7 +885,7 @@ const Dashboard = () => {
         <MostPopularBetsSection bets={popularBets} status={popularBetsStatus} onBetClick={handlePopularBetClick} />
         
         {/* Safe Haven */}
-        <SafeHavenSection picks={vaultPicks} onPickClick={handleVaultClick} onQuickAdd={handleQuickAdd} />
+        <SafeHavenSection picks={vaultPicks} onPickClick={handleVaultClick} onQuickAdd={handleQuickAdd} isLoading={safeHavenLoading} />
         
         {/* Shield Parlays */}
         <ParlaySection 
@@ -772,7 +899,7 @@ const Dashboard = () => {
         />
         
         {/* Front Lines */}
-        <FrontLinesSection picks={frontLinesPicks} onPickClick={handleRadarClick} onQuickAdd={handleQuickAdd} />
+        <FrontLinesSection picks={frontLinesPicks} onPickClick={handleRadarClick} onQuickAdd={handleQuickAdd} isLoading={frontLinesLoading} />
         
         {/* Strike Parlays */}
         <ParlaySection 
@@ -786,7 +913,7 @@ const Dashboard = () => {
         />
         
         {/* War Zone */}
-        <WarZoneSection picks={radarPicks} onPickClick={handleRadarClick} onQuickAdd={handleQuickAdd} />
+        <WarZoneSection picks={radarPicks} onPickClick={handleRadarClick} onQuickAdd={handleQuickAdd} isLoading={warZoneLoading} />
         
         {/* Gauntlet Parlays */}
         <ParlaySection 
