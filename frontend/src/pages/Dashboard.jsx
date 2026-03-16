@@ -469,16 +469,22 @@ const PopularBetCard = memo(({ bet, rank, onClick }) => {
   const isDemon = bet.is_demon || bet.pick_type === 'demon';
   const isGoblin = bet.is_goblin || bet.pick_type === 'goblin';
   
+  const getHitRateColor = (rate) => {
+    if (rate >= 80) return 'text-green-400';
+    if (rate >= 60) return 'text-yellow-400';
+    return 'text-red-400';
+  };
+  
   return (
     <Card 
-      className={`p-3 cursor-pointer hover:scale-[1.02] transition-all min-w-[200px] ${
+      className={`p-3 cursor-pointer hover:scale-[1.02] transition-all min-w-[220px] ${
         isDemon ? 'bg-red-950/30 border-red-500/30' : 
         isGoblin ? 'bg-green-950/30 border-green-500/30' : 
         'bg-zinc-900 border-zinc-800'
       }`}
       onClick={onClick}
     >
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 mb-2">
         <div className="relative">
           <PlayerHeadshot playerName={bet.player_name} team={bet.team} photoUrl={bet.photo_url} size="sm" />
           <div className="absolute -top-1 -right-1">
@@ -490,6 +496,30 @@ const PopularBetCard = memo(({ bet, rank, onClick }) => {
           <div className="text-xs text-zinc-500">{bet.stat_type} {bet.line}</div>
         </div>
         <Badge className="bg-zinc-800 text-zinc-300 border-none text-xs">#{rank}</Badge>
+      </div>
+      
+      {/* L5 / L10 / Season Stats */}
+      <div className="flex items-center justify-between bg-zinc-800/50 rounded px-2 py-1.5 text-[10px]">
+        <div className="text-center">
+          <div className="text-zinc-500">L5</div>
+          <div className={`font-bold ${getHitRateColor(bet.h5_rate || 0)}`}>
+            {bet.h5_rate ? `${bet.h5_rate.toFixed(0)}%` : '---'}
+          </div>
+        </div>
+        <div className="h-4 w-px bg-zinc-700" />
+        <div className="text-center">
+          <div className="text-zinc-500">L10</div>
+          <div className={`font-bold ${getHitRateColor(bet.h10_rate || 0)}`}>
+            {bet.h10_rate ? `${bet.h10_rate.toFixed(0)}%` : '---'}
+          </div>
+        </div>
+        <div className="h-4 w-px bg-zinc-700" />
+        <div className="text-center">
+          <div className="text-zinc-500">Avg</div>
+          <div className="font-bold text-white">
+            {bet.season_avg ? bet.season_avg.toFixed(1) : '---'}
+          </div>
+        </div>
       </div>
     </Card>
   );
