@@ -10,7 +10,7 @@
 
 import React, { memo } from 'react';
 import { ChevronRight, CheckCircle, XCircle } from 'lucide-react';
-import { PlayerPhoto, PayoutDisplay, formatStatType } from '../../lib/GlobalUtilities';
+import { PlayerPhoto, PayoutDisplay, formatStatType } from '../../lib/PickVisionUtils';
 
 const ParlayCard = memo(({ 
   parlay, 

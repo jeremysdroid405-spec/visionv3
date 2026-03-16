@@ -12,6 +12,7 @@ Endpoints:
 - GET /api/command/profile/{player_name} - Get tactical profile for player
 """
 import logging
+import os
 from typing import List, Optional
 from datetime import datetime, timezone
 

@@ -14,7 +14,7 @@ import { Flame, ChevronRight, Shield } from 'lucide-react';
 import { 
   PlayerPhoto, HeatIndicator, StatBadge, HitRateDisplay, 
   LockedBadge, VisionText, formatStatType, getTeamColor 
-} from '../../lib/GlobalUtilities';
+} from '../../lib/PickVisionUtils';
 
 // DvP Rank Badge Component - Color coded based on defensive ranking
 const DvPBadge = memo(({ rank, color }) => {
