@@ -3,7 +3,21 @@
 ## Overview
 PickVision is a high-performance NBA Player Prop Dashboard with a "military tech" aesthetic. The application delivers AI-driven betting insights using PropVision Command Post technology.
 
-## Latest Update: 2026-03-16
+## Latest Update: 2026-03-17
+
+### Headshot URL Bootstrap - COMPLETED ✅
+**All active NBA players now have valid headshot URLs in master hub**
+
+**Actions Completed:**
+1. ✅ Bootstrapped `nba_master_hub_2026` with 534 active NBA players from all 30 team rosters
+2. ✅ Populated NBA CDN headshot URLs for every player: `https://cdn.nba.com/headshots/nba/latest/1040x760/{nba_player_id}.png`
+3. ✅ Validated all 534 URLs - 0 invalid/404s - all returning HTTP 200
+
+**Result:** No scraping needed - NBA's official CDN has photos for 100% of active roster players.
+
+---
+
+## Previous Update: 2026-03-16
 
 ### QA Verification - COMPLETED ✅
 **Three comprehensive QA directives executed and passed**
