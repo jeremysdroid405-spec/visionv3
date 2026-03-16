@@ -176,17 +176,17 @@ async def get_tactical_profile(
     """
     Get tactical profile for a player.
     
+    IMPORTANT: Full Intel Suite is ONLY for players on the board with 
+    PropVision recommendations. Other players get basic stats only.
+    
     Returns:
-    - Active prop lines (from tiered picks collections)
-    - Usage Ripple status
-    - DvP rankings per stat type
-    - Volatility indicators
-    - Radar picks (PropVision objectives)
+    - is_on_board: Whether player has active PropVision recommendations
+    - lines: Prop lines (only recommended props get full intel)
+    - radar_picks: List of stat_types that are PropVision objectives
     """
     from motor.motor_asyncio import AsyncIOMotorClient
     
     try:
-        # Get from tiered picks collections
         mongo_url = os.environ.get("MONGO_URL")
         db_name = os.environ.get("DB_NAME", "pickvision")
         
@@ -196,10 +196,9 @@ async def get_tactical_profile(
         client = AsyncIOMotorClient(mongo_url)
         db = client[db_name]
         
-        # Search across all tiered collections
         player_name_regex = {"$regex": player_name, "$options": "i"}
         
-        # Get picks from all tiers
+        # Check if player is on our board (has PropVision recommendations)
         radar_picks = await db.dg_radar_picks.find(
             {"player_name": player_name_regex},
             {"_id": 0}
@@ -215,11 +214,20 @@ async def get_tactical_profile(
             {"_id": 0}
         ).to_list(20)
         
-        # Combine all picks
-        all_picks = radar_picks + vault_picks + front_picks
+        # These are the RECOMMENDED picks (on the board)
+        board_picks = radar_picks + vault_picks + front_picks
+        is_on_board = len(board_picks) > 0
         
-        if not all_picks:
-            # No picks found - return basic info from BallDontLie
+        # Build set of recommended stat types (these get Full Intel Suite)
+        radar_stat_types = set()
+        for pick in board_picks:
+            stat = pick.get("stat_type", "")
+            if stat:
+                radar_stat_types.add(stat)
+        
+        if not is_on_board:
+            # Player NOT on board - return basic profile only
+            # They can still search but won't get Full Intel Suite
             return {
                 "success": True,
                 "player_name": player_name,
@@ -227,11 +235,106 @@ async def get_tactical_profile(
                 "position": "",
                 "photo_url": "",
                 "opponent": "",
-                "lines": [],
+                "is_on_board": False,
+                "lines": [],  # No lines for non-board players
                 "radar_picks": [],
                 "usage_ripple": None,
-                "message": "No active prop lines for this player today"
+                "message": "Player not on today's board. Full Intel Suite only available for PropVision recommendations."
             }
+        
+        # Player IS on board - build full profile with recommended props only
+        first_pick = board_picks[0]
+        player_team = first_pick.get("team", "")
+        opponent = first_pick.get("opponent_abbr") or first_pick.get("opponent") or opponent
+        
+        # Build prop lines - ONLY for recommended props
+        seen_stats = set()
+        active_lines = []
+        
+        for pick in board_picks:
+            stat = pick.get("stat_type", "")
+            if not stat or stat in seen_stats:
+                continue
+            seen_stats.add(stat)
+            
+            line = pick.get("demon_line") or pick.get("goblin_line") or pick.get("line", 0)
+            direction = pick.get("direction", "over")
+            
+            # All board picks are radar (PropVision recommendations)
+            is_radar = True
+            
+            # Get DvP for this stat
+            dvp_rank = pick.get("dvp_rank") or (get_dvp_rank(opponent, stat) if opponent else 15)
+            dvp_color = pick.get("dvp_rank_color") or get_dvp_rank_color(dvp_rank)
+            dvp_mod = calculate_dvp_modifier(opponent, stat) if opponent else 0.5
+            
+            # Determine friction level
+            if dvp_rank >= 25:
+                friction = "Low Friction (Soft Defense)"
+            elif dvp_rank <= 5:
+                friction = "High Friction (Elite Defense)"
+            else:
+                friction = "Standard Friction"
+            
+            active_lines.append({
+                "stat_type": stat,
+                "line": line,
+                "direction": direction,
+                "odds": pick.get("demon_odds") or pick.get("goblin_odds") or pick.get("odds"),
+                "is_radar": is_radar,  # True = Full Intel Suite
+                "dvp_rank": dvp_rank,
+                "dvp_rank_color": dvp_color,
+                "dvp_modifier": round(dvp_mod, 3),
+                "friction_label": friction,
+                "season_avg": pick.get("season_avg"),
+                "l5_avg": pick.get("l5_avg"),
+                "l10_avg": pick.get("l10_avg"),
+                "std_dev": pick.get("std_dev"),
+                "hit_rates": {
+                    "h5": pick.get("h5_rate", 0),
+                    "h10": pick.get("h10_rate", 0),
+                    "h5_over": pick.get("h5_over"),
+                    "h10_over": pick.get("h10_over"),
+                    "l5_avg": pick.get("l5_avg"),
+                    "l10_avg": pick.get("l10_avg"),
+                    "season_avg": pick.get("season_avg")
+                },
+                "pace_factor": pick.get("pace_factor", 1.0),
+                "usage_ripple": pick.get("usage_bump_percent", 0)
+            })
+        
+        # Get usage ripple info
+        usage_ripple = None
+        for pick in board_picks:
+            if pick.get("usage_bump_percent", 0) > 0:
+                usage_ripple = {
+                    "bump_percent": pick.get("usage_bump_percent", 0),
+                    "source": pick.get("usage_source", "teammate injury")
+                }
+                break
+        
+        return {
+            "success": True,
+            "player_name": first_pick.get("player_name", player_name),
+            "player_id": first_pick.get("player_id"),
+            "team": player_team,
+            "position": first_pick.get("position", ""),
+            "photo_url": first_pick.get("photo_url", ""),
+            "opponent": opponent,
+            "is_on_board": True,
+            "lines": active_lines,
+            "radar_picks": list(radar_stat_types),
+            "usage_ripple": usage_ripple
+        }
+        
+    except Exception as e:
+        logger.error(f"[PROFILE] Error getting profile for {player_name}: {e}")
+        return {
+            "success": False,
+            "error": str(e),
+            "player_name": player_name,
+            "is_on_board": False
+        }
         
         # Get player info from first pick
         first_pick = all_picks[0]
