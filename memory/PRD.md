@@ -5,6 +5,17 @@ PickVision is a high-performance NBA Player Prop Dashboard with a "military tech
 
 ## Latest Update: 2026-03-16
 
+### Full Intel Suite Display Fix ✅ (NEW - March 16, 2026)
+- **Fixed:** Full Intel Suite now correctly displays ONLY for Radar/OBJECTIVE picks
+- **Backend:** `/api/command/profile/{player_name}` returns `is_radar: true` for all board player props
+- **Frontend:** `TacticalPlayerCard.jsx` uses `prop.is_radar` flag to conditionally render:
+  - **Radar picks (is_radar: true):** Full Intel Suite (DvP, Pace Multiplier, Stability Index)
+  - **Non-radar props (is_radar: false):** Basic stats only (L5/L10/Season)
+- **Non-board players:** Receive `is_on_board: false` with empty `lines: []` and message
+- **Files Updated:**
+  - `/app/frontend/src/components/dashboard/CommandPost.jsx` (line 454 - added is_radar to props mapping)
+  - `/app/frontend/src/components/dashboard/TacticalPlayerCard.jsx` (line 487 - uses prop.is_radar)
+
 ### PropVision Command Post Implementation ✅
 
 #### Tactical Player Card System
@@ -19,7 +30,7 @@ PickVision is a high-performance NBA Player Prop Dashboard with a "military tech
 - **Volatile (0-49):** High variance, boom-or-bust player
 - Based on standard deviation / coefficient of variation
 
-#### Intelligence Suite (for Radar picks)
+#### Intelligence Suite (ONLY for Radar/OBJECTIVE picks)
 - L5, L10, and Season Averages
 - Usage Ripple™ (e.g., "+8% Volume Shift")
 - Live DvP (e.g., "Opponent Rank: #28")
@@ -176,6 +187,10 @@ TANK01_API_KEY=...
 ---
 
 ## Pending Tasks
+
+### P0 - Immediate (Complete)
+- [x] Full Intel Suite display fix (only show for Radar/OBJECTIVE picks)
+- [x] Conflict Detection engine implementation
 
 ### P1 - High Priority
 - [ ] Trigger data sync to populate DvP badges on existing picks
