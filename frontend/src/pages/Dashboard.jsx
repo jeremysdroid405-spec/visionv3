@@ -167,9 +167,9 @@ const LiveScoresTicker = memo(() => {
   
   if (loading) {
     return (
-      <div className="bg-black/80 border-y border-zinc-700/30 py-1.5 px-3">
-        <div className="flex items-center gap-2 text-zinc-300 text-[10px]">
-          <Activity className="w-3 h-3 animate-pulse" />
+      <div className="bg-black/80 border-y border-zinc-700/30 py-2 px-4">
+        <div className="flex items-center gap-2 text-zinc-300 text-xs">
+          <Activity className="w-4 h-4 animate-pulse" />
           <span className="font-medium">Loading scores...</span>
         </div>
       </div>
@@ -178,27 +178,27 @@ const LiveScoresTicker = memo(() => {
   
   if (!scores.length) {
     return (
-      <div className="bg-black/80 border-y border-zinc-700/30 py-1.5 px-3">
+      <div className="bg-black/80 border-y border-zinc-700/30 py-2 px-4">
         <div className="flex items-center gap-2">
-          <div className="flex items-center gap-1 px-1.5 py-0.5 bg-zinc-800 rounded">
-            <div className="w-1.5 h-1.5 rounded-full bg-zinc-500" />
-            <span className="text-[9px] font-bold text-zinc-300">NO GAMES</span>
+          <div className="flex items-center gap-1.5 px-2 py-1 bg-zinc-800 rounded">
+            <div className="w-2 h-2 rounded-full bg-zinc-500" />
+            <span className="text-[10px] font-bold text-zinc-300">NO GAMES</span>
           </div>
-          <span className="text-[10px] text-zinc-500">Check back at tip-off</span>
+          <span className="text-xs text-zinc-500">Check back at tip-off</span>
         </div>
       </div>
     );
   }
   
   return (
-    <div className="bg-black/80 border-y border-zinc-700/30 py-1 overflow-hidden" data-testid="live-scores-ticker">
+    <div className="bg-black/80 border-y border-zinc-700/30 py-1.5 overflow-hidden" data-testid="live-scores-ticker">
       <div className="ticker-scroll">
         <div className="ticker-content items-center">
           {/* LIVE indicator */}
-          <div className="flex items-center gap-2 px-3 border-r border-zinc-700/50">
-            <div className="flex items-center gap-1 px-1.5 py-0.5 bg-red-600 rounded animate-pulse">
-              <div className="w-1.5 h-1.5 rounded-full bg-white" />
-              <span className="text-[9px] font-black text-white">LIVE</span>
+          <div className="flex items-center gap-2 px-4 border-r border-zinc-700/50">
+            <div className="flex items-center gap-1.5 px-2 py-1 bg-red-600 rounded animate-pulse">
+              <div className="w-2 h-2 rounded-full bg-white" />
+              <span className="text-[11px] font-black text-white">LIVE</span>
             </div>
           </div>
           {[...scores, ...scores].map((game, idx) => {
@@ -206,29 +206,29 @@ const LiveScoresTicker = memo(() => {
             const isFinal = game.status === 'final';
             
             return (
-              <div key={`score-${idx}`} className={`flex items-center gap-2 px-3 py-1 border-r border-zinc-700/50 ${isLive ? 'bg-zinc-800/50' : ''}`}>
+              <div key={`score-${idx}`} className={`flex items-center gap-2.5 px-4 py-1.5 border-r border-zinc-700/50 ${isLive ? 'bg-zinc-800/50' : ''}`}>
                 {/* Away Team */}
-                <img src={TEAM_LOGOS[game.away_team]} alt={game.away_team} className="w-4 h-4 flex-shrink-0" onError={(e) => e.target.style.display='none'} />
-                <span className="text-xs font-bold text-white">
+                <img src={TEAM_LOGOS[game.away_team]} alt={game.away_team} className="w-5 h-5 flex-shrink-0" onError={(e) => e.target.style.display='none'} />
+                <span className="text-sm font-bold text-white">
                   {game.away_team}
                 </span>
-                <span className={`text-sm font-black ${game.away_score > game.home_score ? 'text-emerald-400' : 'text-red-400'}`}>
+                <span className={`text-base font-black ${game.away_score > game.home_score ? 'text-emerald-400' : 'text-red-400'}`}>
                   {game.away_score}
                 </span>
                 
-                <span className="text-zinc-600 text-[10px]">@</span>
+                <span className="text-zinc-600 text-xs">@</span>
                 
                 {/* Home Team */}
-                <span className={`text-sm font-black ${game.home_score > game.away_score ? 'text-emerald-400' : 'text-red-400'}`}>
+                <span className={`text-base font-black ${game.home_score > game.away_score ? 'text-emerald-400' : 'text-red-400'}`}>
                   {game.home_score}
                 </span>
-                <span className="text-xs font-bold text-white">
+                <span className="text-sm font-bold text-white">
                   {game.home_team}
                 </span>
-                <img src={TEAM_LOGOS[game.home_team]} alt={game.home_team} className="w-4 h-4 flex-shrink-0" onError={(e) => e.target.style.display='none'} />
+                <img src={TEAM_LOGOS[game.home_team]} alt={game.home_team} className="w-5 h-5 flex-shrink-0" onError={(e) => e.target.style.display='none'} />
                 
                 {/* Status Badge - separated with margin */}
-                <Badge className={`text-[8px] font-bold px-1.5 py-0 ml-1 ${
+                <Badge className={`text-[10px] font-bold px-2 py-0.5 ml-1 ${
                   isLive ? 'bg-red-600 text-white border-red-500 animate-pulse' :
                   isFinal ? 'bg-zinc-700 text-zinc-300 border-zinc-600' :
                   'bg-amber-500/30 text-amber-300 border-amber-500/30'
