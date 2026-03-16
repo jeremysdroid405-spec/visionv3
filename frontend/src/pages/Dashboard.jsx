@@ -167,10 +167,10 @@ const LiveScoresTicker = memo(() => {
   
   if (loading) {
     return (
-      <div className="bg-gradient-to-r from-red-950 via-red-900/80 to-red-950 border-y border-red-500/30 py-3 px-3">
-        <div className="flex items-center gap-2 text-red-300 text-xs">
-          <Activity className="w-4 h-4 animate-pulse" />
-          <span className="font-medium">Loading live scores...</span>
+      <div className="bg-gradient-to-r from-red-950 via-red-900/80 to-red-950 border-y border-red-500/30 py-1.5 px-3">
+        <div className="flex items-center gap-2 text-red-300 text-[10px]">
+          <Activity className="w-3 h-3 animate-pulse" />
+          <span className="font-medium">Loading scores...</span>
         </div>
       </div>
     );
@@ -178,57 +178,59 @@ const LiveScoresTicker = memo(() => {
   
   if (!scores.length) {
     return (
-      <div className="bg-gradient-to-r from-red-950 via-red-900/80 to-red-950 border-y border-red-500/30 py-3 px-3">
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-1.5 px-2 py-1 bg-red-800/50 rounded">
-            <div className="w-2 h-2 rounded-full bg-red-500/50" />
-            <span className="text-[10px] font-bold text-red-300">NO LIVE GAMES</span>
+      <div className="bg-gradient-to-r from-red-950 via-red-900/80 to-red-950 border-y border-red-500/30 py-1.5 px-3">
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1 px-1.5 py-0.5 bg-red-800/50 rounded">
+            <div className="w-1.5 h-1.5 rounded-full bg-red-500/50" />
+            <span className="text-[9px] font-bold text-red-300">NO GAMES</span>
           </div>
-          <span className="text-xs text-red-400/60">Check back when games tip off</span>
+          <span className="text-[10px] text-red-400/60">Check back at tip-off</span>
         </div>
       </div>
     );
   }
   
   return (
-    <div className="bg-gradient-to-r from-red-950 via-red-900/80 to-red-950 border-y border-red-500/30 py-2 overflow-hidden shadow-lg shadow-red-900/20" data-testid="live-scores-ticker">
-      <div className="flex items-center gap-2 px-3 mb-1">
-        <div className="flex items-center gap-1.5 px-2 py-0.5 bg-red-500 rounded animate-pulse">
-          <div className="w-2 h-2 rounded-full bg-white" />
-          <span className="text-[10px] font-black text-white tracking-wide">LIVE</span>
-        </div>
-        <span className="text-[11px] text-red-300 font-bold uppercase tracking-wider">NBA Scores</span>
-      </div>
+    <div className="bg-gradient-to-r from-red-950 via-red-900/80 to-red-950 border-y border-red-500/30 py-1 overflow-hidden" data-testid="live-scores-ticker">
       <div className="ticker-scroll">
-        <div className="ticker-content">
+        <div className="ticker-content items-center">
+          {/* LIVE indicator */}
+          <div className="flex items-center gap-2 px-3 border-r border-red-800/50">
+            <div className="flex items-center gap-1 px-1.5 py-0.5 bg-red-500 rounded animate-pulse">
+              <div className="w-1.5 h-1.5 rounded-full bg-white" />
+              <span className="text-[9px] font-black text-white">LIVE</span>
+            </div>
+          </div>
           {[...scores, ...scores].map((game, idx) => {
             const isLive = game.status?.startsWith('Q') || game.status === 'live';
             const isFinal = game.status === 'final';
             
             return (
-              <div key={`score-${idx}`} className={`flex items-center gap-3 px-5 py-1.5 border-r border-red-800/50 ${isLive ? 'bg-red-500/10' : ''}`}>
-                <div className="flex items-center gap-2">
-                  <img src={TEAM_LOGOS[game.away_team]} alt={game.away_team} className="w-6 h-6" onError={(e) => e.target.style.display='none'} />
-                  <span className={`text-base font-black ${game.away_score > game.home_score ? 'text-white' : 'text-red-300/60'}`}>
-                    {game.away_team}
-                  </span>
-                  <span className={`text-lg font-black ${game.away_score > game.home_score ? 'text-emerald-400' : 'text-red-300/80'}`}>
-                    {game.away_score}
-                  </span>
-                </div>
-                <span className="text-red-400/60 text-sm font-bold">@</span>
-                <div className="flex items-center gap-2">
-                  <span className={`text-lg font-black ${game.home_score > game.away_score ? 'text-emerald-400' : 'text-red-300/80'}`}>
-                    {game.home_score}
-                  </span>
-                  <span className={`text-base font-black ${game.home_score > game.away_score ? 'text-white' : 'text-red-300/60'}`}>
-                    {game.home_team}
-                  </span>
-                  <img src={TEAM_LOGOS[game.home_team]} alt={game.home_team} className="w-6 h-6" onError={(e) => e.target.style.display='none'} />
-                </div>
-                <Badge className={`text-[10px] font-bold px-2 py-0.5 ${
+              <div key={`score-${idx}`} className={`flex items-center gap-2 px-3 py-1 border-r border-red-800/50 ${isLive ? 'bg-red-500/10' : ''}`}>
+                {/* Away Team */}
+                <img src={TEAM_LOGOS[game.away_team]} alt={game.away_team} className="w-4 h-4 flex-shrink-0" onError={(e) => e.target.style.display='none'} />
+                <span className={`text-xs font-bold ${game.away_score > game.home_score ? 'text-white' : 'text-red-300/60'}`}>
+                  {game.away_team}
+                </span>
+                <span className={`text-sm font-black ${game.away_score > game.home_score ? 'text-emerald-400' : 'text-red-300/70'}`}>
+                  {game.away_score}
+                </span>
+                
+                <span className="text-red-500/50 text-[10px]">@</span>
+                
+                {/* Home Team */}
+                <span className={`text-sm font-black ${game.home_score > game.away_score ? 'text-emerald-400' : 'text-red-300/70'}`}>
+                  {game.home_score}
+                </span>
+                <span className={`text-xs font-bold ${game.home_score > game.away_score ? 'text-white' : 'text-red-300/60'}`}>
+                  {game.home_team}
+                </span>
+                <img src={TEAM_LOGOS[game.home_team]} alt={game.home_team} className="w-4 h-4 flex-shrink-0" onError={(e) => e.target.style.display='none'} />
+                
+                {/* Status Badge - separated with margin */}
+                <Badge className={`text-[8px] font-bold px-1.5 py-0 ml-1 ${
                   isLive ? 'bg-red-500 text-white border-red-400 animate-pulse' :
-                  isFinal ? 'bg-zinc-700 text-zinc-300 border-zinc-600' :
+                  isFinal ? 'bg-zinc-700/80 text-zinc-400 border-zinc-600' :
                   'bg-amber-500/30 text-amber-300 border-amber-500/50'
                 }`}>
                   {game.status?.toUpperCase() || game.period}
