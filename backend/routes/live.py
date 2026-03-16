@@ -114,9 +114,14 @@ async def get_live_scores():
 @router.get("/news")
 async def get_breaking_news():
     """
-    Get breaking NBA news and injury updates.
+    Get breaking NBA news from multiple sources.
     
-    Pulls from injury reports and generates news-style headlines.
+    Pulls from:
+    - ESPN NBA headlines
+    - Injury reports from database
+    - Line movements
+    - Real-time game updates
+    
     Caches results for 60 seconds.
     """
     global _news_cache
@@ -133,6 +138,46 @@ async def get_breaking_news():
         
         headlines = []
         
+        # Fetch real NBA news from ESPN RSS
+        try:
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                # ESPN NBA News RSS
+                espn_response = await client.get("https://www.espn.com/espn/rss/nba/news")
+                if espn_response.status_code == 200:
+                    import re
+                    # Parse RSS items (simple regex extraction)
+                    items = re.findall(r'<item>.*?<title><!\[CDATA\[(.*?)\]\]></title>.*?</item>', 
+                                      espn_response.text, re.DOTALL)[:5]
+                    for item in items:
+                        clean_title = item.strip()
+                        if clean_title and len(clean_title) > 10:
+                            headlines.append({
+                                "text": f"ESPN: {clean_title}",
+                                "type": "breaking",
+                                "source": "espn"
+                            })
+        except Exception as e:
+            logger.debug(f"ESPN fetch failed: {e}")
+        
+        # Fetch from NBA.com RSS
+        try:
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                nba_response = await client.get("https://www.nba.com/news/rss/")
+                if nba_response.status_code == 200:
+                    import re
+                    items = re.findall(r'<title>(.*?)</title>', nba_response.text)[2:6]  # Skip first 2 (channel title)
+                    for item in items:
+                        clean_title = item.strip()
+                        if clean_title and len(clean_title) > 10 and 'CDATA' not in clean_title:
+                            headlines.append({
+                                "text": f"NBA.com: {clean_title}",
+                                "type": "info",
+                                "source": "nba"
+                            })
+        except Exception as e:
+            logger.debug(f"NBA.com fetch failed: {e}")
+        
+        # Add injury updates from database
         if mongo_url:
             client = AsyncIOMotorClient(mongo_url)
             db = client[db_name]
@@ -141,7 +186,7 @@ async def get_breaking_news():
             injuries = await db.injury_cache.find(
                 {"status": {"$ne": "Healthy"}},
                 {"_id": 0, "player_name": 1, "team": 1, "status": 1, "return_date": 1}
-            ).sort("updated_at", -1).limit(10).to_list(10)
+            ).sort("updated_at", -1).limit(5).to_list(5)
             
             for injury in injuries:
                 player = injury.get("player_name", "Unknown")
@@ -150,20 +195,22 @@ async def get_breaking_news():
                 
                 if "Out" in status:
                     headlines.append({
-                        "text": f"{player} ({team}) ruled OUT - Monitor usage ripple on teammates",
-                        "type": "injury"
+                        "text": f"INJURY: {player} ({team}) ruled OUT - Monitor usage ripple",
+                        "type": "injury",
+                        "source": "internal"
                     })
                 elif "Questionable" in status or "Doubtful" in status:
                     headlines.append({
-                        "text": f"{player} ({team}) listed as {status} - Watch for late scratch",
-                        "type": "injury"
+                        "text": f"INJURY: {player} ({team}) {status} - Watch for late scratch",
+                        "type": "injury",
+                        "source": "internal"
                     })
             
-            # Get line movements (if we have them)
+            # Get line movements
             movements = await db.line_movements.find(
                 {},
                 {"_id": 0}
-            ).sort("timestamp", -1).limit(5).to_list(5)
+            ).sort("timestamp", -1).limit(3).to_list(3)
             
             for move in movements:
                 player = move.get("player_name", "")
@@ -172,24 +219,45 @@ async def get_breaking_news():
                 
                 if player and stat:
                     headlines.append({
-                        "text": f"Line movement: {player} {stat} line moved {direction}",
-                        "type": "breaking"
+                        "text": f"LINE MOVE: {player} {stat} shifted {direction}",
+                        "type": "breaking",
+                        "source": "internal"
                     })
         
-        # Add default headlines if we don't have enough
-        if len(headlines) < 3:
+        # Add live game updates
+        if _scores_cache.get("data"):
+            live_games = [g for g in _scores_cache["data"] if g.get("status", "").startswith("Q")]
+            for game in live_games[:2]:
+                away = game.get("away_team", "")
+                home = game.get("home_team", "")
+                away_score = game.get("away_score", 0)
+                home_score = game.get("home_score", 0)
+                period = game.get("status", "")
+                headlines.append({
+                    "text": f"LIVE: {away} {away_score} @ {home} {home_score} ({period})",
+                    "type": "breaking",
+                    "source": "live"
+                })
+        
+        # Add fallback headlines if we don't have enough
+        if len(headlines) < 5:
             defaults = [
-                {"text": "AI insights powered by real-time defensive matchup analysis", "type": "info"},
-                {"text": "Defense vs Position (DvP) rankings updated daily at 8AM EST", "type": "info"},
-                {"text": "Usage Ripple automatically adjusts when key players are OUT", "type": "info"},
-                {"text": "Command Post: Build and simulate parlay configurations", "type": "info"}
+                {"text": "AI insights powered by real-time defensive matchup analysis", "type": "info", "source": "system"},
+                {"text": "Defense vs Position (DvP) rankings updated daily at 8AM EST", "type": "info", "source": "system"},
+                {"text": "Usage Ripple adjusts projections when key players are OUT", "type": "info", "source": "system"},
+                {"text": "Command Post: Build and simulate parlay risk profiles", "type": "info", "source": "system"},
+                {"text": "Track line movements and betting trends in real-time", "type": "info", "source": "system"}
             ]
-            headlines.extend(defaults[:5 - len(headlines)])
+            headlines.extend(defaults[:8 - len(headlines)])
+        
+        # Shuffle to mix sources
+        import random
+        random.shuffle(headlines)
         
         # Update cache
         _news_cache = {"data": headlines, "timestamp": now}
         
-        return {"success": True, "headlines": headlines, "cached": False}
+        return {"success": True, "headlines": headlines, "cached": False, "count": len(headlines)}
         
     except Exception as e:
         logger.error(f"[LIVE] News error: {e}")
@@ -198,6 +266,7 @@ async def get_breaking_news():
             "success": True,
             "headlines": [
                 {"text": "Real-time NBA prop analysis powered by AI", "type": "info"},
-                {"text": "Injury reports and usage ripple tracked automatically", "type": "info"}
+                {"text": "Injury reports and usage ripple tracked automatically", "type": "info"},
+                {"text": "Defense vs Position rankings update daily", "type": "info"}
             ]
         }

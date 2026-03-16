@@ -284,14 +284,14 @@ const BreakingNewsTicker = memo(() => {
           {[...displayNews, ...displayNews, ...displayNews].map((item, idx) => (
             <div key={`news-${idx}`} className="flex items-center gap-2.5 px-8">
               {item.type === 'breaking' ? (
-                <span className="px-2 py-0.5 bg-red-500 text-white text-[11px] font-bold rounded">BREAKING</span>
+                <span className="px-2 py-0.5 bg-white text-red-950 text-[11px] font-bold rounded">BREAKING</span>
               ) : item.type === 'injury' ? (
-                <AlertTriangle className="w-4 h-4 text-black" />
+                <AlertTriangle className="w-4 h-4 text-white" />
               ) : (
-                <Newspaper className="w-4 h-4 text-black" />
+                <Newspaper className="w-4 h-4 text-white" />
               )}
-              <span className="text-sm text-red-100 whitespace-nowrap">{item.text}</span>
-              <span className="text-black text-lg mx-2">•</span>
+              <span className="text-sm text-white whitespace-nowrap">{item.text}</span>
+              <span className="text-white text-lg mx-2">•</span>
             </div>
           ))}
         </div>
