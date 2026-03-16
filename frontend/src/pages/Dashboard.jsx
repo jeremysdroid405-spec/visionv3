@@ -3,9 +3,11 @@
  * 
  * SSOT Two-Pipe Architecture with TanStack Query
  * - PIPE 1: useMasterStats (Stats Vault - 24hr cache)
- * - PIPE 2: useLiveOdds (Live Wire - 30s polling)
+ * - PIPE 2: useWarZone, useSafeHaven, useFrontLines (Live Wire - 30s polling)
+ * 
+ * HIGHLANDER PROTOCOL: useDFSData DELETED - all data via TanStack Query
  */
-import React, { useState, useCallback, useEffect, memo } from 'react';
+import React, { useState, useCallback, useEffect, memo, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { toast } from 'sonner';
@@ -33,10 +35,18 @@ import {
   TEAM_LOGOS, STAT_CATEGORIES, getCategoryKey 
 } from '../components/dashboard/constants';
 
-// Hooks & Logic - SSOT Global State
-import { useDFSData } from '../hooks/useDFSData';
+// SSOT Global State - TanStack Query hooks ONLY
+// PURGED: useDFSData - DELETED per Highlander Protocol
 import { buildMasterParlayTickets } from '../logic/matrixEngine';
-import { useLiveScores, useBreakingNews, usePlayerSearch } from '../hooks/useLiveOdds';
+import { 
+  useLiveScores, 
+  useBreakingNews, 
+  usePlayerSearch,
+  useWarZone,
+  useSafeHaven,
+  useFrontLines,
+  useLiveOdds
+} from '../hooks/useLiveOdds';
 import { useMasterStats } from '../hooks/useMasterStats';
 
 // ==================== HELPER COMPONENTS ====================
@@ -522,12 +532,46 @@ const Dashboard = () => {
   const navigate = useNavigate();
   const { user, logout, isDemo } = useAuth();
   
-  // Data from hook
-  const {
-    players, trending, radarPicks, vaultPicks, frontLinesPicks,
-    popularBets, popularBetsStatus, linesLoaded, staticLoaded, syncing,
-    boardIntelStatus, syncStatus, triggerSync
-  } = useDFSData();
+  // ========== SSOT: TanStack Query Subscriptions ==========
+  // PIPE 2: Live Wire - 30s polling for real-time updates
+  const { data: warZoneData, isLoading: warZoneLoading, refetch: refetchWarZone } = useWarZone();
+  const { data: safeHavenData, isLoading: safeHavenLoading, refetch: refetchSafeHaven } = useSafeHaven();
+  const { data: frontLinesData, isLoading: frontLinesLoading, refetch: refetchFrontLines } = useFrontLines();
+  const { data: liveOddsData, isLoading: boardLoading, refetch: refetchBoard } = useLiveOdds();
+  
+  // Extract picks from TanStack Query data
+  const radarPicks = useMemo(() => warZoneData?.picks || [], [warZoneData]);
+  const vaultPicks = useMemo(() => safeHavenData?.picks || [], [safeHavenData]);
+  const frontLinesPicks = useMemo(() => frontLinesData?.picks || [], [frontLinesData]);
+  const players = useMemo(() => liveOddsData?.players || [], [liveOddsData]);
+  
+  // Derive trending/popular from live data
+  const trending = useMemo(() => players.slice(0, 8), [players]);
+  const popularBets = useMemo(() => {
+    const allPicks = [...radarPicks, ...vaultPicks].slice(0, 10);
+    return allPicks;
+  }, [radarPicks, vaultPicks]);
+  
+  // Status flags derived from query state
+  const linesLoaded = !boardLoading && players.length > 0;
+  const staticLoaded = !warZoneLoading && !safeHavenLoading;
+  const syncing = boardLoading || warZoneLoading || safeHavenLoading;
+  const boardIntelStatus = { 
+    demon_count: radarPicks.length, 
+    goblin_count: vaultPicks.length,
+    total_players: players.length 
+  };
+  const syncStatus = { last_sync: warZoneData?.synced_at };
+  const popularBetsStatus = { count: popularBets.length };
+  
+  // Refetch all data (replaces old triggerSync)
+  const triggerSync = useCallback(() => {
+    refetchWarZone();
+    refetchSafeHaven();
+    refetchFrontLines();
+    refetchBoard();
+    toast.success('Data refreshed');
+  }, [refetchWarZone, refetchSafeHaven, refetchFrontLines, refetchBoard]);
   
   // Local UI state
   const [searchTerm, setSearchTerm] = useState('');

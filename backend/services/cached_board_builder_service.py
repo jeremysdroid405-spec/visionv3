@@ -354,7 +354,7 @@ class CachedBoardBuilderService:
             "nba_com_id": None,
             "espn_id": None,
             "position": None,
-            "l10_stats": {},
+            # SSOT: Stats REMOVED - use Master Hub (PIPE 1) for stats
             "is_verified": False,
             "is_mapper_matched": False,
             "props": [],
@@ -405,20 +405,12 @@ class CachedBoardBuilderService:
             "position": hub_player.get("position"),
             "jersey_number": hub_player.get("jersey"),
             
-            # Stats
+            # SSOT: Stats REMOVED from cached_board - use Master Hub (PIPE 1) instead
+            # l5_stats and l10_stats are calculated on-the-fly from master_hub.game_logs
             "season_avg": season_avg,
             "games_played": season_avg.get("gp", player_stats.get("games_played", 0)),
-            "l10_stats": {
-                "pts": player_stats.get("pts_avg_l10", season_avg.get("pts", 0)),
-                "reb": player_stats.get("reb_avg_l10", season_avg.get("reb", 0)),
-                "ast": player_stats.get("ast_avg_l10", season_avg.get("ast", 0)),
-                "pts_reb_ast": player_stats.get("pra_avg_l10", 0),
-            },
-            "l5_stats": {
-                "pts": player_stats.get("pts_avg_l5", 0),
-                "reb": player_stats.get("reb_avg_l5", 0),
-                "ast": player_stats.get("ast_avg_l5", 0),
-            },
+            # PURGED: l10_stats - redundant with master_hub.baseline_stats
+            # PURGED: l5_stats - redundant with master_hub.baseline_stats
             
             # Social signals
             "volatility_flag": social.get("volatility_flag", False),
@@ -468,17 +460,8 @@ class CachedBoardBuilderService:
             "position": roster_player.get("position"),
             "jersey_number": roster_player.get("jersey_number"),
             "games_played": player_stats.get("games_played", 0),
-            "l10_stats": {
-                "pts": player_stats.get("pts_avg_l10", 0),
-                "reb": player_stats.get("reb_avg_l10", 0),
-                "ast": player_stats.get("ast_avg_l10", 0),
-                "pts_reb_ast": player_stats.get("pra_avg_l10", 0),
-            },
-            "l5_stats": {
-                "pts": player_stats.get("pts_avg_l5", 0),
-                "reb": player_stats.get("reb_avg_l5", 0),
-                "ast": player_stats.get("ast_avg_l5", 0),
-            },
+            # SSOT: Stats REMOVED - use Master Hub (PIPE 1) instead
+            # PURGED: l10_stats, l5_stats - redundant with master_hub
             "volatility_flag": social.get("volatility_flag", False),
             "revenge_game": social.get("revenge_game", False),
             "injury_status": social.get("injury_status"),

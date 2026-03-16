@@ -7,6 +7,8 @@
  * - PIPE 1: useMasterStats for player stats (24hr cache)
  * - PIPE 2: usePlayerProfile for profiles, useSimulation for parlay sim
  * 
+ * HIGHLANDER PROTOCOL: All data via TanStack Query - no localized fetches
+ * 
  * Terminology (No "Certainty"):
  * - Convergence Rate: Combined tactical probability
  * - Infiltration Grade: Overall risk assessment (S/A/B/C/D)
@@ -23,8 +25,8 @@ import { Button } from '../ui/button';
 import CommandSearch from './CommandSearch';
 import TacticalPlayerCard from './TacticalPlayerCard';
 
-// SSOT Global State Hooks
-import { usePlayerProfile } from '../../hooks/useLiveOdds';
+// SSOT Global State Hooks - TanStack Query
+import { usePlayerProfile, useSimulation } from '../../hooks/useLiveOdds';
 
 // Grade colors and styles
 const GRADE_STYLES = {
@@ -306,32 +308,29 @@ const CommandPost = memo(({ isOpen, onClose, pendingLeg, onPendingLegProcessed }
     setSimulation(null);
   }, []);
 
-  // PIPE 2: Run simulation - for now using direct fetch until mutation pattern is implemented
-  const API_URL = process.env.REACT_APP_BACKEND_URL;
-  const runSimulation = useCallback(async () => {
+  // PIPE 2: Run simulation via TanStack Query useMutation (HIGHLANDER PROTOCOL)
+  const simulationMutation = useSimulation();
+  
+  const runSimulationHandler = useCallback(() => {
     if (legs.length === 0) return;
     
     setLoading(true);
-    try {
-      const response = await fetch(`${API_URL}/api/command/simulate`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ legs })
-      });
-      const data = await response.json();
-      
-      if (data.success) {
-        setSimulation(data.simulation);
-        if (data.simulation.legs) {
-          setLegs(data.simulation.legs);
+    simulationMutation.mutate(legs, {
+      onSuccess: (data) => {
+        if (data.success) {
+          setSimulation(data.simulation);
+          if (data.simulation.legs) {
+            setLegs(data.simulation.legs);
+          }
         }
+        setLoading(false);
+      },
+      onError: (error) => {
+        console.error('Simulation error:', error);
+        setLoading(false);
       }
-    } catch (error) {
-      console.error('Simulation error:', error);
-    } finally {
-      setLoading(false);
-    }
-  }, [legs, API_URL]);
+    });
+  }, [legs, simulationMutation]);
 
   // ==================== CONFLICT DETECTION ENGINE ====================
   // Detect mutually exclusive parameters (Over/Under on same player+stat)
@@ -586,7 +585,7 @@ const CommandPost = memo(({ isOpen, onClose, pendingLeg, onPendingLegProcessed }
       {/* Actions */}
       <div className="p-4 border-t border-zinc-800 bg-zinc-900/50">
         <Button
-          onClick={runSimulation}
+          onClick={runSimulationHandler}
           disabled={legs.length === 0 || loading || hasAnyConflicts}
           className={`w-full font-medium ${
             hasAnyConflicts 

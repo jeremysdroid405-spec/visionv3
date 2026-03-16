@@ -3,13 +3,15 @@ Command Post Routes
 ===================
 Risk Assessment Hub API endpoints.
 
+SSOT ARCHITECTURE: All data comes from MongoDB (Master Hub / Cached Board).
+NO external API calls allowed in this file.
+
 Endpoints:
 - POST /api/command/simulate - Simulate parlay configuration
-- GET /api/command/search - Search players via BallDontLie
+- GET /api/command/search - Search players from Master Hub
 - GET /api/command/profile/{player_name} - Get tactical profile for player
 """
 import os
-import httpx
 import logging
 from typing import List, Optional
 from datetime import datetime, timezone
@@ -25,9 +27,17 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/command", tags=["Command Post"])
 
-# BallDontLie API config
-BDL_API_KEY = os.environ.get("BALLDONTLIE_API_KEY", "")
-BDL_BASE = "https://api.balldontlie.io/nba/v1"
+# PURGED: BallDontLie API - all data now comes from Master Hub
+# BDL_API_KEY = REMOVED
+# BDL_BASE = REMOVED
+
+# Database reference (set via dependency injection)
+_db = None
+
+def set_db(db):
+    """Set database reference for Command Post routes."""
+    global _db
+    _db = db
 
 
 # ==================== REQUEST MODELS ====================
@@ -98,72 +108,45 @@ async def search_players(
     limit: int = Query(10, ge=1, le=25, description="Max results")
 ):
     """
-    Search players via BallDontLie API.
+    SSOT: Search players from NBA Master Hub.
     
     Returns player list with basic info for Command Post selection.
-    Handles full name searches by trying last name if full name fails.
+    All data comes from nba_master_hub_2026 - NO external API calls.
     """
-    if not BDL_API_KEY:
-        raise HTTPException(status_code=503, detail="BallDontLie API not configured")
-    
-    async def do_search(search_term: str) -> list:
-        """Perform BDL search with given term."""
-        async with httpx.AsyncClient(timeout=15.0) as client:
-            response = await client.get(
-                f"{BDL_BASE}/players",
-                params={
-                    "search": search_term,
-                    "per_page": limit
-                },
-                headers={"Authorization": BDL_API_KEY}
-            )
-            
-            if response.status_code != 200:
-                return []
-            
-            data = response.json()
-            return data.get("data", [])
+    if _db is None:
+        raise HTTPException(status_code=503, detail="Database not initialized")
     
     try:
-        players = await do_search(query)
+        # Build lookup cache if needed
+        lookup = await _build_player_lookup(_db)
         
-        # If no results and query has multiple words, try last word (likely last name)
-        if not players and " " in query:
-            parts = query.strip().split()
-            # Try last name
-            players = await do_search(parts[-1])
-            
-            # Filter to match full query if possible
-            if players:
-                query_lower = query.lower()
-                filtered = [p for p in players 
-                           if query_lower in f"{p.get('first_name', '')} {p.get('last_name', '')}".lower()]
-                if filtered:
-                    players = filtered
-        
-        # Format for frontend
+        # Search by name (case-insensitive)
+        query_lower = query.lower()
         results = []
-        for player in players:
-            results.append({
-                "id": player.get("id"),
-                "player_name": f"{player.get('first_name', '')} {player.get('last_name', '')}".strip(),
-                "team": player.get("team", {}).get("abbreviation", ""),
-                "team_name": player.get("team", {}).get("full_name", ""),
-                "position": player.get("position", ""),
-                "jersey": player.get("jersey_number"),
-                "height": player.get("height"),
-                "weight": player.get("weight")
-            })
+        
+        for name_key, player in lookup.items():
+            if query_lower in name_key:
+                results.append({
+                    "id": player.get("player_id"),
+                    "player_name": player.get("display_name", ""),
+                    "team": player.get("team", ""),
+                    "position": player.get("position", ""),
+                    "headshot_url": player.get("headshot_url"),
+                    "nba_id": player.get("nba_id"),
+                    "has_stats": bool(player.get("baseline_stats"))
+                })
+                
+                if len(results) >= limit:
+                    break
         
         return {
             "success": True,
             "query": query,
             "count": len(results),
-            "players": results
+            "players": results,
+            "source": "master_hub"
         }
         
-    except httpx.TimeoutException:
-        return {"success": False, "players": [], "error": "Search timeout"}
     except Exception as e:
         logger.error(f"[COMMAND] Search error: {e}")
         return {"success": False, "players": [], "error": str(e)}

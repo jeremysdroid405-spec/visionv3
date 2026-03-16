@@ -17,7 +17,7 @@
  * - Fresh odds are critical for betting decisions
  */
 
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 
 const API = process.env.REACT_APP_BACKEND_URL;
 
@@ -243,9 +243,27 @@ export const usePlayerProfile = (playerName) => {
 };
 
 /**
- * useSimulation - Parlay simulation (using mutation pattern)
- * Note: This returns a query, but simulation should use useMutation
- * for better UX. This is a simplified version.
+ * useSimulation - Parlay simulation using useMutation pattern
+ * This is the proper pattern for POST operations
+ */
+export const useSimulation = () => {
+  const queryClient = useQueryClient();
+  
+  return useMutation({
+    mutationFn: runSimulation,
+    onSuccess: (data) => {
+      // Optionally invalidate related queries after successful simulation
+      console.log('[SIMULATION] Success:', data);
+    },
+    onError: (error) => {
+      console.error('[SIMULATION] Error:', error);
+    }
+  });
+};
+
+/**
+ * useSimulationQuery - Parlay simulation (query pattern - deprecated)
+ * Use useSimulation mutation instead for better UX.
  */
 export const useSimulationQuery = (legs) => {
   return useQuery({

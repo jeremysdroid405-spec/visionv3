@@ -3,9 +3,12 @@ Live Data Routes
 ================
 Real-time NBA scores and breaking news endpoints.
 
+SSOT ARCHITECTURE: Scores/news come from cached data.
+NO external BallDontLie API calls.
+
 Endpoints:
-- GET /api/live/scores - Live NBA game scores
-- GET /api/live/news - Breaking news and injury updates
+- GET /api/live/scores - Live NBA game scores (from cache/Odds API data)
+- GET /api/live/news - Breaking news and injury updates (from RSS feeds)
 """
 import os
 import httpx
@@ -20,22 +23,29 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/live", tags=["Live Data"])
 
-# BallDontLie API config
-BDL_API_KEY = os.environ.get("BALLDONTLIE_API_KEY", "")
-BDL_BASE = "https://api.balldontlie.io/nba/v1"
+# PURGED: BallDontLie API - scores now come from cached events/Odds API
+# BDL_API_KEY = REMOVED
+# BDL_BASE = REMOVED
 
 # Cache for scores (refresh every 30 seconds)
 _scores_cache = {"data": [], "timestamp": None}
 _news_cache = {"data": [], "timestamp": None}
 
+# Database reference
+_db = None
+
+def set_db(db):
+    global _db
+    _db = db
+
 
 @router.get("/scores")
 async def get_live_scores():
     """
-    Get live NBA game scores.
+    SSOT: Get live NBA game scores from cached events.
     
     Returns today's games with scores, periods, and status.
-    Caches results for 30 seconds to reduce API calls.
+    Data comes from dg_events_cache (populated by Odds API sync).
     """
     global _scores_cache
     
@@ -46,66 +56,54 @@ async def get_live_scores():
         return {"success": True, "games": _scores_cache["data"], "cached": True}
     
     try:
-        if not BDL_API_KEY:
-            return {"success": True, "games": [], "error": "API not configured"}
+        if _db is None:
+            return {"success": True, "games": [], "error": "Database not initialized"}
         
         # Get today's date in EST
         est_offset = timedelta(hours=-5)
         today_est = (now + est_offset).strftime("%Y-%m-%d")
         
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            response = await client.get(
-                f"{BDL_BASE}/games",
-                params={"dates[]": today_est},
-                headers={"Authorization": BDL_API_KEY}
-            )
+        # Fetch from cached events (populated by Odds API sync)
+        events = await _db.dg_events_cache.find(
+            {"commence_time": {"$regex": f"^{today_est}"}},
+            {"_id": 0}
+        ).to_list(50)
+        
+        games = []
+        for event in events:
+            home_team = event.get("home_team", "")
+            away_team = event.get("away_team", "")
             
-            if response.status_code != 200:
-                logger.warning(f"[LIVE] Scores fetch failed: {response.status_code}")
-                return {"success": True, "games": _scores_cache.get("data", [])}
+            # Parse team abbreviations
+            home_abbr = home_team.split()[-1][:3].upper() if home_team else ""
+            away_abbr = away_team.split()[-1][:3].upper() if away_team else ""
             
-            data = response.json()
-            games_raw = data.get("data", [])
+            # Determine status from commence_time
+            commence = event.get("commence_time", "")
+            status_label = "upcoming"
+            if commence:
+                try:
+                    game_time = datetime.fromisoformat(commence.replace("Z", "+00:00"))
+                    if game_time < now:
+                        status_label = "live"
+                except (ValueError, TypeError):
+                    pass
             
-            games = []
-            for game in games_raw:
-                home_team = game.get("home_team", {})
-                away_team = game.get("visitor_team", {})
-                
-                # Determine game status
-                status = game.get("status", "scheduled")
-                if status == "Final":
-                    status_label = "final"
-                elif game.get("period", 0) > 0:
-                    status_label = "live"
-                    period = game.get("period", 1)
-                    if period <= 4:
-                        status_label = f"Q{period}"
-                    else:
-                        status_label = f"OT{period - 4}"
-                else:
-                    status_label = "upcoming"
-                
-                games.append({
-                    "game_id": game.get("id"),
-                    "home_team": home_team.get("abbreviation", ""),
-                    "home_score": game.get("home_team_score", 0),
-                    "away_team": away_team.get("abbreviation", ""),
-                    "away_score": game.get("visitor_team_score", 0),
-                    "status": status_label,
-                    "period": game.get("period"),
-                    "time": game.get("time"),
-                    "start_time": game.get("datetime")
-                })
-            
-            # Update cache
-            _scores_cache = {"data": games, "timestamp": now}
-            
-            return {"success": True, "games": games, "cached": False}
-            
-    except httpx.TimeoutException:
-        logger.warning("[LIVE] Scores request timeout")
-        return {"success": True, "games": _scores_cache.get("data", [])}
+            games.append({
+                "game_id": event.get("id"),
+                "home_team": home_abbr,
+                "home_score": 0,  # Scores not available from Odds API
+                "away_team": away_abbr,
+                "away_score": 0,
+                "status": status_label,
+                "start_time": commence
+            })
+        
+        # Update cache
+        _scores_cache = {"data": games, "timestamp": now}
+        
+        return {"success": True, "games": games, "cached": False, "source": "events_cache"}
+        
     except Exception as e:
         logger.error(f"[LIVE] Scores error: {e}")
         return {"success": True, "games": _scores_cache.get("data", [])}
