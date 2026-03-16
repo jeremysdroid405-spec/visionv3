@@ -209,20 +209,20 @@ const LiveScoresTicker = memo(() => {
               <div key={`score-${idx}`} className={`flex items-center gap-2 px-3 py-1 border-r border-purple-800/30 ${isLive ? 'bg-purple-500/10' : ''}`}>
                 {/* Away Team */}
                 <img src={TEAM_LOGOS[game.away_team]} alt={game.away_team} className="w-4 h-4 flex-shrink-0" onError={(e) => e.target.style.display='none'} />
-                <span className={`text-xs font-bold ${game.away_score > game.home_score ? 'text-white' : 'text-purple-300/60'}`}>
+                <span className="text-xs font-bold text-white">
                   {game.away_team}
                 </span>
-                <span className={`text-sm font-black ${game.away_score > game.home_score ? 'text-emerald-400' : 'text-purple-300/70'}`}>
+                <span className={`text-sm font-black ${game.away_score > game.home_score ? 'text-emerald-400' : 'text-red-400'}`}>
                   {game.away_score}
                 </span>
                 
                 <span className="text-purple-500/50 text-[10px]">@</span>
                 
                 {/* Home Team */}
-                <span className={`text-sm font-black ${game.home_score > game.away_score ? 'text-emerald-400' : 'text-purple-300/70'}`}>
+                <span className={`text-sm font-black ${game.home_score > game.away_score ? 'text-emerald-400' : 'text-red-400'}`}>
                   {game.home_score}
                 </span>
-                <span className={`text-xs font-bold ${game.home_score > game.away_score ? 'text-white' : 'text-purple-300/60'}`}>
+                <span className="text-xs font-bold text-white">
                   {game.home_team}
                 </span>
                 <img src={TEAM_LOGOS[game.home_team]} alt={game.home_team} className="w-4 h-4 flex-shrink-0" onError={(e) => e.target.style.display='none'} />
