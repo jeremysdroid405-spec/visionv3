@@ -118,6 +118,10 @@ async def get_breaking_news():
     
     Pulls from:
     - ESPN NBA headlines
+    - CBS Sports NBA
+    - Sporting News NBA
+    - Clutch Points
+    - Ball Is Life
     - Injury reports from database
     - Line movements
     - Real-time game updates
@@ -137,17 +141,15 @@ async def get_breaking_news():
         db_name = os.environ.get("DB_NAME", "pickvision")
         
         headlines = []
+        import re
         
-        # Fetch real NBA news from ESPN RSS
-        try:
-            async with httpx.AsyncClient(timeout=5.0) as client:
-                # ESPN NBA News RSS
+        async with httpx.AsyncClient(timeout=8.0, follow_redirects=True) as client:
+            # ===== ESPN NBA News RSS =====
+            try:
                 espn_response = await client.get("https://www.espn.com/espn/rss/nba/news")
                 if espn_response.status_code == 200:
-                    import re
-                    # Parse RSS items (simple regex extraction)
                     items = re.findall(r'<item>.*?<title><!\[CDATA\[(.*?)\]\]></title>.*?</item>', 
-                                      espn_response.text, re.DOTALL)[:5]
+                                      espn_response.text, re.DOTALL)[:4]
                     for item in items:
                         clean_title = item.strip()
                         if clean_title and len(clean_title) > 10:
@@ -156,26 +158,82 @@ async def get_breaking_news():
                                 "type": "breaking",
                                 "source": "espn"
                             })
-        except Exception as e:
-            logger.debug(f"ESPN fetch failed: {e}")
-        
-        # Fetch from NBA.com RSS
-        try:
-            async with httpx.AsyncClient(timeout=5.0) as client:
-                nba_response = await client.get("https://www.nba.com/news/rss/")
-                if nba_response.status_code == 200:
-                    import re
-                    items = re.findall(r'<title>(.*?)</title>', nba_response.text)[2:6]  # Skip first 2 (channel title)
-                    for item in items:
+            except Exception as e:
+                logger.debug(f"ESPN fetch failed: {e}")
+            
+            # ===== CBS Sports NBA RSS =====
+            try:
+                cbs_response = await client.get("https://www.cbssports.com/rss/headlines/nba/")
+                if cbs_response.status_code == 200:
+                    items = re.findall(r'<title><!\[CDATA\[(.*?)\]\]></title>', cbs_response.text)[:4]
+                    for item in items[1:]:  # Skip channel title
                         clean_title = item.strip()
-                        if clean_title and len(clean_title) > 10 and 'CDATA' not in clean_title:
+                        if clean_title and len(clean_title) > 10:
                             headlines.append({
-                                "text": f"NBA.com: {clean_title}",
+                                "text": f"CBS: {clean_title}",
                                 "type": "info",
-                                "source": "nba"
+                                "source": "cbs"
                             })
-        except Exception as e:
-            logger.debug(f"NBA.com fetch failed: {e}")
+            except Exception as e:
+                logger.debug(f"CBS fetch failed: {e}")
+            
+            # ===== Sporting News NBA =====
+            try:
+                sn_response = await client.get("https://www.sportingnews.com/us/rss/nba")
+                if sn_response.status_code == 200:
+                    items = re.findall(r'<title><!\[CDATA\[(.*?)\]\]></title>', sn_response.text)
+                    if not items:
+                        items = re.findall(r'<title>(.*?)</title>', sn_response.text)[2:5]
+                    for item in items[1:4]:
+                        clean_title = item.strip()
+                        if clean_title and len(clean_title) > 10 and 'Sporting News' not in clean_title:
+                            headlines.append({
+                                "text": f"SN: {clean_title}",
+                                "type": "info",
+                                "source": "sporting_news"
+                            })
+            except Exception as e:
+                logger.debug(f"Sporting News fetch failed: {e}")
+            
+            # ===== Clutch Points =====
+            try:
+                cp_response = await client.get("https://clutchpoints.com/feed/")
+                if cp_response.status_code == 200:
+                    # Get NBA-related items only
+                    items = re.findall(r'<item>.*?<title><!\[CDATA\[(.*?)\]\]></title>.*?<category.*?>(.*?)</category>.*?</item>', 
+                                      cp_response.text, re.DOTALL)[:10]
+                    nba_items = [item[0] for item in items if 'NBA' in item[1] or 'nba' in item[1].lower()][:3]
+                    if not nba_items:
+                        # Fallback to all items
+                        nba_items = re.findall(r'<title><!\[CDATA\[(.*?)\]\]></title>', cp_response.text)[1:4]
+                    for item in nba_items:
+                        clean_title = item.strip()
+                        if clean_title and len(clean_title) > 10:
+                            headlines.append({
+                                "text": f"Clutch: {clean_title}",
+                                "type": "breaking",
+                                "source": "clutchpoints"
+                            })
+            except Exception as e:
+                logger.debug(f"Clutch Points fetch failed: {e}")
+            
+            # ===== Ball Is Life =====
+            try:
+                bil_response = await client.get("https://ballislife.com/feed/")
+                if bil_response.status_code == 200:
+                    items = re.findall(r'<title><!\[CDATA\[(.*?)\]\]></title>', bil_response.text)
+                    if not items:
+                        items = re.findall(r'<title>(.*?)</title>', bil_response.text)[2:5]
+                    for item in items[1:4]:
+                        clean_title = item.strip()
+                        if clean_title and len(clean_title) > 10:
+                            headlines.append({
+                                "text": f"BIL: {clean_title}",
+                                "type": "info",
+                                "source": "ballislife"
+                            })
+            except Exception as e:
+                logger.debug(f"Ball Is Life fetch failed: {e}")
         
         # Add injury updates from database
         if mongo_url:
