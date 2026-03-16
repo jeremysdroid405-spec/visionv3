@@ -1,12 +1,14 @@
 """
 Master Hub CRON Scheduler
 =========================
-Schedules daily sync of NBA Master Hub at 0300 EST.
+Schedules daily sync of NBA Master Hub at 0300 EST using Tank01 API.
 
 This ensures the database is always up-to-date with:
-- Player baseline stats (L5, L10, season averages)
+- Player baseline stats (L5, L10, season averages) calculated from real game logs
 - All prop categories pre-computed
 - Ready for instant client access
+
+Data Source: Tank01 Fantasy Stats API (RapidAPI)
 """
 
 import os
@@ -27,15 +29,17 @@ async def run_daily_sync():
     """
     Daily sync job - runs at 0300 EST.
     
-    Updates the nba_master_hub_2026 collection with:
-    - player_id, player_name, team_abbreviation
-    - photo_url (direct asset link)
-    - baseline_stats: L5_avg, L10_avg, season_avg for all prop categories
+    Uses Tank01 Fantasy Stats API to fetch real game logs and calculate:
+    - L5_avg: Last 5 games average
+    - L10_avg: Last 10 games average  
+    - season_avg: Full season average
+    
+    Only counts games where minutes > 0 (actually played).
     """
     from motor.motor_asyncio import AsyncIOMotorClient
-    from services.master_hub_sync import MasterHubSyncService
+    from services.tank01_stats_service import run_tank01_sync
     
-    logger.info("[CRON] Starting daily Master Hub sync...")
+    logger.info("[CRON] Starting daily Master Hub sync (Tank01)...")
     
     mongo_url = os.environ.get("MONGO_URL")
     db_name = os.environ.get("DB_NAME", "test_database")
@@ -48,8 +52,8 @@ async def run_daily_sync():
         client = AsyncIOMotorClient(mongo_url)
         db = client[db_name]
         
-        service = MasterHubSyncService(db)
-        result = await service.run_full_sync()
+        # Run Tank01 stats sync
+        result = await run_tank01_sync(db)
         
         logger.info(f"[CRON] Daily sync completed: {result}")
         

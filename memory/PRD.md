@@ -5,6 +5,37 @@ PickVision is a high-performance NBA Player Prop Dashboard with a "military tech
 
 ## Latest Update: 2026-03-16
 
+### API Provider Migration: BallDontLie → Tank01 - COMPLETED
+**Migrated primary data engine from BallDontLie to Tank01 Fantasy Stats API (RapidAPI)**
+
+**Changes:**
+1. **Authentication Setup:**
+   - Tank01 API Key: Configured in `.env` as `TANK01_API_KEY`
+   - RapidAPI Host: `tank01-fantasy-stats.p.rapidapi.com`
+
+2. **New Service Created:**
+   - `/app/backend/services/tank01_stats_service.py`
+   - Fetches real game logs via `getNBAGamesForPlayer`
+   - Calculates L5, L10, Season averages from actual games (minutes > 0 only)
+   - Includes std_dev calculation for stability metrics
+
+3. **CRON Job Updated:**
+   - `/app/backend/services/cron_scheduler.py` now uses Tank01
+   - Daily sync at 0300 EST
+
+4. **API Endpoints Added:**
+   - `POST /api/v3/master-hub/sync-tank01` - Manual Tank01 sync
+   - `POST /api/v3/master-hub/populate-tank01-ids` - ID population
+
+5. **Legacy BallDontLie Code Deprecated:**
+   - `/app/backend/services/master_hub_sync.py` - Simplified wrapper to Tank01
+   - `.env` - BallDontLie key marked as deprecated
+
+**Results:**
+- 470 players synced with real game log data
+- Stats now accurate: LeBron L5=25.4, L10=24.2, SZN=24.5 (75 games)
+- Devin Vassell: L5=14.8, L10=17.3, SZN=16.3 (64 games)
+
 ### Intel Suite Advanced Metrics - COMPLETED
 **Expanded backend schema to calculate and store advanced metrics for Radar Picks**
 

@@ -89,6 +89,40 @@ async def trigger_hub_sync():
     return result
 
 
+@router.post("/sync-tank01")
+async def trigger_tank01_sync():
+    """
+    Trigger stats sync using Tank01 API.
+    
+    Uses Tank01 Fantasy Stats API to fetch real game logs and calculate
+    accurate L5, L10, and Season averages for all players.
+    
+    This is the PRIMARY stats sync method (replaces legacy BallDontLie).
+    """
+    if _db is None:
+        raise HTTPException(status_code=500, detail="Database not initialized")
+    
+    from services.tank01_stats_service import run_tank01_sync
+    result = await run_tank01_sync(_db)
+    return result
+
+
+@router.post("/populate-tank01-ids")
+async def populate_tank01_ids():
+    """
+    Populate Tank01 player IDs for players in master hub.
+    
+    Required before running Tank01 stats sync.
+    """
+    if _db is None:
+        raise HTTPException(status_code=500, detail="Database not initialized")
+    
+    from services.tank01_stats_service import get_tank01_service
+    service = get_tank01_service(_db)
+    result = await service.populate_tank01_ids()
+    return result
+
+
 @router.post("/start-scheduler")
 async def start_hub_scheduler():
     """Start the 4:00 AM ET daily sync scheduler."""
