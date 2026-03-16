@@ -5,16 +5,24 @@ PickVision is a high-performance NBA Player Prop Dashboard with a "military tech
 
 ## Latest Update: 2026-03-16
 
-### Full Intel Suite Display Fix ✅ (NEW - March 16, 2026)
-- **Fixed:** Full Intel Suite now correctly displays ONLY for Radar/OBJECTIVE picks
-- **Backend:** `/api/command/profile/{player_name}` returns `is_radar: true` for all board player props
-- **Frontend:** `TacticalPlayerCard.jsx` uses `prop.is_radar` flag to conditionally render:
-  - **Radar picks (is_radar: true):** Full Intel Suite (DvP, Pace Multiplier, Stability Index)
-  - **Non-radar props (is_radar: false):** Basic stats only (L5/L10/Season)
-- **Non-board players:** Receive `is_on_board: false` with empty `lines: []` and message
+### Conditional State Highlighting ✅ (NEW - March 16, 2026)
+**Complete implementation of Target-Lock system for PropVision recommendations**
+
+- **Backend:** `/api/command/profile/{player_name}` now fetches ALL props from `dg_live_props` and cross-references with PropVision recommendations (`dg_radar_picks`, `dg_goblin_vault`, `dg_front_lines`)
+- **Target-Lock Identification:** Each prop line includes `is_radar: true/false` flag
+- **Frontend Rendering:**
+  - **Target-Lock props (is_radar: true):**
+    - Neon Green glow + pulsing animation
+    - Crosshair icon + "OBJECTIVE" badge
+    - Click reveals **Full Intel Suite** (DvP, Pace Multiplier, Stability Index)
+  - **Standard props (is_radar: false):**
+    - Neutral/muted styling, no badge
+    - Click reveals **Basic Stats only** (L5/L10/Season avg)
+- **Example:** Search "LeBron James" - shows 50 props, 9 look normal, but "Points Over 25.5" glows green with crosshair = PropVision has a Target-Lock on that line
 - **Files Updated:**
-  - `/app/frontend/src/components/dashboard/CommandPost.jsx` (line 454 - added is_radar to props mapping)
-  - `/app/frontend/src/components/dashboard/TacticalPlayerCard.jsx` (line 487 - uses prop.is_radar)
+  - `/app/backend/routes/command.py` (completely rewritten profile endpoint)
+  - `/app/frontend/src/components/dashboard/TacticalPlayerCard.jsx` (targetLockCount, isRadar logic)
+  - `/app/frontend/src/components/dashboard/CommandPost.jsx` (passes is_radar flag)
 
 ### PropVision Command Post Implementation ✅
 
