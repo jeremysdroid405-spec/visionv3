@@ -167,7 +167,7 @@ const LiveScoresTicker = memo(() => {
   
   if (loading) {
     return (
-      <div className="bg-gradient-to-r from-purple-950 via-purple-900/80 to-purple-950 border-y border-purple-500/30 py-1.5 px-3">
+      <div className="bg-gradient-to-r from-purple-950/50 via-purple-900/40 to-purple-950/50 border-y border-purple-500/20 py-1.5 px-3">
         <div className="flex items-center gap-2 text-purple-300 text-[10px]">
           <Activity className="w-3 h-3 animate-pulse" />
           <span className="font-medium">Loading scores...</span>
@@ -178,7 +178,7 @@ const LiveScoresTicker = memo(() => {
   
   if (!scores.length) {
     return (
-      <div className="bg-gradient-to-r from-purple-950 via-purple-900/80 to-purple-950 border-y border-purple-500/30 py-1.5 px-3">
+      <div className="bg-gradient-to-r from-purple-950/50 via-purple-900/40 to-purple-950/50 border-y border-purple-500/20 py-1.5 px-3">
         <div className="flex items-center gap-2">
           <div className="flex items-center gap-1 px-1.5 py-0.5 bg-purple-800/50 rounded">
             <div className="w-1.5 h-1.5 rounded-full bg-purple-500/50" />
@@ -191,12 +191,12 @@ const LiveScoresTicker = memo(() => {
   }
   
   return (
-    <div className="bg-gradient-to-r from-purple-950 via-purple-900/80 to-purple-950 border-y border-purple-500/30 py-1 overflow-hidden" data-testid="live-scores-ticker">
+    <div className="bg-gradient-to-r from-purple-950/50 via-purple-900/40 to-purple-950/50 border-y border-purple-500/20 py-1 overflow-hidden" data-testid="live-scores-ticker">
       <div className="ticker-scroll">
         <div className="ticker-content items-center">
           {/* LIVE indicator */}
-          <div className="flex items-center gap-2 px-3 border-r border-purple-800/50">
-            <div className="flex items-center gap-1 px-1.5 py-0.5 bg-purple-500 rounded animate-pulse">
+          <div className="flex items-center gap-2 px-3 border-r border-purple-800/30">
+            <div className="flex items-center gap-1 px-1.5 py-0.5 bg-purple-500/80 rounded animate-pulse">
               <div className="w-1.5 h-1.5 rounded-full bg-white" />
               <span className="text-[9px] font-black text-white">LIVE</span>
             </div>
@@ -206,7 +206,7 @@ const LiveScoresTicker = memo(() => {
             const isFinal = game.status === 'final';
             
             return (
-              <div key={`score-${idx}`} className={`flex items-center gap-2 px-3 py-1 border-r border-purple-800/50 ${isLive ? 'bg-purple-500/10' : ''}`}>
+              <div key={`score-${idx}`} className={`flex items-center gap-2 px-3 py-1 border-r border-purple-800/30 ${isLive ? 'bg-purple-500/10' : ''}`}>
                 {/* Away Team */}
                 <img src={TEAM_LOGOS[game.away_team]} alt={game.away_team} className="w-4 h-4 flex-shrink-0" onError={(e) => e.target.style.display='none'} />
                 <span className={`text-xs font-bold ${game.away_score > game.home_score ? 'text-white' : 'text-purple-300/60'}`}>
@@ -229,9 +229,9 @@ const LiveScoresTicker = memo(() => {
                 
                 {/* Status Badge - separated with margin */}
                 <Badge className={`text-[8px] font-bold px-1.5 py-0 ml-1 ${
-                  isLive ? 'bg-purple-500 text-white border-purple-400 animate-pulse' :
-                  isFinal ? 'bg-zinc-700/80 text-zinc-400 border-zinc-600' :
-                  'bg-amber-500/30 text-amber-300 border-amber-500/50'
+                  isLive ? 'bg-purple-500/80 text-white border-purple-400/50 animate-pulse' :
+                  isFinal ? 'bg-zinc-700/50 text-zinc-400 border-zinc-600/50' :
+                  'bg-amber-500/20 text-amber-300 border-amber-500/30'
                 }`}>
                   {game.status?.toUpperCase() || game.period}
                 </Badge>
