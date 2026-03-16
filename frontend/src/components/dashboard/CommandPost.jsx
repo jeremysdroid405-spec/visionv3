@@ -17,7 +17,7 @@ import {
 } from 'lucide-react';
 import { Button } from '../ui/button';
 import CommandSearch from './CommandSearch';
-import TacticalProfile from './TacticalProfile';
+import TacticalPlayerCard from './TacticalPlayerCard';
 
 const API_URL = process.env.REACT_APP_BACKEND_URL;
 
@@ -419,7 +419,7 @@ const CommandPost = memo(({ isOpen, onClose, pendingLeg, onPendingLegProcessed }
           placeholder="Search player to add leg..."
         />
         
-        {/* Selected Profile */}
+        {/* Selected Profile - Using Tactical Player Card */}
         {profileLoading && (
           <div className="mt-3 text-center text-sm text-zinc-400">
             Loading profile...
@@ -428,11 +428,61 @@ const CommandPost = memo(({ isOpen, onClose, pendingLeg, onPendingLegProcessed }
         
         {selectedProfile && !profileLoading && (
           <div className="mt-3">
-            <TacticalProfile 
-              profile={selectedProfile}
-              onSelectLine={addLegFromLine}
-              onClose={() => setSelectedProfile(null)}
+            <TacticalPlayerCard 
+              player={{
+                player_name: selectedProfile.player_name,
+                player_id: selectedProfile.player_id,
+                team: selectedProfile.team,
+                position: selectedProfile.position,
+                photo_url: selectedProfile.photo_url,
+                opponent: selectedProfile.opponent,
+                props: selectedProfile.lines?.map(line => ({
+                  stat_type: line.stat_type,
+                  line: line.line,
+                  direction: line.direction || 'over',
+                  odds: line.odds,
+                  l5_avg: line.hit_rates?.l5_avg || line.l5_avg,
+                  l10_avg: line.hit_rates?.l10_avg || line.l10_avg,
+                  season_avg: line.season_avg || line.hit_rates?.season_avg,
+                  std_dev: line.std_dev,
+                  h5_rate: line.hit_rates?.h5 || line.h5_rate,
+                  h10_rate: line.hit_rates?.h10 || line.h10_rate,
+                  dvp_rank: line.dvp_rank,
+                  dvp_rank_color: line.dvp_rank_color,
+                  usage_ripple: selectedProfile.usage_ripple?.bump_percent || 0,
+                  pace_factor: line.pace_factor || 1.0
+                })) || []
+              }}
+              radarPicks={selectedProfile.radar_picks || []}
+              onAddToPost={(prop) => {
+                const newLeg = {
+                  player_name: selectedProfile.player_name,
+                  player_id: selectedProfile.player_id,
+                  stat_type: prop.stat_type,
+                  line: prop.line,
+                  direction: prop.direction || 'over',
+                  team: selectedProfile.team,
+                  opponent: selectedProfile.opponent,
+                  is_home: true,
+                  h10_rate: prop.h10_rate || 50,
+                  h5_rate: prop.h5_rate || 50,
+                  season_avg: prop.season_avg,
+                  l5_avg: prop.l5_avg,
+                  l10_avg: prop.l10_avg,
+                  usage_bump_percent: prop.usage_ripple || 0,
+                  dvp_rank: prop.dvp_rank,
+                  dvp_rank_color: prop.dvp_rank_color
+                };
+                setLegs(prev => [...prev, newLeg]);
+              }}
+              defaultExpanded={true}
             />
+            <button
+              onClick={() => setSelectedProfile(null)}
+              className="w-full mt-2 py-2 text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
+            >
+              Close Profile
+            </button>
           </div>
         )}
       </div>

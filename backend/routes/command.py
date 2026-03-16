@@ -100,49 +100,67 @@ async def search_players(
     Search players via BallDontLie API.
     
     Returns player list with basic info for Command Post selection.
+    Handles full name searches by trying last name if full name fails.
     """
     if not BDL_API_KEY:
         raise HTTPException(status_code=503, detail="BallDontLie API not configured")
     
-    try:
+    async def do_search(search_term: str) -> list:
+        """Perform BDL search with given term."""
         async with httpx.AsyncClient(timeout=15.0) as client:
             response = await client.get(
                 f"{BDL_BASE}/players",
                 params={
-                    "search": query,
+                    "search": search_term,
                     "per_page": limit
                 },
                 headers={"Authorization": BDL_API_KEY}
             )
             
             if response.status_code != 200:
-                logger.warning(f"[COMMAND] BDL search failed: {response.status_code}")
-                return {"success": False, "players": [], "error": "Search unavailable"}
+                return []
             
             data = response.json()
-            players = data.get("data", [])
+            return data.get("data", [])
+    
+    try:
+        players = await do_search(query)
+        
+        # If no results and query has multiple words, try last word (likely last name)
+        if not players and " " in query:
+            parts = query.strip().split()
+            # Try last name
+            players = await do_search(parts[-1])
             
-            # Format for frontend
-            results = []
-            for player in players:
-                results.append({
-                    "id": player.get("id"),
-                    "player_name": f"{player.get('first_name', '')} {player.get('last_name', '')}".strip(),
-                    "team": player.get("team", {}).get("abbreviation", ""),
-                    "team_name": player.get("team", {}).get("full_name", ""),
-                    "position": player.get("position", ""),
-                    "jersey": player.get("jersey_number"),
-                    "height": player.get("height"),
-                    "weight": player.get("weight")
-                })
-            
-            return {
-                "success": True,
-                "query": query,
-                "count": len(results),
-                "players": results
-            }
-            
+            # Filter to match full query if possible
+            if players:
+                query_lower = query.lower()
+                filtered = [p for p in players 
+                           if query_lower in f"{p.get('first_name', '')} {p.get('last_name', '')}".lower()]
+                if filtered:
+                    players = filtered
+        
+        # Format for frontend
+        results = []
+        for player in players:
+            results.append({
+                "id": player.get("id"),
+                "player_name": f"{player.get('first_name', '')} {player.get('last_name', '')}".strip(),
+                "team": player.get("team", {}).get("abbreviation", ""),
+                "team_name": player.get("team", {}).get("full_name", ""),
+                "position": player.get("position", ""),
+                "jersey": player.get("jersey_number"),
+                "height": player.get("height"),
+                "weight": player.get("weight")
+            })
+        
+        return {
+            "success": True,
+            "query": query,
+            "count": len(results),
+            "players": results
+        }
+        
     except httpx.TimeoutException:
         return {"success": False, "players": [], "error": "Search timeout"}
     except Exception as e:
@@ -159,15 +177,16 @@ async def get_tactical_profile(
     Get tactical profile for a player.
     
     Returns:
-    - Active prop lines (from cached board)
+    - Active prop lines (from tiered picks collections)
     - Usage Ripple status
     - DvP rankings per stat type
     - Volatility indicators
+    - Radar picks (PropVision objectives)
     """
     from motor.motor_asyncio import AsyncIOMotorClient
     
     try:
-        # Get from cached board
+        # Get from tiered picks collections
         mongo_url = os.environ.get("MONGO_URL")
         db_name = os.environ.get("DB_NAME", "pickvision")
         
@@ -177,38 +196,72 @@ async def get_tactical_profile(
         client = AsyncIOMotorClient(mongo_url)
         db = client[db_name]
         
-        # Find player in cached board
-        player = await db.dg_cached_board.find_one(
-            {"player_name": {"$regex": player_name, "$options": "i"}},
-            {"_id": 0}
-        )
+        # Search across all tiered collections
+        player_name_regex = {"$regex": player_name, "$options": "i"}
         
-        if not player:
+        # Get picks from all tiers
+        radar_picks = await db.dg_radar_picks.find(
+            {"player_name": player_name_regex},
+            {"_id": 0}
+        ).to_list(20)
+        
+        vault_picks = await db.dg_goblin_vault.find(
+            {"player_name": player_name_regex},
+            {"_id": 0}
+        ).to_list(20)
+        
+        front_picks = await db.dg_front_lines.find(
+            {"player_name": player_name_regex},
+            {"_id": 0}
+        ).to_list(20)
+        
+        # Combine all picks
+        all_picks = radar_picks + vault_picks + front_picks
+        
+        if not all_picks:
+            # No picks found - return basic info from BallDontLie
             return {
-                "success": False,
-                "error": "Player not found in today's slate",
-                "player_name": player_name
+                "success": True,
+                "player_name": player_name,
+                "team": "",
+                "position": "",
+                "photo_url": "",
+                "opponent": "",
+                "lines": [],
+                "radar_picks": [],
+                "usage_ripple": None,
+                "message": "No active prop lines for this player today"
             }
         
-        # Get opponent from player data if not provided
-        if not opponent:
-            opponent = player.get("opponent_abbr") or player.get("opponent") or ""
+        # Get player info from first pick
+        first_pick = all_picks[0]
+        player_team = first_pick.get("team", "")
+        opponent = first_pick.get("opponent_abbr") or first_pick.get("opponent") or opponent
         
-        # Build tactical profile
-        props = player.get("props", [])
-        demons = player.get("demons", [])
-        goblins = player.get("goblins", [])
-        
-        # Build prop lines with DvP data
+        # Build prop lines with DvP data - dedupe by stat type
+        seen_stats = set()
         active_lines = []
-        for prop in props:
-            stat = prop.get("stat_type") or prop.get("market", "").replace("player_", "").upper()
-            line = prop.get("line", 0)
-            direction = prop.get("direction", "over")
+        radar_stat_types = []
+        
+        for pick in all_picks:
+            stat = pick.get("stat_type", "")
+            if not stat or stat in seen_stats:
+                continue
+            seen_stats.add(stat)
+            
+            line = pick.get("demon_line") or pick.get("goblin_line") or pick.get("line", 0)
+            direction = pick.get("direction", "over")
+            
+            # Check if this is a radar pick (demon or goblin)
+            is_radar = pick.get("is_demon") or pick.get("is_goblin") or \
+                       pick.get("radar_score", 0) > 0 or pick.get("vault_score", 0) > 0
+            
+            if is_radar:
+                radar_stat_types.append(stat)
             
             # Get DvP for this stat
-            dvp_rank = get_dvp_rank(opponent, stat) if opponent else 15
-            dvp_color = get_dvp_rank_color(dvp_rank)
+            dvp_rank = pick.get("dvp_rank") or (get_dvp_rank(opponent, stat) if opponent else 15)
+            dvp_color = pick.get("dvp_rank_color") or get_dvp_rank_color(dvp_rank)
             dvp_mod = calculate_dvp_modifier(opponent, stat) if opponent else 0.5
             
             # Determine friction level
@@ -223,62 +276,58 @@ async def get_tactical_profile(
                 "stat_type": stat,
                 "line": line,
                 "direction": direction,
-                "price": prop.get("price", -110),
+                "odds": pick.get("demon_odds") or pick.get("goblin_odds") or pick.get("odds"),
+                "is_radar": is_radar,
                 "dvp_rank": dvp_rank,
                 "dvp_rank_color": dvp_color,
                 "dvp_modifier": round(dvp_mod, 3),
-                "friction_level": friction,
-                "hit_rates": prop.get("hit_rates", {})
+                "friction_label": friction,
+                "season_avg": pick.get("season_avg"),
+                "l5_avg": pick.get("l5_avg"),
+                "l10_avg": pick.get("l10_avg"),
+                "std_dev": pick.get("std_dev"),
+                "hit_rates": {
+                    "h5": pick.get("h5_rate", 0),
+                    "h10": pick.get("h10_rate", 0),
+                    "h5_over": pick.get("h5_over"),
+                    "h10_over": pick.get("h10_over"),
+                    "l5_avg": pick.get("l5_avg"),
+                    "l10_avg": pick.get("l10_avg"),
+                    "season_avg": pick.get("season_avg")
+                },
+                "pace_factor": pick.get("pace_factor", 1.0)
             })
         
-        # Usage Ripple status
-        usage_ripple = {
-            "active": player.get("usage_bump_percent", 0) > 0,
-            "bump_percent": player.get("usage_bump_percent", 0),
-            "reason": player.get("usage_bump_reason"),
-            "injured_teammates": player.get("injured_teammates", [])
-        }
+        # Get usage ripple info if available
+        usage_ripple = None
+        for pick in all_picks:
+            if pick.get("usage_bump_percent", 0) > 0:
+                usage_ripple = {
+                    "bump_percent": pick.get("usage_bump_percent", 0),
+                    "source": pick.get("usage_source", "teammate injury")
+                }
+                break
         
-        # Volatility assessment
-        volatility = {
-            "flag": player.get("volatility_flag", False),
-            "reason": player.get("volatility_reason"),
-            "revenge_game": player.get("revenge_game", False)
-        }
-        
-        profile = {
+        return {
             "success": True,
-            "player_name": player.get("player_name"),
-            "player_id": player.get("player_id"),
-            "team": player.get("team"),
-            "team_name": player.get("team_name"),
-            "position": player.get("position"),
-            "photo_url": player.get("photo_url") or player.get("headshot_url"),
+            "player_name": first_pick.get("player_name", player_name),
+            "player_id": first_pick.get("player_id"),
+            "team": player_team,
+            "position": first_pick.get("position", ""),
+            "photo_url": first_pick.get("photo_url", ""),
             "opponent": opponent,
-            "is_verified": player.get("is_verified", False),
-            
-            # Tactical data
-            "active_lines": active_lines,
-            "demon_count": len(demons),
-            "goblin_count": len(goblins),
-            
-            # Ripple & Volatility
-            "usage_ripple": usage_ripple,
-            "volatility": volatility,
-            
-            # Stats
-            "season_avg": player.get("season_avg", {}),
-            "l10_stats": player.get("l10_stats", {}),
-            "l5_stats": player.get("l5_stats", {}),
-            
-            "fetched_at": datetime.now(timezone.utc).isoformat()
+            "lines": active_lines,
+            "radar_picks": radar_stat_types,
+            "usage_ripple": usage_ripple
         }
-        
-        return profile
         
     except Exception as e:
-        logger.error(f"[COMMAND] Profile error for {player_name}: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"[PROFILE] Error getting profile for {player_name}: {e}")
+        return {
+            "success": False,
+            "error": str(e),
+            "player_name": player_name
+        }
 
 
 @router.get("/grades")
