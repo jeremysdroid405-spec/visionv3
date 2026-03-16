@@ -378,8 +378,8 @@ const TacticalPlayerCard = memo(({
   
   // Separate radar picks from standard props
   const sortedProps = [...props].sort((a, b) => {
-    const aIsRadar = radarPicks.includes(a.stat_type);
-    const bIsRadar = radarPicks.includes(b.stat_type);
+    const aIsRadar = a.is_radar || radarPicks.includes(a.stat_type);
+    const bIsRadar = b.is_radar || radarPicks.includes(b.stat_type);
     if (aIsRadar && !bIsRadar) return -1;
     if (!aIsRadar && bIsRadar) return 1;
     return 0;
@@ -483,7 +483,8 @@ const TacticalPlayerCard = memo(({
           
           {sortedProps.length > 0 ? (
             sortedProps.map((prop) => {
-              const isRadar = radarPicks.includes(prop.stat_type);
+              // Use is_radar from prop directly (from API), fallback to radarPicks array check
+              const isRadar = prop.is_radar || radarPicks.includes(prop.stat_type);
               return (
                 <PropArsenalItem
                   key={`${prop.stat_type}-${prop.line}`}

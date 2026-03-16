@@ -450,7 +450,8 @@ const CommandPost = memo(({ isOpen, onClose, pendingLeg, onPendingLegProcessed }
                   dvp_rank: line.dvp_rank,
                   dvp_rank_color: line.dvp_rank_color,
                   usage_ripple: selectedProfile.usage_ripple?.bump_percent || 0,
-                  pace_factor: line.pace_factor || 1.0
+                  pace_factor: line.pace_factor || 1.0,
+                  is_radar: line.is_radar || false
                 })) || []
               }}
               radarPicks={selectedProfile.radar_picks || []}
