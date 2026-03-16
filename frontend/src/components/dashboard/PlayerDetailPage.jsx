@@ -2,11 +2,11 @@
  * PlayerDetailPage - Complete player prop view
  * Shows ALL props as a flat list with category headers (not accordions)
  * 
- * TODO: Subscribe to Global Store for [Player Data]
- * PURGED: All localized fetch() and axios calls removed
+ * SSOT Two-Pipe Architecture:
+ * - PIPE 1: useMasterStats for player stats (24hr cache)
+ * - PIPE 2: Live lines passed from parent or useLiveOdds
  */
-import React, { useState, useCallback, useMemo, useRef, memo } from 'react';
-// PURGED: axios import removed - no localized fetches allowed
+import React, { useState, useCallback, useMemo, useRef, memo, useEffect } from 'react';
 import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
 import { 
@@ -15,8 +15,8 @@ import {
 import { DemonIcon, GoblinIcon } from './Icons';
 import { STAT_CATEGORIES, getCategoryKey, TEAM_LOGOS } from './constants';
 
-// PURGED: API constant removed - no direct API calls from components
-// const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
+// SSOT Global State Hooks
+import { useMasterStats } from '../../hooks/useMasterStats';
 
 // ==================== PROP CATEGORY CONFIG ====================
 const PROP_LABELS = {
@@ -262,14 +262,20 @@ const CategoryHeader = memo(({ category, count, hasDemon, hasGoblin }) => {
 });
 
 // ==================== MAIN COMPONENT ====================
-// TODO: Subscribe to Global Store for [Player Data]
-// playerData prop will come from Global Store subscription
+// SSOT: Uses useMasterStats hook for player data (PIPE 1)
 export const PlayerDetailPage = ({ playerName, playerData = null, onBack, highlightProp = null, highlightType = 'demon' }) => {
-  // PURGED: useState for player removed - will come from Global Store
-  // For now, use playerData prop or show loading
-  const [player, setPlayer] = useState(playerData);
-  const [loading, setLoading] = useState(!playerData);  // Only loading if no data passed
-  const [error, setError] = useState(null);
+  // PIPE 1: Fetch player stats from Master Hub (24hr cache)
+  const { data: masterData, isLoading: masterLoading, error: masterError } = useMasterStats(playerName);
+  
+  // Merge passed playerData with masterData (masterData takes precedence for stats)
+  const player = useMemo(() => {
+    if (!masterData && !playerData) return null;
+    return masterData || playerData;
+  }, [masterData, playerData]);
+  
+  const loading = masterLoading && !playerData;
+  const error = masterError?.message || null;
+  
   const [showIntelSuite, setShowIntelSuite] = useState(false);
   const [selectedVisionProp, setSelectedVisionProp] = useState(null);
   const highlightRef = useRef(null);
@@ -293,10 +299,6 @@ export const PlayerDetailPage = ({ playerName, playerData = null, onBack, highli
     }
     return null;
   }, [highlightProp]);
-  
-  // TODO: Subscribe to Global Store for [Player Data]
-  // PURGED: Localized useEffect fetch removed
-  // Player data will be passed as prop from parent or Global Store
   
   // Group props by normalized category - prioritize stat_type_extracted for specific categories
   const groupedProps = useMemo(() => {

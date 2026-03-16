@@ -5,6 +5,55 @@ PickVision is a high-performance NBA Player Prop Dashboard with a "military tech
 
 ## Latest Update: 2026-03-16
 
+### TanStack Query Global State Implementation - COMPLETED
+**Implemented Two-Pipe reactive architecture using TanStack Query (React Query)**
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                    TANSTACK QUERY GLOBAL STATE                              │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  PIPE 1: useMasterStats(playerId)                                          │
+│  ├─ Source: /api/v3/cached-player/{playerName}                             │
+│  ├─ staleTime: 24 hours (data only changes at 0400 EST CRON)              │
+│  └─ Cache: Heavy - never refetch in same session                           │
+│                                                                             │
+│  PIPE 2: useLiveOdds() hooks                                               │
+│  ├─ Source: Cached board endpoints                                         │
+│  ├─ refetchInterval: 30 seconds (Open Door polling)                        │
+│  └─ Hooks: useWarZone, useSafeHaven, useLiveScores, useBreakingNews       │
+│                                                                             │
+│  INTERSECTION: Components merge Pipe 1 + Pipe 2 via playerName            │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+**Files Created:**
+- `NEW /app/frontend/src/providers/QueryProvider.jsx` - QueryClientProvider wrapper
+- `NEW /app/frontend/src/hooks/useMasterStats.js` - PIPE 1 stats hook (24hr cache)
+- `NEW /app/frontend/src/hooks/useLiveOdds.js` - PIPE 2 live data hooks (30s polling)
+
+**Files Modified (Localized Fetches Purged & Re-wired):**
+- `/app/frontend/src/App.js` - Wrapped with GlobalQueryProvider
+- `/app/frontend/src/pages/Dashboard.jsx` - Uses useLiveScores, useBreakingNews, usePlayerSearch
+- `/app/frontend/src/components/dashboard/PlayerDetailPage.jsx` - Uses useMasterStats
+- `/app/frontend/src/components/dashboard/CommandPost.jsx` - Uses usePlayerProfile
+- `/app/frontend/src/components/dashboard/CommandSearch.jsx` - Uses usePlayerSearch
+
+**Key Hooks:**
+| Hook | Pipe | Cache Strategy | Use Case |
+|------|------|----------------|----------|
+| `useMasterStats(playerName)` | PIPE 1 | 24hr stale | Player stats from Master Hub |
+| `useLiveOdds()` | PIPE 2 | 30s refetch | Full cached board |
+| `useWarZone()` | PIPE 2 | 30s refetch | Demon picks |
+| `useSafeHaven()` | PIPE 2 | 30s refetch | Goblin picks |
+| `useLiveScores()` | PIPE 2 | 30s refetch | Live game scores |
+| `useBreakingNews()` | PIPE 2 | 60s refetch | News headlines |
+| `usePlayerSearch(query)` | PIPE 2 | 30s cache | Player search |
+| `usePlayerProfile(name)` | PIPE 2 | 60s cache | Command Post profiles |
+
+---
+
 ### SSOT Architecture Implementation - COMPLETED
 **Implemented strict Single Source of Truth (SSOT) architecture with two isolated data pipelines**
 

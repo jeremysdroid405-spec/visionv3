@@ -3,63 +3,53 @@
  * =========================
  * Global player search for Command Post.
  * 
- * TODO: Subscribe to Global Store for [Player Search Results]
- * PURGED: All localized fetch() calls removed
+ * SSOT: Uses usePlayerSearch hook (PIPE 2) for search results
  */
 
-import React, { useState, useCallback, memo } from 'react';
+import React, { useState, useCallback, memo, useEffect } from 'react';
 import { Search, X, User, Loader2 } from 'lucide-react';
 import { Input } from '../ui/input';
 import debounce from 'lodash/debounce';
 
-// PURGED: API_URL constant removed - no direct API calls from components
-// const API_URL = process.env.REACT_APP_BACKEND_URL;
+// SSOT Global State Hooks
+import { usePlayerSearch } from '../../hooks/useLiveOdds';
 
 const CommandSearch = memo(({ onPlayerSelect, placeholder = "Search players..." }) => {
   const [query, setQuery] = useState('');
-  const [results, setResults] = useState([]);
-  const [loading, setLoading] = useState(false);
+  const [debouncedQuery, setDebouncedQuery] = useState('');
   const [showResults, setShowResults] = useState(false);
 
-  // TODO: Subscribe to Global Store for [Player Search]
-  // PURGED: Debounced search function - localized fetch removed
-  const searchPlayers = useCallback(
-    debounce((searchQuery) => {
-      if (searchQuery.length < 2) {
-        setResults([]);
-        return;
-      }
-
-      setLoading(true);
-      // TODO: Dispatch action to Global Store to search players
-      console.log('[COMMAND SEARCH] Search fetch purged - awaiting Global Store:', searchQuery);
-      
-      // Temporary: simulate loading then show empty
-      setTimeout(() => {
-        setLoading(false);
-        setResults([]);  // Results will come from Global Store subscription
-      }, 300);
-    }, 300),
+  // Debounce the query for API calls
+  const debouncedSetQuery = useCallback(
+    debounce((q) => setDebouncedQuery(q), 300),
     []
   );
+  
+  // Update debounced query when query changes
+  useEffect(() => {
+    debouncedSetQuery(query);
+  }, [query, debouncedSetQuery]);
+
+  // PIPE 2: Search players via usePlayerSearch hook
+  const { data: searchData, isLoading: loading } = usePlayerSearch(debouncedQuery);
+  const results = searchData?.players || [];
 
   const handleInputChange = (e) => {
     const value = e.target.value;
     setQuery(value);
     setShowResults(true);
-    searchPlayers(value);
   };
 
   const handleSelectPlayer = (player) => {
     setQuery('');
-    setResults([]);
+    setDebouncedQuery('');
     setShowResults(false);
     onPlayerSelect?.(player);
   };
 
   const handleClear = () => {
     setQuery('');
-    setResults([]);
+    setDebouncedQuery('');
     setShowResults(false);
   };
 

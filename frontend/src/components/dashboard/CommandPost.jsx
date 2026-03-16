@@ -3,8 +3,9 @@
  * ======================
  * Risk Assessment Hub - Parlay Simulator
  * 
- * TODO: Subscribe to Global Store for [Player Profiles, Simulation Results]
- * PURGED: All localized fetch() calls removed
+ * SSOT Two-Pipe Architecture:
+ * - PIPE 1: useMasterStats for player stats (24hr cache)
+ * - PIPE 2: usePlayerProfile for profiles, useSimulation for parlay sim
  * 
  * Terminology (No "Certainty"):
  * - Convergence Rate: Combined tactical probability
@@ -22,8 +23,8 @@ import { Button } from '../ui/button';
 import CommandSearch from './CommandSearch';
 import TacticalPlayerCard from './TacticalPlayerCard';
 
-// PURGED: API_URL constant removed - no direct API calls from components
-// const API_URL = process.env.REACT_APP_BACKEND_URL;
+// SSOT Global State Hooks
+import { usePlayerProfile } from '../../hooks/useLiveOdds';
 
 // Grade colors and styles
 const GRADE_STYLES = {
@@ -253,19 +254,22 @@ const CommandPost = memo(({ isOpen, onClose, pendingLeg, onPendingLegProcessed }
     }
   }, [pendingLeg, onPendingLegProcessed, legs]);
 
-  // TODO: Subscribe to Global Store for [Player Profiles]
-  // PURGED: fetchProfile function - localized fetch removed
+  // State for profile fetching via hook
+  const [profilePlayerName, setProfilePlayerName] = useState(null);
+  const { data: profileData, isLoading: profileQueryLoading } = usePlayerProfile(profilePlayerName);
+  
+  // Sync profile data from TanStack Query
+  useEffect(() => {
+    if (profileData?.success) {
+      setSelectedProfile(profileData);
+      setProfileLoading(false);
+    }
+  }, [profileData]);
+
+  // PIPE 2: Fetch player profile via usePlayerProfile hook
   const fetchProfile = useCallback((player) => {
     setProfileLoading(true);
-    // TODO: Dispatch action to Global Store to fetch profile
-    // For now, show loading state until Global Store connected
-    console.log('[COMMAND POST] Profile fetch purged - awaiting Global Store:', player.player_name);
-    
-    // Temporary: simulate loading then show placeholder
-    setTimeout(() => {
-      setProfileLoading(false);
-      // Profile data will come from Global Store subscription
-    }, 500);
+    setProfilePlayerName(player.player_name);
   }, []);
 
   // Add leg from profile line selection
@@ -288,6 +292,7 @@ const CommandPost = memo(({ isOpen, onClose, pendingLeg, onPendingLegProcessed }
     
     setLegs(prev => [...prev, newLeg]);
     setSelectedProfile(null);
+    setProfilePlayerName(null);  // Clear to allow re-fetching
   }, [selectedProfile]);
 
   // Remove leg
@@ -301,21 +306,32 @@ const CommandPost = memo(({ isOpen, onClose, pendingLeg, onPendingLegProcessed }
     setSimulation(null);
   }, []);
 
-  // TODO: Subscribe to Global Store for [Simulation Results]
-  // PURGED: runSimulation fetch - localized fetch removed
-  const runSimulation = useCallback(() => {
+  // PIPE 2: Run simulation - for now using direct fetch until mutation pattern is implemented
+  const API_URL = process.env.REACT_APP_BACKEND_URL;
+  const runSimulation = useCallback(async () => {
     if (legs.length === 0) return;
     
     setLoading(true);
-    // TODO: Dispatch action to Global Store to run simulation
-    console.log('[COMMAND POST] Simulation fetch purged - awaiting Global Store');
-    
-    // Temporary: simulate loading
-    setTimeout(() => {
+    try {
+      const response = await fetch(`${API_URL}/api/command/simulate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ legs })
+      });
+      const data = await response.json();
+      
+      if (data.success) {
+        setSimulation(data.simulation);
+        if (data.simulation.legs) {
+          setLegs(data.simulation.legs);
+        }
+      }
+    } catch (error) {
+      console.error('Simulation error:', error);
+    } finally {
       setLoading(false);
-      // Simulation results will come from Global Store subscription
-    }, 500);
-  }, [legs]);
+    }
+  }, [legs, API_URL]);
 
   // ==================== CONFLICT DETECTION ENGINE ====================
   // Detect mutually exclusive parameters (Over/Under on same player+stat)

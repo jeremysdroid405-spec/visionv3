@@ -1,8 +1,9 @@
 /**
  * PickVision Dashboard - Main Controller
  * 
- * Complete modular dashboard that replaces the legacy monolith.
- * All logic isolated to /logic/ and /hooks/ modules.
+ * SSOT Two-Pipe Architecture with TanStack Query
+ * - PIPE 1: useMasterStats (Stats Vault - 24hr cache)
+ * - PIPE 2: useLiveOdds (Live Wire - 30s polling)
  */
 import React, { useState, useCallback, useEffect, memo } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -32,9 +33,11 @@ import {
   TEAM_LOGOS, STAT_CATEGORIES, getCategoryKey 
 } from '../components/dashboard/constants';
 
-// Hooks & Logic
+// Hooks & Logic - SSOT Global State
 import { useDFSData } from '../hooks/useDFSData';
 import { buildMasterParlayTickets } from '../logic/matrixEngine';
+import { useLiveScores, useBreakingNews, usePlayerSearch } from '../hooks/useLiveOdds';
+import { useMasterStats } from '../hooks/useMasterStats';
 
 // ==================== HELPER COMPONENTS ====================
 
@@ -138,13 +141,12 @@ const SectionHeader = memo(({ icon, title, subtitle, badgeText, badgeColor = 're
 
 // ==================== LIVE TICKERS ====================
 
-// Live Scores Ticker
-// TODO: Subscribe to Global Store for [Live Scores]
+// Live Scores Ticker - PIPE 2: useLiveScores()
 const LiveScoresTicker = memo(() => {
-  const [scores] = useState([]);  // TODO: Replace with global store subscription
-  const [loading] = useState(false);
+  const { data, isLoading } = useLiveScores();
+  const scores = data?.games || [];
   
-  if (loading) {
+  if (isLoading) {
     return (
       <div className="bg-black/80 border-y border-zinc-700/30 py-2 px-4">
         <div className="flex items-center gap-2 text-zinc-300 text-xs">
@@ -223,10 +225,10 @@ const LiveScoresTicker = memo(() => {
   );
 });
 
-// Breaking News Ticker
-// TODO: Subscribe to Global Store for [Breaking News]
+// Breaking News Ticker - PIPE 2: useBreakingNews()
 const BreakingNewsTicker = memo(() => {
-  const [news] = useState([]);  // TODO: Replace with global store subscription
+  const { data } = useBreakingNews();
+  const news = data?.headlines || [];
   
   // Default headlines if API not available
   const displayNews = news.length > 0 ? news : [
@@ -606,29 +608,28 @@ const Dashboard = () => {
     return () => document.removeEventListener('click', handleClickOutside);
   }, [showUserMenu]);
   
-  // API-driven Intel Search with debounce
-  // TODO: Subscribe to Global Store for [Player Search]
+  // PIPE 2: Player Search via usePlayerSearch hook
+  const { data: searchData, isLoading: searchQueryLoading } = usePlayerSearch(searchTerm);
+  
+  // Sync search results from TanStack Query
   useEffect(() => {
-    // PURGED: Localized fetch removed - will subscribe to Global Store
     if (searchTerm.length < 2) {
       setSearchResults([]);
       setSearchError(null);
+      setSearchLoading(false);
       return;
     }
     
-    // TODO: Replace with global store search action
-    // For now, show loading state until Global Store is connected
-    setSearchLoading(true);
-    setSearchError('Search connecting to Global Store...');
+    setSearchLoading(searchQueryLoading);
     
-    // Temporary timeout to show feedback
-    const timer = setTimeout(() => {
-      setSearchLoading(false);
-      setSearchResults([]);  // Empty until Global Store connected
-    }, 500);
-    
-    return () => clearTimeout(timer);
-  }, [searchTerm]);
+    if (searchData?.success) {
+      setSearchResults(searchData.players || []);
+      setSearchError(null);
+    } else if (searchData && !searchData.success) {
+      setSearchError(searchData.error || 'Search unavailable');
+      setSearchResults([]);
+    }
+  }, [searchTerm, searchData, searchQueryLoading]);
   
   // If player is selected, show detail page
   if (selectedPlayer) {
