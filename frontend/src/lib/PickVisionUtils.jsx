@@ -64,6 +64,9 @@ export const getTeamColor = (team) => {
  * Player Photo with fallback
  */
 export const PlayerPhoto = memo(({ photoUrl, playerName, size = 'md' }) => {
+  const [hasError, setHasError] = React.useState(false);
+  const [isLoading, setIsLoading] = React.useState(true);
+  
   const sizeClasses = {
     sm: 'w-6 h-6',
     md: 'w-10 h-10',
@@ -72,23 +75,36 @@ export const PlayerPhoto = memo(({ photoUrl, playerName, size = 'md' }) => {
   
   const sizeClass = sizeClasses[size] || sizeClasses.md;
   
-  if (photoUrl) {
+  // Get initials for fallback
+  const initials = playerName
+    ? playerName.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()
+    : '?';
+  
+  if (!photoUrl || hasError) {
     return (
-      <img
-        src={photoUrl}
-        alt={playerName || 'Player'}
-        className={`${sizeClass} rounded-full object-cover bg-zinc-800 border border-zinc-700`}
-        onError={(e) => {
-          e.target.style.display = 'none';
-          e.target.nextSibling?.classList?.remove('hidden');
-        }}
-      />
+      <div className={`${sizeClass} rounded-full bg-zinc-800 border border-zinc-700 flex items-center justify-center`}>
+        <span className="text-zinc-400 text-xs font-medium">{initials}</span>
+      </div>
     );
   }
   
   return (
-    <div className={`${sizeClass} rounded-full bg-zinc-800 border border-zinc-700 flex items-center justify-center`}>
-      <User className="w-1/2 h-1/2 text-zinc-600" />
+    <div className={`${sizeClass} relative`}>
+      {isLoading && (
+        <div className={`${sizeClass} absolute rounded-full bg-zinc-800 border border-zinc-700 flex items-center justify-center`}>
+          <span className="text-zinc-500 text-xs">{initials}</span>
+        </div>
+      )}
+      <img
+        src={photoUrl}
+        alt={playerName || 'Player'}
+        className={`${sizeClass} rounded-full object-cover bg-zinc-800 border border-zinc-700`}
+        onLoad={() => setIsLoading(false)}
+        onError={() => {
+          setHasError(true);
+          setIsLoading(false);
+        }}
+      />
     </div>
   );
 });

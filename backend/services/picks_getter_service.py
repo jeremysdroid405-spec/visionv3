@@ -23,7 +23,7 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 from thefuzz import fuzz
 
 # CONSOLIDATED: Use shared player lookup utility
-from utils.player_lookup import build_player_lookup, get_player_by_name as shared_get_player_by_name
+from utils.player_lookup import get_player_by_id, get_player_by_name as shared_get_player_by_name
 
 logger = logging.getLogger(__name__)
 
@@ -65,12 +65,37 @@ class PicksGetterService:
         """
         return await build_player_lookup(self.db)
     
+    async def _get_player_by_id(self, player_id: str) -> Dict:
+        """
+        PRIMARY: Get player data from master hub by player_id.
+        """
+        return await get_player_by_id(self.db, player_id)
+    
     async def _get_player_by_name(self, player_name: str) -> Dict:
         """
-        SSOT: Get player data from master hub by name.
-        Uses consolidated lookup from /app/backend/utils/player_lookup.py
+        FALLBACK: Get player data from master hub by name.
+        Use _get_player_by_id when possible.
         """
         return await shared_get_player_by_name(self.db, player_name)
+    
+    async def _get_master_player(self, pick: Dict) -> Dict:
+        """
+        Get player from master hub - tries player_id first, then name.
+        ALL photos and stats come from master hub.
+        """
+        # PRIMARY: Try player_id first
+        player_id = pick.get('player_id') or pick.get('tank01_player_id') or pick.get('nba_player_id')
+        if player_id:
+            player = await self._get_player_by_id(str(player_id))
+            if player:
+                return player
+        
+        # FALLBACK: Try by name
+        player_name = pick.get('player_name')
+        if player_name:
+            return await self._get_player_by_name(player_name)
+        
+        return None
     
     async def get_war_zone(self) -> Dict[str, Any]:
         """
@@ -383,21 +408,16 @@ class PicksGetterService:
         SSOT INTERSECTION: Join PIPE 1 stats with PIPE 2 lines.
         
         All stats come from nba_master_hub_2026 (PIPE 1).
-        Hit rates and averages are calculated from the SAME game_logs array
-        to guarantee mathematical consistency.
-        
-        This is the ONLY place where stats calculation happens.
-        NO external API calls. NO secondary stat sources.
+        Lookup by player_id FIRST, then name as fallback.
         """
         if not player:
             return
         
-        player_name = player.get("player_name", "")
-        
-        # SSOT: Get stats from master hub ONLY
-        hub_player = await self._get_player_by_name(player_name)
+        # SSOT: Get stats from master hub by player_id FIRST
+        hub_player = await self._get_master_player(player)
         
         if not hub_player:
+            player_name = player.get("player_name", "")
             logger.debug(f"[SSOT] No master hub data for: {player_name}")
             return
         
@@ -405,9 +425,10 @@ class PicksGetterService:
         baseline_stats = hub_player.get("baseline_stats", {})
         game_logs = hub_player.get("game_logs", [])
         
-        # Add structural data (protected fields)
+        # Add structural data - PHOTOS FROM MASTER HUB ONLY
         player["baseline_stats"] = baseline_stats
-        player["photo_url"] = hub_player.get("headshot_url") or player.get("photo_url")
+        player["photo_url"] = hub_player.get("headshot_url")
+        player["headshot_url"] = hub_player.get("headshot_url")
         
         # Import the coupled stats calculator (uses game_logs from PIPE 1)
         from services.stats_service import calculate_coupled_stats
@@ -493,8 +514,8 @@ class PicksGetterService:
             for pick in radar_picks:
                 popular_bets.append({
                     "player_name": pick.get("player_name", ""),
+                    "player_id": pick.get("player_id") or pick.get("tank01_player_id"),
                     "team": pick.get("team", ""),
-                    "photo_url": pick.get("photo_url", ""),
                     "stat_type": pick.get("stat_type", ""),
                     "line": pick.get("demon_line") or pick.get("line"),
                     "line_type": "demon",
@@ -520,8 +541,8 @@ class PicksGetterService:
             for pick in vault_picks:
                 popular_bets.append({
                     "player_name": pick.get("player_name", ""),
+                    "player_id": pick.get("player_id") or pick.get("tank01_player_id"),
                     "team": pick.get("team", ""),
-                    "photo_url": pick.get("photo_url", ""),
                     "stat_type": pick.get("stat_type", ""),
                     "line": pick.get("goblin_line") or pick.get("line"),
                     "line_type": "goblin",
@@ -581,30 +602,28 @@ class PicksGetterService:
                     unique_bets.append(bet)
             
             # ===== PLAYER DATA & STATS ENRICHMENT from nba_master_hub_2026 =====
-            # ALL player data and stats come from master hub
+            # ALL player data and stats come from master hub by player_id
             for bet in unique_bets[:20]:
-                player_name = bet.get('player_name')
-                stat_type = bet.get('stat_type', '')
-                if player_name:
-                    master_player = await self._get_player_by_name(player_name)
-                    if master_player:
-                        # Player identity & photo
-                        bet['player_id'] = master_player.get('player_id')
-                        bet['nba_id'] = master_player.get('nba_id')
-                        bet['espn_id'] = master_player.get('espn_id')
-                        bet['photo_url'] = master_player.get('headshot_url')
-                        bet['headshot_url'] = master_player.get('headshot_url')
-                        
-                        # Baseline stats for this prop category
-                        baseline_stats = master_player.get('baseline_stats', {})
-                        if stat_type and baseline_stats:
-                            cat_stats = baseline_stats.get(stat_type, {})
-                            if cat_stats:
-                                bet['l5_avg'] = cat_stats.get('l5_avg')
-                                bet['l10_avg'] = cat_stats.get('l10_avg')
-                                bet['season_avg'] = cat_stats.get('season_avg')
-                        
-                        bet['baseline_stats'] = baseline_stats
+                master_player = await self._get_master_player(bet)
+                if master_player:
+                    stat_type = bet.get('stat_type', '')
+                    # Player identity & photo FROM MASTER HUB
+                    bet['player_id'] = master_player.get('player_id')
+                    bet['nba_id'] = master_player.get('nba_id') or master_player.get('nba_player_id')
+                    bet['espn_id'] = master_player.get('espn_id')
+                    bet['photo_url'] = master_player.get('headshot_url')
+                    bet['headshot_url'] = master_player.get('headshot_url')
+                    
+                    # Baseline stats for this prop category
+                    baseline_stats = master_player.get('baseline_stats', {})
+                    if stat_type and baseline_stats:
+                        cat_stats = baseline_stats.get(stat_type, {})
+                        if cat_stats:
+                            bet['l5_avg'] = cat_stats.get('l5_avg')
+                            bet['l10_avg'] = cat_stats.get('l10_avg')
+                            bet['season_avg'] = cat_stats.get('season_avg')
+                    
+                    bet['baseline_stats'] = baseline_stats
             
             return {
                 "status": "live" if unique_bets else "awaiting_action",
@@ -627,21 +646,17 @@ class PicksGetterService:
         """
         SSOT: Enrich a single pick with stats from master hub.
         
-        All stats come from nba_master_hub_2026 (PIPE 1).
-        Hit rates and averages are calculated from the SAME game_logs array.
-        NO external API calls.
+        ALL data comes from nba_master_hub_2026 (PIPE 1).
+        Lookup is by player_id FIRST, then by name as fallback.
         """
-        player_name = pick.get('player_name')
-        if not player_name:
-            return
-        
-        # SSOT: Get player data from master hub ONLY
-        master_player = await self._get_player_by_name(player_name)
+        # SSOT: Get player data from master hub by ID first
+        master_player = await self._get_master_player(pick)
         if master_player:
             # Structural data (protected fields)
             pick['player_id'] = master_player.get('player_id')
-            pick['nba_id'] = master_player.get('nba_id')
+            pick['nba_id'] = master_player.get('nba_id') or master_player.get('nba_player_id')
             pick['espn_id'] = master_player.get('espn_id')
+            # PHOTOS FROM MASTER HUB ONLY
             pick['headshot_url'] = master_player.get('headshot_url')
             pick['photo_url'] = master_player.get('headshot_url')
             if not pick.get('team'):
@@ -683,26 +698,30 @@ class PicksGetterService:
             # Store full baseline_stats for frontend access
             pick['baseline_stats'] = baseline_stats
         
-        # Get old insight_summary from daily_insights
-        insight = await self.daily_insights.find_one(
-            {"player_name": player_name},
-            {"_id": 0, "insight_summary": 1, "ai_confidence_rating": 1}
-        )
-        if insight:
-            pick['insight_summary'] = insight.get('insight_summary', '')
-            pick['ai_confidence_rating'] = insight.get('ai_confidence_rating', 50)
-        else:
-            # Fallback: Calculate AI confidence from pillar_4_context (0-1) -> (0-100)
-            pillar_4 = pick.get('pillar_4_context', 0.5)
-            pick['ai_confidence_rating'] = int(pillar_4 * 100)
+        # Get player_name for legacy lookups (daily_insights, etc)
+        player_name = pick.get('player_name', '')
         
-        # Get new intel_briefing from cached_board
-        board_entry = await self.cached_board.find_one(
-            {"player_name": player_name},
-            {"_id": 0, "intel_briefing": 1}
-        )
-        if board_entry and board_entry.get('intel_briefing'):
-            pick['intel_briefing'] = board_entry.get('intel_briefing')
+        # Get old insight_summary from daily_insights
+        if player_name:
+            insight = await self.daily_insights.find_one(
+                {"player_name": player_name},
+                {"_id": 0, "insight_summary": 1, "ai_confidence_rating": 1}
+            )
+            if insight:
+                pick['insight_summary'] = insight.get('insight_summary', '')
+                pick['ai_confidence_rating'] = insight.get('ai_confidence_rating', 50)
+            else:
+                # Fallback: Calculate AI confidence from pillar_4_context (0-1) -> (0-100)
+                pillar_4 = pick.get('pillar_4_context', 0.5)
+                pick['ai_confidence_rating'] = int(pillar_4 * 100)
+            
+            # Get new intel_briefing from cached_board
+            board_entry = await self.cached_board.find_one(
+                {"player_name": player_name},
+                {"_id": 0, "intel_briefing": 1}
+            )
+            if board_entry and board_entry.get('intel_briefing'):
+                pick['intel_briefing'] = board_entry.get('intel_briefing')
     
     async def _add_player_insights(self, player: Dict) -> None:
         """
