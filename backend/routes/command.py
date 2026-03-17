@@ -274,10 +274,14 @@ async def get_tactical_profile(
         # Get game_logs from master hub for coupled calculations
         game_logs = master_player.get("game_logs", []) if master_player else []
         
+        # First pass: collect all props with their odds
+        props_by_stat = {}  # {stat_type: [props]}
+        
         for prop in all_props:
             stat = prop.get("stat_type_extracted") or prop.get("market", "").replace("player_", "").upper()
             line = prop.get("line", 0)
             direction = (prop.get("direction") or "over").lower()
+            odds = prop.get("price", -110)
             
             if not stat or not line:
                 continue
@@ -314,7 +318,7 @@ async def get_tactical_profile(
                 "stat_type": stat,
                 "line": line,
                 "direction": direction,
-                "odds": prop.get("price"),
+                "odds": odds,
                 "is_radar": is_radar,
                 # COUPLED averages
                 "l5_avg": l5_data["avg"],
@@ -356,30 +360,74 @@ async def get_tactical_profile(
                 "stats_source": "game_logs_coupled"
             }
             
-            # ===== TIER STYLE & GOBLIN/DEMON FLAGS =====
-            h10_rate = l10_data["hit_rate"]
-            h5_rate = l5_data["hit_rate"]
+            # Collect props by stat type for anchor-based classification
+            if stat not in props_by_stat:
+                props_by_stat[stat] = []
+            props_by_stat[stat].append(prop_line)
             
-            # Goblin: line is BELOW season avg AND high hit rate (>=80%)
-            is_goblin = h10_rate >= 0.80 and l10_data["avg"] > line
-            # Demon: line is ABOVE season avg (aggressive play)
-            is_demon = l10_data["avg"] < line and h10_rate >= 0.60
+            active_lines.append(prop_line)
+        
+        # ===== STEP 5.5: ANCHOR-BASED TIER CLASSIFICATION =====
+        # For each stat type, find the "standard" (anchor) line and classify all lines relative to it
+        standard_lines = {}  # {stat_type: anchor_line_value}
+        
+        for stat_type, stat_props in props_by_stat.items():
+            if not stat_props:
+                continue
             
-            if is_goblin:
-                prop_line["tier_style"] = "green"
-                prop_line["tier_label"] = "GOBLIN"
-                prop_line["is_goblin"] = True
-                prop_line["is_demon"] = False
-            elif is_demon:
-                prop_line["tier_style"] = "red"
-                prop_line["tier_label"] = "DEMON"
-                prop_line["is_goblin"] = False
-                prop_line["is_demon"] = True
-            else:
+            # Find the standard line: closest to -110 juice (most balanced odds)
+            def odds_distance_from_fair(prop):
+                prop_odds = prop.get("odds") or -110
+                # Distance from -110 (fair odds)
+                if prop_odds >= 100:
+                    return abs(prop_odds - 100) + 10  # Plus lines are further from fair
+                else:
+                    return abs(prop_odds + 110)  # Minus lines, -110 is baseline
+            
+            # Sort by odds distance from fair value
+            sorted_props = sorted(stat_props, key=odds_distance_from_fair)
+            standard_line_value = sorted_props[0]["line"] if sorted_props else None
+            standard_lines[stat_type] = standard_line_value
+        
+        # Now apply GOBLIN/DEMON/STANDARD classification based on anchor
+        for prop_line in active_lines:
+            stat = prop_line["stat_type"]
+            line = prop_line["line"]
+            anchor = standard_lines.get(stat)
+            
+            if anchor is None:
+                # No anchor found, use fallback logic
                 prop_line["tier_style"] = "standard"
                 prop_line["tier_label"] = "STANDARD"
                 prop_line["is_goblin"] = False
                 prop_line["is_demon"] = False
+                prop_line["standard_line"] = None
+            elif line == anchor:
+                # This IS the standard line
+                prop_line["tier_style"] = "standard"
+                prop_line["tier_label"] = "STANDARD"
+                prop_line["is_goblin"] = False
+                prop_line["is_demon"] = False
+                prop_line["is_anchor"] = True
+                prop_line["standard_line"] = anchor
+            elif line < anchor:
+                # GOBLIN: Alt Over LOWER than standard (easier to hit)
+                prop_line["tier_style"] = "green"
+                prop_line["tier_label"] = "GOBLIN"
+                prop_line["is_goblin"] = True
+                prop_line["is_demon"] = False
+                prop_line["standard_line"] = anchor
+                prop_line["ladder_position"] = "below"
+                prop_line["gap_from_anchor"] = round(anchor - line, 1)
+            else:
+                # DEMON: Alt Over HIGHER than standard (harder to hit)
+                prop_line["tier_style"] = "red"
+                prop_line["tier_label"] = "DEMON"
+                prop_line["is_goblin"] = False
+                prop_line["is_demon"] = True
+                prop_line["standard_line"] = anchor
+                prop_line["ladder_position"] = "above"
+                prop_line["gap_from_anchor"] = round(line - anchor, 1)
             
             # If Target-Lock, add Full Intel Suite data
             if is_radar and target_key in target_lock_details:
@@ -497,7 +545,15 @@ async def get_tactical_profile(
             "target_locks": [{"stat_type": k.split("|")[0], "line": float(k.split("|")[1]), "direction": k.split("|")[2]} for k in target_lock_keys],
             "usage_ripple": usage_ripple,
             "badges": badges,
-            "vision_insight": vision_insight
+            "vision_insight": vision_insight,
+            # Anchor-based tier system metadata
+            "standard_lines": standard_lines,
+            "tier_logic": {
+                "description": "Anchor-based tier classification",
+                "standard": "Line with odds closest to -110 (fair value)",
+                "goblin": "Alt Over lines LOWER than standard (safer, higher hit rate)",
+                "demon": "Alt Over lines HIGHER than standard (riskier, ladder plays)"
+            }
         }
         
     except Exception as e:
