@@ -111,9 +111,14 @@ const PropRow = memo(({ prop, isHighlighted, highlightRef, onVisionClick }) => {
   const l10Avg = prop.l10_avg ?? hitRates.l10?.avg ?? hitRates.l10_avg;
   const seasonAvg = prop.season_avg ?? hitRates.season?.avg ?? hitRates.season_avg;
   
-  // Hit rates (percentage)
-  const h10Rate = hitRates.l10?.hit_rate != null ? Math.round(hitRates.l10.hit_rate * 100) : (prop.h10_rate || 0);
-  const h5Rate = hitRates.l5?.hit_rate != null ? Math.round(hitRates.l5.hit_rate * 100) : (prop.h5_rate || 0);
+  // Hit rates (percentage) - Prefer direct fields over hit_rates object
+  // l10_hit_rate is 0-1 decimal, h10_rate is already percentage
+  const h10Rate = prop.l10_hit_rate != null 
+    ? Math.round(prop.l10_hit_rate * 100) 
+    : (hitRates.l10?.hit_rate != null ? Math.round(hitRates.l10.hit_rate * 100) : (prop.h10_rate || 0));
+  const h5Rate = prop.l5_hit_rate != null 
+    ? Math.round(prop.l5_hit_rate * 100) 
+    : (hitRates.l5?.hit_rate != null ? Math.round(hitRates.l5.hit_rate * 100) : (prop.h5_rate || 0));
   
   const getHitRateColor = (rate) => {
     if (rate >= 80) return 'text-green-400';
