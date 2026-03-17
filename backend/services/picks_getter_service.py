@@ -450,12 +450,10 @@ class PicksGetterService:
     
     async def get_war_zone(self) -> Dict[str, Any]:
         """
-        Get the War Zone - High-risk DEMON picks from PrizePicks.
+        Get the War Zone - ALL DEMON picks from PrizePicks.
         
-        PRIZEPICKS ARCHITECTURE:
-        - Reads from dg_cached_board (player documents with props arrays)
-        - DEMON = props where is_demon=True (above anchor line)
-        - Enriched with L5/L10/Season stats from master hub
+        DEMON = ALL alternate lines ABOVE the standard anchor (Red).
+        Returns ALL demon lines, not filtered.
         """
         # Get all players that have demon props
         players = await self.cached_board.find(
@@ -463,14 +461,14 @@ class PicksGetterService:
             {"_id": 0}
         ).to_list(200)
         
-        # Build picks from demon props
+        # Build picks - ALL demon props
         picks = []
         for player_doc in players:
             player_name = player_doc.get("player_name")
             if not player_name:
                 continue
             
-            # Find demon props for this player
+            # Get ALL demon props for this player
             demon_props = [p for p in player_doc.get("props", []) if p.get("is_demon")]
             
             for prop in demon_props:
@@ -498,7 +496,7 @@ class PicksGetterService:
         
         # Enrich with stats from master hub
         enriched_picks = []
-        for pick in picks[:50]:  # Limit to top 50
+        for pick in picks[:50]:
             player_stats = await self._get_player_stats(
                 pick["player_name"], 
                 pick["stat_type"], 
@@ -507,11 +505,11 @@ class PicksGetterService:
             pick.update(player_stats)
             enriched_picks.append(pick)
         
-        # Sort by anchor diff (highest first = hardest demons)
-        enriched_picks.sort(key=lambda x: x.get("anchor_line", 0) or 0, reverse=True)
+        # Sort by line value (highest first)
+        enriched_picks.sort(key=lambda x: x.get("line", 0) or 0, reverse=True)
         
         return {
-            "picks": enriched_picks[:20],
+            "picks": enriched_picks,
             "picks_count": len(enriched_picks)
         }
     
