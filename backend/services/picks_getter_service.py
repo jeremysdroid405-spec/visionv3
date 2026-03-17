@@ -18,14 +18,46 @@ Handles fetching picks data from MongoDB for all tier endpoints:
 from typing import Dict, List, Any, Optional
 from datetime import datetime, timezone, timedelta
 import logging
+import re
 
 from motor.motor_asyncio import AsyncIOMotorDatabase
-from thefuzz import fuzz
 
 # CONSOLIDATED: Use shared player lookup utility
 from utils.player_lookup import get_player_by_id, get_player_by_name as shared_get_player_by_name
 
 logger = logging.getLogger(__name__)
+
+
+# ==================== NAME NORMALIZATION ====================
+def _normalize_name(name: str) -> str:
+    """
+    Normalize player names for consistent MongoDB lookups.
+    
+    Strips:
+    - Periods and commas
+    - Common suffixes: Jr, Sr, II, III, IV, V
+    - Extra whitespace
+    
+    Example: "Jaime Jaquez Jr." -> "jaime jaquez"
+    Example: "Marcus Morris Sr." -> "marcus morris"
+    """
+    if not name:
+        return ""
+    
+    # Convert to lowercase
+    normalized = name.lower().strip()
+    
+    # Remove periods and commas
+    normalized = normalized.replace(".", "").replace(",", "")
+    
+    # Remove common suffixes (with word boundaries)
+    suffix_pattern = r'\b(jr|sr|ii|iii|iv|v)\b'
+    normalized = re.sub(suffix_pattern, '', normalized, flags=re.IGNORECASE)
+    
+    # Collapse multiple spaces to single space
+    normalized = re.sub(r'\s+', ' ', normalized).strip()
+    
+    return normalized
 
 
 class PicksGetterService:
@@ -61,9 +93,10 @@ class PicksGetterService:
     async def _get_player_lookup(self) -> Dict[str, Dict]:
         """
         SSOT PIPE 1: Get player lookup from shared utility.
-        Uses consolidated lookup from /app/backend/utils/player_lookup.py
+        Builds a dict of all players from master hub.
         """
-        return await build_player_lookup(self.db)
+        players = await self.master_hub.find({}, {"_id": 0}).to_list(1000)
+        return {p.get("display_name", ""): p for p in players if p.get("display_name")}
     
     async def _get_player_by_id(self, player_id: str) -> Dict:
         """
@@ -74,9 +107,27 @@ class PicksGetterService:
     async def _get_player_by_name(self, player_name: str) -> Dict:
         """
         FALLBACK: Get player data from master hub by name.
+        Uses normalized name matching for consistency.
         Use _get_player_by_id when possible.
         """
-        return await shared_get_player_by_name(self.db, player_name)
+        # Try shared lookup first (handles its own normalization)
+        player = await shared_get_player_by_name(self.db, player_name)
+        if player:
+            return player
+        
+        # Fallback: Try normalized name search directly on master_hub
+        normalized = _normalize_name(player_name)
+        if normalized:
+            # Build regex pattern for normalized matching
+            all_players = await self.master_hub.find({}, {"display_name": 1, "_id": 0}).to_list(1000)
+            for p in all_players:
+                if _normalize_name(p.get("display_name", "")) == normalized:
+                    return await self.master_hub.find_one(
+                        {"display_name": p["display_name"]},
+                        {"_id": 0}
+                    )
+        
+        return None
     
     async def _get_master_player(self, pick: Dict) -> Dict:
         """
@@ -100,15 +151,76 @@ class PicksGetterService:
     async def _get_player_stats(self, player_name: str, stat_type: str, line: float) -> Dict:
         """
         Get L5/L10/Season stats from master hub for a player.
-        Used to enrich War Zone and Goblin Vault picks.
+        
+        OPTIMIZED: 
+        1. PRIMARY: Return from baseline_stats immediately if available
+        2. FALLBACK: Calculate from game_logs only if stat is missing from baseline_stats
+        
+        Also calculates diff_from_avg for divergence tracking.
         """
         player = await self._get_player_by_name(player_name)
         if not player:
-            return {"h5_rate": 0, "h10_rate": 0, "season_avg": 0, "l5_avg": 0, "l10_avg": 0}
+            return {
+                "h5_rate": 0, "h10_rate": 0, "season_avg": 0, 
+                "l5_avg": 0, "l10_avg": 0, "diff_from_avg": None,
+                "is_stale": True, "stats_source": "missing"
+            }
         
+        # Check freshness: is_stale if last_updated > 24 hours ago
+        last_updated = player.get("last_updated")
+        is_stale = True
+        if last_updated:
+            if isinstance(last_updated, datetime):
+                age = (datetime.now(timezone.utc) - last_updated).total_seconds()
+                is_stale = age > 86400  # 24 hours in seconds
+            elif isinstance(last_updated, str):
+                try:
+                    last_dt = datetime.fromisoformat(last_updated.replace('Z', '+00:00'))
+                    age = (datetime.now(timezone.utc) - last_dt).total_seconds()
+                    is_stale = age > 86400
+                except ValueError:
+                    pass
+        
+        # Normalize stat type for baseline_stats lookup
+        stat_key = stat_type.upper()
+        norm_map = {"P+R": "PR", "P+A": "PA", "R+A": "RA", "3PM": "THREES"}
+        stat_key = norm_map.get(stat_key, stat_key)
+        
+        # PRIMARY SOURCE: Check baseline_stats first
+        baseline_stats = player.get("baseline_stats", {})
+        stat_data = baseline_stats.get(stat_key) or baseline_stats.get(stat_type)
+        
+        if stat_data and stat_data.get("season_avg") is not None:
+            season_avg = stat_data.get("season_avg", 0)
+            l5_avg = stat_data.get("l5_avg", season_avg)
+            l10_avg = stat_data.get("l10_avg", season_avg)
+            
+            # Calculate divergence from average
+            diff_from_avg = None
+            if season_avg and season_avg > 0 and line:
+                diff_from_avg = round(((line - season_avg) / season_avg) * 100, 1)
+            
+            return {
+                "h5_rate": stat_data.get("l5_hit_rate", 0),
+                "h10_rate": stat_data.get("l10_hit_rate", 0),
+                "season_avg": round(season_avg, 1),
+                "l5_avg": round(l5_avg, 1),
+                "l10_avg": round(l10_avg, 1),
+                "diff_from_avg": diff_from_avg,
+                "is_stale": is_stale,
+                "stats_source": "baseline_stats",
+                "photo_url": player.get("headshot_url") or player.get("photo_url")
+            }
+        
+        # FALLBACK: Calculate from game_logs if baseline_stats missing
         game_logs = player.get("game_logs", [])
         if not game_logs:
-            return {"h5_rate": 0, "h10_rate": 0, "season_avg": 0, "l5_avg": 0, "l10_avg": 0}
+            return {
+                "h5_rate": 0, "h10_rate": 0, "season_avg": 0, 
+                "l5_avg": 0, "l10_avg": 0, "diff_from_avg": None,
+                "is_stale": is_stale, "stats_source": "no_data",
+                "photo_url": player.get("headshot_url") or player.get("photo_url")
+            }
         
         # Sort by date descending
         game_logs = sorted(game_logs, key=lambda x: x.get("game_date", ""), reverse=True)
@@ -116,10 +228,12 @@ class PicksGetterService:
         # Map stat type to game log field
         stat_map = {
             "PTS": "pts", "REB": "reb", "AST": "ast", "STL": "stl", "BLK": "blk",
-            "3PM": "fg3m", "TO": "tov", "PRA": "pra", "P+R": "pts_reb",
-            "P+A": "pts_ast", "R+A": "reb_ast"
+            "3PM": "fg3m", "THREES": "fg3m", "TO": "tov", "PRA": "pra", 
+            "P+R": "pts_reb", "PR": "pts_reb",
+            "P+A": "pts_ast", "PA": "pts_ast",
+            "R+A": "reb_ast", "RA": "reb_ast"
         }
-        stat_key = stat_map.get(stat_type, stat_type.lower())
+        log_key = stat_map.get(stat_type.upper(), stat_type.lower())
         
         # Calculate for different windows
         l5 = game_logs[:5]
@@ -132,15 +246,15 @@ class PicksGetterService:
             values = []
             hits = 0
             for g in logs:
-                val = g.get(stat_key, 0) or 0
+                val = g.get(log_key, 0) or 0
                 # Handle combined stats
-                if stat_type == "PRA":
+                if stat_type.upper() in ["PRA"]:
                     val = (g.get("pts", 0) or 0) + (g.get("reb", 0) or 0) + (g.get("ast", 0) or 0)
-                elif stat_type == "P+R":
+                elif stat_type.upper() in ["P+R", "PR"]:
                     val = (g.get("pts", 0) or 0) + (g.get("reb", 0) or 0)
-                elif stat_type == "P+A":
+                elif stat_type.upper() in ["P+A", "PA"]:
                     val = (g.get("pts", 0) or 0) + (g.get("ast", 0) or 0)
-                elif stat_type == "R+A":
+                elif stat_type.upper() in ["R+A", "RA"]:
                     val = (g.get("reb", 0) or 0) + (g.get("ast", 0) or 0)
                 values.append(val)
                 if val > line:
@@ -153,12 +267,20 @@ class PicksGetterService:
         l10_avg, h10_rate = calc_stats(l10)
         season_avg, _ = calc_stats(season)
         
+        # Calculate divergence from average
+        diff_from_avg = None
+        if season_avg and season_avg > 0 and line:
+            diff_from_avg = round(((line - season_avg) / season_avg) * 100, 1)
+        
         return {
             "h5_rate": round(h5_rate, 1),
             "h10_rate": round(h10_rate, 1),
             "season_avg": round(season_avg, 1),
             "l5_avg": round(l5_avg, 1),
             "l10_avg": round(l10_avg, 1),
+            "diff_from_avg": diff_from_avg,
+            "is_stale": is_stale,
+            "stats_source": "game_logs",
             "photo_url": player.get("headshot_url") or player.get("photo_url")
         }
     
@@ -556,20 +678,28 @@ class PicksGetterService:
             await self._add_player_insights(player)
             return {"success": True, "player": player, "source": "player_data"}
         
-        # Fuzzy search in both collections
+        # Normalized name search in both collections (replaces fuzzy matching)
         all_players_pd = await self.player_data.find({}, {"player_name": 1, "_id": 0}).to_list(500)
         all_players_cb = await self.cached_board.find({}, {"player_name": 1, "_id": 0}).to_list(500)
-        all_players = all_players_pd + all_players_cb
         
+        normalized_search = _normalize_name(player_name)
         best_match = None
-        best_score = 0
         match_source = None
-        for p in all_players:
-            score = fuzz.ratio(player_name.lower(), p["player_name"].lower())
-            if score > best_score and score > 70:
-                best_score = score
+        
+        # Check player_data first
+        for p in all_players_pd:
+            if _normalize_name(p.get("player_name", "")) == normalized_search:
                 best_match = p["player_name"]
-                match_source = "player_data" if p in all_players_pd else "cached_board"
+                match_source = "player_data"
+                break
+        
+        # Check cached_board if not found
+        if not best_match:
+            for p in all_players_cb:
+                if _normalize_name(p.get("player_name", "")) == normalized_search:
+                    best_match = p["player_name"]
+                    match_source = "cached_board"
+                    break
         
         if best_match:
             collection = self.player_data if match_source == "player_data" else self.cached_board

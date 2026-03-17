@@ -11,11 +11,17 @@ Also handles:
 - Stale Intel detection and alerts
 - Client-side protection (all reads from MongoDB)
 - Last updated timestamps on all cached data
+
+TIER CLASSIFICATION (v2 - Statistical Divergence):
+- GOBLIN (Green): Alternate market AND line >= 10% BELOW season_avg
+- DEMON (Red): price == 100 AND line >= 15% ABOVE season_avg
+- STANDARD (Gray): Default if no statistical divergence threshold met
 """
 
 import asyncio
 import os
 import logging
+import re
 from datetime import datetime, timezone, timedelta
 from typing import Dict, Any, List, Optional, Set
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
@@ -39,12 +45,31 @@ MISSION_CRITICAL_THRESHOLD = 1  # <1 hour = Mission Critical
 # Stale data threshold
 STALE_DATA_THRESHOLD_SECONDS = 300  # 5 minutes
 
+# STATISTICAL DIVERGENCE THRESHOLDS FOR TIER CLASSIFICATION
+GOBLIN_THRESHOLD_PCT = -10.0   # Line must be >= 10% BELOW season_avg
+DEMON_THRESHOLD_PCT = 15.0     # Line must be >= 15% ABOVE season_avg
+
 
 class GameStatus(Enum):
     STANDBY = "standby"
     ACTIVE = "active"
     MISSION_CRITICAL = "mission_critical"
     POST_TIP = "post_tip"
+
+
+def _normalize_name(name: str) -> str:
+    """
+    Normalize player names for consistent MongoDB lookups.
+    Strips periods, commas, suffixes (Jr, Sr, II, III, IV, V).
+    """
+    if not name:
+        return ""
+    normalized = name.lower().strip()
+    normalized = normalized.replace(".", "").replace(",", "")
+    suffix_pattern = r'\b(jr|sr|ii|iii|iv|v)\b'
+    normalized = re.sub(suffix_pattern, '', normalized, flags=re.IGNORECASE)
+    normalized = re.sub(r'\s+', ' ', normalized).strip()
+    return normalized
 
 
 class AdaptiveSyncEngine:
@@ -75,8 +100,99 @@ class AdaptiveSyncEngine:
         self.cached_board_collection = "dg_cached_board"
         self.sync_status_collection = "dg_sync_status"
         self.game_schedule_collection = "dg_game_schedule"
+        self.master_hub_collection = "nba_master_hub_2026"
+        
+        # Player stats cache (refreshed each sync cycle)
+        self._player_stats_cache: Dict[str, Dict] = {}
         
         logger.info("[ADAPTIVE_SYNC] Engine initialized")
+    
+    async def _get_player_season_avg(self, player_name: str, stat_type: str) -> Optional[float]:
+        """
+        Get player's season average for a stat from master hub.
+        Uses normalized name matching and caching.
+        
+        Returns None if player not found or no data.
+        """
+        # Check cache first
+        cache_key = f"{_normalize_name(player_name)}_{stat_type}"
+        if cache_key in self._player_stats_cache:
+            return self._player_stats_cache[cache_key]
+        
+        # Normalize stat type
+        stat_key = stat_type.upper()
+        norm_map = {"P+R": "PR", "P+A": "PA", "R+A": "RA", "3PM": "THREES"}
+        stat_key = norm_map.get(stat_key, stat_key)
+        
+        # Try exact name match first
+        player = await self.db[self.master_hub_collection].find_one(
+            {"display_name": player_name},
+            {"_id": 0, "baseline_stats": 1, "game_logs": 1}
+        )
+        
+        # Fallback: Try normalized name search
+        if not player:
+            normalized = _normalize_name(player_name)
+            all_players = await self.db[self.master_hub_collection].find(
+                {}, {"display_name": 1, "baseline_stats": 1, "game_logs": 1, "_id": 0}
+            ).to_list(1000)
+            
+            for p in all_players:
+                if _normalize_name(p.get("display_name", "")) == normalized:
+                    player = p
+                    break
+        
+        if not player:
+            self._player_stats_cache[cache_key] = None
+            return None
+        
+        # PRIMARY: Get from baseline_stats
+        baseline_stats = player.get("baseline_stats", {})
+        stat_data = baseline_stats.get(stat_key) or baseline_stats.get(stat_type)
+        
+        if stat_data and stat_data.get("season_avg"):
+            season_avg = float(stat_data.get("season_avg", 0))
+            self._player_stats_cache[cache_key] = season_avg
+            return season_avg
+        
+        # FALLBACK: Calculate from game_logs
+        game_logs = player.get("game_logs", [])
+        if not game_logs:
+            self._player_stats_cache[cache_key] = None
+            return None
+        
+        # Map stat type to game log field
+        stat_map = {
+            "PTS": "pts", "REB": "reb", "AST": "ast", "STL": "stl", "BLK": "blk",
+            "3PM": "fg3m", "THREES": "fg3m", "TO": "tov",
+            "PRA": None, "PR": None, "PA": None, "RA": None
+        }
+        
+        log_key = stat_map.get(stat_key)
+        values = []
+        
+        for g in game_logs:
+            if stat_key in ["PRA"]:
+                val = (g.get("pts", 0) or 0) + (g.get("reb", 0) or 0) + (g.get("ast", 0) or 0)
+            elif stat_key in ["PR", "P+R"]:
+                val = (g.get("pts", 0) or 0) + (g.get("reb", 0) or 0)
+            elif stat_key in ["PA", "P+A"]:
+                val = (g.get("pts", 0) or 0) + (g.get("ast", 0) or 0)
+            elif stat_key in ["RA", "R+A"]:
+                val = (g.get("reb", 0) or 0) + (g.get("ast", 0) or 0)
+            elif log_key:
+                val = g.get(log_key, 0) or 0
+            else:
+                val = 0
+            values.append(val)
+        
+        if values:
+            season_avg = sum(values) / len(values)
+            self._player_stats_cache[cache_key] = season_avg
+            return season_avg
+        
+        self._player_stats_cache[cache_key] = None
+        return None
     
     def _get_game_status(self, commence_time: str) -> GameStatus:
         """
@@ -262,18 +378,20 @@ class AdaptiveSyncEngine:
         """
         Update the dg_cached_board collection with PrizePicks odds data.
         
-        PRIZEPICKS TIER CLASSIFICATION:
-        - STANDARD (Gray): Main market lines (no "_alternate" suffix)
-          These are the standard PrizePicks lines with no multiplier/glow.
-        - GOBLIN (Green): Alternate market lines with odds != +100
-          These are PrizePicks "Discount/Promo" lines - easier to hit.
-        - DEMON (Red): Alternate market lines with +100 odds (even)
-          These are PrizePicks "Boosted/Hard" lines - higher risk, higher reward.
+        TIER CLASSIFICATION v2 - STATISTICAL DIVERGENCE:
+        Classification now based on actual performance data, not just price:
         
-        Note: The Odds API doesn't expose explicit "Glow" or "Multiplier" metadata,
-        but PrizePicks' classification is encoded in:
-        1. Market type (standard vs alternate)
-        2. Price (+100 = Demon/Hard, other = Goblin/Discount)
+        - GOBLIN (Green): Alternate market AND line >= 10% BELOW season_avg
+          (Easy line - player consistently beats this number)
+        - DEMON (Red): price == 100 AND line >= 15% ABOVE season_avg  
+          (Hard line - player rarely hits this number)
+        - STANDARD (Gray): Default if statistical divergence thresholds not met
+          OR if season_avg is missing/zero
+        
+        New fields added:
+        - diff_from_avg: Percentage difference from season average
+        - season_avg: Player's season average for this stat
+        - is_stale: True if master hub data is older than 24 hours
         """
         if not events:
             return {"updated": 0, "errors": 0}
@@ -284,6 +402,10 @@ class AdaptiveSyncEngine:
         goblin_count = 0
         demon_count = 0
         standard_count = 0
+        no_stats_count = 0
+        
+        # Clear player stats cache for fresh lookups this cycle
+        self._player_stats_cache = {}
         
         for event in events:
             game_id = event.get("id")
@@ -307,7 +429,7 @@ class AdaptiveSyncEngine:
                     market_key = market.get("key", "")
                     outcomes = market.get("outcomes", [])
                     
-                    # PRIZEPICKS CLASSIFICATION based on market type
+                    # Detect alternate market
                     is_alternate_market = "_alternate" in market_key
                     
                     # Extract base stat type (remove "_alternate" suffix)
@@ -334,36 +456,56 @@ class AdaptiveSyncEngine:
                         line = outcome.get("point", 0)
                         direction = (outcome.get("name", "") or "over").lower()
                         
-                        # PRIZEPICKS TIER CLASSIFICATION
-                        # Based on market type and price:
-                        if is_alternate_market:
-                            if price == 100:
-                                # DEMON: Alternate with +100 odds = "Boosted/Hard" line
-                                is_demon = True
-                                is_goblin = False
-                                tier_style = "red"
-                                tier_label = "DEMON"
-                                prizepicks_type = "boosted_hard"
-                                demon_count += 1
-                            else:
-                                # GOBLIN: Alternate with other odds = "Discount/Promo" line
-                                is_demon = False
+                        # ============================================================
+                        # STATISTICAL DIVERGENCE CLASSIFICATION v2
+                        # ============================================================
+                        # Get player's season average from master hub
+                        season_avg = await self._get_player_season_avg(player_name, stat_type_extracted)
+                        
+                        # Calculate divergence from average
+                        diff_from_avg = None
+                        if season_avg and season_avg > 0 and line:
+                            diff_from_avg = round(((line - season_avg) / season_avg) * 100, 1)
+                        
+                        # CLASSIFICATION LOGIC:
+                        # Default to STANDARD
+                        is_demon = False
+                        is_goblin = False
+                        tier_style = "standard"
+                        tier_label = "STANDARD"
+                        prizepicks_type = "standard_line"
+                        
+                        # Only classify if we have valid season_avg
+                        if season_avg and season_avg > 0 and diff_from_avg is not None:
+                            
+                            # GOBLIN: Alternate market AND line is >= 10% BELOW season_avg
+                            # (diff_from_avg <= -10 means line is lower than avg)
+                            if is_alternate_market and diff_from_avg <= GOBLIN_THRESHOLD_PCT:
                                 is_goblin = True
                                 tier_style = "green"
                                 tier_label = "GOBLIN"
                                 prizepicks_type = "discount_promo"
                                 goblin_count += 1
+                            
+                            # DEMON: price == 100 AND line is >= 15% ABOVE season_avg
+                            # (diff_from_avg >= 15 means line is higher than avg)
+                            elif price == 100 and diff_from_avg >= DEMON_THRESHOLD_PCT:
+                                is_demon = True
+                                tier_style = "red"
+                                tier_label = "DEMON"
+                                prizepicks_type = "boosted_hard"
+                                demon_count += 1
+                            
+                            else:
+                                # STANDARD: No statistical divergence threshold met
+                                standard_count += 1
                         else:
-                            # STANDARD: Main market line (no glow/multiplier)
-                            is_demon = False
-                            is_goblin = False
-                            tier_style = "standard"
-                            tier_label = "STANDARD"
-                            prizepicks_type = "standard_line"
+                            # No season_avg data - default to STANDARD
                             standard_count += 1
+                            no_stats_count += 1
                         
                         try:
-                            # Build the update document with PrizePicks classification
+                            # Build the update document with statistical classification
                             update_doc = {
                                 "game_id": game_id,
                                 "commence_time": commence_time,
@@ -378,15 +520,20 @@ class AdaptiveSyncEngine:
                                 "name": outcome.get("name", ""),  # Over/Under
                                 "last_updated": now,
                                 "last_updated_iso": now.isoformat(),
-                                "sync_source": "prizepicks_sync",
-                                # PrizePicks tier classification
+                                "sync_source": "prizepicks_sync_v2",
+                                # Market metadata
                                 "is_alternate_market": is_alternate_market,
+                                # Statistical tier classification
                                 "is_demon": is_demon,
                                 "is_goblin": is_goblin,
                                 "tier_style": tier_style,
                                 "tier_label": tier_label,
                                 "stat_type_extracted": stat_type_extracted,
-                                "prizepicks_type": prizepicks_type
+                                "prizepicks_type": prizepicks_type,
+                                # NEW: Statistical divergence metadata
+                                "season_avg": round(season_avg, 1) if season_avg else None,
+                                "diff_from_avg": diff_from_avg,
+                                "has_stats": season_avg is not None and season_avg > 0
                             }
                             
                             # Upsert to collection
@@ -408,9 +555,13 @@ class AdaptiveSyncEngine:
                             error_count += 1
                             logger.error(f"[PRIZEPICKS_SYNC] Error updating {player_name}: {e}")
         
-        # Log PrizePicks tier distribution
+        # Log classification distribution
         if updated_count > 0:
-            logger.info(f"[PRIZEPICKS_SYNC] PrizePicks lines: {goblin_count} Goblin (Discount), {demon_count} Demon (Boosted), {standard_count} Standard")
+            logger.info(f"[PRIZEPICKS_SYNC_V2] Statistical Classification: "
+                       f"{goblin_count} Goblin (line ≤{GOBLIN_THRESHOLD_PCT}% of avg), "
+                       f"{demon_count} Demon (line ≥+{DEMON_THRESHOLD_PCT}% & +100), "
+                       f"{standard_count} Standard, "
+                       f"{no_stats_count} missing stats")
         
         # Update sync status
         await self._update_sync_status(now, updated_count, error_count)
