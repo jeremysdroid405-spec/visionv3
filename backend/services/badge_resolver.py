@@ -168,14 +168,16 @@ class BadgeResolverService:
     
     async def get_player_flags(
         self, 
-        player_id: int,
+        player_id: int = None,
+        player_name: str = None,
         days_back: int = 7
     ) -> List[Dict[str, Any]]:
         """
         Get active narrative flags for a player.
         
         Args:
-            player_id: NBA player ID
+            player_id: NBA player ID (optional)
+            player_name: Player name for lookup (optional, used if player_id not found)
             days_back: How many days back to look for flags
             
         Returns:
@@ -183,13 +185,28 @@ class BadgeResolverService:
         """
         cutoff = datetime.now(timezone.utc) - timedelta(days=days_back)
         
-        cursor = self.context_engine.find({
-            "player_id": player_id,
-            "timestamp": {"$gte": cutoff.isoformat()},
+        # Build query - support both ID and name lookup
+        query = {
             "active": {"$ne": False}
-        }).sort("severity", -1)
+        }
         
+        # Try player_id first
+        if player_id:
+            query["player_id"] = str(player_id)
+        
+        # If no player_id or no results, try by name
+        cursor = self.context_engine.find(query).sort("severity", -1)
         flags = await cursor.to_list(50)
+        
+        # If no flags found by ID, try by name
+        if not flags and player_name:
+            name_query = {
+                "player_name": {"$regex": player_name.split()[0], "$options": "i"},
+                "active": {"$ne": False}
+            }
+            cursor = self.context_engine.find(name_query).sort("severity", -1)
+            flags = await cursor.to_list(50)
+        
         return flags
     
     def _resolve_badge_from_flag(self, flag: Dict[str, Any]) -> Optional[Dict[str, Any]]:
@@ -234,20 +251,22 @@ class BadgeResolverService:
     
     async def resolve_badges(
         self,
-        player_id: int,
+        player_id: int = None,
+        player_name: str = None,
         include_auto_badges: bool = True
     ) -> List[Dict[str, Any]]:
         """
         Resolve all active badges for a player.
         
         Args:
-            player_id: NBA player ID
+            player_id: NBA player ID (optional)
+            player_name: Player name for lookup (optional)
             include_auto_badges: Whether to include auto-generated badges
             
         Returns:
             List of resolved badge objects
         """
-        flags = await self.get_player_flags(player_id)
+        flags = await self.get_player_flags(player_id=player_id, player_name=player_name)
         
         badges = []
         seen_badge_keys = set()
@@ -537,6 +556,90 @@ class BadgeResolverService:
             {"$set": {"active": False}}
         )
         return result.modified_count > 0
+    
+    def generate_full_line_vision(
+        self,
+        player_name: str,
+        stat_type: str,
+        lines: List[Dict],
+        badges: List[Dict],
+        stats: Dict
+    ) -> str:
+        """
+        Generate full line-by-line Vision insight.
+        
+        This explains the STANDARD/GOBLIN/DEMON hierarchy for a player's props.
+        
+        Example output:
+        "Luka's 32.5 Standard line is a trap; the 25.5 Goblin line is the play for safety,
+        while the 40.5 Demon line is for those betting on his 'Sanctuary' scoring surge
+        following the March 10th custody news."
+        """
+        first_name = player_name.split()[0]
+        
+        # Find standard, goblin, and demon lines for this stat type
+        stat_lines = [l for l in lines if l.get("stat_type") == stat_type]
+        
+        standard_line = next((l for l in stat_lines if l.get("tier_label") == "STANDARD"), None)
+        goblin_lines = [l for l in stat_lines if l.get("tier_label") == "GOBLIN"]
+        demon_lines = [l for l in stat_lines if l.get("tier_label") == "DEMON"]
+        
+        # Get badge context
+        has_legal = any(b.get("badge_key") == "legal_noise" for b in badges)
+        has_locked_in = any(b.get("badge_key") == "locked_in" for b in badges)
+        has_jet_lag = any(b.get("badge_key") == "jet_lag" for b in badges)
+        
+        # Get headline for context
+        legal_headline = ""
+        if has_legal:
+            legal_flag = next((b for b in badges if b.get("badge_key") == "legal_noise"), None)
+            legal_headline = legal_flag.get("headline", "") if legal_flag else ""
+        
+        # Build the narrative
+        parts = []
+        
+        # Standard line - the "trap"
+        if standard_line:
+            std_val = standard_line.get("line", 0)
+            if has_legal or has_locked_in:
+                parts.append(f"{first_name}'s {std_val} Standard line is a trap")
+            else:
+                parts.append(f"{first_name}'s {std_val} is the Standard line")
+        
+        # Goblin - the safe play
+        if goblin_lines:
+            # Get the highest goblin line as the "safe but still valuable" pick
+            best_goblin = max(goblin_lines, key=lambda x: x.get("line", 0))
+            gob_val = best_goblin.get("line", 0)
+            parts.append(f"the {gob_val} Goblin line is the play for safety")
+        
+        # Demon - the ceiling play
+        if demon_lines:
+            best_demon = min(demon_lines, key=lambda x: x.get("line", 0))  # Lowest demon = most achievable ceiling
+            dem_val = best_demon.get("line", 0)
+            
+            if has_legal and has_locked_in and "custody" in legal_headline.lower():
+                parts.append(
+                    f"while the {dem_val} Demon line is for those betting on his 'Sanctuary' "
+                    f"scoring surge following the March 10th custody news"
+                )
+            elif has_locked_in:
+                parts.append(f"while the {dem_val} Demon line targets his hot streak ceiling")
+            elif has_jet_lag:
+                parts.append(f"while the {dem_val} Demon line is a high-risk play given his travel fatigue")
+            else:
+                parts.append(f"while the {dem_val} Demon line offers ladder value for ceiling hunters")
+        
+        if not parts:
+            return None
+        
+        # Combine parts
+        if len(parts) == 1:
+            return parts[0] + "."
+        elif len(parts) == 2:
+            return "; ".join(parts) + "."
+        else:
+            return "; ".join(parts[:2]) + ", " + parts[2] + "."
 
 
 # Service singleton

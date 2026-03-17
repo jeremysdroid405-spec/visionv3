@@ -466,39 +466,57 @@ async def get_tactical_profile(
         # ===== STEP 7: Fetch Player Badges from Context Engine =====
         badges = []
         vision_insight = None
+        line_vision = None
         
         try:
             from services.badge_resolver import get_badge_resolver
             badge_resolver = get_badge_resolver(db)
             
-            # Get player's NBA ID for badge lookup
+            # Get player's NBA ID for badge lookup, also try by name
             lookup_id = nba_id or player_id
-            if lookup_id:
-                resolved_badges = await badge_resolver.resolve_badges(int(lookup_id))
-                badges = [{
-                    "id": b.get("badge_key"),
-                    "label": b.get("display"),
-                    "icon": b.get("icon"),
-                    "color": b.get("color"),
-                    "severity": b.get("severity"),
-                    "headline": b.get("headline")
-                } for b in resolved_badges]
+            display_name = master_player.get("display_name") if master_player else player_name
+            
+            # Resolve badges - support both ID and name lookup
+            resolved_badges = await badge_resolver.resolve_badges(
+                player_id=int(lookup_id) if lookup_id else None,
+                player_name=display_name
+            )
+            
+            badges = [{
+                "id": b.get("badge_key"),
+                "label": b.get("display"),
+                "icon": b.get("icon"),
+                "color": b.get("color"),
+                "severity": b.get("severity"),
+                "headline": b.get("headline")
+            } for b in resolved_badges]
+            
+            # Generate narrative vision insight using the upgraded generator
+            if badges:
+                # Get baseline stats for narrative
+                pts_baseline = baseline_stats.get("PTS", {})
+                stats_for_narrative = {
+                    "ppg": pts_baseline.get("season_avg", 0),
+                    "ppg_l5": pts_baseline.get("l5_avg", 0),
+                    "ppg_l10": pts_baseline.get("l10_avg", 0)
+                }
                 
-                # Generate narrative vision insight using the upgraded generator
-                if badges:
-                    # Get baseline stats for narrative
-                    pts_baseline = baseline_stats.get("PTS", {})
-                    stats_for_narrative = {
-                        "ppg": pts_baseline.get("season_avg", 0),
-                        "ppg_l5": pts_baseline.get("l5_avg", 0),
-                        "ppg_l10": pts_baseline.get("l10_avg", 0)
-                    }
-                    
-                    vision_insight = badge_resolver.generate_narrative_insight(
-                        player_name=player_name,
+                vision_insight = badge_resolver.generate_narrative_insight(
+                    player_name=display_name,
+                    badges=resolved_badges,
+                    stats=stats_for_narrative
+                )
+                
+                # Generate full line-by-line Vision for PTS (primary stat)
+                if active_lines:
+                    line_vision = badge_resolver.generate_full_line_vision(
+                        player_name=display_name,
+                        stat_type="PTS",
+                        lines=active_lines,
                         badges=resolved_badges,
                         stats=stats_for_narrative
                     )
+                    
         except Exception as e:
             logger.debug(f"[PROFILE] Badge resolution skipped: {e}")
         
@@ -521,13 +539,15 @@ async def get_tactical_profile(
             "usage_ripple": usage_ripple,
             "badges": badges,
             "vision_insight": vision_insight,
-            # Provider-based tier system metadata
+            "line_vision": line_vision,  # Full PTS line breakdown
+            # PrizePicks tier system metadata
             "standard_lines": standard_lines,
             "tier_logic": {
-                "description": "Provider-based tier classification from alternate markets",
-                "standard": "Main market lines (non-alternate)",
-                "goblin": "Alternate market lines with odds != +100 (easier to hit)",
-                "demon": "Alternate market lines with +100 odds (harder to hit, ladder plays)"
+                "source": "prizepicks",
+                "description": "PrizePicks tier classification from alternate markets",
+                "standard": "Main PrizePicks lines (no glow/multiplier)",
+                "goblin": "Discount/Promo lines - alternate markets with odds != +100",
+                "demon": "Boosted/Hard lines - alternate markets with +100 odds"
             }
         }
         

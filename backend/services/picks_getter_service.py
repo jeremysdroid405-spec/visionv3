@@ -99,134 +99,140 @@ class PicksGetterService:
     
     async def get_war_zone(self) -> Dict[str, Any]:
         """
-        Get the War Zone top 10 picks from MongoDB.
-        Data is PRE-ENRICHED during sync. Just reads and returns with AI insights.
-        NOW INCLUDES: Full props array from cached_board for UI compatibility.
-        """
-        picks = await self.radar_picks.find({}, {"_id": 0}).sort("radar_score", -1).to_list(10)
+        Get the War Zone - High-risk DEMON picks from PrizePicks.
         
-        # Enrich each pick with full props array from cached_board
-        for pick in picks:
-            player_name = pick.get("player_name")
-            if player_name:
-                # Fetch full player data from cached board
-                cached_player = await self.cached_board.find_one(
-                    {"player_name": player_name},
-                    {"_id": 0, "goblins": 1, "demons": 1, "standard": 1}
-                )
-                if cached_player:
-                    # Build unified props array (clean each prop of _id)
-                    all_props = []
-                    
-                    # Add demons first (priority for War Zone)
-                    for d in cached_player.get("demons", []):
-                        prop = {k: v for k, v in d.items() if k != "_id"}
-                        prop["is_goblin"] = False
-                        prop["is_demon"] = True
-                        all_props.append(prop)
-                    
-                    # Add goblins
-                    for g in cached_player.get("goblins", []):
-                        prop = {k: v for k, v in g.items() if k != "_id"}
-                        prop["is_goblin"] = True
-                        prop["is_demon"] = False
-                        all_props.append(prop)
-                    
-                    # Add standard
-                    for s in cached_player.get("standard", []):
-                        prop = {k: v for k, v in s.items() if k != "_id"}
-                        prop["is_goblin"] = False
-                        prop["is_demon"] = False
-                        all_props.append(prop)
-                    
-                    pick["props"] = all_props
-                    pick["props_count"] = len(all_props)
+        PRIZEPICKS ARCHITECTURE:
+        - Reads DEMON props directly from dg_cached_board
+        - DEMON = alternate market lines with +100 odds (boosted/hard)
+        - Data is classified during PrizePicks sync
+        """
+        # Fetch DEMON props directly from cached board (PrizePicks data)
+        demon_props = await self.cached_board.find(
+            {"is_demon": True, "bookmaker": "prizepicks"},
+            {"_id": 0}
+        ).sort("last_updated", -1).to_list(100)
+        
+        # Group by player and build picks
+        players_demons = {}
+        for prop in demon_props:
+            player_name = prop.get("player_name")
+            if not player_name:
+                continue
             
-            # Add AI insights
-            await self._add_insights_to_pick(pick)
+            if player_name not in players_demons:
+                players_demons[player_name] = {
+                    "player_name": player_name,
+                    "team": prop.get("away_team") or prop.get("home_team"),
+                    "opponent": prop.get("home_team") if prop.get("away_team") else prop.get("away_team"),
+                    "game_id": prop.get("game_id"),
+                    "props": [],
+                    "demon_count": 0,
+                    "is_demon": True,
+                    "tier_label": "DEMON",
+                    "prizepicks_type": "boosted_hard"
+                }
+            
+            players_demons[player_name]["props"].append({
+                "stat_type": prop.get("stat_type_extracted"),
+                "line": prop.get("line"),
+                "odds": prop.get("price"),
+                "direction": prop.get("direction"),
+                "market": prop.get("market"),
+                "is_demon": True,
+                "tier_label": "DEMON"
+            })
+            players_demons[player_name]["demon_count"] += 1
+        
+        # Sort by demon count and convert to list
+        picks = sorted(players_demons.values(), key=lambda x: x.get("demon_count", 0), reverse=True)[:10]
+        
+        # Add primary stat from first prop
+        for pick in picks:
+            if pick.get("props"):
+                primary = pick["props"][0]
+                pick["stat_type"] = primary.get("stat_type")
+                pick["line"] = primary.get("line")
+                pick["odds"] = primary.get("odds")
         
         sync_meta = await self.sync_log.find_one({"type": "cached_board"})
         
         return {
             "success": True,
-            "synced_at": sync_meta.get("synced_at") if sync_meta else None,
+            "synced_at": sync_meta.get("synced_at") if sync_meta else datetime.now(timezone.utc).isoformat(),
             "picks_count": len(picks),
             "picks": picks,
-            "algorithm": {
-                "description": "Weighted Probability + Line Gap",
-                "formula": "Score = P / Gap_Ratio",
-                "hit_probability": "(H10 × 0.6) + (H5 × 0.4)",
-                "min_probability": "60%"
-            }
+            "source": "prizepicks",
+            "tier": "demon",
+            "description": "High-risk boosted lines from PrizePicks"
         }
     
     async def get_goblin_vault(self) -> Dict[str, Any]:
         """
-        Get the Goblin Vault top 10 safe plays from MongoDB.
-        Data is PRE-ENRICHED during sync. Just reads and returns with AI insights.
-        NOW INCLUDES: Full props array from cached_board for UI compatibility.
-        """
-        picks = await self.goblin_vault.find({}, {"_id": 0}).sort("vault_score", -1).to_list(10)
+        Get the Goblin Vault - Safe GOBLIN picks from PrizePicks.
         
-        # Enrich each pick with full props array from cached_board
-        for pick in picks:
-            player_name = pick.get("player_name")
-            if player_name:
-                # Fetch full player data from cached board
-                cached_player = await self.cached_board.find_one(
-                    {"player_name": player_name},
-                    {"_id": 0, "goblins": 1, "demons": 1, "standard": 1}
-                )
-                if cached_player:
-                    # Build unified props array (clean each prop of _id)
-                    all_props = []
-                    
-                    # Add goblins
-                    for g in cached_player.get("goblins", []):
-                        prop = {k: v for k, v in g.items() if k != "_id"}
-                        prop["is_goblin"] = True
-                        prop["is_demon"] = False
-                        all_props.append(prop)
-                    
-                    # Add demons
-                    for d in cached_player.get("demons", []):
-                        prop = {k: v for k, v in d.items() if k != "_id"}
-                        prop["is_goblin"] = False
-                        prop["is_demon"] = True
-                        all_props.append(prop)
-                    
-                    # Add standard (non-goblin, non-demon)
-                    for s in cached_player.get("standard", []):
-                        prop = {k: v for k, v in s.items() if k != "_id"}
-                        prop["is_goblin"] = False
-                        prop["is_demon"] = False
-                        all_props.append(prop)
-                    
-                    pick["props"] = all_props
-                    pick["props_count"] = len(all_props)
+        PRIZEPICKS ARCHITECTURE:
+        - Reads GOBLIN props directly from dg_cached_board
+        - GOBLIN = alternate market lines with odds != +100 (discount/promo)
+        - These are the safer, higher-probability plays
+        """
+        # Fetch GOBLIN props directly from cached board (PrizePicks data)
+        goblin_props = await self.cached_board.find(
+            {"is_goblin": True, "bookmaker": "prizepicks"},
+            {"_id": 0}
+        ).sort("last_updated", -1).to_list(100)
+        
+        # Group by player and build picks
+        players_goblins = {}
+        for prop in goblin_props:
+            player_name = prop.get("player_name")
+            if not player_name:
+                continue
             
-            # Add AI insights
-            await self._add_insights_to_pick(pick)
+            if player_name not in players_goblins:
+                players_goblins[player_name] = {
+                    "player_name": player_name,
+                    "team": prop.get("away_team") or prop.get("home_team"),
+                    "opponent": prop.get("home_team") if prop.get("away_team") else prop.get("away_team"),
+                    "game_id": prop.get("game_id"),
+                    "props": [],
+                    "goblin_count": 0,
+                    "is_goblin": True,
+                    "tier_label": "GOBLIN",
+                    "prizepicks_type": "discount_promo"
+                }
+            
+            players_goblins[player_name]["props"].append({
+                "stat_type": prop.get("stat_type_extracted"),
+                "line": prop.get("line"),
+                "odds": prop.get("price"),
+                "direction": prop.get("direction"),
+                "market": prop.get("market"),
+                "is_goblin": True,
+                "tier_label": "GOBLIN"
+            })
+            players_goblins[player_name]["goblin_count"] += 1
+        
+        # Sort by goblin count and convert to list
+        picks = sorted(players_goblins.values(), key=lambda x: x.get("goblin_count", 0), reverse=True)[:10]
+        
+        # Add primary stat from first prop
+        for pick in picks:
+            if pick.get("props"):
+                primary = pick["props"][0]
+                pick["stat_type"] = primary.get("stat_type")
+                pick["line"] = primary.get("line")
+                pick["odds"] = primary.get("odds")
         
         sync_meta = await self.sync_log.find_one({"type": "cached_board"})
         
         return {
             "success": True,
-            "synced_at": sync_meta.get("synced_at") if sync_meta else None,
+            "synced_at": sync_meta.get("synced_at") if sync_meta else datetime.now(timezone.utc).isoformat(),
             "picks_count": len(picks),
             "picks": picks,
-            "algorithm": {
-                "name": "GOD-TIER 4-Pillar Formula",
-                "description": "4-Pillar weighted scoring with 80% hit rate bouncer",
-                "formula": "vault_score = (consistency * 0.50) + (vegas * 0.20) + (dvp * 0.15) + (context * 0.15)",
-                "pillars": {
-                    "pillar_1": "Base Consistency (50%) = (L10 * 0.6) + (L5 * 0.4)",
-                    "pillar_2": "Vegas Implied Prob (20%) = odds conversion",
-                    "pillar_3": "DvP Matchup (15%) = 0.5 neutral placeholder",
-                    "pillar_4": "AI Context Shift (15%) = from AiContextEngine"
-                },
-                "hard_filter": "L10 Hit Frequency >= 80%"
-            }
+            "source": "prizepicks",
+            "tier": "goblin",
+            "description": "Safe discount lines from PrizePicks"
         }
     
     async def get_front_lines(self) -> Dict[str, Any]:

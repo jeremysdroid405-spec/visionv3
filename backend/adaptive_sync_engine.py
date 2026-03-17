@@ -121,11 +121,17 @@ class AdaptiveSyncEngine:
     
     async def _fetch_live_odds(self) -> List[Dict[str, Any]]:
         """
-        Fetch current odds from The Odds API.
+        Fetch PrizePicks odds from The Odds API.
         
-        Two-step process for player props:
-        1. Fetch list of NBA events
-        2. Fetch player prop odds for each event (alternate markets for Goblin/Demon)
+        PRIZEPICKS-SPECIFIC FETCH:
+        - Uses regions=us_dfs (Daily Fantasy Sports region for PrizePicks)
+        - Uses bookmakers=prizepicks (specifically target PrizePicks)
+        - Fetches both standard and alternate markets for proper tier classification
+        
+        PrizePicks Classification:
+        - STANDARD (Gray): Main market lines (player_points, player_rebounds, player_assists)
+        - GOBLIN (Green): Alternate market lines with odds != +100 (discount/promo lines)
+        - DEMON (Red): Alternate market lines with +100 odds (boosted/hard lines)
         
         Returns raw odds data for processing.
         """
@@ -145,20 +151,20 @@ class AdaptiveSyncEngine:
                 events_response = await client.get(events_url, params=events_params)
                 events_response.raise_for_status()
                 events = events_response.json()
-                logger.info(f"[ADAPTIVE_SYNC] Found {len(events)} NBA events")
+                logger.info(f"[PRIZEPICKS_SYNC] Found {len(events)} NBA events")
                 
                 if not events:
                     return []
                 
-                # Step 2: Fetch player prop odds for each event
-                # Markets: standard + alternate for Goblin/Demon classification
-                markets = ",".join([
-                    # Standard markets
+                # Step 2: Fetch PrizePicks odds for each event
+                # PrizePicks-specific markets (standard + alternate for tier classification)
+                prizepicks_markets = ",".join([
+                    # Standard markets (STANDARD tier)
                     "player_points", "player_rebounds", "player_assists",
                     "player_threes", "player_blocks", "player_steals",
                     "player_points_rebounds_assists", "player_points_rebounds",
                     "player_points_assists", "player_rebounds_assists",
-                    # Alternate markets (for Goblin/Demon)
+                    # Alternate markets (GOBLIN/DEMON tiers based on odds)
                     "player_points_alternate", "player_rebounds_alternate", "player_assists_alternate",
                     "player_threes_alternate", "player_blocks_alternate", "player_steals_alternate",
                     "player_points_rebounds_assists_alternate", "player_points_rebounds_alternate",
@@ -172,12 +178,13 @@ class AdaptiveSyncEngine:
                     if not event_id:
                         continue
                     
-                    # Fetch odds for this event
+                    # Fetch PrizePicks odds for this event
                     odds_url = f"{self.base_url}/sports/basketball_nba/events/{event_id}/odds"
                     odds_params = {
                         "apiKey": self.odds_api_key,
-                        "regions": "us",
-                        "markets": markets,
+                        "regions": "us_dfs",  # PRIZEPICKS: Daily Fantasy Sports region
+                        "bookmakers": "prizepicks",  # PRIZEPICKS: Target only PrizePicks
+                        "markets": prizepicks_markets,
                         "oddsFormat": "american"
                     }
                     
@@ -188,26 +195,35 @@ class AdaptiveSyncEngine:
                             # Merge event info with odds data
                             odds_data["event_id"] = event_id
                             enriched_events.append(odds_data)
+                            
+                            # Log PrizePicks data found
+                            pp_markets = 0
+                            for bm in odds_data.get("bookmakers", []):
+                                if bm.get("key") == "prizepicks":
+                                    pp_markets = len(bm.get("markets", []))
+                            if pp_markets > 0:
+                                logger.info(f"  [PRIZEPICKS] {event.get('away_team')} @ {event.get('home_team')}: {pp_markets} markets")
+                                
                         elif odds_response.status_code == 422:
-                            # Try with basic markets only
-                            odds_params["markets"] = "player_points,player_rebounds,player_assists,player_points_alternate,player_rebounds_alternate,player_assists_alternate"
+                            # Try with core markets only
+                            odds_params["markets"] = "player_points,player_points_alternate,player_rebounds,player_rebounds_alternate,player_assists,player_assists_alternate"
                             odds_response = await client.get(odds_url, params=odds_params, timeout=15.0)
                             if odds_response.status_code == 200:
                                 odds_data = odds_response.json()
                                 odds_data["event_id"] = event_id
                                 enriched_events.append(odds_data)
                     except Exception as e:
-                        logger.warning(f"[ADAPTIVE_SYNC] Failed to fetch odds for event {event_id}: {e}")
+                        logger.warning(f"[PRIZEPICKS_SYNC] Failed to fetch odds for event {event_id}: {e}")
                         continue
                 
-                logger.info(f"[ADAPTIVE_SYNC] Fetched odds for {len(enriched_events)} events")
+                logger.info(f"[PRIZEPICKS_SYNC] Fetched PrizePicks odds for {len(enriched_events)} events")
                 return enriched_events
                 
         except httpx.HTTPStatusError as e:
-            logger.error(f"[ADAPTIVE_SYNC] Odds API HTTP error: {e.response.status_code}")
+            logger.error(f"[PRIZEPICKS_SYNC] Odds API HTTP error: {e.response.status_code}")
             return []
         except Exception as e:
-            logger.error(f"[ADAPTIVE_SYNC] Odds API error: {e}")
+            logger.error(f"[PRIZEPICKS_SYNC] Odds API error: {e}")
             return []
     
     async def _update_game_registry(self, events: List[Dict[str, Any]]) -> None:
@@ -244,15 +260,20 @@ class AdaptiveSyncEngine:
     
     async def _update_cached_board(self, events: List[Dict[str, Any]]) -> Dict[str, Any]:
         """
-        Update the dg_cached_board collection with fresh odds data.
-        Adds last_updated timestamp to all entries.
+        Update the dg_cached_board collection with PrizePicks odds data.
         
-        PROVIDER-BASED TIER CLASSIFICATION:
-        - is_alternate_market: True if market ends with "_alternate"
-        - For alternate markets:
-          - is_demon = price == +100 (even odds = harder/riskier)
-          - is_goblin = price != +100 (any other odds = easier/safer)
-        - For standard markets: both flags are False
+        PRIZEPICKS TIER CLASSIFICATION:
+        - STANDARD (Gray): Main market lines (no "_alternate" suffix)
+          These are the standard PrizePicks lines with no multiplier/glow.
+        - GOBLIN (Green): Alternate market lines with odds != +100
+          These are PrizePicks "Discount/Promo" lines - easier to hit.
+        - DEMON (Red): Alternate market lines with +100 odds (even)
+          These are PrizePicks "Boosted/Hard" lines - higher risk, higher reward.
+        
+        Note: The Odds API doesn't expose explicit "Glow" or "Multiplier" metadata,
+        but PrizePicks' classification is encoded in:
+        1. Market type (standard vs alternate)
+        2. Price (+100 = Demon/Hard, other = Goblin/Discount)
         """
         if not events:
             return {"updated": 0, "errors": 0}
@@ -270,17 +291,23 @@ class AdaptiveSyncEngine:
             home_team = event.get("home_team", "")
             away_team = event.get("away_team", "")
             
-            # Extract bookmakers and markets
+            # Extract bookmakers - specifically looking for PrizePicks
             bookmakers = event.get("bookmakers", [])
             
             for bookmaker in bookmakers:
+                bookmaker_key = bookmaker.get("key", "")
+                
+                # Skip non-PrizePicks bookmakers (we specifically requested prizepicks)
+                if bookmaker_key != "prizepicks":
+                    continue
+                    
                 markets = bookmaker.get("markets", [])
                 
                 for market in markets:
                     market_key = market.get("key", "")
                     outcomes = market.get("outcomes", [])
                     
-                    # Determine if this is an alternate market (provider classification)
+                    # PRIZEPICKS CLASSIFICATION based on market type
                     is_alternate_market = "_alternate" in market_key
                     
                     # Extract base stat type (remove "_alternate" suffix)
@@ -304,52 +331,62 @@ class AdaptiveSyncEngine:
                             continue
                         
                         price = outcome.get("price", 0)
+                        line = outcome.get("point", 0)
                         direction = (outcome.get("name", "") or "over").lower()
                         
-                        # PROVIDER-BASED CLASSIFICATION
-                        # Demon: Alternate market with +100 odds (harder to hit)
-                        # Goblin: Alternate market with other odds (easier to hit)
-                        # Standard: Non-alternate market
+                        # PRIZEPICKS TIER CLASSIFICATION
+                        # Based on market type and price:
                         if is_alternate_market:
-                            is_demon = price == 100  # +100 = even odds = harder
-                            is_goblin = price != 100  # Other odds = easier
-                            tier_style = "red" if is_demon else "green"
-                            tier_label = "DEMON" if is_demon else "GOBLIN"
-                            if is_demon:
+                            if price == 100:
+                                # DEMON: Alternate with +100 odds = "Boosted/Hard" line
+                                is_demon = True
+                                is_goblin = False
+                                tier_style = "red"
+                                tier_label = "DEMON"
+                                prizepicks_type = "boosted_hard"
                                 demon_count += 1
                             else:
+                                # GOBLIN: Alternate with other odds = "Discount/Promo" line
+                                is_demon = False
+                                is_goblin = True
+                                tier_style = "green"
+                                tier_label = "GOBLIN"
+                                prizepicks_type = "discount_promo"
                                 goblin_count += 1
                         else:
+                            # STANDARD: Main market line (no glow/multiplier)
                             is_demon = False
                             is_goblin = False
                             tier_style = "standard"
                             tier_label = "STANDARD"
+                            prizepicks_type = "standard_line"
                             standard_count += 1
                         
                         try:
-                            # Build the update document with provider classification
+                            # Build the update document with PrizePicks classification
                             update_doc = {
                                 "game_id": game_id,
                                 "commence_time": commence_time,
                                 "home_team": home_team,
                                 "away_team": away_team,
-                                "bookmaker": bookmaker.get("key", ""),
+                                "bookmaker": bookmaker_key,
                                 "market": market_key,
                                 "player_name": player_name,
-                                "line": outcome.get("point", 0),
+                                "line": line,
                                 "price": price,
                                 "direction": direction,
                                 "name": outcome.get("name", ""),  # Over/Under
                                 "last_updated": now,
                                 "last_updated_iso": now.isoformat(),
-                                "sync_source": "adaptive_sync_engine",
-                                # Provider-based tier classification
+                                "sync_source": "prizepicks_sync",
+                                # PrizePicks tier classification
                                 "is_alternate_market": is_alternate_market,
                                 "is_demon": is_demon,
                                 "is_goblin": is_goblin,
                                 "tier_style": tier_style,
                                 "tier_label": tier_label,
-                                "stat_type_extracted": stat_type_extracted
+                                "stat_type_extracted": stat_type_extracted,
+                                "prizepicks_type": prizepicks_type
                             }
                             
                             # Upsert to collection
@@ -358,9 +395,9 @@ class AdaptiveSyncEngine:
                                     "game_id": game_id,
                                     "player_name": player_name,
                                     "market": market_key,
-                                    "line": outcome.get("point", 0),
+                                    "line": line,
                                     "direction": direction,
-                                    "bookmaker": bookmaker.get("key", "")
+                                    "bookmaker": bookmaker_key
                                 },
                                 {"$set": update_doc},
                                 upsert=True
@@ -369,11 +406,11 @@ class AdaptiveSyncEngine:
                             
                         except Exception as e:
                             error_count += 1
-                            logger.error(f"[ADAPTIVE_SYNC] Error updating {player_name}: {e}")
+                            logger.error(f"[PRIZEPICKS_SYNC] Error updating {player_name}: {e}")
         
-        # Log tier distribution
+        # Log PrizePicks tier distribution
         if updated_count > 0:
-            logger.info(f"[ADAPTIVE_SYNC] Tier distribution: {goblin_count} Goblin, {demon_count} Demon, {standard_count} Standard")
+            logger.info(f"[PRIZEPICKS_SYNC] PrizePicks lines: {goblin_count} Goblin (Discount), {demon_count} Demon (Boosted), {standard_count} Standard")
         
         # Update sync status
         await self._update_sync_status(now, updated_count, error_count)

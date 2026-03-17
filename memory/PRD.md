@@ -5,49 +5,46 @@ PickVision is a high-performance NBA Player Prop Dashboard with a "military tech
 
 ## Latest Update: 2026-03-17
 
-### Provider-Based Alternate Line Classification - COMPLETED ✅
-**Universal prop categorization (Goblin/Demon/Standard) using provider's alternate markets**
+### PrizePicks Integration - COMPLETED ✅
+**Direct PrizePicks tier classification using The Odds API**
 
 **Implementation Changes:**
 
 1. **Adaptive Sync Engine (`/app/backend/adaptive_sync_engine.py`)**:
-   - Modified `_fetch_live_odds()` to use two-step fetch:
-     - First fetches NBA events list
-     - Then fetches player prop odds per event with all markets
-   - Added alternate markets: `player_points_alternate`, `player_rebounds_alternate`, `player_assists_alternate`, etc.
-   - Classification based on provider data:
-     - `is_alternate_market = "_alternate" in market_key`
-     - `is_demon = price == 100` (+100 odds = harder to hit)
-     - `is_goblin = price != 100` (other odds = easier to hit)
-   - `_update_cached_board()` now stores tier info with each prop
+   - Uses `regions=us_dfs` (Daily Fantasy Sports region for PrizePicks)
+   - Uses `bookmakers=prizepicks` to target PrizePicks specifically
+   - Markets: `player_points`, `player_points_alternate`, `player_rebounds`, `player_rebounds_alternate`, `player_assists`, `player_assists_alternate`
+   - Classification based on PrizePicks market data:
+     - **STANDARD** (Gray): Main market lines (no `_alternate` suffix)
+     - **GOBLIN** (Green): Alternate lines with odds != +100 (discount/promo)
+     - **DEMON** (Red): Alternate lines with +100 odds (boosted/hard)
 
-2. **Command Post Routes (`/app/backend/routes/command.py`)**:
-   - Changed props source from `dg_live_props` to `dg_cached_board`
-   - Removed anchor-based classification logic
-   - Props now use provider's `is_demon`, `is_goblin`, `tier_label` directly
-   - Added `tier_source: "provider"` field for debugging
+2. **Picks Getter Service (`/app/backend/services/picks_getter_service.py`)**:
+   - `get_war_zone()` pulls DEMON props directly from `dg_cached_board`
+   - `get_goblin_vault()` pulls GOBLIN props directly from `dg_cached_board`
+   - All data sourced from PrizePicks via The Odds API
 
-**Tier Classification Rules (Provider-Based)**:
-- **GOBLIN** (green): Alternate market lines with odds != +100 (easier to hit)
-- **DEMON** (red): Alternate market lines with +100 odds (ladder plays, harder)
-- **STANDARD** (gray): Main market lines (non-alternate)
+3. **Badge System Working**:
+   - Luka Doncic shows [Legal Noise] and [Locked In] badges
+   - Vision insight: "Luka is clearly using the court as a release from the Legal Noise of his custody battle"
+   - Line Vision for Demon plays references "Sanctuary scoring surge following the March 10th custody news"
 
-**API Response Fields**:
-- `is_alternate_market`: Boolean - from alternate market
-- `is_demon`: Boolean - +100 odds alternate
-- `is_goblin`: Boolean - non-+100 odds alternate
-- `tier_style`: "red" / "green" / "standard"
-- `tier_label`: "DEMON" / "GOBLIN" / "STANDARD"
-- `tier_source`: "provider"
+**PrizePicks Classification Rules**:
+- **GOBLIN** (green): Discount/Promo lines - alternate markets with odds != +100
+- **DEMON** (red): Boosted/Hard lines - alternate markets with +100 odds
+- **STANDARD** (gray): Main PrizePicks lines (no glow/multiplier)
 
 **Verification**:
-- Austin Reaves: 79 props (1 Demon @ PTS O19.5 +100, 59 Goblin, 19 Standard)
-- Tier distribution: 7228 Goblin, 49 Demon, 2456 Standard across all players
+- War Zone shows 10 DEMON picks from PrizePicks
+- Goblin Vault shows 10 GOBLIN picks from PrizePicks
+- Luka profile: 23 props, badges [Legal Noise] + [Locked In], Vision insight working
+
+**Legacy Sync Disabled**: `nba_official_sync.py` only provides L10/L20 hit rate calculations to the Vision engine.
 
 ---
 
-### Anchor Line Tier Classification (DEPRECATED)
-**Previously used backend calculation to classify props - replaced by provider-based system**
+### Provider-Based Alternate Line Classification (DEPRECATED)
+**Replaced by PrizePicks-specific integration above**
 
 ---
 
