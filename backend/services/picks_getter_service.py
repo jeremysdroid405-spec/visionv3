@@ -7,13 +7,15 @@ NO external API calls are made here. All stats come from:
 - PIPE 1: nba_master_hub_2026 (stats vault, populated by 0400 CRON)
 - PIPE 2: dg_cached_board (live lines, populated by Odds API polling)
 
-Handles fetching picks data from MongoDB for all tier endpoints:
-- War Zone (Demons)
-- Goblin Vault (Safe plays)
-- Front Lines (Mixed)
-- Parlay Builder
-- Goblin Recon
-- Cached Board & Player lookups
+ANCHOR-BASED TIER CLASSIFICATION (from cached_board):
+Tier classification is done during sync using PrizePicks' own structure:
+- Standard Line (is_alternate_market=false) is the ANCHOR
+- Alternate ABOVE anchor = DEMON (Red) - Hard over
+- Alternate BELOW anchor = GOBLIN (Green) - Easy over
+- Equal to anchor = STANDARD (Gray)
+
+This service preserves the tier flags from the cached_board.
+The Vault provides stats (FG%, 3P%, STL, BLK) for display on cards.
 """
 from typing import Dict, List, Any, Optional
 from datetime import datetime, timezone, timedelta
@@ -291,12 +293,15 @@ class PicksGetterService:
             season_avg = baseline_stats.get(bdl_field)
         
         if season_avg is not None:
-            # Calculate divergence from average
+            # Calculate diff from season average for display
             diff_from_avg = None
-            if season_avg and season_avg > 0 and line:
+            if season_avg > 0 and line:
                 diff_from_avg = round(((line - season_avg) / season_avg) * 100, 1)
             
-            # Use game_logs hit rates if available, otherwise 0
+            # NOTE: Tier classification (is_demon, is_goblin) is done during sync
+            # using anchor-based classification. We preserve those flags here.
+            # We only add vault stats for display on cards.
+            
             return {
                 "h5_rate": hit_rate_data["h5_rate"],
                 "h10_rate": hit_rate_data["h10_rate"],
@@ -326,12 +331,11 @@ class PicksGetterService:
             l5_avg = stat_data.get("l5_avg", season_avg)
             l10_avg = stat_data.get("l10_avg", season_avg)
             
-            # Calculate divergence from average
+            # Calculate diff from season average for display
             diff_from_avg = None
-            if season_avg and season_avg > 0 and line:
+            if season_avg > 0 and line:
                 diff_from_avg = round(((line - season_avg) / season_avg) * 100, 1)
             
-            # Use game_logs hit rates if available, fall back to stat_data hit rates
             return {
                 "h5_rate": hit_rate_data["h5_rate"] if hit_rate_data["h5_rate"] > 0 else stat_data.get("l5_hit_rate", 0),
                 "h10_rate": hit_rate_data["h10_rate"] if hit_rate_data["h10_rate"] > 0 else stat_data.get("l10_hit_rate", 0),
@@ -357,7 +361,8 @@ class PicksGetterService:
         if not game_logs:
             return {
                 "h5_rate": 0, "h10_rate": 0, "season_avg": 0, 
-                "l5_avg": 0, "l10_avg": 0, "diff_from_avg": None,
+                "l5_avg": 0, "l10_avg": 0, 
+                "diff_from_avg": None,
                 "is_stale": is_stale, "stats_source": "no_data",
                 "photo_url": player.get("headshot_url") or player.get("photo_url"),
                 # BDL shooting/defensive stats (may still exist even without game logs)
@@ -416,9 +421,9 @@ class PicksGetterService:
         l10_avg, h10_rate = calc_stats(l10)
         season_avg, _ = calc_stats(season)
         
-        # Calculate divergence from average
+        # Calculate diff from season average for display
         diff_from_avg = None
-        if season_avg and season_avg > 0 and line:
+        if season_avg > 0 and line:
             diff_from_avg = round(((line - season_avg) / season_avg) * 100, 1)
         
         return {
@@ -447,72 +452,66 @@ class PicksGetterService:
         Get the War Zone - High-risk DEMON picks from PrizePicks.
         
         PRIZEPICKS ARCHITECTURE:
-        - Reads DEMON props directly from dg_cached_board
-        - DEMON = alternate market lines with +100 odds (boosted/hard)
+        - Reads from dg_cached_board (player documents with props arrays)
+        - DEMON = props where is_demon=True (above anchor line)
         - Enriched with L5/L10/Season stats from master hub
         """
-        # Fetch DEMON props directly from cached board (PrizePicks data)
-        demon_props = await self.cached_board.find(
-            {"is_demon": True, "bookmaker": "prizepicks"},
+        # Get all players that have demon props
+        players = await self.cached_board.find(
+            {"props.is_demon": True},
             {"_id": 0}
-        ).sort("last_updated", -1).to_list(100)
+        ).to_list(200)
         
-        # Group by player and build picks
-        players_demons = {}
-        for prop in demon_props:
-            player_name = prop.get("player_name")
+        # Build picks from demon props
+        picks = []
+        for player_doc in players:
+            player_name = player_doc.get("player_name")
             if not player_name:
                 continue
             
-            if player_name not in players_demons:
-                players_demons[player_name] = {
-                    "player_name": player_name,
-                    "team": prop.get("away_team") or prop.get("home_team"),
-                    "opponent": prop.get("home_team") if prop.get("away_team") else prop.get("away_team"),
-                    "game_id": prop.get("game_id"),
-                    "props": [],
-                    "demon_count": 0,
-                    "is_demon": True,
-                    "tier_label": "DEMON",
-                    "prizepicks_type": "boosted_hard"
-                }
+            # Find demon props for this player
+            demon_props = [p for p in player_doc.get("props", []) if p.get("is_demon")]
             
-            players_demons[player_name]["props"].append({
-                "stat_type": prop.get("stat_type_extracted"),
-                "line": prop.get("line"),
-                "odds": prop.get("price"),
-                "direction": prop.get("direction"),
-                "market": prop.get("market"),
-                "is_demon": True,
-                "tier_label": "DEMON"
-            })
-            players_demons[player_name]["demon_count"] += 1
+            for prop in demon_props:
+                pick = {
+                    "player_name": player_name,
+                    "team": player_doc.get("team"),
+                    "opponent": player_doc.get("opponent"),
+                    "game_id": player_doc.get("game_id"),
+                    "stat_type": prop.get("stat_type_extracted") or prop.get("market", "").replace("player_", ""),
+                    "line": prop.get("line"),
+                    "odds": prop.get("price"),
+                    "direction": prop.get("direction", "over"),
+                    "is_demon": True,
+                    "is_goblin": False,
+                    "tier_label": "DEMON",
+                    "tier_source": prop.get("tier_source", "anchor_classification"),
+                    "anchor_line": prop.get("anchor_line"),
+                    "is_alternate_market": prop.get("is_alternate_market", True)
+                }
+                picks.append(pick)
         
-        # Sort by demon count and convert to list
-        picks = sorted(players_demons.values(), key=lambda x: x.get("demon_count", 0), reverse=True)[:10]
+        if not picks:
+            logger.warning("[WAR_ZONE] No demon picks found in cached board")
+            return {"picks": [], "picks_count": 0}
         
-        # Enrich with stats from master hub and add primary stat
-        for pick in picks:
-            if pick.get("props"):
-                primary = pick["props"][0]
-                pick["stat_type"] = primary.get("stat_type")
-                pick["line"] = primary.get("line")
-                pick["odds"] = primary.get("odds")
-                
-                # Fetch stats from master hub
-                player_stats = await self._get_player_stats(pick["player_name"], pick["stat_type"], pick["line"])
-                pick.update(player_stats)
+        # Enrich with stats from master hub
+        enriched_picks = []
+        for pick in picks[:50]:  # Limit to top 50
+            player_stats = await self._get_player_stats(
+                pick["player_name"], 
+                pick["stat_type"], 
+                pick["line"]
+            )
+            pick.update(player_stats)
+            enriched_picks.append(pick)
         
-        sync_meta = await self.sync_log.find_one({"type": "cached_board"})
+        # Sort by anchor diff (highest first = hardest demons)
+        enriched_picks.sort(key=lambda x: x.get("anchor_line", 0) or 0, reverse=True)
         
         return {
-            "success": True,
-            "synced_at": sync_meta.get("synced_at") if sync_meta else datetime.now(timezone.utc).isoformat(),
-            "picks_count": len(picks),
-            "picks": picks,
-            "source": "prizepicks",
-            "tier": "demon",
-            "description": "High-risk boosted lines from PrizePicks"
+            "picks": enriched_picks[:20],
+            "picks_count": len(enriched_picks)
         }
     
     async def get_goblin_vault(self) -> Dict[str, Any]:
@@ -520,142 +519,93 @@ class PicksGetterService:
         Get the Goblin Vault - Safe GOBLIN picks from PrizePicks.
         
         PRIZEPICKS ARCHITECTURE:
-        - Reads GOBLIN props directly from dg_cached_board
-        - GOBLIN = alternate market lines with odds != +100 (discount/promo)
+        - Reads from dg_cached_board (player documents with props arrays)
+        - GOBLIN = props where is_goblin=True (below anchor line)
         - Enriched with L5/L10/Season stats from master hub
         """
-        # Fetch GOBLIN props directly from cached board (PrizePicks data)
-        goblin_props = await self.cached_board.find(
-            {"is_goblin": True, "bookmaker": "prizepicks"},
+        # Get all players that have goblin props
+        players = await self.cached_board.find(
+            {"props.is_goblin": True},
             {"_id": 0}
-        ).sort("last_updated", -1).to_list(100)
+        ).to_list(200)
         
-        # Group by player and build picks
-        players_goblins = {}
-        for prop in goblin_props:
-            player_name = prop.get("player_name")
+        # Build picks from goblin props
+        picks = []
+        for player_doc in players:
+            player_name = player_doc.get("player_name")
             if not player_name:
                 continue
             
-            if player_name not in players_goblins:
-                players_goblins[player_name] = {
+            # Find goblin props for this player
+            goblin_props = [p for p in player_doc.get("props", []) if p.get("is_goblin")]
+            
+            for prop in goblin_props:
+                pick = {
                     "player_name": player_name,
-                    "team": prop.get("away_team") or prop.get("home_team"),
-                    "opponent": prop.get("home_team") if prop.get("away_team") else prop.get("away_team"),
-                    "game_id": prop.get("game_id"),
-                    "props": [],
-                    "goblin_count": 0,
+                    "team": player_doc.get("team"),
+                    "opponent": player_doc.get("opponent"),
+                    "game_id": player_doc.get("game_id"),
+                    "stat_type": prop.get("stat_type_extracted") or prop.get("market", "").replace("player_", ""),
+                    "line": prop.get("line"),
+                    "odds": prop.get("price"),
+                    "direction": prop.get("direction", "over"),
+                    "is_demon": False,
                     "is_goblin": True,
                     "tier_label": "GOBLIN",
-                    "prizepicks_type": "discount_promo"
+                    "tier_source": prop.get("tier_source", "anchor_classification"),
+                    "anchor_line": prop.get("anchor_line"),
+                    "is_alternate_market": prop.get("is_alternate_market", True)
                 }
-            
-            players_goblins[player_name]["props"].append({
-                "stat_type": prop.get("stat_type_extracted"),
-                "line": prop.get("line"),
-                "odds": prop.get("price"),
-                "direction": prop.get("direction"),
-                "market": prop.get("market"),
-                "is_goblin": True,
-                "tier_label": "GOBLIN"
-            })
-            players_goblins[player_name]["goblin_count"] += 1
+                picks.append(pick)
         
-        # Sort by goblin count and convert to list
-        picks = sorted(players_goblins.values(), key=lambda x: x.get("goblin_count", 0), reverse=True)[:10]
+        if not picks:
+            logger.warning("[GOBLIN_VAULT] No goblin picks found in cached board")
+            return {"picks": [], "picks_count": 0}
         
-        # Enrich with stats from master hub and add primary stat
-        for pick in picks:
-            if pick.get("props"):
-                primary = pick["props"][0]
-                pick["stat_type"] = primary.get("stat_type")
-                pick["line"] = primary.get("line")
-                pick["odds"] = primary.get("odds")
-                
-                # Fetch stats from master hub
-                player_stats = await self._get_player_stats(pick["player_name"], pick["stat_type"], pick["line"])
-                pick.update(player_stats)
+        # Enrich with stats from master hub
+        enriched_picks = []
+        for pick in picks[:50]:  # Limit to top 50
+            player_stats = await self._get_player_stats(
+                pick["player_name"], 
+                pick["stat_type"], 
+                pick["line"]
+            )
+            pick.update(player_stats)
+            enriched_picks.append(pick)
         
-        sync_meta = await self.sync_log.find_one({"type": "cached_board"})
+        # Sort by how far below anchor (easiest goblins first)
+        enriched_picks.sort(key=lambda x: (x.get("anchor_line", 0) or 0) - (x.get("line", 0) or 0), reverse=True)
         
         return {
-            "success": True,
-            "synced_at": sync_meta.get("synced_at") if sync_meta else datetime.now(timezone.utc).isoformat(),
-            "picks_count": len(picks),
-            "picks": picks,
-            "source": "prizepicks",
-            "tier": "goblin",
-            "description": "Safe discount lines from PrizePicks"
+            "picks": enriched_picks[:20],
+            "picks_count": len(enriched_picks)
         }
     
     async def get_front_lines(self) -> Dict[str, Any]:
         """
-        Get THE FRONT LINES - STANDARD (main) lines from PrizePicks.
+        Get THE FRONT LINES - Mix of DEMON and GOBLIN picks.
         
-        PRIZEPICKS ARCHITECTURE:
-        - Reads STANDARD props directly from dg_cached_board
-        - STANDARD = main market lines (no "_alternate" suffix)
-        - These are the primary PrizePicks lines
+        Returns a balanced mix of demons and goblins for tactical plays.
         """
-        # Fetch STANDARD props directly from cached board (PrizePicks data)
-        standard_props = await self.cached_board.find(
-            {"tier_label": "STANDARD", "bookmaker": "prizepicks"},
-            {"_id": 0}
-        ).sort("last_updated", -1).to_list(100)
+        # Get demon and goblin picks
+        demon_data = await self.get_war_zone()
+        goblin_data = await self.get_goblin_vault()
         
-        # Group by player and build picks
-        players_standards = {}
-        for prop in standard_props:
-            player_name = prop.get("player_name")
-            if not player_name:
-                continue
-            
-            if player_name not in players_standards:
-                players_standards[player_name] = {
-                    "player_name": player_name,
-                    "team": prop.get("away_team") or prop.get("home_team"),
-                    "opponent": prop.get("home_team") if prop.get("away_team") else prop.get("away_team"),
-                    "game_id": prop.get("game_id"),
-                    "props": [],
-                    "standard_count": 0,
-                    "is_goblin": False,
-                    "is_demon": False,
-                    "tier_label": "STANDARD",
-                    "prizepicks_type": "standard_line"
-                }
-            
-            players_standards[player_name]["props"].append({
-                "stat_type": prop.get("stat_type_extracted"),
-                "line": prop.get("line"),
-                "odds": prop.get("price"),
-                "direction": prop.get("direction"),
-                "market": prop.get("market"),
-                "is_goblin": False,
-                "is_demon": False,
-                "tier_label": "STANDARD"
-            })
-            players_standards[player_name]["standard_count"] += 1
+        demon_picks = demon_data.get("picks", [])[:5]
+        goblin_picks = goblin_data.get("picks", [])[:5]
         
-        # Sort by standard count and convert to list
-        picks = sorted(players_standards.values(), key=lambda x: x.get("standard_count", 0), reverse=True)[:10]
-        
-        # Enrich with stats from master hub and add primary stat
-        for pick in picks:
-            if pick.get("props"):
-                primary = pick["props"][0]
-                pick["stat_type"] = primary.get("stat_type")
-                pick["line"] = primary.get("line")
-                pick["odds"] = primary.get("odds")
-                
-                # Fetch stats from master hub
-                player_stats = await self._get_player_stats(pick["player_name"], pick["stat_type"], pick["line"])
-                pick.update(player_stats)
-        
-        sync_meta = await self.sync_log.find_one({"type": "cached_board"})
+        # Interleave demons and goblins
+        picks = []
+        for i in range(max(len(demon_picks), len(goblin_picks))):
+            if i < len(demon_picks):
+                picks.append(demon_picks[i])
+            if i < len(goblin_picks):
+                picks.append(goblin_picks[i])
         
         return {
-            "success": True,
-            "synced_at": sync_meta.get("synced_at") if sync_meta else datetime.now(timezone.utc).isoformat(),
+            "picks": picks[:10],
+            "picks_count": len(picks)
+        }
             "picks_count": len(picks),
             "picks": picks,
             "source": "prizepicks",

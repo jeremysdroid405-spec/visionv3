@@ -346,3 +346,53 @@ async def get_bdl_sample(player_name: str):
         raise HTTPException(status_code=404, detail=f"Player not found: {player_name}")
     
     return doc
+
+
+
+@router.post("/sync-roster")
+async def sync_roster_from_board():
+    """
+    ROSTER SYNC: Update team and season stats for all active players.
+    
+    This endpoint:
+    1. Gets all unique players from the cached board
+    2. Fetches their current team and season stats from BDL
+    3. Updates the master hub with correct team assignments
+    
+    Use this to fix trade-related issues (e.g., Coby White CHI -> CHA).
+    """
+    if _db is None:
+        raise HTTPException(status_code=500, detail="Database not initialized")
+    
+    from services.roster_sync_service import get_roster_sync_service
+    service = get_roster_sync_service(_db)
+    result = await service.sync_all_from_cached_board()
+    return result
+
+
+@router.post("/sync-roster-player/{player_name}")
+async def sync_roster_single_player(player_name: str):
+    """
+    Sync roster data for a single player.
+    
+    Args:
+        player_name: Player name (e.g., "Coby White")
+        
+    Updates team assignment and season stats from BDL.
+    """
+    if _db is None:
+        raise HTTPException(status_code=500, detail="Database not initialized")
+    
+    from services.roster_sync_service import get_roster_sync_service
+    service = get_roster_sync_service(_db)
+    result = await service.sync_player_from_bdl(player_name)
+    
+    if not result:
+        raise HTTPException(status_code=404, detail=f"Could not sync player: {player_name}")
+    
+    return {
+        "success": True,
+        "player": player_name,
+        "team": result.get("team"),
+        "baseline_stats": result.get("baseline_stats")
+    }

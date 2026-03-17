@@ -5,6 +5,12 @@ Extracted from demon_goblin_engine.py for modularity.
 
 Handles building the centralized cached board from props data.
 All tier sections (War Zone, Goblin Vault, Front Lines) read from here.
+
+ANCHOR-BASED CLASSIFICATION:
+Uses PrizePicks "Standard Line" as the anchor.
+- Alternate ABOVE standard = DEMON (Red)
+- Alternate BELOW standard = GOBLIN (Green)
+- Equal to standard = STANDARD (Gray)
 """
 from typing import Dict, List, Any, Optional
 from datetime import datetime, timezone
@@ -12,6 +18,7 @@ import logging
 
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from services.utils_service import sanitize_player_name
+from services.anchor_classification_service import classify_props_by_anchor
 
 logger = logging.getLogger(__name__)
 
@@ -69,6 +76,13 @@ class CachedBoardBuilderService:
             return {"success": True, "message": "No props to build", "players_count": 0}
         
         logger.info(f"[CACHED_BOARD] Building centralized board from {len(props)} props...")
+        
+        # STEP 1: APPLY ANCHOR-BASED CLASSIFICATION
+        # This overrides Odds API is_demon/is_goblin flags with our own logic:
+        # - Alternate ABOVE standard line = DEMON
+        # - Alternate BELOW standard line = GOBLIN
+        props = classify_props_by_anchor(props)
+        logger.info("[CACHED_BOARD] Applied anchor-based tier classification")
         
         # Check if mapper is available
         if ensure_mapper_loaded_callback:
@@ -165,6 +179,10 @@ class CachedBoardBuilderService:
         Used only if Odds API Mapper fails to initialize.
         """
         logger.warning("[CACHED_BOARD_LEGACY] Using legacy name-based lookup (Mapper unavailable)")
+        
+        # STEP 1: APPLY ANCHOR-BASED CLASSIFICATION
+        props = classify_props_by_anchor(props)
+        logger.info("[CACHED_BOARD_LEGACY] Applied anchor-based tier classification")
         
         # Load master roster into memory
         master_roster_map = {}
