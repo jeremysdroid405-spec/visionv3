@@ -372,31 +372,57 @@ export const PlayerDetailPage = ({ playerName, playerData = null, onBack, highli
               playerName={playerName}
               team={player.team}
               photoUrl={player.photo_url}
-              size="lg"
+              size="xl"
             />
           )}
           
           <div className="flex-1 min-w-0">
-            <h1 className="text-xl font-bold text-white truncate">{playerName}</h1>
+            <h1 className="text-2xl font-bold text-white truncate">{playerName}</h1>
             {player && (
-              <div className="flex items-center gap-2 text-xs text-zinc-400">
+              <div className="flex items-center gap-2 text-sm text-zinc-400">
                 <span className="font-mono">{player.team}</span>
                 {player.position && <span>· {player.position}</span>}
               </div>
             )}
-            {/* Context Badges using BadgePill component */}
-            {player?.badges && player.badges.length > 0 && (
-              <BadgeRow badges={player.badges} size="md" className="mt-2" />
-            )}
-            {/* Vision Insight - Narrative style */}
-            {player?.vision_insight && (
-              <p className="text-[11px] text-zinc-300 mt-2 leading-relaxed bg-zinc-800/50 rounded px-2 py-1.5 border-l-2 border-cyan-500">
-                {player.vision_insight}
-              </p>
+            
+            {/* Player Season Stats */}
+            {player?.baseline_stats && (
+              <div className="flex items-center gap-4 mt-3">
+                {player.baseline_stats.PTS?.season_avg != null && (
+                  <div className="text-center">
+                    <div className="text-lg font-bold text-white">{player.baseline_stats.PTS.season_avg.toFixed(1)}</div>
+                    <div className="text-[10px] text-zinc-500">PPG</div>
+                  </div>
+                )}
+                {player.baseline_stats.REB?.season_avg != null && (
+                  <div className="text-center">
+                    <div className="text-lg font-bold text-white">{player.baseline_stats.REB.season_avg.toFixed(1)}</div>
+                    <div className="text-[10px] text-zinc-500">RPG</div>
+                  </div>
+                )}
+                {player.baseline_stats.AST?.season_avg != null && (
+                  <div className="text-center">
+                    <div className="text-lg font-bold text-white">{player.baseline_stats.AST.season_avg.toFixed(1)}</div>
+                    <div className="text-[10px] text-zinc-500">APG</div>
+                  </div>
+                )}
+                {player.baseline_stats.STL?.season_avg != null && (
+                  <div className="text-center">
+                    <div className="text-lg font-bold text-cyan-400">{player.baseline_stats.STL.season_avg.toFixed(1)}</div>
+                    <div className="text-[10px] text-zinc-500">STL</div>
+                  </div>
+                )}
+                {player.baseline_stats.BLK?.season_avg != null && (
+                  <div className="text-center">
+                    <div className="text-lg font-bold text-cyan-400">{player.baseline_stats.BLK.season_avg.toFixed(1)}</div>
+                    <div className="text-[10px] text-zinc-500">BLK</div>
+                  </div>
+                )}
+              </div>
             )}
           </div>
           
-          {/* Stats badges */}
+          {/* Props count badges */}
           {player && (
             <div className="flex items-center gap-3 flex-shrink-0">
               <div className="text-center">
@@ -418,6 +444,8 @@ export const PlayerDetailPage = ({ playerName, playerData = null, onBack, highli
             </div>
           )}
         </div>
+        
+        {/* Remove old badges and vision insight - moved stats to header */}
       </div>
       
       {/* Content - Flat list with headers */}
