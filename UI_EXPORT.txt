@@ -1,0 +1,1292 @@
+================================================================================
+                         PICKVISION - UI EXPORT (Skin Only)
+================================================================================
+This file contains ONLY the JSX/HTML structure with Tailwind CSS classes.
+All JavaScript logic (useState, useEffect, hooks, functions, conditionals) removed.
+Ready for migration to a new project.
+
+================================================================================
+                              DASHBOARD.JSX COMPONENTS
+================================================================================
+
+--------------------------------------------------------------------------------
+1. PLAYER HEADSHOT COMPONENT
+--------------------------------------------------------------------------------
+<!-- Fallback Display (Team Logo) -->
+<div class="w-12 h-12 rounded-full overflow-hidden bg-zinc-800 flex items-center justify-center p-1.5">
+  <img src="{teamLogoUrl}" alt="{team}" class="w-full h-full object-contain" />
+</div>
+
+<!-- Fallback Display (Initials) -->
+<div class="w-12 h-12 rounded-full bg-gradient-to-br from-zinc-700 to-zinc-800 flex items-center justify-center">
+  <span class="text-zinc-400 font-bold text-xs">{initials}</span>
+</div>
+
+<!-- Photo Display -->
+<div class="w-12 h-12 rounded-full overflow-hidden bg-zinc-800 relative">
+  <img 
+    src="{photoUrl}" 
+    alt="{playerName}" 
+    class="w-full h-full object-cover absolute inset-0 opacity-100"
+    style="object-position: center 20%; transform: scale(1.3);"
+  />
+</div>
+
+<!-- Size variants: sm: w-8 h-8, md: w-12 h-12, lg: w-16 h-16, xl: w-24 h-24 -->
+
+--------------------------------------------------------------------------------
+2. LOCKED BADGE OVERLAY
+--------------------------------------------------------------------------------
+<div class="absolute inset-0 bg-black/60 backdrop-blur-sm z-10 flex flex-col items-center justify-center rounded-lg">
+  <div class="flex items-center gap-2 px-4 py-2 bg-red-500/30 rounded-full border border-red-500/50">
+    <span class="text-red-400 font-bold text-sm">LOCKED</span>
+  </div>
+  <span class="text-zinc-400 text-xs mt-2">Game In Progress</span>
+</div>
+
+--------------------------------------------------------------------------------
+3. PLAYER ROW (Search Results)
+--------------------------------------------------------------------------------
+<div class="flex items-center gap-3 p-3 hover:bg-zinc-800/50 cursor-pointer border-b border-zinc-800/50 last:border-0" data-testid="player-row-{playerSlug}">
+  <!-- PlayerHeadshot Component Here -->
+  <div class="flex-1 min-w-0">
+    <div class="font-medium text-white truncate">{player_name}</div>
+    <div class="text-xs text-zinc-500">{team}</div>
+  </div>
+  <div class="flex items-center gap-2">
+    <span class="bg-red-500/20 text-red-400 border-none text-xs px-2 py-0.5 rounded">{demons_count} Demons</span>
+    <span class="bg-green-500/20 text-green-400 border-none text-xs px-2 py-0.5 rounded">{goblins_count} Goblins</span>
+  </div>
+</div>
+
+--------------------------------------------------------------------------------
+4. SECTION HEADER
+--------------------------------------------------------------------------------
+<div class="flex items-center justify-between mb-3">
+  <div class="flex items-center gap-2">
+    <div class="w-8 h-8 rounded-full flex items-center justify-center bg-zinc-800/50 border border-zinc-700">
+      <!-- Icon Here -->
+    </div>
+    <div>
+      <span class="text-sm font-bold text-white">{title}</span>
+      <p class="text-[10px] text-zinc-500">{subtitle}</p>
+    </div>
+  </div>
+  <!-- Badge Colors: red, amber, green -->
+  <div class="px-2 py-1 rounded text-[10px] font-bold border bg-red-500/20 text-red-400 border-red-500/30">
+    {badgeText}
+  </div>
+</div>
+
+--------------------------------------------------------------------------------
+5. LIVE SCORES TICKER
+--------------------------------------------------------------------------------
+<!-- Loading State -->
+<div class="bg-black/80 border-y border-zinc-700/30 py-2 px-4">
+  <div class="flex items-center gap-2 text-zinc-300 text-xs">
+    <!-- Activity Icon animate-pulse -->
+    <span class="font-medium">Loading scores...</span>
+  </div>
+</div>
+
+<!-- No Games State -->
+<div class="bg-black/80 border-y border-zinc-700/30 py-2 px-4">
+  <div class="flex items-center gap-2">
+    <div class="flex items-center gap-1.5 px-2 py-1 bg-zinc-800 rounded">
+      <div class="w-2 h-2 rounded-full bg-zinc-500"></div>
+      <span class="text-[10px] font-bold text-zinc-300">NO GAMES</span>
+    </div>
+    <span class="text-xs text-zinc-500">Check back at tip-off</span>
+  </div>
+</div>
+
+<!-- Active Ticker -->
+<div class="bg-black/80 border-y border-zinc-700/30 py-1.5 overflow-hidden" data-testid="live-scores-ticker">
+  <div class="ticker-scroll">
+    <div class="ticker-content items-center">
+      <!-- LIVE Indicator -->
+      <div class="flex items-center gap-2 px-4 border-r border-zinc-700/50">
+        <div class="flex items-center gap-1.5 px-2 py-1 bg-red-600 rounded animate-pulse">
+          <div class="w-2 h-2 rounded-full bg-white"></div>
+          <span class="text-[11px] font-black text-white">LIVE</span>
+        </div>
+      </div>
+      
+      <!-- Score Item -->
+      <div class="flex items-center gap-2.5 px-4 py-1.5 border-r border-zinc-700/50 bg-zinc-800/50">
+        <!-- Away Team -->
+        <img src="{awayTeamLogo}" alt="{awayTeam}" class="w-5 h-5 flex-shrink-0" />
+        <span class="text-sm font-bold text-white">{awayTeam}</span>
+        <span class="text-base font-black text-emerald-400">{awayScore}</span>
+        
+        <span class="text-zinc-600 text-xs">@</span>
+        
+        <!-- Home Team -->
+        <span class="text-base font-black text-red-400">{homeScore}</span>
+        <span class="text-sm font-bold text-white">{homeTeam}</span>
+        <img src="{homeTeamLogo}" alt="{homeTeam}" class="w-5 h-5 flex-shrink-0" />
+        
+        <!-- Status Badge -->
+        <span class="text-[10px] font-bold px-2 py-0.5 ml-1 bg-red-600 text-white border-red-500 animate-pulse rounded">
+          {status}
+        </span>
+      </div>
+    </div>
+  </div>
+</div>
+
+--------------------------------------------------------------------------------
+6. BREAKING NEWS TICKER
+--------------------------------------------------------------------------------
+<div class="bg-red-950/80 border-b border-red-900/50 py-2 overflow-hidden" data-testid="news-ticker">
+  <div class="news-ticker-scroll">
+    <div class="news-ticker-content">
+      <!-- News Item -->
+      <div class="flex items-center gap-2.5 px-8">
+        <span class="px-2 py-0.5 bg-white text-red-950 text-[11px] font-bold rounded">BREAKING</span>
+        <span class="text-sm text-white whitespace-nowrap">{newsText}</span>
+        <span class="text-white text-lg mx-2">•</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+--------------------------------------------------------------------------------
+7. SWIPE CONTAINER
+--------------------------------------------------------------------------------
+<div class="swipe-container">
+  <!-- Children (PickCards) -->
+</div>
+
+--------------------------------------------------------------------------------
+8. PICK CARD SKELETON (Loading)
+--------------------------------------------------------------------------------
+<div class="swipe-card">
+  <div class="p-3 bg-zinc-900/50 border border-zinc-800/50 rounded-lg animate-pulse">
+    <div class="flex items-center gap-3 mb-3">
+      <div class="w-12 h-12 bg-zinc-800 rounded-full"></div>
+      <div class="flex-1">
+        <div class="h-4 bg-zinc-800 rounded w-24 mb-2"></div>
+        <div class="h-3 bg-zinc-800/50 rounded w-16"></div>
+      </div>
+    </div>
+    <div class="flex gap-2">
+      <div class="h-6 bg-zinc-800 rounded-full w-16"></div>
+      <div class="h-6 bg-zinc-800/50 rounded w-12"></div>
+    </div>
+    <div class="mt-3 flex justify-between">
+      <div class="h-3 bg-zinc-800/50 rounded w-20"></div>
+      <div class="h-3 bg-zinc-800/50 rounded w-16"></div>
+    </div>
+  </div>
+</div>
+
+--------------------------------------------------------------------------------
+9. EMPTY STATE MESSAGE
+--------------------------------------------------------------------------------
+<div class="flex flex-col items-center justify-center py-8 text-center">
+  <div class="w-12 h-12 rounded-full bg-zinc-800/50 flex items-center justify-center mb-3">
+    <!-- Icon Here -->
+  </div>
+  <p class="text-sm font-medium text-zinc-400">{title}</p>
+  <p class="text-xs text-zinc-500 mt-1">{message}</p>
+</div>
+
+--------------------------------------------------------------------------------
+10. WAR ZONE SECTION (Demons)
+--------------------------------------------------------------------------------
+<div class="war-zone-section mb-4">
+  <!-- SectionHeader with DemonIcon -->
+  <div class="flex items-center justify-between mb-3">
+    <div class="flex items-center gap-2">
+      <div class="w-8 h-8 rounded-full flex items-center justify-center bg-zinc-800/50 border border-zinc-700">
+        <!-- DemonIcon -->
+      </div>
+      <div>
+        <span class="text-sm font-bold text-white">WAR ZONE</span>
+        <p class="text-[10px] text-zinc-500">High-risk, high-reward demon plays</p>
+      </div>
+    </div>
+    <div class="px-2 py-1 rounded text-[10px] font-bold border bg-red-500/20 text-red-400 border-red-500/30">
+      TOP 10 DEMONS
+    </div>
+  </div>
+  
+  <div class="swipe-container">
+    <div class="swipe-card">
+      <!-- PickCard Component -->
+    </div>
+  </div>
+</div>
+
+--------------------------------------------------------------------------------
+11. SAFE HAVEN SECTION (Goblins)
+--------------------------------------------------------------------------------
+<div class="goblin-recon-section mb-4">
+  <div class="flex items-center justify-between mb-3">
+    <div class="flex items-center gap-2">
+      <div class="w-8 h-8 rounded-full flex items-center justify-center bg-zinc-800/50 border border-zinc-700">
+        <!-- GoblinIcon -->
+      </div>
+      <div>
+        <span class="text-sm font-bold text-white">SAFE HAVEN</span>
+        <p class="text-[10px] text-zinc-500">High-floor goblin plays with best consistency</p>
+      </div>
+    </div>
+    <div class="px-2 py-1 rounded text-[10px] font-bold border bg-green-500/20 text-green-400 border-green-500/30">
+      TOP 10 GOBLINS
+    </div>
+  </div>
+  
+  <div class="swipe-container">
+    <div class="swipe-card">
+      <!-- PickCard Component -->
+    </div>
+  </div>
+</div>
+
+--------------------------------------------------------------------------------
+12. FRONT LINES SECTION
+--------------------------------------------------------------------------------
+<div class="front-lines-section mb-4">
+  <div class="flex items-center justify-between mb-3">
+    <div class="flex items-center gap-2">
+      <div class="w-8 h-8 rounded-full flex items-center justify-center bg-zinc-800/50 border border-zinc-700">
+        <span class="text-lg">🎯</span>
+      </div>
+      <div>
+        <span class="text-sm font-bold text-white">FRONT LINES</span>
+        <p class="text-[10px] text-zinc-500">Balanced demon/goblin mix for tactical plays</p>
+      </div>
+    </div>
+    <div class="px-2 py-1 rounded text-[10px] font-bold border bg-amber-500/20 text-amber-400 border-amber-500/30">
+      10 PICKS
+    </div>
+  </div>
+  
+  <div class="swipe-container">
+    <div class="swipe-card">
+      <!-- PickCard Component -->
+    </div>
+  </div>
+</div>
+
+--------------------------------------------------------------------------------
+13. EXPANDED PARLAY MODAL
+--------------------------------------------------------------------------------
+<div class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+  <div class="bg-gradient-to-br from-green-950/90 to-zinc-900 border border-green-500/50 rounded-2xl max-w-lg w-full max-h-[80vh] overflow-y-auto">
+    <!-- Header -->
+    <div class="sticky top-0 bg-zinc-900/95 backdrop-blur-sm p-4 border-b border-zinc-800 flex items-center justify-between">
+      <div class="flex items-center gap-2">
+        <!-- GoblinIcon/DemonIcon -->
+        <div>
+          <h3 class="font-bold text-green-400">{parlayName}</h3>
+          <p class="text-xs text-zinc-500">{parlayDescription}</p>
+        </div>
+      </div>
+      <button class="p-2 hover:bg-zinc-800 rounded-lg">
+        <!-- X Icon -->
+      </button>
+    </div>
+    
+    <!-- Picks List -->
+    <div class="p-4 space-y-3">
+      <!-- PickCard Components -->
+    </div>
+    
+    <!-- Footer Stats -->
+    <div class="sticky bottom-0 bg-zinc-900/95 backdrop-blur-sm p-4 border-t border-zinc-800">
+      <div class="flex items-center justify-between text-sm">
+        <div>
+          <span class="text-zinc-500">Combined Prob:</span>
+          <span class="ml-2 text-white font-bold">{combinedProbability}%</span>
+        </div>
+        <div>
+          <span class="text-zinc-500">Payout:</span>
+          <span class="ml-2 font-bold text-green-400">{estimatedPayout}x</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+--------------------------------------------------------------------------------
+14. POPULAR BET CARD
+--------------------------------------------------------------------------------
+<div class="p-3 cursor-pointer hover:scale-[1.02] transition-all min-w-[220px] bg-red-950/30 border-red-500/30 rounded-lg border">
+  <div class="flex items-center gap-2 mb-2">
+    <div class="relative">
+      <!-- PlayerHeadshot -->
+      <div class="absolute -top-1 -right-1">
+        <!-- DemonIcon/GoblinIcon -->
+      </div>
+    </div>
+    <div class="flex-1 min-w-0">
+      <div class="text-sm font-medium text-white truncate">{playerName}</div>
+      <div class="text-xs text-zinc-500">{statType} {line}</div>
+    </div>
+    <span class="bg-zinc-800 text-zinc-300 border-none text-xs px-2 py-0.5 rounded">#{rank}</span>
+  </div>
+  
+  <!-- L5 / L10 / Season Stats -->
+  <div class="flex items-center justify-between bg-zinc-800/50 rounded px-2 py-1.5 text-[10px]">
+    <div class="text-center">
+      <div class="text-zinc-500">L5</div>
+      <div class="font-bold text-green-400">{l5Rate}%</div>
+    </div>
+    <div class="h-4 w-px bg-zinc-700"></div>
+    <div class="text-center">
+      <div class="text-zinc-500">L10</div>
+      <div class="font-bold text-yellow-400">{l10Rate}%</div>
+    </div>
+    <div class="h-4 w-px bg-zinc-700"></div>
+    <div class="text-center">
+      <div class="text-zinc-500">Avg</div>
+      <div class="font-bold text-white">{seasonAvg}</div>
+    </div>
+  </div>
+</div>
+
+--------------------------------------------------------------------------------
+15. MOST POPULAR BETS SECTION
+--------------------------------------------------------------------------------
+<!-- Awaiting State -->
+<div class="mb-4 p-4 bg-zinc-900/50 border border-zinc-800 rounded-xl text-center">
+  <!-- Activity Icon -->
+  <p class="text-sm text-zinc-500">Awaiting live action...</p>
+  <p class="text-xs text-zinc-600">Popular bets will appear when games tip off</p>
+</div>
+
+<!-- Active Section -->
+<div class="mb-4">
+  <!-- SectionHeader -->
+  <div class="overflow-x-auto pb-2 -mx-3 px-3">
+    <div class="flex gap-3" style="min-width: max-content;">
+      <!-- PopularBetCard Components -->
+    </div>
+  </div>
+</div>
+
+--------------------------------------------------------------------------------
+16. MAIN DASHBOARD HEADER
+--------------------------------------------------------------------------------
+<header class="sticky top-0 z-50 bg-zinc-950/95 backdrop-blur-sm border-b border-zinc-800 px-4 py-3">
+  <div class="flex items-center justify-between">
+    <div class="flex items-center gap-2">
+      <!-- DemonIcon -->
+      <div>
+        <h1 class="text-lg font-black tracking-tight text-white">PICKVISION</h1>
+        <p class="text-[9px] text-zinc-500 -mt-0.5">AI-POWERED PROP INTEL</p>
+      </div>
+    </div>
+    
+    <div class="flex items-center gap-2">
+      <!-- Command Post Button -->
+      <button class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-cyan-600/20 hover:bg-cyan-600/30 border border-cyan-500/30 transition-colors" data-testid="command-post-btn">
+        <!-- Target Icon -->
+        <span class="text-xs font-medium text-cyan-400 hidden sm:inline">Command Post</span>
+      </button>
+      
+      <!-- Sync Button -->
+      <button class="p-2 rounded-lg bg-zinc-800/50 hover:bg-zinc-800" data-testid="sync-btn">
+        <!-- RefreshCw Icon -->
+      </button>
+      
+      <!-- User Menu -->
+      <div class="relative">
+        <button class="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-zinc-800/50 hover:bg-zinc-800" data-testid="user-menu-btn">
+          <!-- User Icon -->
+          <span class="text-sm text-zinc-300">{userName}</span>
+        </button>
+        
+        <!-- Dropdown -->
+        <div class="absolute right-0 top-full mt-2 w-48 bg-zinc-900 border border-zinc-800 rounded-lg shadow-xl z-50">
+          <div class="p-1">
+            <button class="w-full flex items-center gap-2 px-3 py-2 text-sm text-zinc-400 hover:text-white hover:bg-zinc-800 rounded">
+              <!-- Crown Icon -->
+              <span>Upgrade to Pro</span>
+              <span class="ml-auto bg-amber-500/20 text-amber-400 border-none text-[10px] px-1 py-0.5 rounded">Soon</span>
+            </button>
+            <button class="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-400 hover:bg-red-950/30 rounded">
+              <!-- LogOut Icon -->
+              <span>Logout</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  
+  <!-- Status Bar -->
+  <div class="flex items-center gap-2 mt-1.5 text-[10px] text-zinc-500">
+    <!-- Radio Icon -->
+    <span class="font-mono">Intel: {timeSinceSync}</span>
+  </div>
+</header>
+
+--------------------------------------------------------------------------------
+17. INTEL SEARCH SECTION
+--------------------------------------------------------------------------------
+<div class="px-3 pt-3">
+  <div class="rounded-lg border border-zinc-800 bg-zinc-900/50 p-4" data-testid="intel-search-section">
+    <div class="flex items-center gap-2 mb-3">
+      <!-- Search Icon -->
+      <span class="text-sm font-medium text-white">INTEL SEARCH</span>
+      <span class="text-[10px] text-zinc-500">Search any player for tactical profile</span>
+    </div>
+    
+    <div class="relative">
+      <!-- Search Icon Absolute Left -->
+      <input
+        placeholder="Search player name..."
+        class="pl-9 py-2.5 bg-zinc-800/50 border-zinc-700 text-white text-sm focus:border-cyan-500 w-full rounded-md border"
+        data-testid="intel-search-input"
+      />
+      <button class="absolute right-3 top-1/2 -translate-y-1/2">
+        <!-- X Icon -->
+      </button>
+    </div>
+    
+    <!-- Search Results -->
+    <div class="mt-3 rounded-lg border border-zinc-700 overflow-hidden" data-testid="intel-search-results">
+      <!-- Loading State -->
+      <div class="p-4 text-center">
+        <!-- Activity Icon animate-pulse -->
+        <p class="text-zinc-400 text-xs">Searching player database...</p>
+      </div>
+      
+      <!-- Error State -->
+      <div class="p-4 text-center">
+        <!-- AlertTriangle Icon -->
+        <p class="text-amber-400 text-sm">{errorMessage}</p>
+      </div>
+      
+      <!-- No Results State -->
+      <div class="p-4 text-center">
+        <p class="text-zinc-500 text-sm">No players found for "{searchTerm}"</p>
+        <p class="text-zinc-600 text-xs mt-1">Try searching by full name or team</p>
+      </div>
+      
+      <!-- Results List -->
+      <div class="max-h-64 overflow-y-auto">
+        <div class="flex items-center gap-3 p-3 hover:bg-zinc-800/50 cursor-pointer border-b border-zinc-800/50 last:border-0" data-testid="player-row-{playerSlug}">
+          <!-- PlayerHeadshot -->
+          <div class="flex-1 min-w-0">
+            <div class="font-medium text-white truncate">{playerName}</div>
+            <div class="text-xs text-zinc-500">{teamName} • {position}</div>
+          </div>
+          <!-- ChevronRight Icon -->
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+--------------------------------------------------------------------------------
+18. DASHBOARD FOOTER
+--------------------------------------------------------------------------------
+<div class="fixed bottom-0 left-0 right-0 bg-zinc-950/95 backdrop-blur-sm border-t border-zinc-800 px-4 py-2 z-40">
+  <div class="flex items-center justify-between text-xs">
+    <div class="flex items-center gap-3">
+      <span class="text-zinc-500 font-mono">{timeSinceSync}</span>
+      <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/20 text-emerald-400">
+        FULL SYNC
+      </span>
+    </div>
+    <span class="text-zinc-600">PickVision AI</span>
+  </div>
+</div>
+
+--------------------------------------------------------------------------------
+19. MAIN DASHBOARD LAYOUT
+--------------------------------------------------------------------------------
+<div class="min-h-screen bg-zinc-950 pb-16">
+  <!-- Header -->
+  <!-- LiveScoresTicker -->
+  <!-- BreakingNewsTicker -->
+  <!-- Intel Search Section -->
+  
+  <!-- Main Content -->
+  <div class="p-3 space-y-4">
+    <!-- MostPopularBetsSection -->
+    <!-- SafeHavenSection -->
+    <!-- Shield Parlays -->
+    <!-- FrontLinesSection -->
+    <!-- Strike Parlays -->
+    <!-- WarZoneSection -->
+    <!-- Gauntlet Parlays -->
+  </div>
+  
+  <!-- Footer -->
+  <!-- CommandPost Sidebar -->
+</div>
+
+
+================================================================================
+                         PLAYERDETAILPAGE.JSX COMPONENTS
+================================================================================
+
+--------------------------------------------------------------------------------
+20. PLAYER HEADSHOT (Detail Page Version)
+--------------------------------------------------------------------------------
+<!-- With Team Logo Fallback -->
+<div class="w-16 h-16 rounded-full overflow-hidden bg-zinc-800 flex items-center justify-center p-1.5">
+  <img src="{teamLogoUrl}" alt="{team}" class="w-full h-full object-contain" />
+</div>
+
+<!-- With Initial Fallback -->
+<div class="w-16 h-16 rounded-full bg-zinc-800 flex items-center justify-center text-zinc-500 font-bold">
+  {initial}
+</div>
+
+<!-- With Photo -->
+<div class="w-16 h-16 rounded-full overflow-hidden bg-zinc-800">
+  <img src="{photoUrl}" alt="{playerName}" 
+    class="w-full h-full object-cover" 
+    style="object-position: center 20%; transform: scale(1.3);" 
+  />
+</div>
+
+--------------------------------------------------------------------------------
+21. SKELETON LOADER (Player Detail)
+--------------------------------------------------------------------------------
+<div class="space-y-4 animate-pulse">
+  <div class="bg-zinc-800/50 rounded-lg h-16"></div>
+  <div class="bg-zinc-800/50 rounded-lg h-16"></div>
+  <div class="bg-zinc-800/50 rounded-lg h-16"></div>
+  <div class="bg-zinc-800/50 rounded-lg h-16"></div>
+  <div class="bg-zinc-800/50 rounded-lg h-16"></div>
+</div>
+
+--------------------------------------------------------------------------------
+22. PROP ROW
+--------------------------------------------------------------------------------
+<!-- Standard Prop Row -->
+<div class="flex items-center justify-between py-3 px-4 rounded-lg transition-all bg-zinc-800/30 border border-zinc-700/30" data-testid="prop-row-{statType}-{line}">
+  <!-- Left: Type indicator + Line -->
+  <div class="flex items-center gap-3">
+    <div class="flex items-center gap-1.5">
+      <!-- Target Icon (Standard) -->
+    </div>
+    
+    <div>
+      <div class="flex items-center gap-2">
+        <span class="text-base font-bold text-white">OVER {line}</span>
+      </div>
+      <span class="text-[10px] font-mono text-zinc-500">@ +{price}</span>
+    </div>
+  </div>
+  
+  <!-- Center: L5/L10/SZN Averages -->
+  <div class="flex items-center gap-5 text-xs">
+    <div class="text-center min-w-[40px]">
+      <div class="text-[9px] text-zinc-500">L5</div>
+      <div class="font-bold text-white">{l5Avg}</div>
+    </div>
+    <div class="text-center min-w-[40px]">
+      <div class="text-[9px] text-zinc-500">L10</div>
+      <div class="font-bold text-white">{l10Avg}</div>
+    </div>
+    <div class="text-center min-w-[40px]">
+      <div class="text-[9px] text-zinc-500">SZN</div>
+      <div class="font-bold text-white">{seasonAvg}</div>
+    </div>
+  </div>
+  
+  <!-- Right: Hit Rates -->
+  <div class="flex items-center gap-4 text-xs">
+    <div class="text-center min-w-[35px]">
+      <div class="text-[9px] text-zinc-500">L10 HR</div>
+      <div class="font-bold text-green-400">{h10Rate}%</div>
+    </div>
+    <div class="text-center min-w-[35px]">
+      <div class="text-[9px] text-zinc-500">L5 HR</div>
+      <div class="font-bold text-green-400">{h5Rate}%</div>
+    </div>
+  </div>
+</div>
+
+<!-- Demon Prop Row -->
+<div class="flex items-center justify-between py-3 px-4 rounded-lg transition-all bg-gradient-to-r from-red-950/40 to-zinc-900 border border-red-500/30">
+  <div class="flex items-center gap-3">
+    <div class="flex items-center gap-1.5">
+      <!-- DemonIcon -->
+    </div>
+    <div>
+      <div class="flex items-center gap-2">
+        <span class="text-base font-bold text-red-400">OVER {line}</span>
+        <span class="px-1.5 py-0.5 text-[8px] font-bold bg-red-500 text-white rounded">DEMON</span>
+      </div>
+      <span class="text-[10px] font-mono text-zinc-500">@ +{price}</span>
+    </div>
+  </div>
+  <!-- Stats same as above -->
+</div>
+
+<!-- Goblin Prop Row -->
+<div class="flex items-center justify-between py-3 px-4 rounded-lg transition-all bg-gradient-to-r from-green-950/40 to-zinc-900 border border-green-500/30">
+  <div class="flex items-center gap-3">
+    <div class="flex items-center gap-1.5">
+      <!-- GoblinIcon -->
+    </div>
+    <div>
+      <div class="flex items-center gap-2">
+        <span class="text-base font-bold text-green-400">OVER {line}</span>
+        <span class="px-1.5 py-0.5 text-[8px] font-bold bg-green-500 text-black rounded">GOBLIN</span>
+      </div>
+      <span class="text-[10px] font-mono text-zinc-500">@ +{price}</span>
+    </div>
+  </div>
+  <!-- Stats same as above -->
+</div>
+
+<!-- Vision Pick (Highlighted) -->
+<div class="flex items-center justify-between py-3 px-4 rounded-lg transition-all bg-gradient-to-r from-amber-950/50 via-yellow-900/30 to-amber-950/50 border-2 border-amber-400 ring-2 ring-amber-400/50 shadow-[0_0_20px_rgba(251,191,36,0.3)] cursor-pointer hover:shadow-[0_0_30px_rgba(251,191,36,0.5)]" data-testid="prop-row-{statType}-{line}-vision">
+  <div class="flex items-center gap-3">
+    <div class="flex items-center gap-1.5">
+      <!-- Crosshair Icon animate-pulse -->
+    </div>
+    <div>
+      <div class="flex items-center gap-2">
+        <span class="text-base font-bold text-amber-300">OVER {line}</span>
+        <span class="px-2 py-0.5 text-[9px] font-black bg-gradient-to-r from-amber-500 to-yellow-400 text-black rounded-full flex items-center gap-1 animate-pulse">
+          <!-- Crosshair Icon -->
+          VISION PICK
+        </span>
+      </div>
+      <span class="text-[10px] font-mono text-amber-400/70">@ +{price}</span>
+      <span class="text-[10px] text-amber-400/80 mt-0.5 block">Tap to view Intel Suite →</span>
+    </div>
+  </div>
+  <!-- Stats in amber colors -->
+</div>
+
+--------------------------------------------------------------------------------
+23. CATEGORY HEADER
+--------------------------------------------------------------------------------
+<div class="flex items-center gap-2 py-2 px-1 border-b border-zinc-700/50 mt-4 first:mt-0">
+  <span class="text-sm font-bold uppercase tracking-wider text-zinc-300">{categoryLabel}</span>
+  <span class="text-[10px] text-zinc-500">({count} lines)</span>
+  <!-- Demon indicator -->
+  <div class="flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-red-500/20">
+    <!-- DemonIcon size 10 -->
+  </div>
+  <!-- Goblin indicator -->
+  <div class="flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-green-500/20">
+    <!-- GoblinIcon size 10 -->
+  </div>
+</div>
+
+--------------------------------------------------------------------------------
+24. PLAYER DETAIL PAGE HEADER
+--------------------------------------------------------------------------------
+<div class="sticky top-0 z-10 bg-zinc-950/95 backdrop-blur border-b border-zinc-800 px-4 py-3">
+  <div class="flex items-center gap-4">
+    <!-- Back Button -->
+    <button class="text-zinc-400 hover:text-white p-1" data-testid="back-btn">
+      <!-- ArrowLeft Icon -->
+    </button>
+    
+    <!-- PlayerHeadshot lg -->
+    
+    <div class="flex-1 min-w-0">
+      <h1 class="text-xl font-bold text-white truncate">{playerName}</h1>
+      <div class="flex items-center gap-2 text-xs text-zinc-400">
+        <span class="font-mono">{team}</span>
+        <span>· {position}</span>
+      </div>
+      
+      <!-- Badges Row -->
+      <div class="flex flex-wrap gap-1.5 mt-2">
+        <!-- BadgePill Components -->
+      </div>
+      
+      <!-- Vision Insight -->
+      <p class="text-[11px] text-zinc-300 mt-2 leading-relaxed bg-zinc-800/50 rounded px-2 py-1.5 border-l-2 border-cyan-500">
+        {visionInsight}
+      </p>
+    </div>
+    
+    <!-- Stats badges -->
+    <div class="flex items-center gap-3 flex-shrink-0">
+      <div class="text-center">
+        <div class="text-[10px] text-zinc-500">PROPS</div>
+        <div class="text-lg font-bold text-white">{totalProps}</div>
+      </div>
+      <div class="flex items-center gap-1 px-2 py-1 rounded bg-red-500/20 border border-red-500/30">
+        <!-- DemonIcon -->
+        <span class="text-red-400 font-bold text-sm">{demonsCount}</span>
+      </div>
+      <div class="flex items-center gap-1 px-2 py-1 rounded bg-green-500/20 border border-green-500/30">
+        <!-- GoblinIcon -->
+        <span class="text-green-400 font-bold text-sm">{goblinsCount}</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+--------------------------------------------------------------------------------
+25. PLAYER DETAIL CONTENT
+--------------------------------------------------------------------------------
+<div class="p-4">
+  <div class="space-y-2">
+    <!-- Summary bar -->
+    <div class="flex items-center justify-between pb-3 border-b border-zinc-800">
+      <div class="flex items-center gap-2">
+        <!-- Target Icon -->
+        <span class="text-sm font-medium text-zinc-400">
+          {categoriesCount} categories · {totalLines} total lines
+        </span>
+      </div>
+    </div>
+    
+    <!-- Category Group -->
+    <div>
+      <!-- CategoryHeader -->
+      <div class="space-y-1.5 mt-2">
+        <!-- PropRow Components -->
+      </div>
+    </div>
+    
+    <!-- Empty State -->
+    <div class="text-center py-12 text-zinc-500">
+      <!-- Target Icon opacity-30 -->
+      <p class="text-lg">No props available</p>
+      <p class="text-sm mt-1">Check back closer to game time</p>
+    </div>
+  </div>
+</div>
+
+--------------------------------------------------------------------------------
+26. VISION INTEL SUITE MODAL
+--------------------------------------------------------------------------------
+<div class="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm">
+  <div class="bg-zinc-900 border-2 border-amber-500/50 rounded-xl w-full max-w-2xl mx-4 max-h-[90vh] overflow-y-auto shadow-[0_0_50px_rgba(251,191,36,0.3)]">
+    <!-- Header -->
+    <div class="sticky top-0 bg-gradient-to-r from-amber-950 via-yellow-900/50 to-amber-950 px-6 py-4 border-b border-amber-500/30">
+      <div class="flex items-center justify-between">
+        <div class="flex items-center gap-3">
+          <!-- Crosshair Icon animate-pulse -->
+          <div>
+            <h2 class="text-xl font-black text-amber-300">VISION INTEL SUITE</h2>
+            <p class="text-xs text-amber-400/70">{playerName} • {statType}</p>
+          </div>
+        </div>
+        <button class="p-2 hover:bg-amber-500/20 rounded-lg transition-colors">
+          <!-- ArrowLeft Icon -->
+        </button>
+      </div>
+    </div>
+    
+    <!-- Content -->
+    <div class="p-6 space-y-6">
+      <!-- Vision Pick Summary -->
+      <div class="bg-gradient-to-r from-amber-950/50 to-zinc-900 border border-amber-500/30 rounded-lg p-4">
+        <div class="flex items-center justify-between mb-4">
+          <div class="flex items-center gap-3">
+            <div class="w-12 h-12 rounded-full bg-amber-500/20 flex items-center justify-center">
+              <!-- Crosshair Icon -->
+            </div>
+            <div>
+              <div class="text-2xl font-black text-amber-300">OVER {line}</div>
+              <div class="text-sm text-amber-400/70">{statTypeLabel}</div>
+            </div>
+          </div>
+          <div class="text-right">
+            <div class="text-xs text-amber-400/50">ODDS</div>
+            <div class="text-lg font-bold text-amber-300">+{price}</div>
+          </div>
+        </div>
+        
+        <!-- Stats Grid -->
+        <div class="grid grid-cols-3 gap-4 pt-4 border-t border-amber-500/20">
+          <div class="text-center">
+            <div class="text-xs text-amber-400/50">L5 AVG</div>
+            <div class="text-xl font-bold text-white">{l5Avg}</div>
+          </div>
+          <div class="text-center">
+            <div class="text-xs text-amber-400/50">L10 AVG</div>
+            <div class="text-xl font-bold text-white">{l10Avg}</div>
+          </div>
+          <div class="text-center">
+            <div class="text-xs text-amber-400/50">SEASON AVG</div>
+            <div class="text-xl font-bold text-white">{seasonAvg}</div>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Operational Volume -->
+      <div class="bg-gradient-to-r from-purple-950/40 to-zinc-900 border border-purple-500/30 rounded-lg p-4">
+        <h3 class="text-sm font-bold text-white mb-2 flex items-center gap-2">
+          <!-- Zap Icon -->
+          OPERATIONAL VOLUME
+        </h3>
+        <div class="flex items-center justify-between">
+          <div>
+            <div class="text-2xl font-bold text-purple-300">{usageDisplay}</div>
+            <div class="text-xs text-zinc-400 mt-1">{usageReasoning}</div>
+          </div>
+          <div class="px-3 py-1 rounded-full text-xs font-bold bg-purple-500 text-white">
+            {shiftLabel}
+          </div>
+        </div>
+        <!-- Injuries Affecting -->
+        <div class="mt-3 pt-3 border-t border-purple-500/20">
+          <div class="text-xs text-zinc-500 mb-1">LINEUP IMPACT:</div>
+          <div class="text-xs text-purple-300">• {injuredPlayer} ({status}) - {injury}</div>
+        </div>
+      </div>
+      
+      <!-- Defensive Friction -->
+      <div class="bg-gradient-to-r from-cyan-950/40 to-zinc-900 border border-cyan-500/30 rounded-lg p-4">
+        <h3 class="text-sm font-bold text-white mb-2 flex items-center gap-2">
+          <!-- Target Icon -->
+          DEFENSIVE FRICTION
+        </h3>
+        <div class="flex items-center justify-between">
+          <div>
+            <div class="text-2xl font-bold text-cyan-300">{matchupDisplay}</div>
+            <div class="text-xs text-zinc-400 mt-1">vs {opponent}</div>
+          </div>
+          <div class="px-3 py-1 rounded-full text-xs font-bold bg-green-500 text-white">
+            {frictionLevel} Friction
+          </div>
+        </div>
+        <div class="text-xs text-cyan-400/70 mt-2">{frictionLabel}</div>
+      </div>
+      
+      <!-- Tempo & Variance Grid -->
+      <div class="grid grid-cols-2 gap-4">
+        <!-- Tempo Multiplier -->
+        <div class="bg-zinc-800/50 border border-zinc-700 rounded-lg p-4">
+          <h3 class="text-xs font-bold text-zinc-400 mb-2">TEMPO MULTIPLIER</h3>
+          <div class="text-2xl font-bold text-green-400">{paceDisplay}</div>
+          <div class="text-xs text-zinc-500 mt-1">{tempoLabel}</div>
+          <div class="text-[10px] text-zinc-600 mt-2">Game Pace: {expectedPace}</div>
+        </div>
+        
+        <!-- Tactical Variance -->
+        <div class="bg-zinc-800/50 border border-zinc-700 rounded-lg p-4">
+          <h3 class="text-xs font-bold text-zinc-400 mb-2">TACTICAL VARIANCE</h3>
+          <div class="text-2xl font-bold text-green-400">{stabilityDisplay}</div>
+          <div class="text-xs text-zinc-500 mt-1">{consistency}</div>
+          <div class="text-[10px] text-zinc-600 mt-2">Std Dev: {stdDev}</div>
+        </div>
+      </div>
+      
+      <!-- Target-Lock Rationale -->
+      <div class="bg-gradient-to-r from-amber-950/50 to-zinc-900 border border-amber-500/30 rounded-lg p-4">
+        <h3 class="text-sm font-bold text-amber-300 mb-2 flex items-center gap-2">
+          <!-- Crosshair Icon -->
+          TARGET-LOCK RATIONALE
+        </h3>
+        <div class="text-sm text-white mb-3">{primaryReason}</div>
+        <div class="space-y-1 mb-3">
+          <div class="text-xs text-zinc-400 flex items-center gap-2">
+            <span class="text-amber-400">•</span> {additionalReason}
+          </div>
+        </div>
+        <div class="flex items-center justify-between pt-3 border-t border-amber-500/20">
+          <div class="text-xs text-zinc-500">{tacticalNote}</div>
+          <div class="px-2 py-1 rounded text-[10px] font-bold bg-green-500 text-white">
+            {confidence} Confidence
+          </div>
+        </div>
+      </div>
+      
+      <!-- Hit Rate Analysis -->
+      <div class="bg-zinc-800/50 border border-zinc-700 rounded-lg p-4">
+        <h3 class="text-sm font-bold text-white mb-3 flex items-center gap-2">
+          <!-- Zap Icon -->
+          HIT RATE ANALYSIS
+        </h3>
+        <div class="grid grid-cols-2 gap-4">
+          <div class="bg-zinc-900/50 rounded-lg p-3">
+            <div class="text-xs text-zinc-500">LAST 10 GAMES</div>
+            <div class="text-2xl font-bold text-green-400">{l10HitRate}%</div>
+            <div class="text-xs text-zinc-500 mt-1">{l10Over}/{l10Total} games over</div>
+          </div>
+          <div class="bg-zinc-900/50 rounded-lg p-3">
+            <div class="text-xs text-zinc-500">LAST 5 GAMES</div>
+            <div class="text-2xl font-bold text-green-400">{l5HitRate}%</div>
+            <div class="text-xs text-zinc-500 mt-1">{l5Over}/{l5Total} games over</div>
+          </div>
+        </div>
+      </div>
+      
+      <!-- AI Tactical Analysis -->
+      <div class="bg-zinc-800/50 border border-cyan-500/30 rounded-lg p-4">
+        <h3 class="text-sm font-bold text-white mb-3 flex items-center gap-2">
+          <!-- Target Icon -->
+          AI TACTICAL ANALYSIS
+        </h3>
+        <p class="text-sm text-zinc-300 leading-relaxed">{aiVision}</p>
+      </div>
+      
+      <!-- Recommendation Badge -->
+      <div class="flex justify-center">
+        <div class="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-amber-500 to-yellow-400 text-black rounded-full font-bold text-sm">
+          <!-- Crosshair Icon -->
+          VISION RECOMMENDS: OVER {line}
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+--------------------------------------------------------------------------------
+27. PLAYER DETAIL PAGE LAYOUT
+--------------------------------------------------------------------------------
+<div class="min-h-screen bg-zinc-950">
+  <!-- Header (sticky) -->
+  <!-- Content (p-4) -->
+  <!-- Vision Intel Suite Modal (conditional) -->
+</div>
+
+
+================================================================================
+                            PICKCARD.JSX COMPONENTS
+================================================================================
+
+--------------------------------------------------------------------------------
+28. DVP BADGE
+--------------------------------------------------------------------------------
+<!-- Green (Soft Defense) -->
+<div class="flex items-center gap-0.5 px-1 py-0.5 rounded text-[9px] font-medium border bg-emerald-500/20 text-emerald-400 border-emerald-500/40" title="DvP Rank #{rank}: Favorable (Bottom 5 Defense)" data-testid="dvp-badge">
+  <!-- Shield Icon -->
+  <span>#{rank}</span>
+</div>
+
+<!-- Yellow (Average Defense) -->
+<div class="flex items-center gap-0.5 px-1 py-0.5 rounded text-[9px] font-medium border bg-amber-500/20 text-amber-400 border-amber-500/40" title="DvP Rank #{rank}: Neutral" data-testid="dvp-badge">
+  <!-- Shield Icon -->
+  <span>#{rank}</span>
+</div>
+
+<!-- Red (Hard Defense) -->
+<div class="flex items-center gap-0.5 px-1 py-0.5 rounded text-[9px] font-medium border bg-red-500/20 text-red-400 border-red-500/40" title="DvP Rank #{rank}: Tough (Top 10 Defense)" data-testid="dvp-badge">
+  <!-- Shield Icon -->
+  <span>#{rank}</span>
+</div>
+
+--------------------------------------------------------------------------------
+29. EMBLEM COMPONENTS
+--------------------------------------------------------------------------------
+<!-- Bullet Emblem (SVG) -->
+<svg viewBox="0 0 24 24" width="20" height="20" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bulletGradient" x1="50%" y1="0%" x2="50%" y2="100%">
+      <stop offset="0%" stop-color="#FFD700" />
+      <stop offset="50%" stop-color="#B8860B" />
+      <stop offset="100%" stop-color="#8B6914" />
+    </linearGradient>
+  </defs>
+  <ellipse cx="12" cy="6" rx="4" ry="2.5" fill="#B8860B" />
+  <path d="M8 6 L8 18 Q8 22 12 22 Q16 22 16 18 L16 6" fill="url(#bulletGradient)" />
+  <ellipse cx="12" cy="18" rx="4" ry="2" fill="#8B6914" />
+  <path d="M9 8 L9 16" stroke="#FFD700" stroke-width="0.5" opacity="0.6" />
+  <path d="M10 6.5 L10 7.5" stroke="#FFF" stroke-width="1" opacity="0.4" stroke-linecap="round" />
+</svg>
+
+<!-- Fire Emblem -->
+<span style="font-size: 20px; filter: drop-shadow(0 0 4px #ff6b35);">🔥</span>
+
+<!-- Gem Emblem -->
+<span style="font-size: 20px; filter: drop-shadow(0 0 4px #00BFFF);">💎</span>
+
+--------------------------------------------------------------------------------
+30. PLAYER HEADSHOT (PickCard Version)
+--------------------------------------------------------------------------------
+<div class="w-10 h-10 rounded-full overflow-hidden bg-zinc-800 flex-shrink-0">
+  <img src="{photoUrl}" alt="{playerName}" class="w-full h-full object-cover" />
+</div>
+
+<!-- Fallback -->
+<div class="w-10 h-10 rounded-full overflow-hidden bg-zinc-800 flex-shrink-0">
+  <div class="w-full h-full flex items-center justify-center text-zinc-500 text-xs font-bold">
+    {initial}
+  </div>
+</div>
+
+--------------------------------------------------------------------------------
+31. PICK CARD (Universal)
+--------------------------------------------------------------------------------
+<!-- Red Theme (Demon) -->
+<div 
+  class="bg-gradient-to-br from-red-950/50 to-zinc-900 border border-red-500/40 hover:scale-[1.02] transition-all duration-300 cursor-pointer active:scale-[0.98] relative overflow-visible min-h-[280px] rounded-lg"
+  style="box-shadow: 0 0 20px rgba(239, 68, 68, 0.3);"
+  data-testid="pick-card-red-{rank}"
+>
+  <!-- LockedBadge overlay if locked -->
+  
+  <!-- VisionBadge if has vision -->
+  
+  <div class="p-3">
+    <!-- Header -->
+    <div class="flex items-center gap-2 mb-2">
+      <div class="flex-shrink-0">
+        <!-- DemonIcon -->
+      </div>
+      
+      <div class="relative">
+        <!-- PlayerHeadshot with ring -->
+        <div class="w-10 h-10 rounded-full overflow-hidden bg-zinc-800 flex-shrink-0 ring-2 ring-red-800/50">
+          <!-- img or fallback -->
+        </div>
+        <div class="absolute -bottom-1 -right-1 w-5 h-5 rounded-full flex items-center justify-center font-bold text-[10px] border-2 border-zinc-900 bg-red-600 text-white">
+          {rank}
+        </div>
+      </div>
+      
+      <div class="min-w-0 flex-1">
+        <span class="font-bold text-white text-sm truncate block">{playerName}</span>
+        <div class="flex items-center gap-1 text-[10px] text-zinc-500">
+          <span class="font-mono">{team}</span>
+          <span>· {statType}</span>
+          <!-- DvPBadge -->
+        </div>
+      </div>
+      
+      <!-- Quick-Add Button -->
+      <button
+        class="flex-shrink-0 w-7 h-7 rounded-full bg-cyan-500/20 border border-cyan-500/40 flex items-center justify-center text-cyan-400 hover:bg-cyan-500/30 hover:border-cyan-500/60 hover:scale-110 transition-all duration-200"
+        title="Quick-Add to Command Post"
+        data-testid="quick-add-{playerSlug}"
+      >
+        <!-- Plus Icon -->
+      </button>
+    </div>
+    
+    <!-- Tier Indicators (Fire/Gem/Bullet) -->
+    <div class="flex items-center justify-between mb-2 px-1">
+      <div class="flex items-center gap-0.5">
+        <span class="text-[12px]" style="filter: drop-shadow(0 0 2px #ff6b35);">🔥</span>
+        <span class="text-[12px]" style="filter: drop-shadow(0 0 2px #ff6b35);">🔥</span>
+        <span class="text-[12px]" style="filter: drop-shadow(0 0 2px #ff6b35);">🔥</span>
+      </div>
+      <span class="text-[10px] font-medium text-red-400">HOT</span>
+    </div>
+    
+    <!-- Stats -->
+    <div class="space-y-1.5">
+      <div class="flex items-center justify-between text-xs">
+        <span class="text-zinc-400">Line:</span>
+        <span class="text-white font-bold">{lineValue}</span>
+      </div>
+      
+      <!-- Season Average Comparison -->
+      <div class="flex items-center justify-between text-xs">
+        <span class="text-zinc-400">Avg:</span>
+        <div class="flex items-center gap-1">
+          <span class="text-white font-mono">{seasonAvg}</span>
+          <span class="text-[10px] px-1 py-0.5 rounded bg-green-500/20 text-green-400">+{gapPct}%</span>
+        </div>
+      </div>
+      
+      <div class="flex items-center justify-between text-xs">
+        <span class="text-zinc-400">Gap:</span>
+        <span class="text-yellow-400 font-medium">+{gapPct}% above std</span>
+      </div>
+      
+      <!-- Hit Rate Breakdown -->
+      <div class="bg-zinc-800/50 rounded-lg p-2 mt-2">
+        <div class="flex items-center justify-between mb-1.5">
+          <div class="text-center flex-1">
+            <div class="text-[9px] text-zinc-500 uppercase">L5</div>
+            <div class="text-sm font-bold text-green-400">{h5Rate}%</div>
+            <div class="text-[9px] text-zinc-500">{h5Over}/{h5Games}</div>
+          </div>
+          <div class="h-8 w-px bg-zinc-700"></div>
+          <div class="text-center flex-1">
+            <div class="text-[9px] text-zinc-500 uppercase">L10</div>
+            <div class="text-sm font-bold text-yellow-400">{h10Rate}%</div>
+            <div class="text-[9px] text-zinc-500">{h10Over}/{h10Games}</div>
+          </div>
+          <div class="h-8 w-px bg-zinc-700"></div>
+          <div class="text-center flex-1">
+            <div class="text-[9px] text-zinc-500 uppercase">Season</div>
+            <div class="text-sm font-bold text-white">{seasonAvg}</div>
+            <div class="text-[9px] text-zinc-500">avg</div>
+          </div>
+        </div>
+      </div>
+      
+      <!-- AI Confidence Meter -->
+      <div class="mt-2">
+        <div class="flex items-center justify-between text-[10px] mb-1">
+          <span class="text-purple-400 flex items-center gap-1">
+            <!-- Zap Icon -->
+            AI Confidence
+          </span>
+          <span class="font-bold text-green-400">{aiConfidence}%</span>
+        </div>
+        <div class="h-1.5 bg-zinc-800 rounded-full overflow-hidden">
+          <div class="h-full rounded-full transition-all bg-gradient-to-r from-green-500 to-emerald-400" style="width: {aiConfidence}%;"></div>
+        </div>
+      </div>
+      
+      <!-- Value Score (if no AI confidence) -->
+      <div class="mt-2">
+        <div class="flex items-center justify-between text-[10px] mb-1">
+          <span class="text-zinc-500">Value Score</span>
+          <span class="font-bold text-red-400">{scoreValue}%</span>
+        </div>
+        <div class="h-1.5 bg-zinc-800 rounded-full overflow-hidden">
+          <div class="h-full rounded-full bg-gradient-to-r from-red-500 to-red-400" style="width: {scoreValue}%;"></div>
+        </div>
+      </div>
+      
+      <!-- AI Vision / The Vision -->
+      <div class="mt-2 pt-2 border-t border-red-900/30">
+        <div class="flex items-center gap-1 mb-1">
+          <!-- Zap Icon -->
+          <span class="text-[9px] text-purple-400 uppercase tracking-wider font-semibold">The Vision</span>
+        </div>
+        <p class="text-[10px] text-purple-300/80 leading-relaxed italic">
+          "{intelBriefing}"
+        </p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Green Theme (Goblin) -->
+<div 
+  class="bg-gradient-to-br from-green-950/50 to-zinc-900 border border-green-500/40 hover:scale-[1.02] transition-all duration-300 cursor-pointer active:scale-[0.98] relative overflow-visible min-h-[280px] rounded-lg"
+  style="box-shadow: 0 0 20px rgba(34, 197, 94, 0.3);"
+  data-testid="pick-card-green-{rank}"
+>
+  <!-- Same structure as red, but with green colors -->
+  <!-- GoblinIcon instead of DemonIcon -->
+  <!-- Gem emblems (💎) instead of fire -->
+  <!-- green-600 for rank badge bg -->
+  <!-- ring-green-800/50 for headshot ring -->
+  <!-- text-green-400 for theme text -->
+  <!-- border-green-900/30 for vision border -->
+</div>
+
+<!-- Amber Theme (Front Lines) -->
+<div 
+  class="bg-gradient-to-br from-amber-950/50 to-zinc-900 border border-amber-500/40 hover:scale-[1.02] transition-all duration-300 cursor-pointer active:scale-[0.98] relative overflow-visible min-h-[280px] rounded-lg"
+  style="box-shadow: 0 0 20px rgba(245, 158, 11, 0.3);"
+  data-testid="pick-card-amber-{rank}"
+>
+  <!-- Same structure, but with amber colors -->
+  <!-- Bullet emblems (SVG) -->
+  <!-- amber-600 for rank badge bg -->
+  <!-- ring-amber-800/50 for headshot ring -->
+  <!-- text-amber-400 for theme text -->
+  <!-- border-amber-900/30 for vision border -->
+</div>
+
+
+================================================================================
+                            CSS CLASSES REFERENCE
+================================================================================
+
+TICKER ANIMATIONS (add to components.css):
+------------------------------------------
+.ticker-scroll {
+  overflow: hidden;
+}
+.ticker-content {
+  display: flex;
+  animation: ticker 30s linear infinite;
+}
+@keyframes ticker {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+
+.news-ticker-scroll {
+  overflow: hidden;
+}
+.news-ticker-content {
+  display: flex;
+  animation: news-ticker 45s linear infinite;
+}
+@keyframes news-ticker {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-33.33%); }
+}
+
+SWIPE CONTAINER:
+----------------
+.swipe-container {
+  display: flex;
+  gap: 0.75rem;
+  overflow-x: auto;
+  padding-bottom: 0.5rem;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+.swipe-container::-webkit-scrollbar {
+  display: none;
+}
+.swipe-card {
+  flex-shrink: 0;
+  width: 260px;
+}
+
+
+================================================================================
+                              ICON REFERENCE
+================================================================================
+
+Icons used (from lucide-react):
+- Search, X, LogOut, Crown, User, Radio, AlertTriangle, Activity
+- RefreshCw, ChevronRight, Eye, Zap, ChevronDown, Flame, ArrowLeft, Target
+- TrendingUp, Newspaper, Clock, Shield, Plus, Crosshair
+
+Custom Icons (from Icons.jsx):
+- DemonIcon: Red skull-like icon for demon picks
+- GoblinIcon: Green goblin icon for goblin picks
+- VisionBadge: Glowing badge indicator
+
+
+================================================================================
+                              COLOR PALETTE
+================================================================================
+
+Background:
+- Main: bg-zinc-950
+- Cards: bg-zinc-900, bg-zinc-800
+- Overlays: bg-black/60, bg-black/80
+
+Demon (Red) Theme:
+- Primary: text-red-400, bg-red-500
+- Muted: bg-red-500/20, border-red-500/30
+- Gradient: from-red-950/50
+
+Goblin (Green) Theme:
+- Primary: text-green-400, bg-green-500
+- Muted: bg-green-500/20, border-green-500/30
+- Gradient: from-green-950/50
+
+Front Lines (Amber) Theme:
+- Primary: text-amber-400, bg-amber-500
+- Muted: bg-amber-500/20, border-amber-500/30
+- Gradient: from-amber-950/50
+
+Vision (Amber/Gold) Highlight:
+- Primary: text-amber-300, text-amber-400
+- Border: border-amber-400, border-2
+- Shadow: shadow-[0_0_20px_rgba(251,191,36,0.3)]
+- Ring: ring-amber-400/50
+
+Accent Colors:
+- Cyan: text-cyan-400 (Command Post, Intel Search)
+- Purple: text-purple-400 (AI Confidence, Vision text)
+- Emerald: text-emerald-400 (success states)
+
+Hit Rate Colors:
+- >= 80%: text-green-400
+- >= 60%: text-yellow-400
+- >= 40%: text-orange-400
+- < 40%: text-red-400
+
+
+================================================================================
+                           END OF UI EXPORT
+================================================================================

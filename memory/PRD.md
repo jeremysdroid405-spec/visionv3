@@ -3,7 +3,32 @@
 ## Overview
 PickVision is a high-performance NBA Player Prop Dashboard with a "military tech" aesthetic. The application delivers AI-driven betting insights using PropVision Command Post technology.
 
-## Latest Update: 2026-03-17
+## Latest Update: 2026-03-18
+
+### UI Export for Migration - COMPLETED ✅
+**Created `/app/UI_EXPORT.txt` with frontend "skin" (1,292 lines)**
+
+**Contents:**
+- All JSX/HTML structure with Tailwind CSS classes from:
+  - `Dashboard.jsx` - Main dashboard with all sections
+  - `PlayerDetailPage.jsx` - Player profile and Vision Intel Suite modal
+  - `PickCard.jsx` - Universal pick card component
+- CSS class references (ticker animations, swipe container)
+- Icon reference (lucide-react icons used)
+- Complete color palette documentation (Demon/Goblin/Front Lines themes)
+
+**Stripped:**
+- All React hooks (useState, useEffect, useMemo, useCallback)
+- All function definitions and handlers
+- All conditional rendering logic
+- All memo() wrappers
+- All import statements (except noted icon references)
+
+**Ready for migration to new project.**
+
+---
+
+## Previous Update: 2026-03-17
 
 ### PrizePicks Integration - COMPLETED ✅
 **Direct PrizePicks tier classification using The Odds API**
