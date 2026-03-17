@@ -52,15 +52,21 @@ import { useMasterStats } from '../hooks/useMasterStats';
 // ==================== HELPER COMPONENTS ====================
 
 // Player Headshot - Uses photo_url from nba_master_hub_2026 (no external API calls on render)
+// Note: NBA CDN may block requests from certain environments - fallback to team logo/initials
 const PlayerHeadshot = memo(({ playerName, team, photoUrl, size = 'md', className = '' }) => {
   const [error, setError] = useState(false);
+  const [loaded, setLoaded] = useState(false);
   const sizeClasses = { sm: 'w-8 h-8', md: 'w-12 h-12', lg: 'w-16 h-16', xl: 'w-24 h-24' };
   const sizeClass = sizeClasses[size] || sizeClasses.md;
   
   const isValidPhotoUrl = photoUrl && !photoUrl.includes('nophoto');
   const teamLogoUrl = team ? TEAM_LOGOS[team] : null;
   
-  if (!isValidPhotoUrl || error) {
+  // Get player initials for fallback
+  const initials = playerName ? playerName.split(' ').map(n => n[0]).join('').slice(0, 2) : '?';
+  
+  // Fallback component
+  const FallbackDisplay = () => {
     if (teamLogoUrl) {
       return (
         <div className={`${sizeClass} rounded-full overflow-hidden bg-zinc-800 flex items-center justify-center p-1.5 ${className}`}>
@@ -69,16 +75,27 @@ const PlayerHeadshot = memo(({ playerName, team, photoUrl, size = 'md', classNam
       );
     }
     return (
-      <div className={`${sizeClass} rounded-full bg-zinc-800 flex items-center justify-center ${className}`}>
-        <User className="w-6 h-6 text-zinc-500" />
+      <div className={`${sizeClass} rounded-full bg-gradient-to-br from-zinc-700 to-zinc-800 flex items-center justify-center ${className}`}>
+        <span className="text-zinc-400 font-bold text-xs">{initials}</span>
       </div>
     );
+  };
+  
+  if (!isValidPhotoUrl || error) {
+    return <FallbackDisplay />;
   }
   
   return (
-    <div className={`${sizeClass} rounded-full overflow-hidden bg-zinc-800 ${className}`}>
-      <img src={photoUrl} alt={playerName} onError={() => setError(true)} 
-        className="w-full h-full object-cover" style={{ objectPosition: 'center 20%', transform: 'scale(1.3)' }} />
+    <div className={`${sizeClass} rounded-full overflow-hidden bg-zinc-800 relative ${className}`}>
+      {!loaded && <FallbackDisplay />}
+      <img 
+        src={photoUrl} 
+        alt={playerName} 
+        onError={() => setError(true)} 
+        onLoad={() => setLoaded(true)}
+        className={`w-full h-full object-cover absolute inset-0 ${loaded ? 'opacity-100' : 'opacity-0'}`} 
+        style={{ objectPosition: 'center 20%', transform: 'scale(1.3)' }} 
+      />
     </div>
   );
 });

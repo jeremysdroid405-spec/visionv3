@@ -477,6 +477,11 @@ async def startup_event():
     set_cache_collection(db.cache)
     logger.info("Utils cache collection initialized")
     
+    # Invalidate player lookup cache to ensure fresh data
+    from utils.player_lookup import invalidate_cache as invalidate_player_cache
+    invalidate_player_cache()
+    logger.info("Player lookup cache invalidated (will rebuild on first request)")
+    
     # Initialize Deep Ingestion Engine (v2 - legacy)
     demon_tracker = DeepIngestionEngine(db)
     logger.info("Deep Ingestion Engine initialized (v2)")
