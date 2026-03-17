@@ -108,6 +108,7 @@ class PicksGetterService:
         """
         FALLBACK: Get player data from master hub by name.
         Uses normalized name matching for consistency.
+        Checks both display_name and normalized_name fields (BDL data).
         Use _get_player_by_id when possible.
         """
         # Try shared lookup first (handles its own normalization)
@@ -115,8 +116,17 @@ class PicksGetterService:
         if player:
             return player
         
-        # Fallback: Try normalized name search directly on master_hub
+        # Try normalized_name field (for BDL-synced players)
         normalized = _normalize_name(player_name)
+        if normalized:
+            player = await self.master_hub.find_one(
+                {"normalized_name": normalized},
+                {"_id": 0}
+            )
+            if player:
+                return player
+        
+        # Fallback: Try normalized name search directly on master_hub
         if normalized:
             # Build regex pattern for normalized matching
             all_players = await self.master_hub.find({}, {"display_name": 1, "_id": 0}).to_list(1000)
@@ -156,6 +166,7 @@ class PicksGetterService:
         1. PRIMARY: Return from baseline_stats immediately if available
         2. FALLBACK: Calculate from game_logs only if stat is missing from baseline_stats
         
+        Also includes BDL shooting/defensive stats (fg_pct, fg3_pct, stl, blk).
         Also calculates diff_from_avg for divergence tracking.
         """
         player = await self._get_player_by_name(player_name)
@@ -163,34 +174,94 @@ class PicksGetterService:
             return {
                 "h5_rate": 0, "h10_rate": 0, "season_avg": 0, 
                 "l5_avg": 0, "l10_avg": 0, "diff_from_avg": None,
-                "is_stale": True, "stats_source": "missing"
+                "is_stale": True, "stats_source": "missing",
+                # BDL shooting/defensive stats (empty when missing)
+                "fg_pct": None, "fg3_pct": None, "ft_pct": None,
+                "stl": None, "blk": None, "min": None
             }
         
         # Check freshness: is_stale if last_updated > 24 hours ago
-        last_updated = player.get("last_updated")
+        last_updated = player.get("last_updated") or player.get("last_bdl_sync")
         is_stale = True
         if last_updated:
-            if isinstance(last_updated, datetime):
-                age = (datetime.now(timezone.utc) - last_updated).total_seconds()
-                is_stale = age > 86400  # 24 hours in seconds
-            elif isinstance(last_updated, str):
-                try:
+            try:
+                if isinstance(last_updated, datetime):
+                    # Make sure both are timezone-aware
+                    if last_updated.tzinfo is None:
+                        last_updated = last_updated.replace(tzinfo=timezone.utc)
+                    age = (datetime.now(timezone.utc) - last_updated).total_seconds()
+                    is_stale = age > 86400  # 24 hours in seconds
+                elif isinstance(last_updated, str):
                     last_dt = datetime.fromisoformat(last_updated.replace('Z', '+00:00'))
                     age = (datetime.now(timezone.utc) - last_dt).total_seconds()
                     is_stale = age > 86400
-                except ValueError:
-                    pass
+            except (ValueError, TypeError):
+                pass
+        
+        # ========================================================
+        # BDL SHOOTING & DEFENSIVE STATS (Open Door - Direct Read)
+        # ========================================================
+        # Pull directly from baseline_stats - NO calculation, exact BDL values
+        baseline_stats = player.get("baseline_stats", {})
+        
+        # These come EXACTLY from BDL /season_averages endpoint
+        bdl_fg_pct = baseline_stats.get("fg_pct")       # Field Goal %
+        bdl_fg3_pct = baseline_stats.get("fg3_pct")     # 3-Point %
+        bdl_ft_pct = baseline_stats.get("ft_pct")       # Free Throw %
+        bdl_stl = baseline_stats.get("stl")             # Steals per game
+        bdl_blk = baseline_stats.get("blk")             # Blocks per game
+        bdl_min = baseline_stats.get("min")             # Minutes per game
+        bdl_turnover = baseline_stats.get("turnover")   # Turnovers per game
+        bdl_games_played = baseline_stats.get("games_played")
         
         # Normalize stat type for baseline_stats lookup
         stat_key = stat_type.upper()
         norm_map = {"P+R": "PR", "P+A": "PA", "R+A": "RA", "3PM": "THREES"}
         stat_key = norm_map.get(stat_key, stat_key)
         
-        # PRIMARY SOURCE: Check baseline_stats first
-        baseline_stats = player.get("baseline_stats", {})
+        # Map stat type to BDL baseline_stats field
+        bdl_stat_map = {
+            "PTS": "pts", "REB": "reb", "AST": "ast", "STL": "stl", 
+            "BLK": "blk", "3PM": "fg3m", "THREES": "fg3m", "TO": "turnover"
+        }
+        bdl_field = bdl_stat_map.get(stat_key)
+        
+        # PRIMARY SOURCE: Check baseline_stats first (BDL data)
+        season_avg = None
+        if bdl_field and baseline_stats.get(bdl_field) is not None:
+            season_avg = baseline_stats.get(bdl_field)
+        
+        if season_avg is not None:
+            # Calculate divergence from average
+            diff_from_avg = None
+            if season_avg and season_avg > 0 and line:
+                diff_from_avg = round(((line - season_avg) / season_avg) * 100, 1)
+            
+            return {
+                "h5_rate": 0,  # Not available from BDL /season_averages
+                "h10_rate": 0,
+                "season_avg": round(season_avg, 1),
+                "l5_avg": round(season_avg, 1),  # Approximate with season avg
+                "l10_avg": round(season_avg, 1),
+                "diff_from_avg": diff_from_avg,
+                "is_stale": is_stale,
+                "stats_source": "bdl_baseline",
+                "photo_url": player.get("headshot_url") or player.get("photo_url"),
+                # BDL shooting/defensive stats - OPEN DOOR POPULATION
+                "fg_pct": round(bdl_fg_pct * 100, 1) if bdl_fg_pct else None,
+                "fg3_pct": round(bdl_fg3_pct * 100, 1) if bdl_fg3_pct else None,
+                "ft_pct": round(bdl_ft_pct * 100, 1) if bdl_ft_pct else None,
+                "stl": round(bdl_stl, 1) if bdl_stl else None,
+                "blk": round(bdl_blk, 1) if bdl_blk else None,
+                "min": bdl_min,
+                "turnover": round(bdl_turnover, 1) if bdl_turnover else None,
+                "games_played": bdl_games_played
+            }
+        
+        # SECONDARY: Check old-style baseline_stats structure
         stat_data = baseline_stats.get(stat_key) or baseline_stats.get(stat_type)
         
-        if stat_data and stat_data.get("season_avg") is not None:
+        if stat_data and isinstance(stat_data, dict) and stat_data.get("season_avg") is not None:
             season_avg = stat_data.get("season_avg", 0)
             l5_avg = stat_data.get("l5_avg", season_avg)
             l10_avg = stat_data.get("l10_avg", season_avg)
@@ -209,21 +280,39 @@ class PicksGetterService:
                 "diff_from_avg": diff_from_avg,
                 "is_stale": is_stale,
                 "stats_source": "baseline_stats",
-                "photo_url": player.get("headshot_url") or player.get("photo_url")
+                "photo_url": player.get("headshot_url") or player.get("photo_url"),
+                # BDL shooting/defensive stats
+                "fg_pct": round(bdl_fg_pct * 100, 1) if bdl_fg_pct else None,
+                "fg3_pct": round(bdl_fg3_pct * 100, 1) if bdl_fg3_pct else None,
+                "ft_pct": round(bdl_ft_pct * 100, 1) if bdl_ft_pct else None,
+                "stl": round(bdl_stl, 1) if bdl_stl else None,
+                "blk": round(bdl_blk, 1) if bdl_blk else None,
+                "min": bdl_min,
+                "turnover": round(bdl_turnover, 1) if bdl_turnover else None,
+                "games_played": bdl_games_played
             }
         
         # FALLBACK: Calculate from game_logs if baseline_stats missing
-        game_logs = player.get("game_logs", [])
+        game_logs = player.get("game_logs", []) or player.get("bdl_game_logs", [])
         if not game_logs:
             return {
                 "h5_rate": 0, "h10_rate": 0, "season_avg": 0, 
                 "l5_avg": 0, "l10_avg": 0, "diff_from_avg": None,
                 "is_stale": is_stale, "stats_source": "no_data",
-                "photo_url": player.get("headshot_url") or player.get("photo_url")
+                "photo_url": player.get("headshot_url") or player.get("photo_url"),
+                # BDL shooting/defensive stats (may still exist even without game logs)
+                "fg_pct": round(bdl_fg_pct * 100, 1) if bdl_fg_pct else None,
+                "fg3_pct": round(bdl_fg3_pct * 100, 1) if bdl_fg3_pct else None,
+                "ft_pct": round(bdl_ft_pct * 100, 1) if bdl_ft_pct else None,
+                "stl": round(bdl_stl, 1) if bdl_stl else None,
+                "blk": round(bdl_blk, 1) if bdl_blk else None,
+                "min": bdl_min,
+                "turnover": round(bdl_turnover, 1) if bdl_turnover else None,
+                "games_played": bdl_games_played
             }
         
         # Sort by date descending
-        game_logs = sorted(game_logs, key=lambda x: x.get("game_date", ""), reverse=True)
+        game_logs = sorted(game_logs, key=lambda x: x.get("game_date", "") or x.get("game", {}).get("date", ""), reverse=True)
         
         # Map stat type to game log field
         stat_map = {
@@ -281,7 +370,16 @@ class PicksGetterService:
             "diff_from_avg": diff_from_avg,
             "is_stale": is_stale,
             "stats_source": "game_logs",
-            "photo_url": player.get("headshot_url") or player.get("photo_url")
+            "photo_url": player.get("headshot_url") or player.get("photo_url"),
+            # BDL shooting/defensive stats
+            "fg_pct": round(bdl_fg_pct * 100, 1) if bdl_fg_pct else None,
+            "fg3_pct": round(bdl_fg3_pct * 100, 1) if bdl_fg3_pct else None,
+            "ft_pct": round(bdl_ft_pct * 100, 1) if bdl_ft_pct else None,
+            "stl": round(bdl_stl, 1) if bdl_stl else None,
+            "blk": round(bdl_blk, 1) if bdl_blk else None,
+            "min": bdl_min,
+            "turnover": round(bdl_turnover, 1) if bdl_turnover else None,
+            "games_played": bdl_games_played
         }
     
     async def get_war_zone(self) -> Dict[str, Any]:

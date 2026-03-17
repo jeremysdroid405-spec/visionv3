@@ -378,6 +378,38 @@ export const PickCard = memo(({
             </div>
           </div>
           
+          {/* BDL Vault Stats - FG%, 3P%, STL, BLK (Open Door Population) */}
+          {(pick.fg_pct != null || pick.fg3_pct != null || pick.stl != null || pick.blk != null) && (
+            <div className="bg-zinc-800/30 rounded-lg p-1.5 mt-1.5 border border-zinc-700/30" data-testid="bdl-vault-stats">
+              <div className="flex items-center justify-between text-center">
+                {pick.fg_pct != null && (
+                  <div className="flex-1">
+                    <div className="text-[8px] text-zinc-500 uppercase">FG%</div>
+                    <div className="text-[11px] font-bold text-cyan-400">{pick.fg_pct}%</div>
+                  </div>
+                )}
+                {pick.fg3_pct != null && (
+                  <div className="flex-1">
+                    <div className="text-[8px] text-zinc-500 uppercase">3P%</div>
+                    <div className="text-[11px] font-bold text-purple-400">{pick.fg3_pct}%</div>
+                  </div>
+                )}
+                {pick.stl != null && (
+                  <div className="flex-1">
+                    <div className="text-[8px] text-zinc-500 uppercase">STL</div>
+                    <div className="text-[11px] font-bold text-green-400">{pick.stl}</div>
+                  </div>
+                )}
+                {pick.blk != null && (
+                  <div className="flex-1">
+                    <div className="text-[8px] text-zinc-500 uppercase">BLK</div>
+                    <div className="text-[11px] font-bold text-amber-400">{pick.blk}</div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+          
           {/* AI Confidence Meter */}
           {(pick.ai_confidence_rating !== undefined && pick.ai_confidence_rating !== null) ? (
             <div className="mt-2">

@@ -41,12 +41,14 @@ async def run_daily_sync():
     
     SSOT PIPE 1: The ONLY authorized external stats API caller.
     
-    ENGINE: Official NBA API (replaces deprecated Tank01)
+    ENGINES:
+    1. Official NBA API - baseline stats with L5/L10 hit rates
+    2. BallDontLie API - shooting/defensive stats (fg_pct, fg3_pct, stl, blk)
     
     Updates ONLY statistical fields:
     - baseline_stats: {PTS: {l5_avg, l10_avg, season_avg}, ...}
     - game_logs: [{gameID, pts, reb, ast, ...}, ...]
-    - stats metadata: stats_source, baseline_stats_updated_at
+    - BDL stats: fg_pct, fg3_pct, ft_pct, stl, blk, min
     
     NEVER modifies structural fields:
     - player_id, player_name, display_name
@@ -55,10 +57,12 @@ async def run_daily_sync():
     """
     from motor.motor_asyncio import AsyncIOMotorClient
     from services.nba_official_sync import get_nba_official_sync_service
+    from services.bdl_comprehensive_sync import get_bdl_sync_service
     
     logger.info("[CRON] ========================================")
-    logger.info("[CRON] SSOT PIPE 1: Starting 0400 EST Official NBA sync")
-    logger.info("[CRON] ENGINE: nba_api (Tank01 DEPRECATED)")
+    logger.info("[CRON] SSOT PIPE 1: Starting 0400 EST Multi-Engine Sync")
+    logger.info("[CRON] ENGINE 1: nba_api (Hit Rates)")
+    logger.info("[CRON] ENGINE 2: BallDontLie (Shooting/Defense)")
     logger.info("[CRON] ========================================")
     
     mongo_url = os.environ.get("MONGO_URL")
@@ -72,12 +76,21 @@ async def run_daily_sync():
         client = AsyncIOMotorClient(mongo_url)
         db = client[db_name]
         
-        # Run Official NBA API stats sync (ONLY updates stats fields)
+        # PHASE 1: Run Official NBA API stats sync (hit rates, game logs)
+        logger.info("[CRON] Phase 1: NBA Official API sync...")
         service = get_nba_official_sync_service(db)
-        result = await service.sync_all_players()
+        nba_result = await service.sync_all_players()
         
-        logger.info(f"[CRON] SSOT sync completed: {result.get('players_updated', 0)} players updated")
-        logger.info(f"[CRON] Skipped: {result.get('players_skipped', 0)}, Failed: {result.get('players_failed', 0)}")
+        logger.info(f"[CRON] NBA sync: {nba_result.get('players_updated', 0)} players updated")
+        
+        # PHASE 2: Run BDL sync for PrizePicks players (shooting/defensive stats)
+        logger.info("[CRON] Phase 2: BDL API sync (PrizePicks players)...")
+        bdl_service = get_bdl_sync_service(db)
+        bdl_result = await bdl_service.sync_prizepicks_players()
+        
+        logger.info(f"[CRON] BDL sync: {bdl_result.get('success', 0)} players updated")
+        logger.info("[CRON] ========================================")
+        logger.info(f"[CRON] TOTAL: NBA={nba_result.get('players_updated', 0)}, BDL={bdl_result.get('success', 0)}")
         logger.info("[CRON] ========================================")
         
     except Exception as e:
@@ -144,6 +157,6 @@ def get_scheduler_status():
     return {
         "running": _scheduler.running,
         "jobs": jobs,
-        "engine": "nba_official",
-        "deprecated": "tank01"
+        "engines": ["nba_official", "balldontlie"],
+        "sync_includes": ["hit_rates", "fg_pct", "fg3_pct", "ft_pct", "stl", "blk", "min"]
     }
