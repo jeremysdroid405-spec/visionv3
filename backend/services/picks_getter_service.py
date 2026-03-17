@@ -1422,141 +1422,129 @@ class PicksGetterService:
     
     async def get_most_popular_bets(self) -> Dict[str, Any]:
         """
-        Get Top 20 Most Popular BETS (specific props, not just players)
-        Returns actual bet lines with ticket volume/popularity scoring
-        Includes Standard, Demon, and Goblin lines
-        Auto-purges games that have already started
+        Get Top 20 Most Popular BETS - STANDARD LINES ONLY
         
-        Pulls from dg_radar_picks, dg_goblin_vault, and dg_front_lines collections
+        Based strictly on betting volume/popularity from the cached board.
+        Only returns STANDARD lines (is_alternate_market = false) - the anchor lines.
+        No demon/goblin filtering - pure volume-based popularity.
         """
         try:
             now = datetime.now(timezone.utc)
-            popular_bets = []
             
-            # STRATEGY: Get bets from tiered picks collections
-            # These have already been processed with hit rates and season_avg
+            # Get all players from cached board with props
+            players = await self.cached_board.find(
+                {"props": {"$exists": True}},
+                {"_id": 0}
+            ).to_list(500)
             
-            # Get from War Zone (Demons)
-            radar_picks = await self.radar_picks.find({}, {"_id": 0}).to_list(20)
-            for pick in radar_picks:
-                popular_bets.append({
-                    "player_name": pick.get("player_name", ""),
-                    "player_id": pick.get("player_id") or pick.get("tank01_player_id"),
-                    "team": pick.get("team", ""),
-                    "stat_type": pick.get("stat_type", ""),
-                    "line": pick.get("demon_line") or pick.get("line"),
-                    "line_type": "demon",
-                    "is_demon": True,
-                    "is_goblin": False,
-                    "direction": pick.get("direction", "over").lower(),
-                    "h10_rate": pick.get("h10_rate", 0),
-                    "h5_rate": pick.get("h5_rate", 0),
-                    "h10_over": pick.get("h10_over", 0),
-                    "h10_games": pick.get("h10_games", 10),
-                    "h5_over": pick.get("h5_over", 0),
-                    "h5_games": pick.get("h5_games", 5),
-                    "season_avg": pick.get("season_avg"),
-                    "gap_pct": pick.get("gap_pct", 0),
-                    "popularity_score": pick.get("radar_score", 0) or pick.get("demon_score", 0),
-                    "odds": pick.get("demon_odds") or pick.get("odds"),
-                    "commence_time": pick.get("commence_time"),
-                    "source": "war_zone"
-                })
+            # Extract STANDARD props only (is_alternate_market = false OR tier = STANDARD)
+            standard_bets = []
+            for player_doc in players:
+                player_name = player_doc.get("player_name")
+                if not player_name:
+                    continue
+                
+                props = player_doc.get("props", [])
+                for prop in props:
+                    # Only include STANDARD lines (not alternate/demon/goblin)
+                    is_alternate = prop.get("is_alternate_market", True)
+                    is_demon = prop.get("is_demon", False)
+                    is_goblin = prop.get("is_goblin", False)
+                    tier = prop.get("tier", "")
+                    
+                    # STANDARD = not alternate market, or explicitly marked as STANDARD
+                    if is_alternate and not (tier == "STANDARD"):
+                        continue
+                    if is_demon or is_goblin:
+                        continue
+                    
+                    stat_type = prop.get("stat_type_extracted") or prop.get("market", "").replace("player_", "")
+                    line = prop.get("line")
+                    
+                    if not stat_type or not line:
+                        continue
+                    
+                    standard_bets.append({
+                        "player_name": player_name,
+                        "team": player_doc.get("team"),
+                        "opponent": player_doc.get("opponent"),
+                        "game_id": player_doc.get("game_id"),
+                        "stat_type": stat_type,
+                        "line": line,
+                        "line_type": "standard",
+                        "is_demon": False,
+                        "is_goblin": False,
+                        "tier_label": "STANDARD",
+                        "direction": prop.get("direction", "over"),
+                        "odds": prop.get("price"),
+                        "bookmaker": prop.get("bookmaker", "prizepicks"),
+                        # Volume/popularity indicators
+                        "rank": player_doc.get("rank", 999),
+                        "prop_count": len(props),
+                    })
             
-            # Get from Safe Haven (Goblins)
-            vault_picks = await self.goblin_vault.find({}, {"_id": 0}).to_list(20)
-            for pick in vault_picks:
-                popular_bets.append({
-                    "player_name": pick.get("player_name", ""),
-                    "player_id": pick.get("player_id") or pick.get("tank01_player_id"),
-                    "team": pick.get("team", ""),
-                    "stat_type": pick.get("stat_type", ""),
-                    "line": pick.get("goblin_line") or pick.get("line"),
-                    "line_type": "goblin",
-                    "is_demon": False,
-                    "is_goblin": True,
-                    "direction": pick.get("direction", "over").lower(),
-                    "h10_rate": pick.get("h10_rate", 0),
-                    "h5_rate": pick.get("h5_rate", 0),
-                    "h10_over": pick.get("h10_over", 0),
-                    "h10_games": pick.get("h10_games", 10),
-                    "h5_over": pick.get("h5_over", 0),
-                    "h5_games": pick.get("h5_games", 5),
-                    "season_avg": pick.get("season_avg"),
-                    "gap_pct": pick.get("gap_pct", 0),
-                    "popularity_score": pick.get("vault_score", 0) or pick.get("goblin_score", 0),
-                    "odds": pick.get("goblin_odds") or pick.get("odds"),
-                    "commence_time": pick.get("commence_time"),
-                    "source": "safe_haven"
-                })
+            if not standard_bets:
+                logger.warning("[MOST_POPULAR] No standard bets found in cached board")
+                return {"status": "awaiting_action", "bets": [], "total_available": 0, "timestamp": now.isoformat()}
             
-            # Get from Front Lines (Mixed)
-            front_picks = await self.front_lines.find({}, {"_id": 0}).to_list(20)
-            for pick in front_picks:
-                is_demon = pick.get("is_demon", False)
-                is_goblin = pick.get("is_goblin", False)
-                popular_bets.append({
-                    "player_name": pick.get("player_name", ""),
-                    "team": pick.get("team", ""),
-                    "photo_url": pick.get("photo_url", ""),
-                    "stat_type": pick.get("stat_type", ""),
-                    "line": pick.get("demon_line") if is_demon else pick.get("goblin_line") if is_goblin else pick.get("line"),
-                    "line_type": "demon" if is_demon else "goblin" if is_goblin else "standard",
-                    "is_demon": is_demon,
-                    "is_goblin": is_goblin,
-                    "direction": pick.get("direction", "over").lower(),
-                    "h10_rate": pick.get("h10_rate", 0),
-                    "h5_rate": pick.get("h5_rate", 0),
-                    "h10_over": pick.get("h10_over", 0),
-                    "h10_games": pick.get("h10_games", 10),
-                    "h5_over": pick.get("h5_over", 0),
-                    "h5_games": pick.get("h5_games", 5),
-                    "season_avg": pick.get("season_avg"),
-                    "gap_pct": pick.get("gap_pct", 0),
-                    "popularity_score": pick.get("front_lines_score", 0),
-                    "odds": pick.get("odds"),
-                    "commence_time": pick.get("commence_time"),
-                    "source": "front_lines"
-                })
+            # Sort by rank (lower = more popular) - this reflects volume/prominence
+            standard_bets.sort(key=lambda x: (x.get("rank", 999), -x.get("prop_count", 0)))
             
-            # Sort by popularity/score and dedupe
+            # Dedupe by player+stat combination
             seen = set()
             unique_bets = []
-            for bet in sorted(popular_bets, key=lambda x: x.get("popularity_score", 0), reverse=True):
-                key = f"{bet['player_name']}_{bet['stat_type']}_{bet['line']}"
+            for bet in standard_bets:
+                key = f"{bet['player_name']}_{bet['stat_type']}"
                 if key not in seen:
                     seen.add(key)
                     unique_bets.append(bet)
             
-            # ===== PLAYER DATA & STATS ENRICHMENT from nba_master_hub_2026 =====
-            # ALL player data and stats come from master hub by player_id
+            # Enrich with stats from master hub
+            enriched_bets = []
             for bet in unique_bets[:20]:
-                master_player = await self._get_master_player(bet)
-                if master_player:
-                    stat_type = bet.get('stat_type', '')
-                    # Player identity & photo FROM MASTER HUB
-                    bet['player_id'] = master_player.get('player_id')
-                    bet['nba_id'] = master_player.get('nba_id') or master_player.get('nba_player_id')
-                    bet['espn_id'] = master_player.get('espn_id')
-                    bet['photo_url'] = master_player.get('headshot_url')
-                    bet['headshot_url'] = master_player.get('headshot_url')
+                player_name = bet["player_name"]
+                stat_type = bet["stat_type"]
+                line = bet["line"]
+                
+                # Get master hub data
+                hub_player = await self._get_master_player_by_name(player_name)
+                
+                if hub_player:
+                    # Photo from master hub
+                    bet["photo_url"] = hub_player.get("headshot_url") or hub_player.get("photo_url")
+                    bet["position"] = hub_player.get("position")
                     
-                    # Baseline stats for this prop category
-                    baseline_stats = master_player.get('baseline_stats', {})
-                    if stat_type and baseline_stats:
-                        cat_stats = baseline_stats.get(stat_type, {})
-                        if cat_stats:
-                            bet['l5_avg'] = cat_stats.get('l5_avg')
-                            bet['l10_avg'] = cat_stats.get('l10_avg')
-                            bet['season_avg'] = cat_stats.get('season_avg')
+                    # Get season_avg from baseline_stats
+                    baseline_stats = hub_player.get("baseline_stats", {})
+                    stat_key = self._normalize_stat_key(stat_type)
+                    stat_data = baseline_stats.get(stat_key, {})
                     
-                    bet['baseline_stats'] = baseline_stats
+                    if isinstance(stat_data, dict):
+                        bet["season_avg"] = stat_data.get("season_avg")
+                    elif isinstance(stat_data, (int, float)):
+                        bet["season_avg"] = stat_data
+                    
+                    # Calculate L5/L10 from game logs
+                    game_logs = hub_player.get("bdl_game_logs", []) or hub_player.get("game_logs", [])
+                    if game_logs:
+                        l5_result = self._calculate_l5_avg(game_logs, stat_type)
+                        h10_result = self._calculate_h10_hit_rate(game_logs, stat_type, line)
+                        
+                        bet["l5_avg"] = l5_result["avg"]
+                        bet["h10_rate"] = h10_result["hit_rate"]
+                        bet["h10_hits"] = h10_result["hits"]
+                        bet["h10_games"] = h10_result["games_counted"]
+                
+                enriched_bets.append(bet)
+            
+            logger.info(f"[MOST_POPULAR] Returning {len(enriched_bets)} standard bets (volume-based)")
             
             return {
-                "status": "live" if unique_bets else "awaiting_action",
-                "bets": unique_bets[:20],
+                "status": "live" if enriched_bets else "awaiting_action",
+                "bets": enriched_bets,
                 "total_available": len(unique_bets),
-                "timestamp": now.isoformat()
+                "timestamp": now.isoformat(),
+                "source": "standard_lines_by_volume"
             }
             
         except Exception as e:
