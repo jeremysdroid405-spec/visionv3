@@ -3,15 +3,32 @@ export { DemonIcon, GoblinIcon, VisionBadge } from './Icons';
 export { CacheService } from './CacheService';
 export * from './constants';
 
-// UNIVERSAL PICK CARD - For bet/pick displays on dashboard
-export { default as UniversalPickCard, PlayerHeadshot, DvPBadge, HitRateRow } from './UniversalPickCard';
+/**
+ * UNIVERSAL PLAYER CARD - THE SINGLE CARD FOR THE ENTIRE APP
+ * ===========================================================
+ * This is the ONLY card component that should be used.
+ * All other card components are DEPRECATED.
+ * 
+ * Architecture:
+ * - VAULT FUNNEL: Stats from nba_master_hub_2026 (FG%, 3P%, STL, BLK)
+ * - ODDS FUNNEL: Props from dg_cached_board (DEMON, GOBLIN, STANDARD)
+ */
+export { 
+  default as UniversalPlayerCard, 
+  PlayerHeadshot, 
+  VaultStatsRow, 
+  PropRow,
+  TIER_THEMES,
+  getHighestTier 
+} from './UniversalPlayerCard';
 
-// UNIVERSAL PLAYER CARD - For player profiles, search, command post (with BDL stats)
-export { default as UniversalPlayerCard, VaultStatsRow, PositionBadge } from './UniversalPlayerCard';
+// Legacy aliases (point to UniversalPlayerCard)
+export { default as UniversalPickCard } from './UniversalPlayerCard';
 
-// Legacy exports (deprecated - use UniversalPickCard or UniversalPlayerCard)
-export { PickCard } from './PickCard';
+// ParlayTicket - still needed for parlay display
 export { ParlayTicket } from './ParlayTicket';
+
+// Section containers - can be deprecated once Dashboard uses UniversalPlayerCard directly
 export { 
   WarZoneSection, 
   SafeHavenSection, 

@@ -1,38 +1,45 @@
 /**
  * UNIVERSAL PLAYER CARD
  * =====================
- * Single source of truth for ALL player profile displays across the app.
+ * THE SINGLE CARD COMPONENT FOR THE ENTIRE APP.
  * 
- * DATA SOURCES:
- * - nba_master_hub_2026 (Master Vault): Player info, photos, BDL stats
- * - dg_cached_board (Odds API): Lines, odds, props
+ * ARCHITECTURE: TWO-FUNNEL JOIN
+ * =============================
+ * FUNNEL 1 - VAULT (nba_master_hub_2026):
+ *   - Player Identity: Name, Team, Headshot URL
+ *   - Season Stats: PTS, REB, AST, FG%, 3P%, STL, BLK
+ *   - Source: BallDontLie API (synced daily via CRON)
  * 
- * FEATURES:
- * - BDL Vault Stats (FG%, 3P%, STL, BLK, etc.)
- * - Hit rate displays (L5, L10, Season)
- * - Multiple props display
- * - Search result compatible
+ * FUNNEL 2 - ODDS (dg_cached_board):
+ *   - Active Props: All PrizePicks lines for the player
+ *   - Tier Classification: DEMON, GOBLIN, or STANDARD
+ *   - Source: Odds API (polled every 30 seconds)
  * 
- * DISPLAY MODES:
- * - "full": Complete card with all stats and props
- * - "compact": Condensed view for search results
- * - "mini": Minimal inline view
+ * CARD BEHAVIOR:
+ * ==============
+ * - HEADER: Headshot + Name + Season Stats (FG%, 3P%, STL, BLK)
+ * - BODY: All available props for that player
+ * - GLOW: Card border/glow matches HIGHEST tier (DEMON > GOBLIN > STANDARD)
  * 
  * USED IN:
- * - CommandPost.jsx (Player search results & slate)
- * - CommandSearch.jsx (Search dropdown)
- * - PlayerDetailPage.jsx (Player profile header)
+ * ========
+ * - War Zone section
+ * - Safe Haven section
+ * - Front Lines section
+ * - Command Post search results
+ * - Global Intel Search results
+ * 
+ * NO OTHER CARD COMPONENTS SHOULD EXIST.
  */
 
 import React, { memo, useCallback, useState } from 'react';
 import { 
   Target, Shield, ChevronRight, Plus, ChevronDown,
-  Crosshair, TrendingUp, User
+  Crosshair, TrendingUp
 } from 'lucide-react';
 import { Badge } from '../ui/badge';
 
-// ==================== CONSTANTS ====================
-
+// ==================== TEAM LOGOS (FALLBACK) ====================
 const TEAM_LOGOS = {
   ATL: 'https://cdn.nba.com/logos/nba/1610612737/global/L/logo.svg',
   BOS: 'https://cdn.nba.com/logos/nba/1610612738/global/L/logo.svg',
@@ -66,15 +73,43 @@ const TEAM_LOGOS = {
   WAS: 'https://cdn.nba.com/logos/nba/1610612764/global/L/logo.svg',
 };
 
-const STAT_LABELS = {
-  'PTS': 'Points', 'REB': 'Rebounds', 'AST': 'Assists',
-  '3PM': '3-Pointers', 'STL': 'Steals', 'BLK': 'Blocks',
-  'TO': 'Turnovers', 'PRA': 'Pts+Reb+Ast', 'PR': 'Pts+Reb',
-  'P+R': 'Pts+Reb', 'PA': 'Pts+Ast', 'P+A': 'Pts+Ast',
-  'RA': 'Reb+Ast', 'R+A': 'Reb+Ast', 'MIN': 'Minutes',
+// ==================== THEME CONFIG (TIER-BASED GLOW) ====================
+const TIER_THEMES = {
+  DEMON: {
+    border: 'border-red-500/50',
+    bg: 'from-red-950/60 to-zinc-900',
+    glow: 'shadow-[0_0_25px_rgba(239,68,68,0.4)]',
+    text: 'text-red-400',
+    accent: 'bg-red-500',
+    ring: 'ring-red-500/50',
+    icon: Target
+  },
+  GOBLIN: {
+    border: 'border-green-500/50',
+    bg: 'from-green-950/60 to-zinc-900',
+    glow: 'shadow-[0_0_25px_rgba(34,197,94,0.4)]',
+    text: 'text-green-400',
+    accent: 'bg-green-500',
+    ring: 'ring-green-500/50',
+    icon: Crosshair
+  },
+  STANDARD: {
+    border: 'border-amber-500/40',
+    bg: 'from-amber-950/40 to-zinc-900',
+    glow: 'shadow-[0_0_15px_rgba(245,158,11,0.2)]',
+    text: 'text-amber-400',
+    accent: 'bg-amber-500',
+    ring: 'ring-amber-500/50',
+    icon: TrendingUp
+  }
 };
 
 // ==================== HELPER FUNCTIONS ====================
+
+const getInitials = (name) => {
+  if (!name) return '??';
+  return name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
+};
 
 const getHitRateColor = (rate) => {
   if (rate >= 80) return 'text-green-400';
@@ -83,18 +118,36 @@ const getHitRateColor = (rate) => {
   return 'text-red-400';
 };
 
-const getInitials = (name) => {
-  if (!name) return '??';
-  return name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
+/**
+ * Determine the highest tier from all props
+ * Priority: DEMON > GOBLIN > STANDARD
+ */
+const getHighestTier = (props) => {
+  if (!props || props.length === 0) return 'STANDARD';
+  if (props.some(p => p.is_demon || p.tier_label === 'DEMON')) return 'DEMON';
+  if (props.some(p => p.is_goblin || p.tier_label === 'GOBLIN')) return 'GOBLIN';
+  return 'STANDARD';
+};
+
+/**
+ * Format BDL percentage stats
+ * API returns 0.513 -> display as 51.3%
+ */
+const formatPct = (val) => {
+  if (val == null) return null;
+  if (val > 1) return val.toFixed(1);
+  return (val * 100).toFixed(1);
 };
 
 // ==================== SUB-COMPONENTS ====================
 
-// Player Headshot with fallback
+/**
+ * Player Headshot with team logo fallback
+ */
 const PlayerHeadshot = memo(({ photoUrl, playerName, team, size = 'md' }) => {
   const sizeClasses = {
     sm: 'w-8 h-8',
-    md: 'w-10 h-10',
+    md: 'w-12 h-12',
     lg: 'w-14 h-14',
     xl: 'w-20 h-20'
   };
@@ -105,14 +158,14 @@ const PlayerHeadshot = memo(({ photoUrl, playerName, team, size = 'md' }) => {
     const teamLogo = TEAM_LOGOS[team];
     if (teamLogo) {
       return (
-        <div className={`${sizeClasses[size]} rounded-full overflow-hidden bg-zinc-800 flex items-center justify-center p-1`}>
-          <img src={teamLogo} alt={team} className="w-full h-full object-contain" />
+        <div className={`${sizeClasses[size]} rounded-full overflow-hidden bg-zinc-800 flex items-center justify-center p-1.5`}>
+          <img src={teamLogo} alt={team} className="w-full h-full object-contain" onError={(e) => e.target.style.display = 'none'} />
         </div>
       );
     }
     return (
       <div className={`${sizeClasses[size]} rounded-full bg-gradient-to-br from-zinc-700 to-zinc-800 flex items-center justify-center`}>
-        <span className="text-zinc-400 font-bold text-xs">{getInitials(playerName)}</span>
+        <span className="text-zinc-400 font-bold text-sm">{getInitials(playerName)}</span>
       </div>
     );
   }
@@ -131,138 +184,187 @@ const PlayerHeadshot = memo(({ photoUrl, playerName, team, size = 'md' }) => {
 });
 PlayerHeadshot.displayName = 'PlayerHeadshot';
 
-// BDL Vault Stats Row - The detailed stats from Master Vault
+/**
+ * VAULT STATS ROW - BDL Season Stats (Open Door Read)
+ * Shows: PTS, REB, AST, FG%, 3P%, STL, BLK
+ */
 const VaultStatsRow = memo(({ player }) => {
-  // Support both direct stats and nested baseline_stats structure
-  const stats = player.baseline_stats || player;
+  // OPEN DOOR: Read directly from baseline_stats or top-level
+  const bs = player.baseline_stats || {};
   
-  // Get raw values
-  const fg_pct_raw = stats.fg_pct ?? player.fg_pct;
-  const fg3_pct_raw = stats.fg3_pct ?? player.fg3_pct;
-  const stl = stats.stl ?? player.stl;
-  const blk = stats.blk ?? player.blk;
-  const pts = stats.pts ?? player.pts;
-  const reb = stats.reb ?? player.reb;
-  const ast = stats.ast ?? player.ast;
+  const pts = bs.pts ?? player.pts;
+  const reb = bs.reb ?? player.reb;
+  const ast = bs.ast ?? player.ast;
+  const fg_pct = formatPct(bs.fg_pct ?? player.fg_pct);
+  const fg3_pct = formatPct(bs.fg3_pct ?? player.fg3_pct);
+  const stl = bs.stl ?? player.stl;
+  const blk = bs.blk ?? player.blk;
   
-  // Format percentages (API returns 0.513, we want 51.3)
-  const formatPct = (val) => {
-    if (val == null) return null;
-    // If already a percentage > 1, show as is
-    if (val > 1) return val.toFixed(1);
-    // Otherwise convert from decimal
-    return (val * 100).toFixed(1);
-  };
-  
-  const fg_pct = formatPct(fg_pct_raw);
-  const fg3_pct = formatPct(fg3_pct_raw);
-  
-  const hasStats = fg_pct != null || fg3_pct != null || stl != null || blk != null || pts != null;
+  const hasStats = pts != null || fg_pct != null;
   if (!hasStats) return null;
   
   return (
-    <div className="bg-zinc-800/50 rounded-lg p-2 border border-zinc-700/40" data-testid="vault-stats">
-      <div className="text-[9px] text-zinc-500 uppercase tracking-wider mb-1.5 font-semibold">Season Stats</div>
-      <div className="grid grid-cols-5 gap-2 text-center">
+    <div className="bg-zinc-800/60 rounded-lg p-2.5 border border-zinc-700/50" data-testid="vault-stats">
+      <div className="text-[9px] text-zinc-500 uppercase tracking-wider mb-2 font-semibold flex items-center gap-1">
+        <Shield className="w-3 h-3" />
+        Season Stats
+      </div>
+      {/* Primary Stats Row */}
+      <div className="grid grid-cols-3 gap-3 text-center mb-2">
         {pts != null && (
           <div>
-            <div className="text-[9px] text-zinc-500">PTS</div>
-            <div className="text-sm font-bold text-white">{typeof pts === 'number' ? pts.toFixed(1) : pts}</div>
+            <div className="text-[10px] text-zinc-500">PTS</div>
+            <div className="text-base font-bold text-white">{typeof pts === 'number' ? pts.toFixed(1) : pts}</div>
           </div>
         )}
         {reb != null && (
           <div>
-            <div className="text-[9px] text-zinc-500">REB</div>
-            <div className="text-sm font-bold text-white">{typeof reb === 'number' ? reb.toFixed(1) : reb}</div>
+            <div className="text-[10px] text-zinc-500">REB</div>
+            <div className="text-base font-bold text-white">{typeof reb === 'number' ? reb.toFixed(1) : reb}</div>
           </div>
         )}
         {ast != null && (
           <div>
-            <div className="text-[9px] text-zinc-500">AST</div>
-            <div className="text-sm font-bold text-white">{typeof ast === 'number' ? ast.toFixed(1) : ast}</div>
+            <div className="text-[10px] text-zinc-500">AST</div>
+            <div className="text-base font-bold text-white">{typeof ast === 'number' ? ast.toFixed(1) : ast}</div>
           </div>
         )}
+      </div>
+      {/* Shooting & Defense Row */}
+      <div className="grid grid-cols-4 gap-2 text-center pt-2 border-t border-zinc-700/30">
         {fg_pct != null && (
           <div>
-            <div className="text-[9px] text-zinc-500">FG%</div>
-            <div className="text-sm font-bold text-cyan-400">{fg_pct}%</div>
+            <div className="text-[8px] text-zinc-500">FG%</div>
+            <div className="text-xs font-bold text-cyan-400">{fg_pct}%</div>
           </div>
         )}
         {fg3_pct != null && (
           <div>
-            <div className="text-[9px] text-zinc-500">3P%</div>
-            <div className="text-sm font-bold text-purple-400">{fg3_pct}%</div>
+            <div className="text-[8px] text-zinc-500">3P%</div>
+            <div className="text-xs font-bold text-purple-400">{fg3_pct}%</div>
+          </div>
+        )}
+        {stl != null && (
+          <div>
+            <div className="text-[8px] text-zinc-500">STL</div>
+            <div className="text-xs font-bold text-green-400">{typeof stl === 'number' ? stl.toFixed(1) : stl}</div>
+          </div>
+        )}
+        {blk != null && (
+          <div>
+            <div className="text-[8px] text-zinc-500">BLK</div>
+            <div className="text-xs font-bold text-amber-400">{typeof blk === 'number' ? blk.toFixed(1) : blk}</div>
           </div>
         )}
       </div>
-      {(stl != null || blk != null) && (
-        <div className="grid grid-cols-2 gap-2 text-center mt-2 pt-2 border-t border-zinc-700/30">
-          {stl != null && (
-            <div>
-              <div className="text-[9px] text-zinc-500">STL</div>
-              <div className="text-sm font-bold text-green-400">{typeof stl === 'number' ? stl.toFixed(1) : stl}</div>
-            </div>
-          )}
-          {blk != null && (
-            <div>
-              <div className="text-[9px] text-zinc-500">BLK</div>
-              <div className="text-sm font-bold text-amber-400">{typeof blk === 'number' ? blk.toFixed(1) : blk}</div>
-            </div>
-          )}
-        </div>
-      )}
     </div>
   );
 });
 VaultStatsRow.displayName = 'VaultStatsRow';
 
-// Position Badge
-const PositionBadge = memo(({ position }) => {
-  if (!position) return null;
+/**
+ * Single Prop Row - from Odds Funnel
+ */
+const PropRow = memo(({ prop, theme, onClick, onQuickAdd }) => {
+  const isDemon = prop.is_demon || prop.tier_label === 'DEMON';
+  const isGoblin = prop.is_goblin || prop.tier_label === 'GOBLIN';
+  
+  const tierColor = isDemon ? 'text-red-400' : isGoblin ? 'text-green-400' : 'text-amber-400';
+  const tierBg = isDemon ? 'bg-red-950/40 border-red-500/30' : isGoblin ? 'bg-green-950/40 border-green-500/30' : 'bg-zinc-800/40 border-zinc-700/30';
+  const TierIcon = isDemon ? Target : isGoblin ? Crosshair : TrendingUp;
+  
   return (
-    <span className="px-1.5 py-0.5 text-[9px] font-bold bg-zinc-700/50 text-zinc-300 rounded">
-      {position}
-    </span>
+    <div 
+      className={`flex items-center justify-between p-2 rounded-lg border cursor-pointer transition-all hover:scale-[1.01] ${tierBg}`}
+      onClick={() => onClick?.(prop)}
+      data-testid={`prop-row-${prop.stat_type}-${prop.line}`}
+    >
+      <div className="flex items-center gap-2">
+        <TierIcon className={`w-3.5 h-3.5 ${tierColor}`} />
+        <div>
+          <span className="text-sm font-medium text-white">
+            {prop.stat_type} <span className={tierColor}>O{prop.line}</span>
+          </span>
+          {prop.tier_label && prop.tier_label !== 'STANDARD' && (
+            <Badge variant="outline" className={`ml-1.5 text-[8px] px-1 py-0 ${tierColor} border-current`}>
+              {prop.tier_label}
+            </Badge>
+          )}
+        </div>
+      </div>
+      
+      <div className="flex items-center gap-3 text-xs">
+        {/* Hit Rates */}
+        {prop.h10_rate != null && (
+          <span className={`font-medium ${getHitRateColor(prop.h10_rate)}`}>
+            L10: {prop.h10_rate}%
+          </span>
+        )}
+        {prop.season_avg != null && (
+          <span className="text-zinc-400">
+            Avg: <span className="text-white">{prop.season_avg?.toFixed?.(1) || prop.season_avg}</span>
+          </span>
+        )}
+        {/* Quick Add */}
+        {onQuickAdd && (
+          <button
+            onClick={(e) => { e.stopPropagation(); onQuickAdd(prop); }}
+            className="p-1 rounded bg-cyan-500/20 text-cyan-400 hover:bg-cyan-500/30 transition-all"
+            data-testid={`quick-add-prop-${prop.stat_type}`}
+          >
+            <Plus className="w-3.5 h-3.5" />
+          </button>
+        )}
+      </div>
+    </div>
   );
 });
-PositionBadge.displayName = 'PositionBadge';
+PropRow.displayName = 'PropRow';
 
 // ==================== MAIN COMPONENT ====================
 
 /**
- * UniversalPlayerCard - Single card component for all player displays
+ * UniversalPlayerCard - THE ONE CARD TO RULE THEM ALL
  * 
- * @param {Object} player - Player data from API (from Master Vault)
+ * @param {Object} player - Player data merged from VAULT + ODDS funnels
+ *   Required: player_name, team
+ *   From Vault: baseline_stats (or pts, reb, ast, fg_pct, etc.), photo_url
+ *   From Odds: props array with stat_type, line, is_demon, is_goblin, tier_label
+ * @param {Array} props - Override: Props array (if not in player object)
  * @param {string} mode - Display mode: 'full' | 'compact' | 'mini'
- * @param {Function} onClick - Click handler
- * @param {Function} onAddToPost - Add to Command Post handler
- * @param {boolean} showStats - Show BDL vault stats
- * @param {Array} props - Available props for this player (optional)
+ * @param {number} rank - Display rank badge
+ * @param {Function} onClick - Click handler for card or prop
+ * @param {Function} onQuickAdd - Quick add to Command Post
+ * @param {boolean} showStats - Show vault stats (default: true)
+ * @param {boolean} showProps - Show props list (default: true)
  */
 const UniversalPlayerCard = memo(({
   player,
+  props: propsProp,
   mode = 'full',
+  rank,
   onClick,
-  onAddToPost,
+  onQuickAdd,
   showStats = true,
-  props = []
+  showProps = true
 }) => {
-  const [isExpanded, setIsExpanded] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(mode === 'full');
   
-  const handleClick = useCallback(() => {
+  const handleCardClick = useCallback(() => {
     if (player) onClick?.(player);
   }, [onClick, player]);
   
-  const handleAddToPost = useCallback((e, prop) => {
-    e?.stopPropagation();
-    if (onAddToPost) {
-      onAddToPost(prop || player);
-    }
-  }, [onAddToPost, player]);
+  const handlePropClick = useCallback((prop) => {
+    onClick?.({ ...player, ...prop, selectedProp: prop });
+  }, [onClick, player]);
+  
+  const handleQuickAdd = useCallback((prop) => {
+    onQuickAdd?.({ ...player, ...prop });
+  }, [onQuickAdd, player]);
   
   if (!player) return null;
   
-  // Extract player data - support multiple data shapes
+  // Extract data - support multiple shapes
   const {
     player_name,
     name,
@@ -271,39 +373,51 @@ const UniversalPlayerCard = memo(({
     photo_url,
     headshot_url,
     opponent,
-    // Stats from Master Vault
+    // Vault Stats
     baseline_stats,
-    fg_pct,
-    fg3_pct,
-    stl,
-    blk,
-    pts,
-    reb,
-    ast
+    fg_pct, fg3_pct, stl, blk, pts, reb, ast,
+    // Primary prop (for single-prop display)
+    stat_type,
+    line,
+    h5_rate, h10_rate, season_avg, diff_from_avg,
+    // Tier info
+    is_demon, is_goblin, tier_label
   } = player;
   
   const displayName = player_name || name;
   const displayPhoto = photo_url || headshot_url;
   const playerSlug = displayName?.replace(/\s+/g, '-').toLowerCase();
-  const playerProps = props.length > 0 ? props : (player.props || []);
-  const hasProps = playerProps.length > 0;
+  
+  // Get all props - from prop override or player.props
+  const allProps = propsProp || player.props || [];
+  const hasProps = allProps.length > 0;
+  
+  // Determine card theme from HIGHEST tier
+  const highestTier = getHighestTier(allProps.length > 0 ? allProps : [player]);
+  const theme = TIER_THEMES[highestTier];
+  const TierIcon = theme.icon;
   
   // ==================== MINI MODE ====================
   if (mode === 'mini') {
     return (
       <div 
-        className="flex items-center gap-2 p-2 rounded-lg border border-zinc-700/50 bg-zinc-900/50 cursor-pointer hover:bg-zinc-800/50 transition-all"
-        onClick={handleClick}
+        className={`flex items-center gap-2 p-2 rounded-lg border ${theme.border} bg-zinc-900/80 cursor-pointer hover:bg-zinc-800/80 transition-all ${theme.glow}`}
+        onClick={handleCardClick}
         data-testid={`player-mini-${playerSlug}`}
       >
         <PlayerHeadshot photoUrl={displayPhoto} playerName={displayName} team={team} size="sm" />
         <div className="flex-1 min-w-0">
           <div className="text-xs font-medium text-white truncate">{displayName}</div>
-          <div className="flex items-center gap-1 text-[10px] text-zinc-500">
-            <span>{team}</span>
-            {position && <PositionBadge position={position} />}
+          <div className="flex items-center gap-1.5 text-[10px]">
+            <span className="text-zinc-500">{team}</span>
+            {stat_type && <span className={theme.text}>{stat_type} O{line}</span>}
           </div>
         </div>
+        {rank && (
+          <div className={`w-5 h-5 rounded-full ${theme.accent} flex items-center justify-center text-[10px] font-bold text-white`}>
+            {rank}
+          </div>
+        )}
         <ChevronRight className="w-4 h-4 text-zinc-600" />
       </div>
     );
@@ -313,46 +427,55 @@ const UniversalPlayerCard = memo(({
   if (mode === 'compact') {
     return (
       <div 
-        className="flex items-center gap-3 p-3 rounded-lg border border-zinc-700/50 bg-gradient-to-br from-zinc-800/80 to-zinc-900 cursor-pointer hover:border-cyan-500/50 hover:bg-zinc-800/80 transition-all"
-        onClick={handleClick}
+        className={`flex items-center gap-3 p-3 rounded-lg border ${theme.border} bg-gradient-to-br ${theme.bg} cursor-pointer hover:scale-[1.01] transition-all ${theme.glow}`}
+        onClick={handleCardClick}
         data-testid={`player-compact-${playerSlug}`}
       >
-        <PlayerHeadshot photoUrl={displayPhoto} playerName={displayName} team={team} size="md" />
-        
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
-            <span className="font-bold text-white text-sm truncate">{displayName}</span>
-            <span className="text-[10px] text-zinc-500">{team}</span>
-            {position && <PositionBadge position={position} />}
-          </div>
-          
-          {/* Compact stats row */}
-          {showStats && (baseline_stats || pts != null) && (
-            <div className="flex items-center gap-3 mt-1 text-[10px]">
-              {(baseline_stats?.pts ?? pts) != null && (
-                <span className="text-zinc-400">
-                  <span className="text-white font-medium">{(baseline_stats?.pts ?? pts)?.toFixed?.(1) || pts}</span> PPG
-                </span>
-              )}
-              {(baseline_stats?.reb ?? reb) != null && (
-                <span className="text-zinc-400">
-                  <span className="text-white font-medium">{(baseline_stats?.reb ?? reb)?.toFixed?.(1) || reb}</span> RPG
-                </span>
-              )}
-              {(baseline_stats?.ast ?? ast) != null && (
-                <span className="text-zinc-400">
-                  <span className="text-white font-medium">{(baseline_stats?.ast ?? ast)?.toFixed?.(1) || ast}</span> APG
-                </span>
-              )}
+        <div className={`relative ring-2 ${theme.ring} rounded-full`}>
+          <PlayerHeadshot photoUrl={displayPhoto} playerName={displayName} team={team} size="md" />
+          {rank && (
+            <div className={`absolute -bottom-1 -right-1 w-5 h-5 rounded-full ${theme.accent} flex items-center justify-center text-[10px] font-bold text-white border-2 border-zinc-900`}>
+              {rank}
             </div>
           )}
         </div>
         
-        {onAddToPost && (
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2">
+            <TierIcon className={`w-4 h-4 ${theme.text}`} />
+            <span className="font-bold text-white text-sm truncate">{displayName}</span>
+            <span className="text-[10px] text-zinc-500">{team}</span>
+          </div>
+          
+          {/* Primary Prop */}
+          {stat_type && (
+            <div className={`text-xs ${theme.text} mt-0.5`}>
+              {stat_type} O{line}
+              {tier_label && tier_label !== 'STANDARD' && (
+                <Badge variant="outline" className={`ml-1.5 text-[8px] ${theme.text} border-current`}>
+                  {tier_label}
+                </Badge>
+              )}
+            </div>
+          )}
+          
+          {/* Stats Row */}
+          <div className="flex items-center gap-3 mt-1 text-[10px]">
+            {h10_rate != null && <span className="text-zinc-400">L10: <span className={getHitRateColor(h10_rate)}>{h10_rate}%</span></span>}
+            {season_avg != null && <span className="text-zinc-400">Avg: <span className="text-white">{season_avg?.toFixed?.(1) || season_avg}</span></span>}
+            {diff_from_avg != null && (
+              <span className={`px-1 py-0.5 rounded text-[9px] ${diff_from_avg >= 0 ? 'bg-red-500/20 text-red-400' : 'bg-green-500/20 text-green-400'}`}>
+                {diff_from_avg >= 0 ? '+' : ''}{diff_from_avg}%
+              </span>
+            )}
+          </div>
+        </div>
+        
+        {onQuickAdd && (
           <button
-            onClick={(e) => handleAddToPost(e)}
+            onClick={(e) => { e.stopPropagation(); handleQuickAdd(player); }}
             className="flex-shrink-0 w-8 h-8 rounded-full bg-cyan-500/20 border border-cyan-500/40 flex items-center justify-center text-cyan-400 hover:bg-cyan-500/30 transition-all"
-            data-testid={`add-player-${playerSlug}`}
+            data-testid={`quick-add-${playerSlug}`}
           >
             <Plus className="w-4 h-4" />
           </button>
@@ -361,62 +484,81 @@ const UniversalPlayerCard = memo(({
     );
   }
   
-  // ==================== FULL MODE (Default) ====================
+  // ==================== FULL MODE (Default - War Zone/Safe Haven/Search) ====================
   return (
     <div 
-      className="rounded-xl border border-zinc-700/50 bg-gradient-to-b from-zinc-800/80 to-zinc-900 overflow-hidden"
+      className={`rounded-xl border ${theme.border} bg-gradient-to-b ${theme.bg} overflow-hidden transition-all ${theme.glow}`}
       data-testid={`player-card-${playerSlug}`}
     >
-      {/* Header */}
+      {/* HEADER: Player Identity + Vault Stats */}
       <div 
-        className="p-4 cursor-pointer hover:bg-zinc-800/50 transition-all"
-        onClick={hasProps ? () => setIsExpanded(!isExpanded) : handleClick}
+        className="p-4 cursor-pointer hover:bg-zinc-800/30 transition-all"
+        onClick={hasProps && showProps ? () => setIsExpanded(!isExpanded) : handleCardClick}
       >
         <div className="flex items-center gap-4">
-          {/* Player Photo */}
+          {/* Photo with Rank */}
           <div className="relative flex-shrink-0">
-            <div className="ring-2 ring-zinc-600 rounded-full">
+            <div className={`ring-2 ${theme.ring} rounded-full`}>
               <PlayerHeadshot photoUrl={displayPhoto} playerName={displayName} team={team} size="lg" />
             </div>
+            {rank && (
+              <div className={`absolute -bottom-1 -right-1 w-6 h-6 rounded-full ${theme.accent} flex items-center justify-center text-xs font-bold text-white border-2 border-zinc-900`}>
+                {rank}
+              </div>
+            )}
           </div>
           
           {/* Player Info */}
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
+              <TierIcon className={`w-5 h-5 ${theme.text}`} />
               <h3 className="text-lg font-bold text-white truncate">{displayName}</h3>
-              {position && <PositionBadge position={position} />}
+              {position && <span className="px-1.5 py-0.5 text-[9px] bg-zinc-700/50 text-zinc-300 rounded">{position}</span>}
             </div>
             <div className="flex items-center gap-2 text-xs text-zinc-400 mt-0.5">
               <span className="font-mono">{team}</span>
               {opponent && (
                 <>
                   <span className="text-zinc-600">vs</span>
-                  <span className="font-bold text-zinc-300">{opponent}</span>
+                  <span className="text-zinc-300">{opponent}</span>
                 </>
               )}
+              {tier_label && tier_label !== 'STANDARD' && (
+                <Badge variant="outline" className={`text-[9px] ${theme.text} border-current`}>
+                  {tier_label}
+                </Badge>
+              )}
             </div>
+            
+            {/* Primary Prop Display (if single prop mode) */}
+            {stat_type && !hasProps && (
+              <div className="flex items-center gap-2 mt-1.5">
+                <span className={`text-sm font-bold ${theme.text}`}>{stat_type} O{line}</span>
+                {h10_rate != null && <span className={`text-xs ${getHitRateColor(h10_rate)}`}>L10: {h10_rate}%</span>}
+                {season_avg != null && <span className="text-xs text-zinc-400">Avg: {season_avg?.toFixed?.(1)}</span>}
+              </div>
+            )}
           </div>
           
           {/* Actions */}
           <div className="flex items-center gap-2">
-            {onAddToPost && (
+            {onQuickAdd && (
               <button
-                onClick={(e) => handleAddToPost(e)}
+                onClick={(e) => { e.stopPropagation(); handleQuickAdd(player); }}
                 className="w-9 h-9 rounded-full bg-cyan-500/20 border border-cyan-500/40 flex items-center justify-center text-cyan-400 hover:bg-cyan-500/30 transition-all"
                 title="Add to Command Post"
+                data-testid={`quick-add-${playerSlug}`}
               >
                 <Plus className="w-5 h-5" />
               </button>
             )}
-            {hasProps && (
-              <div className={`transform transition-transform ${isExpanded ? 'rotate-180' : ''}`}>
-                <ChevronDown className="w-5 h-5 text-zinc-400" />
-              </div>
+            {hasProps && showProps && (
+              <ChevronDown className={`w-5 h-5 text-zinc-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
             )}
           </div>
         </div>
         
-        {/* BDL Vault Stats */}
+        {/* VAULT STATS - BDL Season Stats */}
         {showStats && (
           <div className="mt-3">
             <VaultStatsRow player={player} />
@@ -424,71 +566,24 @@ const UniversalPlayerCard = memo(({
         )}
       </div>
       
-      {/* Props List (Expandable) */}
-      {hasProps && isExpanded && (
+      {/* BODY: Props List (from Odds Funnel) */}
+      {hasProps && showProps && isExpanded && (
         <div className="border-t border-zinc-700/50 p-3 space-y-2 max-h-80 overflow-y-auto">
-          <div className="flex items-center gap-2 text-xs text-zinc-500 mb-2">
+          <div className="flex items-center gap-2 text-[10px] text-zinc-500 mb-2">
             <Target className="w-3.5 h-3.5" />
             <span className="uppercase tracking-wider font-semibold">Available Props</span>
-            <span className="text-zinc-600">({playerProps.length})</span>
+            <span className="text-zinc-600">({allProps.length})</span>
           </div>
           
-          {playerProps.map((prop, idx) => {
-            const isDemon = prop.is_demon;
-            const isGoblin = prop.is_goblin;
-            
-            return (
-              <div 
-                key={`${prop.stat_type}-${prop.line}-${idx}`}
-                className={`flex items-center justify-between p-2.5 rounded-lg cursor-pointer transition-all ${
-                  isDemon ? 'bg-red-950/40 border border-red-500/30 hover:bg-red-950/60' :
-                  isGoblin ? 'bg-green-950/40 border border-green-500/30 hover:bg-green-950/60' :
-                  'bg-zinc-800/40 border border-zinc-700/30 hover:bg-zinc-700/40'
-                }`}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onClick?.({ ...player, ...prop });
-                }}
-              >
-                <div className="flex items-center gap-2">
-                  {isDemon && <Target className="w-4 h-4 text-red-400" />}
-                  {isGoblin && <Crosshair className="w-4 h-4 text-green-400" />}
-                  {!isDemon && !isGoblin && <TrendingUp className="w-4 h-4 text-zinc-400" />}
-                  <div>
-                    <span className="text-sm font-medium text-white">
-                      {prop.stat_type} <span className={isDemon ? 'text-red-400' : isGoblin ? 'text-green-400' : 'text-zinc-300'}>O{prop.line}</span>
-                    </span>
-                    {prop.tier_label && prop.tier_label !== 'STANDARD' && (
-                      <Badge variant="outline" className="ml-2 text-[8px] px-1 py-0">
-                        {prop.tier_label}
-                      </Badge>
-                    )}
-                  </div>
-                </div>
-                
-                <div className="flex items-center gap-3 text-xs">
-                  {prop.h10_rate != null && (
-                    <span className={`font-medium ${getHitRateColor(prop.h10_rate)}`}>
-                      {prop.h10_rate}%
-                    </span>
-                  )}
-                  {prop.season_avg != null && (
-                    <span className="text-zinc-400">
-                      Avg: <span className="text-white">{prop.season_avg?.toFixed?.(1) || prop.season_avg}</span>
-                    </span>
-                  )}
-                  {onAddToPost && (
-                    <button
-                      onClick={(e) => handleAddToPost(e, { ...player, ...prop })}
-                      className="p-1 rounded bg-cyan-500/20 text-cyan-400 hover:bg-cyan-500/30"
-                    >
-                      <Plus className="w-3.5 h-3.5" />
-                    </button>
-                  )}
-                </div>
-              </div>
-            );
-          })}
+          {allProps.map((prop, idx) => (
+            <PropRow 
+              key={`${prop.stat_type}-${prop.line}-${idx}`}
+              prop={prop}
+              theme={theme}
+              onClick={handlePropClick}
+              onQuickAdd={onQuickAdd ? handleQuickAdd : null}
+            />
+          ))}
         </div>
       )}
     </div>
@@ -497,5 +592,6 @@ const UniversalPlayerCard = memo(({
 
 UniversalPlayerCard.displayName = 'UniversalPlayerCard';
 
-export { UniversalPlayerCard, PlayerHeadshot, VaultStatsRow, PositionBadge };
+// Export everything
+export { UniversalPlayerCard, PlayerHeadshot, VaultStatsRow, PropRow, TIER_THEMES, getHighestTier };
 export default UniversalPlayerCard;
