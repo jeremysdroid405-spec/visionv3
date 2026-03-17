@@ -97,6 +97,71 @@ class PicksGetterService:
         
         return None
     
+    async def _get_player_stats(self, player_name: str, stat_type: str, line: float) -> Dict:
+        """
+        Get L5/L10/Season stats from master hub for a player.
+        Used to enrich War Zone and Goblin Vault picks.
+        """
+        player = await self._get_player_by_name(player_name)
+        if not player:
+            return {"h5_rate": 0, "h10_rate": 0, "season_avg": 0, "l5_avg": 0, "l10_avg": 0}
+        
+        game_logs = player.get("game_logs", [])
+        if not game_logs:
+            return {"h5_rate": 0, "h10_rate": 0, "season_avg": 0, "l5_avg": 0, "l10_avg": 0}
+        
+        # Sort by date descending
+        game_logs = sorted(game_logs, key=lambda x: x.get("game_date", ""), reverse=True)
+        
+        # Map stat type to game log field
+        stat_map = {
+            "PTS": "pts", "REB": "reb", "AST": "ast", "STL": "stl", "BLK": "blk",
+            "3PM": "fg3m", "TO": "tov", "PRA": "pra", "P+R": "pts_reb",
+            "P+A": "pts_ast", "R+A": "reb_ast"
+        }
+        stat_key = stat_map.get(stat_type, stat_type.lower())
+        
+        # Calculate for different windows
+        l5 = game_logs[:5]
+        l10 = game_logs[:10]
+        season = game_logs
+        
+        def calc_stats(logs):
+            if not logs:
+                return 0, 0
+            values = []
+            hits = 0
+            for g in logs:
+                val = g.get(stat_key, 0) or 0
+                # Handle combined stats
+                if stat_type == "PRA":
+                    val = (g.get("pts", 0) or 0) + (g.get("reb", 0) or 0) + (g.get("ast", 0) or 0)
+                elif stat_type == "P+R":
+                    val = (g.get("pts", 0) or 0) + (g.get("reb", 0) or 0)
+                elif stat_type == "P+A":
+                    val = (g.get("pts", 0) or 0) + (g.get("ast", 0) or 0)
+                elif stat_type == "R+A":
+                    val = (g.get("reb", 0) or 0) + (g.get("ast", 0) or 0)
+                values.append(val)
+                if val > line:
+                    hits += 1
+            avg = sum(values) / len(values) if values else 0
+            hit_rate = (hits / len(values) * 100) if values else 0
+            return avg, hit_rate
+        
+        l5_avg, h5_rate = calc_stats(l5)
+        l10_avg, h10_rate = calc_stats(l10)
+        season_avg, _ = calc_stats(season)
+        
+        return {
+            "h5_rate": round(h5_rate, 1),
+            "h10_rate": round(h10_rate, 1),
+            "season_avg": round(season_avg, 1),
+            "l5_avg": round(l5_avg, 1),
+            "l10_avg": round(l10_avg, 1),
+            "photo_url": player.get("headshot_url") or player.get("photo_url")
+        }
+    
     async def get_war_zone(self) -> Dict[str, Any]:
         """
         Get the War Zone - High-risk DEMON picks from PrizePicks.
@@ -104,7 +169,7 @@ class PicksGetterService:
         PRIZEPICKS ARCHITECTURE:
         - Reads DEMON props directly from dg_cached_board
         - DEMON = alternate market lines with +100 odds (boosted/hard)
-        - Data is classified during PrizePicks sync
+        - Enriched with L5/L10/Season stats from master hub
         """
         # Fetch DEMON props directly from cached board (PrizePicks data)
         demon_props = await self.cached_board.find(
@@ -146,13 +211,17 @@ class PicksGetterService:
         # Sort by demon count and convert to list
         picks = sorted(players_demons.values(), key=lambda x: x.get("demon_count", 0), reverse=True)[:10]
         
-        # Add primary stat from first prop
+        # Enrich with stats from master hub and add primary stat
         for pick in picks:
             if pick.get("props"):
                 primary = pick["props"][0]
                 pick["stat_type"] = primary.get("stat_type")
                 pick["line"] = primary.get("line")
                 pick["odds"] = primary.get("odds")
+                
+                # Fetch stats from master hub
+                player_stats = await self._get_player_stats(pick["player_name"], pick["stat_type"], pick["line"])
+                pick.update(player_stats)
         
         sync_meta = await self.sync_log.find_one({"type": "cached_board"})
         
@@ -173,7 +242,7 @@ class PicksGetterService:
         PRIZEPICKS ARCHITECTURE:
         - Reads GOBLIN props directly from dg_cached_board
         - GOBLIN = alternate market lines with odds != +100 (discount/promo)
-        - These are the safer, higher-probability plays
+        - Enriched with L5/L10/Season stats from master hub
         """
         # Fetch GOBLIN props directly from cached board (PrizePicks data)
         goblin_props = await self.cached_board.find(
@@ -215,13 +284,17 @@ class PicksGetterService:
         # Sort by goblin count and convert to list
         picks = sorted(players_goblins.values(), key=lambda x: x.get("goblin_count", 0), reverse=True)[:10]
         
-        # Add primary stat from first prop
+        # Enrich with stats from master hub and add primary stat
         for pick in picks:
             if pick.get("props"):
                 primary = pick["props"][0]
                 pick["stat_type"] = primary.get("stat_type")
                 pick["line"] = primary.get("line")
                 pick["odds"] = primary.get("odds")
+                
+                # Fetch stats from master hub
+                player_stats = await self._get_player_stats(pick["player_name"], pick["stat_type"], pick["line"])
+                pick.update(player_stats)
         
         sync_meta = await self.sync_log.find_one({"type": "cached_board"})
         
@@ -237,45 +310,77 @@ class PicksGetterService:
     
     async def get_front_lines(self) -> Dict[str, Any]:
         """
-        Get THE FRONT LINES - Mild Goblins + Mild Demons (5-18% gap from standard).
-        Uses GOD-TIER 4-Pillar Formula. Data is PRE-ENRICHED and PRE-SHUFFLED.
-        """
-        picks = await self.front_lines.find({}, {"_id": 0}).to_list(10)
+        Get THE FRONT LINES - STANDARD (main) lines from PrizePicks.
         
-        # Add AI insights
+        PRIZEPICKS ARCHITECTURE:
+        - Reads STANDARD props directly from dg_cached_board
+        - STANDARD = main market lines (no "_alternate" suffix)
+        - These are the primary PrizePicks lines
+        """
+        # Fetch STANDARD props directly from cached board (PrizePicks data)
+        standard_props = await self.cached_board.find(
+            {"tier_label": "STANDARD", "bookmaker": "prizepicks"},
+            {"_id": 0}
+        ).sort("last_updated", -1).to_list(100)
+        
+        # Group by player and build picks
+        players_standards = {}
+        for prop in standard_props:
+            player_name = prop.get("player_name")
+            if not player_name:
+                continue
+            
+            if player_name not in players_standards:
+                players_standards[player_name] = {
+                    "player_name": player_name,
+                    "team": prop.get("away_team") or prop.get("home_team"),
+                    "opponent": prop.get("home_team") if prop.get("away_team") else prop.get("away_team"),
+                    "game_id": prop.get("game_id"),
+                    "props": [],
+                    "standard_count": 0,
+                    "is_goblin": False,
+                    "is_demon": False,
+                    "tier_label": "STANDARD",
+                    "prizepicks_type": "standard_line"
+                }
+            
+            players_standards[player_name]["props"].append({
+                "stat_type": prop.get("stat_type_extracted"),
+                "line": prop.get("line"),
+                "odds": prop.get("price"),
+                "direction": prop.get("direction"),
+                "market": prop.get("market"),
+                "is_goblin": False,
+                "is_demon": False,
+                "tier_label": "STANDARD"
+            })
+            players_standards[player_name]["standard_count"] += 1
+        
+        # Sort by standard count and convert to list
+        picks = sorted(players_standards.values(), key=lambda x: x.get("standard_count", 0), reverse=True)[:10]
+        
+        # Enrich with stats from master hub and add primary stat
         for pick in picks:
-            await self._add_insights_to_pick(pick)
+            if pick.get("props"):
+                primary = pick["props"][0]
+                pick["stat_type"] = primary.get("stat_type")
+                pick["line"] = primary.get("line")
+                pick["odds"] = primary.get("odds")
+                
+                # Fetch stats from master hub
+                player_stats = await self._get_player_stats(pick["player_name"], pick["stat_type"], pick["line"])
+                pick.update(player_stats)
         
         sync_meta = await self.sync_log.find_one({"type": "cached_board"})
         
-        # Count breakdown
-        demon_count = len([p for p in picks if p.get("is_demon")])
-        goblin_count = len([p for p in picks if p.get("is_goblin")])
-        
         return {
             "success": True,
-            "synced_at": sync_meta.get("synced_at") if sync_meta else None,
+            "synced_at": sync_meta.get("synced_at") if sync_meta else datetime.now(timezone.utc).isoformat(),
             "picks_count": len(picks),
-            "demon_count": demon_count,
-            "goblin_count": goblin_count,
             "picks": picks,
-            "algorithm": {
-                "name": "GOD-TIER 4-Pillar Formula (Mild Zone)",
-                "description": "Same 4-Pillar scoring as Safe Haven, targeting mild alternates",
-                "formula": "vault_score = (consistency * 0.50) + (vegas * 0.20) + (dvp * 0.15) + (context * 0.15)",
-                "proximity_filter": {
-                    "min_gap": "5% from standard",
-                    "max_gap": "18% from standard",
-                    "excluded": "Standard lines (0%) and extremes (>20%)"
-                },
-                "pillars": {
-                    "pillar_1": "Base Consistency (50%)",
-                    "pillar_2": "Vegas Implied Prob (20%)",
-                    "pillar_3": "DvP Matchup (15%)",
-                    "pillar_4": "AI Context Shift (15%)"
-                },
-                "ranking": "Bullet system (2-6 bullets based on rank)"
-            }
+            "source": "prizepicks",
+            "tier": "standard",
+            "description": "Main PrizePicks lines (STRIKE zone)"
         }
     
     async def get_parlay_builder(self) -> Dict[str, Any]:

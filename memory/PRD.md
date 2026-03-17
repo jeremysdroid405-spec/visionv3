@@ -34,10 +34,19 @@ PickVision is a high-performance NBA Player Prop Dashboard with a "military tech
 - **DEMON** (red): Boosted/Hard lines - alternate markets with +100 odds
 - **STANDARD** (gray): Main PrizePicks lines (no glow/multiplier)
 
+**All Dashboard Sections Working:**
+- **MOST POPULAR**: Combines Demon + Goblin picks (top 20)
+- **SAFE HAVEN**: Goblin picks with L5/L10/Season stats
+- **FRONT LINES** (STRIKE): Standard PrizePicks lines
+- **STRIKE Parlays**: Pre-built parlay combinations
+- **WAR ZONE**: Demon picks (high-risk boosted lines)
+
 **Verification**:
 - War Zone shows 10 DEMON picks from PrizePicks
 - Goblin Vault shows 10 GOBLIN picks from PrizePicks
-- Luka profile: 23 props, badges [Legal Noise] + [Locked In], Vision insight working
+- Front Lines shows 10 STANDARD picks from PrizePicks
+- All picks enriched with L5/L10/Season hit rates from master hub
+- Luka profile: Badges [Legal Noise] + [Locked In], Vision insight working
 
 **Legacy Sync Disabled**: `nba_official_sync.py` only provides L10/L20 hit rate calculations to the Vision engine.
 
