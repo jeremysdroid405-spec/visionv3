@@ -49,17 +49,47 @@ const fetchMasterStats = async (playerIdentifier) => {
     }
   }
   
-  // Fallback: Search master hub by name
-  const searchResponse = await fetch(`${API}/api/v3/master-hub/search?q=${encodeURIComponent(playerIdentifier)}`);
+  // Fallback: Use command profile endpoint which has full lines data
+  const profileResponse = await fetch(`${API}/api/command/profile/${encodeURIComponent(playerIdentifier)}`);
   
-  if (!searchResponse.ok) {
-    throw new Error('Player not found in Master Hub');
-  }
-  
-  const searchData = await searchResponse.json();
-  
-  if (searchData.players && searchData.players.length > 0) {
-    return searchData.players[0];
+  if (profileResponse.ok) {
+    const profileData = await profileResponse.json();
+    if (profileData.success) {
+      // Transform command profile format to match expected player format
+      return {
+        player_name: profileData.player_name,
+        player_id: profileData.player_id,
+        team: profileData.team,
+        team_name: profileData.team_name,
+        position: profileData.position,
+        photo_url: profileData.photo_url,
+        headshot_url: profileData.headshot_url,
+        opponent: profileData.opponent,
+        // Transform lines to props format expected by PlayerDetailPage
+        props: (profileData.lines || []).map(line => ({
+          market: `player_${line.stat_type?.toLowerCase()}`,
+          stat_type: line.stat_type,
+          stat_type_extracted: line.stat_type,
+          line: line.line,
+          direction: line.direction || 'over',
+          odds: line.odds,
+          l5_avg: line.hit_rates?.l5_avg || line.l5_avg,
+          l10_avg: line.hit_rates?.l10_avg || line.l10_avg,
+          season_avg: line.season_avg || line.hit_rates?.season_avg,
+          h5_rate: line.hit_rates?.h5 || line.h5_rate,
+          h10_rate: line.hit_rates?.h10 || line.h10_rate,
+          is_demon: line.is_demon,
+          is_goblin: line.is_goblin,
+          demon_line: line.demon_line,
+          goblin_line: line.goblin_line,
+          dvp_rank: line.dvp_rank,
+          dvp_rank_color: line.dvp_rank_color
+        })),
+        baseline_stats: profileData.baseline_stats,
+        demons: profileData.demons || [],
+        goblins: profileData.goblins || []
+      };
+    }
   }
   
   throw new Error('Player not found in Master Hub');
