@@ -149,9 +149,11 @@ const SectionHeader = memo(({ icon, title, subtitle, badgeText, badgeColor = 're
   return (
     <div className="flex items-center justify-between mb-3">
       <div className="flex items-center gap-2">
-        <div className="w-8 h-8 rounded-full flex items-center justify-center bg-zinc-800/50 border border-zinc-700">
-          {icon}
-        </div>
+        {icon && (
+          <div className="w-8 h-8 rounded-full flex items-center justify-center bg-zinc-800/50 border border-zinc-700">
+            {icon}
+          </div>
+        )}
         <div>
           <span className="text-sm font-bold text-white">{title}</span>
           {subtitle && <p className="text-[10px] text-zinc-500">{subtitle}</p>}
@@ -1001,9 +1003,8 @@ const Dashboard = () => {
           picks={vaultPicks} 
           onParlayClick={handleParlayClick} 
           sectionName="safe_haven"
-          title="SHIELD"
+          title="THE SHIELD"
           subtitle="Safe Haven parlay combinations"
-          icon={<span className="text-lg">🛡️</span>}
           badgeColor="green"
         />
         
@@ -1015,9 +1016,8 @@ const Dashboard = () => {
           picks={frontLinesPicks} 
           onParlayClick={handleParlayClick} 
           sectionName="front_lines"
-          title="STRIKE"
+          title="THE STRIKE"
           subtitle="Front Lines parlay combinations"
-          icon={<span className="text-lg">🎯</span>}
           badgeColor="amber"
         />
         
@@ -1029,9 +1029,8 @@ const Dashboard = () => {
           picks={radarPicks} 
           onParlayClick={handleParlayClick} 
           sectionName="war_zone"
-          title="GAUNTLET"
+          title="THE GAUNTLET"
           subtitle="War Zone parlay combinations"
-          icon={<span className="text-lg">⚔️</span>}
           badgeColor="red"
         />
       </div>
