@@ -834,11 +834,12 @@ class PicksGetterService:
         if not player:
             return
         
+        player_name = player.get("player_name", "")
+        
         # SSOT: Get stats from master hub by player_id FIRST
         hub_player = await self._get_master_player(player)
         
         if not hub_player:
-            player_name = player.get("player_name", "")
             logger.debug(f"[SSOT] No master hub data for: {player_name}")
             return
         
