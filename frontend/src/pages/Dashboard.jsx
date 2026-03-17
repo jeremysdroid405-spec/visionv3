@@ -879,54 +879,8 @@ const Dashboard = () => {
       <LiveScoresTicker />
       <BreakingNewsTicker />
       
-      {/* Main Content */}
-      <div className="p-3 space-y-4">
-        {/* Most Popular Bets - FIRST */}
-        <MostPopularBetsSection bets={popularBets} status={popularBetsStatus} onBetClick={handlePopularBetClick} />
-        
-        {/* Safe Haven */}
-        <SafeHavenSection picks={vaultPicks} onPickClick={handleVaultClick} onQuickAdd={handleQuickAdd} isLoading={safeHavenLoading} />
-        
-        {/* Shield Parlays */}
-        <ParlaySection 
-          picks={vaultPicks} 
-          onParlayClick={handleParlayClick} 
-          sectionName="safe_haven"
-          title="SHIELD"
-          subtitle="Safe Haven parlay combinations"
-          icon={<span className="text-lg">🛡️</span>}
-          badgeColor="green"
-        />
-        
-        {/* Front Lines */}
-        <FrontLinesSection picks={frontLinesPicks} onPickClick={handleRadarClick} onQuickAdd={handleQuickAdd} isLoading={frontLinesLoading} />
-        
-        {/* Strike Parlays */}
-        <ParlaySection 
-          picks={frontLinesPicks} 
-          onParlayClick={handleParlayClick} 
-          sectionName="front_lines"
-          title="STRIKE"
-          subtitle="Front Lines parlay combinations"
-          icon={<span className="text-lg">🎯</span>}
-          badgeColor="amber"
-        />
-        
-        {/* War Zone */}
-        <WarZoneSection picks={radarPicks} onPickClick={handleRadarClick} onQuickAdd={handleQuickAdd} isLoading={warZoneLoading} />
-        
-        {/* Gauntlet Parlays */}
-        <ParlaySection 
-          picks={radarPicks} 
-          onParlayClick={handleParlayClick} 
-          sectionName="war_zone"
-          title="GAUNTLET"
-          subtitle="War Zone parlay combinations"
-          icon={<span className="text-lg">⚔️</span>}
-          badgeColor="red"
-        />
-        
-        {/* Intel Search */}
+      {/* Intel Search - TOP */}
+      <div className="px-3 pt-3">
         <div className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-4" data-testid="intel-search-section">
           <div className="flex items-center gap-2 mb-3">
             <Search className="w-4 h-4 text-cyan-400" />
@@ -977,7 +931,7 @@ const Dashboard = () => {
                       onClick={() => handlePlayerClick(player.player_name)}
                       data-testid={`player-row-${player.player_name?.replace(/\s/g, '-')}`}
                     >
-                      <PlayerHeadshot playerName={player.player_name} team={player.team} size="md" />
+                      <PlayerHeadshot playerName={player.player_name} team={player.team} photoUrl={player.headshot_url} size="md" />
                       <div className="flex-1 min-w-0">
                         <div className="font-medium text-white truncate">{player.player_name}</div>
                         <div className="text-xs text-zinc-500">{player.team_name || player.team} • {player.position}</div>
@@ -989,14 +943,55 @@ const Dashboard = () => {
               )}
             </div>
           )}
-          
-          {/* Empty state when not searching */}
-          {searchTerm.length < 2 && (
-            <div className="mt-3 text-center py-4">
-              <p className="text-zinc-500 text-xs">Enter at least 2 characters to search</p>
-            </div>
-          )}
         </div>
+      </div>
+      
+      {/* Main Content */}
+      <div className="p-3 space-y-4">
+        {/* Most Popular Bets - FIRST */}
+        <MostPopularBetsSection bets={popularBets} status={popularBetsStatus} onBetClick={handlePopularBetClick} />
+        
+        {/* Safe Haven */}
+        <SafeHavenSection picks={vaultPicks} onPickClick={handleVaultClick} onQuickAdd={handleQuickAdd} isLoading={safeHavenLoading} />
+        
+        {/* Shield Parlays */}
+        <ParlaySection 
+          picks={vaultPicks} 
+          onParlayClick={handleParlayClick} 
+          sectionName="safe_haven"
+          title="SHIELD"
+          subtitle="Safe Haven parlay combinations"
+          icon={<span className="text-lg">🛡️</span>}
+          badgeColor="green"
+        />
+        
+        {/* Front Lines */}
+        <FrontLinesSection picks={frontLinesPicks} onPickClick={handleRadarClick} onQuickAdd={handleQuickAdd} isLoading={frontLinesLoading} />
+        
+        {/* Strike Parlays */}
+        <ParlaySection 
+          picks={frontLinesPicks} 
+          onParlayClick={handleParlayClick} 
+          sectionName="front_lines"
+          title="STRIKE"
+          subtitle="Front Lines parlay combinations"
+          icon={<span className="text-lg">🎯</span>}
+          badgeColor="amber"
+        />
+        
+        {/* War Zone */}
+        <WarZoneSection picks={radarPicks} onPickClick={handleRadarClick} onQuickAdd={handleQuickAdd} isLoading={warZoneLoading} />
+        
+        {/* Gauntlet Parlays */}
+        <ParlaySection 
+          picks={radarPicks} 
+          onParlayClick={handleParlayClick} 
+          sectionName="war_zone"
+          title="GAUNTLET"
+          subtitle="War Zone parlay combinations"
+          icon={<span className="text-lg">⚔️</span>}
+          badgeColor="red"
+        />
       </div>
       
       {/* Expanded Parlay Modal */}
