@@ -23,6 +23,58 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/live", tags=["Live Data"])
 
+# NBA Team name to abbreviation mapping
+TEAM_ABBREV_MAP = {
+    "Atlanta Hawks": "ATL",
+    "Boston Celtics": "BOS",
+    "Brooklyn Nets": "BKN",
+    "Charlotte Hornets": "CHA",
+    "Chicago Bulls": "CHI",
+    "Cleveland Cavaliers": "CLE",
+    "Dallas Mavericks": "DAL",
+    "Denver Nuggets": "DEN",
+    "Detroit Pistons": "DET",
+    "Golden State Warriors": "GSW",
+    "Houston Rockets": "HOU",
+    "Indiana Pacers": "IND",
+    "Los Angeles Clippers": "LAC",
+    "Los Angeles Lakers": "LAL",
+    "LA Clippers": "LAC",
+    "LA Lakers": "LAL",
+    "Memphis Grizzlies": "MEM",
+    "Miami Heat": "MIA",
+    "Milwaukee Bucks": "MIL",
+    "Minnesota Timberwolves": "MIN",
+    "New Orleans Pelicans": "NOP",
+    "New York Knicks": "NYK",
+    "Oklahoma City Thunder": "OKC",
+    "Orlando Magic": "ORL",
+    "Philadelphia 76ers": "PHI",
+    "Phoenix Suns": "PHX",
+    "Portland Trail Blazers": "POR",
+    "Sacramento Kings": "SAC",
+    "San Antonio Spurs": "SAS",
+    "Toronto Raptors": "TOR",
+    "Utah Jazz": "UTA",
+    "Washington Wizards": "WAS"
+}
+
+def get_team_abbrev(team_name: str) -> str:
+    """Get proper NBA team abbreviation from full name."""
+    if not team_name:
+        return "???"
+    # Direct lookup
+    if team_name in TEAM_ABBREV_MAP:
+        return TEAM_ABBREV_MAP[team_name]
+    # Try partial match
+    for full_name, abbrev in TEAM_ABBREV_MAP.items():
+        if team_name in full_name or full_name in team_name:
+            return abbrev
+    # Fallback to first 3 letters
+    return team_name[:3].upper()
+
+router = APIRouter(prefix="/live", tags=["Live Data"])
+
 # PURGED: BallDontLie API - scores now come from cached events/Odds API
 # BDL_API_KEY = REMOVED
 # BDL_BASE = REMOVED
@@ -42,10 +94,10 @@ def set_db(db):
 @router.get("/scores")
 async def get_live_scores():
     """
-    SSOT: Get live NBA game scores from cached events.
+    Get live NBA game scores from official NBA API.
     
-    Returns today's games with scores, periods, and status.
-    Data comes from dg_events_cache (populated by Odds API sync).
+    Returns today's games with real scores, periods, and status.
+    Data comes from nba_api live scoreboard.
     """
     global _scores_cache
     
@@ -56,57 +108,55 @@ async def get_live_scores():
         return {"success": True, "games": _scores_cache["data"], "cached": True}
     
     try:
-        if _db is None:
-            return {"success": True, "games": [], "error": "Database not initialized"}
+        from nba_api.live.nba.endpoints import scoreboard
         
-        # Get today's date in EST
-        est_offset = timedelta(hours=-5)
-        today_est = (now + est_offset).strftime("%Y-%m-%d")
-        
-        # Fetch from cached events (populated by Odds API sync)
-        events = await _db.dg_events_cache.find(
-            {"commence_time": {"$regex": f"^{today_est}"}},
-            {"_id": 0}
-        ).to_list(50)
+        # Get live scoreboard from NBA API
+        board = scoreboard.ScoreBoard()
+        data = board.get_dict()
         
         games = []
-        for event in events:
-            home_team = event.get("home_team", "")
-            away_team = event.get("away_team", "")
+        scoreboard_data = data.get("scoreboard", {})
+        
+        for game in scoreboard_data.get("games", []):
+            home = game.get("homeTeam", {})
+            away = game.get("awayTeam", {})
             
-            # Parse team abbreviations
-            home_abbr = home_team.split()[-1][:3].upper() if home_team else ""
-            away_abbr = away_team.split()[-1][:3].upper() if away_team else ""
+            # Parse game status
+            status_code = game.get("gameStatus", 1)
+            status_text = game.get("gameStatusText", "")
             
-            # Determine status from commence_time
-            commence = event.get("commence_time", "")
-            status_label = "upcoming"
-            if commence:
-                try:
-                    game_time = datetime.fromisoformat(commence.replace("Z", "+00:00"))
-                    if game_time < now:
-                        status_label = "live"
-                except (ValueError, TypeError):
-                    pass
+            if status_code == 1:
+                status = "upcoming"
+            elif status_code == 2:
+                status = status_text  # "Q2 8:50", "Halftime", etc.
+            elif status_code == 3:
+                status = "final"
+            else:
+                status = status_text or "unknown"
             
             games.append({
-                "game_id": event.get("id"),
-                "home_team": home_abbr,
-                "home_score": 0,  # Scores not available from Odds API
-                "away_team": away_abbr,
-                "away_score": 0,
-                "status": status_label,
-                "start_time": commence
+                "game_id": game.get("gameId"),
+                "home_team": home.get("teamTricode", "???"),
+                "home_score": home.get("score", 0),
+                "away_team": away.get("teamTricode", "???"),
+                "away_score": away.get("score", 0),
+                "status": status,
+                "period": game.get("period", 0),
+                "clock": game.get("gameStatusText", ""),
+                "start_time": game.get("gameTimeUTC", ""),
+                "home_record": f"{home.get('wins', 0)}-{home.get('losses', 0)}",
+                "away_record": f"{away.get('wins', 0)}-{away.get('losses', 0)}"
             })
         
         # Update cache
         _scores_cache = {"data": games, "timestamp": now}
         
-        return {"success": True, "games": games, "cached": False, "source": "events_cache"}
+        return {"success": True, "games": games, "cached": False, "source": "nba_api"}
         
     except Exception as e:
         logger.error(f"[LIVE] Scores error: {e}")
-        return {"success": True, "games": _scores_cache.get("data", [])}
+        # Fallback to cached data or empty
+        return {"success": True, "games": _scores_cache.get("data", []), "error": str(e)}
 
 
 @router.get("/news")
