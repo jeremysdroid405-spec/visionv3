@@ -5,6 +5,34 @@ PickVision is a high-performance NBA Player Prop Dashboard with a "military tech
 
 ## Latest Update: 2026-03-17
 
+### Anchor Line Tier Classification - COMPLETED ✅
+**Universal prop categorization (Goblin/Demon/Standard) based on "anchor" line logic**
+
+**Implementation Details:**
+- **Anchor Line Detection**: For each stat type, the "standard" line is determined by finding the prop with odds closest to -110 (fair value)
+- **Tier Classification**:
+  - **GOBLIN** (green): Lines BELOW the anchor - safer, higher hit rate on overs
+  - **DEMON** (red): Lines ABOVE the anchor - riskier "ladder plays" on overs
+  - **STANDARD** (gray): The anchor line itself - main line
+
+**Bug Fix (Critical):**
+- Fixed infinite loop in `/app/backend/routes/command.py` line 473
+- Duplicate `active_lines.append()` inside loop caused memory exhaustion and pod crashes
+- Fixed variable scope issue for `is_radar` and `target_key` in tier classification loop
+
+**API Response Includes:**
+- `standard_lines`: Map of stat_type to anchor line value
+- `tier_style`: "green" / "red" / "standard"
+- `tier_label`: "GOBLIN" / "DEMON" / "STANDARD"
+- `is_goblin`, `is_demon`: Boolean flags
+- `gap_from_anchor`: Distance from anchor line
+
+**Verification:**
+- LeBron James: 59 props, 49 Goblin, 10 Standard (PTS anchor: 24.5)
+- Luka Doncic: 63 props, 52 Goblin, 11 Standard (4 badges displayed)
+
+---
+
 ### Context Engine & Badge System - COMPLETED ✅
 **Created narrative flag system with 10 standardized player badges**
 

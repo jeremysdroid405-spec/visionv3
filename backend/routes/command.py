@@ -430,7 +430,8 @@ async def get_tactical_profile(
                 prop_line["gap_from_anchor"] = round(line - anchor, 1)
             
             # If Target-Lock, add Full Intel Suite data
-            if is_radar and target_key in target_lock_details:
+            target_key = f"{stat}|{line}|{prop_line.get('direction', 'over')}"
+            if prop_line.get("is_radar") and target_key in target_lock_details:
                 board_pick = target_lock_details[target_key]
                 
                 # Get DvP for this stat
@@ -469,8 +470,6 @@ async def get_tactical_profile(
                     # === FULL INTEL SUITE (only for is_radar=true) ===
                     "intel_suite": intel_suite
                 })
-            
-            active_lines.append(prop_line)
         
         # Sort: Target-Lock props first, then by stat_type
         active_lines.sort(key=lambda x: (0 if x.get("is_radar") else 1, x.get("stat_type", "")))
