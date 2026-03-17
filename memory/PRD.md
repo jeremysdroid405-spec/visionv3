@@ -3,7 +3,36 @@
 ## Overview
 PickVision is a high-performance NBA Player Prop Dashboard with a "military tech" aesthetic. The application delivers AI-driven betting insights using PropVision Command Post technology.
 
-## Latest Update: 2026-03-18
+## Latest Update: 2026-03-17
+
+### UniversalPickCard Component - COMPLETED ✅
+**Consolidated all player card displays into single component**
+
+**Problem Solved:**
+- Multiple duplicate card components (PickCard, PlayerCard, TacticalPlayerCard)
+- Inconsistent data display across sections
+- BDL stats not showing consistently
+
+**Solution: UniversalPickCard.jsx**
+- Single component with 4 display modes: `full`, `compact`, `mini`, `tactical`
+- Data sources: ONLY `nba_master_hub_2026` (Master Vault) + `dg_cached_board` (Odds API)
+- Shows BDL Vault Stats: FG%, 3P%, STL, BLK
+- Used in: Dashboard (War Zone, Safe Haven, Front Lines), CommandPost, Search
+
+**Files Changed:**
+- `/app/frontend/src/components/dashboard/UniversalPickCard.jsx` - NEW
+- `/app/frontend/src/pages/Dashboard.jsx` - Updated imports
+- `/app/frontend/src/components/dashboard/CommandPost.jsx` - Updated imports
+- `/app/frontend/src/components/dashboard/index.js` - Added export
+
+**Legacy Components (deprecated):**
+- PickCard.jsx - Still exists, use UniversalPickCard instead
+- TacticalPlayerCard.jsx - Still exists, use UniversalPickCard mode="tactical"
+- PlayerCard.jsx - Still exists, use UniversalPickCard instead
+
+---
+
+## Previous Update: 2026-03-18
 
 ### UI Export for Migration - COMPLETED ✅
 **Created `/app/UI_EXPORT.txt` with frontend "skin" (1,292 lines)**

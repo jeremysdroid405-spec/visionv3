@@ -27,7 +27,7 @@ import {
 
 // Dashboard Components
 import { DemonIcon, GoblinIcon, VisionBadge } from '../components/dashboard/Icons';
-import { PickCard } from '../components/dashboard/PickCard';
+import UniversalPickCard from '../components/dashboard/UniversalPickCard';
 import { ParlayTicket } from '../components/dashboard/ParlayTicket';
 import { PlayerDetailPage } from '../components/dashboard/PlayerDetailPage';
 import CommandPost from '../components/dashboard/CommandPost';
@@ -384,7 +384,7 @@ const WarZoneSection = memo(({ picks, onPickClick, onQuickAdd, isLoading }) => {
       <SwipeContainer>
         {picks.slice(0, 10).map((pick, idx) => (
           <div key={`warzone-${pick.player_name}-${pick.stat_type}-${idx}`} className="swipe-card">
-            <PickCard pick={pick} rank={idx + 1} onClick={() => onPickClick(pick)} colorTheme="red" emblem="fire" onQuickAdd={onQuickAdd} />
+            <UniversalPickCard pick={pick} rank={idx + 1} onClick={() => onPickClick(pick)} colorTheme="red" onQuickAdd={onQuickAdd} />
           </div>
         ))}
       </SwipeContainer>
@@ -433,7 +433,7 @@ const SafeHavenSection = memo(({ picks, onPickClick, onQuickAdd, isLoading }) =>
       <SwipeContainer>
         {picks.slice(0, 10).map((pick, idx) => (
           <div key={`safehaven-${pick.player_name}-${pick.stat_type}-${idx}`} className="swipe-card">
-            <PickCard pick={pick} rank={idx + 1} onClick={() => onPickClick(pick)} colorTheme="green" emblem="gem" onQuickAdd={onQuickAdd} />
+            <UniversalPickCard pick={pick} rank={idx + 1} onClick={() => onPickClick(pick)} colorTheme="green" onQuickAdd={onQuickAdd} />
           </div>
         ))}
       </SwipeContainer>
@@ -482,7 +482,7 @@ const FrontLinesSection = memo(({ picks, onPickClick, onQuickAdd, isLoading }) =
       <SwipeContainer>
         {picks.slice(0, 10).map((pick, idx) => (
           <div key={`frontlines-${pick.player_name}-${pick.stat_type}-${idx}`} className="swipe-card">
-            <PickCard pick={pick} rank={idx + 1} onClick={() => onPickClick(pick)} colorTheme="amber" emblem="bullet" onQuickAdd={onQuickAdd} />
+            <UniversalPickCard pick={pick} rank={idx + 1} onClick={() => onPickClick(pick)} colorTheme="amber" onQuickAdd={onQuickAdd} />
           </div>
         ))}
       </SwipeContainer>
@@ -549,13 +549,13 @@ const ExpandedParlayView = memo(({ parlay, sectionType, onClose, onPickClick }) 
         
         <div className="p-4 space-y-3">
           {picks.map((pick, idx) => (
-            <PickCard 
+            <UniversalPickCard 
               key={`expanded-${pick.player_name}-${pick.stat_type}-${idx}`}
               pick={pick}
               rank={idx + 1}
+              mode="compact"
               onClick={() => onPickClick(pick)}
               colorTheme={isGoblin ? 'green' : sectionType === 'front_lines' ? 'amber' : 'red'}
-              emblem={isGoblin ? 'gem' : sectionType === 'front_lines' ? 'bullet' : 'fire'}
             />
           ))}
         </div>
