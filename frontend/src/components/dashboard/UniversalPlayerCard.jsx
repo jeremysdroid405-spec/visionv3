@@ -410,7 +410,7 @@ const UniversalPlayerCard = memo(({
           <div className="text-xs font-medium text-white truncate">{displayName}</div>
           <div className="flex items-center gap-1.5 text-[10px]">
             <span className="text-zinc-500">{team}</span>
-            {stat_type && <span className={theme.text}>{stat_type} O{line}</span>}
+            {stat_type && <span className={theme.text}>{stat_type} {line}</span>}
           </div>
         </div>
         {rank && (
@@ -450,7 +450,7 @@ const UniversalPlayerCard = memo(({
           {/* Primary Prop */}
           {stat_type && (
             <div className={`text-xs ${theme.text} mt-0.5`}>
-              {stat_type} O{line}
+              {stat_type} {line}
               {tier_label && tier_label !== 'STANDARD' && (
                 <Badge variant="outline" className={`ml-1.5 text-[8px] ${theme.text} border-current`}>
                   {tier_label}
@@ -533,7 +533,7 @@ const UniversalPlayerCard = memo(({
             {/* Primary Prop Display (if single prop mode) */}
             {stat_type && !hasProps && (
               <div className="flex items-center gap-2 mt-1.5">
-                <span className={`text-sm font-bold ${theme.text}`}>{stat_type} O{line}</span>
+                <span className={`text-sm font-bold ${theme.text}`}>{stat_type} {line}</span>
                 {h10_rate != null && <span className={`text-xs ${getHitRateColor(h10_rate)}`}>L10: {h10_rate}%</span>}
                 {season_avg != null && <span className="text-xs text-zinc-400">Avg: {season_avg?.toFixed?.(1)}</span>}
               </div>
