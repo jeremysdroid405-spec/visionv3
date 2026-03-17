@@ -60,10 +60,17 @@ async def _build_caches(db: AsyncIOMotorDatabase) -> None:
     ).to_list(1500)
     
     for player in players:
+        # Skip records without headshot if we already have one with headshot
+        display_name = player.get("display_name")
+        has_headshot = bool(player.get("headshot_url") or player.get("photo_url"))
+        
         # PRIMARY: Index by player_id
         player_id = player.get("player_id")
         if player_id:
-            _player_id_cache[str(player_id)] = player
+            pid_str = str(player_id)
+            # Only overwrite if new record has headshot or existing doesn't
+            if pid_str not in _player_id_cache or has_headshot:
+                _player_id_cache[pid_str] = player
         
         # Also index by nba_player_id (official NBA ID)
         nba_id = player.get("nba_player_id")
@@ -79,14 +86,30 @@ async def _build_caches(db: AsyncIOMotorDatabase) -> None:
         display_name = player.get("display_name", "")
         if display_name:
             name_lower = display_name.lower()
-            _player_name_cache[name_lower] = player
             
-            # Handle suffixes
-            for suffix in [" jr.", " jr", " sr.", " sr", " ii", " iii", " iv"]:
-                if name_lower.endswith(suffix):
-                    base_name = name_lower[:-len(suffix)]
-                    if base_name not in _player_name_cache:
-                        _player_name_cache[base_name] = player
+            # Only overwrite if new record has headshot or existing doesn't
+            existing = _player_name_cache.get(name_lower)
+            existing_has_headshot = bool(existing.get("headshot_url") or existing.get("photo_url")) if existing else False
+            
+            if not existing or has_headshot or not existing_has_headshot:
+                _player_name_cache[name_lower] = player
+                
+                # Also add without periods (e.g., "jr." -> "jr")
+                name_no_periods = name_lower.replace(".", "")
+                if name_no_periods != name_lower:
+                    _player_name_cache[name_no_periods] = player
+                
+                # Handle suffixes - add base name without suffix
+                for suffix in [" jr.", " jr", " sr.", " sr", " ii", " iii", " iv"]:
+                    if name_lower.endswith(suffix):
+                        base_name = name_lower[:-len(suffix)].strip()
+                        if base_name not in _player_name_cache:
+                            _player_name_cache[base_name] = player
+                    # Also check no-period version
+                    if name_no_periods.endswith(suffix.replace(".", "")):
+                        base_name = name_no_periods[:-len(suffix.replace(".", ""))].strip()
+                        if base_name not in _player_name_cache:
+                            _player_name_cache[base_name] = player
     
     logger.info(f"[PLAYER_LOOKUP] Cached {len(_player_id_cache)} player IDs, {len(_player_name_cache)} names")
 
@@ -126,7 +149,18 @@ async def get_player_by_name(db: AsyncIOMotorDatabase, player_name: str) -> Opti
         return None
     
     await _build_caches(db)
-    return _player_name_cache.get(player_name.lower())
+    
+    # Try exact match first
+    name_lower = player_name.lower()
+    if name_lower in _player_name_cache:
+        return _player_name_cache[name_lower]
+    
+    # Try without periods
+    name_no_periods = name_lower.replace(".", "")
+    if name_no_periods in _player_name_cache:
+        return _player_name_cache[name_no_periods]
+    
+    return None
 
 
 async def build_player_lookup(db: AsyncIOMotorDatabase) -> Dict:
