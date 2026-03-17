@@ -90,9 +90,14 @@ Build a sports betting analytics platform that helps users identify high-value b
 ## Prioritized Backlog
 
 ### P0 - Context Badges Data
-- Populate nba_context_engine with live data for jet_lag, legal_noise, distraction, revenge badges
-- Add contract year data for pay_day badge
-- Add playoff context for deep_water badge
+- ✅ Populated nba_context_engine with live data:
+  - jet_lag: 17 players with >1000mi travel (OKC→ORL, PHX→MIN, PHI→DEN, SAS→SAC)
+  - revenge: DeMar DeRozan vs SAS (former team)
+  - travel distances auto-calculated from team cities
+- Still needed:
+  - Add contract year data for pay_day badge
+  - Add playoff context for deep_water badge
+  - Add news integration for real-time legal_noise/distraction badges
 
 ### P1 - Cleanup
 - Delete deprecated components (PickCard, PlayerCard, TacticalPlayerCard)

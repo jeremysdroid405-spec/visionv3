@@ -339,13 +339,18 @@ async def resolve_context_badges(engine, player_name: str, player_data: dict) ->
                 logger.debug(f"[BADGE] Home cookin check error: {e}")
         
         # ===== Check context_engine for flag-based badges =====
+        # Look up by player_id OR player_name for maximum coverage
+        context_query = {"active": True, "$or": []}
         if player_nba_id:
-            context_flags = []
-            async for flag in context_engine.find(
-                {"player_id": player_nba_id, "active": True},
-                {"_id": 0, "flag_type": 1, "travel_miles": 1, "headline_reference": 1, "metadata": 1}
-            ):
-                context_flags.append(flag)
+            context_query["$or"].append({"player_id": player_nba_id})
+        context_query["$or"].append({"player_name": {"$regex": f"^{player_name}$", "$options": "i"}})
+        
+        context_flags = []
+        async for flag in context_engine.find(
+            context_query,
+            {"_id": 0, "flag_type": 1, "travel_miles": 1, "headline_reference": 1, "metadata": 1}
+        ):
+            context_flags.append(flag)
             
             for flag in context_flags:
                 flag_type = flag.get("flag_type", "")
