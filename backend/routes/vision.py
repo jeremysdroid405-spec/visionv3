@@ -1,7 +1,7 @@
 """
 Vision AI Routes Module
 =======================
-Handles Vision AI insight generation endpoints
+Handles Vision AI insight generation endpoints and player context badges.
 """
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
@@ -12,6 +12,8 @@ import os
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/v3/vision", tags=["vision"])
+player_router = APIRouter(prefix="/player", tags=["player-vision"])
+context_router = APIRouter(prefix="/context", tags=["context"])
 
 # Vision service and db references (set by main app)
 _vision_service = None
@@ -23,6 +25,21 @@ def set_vision_service(service, db):
     global _vision_service, _db
     _vision_service = service
     _db = db
+
+
+class FlagCreate(BaseModel):
+    """Request model for creating a narrative flag."""
+    player_id: int
+    flag_type: str
+    severity: int
+    headline_reference: Optional[str] = ""
+    travel_miles: Optional[int] = 0
+
+
+def slug_to_name(slug: str) -> str:
+    """Convert URL slug to player name search pattern."""
+    parts = slug.replace("-", " ").split()
+    return " ".join(p.capitalize() for p in parts)
 
 
 class VisionInsightRequest(BaseModel):
@@ -125,3 +142,119 @@ async def get_vision_status():
             "high_volatility_only": True
         }
     }
+
+
+# ============================================
+# PLAYER VISION ENDPOINTS (Badge System)
+# ============================================
+
+@player_router.get("/{player_slug}/vision")
+async def get_player_vision(player_slug: str):
+    """
+    Get complete player vision data with stats and active badges.
+    
+    Args:
+        player_slug: URL-friendly player name (e.g., "luka-doncic")
+        
+    Returns:
+        Player vision object with stats, context badges, and narrative flags
+    """
+    if _db is None:
+        raise HTTPException(status_code=500, detail="Database not initialized")
+    
+    from services.badge_resolver import get_badge_resolver
+    resolver = get_badge_resolver(_db)
+    
+    # Convert slug to name pattern
+    name_pattern = slug_to_name(player_slug)
+    
+    # Find player by name (handle special characters like Dončić)
+    player = await _db.nba_master_hub_2026.find_one(
+        {"display_name": {"$regex": name_pattern, "$options": "i"}},
+        {"nba_player_id": 1, "display_name": 1}
+    )
+    
+    if not player:
+        raise HTTPException(status_code=404, detail=f"Player not found: {player_slug}")
+    
+    player_id = player.get("nba_player_id")
+    if not player_id:
+        raise HTTPException(status_code=404, detail=f"Player has no NBA ID: {player_slug}")
+    
+    vision = await resolver.get_player_vision(player_id)
+    
+    return vision
+
+
+# ============================================
+# CONTEXT ENGINE ENDPOINTS
+# ============================================
+
+@context_router.post("/flag")
+async def add_context_flag(flag: FlagCreate):
+    """
+    Add a narrative flag for a player.
+    
+    Flags are used to generate context badges (Legal Noise, Jet Lag, etc.)
+    """
+    if _db is None:
+        raise HTTPException(status_code=500, detail="Database not initialized")
+    
+    from services.badge_resolver import get_badge_resolver
+    resolver = get_badge_resolver(_db)
+    
+    result = await resolver.add_flag(
+        player_id=flag.player_id,
+        flag_type=flag.flag_type,
+        severity=flag.severity,
+        headline_reference=flag.headline_reference or "",
+        travel_miles=flag.travel_miles or 0
+    )
+    
+    # Remove MongoDB _id for JSON response
+    if "_id" in result:
+        result["_id"] = str(result["_id"])
+    
+    return result
+
+
+@context_router.get("/badges")
+async def list_badge_definitions():
+    """
+    List all available badge definitions.
+    
+    Returns the 10 standardized badges with their display info.
+    """
+    from services.badge_resolver import BADGE_DEFINITIONS
+    
+    badges = []
+    for key, defn in BADGE_DEFINITIONS.items():
+        badges.append({
+            "badge_key": key,
+            "display": defn.get("display"),
+            "icon": defn.get("icon"),
+            "color": defn.get("color"),
+            "description": defn.get("description"),
+            "trigger_flags": defn.get("trigger_flags", [])
+        })
+    
+    return {"badges": badges, "count": len(badges)}
+
+
+@context_router.get("/player/{player_id}/flags")
+async def get_player_flags(player_id: int):
+    """Get all active flags for a player."""
+    if _db is None:
+        raise HTTPException(status_code=500, detail="Database not initialized")
+    
+    from services.badge_resolver import get_badge_resolver
+    resolver = get_badge_resolver(_db)
+    
+    flags = await resolver.get_player_flags(player_id)
+    
+    # Serialize ObjectId
+    for f in flags:
+        if "_id" in f:
+            f["_id"] = str(f["_id"])
+    
+    return {"player_id": player_id, "flags": flags, "count": len(flags)}

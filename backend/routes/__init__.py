@@ -7,7 +7,7 @@ from .board_intel import router as board_intel_router, set_engine as set_board_i
 from .board_intel_v2 import router as board_intel_v2_router, set_board_intel_deps
 from .auth import router as auth_router, profile_router
 from .injuries import router as injuries_router, set_injury_service
-from .vision import router as vision_router, set_vision_service
+from .vision import router as vision_router, player_router as player_vision_router, context_router as context_router, set_vision_service
 from .live_scores import router as live_scores_router, command_center_router, set_live_scores_engine
 from .ai_context import router as ai_context_router, set_ai_context_deps
 from .master_hub import router as master_hub_router, set_master_hub_deps
@@ -55,7 +55,8 @@ def register_all_routes(app, engine, game_lock_engine=None, db=None,
     # Set services for new routes
     if injury_service is not None:
         set_injury_service(injury_service)
-    if vision_service is not None and db is not None:
+    # Always set db for vision routes (needed for badge/context system)
+    if db is not None:
         set_vision_service(vision_service, db)
     if live_scores_engine is not None:
         set_live_scores_engine(live_scores_engine)
@@ -92,6 +93,8 @@ def register_all_routes(app, engine, game_lock_engine=None, db=None,
     # AI/Vision routes
     app.include_router(injuries_router, prefix="/api")
     app.include_router(vision_router, prefix="/api")
+    app.include_router(player_vision_router, prefix="/api")
+    app.include_router(context_router, prefix="/api")
     app.include_router(ai_context_router, prefix="/api")
     
     # Data routes

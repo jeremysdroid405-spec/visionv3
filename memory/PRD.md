@@ -5,6 +5,39 @@ PickVision is a high-performance NBA Player Prop Dashboard with a "military tech
 
 ## Latest Update: 2026-03-17
 
+### Context Engine & Badge System - COMPLETED ✅
+**Created narrative flag system with 10 standardized player badges**
+
+**Task 1: Database Collection `nba_context_engine`**
+- Stores manual and automated narrative flags for players
+- Fields: `player_id`, `flag_type`, `severity` (1-10), `headline_reference`, `timestamp`, `travel_miles`, `metadata`
+
+**Task 2: Badge Resolver Service (`/app/backend/services/badge_resolver.py`)**
+- Maps narrative flags to 10 standardized badges:
+  1. **[Jet Lag]** - Travel > 1000mi
+  2. **[Gassed]** - Back-to-back game
+  3. **[Home Cookin']** - Home game + 10% PPG split
+  4. **[Legal Noise]** - Divorce, custody, or legal filings
+  5. **[Distraction]** - Trade rumors/off-court drama
+  6. **[Revenge]** - Former team matchup
+  7. **[Pay Day]** - Contract year
+  8. **[Milestone]** - Chasing records
+  9. **[Deep Water]** - Playoff/Elimination stakes
+  10. **[Locked In]** - High performance despite distractions (auto-detected)
+
+**Task 3: Integration Test - Luka Dončić**
+- Seeded 3 flags: `legal_custody_battle` (9), `scoring_leader` (10), `travel` (6, 1500mi)
+- GET `/api/player/luka-doncic/vision` returns 4 badges:
+  - [Milestone], [Legal Noise], [Locked In] (auto), [Jet Lag]
+
+**New API Endpoints:**
+- `GET /api/player/{slug}/vision` - Player stats + active badges
+- `POST /api/context/flag` - Add narrative flag
+- `GET /api/context/badges` - List all badge definitions
+- `GET /api/context/player/{id}/flags` - Get player's active flags
+
+---
+
 ### Headshot URL Bootstrap - COMPLETED ✅
 **All active NBA players now have valid headshot URLs in master hub**
 
