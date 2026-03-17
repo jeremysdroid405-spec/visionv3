@@ -73,6 +73,28 @@ const TEAM_LOGOS = {
   WAS: 'https://cdn.nba.com/logos/nba/1610612764/global/L/logo.svg',
 };
 
+// ==================== TIER ICONS (SVG) ====================
+const DemonIcon = ({ size = 16, className = "" }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" className={className}>
+    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z" fillOpacity="0"/>
+    <path d="M5 3L3 1M19 3L21 1"/>
+    <circle cx="8.5" cy="10" r="1.5"/>
+    <circle cx="15.5" cy="10" r="1.5"/>
+    <path d="M12 2C7 2 3 6 3 11c0 3 1.5 5.5 4 7l1-2c-1.5-1-2.5-2.5-2.5-4.5 0-3.5 3-6.5 6.5-6.5s6.5 3 6.5 6.5c0 2-1 3.5-2.5 4.5l1 2c2.5-1.5 4-4 4-7 0-5-4-9-9-9z"/>
+    <path d="M8 16c0 0 2 2 4 2s4-2 4-2"/>
+  </svg>
+);
+
+const GoblinIcon = ({ size = 16, className = "" }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" className={className}>
+    <ellipse cx="12" cy="13" rx="8" ry="7"/>
+    <circle cx="9" cy="11" r="1.5" fill="black"/>
+    <circle cx="15" cy="11" r="1.5" fill="black"/>
+    <ellipse cx="12" cy="15" rx="2" ry="1" fill="black"/>
+    <path d="M6 8Q4 6 5 4M18 8Q20 6 19 4"/>
+  </svg>
+);
+
 // ==================== THEME CONFIG (TIER-BASED GLOW) ====================
 const TIER_THEMES = {
   DEMON: {
@@ -82,7 +104,7 @@ const TIER_THEMES = {
     text: 'text-red-400',
     accent: 'bg-red-500',
     ring: 'ring-red-500/50',
-    icon: Target
+    Icon: DemonIcon
   },
   GOBLIN: {
     border: 'border-green-500/50',
@@ -91,16 +113,25 @@ const TIER_THEMES = {
     text: 'text-green-400',
     accent: 'bg-green-500',
     ring: 'ring-green-500/50',
-    icon: Crosshair
+    Icon: GoblinIcon
+  },
+  FRONT_LINE: {
+    border: 'border-yellow-500/50',
+    bg: 'from-yellow-950/60 to-zinc-900',
+    glow: 'shadow-[0_0_25px_rgba(234,179,8,0.4)]',
+    text: 'text-yellow-400',
+    accent: 'bg-yellow-500',
+    ring: 'ring-yellow-500/50',
+    Icon: GoblinIcon
   },
   STANDARD: {
-    border: 'border-amber-500/40',
-    bg: 'from-amber-950/40 to-zinc-900',
-    glow: 'shadow-[0_0_15px_rgba(245,158,11,0.2)]',
-    text: 'text-amber-400',
-    accent: 'bg-amber-500',
-    ring: 'ring-amber-500/50',
-    icon: TrendingUp
+    border: 'border-zinc-500/40',
+    bg: 'from-zinc-800/40 to-zinc-900',
+    glow: 'shadow-[0_0_15px_rgba(161,161,170,0.2)]',
+    text: 'text-zinc-400',
+    accent: 'bg-zinc-500',
+    ring: 'ring-zinc-500/50',
+    Icon: null
   }
 };
 
@@ -120,11 +151,12 @@ const getHitRateColor = (rate) => {
 
 /**
  * Determine the highest tier from all props
- * Priority: DEMON > GOBLIN > STANDARD
+ * Priority: DEMON > FRONT_LINE > GOBLIN > STANDARD
  */
 const getHighestTier = (props) => {
   if (!props || props.length === 0) return 'STANDARD';
   if (props.some(p => p.is_demon || p.tier_label === 'DEMON')) return 'DEMON';
+  if (props.some(p => p.tier_label === 'FRONT_LINE' || p.front_line_qualified)) return 'FRONT_LINE';
   if (props.some(p => p.is_goblin || p.tier_label === 'GOBLIN')) return 'GOBLIN';
   return 'STANDARD';
 };
@@ -268,10 +300,10 @@ VaultStatsRow.displayName = 'VaultStatsRow';
 const PropRow = memo(({ prop, theme, onClick, onQuickAdd }) => {
   const isDemon = prop.is_demon || prop.tier_label === 'DEMON';
   const isGoblin = prop.is_goblin || prop.tier_label === 'GOBLIN';
+  const isFrontLine = prop.tier_label === 'FRONT_LINE' || prop.front_line_qualified;
   
-  const tierColor = isDemon ? 'text-red-400' : isGoblin ? 'text-green-400' : 'text-amber-400';
-  const tierBg = isDemon ? 'bg-red-950/40 border-red-500/30' : isGoblin ? 'bg-green-950/40 border-green-500/30' : 'bg-zinc-800/40 border-zinc-700/30';
-  const TierIcon = isDemon ? Target : isGoblin ? Crosshair : TrendingUp;
+  const tierColor = isDemon ? 'text-red-400' : isFrontLine ? 'text-yellow-400' : isGoblin ? 'text-green-400' : 'text-zinc-400';
+  const tierBg = isDemon ? 'bg-red-950/40 border-red-500/30' : isFrontLine ? 'bg-yellow-950/40 border-yellow-500/30' : isGoblin ? 'bg-green-950/40 border-green-500/30' : 'bg-zinc-800/40 border-zinc-700/30';
   
   return (
     <div 
@@ -280,14 +312,15 @@ const PropRow = memo(({ prop, theme, onClick, onQuickAdd }) => {
       data-testid={`prop-row-${prop.stat_type}-${prop.line}`}
     >
       <div className="flex items-center gap-2">
-        <TierIcon className={`w-3.5 h-3.5 ${tierColor}`} />
+        {isDemon && <DemonIcon size={14} className={tierColor} />}
+        {(isGoblin || isFrontLine) && !isDemon && <GoblinIcon size={14} className={tierColor} />}
         <div>
           <span className="text-sm font-medium text-white">
-            {prop.stat_type} <span className={tierColor}>O{prop.line}</span>
+            {prop.stat_type} <span className={tierColor}>{prop.line}</span>
           </span>
           {prop.tier_label && prop.tier_label !== 'STANDARD' && (
             <Badge variant="outline" className={`ml-1.5 text-[8px] px-1 py-0 ${tierColor} border-current`}>
-              {prop.tier_label}
+              {prop.tier_label === 'FRONT_LINE' ? 'FRONT' : prop.tier_label}
             </Badge>
           )}
         </div>
@@ -395,7 +428,7 @@ const UniversalPlayerCard = memo(({
   // Determine card theme from HIGHEST tier
   const highestTier = getHighestTier(allProps.length > 0 ? allProps : [player]);
   const theme = TIER_THEMES[highestTier];
-  const TierIcon = theme.icon;
+  const TierIcon = theme.Icon;
   
   // ==================== MINI MODE ====================
   if (mode === 'mini') {
@@ -442,7 +475,7 @@ const UniversalPlayerCard = memo(({
         
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
-            <TierIcon className={`w-4 h-4 ${theme.text}`} />
+            {TierIcon && <TierIcon size={16} className={theme.text} />}
             <span className="font-bold text-white text-sm truncate">{displayName}</span>
             <span className="text-[10px] text-zinc-500">{team}</span>
           </div>
@@ -511,7 +544,7 @@ const UniversalPlayerCard = memo(({
           {/* Player Info */}
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
-              <TierIcon className={`w-5 h-5 ${theme.text}`} />
+              {TierIcon && <TierIcon size={20} className={theme.text} />}
               <h3 className="text-lg font-bold text-white truncate">{displayName}</h3>
               {position && <span className="px-1.5 py-0.5 text-[9px] bg-zinc-700/50 text-zinc-300 rounded">{position}</span>}
             </div>
@@ -525,7 +558,7 @@ const UniversalPlayerCard = memo(({
               )}
               {tier_label && tier_label !== 'STANDARD' && (
                 <Badge variant="outline" className={`text-[9px] ${theme.text} border-current`}>
-                  {tier_label}
+                  {tier_label === 'FRONT_LINE' ? 'FRONT' : tier_label}
                 </Badge>
               )}
             </div>
@@ -570,7 +603,6 @@ const UniversalPlayerCard = memo(({
       {hasProps && showProps && isExpanded && (
         <div className="border-t border-zinc-700/50 p-3 space-y-2 max-h-80 overflow-y-auto">
           <div className="flex items-center gap-2 text-[10px] text-zinc-500 mb-2">
-            <Target className="w-3.5 h-3.5" />
             <span className="uppercase tracking-wider font-semibold">Available Props</span>
             <span className="text-zinc-600">({allProps.length})</span>
           </div>
