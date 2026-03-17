@@ -5,33 +5,34 @@ PickVision is a high-performance NBA Player Prop Dashboard with a "military tech
 
 ## Latest Update: 2026-03-17
 
-### HIT RATE CALCULATION FIX - COMPLETED ✅
-**L5/L10 hit rates now calculated from game_logs**
+### ANCHOR-BASED CLASSIFICATION FIX - COMPLETED ✅
+**Data APIs fixed and working correctly**
 
 **Problem:**
-- Hit rates were showing 0% for all players
-- BDL `/season_averages` endpoint doesn't provide game-by-game data
-- Code was returning 0 for hit rates when using baseline_stats
+- Main data APIs (`/api/v3/war-zone`, `/api/v3/safe-haven`, `/api/v3/front-lines`) were broken
+- `picks_getter_service.py` had syntax errors from incomplete refactor (duplicate code lines 609-614)
+- Frontend showing "No picks available"
 
 **Fix Applied:**
-- Modified `/app/backend/services/picks_getter_service.py`
-- Added `calculate_hit_rates()` helper function that processes game_logs
-- Hit rates now calculated from actual game data (L5, L10 windows)
-- `stats_source` now shows `bdl_baseline+game_logs` when both are used
+- Fixed syntax error in `/app/backend/services/picks_getter_service.py`
+- Removed duplicate code block from `get_front_lines()` method
+- APIs now correctly query for DEMON/GOBLIN props from nested `props` array
+
+**Anchor Classification Logic (Simple If/Else):**
+```python
+if prop_line > anchor_line:
+    tier = "DEMON"     # Higher than standard = Hard over (Red)
+elif prop_line < anchor_line:
+    tier = "GOBLIN"    # Lower than standard = Easy over (Green)
+else:
+    tier = "STANDARD"  # Equal to standard (Gray)
+```
 
 **Results:**
-- Coby White: L10 90% (vs 0% before)
-- Tyler Herro: L10 80% (vs 0% before)
-- Grant Williams: L10 100% (vs 0% before)
-
-### DEPRECATED COMPONENTS DELETED - COMPLETED ✅
-**Removed all redundant card components:**
-- `/app/frontend/src/components/dashboard/PickCard.jsx` - DELETED
-- `/app/frontend/src/components/dashboard/PlayerCard.jsx` - DELETED
-- `/app/frontend/src/components/dashboard/TacticalPlayerCard.jsx` - DELETED
-- `/app/frontend/src/components/dashboard/SectionContainer.jsx` - DELETED
-
-**Only card component remaining:** `UniversalPlayerCard.jsx`
+- War Zone: 50 DEMON picks returned
+- Safe Haven: 50 GOBLIN picks returned  
+- Front Lines: 10 mixed picks (DEMON + GOBLIN interleaved)
+- All picks include anchor_line for verification
 
 ---
 
@@ -54,13 +55,27 @@ FUNNEL 2 - ODDS (dg_cached_board):
   - Source: The Odds API (polled every 30 seconds)
 ```
 
-**MAP Function (Data Join):**
-Location: `/app/backend/services/picks_getter_service.py`
-```python
-# Calculate hit rates from game_logs
-hit_rate_data = calculate_hit_rates(game_logs, stat_type, line)
-# Merge vault stats
-pick.update(player_stats)
+**Deleted Deprecated Components:**
+- `/app/frontend/src/components/dashboard/PickCard.jsx` - DELETED
+- `/app/frontend/src/components/dashboard/PlayerCard.jsx` - DELETED
+- `/app/frontend/src/components/dashboard/TacticalPlayerCard.jsx` - DELETED
+- `/app/frontend/src/components/dashboard/SectionContainer.jsx` - DELETED
+
+---
+
+### BDL VAULT STATS - WORKING ✅
+**Raw JSON Structure in Master Hub:**
+```json
+{
+  "display_name": "Coby White",
+  "team": "CHA",
+  "baseline_stats": {
+    "fg_pct": 0.45,
+    "fg3_pct": 0.367,
+    "stl": 0.933,
+    "blk": 0.213
+  }
+}
 ```
 
 ---
@@ -68,18 +83,28 @@ pick.update(player_stats)
 ## Core Architecture
 
 ### Database: `pick_vision` (MongoDB)
-- `dg_cached_board`: Live PrizePicks odds (ODDS FUNNEL)
-- `nba_master_hub_2026`: Master player vault with BDL stats + game_logs (VAULT FUNNEL)
+- `dg_cached_board`: Live PrizePicks odds with anchor-classified props
+- `nba_master_hub_2026`: Master player vault with BDL stats + game_logs
+
+### Backend Services
+- `anchor_classification_service.py`: Simple if/else classification logic
+- `picks_getter_service.py`: Data fetching and enrichment
+- `cached_board_builder_service.py`: Sync and store classified props
 
 ### Backend Endpoints
-- `GET /api/v3/war-zone`: DEMON picks with hit rates
-- `GET /api/v3/safe-haven`: GOBLIN picks with hit rates
-- `GET /api/v3/front-lines`: STANDARD picks with hit rates
+- `GET /api/v3/war-zone`: DEMON picks (line > anchor)
+- `GET /api/v3/safe-haven`: GOBLIN picks (line < anchor)
+- `GET /api/v3/front-lines`: Mixed DEMON + GOBLIN picks
 - `GET /api/command/profile/{name}`: Full player profile
 
 ---
 
 ## Backlog
+
+### P1 - High Priority
+- Run full roster sync to update all players' team/position data
+- Verify player name normalization across pipeline
+- Clarify Coby White PPG discrepancy (user mentioned 8.1 vs BDL's ~20.3)
 
 ### P2 - Medium Term
 - Stripe payment integration

@@ -606,12 +606,6 @@ class PicksGetterService:
             "picks": picks[:10],
             "picks_count": len(picks)
         }
-            "picks_count": len(picks),
-            "picks": picks,
-            "source": "prizepicks",
-            "tier": "standard",
-            "description": "Main PrizePicks lines (STRIKE zone)"
-        }
     
     async def get_parlay_builder(self) -> Dict[str, Any]:
         """
