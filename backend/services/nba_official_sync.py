@@ -303,42 +303,21 @@ class NBAOfficialSyncService:
         active_player_ids = self._build_active_players_list()
         results["players_on_active_roster"] = len(active_player_ids)
         
-        # STEP 2: Get all players from master hub
-        cursor = self.hub.find({}, {"display_name": 1, "nba_player_id": 1, "team": 1})
-        players = await cursor.to_list(length=2000)
+        # STEP 2: Query ONLY players on active rosters (filtered at DB level)
+        cursor = self.hub.find(
+            {"nba_player_id": {"$in": list(active_player_ids)}},
+            {"display_name": 1, "nba_player_id": 1, "team": 1}
+        )
+        players = await cursor.to_list(length=600)
         
         results["players_in_db"] = len(players)
-        logger.info(f"[NBA_OFFICIAL_SYNC] DB has {len(players)} players, {len(active_player_ids)} on active rosters")
+        logger.info(f"[NBA_OFFICIAL_SYNC] Queried {len(players)} active roster players (filtered at DB level)")
         
         for i, player in enumerate(players):
             player_name = player.get("display_name", "Unknown")
             nba_id = player.get("nba_player_id")
             
             try:
-                # Find NBA player ID if not cached
-                if not nba_id:
-                    nba_id = self._get_nba_player_id(player_name)
-                    if nba_id:
-                        # Cache the NBA ID
-                        await self.hub.update_one(
-                            {"_id": player["_id"]},
-                            {"$set": {"nba_player_id": nba_id}}
-                        )
-                
-                if not nba_id:
-                    results["players_skipped_no_nba_id"] += 1
-                    continue
-                
-                # ===== FILTER 1: Active NBA Roster Check =====
-                # Skip if player is not on an active NBA team roster
-                if nba_id not in active_player_ids:
-                    results["players_skipped_not_on_roster"] += 1
-                    # Mark as inactive in DB
-                    await self.hub.update_one(
-                        {"_id": player["_id"]},
-                        {"$set": {"roster_status": "not_on_active_roster"}}
-                    )
-                    continue
                 
                 # Fetch game logs from official NBA API
                 game_logs = self._fetch_game_logs(nba_id)
@@ -375,11 +354,10 @@ class NBAOfficialSyncService:
                 results["players_processed"] += 1
                 
                 # Progress logging
-                if (i + 1) % 25 == 0:
+                if (i + 1) % 50 == 0:
                     logger.info(
                         f"[NBA_OFFICIAL_SYNC] Progress: {i + 1}/{len(players)} "
-                        f"({results['players_updated']} updated, "
-                        f"{results['players_skipped_not_on_roster']} filtered)"
+                        f"({results['players_updated']} updated)"
                     )
                 
             except Exception as e:
