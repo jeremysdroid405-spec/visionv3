@@ -186,7 +186,7 @@ async def get_breaking_news():
     
     try:
         mongo_url = os.environ.get("MONGO_URL")
-        db_name = os.environ.get("DB_NAME", "pickvision")
+        db_name = os.environ.get("DB_NAME", "pick_vision")
         
         headlines = []
         import re

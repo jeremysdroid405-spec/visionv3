@@ -463,7 +463,7 @@ def get_master_hub() -> NBAMasterHub:
     global _master_hub
     if _master_hub is None:
         mongo_url = os.environ.get("MONGO_URL")
-        db_name = os.environ.get("DB_NAME", "test_database")
+        db_name = os.environ.get("DB_NAME", "pick_vision")
         _master_hub = NBAMasterHub(mongo_url, db_name)
     return _master_hub
 

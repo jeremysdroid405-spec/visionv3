@@ -11,7 +11,7 @@ load_dotenv()
 
 # ==================== DATABASE ====================
 MONGO_URL = os.environ.get("MONGO_URL", "mongodb://localhost:27017")
-DB_NAME = os.environ.get("DB_NAME", "pickvision")
+DB_NAME = os.environ.get("DB_NAME", "pick_vision")
 
 # MongoDB Client (singleton)
 _mongo_client = None

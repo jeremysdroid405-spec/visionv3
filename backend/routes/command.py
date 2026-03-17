@@ -176,7 +176,7 @@ async def get_tactical_profile(
     
     try:
         mongo_url = os.environ.get("MONGO_URL")
-        db_name = os.environ.get("DB_NAME", "pickvision")
+        db_name = os.environ.get("DB_NAME", "pick_vision")
         
         if not mongo_url:
             raise HTTPException(status_code=503, detail="Database not configured")

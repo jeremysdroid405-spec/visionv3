@@ -62,7 +62,7 @@ async def run_daily_sync():
     logger.info("[CRON] ========================================")
     
     mongo_url = os.environ.get("MONGO_URL")
-    db_name = os.environ.get("DB_NAME", "test_database")
+    db_name = os.environ.get("DB_NAME", "pick_vision")
     
     if not mongo_url:
         logger.error("[CRON] MONGO_URL not configured")

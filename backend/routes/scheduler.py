@@ -108,7 +108,7 @@ async def sync_baseline_stats():
     from services.master_hub_sync import MasterHubSyncService
     
     mongo_url = os.environ.get("MONGO_URL")
-    db_name = os.environ.get("DB_NAME", "test_database")
+    db_name = os.environ.get("DB_NAME", "pick_vision")
     
     if not mongo_url:
         raise HTTPException(status_code=503, detail="Database not configured")

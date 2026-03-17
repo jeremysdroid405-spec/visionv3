@@ -113,7 +113,7 @@ if __name__ == "__main__":
     
     async def test():
         client = AsyncIOMotorClient(os.environ.get("MONGO_URL"))
-        db = client[os.environ.get("DB_NAME", "test_database")]
+        db = client[os.environ.get("DB_NAME", "pick_vision")]
         
         service = MasterHubSyncService(db)
         result = await service.run_full_sync()

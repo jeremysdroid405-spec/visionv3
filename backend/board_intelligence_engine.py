@@ -214,7 +214,7 @@ class BoardIntelligenceEngine:
             from intel_briefing_engine import IntelBriefingEngine
             intel_engine = IntelBriefingEngine(
                 os.environ.get("MONGO_URL"),
-                os.environ.get("DB_NAME", "test_database")
+                os.environ.get("DB_NAME", "pick_vision")
             )
             
             for player_name in star_players_with_lines:
@@ -521,7 +521,7 @@ class BoardIntelligenceEngine:
                 from intel_briefing_engine import IntelBriefingEngine
                 intel_engine = IntelBriefingEngine(
                     os.environ.get("MONGO_URL"),
-                    os.environ.get("DB_NAME", "test_database")
+                    os.environ.get("DB_NAME", "pick_vision")
                 )
                 
                 for player_name in new_entries:
@@ -711,6 +711,6 @@ def get_board_intel_engine() -> BoardIntelligenceEngine:
     global _board_intel_engine
     if _board_intel_engine is None:
         mongo_url = os.environ.get("MONGO_URL")
-        db_name = os.environ.get("DB_NAME", "test_database")
+        db_name = os.environ.get("DB_NAME", "pick_vision")
         _board_intel_engine = BoardIntelligenceEngine(mongo_url, db_name)
     return _board_intel_engine
