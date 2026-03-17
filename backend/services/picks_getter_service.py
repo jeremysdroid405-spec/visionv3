@@ -1426,7 +1426,7 @@ class PicksGetterService:
         
         Based strictly on betting volume/popularity from the cached board.
         Includes ALL line types: STANDARD, DEMON, GOBLIN - whatever has highest volume.
-        Pure volume-based popularity ranking.
+        Shows variety of players and tiers.
         """
         try:
             now = datetime.now(timezone.utc)
@@ -1437,8 +1437,10 @@ class PicksGetterService:
                 {"_id": 0}
             ).to_list(500)
             
-            # Extract ALL props - no type filtering
+            # Extract ALL props - dedupe as we go
             all_bets = []
+            seen_props = set()  # Track unique player+stat+line combos
+            
             for player_doc in players:
                 player_name = player_doc.get("player_name")
                 if not player_name:
@@ -1454,17 +1456,16 @@ class PicksGetterService:
                     if not stat_type or not line:
                         continue
                     
+                    # Dedupe within props
+                    prop_key = f"{player_name}_{stat_type}_{line}"
+                    if prop_key in seen_props:
+                        continue
+                    seen_props.add(prop_key)
+                    
                     # Determine tier
                     is_demon = prop.get("is_demon", False)
                     is_goblin = prop.get("is_goblin", False)
-                    tier_label = prop.get("tier_label") or prop.get("tier", "STANDARD")
-                    if is_demon:
-                        tier_label = "DEMON"
-                    elif is_goblin:
-                        tier_label = "GOBLIN"
-                    
-                    # Line type for display
-                    line_type = "demon" if is_demon else "goblin" if is_goblin else "standard"
+                    tier_label = "DEMON" if is_demon else "GOBLIN" if is_goblin else "STANDARD"
                     
                     all_bets.append({
                         "player_name": player_name,
@@ -1474,14 +1475,13 @@ class PicksGetterService:
                         "stat_type": stat_type,
                         "line": line,
                         "anchor_line": prop.get("anchor_line"),
-                        "line_type": line_type,
+                        "line_type": tier_label.lower(),
                         "is_demon": is_demon,
                         "is_goblin": is_goblin,
                         "tier_label": tier_label,
                         "direction": prop.get("direction", "over"),
                         "odds": prop.get("price"),
                         "bookmaker": prop.get("bookmaker", "prizepicks"),
-                        # Volume/popularity indicators
                         "player_rank": player_rank,
                         "prop_count": len(props),
                     })
@@ -1490,22 +1490,57 @@ class PicksGetterService:
                 logger.warning("[MOST_POPULAR] No bets found in cached board")
                 return {"status": "awaiting_action", "bets": [], "total_available": 0, "timestamp": now.isoformat()}
             
-            # Sort by player rank (lower = more popular/higher volume)
-            # Secondary sort by prop count (more props = more action on player)
-            all_bets.sort(key=lambda x: (x.get("player_rank", 999), -x.get("prop_count", 0)))
+            # Sort by player rank (lower = more popular)
+            all_bets.sort(key=lambda x: x.get("player_rank", 999))
             
-            # Dedupe by player to get variety - one bet per player
-            seen_players = set()
-            unique_bets = []
+            # Select 20 bets with variety (max 1 per player, ensure tier mix)
+            selected_bets = []
+            used_players = set()
+            
+            # First pass: one bet per player from top-ranked players
             for bet in all_bets:
-                player_key = bet['player_name']
-                if player_key not in seen_players:
-                    seen_players.add(player_key)
-                    unique_bets.append(bet)
+                pname = bet['player_name']
+                if pname in used_players:
+                    continue
+                
+                selected_bets.append(bet)
+                used_players.add(pname)
+                
+                if len(selected_bets) >= 20:
+                    break
+            
+            # Check tier distribution
+            tier_counts = {"DEMON": 0, "GOBLIN": 0, "STANDARD": 0}
+            for b in selected_bets:
+                tier_counts[b['tier_label']] += 1
+            
+            # If no GOBLINs, swap some standards out for GOBLINs from different players
+            if tier_counts["GOBLIN"] == 0:
+                goblin_bets = [b for b in all_bets if b['is_goblin'] and b['player_name'] not in used_players]
+                # Remove duplicates from goblin_bets (one per player)
+                seen_goblin_players = set()
+                unique_goblin_bets = []
+                for gb in goblin_bets:
+                    if gb['player_name'] not in seen_goblin_players:
+                        unique_goblin_bets.append(gb)
+                        seen_goblin_players.add(gb['player_name'])
+                
+                # Replace some standards with goblins
+                standards_to_remove = [b for b in selected_bets if not b['is_demon'] and not b['is_goblin']][-3:]
+                for std_bet in standards_to_remove:
+                    if unique_goblin_bets:
+                        selected_bets.remove(std_bet)
+                        used_players.discard(std_bet['player_name'])
+                        new_goblin = unique_goblin_bets.pop(0)
+                        selected_bets.append(new_goblin)
+                        used_players.add(new_goblin['player_name'])
+            
+            # Re-sort by player rank
+            selected_bets.sort(key=lambda x: x.get("player_rank", 999))
             
             # Enrich with stats from master hub
             enriched_bets = []
-            for bet in unique_bets[:20]:
+            for bet in selected_bets[:20]:
                 player_name = bet["player_name"]
                 stat_type = bet["stat_type"]
                 line = bet["line"]
@@ -1514,7 +1549,6 @@ class PicksGetterService:
                 hub_player = await self._get_master_player_by_name(player_name)
                 
                 if hub_player:
-                    # Photo from master hub
                     bet["photo_url"] = hub_player.get("headshot_url") or hub_player.get("photo_url")
                     bet["position"] = hub_player.get("position")
                     
@@ -1541,12 +1575,16 @@ class PicksGetterService:
                 
                 enriched_bets.append(bet)
             
-            logger.info(f"[MOST_POPULAR] Returning {len(enriched_bets)} bets by volume (all types)")
+            # Log type breakdown
+            demons = len([b for b in enriched_bets if b.get('is_demon')])
+            goblins = len([b for b in enriched_bets if b.get('is_goblin')])
+            standards = len(enriched_bets) - demons - goblins
+            logger.info(f"[MOST_POPULAR] Returning {len(enriched_bets)} bets: {demons} DEMONs, {goblins} GOBLINs, {standards} STANDARDs")
             
             return {
                 "status": "live" if enriched_bets else "awaiting_action",
                 "bets": enriched_bets,
-                "total_available": len(unique_bets),
+                "total_available": len(all_bets),
                 "timestamp": now.isoformat(),
                 "source": "all_lines_by_volume"
             }
