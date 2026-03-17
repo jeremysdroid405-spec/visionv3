@@ -55,6 +55,24 @@ Build a sports betting analytics platform that helps users identify high-value b
 - War Zone: Red card theme + Red Demon icon
 - Safe Haven: Green card theme + Green Goblin icon
 
+### Mar 2026 - Context Badges Implementation
+- Implemented 10 context badges for Vision Intel Suite modal
+- **Stats-based badges** (fully functional):
+  - `locked_in`: L5 PPG > Season PPG + 5
+  - `milestone`: Stat avg within 5% of round milestone (20, 25, 30...)
+  - `home_cookin`: Home PPG 15%+ higher than Away
+  - `gassed`: Back-to-back games (2nd night)
+- **Context engine badges** (require nba_context_engine data):
+  - `jet_lag`: Road game + traveled >1000mi
+  - `legal_noise`: Active legal/personal news flag
+  - `distraction`: Trade rumors or drama
+  - `revenge`: Playing against former team
+- **Placeholder badges** (require additional data):
+  - `pay_day`: Contract year
+  - `deep_water`: Elimination/playoff game 5+
+- Badges display in Vision Intel Suite modal (PlayerDetailPage.jsx)
+- API endpoint: GET /api/v3/player-with-badges/{player_name}
+
 ## Key Files
 - `/app/backend/services/picks_getter_service.py` - Safe Haven & Front Lines logic
 - `/app/frontend/src/components/dashboard/UniversalPlayerCard.jsx` - Unified player card component
@@ -65,12 +83,20 @@ Build a sports betting analytics platform that helps users identify high-value b
 - `GET /api/v3/safe-haven` - High-probability GOBLIN picks
 - `GET /api/v3/front-lines` - Mid-tier GOBLIN picks
 - `GET /api/v3/war-zone` - High-risk DEMON picks
-- `GET /api/v3/cached-player/{player_name}` - Single player with all props
+- `GET /api/v3/player-with-badges/{player_name}` - Single player with all props + context badges
+- `GET /api/v3/cached-props` - All cached players and props
+- `GET /api/v3/test-badges/{player_name}` - Debug endpoint for badge calculations
 
 ## Prioritized Backlog
 
+### P0 - Context Badges Data
+- Populate nba_context_engine with live data for jet_lag, legal_noise, distraction, revenge badges
+- Add contract year data for pay_day badge
+- Add playoff context for deep_water badge
+
 ### P1 - Cleanup
 - Delete deprecated components (PickCard, PlayerCard, TacticalPlayerCard)
+- Fix API route naming conflict (v3/cached-player vs v3/player-with-badges)
 
 ### P2 - Features
 - Add "Last Updated" timestamp to dashboard
