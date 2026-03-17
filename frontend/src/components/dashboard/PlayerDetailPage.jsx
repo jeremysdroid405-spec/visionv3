@@ -171,16 +171,6 @@ const PropRow = memo(({ prop, isHighlighted, highlightRef, onVisionClick }) => {
                 VISION PICK
               </span>
             )}
-            {!isHighlighted && isDemon && (
-              <span className="px-1.5 py-0.5 text-[8px] font-bold bg-red-500 text-white rounded">
-                DEMON
-              </span>
-            )}
-            {!isHighlighted && isGoblin && (
-              <span className="px-1.5 py-0.5 text-[8px] font-bold bg-green-500 text-black rounded">
-                GOBLIN
-              </span>
-            )}
           </div>
           {prop.price && (
             <span className={`text-[10px] font-mono ${isHighlighted ? 'text-amber-400/70' : 'text-zinc-500'}`}>
