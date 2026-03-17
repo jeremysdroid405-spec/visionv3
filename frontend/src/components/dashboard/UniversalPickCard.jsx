@@ -1,23 +1,22 @@
 /**
  * UNIVERSAL PICK CARD
  * ===================
- * Single source of truth for ALL player pick displays across the app.
+ * Single source of truth for PICK/BET displays across the app.
  * 
  * DATA SOURCES (ONLY):
- * - nba_master_hub_2026 (Master Vault): Player info, photos, BDL stats
+ * - nba_master_hub_2026 (Master Vault): Player info, photos
  * - dg_cached_board (Odds API): Lines, odds, tier classification
+ * 
+ * NOTE: This card is for PICKS (bets). For player profile cards
+ * with detailed BDL stats, use UniversalPlayerCard.jsx instead.
  * 
  * DISPLAY MODES:
  * - "full": Complete card for dashboard sections (War Zone, Safe Haven, Front Lines)
- * - "compact": Condensed view for search results & parlay lists
+ * - "compact": Condensed view for parlay lists
  * - "mini": Minimal view for inline displays
- * - "tactical": Command Post view with multiple props
  * 
  * USED IN:
  * - Dashboard.jsx (War Zone, Safe Haven, Front Lines sections)
- * - CommandPost.jsx (Player search & slate)
- * - PlayerDetailPage.jsx (Props list)
- * - Search results
  */
 
 import React, { memo, useCallback } from 'react';
@@ -204,43 +203,7 @@ const DvPBadge = memo(({ rank }) => {
 });
 DvPBadge.displayName = 'DvPBadge';
 
-// BDL Vault Stats Row (FG%, 3P%, STL, BLK)
-const VaultStatsRow = memo(({ pick }) => {
-  const hasStats = pick.fg_pct != null || pick.fg3_pct != null || pick.stl != null || pick.blk != null;
-  if (!hasStats) return null;
-  
-  return (
-    <div className="bg-zinc-800/30 rounded-lg p-1.5 mt-1.5 border border-zinc-700/30" data-testid="vault-stats">
-      <div className="flex items-center justify-between text-center">
-        {pick.fg_pct != null && (
-          <div className="flex-1">
-            <div className="text-[8px] text-zinc-500 uppercase">FG%</div>
-            <div className="text-[11px] font-bold text-cyan-400">{pick.fg_pct}%</div>
-          </div>
-        )}
-        {pick.fg3_pct != null && (
-          <div className="flex-1">
-            <div className="text-[8px] text-zinc-500 uppercase">3P%</div>
-            <div className="text-[11px] font-bold text-purple-400">{pick.fg3_pct}%</div>
-          </div>
-        )}
-        {pick.stl != null && (
-          <div className="flex-1">
-            <div className="text-[8px] text-zinc-500 uppercase">STL</div>
-            <div className="text-[11px] font-bold text-green-400">{pick.stl}</div>
-          </div>
-        )}
-        {pick.blk != null && (
-          <div className="flex-1">
-            <div className="text-[8px] text-zinc-500 uppercase">BLK</div>
-            <div className="text-[11px] font-bold text-amber-400">{pick.blk}</div>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-});
-VaultStatsRow.displayName = 'VaultStatsRow';
+// Note: VaultStatsRow has been moved to UniversalPlayerCard.jsx for player profile displays
 
 // Hit Rate Display
 const HitRateRow = memo(({ h5_rate, h10_rate, season_avg }) => {
@@ -290,15 +253,14 @@ LockedOverlay.displayName = 'LockedOverlay';
 // ==================== MAIN COMPONENT ====================
 
 /**
- * UniversalPickCard - Single card component for all displays
+ * UniversalPickCard - Card component for PICK/BET displays
  * 
  * @param {Object} pick - Pick data from API (merged from Master Vault + Odds API)
- * @param {string} mode - Display mode: 'full' | 'compact' | 'mini' | 'tactical'
+ * @param {string} mode - Display mode: 'full' | 'compact' | 'mini'
  * @param {string} colorTheme - Override theme: 'red' | 'green' | 'amber' | 'cyan' | 'neutral'
  * @param {number} rank - Ranking number to display
  * @param {Function} onClick - Click handler
  * @param {Function} onQuickAdd - Quick add to Command Post handler
- * @param {boolean} showVaultStats - Show BDL stats (FG%, 3P%, STL, BLK)
  * @param {boolean} showVision - Show AI Vision text
  */
 const UniversalPickCard = memo(({
@@ -308,7 +270,6 @@ const UniversalPickCard = memo(({
   rank,
   onClick,
   onQuickAdd,
-  showVaultStats = true,
   showVision = true
 }) => {
   // Handle click - MUST be at top before any conditional returns
@@ -420,71 +381,7 @@ const UniversalPickCard = memo(({
     );
   }
   
-  // ==================== TACTICAL MODE (Command Post) ====================
-  if (mode === 'tactical') {
-    const props = pick.props || [pick];
-    
-    return (
-      <div 
-        className={`rounded-lg border ${theme.border} bg-gradient-to-br ${theme.bg} overflow-hidden`}
-        data-testid={`tactical-card-${playerSlug}`}
-      >
-        {/* Header */}
-        <div className="p-3 border-b border-zinc-800">
-          <div className="flex items-center gap-3">
-            <PlayerHeadshot photoUrl={photo_url} playerName={player_name} team={team} size="lg" />
-            <div className="flex-1 min-w-0">
-              <div className="font-bold text-white">{player_name}</div>
-              <div className="text-xs text-zinc-500">{team} {opponent ? `vs ${opponent}` : ''}</div>
-            </div>
-            {onQuickAdd && (
-              <button
-                onClick={handleQuickAdd}
-                className="w-8 h-8 rounded-full bg-cyan-500/20 border border-cyan-500/40 flex items-center justify-center text-cyan-400 hover:bg-cyan-500/30 transition-all"
-              >
-                <Plus className="w-4 h-4" />
-              </button>
-            )}
-          </div>
-          
-          {/* Vault Stats */}
-          {showVaultStats && <VaultStatsRow pick={pick} />}
-        </div>
-        
-        {/* Props List */}
-        <div className="p-2 space-y-1 max-h-60 overflow-y-auto">
-          {props.map((prop, idx) => (
-            <div 
-              key={`${prop.stat_type}-${prop.line}-${idx}`}
-              className={`flex items-center justify-between p-2 rounded-lg cursor-pointer transition-all ${
-                prop.is_demon ? 'bg-red-950/40 border border-red-500/30' :
-                prop.is_goblin ? 'bg-green-950/40 border border-green-500/30' :
-                'bg-zinc-800/30 hover:bg-zinc-700/30'
-              }`}
-              onClick={() => onClick?.(prop)}
-            >
-              <div className="flex items-center gap-2">
-                {prop.is_demon && <Target className="w-3.5 h-3.5 text-red-400" />}
-                {prop.is_goblin && <Crosshair className="w-3.5 h-3.5 text-green-400" />}
-                <span className="text-sm text-white">
-                  {prop.stat_type} <span className={prop.is_demon ? 'text-red-400' : prop.is_goblin ? 'text-green-400' : 'text-zinc-300'}>O{prop.line}</span>
-                </span>
-                {prop.tier_label && prop.tier_label !== 'STANDARD' && (
-                  <Badge variant="outline" className="text-[8px] px-1 py-0">
-                    {prop.tier_label}
-                  </Badge>
-                )}
-              </div>
-              <div className="flex items-center gap-2 text-xs">
-                <span className={getHitRateColor(prop.h10_rate || 0)}>{prop.h10_rate || 0}%</span>
-                <span className="text-zinc-500">{prop.season_avg?.toFixed(1) || '—'}</span>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-    );
-  }
+  // Note: Tactical mode has been moved to UniversalPlayerCard for player profile displays
   
   // ==================== FULL MODE (Default) ====================
   return (
@@ -569,9 +466,6 @@ const UniversalPickCard = memo(({
           {/* Hit Rate Breakdown */}
           <HitRateRow h5_rate={h5_rate} h10_rate={h10_rate} season_avg={season_avg} />
           
-          {/* BDL Vault Stats */}
-          {showVaultStats && <VaultStatsRow pick={pick} />}
-          
           {/* Vision Text */}
           {showVision && vision_text && (
             <div className={`mt-2 pt-2 border-t ${theme.border.replace('/40', '/30')}`}>
@@ -592,5 +486,5 @@ const UniversalPickCard = memo(({
 
 UniversalPickCard.displayName = 'UniversalPickCard';
 
-export { UniversalPickCard, PlayerHeadshot, DvPBadge, VaultStatsRow, HitRateRow };
+export { UniversalPickCard, PlayerHeadshot, DvPBadge, HitRateRow };
 export default UniversalPickCard;

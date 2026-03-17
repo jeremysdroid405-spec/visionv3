@@ -97,9 +97,22 @@ const CommandSearch = memo(({ onPlayerSelect, placeholder = "Search players..." 
                   className="flex items-center gap-3 px-4 py-3 hover:bg-zinc-800 cursor-pointer border-b border-zinc-800 last:border-0 transition-colors"
                   data-testid={`search-result-${player.id}`}
                 >
-                  <div className="w-8 h-8 rounded-full bg-zinc-700 flex items-center justify-center">
-                    <User className="w-4 h-4 text-zinc-400" />
-                  </div>
+                  {/* Player Photo */}
+                  {player.headshot_url ? (
+                    <div className="w-8 h-8 rounded-full overflow-hidden bg-zinc-700">
+                      <img 
+                        src={player.headshot_url} 
+                        alt={player.player_name}
+                        className="w-full h-full object-cover"
+                        style={{ objectPosition: 'center 20%', transform: 'scale(1.3)' }}
+                        onError={(e) => e.target.parentElement.innerHTML = `<div class="w-full h-full flex items-center justify-center"><span class="text-zinc-400 text-xs font-bold">${player.player_name?.charAt(0) || '?'}</span></div>`}
+                      />
+                    </div>
+                  ) : (
+                    <div className="w-8 h-8 rounded-full bg-zinc-700 flex items-center justify-center">
+                      <User className="w-4 h-4 text-zinc-400" />
+                    </div>
+                  )}
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-white truncate">
                       {player.player_name}
@@ -111,6 +124,9 @@ const CommandSearch = memo(({ onPlayerSelect, placeholder = "Search players..." 
                           <span>·</span>
                           <span>{player.position}</span>
                         </>
+                      )}
+                      {player.has_stats && (
+                        <span className="px-1 py-0.5 bg-emerald-500/20 text-emerald-400 rounded text-[8px]">STATS</span>
                       )}
                     </div>
                   </div>

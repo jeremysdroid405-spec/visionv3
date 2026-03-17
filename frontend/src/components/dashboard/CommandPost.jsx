@@ -24,7 +24,7 @@ import {
 import { Button } from '../ui/button';
 import { toast } from 'sonner';
 import CommandSearch from './CommandSearch';
-import UniversalPickCard from './UniversalPickCard';
+import UniversalPlayerCard from './UniversalPlayerCard';
 
 // SSOT Global State Hooks - TanStack Query
 import { usePlayerProfile, useSimulation } from '../../hooks/useLiveOdds';
@@ -474,38 +474,40 @@ const CommandPost = memo(({ isOpen, onClose, pendingLeg, onPendingLegProcessed }
           
           {selectedProfile && !profileLoading && (
             <div className="mt-3">
-              <UniversalPickCard 
-                mode="tactical"
-                pick={{
+              <UniversalPlayerCard 
+                player={{
                   player_name: selectedProfile.player_name,
                   player_id: selectedProfile.player_id,
                   team: selectedProfile.team,
                   position: selectedProfile.position,
                   photo_url: selectedProfile.photo_url,
                   opponent: selectedProfile.opponent,
-                  // BDL Vault Stats (if available)
+                  // BDL Vault Stats from Master Hub
+                  baseline_stats: selectedProfile.baseline_stats,
                   fg_pct: selectedProfile.fg_pct,
                   fg3_pct: selectedProfile.fg3_pct,
                   stl: selectedProfile.stl,
                   blk: selectedProfile.blk,
-                  // Props list for tactical mode
-                  props: selectedProfile.lines?.map(line => ({
-                    stat_type: line.stat_type,
-                    line: line.line,
-                    direction: line.direction || 'over',
-                    odds: line.odds,
-                    l5_avg: line.hit_rates?.l5_avg || line.l5_avg,
-                    l10_avg: line.hit_rates?.l10_avg || line.l10_avg,
-                    season_avg: line.season_avg || line.hit_rates?.season_avg,
-                    h5_rate: line.hit_rates?.h5 || line.h5_rate,
-                    h10_rate: line.hit_rates?.h10 || line.h10_rate,
-                    is_demon: line.is_demon,
-                    is_goblin: line.is_goblin,
-                    tier_label: line.tier_label
-                  })) || []
+                  pts: selectedProfile.pts,
+                  reb: selectedProfile.reb,
+                  ast: selectedProfile.ast
                 }}
-                onClick={(prop) => {
-                  // When clicking a prop in tactical view
+                props={selectedProfile.lines?.map(line => ({
+                  stat_type: line.stat_type,
+                  line: line.line,
+                  direction: line.direction || 'over',
+                  odds: line.odds,
+                  l5_avg: line.hit_rates?.l5_avg || line.l5_avg,
+                  l10_avg: line.hit_rates?.l10_avg || line.l10_avg,
+                  season_avg: line.season_avg || line.hit_rates?.season_avg,
+                  h5_rate: line.hit_rates?.h5 || line.h5_rate,
+                  h10_rate: line.hit_rates?.h10 || line.h10_rate,
+                  is_demon: line.is_demon,
+                  is_goblin: line.is_goblin,
+                  tier_label: line.tier_label
+                })) || []}
+                onClick={(playerOrProp) => {
+                  // When clicking a prop in the player card
                   if (isPlayerInLegs(selectedProfile.player_id, selectedProfile.player_name)) {
                     toast.error(`Conflict: ${selectedProfile.player_name} is already in your Command Post`, {
                       description: 'Remove the existing prop first to add a different one.',
@@ -515,26 +517,29 @@ const CommandPost = memo(({ isOpen, onClose, pendingLeg, onPendingLegProcessed }
                     return;
                   }
                   
-                  const newLeg = {
-                    player_name: selectedProfile.player_name,
-                    player_id: selectedProfile.player_id,
-                    stat_type: prop.stat_type,
-                    line: prop.line,
-                    direction: prop.direction || 'over',
-                    team: selectedProfile.team,
-                    opponent: selectedProfile.opponent,
-                    is_home: true,
-                    h10_rate: prop.h10_rate || 50,
-                    h5_rate: prop.h5_rate || 50,
-                    season_avg: prop.season_avg,
-                    l5_avg: prop.l5_avg,
-                    l10_avg: prop.l10_avg
-                  };
-                  
-                  setLegs(prev => [...prev, newLeg]);
-                  toast.success(`Added: ${newLeg.player_name} ${newLeg.stat_type} ${newLeg.direction} ${newLeg.line}`, {
-                    duration: 2000,
-                  });
+                  // Check if it's a prop click (has stat_type) or player click
+                  if (playerOrProp.stat_type) {
+                    const newLeg = {
+                      player_name: selectedProfile.player_name,
+                      player_id: selectedProfile.player_id,
+                      stat_type: playerOrProp.stat_type,
+                      line: playerOrProp.line,
+                      direction: playerOrProp.direction || 'over',
+                      team: selectedProfile.team,
+                      opponent: selectedProfile.opponent,
+                      is_home: true,
+                      h10_rate: playerOrProp.h10_rate || 50,
+                      h5_rate: playerOrProp.h5_rate || 50,
+                      season_avg: playerOrProp.season_avg,
+                      l5_avg: playerOrProp.l5_avg,
+                      l10_avg: playerOrProp.l10_avg
+                    };
+                    
+                    setLegs(prev => [...prev, newLeg]);
+                    toast.success(`Added: ${newLeg.player_name} ${newLeg.stat_type} ${newLeg.direction} ${newLeg.line}`, {
+                      duration: 2000,
+                    });
+                  }
                 }}
               />
               <button
