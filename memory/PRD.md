@@ -1,116 +1,89 @@
-# PickVision - NBA Player Prop Dashboard
+# PickVision AI - Product Requirements Document
 
-## Overview
-PickVision is a high-performance NBA Player Prop Dashboard with a "military tech" aesthetic. The application delivers AI-driven betting insights using PropVision Command Post technology.
-
-## Latest Update: 2026-03-17
-
-### ANCHOR-BASED CLASSIFICATION - COMPLETED ✅
-**Simple tier classification based on standard line**
-
-**Classification Logic:**
-- **STANDARD (Gray)**: The anchor line itself (is_alternate_market=false)
-- **DEMON (Red)**: ALL alternate lines ABOVE the standard
-- **GOBLIN (Green)**: ALL alternate lines BELOW the standard
-
-**Returns ALL lines for each tier, not filtered.**
-
-**Example - Lamelo Ball:**
-```
-STANDARD (Gray): 18 lines (the anchors)
-DEMON (Red): 29 lines (all above standard)
-GOBLIN (Green): 13 lines (all below standard)
-```
-
-**API Endpoints:**
-- `/api/v3/war-zone` - Returns ALL DEMON lines (Red)
-- `/api/v3/safe-haven` - Returns ALL GOBLIN lines (Green)
-- `/api/v3/front-lines` - Returns mixed DEMON + GOBLIN
-
-**Results:**
-- War Zone: 50 DEMON picks returned
-- Safe Haven: 50 GOBLIN picks returned  
-- Front Lines: 10 mixed picks (DEMON + GOBLIN interleaved)
-- All picks include anchor_line for verification
-
----
-
-### UNIVERSAL PLAYER CARD ARCHITECTURE - COMPLETED ✅
-**Single card component for the entire app**
-
-**File Path:** `/app/frontend/src/components/dashboard/UniversalPlayerCard.jsx`
-
-**Architecture: TWO-FUNNEL JOIN**
-```
-FUNNEL 1 - VAULT (nba_master_hub_2026):
-  - Player Identity: Name, Team, Headshot URL
-  - Season Stats: PTS, REB, AST, FG%, 3P%, STL, BLK
-  - Game Logs: For L5/L10 hit rate calculation
-  - Source: BallDontLie API + NBA Official
-
-FUNNEL 2 - ODDS (dg_cached_board):
-  - Active Props: All PrizePicks lines
-  - Tier Classification: DEMON, GOBLIN, STANDARD
-  - Source: The Odds API (polled every 30 seconds)
-```
-
-**Deleted Deprecated Components:**
-- `/app/frontend/src/components/dashboard/PickCard.jsx` - DELETED
-- `/app/frontend/src/components/dashboard/PlayerCard.jsx` - DELETED
-- `/app/frontend/src/components/dashboard/TacticalPlayerCard.jsx` - DELETED
-- `/app/frontend/src/components/dashboard/SectionContainer.jsx` - DELETED
-
----
-
-### BDL VAULT STATS - WORKING ✅
-**Raw JSON Structure in Master Hub:**
-```json
-{
-  "display_name": "Coby White",
-  "team": "CHA",
-  "baseline_stats": {
-    "fg_pct": 0.45,
-    "fg3_pct": 0.367,
-    "stl": 0.933,
-    "blk": 0.213
-  }
-}
-```
-
----
+## Original Problem Statement
+Build a sports betting analytics platform that helps users identify high-value betting opportunities using data-driven analysis. The core concept is PrizePicks anchor-based classification where betting props are classified as:
+- **DEMON**: Alternate line > standard line (high risk/reward)
+- **GOBLIN**: Alternate line < standard line (safer plays)
+- **STANDARD**: No alternate line available
 
 ## Core Architecture
 
-### Database: `pick_vision` (MongoDB)
-- `dg_cached_board`: Live PrizePicks odds with anchor-classified props
-- `nba_master_hub_2026`: Master player vault with BDL stats + game_logs
+### Data Sources
+- **BallDon'tLie (BDL) API**: Primary source for player stats and identity
+- **nba_api (Python)**: Secondary source for supplemental player data
+- **The Odds API**: Source for betting lines
 
-### Backend Services
-- `anchor_classification_service.py`: Simple if/else classification logic
-- `picks_getter_service.py`: Data fetching and enrichment
-- `cached_board_builder_service.py`: Sync and store classified props
+### Database Structure
+- `pick_vision.nba_master_hub_2026`: Master player data vault with deduplicated players, baseline stats, and game logs
+- `pick_vision.dg_cached_board`: Cached betting board with player-centric documents containing props arrays
 
-### Backend Endpoints
-- `GET /api/v3/war-zone`: DEMON picks (line > anchor)
-- `GET /api/v3/safe-haven`: GOBLIN picks (line < anchor)
-- `GET /api/v3/front-lines`: Mixed DEMON + GOBLIN picks
-- `GET /api/command/profile/{name}`: Full player profile
+### Tier Logic
+1. **Safe Haven (Goblins)**: 
+   - Must be GOBLIN tier
+   - Line value below player's season average
+   - Hit rate >= 80% in last 10 games
 
----
+2. **Front Lines (Mid-Tier)**:
+   - Must be GOBLIN tier
+   - 7-12% discount from standard line
+   - Line value at least 5% lower than season average
+   - Hit rate >= 72% in last 25 games
+   - Must NOT qualify for Safe Haven
 
-## Backlog
+3. **War Zone (Demons)**:
+   - Must be DEMON tier
+   - High risk/reward plays
 
-### P1 - High Priority
-- Run full roster sync to update all players' team/position data
-- Verify player name normalization across pipeline
-- Clarify Coby White PPG discrepancy (user mentioned 8.1 vs BDL's ~20.3)
+## What's Been Implemented
 
-### P2 - Medium Term
-- Stripe payment integration
-- "Copy Parlay" button
-- Real Google/Apple OAuth
+### Dec 2025 - Data Architecture
+- Corrected player stats by updating all sync services to use 2025-26 season
+- Performed full data sync updating 102 active players
+- Merged 91 duplicate player documents in nba_master_hub_2026
+- Implemented Safe Haven and Front Lines backend logic
 
-### P3 - Future
-- Mobile-responsive redesign
-- Push notifications
-- Historical performance tracking
+### Dec 2025 - UI/UX
+- Fixed prop labels (removed "O" prefix, consistent naming)
+- Updated UniversalPlayerCard for all tier displays
+- Expanded player detail header with season stats (PPG, RPG, APG)
+- Corrected sorting on Player Detail page (DEMON -> STANDARD -> GOBLIN)
+
+### Mar 2026 - Icon Update
+- Icons now reflect actual pick type (DEMON=red, GOBLIN=green) regardless of card theme
+- Removed "FRONT LINE" badge from cards
+- Front Lines: Yellow card theme + Green Goblin icon
+- War Zone: Red card theme + Red Demon icon
+- Safe Haven: Green card theme + Green Goblin icon
+
+## Key Files
+- `/app/backend/services/picks_getter_service.py` - Safe Haven & Front Lines logic
+- `/app/frontend/src/components/dashboard/UniversalPlayerCard.jsx` - Unified player card component
+- `/app/frontend/src/components/dashboard/PlayerDetailPage.jsx` - Player detail view
+- `/app/backend/services/bdl_comprehensive_sync.py` - BDL data sync
+
+## API Endpoints
+- `GET /api/v3/safe-haven` - High-probability GOBLIN picks
+- `GET /api/v3/front-lines` - Mid-tier GOBLIN picks
+- `GET /api/v3/war-zone` - High-risk DEMON picks
+- `GET /api/v3/cached-player/{player_name}` - Single player with all props
+
+## Prioritized Backlog
+
+### P1 - Cleanup
+- Delete deprecated components (PickCard, PlayerCard, TacticalPlayerCard)
+
+### P2 - Features
+- Add "Last Updated" timestamp to dashboard
+- Add "Copy Parlay" feature
+- Implement tooltip explaining DEMON/GOBLIN on icon hover
+
+### P3 - Infrastructure
+- Implement Stripe for payments
+- Integrate real Google/Apple OAuth
+- Refactor dg_cached_board collection schema
+
+## Technical Notes
+- Always filter dg_cached_board with `"props": {"$exists": True}` to avoid legacy flat documents
+- All player documents use bdl_id or nba_api_id as unique identifiers
+- Use datetime.now(timezone.utc) for timestamps
+- Exclude _id from MongoDB responses

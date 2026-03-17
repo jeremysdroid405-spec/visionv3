@@ -122,7 +122,7 @@ const TIER_THEMES = {
     text: 'text-yellow-400',
     accent: 'bg-yellow-500',
     ring: 'ring-yellow-500/50',
-    Icon: GoblinIcon
+    Icon: null // Icon determined by actual pick type (DEMON/GOBLIN)
   },
   STANDARD: {
     border: 'border-zinc-500/40',
@@ -152,6 +152,7 @@ const getHitRateColor = (rate) => {
 /**
  * Determine the highest tier from all props
  * Priority: DEMON > FRONT_LINE > GOBLIN > STANDARD
+ * FRONT_LINE gets yellow card theme, but icons are still DEMON/GOBLIN colored
  */
 const getHighestTier = (props) => {
   if (!props || props.length === 0) return 'STANDARD';
@@ -296,14 +297,28 @@ VaultStatsRow.displayName = 'VaultStatsRow';
 
 /**
  * Single Prop Row - from Odds Funnel
+ * Card BG: FRONT_LINE = Yellow, DEMON = Red, GOBLIN = Green
+ * Icons: DEMON = Red Demon, GOBLIN = Green Goblin (regardless of card theme)
  */
 const PropRow = memo(({ prop, theme, onClick, onQuickAdd }) => {
   const isDemon = prop.is_demon || prop.tier_label === 'DEMON';
   const isGoblin = prop.is_goblin || prop.tier_label === 'GOBLIN';
   const isFrontLine = prop.tier_label === 'FRONT_LINE' || prop.front_line_qualified;
   
-  const tierColor = isDemon ? 'text-red-400' : isFrontLine ? 'text-yellow-400' : isGoblin ? 'text-green-400' : 'text-zinc-400';
-  const tierBg = isDemon ? 'bg-red-950/40 border-red-500/30' : isFrontLine ? 'bg-yellow-950/40 border-yellow-500/30' : isGoblin ? 'bg-green-950/40 border-green-500/30' : 'bg-zinc-800/40 border-zinc-700/30';
+  // Icon color is ALWAYS based on actual pick type (red demon / green goblin)
+  const iconColor = isDemon ? 'text-red-400' : 'text-green-400';
+  
+  // Card background is yellow for Front Lines, otherwise red/green/zinc
+  const tierBg = isFrontLine ? 'bg-yellow-950/40 border-yellow-500/30' 
+    : isDemon ? 'bg-red-950/40 border-red-500/30' 
+    : isGoblin ? 'bg-green-950/40 border-green-500/30' 
+    : 'bg-zinc-800/40 border-zinc-700/30';
+  
+  // Line value color matches card theme
+  const lineColor = isFrontLine ? 'text-yellow-400' 
+    : isDemon ? 'text-red-400' 
+    : isGoblin ? 'text-green-400' 
+    : 'text-zinc-400';
   
   return (
     <div 
@@ -312,17 +327,12 @@ const PropRow = memo(({ prop, theme, onClick, onQuickAdd }) => {
       data-testid={`prop-row-${prop.stat_type}-${prop.line}`}
     >
       <div className="flex items-center gap-2">
-        {isDemon && <DemonIcon size={14} className={tierColor} />}
-        {(isGoblin || isFrontLine) && !isDemon && <GoblinIcon size={14} className={tierColor} />}
+        {isDemon && <DemonIcon size={14} className={iconColor} />}
+        {(isGoblin || isFrontLine) && !isDemon && <GoblinIcon size={14} className={iconColor} />}
         <div>
           <span className="text-sm font-medium text-white">
-            {prop.stat_type} <span className={tierColor}>{prop.line}</span>
+            {prop.stat_type} <span className={lineColor}>{prop.line}</span>
           </span>
-          {prop.tier_label && prop.tier_label !== 'STANDARD' && (
-            <Badge variant="outline" className={`ml-1.5 text-[8px] px-1 py-0 ${tierColor} border-current`}>
-              {prop.tier_label === 'FRONT_LINE' ? 'FRONT' : prop.tier_label}
-            </Badge>
-          )}
         </div>
       </div>
       
@@ -458,6 +468,12 @@ const UniversalPlayerCard = memo(({
   
   // ==================== COMPACT MODE (Search Results) ====================
   if (mode === 'compact') {
+    // Icon is ALWAYS based on actual pick type (red demon / green goblin)
+    const isDemon = is_demon || tier_label === 'DEMON';
+    const isGoblin = is_goblin || tier_label === 'GOBLIN' || tier_label === 'FRONT_LINE';
+    const CompactIcon = isDemon ? DemonIcon : isGoblin ? GoblinIcon : null;
+    const iconColor = isDemon ? 'text-red-400' : 'text-green-400';
+    
     return (
       <div 
         className={`flex items-center gap-3 p-3 rounded-lg border ${theme.border} bg-gradient-to-br ${theme.bg} cursor-pointer hover:scale-[1.01] transition-all ${theme.glow}`}
@@ -475,7 +491,7 @@ const UniversalPlayerCard = memo(({
         
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
-            {TierIcon && <TierIcon size={16} className={theme.text} />}
+            {CompactIcon && <CompactIcon size={16} className={iconColor} />}
             <span className="font-bold text-white text-sm truncate">{displayName}</span>
             <span className="text-[10px] text-zinc-500">{team}</span>
           </div>
@@ -484,11 +500,6 @@ const UniversalPlayerCard = memo(({
           {stat_type && (
             <div className={`text-xs ${theme.text} mt-0.5`}>
               {stat_type} {line}
-              {tier_label && tier_label !== 'STANDARD' && (
-                <Badge variant="outline" className={`ml-1.5 text-[8px] ${theme.text} border-current`}>
-                  {tier_label}
-                </Badge>
-              )}
             </div>
           )}
           
@@ -517,7 +528,13 @@ const UniversalPlayerCard = memo(({
     );
   }
   
-  // ==================== FULL MODE (Default - War Zone/Safe Haven/Search) ====================
+  // ==================== FULL MODE (Default - War Zone/Safe Haven/Front Lines) ====================
+  // Icon is ALWAYS based on actual pick type (red demon / green goblin)
+  const isDemon = is_demon || tier_label === 'DEMON';
+  const isGoblin = is_goblin || tier_label === 'GOBLIN' || tier_label === 'FRONT_LINE';
+  const FullIcon = isDemon ? DemonIcon : isGoblin ? GoblinIcon : TierIcon;
+  const iconColor = isDemon ? 'text-red-400' : 'text-green-400';
+  
   return (
     <div 
       className={`rounded-xl border ${theme.border} bg-gradient-to-b ${theme.bg} overflow-hidden transition-all ${theme.glow}`}
@@ -544,7 +561,7 @@ const UniversalPlayerCard = memo(({
           {/* Player Info */}
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
-              {TierIcon && <TierIcon size={20} className={theme.text} />}
+              {FullIcon && <FullIcon size={20} className={iconColor} />}
               <h3 className="text-lg font-bold text-white truncate">{displayName}</h3>
               {position && <span className="px-1.5 py-0.5 text-[9px] bg-zinc-700/50 text-zinc-300 rounded">{position}</span>}
             </div>
@@ -555,11 +572,6 @@ const UniversalPlayerCard = memo(({
                   <span className="text-zinc-600">vs</span>
                   <span className="text-zinc-300">{opponent}</span>
                 </>
-              )}
-              {tier_label && tier_label !== 'STANDARD' && (
-                <Badge variant="outline" className={`text-[9px] ${theme.text} border-current`}>
-                  {tier_label === 'FRONT_LINE' ? 'FRONT' : tier_label}
-                </Badge>
               )}
             </div>
             
