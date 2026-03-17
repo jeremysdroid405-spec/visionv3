@@ -1,7 +1,6 @@
 import React, { memo } from 'react';
 import { Card } from '../ui/card';
 import { ChevronRight } from 'lucide-react';
-import { DemonIcon, GoblinIcon } from './Icons';
 
 // Get tier label based on size and section type
 const getTierLabel = (size, sectionType) => {
@@ -84,18 +83,11 @@ export const ParlayTicket = memo(({ ticket, onClick, sectionType = 'war_zone' })
       <div className="p-3">
         {/* Header */}
         <div className="flex items-center justify-between mb-2">
-          <div className="flex items-center gap-2">
-            {sectionType === 'safe_haven' ? (
-              <GoblinIcon size={18} />
-            ) : (
-              <DemonIcon size={18} />
-            )}
-            <div>
-              <div className={`text-sm font-bold ${theme.text}`}>
-                {getTierLabel(size, sectionType)}
-              </div>
-              <div className="text-[10px] text-zinc-500">{ticket.description || `${size} picks`}</div>
+          <div>
+            <div className={`text-sm font-bold ${theme.text}`}>
+              {getTierLabel(size, sectionType)}
             </div>
+            <div className="text-[10px] text-zinc-500">{ticket.description || `${size} picks`}</div>
           </div>
           <div className={`px-2 py-0.5 rounded text-[10px] font-bold ${theme.badge}`}>
             {size}-LEG
