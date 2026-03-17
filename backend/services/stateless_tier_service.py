@@ -235,7 +235,7 @@ class StatelessTierService:
             # Fetch game log
             log = playergamelog.PlayerGameLog(
                 player_id=player_id,
-                season="2024-25"
+                season="2025-26"
             )
             
             df = log.get_data_frames()[0]

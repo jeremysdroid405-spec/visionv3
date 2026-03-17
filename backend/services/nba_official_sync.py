@@ -37,7 +37,7 @@ from nba_api.stats.endpoints import playergamelog, commonplayerinfo, commonteamr
 logger = logging.getLogger(__name__)
 
 # Current NBA Season
-CURRENT_SEASON = "2024-25"  # Format for nba_api
+CURRENT_SEASON = "2025-26"  # Format for nba_api
 
 # Rate limiting (NBA API requires ~0.6s between requests)
 REQUEST_DELAY = 0.6

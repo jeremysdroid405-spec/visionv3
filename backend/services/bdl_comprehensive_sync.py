@@ -28,8 +28,8 @@ logger = logging.getLogger(__name__)
 BDL_API_KEY = os.environ.get("BDL_API_KEY", "ad5544be-9969-434b-9389-2b7cf658c8e0")
 BDL_BASE_URL = "https://api.balldontlie.io/v1"
 
-# Season configuration (BDL uses start year: 2024 = 2024-25 season)
-CURRENT_SEASON = 2024
+# Season configuration (BDL uses start year: 2025 = 2025-26 season)
+CURRENT_SEASON = 2025
 
 
 def _normalize_name(name: str) -> str:
@@ -298,9 +298,13 @@ class BDLComprehensiveSyncService:
             "team_full_name": team_data.get("full_name", ""),
             "team_id": team_data.get("id"),
             
-            # Baseline stats (EXACTLY as received from BDL /season_averages)
-            # NO field renaming - 1:1 mirror of BDL API
-            "baseline_stats": season_avg if season_avg else {},
+            # Baseline stats - Transform BDL format to our expected format
+            # BDL returns: {pts: 19.3, reb: 4.8, ...}
+            # We need: {PTS: {season_avg: 19.3}, REB: {season_avg: 4.8}, ...}
+            "baseline_stats": self._transform_bdl_stats(season_avg) if season_avg else {},
+            
+            # Raw BDL stats (preserved for reference)
+            "bdl_raw_stats": season_avg if season_avg else {},
             
             # Individual game logs (EXACTLY as received from BDL /stats)
             # Last 15 games with full box scores
@@ -313,6 +317,65 @@ class BDLComprehensiveSyncService:
         }
         
         return doc
+    
+    def _transform_bdl_stats(self, bdl_stats: Dict) -> Dict:
+        """
+        Transform BDL season averages to our expected format.
+        BDL: {pts: 19.3, reb: 4.8, ast: 7.1, ...}
+        Our: {PTS: {season_avg: 19.3, l5_avg: None, l10_avg: None}, ...}
+        """
+        if not bdl_stats:
+            return {}
+        
+        # Mapping from BDL keys to our uppercase keys
+        stat_map = {
+            'pts': 'PTS',
+            'reb': 'REB',
+            'ast': 'AST',
+            'stl': 'STL',
+            'blk': 'BLK',
+            'turnover': 'TOV',
+            'fg3m': '3PM',
+            'fgm': 'FGM',
+            'ftm': 'FTM',
+        }
+        
+        transformed = {}
+        
+        for bdl_key, our_key in stat_map.items():
+            if bdl_key in bdl_stats:
+                transformed[our_key] = {
+                    'season_avg': round(bdl_stats[bdl_key], 1) if bdl_stats[bdl_key] else None,
+                    'l5_avg': None,
+                    'l10_avg': None
+                }
+        
+        # Add shooting percentages directly
+        if 'fg_pct' in bdl_stats:
+            transformed['fg_pct'] = bdl_stats['fg_pct']
+        if 'fg3_pct' in bdl_stats:
+            transformed['fg3_pct'] = bdl_stats['fg3_pct']
+        if 'ft_pct' in bdl_stats:
+            transformed['ft_pct'] = bdl_stats['ft_pct']
+        
+        # Add combo stats
+        if 'pts' in bdl_stats and 'reb' in bdl_stats and 'ast' in bdl_stats:
+            pra = (bdl_stats.get('pts', 0) or 0) + (bdl_stats.get('reb', 0) or 0) + (bdl_stats.get('ast', 0) or 0)
+            transformed['PRA'] = {'season_avg': round(pra, 1), 'l5_avg': None, 'l10_avg': None}
+            
+        if 'pts' in bdl_stats and 'reb' in bdl_stats:
+            pr = (bdl_stats.get('pts', 0) or 0) + (bdl_stats.get('reb', 0) or 0)
+            transformed['PR'] = {'season_avg': round(pr, 1), 'l5_avg': None, 'l10_avg': None}
+            
+        if 'pts' in bdl_stats and 'ast' in bdl_stats:
+            pa = (bdl_stats.get('pts', 0) or 0) + (bdl_stats.get('ast', 0) or 0)
+            transformed['PA'] = {'season_avg': round(pa, 1), 'l5_avg': None, 'l10_avg': None}
+            
+        if 'reb' in bdl_stats and 'ast' in bdl_stats:
+            ra = (bdl_stats.get('reb', 0) or 0) + (bdl_stats.get('ast', 0) or 0)
+            transformed['RA'] = {'season_avg': round(ra, 1), 'l5_avg': None, 'l10_avg': None}
+        
+        return transformed
     
     async def sync_player_to_master_hub(self, player_id: int) -> bool:
         """

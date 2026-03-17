@@ -240,7 +240,7 @@ class NBAScraper:
         url = f"{self.base_url}/commonteamroster"
         params = {
             "TeamID": team_id,
-            "Season": "2024-25"
+            "Season": "2025-26"
         }
         
         data = await fetch_with_backoff(url, headers=self.headers, params=params)
