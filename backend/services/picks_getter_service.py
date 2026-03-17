@@ -692,6 +692,8 @@ class PicksGetterService:
         """
         Get the CACHED board from MongoDB.
         NO API CALLS - reads only from database.
+        
+        Returns player-centric documents (those with props array).
         """
         sync_meta = await self.sync_log.find_one({"type": "cached_board"})
         
@@ -704,8 +706,11 @@ class PicksGetterService:
                 "trending": []
             }
         
-        # Get all players from cached_board (exclude _id)
-        players = await self.cached_board.find({}, {"_id": 0}).sort("rank", 1).to_list(500)
+        # Get only player-centric documents (those with props array)
+        players = await self.cached_board.find(
+            {"props": {"$exists": True}},
+            {"_id": 0}
+        ).sort("rank", 1).to_list(500)
         
         # Clean any remaining ObjectIds
         for player in players:
