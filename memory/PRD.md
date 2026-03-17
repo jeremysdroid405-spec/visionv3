@@ -5,29 +5,27 @@ PickVision is a high-performance NBA Player Prop Dashboard with a "military tech
 
 ## Latest Update: 2026-03-17
 
-### ANCHOR-BASED CLASSIFICATION FIX - COMPLETED ✅
-**Data APIs fixed and working correctly**
+### ANCHOR-BASED CLASSIFICATION - COMPLETED ✅
+**Simple tier classification based on standard line**
 
-**Problem:**
-- Main data APIs (`/api/v3/war-zone`, `/api/v3/safe-haven`, `/api/v3/front-lines`) were broken
-- `picks_getter_service.py` had syntax errors from incomplete refactor (duplicate code lines 609-614)
-- Frontend showing "No picks available"
+**Classification Logic:**
+- **STANDARD (Gray)**: The anchor line itself (is_alternate_market=false)
+- **DEMON (Red)**: ALL alternate lines ABOVE the standard
+- **GOBLIN (Green)**: ALL alternate lines BELOW the standard
 
-**Fix Applied:**
-- Fixed syntax error in `/app/backend/services/picks_getter_service.py`
-- Removed duplicate code block from `get_front_lines()` method
-- APIs now correctly query for DEMON/GOBLIN props from nested `props` array
+**Returns ALL lines for each tier, not filtered.**
 
-**Anchor Classification Logic (Simple If/Else):**
-```python
-if prop_line > anchor_line:
-    tier = "DEMON"     # ALL alternates above standard (Red)
-elif prop_line < anchor_line:
-    tier = "GOBLIN"    # ALL alternates below standard (Green)
-else:
-    tier = "STANDARD"  # The standard line itself (Gray)
+**Example - Lamelo Ball:**
 ```
-*Applies to ALL bets (over AND under) - classification is based on line value vs anchor*
+STANDARD (Gray): 18 lines (the anchors)
+DEMON (Red): 29 lines (all above standard)
+GOBLIN (Green): 13 lines (all below standard)
+```
+
+**API Endpoints:**
+- `/api/v3/war-zone` - Returns ALL DEMON lines (Red)
+- `/api/v3/safe-haven` - Returns ALL GOBLIN lines (Green)
+- `/api/v3/front-lines` - Returns mixed DEMON + GOBLIN
 
 **Results:**
 - War Zone: 50 DEMON picks returned
