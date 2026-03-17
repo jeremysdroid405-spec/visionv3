@@ -301,7 +301,7 @@
 
 .news-ticker-content {
   display: flex;
-  animation: ticker-scroll 75s linear infinite;
+  animation: ticker-scroll 120s linear infinite;
   width: fit-content;
 }
 
