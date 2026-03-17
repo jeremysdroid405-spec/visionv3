@@ -186,11 +186,12 @@ async def get_tactical_profile(
         
         player_name_regex = {"$regex": player_name, "$options": "i"}
         
-        # ===== STEP 1: Fetch ALL available props from dg_live_props =====
-        all_props = await db.dg_live_props.find(
+        # ===== STEP 1: Fetch ALL available props from dg_cached_board =====
+        # Props include provider-based tier classification (is_demon, is_goblin, tier_label)
+        all_props = await db.dg_cached_board.find(
             {"player_name": player_name_regex},
             {"_id": 0}
-        ).to_list(100)
+        ).to_list(200)
         
         # ===== STEP 2: Fetch PropVision recommendations (Target-Lock props) =====
         radar_picks = await db.dg_radar_picks.find(
@@ -268,20 +269,34 @@ async def get_tactical_profile(
         
         # ===== STEP 5: Build ALL prop lines with COUPLED stats from MASTER HUB =====
         # CRITICAL FIX: Both L5_avg and L5_hit_rate MUST come from the SAME array
+        # PROVIDER-BASED CLASSIFICATION: Use is_demon, is_goblin, tier_label from cached board
         active_lines = []
         seen_props = set()  # Dedupe by stat_type + line + direction
         
         # Get game_logs from master hub for coupled calculations
         game_logs = master_player.get("game_logs", []) if master_player else []
         
-        # First pass: collect all props with their odds
-        props_by_stat = {}  # {stat_type: [props]}
+        # Track standard lines by stat type (for reference, not classification)
+        standard_lines = {}  # {stat_type: standard_line_value}
         
         for prop in all_props:
-            stat = prop.get("stat_type_extracted") or prop.get("market", "").replace("player_", "").upper()
+            stat = prop.get("stat_type_extracted") or prop.get("market", "").replace("player_", "").replace("_alternate", "").upper()
             line = prop.get("line", 0)
-            direction = (prop.get("direction") or "over").lower()
+            direction = (prop.get("direction") or prop.get("name", "over")).lower()
             odds = prop.get("price", -110)
+            
+            # Normalize stat type
+            stat = stat.replace("POINTS_REBOUNDS_ASSISTS", "PRA")
+            stat = stat.replace("POINTS_REBOUNDS", "P+R")
+            stat = stat.replace("POINTS_ASSISTS", "P+A")
+            stat = stat.replace("REBOUNDS_ASSISTS", "R+A")
+            stat = stat.replace("THREES", "3PM")
+            stat = stat.replace("BLOCKS", "BLK")
+            stat = stat.replace("STEALS", "STL")
+            stat = stat.replace("TURNOVERS", "TO")
+            stat = stat.replace("POINTS", "PTS")
+            stat = stat.replace("REBOUNDS", "REB")
+            stat = stat.replace("ASSISTS", "AST")
             
             if not stat or not line:
                 continue
@@ -296,9 +311,20 @@ async def get_tactical_profile(
             target_key = f"{stat}|{line}|{direction}"
             is_radar = target_key in target_lock_keys
             
+            # ===== PROVIDER-BASED TIER CLASSIFICATION =====
+            # Use the tier info directly from the cached board (set by adaptive_sync_engine)
+            is_alternate = prop.get("is_alternate_market", False)
+            is_demon = prop.get("is_demon", False)
+            is_goblin = prop.get("is_goblin", False)
+            tier_style = prop.get("tier_style", "standard")
+            tier_label = prop.get("tier_label", "STANDARD")
+            
+            # Track standard lines for reference (non-alternate markets)
+            if not is_alternate and stat not in standard_lines:
+                standard_lines[stat] = line
+            
             # ===== CRITICAL: COUPLED STATS CALCULATION =====
             # Calculate L5/L10 avg AND hit_rate from the EXACT SAME game array
-            # This guarantees mathematical consistency (no more 80% hit rate with 8.0 avg)
             coupled_stats = calculate_coupled_stats(game_logs, stat, line)
             
             l5_data = coupled_stats["l5"]
@@ -313,13 +339,22 @@ async def get_tactical_profile(
                     f"({l5_data['games_over']}/{l5_data['total_games']})"
                 )
             
-            # Build base prop line with COUPLED stats (avg AND hit_rate from same source)
+            # Build base prop line with COUPLED stats + PROVIDER tier classification
             prop_line = {
                 "stat_type": stat,
                 "line": line,
                 "direction": direction,
                 "odds": odds,
                 "is_radar": is_radar,
+                # PROVIDER-BASED TIER CLASSIFICATION
+                "is_alternate_market": is_alternate,
+                "is_demon": is_demon,
+                "is_goblin": is_goblin,
+                "tier_style": tier_style,
+                "tier_label": tier_label,
+                "standard_line": standard_lines.get(stat),
+                # Gap from standard line (if available)
+                "gap_from_standard": round(line - standard_lines.get(stat, line), 1) if standard_lines.get(stat) else None,
                 # COUPLED averages
                 "l5_avg": l5_data["avg"],
                 "l10_avg": l10_data["avg"],
@@ -357,80 +392,21 @@ async def get_tactical_profile(
                 },
                 # Mark as coupled for debugging
                 "stats_coupled": True,
-                "stats_source": "game_logs_coupled"
+                "stats_source": "game_logs_coupled",
+                # Source of tier classification
+                "tier_source": "provider"
             }
-            
-            # Collect props by stat type for anchor-based classification
-            if stat not in props_by_stat:
-                props_by_stat[stat] = []
-            props_by_stat[stat].append(prop_line)
             
             active_lines.append(prop_line)
         
-        # ===== STEP 5.5: ANCHOR-BASED TIER CLASSIFICATION =====
-        # For each stat type, find the "standard" (anchor) line and classify all lines relative to it
-        standard_lines = {}  # {stat_type: anchor_line_value}
-        
-        for stat_type, stat_props in props_by_stat.items():
-            if not stat_props:
-                continue
-            
-            # Find the standard line: closest to -110 juice (most balanced odds)
-            def odds_distance_from_fair(prop):
-                prop_odds = prop.get("odds") or -110
-                # Distance from -110 (fair odds)
-                if prop_odds >= 100:
-                    return abs(prop_odds - 100) + 10  # Plus lines are further from fair
-                else:
-                    return abs(prop_odds + 110)  # Minus lines, -110 is baseline
-            
-            # Sort by odds distance from fair value
-            sorted_props = sorted(stat_props, key=odds_distance_from_fair)
-            standard_line_value = sorted_props[0]["line"] if sorted_props else None
-            standard_lines[stat_type] = standard_line_value
-        
-        # Now apply GOBLIN/DEMON/STANDARD classification based on anchor
+        # ===== STEP 5.5: Add Intel Suite for Target-Lock props =====
         for prop_line in active_lines:
             stat = prop_line["stat_type"]
             line = prop_line["line"]
-            anchor = standard_lines.get(stat)
-            
-            if anchor is None:
-                # No anchor found, use fallback logic
-                prop_line["tier_style"] = "standard"
-                prop_line["tier_label"] = "STANDARD"
-                prop_line["is_goblin"] = False
-                prop_line["is_demon"] = False
-                prop_line["standard_line"] = None
-            elif line == anchor:
-                # This IS the standard line
-                prop_line["tier_style"] = "standard"
-                prop_line["tier_label"] = "STANDARD"
-                prop_line["is_goblin"] = False
-                prop_line["is_demon"] = False
-                prop_line["is_anchor"] = True
-                prop_line["standard_line"] = anchor
-            elif line < anchor:
-                # GOBLIN: Alt Over LOWER than standard (easier to hit)
-                prop_line["tier_style"] = "green"
-                prop_line["tier_label"] = "GOBLIN"
-                prop_line["is_goblin"] = True
-                prop_line["is_demon"] = False
-                prop_line["standard_line"] = anchor
-                prop_line["ladder_position"] = "below"
-                prop_line["gap_from_anchor"] = round(anchor - line, 1)
-            else:
-                # DEMON: Alt Over HIGHER than standard (harder to hit)
-                prop_line["tier_style"] = "red"
-                prop_line["tier_label"] = "DEMON"
-                prop_line["is_goblin"] = False
-                prop_line["is_demon"] = True
-                prop_line["standard_line"] = anchor
-                prop_line["ladder_position"] = "above"
-                prop_line["gap_from_anchor"] = round(line - anchor, 1)
+            direction = prop_line.get("direction", "over")
             
             # If Target-Lock, add Full Intel Suite data
-            target_key = f"{stat}|{line}|{prop_line.get('direction', 'over')}"
+            target_key = f"{stat}|{line}|{direction}"
             if prop_line.get("is_radar") and target_key in target_lock_details:
                 board_pick = target_lock_details[target_key]
                 
@@ -545,13 +521,13 @@ async def get_tactical_profile(
             "usage_ripple": usage_ripple,
             "badges": badges,
             "vision_insight": vision_insight,
-            # Anchor-based tier system metadata
+            # Provider-based tier system metadata
             "standard_lines": standard_lines,
             "tier_logic": {
-                "description": "Anchor-based tier classification",
-                "standard": "Line with odds closest to -110 (fair value)",
-                "goblin": "Alt Over lines LOWER than standard (safer, higher hit rate)",
-                "demon": "Alt Over lines HIGHER than standard (riskier, ladder plays)"
+                "description": "Provider-based tier classification from alternate markets",
+                "standard": "Main market lines (non-alternate)",
+                "goblin": "Alternate market lines with odds != +100 (easier to hit)",
+                "demon": "Alternate market lines with +100 odds (harder to hit, ladder plays)"
             }
         }
         

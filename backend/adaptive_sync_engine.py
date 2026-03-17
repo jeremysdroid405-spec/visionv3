@@ -122,30 +122,86 @@ class AdaptiveSyncEngine:
     async def _fetch_live_odds(self) -> List[Dict[str, Any]]:
         """
         Fetch current odds from The Odds API.
+        
+        Two-step process for player props:
+        1. Fetch list of NBA events
+        2. Fetch player prop odds for each event (alternate markets for Goblin/Demon)
+        
         Returns raw odds data for processing.
         """
         if not self.odds_api_key:
             logger.warning("[ADAPTIVE_SYNC] No Odds API key configured")
             return []
         
-        markets = "player_points,player_rebounds,player_assists,player_threes,player_blocks,player_steals,player_points_rebounds_assists"
-        
-        url = f"{self.base_url}/sports/basketball_nba/events"
-        params = {
+        # Step 1: Fetch list of NBA events
+        events_url = f"{self.base_url}/sports/basketball_nba/events"
+        events_params = {
             "apiKey": self.odds_api_key,
-            "regions": "us",
-            "markets": markets,
-            "oddsFormat": "american"
+            "dateFormat": "iso"
         }
         
         try:
             async with httpx.AsyncClient(timeout=30.0) as client:
-                response = await client.get(url, params=params)
-                response.raise_for_status()
+                events_response = await client.get(events_url, params=events_params)
+                events_response.raise_for_status()
+                events = events_response.json()
+                logger.info(f"[ADAPTIVE_SYNC] Found {len(events)} NBA events")
                 
-                events = response.json()
-                logger.info(f"[ADAPTIVE_SYNC] Fetched {len(events)} events from Odds API")
-                return events
+                if not events:
+                    return []
+                
+                # Step 2: Fetch player prop odds for each event
+                # Markets: standard + alternate for Goblin/Demon classification
+                markets = ",".join([
+                    # Standard markets
+                    "player_points", "player_rebounds", "player_assists",
+                    "player_threes", "player_blocks", "player_steals",
+                    "player_points_rebounds_assists", "player_points_rebounds",
+                    "player_points_assists", "player_rebounds_assists",
+                    # Alternate markets (for Goblin/Demon)
+                    "player_points_alternate", "player_rebounds_alternate", "player_assists_alternate",
+                    "player_threes_alternate", "player_blocks_alternate", "player_steals_alternate",
+                    "player_points_rebounds_assists_alternate", "player_points_rebounds_alternate",
+                    "player_points_assists_alternate", "player_rebounds_assists_alternate"
+                ])
+                
+                enriched_events = []
+                
+                for event in events:
+                    event_id = event.get("id")
+                    if not event_id:
+                        continue
+                    
+                    # Fetch odds for this event
+                    odds_url = f"{self.base_url}/sports/basketball_nba/events/{event_id}/odds"
+                    odds_params = {
+                        "apiKey": self.odds_api_key,
+                        "regions": "us",
+                        "markets": markets,
+                        "oddsFormat": "american"
+                    }
+                    
+                    try:
+                        odds_response = await client.get(odds_url, params=odds_params, timeout=15.0)
+                        if odds_response.status_code == 200:
+                            odds_data = odds_response.json()
+                            # Merge event info with odds data
+                            odds_data["event_id"] = event_id
+                            enriched_events.append(odds_data)
+                        elif odds_response.status_code == 422:
+                            # Try with basic markets only
+                            odds_params["markets"] = "player_points,player_rebounds,player_assists,player_points_alternate,player_rebounds_alternate,player_assists_alternate"
+                            odds_response = await client.get(odds_url, params=odds_params, timeout=15.0)
+                            if odds_response.status_code == 200:
+                                odds_data = odds_response.json()
+                                odds_data["event_id"] = event_id
+                                enriched_events.append(odds_data)
+                    except Exception as e:
+                        logger.warning(f"[ADAPTIVE_SYNC] Failed to fetch odds for event {event_id}: {e}")
+                        continue
+                
+                logger.info(f"[ADAPTIVE_SYNC] Fetched odds for {len(enriched_events)} events")
+                return enriched_events
                 
         except httpx.HTTPStatusError as e:
             logger.error(f"[ADAPTIVE_SYNC] Odds API HTTP error: {e.response.status_code}")
@@ -190,6 +246,13 @@ class AdaptiveSyncEngine:
         """
         Update the dg_cached_board collection with fresh odds data.
         Adds last_updated timestamp to all entries.
+        
+        PROVIDER-BASED TIER CLASSIFICATION:
+        - is_alternate_market: True if market ends with "_alternate"
+        - For alternate markets:
+          - is_demon = price == +100 (even odds = harder/riskier)
+          - is_goblin = price != +100 (any other odds = easier/safer)
+        - For standard markets: both flags are False
         """
         if not events:
             return {"updated": 0, "errors": 0}
@@ -197,6 +260,9 @@ class AdaptiveSyncEngine:
         now = datetime.now(timezone.utc)
         updated_count = 0
         error_count = 0
+        goblin_count = 0
+        demon_count = 0
+        standard_count = 0
         
         for event in events:
             game_id = event.get("id")
@@ -214,13 +280,54 @@ class AdaptiveSyncEngine:
                     market_key = market.get("key", "")
                     outcomes = market.get("outcomes", [])
                     
+                    # Determine if this is an alternate market (provider classification)
+                    is_alternate_market = "_alternate" in market_key
+                    
+                    # Extract base stat type (remove "_alternate" suffix)
+                    stat_type_extracted = market_key.replace("_alternate", "").replace("player_", "").upper()
+                    # Normalize combined stats
+                    stat_type_extracted = stat_type_extracted.replace("POINTS_REBOUNDS_ASSISTS", "PRA")
+                    stat_type_extracted = stat_type_extracted.replace("POINTS_REBOUNDS", "P+R")
+                    stat_type_extracted = stat_type_extracted.replace("POINTS_ASSISTS", "P+A")
+                    stat_type_extracted = stat_type_extracted.replace("REBOUNDS_ASSISTS", "R+A")
+                    stat_type_extracted = stat_type_extracted.replace("THREES", "3PM")
+                    stat_type_extracted = stat_type_extracted.replace("BLOCKS", "BLK")
+                    stat_type_extracted = stat_type_extracted.replace("STEALS", "STL")
+                    stat_type_extracted = stat_type_extracted.replace("TURNOVERS", "TO")
+                    stat_type_extracted = stat_type_extracted.replace("POINTS", "PTS")
+                    stat_type_extracted = stat_type_extracted.replace("REBOUNDS", "REB")
+                    stat_type_extracted = stat_type_extracted.replace("ASSISTS", "AST")
+                    
                     for outcome in outcomes:
                         player_name = outcome.get("description", "")
                         if not player_name:
                             continue
                         
+                        price = outcome.get("price", 0)
+                        direction = (outcome.get("name", "") or "over").lower()
+                        
+                        # PROVIDER-BASED CLASSIFICATION
+                        # Demon: Alternate market with +100 odds (harder to hit)
+                        # Goblin: Alternate market with other odds (easier to hit)
+                        # Standard: Non-alternate market
+                        if is_alternate_market:
+                            is_demon = price == 100  # +100 = even odds = harder
+                            is_goblin = price != 100  # Other odds = easier
+                            tier_style = "red" if is_demon else "green"
+                            tier_label = "DEMON" if is_demon else "GOBLIN"
+                            if is_demon:
+                                demon_count += 1
+                            else:
+                                goblin_count += 1
+                        else:
+                            is_demon = False
+                            is_goblin = False
+                            tier_style = "standard"
+                            tier_label = "STANDARD"
+                            standard_count += 1
+                        
                         try:
-                            # Build the update document
+                            # Build the update document with provider classification
                             update_doc = {
                                 "game_id": game_id,
                                 "commence_time": commence_time,
@@ -230,11 +337,19 @@ class AdaptiveSyncEngine:
                                 "market": market_key,
                                 "player_name": player_name,
                                 "line": outcome.get("point", 0),
-                                "price": outcome.get("price", 0),
+                                "price": price,
+                                "direction": direction,
                                 "name": outcome.get("name", ""),  # Over/Under
                                 "last_updated": now,
                                 "last_updated_iso": now.isoformat(),
-                                "sync_source": "adaptive_sync_engine"
+                                "sync_source": "adaptive_sync_engine",
+                                # Provider-based tier classification
+                                "is_alternate_market": is_alternate_market,
+                                "is_demon": is_demon,
+                                "is_goblin": is_goblin,
+                                "tier_style": tier_style,
+                                "tier_label": tier_label,
+                                "stat_type_extracted": stat_type_extracted
                             }
                             
                             # Upsert to collection
@@ -243,6 +358,8 @@ class AdaptiveSyncEngine:
                                     "game_id": game_id,
                                     "player_name": player_name,
                                     "market": market_key,
+                                    "line": outcome.get("point", 0),
+                                    "direction": direction,
                                     "bookmaker": bookmaker.get("key", "")
                                 },
                                 {"$set": update_doc},
@@ -253,6 +370,10 @@ class AdaptiveSyncEngine:
                         except Exception as e:
                             error_count += 1
                             logger.error(f"[ADAPTIVE_SYNC] Error updating {player_name}: {e}")
+        
+        # Log tier distribution
+        if updated_count > 0:
+            logger.info(f"[ADAPTIVE_SYNC] Tier distribution: {goblin_count} Goblin, {demon_count} Demon, {standard_count} Standard")
         
         # Update sync status
         await self._update_sync_status(now, updated_count, error_count)
