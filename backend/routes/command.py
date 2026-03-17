@@ -245,7 +245,8 @@ async def get_tactical_profile(
             player_team = master_player.get("team", "")
             player_position = master_player.get("position", "")
             player_id = master_player.get("player_id")
-            nba_id = master_player.get("nba_id")
+            # Check both nba_id and nba_player_id (master hub uses nba_player_id)
+            nba_id = master_player.get("nba_id") or master_player.get("nba_player_id")
             espn_id = master_player.get("espn_id")
             baseline_stats = master_player.get("baseline_stats", {})
         
@@ -355,6 +356,31 @@ async def get_tactical_profile(
                 "stats_source": "game_logs_coupled"
             }
             
+            # ===== TIER STYLE & GOBLIN/DEMON FLAGS =====
+            h10_rate = l10_data["hit_rate"]
+            h5_rate = l5_data["hit_rate"]
+            
+            # Goblin: line is BELOW season avg AND high hit rate (>=80%)
+            is_goblin = h10_rate >= 0.80 and l10_data["avg"] > line
+            # Demon: line is ABOVE season avg (aggressive play)
+            is_demon = l10_data["avg"] < line and h10_rate >= 0.60
+            
+            if is_goblin:
+                prop_line["tier_style"] = "green"
+                prop_line["tier_label"] = "GOBLIN"
+                prop_line["is_goblin"] = True
+                prop_line["is_demon"] = False
+            elif is_demon:
+                prop_line["tier_style"] = "red"
+                prop_line["tier_label"] = "DEMON"
+                prop_line["is_goblin"] = False
+                prop_line["is_demon"] = True
+            else:
+                prop_line["tier_style"] = "standard"
+                prop_line["tier_label"] = "STANDARD"
+                prop_line["is_goblin"] = False
+                prop_line["is_demon"] = False
+            
             # If Target-Lock, add Full Intel Suite data
             if is_radar and target_key in target_lock_details:
                 board_pick = target_lock_details[target_key]
@@ -414,6 +440,52 @@ async def get_tactical_profile(
         # Build radar_picks list (stat_type only for backward compat)
         radar_stat_types = list(set(p.get("stat_type", "") for p in board_picks if p.get("stat_type")))
         
+        # ===== STEP 7: Fetch Player Badges from Context Engine =====
+        badges = []
+        vision_insight = None
+        
+        try:
+            from services.badge_resolver import get_badge_resolver
+            badge_resolver = get_badge_resolver(db)
+            
+            # Get player's NBA ID for badge lookup
+            lookup_id = nba_id or player_id
+            if lookup_id:
+                resolved_badges = await badge_resolver.resolve_badges(int(lookup_id))
+                badges = [{
+                    "id": b.get("badge_key"),
+                    "label": b.get("display"),
+                    "icon": b.get("icon"),
+                    "color": b.get("color"),
+                    "severity": b.get("severity"),
+                    "headline": b.get("headline")
+                } for b in resolved_badges]
+                
+                # Generate vision insight if badges exist
+                if badges:
+                    badge_labels = [b["label"] for b in badges[:3]]
+                    
+                    # Get best line info
+                    best_line = None
+                    for line in active_lines:
+                        if line.get("tier_style") == "green" and line.get("h10_rate", 0) >= 80:
+                            best_line = line
+                            break
+                    
+                    if best_line:
+                        stat = best_line.get("stat_type", "")
+                        line_val = best_line.get("line", 0)
+                        h10 = best_line.get("h10_rate", 0)
+                        avg = best_line.get("l10_avg", 0)
+                        
+                        vision_insight = (
+                            f"{player_name.split()[0]} is hitting the {line_val} {stat} line with {h10:.0f}% "
+                            f"consistency (L10 avg: {avg:.1f}). "
+                            f"Active context: {', '.join(badge_labels)}."
+                        )
+        except Exception as e:
+            logger.debug(f"[PROFILE] Badge resolution skipped: {e}")
+        
         return {
             "success": True,
             "player_name": master_player.get("display_name") if master_player else (board_picks[0].get("player_name", player_name) if board_picks else player_name),
@@ -423,13 +495,16 @@ async def get_tactical_profile(
             "team": player_team,
             "position": player_position,
             "photo_url": photo_url,
+            "headshot_url": photo_url,
             "opponent": detected_opponent,
             "is_on_board": len(board_picks) > 0,
             "lines": active_lines,
-            "baseline_stats": baseline_stats,  # ALL stats from master hub
+            "baseline_stats": baseline_stats,
             "radar_picks": radar_stat_types,
             "target_locks": [{"stat_type": k.split("|")[0], "line": float(k.split("|")[1]), "direction": k.split("|")[2]} for k in target_lock_keys],
-            "usage_ripple": usage_ripple
+            "usage_ripple": usage_ripple,
+            "badges": badges,
+            "vision_insight": vision_insight
         }
         
     except Exception as e:

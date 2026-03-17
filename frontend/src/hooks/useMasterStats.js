@@ -80,6 +80,8 @@ const fetchMasterStats = async (playerIdentifier) => {
           h10_rate: line.hit_rates?.h10 || line.h10_rate,
           is_demon: line.is_demon,
           is_goblin: line.is_goblin,
+          tier_style: line.tier_style,
+          tier_label: line.tier_label,
           demon_line: line.demon_line,
           goblin_line: line.goblin_line,
           dvp_rank: line.dvp_rank,
@@ -87,7 +89,10 @@ const fetchMasterStats = async (playerIdentifier) => {
         })),
         baseline_stats: profileData.baseline_stats,
         demons: profileData.demons || [],
-        goblins: profileData.goblins || []
+        goblins: profileData.goblins || [],
+        // Add context badges and vision insight
+        badges: profileData.badges || [],
+        vision_insight: profileData.vision_insight
       };
     }
   }

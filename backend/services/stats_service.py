@@ -127,6 +127,28 @@ def calculate_coupled_stats(games: List[Dict], stat_type: str, line_value: float
             "season": {"hit_rate": 0, "games_over": 0, "total_games": 0, "avg": 0}
         }
     
+    # CRITICAL: Sort by game date (most recent first)
+    # Game date formats: "Mar 16, 2025", "Oct 31, 2024", etc.
+    from datetime import datetime
+    
+    def parse_game_date(game):
+        """Parse game_date string to sortable value."""
+        try:
+            date_str = game.get("game_date", "")
+            if not date_str:
+                return datetime.min
+            # Handle formats: "Mar 16, 2025" or "2025-03-16"
+            for fmt in ["%b %d, %Y", "%Y-%m-%d", "%B %d, %Y"]:
+                try:
+                    return datetime.strptime(date_str, fmt)
+                except ValueError:
+                    continue
+            return datetime.min
+        except:
+            return datetime.min
+    
+    played_games = sorted(played_games, key=parse_game_date, reverse=True)
+    
     # Extract exact L5 and L10 game arrays
     l5_games = played_games[:5]
     l10_games = played_games[:10]
