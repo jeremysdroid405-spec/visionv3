@@ -52,7 +52,10 @@ async def _build_caches(db: AsyncIOMotorDatabase) -> None:
             "position": 1, 
             "display_name": 1, 
             "baseline_stats": 1,
-            "game_logs": 1
+            "game_logs": 1,
+            "bdl_game_logs": 1,
+            "last_updated": 1,
+            "last_bdl_sync": 1
         }
     ).to_list(1500)
     

@@ -7,7 +7,7 @@ export * from './constants';
  * UNIVERSAL PLAYER CARD - THE SINGLE CARD FOR THE ENTIRE APP
  * ===========================================================
  * This is the ONLY card component that should be used.
- * All other card components are DEPRECATED.
+ * All other card components have been DELETED.
  * 
  * Architecture:
  * - VAULT FUNNEL: Stats from nba_master_hub_2026 (FG%, 3P%, STL, BLK)
@@ -22,18 +22,8 @@ export {
   getHighestTier 
 } from './UniversalPlayerCard';
 
-// Legacy aliases (point to UniversalPlayerCard)
+// Legacy alias for backwards compatibility
 export { default as UniversalPickCard } from './UniversalPlayerCard';
 
 // ParlayTicket - still needed for parlay display
 export { ParlayTicket } from './ParlayTicket';
-
-// Section containers - can be deprecated once Dashboard uses UniversalPlayerCard directly
-export { 
-  WarZoneSection, 
-  SafeHavenSection, 
-  FrontLinesSection,
-  GauntletSection, 
-  ShieldSection, 
-  StrikeSection 
-} from './SectionContainer';
