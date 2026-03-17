@@ -101,11 +101,48 @@ class PicksGetterService:
         """
         Get the War Zone top 10 picks from MongoDB.
         Data is PRE-ENRICHED during sync. Just reads and returns with AI insights.
+        NOW INCLUDES: Full props array from cached_board for UI compatibility.
         """
         picks = await self.radar_picks.find({}, {"_id": 0}).sort("radar_score", -1).to_list(10)
         
-        # Add AI insights
+        # Enrich each pick with full props array from cached_board
         for pick in picks:
+            player_name = pick.get("player_name")
+            if player_name:
+                # Fetch full player data from cached board
+                cached_player = await self.cached_board.find_one(
+                    {"player_name": player_name},
+                    {"_id": 0, "goblins": 1, "demons": 1, "standard": 1}
+                )
+                if cached_player:
+                    # Build unified props array (clean each prop of _id)
+                    all_props = []
+                    
+                    # Add demons first (priority for War Zone)
+                    for d in cached_player.get("demons", []):
+                        prop = {k: v for k, v in d.items() if k != "_id"}
+                        prop["is_goblin"] = False
+                        prop["is_demon"] = True
+                        all_props.append(prop)
+                    
+                    # Add goblins
+                    for g in cached_player.get("goblins", []):
+                        prop = {k: v for k, v in g.items() if k != "_id"}
+                        prop["is_goblin"] = True
+                        prop["is_demon"] = False
+                        all_props.append(prop)
+                    
+                    # Add standard
+                    for s in cached_player.get("standard", []):
+                        prop = {k: v for k, v in s.items() if k != "_id"}
+                        prop["is_goblin"] = False
+                        prop["is_demon"] = False
+                        all_props.append(prop)
+                    
+                    pick["props"] = all_props
+                    pick["props_count"] = len(all_props)
+            
+            # Add AI insights
             await self._add_insights_to_pick(pick)
         
         sync_meta = await self.sync_log.find_one({"type": "cached_board"})
@@ -127,11 +164,48 @@ class PicksGetterService:
         """
         Get the Goblin Vault top 10 safe plays from MongoDB.
         Data is PRE-ENRICHED during sync. Just reads and returns with AI insights.
+        NOW INCLUDES: Full props array from cached_board for UI compatibility.
         """
         picks = await self.goblin_vault.find({}, {"_id": 0}).sort("vault_score", -1).to_list(10)
         
-        # Add AI insights
+        # Enrich each pick with full props array from cached_board
         for pick in picks:
+            player_name = pick.get("player_name")
+            if player_name:
+                # Fetch full player data from cached board
+                cached_player = await self.cached_board.find_one(
+                    {"player_name": player_name},
+                    {"_id": 0, "goblins": 1, "demons": 1, "standard": 1}
+                )
+                if cached_player:
+                    # Build unified props array (clean each prop of _id)
+                    all_props = []
+                    
+                    # Add goblins
+                    for g in cached_player.get("goblins", []):
+                        prop = {k: v for k, v in g.items() if k != "_id"}
+                        prop["is_goblin"] = True
+                        prop["is_demon"] = False
+                        all_props.append(prop)
+                    
+                    # Add demons
+                    for d in cached_player.get("demons", []):
+                        prop = {k: v for k, v in d.items() if k != "_id"}
+                        prop["is_goblin"] = False
+                        prop["is_demon"] = True
+                        all_props.append(prop)
+                    
+                    # Add standard (non-goblin, non-demon)
+                    for s in cached_player.get("standard", []):
+                        prop = {k: v for k, v in s.items() if k != "_id"}
+                        prop["is_goblin"] = False
+                        prop["is_demon"] = False
+                        all_props.append(prop)
+                    
+                    pick["props"] = all_props
+                    pick["props_count"] = len(all_props)
+            
+            # Add AI insights
             await self._add_insights_to_pick(pick)
         
         sync_meta = await self.sync_log.find_one({"type": "cached_board"})

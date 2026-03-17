@@ -120,3 +120,23 @@ async def get_goblin_recon():
     engine = get_engine()
     result = await engine.picks_getter_service.get_goblin_recon()
     return result
+
+
+@router.get("/v3/goblin-vault-live")
+async def get_goblin_vault_live(
+    limit: int = Query(10, ge=1, le=50)
+):
+    """
+    STATELESS Goblin Vault - True Open Door Policy
+    
+    Fetches LIVE data on every request:
+    1. Live props from Odds API
+    2. Live game logs from NBA API
+    3. Calculates hit rates in-memory
+    4. Returns unified props format
+    
+    No database caching. Always fresh data.
+    """
+    from services.stateless_tier_service import get_stateless_tier_service
+    service = get_stateless_tier_service()
+    return await service.get_goblin_vault_live(limit=limit)
