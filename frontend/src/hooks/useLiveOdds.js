@@ -67,6 +67,15 @@ const fetchFrontLines = async () => {
 };
 
 /**
+ * Fetch Most Popular Bets (by volume - all types)
+ */
+const fetchMostPopularBets = async () => {
+  const response = await fetch(`${API}/api/v3/most-popular-bets`);
+  if (!response.ok) throw new Error('Most Popular fetch failed');
+  return response.json();
+};
+
+/**
  * Fetch live scores
  */
 const fetchLiveScores = async () => {
@@ -184,6 +193,22 @@ export const useFrontLines = (options = {}) => {
   return useQuery({
     queryKey: ['frontLines'],
     queryFn: fetchFrontLines,
+    enabled,
+    staleTime: LIVE_ODDS_STALE_TIME,
+    refetchInterval,
+    refetchOnWindowFocus: true,
+  });
+};
+
+/**
+ * useMostPopularBets - Most Popular bets by volume (all types)
+ */
+export const useMostPopularBets = (options = {}) => {
+  const { enabled = true, refetchInterval = LIVE_ODDS_REFETCH_INTERVAL } = options;
+  
+  return useQuery({
+    queryKey: ['mostPopularBets'],
+    queryFn: fetchMostPopularBets,
     enabled,
     staleTime: LIVE_ODDS_STALE_TIME,
     refetchInterval,

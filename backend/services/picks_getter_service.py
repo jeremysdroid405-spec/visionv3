@@ -1422,11 +1422,11 @@ class PicksGetterService:
     
     async def get_most_popular_bets(self) -> Dict[str, Any]:
         """
-        Get Top 20 Most Popular BETS - STANDARD LINES ONLY
+        Get Top 20 Most Popular BETS - ALL TYPES BY VOLUME
         
         Based strictly on betting volume/popularity from the cached board.
-        Only returns STANDARD lines (is_alternate_market = false) - the anchor lines.
-        No demon/goblin filtering - pure volume-based popularity.
+        Includes ALL line types: STANDARD, DEMON, GOBLIN - whatever has highest volume.
+        Pure volume-based popularity ranking.
         """
         try:
             now = datetime.now(timezone.utc)
@@ -1437,66 +1437,70 @@ class PicksGetterService:
                 {"_id": 0}
             ).to_list(500)
             
-            # Extract STANDARD props only (is_alternate_market = false OR tier = STANDARD)
-            standard_bets = []
+            # Extract ALL props - no type filtering
+            all_bets = []
             for player_doc in players:
                 player_name = player_doc.get("player_name")
                 if not player_name:
                     continue
                 
                 props = player_doc.get("props", [])
+                player_rank = player_doc.get("rank", 999)  # Lower = more popular
+                
                 for prop in props:
-                    # Only include STANDARD lines (not alternate/demon/goblin)
-                    is_alternate = prop.get("is_alternate_market", True)
-                    is_demon = prop.get("is_demon", False)
-                    is_goblin = prop.get("is_goblin", False)
-                    tier = prop.get("tier", "")
-                    
-                    # STANDARD = not alternate market, or explicitly marked as STANDARD
-                    if is_alternate and not (tier == "STANDARD"):
-                        continue
-                    if is_demon or is_goblin:
-                        continue
-                    
                     stat_type = prop.get("stat_type_extracted") or prop.get("market", "").replace("player_", "")
                     line = prop.get("line")
                     
                     if not stat_type or not line:
                         continue
                     
-                    standard_bets.append({
+                    # Determine tier
+                    is_demon = prop.get("is_demon", False)
+                    is_goblin = prop.get("is_goblin", False)
+                    tier_label = prop.get("tier_label") or prop.get("tier", "STANDARD")
+                    if is_demon:
+                        tier_label = "DEMON"
+                    elif is_goblin:
+                        tier_label = "GOBLIN"
+                    
+                    # Line type for display
+                    line_type = "demon" if is_demon else "goblin" if is_goblin else "standard"
+                    
+                    all_bets.append({
                         "player_name": player_name,
                         "team": player_doc.get("team"),
                         "opponent": player_doc.get("opponent"),
                         "game_id": player_doc.get("game_id"),
                         "stat_type": stat_type,
                         "line": line,
-                        "line_type": "standard",
-                        "is_demon": False,
-                        "is_goblin": False,
-                        "tier_label": "STANDARD",
+                        "anchor_line": prop.get("anchor_line"),
+                        "line_type": line_type,
+                        "is_demon": is_demon,
+                        "is_goblin": is_goblin,
+                        "tier_label": tier_label,
                         "direction": prop.get("direction", "over"),
                         "odds": prop.get("price"),
                         "bookmaker": prop.get("bookmaker", "prizepicks"),
                         # Volume/popularity indicators
-                        "rank": player_doc.get("rank", 999),
+                        "player_rank": player_rank,
                         "prop_count": len(props),
                     })
             
-            if not standard_bets:
-                logger.warning("[MOST_POPULAR] No standard bets found in cached board")
+            if not all_bets:
+                logger.warning("[MOST_POPULAR] No bets found in cached board")
                 return {"status": "awaiting_action", "bets": [], "total_available": 0, "timestamp": now.isoformat()}
             
-            # Sort by rank (lower = more popular) - this reflects volume/prominence
-            standard_bets.sort(key=lambda x: (x.get("rank", 999), -x.get("prop_count", 0)))
+            # Sort by player rank (lower = more popular/higher volume)
+            # Secondary sort by prop count (more props = more action on player)
+            all_bets.sort(key=lambda x: (x.get("player_rank", 999), -x.get("prop_count", 0)))
             
-            # Dedupe by player+stat combination
-            seen = set()
+            # Dedupe by player to get variety - one bet per player
+            seen_players = set()
             unique_bets = []
-            for bet in standard_bets:
-                key = f"{bet['player_name']}_{bet['stat_type']}"
-                if key not in seen:
-                    seen.add(key)
+            for bet in all_bets:
+                player_key = bet['player_name']
+                if player_key not in seen_players:
+                    seen_players.add(player_key)
                     unique_bets.append(bet)
             
             # Enrich with stats from master hub
@@ -1537,14 +1541,14 @@ class PicksGetterService:
                 
                 enriched_bets.append(bet)
             
-            logger.info(f"[MOST_POPULAR] Returning {len(enriched_bets)} standard bets (volume-based)")
+            logger.info(f"[MOST_POPULAR] Returning {len(enriched_bets)} bets by volume (all types)")
             
             return {
                 "status": "live" if enriched_bets else "awaiting_action",
                 "bets": enriched_bets,
                 "total_available": len(unique_bets),
                 "timestamp": now.isoformat(),
-                "source": "standard_lines_by_volume"
+                "source": "all_lines_by_volume"
             }
             
         except Exception as e:

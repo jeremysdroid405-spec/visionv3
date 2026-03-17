@@ -45,7 +45,8 @@ import {
   useWarZone,
   useSafeHaven,
   useFrontLines,
-  useLiveOdds
+  useLiveOdds,
+  useMostPopularBets
 } from '../hooks/useLiveOdds';
 import { useMasterStats } from '../hooks/useMasterStats';
 
@@ -709,6 +710,7 @@ const Dashboard = () => {
   const { data: safeHavenData, isLoading: safeHavenLoading, refetch: refetchSafeHaven } = useSafeHaven();
   const { data: frontLinesData, isLoading: frontLinesLoading, refetch: refetchFrontLines } = useFrontLines();
   const { data: liveOddsData, isLoading: boardLoading, refetch: refetchBoard } = useLiveOdds();
+  const { data: mostPopularData, isLoading: popularLoading } = useMostPopularBets();
   
   // Extract picks from TanStack Query data
   const radarPicks = useMemo(() => warZoneData?.picks || [], [warZoneData]);
@@ -716,12 +718,10 @@ const Dashboard = () => {
   const frontLinesPicks = useMemo(() => frontLinesData?.picks || [], [frontLinesData]);
   const players = useMemo(() => liveOddsData?.players || [], [liveOddsData]);
   
-  // Derive trending/popular from live data
+  // Most Popular - directly from API (volume-based, all types)
   const trending = useMemo(() => players.slice(0, 8), [players]);
-  const popularBets = useMemo(() => {
-    const allPicks = [...radarPicks, ...vaultPicks].slice(0, 10);
-    return allPicks;
-  }, [radarPicks, vaultPicks]);
+  const popularBets = useMemo(() => mostPopularData?.bets || [], [mostPopularData]);
+  const popularBetsStatus = mostPopularData?.status || (popularLoading ? 'loading' : 'awaiting_action');
   
   // Status flags derived from query state
   const linesLoaded = !boardLoading && players.length > 0;
@@ -733,7 +733,6 @@ const Dashboard = () => {
     total_players: players.length 
   };
   const syncStatus = { last_sync: warZoneData?.synced_at };
-  const popularBetsStatus = { count: popularBets.length };
   
   // Refetch all data (replaces old triggerSync)
   const triggerSync = useCallback(() => {
