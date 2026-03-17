@@ -10,10 +10,11 @@ NO external API calls are made here. All stats come from:
 ANCHOR-BASED TIER CLASSIFICATION (from cached_board):
 Tier classification is done during sync using PrizePicks' own structure:
 - Standard Line (is_alternate_market=false) is the ANCHOR
-- Alternate ABOVE anchor = DEMON (Red) - Hard over
-- Alternate BELOW anchor = GOBLIN (Green) - Easy over
-- Equal to anchor = STANDARD (Gray)
+- ALL Alternate Lines ABOVE anchor = DEMON (Red)
+- ALL Alternate Lines BELOW anchor = GOBLIN (Green)
+- Standard Line itself = STANDARD (Gray)
 
+ALL bets (over AND under) are classified by line value vs anchor.
 This service preserves the tier flags from the cached_board.
 The Vault provides stats (FG%, 3P%, STL, BLK) for display on cards.
 """

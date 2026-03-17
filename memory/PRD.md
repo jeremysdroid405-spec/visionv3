@@ -21,12 +21,13 @@ PickVision is a high-performance NBA Player Prop Dashboard with a "military tech
 **Anchor Classification Logic (Simple If/Else):**
 ```python
 if prop_line > anchor_line:
-    tier = "DEMON"     # Higher than standard = Hard over (Red)
+    tier = "DEMON"     # ALL alternates above standard (Red)
 elif prop_line < anchor_line:
-    tier = "GOBLIN"    # Lower than standard = Easy over (Green)
+    tier = "GOBLIN"    # ALL alternates below standard (Green)
 else:
-    tier = "STANDARD"  # Equal to standard (Gray)
+    tier = "STANDARD"  # The standard line itself (Gray)
 ```
+*Applies to ALL bets (over AND under) - classification is based on line value vs anchor*
 
 **Results:**
 - War Zone: 50 DEMON picks returned

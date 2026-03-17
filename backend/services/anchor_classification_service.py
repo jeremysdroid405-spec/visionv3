@@ -6,10 +6,11 @@ PRIZEPICKS ANCHOR-BASED CLASSIFICATION
 Uses the PrizePicks "Standard Line" as the baseline anchor.
 All alternate lines are classified relative to this anchor:
 
-- Alternate Line > Standard Line -> DEMON (Red) - Hard over
-- Alternate Line < Standard Line -> GOBLIN (Green) - Easy over  
-- Alternate Line == Standard Line -> STANDARD (Gray)
+- Alternate Line > Standard Line -> DEMON (Red)
+- Alternate Line < Standard Line -> GOBLIN (Green)  
+- Standard Line itself -> STANDARD (Gray)
 
+ALL bets (over AND under) are classified this way.
 This logic OVERRIDES any is_demon/is_goblin flags from the Odds API.
 """
 import logging
@@ -105,7 +106,7 @@ def classify_props_by_anchor(props: List[Dict]) -> List[Dict]:
                 prop["tier_source"] = "anchor"
                 prop["anchor_line"] = anchor_line
             elif prop_line > anchor_line:
-                # Alternate ABOVE standard = DEMON (harder over)
+                # Alternate ABOVE standard = DEMON
                 prop["is_demon"] = True
                 prop["is_goblin"] = False
                 prop["tier_label"] = "DEMON"
@@ -113,7 +114,7 @@ def classify_props_by_anchor(props: List[Dict]) -> List[Dict]:
                 prop["anchor_line"] = anchor_line
                 prop["diff_from_anchor"] = round(((prop_line - anchor_line) / anchor_line) * 100, 1) if anchor_line > 0 else 0
             elif prop_line < anchor_line:
-                # Alternate BELOW standard = GOBLIN (easier over)
+                # Alternate BELOW standard = GOBLIN
                 prop["is_demon"] = False
                 prop["is_goblin"] = True
                 prop["tier_label"] = "GOBLIN"
