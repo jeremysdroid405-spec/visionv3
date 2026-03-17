@@ -30,24 +30,39 @@ const TWENTY_FOUR_HOURS = 24 * 60 * 60 * 1000;
 const fetchMasterStats = async (playerIdentifier) => {
   if (!playerIdentifier) return null;
   
-  // Support both playerId (number) and playerName (string)
-  const endpoint = typeof playerIdentifier === 'number' 
-    ? `${API}/api/v3/master-hub/player/${playerIdentifier}`
-    : `${API}/api/v3/cached-player/${encodeURIComponent(playerIdentifier)}`;
-  
-  const response = await fetch(endpoint);
-  
-  if (!response.ok) {
-    throw new Error(`Master stats fetch failed: ${response.status}`);
+  // For numeric IDs, use master hub player endpoint
+  if (typeof playerIdentifier === 'number') {
+    const response = await fetch(`${API}/api/v3/master-hub/player/${playerIdentifier}`);
+    if (!response.ok) {
+      throw new Error(`Master stats fetch failed: ${response.status}`);
+    }
+    return response.json();
   }
   
-  const data = await response.json();
+  // For string names, try cached player first (has betting lines)
+  const cachedResponse = await fetch(`${API}/api/v3/cached-player/${encodeURIComponent(playerIdentifier)}`);
   
-  if (!data.success) {
-    throw new Error(data.message || 'Player not found in Master Hub');
+  if (cachedResponse.ok) {
+    const data = await cachedResponse.json();
+    if (data.success && data.player) {
+      return data.player;
+    }
   }
   
-  return data.player || data;
+  // Fallback: Search master hub by name
+  const searchResponse = await fetch(`${API}/api/v3/master-hub/search?q=${encodeURIComponent(playerIdentifier)}`);
+  
+  if (!searchResponse.ok) {
+    throw new Error('Player not found in Master Hub');
+  }
+  
+  const searchData = await searchResponse.json();
+  
+  if (searchData.players && searchData.players.length > 0) {
+    return searchData.players[0];
+  }
+  
+  throw new Error('Player not found in Master Hub');
 };
 
 /**
