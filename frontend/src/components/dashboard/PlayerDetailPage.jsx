@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { DemonIcon, GoblinIcon } from './Icons';
 import { STAT_CATEGORIES, getCategoryKey, TEAM_LOGOS } from './constants';
+import { BadgeRow, BADGE_REGISTRY } from '../ui/BadgePill';
 
 // SSOT Global State Hooks
 import { useMasterStats } from '../../hooks/useMasterStats';
@@ -393,28 +394,13 @@ export const PlayerDetailPage = ({ playerName, playerData = null, onBack, highli
                 {player.position && <span>· {player.position}</span>}
               </div>
             )}
-            {/* Context Badges (Legal Noise, Locked In, etc.) */}
+            {/* Context Badges using BadgePill component */}
             {player?.badges && player.badges.length > 0 && (
-              <div className="flex flex-wrap gap-1.5 mt-2">
-                {player.badges.map((badge) => (
-                  <span 
-                    key={badge.id}
-                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium border"
-                    style={{ 
-                      backgroundColor: `${badge.color}20`, 
-                      borderColor: `${badge.color}50`,
-                      color: badge.color
-                    }}
-                    title={badge.headline || badge.label}
-                  >
-                    {badge.label}
-                  </span>
-                ))}
-              </div>
+              <BadgeRow badges={player.badges} size="md" className="mt-2" />
             )}
-            {/* Vision Insight */}
+            {/* Vision Insight - Narrative style */}
             {player?.vision_insight && (
-              <p className="text-[11px] text-zinc-400 mt-2 line-clamp-2 italic">
+              <p className="text-[11px] text-zinc-300 mt-2 leading-relaxed bg-zinc-800/50 rounded px-2 py-1.5 border-l-2 border-cyan-500">
                 {player.vision_insight}
               </p>
             )}

@@ -24,77 +24,77 @@ logger = logging.getLogger(__name__)
 
 # Badge definitions with their trigger conditions
 BADGE_DEFINITIONS = {
-    "jet_lag": {
-        "display": "Jet Lag",
-        "icon": "plane",
-        "color": "#6366f1",  # Indigo
-        "description": "Long travel distance (>1000mi)",
-        "trigger_flags": ["travel", "road_game"],
-        "min_travel_miles": 1000
-    },
-    "gassed": {
-        "display": "Gassed",
-        "icon": "battery-low",
-        "color": "#ef4444",  # Red
-        "description": "Back-to-back game",
-        "trigger_flags": ["back_to_back", "b2b"]
-    },
-    "home_cookin": {
-        "display": "Home Cookin'",
-        "icon": "home",
-        "color": "#22c55e",  # Green
-        "description": "Home game advantage",
-        "trigger_flags": ["home_game"],
-        "requires_ppg_split": 0.10  # 10% PPG boost at home
-    },
     "legal_noise": {
         "display": "Legal Noise",
-        "icon": "gavel",
-        "color": "#f59e0b",  # Amber
-        "description": "Legal proceedings or filings",
-        "trigger_flags": ["legal", "divorce", "custody", "legal_custody_battle", "lawsuit"]
-    },
-    "distraction": {
-        "display": "Distraction",
-        "icon": "alert-triangle",
+        "icon": "Gavel",
         "color": "#f97316",  # Orange
-        "description": "Off-court drama or trade rumors",
-        "trigger_flags": ["trade_rumors", "drama", "controversy", "off_court"]
-    },
-    "revenge": {
-        "display": "Revenge",
-        "icon": "target",
-        "color": "#dc2626",  # Red-600
-        "description": "Playing former team",
-        "trigger_flags": ["revenge", "former_team", "revenge_game"]
-    },
-    "pay_day": {
-        "display": "Pay Day",
-        "icon": "dollar-sign",
-        "color": "#16a34a",  # Green-600
-        "description": "Contract year motivation",
-        "trigger_flags": ["contract_year", "pay_day", "free_agent"]
+        "description": "Active legal/personal news flag in context",
+        "trigger_flags": ["legal", "divorce", "custody", "legal_custody_battle", "lawsuit", "separation"]
     },
     "milestone": {
         "display": "Milestone",
-        "icon": "trophy",
-        "color": "#eab308",  # Yellow-500
-        "description": "Chasing records or achievements",
-        "trigger_flags": ["milestone", "record", "scoring_leader", "triple_double_watch"]
-    },
-    "deep_water": {
-        "display": "Deep Water",
-        "icon": "flame",
-        "color": "#7c3aed",  # Violet-600
-        "description": "High-stakes playoff or elimination game",
-        "trigger_flags": ["playoff", "elimination", "must_win", "playoff_push"]
+        "icon": "Trophy",
+        "color": "#eab308",  # Gold
+        "description": "Within 5% of a major career stat",
+        "trigger_flags": ["milestone", "record", "scoring_leader", "career_high", "triple_double_watch", "all_time"]
     },
     "locked_in": {
         "display": "Locked In",
-        "icon": "lock",
-        "color": "#0ea5e9",  # Sky-500
-        "description": "Elite focus despite distractions",
-        "trigger_flags": ["locked_in", "focused", "elite_focus"]
+        "icon": "Target",
+        "color": "#06b6d4",  # Cyan
+        "description": "Avg +5 PPG over season mean in L5 games",
+        "trigger_flags": ["locked_in", "focused", "elite_focus", "hot_streak"]
+    },
+    "jet_lag": {
+        "display": "Jet Lag",
+        "icon": "Plane",
+        "color": "#a855f7",  # Purple
+        "description": "Road game + traveled >1000mi in 48hrs",
+        "trigger_flags": ["travel", "road_game", "jet_lag", "long_flight"],
+        "min_travel_miles": 1000
+    },
+    "revenge": {
+        "display": "Revenge",
+        "icon": "Swords",
+        "color": "#ef4444",  # Red
+        "description": "Playing against former team",
+        "trigger_flags": ["revenge", "former_team", "revenge_game", "ex_team"]
+    },
+    "home_cookin": {
+        "display": "Home Cookin'",
+        "icon": "Home",
+        "color": "#22c55e",  # Green
+        "description": "Home PPG 15%+ higher than Away PPG",
+        "trigger_flags": ["home_game", "home_cookin", "home_advantage"],
+        "requires_ppg_split": 0.15
+    },
+    "gassed": {
+        "display": "Gassed",
+        "icon": "BatteryLow",
+        "color": "#dc2626",  # Red-600
+        "description": "2nd night of back-to-back",
+        "trigger_flags": ["back_to_back", "b2b", "gassed", "fatigue"]
+    },
+    "pay_day": {
+        "display": "Pay Day",
+        "icon": "Coins",
+        "color": "#10b981",  # Emerald
+        "description": "Final year of contract",
+        "trigger_flags": ["contract_year", "pay_day", "free_agent", "expiring"]
+    },
+    "deep_water": {
+        "display": "Deep Water",
+        "icon": "Waves",
+        "color": "#3b82f6",  # Blue
+        "description": "Elimination game or playoff game 5+",
+        "trigger_flags": ["playoff", "elimination", "must_win", "playoff_push", "game_5", "game_6", "game_7"]
+    },
+    "distraction": {
+        "display": "Distraction",
+        "icon": "AlertCircle",
+        "color": "#d97706",  # Amber
+        "description": "Trade rumors or locker room drama",
+        "trigger_flags": ["trade_rumors", "drama", "controversy", "distraction", "locker_room"]
     }
 }
 
@@ -270,8 +270,8 @@ class BadgeResolverService:
                 badges.append({
                     "badge_key": "locked_in",
                     "display": "Locked In",
-                    "icon": "lock",
-                    "color": "#0ea5e9",
+                    "icon": "Target",
+                    "color": "#06b6d4",
                     "description": "Elite focus despite distractions",
                     "severity": 8,
                     "headline": "Performing at elite level despite off-court challenges",
@@ -282,6 +282,102 @@ class BadgeResolverService:
         badges.sort(key=lambda x: x.get("severity", 0), reverse=True)
         
         return badges
+    
+    def generate_narrative_insight(
+        self,
+        player_name: str,
+        badges: List[Dict],
+        stats: Dict,
+        context: Optional[Dict] = None
+    ) -> str:
+        """
+        Generate a "Real Talk" narrative insight explaining WHY stats are happening.
+        
+        This is the upgraded Vision Persona - interprets context, doesn't just list stats.
+        """
+        if not badges:
+            return None
+        
+        first_name = player_name.split()[0]
+        badge_labels = [b.get("display") for b in badges[:3]]
+        
+        # Get key stats
+        l5_avg = stats.get("ppg_l5", 0)
+        season_avg = stats.get("ppg", 0)
+        hot_streak = l5_avg > season_avg + 3
+        
+        # Build narrative based on badge combination
+        narratives = []
+        
+        # Check for Legal Noise + performance badges
+        has_legal = any(b.get("badge_key") == "legal_noise" for b in badges)
+        has_milestone = any(b.get("badge_key") == "milestone" for b in badges)
+        has_locked_in = any(b.get("badge_key") == "locked_in" for b in badges)
+        has_jet_lag = any(b.get("badge_key") == "jet_lag" for b in badges)
+        has_revenge = any(b.get("badge_key") == "revenge" for b in badges)
+        
+        # Legal + Performance narrative
+        if has_legal and (has_milestone or has_locked_in):
+            headline = next((b.get("headline", "") for b in badges if b.get("badge_key") == "legal_noise"), "")
+            narratives.append(
+                f"{first_name} is clearly using the court as a release from the Legal Noise"
+            )
+            if "custody" in headline.lower():
+                narratives.append("of his custody battle")
+            elif "divorce" in headline.lower():
+                narratives.append("surrounding his divorce proceedings")
+            else:
+                narratives.append("of his off-court situation")
+        
+        # Jet Lag context
+        if has_jet_lag:
+            travel_flag = next((b for b in badges if b.get("badge_key") == "jet_lag"), None)
+            if travel_flag:
+                headline = travel_flag.get("headline", "")
+                if "1500" in headline or "1,500" in headline:
+                    narratives.append(f"Despite the Jet Lag of a 1,500-mile flight")
+                elif "1000" in headline or "1,000" in headline:
+                    narratives.append(f"Despite the Jet Lag from traveling over 1,000 miles")
+                else:
+                    narratives.append(f"Despite road fatigue")
+        
+        # Milestone context
+        if has_milestone:
+            milestone_flag = next((b for b in badges if b.get("badge_key") == "milestone"), None)
+            headline = milestone_flag.get("headline", "") if milestone_flag else ""
+            if "15k" in headline.lower() or "15,000" in headline:
+                narratives.append(f"his Milestone chase for 15k career points has him playing with 'Demon' level aggression")
+            elif "44k" in headline.lower() or "44,000" in headline:
+                narratives.append(f"the 44k all-time points Milestone is driving unprecedented focus")
+            elif "scoring" in headline.lower():
+                narratives.append(f"his pursuit of the scoring title is fueling elite production")
+            else:
+                narratives.append(f"his Milestone pursuit is elevating his game")
+        
+        # Revenge context
+        if has_revenge:
+            revenge_flag = next((b for b in badges if b.get("badge_key") == "revenge"), None)
+            headline = revenge_flag.get("headline", "") if revenge_flag else ""
+            if headline:
+                narratives.append(f"the Revenge factor against his former team adds extra motivation")
+        
+        # Hot streak conclusion
+        if hot_streak and not narratives:
+            diff = l5_avg - season_avg
+            narratives.append(
+                f"{first_name} is on fire, averaging {l5_avg:.1f} PPG over his last 5 "
+                f"(+{diff:.1f} above his {season_avg:.1f} season average)"
+            )
+        
+        if not narratives:
+            return f"{first_name} is showing {', '.join(badge_labels)} context heading into tonight's matchup."
+        
+        # Combine narratives
+        insight = ". ".join(narratives)
+        if not insight.endswith("."):
+            insight += "."
+        
+        return insight
     
     async def get_player_vision(self, player_id: int) -> Dict[str, Any]:
         """
@@ -306,18 +402,27 @@ class BadgeResolverService:
         baseline = player.get("baseline_stats", {})
         pts_stats = baseline.get("PTS", {})
         
+        stats = {
+            "ppg": pts_stats.get("season_avg", 0),
+            "ppg_l5": pts_stats.get("l5_avg", 0),
+            "ppg_l10": pts_stats.get("l10_avg", 0),
+            "rpg": baseline.get("REB", {}).get("season_avg", 0),
+            "apg": baseline.get("AST", {}).get("season_avg", 0)
+        }
+        
+        # Generate narrative insight
+        vision_insight = self.generate_narrative_insight(
+            player_name=player.get("display_name", ""),
+            badges=badges,
+            stats=stats
+        )
+        
         return {
             "player_id": player_id,
             "display_name": player.get("display_name"),
             "team": player.get("team"),
             "headshot_url": player.get("headshot_url"),
-            "stats": {
-                "ppg": pts_stats.get("season_avg", 0),
-                "ppg_l5": pts_stats.get("l5_avg", 0),
-                "ppg_l10": pts_stats.get("l10_avg", 0),
-                "rpg": baseline.get("REB", {}).get("season_avg", 0),
-                "apg": baseline.get("AST", {}).get("season_avg", 0)
-            },
+            "stats": stats,
             "active_badges": badges,
             "badge_count": len(badges),
             "context_updated_at": datetime.now(timezone.utc).isoformat()

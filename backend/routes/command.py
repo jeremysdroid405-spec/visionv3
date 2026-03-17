@@ -461,28 +461,21 @@ async def get_tactical_profile(
                     "headline": b.get("headline")
                 } for b in resolved_badges]
                 
-                # Generate vision insight if badges exist
+                # Generate narrative vision insight using the upgraded generator
                 if badges:
-                    badge_labels = [b["label"] for b in badges[:3]]
+                    # Get baseline stats for narrative
+                    pts_baseline = baseline_stats.get("PTS", {})
+                    stats_for_narrative = {
+                        "ppg": pts_baseline.get("season_avg", 0),
+                        "ppg_l5": pts_baseline.get("l5_avg", 0),
+                        "ppg_l10": pts_baseline.get("l10_avg", 0)
+                    }
                     
-                    # Get best line info
-                    best_line = None
-                    for line in active_lines:
-                        if line.get("tier_style") == "green" and line.get("h10_rate", 0) >= 80:
-                            best_line = line
-                            break
-                    
-                    if best_line:
-                        stat = best_line.get("stat_type", "")
-                        line_val = best_line.get("line", 0)
-                        h10 = best_line.get("h10_rate", 0)
-                        avg = best_line.get("l10_avg", 0)
-                        
-                        vision_insight = (
-                            f"{player_name.split()[0]} is hitting the {line_val} {stat} line with {h10:.0f}% "
-                            f"consistency (L10 avg: {avg:.1f}). "
-                            f"Active context: {', '.join(badge_labels)}."
-                        )
+                    vision_insight = badge_resolver.generate_narrative_insight(
+                        player_name=player_name,
+                        badges=resolved_badges,
+                        stats=stats_for_narrative
+                    )
         except Exception as e:
             logger.debug(f"[PROFILE] Badge resolution skipped: {e}")
         
