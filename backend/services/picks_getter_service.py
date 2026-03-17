@@ -515,21 +515,24 @@ class PicksGetterService:
     
     async def get_goblin_vault(self) -> Dict[str, Any]:
         """
-        Get the Goblin Vault - Safe GOBLIN picks from PrizePicks.
+        Get the Safe Haven - GOBLIN picks that pass strict filters.
         
-        PRIZEPICKS ARCHITECTURE:
-        - Reads from dg_cached_board (player documents with props arrays)
-        - GOBLIN = props where is_goblin=True (below anchor line)
-        - Enriched with L5/L10/Season stats from master hub
+        SAFE HAVEN LOGIC:
+        1. ANCHOR COMPARISON: Line must be GOBLIN (below Standard Line)
+        2. STATISTICAL FLOOR: Goblin line must be LOWER than season_avg
+        3. HIT RATE: Player must hit line in 8+ of last 10 games (H10 >= 80%)
+        4. FRESHNESS: Player data must be updated within 24 hours
         """
+        from datetime import datetime, timezone, timedelta
+        
         # Get all players that have goblin props
         players = await self.cached_board.find(
             {"props.is_goblin": True},
             {"_id": 0}
         ).to_list(200)
         
-        # Build picks from goblin props
-        picks = []
+        # Build candidate picks from goblin props
+        candidates = []
         for player_doc in players:
             player_name = player_doc.get("player_name")
             if not player_name:
@@ -539,46 +542,209 @@ class PicksGetterService:
             goblin_props = [p for p in player_doc.get("props", []) if p.get("is_goblin")]
             
             for prop in goblin_props:
-                pick = {
+                stat_type = prop.get("stat_type_extracted") or prop.get("market", "").replace("player_", "")
+                line = prop.get("line")
+                anchor_line = prop.get("anchor_line")
+                
+                # FILTER 1: Must be GOBLIN (line < anchor)
+                if not line or not anchor_line or line >= anchor_line:
+                    continue
+                
+                candidates.append({
                     "player_name": player_name,
                     "team": player_doc.get("team"),
                     "opponent": player_doc.get("opponent"),
                     "game_id": player_doc.get("game_id"),
-                    "stat_type": prop.get("stat_type_extracted") or prop.get("market", "").replace("player_", ""),
-                    "line": prop.get("line"),
+                    "stat_type": stat_type,
+                    "line": line,
                     "odds": prop.get("price"),
                     "direction": prop.get("direction", "over"),
                     "is_demon": False,
                     "is_goblin": True,
                     "tier_label": "GOBLIN",
-                    "tier_source": prop.get("tier_source", "anchor_classification"),
-                    "anchor_line": prop.get("anchor_line"),
+                    "anchor_line": anchor_line,
                     "is_alternate_market": prop.get("is_alternate_market", True)
-                }
-                picks.append(pick)
+                })
         
-        if not picks:
-            logger.warning("[GOBLIN_VAULT] No goblin picks found in cached board")
-            return {"picks": [], "picks_count": 0}
+        if not candidates:
+            logger.warning("[SAFE_HAVEN] No goblin candidates found")
+            return {"picks": [], "picks_count": 0, "filters_applied": ["anchor_comparison"]}
         
-        # Enrich with stats from master hub
-        enriched_picks = []
-        for pick in picks[:50]:  # Limit to top 50
-            player_stats = await self._get_player_stats(
-                pick["player_name"], 
-                pick["stat_type"], 
-                pick["line"]
-            )
-            pick.update(player_stats)
-            enriched_picks.append(pick)
+        # Apply strict Safe Haven filters
+        safe_haven_picks = []
+        filter_stats = {"total_candidates": len(candidates), "passed_anchor": 0, "passed_floor": 0, "passed_hit_rate": 0, "passed_freshness": 0}
         
-        # Sort by how far below anchor (easiest goblins first)
-        enriched_picks.sort(key=lambda x: (x.get("anchor_line", 0) or 0) - (x.get("line", 0) or 0), reverse=True)
+        for pick in candidates:
+            player_name = pick["player_name"]
+            stat_type = pick["stat_type"]
+            line = pick["line"]
+            
+            # Get master hub data for this player (with name normalization)
+            hub_player = await self._get_master_player_by_name(player_name)
+            
+            if not hub_player:
+                logger.debug(f"[SAFE_HAVEN] No master hub data for: {player_name}")
+                continue
+            
+            # FILTER 2: FRESHNESS CHECK - Data must be within 24 hours
+            last_updated = hub_player.get("last_bdl_sync") or hub_player.get("last_updated")
+            if last_updated:
+                if isinstance(last_updated, datetime):
+                    age = datetime.now(timezone.utc) - last_updated.replace(tzinfo=timezone.utc) if last_updated.tzinfo is None else datetime.now(timezone.utc) - last_updated
+                    if age > timedelta(hours=24):
+                        logger.debug(f"[SAFE_HAVEN] Stale data for {player_name}: {age}")
+                        continue
+            filter_stats["passed_freshness"] += 1
+            
+            # FILTER 3: STATISTICAL FLOOR - Line must be LOWER than season_avg
+            baseline_stats = hub_player.get("baseline_stats", {})
+            stat_key = self._normalize_stat_key(stat_type)
+            stat_data = baseline_stats.get(stat_key, {})
+            season_avg = stat_data.get("season_avg") if isinstance(stat_data, dict) else stat_data
+            
+            if season_avg is None:
+                logger.debug(f"[SAFE_HAVEN] No season_avg for {player_name} {stat_type}")
+                continue
+            
+            if line >= season_avg:
+                logger.debug(f"[SAFE_HAVEN] Line {line} >= season_avg {season_avg} for {player_name} {stat_type}")
+                continue
+            filter_stats["passed_floor"] += 1
+            
+            # FILTER 4: HIT RATE - Must hit line in 8+ of last 10 games (H10 >= 80%)
+            game_logs = hub_player.get("bdl_game_logs", []) or hub_player.get("game_logs", [])
+            h10_result = self._calculate_h10_hit_rate(game_logs, stat_type, line)
+            
+            if h10_result["games_counted"] < 10:
+                logger.debug(f"[SAFE_HAVEN] Insufficient games for {player_name}: {h10_result['games_counted']}")
+                continue
+            
+            if h10_result["hit_rate"] < 80:
+                logger.debug(f"[SAFE_HAVEN] H10 {h10_result['hit_rate']}% < 80% for {player_name} {stat_type} @ {line}")
+                continue
+            filter_stats["passed_hit_rate"] += 1
+            
+            # PASSED ALL FILTERS - Add to Safe Haven
+            pick["season_avg"] = season_avg
+            pick["h10_hits"] = h10_result["hits"]
+            pick["h10_games"] = h10_result["games_counted"]
+            pick["h10_hit_rate"] = h10_result["hit_rate"]
+            pick["floor_margin"] = round(season_avg - line, 1)
+            pick["safe_haven_qualified"] = True
+            
+            # Add photo and other enrichment
+            pick["photo_url"] = hub_player.get("photo_url")
+            pick["position"] = hub_player.get("position")
+            
+            safe_haven_picks.append(pick)
+            logger.info(f"[SAFE_HAVEN] ✓ {player_name} {stat_type} @ {line} | H10: {h10_result['hit_rate']}% | Floor margin: {pick['floor_margin']}")
+        
+        # Sort by hit rate (highest first), then by floor margin
+        safe_haven_picks.sort(key=lambda x: (x.get("h10_hit_rate", 0), x.get("floor_margin", 0)), reverse=True)
+        
+        logger.info(f"[SAFE_HAVEN] Filters: {filter_stats}")
         
         return {
-            "picks": enriched_picks[:20],
-            "picks_count": len(enriched_picks)
+            "picks": safe_haven_picks[:20],
+            "picks_count": len(safe_haven_picks),
+            "filter_stats": filter_stats,
+            "filters_applied": ["anchor_comparison", "statistical_floor", "h10_hit_rate", "freshness_24h"]
         }
+    
+    def _normalize_stat_key(self, stat_type: str) -> str:
+        """Normalize stat type to match master hub keys."""
+        stat_map = {
+            'PTS': 'PTS', 'POINTS': 'PTS',
+            'REB': 'REB', 'REBOUNDS': 'REB',
+            'AST': 'AST', 'ASSISTS': 'AST',
+            'STL': 'STL', 'STEALS': 'STL',
+            'BLK': 'BLK', 'BLOCKS': 'BLK',
+            '3PM': '3PM', 'THREES': '3PM',
+            'PRA': 'PRA', 'P+R+A': 'PRA',
+            'PR': 'PR', 'P+R': 'PR',
+            'PA': 'PA', 'P+A': 'PA',
+            'RA': 'RA', 'R+A': 'RA',
+        }
+        return stat_map.get(stat_type.upper(), stat_type.upper())
+    
+    def _calculate_h10_hit_rate(self, game_logs: List[Dict], stat_type: str, line: float) -> Dict:
+        """
+        Calculate H10 hit rate from last 10 game logs.
+        
+        Returns: {"hits": int, "games_counted": int, "hit_rate": float}
+        """
+        if not game_logs:
+            return {"hits": 0, "games_counted": 0, "hit_rate": 0}
+        
+        # Take last 10 games (most recent first)
+        recent_games = game_logs[:10]
+        
+        # Map stat_type to game log field
+        stat_field_map = {
+            'PTS': 'pts',
+            'REB': 'reb',
+            'AST': 'ast',
+            'STL': 'stl',
+            'BLK': 'blk',
+            '3PM': 'fg3m',
+            'PRA': None,  # Calculated
+            'PR': None,   # Calculated
+            'PA': None,   # Calculated
+            'RA': None,   # Calculated
+        }
+        
+        stat_key = self._normalize_stat_key(stat_type)
+        field = stat_field_map.get(stat_key)
+        
+        hits = 0
+        games_counted = 0
+        
+        for game in recent_games:
+            # Get stat value from game log
+            if stat_key == 'PRA':
+                value = (game.get('pts', 0) or 0) + (game.get('reb', 0) or 0) + (game.get('ast', 0) or 0)
+            elif stat_key == 'PR':
+                value = (game.get('pts', 0) or 0) + (game.get('reb', 0) or 0)
+            elif stat_key == 'PA':
+                value = (game.get('pts', 0) or 0) + (game.get('ast', 0) or 0)
+            elif stat_key == 'RA':
+                value = (game.get('reb', 0) or 0) + (game.get('ast', 0) or 0)
+            elif field:
+                value = game.get(field, 0) or 0
+            else:
+                continue
+            
+            games_counted += 1
+            if value > line:  # Must EXCEED the line (not just meet it)
+                hits += 1
+        
+        hit_rate = round((hits / games_counted) * 100) if games_counted > 0 else 0
+        
+        return {"hits": hits, "games_counted": games_counted, "hit_rate": hit_rate}
+    
+    async def _get_master_player_by_name(self, player_name: str) -> Optional[Dict]:
+        """
+        Get player from master hub using suffix-neutral name matching.
+        """
+        from services.bdl_comprehensive_sync import _normalize_name
+        
+        # Try exact match first
+        player = await self.master_hub.find_one(
+            {"display_name": player_name},
+            {"_id": 0}
+        )
+        
+        if player:
+            return player
+        
+        # Try normalized name match
+        normalized = _normalize_name(player_name)
+        player = await self.master_hub.find_one(
+            {"display_name": {"$regex": f"^{normalized}$", "$options": "i"}},
+            {"_id": 0}
+        )
+        
+        return player
     
     async def get_front_lines(self) -> Dict[str, Any]:
         """
