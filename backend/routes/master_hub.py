@@ -230,3 +230,119 @@ async def sync_single_player_nba(player_name: str):
     
     return result
 
+
+# ==================== BDL COMPREHENSIVE SYNC ENDPOINTS ====================
+
+@router.post("/sync-bdl-all")
+async def trigger_bdl_full_sync():
+    """
+    Trigger comprehensive BDL sync for ALL active players.
+    
+    This pulls COMPLETE data from all BDL endpoints:
+    - /players: Profile metadata (height, weight, college, draft info)
+    - /season_averages: Full season stats (pts, reb, ast, fg_pct, fg3_pct, etc.)
+    - /stats: Last 15 game logs with full box scores
+    
+    WARNING: This syncs 500+ players and may take several minutes.
+    For faster sync, use /sync-bdl-prizepicks instead.
+    """
+    if _db is None:
+        raise HTTPException(status_code=500, detail="Database not initialized")
+    
+    from services.bdl_comprehensive_sync import get_bdl_sync_service
+    service = get_bdl_sync_service(_db)
+    result = await service.sync_active_players()
+    return result
+
+
+@router.post("/sync-bdl-prizepicks")
+async def trigger_bdl_prizepicks_sync():
+    """
+    Sync BDL data for players currently on the PrizePicks board.
+    
+    More efficient than full sync - only syncs players with active lines.
+    Pulls complete data including:
+    - Player profile (height, weight, college, draft info)
+    - Season averages (all stats: pts, reb, ast, fg_pct, fg3_pct, ft_pct, etc.)
+    - Last 15 game logs with full box scores
+    
+    Data is stored EXACTLY as received from BDL - no field renaming.
+    """
+    if _db is None:
+        raise HTTPException(status_code=500, detail="Database not initialized")
+    
+    from services.bdl_comprehensive_sync import get_bdl_sync_service
+    service = get_bdl_sync_service(_db)
+    result = await service.sync_prizepicks_players()
+    return result
+
+
+@router.post("/sync-bdl-player/{player_name}")
+async def sync_single_player_bdl(player_name: str):
+    """
+    Sync BDL data for a single player by name.
+    
+    Searches BDL for the player and syncs all available data.
+    Uses normalized name matching (Jr, Sr, III suffixes handled).
+    """
+    if _db is None:
+        raise HTTPException(status_code=500, detail="Database not initialized")
+    
+    from services.bdl_comprehensive_sync import get_bdl_sync_service
+    service = get_bdl_sync_service(_db)
+    
+    # Search for player
+    player = await service.search_player(player_name)
+    if not player:
+        raise HTTPException(status_code=404, detail=f"Player not found in BDL: {player_name}")
+    
+    # Sync complete data
+    player_id = player.get("id")
+    success = await service.sync_player_to_master_hub(player_id)
+    
+    if success:
+        # Fetch the synced document
+        doc = await _db.nba_master_hub_2026.find_one(
+            {"bdl_id": player_id},
+            {"_id": 0}
+        )
+        return {
+            "success": True,
+            "player_name": player_name,
+            "bdl_id": player_id,
+            "data": doc
+        }
+    else:
+        raise HTTPException(status_code=500, detail=f"Failed to sync player: {player_name}")
+
+
+@router.get("/bdl-sample/{player_name}")
+async def get_bdl_sample(player_name: str):
+    """
+    Get sample BDL data for a player (for verification).
+    
+    Returns the complete baseline_stats object as stored in nba_master_hub_2026.
+    Shows exactly what BDL API fields are available.
+    """
+    if _db is None:
+        raise HTTPException(status_code=500, detail="Database not initialized")
+    
+    from services.bdl_comprehensive_sync import _normalize_name
+    normalized = _normalize_name(player_name)
+    
+    doc = await _db.nba_master_hub_2026.find_one(
+        {"normalized_name": normalized},
+        {"_id": 0}
+    )
+    
+    if not doc:
+        # Try display_name match
+        doc = await _db.nba_master_hub_2026.find_one(
+            {"display_name": {"$regex": player_name, "$options": "i"}},
+            {"_id": 0}
+        )
+    
+    if not doc:
+        raise HTTPException(status_code=404, detail=f"Player not found: {player_name}")
+    
+    return doc
