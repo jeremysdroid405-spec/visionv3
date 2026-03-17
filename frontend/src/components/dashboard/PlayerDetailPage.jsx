@@ -460,13 +460,24 @@ export const PlayerDetailPage = ({ playerName, playerData = null, onBack, highli
                 const hasDemon = categoryProps.some(p => p.is_demon);
                 const hasGoblin = categoryProps.some(p => p.is_goblin);
                 
-                // Sort: demons first, then goblins, then by line
+                // Sort: DEMON first (by line desc), then STANDARD, then GOBLIN (by line desc)
                 const sortedProps = [...categoryProps].sort((a, b) => {
-                  if (a.is_demon && !b.is_demon) return -1;
-                  if (!a.is_demon && b.is_demon) return 1;
-                  if (a.is_goblin && !b.is_goblin) return -1;
-                  if (!a.is_goblin && b.is_goblin) return 1;
-                  return (a.line || 0) - (b.line || 0);
+                  // Tier priority: DEMON (0) > STANDARD (1) > GOBLIN (2)
+                  const getTierPriority = (p) => {
+                    if (p.is_demon) return 0;
+                    if (p.is_goblin) return 2;
+                    return 1; // STANDARD
+                  };
+                  
+                  const aPriority = getTierPriority(a);
+                  const bPriority = getTierPriority(b);
+                  
+                  if (aPriority !== bPriority) return aPriority - bPriority;
+                  
+                  // Within same tier, sort by line (desc for DEMON, asc for GOBLIN)
+                  if (aPriority === 0) return (b.line || 0) - (a.line || 0); // DEMON: highest first
+                  if (aPriority === 2) return (a.line || 0) - (b.line || 0); // GOBLIN: lowest first
+                  return 0; // STANDARD: keep as is
                 });
                 
                 return (
