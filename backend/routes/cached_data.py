@@ -6,6 +6,7 @@ Endpoints for reading cached/warehouse data with zero API calls.
 from fastapi import APIRouter, HTTPException, Query
 from typing import Optional
 import logging
+import sys
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["Cached Data"])
@@ -115,7 +116,63 @@ async def get_cached_props(include_locked: bool = True):
     return result
 
 
-@router.get("/v3/cached-player/{player_name}")
+@router.get("/v3/test-badges/{player_name}")
+async def test_badges(player_name: str):
+    """Test endpoint to check badge resolution."""
+    engine = get_engine()
+    
+    badges = []
+    
+    try:
+        # Get master hub collection from the picks_getter_service
+        master_hub = engine.picks_getter_service.master_hub
+        
+        # Get master hub data
+        hub_player = await master_hub.find_one(
+            {"$or": [
+                {"display_name": player_name},
+                {"display_name": {"$regex": f"^{player_name}$", "$options": "i"}}
+            ]},
+            {"_id": 0, "baseline_stats": 1, "bdl_game_logs": 1, "display_name": 1}
+        )
+        
+        if not hub_player:
+            return {"error": f"No hub player found for: {player_name}"}
+        
+        baseline_stats = hub_player.get("baseline_stats", {})
+        game_logs = hub_player.get("bdl_game_logs", []) or []
+        
+        # Check LOCKED_IN: L5 PPG > Season PPG + 5
+        pts_stats = baseline_stats.get("PTS", {})
+        season_ppg = pts_stats.get("season_avg", 0) if isinstance(pts_stats, dict) else pts_stats
+        
+        l5_ppg = 0
+        if game_logs and len(game_logs) >= 5:
+            l5_pts = [g.get("pts", 0) or 0 for g in game_logs[:5]]
+            l5_ppg = sum(l5_pts) / len(l5_pts) if l5_pts else 0
+            
+            if l5_ppg > season_ppg + 5:
+                badges.append({
+                    "badge_key": "locked_in",
+                    "display": "Locked In",
+                    "description": f"L5 avg ({l5_ppg:.1f}) is +{l5_ppg - season_ppg:.1f} above season ({season_ppg:.1f})"
+                })
+        
+        return {
+            "player_name": hub_player.get("display_name"),
+            "season_ppg": season_ppg,
+            "l5_ppg": round(l5_ppg, 1),
+            "diff": round(l5_ppg - season_ppg, 1) if season_ppg else 0,
+            "game_logs_count": len(game_logs),
+            "badges": badges,
+            "badge_keys": [b["badge_key"] for b in badges]
+        }
+        
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@router.get("/v3/player-with-badges/{player_name}")
 async def get_cached_player(player_name: str):
     """
     Get cached data for a single player.
@@ -127,11 +184,94 @@ async def get_cached_player(player_name: str):
     - Hit rates
     - AI Vision summary
     - Demon/Goblin status
+    - Context badges (10 situational indicators)
     """
     engine = get_engine()
     result = await engine.get_cached_player(player_name)
     
     if not result:
         raise HTTPException(status_code=404, detail=f"Player '{player_name}' not found in cache")
+    
+    # Add badge resolution for Vision Intel Suite
+    if result.get("success") and result.get("player"):
+        player = result["player"]
+        pname = player.get("player_name")
+        logger.info(f"[BADGE_RESOLVE] Processing badges for: {pname}")
+        
+        # Check stats-based badges using master hub data
+        badges = []
+        badge_keys = []
+        
+        try:
+            # Get master hub collection from the picks_getter_service
+            master_hub = engine.picks_getter_service.master_hub
+            
+            # Get master hub data
+            hub_player = await master_hub.find_one(
+                {"$or": [
+                    {"display_name": pname},
+                    {"display_name": {"$regex": f"^{pname}$", "$options": "i"}}
+                ]},
+                {"_id": 0, "baseline_stats": 1, "bdl_game_logs": 1}
+            )
+            
+            logger.info(f"[BADGE_RESOLVE] Hub player found: {hub_player is not None}")
+            
+            if hub_player:
+                baseline_stats = hub_player.get("baseline_stats", {})
+                game_logs = hub_player.get("bdl_game_logs", []) or []
+                
+                # Check LOCKED_IN: L5 PPG > Season PPG + 5
+                pts_stats = baseline_stats.get("PTS", {})
+                season_ppg = pts_stats.get("season_avg", 0) if isinstance(pts_stats, dict) else pts_stats
+                
+                if season_ppg and game_logs and len(game_logs) >= 5:
+                    l5_pts = [g.get("pts", 0) or 0 for g in game_logs[:5]]
+                    l5_ppg = sum(l5_pts) / len(l5_pts) if l5_pts else 0
+                    
+                    if l5_ppg > season_ppg + 5:
+                        badges.append({
+                            "badge_key": "locked_in",
+                            "display": "Locked In",
+                            "icon": "Target",
+                            "color": "#06b6d4",
+                            "description": f"L5 avg ({l5_ppg:.1f}) is +{l5_ppg - season_ppg:.1f} above season ({season_ppg:.1f})",
+                            "severity": 8,
+                            "source_flag": "stats_based"
+                        })
+                
+                # Check MILESTONE: If any stat is within 5% of a round number milestone
+                for stat_key, stat_data in baseline_stats.items():
+                    if isinstance(stat_data, dict):
+                        season_avg = stat_data.get("season_avg", 0)
+                        if season_avg and season_avg >= 20:
+                            nearest_milestone = round(season_avg / 5) * 5
+                            if nearest_milestone > 0 and abs(season_avg - nearest_milestone) / nearest_milestone < 0.05:
+                                if "milestone" not in [b["badge_key"] for b in badges]:
+                                    badges.append({
+                                        "badge_key": "milestone",
+                                        "display": "Milestone",
+                                        "icon": "Trophy",
+                                        "color": "#eab308",
+                                        "description": f"Averaging {season_avg:.1f} {stat_key} (near {nearest_milestone})",
+                                        "severity": 7,
+                                        "source_flag": "stats_based"
+                                    })
+                                break
+            
+            badge_keys = [b.get("badge_key") for b in badges]
+            logger.info(f"[BADGE_RESOLVE] Final badges for {pname}: {badge_keys}")
+            
+        except Exception as e:
+            logger.debug(f"[CACHED_PLAYER] Badge check error: {e}")
+        
+        # Add badges to player
+        player["active_badges"] = badge_keys
+        player["badges"] = badges
+        
+        # Also add to each prop for Vision Intel Suite
+        for prop in player.get("props", []):
+            prop["active_badges"] = badge_keys
+            prop["intel_suite"] = {"context_badges": badge_keys}
     
     return result

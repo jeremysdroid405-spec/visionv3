@@ -229,7 +229,7 @@ export const fetchTMinusGames = async () => {
  */
 export const fetchCachedPlayer = async (playerName) => {
   try {
-    const response = await apiClient.get(`/v3/cached-player/${encodeURIComponent(playerName)}`);
+    const response = await apiClient.get(`/v3/player-with-badges/${encodeURIComponent(playerName)}`);
     return { success: true, player: response.data };
   } catch (error) {
     console.error('[DataService] fetchCachedPlayer error:', error);

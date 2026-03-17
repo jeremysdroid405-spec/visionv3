@@ -40,7 +40,7 @@ const fetchMasterStats = async (playerIdentifier) => {
   }
   
   // For string names, try cached player first (has betting lines)
-  const cachedResponse = await fetch(`${API}/api/v3/cached-player/${encodeURIComponent(playerIdentifier)}`);
+  const cachedResponse = await fetch(`${API}/api/v3/player-with-badges/${encodeURIComponent(playerIdentifier)}`);
   
   if (cachedResponse.ok) {
     const data = await cachedResponse.json();
