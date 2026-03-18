@@ -121,12 +121,22 @@ async def search_players(
         # Search by name (case-insensitive)
         query_lower = query.lower()
         results = []
+        seen_player_ids = set()  # Track seen players to avoid duplicates
         
         for name_key, player in lookup.items():
             if query_lower in name_key:
+                # DEDUP: Skip if we've already added this player
+                player_id = player.get("player_id")
+                display_name = player.get("display_name", "")
+                dedup_key = player_id or display_name.lower()
+                
+                if dedup_key in seen_player_ids:
+                    continue
+                seen_player_ids.add(dedup_key)
+                
                 results.append({
-                    "id": player.get("player_id"),
-                    "player_name": player.get("display_name", ""),
+                    "id": player_id,
+                    "player_name": display_name,
                     "team": player.get("team", ""),
                     "position": player.get("position", ""),
                     "headshot_url": player.get("headshot_url"),
