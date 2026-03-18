@@ -187,7 +187,24 @@ const PlayerHeadshot = memo(({ photoUrl, playerName, team, size = 'md' }) => {
   
   const [imgError, setImgError] = useState(false);
   
-  if (!photoUrl || imgError) {
+  // Build full photo URL - handle relative paths from API
+  const getPhotoUrl = (url) => {
+    if (!url) return null;
+    // If it's already absolute, use as-is
+    if (url.startsWith('http://') || url.startsWith('https://')) {
+      return url;
+    }
+    // If it's a relative path (starts with /api), prepend backend URL
+    if (url.startsWith('/api')) {
+      const backendUrl = process.env.REACT_APP_BACKEND_URL || '';
+      return `${backendUrl}${url}`;
+    }
+    return url;
+  };
+  
+  const fullPhotoUrl = getPhotoUrl(photoUrl);
+  
+  if (!fullPhotoUrl || imgError) {
     const teamLogo = TEAM_LOGOS[team];
     if (teamLogo) {
       return (

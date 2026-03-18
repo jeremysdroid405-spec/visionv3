@@ -29,6 +29,7 @@ from .legacy import router as legacy_router, set_legacy_deps
 from .command import router as command_router, set_db as set_command_db
 from .live import router as live_router, set_db as set_live_db
 from .qa_testing import router as qa_router, set_qa_db
+from .image_proxy import router as image_proxy_router
 
 
 def register_all_routes(app, engine, game_lock_engine=None, db=None, 
@@ -136,3 +137,6 @@ def register_all_routes(app, engine, game_lock_engine=None, db=None,
     if db is not None:
         set_qa_db(db)
     app.include_router(qa_router, prefix="/api")
+    
+    # Image proxy route (for NBA CDN CORS bypass)
+    app.include_router(image_proxy_router, prefix="/api")
