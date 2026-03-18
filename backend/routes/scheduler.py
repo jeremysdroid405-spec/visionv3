@@ -141,7 +141,7 @@ async def sync_dvp_rankings():
     Fetches live defensive rankings from BallDontLie API and caches them.
     This data is used for the Vision Intel Suite "Defensive Friction" analysis.
     
-    Automatically scheduled daily at 8:00 AM EST.
+    Automatically included in the 4:00 AM EST daily sync.
     """
     from services.dvp_service import force_refresh_dvp, get_dvp_status
     
@@ -165,16 +165,17 @@ async def sync_dvp_rankings():
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/v3/sync-all-8am")
-async def sync_all_8am():
+@router.post("/v3/sync-full-daily")
+async def sync_full_daily():
     """
-    Manually trigger the full 8:00 AM sync (Stats + DvP).
+    Manually trigger the FULL daily sync (same as 4:00 AM scheduled job).
     
-    This combines:
-    1. Master Hub baseline stats sync (L5, L10, season averages)
-    2. DvP rankings refresh (defensive rankings)
+    This is a comprehensive sync that includes:
+    1. Master Hub baseline stats (L5, L10, season averages)
+    2. DvP rankings refresh (Defense vs Position)
     
-    Automatically scheduled daily at 8:00 AM EST (13:00 UTC).
+    For the complete scheduled sync (including injuries, odds, insights, Vision AI),
+    use the scheduled job or wait for the 4:00 AM automatic run.
     """
     import os
     from motor.motor_asyncio import AsyncIOMotorClient

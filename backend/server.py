@@ -375,17 +375,19 @@ async def initial_autonomous_sync():
 
 async def scheduled_daily_sync():
     """
-    Scheduled job that runs at 4:00 AM UTC daily.
+    Scheduled job that runs at 4:00 AM EST (09:00 UTC) daily.
     
-    Execution order:
-    1. Sync injuries from ESPN (first for usage ripple calculations)
+    FULL SYNC - All Vision Intel data refreshed together:
+    1. Sync injuries from ESPN (for usage ripple calculations)
     2. Sync player stats to MongoDB (from BallDontLie + NBA.com fallback)
-    3. Run full odds sync (uses cached stats for fast hit rate calculations)
-    4. Calculate daily insights (advanced analytics)
-    5. Generate Vision AI insights for Demons/Goblins/High Volatility
+    3. Update Master Hub baseline stats (L5, L10, Season averages)
+    4. Refresh DvP rankings (Defense vs Position for matchup analysis)
+    5. Run full odds sync (uses cached stats for hit rate calculations)
+    6. Calculate daily insights (advanced analytics)
+    7. Generate Vision AI insights for Demons/Goblins/High Volatility
     """
     logger.info("=" * 70)
-    logger.info(f"[SCHEDULER] 4:00 AM DAILY SYNC TRIGGERED")
+    logger.info(f"[SCHEDULER] 4:00 AM FULL DAILY SYNC TRIGGERED")
     logger.info(f"[SCHEDULER] Time: {datetime.now(timezone.utc).isoformat()}")
     logger.info("=" * 70)
     
@@ -393,7 +395,7 @@ async def scheduled_daily_sync():
         try:
             # Step 1: Sync injuries (ESPN) - Do first for usage ripple data
             if injury_service:
-                logger.info("[SCHEDULER] Step 1/5: Syncing injury data from ESPN...")
+                logger.info("[SCHEDULER] Step 1/7: Syncing injury data from ESPN...")
                 try:
                     injury_result = await injury_service.sync_injuries()
                     logger.info(f"[SCHEDULER] Injuries: {injury_result.get('injuries_synced', 0)} injuries, {injury_result.get('usage_ripple_updates', 0)} ripple updates")
@@ -401,41 +403,54 @@ async def scheduled_daily_sync():
                     logger.error(f"[SCHEDULER] Injury sync failed (non-critical): {ie}")
             
             # Step 2: Sync player stats to cache
-            logger.info("[SCHEDULER] Step 2/6: Syncing player stats to cache...")
+            logger.info("[SCHEDULER] Step 2/7: Syncing player stats to cache...")
             stats_result = await demon_goblin_engine.sync_player_stats()
             logger.info(f"[SCHEDULER] Stats sync: {stats_result.get('stats_synced', 0)} players (BDL: {stats_result.get('from_balldontlie', 0)}, NBA: {stats_result.get('from_nba_api', 0)})")
             
-            # Step 2b: Update Master Hub baseline stats (L5, L10, Season for all prop categories)
-            logger.info("[SCHEDULER] Step 2b/6: Updating Master Hub baseline stats...")
+            # Step 3: Update Master Hub baseline stats (L5, L10, Season for all prop categories)
+            logger.info("[SCHEDULER] Step 3/7: Updating Master Hub baseline stats...")
             try:
                 from services.master_hub_sync import MasterHubSyncService
                 master_sync = MasterHubSyncService(db)
-                hub_result = await master_sync.run_full_sync(batch_size=100)
+                hub_result = await master_sync.run_full_sync()
                 logger.info(f"[SCHEDULER] Master Hub: {hub_result.get('synced', 0)} players updated with baseline stats")
             except Exception as he:
                 logger.error(f"[SCHEDULER] Master Hub sync failed (non-critical): {he}")
             
-            # Step 3: Run full odds sync
-            logger.info("[SCHEDULER] Step 3/5: Running full odds sync...")
+            # Step 4: Refresh DvP rankings (Defense vs Position)
+            logger.info("[SCHEDULER] Step 4/7: Refreshing DvP rankings...")
+            try:
+                from services.dvp_service import force_refresh_dvp
+                dvp_result = await force_refresh_dvp()
+                logger.info(f"[SCHEDULER] DvP refresh: {dvp_result.get('source')} - {dvp_result.get('teams_count', 0)} teams, {len(dvp_result.get('stat_types', []))} stat types")
+            except Exception as de:
+                logger.error(f"[SCHEDULER] DvP refresh failed (non-critical): {de}")
+            
+            # Step 5: Run full odds sync
+            logger.info("[SCHEDULER] Step 5/7: Running full odds sync...")
             result = await demon_goblin_engine.run_full_sync()
             logger.info(f"[SCHEDULER] Sync complete: {result.get('unique_players', 0)} players")
             logger.info(f"[SCHEDULER] Standard: {result.get('standard_count', 0)}, Demons: {result.get('demons_count', 0)}, Goblins: {result.get('goblins_count', 0)}")
             
-            # Step 4: Calculate daily insights (advanced analytics)
-            logger.info("[SCHEDULER] Step 4/5: Calculating daily insights...")
+            # Step 6: Calculate daily insights (advanced analytics)
+            logger.info("[SCHEDULER] Step 6/7: Calculating daily insights...")
             insights_result = await demon_goblin_engine.sync_daily_insights()
             logger.info(f"[SCHEDULER] Insights: {insights_result.get('insights_calculated', 0)} players analyzed")
             
-            # Step 5: Generate Vision AI insights for eligible players
+            # Step 7: Generate Vision AI insights for eligible players
             if vision_ai_service and os.environ.get('EMERGENT_LLM_KEY'):
-                logger.info("[SCHEDULER] Step 5/5: Generating Vision AI insights...")
+                logger.info("[SCHEDULER] Step 7/7: Generating Vision AI insights...")
                 try:
                     vision_result = await vision_ai_service.trigger_insights_for_sync()
                     logger.info(f"[SCHEDULER] Vision AI: {vision_result.get('insights_generated', 0)} insights generated")
                 except Exception as ve:
                     logger.error(f"[SCHEDULER] Vision AI failed (non-critical): {ve}")
             else:
-                logger.info("[SCHEDULER] Step 5/5: Vision AI skipped (not configured)")
+                logger.info("[SCHEDULER] Step 7/7: Vision AI skipped (not configured)")
+            
+            logger.info("=" * 70)
+            logger.info(f"[SCHEDULER] 4:00 AM FULL SYNC COMPLETE")
+            logger.info("=" * 70)
             
         except Exception as e:
             logger.error(f"[SCHEDULER] Daily sync failed: {e}")
@@ -462,66 +477,6 @@ async def scheduled_roster_sync():
             logger.error(f"[SCHEDULER] Master Roster sync failed: {e}")
     else:
         logger.error("[SCHEDULER] Demon & Goblin Engine not initialized")
-
-
-async def scheduled_8am_stats_dvp_sync():
-    """
-    Scheduled job that runs at 8:00 AM EST (13:00 UTC) daily.
-    
-    Combined sync for:
-    1. Master Hub baseline stats (L5, L10, season averages)
-    2. DvP rankings refresh (Defense vs Position)
-    
-    This ensures the Vision Intel Suite has fresh data for:
-    - Player stat analysis
-    - Defensive matchup friction calculations
-    - Pace/tempo multipliers
-    """
-    from services.dvp_service import force_refresh_dvp
-    from services.master_hub_sync import MasterHubSyncService
-    
-    logger.info("=" * 70)
-    logger.info(f"[SCHEDULER] 8:00 AM STATS + DVP SYNC TRIGGERED")
-    logger.info(f"[SCHEDULER] Time: {datetime.now(timezone.utc).isoformat()}")
-    logger.info("=" * 70)
-    
-    results = {"stats": None, "dvp": None}
-    
-    # Step 1: Update Master Hub baseline stats
-    try:
-        logger.info("[8AM SYNC] Step 1/2: Updating Master Hub baseline stats...")
-        master_sync = MasterHubSyncService(db)
-        stats_result = await master_sync.run_full_sync()
-        results["stats"] = {
-            "success": True,
-            "synced": stats_result.get('synced', 0),
-            "errors": stats_result.get('errors', 0)
-        }
-        logger.info(f"[8AM SYNC] Master Hub: {stats_result.get('synced', 0)} players updated")
-    except Exception as e:
-        logger.error(f"[8AM SYNC] Master Hub sync failed: {e}")
-        results["stats"] = {"success": False, "error": str(e)}
-    
-    # Step 2: Refresh DvP rankings
-    try:
-        logger.info("[8AM SYNC] Step 2/2: Refreshing DvP rankings...")
-        dvp_result = await force_refresh_dvp()
-        results["dvp"] = {
-            "success": dvp_result.get("success", False),
-            "source": str(dvp_result.get("source")),
-            "teams_count": dvp_result.get("teams_count", 0)
-        }
-        logger.info(f"[8AM SYNC] DvP refresh: {dvp_result.get('source')} - {dvp_result.get('teams_count', 0)} teams")
-    except Exception as e:
-        logger.error(f"[8AM SYNC] DvP refresh failed: {e}")
-        results["dvp"] = {"success": False, "error": str(e)}
-    
-    logger.info("=" * 70)
-    logger.info(f"[SCHEDULER] 8:00 AM SYNC COMPLETE")
-    logger.info(f"[SCHEDULER] Results: {results}")
-    logger.info("=" * 70)
-    
-    return results
 
 
 @app.on_event("startup")
@@ -643,13 +598,13 @@ async def startup_event():
     else:
         logger.warning("[ADAPTIVE_SYNC] No Odds API key - adaptive sync disabled")
     
-    # Daily sync at 4:00 AM EST (9:00 AM UTC) for static stats
-    # Note: 04:00 EST = 09:00 UTC during standard time
+    # Daily sync at 4:00 AM EST (9:00 AM UTC) - FULL Vision Intel sync
+    # Includes: Injuries, Player Stats, Master Hub, DvP Rankings, Odds, Insights, Vision AI
     scheduler.add_job(
         scheduled_daily_sync,
         CronTrigger(hour=9, minute=0, timezone=SCHEDULER_TIMEZONE),  # 4:00 AM EST = 9:00 AM UTC
         id='daily_sync',
-        name='4:00 AM EST Daily Stats Sync',
+        name='4:00 AM EST Full Vision Intel Sync',
         replace_existing=True
     )
     
@@ -662,20 +617,10 @@ async def startup_event():
         replace_existing=True
     )
     
-    # Daily 8:00 AM EST combined Stats + DvP sync
-    # This runs AFTER the 4 AM sync to provide fresh data for the day's games
-    scheduler.add_job(
-        scheduled_8am_stats_dvp_sync,
-        CronTrigger(hour=13, minute=0, timezone=SCHEDULER_TIMEZONE),  # 8:00 AM EST = 13:00 UTC
-        id='daily_8am_stats_dvp',
-        name='8:00 AM EST Stats + DvP Sync',
-        replace_existing=True
-    )
-    
     scheduler.start()
-    logger.info(f"[SCHEDULER] APScheduler started - Daily stats sync at 04:00 EST (09:00 UTC)")
-    logger.info(f"[SCHEDULER] Weekly roster sync scheduled: Sunday 00:00 UTC")
-    logger.info(f"[SCHEDULER] Daily Stats + DvP sync scheduled: 08:00 EST (13:00 UTC)")
+    logger.info(f"[SCHEDULER] APScheduler started")
+    logger.info(f"[SCHEDULER] Daily Full Sync: 04:00 AM EST (09:00 UTC) - Stats + DvP + Vision Intel")
+    logger.info(f"[SCHEDULER] Weekly Roster: Sunday 00:00 UTC")
     
     # DISABLED: Full auto-sync on startup to prevent credit drain
     # The adaptive sync engine handles real-time odds polling
