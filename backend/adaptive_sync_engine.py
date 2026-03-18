@@ -12,10 +12,11 @@ Also handles:
 - Client-side protection (all reads from MongoDB)
 - Last updated timestamps on all cached data
 
-TIER CLASSIFICATION (v2 - Statistical Divergence):
-- GOBLIN (Green): Alternate market AND line >= 10% BELOW season_avg
-- DEMON (Red): price == 100 AND line >= 15% ABOVE season_avg
-- STANDARD (Gray): Default if no statistical divergence threshold met
+TIER CLASSIFICATION (v3 - ANCHOR-BASED):
+For each player+stat combination:
+- MAIN LINE (Standard): The non-alternate market line (the anchor)
+- DEMON (Red): Any alternate line ABOVE the main line (harder to hit)
+- GOBLIN (Green): Any alternate line BELOW the main line (easier to hit)
 """
 
 import asyncio
@@ -44,10 +45,6 @@ MISSION_CRITICAL_THRESHOLD = 1  # <1 hour = Mission Critical
 
 # Stale data threshold
 STALE_DATA_THRESHOLD_SECONDS = 300  # 5 minutes
-
-# STATISTICAL DIVERGENCE THRESHOLDS FOR TIER CLASSIFICATION
-GOBLIN_THRESHOLD_PCT = -10.0   # Line must be >= 10% BELOW season_avg
-DEMON_THRESHOLD_PCT = 15.0     # Line must be >= 15% ABOVE season_avg
 
 
 class GameStatus(Enum):
@@ -509,20 +506,16 @@ class AdaptiveSyncEngine:
         """
         Update the dg_cached_board collection with PrizePicks odds data.
         
-        TIER CLASSIFICATION v2 - STATISTICAL DIVERGENCE:
-        Classification now based on actual performance data, not just price:
+        TIER CLASSIFICATION v3 - ANCHOR-BASED:
+        For each player + stat_type combination:
         
-        - GOBLIN (Green): Alternate market AND line >= 10% BELOW season_avg
-          (Easy line - player consistently beats this number)
-        - DEMON (Red): price == 100 AND line >= 15% ABOVE season_avg  
-          (Hard line - player rarely hits this number)
-        - STANDARD (Gray): Default if statistical divergence thresholds not met
-          OR if season_avg is missing/zero
+        1. MAIN LINE (Standard): The non-alternate market line = the ANCHOR
+        2. DEMON (Red): Any alternate line ABOVE the main line (harder to hit)
+        3. GOBLIN (Green): Any alternate line BELOW the main line (easier to hit)
         
-        New fields added:
-        - diff_from_avg: Percentage difference from season average
-        - season_avg: Player's season average for this stat
-        - is_stale: True if master hub data is older than 24 hours
+        TWO-PASS APPROACH:
+        - Pass 1: Collect all props and identify main lines (anchors)
+        - Pass 2: Classify each prop based on comparison to anchor
         """
         if not events:
             return {"updated": 0, "errors": 0}
@@ -533,10 +526,17 @@ class AdaptiveSyncEngine:
         goblin_count = 0
         demon_count = 0
         standard_count = 0
-        no_stats_count = 0
         
         # Clear player stats cache for fresh lookups this cycle
         self._player_stats_cache = {}
+        
+        # ============================================================
+        # PASS 1: Collect all props and identify MAIN LINES (anchors)
+        # ============================================================
+        # Key: (player_name, stat_type) -> main_line value
+        main_lines: Dict[tuple, float] = {}
+        # Collect all props for Pass 2
+        all_props: List[Dict] = []
         
         for event in events:
             game_id = event.get("id")
@@ -544,13 +544,12 @@ class AdaptiveSyncEngine:
             home_team = event.get("home_team", "")
             away_team = event.get("away_team", "")
             
-            # Extract bookmakers - specifically looking for PrizePicks
             bookmakers = event.get("bookmakers", [])
             
             for bookmaker in bookmakers:
                 bookmaker_key = bookmaker.get("key", "")
                 
-                # Skip non-PrizePicks bookmakers (we specifically requested prizepicks)
+                # Only process PrizePicks
                 if bookmaker_key != "prizepicks":
                     continue
                     
@@ -563,9 +562,8 @@ class AdaptiveSyncEngine:
                     # Detect alternate market
                     is_alternate_market = "_alternate" in market_key
                     
-                    # Extract base stat type (remove "_alternate" suffix)
+                    # Extract base stat type
                     stat_type_extracted = market_key.replace("_alternate", "").replace("player_", "").upper()
-                    # Normalize combined stats
                     stat_type_extracted = stat_type_extracted.replace("POINTS_REBOUNDS_ASSISTS", "PRA")
                     stat_type_extracted = stat_type_extracted.replace("POINTS_REBOUNDS", "P+R")
                     stat_type_extracted = stat_type_extracted.replace("POINTS_ASSISTS", "P+A")
@@ -587,124 +585,157 @@ class AdaptiveSyncEngine:
                         line = outcome.get("point", 0)
                         direction = (outcome.get("name", "") or "over").lower()
                         
-                        # ============================================================
-                        # STATISTICAL DIVERGENCE CLASSIFICATION v2
-                        # ============================================================
-                        # Get player's FULL stats including L5, L10, H10 hit rate
-                        full_stats = await self._get_player_full_stats(player_name, stat_type_extracted, line)
-                        season_avg = full_stats.get("season_avg")
-                        l5_avg = full_stats.get("l5_avg")
-                        l10_avg = full_stats.get("l10_avg")
-                        h10_hit_rate = full_stats.get("h10_hit_rate")
-                        h10_hits = full_stats.get("h10_hits", 0)
-                        h10_games = full_stats.get("h10_games", 0)
+                        # Store prop data for Pass 2
+                        prop_data = {
+                            "game_id": game_id,
+                            "commence_time": commence_time,
+                            "home_team": home_team,
+                            "away_team": away_team,
+                            "bookmaker": bookmaker_key,
+                            "market": market_key,
+                            "player_name": player_name,
+                            "line": line,
+                            "price": price,
+                            "direction": direction,
+                            "name": outcome.get("name", ""),
+                            "is_alternate_market": is_alternate_market,
+                            "stat_type_extracted": stat_type_extracted
+                        }
+                        all_props.append(prop_data)
                         
-                        # Calculate divergence from average
-                        diff_from_avg = None
-                        if season_avg and season_avg > 0 and line:
-                            diff_from_avg = round(((line - season_avg) / season_avg) * 100, 1)
-                        
-                        # CLASSIFICATION LOGIC:
-                        # Default to STANDARD
-                        is_demon = False
-                        is_goblin = False
-                        tier_style = "standard"
-                        tier_label = "STANDARD"
-                        prizepicks_type = "standard_line"
-                        
-                        # Only classify if we have valid season_avg
-                        if season_avg and season_avg > 0 and diff_from_avg is not None:
-                            
-                            # GOBLIN: Alternate market AND line is >= 10% BELOW season_avg
-                            # (diff_from_avg <= -10 means line is lower than avg)
-                            if is_alternate_market and diff_from_avg <= GOBLIN_THRESHOLD_PCT:
-                                is_goblin = True
-                                tier_style = "green"
-                                tier_label = "GOBLIN"
-                                prizepicks_type = "discount_promo"
-                                goblin_count += 1
-                            
-                            # DEMON: price == 100 AND line is >= 15% ABOVE season_avg
-                            # (diff_from_avg >= 15 means line is higher than avg)
-                            elif price == 100 and diff_from_avg >= DEMON_THRESHOLD_PCT:
-                                is_demon = True
-                                tier_style = "red"
-                                tier_label = "DEMON"
-                                prizepicks_type = "boosted_hard"
-                                demon_count += 1
-                            
-                            else:
-                                # STANDARD: No statistical divergence threshold met
-                                standard_count += 1
-                        else:
-                            # No season_avg data - default to STANDARD
-                            standard_count += 1
-                            no_stats_count += 1
-                        
-                        try:
-                            # Build the update document with statistical classification
-                            update_doc = {
-                                "game_id": game_id,
-                                "commence_time": commence_time,
-                                "home_team": home_team,
-                                "away_team": away_team,
-                                "bookmaker": bookmaker_key,
-                                "market": market_key,
-                                "player_name": player_name,
-                                "line": line,
-                                "price": price,
-                                "direction": direction,
-                                "name": outcome.get("name", ""),  # Over/Under
-                                "last_updated": now,
-                                "last_updated_iso": now.isoformat(),
-                                "sync_source": "prizepicks_sync_v2",
-                                # Market metadata
-                                "is_alternate_market": is_alternate_market,
-                                # Statistical tier classification
-                                "is_demon": is_demon,
-                                "is_goblin": is_goblin,
-                                "tier_style": tier_style,
-                                "tier_label": tier_label,
-                                "stat_type_extracted": stat_type_extracted,
-                                "prizepicks_type": prizepicks_type,
-                                # NEW: Statistical divergence metadata
-                                "season_avg": round(season_avg, 1) if season_avg else None,
-                                "diff_from_avg": diff_from_avg,
-                                "has_stats": season_avg is not None and season_avg > 0,
-                                # NEW: L5/L10 averages and H10 hit rate from BDL
-                                "l5_avg": l5_avg,
-                                "l10_avg": l10_avg,
-                                "h10_hit_rate": h10_hit_rate,
-                                "h10_hits": h10_hits,
-                                "h10_games": h10_games
-                            }
-                            
-                            # Upsert to collection
-                            await self.db[self.cached_board_collection].update_one(
-                                {
-                                    "game_id": game_id,
-                                    "player_name": player_name,
-                                    "market": market_key,
-                                    "line": line,
-                                    "direction": direction,
-                                    "bookmaker": bookmaker_key
-                                },
-                                {"$set": update_doc},
-                                upsert=True
-                            )
-                            updated_count += 1
-                            
-                        except Exception as e:
-                            error_count += 1
-                            logger.error(f"[PRIZEPICKS_SYNC] Error updating {player_name}: {e}")
+                        # If this is NOT an alternate market, it's the MAIN LINE (anchor)
+                        if not is_alternate_market:
+                            key = (player_name, stat_type_extracted)
+                            main_lines[key] = line
+                            logger.debug(f"[ANCHOR] {player_name} {stat_type_extracted}: main_line = {line}")
+        
+        logger.info(f"[PRIZEPICKS_SYNC_V3] Pass 1 complete: {len(main_lines)} main lines (anchors) identified")
+        
+        # ============================================================
+        # PASS 2: Classify each prop based on comparison to anchor
+        # ============================================================
+        for prop in all_props:
+            player_name = prop["player_name"]
+            stat_type_extracted = prop["stat_type_extracted"]
+            line = prop["line"]
+            is_alternate_market = prop["is_alternate_market"]
+            
+            # Get the main line (anchor) for this player+stat
+            key = (player_name, stat_type_extracted)
+            main_line = main_lines.get(key)
+            
+            # Classification logic
+            is_demon = False
+            is_goblin = False
+            tier_style = "standard"
+            tier_label = "STANDARD"
+            
+            if main_line is not None:
+                if not is_alternate_market:
+                    # This IS the main line = STANDARD
+                    tier_style = "standard"
+                    tier_label = "STANDARD"
+                    standard_count += 1
+                elif line > main_line:
+                    # Alternate line ABOVE main line = DEMON (harder to hit)
+                    is_demon = True
+                    tier_style = "red"
+                    tier_label = "DEMON"
+                    demon_count += 1
+                elif line < main_line:
+                    # Alternate line BELOW main line = GOBLIN (easier to hit)
+                    is_goblin = True
+                    tier_style = "green"
+                    tier_label = "GOBLIN"
+                    goblin_count += 1
+                else:
+                    # Alternate line EQUALS main line (rare) = STANDARD
+                    tier_style = "standard"
+                    tier_label = "STANDARD"
+                    standard_count += 1
+            else:
+                # No main line found (edge case) - default to STANDARD
+                tier_style = "standard"
+                tier_label = "STANDARD"
+                standard_count += 1
+            
+            # Get player stats for enrichment
+            full_stats = await self._get_player_full_stats(player_name, stat_type_extracted, line)
+            season_avg = full_stats.get("season_avg")
+            l5_avg = full_stats.get("l5_avg")
+            l10_avg = full_stats.get("l10_avg")
+            h10_hit_rate = full_stats.get("h10_hit_rate")
+            h10_hits = full_stats.get("h10_hits", 0)
+            h10_games = full_stats.get("h10_games", 0)
+            
+            # Calculate diff from main line (not season avg)
+            diff_from_main_line = None
+            if main_line and main_line > 0:
+                diff_from_main_line = round(line - main_line, 1)
+            
+            try:
+                # Build the update document
+                update_doc = {
+                    "game_id": prop["game_id"],
+                    "commence_time": prop["commence_time"],
+                    "home_team": prop["home_team"],
+                    "away_team": prop["away_team"],
+                    "bookmaker": prop["bookmaker"],
+                    "market": prop["market"],
+                    "player_name": player_name,
+                    "line": line,
+                    "price": prop["price"],
+                    "direction": prop["direction"],
+                    "name": prop["name"],
+                    "last_updated": now,
+                    "last_updated_iso": now.isoformat(),
+                    "sync_source": "prizepicks_sync_v3",
+                    # Market metadata
+                    "is_alternate_market": is_alternate_market,
+                    # ANCHOR-BASED tier classification
+                    "is_demon": is_demon,
+                    "is_goblin": is_goblin,
+                    "tier_style": tier_style,
+                    "tier_label": tier_label,
+                    "stat_type_extracted": stat_type_extracted,
+                    # Main line reference
+                    "main_line": main_line,
+                    "diff_from_main_line": diff_from_main_line,
+                    # Stats for display
+                    "season_avg": round(season_avg, 1) if season_avg else None,
+                    "l5_avg": l5_avg,
+                    "l10_avg": l10_avg,
+                    "h10_hit_rate": h10_hit_rate,
+                    "h10_hits": h10_hits,
+                    "h10_games": h10_games,
+                    "has_stats": season_avg is not None and season_avg > 0
+                }
+                
+                # Upsert to collection
+                await self.db[self.cached_board_collection].update_one(
+                    {
+                        "game_id": prop["game_id"],
+                        "player_name": player_name,
+                        "market": prop["market"],
+                        "line": line,
+                        "direction": prop["direction"],
+                        "bookmaker": prop["bookmaker"]
+                    },
+                    {"$set": update_doc},
+                    upsert=True
+                )
+                updated_count += 1
+                
+            except Exception as e:
+                error_count += 1
+                logger.error(f"[PRIZEPICKS_SYNC] Error updating {player_name}: {e}")
         
         # Log classification distribution
         if updated_count > 0:
-            logger.info(f"[PRIZEPICKS_SYNC_V2] Statistical Classification: "
-                       f"{goblin_count} Goblin (line ≤{GOBLIN_THRESHOLD_PCT}% of avg), "
-                       f"{demon_count} Demon (line ≥+{DEMON_THRESHOLD_PCT}% & +100), "
-                       f"{standard_count} Standard, "
-                       f"{no_stats_count} missing stats")
+            logger.info(f"[PRIZEPICKS_SYNC_V3] Anchor-Based Classification: "
+                       f"{demon_count} Demon (above main line), "
+                       f"{goblin_count} Goblin (below main line), "
+                       f"{standard_count} Standard (main line)")
         
         # Update sync status
         await self._update_sync_status(now, updated_count, error_count)
