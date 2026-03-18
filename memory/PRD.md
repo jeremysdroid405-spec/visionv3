@@ -1,120 +1,72 @@
 # PickVision AI - Product Requirements Document
 
 ## Original Problem Statement
-Build a sports betting analytics platform that helps users identify high-value betting opportunities using data-driven analysis. The core concept is PrizePicks anchor-based classification where betting props are classified as:
-- **DEMON**: Alternate line > standard line (high risk/reward)
-- **GOBLIN**: Alternate line < standard line (safer plays)
-- **STANDARD**: No alternate line available
+Build a sports betting analytics application (PickVision AI) that provides:
+1. **War Zone**: High-risk, high-reward "DEMON" picks using composite scoring
+2. **Safe Haven**: Conservative "GOBLIN" picks with high consistency
+3. **Most Popular Bets**: Volume-based popular bets (uses synthetic score due to API limitations)
+4. **Vision Intel Suite**: Context badges and advanced analytics
+5. **Parlay Builder**: AI-generated parlay combinations
 
 ## Core Architecture
+- **Frontend**: React + TanStack Query + Tailwind CSS + Shadcn UI
+- **Backend**: FastAPI + MongoDB
+- **Data Sources**: The Odds API (via emergentintegrations), BallDon'tLie API, nba_api
 
-### Data Sources
-- **BallDon'tLie (BDL) API**: Primary source for player stats and identity
-- **nba_api (Python)**: Secondary source for supplemental player data
-- **The Odds API**: Source for betting lines
+## Data Model
+- `dg_cached_board`: Player-centric documents with props arrays
+- `nba_context_engine`: Context flags for badges (jet_lag, revenge, legal_noise, etc.)
+- `nba_master_hub_2026`: Master player data vault
+- `dg_game_schedule`: Game schedules for adaptive sync
 
-### Database Structure
-- `pick_vision.nba_master_hub_2026`: Master player data vault with deduplicated players, baseline stats, and game logs
-- `pick_vision.dg_cached_board`: Cached betting board with player-centric documents containing props arrays
+## What's Implemented (March 2026)
 
-### Tier Logic
-1. **Safe Haven (Goblins)**: 
-   - Must be GOBLIN tier
-   - Line value below player's season average
-   - Hit rate >= 80% in last 10 games
+### Completed Features
+- [x] War Zone with composite scoring (L5 avg, H10 hit rate, anchor line comparison)
+- [x] Safe Haven (Goblin Vault) with strict safety filters
+- [x] Front Lines tactical plays
+- [x] Most Popular Bets (synthetic popularity score)
+- [x] Vision Intel Suite with 10 context badges
+- [x] Parlay Builder (The Gauntlet, The Shield, The Strike)
+- [x] Adaptive Sync Engine for real-time odds polling
+- [x] Daily data sync scheduler (4 AM EST)
+- [x] DvP and team pace data integration
+- [x] Player detail modal with full analytics
 
-2. **Front Lines (Mid-Tier)**:
-   - Must be GOBLIN tier
-   - 7-12% discount from standard line
-   - Line value at least 5% lower than season average
-   - Hit rate >= 72% in last 25 games
-   - Must NOT qualify for Safe Haven
+### Context Badges (10 total)
+- Live data: `jet_lag`, `revenge`, `legal_noise`, `milestone`
+- Needs data sources: `gassed`, `distraction`, `pay_day`, `deep_water`, `altitude`, `market_sharp`
 
-3. **War Zone (Demons)**:
-   - Must be DEMON tier
-   - High risk/reward plays
-
-## What's Been Implemented
-
-### Dec 2025 - Data Architecture
-- Corrected player stats by updating all sync services to use 2025-26 season
-- Performed full data sync updating 102 active players
-- Merged 91 duplicate player documents in nba_master_hub_2026
-- Implemented Safe Haven and Front Lines backend logic
-
-### Dec 2025 - UI/UX
-- Fixed prop labels (removed "O" prefix, consistent naming)
-- Updated UniversalPlayerCard for all tier displays
-- Expanded player detail header with season stats (PPG, RPG, APG)
-- Corrected sorting on Player Detail page (DEMON -> STANDARD -> GOBLIN)
-
-### Mar 2026 - Icon Update
-- Icons now reflect actual pick type (DEMON=red, GOBLIN=green) regardless of card theme
-- Removed "FRONT LINE" badge from cards
-- Front Lines: Yellow card theme + Green Goblin icon
-- War Zone: Red card theme + Red Demon icon
-- Safe Haven: Green card theme + Green Goblin icon
-
-### Mar 2026 - Context Badges Implementation
-- Implemented 10 context badges for Vision Intel Suite modal
-- **Stats-based badges** (fully functional):
-  - `locked_in`: L5 PPG > Season PPG + 5
-  - `milestone`: Stat avg within 5% of round milestone (20, 25, 30...)
-  - `home_cookin`: Home PPG 15%+ higher than Away
-  - `gassed`: Back-to-back games (2nd night)
-- **Context engine badges** (require nba_context_engine data):
-  - `jet_lag`: Road game + traveled >1000mi
-  - `legal_noise`: Active legal/personal news flag
-  - `distraction`: Trade rumors or drama
-  - `revenge`: Playing against former team
-- **Placeholder badges** (require additional data):
-  - `pay_day`: Contract year
-  - `deep_water`: Elimination/playoff game 5+
-- Badges display in Vision Intel Suite modal (PlayerDetailPage.jsx)
-- API endpoint: GET /api/v3/player-with-badges/{player_name}
-
-## Key Files
-- `/app/backend/services/picks_getter_service.py` - Safe Haven & Front Lines logic
-- `/app/frontend/src/components/dashboard/UniversalPlayerCard.jsx` - Unified player card component
-- `/app/frontend/src/components/dashboard/PlayerDetailPage.jsx` - Player detail view
-- `/app/backend/services/bdl_comprehensive_sync.py` - BDL data sync
-
-## API Endpoints
-- `GET /api/v3/safe-haven` - High-probability GOBLIN picks
-- `GET /api/v3/front-lines` - Mid-tier GOBLIN picks
-- `GET /api/v3/war-zone` - High-risk DEMON picks
-- `GET /api/v3/player-with-badges/{player_name}` - Single player with all props + context badges
-- `GET /api/v3/cached-props` - All cached players and props
-- `GET /api/v3/test-badges/{player_name}` - Debug endpoint for badge calculations
+### Bug Fixes This Session
+- Fixed IndentationError in picks_getter_service.py (orphaned code block removed)
+- Fixed TypeError in stat calculation functions (added safe type conversion)
 
 ## Prioritized Backlog
 
-### P0 - Context Badges Data
-- ✅ Populated nba_context_engine with live data:
-  - jet_lag: 17 players with >1000mi travel (OKC→ORL, PHX→MIN, PHI→DEN, SAS→SAC)
-  - revenge: DeMar DeRozan vs SAS (former team)
-  - travel distances auto-calculated from team cities
-- Still needed:
-  - Add contract year data for pay_day badge
-  - Add playoff context for deep_water badge
-  - Add news integration for real-time legal_noise/distraction badges
+### P1 - High Priority
+- [ ] Populate remaining context badges with live data sources
+- [ ] Add player injury data to Operational Volume calculation
 
-### P1 - Cleanup
-- Delete deprecated components (PickCard, PlayerCard, TacticalPlayerCard)
-- Fix API route naming conflict (v3/cached-player vs v3/player-with-badges)
+### P2 - Medium Priority
+- [ ] Fix route name conflict (`/api/v3/player-with-badges` workaround)
+- [ ] Delete deprecated UI components (PickCard, PlayerCard, TacticalPlayerCard)
+- [ ] Add "Last Updated" timestamp to dashboard
 
-### P2 - Features
-- Add "Last Updated" timestamp to dashboard
-- Add "Copy Parlay" feature
-- Implement tooltip explaining DEMON/GOBLIN on icon hover
-
-### P3 - Infrastructure
-- Implement Stripe for payments
-- Integrate real Google/Apple OAuth
-- Refactor dg_cached_board collection schema
+### P3 - Low Priority / Future
+- [ ] Add tooltips for context badges
+- [ ] Show War Zone composite score breakdown in UI
+- [ ] Add "Copy Parlay" feature
+- [ ] Implement Stripe payments
+- [ ] Integrate real Google/Apple OAuth
 
 ## Technical Notes
-- Always filter dg_cached_board with `"props": {"$exists": True}` to avoid legacy flat documents
-- All player documents use bdl_id or nba_api_id as unique identifiers
-- Use datetime.now(timezone.utc) for timestamps
-- Exclude _id from MongoDB responses
+- **Synthetic Popularity**: The Odds API doesn't provide bet volume data, so "Most Popular" uses a synthetic score based on player rank
+- **Data Schema**: Player-centric documents in `dg_cached_board` with props arrays (critical for correct data flow)
+- **Authentication**: Currently uses demo mode bypass; real auth pending
+
+## Key Files
+- `/app/backend/services/picks_getter_service.py`: Core business logic
+- `/app/backend/routes/cached_data.py`: Player details and Vision Intel Suite API
+- `/app/backend/adaptive_sync_engine.py`: Real-time odds polling
+- `/app/frontend/src/pages/Dashboard.jsx`: Main dashboard UI
+- `/app/frontend/src/hooks/useLiveOdds.js`: TanStack Query hooks

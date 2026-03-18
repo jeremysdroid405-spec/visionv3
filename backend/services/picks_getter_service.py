@@ -699,25 +699,34 @@ class PicksGetterService:
         if not game_logs:
             return {"avg": 0, "games_counted": 0, "values": []}
         
+        def safe_int(val):
+            """Safely convert value to int, handling strings and None."""
+            if val is None:
+                return 0
+            try:
+                return int(float(val))
+            except (ValueError, TypeError):
+                return 0
+        
         recent_games = game_logs[:10]
         stat_key = self._normalize_stat_key(stat_type)
         values = []
         
         for game in recent_games:
             if stat_key == 'PRA':
-                value = (game.get('pts', 0) or 0) + (game.get('reb', 0) or 0) + (game.get('ast', 0) or 0)
+                value = safe_int(game.get('pts')) + safe_int(game.get('reb')) + safe_int(game.get('ast'))
             elif stat_key == 'PR':
-                value = (game.get('pts', 0) or 0) + (game.get('reb', 0) or 0)
+                value = safe_int(game.get('pts')) + safe_int(game.get('reb'))
             elif stat_key == 'PA':
-                value = (game.get('pts', 0) or 0) + (game.get('ast', 0) or 0)
+                value = safe_int(game.get('pts')) + safe_int(game.get('ast'))
             elif stat_key == 'RA':
-                value = (game.get('reb', 0) or 0) + (game.get('ast', 0) or 0)
+                value = safe_int(game.get('reb')) + safe_int(game.get('ast'))
             else:
                 field_map = {'PTS': 'pts', 'REB': 'reb', 'AST': 'ast', 'STL': 'stl', 'BLK': 'blk', '3PM': 'fg3m'}
                 field = field_map.get(stat_key)
                 if not field:
                     continue
-                value = game.get(field, 0) or 0
+                value = safe_int(game.get(field))
             values.append(value)
         
         avg = round(sum(values) / len(values), 1) if values else 0
@@ -728,24 +737,32 @@ class PicksGetterService:
         if not game_logs or len(game_logs) < 5:
             return {"hit_rate": 0, "hits": 0, "games_counted": 0}
         
+        def safe_num(val):
+            """Safely convert value to number, handling strings and None."""
+            if val is None:
+                return 0
+            try:
+                return float(val)
+            except (ValueError, TypeError):
+                return 0
+        
         recent_games = game_logs[:5]
         stat_key = self._normalize_stat_key(stat_type)
         hits = 0
         
         for game in recent_games:
             if stat_key == 'PRA':
-                value = (game.get('pts', 0) or 0) + (game.get('reb', 0) or 0) + (game.get('ast', 0) or 0)
+                value = safe_num(game.get('pts')) + safe_num(game.get('reb')) + safe_num(game.get('ast'))
             elif stat_key == 'PR':
-                value = (game.get('pts', 0) or 0) + (game.get('reb', 0) or 0)
+                value = safe_num(game.get('pts')) + safe_num(game.get('reb'))
             elif stat_key == 'PA':
-                value = (game.get('pts', 0) or 0) + (game.get('ast', 0) or 0)
+                value = safe_num(game.get('pts')) + safe_num(game.get('ast'))
             elif stat_key == 'RA':
-                value = (game.get('reb', 0) or 0) + (game.get('ast', 0) or 0)
+                value = safe_num(game.get('reb')) + safe_num(game.get('ast'))
             else:
                 field_map = {'PTS': 'pts', 'REB': 'reb', 'AST': 'ast', 'STL': 'stl', 'BLK': 'blk', '3PM': 'fg3m'}
                 field = field_map.get(stat_key)
-                raw_value = game.get(field, 0) if field else 0
-                value = float(raw_value) if raw_value is not None else 0
+                value = safe_num(game.get(field)) if field else 0
             
             try:
                 if float(value) >= float(line):
@@ -966,6 +983,15 @@ class PicksGetterService:
         if not game_logs:
             return {"hits": 0, "games_counted": 0, "hit_rate": 0}
         
+        def safe_num(val):
+            """Safely convert value to number, handling strings and None."""
+            if val is None:
+                return 0
+            try:
+                return float(val)
+            except (ValueError, TypeError):
+                return 0
+        
         # Take last 10 games (most recent first)
         recent_games = game_logs[:10]
         
@@ -992,16 +1018,15 @@ class PicksGetterService:
         for game in recent_games:
             # Get stat value from game log
             if stat_key == 'PRA':
-                value = (game.get('pts', 0) or 0) + (game.get('reb', 0) or 0) + (game.get('ast', 0) or 0)
+                value = safe_num(game.get('pts')) + safe_num(game.get('reb')) + safe_num(game.get('ast'))
             elif stat_key == 'PR':
-                value = (game.get('pts', 0) or 0) + (game.get('reb', 0) or 0)
+                value = safe_num(game.get('pts')) + safe_num(game.get('reb'))
             elif stat_key == 'PA':
-                value = (game.get('pts', 0) or 0) + (game.get('ast', 0) or 0)
+                value = safe_num(game.get('pts')) + safe_num(game.get('ast'))
             elif stat_key == 'RA':
-                value = (game.get('reb', 0) or 0) + (game.get('ast', 0) or 0)
+                value = safe_num(game.get('reb')) + safe_num(game.get('ast'))
             elif field:
-                raw_value = game.get(field, 0)
-                value = float(raw_value) if raw_value is not None else 0
+                value = safe_num(game.get(field))
             else:
                 continue
             
@@ -1204,6 +1229,15 @@ class PicksGetterService:
         if not game_logs:
             return {"hits": 0, "games_counted": 0, "hit_rate": 0}
         
+        def safe_num(val):
+            """Safely convert value to number, handling strings and None."""
+            if val is None:
+                return 0
+            try:
+                return float(val)
+            except (ValueError, TypeError):
+                return 0
+        
         # Take last 25 games
         recent_games = game_logs[:25]
         
@@ -1215,20 +1249,19 @@ class PicksGetterService:
         for game in recent_games:
             # Get stat value from game log
             if stat_key == 'PRA':
-                value = (game.get('pts', 0) or 0) + (game.get('reb', 0) or 0) + (game.get('ast', 0) or 0)
+                value = safe_num(game.get('pts')) + safe_num(game.get('reb')) + safe_num(game.get('ast'))
             elif stat_key == 'PR':
-                value = (game.get('pts', 0) or 0) + (game.get('reb', 0) or 0)
+                value = safe_num(game.get('pts')) + safe_num(game.get('reb'))
             elif stat_key == 'PA':
-                value = (game.get('pts', 0) or 0) + (game.get('ast', 0) or 0)
+                value = safe_num(game.get('pts')) + safe_num(game.get('ast'))
             elif stat_key == 'RA':
-                value = (game.get('reb', 0) or 0) + (game.get('ast', 0) or 0)
+                value = safe_num(game.get('reb')) + safe_num(game.get('ast'))
             else:
                 field_map = {'PTS': 'pts', 'REB': 'reb', 'AST': 'ast', 'STL': 'stl', 'BLK': 'blk', '3PM': 'fg3m'}
                 field = field_map.get(stat_key)
                 if not field:
                     continue
-                raw_value = game.get(field, 0)
-                value = float(raw_value) if raw_value is not None else 0
+                value = safe_num(game.get(field))
             
             games_counted += 1
             try:
@@ -1752,163 +1785,6 @@ class PicksGetterService:
             import traceback
             traceback.print_exc()
             return {"status": "error", "bets": [], "error": str(e)}
-                        "player_name": player_name,
-                        "team": player_doc.get("team"),
-                        "opponent": player_doc.get("opponent"),
-                        "game_id": player_doc.get("game_id"),
-                        "stat_type": stat_type,
-                        "line": line,
-                        "anchor_line": prop.get("anchor_line"),
-                        "line_type": tier_label.lower(),
-                        "is_demon": is_demon,
-                        "is_goblin": is_goblin,
-                        "tier_label": tier_label,
-                        "direction": prop.get("direction", "over"),
-                        "odds": prop.get("price"),
-                        "bookmaker": prop.get("bookmaker", "prizepicks"),
-                        "player_rank": player_rank,
-                        "prop_count": len(props),
-                    })
-            
-            if not all_bets:
-                logger.warning("[MOST_POPULAR] No bets found in cached board")
-                return {"status": "awaiting_action", "bets": [], "total_available": 0, "timestamp": now.isoformat()}
-            
-            # Sort by player rank (lower = more popular)
-            all_bets.sort(key=lambda x: x.get("player_rank", 999))
-            
-            # Select 20 bets with variety (max 1 per player, ensure tier mix)
-            selected_bets = []
-            used_players = set()
-            
-            # First pass: one bet per player from top-ranked players
-            for bet in all_bets:
-                pname = bet['player_name']
-                if pname in used_players:
-                    continue
-                
-                selected_bets.append(bet)
-                used_players.add(pname)
-                
-                if len(selected_bets) >= 20:
-                    break
-            
-            # Check tier distribution
-            tier_counts = {"DEMON": 0, "GOBLIN": 0, "STANDARD": 0}
-            for b in selected_bets:
-                tier_counts[b['tier_label']] += 1
-            
-            # If no GOBLINs, swap some standards out for GOBLINs from different players
-            if tier_counts["GOBLIN"] == 0:
-                goblin_bets = [b for b in all_bets if b['is_goblin'] and b['player_name'] not in used_players]
-                # Remove duplicates from goblin_bets (one per player)
-                seen_goblin_players = set()
-                unique_goblin_bets = []
-                for gb in goblin_bets:
-                    if gb['player_name'] not in seen_goblin_players:
-                        unique_goblin_bets.append(gb)
-                        seen_goblin_players.add(gb['player_name'])
-                
-                # Replace some standards with goblins
-                standards_to_remove = [b for b in selected_bets if not b['is_demon'] and not b['is_goblin']][-3:]
-                for std_bet in standards_to_remove:
-                    if unique_goblin_bets:
-                        selected_bets.remove(std_bet)
-                        used_players.discard(std_bet['player_name'])
-                        new_goblin = unique_goblin_bets.pop(0)
-                        selected_bets.append(new_goblin)
-                        used_players.add(new_goblin['player_name'])
-            
-            # Re-sort by player rank
-            selected_bets.sort(key=lambda x: x.get("player_rank", 999))
-            
-            # Enrich with stats - FIRST from cached props, THEN from master hub
-            enriched_bets = []
-            for bet in selected_bets[:20]:
-                player_name = bet["player_name"]
-                stat_type = bet["stat_type"]
-                line = bet["line"]
-                
-                # Find the original prop from cached board to get its stats
-                original_prop = None
-                for player_doc in players:
-                    if player_doc.get("player_name") == player_name:
-                        for p in player_doc.get("props", []):
-                            p_stat = p.get("stat_type_extracted") or p.get("market", "").replace("player_", "")
-                            if p_stat == stat_type and p.get("line") == line:
-                                original_prop = p
-                                break
-                        break
-                
-                # Use stats from the cached prop first (these are pre-computed during sync)
-                if original_prop:
-                    bet["l5_avg"] = original_prop.get("l5_avg")
-                    bet["l10_avg"] = original_prop.get("l10_avg")
-                    bet["season_avg"] = original_prop.get("season_avg")
-                    bet["l5_hit_rate"] = original_prop.get("l5_hit_rate")
-                    bet["l10_hit_rate"] = original_prop.get("l10_hit_rate")
-                    bet["volume"] = original_prop.get("volume", 0)
-                    
-                    # Calculate h10 rate from hit rate if available
-                    if original_prop.get("l10_hit_rate") is not None:
-                        bet["h10_rate"] = round(original_prop.get("l10_hit_rate") * 100, 1) if original_prop.get("l10_hit_rate") <= 1 else original_prop.get("l10_hit_rate")
-                
-                # Get photo from master hub
-                hub_player = await self._get_master_player_by_name(player_name)
-                if hub_player:
-                    bet["photo_url"] = hub_player.get("headshot_url") or hub_player.get("photo_url")
-                    bet["position"] = hub_player.get("position")
-                    
-                    # If stats still missing, try to get from master hub
-                    if bet.get("l5_avg") is None or bet.get("season_avg") is None:
-                        baseline_stats = hub_player.get("baseline_stats", {})
-                        stat_key = self._normalize_stat_key(stat_type)
-                        stat_data = baseline_stats.get(stat_key, {})
-                        
-                        if isinstance(stat_data, dict):
-                            if bet.get("season_avg") is None:
-                                bet["season_avg"] = stat_data.get("season_avg")
-                            if bet.get("l5_avg") is None:
-                                bet["l5_avg"] = stat_data.get("l5_avg")
-                            if bet.get("l10_avg") is None:
-                                bet["l10_avg"] = stat_data.get("l10_avg")
-                        
-                        # Calculate from game logs if still missing
-                        if bet.get("l5_avg") is None or bet.get("h10_rate") is None:
-                            game_logs = hub_player.get("bdl_game_logs", []) or hub_player.get("game_logs", [])
-                            if game_logs:
-                                if bet.get("l5_avg") is None:
-                                    l5_result = self._calculate_l5_avg(game_logs, stat_type)
-                                    bet["l5_avg"] = l5_result["avg"]
-                                if bet.get("h10_rate") is None:
-                                    h10_result = self._calculate_h10_hit_rate(game_logs, stat_type, line)
-                                    bet["h10_rate"] = h10_result["hit_rate"]
-                                    bet["h10_hits"] = h10_result["hits"]
-                                    bet["h10_games"] = h10_result["games_counted"]
-                
-                enriched_bets.append(bet)
-            
-            # Log type breakdown
-            demons = len([b for b in enriched_bets if b.get('is_demon')])
-            goblins = len([b for b in enriched_bets if b.get('is_goblin')])
-            standards = len(enriched_bets) - demons - goblins
-            logger.info(f"[MOST_POPULAR] Returning {len(enriched_bets)} bets: {demons} DEMONs, {goblins} GOBLINs, {standards} STANDARDs")
-            
-            return {
-                "status": "live" if enriched_bets else "awaiting_action",
-                "bets": enriched_bets,
-                "total_available": len(all_bets),
-                "timestamp": now.isoformat(),
-                "source": "all_lines_by_volume"
-            }
-            
-        except Exception as e:
-            logger.error(f"[MOST_POPULAR] Error: {e}")
-            return {
-                "status": "error",
-                "bets": [],
-                "error": str(e)
-            }
     
     # ==================== PRIVATE HELPER METHODS ====================
     
