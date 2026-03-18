@@ -533,9 +533,66 @@ async def get_cached_player(player_name: str):
         player["active_badges"] = badge_keys
         player["badges"] = badges
         
-        # Also add to each prop for Vision Intel Suite with full intel data
-        opponent = player.get("opponent", "Opponent")
-        team = player.get("team", "Team")
+        # ========== FIX TEAM/OPPONENT FROM MASTER HUB ==========
+        # The cached_board has incorrect team data - get correct team from master hub
+        db = engine.db
+        master_hub = db.nba_master_hub_2026
+        
+        # Look up correct team from master hub
+        hub_player = await master_hub.find_one(
+            {"$or": [
+                {"display_name": {"$regex": f"^{pname}$", "$options": "i"}},
+                {"normalized_name": {"$regex": f"^{pname}$", "$options": "i"}}
+            ]},
+            {"_id": 0, "team": 1}
+        )
+        
+        correct_team = hub_player.get("team") if hub_player else player.get("team", "Team")
+        
+        # Derive correct opponent from game info
+        # Get home_team/away_team from raw cached_board documents
+        game_id = player.get("game_id")
+        raw_doc = await db.dg_cached_board.find_one(
+            {"game_id": game_id, "home_team": {"$exists": True}},
+            {"_id": 0, "home_team": 1, "away_team": 1}
+        ) if game_id else None
+        
+        # Team name mapping for comparison
+        TEAM_ABBREV_TO_FULL = {
+            "ATL": "Atlanta Hawks", "BOS": "Boston Celtics", "BKN": "Brooklyn Nets",
+            "CHA": "Charlotte Hornets", "CHI": "Chicago Bulls", "CLE": "Cleveland Cavaliers",
+            "DAL": "Dallas Mavericks", "DEN": "Denver Nuggets", "DET": "Detroit Pistons",
+            "GS": "Golden State Warriors", "GSW": "Golden State Warriors",
+            "HOU": "Houston Rockets", "IND": "Indiana Pacers", "LAC": "Los Angeles Clippers",
+            "LAL": "Los Angeles Lakers", "MEM": "Memphis Grizzlies", "MIA": "Miami Heat",
+            "MIL": "Milwaukee Bucks", "MIN": "Minnesota Timberwolves", "NO": "New Orleans Pelicans",
+            "NOP": "New Orleans Pelicans", "NY": "New York Knicks", "NYK": "New York Knicks",
+            "OKC": "Oklahoma City Thunder", "ORL": "Orlando Magic", "PHI": "Philadelphia 76ers",
+            "PHX": "Phoenix Suns", "POR": "Portland Trail Blazers", "SAC": "Sacramento Kings",
+            "SA": "San Antonio Spurs", "SAS": "San Antonio Spurs", "TOR": "Toronto Raptors",
+            "UTA": "Utah Jazz", "WAS": "Washington Wizards"
+        }
+        
+        correct_opponent = None
+        if raw_doc and correct_team:
+            home_team = raw_doc.get("home_team")
+            away_team = raw_doc.get("away_team")
+            team_full = TEAM_ABBREV_TO_FULL.get(correct_team.upper(), correct_team)
+            if team_full == home_team:
+                correct_opponent = away_team
+            elif team_full == away_team:
+                correct_opponent = home_team
+        
+        if not correct_opponent:
+            correct_opponent = player.get("opponent", "Opponent")
+        
+        # Update player with corrected team/opponent
+        player["team"] = correct_team
+        player["opponent"] = correct_opponent
+        
+        team = correct_team
+        opponent = correct_opponent
+        logger.info(f"[PLAYER_DETAIL] {pname}: team={team}, opponent={opponent}")
         
         # Get team abbreviations for DvP/Pace lookups
         from config.settings import TEAM_ABBREV_MAP
@@ -552,6 +609,30 @@ async def get_cached_player(player_name: str):
             l10_avg = prop.get("l10_avg", 0)
             season_avg = prop.get("season_avg", 0)
             l10_hit_rate = prop.get("l10_hit_rate", 0)
+            l5_hit_rate = prop.get("l5_hit_rate", 0)
+            
+            # Build hit_rates object for frontend compatibility
+            # Frontend expects: hit_rates.l10.hit_rate, hit_rates.l10.games_over, hit_rates.l10.total_games
+            l10_games_over = int((l10_hit_rate or 0) * 10)  # Approximate from hit rate
+            l5_games_over = int((l5_hit_rate or 0) * 5)
+            
+            prop["hit_rates"] = {
+                "l10": {
+                    "hit_rate": l10_hit_rate,
+                    "games_over": l10_games_over,
+                    "total_games": 10,
+                    "avg": l10_avg
+                },
+                "l5": {
+                    "hit_rate": l5_hit_rate,
+                    "games_over": l5_games_over,
+                    "total_games": 5,
+                    "avg": l5_avg
+                },
+                "season": {
+                    "avg": season_avg
+                }
+            }
             
             # Calculate stability index from hit rate
             stability_score = int((l10_hit_rate or 0) * 100) if l10_hit_rate else 50
