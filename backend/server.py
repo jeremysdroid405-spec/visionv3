@@ -402,20 +402,24 @@ async def scheduled_daily_sync():
                 except Exception as ie:
                     logger.error(f"[SCHEDULER] Injury sync failed (non-critical): {ie}")
             
-            # Step 2: Sync player stats to cache
-            logger.info("[SCHEDULER] Step 2/7: Syncing player stats to cache...")
-            stats_result = await demon_goblin_engine.sync_player_stats()
-            logger.info(f"[SCHEDULER] Stats sync: {stats_result.get('stats_synced', 0)} players (BDL: {stats_result.get('from_balldontlie', 0)}, NBA: {stats_result.get('from_nba_api', 0)})")
-            
-            # Step 3: Update Master Hub baseline stats (L5, L10, Season for all prop categories)
-            logger.info("[SCHEDULER] Step 3/7: Updating Master Hub baseline stats...")
+            # Step 2: BDL Comprehensive Sync - Primary stats source
+            # This syncs game logs, season averages, and player profiles from BallDontLie
+            # Season averages come DIRECTLY from BDL /season_averages endpoint (OFFICIAL)
+            # L5/L10 averages are calculated from game logs
+            logger.info("[SCHEDULER] Step 2/6: Running BDL comprehensive sync...")
             try:
-                from services.master_hub_sync import MasterHubSyncService
-                master_sync = MasterHubSyncService(db)
-                hub_result = await master_sync.run_full_sync()
-                logger.info(f"[SCHEDULER] Master Hub: {hub_result.get('synced', 0)} players updated with baseline stats")
-            except Exception as he:
-                logger.error(f"[SCHEDULER] Master Hub sync failed (non-critical): {he}")
+                from services.bdl_comprehensive_sync import get_bdl_sync_service
+                bdl_service = get_bdl_sync_service(db)
+                bdl_result = await bdl_service.sync_prizepicks_players()
+                logger.info(f"[SCHEDULER] BDL sync: {bdl_result.get('success', 0)}/{bdl_result.get('total', 0)} players synced from BallDontLie")
+            except Exception as bdl_e:
+                logger.error(f"[SCHEDULER] BDL sync failed: {bdl_e}")
+                # Fallback to legacy stats sync
+                logger.info("[SCHEDULER] Falling back to legacy stats sync...")
+                stats_result = await demon_goblin_engine.sync_player_stats()
+                logger.info(f"[SCHEDULER] Legacy stats sync: {stats_result.get('stats_synced', 0)} players")
+            
+            # Step 3: Sync DvP and matchup data
             
             # Step 4: Refresh DvP rankings (Defense vs Position)
             logger.info("[SCHEDULER] Step 4/7: Refreshing DvP rankings...")

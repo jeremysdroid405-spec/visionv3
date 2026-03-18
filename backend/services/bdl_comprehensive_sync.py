@@ -257,8 +257,8 @@ class BDLComprehensiveSyncService:
         # Fetch season averages
         season_avg = await self.fetch_season_averages(player_id)
         
-        # Fetch game logs (last 15 games)
-        game_logs = await self.fetch_player_game_logs(player_id, limit=15)
+        # Fetch game logs (last 100 games to cover the full season)
+        game_logs = await self.fetch_player_game_logs(player_id, limit=100)
         
         # Build display name
         first_name = profile.get("first_name", "")
@@ -299,9 +299,9 @@ class BDLComprehensiveSyncService:
             "team_id": team_data.get("id"),
             
             # Baseline stats - Transform BDL format to our expected format
-            # BDL returns: {pts: 19.3, reb: 4.8, ...}
-            # We need: {PTS: {season_avg: 19.3}, REB: {season_avg: 4.8}, ...}
-            "baseline_stats": self._transform_bdl_stats(season_avg) if season_avg else {},
+            # Season averages come DIRECTLY from BDL /season_averages (official stats)
+            # L5/L10 averages calculated from game_logs
+            "baseline_stats": self._transform_bdl_stats(season_avg, game_logs) if season_avg else {},
             
             # Raw BDL stats (preserved for reference)
             "bdl_raw_stats": season_avg if season_avg else {},
@@ -318,14 +318,35 @@ class BDLComprehensiveSyncService:
         
         return doc
     
-    def _transform_bdl_stats(self, bdl_stats: Dict) -> Dict:
+    def _transform_bdl_stats(self, bdl_stats: Dict, game_logs: List[Dict] = None) -> Dict:
         """
         Transform BDL season averages to our expected format.
-        BDL: {pts: 19.3, reb: 4.8, ast: 7.1, ...}
-        Our: {PTS: {season_avg: 19.3, l5_avg: None, l10_avg: None}, ...}
+        
+        OFFICIAL SEASON AVERAGES come directly from BDL /season_averages endpoint.
+        L5 and L10 averages are calculated from game_logs (if provided).
+        
+        BDL: {pts: 19.3, reb: 4.8, ast: 7.1, games_played: 57, ...}
+        Our: {PTS: {season_avg: 19.3, l5_avg: X, l10_avg: Y}, games_played: 57, ...}
         """
         if not bdl_stats:
             return {}
+        
+        # Helper to calculate averages from game logs
+        def calc_avg_from_logs(logs: List[Dict], stat_key: str, num_games: int) -> float:
+            if not logs or len(logs) < num_games:
+                return None
+            recent = logs[:num_games]
+            values = [float(g.get(stat_key, 0) or 0) for g in recent]
+            return round(sum(values) / len(values), 1) if values else None
+        
+        # Sort game logs by date (most recent first)
+        sorted_logs = []
+        if game_logs:
+            sorted_logs = sorted(
+                game_logs,
+                key=lambda x: x.get('game', {}).get('date', '') if isinstance(x.get('game'), dict) else x.get('date', ''),
+                reverse=True
+            )
         
         # Mapping from BDL keys to our uppercase keys
         stat_map = {
@@ -334,7 +355,7 @@ class BDLComprehensiveSyncService:
             'ast': 'AST',
             'stl': 'STL',
             'blk': 'BLK',
-            'turnover': 'TOV',
+            'turnover': 'TO',
             'fg3m': '3PM',
             'fgm': 'FGM',
             'ftm': 'FTM',
@@ -344,11 +365,25 @@ class BDLComprehensiveSyncService:
         
         for bdl_key, our_key in stat_map.items():
             if bdl_key in bdl_stats:
+                season_avg = round(bdl_stats[bdl_key], 1) if bdl_stats[bdl_key] else None
+                
+                # Calculate L5 and L10 from game logs
+                l5_avg = calc_avg_from_logs(sorted_logs, bdl_key, 5) if sorted_logs else None
+                l10_avg = calc_avg_from_logs(sorted_logs, bdl_key, 10) if sorted_logs else None
+                
                 transformed[our_key] = {
-                    'season_avg': round(bdl_stats[bdl_key], 1) if bdl_stats[bdl_key] else None,
-                    'l5_avg': None,
-                    'l10_avg': None
+                    'season_avg': season_avg,
+                    'l5_avg': l5_avg,
+                    'l10_avg': l10_avg
                 }
+        
+        # Add games_played from official BDL stats
+        if 'games_played' in bdl_stats:
+            transformed['games_played'] = bdl_stats['games_played']
+        
+        # Add synced_from marker
+        transformed['synced_from'] = 'bdl_season_averages'
+        transformed['synced_at'] = datetime.now(timezone.utc).isoformat()
         
         # Add shooting percentages directly
         if 'fg_pct' in bdl_stats:
@@ -360,20 +395,52 @@ class BDLComprehensiveSyncService:
         
         # Add combo stats
         if 'pts' in bdl_stats and 'reb' in bdl_stats and 'ast' in bdl_stats:
-            pra = (bdl_stats.get('pts', 0) or 0) + (bdl_stats.get('reb', 0) or 0) + (bdl_stats.get('ast', 0) or 0)
-            transformed['PRA'] = {'season_avg': round(pra, 1), 'l5_avg': None, 'l10_avg': None}
+            pts = bdl_stats.get('pts', 0) or 0
+            reb = bdl_stats.get('reb', 0) or 0
+            ast = bdl_stats.get('ast', 0) or 0
+            
+            transformed['PRA'] = {
+                'season_avg': round(pts + reb + ast, 1),
+                'l5_avg': round((transformed.get('PTS', {}).get('l5_avg') or 0) + 
+                               (transformed.get('REB', {}).get('l5_avg') or 0) + 
+                               (transformed.get('AST', {}).get('l5_avg') or 0), 1) if sorted_logs else None,
+                'l10_avg': round((transformed.get('PTS', {}).get('l10_avg') or 0) + 
+                                (transformed.get('REB', {}).get('l10_avg') or 0) + 
+                                (transformed.get('AST', {}).get('l10_avg') or 0), 1) if sorted_logs else None
+            }
             
         if 'pts' in bdl_stats and 'reb' in bdl_stats:
-            pr = (bdl_stats.get('pts', 0) or 0) + (bdl_stats.get('reb', 0) or 0)
-            transformed['PR'] = {'season_avg': round(pr, 1), 'l5_avg': None, 'l10_avg': None}
+            pts = bdl_stats.get('pts', 0) or 0
+            reb = bdl_stats.get('reb', 0) or 0
+            transformed['PR'] = {
+                'season_avg': round(pts + reb, 1),
+                'l5_avg': round((transformed.get('PTS', {}).get('l5_avg') or 0) + 
+                               (transformed.get('REB', {}).get('l5_avg') or 0), 1) if sorted_logs else None,
+                'l10_avg': round((transformed.get('PTS', {}).get('l10_avg') or 0) + 
+                                (transformed.get('REB', {}).get('l10_avg') or 0), 1) if sorted_logs else None
+            }
             
         if 'pts' in bdl_stats and 'ast' in bdl_stats:
-            pa = (bdl_stats.get('pts', 0) or 0) + (bdl_stats.get('ast', 0) or 0)
-            transformed['PA'] = {'season_avg': round(pa, 1), 'l5_avg': None, 'l10_avg': None}
+            pts = bdl_stats.get('pts', 0) or 0
+            ast = bdl_stats.get('ast', 0) or 0
+            transformed['PA'] = {
+                'season_avg': round(pts + ast, 1),
+                'l5_avg': round((transformed.get('PTS', {}).get('l5_avg') or 0) + 
+                               (transformed.get('AST', {}).get('l5_avg') or 0), 1) if sorted_logs else None,
+                'l10_avg': round((transformed.get('PTS', {}).get('l10_avg') or 0) + 
+                                (transformed.get('AST', {}).get('l10_avg') or 0), 1) if sorted_logs else None
+            }
             
         if 'reb' in bdl_stats and 'ast' in bdl_stats:
-            ra = (bdl_stats.get('reb', 0) or 0) + (bdl_stats.get('ast', 0) or 0)
-            transformed['RA'] = {'season_avg': round(ra, 1), 'l5_avg': None, 'l10_avg': None}
+            reb = bdl_stats.get('reb', 0) or 0
+            ast = bdl_stats.get('ast', 0) or 0
+            transformed['RA'] = {
+                'season_avg': round(reb + ast, 1),
+                'l5_avg': round((transformed.get('REB', {}).get('l5_avg') or 0) + 
+                               (transformed.get('AST', {}).get('l5_avg') or 0), 1) if sorted_logs else None,
+                'l10_avg': round((transformed.get('REB', {}).get('l10_avg') or 0) + 
+                                (transformed.get('AST', {}).get('l10_avg') or 0), 1) if sorted_logs else None
+            }
         
         return transformed
     

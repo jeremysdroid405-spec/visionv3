@@ -133,6 +133,63 @@ async def sync_baseline_stats():
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.post("/v3/sync-bdl")
+async def sync_bdl_comprehensive():
+    """
+    Manually trigger BDL (BallDontLie) comprehensive sync.
+    
+    This syncs:
+    - Player profiles (height, weight, position, draft info)
+    - Season averages (pts, reb, ast, etc.) - OFFICIAL from BDL API
+    - Game logs (last 100 games with full box scores)
+    - L5/L10 averages calculated from game logs
+    
+    This is the PRIMARY data source for accurate player stats.
+    Automatically runs daily at 4:00 AM EST.
+    """
+    import os
+    from motor.motor_asyncio import AsyncIOMotorClient
+    from services.bdl_comprehensive_sync import get_bdl_sync_service
+    
+    mongo_url = os.environ.get("MONGO_URL")
+    db_name = os.environ.get("DB_NAME", "pick_vision")
+    
+    if not mongo_url:
+        raise HTTPException(status_code=503, detail="Database not configured")
+    
+    logger.info("[MANUAL SYNC] Triggering BDL comprehensive sync...")
+    
+    try:
+        client = AsyncIOMotorClient(mongo_url)
+        db = client[db_name]
+        
+        # Sync from BDL API - this sets OFFICIAL season averages + calculates L5/L10
+        bdl_service = get_bdl_sync_service(db)
+        bdl_result = await bdl_service.sync_prizepicks_players()
+        
+        # NO recalculation needed - BDL sync already computes everything correctly
+        # Season averages come directly from BDL /season_averages endpoint
+        # L5/L10 are calculated from game logs in _transform_bdl_stats()
+        
+        return {
+            "success": True,
+            "sync_type": "bdl_comprehensive",
+            "bdl_sync": {
+                "players_synced": bdl_result.get("success", 0),
+                "players_failed": bdl_result.get("failed", 0),
+                "players_not_found": bdl_result.get("not_found", 0),
+                "total_attempted": bdl_result.get("total", 0)
+            },
+            "note": "Season averages are OFFICIAL from BDL API. L5/L10 calculated from game logs.",
+            "triggered_at": datetime.now(timezone.utc).isoformat()
+        }
+    except Exception as e:
+        logger.error(f"[MANUAL SYNC] BDL comprehensive sync failed: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.post("/v3/sync-dvp")
 async def sync_dvp_rankings():
     """
