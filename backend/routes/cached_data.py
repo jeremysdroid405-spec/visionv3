@@ -785,14 +785,41 @@ async def get_cached_player(player_name: str):
         master_hub = engine.picks_getter_service.master_hub
         hub_player = await master_hub.find_one(
             {"display_name": {"$regex": f"^{pname}$", "$options": "i"}},
-            {"_id": 0, "advanced_stats": 1}
+            {"_id": 0, "advanced_stats": 1, "bdl_game_logs": 1, "baseline_stats": 1}
         )
-        if hub_player and hub_player.get("advanced_stats"):
-            adv = hub_player["advanced_stats"]
-            player["advanced_stats"] = {
-                "pie": adv.get("pie"),  # Player Impact Estimate
-                "net_rating": adv.get("net_rating"),  # Net Rating
-                "games_counted": adv.get("games_counted")
-            }
+        if hub_player:
+            # Add advanced stats
+            if hub_player.get("advanced_stats"):
+                adv = hub_player["advanced_stats"]
+                player["advanced_stats"] = {
+                    "pie": adv.get("pie"),  # Player Impact Estimate
+                    "net_rating": adv.get("net_rating"),  # Net Rating
+                    "games_counted": adv.get("games_counted")
+                }
+            
+            # Add game logs for Vision Intel display (filter DNPs, limit to recent 20)
+            game_logs = hub_player.get("bdl_game_logs", [])
+            if game_logs:
+                # Filter out DNP games (0 minutes)
+                played_games = []
+                for g in game_logs:
+                    mins = g.get("min", "0") or "0"
+                    if isinstance(mins, str):
+                        mins_val = int(mins.split(":")[0]) if ":" in mins else (int(mins) if mins.isdigit() else 0)
+                    else:
+                        mins_val = int(mins) if mins else 0
+                    if mins_val > 0:
+                        played_games.append(g)
+                
+                player["game_logs"] = played_games[:20]  # Most recent 20 played games
+                player["game_logs_count"] = len(played_games)
+            
+            # Add aggregated hit_rates for primary prop (first prop)
+            baseline = hub_player.get("baseline_stats", {})
+            props = player.get("props", [])
+            if props and baseline:
+                first_prop = props[0]
+                player["hit_rates"] = first_prop.get("hit_rates", {})
+                player["baseline_stats"] = baseline
     
     return result

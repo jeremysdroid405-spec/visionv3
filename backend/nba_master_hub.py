@@ -142,13 +142,15 @@ class NBAMasterHub:
         """
         DAILY SYNC PROTOCOL (4:00 AM ET)
         
-        Overwrites the Master Hub with fresh API data.
-        - Fetches all active players from Tank01/BallDontLie
-        - Updates stats (Season Avg, L10 Games, Fatigue/Minutes)
-        - Removes waived/inactive players immediately
+        Syncs player data from BallDontLie API (BDL) - the SOLE data source.
+        - Fetches players currently on the PrizePicks board
+        - Updates stats (Season Avg, L5, L10 from game logs)
+        - Preserves photo URLs and other metadata
+        
+        NOTE: Tank01 has been PURGED. All data comes from BDL exclusively.
         """
         logger.info("=" * 60)
-        logger.info("[MASTER HUB] DAILY SYNC STARTING (4:00 AM ET Protocol)")
+        logger.info("[MASTER HUB] DAILY SYNC STARTING (BDL Protocol)")
         logger.info("=" * 60)
         
         sync_start = datetime.now(timezone.utc)
@@ -162,48 +164,22 @@ class NBAMasterHub:
         }
         
         try:
-            # Step 1: Fetch all active players from Tank01
-            logger.info("[MASTER HUB] Step 1: Fetching active roster from Tank01...")
-            active_players = await self._fetchActiveRosterFromTank01()
-            logger.info(f"[MASTER HUB] Found {len(active_players)} active players")
+            # Use BDL Comprehensive Sync for PrizePicks players
+            from services.bdl_comprehensive_sync import get_bdl_sync_service
+            bdl_service = get_bdl_sync_service(self.hub.database)
             
-            # Step 2: Skip individual stats fetch (too slow for 1000+ players)
-            # Stats will be fetched on-demand via fetchPlayerIntel
-            logger.info("[MASTER HUB] Step 2: Skipping bulk stats fetch (on-demand loading enabled)")
+            logger.info("[MASTER HUB] Step 1: Syncing players from PrizePicks board via BDL...")
+            bdl_result = await bdl_service.sync_prizepicks_players()
             
-            # Step 3: Get current hub player IDs
-            current_ids = set()
-            async for doc in self.hub.find({}, {"player_id": 1}):
-                current_ids.add(doc.get("player_id"))
+            results["players_synced"] = bdl_result.get("success", 0)
+            results["players_removed"] = 0  # BDL sync doesn't remove players
             
-            # Step 4: Identify players to remove (waived/inactive)
-            new_ids = {p.get("player_id") for p in active_players if p.get("player_id")}
-            removed_ids = current_ids - new_ids
-            
-            if removed_ids:
-                logger.info(f"[MASTER HUB] Removing {len(removed_ids)} inactive players...")
-                await self.hub.delete_many({"player_id": {"$in": list(removed_ids)}})
-                results["players_removed"] = len(removed_ids)
-            
-            # Step 5: Upsert all active players
-            logger.info("[MASTER HUB] Step 3: Writing to Master Hub...")
-            for player in active_players:
-                if player.get("player_id"):
-                    player["status"] = "active"
-                    player["last_updated"] = sync_start.isoformat()
-                    
-                    await self.hub.update_one(
-                        {"player_id": player["player_id"]},
-                        {"$set": player},
-                        upsert=True
-                    )
-                    results["players_synced"] += 1
+            if bdl_result.get("not_found", 0) > 0:
+                results["errors"].append(f"{bdl_result['not_found']} players not found in BDL")
             
             results["success"] = True
             self._last_sync = sync_start
             
-            # Photos are LOCKED - daily sync is forbidden from calling external APIs
-            # to "enrich" or "verify" photos. They are pre-injected as plain text strings.
             logger.info("[MASTER HUB] Photo enrichment SKIPPED (photos are locked)")
             
         except Exception as e:
@@ -214,7 +190,7 @@ class NBAMasterHub:
         results["completed_at"] = datetime.now(timezone.utc).isoformat()
         results["duration"] = (datetime.now(timezone.utc) - sync_start).total_seconds()
         
-        logger.info(f"[MASTER HUB] Daily sync complete: {results['players_synced']} synced, {results['players_removed']} removed")
+        logger.info(f"[MASTER HUB] Daily sync complete: {results['players_synced']} synced")
         logger.info("=" * 60)
         
         return results

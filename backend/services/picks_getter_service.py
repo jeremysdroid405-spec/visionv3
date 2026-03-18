@@ -31,6 +31,31 @@ from utils.player_lookup import get_player_by_id, get_player_by_name as shared_g
 logger = logging.getLogger(__name__)
 
 
+# ==================== DNP FILTER HELPER ====================
+def _filter_played_games(game_logs: List[Dict]) -> List[Dict]:
+    """
+    Filter out DNP (Did Not Play) games from game logs.
+    
+    A game is considered DNP if minutes played is 0, "00", or empty.
+    This is CRITICAL for accurate L5/L10 averages and hit rate calculations.
+    """
+    if not game_logs:
+        return []
+    
+    def did_play(game: Dict) -> bool:
+        mins = game.get("min", "0") or "0"
+        if isinstance(mins, str):
+            # Handle "MM:SS" format or "00"
+            mins = mins.split(":")[0] if ":" in mins else mins
+            try:
+                return int(mins) > 0
+            except ValueError:
+                return False
+        return float(mins) > 0 if mins else False
+    
+    return [g for g in game_logs if did_play(g)]
+
+
 # ==================== TEAM NAME MAPPING ====================
 # Maps team abbreviations (from master hub) to full names (from Odds API)
 TEAM_ABBREV_TO_FULL = {
@@ -804,7 +829,7 @@ class PicksGetterService:
         return None
     
     def _calculate_l10_avg(self, game_logs: List[Dict], stat_type: str) -> Dict:
-        """Calculate L10 average from last 10 game logs."""
+        """Calculate L10 average from last 10 game logs (excluding DNPs)."""
         if not game_logs:
             return {"avg": 0, "games_counted": 0, "values": []}
         
@@ -817,8 +842,12 @@ class PicksGetterService:
             except (ValueError, TypeError):
                 return 0
         
-        # CRITICAL: Sort by date first (most recent first)
+        # CRITICAL: Filter out DNPs first, then sort by date (most recent first)
         from datetime import datetime
+        
+        played_games = _filter_played_games(game_logs)
+        if not played_games:
+            return {"avg": 0, "games_counted": 0, "values": []}
         
         def get_game_date(g):
             date_str = ""
@@ -833,7 +862,7 @@ class PicksGetterService:
                     pass
             return datetime.min
         
-        sorted_logs = sorted(game_logs, key=get_game_date, reverse=True)
+        sorted_logs = sorted(played_games, key=get_game_date, reverse=True)
         recent_games = sorted_logs[:10]
         stat_key = self._normalize_stat_key(stat_type)
         values = []
@@ -859,8 +888,10 @@ class PicksGetterService:
         return {"avg": avg, "games_counted": len(values), "values": values}
     
     def _calculate_h5_hit_rate(self, game_logs: List[Dict], stat_type: str, line: float) -> Dict:
-        """Calculate H5 hit rate (last 5 games)."""
-        if not game_logs or len(game_logs) < 5:
+        """Calculate H5 hit rate (last 5 games, excluding DNPs)."""
+        # Filter out DNPs first
+        played_games = _filter_played_games(game_logs)
+        if not played_games or len(played_games) < 5:
             return {"hit_rate": 0, "hits": 0, "games_counted": 0}
         
         def safe_num(val):
@@ -888,7 +919,7 @@ class PicksGetterService:
                     pass
             return datetime.min
         
-        sorted_logs = sorted(game_logs, key=get_game_date, reverse=True)
+        sorted_logs = sorted(played_games, key=get_game_date, reverse=True)
         recent_games = sorted_logs[:5]
         stat_key = self._normalize_stat_key(stat_type)
         hits = 0
@@ -918,11 +949,13 @@ class PicksGetterService:
     
     def _calculate_l5_avg(self, game_logs: List[Dict], stat_type: str) -> Dict:
         """
-        Calculate L5 average from last 5 game logs.
+        Calculate L5 average from last 5 game logs (excluding DNPs).
         
         Returns: {"avg": float, "games_counted": int, "values": list}
         """
-        if not game_logs:
+        # Filter out DNPs first
+        played_games = _filter_played_games(game_logs)
+        if not played_games:
             return {"avg": 0, "games_counted": 0, "values": []}
         
         # CRITICAL: Sort by date first (most recent first)
@@ -941,7 +974,7 @@ class PicksGetterService:
                     pass
             return datetime.min
         
-        sorted_logs = sorted(game_logs, key=get_game_date, reverse=True)
+        sorted_logs = sorted(played_games, key=get_game_date, reverse=True)
         recent_games = sorted_logs[:5]
         
         stat_key = self._normalize_stat_key(stat_type)
@@ -1148,11 +1181,13 @@ class PicksGetterService:
     
     def _calculate_h10_hit_rate(self, game_logs: List[Dict], stat_type: str, line: float) -> Dict:
         """
-        Calculate H10 hit rate from last 10 game logs.
+        Calculate H10 hit rate from last 10 game logs (excluding DNPs).
         
         Returns: {"hits": int, "games_counted": int, "hit_rate": float}
         """
-        if not game_logs:
+        # Filter out DNPs first
+        played_games = _filter_played_games(game_logs)
+        if not played_games:
             return {"hits": 0, "games_counted": 0, "hit_rate": 0}
         
         def safe_num(val):
@@ -1181,7 +1216,7 @@ class PicksGetterService:
                     pass
             return datetime.min
         
-        sorted_logs = sorted(game_logs, key=get_game_date, reverse=True)
+        sorted_logs = sorted(played_games, key=get_game_date, reverse=True)
         
         # Take last 10 games (most recent first)
         recent_games = sorted_logs[:10]
@@ -1426,11 +1461,13 @@ class PicksGetterService:
     
     def _calculate_l25_hit_rate(self, game_logs: List[Dict], stat_type: str, line: float) -> Dict:
         """
-        Calculate L25 hit rate from last 25 game logs.
+        Calculate L25 hit rate from last 25 game logs (excluding DNPs).
         
         Returns: {"hits": int, "games_counted": int, "hit_rate": float}
         """
-        if not game_logs:
+        # Filter out DNPs first
+        played_games = _filter_played_games(game_logs)
+        if not played_games:
             return {"hits": 0, "games_counted": 0, "hit_rate": 0}
         
         def safe_num(val):
@@ -1458,7 +1495,7 @@ class PicksGetterService:
                     pass
             return datetime.min
         
-        sorted_logs = sorted(game_logs, key=get_game_date, reverse=True)
+        sorted_logs = sorted(played_games, key=get_game_date, reverse=True)
         recent_games = sorted_logs[:25]
         
         stat_key = self._normalize_stat_key(stat_type)

@@ -214,9 +214,12 @@ class BDLComprehensiveSyncService:
         return None
     
     # ==================== STATS (GAME LOGS) ENDPOINT ====================
-    async def fetch_player_game_logs(self, player_id: int, season: int = CURRENT_SEASON, limit: int = 15) -> List[Dict]:
+    async def fetch_player_game_logs(self, player_id: int, season: int = CURRENT_SEASON, limit: int = 100) -> List[Dict]:
         """
         Fetch individual game logs from /stats endpoint.
+        
+        IMPORTANT: BDL API returns games in ASCENDING order (oldest first).
+        We fetch more games (100) and sort by date descending to get recent games.
         
         Returns last {limit} games with FULL box score:
         - id, game (game details), player
@@ -227,6 +230,7 @@ class BDLComprehensiveSyncService:
         - oreb, dreb, pf
         
         NO field renaming - stored exactly as received from BDL.
+        Games are sorted by date (most recent first) before returning.
         """
         params = {
             "seasons[]": season,
@@ -239,7 +243,17 @@ class BDLComprehensiveSyncService:
         if not data:
             return []
         
-        return data.get("data", [])
+        games = data.get("data", [])
+        
+        # CRITICAL: Sort by game date descending (most recent first)
+        # BDL API returns games in ascending order by default
+        sorted_games = sorted(
+            games,
+            key=lambda x: x.get("game", {}).get("date", "") if isinstance(x.get("game"), dict) else "",
+            reverse=True
+        )
+        
+        return sorted_games
     
     # ==================== COMPREHENSIVE PLAYER SYNC ====================
     async def sync_player_complete(self, player_id: int) -> Optional[Dict]:
@@ -325,28 +339,43 @@ class BDLComprehensiveSyncService:
         OFFICIAL SEASON AVERAGES come directly from BDL /season_averages endpoint.
         L5 and L10 averages are calculated from game_logs (if provided).
         
+        IMPORTANT: DNP (Did Not Play) games are filtered out for L5/L10 calculations.
+        A game is considered DNP if minutes played is 0 or "00".
+        
         BDL: {pts: 19.3, reb: 4.8, ast: 7.1, games_played: 57, ...}
         Our: {PTS: {season_avg: 19.3, l5_avg: X, l10_avg: Y}, games_played: 57, ...}
         """
         if not bdl_stats:
             return {}
         
-        # Helper to calculate averages from game logs
+        # Helper to check if player actually played (not DNP)
+        def did_play(game: Dict) -> bool:
+            mins = game.get("min", "0") or "0"
+            if isinstance(mins, str):
+                # Handle "MM:SS" format or "00"
+                mins = mins.split(":")[0] if ":" in mins else mins
+                try:
+                    return int(mins) > 0
+                except ValueError:
+                    return False
+            return float(mins) > 0 if mins else False
+        
+        # Helper to calculate averages from game logs (excluding DNPs)
         def calc_avg_from_logs(logs: List[Dict], stat_key: str, num_games: int) -> float:
-            if not logs or len(logs) < num_games:
-                return None
-            recent = logs[:num_games]
+            # Filter to games where player actually played
+            played_games = [g for g in logs if did_play(g)]
+            if not played_games or len(played_games) < num_games:
+                # If we don't have enough games, use what we have
+                if not played_games:
+                    return None
+                recent = played_games[:num_games]
+            else:
+                recent = played_games[:num_games]
             values = [float(g.get(stat_key, 0) or 0) for g in recent]
             return round(sum(values) / len(values), 1) if values else None
         
-        # Sort game logs by date (most recent first)
-        sorted_logs = []
-        if game_logs:
-            sorted_logs = sorted(
-                game_logs,
-                key=lambda x: x.get('game', {}).get('date', '') if isinstance(x.get('game'), dict) else x.get('date', ''),
-                reverse=True
-            )
+        # Sort game logs by date (most recent first) - already sorted from fetch_player_game_logs
+        sorted_logs = game_logs if game_logs else []
         
         # Mapping from BDL keys to our uppercase keys
         stat_map = {
