@@ -464,6 +464,66 @@ async def scheduled_roster_sync():
         logger.error("[SCHEDULER] Demon & Goblin Engine not initialized")
 
 
+async def scheduled_8am_stats_dvp_sync():
+    """
+    Scheduled job that runs at 8:00 AM EST (13:00 UTC) daily.
+    
+    Combined sync for:
+    1. Master Hub baseline stats (L5, L10, season averages)
+    2. DvP rankings refresh (Defense vs Position)
+    
+    This ensures the Vision Intel Suite has fresh data for:
+    - Player stat analysis
+    - Defensive matchup friction calculations
+    - Pace/tempo multipliers
+    """
+    from services.dvp_service import force_refresh_dvp
+    from services.master_hub_sync import MasterHubSyncService
+    
+    logger.info("=" * 70)
+    logger.info(f"[SCHEDULER] 8:00 AM STATS + DVP SYNC TRIGGERED")
+    logger.info(f"[SCHEDULER] Time: {datetime.now(timezone.utc).isoformat()}")
+    logger.info("=" * 70)
+    
+    results = {"stats": None, "dvp": None}
+    
+    # Step 1: Update Master Hub baseline stats
+    try:
+        logger.info("[8AM SYNC] Step 1/2: Updating Master Hub baseline stats...")
+        master_sync = MasterHubSyncService(db)
+        stats_result = await master_sync.run_full_sync()
+        results["stats"] = {
+            "success": True,
+            "synced": stats_result.get('synced', 0),
+            "errors": stats_result.get('errors', 0)
+        }
+        logger.info(f"[8AM SYNC] Master Hub: {stats_result.get('synced', 0)} players updated")
+    except Exception as e:
+        logger.error(f"[8AM SYNC] Master Hub sync failed: {e}")
+        results["stats"] = {"success": False, "error": str(e)}
+    
+    # Step 2: Refresh DvP rankings
+    try:
+        logger.info("[8AM SYNC] Step 2/2: Refreshing DvP rankings...")
+        dvp_result = await force_refresh_dvp()
+        results["dvp"] = {
+            "success": dvp_result.get("success", False),
+            "source": str(dvp_result.get("source")),
+            "teams_count": dvp_result.get("teams_count", 0)
+        }
+        logger.info(f"[8AM SYNC] DvP refresh: {dvp_result.get('source')} - {dvp_result.get('teams_count', 0)} teams")
+    except Exception as e:
+        logger.error(f"[8AM SYNC] DvP refresh failed: {e}")
+        results["dvp"] = {"success": False, "error": str(e)}
+    
+    logger.info("=" * 70)
+    logger.info(f"[SCHEDULER] 8:00 AM SYNC COMPLETE")
+    logger.info(f"[SCHEDULER] Results: {results}")
+    logger.info("=" * 70)
+    
+    return results
+
+
 @app.on_event("startup")
 async def startup_event():
     global stats_manager, demon_tracker, demon_goblin_engine, vision_ai_service, injury_service, raw_stat_fetcher, social_signal_engine, adaptive_sync, intel_briefing_engine, live_scores_engine, game_lock_engine, scheduler
@@ -602,20 +662,20 @@ async def startup_event():
         replace_existing=True
     )
     
-    # Daily DvP rankings refresh at 8:00 AM EST (13:00 UTC)
-    from services.dvp_service import scheduled_dvp_refresh
+    # Daily 8:00 AM EST combined Stats + DvP sync
+    # This runs AFTER the 4 AM sync to provide fresh data for the day's games
     scheduler.add_job(
-        scheduled_dvp_refresh,
+        scheduled_8am_stats_dvp_sync,
         CronTrigger(hour=13, minute=0, timezone=SCHEDULER_TIMEZONE),  # 8:00 AM EST = 13:00 UTC
-        id='daily_dvp_refresh',
-        name='8:00 AM EST DvP Rankings Refresh',
+        id='daily_8am_stats_dvp',
+        name='8:00 AM EST Stats + DvP Sync',
         replace_existing=True
     )
     
     scheduler.start()
     logger.info(f"[SCHEDULER] APScheduler started - Daily stats sync at 04:00 EST (09:00 UTC)")
     logger.info(f"[SCHEDULER] Weekly roster sync scheduled: Sunday 00:00 UTC")
-    logger.info(f"[SCHEDULER] Daily DvP refresh scheduled: 08:00 EST (13:00 UTC)")
+    logger.info(f"[SCHEDULER] Daily Stats + DvP sync scheduled: 08:00 EST (13:00 UTC)")
     
     # DISABLED: Full auto-sync on startup to prevent credit drain
     # The adaptive sync engine handles real-time odds polling

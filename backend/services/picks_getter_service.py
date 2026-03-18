@@ -744,10 +744,14 @@ class PicksGetterService:
             else:
                 field_map = {'PTS': 'pts', 'REB': 'reb', 'AST': 'ast', 'STL': 'stl', 'BLK': 'blk', '3PM': 'fg3m'}
                 field = field_map.get(stat_key)
-                value = game.get(field, 0) or 0 if field else 0
+                raw_value = game.get(field, 0) if field else 0
+                value = float(raw_value) if raw_value is not None else 0
             
-            if value >= line:
-                hits += 1
+            try:
+                if float(value) >= float(line):
+                    hits += 1
+            except (ValueError, TypeError):
+                continue
         
         hit_rate = round((hits / 5) * 100, 1)
         return {"hit_rate": hit_rate, "hits": hits, "games_counted": 5}
@@ -987,13 +991,18 @@ class PicksGetterService:
             elif stat_key == 'RA':
                 value = (game.get('reb', 0) or 0) + (game.get('ast', 0) or 0)
             elif field:
-                value = game.get(field, 0) or 0
+                raw_value = game.get(field, 0)
+                value = float(raw_value) if raw_value is not None else 0
             else:
                 continue
             
             games_counted += 1
-            if value > line:  # Must EXCEED the line (not just meet it)
-                hits += 1
+            # Ensure both values are numeric before comparison
+            try:
+                if float(value) > float(line):  # Must EXCEED the line (not just meet it)
+                    hits += 1
+            except (ValueError, TypeError):
+                continue
         
         hit_rate = round((hits / games_counted) * 100) if games_counted > 0 else 0
         
@@ -1209,11 +1218,15 @@ class PicksGetterService:
                 field = field_map.get(stat_key)
                 if not field:
                     continue
-                value = game.get(field, 0) or 0
+                raw_value = game.get(field, 0)
+                value = float(raw_value) if raw_value is not None else 0
             
             games_counted += 1
-            if value > line:
-                hits += 1
+            try:
+                if float(value) > float(line):
+                    hits += 1
+            except (ValueError, TypeError):
+                continue
         
         hit_rate = round((hits / games_counted) * 100) if games_counted > 0 else 0
         

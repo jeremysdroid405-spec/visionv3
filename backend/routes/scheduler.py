@@ -120,7 +120,7 @@ async def sync_baseline_stats():
         db = client[db_name]
         
         service = MasterHubSyncService(db)
-        result = await service.run_full_sync(batch_size=50)
+        result = await service.run_full_sync()
         
         return {
             "success": True,
@@ -131,6 +131,115 @@ async def sync_baseline_stats():
     except Exception as e:
         logger.error(f"[MANUAL SYNC] Baseline stats sync failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/v3/sync-dvp")
+async def sync_dvp_rankings():
+    """
+    Manually trigger DvP (Defense vs Position) rankings refresh.
+    
+    Fetches live defensive rankings from BallDontLie API and caches them.
+    This data is used for the Vision Intel Suite "Defensive Friction" analysis.
+    
+    Automatically scheduled daily at 8:00 AM EST.
+    """
+    from services.dvp_service import force_refresh_dvp, get_dvp_status
+    
+    logger.info("[MANUAL SYNC] Triggering DvP rankings refresh...")
+    
+    try:
+        result = await force_refresh_dvp()
+        status = get_dvp_status()
+        
+        return {
+            "success": result.get("success", False),
+            "sync_type": "dvp_rankings",
+            "source": result.get("source"),
+            "teams_count": result.get("teams_count", 0),
+            "stat_types": result.get("stat_types", []),
+            "status": status,
+            "triggered_at": datetime.now(timezone.utc).isoformat()
+        }
+    except Exception as e:
+        logger.error(f"[MANUAL SYNC] DvP refresh failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/v3/sync-all-8am")
+async def sync_all_8am():
+    """
+    Manually trigger the full 8:00 AM sync (Stats + DvP).
+    
+    This combines:
+    1. Master Hub baseline stats sync (L5, L10, season averages)
+    2. DvP rankings refresh (defensive rankings)
+    
+    Automatically scheduled daily at 8:00 AM EST (13:00 UTC).
+    """
+    import os
+    from motor.motor_asyncio import AsyncIOMotorClient
+    from services.master_hub_sync import MasterHubSyncService
+    from services.dvp_service import force_refresh_dvp, get_dvp_status
+    
+    mongo_url = os.environ.get("MONGO_URL")
+    db_name = os.environ.get("DB_NAME", "pick_vision")
+    
+    if not mongo_url:
+        raise HTTPException(status_code=503, detail="Database not configured")
+    
+    logger.info("[8AM SYNC] Starting combined Stats + DvP sync...")
+    
+    results = {
+        "success": True,
+        "sync_type": "8am_full",
+        "triggered_at": datetime.now(timezone.utc).isoformat(),
+        "components": {}
+    }
+    
+    # Step 1: Baseline Stats
+    try:
+        logger.info("[8AM SYNC] Step 1/2: Baseline stats sync...")
+        client = AsyncIOMotorClient(mongo_url)
+        db = client[db_name]
+        
+        service = MasterHubSyncService(db)
+        stats_result = await service.run_full_sync()
+        results["components"]["baseline_stats"] = {
+            "success": True,
+            "result": stats_result
+        }
+        logger.info(f"[8AM SYNC] Baseline stats complete: {stats_result}")
+    except Exception as e:
+        logger.error(f"[8AM SYNC] Baseline stats failed: {e}")
+        results["components"]["baseline_stats"] = {
+            "success": False,
+            "error": str(e)
+        }
+        results["success"] = False
+    
+    # Step 2: DvP Rankings
+    try:
+        logger.info("[8AM SYNC] Step 2/2: DvP rankings refresh...")
+        dvp_result = await force_refresh_dvp()
+        dvp_status = get_dvp_status()
+        results["components"]["dvp_rankings"] = {
+            "success": dvp_result.get("success", False),
+            "source": dvp_result.get("source"),
+            "teams_count": dvp_result.get("teams_count", 0),
+            "stat_types": dvp_result.get("stat_types", []),
+            "status": dvp_status
+        }
+        logger.info(f"[8AM SYNC] DvP refresh complete: {dvp_result.get('source')}")
+    except Exception as e:
+        logger.error(f"[8AM SYNC] DvP refresh failed: {e}")
+        results["components"]["dvp_rankings"] = {
+            "success": False,
+            "error": str(e)
+        }
+        results["success"] = False
+    
+    logger.info(f"[8AM SYNC] Complete. Success: {results['success']}")
+    return results
 
 
 @router.get("/v3/breaking-news")
