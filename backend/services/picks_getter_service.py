@@ -1015,13 +1015,19 @@ class PicksGetterService:
     
     async def get_goblin_vault(self) -> Dict[str, Any]:
         """
-        Get the Safe Haven - GOBLIN picks that pass strict filters.
+        Get the Safe Haven - OPTIMIZED GOBLIN picks for maximum profit with safety.
         
-        SAFE HAVEN LOGIC:
-        1. ANCHOR COMPARISON: Line must be GOBLIN (below Standard Line)
-        2. STATISTICAL FLOOR: Goblin line must be LOWER than season_avg
-        3. HIT RATE: Player must hit line in 8+ of last 10 games (H10 >= 80%)
-        4. FRESHNESS: Player data must be updated within 24 hours
+        NEW SAFE HAVEN LOGIC (v2.0):
+        1. Group goblin props by player + stat type
+        2. For each group, find the "Optimal Goblin" - line closest to anchor with ≥80% hit rate
+        3. Score by: (hit_rate × multiplier_potential) to balance safety and profit
+        4. Limit to max 2 stat types per player for variety
+        5. Deduplicate and return top 20
+        
+        This ensures:
+        - No duplicate players/stats
+        - Highest multiplier lines that are still safe
+        - Variety across different players
         """
         
         # Get all players that have goblin props
@@ -1030,137 +1036,201 @@ class PicksGetterService:
             {"_id": 0}
         ).to_list(200)
         
-        # Build candidate picks from goblin props
-        candidates = []
+        if not players:
+            logger.warning("[SAFE_HAVEN v2] No players with goblin props found")
+            return {"picks": [], "picks_count": 0, "filters_applied": []}
+        
+        # Pre-fetch injured players
+        injured_players = await self._get_injured_players()
+        
+        # STEP 1: Group all goblin props by player + stat type
+        # Structure: {player_name: {stat_type: [props]}}
+        player_stat_groups = {}
+        
         for player_doc in players:
             player_name = player_doc.get("player_name")
             if not player_name:
                 continue
             
-            # Find goblin props for this player
             goblin_props = [p for p in player_doc.get("props", []) if p.get("is_goblin")]
             
+            if player_name not in player_stat_groups:
+                player_stat_groups[player_name] = {
+                    "player_doc": player_doc,
+                    "stats": {}
+                }
+            
             for prop in goblin_props:
-                stat_type = prop.get("stat_type_extracted") or prop.get("market", "").replace("player_", "")
+                stat_type = prop.get("stat_type_extracted") or prop.get("market", "").replace("player_", "").upper()
                 line = prop.get("line")
                 anchor_line = prop.get("anchor_line")
                 
-                # FILTER 1: Must be GOBLIN (line < anchor)
+                # Must be valid goblin (line < anchor)
                 if not line or not anchor_line or line >= anchor_line:
                     continue
                 
-                candidates.append({
-                    "player_name": player_name,
-                    "team": player_doc.get("team"),
-                    "opponent": player_doc.get("opponent"),
-                    "game_id": player_doc.get("game_id"),
+                if stat_type not in player_stat_groups[player_name]["stats"]:
+                    player_stat_groups[player_name]["stats"][stat_type] = []
+                
+                player_stat_groups[player_name]["stats"][stat_type].append({
+                    "line": line,
+                    "anchor_line": anchor_line,
+                    "odds": prop.get("price", -110),
+                    "direction": prop.get("direction", "over"),
                     "home_team": prop.get("home_team"),
                     "away_team": prop.get("away_team"),
-                    "stat_type": stat_type,
-                    "line": line,
-                    "odds": prop.get("price"),
-                    "direction": prop.get("direction", "over"),
-                    "is_demon": False,
-                    "is_goblin": True,
-                    "tier_label": "GOBLIN",
-                    "anchor_line": anchor_line,
-                    "is_alternate_market": prop.get("is_alternate_market", True)
                 })
         
-        if not candidates:
-            logger.warning("[SAFE_HAVEN] No goblin candidates found")
-            return {"picks": [], "picks_count": 0, "filters_applied": ["anchor_comparison"]}
+        logger.info(f"[SAFE_HAVEN v2] Processing {len(player_stat_groups)} players with goblin props")
         
-        # Apply strict Safe Haven filters
-        safe_haven_picks = []
-        filter_stats = {"total_candidates": len(candidates), "passed_anchor": 0, "passed_floor": 0, "passed_hit_rate": 0, "passed_freshness": 0}
+        # STEP 2: For each player+stat, find the OPTIMAL GOBLIN
+        # Optimal = highest line (closest to anchor) that still has ≥80% hit rate
+        optimal_picks = []
+        filter_stats = {
+            "total_players": len(player_stat_groups),
+            "total_stat_groups": 0,
+            "passed_freshness": 0,
+            "passed_floor": 0,
+            "passed_hit_rate": 0,
+            "optimal_found": 0
+        }
         
-        for pick in candidates:
-            player_name = pick["player_name"]
-            stat_type = pick["stat_type"]
-            line = pick["line"]
+        for player_name, player_data in player_stat_groups.items():
+            player_doc = player_data["player_doc"]
+            stats_dict = player_data["stats"]
             
-            # Get master hub data for this player (with name normalization)
+            filter_stats["total_stat_groups"] += len(stats_dict)
+            
+            # Get master hub data for this player
             hub_player = await self._get_master_player_by_name(player_name)
-            
             if not hub_player:
-                logger.debug(f"[SAFE_HAVEN] No master hub data for: {player_name}")
                 continue
             
-            # FILTER 2: FRESHNESS CHECK - Data must be within 24 hours
+            # FRESHNESS CHECK - Data must be within 24 hours
             last_updated = hub_player.get("last_bdl_sync") or hub_player.get("last_updated")
-            if last_updated:
-                if isinstance(last_updated, datetime):
-                    age = datetime.now(timezone.utc) - last_updated.replace(tzinfo=timezone.utc) if last_updated.tzinfo is None else datetime.now(timezone.utc) - last_updated
-                    if age > timedelta(hours=24):
-                        logger.debug(f"[SAFE_HAVEN] Stale data for {player_name}: {age}")
-                        continue
+            if last_updated and isinstance(last_updated, datetime):
+                age = datetime.now(timezone.utc) - (last_updated.replace(tzinfo=timezone.utc) if last_updated.tzinfo is None else last_updated)
+                if age > timedelta(hours=48):  # Relaxed to 48h for more coverage
+                    continue
             filter_stats["passed_freshness"] += 1
             
-            # FILTER 3: STATISTICAL FLOOR - Line must be LOWER than season_avg
             baseline_stats = hub_player.get("baseline_stats", {})
-            stat_key = self._normalize_stat_key(stat_type)
-            stat_data = baseline_stats.get(stat_key, {})
-            season_avg = stat_data.get("season_avg") if isinstance(stat_data, dict) else stat_data
-            
-            if season_avg is None:
-                logger.debug(f"[SAFE_HAVEN] No season_avg for {player_name} {stat_type}")
-                continue
-            
-            if line >= season_avg:
-                logger.debug(f"[SAFE_HAVEN] Line {line} >= season_avg {season_avg} for {player_name} {stat_type}")
-                continue
-            filter_stats["passed_floor"] += 1
-            
-            # FILTER 4: HIT RATE - Must hit line in 8+ of last 10 games (H10 >= 80%)
             game_logs = hub_player.get("bdl_game_logs", []) or hub_player.get("game_logs", [])
-            h10_result = self._calculate_h10_hit_rate(game_logs, stat_type, line)
             
-            if h10_result["games_counted"] < 10:
-                logger.debug(f"[SAFE_HAVEN] Insufficient games for {player_name}: {h10_result['games_counted']}")
-                continue
+            # Process each stat type for this player
+            player_optimal_picks = []
             
-            if h10_result["hit_rate"] < 80:
-                logger.debug(f"[SAFE_HAVEN] H10 {h10_result['hit_rate']}% < 80% for {player_name} {stat_type} @ {line}")
-                continue
-            filter_stats["passed_hit_rate"] += 1
+            for stat_type, props_list in stats_dict.items():
+                stat_key = self._normalize_stat_key(stat_type)
+                stat_data = baseline_stats.get(stat_key, {})
+                season_avg = stat_data.get("season_avg") if isinstance(stat_data, dict) else stat_data
+                
+                if season_avg is None or season_avg <= 0:
+                    continue
+                
+                # Sort props by line DESCENDING (highest first = closest to anchor)
+                props_list.sort(key=lambda x: x["line"], reverse=True)
+                
+                # Find the OPTIMAL line: highest line with ≥80% hit rate
+                optimal_prop = None
+                optimal_hit_rate = 0
+                
+                for prop in props_list:
+                    line = prop["line"]
+                    
+                    # FLOOR CHECK: Line must be below season_avg
+                    if line >= season_avg:
+                        continue
+                    filter_stats["passed_floor"] += 1
+                    
+                    # Calculate hit rate for this line
+                    h10_result = self._calculate_h10_hit_rate(game_logs, stat_type, line)
+                    
+                    if h10_result["games_counted"] < 5:  # Need at least 5 games
+                        continue
+                    
+                    hit_rate = h10_result["hit_rate"]
+                    
+                    # Check if meets minimum threshold (80%)
+                    if hit_rate >= 80:
+                        filter_stats["passed_hit_rate"] += 1
+                        # This is our optimal - highest line with ≥80% hit rate
+                        optimal_prop = prop
+                        optimal_hit_rate = hit_rate
+                        optimal_h10_result = h10_result
+                        break  # First one found is highest (list is sorted desc)
+                
+                if optimal_prop:
+                    filter_stats["optimal_found"] += 1
+                    anchor_line = optimal_prop["anchor_line"]
+                    line = optimal_prop["line"]
+                    
+                    # Calculate multiplier potential (how close to anchor)
+                    # Range: 0 (at anchor) to 1 (far below anchor)
+                    gap_from_anchor = anchor_line - line
+                    multiplier_potential = 1 - (gap_from_anchor / anchor_line) if anchor_line > 0 else 0
+                    
+                    # Combined score: balance safety and profit
+                    # Hit rate (0-100) normalized + multiplier potential (0-1)
+                    safety_score = optimal_hit_rate / 100
+                    combined_score = (safety_score * 0.6) + (multiplier_potential * 0.4)
+                    
+                    player_optimal_picks.append({
+                        "player_name": player_name,
+                        "team": hub_player.get("team") or player_doc.get("team"),
+                        "opponent": player_doc.get("opponent"),
+                        "game_id": player_doc.get("game_id"),
+                        "home_team": optimal_prop.get("home_team"),
+                        "away_team": optimal_prop.get("away_team"),
+                        "stat_type": stat_type,
+                        "line": line,
+                        "anchor_line": anchor_line,
+                        "odds": optimal_prop.get("odds", -110),
+                        "direction": optimal_prop.get("direction", "over"),
+                        "is_demon": False,
+                        "is_goblin": True,
+                        "tier_label": "GOBLIN",
+                        "is_alternate_market": True,
+                        "season_avg": round(season_avg, 1),
+                        "h10_hits": optimal_h10_result["hits"],
+                        "h10_games": optimal_h10_result["games_counted"],
+                        "h10_hit_rate": optimal_hit_rate,
+                        "floor_margin": round(season_avg - line, 1),
+                        "gap_from_anchor": round(gap_from_anchor, 1),
+                        "multiplier_potential": round(multiplier_potential, 3),
+                        "combined_score": round(combined_score, 4),
+                        "safe_haven_qualified": True,
+                        "photo_url": hub_player.get("photo_url") or hub_player.get("headshot_url"),
+                        "position": hub_player.get("position"),
+                        "is_injured": player_name.lower() in injured_players,
+                    })
             
-            # PASSED ALL FILTERS - Add to Safe Haven
-            pick["season_avg"] = season_avg
-            pick["h10_hits"] = h10_result["hits"]
-            pick["h10_games"] = h10_result["games_counted"]
-            pick["h10_hit_rate"] = h10_result["hit_rate"]
-            pick["floor_margin"] = round(season_avg - line, 1)
-            pick["safe_haven_qualified"] = True
-            
-            # Add photo and other enrichment from master hub (source of truth)
-            pick["photo_url"] = hub_player.get("photo_url") or hub_player.get("headshot_url")
-            pick["position"] = hub_player.get("position")
-            # CRITICAL: Use team from master hub (not cached_board which may be incorrect)
-            player_team = hub_player.get("team")
-            pick["team"] = player_team
-            # Derive correct opponent using game_id lookup
+            # STEP 3: Limit to MAX 2 stat types per player (pick best 2 by combined_score)
+            if player_optimal_picks:
+                player_optimal_picks.sort(key=lambda x: x["combined_score"], reverse=True)
+                optimal_picks.extend(player_optimal_picks[:2])
+        
+        # STEP 4: Sort all picks by combined_score and return top 20
+        optimal_picks.sort(key=lambda x: x["combined_score"], reverse=True)
+        
+        # Enrich with opponent info
+        for pick in optimal_picks:
+            player_team = pick.get("team")
             game_id = pick.get("game_id")
-            game_info = await self._get_game_info(game_id)
-            pick["opponent"] = _get_opponent_from_game(player_team, game_info.get("home_team"), game_info.get("away_team"))
-            
-            # Check if player is injured
-            injured_players = await self._get_injured_players()
-            pick["is_injured"] = pick.get("player_name", "").lower() in injured_players
-            
-            safe_haven_picks.append(pick)
-            logger.info(f"[SAFE_HAVEN] ✓ {player_name} {stat_type} @ {line} | H10: {h10_result['hit_rate']}% | Floor margin: {pick['floor_margin']}")
+            if game_id:
+                game_info = await self._get_game_info(game_id)
+                pick["opponent"] = _get_opponent_from_game(player_team, game_info.get("home_team"), game_info.get("away_team"))
         
-        # Sort by hit rate (highest first), then by floor margin
-        safe_haven_picks.sort(key=lambda x: (x.get("h10_hit_rate", 0), x.get("floor_margin", 0)), reverse=True)
+        final_picks = optimal_picks[:20]
         
-        logger.info(f"[SAFE_HAVEN] Filters: {filter_stats}")
+        logger.info(f"[SAFE_HAVEN v2] Generated {len(final_picks)} optimal picks from {filter_stats['total_stat_groups']} stat groups")
+        logger.info(f"[SAFE_HAVEN v2] Filter stats: {filter_stats}")
         
         return {
-            "picks": safe_haven_picks[:20],
-            "picks_count": len(safe_haven_picks),
+            "picks": final_picks,
+            "picks_count": len(final_picks),
             "filter_stats": filter_stats,
-            "filters_applied": ["anchor_comparison", "statistical_floor", "h10_hit_rate", "freshness_24h"]
+            "filters_applied": ["optimal_goblin", "floor_check", "h10_hit_rate_80pct", "max_2_per_player", "combined_score_sort"]
         }
     
     def _normalize_stat_key(self, stat_type: str) -> str:

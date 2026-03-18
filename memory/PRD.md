@@ -45,7 +45,12 @@ Build a sports betting analytics application (PickVision AI) that provides:
 
 ### Completed Features
 - [x] War Zone with composite scoring
-- [x] Safe Haven (Goblin Vault)
+- [x] Safe Haven (Goblin Vault) v2.0 - Optimized goblin selection:
+  - Groups props by player + stat type
+  - Selects "Optimal Goblin" - highest line with ≥80% hit rate (max profit while safe)
+  - Combined score balancing safety (60%) and multiplier potential (40%)
+  - Max 2 stat types per player for variety
+  - No duplicate player+stat combinations
 - [x] Most Popular Bets (synthetic popularity)
 - [x] Vision Intel Suite with 10 context badges
 - [x] Parlay Builder (The Gauntlet, The Shield, The Strike)
