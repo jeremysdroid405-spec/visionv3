@@ -246,22 +246,23 @@ async def resolve_context_badges(engine, player_name: str, player_data: dict) ->
                     "severity": 8
                 })
         
-        # ===== 2. MILESTONE: Stat avg within 5% of round milestone =====
-        for stat_key, stat_data in baseline_stats.items():
-            if isinstance(stat_data, dict):
-                season_avg = stat_data.get("season_avg", 0)
-                if season_avg and season_avg >= 20:
-                    nearest_milestone = round(season_avg / 5) * 5
-                    if nearest_milestone > 0 and abs(season_avg - nearest_milestone) / nearest_milestone < 0.05:
-                        badges.append({
-                            "badge_key": "milestone",
-                            "display": "Milestone",
-                            "icon": "Trophy",
-                            "color": "#eab308",
-                            "description": f"Averaging {season_avg:.1f} {stat_key} (near {nearest_milestone})",
-                            "severity": 7
-                        })
-                        break
+        # ===== 2. MILESTONE: Career milestone tracking =====
+        # Tracks: All-time rankings, closing in on passing players, round number milestones
+        try:
+            from data.career_milestones import get_best_milestone
+            milestone = get_best_milestone(player_name)
+            if milestone:
+                badges.append({
+                    "badge_key": "milestone",
+                    "display": milestone.get("headline", "Milestone"),
+                    "icon": "Trophy",
+                    "color": "#eab308" if milestone.get("type") != "record_holder" else "#f59e0b",
+                    "description": milestone.get("description"),
+                    "severity": milestone.get("severity", 7),
+                    "detail": milestone
+                })
+        except Exception as e:
+            logger.debug(f"Milestone check failed for {player_name}: {e}")
         
         # ===== 3. GASSED: Back-to-back (2nd night) =====
         if game_logs and len(game_logs) >= 2:
