@@ -12,9 +12,19 @@ Build a sports betting analytics application (PickVision AI) that provides:
 - **Frontend**: React + TanStack Query + Tailwind CSS + Shadcn UI
 - **Backend**: FastAPI + MongoDB
 - **Data Sources**: 
-  - **BallDontLie API** (PRIMARY) - Official season averages via `/season_averages` endpoint
+  - **BallDontLie API** (PRIMARY) - Official season averages, injuries, advanced stats
   - The Odds API (via emergentintegrations) - Betting lines
-  - nba_api - Supplementary stats
+  - ESPN API - Breaking news
+
+## BDL API Endpoints Used
+| Endpoint | Purpose | Status |
+|----------|---------|--------|
+| `/season_averages` | Official season stats | ✅ Active |
+| `/stats` | Game logs for L5/L10 | ✅ Active |
+| `/players/active` | Player ID mapping | ✅ Active |
+| `/player_injuries` | Injury reports | ✅ Active |
+| `/stats/advanced` | PIE, Net Rating | ✅ Active |
+| `/lineups` | Starting lineups | ⏳ Pending (need game_id) |
 
 ## Data Model
 - `dg_cached_board`: Player-centric documents with props arrays
@@ -22,8 +32,10 @@ Build a sports betting analytics application (PickVision AI) that provides:
   - `bdl_raw_stats`: Raw official stats from BDL /season_averages
   - `baseline_stats`: Transformed stats with season_avg (official), L5/L10 (calculated)
   - `bdl_game_logs`: Individual game box scores
+  - `advanced_stats`: PIE, Net Rating
+- `bdl_player_mapping`: Name → BDL ID mappings (537 players)
+- `bdl_injuries`: Current injury reports
 - `nba_context_engine`: Context flags for badges
-- `dg_game_schedule`: Game schedules for adaptive sync
 
 ## What's Implemented (March 2026)
 
@@ -34,34 +46,35 @@ Build a sports betting analytics application (PickVision AI) that provides:
 - [x] Vision Intel Suite with 10 context badges
 - [x] Parlay Builder (The Gauntlet, The Shield, The Strike)
 - [x] BDL Comprehensive Sync - uses OFFICIAL season averages
-- [x] Daily sync scheduler at 4 AM EST
-- [x] Manual sync endpoint `/api/v3/sync-bdl`
+- [x] BDL Player ID Mapping (537 active players)
+- [x] BDL Injuries Sync (25 injuries tracked)
+- [x] BDL Advanced Stats (PIE, Net Rating)
+- [x] Daily sync scheduler at 4 AM EST (8 steps)
 - [x] Intel Search deduplication fix
 
-### Data Sources
-- **Season Averages**: Official from BDL `/season_averages` (NOT calculated)
-- **L5/L10 Averages**: Calculated from BDL game logs
-- **Games Played**: Official from BDL
+### Context Badges
+- Live from BDL injuries: `deep_water` (injury)
+- Live from context engine: `jet_lag`, `revenge`, `legal_noise`, `milestone`
+- Needs data sources: `gassed`, `distraction`, `pay_day`, `altitude`, `market_sharp`
 
-### Bug Fixes This Session
-- Fixed Intel Search duplicate results
-- Fixed baseline_stats using wrong source (was calculating instead of using official)
-- Fixed games_played showing wrong count
-- Integrated BDL sync into daily scheduler
+### API Endpoints
+- `POST /api/v3/sync-bdl` - Full BDL player sync
+- `POST /api/v3/sync-bdl-mapping` - Sync player ID mappings
+- `POST /api/v3/sync-injuries` - Sync injury reports
+- `POST /api/v3/sync-advanced-stats` - Sync PIE/ratings
+- `GET /api/v3/injuries` - Get current injuries
+- `GET /api/command/profile/{name}` - Player profile with stats
 
 ## Prioritized Backlog
 
-### P0 - Critical
-- [ ] Fix adaptive sync type error: `unsupported operand type(s) for +: 'int' and 'str'`
-
 ### P1 - High Priority
-- [ ] Handle BDL "Player not found" cases (add name aliases)
-- [ ] Populate remaining context badges with live data
+- [ ] Display injury badges in UI
+- [ ] Add gassed badge (from game schedule analysis)
 
 ### P2 - Medium Priority
+- [ ] Add lineups when BDL game schedule is synced
 - [ ] Fix route name conflict (`/api/v3/player-with-badges`)
 - [ ] Delete deprecated UI components
-- [ ] Add "Last Updated" timestamp
 
 ### P3 - Future
 - [ ] Add tooltips for context badges
@@ -69,14 +82,8 @@ Build a sports betting analytics application (PickVision AI) that provides:
 - [ ] Implement Stripe payments
 - [ ] Add "Copy Parlay" feature
 
-## Key API Endpoints
-- `POST /api/v3/sync-bdl` - Manual BDL sync
-- `GET /api/command/profile/{player_name}` - Player profile with stats
-- `GET /api/command/search?query={q}` - Intel search
-- `GET /api/v3/war-zone` - Demon picks
-- `GET /api/v3/most-popular-bets` - Popular bets
-
 ## Technical Notes
 - **Stats Source**: BDL `/season_averages` for official stats (DO NOT calculate)
-- **Synthetic Popularity**: Bet volume is synthetic (API limitation)
-- **Authentication**: Demo mode bypass; real auth pending
+- **Player IDs**: Always use BDL ID for lookups (faster than name search)
+- **Injuries**: Synced from BDL + ESPN, stored in `bdl_injuries`
+- **Advanced Stats**: PIE, Net Rating from BDL `/stats/advanced`

@@ -236,6 +236,131 @@ async def sync_bdl_player_mapping():
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.post("/v3/sync-injuries")
+async def sync_injuries():
+    """
+    Manually trigger injury reports sync from BDL.
+    
+    This fetches current NBA injury reports and:
+    - Stores in bdl_injuries collection
+    - Updates context badges (deep_water) for injured players
+    
+    Automatically included in the 4:00 AM EST daily sync.
+    """
+    import os
+    from motor.motor_asyncio import AsyncIOMotorClient
+    from services.bdl_enhanced_data import get_bdl_enhanced_service
+    
+    mongo_url = os.environ.get("MONGO_URL")
+    db_name = os.environ.get("DB_NAME", "pick_vision")
+    
+    if not mongo_url:
+        raise HTTPException(status_code=503, detail="Database not configured")
+    
+    logger.info("[MANUAL SYNC] Triggering injury reports sync...")
+    
+    try:
+        client = AsyncIOMotorClient(mongo_url)
+        db = client[db_name]
+        
+        service = get_bdl_enhanced_service(db)
+        result = await service.sync_injuries()
+        
+        return {
+            "success": True,
+            "sync_type": "injuries",
+            "injuries_count": result.get("injuries_count", 0),
+            "context_badges_updated": result.get("players_updated", 0),
+            "triggered_at": datetime.now(timezone.utc).isoformat()
+        }
+    except Exception as e:
+        logger.error(f"[MANUAL SYNC] Injuries sync failed: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/v3/sync-advanced-stats")
+async def sync_advanced_stats():
+    """
+    Manually trigger advanced stats sync from BDL.
+    
+    Fetches for all players in master hub:
+    - PIE (Player Impact Estimate)
+    - Net Rating
+    - Offensive/Defensive Ratings
+    
+    These metrics enhance player analysis in the Vision Intel Suite.
+    """
+    import os
+    from motor.motor_asyncio import AsyncIOMotorClient
+    from services.bdl_enhanced_data import get_bdl_enhanced_service
+    
+    mongo_url = os.environ.get("MONGO_URL")
+    db_name = os.environ.get("DB_NAME", "pick_vision")
+    
+    if not mongo_url:
+        raise HTTPException(status_code=503, detail="Database not configured")
+    
+    logger.info("[MANUAL SYNC] Triggering advanced stats sync...")
+    
+    try:
+        client = AsyncIOMotorClient(mongo_url)
+        db = client[db_name]
+        
+        service = get_bdl_enhanced_service(db)
+        result = await service.sync_advanced_stats()
+        
+        return {
+            "success": True,
+            "sync_type": "advanced_stats",
+            "players_synced": result.get("players_synced", 0),
+            "players_failed": result.get("players_failed", 0),
+            "triggered_at": datetime.now(timezone.utc).isoformat()
+        }
+    except Exception as e:
+        logger.error(f"[MANUAL SYNC] Advanced stats sync failed: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/v3/injuries")
+async def get_injuries():
+    """
+    Get current NBA injury reports.
+    
+    Returns list of injured players with status and severity.
+    """
+    import os
+    from motor.motor_asyncio import AsyncIOMotorClient
+    
+    mongo_url = os.environ.get("MONGO_URL")
+    db_name = os.environ.get("DB_NAME", "pick_vision")
+    
+    if not mongo_url:
+        raise HTTPException(status_code=503, detail="Database not configured")
+    
+    try:
+        client = AsyncIOMotorClient(mongo_url)
+        db = client[db_name]
+        
+        # Query directly from the collection
+        injuries = await db.bdl_injuries.find(
+            {},
+            {"_id": 0}
+        ).to_list(100)
+        
+        return {
+            "success": True,
+            "count": len(injuries),
+            "injuries": injuries
+        }
+    except Exception as e:
+        logger.error(f"[INJURIES] Failed to get injuries: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.post("/v3/sync-dvp")
 async def sync_dvp_rankings():
     """

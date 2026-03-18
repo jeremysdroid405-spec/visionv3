@@ -110,6 +110,9 @@ class InjuryIntelligenceService:
             # Enrich with Tank01 data for additional context
             tank01_count = await self._enrich_with_tank01(all_injuries)
             
+            # Also sync from BDL for additional coverage
+            bdl_count = await self._sync_bdl_injuries()
+            
             # Clear and insert fresh injury data
             await self.injuries_collection.delete_many({})
             if all_injuries:
@@ -277,6 +280,27 @@ class InjuryIntelligenceService:
                     continue
         
         return enriched_count
+    
+    async def _sync_bdl_injuries(self) -> int:
+        """
+        Sync injury reports from BallDontLie API.
+        BDL provides comprehensive injury data directly from official NBA sources.
+        """
+        try:
+            from services.bdl_enhanced_data import get_bdl_enhanced_service
+            
+            bdl_service = get_bdl_enhanced_service(self.db)
+            result = await bdl_service.sync_injuries()
+            
+            if result.get('success'):
+                logger.info(f"[INJURY] BDL sync: {result.get('injuries_count', 0)} injuries, {result.get('players_updated', 0)} context updates")
+                return result.get('injuries_count', 0)
+            else:
+                logger.warning(f"[INJURY] BDL sync failed: {result.get('error', 'Unknown error')}")
+                return 0
+        except Exception as e:
+            logger.error(f"[INJURY] BDL sync error: {e}")
+            return 0
     
     async def get_team_injury_summary(self, team_abbr: str) -> str:
         """

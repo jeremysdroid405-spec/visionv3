@@ -213,7 +213,7 @@ async def resolve_context_badges(engine, player_name: str, player_data: dict) ->
                 {"display_name": {"$regex": f"^{player_name}$", "$options": "i"}}
             ]},
             {"_id": 0, "baseline_stats": 1, "bdl_game_logs": 1, "game_logs": 1, 
-             "nba_player_id": 1, "nba_id": 1, "player_id": 1}
+             "nba_player_id": 1, "nba_id": 1, "player_id": 1, "advanced_stats": 1, "bdl_id": 1}
         )
         
         if not hub_player:
@@ -414,8 +414,48 @@ async def resolve_context_badges(engine, player_name: str, player_data: dict) ->
                     })
         
         # ===== 9 & 10: PAY_DAY and DEEP_WATER =====
-        # These require contract data and playoff context which we don't currently have
-        # Mark as placeholders for future implementation
+        # Check bdl_injuries for deep_water badge
+        bdl_injuries = db['bdl_injuries']
+        injury = await bdl_injuries.find_one(
+            {"player_name": {"$regex": f"^{player_name}$", "$options": "i"}},
+            {"_id": 0}
+        )
+        
+        if injury:
+            severity = injury.get("severity", "unknown")
+            if severity in ["out", "doubtful", "season_ending"]:
+                badges.append({
+                    "badge_key": "deep_water",
+                    "display": "Deep Water",
+                    "icon": "HeartPulse",
+                    "color": "#dc2626",
+                    "description": f"Injury: {injury.get('status')} - {injury.get('injury_type', 'See report')}",
+                    "severity": 10
+                })
+            elif severity in ["questionable", "probable"]:
+                badges.append({
+                    "badge_key": "deep_water",
+                    "display": "Injury Watch",
+                    "icon": "HeartPulse",
+                    "color": "#f59e0b",
+                    "description": f"Status: {injury.get('status')}",
+                    "severity": 6
+                })
+        
+        # Also check context_engine for deep_water flag (set by injury sync)
+        deep_water_flag = await context_engine.find_one(
+            {"player_name": {"$regex": f"^{player_name}$", "$options": "i"}, "deep_water": True},
+            {"_id": 0}
+        )
+        if deep_water_flag and "deep_water" not in [b["badge_key"] for b in badges]:
+            badges.append({
+                "badge_key": "deep_water",
+                "display": "Deep Water",
+                "icon": "HeartPulse",
+                "color": "#dc2626",
+                "description": deep_water_flag.get("deep_water_reason", "Health/injury concern"),
+                "severity": 10
+            })
         
         # Remove duplicate badges (keep first occurrence)
         seen = set()
@@ -632,6 +672,20 @@ async def get_cached_player(player_name: str):
                     "reasons": reasons if len(reasons) > 1 else [primary_insight],
                     "confidence": "HIGH" if len(reasons) >= 3 else "MEDIUM" if len(reasons) >= 2 else "STANDARD"
                 }
+            }
+        
+        # Add advanced stats to player object (for Vision Intel Suite header)
+        master_hub = engine.picks_getter_service.master_hub
+        hub_player = await master_hub.find_one(
+            {"display_name": {"$regex": f"^{pname}$", "$options": "i"}},
+            {"_id": 0, "advanced_stats": 1}
+        )
+        if hub_player and hub_player.get("advanced_stats"):
+            adv = hub_player["advanced_stats"]
+            player["advanced_stats"] = {
+                "pie": adv.get("pie"),  # Player Impact Estimate
+                "net_rating": adv.get("net_rating"),  # Net Rating
+                "games_counted": adv.get("games_counted")
             }
     
     return result

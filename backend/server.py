@@ -406,7 +406,7 @@ async def scheduled_daily_sync():
             # This syncs game logs, season averages, and player profiles from BallDontLie
             # Season averages come DIRECTLY from BDL /season_averages endpoint (OFFICIAL)
             # L5/L10 averages are calculated from game logs
-            logger.info("[SCHEDULER] Step 2/6: Running BDL comprehensive sync...")
+            logger.info("[SCHEDULER] Step 2/8: Running BDL comprehensive sync...")
             try:
                 from services.bdl_comprehensive_sync import get_bdl_sync_service
                 bdl_service = get_bdl_sync_service(db)
@@ -419,10 +419,28 @@ async def scheduled_daily_sync():
                 stats_result = await demon_goblin_engine.sync_player_stats()
                 logger.info(f"[SCHEDULER] Legacy stats sync: {stats_result.get('stats_synced', 0)} players")
             
-            # Step 3: Sync DvP and matchup data
+            # Step 3: Sync BDL Injuries for context badges
+            logger.info("[SCHEDULER] Step 3/8: Syncing injury reports from BDL...")
+            try:
+                from services.bdl_enhanced_data import get_bdl_enhanced_service
+                enhanced_service = get_bdl_enhanced_service(db)
+                injury_result = await enhanced_service.sync_injuries()
+                logger.info(f"[SCHEDULER] Injuries: {injury_result.get('injuries_count', 0)} injuries found, {injury_result.get('players_updated', 0)} context badges updated")
+            except Exception as inj_e:
+                logger.error(f"[SCHEDULER] BDL injuries sync failed (non-critical): {inj_e}")
             
-            # Step 4: Refresh DvP rankings (Defense vs Position)
-            logger.info("[SCHEDULER] Step 4/7: Refreshing DvP rankings...")
+            # Step 4: Sync Advanced Stats (PIE, Net Rating)
+            logger.info("[SCHEDULER] Step 4/8: Syncing advanced stats from BDL...")
+            try:
+                from services.bdl_enhanced_data import get_bdl_enhanced_service
+                enhanced_service = get_bdl_enhanced_service(db)
+                adv_result = await enhanced_service.sync_advanced_stats()
+                logger.info(f"[SCHEDULER] Advanced stats: {adv_result.get('players_synced', 0)} players updated with PIE/ratings")
+            except Exception as adv_e:
+                logger.error(f"[SCHEDULER] Advanced stats sync failed (non-critical): {adv_e}")
+            
+            # Step 5: Refresh DvP rankings (Defense vs Position)
+            logger.info("[SCHEDULER] Step 5/8: Refreshing DvP rankings...")
             try:
                 from services.dvp_service import force_refresh_dvp
                 dvp_result = await force_refresh_dvp()
@@ -430,27 +448,27 @@ async def scheduled_daily_sync():
             except Exception as de:
                 logger.error(f"[SCHEDULER] DvP refresh failed (non-critical): {de}")
             
-            # Step 5: Run full odds sync
-            logger.info("[SCHEDULER] Step 5/7: Running full odds sync...")
+            # Step 6: Run full odds sync
+            logger.info("[SCHEDULER] Step 6/8: Running full odds sync...")
             result = await demon_goblin_engine.run_full_sync()
             logger.info(f"[SCHEDULER] Sync complete: {result.get('unique_players', 0)} players")
             logger.info(f"[SCHEDULER] Standard: {result.get('standard_count', 0)}, Demons: {result.get('demons_count', 0)}, Goblins: {result.get('goblins_count', 0)}")
             
-            # Step 6: Calculate daily insights (advanced analytics)
-            logger.info("[SCHEDULER] Step 6/7: Calculating daily insights...")
+            # Step 7: Calculate daily insights (advanced analytics)
+            logger.info("[SCHEDULER] Step 7/8: Calculating daily insights...")
             insights_result = await demon_goblin_engine.sync_daily_insights()
             logger.info(f"[SCHEDULER] Insights: {insights_result.get('insights_calculated', 0)} players analyzed")
             
-            # Step 7: Generate Vision AI insights for eligible players
+            # Step 8: Generate Vision AI insights for eligible players
             if vision_ai_service and os.environ.get('EMERGENT_LLM_KEY'):
-                logger.info("[SCHEDULER] Step 7/7: Generating Vision AI insights...")
+                logger.info("[SCHEDULER] Step 8/8: Generating Vision AI insights...")
                 try:
                     vision_result = await vision_ai_service.trigger_insights_for_sync()
                     logger.info(f"[SCHEDULER] Vision AI: {vision_result.get('insights_generated', 0)} insights generated")
                 except Exception as ve:
                     logger.error(f"[SCHEDULER] Vision AI failed (non-critical): {ve}")
             else:
-                logger.info("[SCHEDULER] Step 7/7: Vision AI skipped (not configured)")
+                logger.info("[SCHEDULER] Step 8/8: Vision AI skipped (not configured)")
             
             logger.info("=" * 70)
             logger.info(f"[SCHEDULER] 4:00 AM FULL SYNC COMPLETE")
