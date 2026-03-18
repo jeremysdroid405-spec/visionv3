@@ -772,22 +772,31 @@ class PicksGetterService:
         
         values = []
         
+        def safe_num(val):
+            """Convert value to number, handling None and strings."""
+            if val is None:
+                return 0
+            try:
+                return float(val)
+            except (ValueError, TypeError):
+                return 0
+        
         for game in recent_games:
             # Get stat value from game log
             if stat_key == 'PRA':
-                value = (game.get('pts', 0) or 0) + (game.get('reb', 0) or 0) + (game.get('ast', 0) or 0)
+                value = safe_num(game.get('pts')) + safe_num(game.get('reb')) + safe_num(game.get('ast'))
             elif stat_key == 'PR':
-                value = (game.get('pts', 0) or 0) + (game.get('reb', 0) or 0)
+                value = safe_num(game.get('pts')) + safe_num(game.get('reb'))
             elif stat_key == 'PA':
-                value = (game.get('pts', 0) or 0) + (game.get('ast', 0) or 0)
+                value = safe_num(game.get('pts')) + safe_num(game.get('ast'))
             elif stat_key == 'RA':
-                value = (game.get('reb', 0) or 0) + (game.get('ast', 0) or 0)
+                value = safe_num(game.get('reb')) + safe_num(game.get('ast'))
             else:
                 field_map = {'PTS': 'pts', 'REB': 'reb', 'AST': 'ast', 'STL': 'stl', 'BLK': 'blk', '3PM': 'fg3m'}
                 field = field_map.get(stat_key)
                 if not field:
                     continue
-                value = game.get(field, 0) or 0
+                value = safe_num(game.get(field))
             
             values.append(value)
         
