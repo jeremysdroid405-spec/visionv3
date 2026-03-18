@@ -8,6 +8,15 @@ from typing import Optional
 import logging
 import sys
 
+# Import DvP service and config for real matchup data
+from services.dvp_service import (
+    get_dvp_rank, 
+    get_dvp_rank_color, 
+    get_dvp_label,
+    calculate_dvp_modifier
+)
+from config.settings import TEAM_PACE, LEAGUE_AVG_PACE, DVP_RANKINGS
+
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["Cached Data"])
 
@@ -462,6 +471,11 @@ async def get_cached_player(player_name: str):
         opponent = player.get("opponent", "Opponent")
         team = player.get("team", "Team")
         
+        # Get team abbreviations for DvP/Pace lookups
+        from config.settings import TEAM_ABBREV_MAP
+        team_abbr = TEAM_ABBREV_MAP.get(team, team[:3].upper() if team else "UNK")
+        opp_abbr = TEAM_ABBREV_MAP.get(opponent, opponent[:3].upper() if opponent else "UNK")
+        
         for prop in player.get("props", []):
             prop["active_badges"] = badge_keys
             
@@ -482,26 +496,61 @@ async def get_cached_player(player_name: str):
             else:
                 consistency = "HIGH VARIANCE"
             
-            # Calculate pace display based on stat type
-            pace_display = "+0 POSS"
-            tempo_label = "Neutral tempo game"
+            # ========== REAL DvP DATA ==========
+            # Get actual defensive rank for opponent vs this stat type
+            dvp_rank = get_dvp_rank(opp_abbr, stat_type)
+            dvp_color = get_dvp_rank_color(dvp_rank)
+            dvp_modifier = calculate_dvp_modifier(opp_abbr, stat_type)
             
-            # Determine matchup friction based on whether player is demon/goblin
-            is_demon = prop.get("is_demon", False)
-            is_goblin = prop.get("is_goblin", False)
-            
-            if is_demon:
+            # Determine friction level based on defensive rank
+            # Rank 1-10 = Top defense = High Friction (bad for player)
+            # Rank 11-20 = Average defense = Medium Friction
+            # Rank 21-30 = Poor defense = Low Friction (good for player)
+            if dvp_rank >= 25:
                 friction_level = "Low"
                 friction_color = "green"
-                friction_label = "Favorable matchup for high output"
-            elif is_goblin:
-                friction_level = "Low"
-                friction_color = "green"
-                friction_label = "Easy path to hit this line"
-            else:
+                friction_label = f"{opp_abbr} ranks #{dvp_rank} in {stat_type} defense (Bottom 6 - favorable)"
+            elif dvp_rank >= 15:
                 friction_level = "Medium"
                 friction_color = "yellow"
-                friction_label = "Standard defensive resistance"
+                friction_label = f"{opp_abbr} ranks #{dvp_rank} in {stat_type} defense (Average)"
+            elif dvp_rank >= 6:
+                friction_level = "High"
+                friction_color = "yellow"
+                friction_label = f"{opp_abbr} ranks #{dvp_rank} in {stat_type} defense (Above average)"
+            else:
+                friction_level = "Elite"
+                friction_color = "red"
+                friction_label = f"{opp_abbr} ranks #{dvp_rank} in {stat_type} defense (Top 5 - tough)"
+            
+            # ========== REAL PACE DATA ==========
+            team_pace = TEAM_PACE.get(team_abbr, LEAGUE_AVG_PACE)
+            opp_pace = TEAM_PACE.get(opp_abbr, LEAGUE_AVG_PACE)
+            
+            # Expected game pace is average of both teams
+            expected_pace = round((team_pace + opp_pace) / 2, 1)
+            pace_delta = round(expected_pace - LEAGUE_AVG_PACE, 1)
+            
+            # Determine tempo label
+            if pace_delta >= 3:
+                tempo_label = "Fast-paced game expected"
+                pace_display = f"+{pace_delta:.0f} POSS"
+            elif pace_delta >= 1:
+                tempo_label = "Slightly above average tempo"
+                pace_display = f"+{pace_delta:.0f} POSS"
+            elif pace_delta <= -3:
+                tempo_label = "Slow-paced game expected"
+                pace_display = f"{pace_delta:.0f} POSS"
+            elif pace_delta <= -1:
+                tempo_label = "Slightly below average tempo"
+                pace_display = f"{pace_delta:.0f} POSS"
+            else:
+                tempo_label = "Neutral tempo game"
+                pace_display = "0 POSS"
+            
+            # Determine if player is demon/goblin for usage display
+            is_demon = prop.get("is_demon", False)
+            is_goblin = prop.get("is_goblin", False)
             
             # Build vision insight based on stats
             reasons = []
@@ -511,6 +560,16 @@ async def get_cached_player(player_name: str):
                 reasons.append(f"Hit this line in {int(l10_hit_rate * 10)}/10 recent games")
             if season_avg and line and line < season_avg:
                 reasons.append(f"Line set below season average ({season_avg})")
+            
+            # Add DvP-based insight
+            if dvp_rank >= 25:
+                reasons.append(f"Favorable matchup: {opp_abbr} is #{dvp_rank} vs {stat_type}")
+            elif dvp_rank <= 5:
+                reasons.append(f"Tough matchup: {opp_abbr} is #{dvp_rank} vs {stat_type}")
+            
+            # Add pace-based insight for scoring stats
+            if stat_type in ["PTS", "PRA", "PA", "PR", "AST"] and pace_delta >= 2:
+                reasons.append(f"High-pace game (+{pace_delta:.0f} possessions) boosts {stat_type}")
             
             # Add badge-based reasons
             for badge in badges:
@@ -528,28 +587,35 @@ async def get_cached_player(player_name: str):
                 
                 # Usage Ripple / Operational Volume
                 "usage_ripple": {
-                    "display": "Standard Volume" if not is_demon else "Elevated Usage",
+                    "display": "Elevated Usage" if is_demon else "Standard Volume",
                     "reasoning": f"Based on team role and recent minutes",
                     "bump_percent": 3 if is_demon else 1,
                     "shift_label": "+3% Usage" if is_demon else "Normal",
                     "injuries_affecting": []
                 },
                 
-                # Matchup DvP / Defensive Friction
+                # Matchup DvP / Defensive Friction (REAL DATA)
                 "matchup_dvp": {
-                    "display": f"vs {opponent}",
+                    "display": f"vs {opp_abbr}",
                     "opponent": opponent,
+                    "opponent_abbr": opp_abbr,
                     "friction_level": friction_level,
                     "friction_label": friction_label,
-                    "color": friction_color
+                    "color": friction_color,
+                    "dvp_rank": dvp_rank,
+                    "dvp_modifier": round(dvp_modifier, 2),
+                    "stat_type": stat_type
                 },
                 
-                # Pace Delta / Tempo Multiplier
+                # Pace Delta / Tempo Multiplier (REAL DATA)
                 "pace_delta": {
                     "display": pace_display,
-                    "possessions": 0,
+                    "possessions": pace_delta,
                     "tempo_label": tempo_label,
-                    "expected_game_pace": "Average"
+                    "expected_game_pace": f"{expected_pace:.1f}",
+                    "team_pace": team_pace,
+                    "opp_pace": opp_pace,
+                    "league_avg": LEAGUE_AVG_PACE
                 },
                 
                 # Stability Index / Tactical Variance
