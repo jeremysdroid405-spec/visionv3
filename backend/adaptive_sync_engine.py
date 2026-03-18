@@ -31,11 +31,11 @@ import httpx
 
 logger = logging.getLogger(__name__)
 
-# Polling intervals in seconds
+# Polling intervals in seconds - INCREASED to conserve API quota
 class PollInterval(Enum):
-    STANDBY = 3600       # 60 minutes (>6hrs to tip)
-    ACTIVE = 600         # 10 minutes (1-6hrs to tip)
-    MISSION_CRITICAL = 60  # 60 seconds (<60mins to tip)
+    STANDBY = 7200       # 2 hours (>6hrs to tip) - was 60 min
+    ACTIVE = 1800        # 30 minutes (1-6hrs to tip) - was 10 min
+    MISSION_CRITICAL = 300  # 5 minutes (<60mins to tip) - was 60 sec
     POST_TIP = None      # Stop polling
 
 # Thresholds in hours

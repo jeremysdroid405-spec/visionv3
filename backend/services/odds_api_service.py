@@ -27,33 +27,21 @@ PRIZEPICKS_REGION = "us_dfs"
 PRIZEPICKS_BOOKMAKER = "prizepicks"
 DEMON_ODDS = 100  # Even odds = Demon
 
-# Markets
+# Markets - REDUCED for API quota efficiency
+# The Odds API charges PER MARKET per request
+# Only fetch essential markets to conserve quota
 PRIZEPICKS_ALTERNATE_MARKETS = [
     "player_points_alternate",
     "player_rebounds_alternate", 
     "player_assists_alternate",
-    "player_threes_alternate",
-    "player_blocks_alternate",
-    "player_steals_alternate",
-    "player_turnovers_alternate",
-    "player_points_rebounds_alternate",
-    "player_points_assists_alternate",
-    "player_rebounds_assists_alternate",
-    "player_points_rebounds_assists_alternate",
+    "player_points_rebounds_assists_alternate",  # PRA combo
 ]
 
 PRIZEPICKS_STANDARD_MARKETS = [
     "player_points",
     "player_rebounds",
     "player_assists",
-    "player_threes",
-    "player_blocks",
-    "player_steals",
-    "player_turnovers",
-    "player_points_rebounds",
-    "player_points_assists",
-    "player_rebounds_assists",
-    "player_points_rebounds_assists",
+    "player_points_rebounds_assists",  # PRA combo
 ]
 
 PRIZEPICKS_ALL_MARKETS = ",".join(PRIZEPICKS_ALTERNATE_MARKETS + PRIZEPICKS_STANDARD_MARKETS)
@@ -109,20 +97,44 @@ class OddsApiService:
     async def fetch_prizepicks_odds(
         self,
         event_id: str,
-        event_info: Dict
+        event_info: Dict,
+        cache_ttl_minutes: int = 15  # Don't refetch if data is <15 min old
     ) -> Dict[str, Any]:
         """
-        Fetch PrizePicks odds for an event.
+        Fetch PrizePicks odds for an event WITH CACHING.
         
         Uses:
         - regions=us_dfs (Daily Fantasy Sports)
         - bookmakers=prizepicks
-        - markets=ALL markets (both standard and alternate)
+        - markets=ESSENTIAL markets only (reduced for API quota)
+        
+        Caching:
+        - Checks MongoDB cache first
+        - Only fetches from API if cache is older than cache_ttl_minutes
         
         Returns:
             Odds data with all player props
         """
         try:
+            # CHECK CACHE FIRST - avoid redundant API calls
+            cached = await self.odds_cache.find_one({
+                "event_id": event_id, 
+                "source": "prizepicks"
+            })
+            
+            if cached:
+                fetched_at = cached.get("fetched_at")
+                if fetched_at:
+                    if isinstance(fetched_at, str):
+                        fetched_at = datetime.fromisoformat(fetched_at.replace("Z", "+00:00"))
+                    
+                    age_minutes = (datetime.now(timezone.utc) - fetched_at).total_seconds() / 60
+                    
+                    if age_minutes < cache_ttl_minutes:
+                        logger.debug(f"  [PRIZEPICKS] Using cached data for {event_id} (age: {age_minutes:.1f}m)")
+                        return cached
+            
+            # FETCH FROM API
             url = f"{ODDS_API_BASE}/sports/basketball_nba/events/{event_id}/odds"
             
             params = {
