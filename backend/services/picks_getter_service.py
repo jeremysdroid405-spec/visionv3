@@ -708,7 +708,24 @@ class PicksGetterService:
             except (ValueError, TypeError):
                 return 0
         
-        recent_games = game_logs[:10]
+        # CRITICAL: Sort by date first (most recent first)
+        from datetime import datetime
+        
+        def get_game_date(g):
+            date_str = ""
+            if isinstance(g.get("game"), dict):
+                date_str = g.get("game", {}).get("date", "")
+            if not date_str:
+                date_str = g.get("date", "") or g.get("game_date", "")
+            if date_str:
+                try:
+                    return datetime.strptime(date_str[:10], "%Y-%m-%d")
+                except:
+                    pass
+            return datetime.min
+        
+        sorted_logs = sorted(game_logs, key=get_game_date, reverse=True)
+        recent_games = sorted_logs[:10]
         stat_key = self._normalize_stat_key(stat_type)
         values = []
         
@@ -746,7 +763,24 @@ class PicksGetterService:
             except (ValueError, TypeError):
                 return 0
         
-        recent_games = game_logs[:5]
+        # CRITICAL: Sort by date first (most recent first)
+        from datetime import datetime
+        
+        def get_game_date(g):
+            date_str = ""
+            if isinstance(g.get("game"), dict):
+                date_str = g.get("game", {}).get("date", "")
+            if not date_str:
+                date_str = g.get("date", "") or g.get("game_date", "")
+            if date_str:
+                try:
+                    return datetime.strptime(date_str[:10], "%Y-%m-%d")
+                except:
+                    pass
+            return datetime.min
+        
+        sorted_logs = sorted(game_logs, key=get_game_date, reverse=True)
+        recent_games = sorted_logs[:5]
         stat_key = self._normalize_stat_key(stat_type)
         hits = 0
         
@@ -782,8 +816,24 @@ class PicksGetterService:
         if not game_logs:
             return {"avg": 0, "games_counted": 0, "values": []}
         
-        # Take last 5 games (most recent first)
-        recent_games = game_logs[:5]
+        # CRITICAL: Sort by date first (most recent first)
+        from datetime import datetime
+        
+        def get_game_date(g):
+            date_str = ""
+            if isinstance(g.get("game"), dict):
+                date_str = g.get("game", {}).get("date", "")
+            if not date_str:
+                date_str = g.get("date", "") or g.get("game_date", "")
+            if date_str:
+                try:
+                    return datetime.strptime(date_str[:10], "%Y-%m-%d")
+                except:
+                    pass
+            return datetime.min
+        
+        sorted_logs = sorted(game_logs, key=get_game_date, reverse=True)
+        recent_games = sorted_logs[:5]
         
         stat_key = self._normalize_stat_key(stat_type)
         
@@ -1257,8 +1307,24 @@ class PicksGetterService:
             except (ValueError, TypeError):
                 return 0
         
-        # Take last 25 games
-        recent_games = game_logs[:25]
+        # CRITICAL: Sort by date first (most recent first)
+        from datetime import datetime
+        
+        def get_game_date(g):
+            date_str = ""
+            if isinstance(g.get("game"), dict):
+                date_str = g.get("game", {}).get("date", "")
+            if not date_str:
+                date_str = g.get("date", "") or g.get("game_date", "")
+            if date_str:
+                try:
+                    return datetime.strptime(date_str[:10], "%Y-%m-%d")
+                except:
+                    pass
+            return datetime.min
+        
+        sorted_logs = sorted(game_logs, key=get_game_date, reverse=True)
+        recent_games = sorted_logs[:25]
         
         stat_key = self._normalize_stat_key(stat_type)
         
