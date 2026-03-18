@@ -178,9 +178,15 @@ def calculate_coupled_stats(games: List[Dict], stat_type: str, line_value: float
                 return datetime.min
             
             # Handle formats: "Mar 16, 2025" or "2025-03-16"
+            # Note: Don't truncate the string - parse the full date
             for fmt in ["%Y-%m-%d", "%b %d, %Y", "%B %d, %Y"]:
                 try:
-                    return datetime.strptime(date_str[:10], fmt)
+                    # For ISO format, only take first 10 chars
+                    if fmt == "%Y-%m-%d":
+                        return datetime.strptime(date_str[:10], fmt)
+                    else:
+                        # For text formats, parse the full string
+                        return datetime.strptime(date_str.strip(), fmt)
                 except ValueError:
                     continue
             return datetime.min
