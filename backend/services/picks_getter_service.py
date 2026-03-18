@@ -450,15 +450,21 @@ class PicksGetterService:
     
     async def get_war_zone(self) -> Dict[str, Any]:
         """
-        Get the War Zone - HIGH-TIER DEMON picks with statistical probability.
+        Get the War Zone - HIGH-TIER DEMON picks with COMPOSITE RISK/REWARD scoring.
         
-        WAR ZONE LOGIC (Statistical Probability for Heaters):
-        1. ANCHOR COMPARISON (The Boost): Demon line must be 10-20% above Standard line
-        2. HEATER VERIFICATION (L5 vs Season): L5 avg must be >= 15% higher than season_avg
-        3. PROBABILITY THRESHOLD (H10 Hit Rate): Must hit demon line in 7+ of last 10 games (H10 >= 70%)
-        4. SUFFIX-NEUTRAL IDENTITY: Uses _normalize_name for player matching
+        WAR ZONE LOGIC (Balanced Risk/Reward):
+        Uses a composite score that balances:
+        1. CONSISTENCY (50%): H10 hit rate - how often player hits this line
+        2. PAYOUT (30%): Boost percentage - how much above standard line
+        3. HOT HAND (20%): Heater bonus if L5 > Season avg
+        4. SAFETY (Bonus): Extra points if L5 average already beats the demon line
         
-        Returns only statistically-backed demon plays where player is currently "heating up".
+        Minimum Requirements:
+        - Valid anchor line comparison
+        - At least 5 games of data
+        - H10 hit rate >= 40% (minimum consistency)
+        
+        Returns top 20 demon picks sorted by composite score (best risk/reward).
         """
         from datetime import datetime, timezone
         
@@ -468,30 +474,123 @@ class PicksGetterService:
             {"_id": 0}
         ).to_list(200)
         
-        # Build candidate picks - ALL demon props
-        candidates = []
+        # Build and score ALL demon props
+        scored_picks = []
+        filter_stats = {
+            "total_demons": 0,
+            "valid_anchor": 0,
+            "has_stats": 0,
+            "passed_h10_min": 0,
+            "final_picks": 0
+        }
+        
         for player_doc in players:
             player_name = player_doc.get("player_name")
             if not player_name:
+                continue
+            
+            # Get master hub data for stats
+            hub_player = await self._get_master_player_by_name(player_name)
+            if not hub_player:
+                continue
+            
+            baseline_stats = hub_player.get("baseline_stats", {})
+            game_logs = hub_player.get("bdl_game_logs", []) or hub_player.get("game_logs", [])
+            
+            # Need at least 5 games for meaningful stats
+            if not game_logs or len(game_logs) < 5:
                 continue
             
             # Get ALL demon props for this player
             demon_props = [p for p in player_doc.get("props", []) if p.get("is_demon")]
             
             for prop in demon_props:
+                filter_stats["total_demons"] += 1
+                
                 stat_type = prop.get("stat_type_extracted") or prop.get("market", "").replace("player_", "")
                 demon_line = prop.get("line")
-                anchor_line = prop.get("anchor_line")  # Standard line
+                anchor_line = prop.get("anchor_line")
                 
-                if not demon_line or not anchor_line:
+                # Must have valid lines
+                if not demon_line or not anchor_line or anchor_line <= 0:
                     continue
+                filter_stats["valid_anchor"] += 1
                 
-                # FILTER 1: ANCHOR COMPARISON - Demon must be 10-20% ABOVE Standard
+                # Calculate boost percentage
                 boost_pct = ((demon_line - anchor_line) / anchor_line) * 100
-                if boost_pct < 10 or boost_pct > 20:
+                
+                # Get season avg
+                stat_key = self._normalize_stat_key(stat_type)
+                season_avg = self._get_season_avg(baseline_stats, stat_key)
+                
+                if not season_avg or season_avg <= 0:
                     continue
                 
-                candidates.append({
+                # Calculate L5 and L10 averages
+                l5_result = self._calculate_l5_avg(game_logs, stat_type)
+                l5_avg = l5_result["avg"]
+                
+                l10_result = self._calculate_l10_avg(game_logs, stat_type)
+                l10_avg = l10_result["avg"]
+                
+                if l5_avg <= 0:
+                    continue
+                filter_stats["has_stats"] += 1
+                
+                # Calculate H10 hit rate against demon line
+                h10_result = self._calculate_h10_hit_rate(game_logs, stat_type, demon_line)
+                h10_rate = h10_result["hit_rate"]
+                h5_result = self._calculate_h5_hit_rate(game_logs, stat_type, demon_line)
+                h5_rate = h5_result["hit_rate"]
+                
+                # MINIMUM FILTER: H10 must be at least 40%
+                if h10_rate < 40:
+                    continue
+                filter_stats["passed_h10_min"] += 1
+                
+                # Calculate heater percentage
+                heater_pct = ((l5_avg - season_avg) / season_avg) * 100 if season_avg > 0 else 0
+                
+                # ========================================
+                # COMPOSITE SCORE CALCULATION
+                # ========================================
+                
+                # 1. CONSISTENCY SCORE (50% weight): H10 hit rate normalized to 0-1
+                consistency_score = h10_rate / 100
+                
+                # 2. PAYOUT SCORE (30% weight): Boost %, capped at 100% for scoring
+                #    Higher boost = higher potential payout
+                payout_score = min(boost_pct / 100, 1.0)
+                
+                # 3. HEATER BONUS (0.15 points): If L5 is trending up vs season
+                heater_bonus = 0.15 if heater_pct > 10 else (0.08 if heater_pct > 0 else 0)
+                
+                # 4. SAFETY BONUS (0.20 points): If L5 average already beats the demon line
+                #    This is the SAFEST indicator - player is already averaging above the line
+                l5_beats_line = l5_avg >= demon_line
+                safety_bonus = 0.20 if l5_beats_line else 0
+                
+                # 5. RECENT FORM BONUS (0.10 points): If H5 > H10 (improving recently)
+                form_bonus = 0.10 if h5_rate > h10_rate else 0
+                
+                # FINAL COMPOSITE SCORE
+                composite_score = (
+                    (consistency_score * 0.50) +  # 50% weight on consistency
+                    (payout_score * 0.30) +       # 30% weight on payout potential
+                    heater_bonus +                 # Up to 0.15 bonus
+                    safety_bonus +                 # Up to 0.20 bonus
+                    form_bonus                     # Up to 0.10 bonus
+                )
+                
+                # Determine risk level based on score components
+                if l5_beats_line and h10_rate >= 60:
+                    risk_level = "LOW"
+                elif h10_rate >= 50 and heater_pct > 0:
+                    risk_level = "MEDIUM"
+                else:
+                    risk_level = "HIGH"
+                
+                pick = {
                     "player_name": player_name,
                     "team": player_doc.get("team"),
                     "opponent": player_doc.get("opponent"),
@@ -505,144 +604,153 @@ class PicksGetterService:
                     "is_demon": True,
                     "is_goblin": False,
                     "tier_label": "DEMON",
-                    "tier_source": "war_zone_heater",
-                    "is_alternate_market": prop.get("is_alternate_market", True)
-                })
-        
-        if not candidates:
-            logger.warning("[WAR_ZONE] No demon candidates with 10-20% boost found")
-            return {"picks": [], "picks_count": 0, "filters_applied": ["anchor_10_20_pct"]}
-        
-        # Apply Heater and Hit Rate filters
-        war_zone_picks = []
-        filter_stats = {
-            "total_candidates": len(candidates),
-            "passed_boost": len(candidates),
-            "passed_heater": 0,
-            "passed_h10": 0
-        }
-        
-        for pick in candidates:
-            player_name = pick["player_name"]
-            stat_type = pick["stat_type"]
-            demon_line = pick["line"]
-            
-            # Get master hub data using suffix-neutral name matching
-            hub_player = await self._get_master_player_by_name(player_name)
-            
-            if not hub_player:
-                logger.debug(f"[WAR_ZONE] No master hub data for: {player_name}")
-                continue
-            
-            # Get baseline stats and game logs from Vault
-            baseline_stats = hub_player.get("baseline_stats", {})
-            game_logs = hub_player.get("bdl_game_logs", []) or hub_player.get("game_logs", [])
-            
-            if not game_logs or len(game_logs) < 10:
-                logger.debug(f"[WAR_ZONE] Insufficient game logs for {player_name}: {len(game_logs) if game_logs else 0}")
-                continue
-            
-            # Get season_avg from BDL baseline_stats
-            # Structure: {"PTS": {"season_avg": 19.3}, ...} or {"pts": 19.3, ...}
-            stat_key = self._normalize_stat_key(stat_type)
-            
-            # Try nested structure first (e.g., baseline_stats["PTS"]["season_avg"])
-            season_avg = None
-            stat_data = baseline_stats.get(stat_key, {})
-            if isinstance(stat_data, dict) and stat_data.get("season_avg") is not None:
-                season_avg = stat_data.get("season_avg")
-            elif isinstance(stat_data, (int, float)):
-                # Flat structure (e.g., baseline_stats["pts"] = 19.3)
-                season_avg = stat_data
-            else:
-                # Try lowercase key for flat BDL structure
-                flat_key_map = {
-                    "PTS": "pts", "REB": "reb", "AST": "ast", "STL": "stl", 
-                    "BLK": "blk", "3PM": "fg3m"
+                    "tier_source": "war_zone_composite",
+                    "is_alternate_market": prop.get("is_alternate_market", True),
+                    # Stats
+                    "season_avg": round(season_avg, 1),
+                    "l5_avg": round(l5_avg, 1),
+                    "l10_avg": round(l10_avg, 1),
+                    "heater_pct": round(heater_pct, 1),
+                    "heater_qualified": heater_pct > 0,
+                    "h5_rate": round(h5_rate, 1),
+                    "h10_rate": round(h10_rate, 1),
+                    "h10_hits": h10_result["hits"],
+                    "h10_games": h10_result["games_counted"],
+                    # Scoring
+                    "composite_score": round(composite_score, 3),
+                    "l5_beats_line": l5_beats_line,
+                    "risk_level": risk_level,
+                    # Photo
+                    "photo_url": hub_player.get("headshot_url") or hub_player.get("photo_url"),
+                    "position": hub_player.get("position")
                 }
-                flat_key = flat_key_map.get(stat_key)
-                if flat_key and baseline_stats.get(flat_key) is not None:
-                    val = baseline_stats.get(flat_key)
-                    season_avg = val if isinstance(val, (int, float)) else val.get("season_avg") if isinstance(val, dict) else None
-            
-            # Handle combo stats (PRA, PR, PA, RA)
-            if season_avg is None and stat_key in ["PRA", "PR", "PA", "RA"]:
-                def get_stat_avg(key):
-                    """Helper to get season_avg from nested or flat structure"""
-                    data = baseline_stats.get(key, {})
-                    if isinstance(data, dict):
-                        return data.get("season_avg", 0) or 0
-                    return data if isinstance(data, (int, float)) else 0
                 
-                if stat_key == "PRA":
-                    season_avg = get_stat_avg("PTS") + get_stat_avg("REB") + get_stat_avg("AST")
-                elif stat_key == "PR":
-                    season_avg = get_stat_avg("PTS") + get_stat_avg("REB")
-                elif stat_key == "PA":
-                    season_avg = get_stat_avg("PTS") + get_stat_avg("AST")
-                elif stat_key == "RA":
-                    season_avg = get_stat_avg("REB") + get_stat_avg("AST")
-            
-            if not season_avg or season_avg <= 0:
-                logger.debug(f"[WAR_ZONE] No season_avg for {player_name} {stat_type}")
-                continue
-            
-            # Calculate L5 average from game logs
-            l5_result = self._calculate_l5_avg(game_logs, stat_type)
-            l5_avg = l5_result["avg"]
-            
-            if l5_avg <= 0:
-                logger.debug(f"[WAR_ZONE] No L5 avg for {player_name} {stat_type}")
-                continue
-            
-            # FILTER 2: HEATER VERIFICATION - L5 must be >= 15% higher than Season
-            heater_threshold = season_avg * 1.15
-            if l5_avg < heater_threshold:
-                logger.debug(f"[WAR_ZONE] L5 {l5_avg:.1f} < heater threshold {heater_threshold:.1f} for {player_name} {stat_type}")
-                continue
-            filter_stats["passed_heater"] += 1
-            
-            # FILTER 3: H10 HIT RATE - Must exceed demon line in 7+ of last 10 games
-            h10_result = self._calculate_h10_hit_rate(game_logs, stat_type, demon_line)
-            
-            if h10_result["games_counted"] < 10:
-                logger.debug(f"[WAR_ZONE] Insufficient games for H10: {h10_result['games_counted']}")
-                continue
-            
-            if h10_result["hit_rate"] < 70:
-                logger.debug(f"[WAR_ZONE] H10 {h10_result['hit_rate']}% < 70% for {player_name} {stat_type} @ {demon_line}")
-                continue
-            filter_stats["passed_h10"] += 1
-            
-            # PASSED ALL FILTERS - Add to War Zone
-            heater_pct = round(((l5_avg - season_avg) / season_avg) * 100, 1)
-            
-            pick["season_avg"] = round(season_avg, 1)
-            pick["l5_avg"] = round(l5_avg, 1)
-            pick["heater_pct"] = heater_pct
-            pick["heater_qualified"] = True
-            pick["h10_hits"] = h10_result["hits"]
-            pick["h10_games"] = h10_result["games_counted"]
-            pick["h10_rate"] = h10_result["hit_rate"]
-            
-            # Add photo and enrichment
-            pick["photo_url"] = hub_player.get("headshot_url") or hub_player.get("photo_url")
-            pick["position"] = hub_player.get("position")
-            
-            war_zone_picks.append(pick)
-            logger.info(f"[WAR_ZONE] ✓ {player_name} {stat_type} @ {demon_line} | Boost: {pick['boost_pct']}% | Heater: +{heater_pct}% | H10: {h10_result['hit_rate']}%")
+                scored_picks.append(pick)
         
-        # Sort by heater percentage (highest first), then by H10 hit rate
-        war_zone_picks.sort(key=lambda x: (x.get("heater_pct", 0), x.get("h10_rate", 0)), reverse=True)
+        # Sort by composite score (highest first)
+        scored_picks.sort(key=lambda x: x.get("composite_score", 0), reverse=True)
         
-        logger.info(f"[WAR_ZONE] Filters: {filter_stats}")
+        # Take top 20
+        war_zone_picks = scored_picks[:20]
+        filter_stats["final_picks"] = len(war_zone_picks)
+        
+        # Log top picks
+        for i, pick in enumerate(war_zone_picks[:5], 1):
+            logger.info(f"[WAR_ZONE] #{i} {pick['player_name']} {pick['stat_type']} @ {pick['line']} | "
+                       f"Score: {pick['composite_score']:.2f} | H10: {pick['h10_rate']}% | "
+                       f"L5: {pick['l5_avg']} | Risk: {pick['risk_level']}")
+        
+        logger.info(f"[WAR_ZONE] Filter stats: {filter_stats}")
         
         return {
-            "picks": war_zone_picks[:20],
+            "picks": war_zone_picks,
             "picks_count": len(war_zone_picks),
             "filter_stats": filter_stats,
-            "filters_applied": ["anchor_10_20_pct_boost", "heater_l5_15pct_above_season", "h10_hit_rate_70pct"]
+            "filters_applied": ["composite_score", "h10_min_40pct"],
+            "scoring_weights": {
+                "consistency": "50%",
+                "payout": "30%",
+                "heater_bonus": "up to 15%",
+                "safety_bonus": "up to 20%",
+                "form_bonus": "up to 10%"
+            }
         }
+    
+    def _get_season_avg(self, baseline_stats: Dict, stat_key: str) -> Optional[float]:
+        """Helper to extract season_avg from baseline_stats with various formats."""
+        # Try nested structure first
+        stat_data = baseline_stats.get(stat_key, {})
+        if isinstance(stat_data, dict) and stat_data.get("season_avg") is not None:
+            return stat_data.get("season_avg")
+        elif isinstance(stat_data, (int, float)):
+            return stat_data
+        
+        # Try lowercase key
+        flat_key_map = {"PTS": "pts", "REB": "reb", "AST": "ast", "STL": "stl", "BLK": "blk", "3PM": "fg3m"}
+        flat_key = flat_key_map.get(stat_key)
+        if flat_key and baseline_stats.get(flat_key) is not None:
+            val = baseline_stats.get(flat_key)
+            if isinstance(val, (int, float)):
+                return val
+            elif isinstance(val, dict):
+                return val.get("season_avg")
+        
+        # Handle combo stats
+        if stat_key in ["PRA", "PR", "PA", "RA"]:
+            def get_avg(key):
+                data = baseline_stats.get(key, {})
+                if isinstance(data, dict):
+                    return data.get("season_avg", 0) or 0
+                return data if isinstance(data, (int, float)) else 0
+            
+            if stat_key == "PRA":
+                return get_avg("PTS") + get_avg("REB") + get_avg("AST")
+            elif stat_key == "PR":
+                return get_avg("PTS") + get_avg("REB")
+            elif stat_key == "PA":
+                return get_avg("PTS") + get_avg("AST")
+            elif stat_key == "RA":
+                return get_avg("REB") + get_avg("AST")
+        
+        return None
+    
+    def _calculate_l10_avg(self, game_logs: List[Dict], stat_type: str) -> Dict:
+        """Calculate L10 average from last 10 game logs."""
+        if not game_logs:
+            return {"avg": 0, "games_counted": 0, "values": []}
+        
+        recent_games = game_logs[:10]
+        stat_key = self._normalize_stat_key(stat_type)
+        values = []
+        
+        for game in recent_games:
+            if stat_key == 'PRA':
+                value = (game.get('pts', 0) or 0) + (game.get('reb', 0) or 0) + (game.get('ast', 0) or 0)
+            elif stat_key == 'PR':
+                value = (game.get('pts', 0) or 0) + (game.get('reb', 0) or 0)
+            elif stat_key == 'PA':
+                value = (game.get('pts', 0) or 0) + (game.get('ast', 0) or 0)
+            elif stat_key == 'RA':
+                value = (game.get('reb', 0) or 0) + (game.get('ast', 0) or 0)
+            else:
+                field_map = {'PTS': 'pts', 'REB': 'reb', 'AST': 'ast', 'STL': 'stl', 'BLK': 'blk', '3PM': 'fg3m'}
+                field = field_map.get(stat_key)
+                if not field:
+                    continue
+                value = game.get(field, 0) or 0
+            values.append(value)
+        
+        avg = round(sum(values) / len(values), 1) if values else 0
+        return {"avg": avg, "games_counted": len(values), "values": values}
+    
+    def _calculate_h5_hit_rate(self, game_logs: List[Dict], stat_type: str, line: float) -> Dict:
+        """Calculate H5 hit rate (last 5 games)."""
+        if not game_logs or len(game_logs) < 5:
+            return {"hit_rate": 0, "hits": 0, "games_counted": 0}
+        
+        recent_games = game_logs[:5]
+        stat_key = self._normalize_stat_key(stat_type)
+        hits = 0
+        
+        for game in recent_games:
+            if stat_key == 'PRA':
+                value = (game.get('pts', 0) or 0) + (game.get('reb', 0) or 0) + (game.get('ast', 0) or 0)
+            elif stat_key == 'PR':
+                value = (game.get('pts', 0) or 0) + (game.get('reb', 0) or 0)
+            elif stat_key == 'PA':
+                value = (game.get('pts', 0) or 0) + (game.get('ast', 0) or 0)
+            elif stat_key == 'RA':
+                value = (game.get('reb', 0) or 0) + (game.get('ast', 0) or 0)
+            else:
+                field_map = {'PTS': 'pts', 'REB': 'reb', 'AST': 'ast', 'STL': 'stl', 'BLK': 'blk', '3PM': 'fg3m'}
+                field = field_map.get(stat_key)
+                value = game.get(field, 0) or 0 if field else 0
+            
+            if value >= line:
+                hits += 1
+        
+        hit_rate = round((hits / 5) * 100, 1)
+        return {"hit_rate": hit_rate, "hits": hits, "games_counted": 5}
     
     def _calculate_l5_avg(self, game_logs: List[Dict], stat_type: str) -> Dict:
         """
