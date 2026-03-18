@@ -274,6 +274,137 @@ ACTIVE_CAREER_STATS = {
         "ranking": {"3pm": 12},
         "years": 9
     },
+    # Additional active players
+    "Bradley Beal": {
+        "pts": 14820, "reb": 2920, "ast": 3420, "stl": 720, "blk": 280, "3pm": 1180,
+        "ranking": {},
+        "years": 13
+    },
+    "Zach LaVine": {
+        "pts": 12450, "reb": 2820, "ast": 2920, "stl": 580, "blk": 260, "3pm": 1320,
+        "ranking": {},
+        "years": 10
+    },
+    "De'Aaron Fox": {
+        "pts": 10820, "reb": 2120, "ast": 4120, "stl": 920, "blk": 180, "3pm": 820,
+        "ranking": {},
+        "years": 8
+    },
+    "Shai Gilgeous-Alexander": {
+        "pts": 9450, "reb": 2520, "ast": 3220, "stl": 780, "blk": 320, "3pm": 620,
+        "ranking": {},
+        "years": 7
+    },
+    "Domantas Sabonis": {
+        "pts": 9820, "reb": 6520, "ast": 3120, "stl": 520, "blk": 320, "3pm": 220,
+        "ranking": {},
+        "years": 9
+    },
+    "Bam Adebayo": {
+        "pts": 8920, "reb": 5820, "ast": 2320, "stl": 620, "blk": 520, "3pm": 20,
+        "ranking": {},
+        "years": 8
+    },
+    "Pascal Siakam": {
+        "pts": 10520, "reb": 4120, "ast": 2620, "stl": 520, "blk": 420, "3pm": 520,
+        "ranking": {},
+        "years": 9
+    },
+    "Julius Randle": {
+        "pts": 10120, "reb": 5520, "ast": 2420, "stl": 420, "blk": 320, "3pm": 620,
+        "ranking": {},
+        "years": 10
+    },
+    "Jalen Brunson": {
+        "pts": 7820, "reb": 1820, "ast": 3120, "stl": 420, "blk": 80, "3pm": 720,
+        "ranking": {},
+        "years": 7
+    },
+    "CJ McCollum": {
+        "pts": 12320, "reb": 2320, "ast": 2820, "stl": 620, "blk": 180, "3pm": 1820,
+        "ranking": {"3pm": 16},
+        "years": 12
+    },
+    "Brandon Ingram": {
+        "pts": 9420, "reb": 2920, "ast": 2620, "stl": 420, "blk": 320, "3pm": 520,
+        "ranking": {},
+        "years": 9
+    },
+    "Tyrese Haliburton": {
+        "pts": 5620, "reb": 1420, "ast": 3020, "stl": 520, "blk": 120, "3pm": 720,
+        "ranking": {},
+        "years": 5
+    },
+    "LaMelo Ball": {
+        "pts": 5820, "reb": 1720, "ast": 2520, "stl": 420, "blk": 120, "3pm": 620,
+        "ranking": {},
+        "years": 5
+    },
+    "Anthony Edwards": {
+        "pts": 7120, "reb": 2320, "ast": 1920, "stl": 520, "blk": 220, "3pm": 820,
+        "ranking": {},
+        "years": 5
+    },
+    "Cade Cunningham": {
+        "pts": 4920, "reb": 1620, "ast": 2320, "stl": 420, "blk": 180, "3pm": 520,
+        "ranking": {},
+        "years": 4
+    },
+    "Evan Mobley": {
+        "pts": 4520, "reb": 3020, "ast": 1120, "stl": 320, "blk": 520, "3pm": 220,
+        "ranking": {},
+        "years": 4
+    },
+    "Scottie Barnes": {
+        "pts": 4820, "reb": 2620, "ast": 2020, "stl": 420, "blk": 320, "3pm": 220,
+        "ranking": {},
+        "years": 4
+    },
+    "Jaren Jackson Jr.": {
+        "pts": 6820, "reb": 2920, "ast": 820, "stl": 420, "blk": 920, "3pm": 620,
+        "ranking": {},
+        "years": 7
+    },
+    "Ja Morant": {
+        "pts": 6220, "reb": 1520, "ast": 2320, "stl": 420, "blk": 180, "3pm": 420,
+        "ranking": {},
+        "years": 6
+    },
+    "Zion Williamson": {
+        "pts": 4520, "reb": 1820, "ast": 820, "stl": 220, "blk": 220, "3pm": 60,
+        "ranking": {},
+        "years": 6
+    },
+    "Karl-Anthony Towns": {
+        "pts": 13120, "reb": 5920, "ast": 2520, "stl": 520, "blk": 780, "3pm": 980,
+        "ranking": {},
+        "years": 10
+    },
+    "Rudy Gobert": {
+        "pts": 7820, "reb": 8120, "ast": 920, "stl": 420, "blk": 1720, "3pm": 20,
+        "ranking": {},
+        "years": 12
+    },
+    "Draymond Green": {
+        "pts": 8120, "reb": 6120, "ast": 5220, "stl": 1120, "blk": 820, "3pm": 620,
+        "ranking": {},
+        "years": 13
+    },
+    "Kyle Lowry": {
+        "pts": 14920, "reb": 3120, "ast": 7120, "stl": 1220, "blk": 220, "3pm": 1720,
+        "ranking": {"ast": 20},
+        "years": 18
+    },
+    "Al Horford": {
+        "pts": 12820, "reb": 7320, "ast": 3220, "stl": 620, "blk": 1220, "3pm": 920,
+        "ranking": {},
+        "years": 18
+    },
+    "Brook Lopez": {
+        "pts": 13520, "reb": 5120, "ast": 1420, "stl": 320, "blk": 1620, "3pm": 920,
+        "ranking": {},
+        "years": 18
+    },
 }
 
 # =============================================================================

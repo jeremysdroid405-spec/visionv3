@@ -440,8 +440,57 @@ async def resolve_context_badges(engine, player_name: str, player_data: dict) ->
                         "severity": 8
                     })
         
-        # ===== 9 & 10: PAY_DAY and DEEP_WATER =====
-        # Check bdl_injuries for deep_water badge
+        # ===== 9 & 10: PAY_DAY, DEEP_WATER, and enhanced DISTRACTION =====
+        
+        # PAY_DAY: Contract year players
+        try:
+            from data.context_data import get_pay_day_info
+            pay_day = get_pay_day_info(player_name)
+            if pay_day:
+                badges.append({
+                    "badge_key": "pay_day",
+                    "display": "Pay Day",
+                    "icon": "DollarSign",
+                    "color": "#22c55e",
+                    "description": pay_day["description"],
+                    "severity": 7,
+                    "detail": pay_day
+                })
+        except Exception as e:
+            logger.debug(f"Pay day check failed for {player_name}: {e}")
+        
+        # DISTRACTION: Trade rumors or recent trade (enhanced)
+        try:
+            from data.context_data import get_distraction_info
+            distraction = get_distraction_info(player_name)
+            if distraction:
+                # Check if distraction badge already added from context_engine
+                has_distraction = any(b.get("badge_key") == "distraction" for b in badges)
+                if not has_distraction:
+                    if distraction["type"] == "trade_rumor":
+                        badges.append({
+                            "badge_key": "distraction",
+                            "display": "Trade Rumors",
+                            "icon": "AlertTriangle",
+                            "color": "#f59e0b",
+                            "description": distraction["reason"],
+                            "severity": 8 if distraction["level"] == "high" else 6,
+                            "detail": distraction
+                        })
+                    elif distraction["type"] == "recently_traded":
+                        badges.append({
+                            "badge_key": "distraction",
+                            "display": "New Team",
+                            "icon": "Repeat",
+                            "color": "#3b82f6",
+                            "description": distraction["reason"],
+                            "severity": 5,
+                            "detail": distraction
+                        })
+        except Exception as e:
+            logger.debug(f"Distraction check failed for {player_name}: {e}")
+        
+        # DEEP_WATER: Check injuries AND low minutes trend
         bdl_injuries = db['bdl_injuries']
         injury = await bdl_injuries.find_one(
             {"player_name": {"$regex": f"^{player_name}$", "$options": "i"}},
@@ -483,6 +532,44 @@ async def resolve_context_badges(engine, player_name: str, player_data: dict) ->
                 "description": deep_water_flag.get("deep_water_reason", "Health/injury concern"),
                 "severity": 10
             })
+        
+        # DEEP_WATER: Also check for declining minutes (losing rotation spot)
+        if game_logs and len(game_logs) >= 5:
+            has_deep_water = "deep_water" in [b["badge_key"] for b in badges]
+            if not has_deep_water:
+                try:
+                    # Compare L5 minutes to season average minutes
+                    recent_mins = []
+                    for log in game_logs[:5]:
+                        mins = log.get("min", "0") or "0"
+                        if isinstance(mins, str) and ":" in mins:
+                            mins = int(mins.split(":")[0])
+                        else:
+                            try:
+                                mins = int(float(mins))
+                            except:
+                                mins = 0
+                        if mins > 0:  # Only count games they played
+                            recent_mins.append(mins)
+                    
+                    if len(recent_mins) >= 3:
+                        avg_recent = sum(recent_mins) / len(recent_mins)
+                        
+                        # Get season minutes from baseline_stats if available
+                        season_mins = baseline_stats.get("MIN", {}).get("season_avg") if baseline_stats else None
+                        
+                        # If L5 minutes < 20 AND season avg > 25, player is losing minutes
+                        if avg_recent < 20 and (season_mins is None or season_mins > 25):
+                            badges.append({
+                                "badge_key": "deep_water",
+                                "display": "Deep Water",
+                                "icon": "TrendingDown",
+                                "color": "#dc2626",
+                                "description": f"Minutes trending down (L5: {avg_recent:.0f} MPG)",
+                                "severity": 7
+                            })
+                except Exception as e:
+                    logger.debug(f"[BADGE] Deep water minutes check error: {e}")
         
         # Remove duplicate badges (keep first occurrence)
         seen = set()
