@@ -127,14 +127,14 @@ class AdaptiveSyncEngine:
         # Try exact name match first
         player = await self.db[self.master_hub_collection].find_one(
             {"display_name": player_name},
-            {"_id": 0, "baseline_stats": 1, "game_logs": 1}
+            {"_id": 0, "baseline_stats": 1, "bdl_game_logs": 1, "game_logs": 1}
         )
         
         # Fallback: Try normalized name search
         if not player:
             normalized = _normalize_name(player_name)
             all_players = await self.db[self.master_hub_collection].find(
-                {}, {"display_name": 1, "baseline_stats": 1, "game_logs": 1, "_id": 0}
+                {}, {"display_name": 1, "baseline_stats": 1, "bdl_game_logs": 1, "game_logs": 1, "_id": 0}
             ).to_list(1000)
             
             for p in all_players:
@@ -193,6 +193,137 @@ class AdaptiveSyncEngine:
         
         self._player_stats_cache[cache_key] = None
         return None
+    
+    async def _get_player_full_stats(self, player_name: str, stat_type: str, line: float) -> Dict[str, Any]:
+        """
+        Get player's full stats for a prop including L5/L10 averages and H10 hit rate.
+        Uses BDL game logs for accurate calculations.
+        
+        Returns: {
+            "season_avg": float,
+            "l5_avg": float,
+            "l10_avg": float,
+            "h10_hit_rate": float (percentage),
+            "h10_hits": int,
+            "h10_games": int
+        }
+        """
+        cache_key = f"{_normalize_name(player_name)}_{stat_type}_full"
+        if cache_key in self._player_stats_cache:
+            cached = self._player_stats_cache[cache_key]
+            # Calculate H10 for specific line from cached game values
+            if cached and "game_values" in cached:
+                game_values = cached["game_values"][:10]
+                hits = sum(1 for v in game_values if float(v) > float(line))
+                return {
+                    **cached,
+                    "h10_hit_rate": round((hits / len(game_values)) * 100, 1) if game_values else 0,
+                    "h10_hits": hits,
+                    "h10_games": len(game_values)
+                }
+        
+        # Default result
+        result = {
+            "season_avg": None, "l5_avg": None, "l10_avg": None,
+            "h10_hit_rate": None, "h10_hits": 0, "h10_games": 0
+        }
+        
+        # Normalize stat type
+        stat_key = stat_type.upper()
+        norm_map = {"P+R": "PR", "P+A": "PA", "R+A": "RA", "3PM": "THREES", "THREES": "THREES"}
+        stat_key = norm_map.get(stat_key, stat_key)
+        
+        # Find player
+        player = await self.db[self.master_hub_collection].find_one(
+            {"display_name": player_name},
+            {"_id": 0, "baseline_stats": 1, "bdl_game_logs": 1}
+        )
+        
+        if not player:
+            normalized = _normalize_name(player_name)
+            all_players = await self.db[self.master_hub_collection].find(
+                {}, {"display_name": 1, "baseline_stats": 1, "bdl_game_logs": 1, "_id": 0}
+            ).to_list(1000)
+            
+            for p in all_players:
+                if _normalize_name(p.get("display_name", "")) == normalized:
+                    player = p
+                    break
+        
+        if not player:
+            return result
+        
+        # Get season_avg from baseline_stats (official BDL data)
+        baseline_stats = player.get("baseline_stats", {})
+        stat_data = baseline_stats.get(stat_key, {})
+        if isinstance(stat_data, dict):
+            result["season_avg"] = stat_data.get("season_avg")
+            result["l5_avg"] = stat_data.get("l5_avg")
+            result["l10_avg"] = stat_data.get("l10_avg")
+        elif stat_data:
+            result["season_avg"] = stat_data
+        
+        # Calculate from BDL game logs for accurate L5/L10/H10
+        game_logs = player.get("bdl_game_logs", [])
+        if game_logs:
+            # Sort by date (most recent first)
+            game_logs = sorted(
+                game_logs,
+                key=lambda x: x.get('game', {}).get('date', '') if isinstance(x.get('game'), dict) else x.get('date', ''),
+                reverse=True
+            )
+            
+            # Map stat_key to game log field
+            log_key_map = {
+                "PTS": "pts", "REB": "reb", "AST": "ast", "STL": "stl",
+                "BLK": "blk", "THREES": "fg3m", "3PM": "fg3m", "TO": "turnover"
+            }
+            log_key = log_key_map.get(stat_key)
+            
+            # Extract values from game logs
+            game_values = []
+            for g in game_logs:
+                try:
+                    if stat_key in ["PRA"]:
+                        val = float(g.get("pts", 0) or 0) + float(g.get("reb", 0) or 0) + float(g.get("ast", 0) or 0)
+                    elif stat_key in ["PR", "P+R"]:
+                        val = float(g.get("pts", 0) or 0) + float(g.get("reb", 0) or 0)
+                    elif stat_key in ["PA", "P+A"]:
+                        val = float(g.get("pts", 0) or 0) + float(g.get("ast", 0) or 0)
+                    elif stat_key in ["RA", "R+A"]:
+                        val = float(g.get("reb", 0) or 0) + float(g.get("ast", 0) or 0)
+                    elif log_key:
+                        val = float(g.get(log_key, 0) or 0)
+                    else:
+                        val = 0
+                    game_values.append(val)
+                except (ValueError, TypeError):
+                    game_values.append(0)
+            
+            if game_values:
+                # Calculate L5 and L10 averages
+                l5_values = game_values[:5]
+                l10_values = game_values[:10]
+                
+                if l5_values:
+                    result["l5_avg"] = round(sum(l5_values) / len(l5_values), 1)
+                if l10_values:
+                    result["l10_avg"] = round(sum(l10_values) / len(l10_values), 1)
+                
+                # Calculate H10 hit rate (> line, not >=)
+                if l10_values:
+                    hits = sum(1 for v in l10_values if v > float(line))
+                    result["h10_hit_rate"] = round((hits / len(l10_values)) * 100, 1)
+                    result["h10_hits"] = hits
+                    result["h10_games"] = len(l10_values)
+                
+                # Cache for reuse
+                self._player_stats_cache[cache_key] = {
+                    **result,
+                    "game_values": game_values
+                }
+        
+        return result
     
     def _get_game_status(self, commence_time: str) -> GameStatus:
         """
@@ -459,8 +590,14 @@ class AdaptiveSyncEngine:
                         # ============================================================
                         # STATISTICAL DIVERGENCE CLASSIFICATION v2
                         # ============================================================
-                        # Get player's season average from master hub
-                        season_avg = await self._get_player_season_avg(player_name, stat_type_extracted)
+                        # Get player's FULL stats including L5, L10, H10 hit rate
+                        full_stats = await self._get_player_full_stats(player_name, stat_type_extracted, line)
+                        season_avg = full_stats.get("season_avg")
+                        l5_avg = full_stats.get("l5_avg")
+                        l10_avg = full_stats.get("l10_avg")
+                        h10_hit_rate = full_stats.get("h10_hit_rate")
+                        h10_hits = full_stats.get("h10_hits", 0)
+                        h10_games = full_stats.get("h10_games", 0)
                         
                         # Calculate divergence from average
                         diff_from_avg = None
@@ -533,7 +670,13 @@ class AdaptiveSyncEngine:
                                 # NEW: Statistical divergence metadata
                                 "season_avg": round(season_avg, 1) if season_avg else None,
                                 "diff_from_avg": diff_from_avg,
-                                "has_stats": season_avg is not None and season_avg > 0
+                                "has_stats": season_avg is not None and season_avg > 0,
+                                # NEW: L5/L10 averages and H10 hit rate from BDL
+                                "l5_avg": l5_avg,
+                                "l10_avg": l10_avg,
+                                "h10_hit_rate": h10_hit_rate,
+                                "h10_hits": h10_hits,
+                                "h10_games": h10_games
                             }
                             
                             # Upsert to collection

@@ -12,16 +12,16 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-# Stat type to Tank01 field mapping
-# Tank01 uses different field names than BallDontLie
+# Stat type to game log field mapping
+# Supports BOTH Tank01 and BDL field names
 STAT_FIELD_MAP = {
     "PTS": "pts",
     "REB": "reb",
     "AST": "ast",
-    "3PM": "tptfgm",  # Tank01 uses tptfgm for 3-pointers made
+    "3PM": "fg3m",  # BDL uses fg3m, Tank01 uses tptfgm (we'll handle both)
     "BLK": "blk",
     "STL": "stl",
-    "TO": "TOV",  # Tank01 uses TOV for turnovers
+    "TO": "turnover",  # BDL uses turnover, Tank01 uses TOV
     "P+R": ["pts", "reb"],
     "P+A": ["pts", "ast"],
     "R+A": ["reb", "ast"],
@@ -30,6 +30,12 @@ STAT_FIELD_MAP = {
     "PR": ["pts", "reb"],
     "PA": ["pts", "ast"],
     "RA": ["reb", "ast"]
+}
+
+# Alternative field names (Tank01 -> BDL)
+TANK01_TO_BDL = {
+    "tptfgm": "fg3m",
+    "TOV": "turnover"
 }
 
 
@@ -42,10 +48,28 @@ def safe_float(val) -> float:
 
 
 def get_stat_value(game: Dict, fields) -> float:
-    """Get combined stat value from a game (works with Tank01 format)"""
+    """Get combined stat value from a game (works with Tank01 and BDL format)"""
     if isinstance(fields, list):
-        return sum(safe_float(game.get(f, 0)) for f in fields)
-    return safe_float(game.get(fields, 0))
+        total = 0
+        for f in fields:
+            val = game.get(f, 0)
+            # Try BDL field name if Tank01 field not found
+            if val == 0 or val is None:
+                if f == "tptfgm":
+                    val = game.get("fg3m", 0)
+                elif f == "TOV":
+                    val = game.get("turnover", 0)
+            total += safe_float(val)
+        return total
+    
+    val = game.get(fields, 0)
+    # Try BDL field name if Tank01 field not found
+    if val == 0 or val is None:
+        if fields == "tptfgm":
+            val = game.get("fg3m", 0)
+        elif fields == "TOV":
+            val = game.get("turnover", 0)
+    return safe_float(val)
 
 
 def calculate_hit_rate_for_games(games: List[Dict], fields, line_value: float) -> Dict[str, Any]:
@@ -110,15 +134,23 @@ def calculate_coupled_stats(games: List[Dict], stat_type: str, line_value: float
         }
     
     # Filter to games with minutes > 0 (actually played)
+    # BDL uses "min", Tank01 uses "mins"
     played_games = []
     for g in games:
-        mins_str = g.get("mins", "0") or "0"
+        # Try both field names
+        mins_str = g.get("min") or g.get("mins", "0") or "0"
         try:
-            mins = float(mins_str) if mins_str else 0
+            # Handle "MM:SS" format
+            if isinstance(mins_str, str) and ":" in mins_str:
+                mins = int(mins_str.split(":")[0])
+            else:
+                mins = float(mins_str) if mins_str else 0
             if mins > 0:
                 played_games.append(g)
         except (ValueError, TypeError):
-            pass
+            # If we can't parse minutes, include the game anyway (might have other stats)
+            if g.get("pts") is not None or g.get("reb") is not None:
+                played_games.append(g)
     
     if not played_games:
         return {
@@ -128,19 +160,27 @@ def calculate_coupled_stats(games: List[Dict], stat_type: str, line_value: float
         }
     
     # CRITICAL: Sort by game date (most recent first)
-    # Game date formats: "Mar 16, 2025", "Oct 31, 2024", etc.
+    # BDL format: game.game.date = "2025-03-16"
+    # Tank01 format: game.game_date = "Mar 16, 2025"
     from datetime import datetime
     
     def parse_game_date(game):
         """Parse game_date string to sortable value."""
         try:
-            date_str = game.get("game_date", "")
+            # Try BDL nested format first
+            date_str = game.get("game", {}).get("date", "") if isinstance(game.get("game"), dict) else ""
+            
+            # Fallback to Tank01 flat format
+            if not date_str:
+                date_str = game.get("game_date", "") or game.get("date", "")
+            
             if not date_str:
                 return datetime.min
+            
             # Handle formats: "Mar 16, 2025" or "2025-03-16"
-            for fmt in ["%b %d, %Y", "%Y-%m-%d", "%B %d, %Y"]:
+            for fmt in ["%Y-%m-%d", "%b %d, %Y", "%B %d, %Y"]:
                 try:
-                    return datetime.strptime(date_str, fmt)
+                    return datetime.strptime(date_str[:10], fmt)
                 except ValueError:
                     continue
             return datetime.min

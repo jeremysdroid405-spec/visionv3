@@ -284,7 +284,8 @@ async def get_tactical_profile(
         seen_props = set()  # Dedupe by stat_type + line + direction
         
         # Get game_logs from master hub for coupled calculations
-        game_logs = master_player.get("game_logs", []) if master_player else []
+        # PRIORITY: Use bdl_game_logs (more accurate), fallback to Tank01 game_logs
+        game_logs = (master_player.get("bdl_game_logs", []) or master_player.get("game_logs", [])) if master_player else []
         
         # Track standard lines by stat type (for reference, not classification)
         standard_lines = {}  # {stat_type: standard_line_value}

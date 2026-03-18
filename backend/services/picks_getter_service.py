@@ -992,8 +992,27 @@ class PicksGetterService:
             except (ValueError, TypeError):
                 return 0
         
+        # CRITICAL: Sort by date first (most recent first)
+        # BDL format: game.game.date or game.date
+        from datetime import datetime
+        
+        def get_game_date(g):
+            date_str = ""
+            if isinstance(g.get("game"), dict):
+                date_str = g.get("game", {}).get("date", "")
+            if not date_str:
+                date_str = g.get("date", "") or g.get("game_date", "")
+            if date_str:
+                try:
+                    return datetime.strptime(date_str[:10], "%Y-%m-%d")
+                except:
+                    pass
+            return datetime.min
+        
+        sorted_logs = sorted(game_logs, key=get_game_date, reverse=True)
+        
         # Take last 10 games (most recent first)
-        recent_games = game_logs[:10]
+        recent_games = sorted_logs[:10]
         
         # Map stat_type to game log field
         stat_field_map = {
@@ -1512,8 +1531,9 @@ class PicksGetterService:
             return
         
         # PIPE 1: Get baseline_stats and game_logs from master hub
+        # PRIORITY: Use bdl_game_logs (more accurate), fallback to Tank01 game_logs
         baseline_stats = hub_player.get("baseline_stats", {})
-        game_logs = hub_player.get("game_logs", [])
+        game_logs = hub_player.get("bdl_game_logs", []) or hub_player.get("game_logs", [])
         
         # Add structural data - PHOTOS FROM MASTER HUB ONLY
         player["baseline_stats"] = baseline_stats
