@@ -35,7 +35,7 @@
 import React, { memo, useCallback, useState } from 'react';
 import { 
   Target, Shield, ChevronRight, Plus, ChevronDown,
-  Crosshair, TrendingUp
+  Crosshair, TrendingUp, HeartPulse
 } from 'lucide-react';
 import { Badge } from '../ui/badge';
 
@@ -424,7 +424,9 @@ const UniversalPlayerCard = memo(({
     line,
     h5_rate, h10_rate, season_avg, diff_from_avg,
     // Tier info
-    is_demon, is_goblin, tier_label
+    is_demon, is_goblin, tier_label,
+    // Injury flag
+    is_injured
   } = player;
   
   const displayName = player_name || name;
@@ -494,6 +496,9 @@ const UniversalPlayerCard = memo(({
             {CompactIcon && <CompactIcon size={16} className={iconColor} />}
             <span className="font-bold text-white text-sm truncate">{displayName}</span>
             <span className="text-[10px] text-zinc-500">{team}</span>
+            {is_injured && (
+              <HeartPulse size={14} className="text-red-500 animate-pulse" title="Injury Alert" />
+            )}
           </div>
           
           {/* Primary Prop */}

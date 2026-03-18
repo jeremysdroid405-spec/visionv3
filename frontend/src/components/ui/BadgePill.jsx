@@ -26,11 +26,22 @@ import {
   BatteryLow, 
   Coins, 
   Waves, 
-  AlertCircle 
+  AlertCircle,
+  HeartPulse
 } from 'lucide-react';
 
 // Badge Registry - Maps badge IDs to visual config
 export const BADGE_REGISTRY = {
+  injured: {
+    label: "Injured",
+    icon: HeartPulse,
+    glowColor: "#dc2626",  // Red
+    bgClass: "bg-red-600/20",
+    borderClass: "border-red-600/40",
+    textClass: "text-red-500",
+    glowClass: "shadow-red-600/30",
+    trigger: "Player has reported injury"
+  },
   legal_noise: {
     label: "Legal Noise",
     icon: Gavel,
@@ -113,13 +124,13 @@ export const BADGE_REGISTRY = {
   },
   deep_water: {
     label: "Deep Water",
-    icon: Waves,
+    icon: HeartPulse,
     glowColor: "#3b82f6",  // Blue
     bgClass: "bg-blue-500/20",
     borderClass: "border-blue-500/40",
     textClass: "text-blue-400",
     glowClass: "shadow-blue-500/30",
-    trigger: "Elimination or playoff game 5+"
+    trigger: "Injury concern or elimination game"
   },
   distraction: {
     label: "Distraction",

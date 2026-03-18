@@ -383,14 +383,62 @@ class InjuryIntelligenceService:
         return await cursor.to_list(50)
     
     async def get_all_injuries(self) -> Dict[str, Any]:
-        """Get all current injuries grouped by severity."""
-        cursor = self.injuries_collection.find({}, {"_id": 0})
-        all_injuries = await cursor.to_list(500)
+        """Get all current injuries grouped by severity from both ESPN and BDL sources."""
+        # Get ESPN injuries (dg_injuries)
+        espn_cursor = self.injuries_collection.find({}, {"_id": 0})
+        espn_injuries = await espn_cursor.to_list(500)
         
-        # Group by severity
-        high_risk = [i for i in all_injuries if i.get('severity', {}).get('risk') == 'HIGH']
-        medium_risk = [i for i in all_injuries if i.get('severity', {}).get('risk') == 'MEDIUM']
-        low_risk = [i for i in all_injuries if i.get('severity', {}).get('risk') == 'LOW']
+        # Get BDL injuries (bdl_injuries) - from BallDontLie API
+        bdl_cursor = self.db.bdl_injuries.find({}, {"_id": 0})
+        bdl_injuries = await bdl_cursor.to_list(500)
+        
+        # Combine and deduplicate by player_name (prefer BDL data as it's more official)
+        injuries_by_player = {}
+        
+        # Add ESPN injuries first
+        for injury in espn_injuries:
+            player_name = injury.get('player_name')
+            if player_name:
+                # Normalize severity format
+                severity = injury.get('severity', {})
+                risk = severity.get('risk', 'MEDIUM') if isinstance(severity, dict) else 'MEDIUM'
+                injuries_by_player[player_name.lower()] = {
+                    **injury,
+                    "source": "espn",
+                    "risk_level": risk
+                }
+        
+        # Add/override with BDL injuries
+        for injury in bdl_injuries:
+            player_name = injury.get('player_name')
+            if player_name:
+                # Map BDL severity to risk level
+                severity = injury.get('severity', 'unknown')
+                if severity in ['out', 'season_ending']:
+                    risk = 'HIGH'
+                elif severity in ['doubtful', 'questionable']:
+                    risk = 'MEDIUM'
+                else:
+                    risk = 'LOW'
+                
+                injuries_by_player[player_name.lower()] = {
+                    "player_name": player_name,
+                    "team": injury.get('team'),
+                    "status": injury.get('status'),
+                    "injury_type": injury.get('injury_type'),
+                    "return_date": injury.get('return_date'),
+                    "bdl_id": injury.get('bdl_id'),
+                    "source": "bdl",
+                    "risk_level": risk,
+                    "severity": {"risk": risk}  # Normalized format
+                }
+        
+        all_injuries = list(injuries_by_player.values())
+        
+        # Group by risk level
+        high_risk = [i for i in all_injuries if i.get('risk_level') == 'HIGH']
+        medium_risk = [i for i in all_injuries if i.get('risk_level') == 'MEDIUM']
+        low_risk = [i for i in all_injuries if i.get('risk_level') == 'LOW']
         
         return {
             "success": True,
@@ -413,20 +461,54 @@ class InjuryIntelligenceService:
         """
         Get injury alerts formatted for the dashboard board.
         Returns a dict mapping player_name -> injury_info for quick lookup.
+        Combines ESPN and BDL injury data.
         """
-        cursor = self.injuries_collection.find({}, {"_id": 0})
-        injuries = await cursor.to_list(500)
+        alerts = {}
         
-        return {
-            injury['player_name']: {
-                "status": injury.get('status'),
-                "severity": injury.get('severity', {}).get('risk', 'MEDIUM'),
-                "color": injury.get('severity', {}).get('color', 'yellow'),
-                "description": injury.get('short_comment') or injury.get('description', '')[:100],
-                "team": injury.get('team')
-            }
-            for injury in injuries
-        }
+        # Get ESPN injuries
+        espn_cursor = self.injuries_collection.find({}, {"_id": 0})
+        espn_injuries = await espn_cursor.to_list(500)
+        
+        for injury in espn_injuries:
+            player_name = injury.get('player_name')
+            if player_name:
+                alerts[player_name] = {
+                    "status": injury.get('status'),
+                    "severity": injury.get('severity', {}).get('risk', 'MEDIUM'),
+                    "color": injury.get('severity', {}).get('color', 'yellow'),
+                    "description": injury.get('short_comment') or injury.get('description', '')[:100],
+                    "team": injury.get('team'),
+                    "source": "espn"
+                }
+        
+        # Get BDL injuries (override ESPN with more official data)
+        bdl_cursor = self.db.bdl_injuries.find({}, {"_id": 0})
+        bdl_injuries = await bdl_cursor.to_list(500)
+        
+        for injury in bdl_injuries:
+            player_name = injury.get('player_name')
+            if player_name:
+                severity = injury.get('severity', 'unknown')
+                if severity in ['out', 'season_ending']:
+                    risk = 'HIGH'
+                    color = 'red'
+                elif severity in ['doubtful', 'questionable']:
+                    risk = 'MEDIUM'
+                    color = 'yellow'
+                else:
+                    risk = 'LOW'
+                    color = 'green'
+                
+                alerts[player_name] = {
+                    "status": injury.get('status'),
+                    "severity": risk,
+                    "color": color,
+                    "description": injury.get('injury_type') or f"Return: {injury.get('return_date', 'TBD')}",
+                    "team": injury.get('team'),
+                    "source": "bdl"
+                }
+        
+        return alerts
     
     def _get_team_abbr(self, team_name: str) -> str:
         """Convert full team name to abbreviation."""

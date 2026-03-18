@@ -53,6 +53,8 @@ Build a sports betting analytics application (PickVision AI) that provides:
 - [x] Intel Search deduplication fix
 - [x] L5/L10 stats consistency fix - all calculation functions now sort game logs by date (Dec 2025)
 - [x] Team/Opponent display fix - shows player's actual team (from master hub) and correct opponent (Dec 2025)
+- [x] Injury data display - Combined ESPN + BDL injury sources, `is_injured` flag on picks (Dec 2025)
+- [x] Gassed badge enhanced - Now checks for back-to-back AND heavy minutes (38+) (Dec 2025)
 
 ### Context Badges
 - Live from BDL injuries: `deep_water` (injury)

@@ -132,6 +132,36 @@ class PicksGetterService:
         
         # Cache for game info (home_team, away_team) by game_id
         self._game_info_cache = {}
+        
+        # Cache for injured players
+        self._injured_players_cache = None
+    
+    async def _get_injured_players(self) -> set:
+        """
+        Get set of injured player names for quick lookup.
+        Combines ESPN (dg_injuries) and BDL (bdl_injuries) sources.
+        """
+        if self._injured_players_cache is not None:
+            return self._injured_players_cache
+        
+        injured = set()
+        
+        # Get BDL injuries (more reliable)
+        bdl_cursor = self.db.bdl_injuries.find({}, {"_id": 0, "player_name": 1})
+        bdl_injuries = await bdl_cursor.to_list(500)
+        for inj in bdl_injuries:
+            if inj.get("player_name"):
+                injured.add(inj["player_name"].lower())
+        
+        # Get ESPN injuries
+        espn_cursor = self.db.dg_injuries.find({}, {"_id": 0, "player_name": 1})
+        espn_injuries = await espn_cursor.to_list(500)
+        for inj in espn_injuries:
+            if inj.get("player_name"):
+                injured.add(inj["player_name"].lower())
+        
+        self._injured_players_cache = injured
+        return injured
     
     async def _get_game_info(self, game_id: str) -> Dict[str, str]:
         """
@@ -664,6 +694,10 @@ class PicksGetterService:
                 game_info = await self._get_game_info(game_id)
                 opponent = _get_opponent_from_game(player_team, game_info.get("home_team"), game_info.get("away_team"))
                 
+                # Check if player is injured
+                injured_players = await self._get_injured_players()
+                is_injured = player_name.lower() in injured_players
+                
                 pick = {
                     "player_name": player_name,
                     "team": player_team,  # Use master hub team (source of truth)
@@ -680,6 +714,7 @@ class PicksGetterService:
                     "tier_label": "DEMON",
                     "tier_source": "war_zone_composite",
                     "is_alternate_market": prop.get("is_alternate_market", True),
+                    "is_injured": is_injured,
                     # Stats
                     "season_avg": round(season_avg, 1),
                     "l5_avg": round(l5_avg, 1),
@@ -1076,6 +1111,10 @@ class PicksGetterService:
             game_info = await self._get_game_info(game_id)
             pick["opponent"] = _get_opponent_from_game(player_team, game_info.get("home_team"), game_info.get("away_team"))
             
+            # Check if player is injured
+            injured_players = await self._get_injured_players()
+            pick["is_injured"] = pick.get("player_name", "").lower() in injured_players
+            
             safe_haven_picks.append(pick)
             logger.info(f"[SAFE_HAVEN] ✓ {player_name} {stat_type} @ {line} | H10: {h10_result['hit_rate']}% | Floor margin: {pick['floor_margin']}")
         
@@ -1365,6 +1404,10 @@ class PicksGetterService:
             game_id = pick.get("game_id")
             game_info = await self._get_game_info(game_id)
             pick["opponent"] = _get_opponent_from_game(player_team, game_info.get("home_team"), game_info.get("away_team"))
+            
+            # Check if player is injured
+            injured_players = await self._get_injured_players()
+            pick["is_injured"] = pick.get("player_name", "").lower() in injured_players
             
             front_line_picks.append(pick)
             logger.info(f"[FRONT_LINES] ✓ {player_name} {stat_type} @ {line} | Discount: {pick['discount_pct']}% | L25: {l25_result['hit_rate']}%")

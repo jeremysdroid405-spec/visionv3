@@ -336,7 +336,7 @@ async def get_injuries():
     from motor.motor_asyncio import AsyncIOMotorClient
     
     mongo_url = os.environ.get("MONGO_URL")
-    db_name = os.environ.get("DB_NAME", "pick_vision")
+    db_name = os.environ.get("DB_NAME", "best_bet_finder")
     
     if not mongo_url:
         raise HTTPException(status_code=503, detail="Database not configured")

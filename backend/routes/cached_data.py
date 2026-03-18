@@ -301,6 +301,32 @@ async def resolve_context_badges(engine, player_name: str, player_data: dict) ->
             except Exception as e:
                 logger.debug(f"[BADGE] Gassed check error: {e}")
         
+        # Also check for heavy minutes (38+ in last game)
+        if game_logs and len(game_logs) >= 1:
+            try:
+                last_game = game_logs[0]
+                minutes = last_game.get("min") or last_game.get("minutes", "0")
+                # Parse minutes - could be "38:20" or just 38
+                if isinstance(minutes, str) and ":" in minutes:
+                    minutes = int(minutes.split(":")[0])
+                else:
+                    minutes = int(float(minutes))
+                
+                if minutes >= 38:
+                    # Check if gassed badge already exists
+                    has_gassed = any(b.get("badge_key") == "gassed" for b in badges)
+                    if not has_gassed:
+                        badges.append({
+                            "badge_key": "gassed",
+                            "display": "Gassed",
+                            "icon": "BatteryLow",
+                            "color": "#dc2626",
+                            "description": f"Played {minutes} min in last game (fatigue risk)",
+                            "severity": 5
+                        })
+            except Exception as e:
+                logger.debug(f"[BADGE] Heavy minutes check error: {e}")
+        
         # ===== 4. HOME_COOKIN: Home PPG 15%+ higher than Away =====
         if game_logs and len(game_logs) >= 10:
             try:
