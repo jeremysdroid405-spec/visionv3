@@ -247,21 +247,37 @@ async def resolve_context_badges(engine, player_name: str, player_data: dict) ->
                 })
         
         # ===== 2. MILESTONE: Career milestone tracking =====
-        # Tracks: All-time rankings, closing in on passing players, round number milestones
+        # Uses NBA API for real career stats (cached in MongoDB)
         try:
-            from data.career_milestones import get_best_milestone
-            milestone = get_best_milestone(player_name)
+            from services.nba_career_service import get_milestone_for_player
+            milestone = await get_milestone_for_player(db, player_name)
             if milestone:
                 badges.append({
                     "badge_key": "milestone",
                     "display": milestone.get("headline", "Milestone"),
                     "icon": "Trophy",
-                    "color": "#eab308" if milestone.get("type") != "record_holder" else "#f59e0b",
+                    "color": "#eab308",
                     "description": milestone.get("description"),
                     "severity": milestone.get("severity", 7),
                     "detail": milestone
                 })
         except Exception as e:
+            # Fallback to static data if NBA API fails
+            try:
+                from data.career_milestones import get_best_milestone
+                milestone = get_best_milestone(player_name)
+                if milestone:
+                    badges.append({
+                        "badge_key": "milestone",
+                        "display": milestone.get("headline", "Milestone"),
+                        "icon": "Trophy",
+                        "color": "#eab308",
+                        "description": milestone.get("description"),
+                        "severity": milestone.get("severity", 7),
+                        "detail": milestone
+                    })
+            except:
+                pass
             logger.debug(f"Milestone check failed for {player_name}: {e}")
         
         # ===== 3. GASSED: Back-to-back (2nd night) =====

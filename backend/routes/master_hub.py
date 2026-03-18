@@ -149,6 +149,70 @@ async def trigger_bdl_prizepicks_sync():
     return result
 
 
+# ==================== CAREER STATS ENDPOINTS ====================
+
+@router.post("/sync-career-stats")
+async def sync_career_stats():
+    """
+    Sync career stats from NBA.com for all tracked players.
+    
+    Uses the nba_api library to fetch real career totals:
+    - Points, Rebounds, Assists, Steals, Blocks, 3PM
+    - Games played, Minutes
+    
+    Data is cached for 24 hours to avoid rate limiting.
+    """
+    if _db is None:
+        raise HTTPException(status_code=500, detail="Database not initialized")
+    
+    from services.nba_career_service import sync_career_stats_for_players, TRACKED_PLAYERS
+    
+    result = await sync_career_stats_for_players(_db, TRACKED_PLAYERS)
+    return {
+        "success": True,
+        "synced": result["synced"],
+        "failed": result["failed"],
+        "message": f"Synced career stats for {result['synced']} players"
+    }
+
+
+@router.get("/career-stats/{player_name}")
+async def get_player_career_stats(player_name: str):
+    """
+    Get career stats for a specific player.
+    
+    Returns cached stats if available (< 24h old), otherwise fetches fresh data.
+    """
+    if _db is None:
+        raise HTTPException(status_code=500, detail="Database not initialized")
+    
+    from services.nba_career_service import get_career_stats, get_milestone_for_player
+    
+    stats = await get_career_stats(_db, player_name)
+    if not stats:
+        raise HTTPException(status_code=404, detail=f"Career stats not found for: {player_name}")
+    
+    milestone = await get_milestone_for_player(_db, player_name)
+    
+    return {
+        "player_name": stats.get("player_name"),
+        "career_stats": {
+            "points": stats.get("career_pts", 0),
+            "rebounds": stats.get("career_reb", 0),
+            "assists": stats.get("career_ast", 0),
+            "steals": stats.get("career_stl", 0),
+            "blocks": stats.get("career_blk", 0),
+            "three_pointers": stats.get("career_3pm", 0),
+            "games_played": stats.get("games_played", 0),
+        },
+        "milestone": milestone,
+        "fetched_at": stats.get("fetched_at"),
+        "is_active": stats.get("is_active", False)
+    }
+
+
+
+
 @router.post("/sync-bdl-player/{player_name}")
 async def sync_single_player_bdl(player_name: str):
     """
