@@ -312,7 +312,7 @@ class TierBuilderService:
         
         return {
             "player_id": player_data.get("player_id"),
-            "tank01_player_id": player_data.get("tank01_player_id") or player_data.get("tank01_id"),
+            "bdl_player_id": player_data.get("bdl_player_id") or player_data.get("bdl_id"),
             "player_name": player_name,
             "team": player_data.get("team", ""),
             "team_name": player_data.get("team_name"),
@@ -554,7 +554,7 @@ class TierBuilderService:
         
         return {
             "player_id": player_data.get("player_id"),
-            "tank01_player_id": player_data.get("tank01_player_id") or player_data.get("tank01_id"),
+            "bdl_player_id": player_data.get("bdl_player_id") or player_data.get("bdl_id"),
             "player_name": player_name,
             "team": player_data.get("team", ""),
             "team_name": player_data.get("team_name"),

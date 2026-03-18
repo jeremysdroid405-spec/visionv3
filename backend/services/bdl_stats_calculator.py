@@ -4,7 +4,7 @@ BDL Stats Calculator
 Recalculates baseline_stats from bdl_game_logs stored in nba_master_hub_2026.
 
 This ensures stats are always computed from the most accurate source (BDL game logs)
-rather than relying on potentially stale or incomplete Tank01 data.
+rather than relying on potentially stale or incomplete BDL data.
 """
 
 import logging

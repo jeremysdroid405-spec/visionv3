@@ -88,7 +88,7 @@ async def batch_raw_validation(player_names: List[str]):
         "success": True,
         "validation_entries": results,
         "fetched_at": datetime.now(timezone.utc).isoformat(),
-        "source": "tank01_stats_api"
+        "source": "bdl_stats_api"
     }
 
 

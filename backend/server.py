@@ -98,7 +98,6 @@ SUPABASE_URL = os.environ.get('SUPABASE_URL')
 SUPABASE_ANON_KEY = os.environ.get('SUPABASE_ANON_KEY')
 SUPABASE_SERVICE_ROLE_KEY = os.environ.get('SUPABASE_SERVICE_ROLE_KEY')
 JWT_SECRET = os.environ.get('JWT_SECRET')
-TANK01_API_KEY = os.environ.get('TANK01_API_KEY')
 ODDS_API_KEY = os.environ.get('ODDS_API_KEY')
 
 # Scheduler timezone (UTC)
@@ -218,7 +217,7 @@ OPENAPI_TAGS = [
     },
     {
         "name": "injuries",
-        "description": "Injury intelligence from ESPN and Tank01"
+        "description": "Injury intelligence from ESPN and BDL"
     },
     # External Data
     {
@@ -533,7 +532,7 @@ async def startup_event():
     
     # Initialize Injury Intelligence Service
     injury_service = get_injury_service(db)
-    logger.info("Injury Intelligence Service initialized (ESPN + Tank01)")
+    logger.info("Injury Intelligence Service initialized (ESPN + BDL)")
     
     # Initialize RAW STAT FETCHER - Isolated data integrity service
     raw_stat_fetcher = RawStatFetcher(db)
@@ -748,7 +747,6 @@ async def get_current_user(token: str = Depends(verify_jwt)):
 
 # NOTE: Cache utilities below are LOCAL to server.py and use the global `db` reference.
 # Similar functions exist in utils.py but require initialization via set_cache_collection().
-# These are kept here for Tank01 API calls which depend on the global db.
 async def get_cached_data(cache_key: str, ttl_hours: int = 24):
     """Get data from cache if not expired. Uses server.py global db."""
     cached = await db.cache.find_one({"key": cache_key})
@@ -770,53 +768,6 @@ async def set_cached_data(cache_key: str, data: Any):
 def fuzzy_match_player(name1: str, name2: str, threshold: int = 80) -> bool:
     """Fuzzy match two player names."""
     return fuzz.ratio(name1.lower(), name2.lower()) >= threshold
-
-async def fetch_tank01_injuries():
-    cached = await get_cached_data("tank01_injuries")
-    if cached:
-        return cached
-    
-    try:
-        async with httpx.AsyncClient() as http_client:
-            response = await http_client.get(
-                "https://tank01-nba-live-in-game-real-time-statistics-nba.p.rapidapi.com/getNBAInjuryList",
-                headers={
-                    "X-RapidAPI-Key": TANK01_API_KEY,
-                    "X-RapidAPI-Host": "tank01-nba-live-in-game-real-time-statistics-nba.p.rapidapi.com"
-                },
-                timeout=10.0
-            )
-            if response.status_code == 200:
-                data = response.json().get("body", [])
-                await set_cached_data("tank01_injuries", data)
-                return data
-    except Exception as e:
-        logger.error(f"Tank01 injuries error: {e}")
-    return []
-
-async def fetch_tank01_teams():
-    cached = await get_cached_data("tank01_teams")
-    if cached:
-        return cached
-    
-    try:
-        async with httpx.AsyncClient() as http_client:
-            response = await http_client.get(
-                "https://tank01-nba-live-in-game-real-time-statistics-nba.p.rapidapi.com/getNBATeams",
-                params={"teamStats": "true"},
-                headers={
-                    "X-RapidAPI-Key": TANK01_API_KEY,
-                    "X-RapidAPI-Host": "tank01-nba-live-in-game-real-time-statistics-nba.p.rapidapi.com"
-                },
-                timeout=10.0
-            )
-            if response.status_code == 200:
-                data = response.json().get("body", [])
-                await set_cached_data("tank01_teams", data)
-                return data
-    except Exception as e:
-        logger.error(f"Tank01 teams error: {e}")
-    return []
 
 # NOTE: Auth routes (/auth/signup, /auth/login, /profile) moved to routes/auth.py
 

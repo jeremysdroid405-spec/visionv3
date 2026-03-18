@@ -3,7 +3,7 @@ NBA Official Sync Service
 =========================
 Primary data engine for NBA Master Hub using official NBA API.
 
-REPLACES: tank01_stats_service.py (deprecated due to data quality issues)
+REPLACES: bdl_stats_service.py (deprecated due to data quality issues)
 
 This service fetches game logs directly from the official NBA stats API,
 ensuring accurate and reliable data for hit rate calculations.
@@ -87,7 +87,7 @@ class NBAOfficialSyncService:
     """
     Official NBA API sync service for master hub game logs.
     
-    This replaces Tank01 as the primary data source for player statistics.
+    This replaces BDL as the primary data source for player statistics.
     Uses the official NBA stats API via the nba_api package.
     
     FILTERING RULES:

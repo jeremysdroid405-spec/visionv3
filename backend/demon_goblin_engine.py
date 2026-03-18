@@ -7,7 +7,7 @@ PrizePicks-Specific System for NBA Player Props
 ARCHITECTURE RESET (v3.2):
 - Single source of truth: All data enrichment happens during sync
 - Dumb components: War Zone, Goblin Recon, Gauntlet, Safe Haven just read data
-- Tank01 playerID as primary key
+- BDL playerID as primary key
 - No runtime lookups
 
 API Configuration:
@@ -26,7 +26,7 @@ Payout Calculation Engine (v3.2):
 Triple-Pillar Integration:
 1. The Odds API (us_dfs/prizepicks) - All PrizePicks lines
 2. BallDontLie API - Player stats for hit rate calculation
-3. Tank01 API - Injury reports and player news
+3. BDL API - Injury reports and player news
 
 DATA INTEGRITY (v3.1):
 - Triple-check verification for all stats
@@ -115,10 +115,7 @@ ODDS_API_BASE = "https://api.the-odds-api.com/v4"
 BDL_API_KEY = os.environ.get("BDL_API_KEY", "ad5544be-9969-434b-9389-2b7cf658c8e0")
 BDL_BASE_URL = "https://api.balldontlie.io/v1"
 
-TANK01_API_KEY = os.environ.get("TANK01_API_KEY", "402edbcac6mshd04997e7ca01d17p1879eajsn65ab176cdb1e")
-TANK01_BASE = "https://tank01-fantasy-stats.p.rapidapi.com"
-TANK01_HOST = "tank01-fantasy-stats.p.rapidapi.com"
-TANK01_CACHE_TTL = timedelta(hours=4)  # Cache Tank01 data for 4 hours
+# NOTE: Tank01 has been REMOVED. All stats come from BDL.
 
 CURRENT_SEASON = "2025"  # 2025-26 NBA Season
 
@@ -384,11 +381,13 @@ class DemonGoblinEngine:
         from services import (
             RosterService, PhotoService, PropsService, SyncService, 
             TierBuilderService, ParlayBuilderService, CachedBoardBuilderService,
-            OddsApiService, StatsApiService, Tank01Service, PicksGetterService,
+            OddsApiService, StatsApiService, PicksGetterService,
             DataIntegrityService, StatsEnrichmentService, OddsSyncService,
             PropProcessorService, InsightsSyncService
         )
         from services.sync_orchestration_service import SyncOrchestrationService
+        from services.bdl_comprehensive_sync import get_bdl_sync_service
+        
         self.roster_service = RosterService(self.repo, db)
         self.photo_service = PhotoService(db)
         self.props_service = PropsService(db)
@@ -400,7 +399,7 @@ class DemonGoblinEngine:
         )
         self.odds_api_service = OddsApiService(db)
         self.stats_api_service = StatsApiService(db)
-        self.tank01_service = Tank01Service(db)
+        self.bdl_service = get_bdl_sync_service(db)  # BDL sync service (Tank01 REMOVED)
         self.picks_getter_service = PicksGetterService(db)
         self.data_integrity_service = DataIntegrityService(db)
         self.stats_enrichment_service = StatsEnrichmentService(db)
@@ -436,7 +435,7 @@ class DemonGoblinEngine:
         # Legacy caching collections
         self.static_shell_cache = db.dg_static_shell
         self.dynamic_lines_cache = db.dg_dynamic_lines
-        self.tank01_cache = db.dg_tank01_cache
+        self.bdl_cache = db.dg_bdl_cache
         self.daily_insights = db.dg_daily_insights  # Advanced analytics cache
         
         # In-memory caches
@@ -656,20 +655,14 @@ class DemonGoblinEngine:
         """
         PROXY: Global photo sync delegated to PhotoService.
         """
-        # Set API key on service
-        self.photo_service.set_api_key(TANK01_API_KEY)
-        
-        # Delegate to service
+        # Photo sync uses NBA CDN - no Tank01 needed
         return await self.photo_service.sync_all_photos()
     
     async def sync_active_players_with_photos(self) -> Dict[str, Any]:
         """
         PROXY: Active player sync delegated to PhotoService.
         """
-        # Set API key on service
-        self.photo_service.set_api_key(TANK01_API_KEY)
-        
-        # Delegate to service
+        # Photo sync uses NBA CDN - no Tank01 needed
         return await self.photo_service.sync_active_players_with_photos()
     
     def get_player_photo_url(self, player_name: str, team: str = None, nba_id: int = None) -> Dict[str, str]:
@@ -759,9 +752,9 @@ class DemonGoblinEngine:
         """PROXY: Fetch NBA API stats - delegated to StatsEnrichmentService."""
         return self.stats_enrichment_service._fetch_nba_api_stats(player_name)
     
-    async def _fetch_tank01_player_stats(self, player_name: str) -> Dict[str, Any]:
-        """PROXY: Fetch Tank01 player stats - delegated to StatsEnrichmentService."""
-        return await self.stats_enrichment_service._fetch_tank01_player_stats(player_name)
+    async def _fetch_bdl_player_stats(self, player_name: str) -> Dict[str, Any]:
+        """PROXY: Fetch BDL player stats - delegated to StatsEnrichmentService."""
+        return await self.stats_enrichment_service._fetch_bdl_player_stats(player_name)
     
     def _calculate_hit_rates(self, player_stats: Dict, stat_type: str, line_value: float) -> Dict[str, Any]:
         """
@@ -925,28 +918,46 @@ class DemonGoblinEngine:
             player_name, player_id, team_abbrev
         )
     
-    # ==================== PILLAR 3: TANK01 API (with Exponential Backoff) ====================
+    # ==================== INJURIES & NEWS (ESPN + BDL - Tank01 REMOVED) ====================
     
     async def fetch_injuries(self) -> Dict[str, Any]:
-        """PROXY: Fetch injury data - delegated to Tank01Service."""
-        injuries = await self.tank01_service.fetch_injuries()
-        self._injury_data = injuries  # Keep local cache in sync
+        """Fetch injury data from ESPN + BDL."""
+        # Injuries are synced via injury_service.py and stored in dg_injuries + bdl_injuries
+        cursor = self.db.bdl_injuries.find({}, {"_id": 0})
+        injuries = {}
+        async for inj in cursor:
+            name = inj.get("player_name", "").lower()
+            injuries[name] = {
+                "status": inj.get("status"),
+                "team": inj.get("team"),
+                "severity": inj.get("severity"),
+                "source": "bdl"
+            }
+        self._injury_data = injuries
         return injuries
     
     async def fetch_news(self) -> List[Dict[str, Any]]:
-        """PROXY: Fetch news data - delegated to Tank01Service."""
-        news = await self.tank01_service.fetch_news()
-        self._news_data = news  # Keep local cache in sync
+        """Fetch news data from ESPN."""
+        # News is synced via injury_service.py breaking news endpoint
+        cursor = self.db.dg_breaking_news.find({}, {"_id": 0}).limit(50)
+        news = await cursor.to_list(50)
+        self._news_data = news
         return news
     
     def get_player_injury_status(self, player_name: str) -> Dict[str, Any]:
-        """PROXY: Get player injury status - delegated to Tank01Service."""
-        # Sync local caches to service if needed
-        if self._injury_data and not self.tank01_service.get_injury_data():
-            self.tank01_service.set_injury_data(self._injury_data)
-        if self._news_data and not self.tank01_service.get_news_data():
-            self.tank01_service.set_news_data(self._news_data)
-        return self.tank01_service.get_player_injury_status(player_name)
+        """Get injury status for a specific player."""
+        if not self._injury_data:
+            return {"is_injured": False}
+        
+        name_lower = player_name.lower()
+        injury = self._injury_data.get(name_lower)
+        
+        if injury:
+            return {
+                "is_injured": True,
+                **injury
+            }
+        return {"is_injured": False}
     
     # ==================== MAIN ORCHESTRATION ====================
     

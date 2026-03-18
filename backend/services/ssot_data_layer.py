@@ -12,7 +12,7 @@ ARCHITECTURE:
 ├─────────────────────────────────────────────────────────────────────────────┤
 │                                                                             │
 │  PIPE 1: Stats Vault (nba_master_hub_2026)                                 │
-│  ├─ Source: Tank01 API (0400 EST CRON ONLY)                                │
+│  ├─ Source: BDL API (0400 EST CRON ONLY)                                │
 │  ├─ Contains: baseline_stats, game_logs                                    │
 │  └─ Read by: This module ONLY                                              │
 │                                                                             │
@@ -27,7 +27,7 @@ ARCHITECTURE:
 └─────────────────────────────────────────────────────────────────────────────┘
 
 FORBIDDEN:
-- Frontend calling external APIs (Tank01, BallDontLie)
+- Frontend calling external APIs (BDL, BallDontLie)
 - Creating secondary internal APIs for stats
 - Direct database queries bypassing this layer
 """
@@ -58,7 +58,7 @@ class SSOTDataLayer:
         "position",
         "nba_id",
         "espn_id",
-        "tank01_id",
+        "bdl_id",
         "playerID"
     ])
     

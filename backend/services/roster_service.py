@@ -9,6 +9,7 @@ Handles:
 - Player photo URL management
 - Player team lookups with caching
 """
+import os
 from typing import Dict, List, Optional, Any, Set
 from datetime import datetime, timezone, timedelta
 import asyncio
@@ -20,16 +21,13 @@ from services.utils_service import sanitize_player_name, normalize_team_name
 
 logger = logging.getLogger(__name__)
 
-# API Configuration
-BDL_API_KEY = None
+# API Configuration - BDL ONLY (Tank01 REMOVED)
+BDL_API_KEY = os.environ.get("BDL_API_KEY", "ad5544be-9969-434b-9389-2b7cf658c8e0")
 BDL_BASE_URL = "https://api.balldontlie.io/v1"
-TANK01_API_KEY = None
-TANK01_BASE = "https://tank01-fantasy-stats.p.rapidapi.com"
-TANK01_HOST = "tank01-fantasy-stats.p.rapidapi.com"
 CURRENT_SEASON = "2025"
 
-# Tank01 to NBA team abbreviation mapping
-TANK01_TO_NBA_ABBREV = {
+# BDL to NBA team abbreviation mapping
+BDL_TO_NBA_ABBREV = {
     "GS": "GSW",
     "NO": "NOP", 
     "NY": "NYK",
@@ -74,13 +72,11 @@ class RosterService:
         self.player_stats = db.dg_player_stats
         self.flagged_players = db.dg_flagged_players
     
-    def set_api_keys(self, bdl_key: str = None, tank01_key: str = None):
+    def set_api_keys(self, bdl_key: str = None):
         """Set API keys for external services"""
-        global BDL_API_KEY, TANK01_API_KEY
+        global BDL_API_KEY
         if bdl_key:
             BDL_API_KEY = bdl_key
-        if tank01_key:
-            TANK01_API_KEY = tank01_key
     
     # ==================== MASTER ROSTER SYNC ====================
     

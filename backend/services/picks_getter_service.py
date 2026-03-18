@@ -127,7 +127,7 @@ class PicksGetterService:
         self.events_cache = db.dg_events_cache
         self.odds_cache = db.dg_odds_cache
         
-        # PIPE 1: Stats Vault (Tank01 CRON destination)
+        # PIPE 1: Stats Vault (BDL CRON destination)
         self.master_hub = db.nba_master_hub_2026
         
         # Cache for game info (home_team, away_team) by game_id
@@ -246,7 +246,7 @@ class PicksGetterService:
         ALL photos and stats come from master hub.
         """
         # PRIMARY: Try player_id first
-        player_id = pick.get('player_id') or pick.get('tank01_player_id') or pick.get('nba_player_id')
+        player_id = pick.get('player_id') or pick.get('bdl_player_id') or pick.get('nba_player_id')
         if player_id:
             player = await self._get_player_by_id(str(player_id))
             if player:
@@ -1732,7 +1732,7 @@ class PicksGetterService:
             return
         
         # PIPE 1: Get baseline_stats and game_logs from master hub
-        # PRIORITY: Use bdl_game_logs (more accurate), fallback to Tank01 game_logs
+        # PRIORITY: Use bdl_game_logs (more accurate), fallback to BDL game_logs
         baseline_stats = hub_player.get("baseline_stats", {})
         game_logs = hub_player.get("bdl_game_logs", []) or hub_player.get("game_logs", [])
         

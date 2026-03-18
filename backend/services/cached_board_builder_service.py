@@ -365,7 +365,7 @@ class CachedBoardBuilderService:
         return {
             "player_name": player_name,
             "player_id": None,
-            "tank01_player_id": None,
+            "bdl_player_id": None,
             "team": prop.get("home_team") or prop.get("away_team") or "UNK",
             "photo_url": None,
             "headshot_url": None,
@@ -405,7 +405,7 @@ class CachedBoardBuilderService:
             # Primary identifiers
             "player_name": player_name,
             "player_id": player_id,
-            "tank01_player_id": hub_player.get("tank01_id"),
+            "bdl_player_id": hub_player.get("bdl_id"),
             "nba_com_id": hub_player.get("nba_id"),
             "espn_id": hub_player.get("espn_id"),
             
@@ -467,7 +467,7 @@ class CachedBoardBuilderService:
         
         return {
             "player_name": player_name,
-            "tank01_player_id": roster_player.get("tank01_player_id"),
+            "bdl_player_id": roster_player.get("bdl_player_id"),
             "nba_com_id": roster_player.get("nba_com_id"),
             "espn_id": roster_player.get("espn_id"),
             "team": roster_player.get("team_abbreviation"),

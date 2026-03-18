@@ -4,7 +4,7 @@ PICKVISION V3.1 - Data Integrity Verification Module
 This module implements triple-check logic to prevent hallucinated stats:
 1. Fetch actual game logs from primary source (BallDontLie)
 2. Calculate hit rates manually from raw game data
-3. Cross-verify with Tank01 API as secondary source
+3. Cross-verify with BDL API as secondary source
 4. Auto-delete insights that fail verification gates
 """
 
@@ -22,8 +22,8 @@ class DataIntegrityVerifier:
     Ensures no hallucinated or estimated data is stored as actuals.
     """
     
-    def __init__(self, tank01_api_key: str = None):
-        self.tank01_api_key = tank01_api_key
+    def __init__(self, bdl_api_key: str = None):
+        self.bdl_api_key = bdl_api_key
         self.verification_log = []
         
     async def verify_player_stats(

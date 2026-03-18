@@ -6,11 +6,10 @@ Daily sync job to populate nba_master_hub_2026 with:
 - photo_url (direct asset link)
 - baseline_stats: L5_avg, L10_avg, season_avg for all prop categories
 
-Data Source: Tank01 Fantasy Stats API (RapidAPI)
+Data Source: BallDontLie API (Primary and ONLY source)
 Scheduled to run daily at 0300 EST via CRON.
 
-NOTE: BallDontLie API integration has been DEPRECATED and removed.
-All stats now come from Tank01's reliable game log data.
+NOTE: Tank01 has been REMOVED. All stats come from BDL.
 """
 
 import os
@@ -41,9 +40,7 @@ PROP_CATEGORIES = [
 class MasterHubSyncService:
     """
     Service to sync NBA player data to the master hub collection.
-    Uses Tank01 Fantasy Stats API for all stats data.
-    
-    DEPRECATED: BallDontLie integration has been removed.
+    Uses BallDontLie API exclusively for all stats data.
     """
     
     def __init__(self, db: AsyncIOMotorDatabase):
@@ -52,71 +49,71 @@ class MasterHubSyncService:
     
     async def run_full_sync(self) -> Dict[str, Any]:
         """
-        Run full master hub sync using Tank01 API.
+        Run full master hub sync using BDL API.
         
         This is the primary sync method called by the CRON job.
         """
-        from services.tank01_stats_service import run_tank01_sync
+        from services.bdl_comprehensive_sync import BDLComprehensiveSyncService
         
-        logger.info("[MASTER_HUB] Starting full sync via Tank01...")
-        
+        logger.info("[MASTER_HUB] Starting full sync using BDL API...")
         start_time = datetime.now(timezone.utc)
-        result = await run_tank01_sync(self.db)
-        duration = (datetime.now(timezone.utc) - start_time).total_seconds()
         
-        logger.info(f"[MASTER_HUB] Sync complete: {result.get('updated', 0)} players updated in {duration:.1f}s")
-        
-        return {
-            "success": True,
-            "source": "tank01",
-            "players_updated": result.get("updated", 0),
-            "duration_seconds": round(duration, 1),
-            "completed_at": datetime.now(timezone.utc).isoformat()
-        }
+        try:
+            # Use BDL comprehensive sync
+            bdl_service = BDLComprehensiveSyncService(self.db)
+            result = await bdl_service.run_full_sync()
+            
+            elapsed = (datetime.now(timezone.utc) - start_time).total_seconds()
+            logger.info(f"[MASTER_HUB] Sync completed in {elapsed:.1f}s")
+            
+            return {
+                "success": True,
+                "source": "bdl",
+                "elapsed_seconds": elapsed,
+                "details": result,
+                "synced_at": datetime.now(timezone.utc).isoformat()
+            }
+            
+        except Exception as e:
+            logger.error(f"[MASTER_HUB] Sync failed: {e}")
+            return {
+                "success": False,
+                "error": str(e),
+                "synced_at": datetime.now(timezone.utc).isoformat()
+            }
     
-    async def sync_single_player(self, player_name: str) -> Optional[Dict[str, Any]]:
+    async def sync_single_player(self, player_name: str) -> Dict[str, Any]:
         """
-        Sync stats for a single player using Tank01 API.
+        Sync a single player's stats from BDL.
         """
-        from services.tank01_stats_service import get_tank01_service
+        from services.bdl_comprehensive_sync import BDLComprehensiveSyncService
         
-        service = get_tank01_service(self.db)
-        return await service.sync_single_player(player_name)
-
-
-async def run_master_hub_sync(db: AsyncIOMotorDatabase) -> Dict[str, Any]:
-    """
-    Entry point for manual/CRON sync.
-    Uses Tank01 API exclusively.
-    """
-    service = MasterHubSyncService(db)
-    return await service.run_full_sync()
-
-
-# ======================================
-# DEPRECATED - BallDontLie integration removed
-# ======================================
-# The following functions have been removed:
-# - fetch_player_game_logs() - Used BallDontLie
-# - _fetch_season_averages() - Used BallDontLie
-# - _sync_player_stats() - Used BallDontLie
-# 
-# All stats now come from Tank01 Fantasy Stats API
-# via services/tank01_stats_service.py
-# ======================================
-
-
-if __name__ == "__main__":
-    # Test sync
-    import asyncio
-    from motor.motor_asyncio import AsyncIOMotorClient
-    
-    async def test():
-        client = AsyncIOMotorClient(os.environ.get("MONGO_URL"))
-        db = client[os.environ.get("DB_NAME", "pick_vision")]
+        logger.info(f"[MASTER_HUB] Syncing single player: {player_name}")
         
-        service = MasterHubSyncService(db)
-        result = await service.run_full_sync()
-        print(f"Result: {result}")
-    
-    asyncio.run(test())
+        try:
+            bdl_service = BDLComprehensiveSyncService(self.db)
+            result = await bdl_service.sync_single_player(player_name)
+            
+            return {
+                "success": True,
+                "player": player_name,
+                "details": result
+            }
+        except Exception as e:
+            logger.error(f"[MASTER_HUB] Single player sync failed: {e}")
+            return {
+                "success": False,
+                "error": str(e)
+            }
+
+
+# Singleton instance
+_service_instance: Optional[MasterHubSyncService] = None
+
+
+def get_master_hub_sync_service(db: AsyncIOMotorDatabase) -> MasterHubSyncService:
+    """Get or create the singleton service instance."""
+    global _service_instance
+    if _service_instance is None:
+        _service_instance = MasterHubSyncService(db)
+    return _service_instance

@@ -1,13 +1,15 @@
 """
 Injury Intelligence Service - Real-time NBA injury tracking and usage ripple analysis
 Primary: ESPN Injuries API (reliable, comprehensive)
-Fallback: Tank01 API for additional fantasy context
+Secondary: BallDontLie API (BDL) for official NBA injury data
 
 Features:
 - Real-time injury status tracking
 - "Usage Ripple" analysis (who benefits when a star is out)
 - Risk flagging for GTD/Questionable players
 - Breaking news detection
+
+NOTE: Tank01 has been REMOVED from this application.
 """
 
 import os
@@ -23,7 +25,6 @@ load_dotenv()
 logger = logging.getLogger(__name__)
 
 # API Configuration
-TANK01_API_KEY = os.environ.get('TANK01_API_KEY')
 ESPN_INJURIES_URL = "https://site.web.api.espn.com/apis/site/v2/sports/basketball/nba/injuries"
 ESPN_NEWS_URL = "http://site.api.espn.com/apis/site/v2/sports/basketball/nba/news"
 
@@ -107,10 +108,7 @@ class InjuryIntelligenceService:
                             "status": status
                         })
             
-            # Enrich with Tank01 data for additional context
-            tank01_count = await self._enrich_with_tank01(all_injuries)
-            
-            # Also sync from BDL for additional coverage
+            # Sync from BDL for comprehensive injury coverage
             bdl_count = await self._sync_bdl_injuries()
             
             # Clear and insert fresh injury data
@@ -124,12 +122,12 @@ class InjuryIntelligenceService:
             # Fetch breaking news
             breaking_count = await self._sync_breaking_news()
             
-            logger.info(f"[INJURY] Synced {len(all_injuries)} injuries, {tank01_count} Tank01 enriched, {ripple_updates} ripple updates")
+            logger.info(f"[INJURY] Synced {len(all_injuries)} injuries, {bdl_count} BDL injuries, {ripple_updates} ripple updates")
             
             return {
                 "success": True,
                 "injuries_synced": len(all_injuries),
-                "tank01_enriched": tank01_count,
+                "bdl_injuries": bdl_count,
                 "teams_affected": len(injuries_data),
                 "star_players_out": len(injured_players),
                 "usage_ripple_updates": ripple_updates,
@@ -228,58 +226,6 @@ class InjuryIntelligenceService:
             )
         
         return updates
-    
-    async def _enrich_with_tank01(self, injuries: List[Dict]) -> int:
-        """
-        Enrich ESPN injury data with Tank01 fantasy context.
-        Adds expected return date and additional injury details.
-        """
-        if not TANK01_API_KEY:
-            logger.warning("[INJURY] Tank01 API key not configured, skipping enrichment")
-            return 0
-        
-        enriched_count = 0
-        
-        # Sample a few players to avoid rate limits (Tank01 has per-player endpoints)
-        # Focus on high-severity injuries
-        high_priority = [i for i in injuries if i.get('severity', {}).get('risk') == 'HIGH'][:10]
-        
-        async with httpx.AsyncClient(timeout=15.0) as client:
-            for injury in high_priority:
-                try:
-                    player_name = injury.get('player_name', '').replace(' ', '%20')
-                    response = await client.get(
-                        f"https://tank01-fantasy-stats.p.rapidapi.com/getNBAPlayerInfo?playerName={player_name}&statsToGet=totals",
-                        headers={
-                            "X-RapidAPI-Key": TANK01_API_KEY,
-                            "X-RapidAPI-Host": "tank01-fantasy-stats.p.rapidapi.com"
-                        }
-                    )
-                    
-                    if response.status_code == 200:
-                        data = response.json()
-                        body = data.get('body', [])
-                        
-                        if isinstance(body, list) and len(body) > 0:
-                            player_data = body[0]
-                            tank01_injury = player_data.get('injury', {})
-                            
-                            # Enrich with Tank01 data
-                            if tank01_injury:
-                                injury['tank01_return_date'] = tank01_injury.get('injReturnDate', '')
-                                injury['tank01_description'] = tank01_injury.get('description', '')
-                                injury['tank01_designation'] = tank01_injury.get('designation', '')
-                                injury['source'] = "ESPN+Tank01"
-                                enriched_count += 1
-                    
-                    # Small delay to respect rate limits
-                    await asyncio.sleep(0.2)
-                    
-                except Exception as e:
-                    logger.debug(f"[INJURY] Tank01 enrichment failed for {injury.get('player_name')}: {e}")
-                    continue
-        
-        return enriched_count
     
     async def _sync_bdl_injuries(self) -> int:
         """

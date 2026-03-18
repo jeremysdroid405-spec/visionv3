@@ -13,15 +13,15 @@ import logging
 logger = logging.getLogger(__name__)
 
 # Stat type to game log field mapping
-# Supports BOTH Tank01 and BDL field names
+# Supports BOTH BDL and BDL field names
 STAT_FIELD_MAP = {
     "PTS": "pts",
     "REB": "reb",
     "AST": "ast",
-    "3PM": "fg3m",  # BDL uses fg3m, Tank01 uses tptfgm (we'll handle both)
+    "3PM": "fg3m",  # BDL uses fg3m, BDL uses tptfgm (we'll handle both)
     "BLK": "blk",
     "STL": "stl",
-    "TO": "turnover",  # BDL uses turnover, Tank01 uses TOV
+    "TO": "turnover",  # BDL uses turnover, BDL uses TOV
     "P+R": ["pts", "reb"],
     "P+A": ["pts", "ast"],
     "R+A": ["reb", "ast"],
@@ -32,7 +32,7 @@ STAT_FIELD_MAP = {
     "RA": ["reb", "ast"]
 }
 
-# Alternative field names (Tank01 -> BDL)
+# Alternative field names (BDL -> BDL)
 TANK01_TO_BDL = {
     "tptfgm": "fg3m",
     "TOV": "turnover"
@@ -48,12 +48,12 @@ def safe_float(val) -> float:
 
 
 def get_stat_value(game: Dict, fields) -> float:
-    """Get combined stat value from a game (works with Tank01 and BDL format)"""
+    """Get combined stat value from a game (works with BDL and BDL format)"""
     if isinstance(fields, list):
         total = 0
         for f in fields:
             val = game.get(f, 0)
-            # Try BDL field name if Tank01 field not found
+            # Try BDL field name if BDL field not found
             if val == 0 or val is None:
                 if f == "tptfgm":
                     val = game.get("fg3m", 0)
@@ -63,7 +63,7 @@ def get_stat_value(game: Dict, fields) -> float:
         return total
     
     val = game.get(fields, 0)
-    # Try BDL field name if Tank01 field not found
+    # Try BDL field name if BDL field not found
     if val == 0 or val is None:
         if fields == "tptfgm":
             val = game.get("fg3m", 0)
@@ -103,7 +103,7 @@ def calculate_coupled_stats(games: List[Dict], stat_type: str, line_value: float
     guaranteeing mathematical consistency.
     
     Args:
-        games: List of game dicts from Tank01 API (with pts, reb, ast, etc.)
+        games: List of game dicts from BDL API (with pts, reb, ast, etc.)
         stat_type: Type of stat (PTS, REB, AST, 3PM, PRA, etc.)
         line_value: The prop line value
     
@@ -134,7 +134,7 @@ def calculate_coupled_stats(games: List[Dict], stat_type: str, line_value: float
         }
     
     # Filter to games with minutes > 0 (actually played)
-    # BDL uses "min", Tank01 uses "mins"
+    # BDL uses "min", BDL uses "mins"
     played_games = []
     for g in games:
         # Try both field names
@@ -161,7 +161,7 @@ def calculate_coupled_stats(games: List[Dict], stat_type: str, line_value: float
     
     # CRITICAL: Sort by game date (most recent first)
     # BDL format: game.game.date = "2025-03-16"
-    # Tank01 format: game.game_date = "Mar 16, 2025"
+    # BDL format: game.game_date = "Mar 16, 2025"
     from datetime import datetime
     
     def parse_game_date(game):
@@ -170,7 +170,7 @@ def calculate_coupled_stats(games: List[Dict], stat_type: str, line_value: float
             # Try BDL nested format first
             date_str = game.get("game", {}).get("date", "") if isinstance(game.get("game"), dict) else ""
             
-            # Fallback to Tank01 flat format
+            # Fallback to BDL flat format
             if not date_str:
                 date_str = game.get("game_date", "") or game.get("date", "")
             
@@ -237,7 +237,7 @@ def calculate_hit_rates(player_stats: Dict, stat_type: str, line_value: float) -
         return {}
     
     # Sort games by date/gameID (most recent first)
-    # Tank01 games have gameID like "20250115_LAL@DEN"
+    # BDL games have gameID like "20250115_LAL@DEN"
     sorted_games = sorted(games, key=lambda g: g.get("gameID", g.get("game", {}).get("date", "")), reverse=True)
     
     return {

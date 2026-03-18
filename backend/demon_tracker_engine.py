@@ -28,13 +28,11 @@ logger = logging.getLogger(__name__)
 ODDS_API_KEY = os.environ.get("ODDS_API_KEY", "e1ae76ab21c34ee88ed552cffb4449fd")
 ODDS_API_BASE = "https://api.the-odds-api.com/v4"
 
-# Pillar 2: BallDontLie API
+# Pillar 2: BallDontLie API (Primary stats source)
 BDL_API_KEY = os.environ.get("BDL_API_KEY", "ad5544be-9969-434b-9389-2b7cf658c8e0")
 BDL_BASE_URL = "https://api.balldontlie.io/v1"
 
-# Pillar 3: Tank01 API (via RapidAPI)
-TANK01_API_KEY = os.environ.get("TANK01_API_KEY", "402edbcac6mshd04997e7ca01d17p1879eajsn65ab176cdb1e")
-TANK01_BASE = "https://tank01-nba-live-in-game-real-time-statistics-nba.p.rapidapi.com"
+# NOTE: Tank01 has been REMOVED from this application. BDL is the only stats source.
 
 # Current NBA Season (2025-26)
 CURRENT_SEASON = "2025"
@@ -450,80 +448,18 @@ class DeepIngestionEngine:
             "is_demon": l10_rate >= 0.40
         }
     
-    # ==================== STEP 4: TANK01 SAFETY CHECK ====================
+    # ==================== STEP 4: INJURY/NEWS CHECK (BDL + ESPN) ====================
     
-    async def fetch_tank01_injuries(self) -> Dict[str, Any]:
-        """Fetch injury data from Tank01"""
-        try:
-            url = f"{TANK01_BASE}/getNBATeams"
-            params = {"rosters": "true", "schedules": "false"}
-            headers = {
-                "X-RapidAPI-Key": TANK01_API_KEY,
-                "X-RapidAPI-Host": "tank01-nba-live-in-game-real-time-statistics-nba.p.rapidapi.com"
-            }
-            
-            async with httpx.AsyncClient() as client:
-                response = await client.get(url, params=params, headers=headers, timeout=30.0)
-                
-                if response.status_code == 200:
-                    data = response.json()
-                    teams = data.get("body", []) if isinstance(data, dict) else data
-                    
-                    injuries = {}
-                    if isinstance(teams, list):
-                        for team in teams:
-                            roster = team.get("Roster", {})
-                            if isinstance(roster, dict):
-                                for player_id, player_data in roster.items():
-                                    injury_info = player_data.get("injury", {})
-                                    if injury_info and isinstance(injury_info, dict):
-                                        status = injury_info.get("designation", "")
-                                        if status:
-                                            player_name = player_data.get("longName", "")
-                                            injuries[player_name.lower()] = {
-                                                "status": status,
-                                                "description": injury_info.get("description", ""),
-                                                "return_date": injury_info.get("injReturnDate", ""),
-                                                "team": team.get("teamAbv", "")
-                                            }
-                    
-                    self._injury_data = injuries
-                    logger.info(f"✓ STEP 4 - TANK01 INJURIES: Found {len(injuries)} injured players")
-                    return injuries
-                    
-                elif response.status_code == 429:
-                    logger.warning("Tank01 rate limited for injuries")
-                    
-        except Exception as e:
-            logger.error(f"Tank01 injuries error: {e}")
-        
-        return {}
+    async def fetch_injuries(self) -> Dict[str, Any]:
+        """Fetch injury data from BDL/ESPN (Tank01 REMOVED)"""
+        # Injuries are synced via injury_service.py from ESPN + BDL
+        # This method is kept for interface compatibility but returns cached data
+        return self._injury_data or {}
     
-    async def fetch_tank01_news(self) -> List[Dict[str, Any]]:
-        """Fetch latest NBA news from Tank01"""
-        try:
-            url = f"{TANK01_BASE}/getNBANews"
-            headers = {
-                "X-RapidAPI-Key": TANK01_API_KEY,
-                "X-RapidAPI-Host": "tank01-nba-live-in-game-real-time-statistics-nba.p.rapidapi.com"
-            }
-            
-            async with httpx.AsyncClient() as client:
-                response = await client.get(url, headers=headers, timeout=15.0)
-                
-                if response.status_code == 200:
-                    data = response.json()
-                    news_items = data.get("body", []) if isinstance(data, dict) else data
-                    
-                    if isinstance(news_items, list):
-                        self._news_data = news_items[:100]  # Keep latest 100
-                        logger.info(f"✓ STEP 4 - TANK01 NEWS: Fetched {len(news_items)} news items")
-                        return news_items
-                        
-        except Exception as e:
-            logger.error(f"Tank01 news error: {e}")
-        
-        return []
+    async def fetch_news(self) -> List[Dict[str, Any]]:
+        """Fetch latest NBA news (Tank01 REMOVED)"""
+        # News is now fetched via ESPN in injury_service.py
+        return self._news_data or []
     
     def check_player_injury_and_news(self, player_name: str) -> Dict[str, Any]:
         """Check if player has injury or relevant news"""

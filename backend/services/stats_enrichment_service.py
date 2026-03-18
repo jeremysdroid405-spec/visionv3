@@ -5,7 +5,7 @@ Extracted from demon_goblin_engine.py for modularity.
 
 Handles stats fetching and enrichment from multiple sources:
 - BallDontLie API (primary)
-- Tank01 API (secondary)
+- BDL API (secondary)
 - NBA.com API (tertiary fallback)
 """
 from typing import Dict, List, Any, Optional
@@ -20,13 +20,9 @@ from thefuzz import fuzz
 
 logger = logging.getLogger(__name__)
 
-# API Configuration
+# API Configuration - BDL ONLY (Tank01 REMOVED)
 BDL_BASE_URL = "https://api.balldontlie.io/v1"
-BDL_API_KEY = os.environ.get("BDL_API_KEY", "3f6f0659-c8bb-4222-8abb-62fce91eef2c")
-
-TANK01_BASE = "https://tank01-nba-live-in-game-real-time-statistics-nba.p.rapidapi.com"
-TANK01_API_KEY = os.environ.get("TANK01_API_KEY", "d3e0e7b93amshc7b9b60aff7cc7ep1a22c5jsn81dc2f41412d")
-TANK01_HOST = "tank01-nba-live-in-game-real-time-statistics-nba.p.rapidapi.com"
+BDL_API_KEY = os.environ.get("BDL_API_KEY", "ad5544be-9969-434b-9389-2b7cf658c8e0")
 
 CURRENT_SEASON = os.environ.get("NBA_SEASON", "2025")
 
@@ -54,7 +50,7 @@ class StatsEnrichmentService:
     Data Flow:
     1. Check MongoDB cache first
     2. Try BallDontLie API (primary)
-    3. Try Tank01 API (secondary)
+    3. Try BDL API (secondary)
     4. Try NBA.com API (tertiary)
     """
     
@@ -159,7 +155,7 @@ class StatsEnrichmentService:
         
         Order:
         1. BallDontLie API (primary)
-        2. Tank01 API (secondary)
+        2. BDL API (secondary)
         3. NBA.com API (tertiary)
         """
         # Try BallDontLie first
@@ -192,14 +188,14 @@ class StatsEnrichmentService:
         except Exception as e:
             logger.debug(f"[BDL] Error fetching stats for {player_name}: {e}")
         
-        # Fallback 1: Tank01 API
-        logger.debug(f"[STATS] BallDontLie has no data for {player_name}, trying Tank01...")
-        tank_stats = await self._fetch_tank01_player_stats(player_name)
+        # Fallback 1: BDL API
+        logger.debug(f"[STATS] BallDontLie has no data for {player_name}, trying BDL...")
+        tank_stats = await self._fetch_bdl_player_stats(player_name)
         if tank_stats and tank_stats.get("games"):
             return tank_stats
         
         # Fallback 2: NBA.com API
-        logger.debug(f"[STATS] Tank01 has no data for {player_name}, trying NBA.com API...")
+        logger.debug(f"[STATS] BDL has no data for {player_name}, trying NBA.com API...")
         nba_stats = self._fetch_nba_api_stats(player_name)
         if nba_stats and nba_stats.get("games"):
             return nba_stats
@@ -287,19 +283,21 @@ class StatsEnrichmentService:
         
         return None
     
-    async def _fetch_tank01_player_stats(self, player_name: str) -> Dict[str, Any]:
-        """Fetch player stats from Tank01 API as secondary fallback."""
+    async def _fetch_bdl_player_stats(self, player_name: str) -> Dict[str, Any]:
+        """
+        Fetch player stats from BDL API.
+        NOTE: Tank01 has been REMOVED. This now uses BDL exclusively.
+        """
         try:
-            headers = {
-                "x-rapidapi-key": TANK01_API_KEY,
-                "x-rapidapi-host": TANK01_HOST
-            }
+            # Search for player in BDL
+            headers = {"Authorization": BDL_API_KEY}
             
             async with httpx.AsyncClient(timeout=30.0) as client:
-                search_url = f"{TANK01_BASE}/getNBAPlayerInfo"
+                # Search player
+                search_url = f"{BDL_BASE_URL}/players"
                 response = await client.get(
                     search_url,
-                    params={"playerName": player_name},
+                    params={"search": player_name},
                     headers=headers
                 )
                 
@@ -307,86 +305,55 @@ class StatsEnrichmentService:
                     return {}
                 
                 data = response.json()
-                body = data.get("body", [])
-                if not body or not isinstance(body, list):
+                players = data.get("data", [])
+                if not players:
                     return {}
                 
-                player = body[0]
-                team_abv = player.get("team")
+                player = players[0]
+                player_id = player.get("id")
                 
-                if not team_abv:
+                if not player_id:
                     return {}
                 
-                schedule_url = f"{TANK01_BASE}/getNBATeamSchedule"
+                # Get recent stats
+                stats_url = f"{BDL_BASE_URL}/stats"
                 response = await client.get(
-                    schedule_url,
-                    params={"teamAbv": team_abv, "season": CURRENT_SEASON},
+                    stats_url,
+                    params={"seasons[]": "2024", "player_ids[]": player_id, "per_page": 15},
                     headers=headers
                 )
                 
                 if response.status_code != 200:
                     return {}
                 
-                schedule_data = response.json()
-                schedule = schedule_data.get("body", {}).get("schedule", [])
+                stats_data = response.json()
+                games = stats_data.get("data", [])
                 
-                completed_games = [g for g in schedule if g.get("gameStatus") == "Completed"]
-                recent_games = completed_games[-15:]
-                
-                if not recent_games:
+                if not games:
                     return {}
                 
-                games = []
-                for game in recent_games[-10:]:
-                    game_id = game.get("gameID")
-                    if not game_id:
-                        continue
-                    
-                    box_url = f"{TANK01_BASE}/getNBABoxScore"
-                    box_response = await client.get(
-                        box_url,
-                        params={"gameID": game_id},
-                        headers=headers
-                    )
-                    
-                    if box_response.status_code != 200:
-                        continue
-                    
-                    box_data = box_response.json()
-                    player_stats = box_data.get("body", {}).get("playerStats", {})
-                    
-                    for pid, stats in player_stats.items():
-                        stat_name = stats.get("longName", "").lower()
-                        if player_name.lower() in stat_name or stat_name in player_name.lower():
-                            games.append({
-                                "pts": int(stats.get("pts", 0) or 0),
-                                "reb": int(stats.get("reb", 0) or 0),
-                                "ast": int(stats.get("ast", 0) or 0),
-                                "fg3m": int(stats.get("tptfgm", 0) or 0),
-                                "blk": int(stats.get("blk", 0) or 0),
-                                "stl": int(stats.get("stl", 0) or 0),
-                                "turnover": int(stats.get("TOV", 0) or 0),
-                                "game": {
-                                    "date": game.get("gameDate", ""),
-                                    "id": game_id
-                                }
-                            })
-                            break
-                    
-                    await asyncio.sleep(0.1)
+                # Filter to games actually played
+                played_games = [g for g in games if g.get("min") and g.get("min") != "00"]
                 
-                if games:
-                    logger.info(f"[TANK01] Fetched {len(games)} games for {player_name}")
-                    return {
-                        "games": games,
-                        "player_name": player_name,
-                        "source": "tank01"
-                    }
+                # Format game logs
+                game_logs = []
+                for g in played_games[:15]:
+                    game_logs.append({
+                        "pts": g.get("pts", 0),
+                        "reb": g.get("reb", 0),
+                        "ast": g.get("ast", 0),
+                        "stl": g.get("stl", 0),
+                        "blk": g.get("blk", 0),
+                        "fg3m": g.get("fg3m", 0),
+                        "tov": g.get("turnover", 0),
+                        "min": g.get("min", "0"),
+                        "game_date": g.get("game", {}).get("date", "")
+                    })
                 
-                return {}
+                return {"games": game_logs, "source": "bdl"}
                 
         except Exception as e:
-            logger.debug(f"[TANK01] Error fetching stats for {player_name}: {e}")
+            logger.debug(f"[BDL] Error fetching stats for {player_name}: {e}")
             return {}
     
     def _fetch_nba_api_stats(self, player_name: str) -> Dict[str, Any]:

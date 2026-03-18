@@ -6,7 +6,7 @@ SINGLE SOURCE OF TRUTH (SSOT) Architecture - PIPE 1: Stats Vault
 Schedules daily sync of NBA Master Hub at 0400 EST using OFFICIAL NBA API.
 
 ENGINE SWAP (2026-03-16):
-- DEPRECATED: Tank01 Fantasy Stats API (data quality issues)
+- DEPRECATED: BDL Fantasy Stats API (data quality issues)
 - NEW: Official NBA API via nba_api package
 
 Data Flow:

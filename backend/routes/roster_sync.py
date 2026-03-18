@@ -67,11 +67,11 @@ async def sync_player_photos():
 @router.post("/v3/sync-active-players")
 async def sync_active_players():
     """
-    ACTIVE PLAYER SYNC - Fetches ONLY current NBA players from Tank01 with headshots.
+    ACTIVE PLAYER SYNC - Fetches ONLY current NBA players from BDL with headshots.
     
     This is the recommended way to populate the player database:
     - Gets ~530 active NBA players (not 5000+ historical)
-    - Includes ESPN headshot URLs directly from Tank01
+    - Includes ESPN headshot URLs directly from BDL
     - Stores player metadata: team, position, jersey, height, weight, college
     
     Run this once to populate the database, then use sync-player-photos for updates.
@@ -90,7 +90,7 @@ async def refresh_board_photos():
     Refresh photo URLs in cached_board from master_roster with fuzzy matching.
     
     Use this after sync-active-players to fix any name mismatches between
-    Odds API player names and Tank01 roster names.
+    Odds API player names and BDL roster names.
     """
     engine = get_engine()
     

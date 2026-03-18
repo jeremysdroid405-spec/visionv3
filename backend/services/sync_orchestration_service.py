@@ -53,7 +53,7 @@ class SyncOrchestrationService:
         
         Pillar 1: Fetch events and PrizePicks odds
         Pillar 2: Process stats from BallDontLie
-        Pillar 3: Fetch injuries from Tank01
+        Pillar 3: Fetch injuries from BDL
         """
         if not self._engine:
             raise RuntimeError("Engine not set. Call set_engine() first.")
@@ -135,7 +135,7 @@ class SyncOrchestrationService:
             logger.info(f"  GOBLINS (Alternate ≠+100): {results['goblins_count']}")
             
             # ===== PILLAR 3: FETCH INJURIES FIRST =====
-            logger.info("\n[PILLAR 3] Fetching injury data from Tank01...")
+            logger.info("\n[PILLAR 3] Fetching injury data from BDL...")
             injuries = await self._engine.fetch_injuries()
             await self._engine.fetch_news()
             results["injuries_found"] = len(injuries)
@@ -510,7 +510,7 @@ class SyncOrchestrationService:
                         "player_id": hub_player.get("player_id"),
                         "espn_id": hub_player.get("espn_id"),
                         "nba_id": hub_player.get("nba_id"),
-                        "tank01_id": hub_player.get("tank01_id"),
+                        "bdl_id": hub_player.get("bdl_id"),
                         "team": hub_player.get("team") or prop.get("bdl_team", ""),
                         "team_name": hub_player.get("team_name"),
                         "photo_url": hub_player.get("headshot_url"),
