@@ -53,7 +53,17 @@ Build a sports betting analytics application (PickVision AI) that provides:
 - [x] BDL Player ID Mapping (537 active players)
 - [x] BDL Injuries Sync (25 injuries tracked)
 - [x] BDL Advanced Stats (PIE, Net Rating)
-- [x] Daily sync scheduler at 4 AM EST (8 steps)
+- [x] Daily sync scheduler at 4 AM EST (10 steps):
+  1. ESPN injuries
+  2. BDL comprehensive sync
+  3. BDL injuries
+  4. Advanced stats (PIE, Net Rating)
+  5. DvP rankings
+  6. Full odds sync
+  7. Daily insights
+  8. Vision AI insights
+  9. Career stats from NBA.com (milestone badges)
+  10. Contract data from Spotrac (pay_day badges)
 - [x] Intel Search deduplication fix
 - [x] L5/L10 stats consistency fix - all calculation functions now sort game logs by date
 - [x] Team/Opponent display fix - shows player's actual team (from master hub) and correct opponent
@@ -93,8 +103,8 @@ Build a sports betting analytics application (PickVision AI) that provides:
 ## Prioritized Backlog
 
 ### P1 - High Priority
-- [ ] Schedule daily career stats sync (cron job)
-- [ ] Schedule daily contract data sync
+- [x] Schedule daily career stats sync (cron job) - Added to 4 AM EST daily sync
+- [x] Schedule daily contract data sync - Added to 4 AM EST daily sync
 
 ### P2 - Medium Priority  
 - [ ] Automate `distraction` badge with live trade rumor source
