@@ -109,15 +109,10 @@ class BDLComprehensiveSyncService:
     # ==================== PLAYERS ENDPOINT ====================
     async def fetch_all_players(self, cursor: int = 0) -> List[Dict]:
         """
-        Fetch ALL players from /players endpoint with pagination.
-        Returns complete player metadata including:
-        - id, first_name, last_name
-        - position, height, weight
-        - team info, jersey_number
-        - college, draft_year, draft_round, draft_number
-        - country
+        Fetch ACTIVE players only from /players/active endpoint.
+        Returns complete player metadata for current NBA roster (~530 players).
         """
-        logger.info("[BDL] Fetching all players...")
+        logger.info("[BDL] Fetching active players only...")
         
         all_players = []
         next_cursor = cursor
@@ -127,7 +122,8 @@ class BDLComprehensiveSyncService:
             if next_cursor:
                 params["cursor"] = next_cursor
             
-            data = await self._make_request("/players", params)
+            # Use /players/active endpoint - only returns current NBA players
+            data = await self._make_request("/players/active", params)
             if not data:
                 break
             
@@ -144,7 +140,7 @@ class BDLComprehensiveSyncService:
             # Rate limit protection
             await asyncio.sleep(0.2)
         
-        logger.info(f"[BDL] Fetched {len(all_players)} total players")
+        logger.info(f"[BDL] Fetched {len(all_players)} active players")
         return all_players
     
     async def fetch_player_by_id(self, player_id: int) -> Optional[Dict]:
