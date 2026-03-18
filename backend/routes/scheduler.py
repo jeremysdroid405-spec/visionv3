@@ -190,6 +190,52 @@ async def sync_bdl_comprehensive():
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.post("/v3/sync-bdl-mapping")
+async def sync_bdl_player_mapping():
+    """
+    Sync all active NBA players from BDL to build complete name-to-ID mapping.
+    
+    This creates/updates the bdl_player_mapping collection which enables
+    efficient ID-based lookups instead of name-based searches.
+    
+    Should be run:
+    - Once on initial setup
+    - Weekly to catch roster changes
+    """
+    import os
+    from motor.motor_asyncio import AsyncIOMotorClient
+    from services.bdl_player_mapping import get_bdl_mapping_service
+    
+    mongo_url = os.environ.get("MONGO_URL")
+    db_name = os.environ.get("DB_NAME", "pick_vision")
+    
+    if not mongo_url:
+        raise HTTPException(status_code=503, detail="Database not configured")
+    
+    logger.info("[MANUAL SYNC] Syncing BDL player ID mappings...")
+    
+    try:
+        client = AsyncIOMotorClient(mongo_url)
+        db = client[db_name]
+        
+        mapping_service = get_bdl_mapping_service(db)
+        result = await mapping_service.sync_all_active_players()
+        
+        return {
+            "success": True,
+            "sync_type": "bdl_player_mapping",
+            "total_players": result.get("total_players", 0),
+            "mappings_stored": result.get("mappings_stored", 0),
+            "cache_size": result.get("cache_size", 0),
+            "triggered_at": datetime.now(timezone.utc).isoformat()
+        }
+    except Exception as e:
+        logger.error(f"[MANUAL SYNC] BDL mapping sync failed: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.post("/v3/sync-dvp")
 async def sync_dvp_rankings():
     """

@@ -534,9 +534,14 @@ class BDLComprehensiveSyncService:
     async def sync_prizepicks_players(self) -> Dict[str, Any]:
         """
         Sync only players currently on the PrizePicks board.
-        More efficient than syncing all 500+ NBA players.
+        Uses BDL ID mapping for efficient lookups (no name searches).
         """
+        from services.bdl_player_mapping import get_bdl_mapping_service
+        
         logger.info("[BDL] Syncing players from PrizePicks board...")
+        
+        # Get mapping service
+        mapping_service = get_bdl_mapping_service(self.db)
         
         # Get unique players from cached board
         pipeline = [
@@ -556,26 +561,23 @@ class BDLComprehensiveSyncService:
             "total": len(player_names)
         }
         
-        for name in player_names:
-            # Search for player in BDL
-            player = await self.search_player(name)
-            
-            if player:
-                player_id = player.get("id")
-                if player_id:
-                    success = await self.sync_player_to_master_hub(player_id)
-                    if success:
-                        results["success"] += 1
-                    else:
-                        results["failed"] += 1
+        # Get all BDL IDs at once (uses cache)
+        name_to_id = await mapping_service.get_all_bdl_ids(player_names)
+        
+        # Sync by ID (much faster than name search)
+        for name, bdl_id in name_to_id.items():
+            if bdl_id:
+                success = await self.sync_player_to_master_hub(bdl_id)
+                if success:
+                    results["success"] += 1
                 else:
-                    results["not_found"] += 1
+                    results["failed"] += 1
             else:
                 results["not_found"] += 1
                 logger.warning(f"[BDL] Player not found: {name}")
             
-            # Rate limit protection
-            await asyncio.sleep(0.3)
+            # Rate limit protection (reduced since we're not searching)
+            await asyncio.sleep(0.2)
         
         results["synced_at"] = datetime.now(timezone.utc).isoformat()
         logger.info(f"[BDL] PrizePicks sync complete: {results['success']}/{results['total']}")
