@@ -55,6 +55,12 @@ Build a sports betting analytics application (PickVision AI) that provides:
 - [x] Team/Opponent display fix - shows player's actual team (from master hub) and correct opponent (Dec 2025)
 - [x] Injury data display - Combined ESPN + BDL injury sources, `is_injured` flag on picks (Dec 2025)
 - [x] Gassed badge enhanced - Now checks for back-to-back AND heavy minutes (38+) (Dec 2025)
+- [x] **BDL API Game Log Fix** (Dec 2025):
+  - Increased `fetch_player_game_logs` limit from 15 to 100 games
+  - Added sorting by date (most recent first) - BDL returns oldest first by default
+  - Added DNP filtering for L5/L10/hit rate calculations (excludes 0-minute games)
+  - Fixed `runDailySync()` to use BDL instead of Tank01
+- [x] **Tank01 Complete Purge** (Dec 2025): All Tank01 endpoints and references removed from codebase
 
 ### Context Badges
 - Live from BDL injuries: `deep_water` (injury)
@@ -91,3 +97,5 @@ Build a sports betting analytics application (PickVision AI) that provides:
 - **Player IDs**: Always use BDL ID for lookups (faster than name search)
 - **Injuries**: Synced from BDL + ESPN, stored in `bdl_injuries`
 - **Advanced Stats**: PIE, Net Rating from BDL `/stats/advanced`
+- **Game Logs**: BDL API returns games in ASCENDING order (oldest first). Always sort by date descending before using.
+- **DNP Filtering**: Games with 0 minutes are excluded from L5/L10 calculations. Use `_filter_played_games()` helper.
