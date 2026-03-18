@@ -77,11 +77,30 @@ class CachedBoardBuilderService:
         
         logger.info(f"[CACHED_BOARD] Building centralized board from {len(props)} props...")
         
-        # STEP 1: APPLY ANCHOR-BASED CLASSIFICATION
+        # STEP 0: LOAD STATS FROM MASTER HUB (needed for L5 fallback classification)
+        stats_map = await self._load_stats_map()
+        
+        # Build player_stats dict for anchor classification (L5 fallback)
+        # Format: "player_name|STAT" -> {"l5_avg": X, "season_avg": Y}
+        player_stats_for_anchor = {}
+        for player_name, player_stats in stats_map.items():
+            baseline = player_stats.get("baseline_stats", {})
+            for stat_key, stat_data in baseline.items():
+                if isinstance(stat_data, dict):
+                    key = f"{player_name.lower().strip()}|{stat_key.upper()}"
+                    player_stats_for_anchor[key] = {
+                        "l5_avg": stat_data.get("l5_avg"),
+                        "season_avg": stat_data.get("season_avg")
+                    }
+        
+        logger.info(f"[CACHED_BOARD] Loaded {len(player_stats_for_anchor)} player/stat combos for L5 fallback")
+        
+        # STEP 1: APPLY ANCHOR-BASED CLASSIFICATION (with L5 fallback)
         # This overrides Odds API is_demon/is_goblin flags with our own logic:
         # - Alternate ABOVE standard line = DEMON
         # - Alternate BELOW standard line = GOBLIN
-        props = classify_props_by_anchor(props)
+        # - If no main line, use L5 avg as anchor
+        props = classify_props_by_anchor(props, player_stats_for_anchor)
         logger.info("[CACHED_BOARD] Applied anchor-based tier classification")
         
         # Check if mapper is available
@@ -108,8 +127,7 @@ class CachedBoardBuilderService:
         unmatched_count = len(unique_player_names) - matched_count
         logger.info(f"[CACHED_BOARD] Mapper results: {matched_count} matched, {unmatched_count} unmatched")
         
-        # STEP 3: LOAD SUPPLEMENTARY DATA
-        stats_map = await self._load_stats_map()
+        # STEP 3: LOAD REMAINING SUPPLEMENTARY DATA (stats already loaded in Step 0)
         signals_map = await self._load_signals_map()
         ripple_map = await self._load_usage_ripple_map()  # NEW: Load Usage Ripple data
         
@@ -180,8 +198,23 @@ class CachedBoardBuilderService:
         """
         logger.warning("[CACHED_BOARD_LEGACY] Using legacy name-based lookup (Mapper unavailable)")
         
-        # STEP 1: APPLY ANCHOR-BASED CLASSIFICATION
-        props = classify_props_by_anchor(props)
+        # Load player stats FIRST (needed for L5 fallback classification)
+        stats_map = await self._load_stats_map()
+        
+        # Build player_stats dict for anchor classification (L5 fallback)
+        player_stats_for_anchor = {}
+        for player_name, player_stats in stats_map.items():
+            baseline = player_stats.get("baseline_stats", {})
+            for stat_key, stat_data in baseline.items():
+                if isinstance(stat_data, dict):
+                    key = f"{player_name.lower().strip()}|{stat_key.upper()}"
+                    player_stats_for_anchor[key] = {
+                        "l5_avg": stat_data.get("l5_avg"),
+                        "season_avg": stat_data.get("season_avg")
+                    }
+        
+        # STEP 1: APPLY ANCHOR-BASED CLASSIFICATION (with L5 fallback)
+        props = classify_props_by_anchor(props, player_stats_for_anchor)
         logger.info("[CACHED_BOARD_LEGACY] Applied anchor-based tier classification")
         
         # Load master roster into memory
@@ -194,8 +227,7 @@ class CachedBoardBuilderService:
         
         logger.info(f"[CACHED_BOARD_LEGACY] Loaded {len(master_roster_map)} players from master roster")
         
-        # Load player stats
-        stats_map = await self._load_stats_map()
+        # Load remaining supplementary data
         signals_map = await self._load_signals_map()
         
         # Group props by player and enrich
@@ -277,15 +309,32 @@ class CachedBoardBuilderService:
     # ==================== PRIVATE HELPER METHODS ====================
     
     async def _load_stats_map(self) -> Dict[str, Any]:
-        """Load player stats indexed by normalized name"""
+        """
+        Load player stats from MASTER HUB indexed by normalized name.
+        
+        This includes baseline_stats with L5/L10/season averages needed for:
+        - L5 fallback anchor classification
+        - Stats display on player cards
+        """
         stats_map = {}
-        stats_cursor = self.player_stats.find({}, {"_id": 0})
-        async for stat in stats_cursor:
-            player_name = stat.get("player_name", "")
+        
+        # Load from nba_master_hub_2026 (SSOT for player stats)
+        hub_cursor = self.db.nba_master_hub_2026.find(
+            {"baseline_stats": {"$exists": True}},
+            {"_id": 0, "display_name": 1, "baseline_stats": 1, "team": 1}
+        )
+        
+        async for player in hub_cursor:
+            player_name = player.get("display_name", "")
             normalized = sanitize_player_name(player_name).lower()
-            if normalized:
-                stats_map[normalized] = stat
-        logger.info(f"[CACHED_BOARD] Loaded {len(stats_map)} player stats")
+            if normalized and player.get("baseline_stats"):
+                stats_map[normalized] = {
+                    "player_name": player_name,
+                    "baseline_stats": player.get("baseline_stats", {}),
+                    "team": player.get("team")
+                }
+        
+        logger.info(f"[CACHED_BOARD] Loaded {len(stats_map)} player stats from master hub")
         return stats_map
     
     async def _load_signals_map(self) -> Dict[str, Any]:
