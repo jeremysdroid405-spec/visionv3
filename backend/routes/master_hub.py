@@ -367,3 +367,100 @@ async def sync_roster_single_player(player_name: str):
         "team": result.get("team"),
         "baseline_stats": result.get("baseline_stats")
     }
+
+
+
+@router.post("/sync-contracts")
+async def sync_contract_data_endpoint():
+    """
+    Sync contract data from Spotrac.
+    
+    Scrapes Spotrac.com for contract year players (UFAs, RFAs, player options).
+    Results are cached in MongoDB with 24h TTL.
+    
+    Used to populate the pay_day badge with live contract data.
+    """
+    if _db is None:
+        raise HTTPException(status_code=500, detail="Database not initialized")
+    
+    from services.spotrac_contract_service import sync_contract_data
+    result = await sync_contract_data(_db)
+    return result
+
+
+@router.get("/contract-year-players")
+async def get_contract_year_players():
+    """
+    Get list of all players in contract years.
+    
+    Returns players who are UFAs, RFAs, or have player options expiring.
+    """
+    if _db is None:
+        raise HTTPException(status_code=500, detail="Database not initialized")
+    
+    cache_doc = await _db.spotrac_contracts_cache.find_one(
+        {"type": "contracts_cache"},
+        {"_id": 0}
+    )
+    
+    if not cache_doc:
+        # Trigger sync if no cache
+        from services.spotrac_contract_service import sync_contract_data
+        await sync_contract_data(_db)
+        cache_doc = await _db.spotrac_contracts_cache.find_one(
+            {"type": "contracts_cache"},
+            {"_id": 0}
+        )
+    
+    contracts = cache_doc.get("contracts", {}) if cache_doc else {}
+    
+    # Convert to list and sort by salary
+    players_list = []
+    for name, data in contracts.items():
+        players_list.append({
+            "player_name": data.get("player_name"),
+            "team": data.get("team"),
+            "salary": data.get("salary", 0),
+            "salary_display": f"${data.get('salary', 0) / 1e6:.1f}M" if data.get("salary", 0) >= 1e6 else "N/A",
+            "type": data.get("type"),
+            "expires": data.get("expires")
+        })
+    
+    # Sort by salary descending
+    players_list.sort(key=lambda x: x.get("salary", 0), reverse=True)
+    
+    return {
+        "success": True,
+        "count": len(players_list),
+        "cached_at": cache_doc.get("cached_at") if cache_doc else None,
+        "players": players_list
+    }
+
+
+@router.get("/contract/{player_name}")
+async def get_player_contract(player_name: str):
+    """
+    Get contract info for a specific player.
+    
+    Returns contract year status and details if player is in a contract year.
+    """
+    if _db is None:
+        raise HTTPException(status_code=500, detail="Database not initialized")
+    
+    from services.spotrac_contract_service import get_contract_year_info
+    info = await get_contract_year_info(player_name, _db)
+    
+    if not info:
+        return {
+            "success": True,
+            "player_name": player_name,
+            "in_contract_year": False,
+            "message": "Player is not in a contract year"
+        }
+    
+    return {
+        "success": True,
+        "player_name": player_name,
+        "in_contract_year": True,
+        "contract_info": info
+    }

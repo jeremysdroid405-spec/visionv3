@@ -458,22 +458,37 @@ async def resolve_context_badges(engine, player_name: str, player_data: dict) ->
         
         # ===== 9 & 10: PAY_DAY, DEEP_WATER, and enhanced DISTRACTION =====
         
-        # PAY_DAY: Contract year players
+        # PAY_DAY: Contract year players (live Spotrac data with static fallback)
+        pay_day = None
         try:
-            from data.context_data import get_pay_day_info
-            pay_day = get_pay_day_info(player_name)
+            # Try live Spotrac data first
+            from services.spotrac_contract_service import get_contract_year_info
+            pay_day = await get_contract_year_info(player_name, db)
             if pay_day:
-                badges.append({
-                    "badge_key": "pay_day",
-                    "display": "Pay Day",
-                    "icon": "DollarSign",
-                    "color": "#22c55e",
-                    "description": pay_day["description"],
-                    "severity": 7,
-                    "detail": pay_day
-                })
+                logger.debug(f"[BADGE] Pay day from Spotrac for {player_name}: {pay_day.get('type')}")
         except Exception as e:
-            logger.debug(f"Pay day check failed for {player_name}: {e}")
+            logger.debug(f"Spotrac pay day check failed for {player_name}: {e}")
+        
+        # Fallback to static data if Spotrac didn't find the player
+        if not pay_day:
+            try:
+                from data.context_data import get_pay_day_info
+                pay_day = get_pay_day_info(player_name)
+                if pay_day:
+                    pay_day["source"] = "static"
+            except Exception as e:
+                logger.debug(f"Static pay day check failed for {player_name}: {e}")
+        
+        if pay_day:
+            badges.append({
+                "badge_key": "pay_day",
+                "display": "Pay Day",
+                "icon": "DollarSign",
+                "color": "#22c55e",
+                "description": pay_day["description"],
+                "severity": 7,
+                "detail": pay_day
+            })
         
         # DISTRACTION: Trade rumors or recent trade (enhanced)
         try:
