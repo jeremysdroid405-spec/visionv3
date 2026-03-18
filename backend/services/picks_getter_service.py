@@ -188,6 +188,46 @@ class PicksGetterService:
         self._injured_players_cache = injured
         return injured
     
+    async def _enrich_picks_with_photos(self, picks: list) -> list:
+        """
+        Enrich a list of picks with photos from master hub.
+        
+        This is the SINGLE SOURCE OF TRUTH for photo enrichment.
+        All endpoints returning player data should use this method.
+        
+        Args:
+            picks: List of pick dicts with 'player_name' field
+            
+        Returns:
+            Same list with photo_url, team, position enriched from master hub
+        """
+        if not picks:
+            return picks
+        
+        for pick in picks:
+            player_name = pick.get("player_name")
+            if not player_name:
+                continue
+            
+            # Skip if already has photo
+            if pick.get("photo_url"):
+                continue
+            
+            # Look up in master hub
+            hub_player = await self.master_hub.find_one(
+                {"display_name": player_name},
+                {"_id": 0, "photo_url": 1, "headshot_url": 1, "team": 1, "position": 1}
+            )
+            
+            if hub_player:
+                pick["photo_url"] = hub_player.get("photo_url") or hub_player.get("headshot_url")
+                if not pick.get("team"):
+                    pick["team"] = hub_player.get("team")
+                if not pick.get("position"):
+                    pick["position"] = hub_player.get("position")
+        
+        return picks
+    
     async def _get_game_info(self, game_id: str) -> Dict[str, str]:
         """
         Get home_team and away_team for a game from cached_board raw documents.
@@ -768,6 +808,9 @@ class PicksGetterService:
         war_zone_picks = scored_picks[:20]
         filter_stats["final_picks"] = len(war_zone_picks)
         
+        # Ensure all picks have photos (SSOT enrichment)
+        await self._enrich_picks_with_photos(war_zone_picks)
+        
         # Log top picks
         for i, pick in enumerate(war_zone_picks[:5], 1):
             logger.info(f"[WAR_ZONE] #{i} {pick['player_name']} {pick['stat_type']} @ {pick['line']} | "
@@ -1149,20 +1192,8 @@ class PicksGetterService:
         
         final_picks = all_player_best_picks[:TARGET_PICKS]
         
-        # STEP 3: Enrich with photos from master hub
-        for pick in final_picks:
-            player_name = pick.get("player_name")
-            if not pick.get("photo_url") and player_name:
-                hub_player = await self.master_hub.find_one(
-                    {"display_name": player_name},
-                    {"_id": 0, "photo_url": 1, "team": 1, "position": 1}
-                )
-                if hub_player:
-                    pick["photo_url"] = hub_player.get("photo_url")
-                    if not pick.get("team"):
-                        pick["team"] = hub_player.get("team")
-                    if not pick.get("position"):
-                        pick["position"] = hub_player.get("position")
+        # Enrich with photos from master hub (SSOT for photos)
+        await self._enrich_picks_with_photos(final_picks)
         
         unique_players = len(set(p["player_name"] for p in final_picks))
         
@@ -1571,6 +1602,9 @@ class PicksGetterService:
                 if insight:
                     pick['insight_summary'] = insight.get('insight_summary', '')
                     pick['ai_confidence_rating'] = insight.get('ai_confidence_rating', 50)
+            
+            # Ensure all picks have photos (SSOT enrichment)
+            await self._enrich_picks_with_photos(picks)
         
         return {
             "success": True,
@@ -1611,6 +1645,9 @@ class PicksGetterService:
                 if insight:
                     pick['insight_summary'] = insight.get('insight_summary', '')
                     pick['ai_confidence_rating'] = insight.get('ai_confidence_rating', 50)
+            
+            # Ensure all picks have photos (SSOT enrichment)
+            await self._enrich_picks_with_photos(picks)
         
         return {
             "success": True,
@@ -2040,6 +2077,9 @@ class PicksGetterService:
                                 bet["h10_rate"] = h10_result["hit_rate"]
                 
                 enriched_bets.append(bet)
+            
+            # Ensure all bets have photos (SSOT enrichment)
+            await self._enrich_picks_with_photos(enriched_bets)
             
             logger.info(f"[MOST_POPULAR] Returning {len(enriched_bets)} bets by synthetic popularity")
             logger.info(f"[MOST_POPULAR] Tier distribution: {tier_counts}")

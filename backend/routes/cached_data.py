@@ -663,10 +663,16 @@ async def get_cached_player(player_name: str):
                 {"display_name": {"$regex": f"^{pname}$", "$options": "i"}},
                 {"normalized_name": {"$regex": f"^{pname}$", "$options": "i"}}
             ]},
-            {"_id": 0, "team": 1}
+            {"_id": 0, "team": 1, "photo_url": 1, "headshot_url": 1, "position": 1}
         )
         
         correct_team = hub_player.get("team") if hub_player else player.get("team", "Team")
+        
+        # Add photo from master hub
+        if hub_player:
+            player["photo_url"] = hub_player.get("photo_url") or hub_player.get("headshot_url")
+            if not player.get("position"):
+                player["position"] = hub_player.get("position")
         
         # Derive correct opponent from game info
         # Get home_team/away_team from raw cached_board documents
