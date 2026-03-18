@@ -1552,11 +1552,16 @@ class PicksGetterService:
     
     async def get_most_popular_bets(self) -> Dict[str, Any]:
         """
-        Get Top 20 Most Popular BETS - ALL TYPES BY VOLUME
+        Get Top 20 Most Popular BETS - ALL TYPES BY POPULARITY SCORE
         
-        Based strictly on betting volume/popularity from the cached board.
-        Includes ALL line types: STANDARD, DEMON, GOBLIN - whatever has highest volume.
-        Shows variety of players and tiers.
+        Since the Odds API doesn't provide betting volume, we calculate a 
+        SYNTHETIC POPULARITY SCORE based on:
+        1. Player exposure (number of markets available)
+        2. Player star power (season average performance)
+        3. Bet appeal (demon/goblin status)
+        4. Market variety bonus
+        
+        Returns a mix of STANDARD, DEMON, and GOBLIN bets that are likely to be popular.
         """
         try:
             now = datetime.now(timezone.utc)
@@ -1567,9 +1572,18 @@ class PicksGetterService:
                 {"_id": 0}
             ).to_list(500)
             
-            # Extract ALL props - dedupe as we go
+            # First pass: Calculate player exposure (number of props per player)
+            player_exposure = {}
+            for player_doc in players:
+                pname = player_doc.get("player_name")
+                if pname:
+                    player_exposure[pname] = len(player_doc.get("props", []))
+            
+            max_exposure = max(player_exposure.values()) if player_exposure else 1
+            
+            # Extract ALL props with popularity scoring
             all_bets = []
-            seen_props = set()  # Track unique player+stat+line combos
+            seen_props = set()
             
             for player_doc in players:
                 player_name = player_doc.get("player_name")
@@ -1577,7 +1591,7 @@ class PicksGetterService:
                     continue
                 
                 props = player_doc.get("props", [])
-                player_rank = player_doc.get("rank", 999)  # Lower = more popular
+                exposure = player_exposure.get(player_name, 0)
                 
                 for prop in props:
                     stat_type = prop.get("stat_type_extracted") or prop.get("market", "").replace("player_", "")
@@ -1586,18 +1600,158 @@ class PicksGetterService:
                     if not stat_type or not line:
                         continue
                     
-                    # Dedupe within props
+                    # Dedupe
                     prop_key = f"{player_name}_{stat_type}_{line}"
                     if prop_key in seen_props:
                         continue
                     seen_props.add(prop_key)
+                    
+                    # Get stats from prop (pre-computed during sync)
+                    season_avg = prop.get("season_avg", 0) or 0
+                    l5_avg = prop.get("l5_avg")
+                    l10_avg = prop.get("l10_avg")
+                    l10_hit_rate = prop.get("l10_hit_rate")
                     
                     # Determine tier
                     is_demon = prop.get("is_demon", False)
                     is_goblin = prop.get("is_goblin", False)
                     tier_label = "DEMON" if is_demon else "GOBLIN" if is_goblin else "STANDARD"
                     
+                    # ====================================
+                    # SYNTHETIC POPULARITY SCORE (0-100)
+                    # ====================================
+                    popularity_score = 0
+                    
+                    # 1. EXPOSURE SCORE (0-30): More markets = more popular player
+                    exposure_score = (exposure / max_exposure) * 30
+                    popularity_score += exposure_score
+                    
+                    # 2. STAR POWER SCORE (0-25): Higher season avg = bigger name
+                    # PTS: 20+ is star level, AST: 7+ is star level, etc.
+                    star_thresholds = {"PTS": 20, "AST": 7, "REB": 8, "3PM": 2.5, "BLK": 1.5, "STL": 1.5, 
+                                      "PRA": 35, "P+R": 28, "P+A": 27, "R+A": 15}
+                    threshold = star_thresholds.get(stat_type, 10)
+                    if season_avg > 0 and threshold > 0:
+                        star_ratio = min(season_avg / threshold, 2.0)  # Cap at 2x threshold
+                        star_score = star_ratio * 12.5  # Max 25 points
+                        popularity_score += star_score
+                    
+                    # 3. BET APPEAL SCORE (0-25): Demon/Goblin bets attract more action
+                    if is_demon:
+                        popularity_score += 25  # Demons are exciting high-risk bets
+                    elif is_goblin:
+                        popularity_score += 20  # Goblins are popular "safe" value bets
+                    else:
+                        popularity_score += 10  # Standard lines still get action
+                    
+                    # 4. HIT RATE BONUS (0-20): High hit rates attract bettors
+                    if l10_hit_rate is not None:
+                        hit_rate = l10_hit_rate * 100 if l10_hit_rate <= 1 else l10_hit_rate
+                        if hit_rate >= 70:
+                            popularity_score += 20
+                        elif hit_rate >= 50:
+                            popularity_score += 10
+                    
+                    # Calculate h10_rate for display
+                    h10_rate = None
+                    if l10_hit_rate is not None:
+                        h10_rate = round(l10_hit_rate * 100, 1) if l10_hit_rate <= 1 else l10_hit_rate
+                    
                     all_bets.append({
+                        "player_name": player_name,
+                        "team": player_doc.get("team"),
+                        "opponent": player_doc.get("opponent"),
+                        "stat_type": stat_type,
+                        "line": line,
+                        "direction": prop.get("direction", "over"),
+                        "is_demon": is_demon,
+                        "is_goblin": is_goblin,
+                        "tier_label": tier_label,
+                        "tier_source": "most_popular_synthetic",
+                        "popularity_score": round(popularity_score, 1),
+                        # Stats from cached props
+                        "season_avg": season_avg,
+                        "l5_avg": l5_avg,
+                        "l10_avg": l10_avg,
+                        "l5_hit_rate": prop.get("l5_hit_rate"),
+                        "l10_hit_rate": l10_hit_rate,
+                        "h10_rate": h10_rate,
+                        "volume": round(popularity_score)  # Use popularity score as synthetic volume
+                    })
+            
+            if not all_bets:
+                return {"status": "no_data", "bets": [], "message": "No bets available"}
+            
+            # Sort by popularity score (highest first)
+            all_bets.sort(key=lambda x: x.get("popularity_score", 0), reverse=True)
+            
+            # Select top 20 with variety - ensure mix of tiers and players
+            selected_bets = []
+            players_selected = set()
+            tier_counts = {"DEMON": 0, "GOBLIN": 0, "STANDARD": 0}
+            
+            for bet in all_bets:
+                if len(selected_bets) >= 20:
+                    break
+                
+                player = bet["player_name"]
+                tier = bet["tier_label"]
+                
+                # Limit 2 bets per player for variety
+                player_count = sum(1 for b in selected_bets if b["player_name"] == player)
+                if player_count >= 2:
+                    continue
+                
+                # Ensure tier variety (at least some of each type if available)
+                if len(selected_bets) < 15:
+                    # First 15: just take top by score
+                    selected_bets.append(bet)
+                    tier_counts[tier] = tier_counts.get(tier, 0) + 1
+                else:
+                    # Last 5: fill in missing tier variety
+                    if tier_counts.get(tier, 0) < 3:
+                        selected_bets.append(bet)
+                        tier_counts[tier] = tier_counts.get(tier, 0) + 1
+                    elif len(selected_bets) < 20:
+                        selected_bets.append(bet)
+            
+            # Enrich with photos from master hub
+            enriched_bets = []
+            for bet in selected_bets:
+                hub_player = await self._get_master_player_by_name(bet["player_name"])
+                if hub_player:
+                    bet["photo_url"] = hub_player.get("headshot_url") or hub_player.get("photo_url")
+                    bet["position"] = hub_player.get("position")
+                    
+                    # If stats still missing, get from master hub game logs
+                    if bet.get("l5_avg") is None or bet.get("h10_rate") is None:
+                        game_logs = hub_player.get("bdl_game_logs", []) or hub_player.get("game_logs", [])
+                        if game_logs:
+                            if bet.get("l5_avg") is None:
+                                l5_result = self._calculate_l5_avg(game_logs, bet["stat_type"])
+                                bet["l5_avg"] = l5_result["avg"]
+                            if bet.get("h10_rate") is None:
+                                h10_result = self._calculate_h10_hit_rate(game_logs, bet["stat_type"], bet["line"])
+                                bet["h10_rate"] = h10_result["hit_rate"]
+                
+                enriched_bets.append(bet)
+            
+            logger.info(f"[MOST_POPULAR] Returning {len(enriched_bets)} bets by synthetic popularity")
+            logger.info(f"[MOST_POPULAR] Tier distribution: {tier_counts}")
+            
+            return {
+                "status": "live",
+                "bets": enriched_bets,
+                "source": "synthetic_popularity_score",
+                "tier_distribution": tier_counts,
+                "timestamp": now.isoformat()
+            }
+            
+        except Exception as e:
+            logger.error(f"[MOST_POPULAR] Error: {e}")
+            import traceback
+            traceback.print_exc()
+            return {"status": "error", "bets": [], "error": str(e)}
                         "player_name": player_name,
                         "team": player_doc.get("team"),
                         "opponent": player_doc.get("opponent"),
@@ -1668,40 +1822,69 @@ class PicksGetterService:
             # Re-sort by player rank
             selected_bets.sort(key=lambda x: x.get("player_rank", 999))
             
-            # Enrich with stats from master hub
+            # Enrich with stats - FIRST from cached props, THEN from master hub
             enriched_bets = []
             for bet in selected_bets[:20]:
                 player_name = bet["player_name"]
                 stat_type = bet["stat_type"]
                 line = bet["line"]
                 
-                # Get master hub data
-                hub_player = await self._get_master_player_by_name(player_name)
+                # Find the original prop from cached board to get its stats
+                original_prop = None
+                for player_doc in players:
+                    if player_doc.get("player_name") == player_name:
+                        for p in player_doc.get("props", []):
+                            p_stat = p.get("stat_type_extracted") or p.get("market", "").replace("player_", "")
+                            if p_stat == stat_type and p.get("line") == line:
+                                original_prop = p
+                                break
+                        break
                 
+                # Use stats from the cached prop first (these are pre-computed during sync)
+                if original_prop:
+                    bet["l5_avg"] = original_prop.get("l5_avg")
+                    bet["l10_avg"] = original_prop.get("l10_avg")
+                    bet["season_avg"] = original_prop.get("season_avg")
+                    bet["l5_hit_rate"] = original_prop.get("l5_hit_rate")
+                    bet["l10_hit_rate"] = original_prop.get("l10_hit_rate")
+                    bet["volume"] = original_prop.get("volume", 0)
+                    
+                    # Calculate h10 rate from hit rate if available
+                    if original_prop.get("l10_hit_rate") is not None:
+                        bet["h10_rate"] = round(original_prop.get("l10_hit_rate") * 100, 1) if original_prop.get("l10_hit_rate") <= 1 else original_prop.get("l10_hit_rate")
+                
+                # Get photo from master hub
+                hub_player = await self._get_master_player_by_name(player_name)
                 if hub_player:
                     bet["photo_url"] = hub_player.get("headshot_url") or hub_player.get("photo_url")
                     bet["position"] = hub_player.get("position")
                     
-                    # Get season_avg from baseline_stats
-                    baseline_stats = hub_player.get("baseline_stats", {})
-                    stat_key = self._normalize_stat_key(stat_type)
-                    stat_data = baseline_stats.get(stat_key, {})
-                    
-                    if isinstance(stat_data, dict):
-                        bet["season_avg"] = stat_data.get("season_avg")
-                    elif isinstance(stat_data, (int, float)):
-                        bet["season_avg"] = stat_data
-                    
-                    # Calculate L5/L10 from game logs
-                    game_logs = hub_player.get("bdl_game_logs", []) or hub_player.get("game_logs", [])
-                    if game_logs:
-                        l5_result = self._calculate_l5_avg(game_logs, stat_type)
-                        h10_result = self._calculate_h10_hit_rate(game_logs, stat_type, line)
+                    # If stats still missing, try to get from master hub
+                    if bet.get("l5_avg") is None or bet.get("season_avg") is None:
+                        baseline_stats = hub_player.get("baseline_stats", {})
+                        stat_key = self._normalize_stat_key(stat_type)
+                        stat_data = baseline_stats.get(stat_key, {})
                         
-                        bet["l5_avg"] = l5_result["avg"]
-                        bet["h10_rate"] = h10_result["hit_rate"]
-                        bet["h10_hits"] = h10_result["hits"]
-                        bet["h10_games"] = h10_result["games_counted"]
+                        if isinstance(stat_data, dict):
+                            if bet.get("season_avg") is None:
+                                bet["season_avg"] = stat_data.get("season_avg")
+                            if bet.get("l5_avg") is None:
+                                bet["l5_avg"] = stat_data.get("l5_avg")
+                            if bet.get("l10_avg") is None:
+                                bet["l10_avg"] = stat_data.get("l10_avg")
+                        
+                        # Calculate from game logs if still missing
+                        if bet.get("l5_avg") is None or bet.get("h10_rate") is None:
+                            game_logs = hub_player.get("bdl_game_logs", []) or hub_player.get("game_logs", [])
+                            if game_logs:
+                                if bet.get("l5_avg") is None:
+                                    l5_result = self._calculate_l5_avg(game_logs, stat_type)
+                                    bet["l5_avg"] = l5_result["avg"]
+                                if bet.get("h10_rate") is None:
+                                    h10_result = self._calculate_h10_hit_rate(game_logs, stat_type, line)
+                                    bet["h10_rate"] = h10_result["hit_rate"]
+                                    bet["h10_hits"] = h10_result["hits"]
+                                    bet["h10_games"] = h10_result["games_counted"]
                 
                 enriched_bets.append(bet)
             
