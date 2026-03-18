@@ -31,6 +31,43 @@ from utils.player_lookup import get_player_by_id, get_player_by_name as shared_g
 logger = logging.getLogger(__name__)
 
 
+# ==================== TEAM NAME MAPPING ====================
+# Maps team abbreviations (from master hub) to full names (from Odds API)
+TEAM_ABBREV_TO_FULL = {
+    "ATL": "Atlanta Hawks", "BOS": "Boston Celtics", "BKN": "Brooklyn Nets",
+    "CHA": "Charlotte Hornets", "CHI": "Chicago Bulls", "CLE": "Cleveland Cavaliers",
+    "DAL": "Dallas Mavericks", "DEN": "Denver Nuggets", "DET": "Detroit Pistons",
+    "GS": "Golden State Warriors", "GSW": "Golden State Warriors",
+    "HOU": "Houston Rockets", "IND": "Indiana Pacers", "LAC": "Los Angeles Clippers",
+    "LAL": "Los Angeles Lakers", "MEM": "Memphis Grizzlies", "MIA": "Miami Heat",
+    "MIL": "Milwaukee Bucks", "MIN": "Minnesota Timberwolves", "NO": "New Orleans Pelicans",
+    "NOP": "New Orleans Pelicans", "NY": "New York Knicks", "NYK": "New York Knicks",
+    "OKC": "Oklahoma City Thunder", "ORL": "Orlando Magic", "PHI": "Philadelphia 76ers",
+    "PHX": "Phoenix Suns", "POR": "Portland Trail Blazers", "SAC": "Sacramento Kings",
+    "SA": "San Antonio Spurs", "SAS": "San Antonio Spurs", "TOR": "Toronto Raptors",
+    "UTA": "Utah Jazz", "WAS": "Washington Wizards"
+}
+
+def _get_opponent_from_game(player_team_abbrev: str, home_team: str, away_team: str) -> Optional[str]:
+    """
+    Derive opponent from home_team/away_team given player's team abbreviation.
+    Returns the full team name of the opponent.
+    """
+    if not player_team_abbrev or not home_team or not away_team:
+        return None
+    
+    player_team_full = TEAM_ABBREV_TO_FULL.get(player_team_abbrev.upper())
+    if not player_team_full:
+        return None
+    
+    # Compare and return opponent
+    if player_team_full == home_team:
+        return away_team
+    elif player_team_full == away_team:
+        return home_team
+    return None
+
+
 # ==================== NAME NORMALIZATION ====================
 def _normalize_name(name: str) -> str:
     """
@@ -92,6 +129,37 @@ class PicksGetterService:
         
         # PIPE 1: Stats Vault (Tank01 CRON destination)
         self.master_hub = db.nba_master_hub_2026
+        
+        # Cache for game info (home_team, away_team) by game_id
+        self._game_info_cache = {}
+    
+    async def _get_game_info(self, game_id: str) -> Dict[str, str]:
+        """
+        Get home_team and away_team for a game from cached_board raw documents.
+        Results are cached for the duration of this service instance.
+        """
+        if not game_id:
+            return {"home_team": None, "away_team": None}
+        
+        if game_id in self._game_info_cache:
+            return self._game_info_cache[game_id]
+        
+        # Look up from raw prop documents
+        raw_doc = await self.cached_board.find_one(
+            {"game_id": game_id, "home_team": {"$exists": True}},
+            {"_id": 0, "home_team": 1, "away_team": 1}
+        )
+        
+        if raw_doc:
+            info = {
+                "home_team": raw_doc.get("home_team"),
+                "away_team": raw_doc.get("away_team")
+            }
+        else:
+            info = {"home_team": None, "away_team": None}
+        
+        self._game_info_cache[game_id] = info
+        return info
     
     async def _get_player_lookup(self) -> Dict[str, Dict]:
         """
@@ -590,11 +658,17 @@ class PicksGetterService:
                 else:
                     risk_level = "HIGH"
                 
+                # Derive correct opponent using game_id lookup
+                player_team = hub_player.get("team")
+                game_id = player_doc.get("game_id")
+                game_info = await self._get_game_info(game_id)
+                opponent = _get_opponent_from_game(player_team, game_info.get("home_team"), game_info.get("away_team"))
+                
                 pick = {
                     "player_name": player_name,
-                    "team": player_doc.get("team"),
-                    "opponent": player_doc.get("opponent"),
-                    "game_id": player_doc.get("game_id"),
+                    "team": player_team,  # Use master hub team (source of truth)
+                    "opponent": opponent,
+                    "game_id": game_id,
                     "stat_type": stat_type,
                     "line": demon_line,
                     "anchor_line": anchor_line,
@@ -912,6 +986,8 @@ class PicksGetterService:
                     "team": player_doc.get("team"),
                     "opponent": player_doc.get("opponent"),
                     "game_id": player_doc.get("game_id"),
+                    "home_team": prop.get("home_team"),
+                    "away_team": prop.get("away_team"),
                     "stat_type": stat_type,
                     "line": line,
                     "odds": prop.get("price"),
@@ -989,9 +1065,16 @@ class PicksGetterService:
             pick["floor_margin"] = round(season_avg - line, 1)
             pick["safe_haven_qualified"] = True
             
-            # Add photo and other enrichment
-            pick["photo_url"] = hub_player.get("photo_url")
+            # Add photo and other enrichment from master hub (source of truth)
+            pick["photo_url"] = hub_player.get("photo_url") or hub_player.get("headshot_url")
             pick["position"] = hub_player.get("position")
+            # CRITICAL: Use team from master hub (not cached_board which may be incorrect)
+            player_team = hub_player.get("team")
+            pick["team"] = player_team
+            # Derive correct opponent using game_id lookup
+            game_id = pick.get("game_id")
+            game_info = await self._get_game_info(game_id)
+            pick["opponent"] = _get_opponent_from_game(player_team, game_info.get("home_team"), game_info.get("away_team"))
             
             safe_haven_picks.append(pick)
             logger.info(f"[SAFE_HAVEN] ✓ {player_name} {stat_type} @ {line} | H10: {h10_result['hit_rate']}% | Floor margin: {pick['floor_margin']}")
@@ -1181,6 +1264,8 @@ class PicksGetterService:
                     "team": player_doc.get("team"),
                     "opponent": player_doc.get("opponent"),
                     "game_id": player_doc.get("game_id"),
+                    "home_team": prop.get("home_team"),
+                    "away_team": prop.get("away_team"),
                     "stat_type": stat_type,
                     "line": line,
                     "odds": prop.get("price"),
@@ -1270,9 +1355,16 @@ class PicksGetterService:
             pick["l25_hit_rate"] = l25_result["hit_rate"]
             pick["front_line_qualified"] = True
             
-            # Add photo and enrichment
-            pick["photo_url"] = hub_player.get("photo_url")
+            # Add photo and enrichment from master hub (source of truth)
+            pick["photo_url"] = hub_player.get("photo_url") or hub_player.get("headshot_url")
             pick["position"] = hub_player.get("position")
+            # CRITICAL: Use team from master hub (not cached_board which may be incorrect)
+            player_team = hub_player.get("team")
+            pick["team"] = player_team
+            # Derive correct opponent using game_id lookup
+            game_id = pick.get("game_id")
+            game_info = await self._get_game_info(game_id)
+            pick["opponent"] = _get_opponent_from_game(player_team, game_info.get("home_team"), game_info.get("away_team"))
             
             front_line_picks.append(pick)
             logger.info(f"[FRONT_LINES] ✓ {player_name} {stat_type} @ {line} | Discount: {pick['discount_pct']}% | L25: {l25_result['hit_rate']}%")
