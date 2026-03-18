@@ -613,7 +613,11 @@ class AdaptiveSyncEngine:
         
         # ============================================================
         # PASS 2: Classify each prop based on comparison to anchor
+        # FALLBACK: If no main line, use L5 average as anchor
         # ============================================================
+        l5_fallback_count = 0
+        no_anchor_count = 0
+        
         for prop in all_props:
             player_name = prop["player_name"]
             stat_type_extracted = prop["stat_type_extracted"]
@@ -624,42 +628,7 @@ class AdaptiveSyncEngine:
             key = (player_name, stat_type_extracted)
             main_line = main_lines.get(key)
             
-            # Classification logic
-            is_demon = False
-            is_goblin = False
-            tier_style = "standard"
-            tier_label = "STANDARD"
-            
-            if main_line is not None:
-                if not is_alternate_market:
-                    # This IS the main line = STANDARD
-                    tier_style = "standard"
-                    tier_label = "STANDARD"
-                    standard_count += 1
-                elif line > main_line:
-                    # Alternate line ABOVE main line = DEMON (harder to hit)
-                    is_demon = True
-                    tier_style = "red"
-                    tier_label = "DEMON"
-                    demon_count += 1
-                elif line < main_line:
-                    # Alternate line BELOW main line = GOBLIN (easier to hit)
-                    is_goblin = True
-                    tier_style = "green"
-                    tier_label = "GOBLIN"
-                    goblin_count += 1
-                else:
-                    # Alternate line EQUALS main line (rare) = STANDARD
-                    tier_style = "standard"
-                    tier_label = "STANDARD"
-                    standard_count += 1
-            else:
-                # No main line found (edge case) - default to STANDARD
-                tier_style = "standard"
-                tier_label = "STANDARD"
-                standard_count += 1
-            
-            # Get player stats for enrichment
+            # Get player stats for enrichment (needed for L5 fallback)
             full_stats = await self._get_player_full_stats(player_name, stat_type_extracted, line)
             season_avg = full_stats.get("season_avg")
             l5_avg = full_stats.get("l5_avg")
@@ -668,10 +637,65 @@ class AdaptiveSyncEngine:
             h10_hits = full_stats.get("h10_hits", 0)
             h10_games = full_stats.get("h10_games", 0)
             
-            # Calculate diff from main line (not season avg)
-            diff_from_main_line = None
-            if main_line and main_line > 0:
-                diff_from_main_line = round(line - main_line, 1)
+            # Determine anchor and source
+            anchor_line = None
+            anchor_source = "none"
+            
+            if main_line is not None:
+                anchor_line = main_line
+                anchor_source = "main_line"
+            elif l5_avg is not None and l5_avg > 0:
+                # FALLBACK: Use L5 average as anchor
+                anchor_line = l5_avg
+                anchor_source = "l5_avg"
+                l5_fallback_count += 1
+            elif season_avg is not None and season_avg > 0:
+                # Secondary fallback: Use season average
+                anchor_line = season_avg
+                anchor_source = "season_avg"
+                l5_fallback_count += 1
+            else:
+                no_anchor_count += 1
+            
+            # Classification logic
+            is_demon = False
+            is_goblin = False
+            tier_style = "standard"
+            tier_label = "STANDARD"
+            
+            if anchor_line is not None:
+                if not is_alternate_market and anchor_source == "main_line":
+                    # This IS the main line = STANDARD
+                    tier_style = "standard"
+                    tier_label = "STANDARD"
+                    standard_count += 1
+                elif line > anchor_line:
+                    # Line ABOVE anchor = DEMON (harder to hit)
+                    is_demon = True
+                    tier_style = "red"
+                    tier_label = "DEMON"
+                    demon_count += 1
+                elif line < anchor_line:
+                    # Line BELOW anchor = GOBLIN (easier to hit)
+                    is_goblin = True
+                    tier_style = "green"
+                    tier_label = "GOBLIN"
+                    goblin_count += 1
+                else:
+                    # Line EQUALS anchor = STANDARD
+                    tier_style = "standard"
+                    tier_label = "STANDARD"
+                    standard_count += 1
+            else:
+                # No anchor available - default to STANDARD (unclassified)
+                tier_style = "standard"
+                tier_label = "STANDARD"
+                standard_count += 1
+            
+            # Calculate diff from anchor
+            diff_from_anchor = None
+            if anchor_line and anchor_line > 0:
+                diff_from_anchor = round(line - anchor_line, 1)
             
             try:
                 # Build the update document
@@ -698,9 +722,10 @@ class AdaptiveSyncEngine:
                     "tier_style": tier_style,
                     "tier_label": tier_label,
                     "stat_type_extracted": stat_type_extracted,
-                    # Main line reference
-                    "main_line": main_line,
-                    "diff_from_main_line": diff_from_main_line,
+                    # Anchor reference (main line or L5/season fallback)
+                    "anchor_line": anchor_line,
+                    "anchor_source": anchor_source,
+                    "diff_from_anchor": diff_from_anchor,
                     # Stats for display
                     "season_avg": round(season_avg, 1) if season_avg else None,
                     "l5_avg": l5_avg,
@@ -733,9 +758,13 @@ class AdaptiveSyncEngine:
         # Log classification distribution
         if updated_count > 0:
             logger.info(f"[PRIZEPICKS_SYNC_V3] Anchor-Based Classification: "
-                       f"{demon_count} Demon (above main line), "
-                       f"{goblin_count} Goblin (below main line), "
-                       f"{standard_count} Standard (main line)")
+                       f"{demon_count} Demon (above anchor), "
+                       f"{goblin_count} Goblin (below anchor), "
+                       f"{standard_count} Standard")
+            if l5_fallback_count > 0:
+                logger.info(f"[PRIZEPICKS_SYNC_V3] L5/Season fallback used for {l5_fallback_count} player/stat combos (no main line)")
+            if no_anchor_count > 0:
+                logger.warning(f"[PRIZEPICKS_SYNC_V3] {no_anchor_count} player/stat combos had NO anchor (no main line, no stats)")
         
         # Update sync status
         await self._update_sync_status(now, updated_count, error_count)

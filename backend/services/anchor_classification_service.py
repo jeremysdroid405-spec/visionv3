@@ -10,6 +10,14 @@ All alternate lines are classified relative to this anchor:
 - Alternate Line < Standard Line -> GOBLIN (Green)  
 - Standard Line itself -> STANDARD (Gray)
 
+FALLBACK FOR PLAYERS WITHOUT MAIN LINE:
+When a player only has alternate markets (no standard line),
+use the player's L5 average as the anchor:
+
+- Line > L5 Avg -> DEMON (Red)
+- Line < L5 Avg -> GOBLIN (Green)
+- Line == L5 Avg -> STANDARD (Gray)
+
 ALL bets (over AND under) are classified this way.
 This logic OVERRIDES any is_demon/is_goblin flags from the Odds API.
 """
@@ -32,23 +40,45 @@ def _normalize_name(name: str) -> str:
     return normalized
 
 
-def classify_props_by_anchor(props: List[Dict]) -> List[Dict]:
+def classify_props_by_anchor(props: List[Dict], player_stats: Dict[str, Dict] = None) -> List[Dict]:
     """
     Apply anchor-based classification to all props.
     
     For each player/stat combination:
-    1. Find the Standard Line (is_alternate_market=False)
-    2. Compare all alternates to this standard
-    3. Set is_demon/is_goblin based on comparison
+    1. Find the Standard Line (is_alternate_market=False) - this is the ANCHOR
+    2. If no standard line exists, use L5 average as the fallback anchor
+    3. Compare all lines to the anchor
+    4. Set is_demon/is_goblin based on comparison
     
     Args:
         props: List of prop dictionaries
+        player_stats: Optional dict mapping "player_name|STAT" -> {"l5_avg": X, "season_avg": Y}
+                     Used as fallback anchor when no main line exists
         
     Returns:
         Props list with updated tier classifications
     """
     if not props:
         return props
+    
+    # Build player_stats lookup from props if not provided
+    if player_stats is None:
+        player_stats = {}
+        for prop in props:
+            player_name = prop.get("player_name", "")
+            stat_type = prop.get("stat_type_extracted") or prop.get("market", "").replace("player_", "").replace("_alternate", "")
+            stat_key = stat_type.upper() if stat_type else "UNKNOWN"
+            key = f"{_normalize_name(player_name)}|{stat_key}"
+            
+            # Extract L5 avg from prop if available
+            l5_avg = prop.get("l5_avg")
+            season_avg = prop.get("season_avg")
+            
+            if key not in player_stats and (l5_avg or season_avg):
+                player_stats[key] = {
+                    "l5_avg": l5_avg,
+                    "season_avg": season_avg
+                }
     
     # Group props by player + stat type
     groups = defaultdict(list)
@@ -66,25 +96,46 @@ def classify_props_by_anchor(props: List[Dict]) -> List[Dict]:
     
     # Process each group
     classified_props = []
+    l5_fallback_count = 0
+    no_anchor_count = 0
     
     for key, group_props in groups.items():
-        # Find the standard line (anchor)
+        # Find the standard line (anchor) - non-alternate market
         standard_lines = [p for p in group_props if not p.get("is_alternate_market", True)]
         
-        if not standard_lines:
-            # No standard line found - use lowest line as proxy anchor
-            # Sort by line value
-            sorted_props = sorted(group_props, key=lambda x: x.get("line", 0) or 0)
-            if sorted_props:
-                anchor_line = sorted_props[0].get("line")
-                logger.debug(f"[ANCHOR] No standard line for {key}, using lowest: {anchor_line}")
-            else:
-                anchor_line = None
-        else:
-            # Use the standard line as anchor
-            # If multiple standards (Over/Under), use the Over line
+        anchor_line = None
+        anchor_source = None
+        
+        if standard_lines:
+            # Use the standard line as anchor (prefer Over direction)
             over_standards = [p for p in standard_lines if p.get("direction", "").lower() == "over"]
             anchor_line = (over_standards[0] if over_standards else standard_lines[0]).get("line")
+            anchor_source = "main_line"
+            logger.debug(f"[ANCHOR] {key}: main_line = {anchor_line}")
+        else:
+            # FALLBACK: No standard line - use L5 average as anchor
+            stats = player_stats.get(key, {})
+            l5_avg = stats.get("l5_avg")
+            
+            if l5_avg and l5_avg > 0:
+                anchor_line = l5_avg
+                anchor_source = "l5_avg"
+                l5_fallback_count += 1
+                logger.debug(f"[ANCHOR] {key}: no main line, using L5 avg = {anchor_line}")
+            else:
+                # No L5 avg available - try season average
+                season_avg = stats.get("season_avg")
+                if season_avg and season_avg > 0:
+                    anchor_line = season_avg
+                    anchor_source = "season_avg"
+                    l5_fallback_count += 1
+                    logger.debug(f"[ANCHOR] {key}: no main line or L5, using season avg = {anchor_line}")
+                else:
+                    # No anchor available at all
+                    anchor_line = None
+                    anchor_source = "none"
+                    no_anchor_count += 1
+                    logger.debug(f"[ANCHOR] {key}: NO ANCHOR AVAILABLE")
         
         # Classify each prop relative to anchor
         for prop in group_props:
@@ -92,42 +143,47 @@ def classify_props_by_anchor(props: List[Dict]) -> List[Dict]:
             is_alternate = prop.get("is_alternate_market", False)
             
             if anchor_line is None or prop_line is None:
-                # No anchor - keep as standard
+                # No anchor - keep as standard (unclassified)
                 prop["is_demon"] = False
                 prop["is_goblin"] = False
                 prop["tier_label"] = "STANDARD"
                 prop["tier_source"] = "no_anchor"
                 prop["anchor_line"] = None
-            elif not is_alternate:
-                # This IS the standard line
+                prop["anchor_source"] = "none"
+            elif not is_alternate and anchor_source == "main_line":
+                # This IS the standard line (main line anchor)
                 prop["is_demon"] = False
                 prop["is_goblin"] = False
                 prop["tier_label"] = "STANDARD"
-                prop["tier_source"] = "anchor"
+                prop["tier_source"] = "is_main_line"
                 prop["anchor_line"] = anchor_line
+                prop["anchor_source"] = anchor_source
             elif prop_line > anchor_line:
-                # Alternate ABOVE standard = DEMON
+                # Line ABOVE anchor = DEMON (harder to hit)
                 prop["is_demon"] = True
                 prop["is_goblin"] = False
                 prop["tier_label"] = "DEMON"
-                prop["tier_source"] = "anchor_classification"
+                prop["tier_source"] = f"above_{anchor_source}"
                 prop["anchor_line"] = anchor_line
+                prop["anchor_source"] = anchor_source
                 prop["diff_from_anchor"] = round(((prop_line - anchor_line) / anchor_line) * 100, 1) if anchor_line > 0 else 0
             elif prop_line < anchor_line:
-                # Alternate BELOW standard = GOBLIN
+                # Line BELOW anchor = GOBLIN (easier to hit)
                 prop["is_demon"] = False
                 prop["is_goblin"] = True
                 prop["tier_label"] = "GOBLIN"
-                prop["tier_source"] = "anchor_classification"
+                prop["tier_source"] = f"below_{anchor_source}"
                 prop["anchor_line"] = anchor_line
+                prop["anchor_source"] = anchor_source
                 prop["diff_from_anchor"] = round(((prop_line - anchor_line) / anchor_line) * 100, 1) if anchor_line > 0 else 0
             else:
-                # Equal to anchor
+                # Equal to anchor = STANDARD
                 prop["is_demon"] = False
                 prop["is_goblin"] = False
                 prop["tier_label"] = "STANDARD"
-                prop["tier_source"] = "anchor_equal"
+                prop["tier_source"] = f"equal_{anchor_source}"
                 prop["anchor_line"] = anchor_line
+                prop["anchor_source"] = anchor_source
             
             classified_props.append(prop)
     
@@ -137,6 +193,10 @@ def classify_props_by_anchor(props: List[Dict]) -> List[Dict]:
     standards = len(classified_props) - demons - goblins
     
     logger.info(f"[ANCHOR_CLASSIFY] {len(classified_props)} props: {demons} demons, {goblins} goblins, {standards} standard")
+    if l5_fallback_count > 0:
+        logger.info(f"[ANCHOR_CLASSIFY] Used L5/season avg as fallback anchor for {l5_fallback_count} player/stat groups")
+    if no_anchor_count > 0:
+        logger.warning(f"[ANCHOR_CLASSIFY] {no_anchor_count} player/stat groups had NO anchor available")
     
     return classified_props
 
