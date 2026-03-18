@@ -1148,6 +1148,22 @@ class PicksGetterService:
         all_player_best_picks.sort(key=lambda x: x["combined_score"], reverse=True)
         
         final_picks = all_player_best_picks[:TARGET_PICKS]
+        
+        # STEP 3: Enrich with photos from master hub
+        for pick in final_picks:
+            player_name = pick.get("player_name")
+            if not pick.get("photo_url") and player_name:
+                hub_player = await self.master_hub.find_one(
+                    {"display_name": player_name},
+                    {"_id": 0, "photo_url": 1, "team": 1, "position": 1}
+                )
+                if hub_player:
+                    pick["photo_url"] = hub_player.get("photo_url")
+                    if not pick.get("team"):
+                        pick["team"] = hub_player.get("team")
+                    if not pick.get("position"):
+                        pick["position"] = hub_player.get("position")
+        
         unique_players = len(set(p["player_name"] for p in final_picks))
         
         logger.info(f"[SAFE_HAVEN v3] Generated {len(final_picks)} picks from {unique_players} unique players")
