@@ -51,6 +51,7 @@ Build a sports betting analytics application (PickVision AI) that provides:
 - [x] BDL Advanced Stats (PIE, Net Rating)
 - [x] Daily sync scheduler at 4 AM EST (8 steps)
 - [x] Intel Search deduplication fix
+- [x] L5/L10 stats consistency fix - all calculation functions now sort game logs by date (Dec 2025)
 
 ### Context Badges
 - Live from BDL injuries: `deep_water` (injury)
