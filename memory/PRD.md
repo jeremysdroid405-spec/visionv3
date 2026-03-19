@@ -18,11 +18,31 @@ PropVision is a sports analytics platform for NBA player props, providing data-d
    - Pre-calculated averages (no game values)
    - ~550 active players
 
+### Probability Score System (NEW - 2026-03-19)
+
+**Comprehensive Pick Ranking** - Picks are now sorted by `probability_score`:
+
+```
+probability_score = base_hit_rate + dvp_modifier + badge_modifier + line_modifier
+```
+
+**Components:**
+- **Base Hit Rate**: L10 × 0.6 + L5 × 0.4
+- **DvP Modifier**: -8% to +8% based on opponent defensive rank
+  - Elite Defense (1-5): -8%
+  - Poor Defense (26-30): +8%
+- **Badge Modifier**: -5% to +5% per badge
+  - Positive: home_cookin (+5%), revenge (+4%), locked_in (+4%)
+  - Negative: gassed (-5%), jet_lag (-4%), distraction (-3%)
+- **Line Modifier**: Based on gap between line and L5 average
+
+**Files:**
+- `/app/backend/services/probability_score_service.py` - Scoring logic
+- `/app/backend/services/picks_getter_service.py` - Uses prob_score in War Zone, Safe Haven, Front Lines
+
 ### Hit Rate Calculation (CRITICAL FIX - 2026-03-19)
 
-**Problem Solved:** Hit rates were showing 100% even when clearly wrong (e.g., Zion averaging 20.2 PTS showing 100% hit rate over 25.5 line).
-
-**Root Cause:** The system had L5/L10 **averages** but not the individual **game values** (`l10_values`). Without game values, hit rates cannot be calculated per betting line.
+**Problem Solved:** Hit rates were showing 100% even when clearly wrong.
 
 **Solution:** 
 1. Fetch BDL game logs via `/stats` endpoint

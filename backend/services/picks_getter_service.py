@@ -694,13 +694,15 @@ class PicksGetterService:
         """
         Get the War Zone - HIGH-RISK/HIGH-REWARD demon picks.
         
-        WAR ZONE LOGIC:
+        WAR ZONE LOGIC (Enhanced with Probability Scoring):
         1. L10 Hit Rate >= 50% (minimum consistency threshold)
-        2. Highest payout = highest demon line with 50%+ hit rate
-        3. One pick per player (their best payout opportunity)
+        2. Probability score factors in: Hit Rate + DvP Matchup + Badges + Line Value
+        3. One pick per player (their highest probability opportunity)
         
-        Returns top 10 demon picks sorted by payout potential.
+        Returns top 10 demon picks sorted by PROBABILITY SCORE.
         """
+        from services.probability_score_service import ProbabilityScoreService
+        prob_service = ProbabilityScoreService(self.db)
         
         # Get all players that have demon props
         players = await self.cached_board.find(
@@ -795,15 +797,18 @@ class PicksGetterService:
                     "minutes_since_start": game_status.get("minutes_since_start"),
                 }
                 
-                # Keep only the highest payout pick for each player
+                # Enrich with probability score (DvP + Badges + Line value)
+                pick = await prob_service.enrich_pick_with_probability(pick)
+                
+                # Keep only the highest PROBABILITY SCORE pick for each player
                 if player_name not in player_best_picks:
                     player_best_picks[player_name] = pick
-                elif payout_score > player_best_picks[player_name]["payout_score"]:
+                elif pick.get("probability_score", 0) > player_best_picks[player_name].get("probability_score", 0):
                     player_best_picks[player_name] = pick
         
-        # Convert to list and sort by payout (highest demon line first)
+        # Convert to list and sort by PROBABILITY SCORE (highest first)
         war_zone_picks = list(player_best_picks.values())
-        war_zone_picks.sort(key=lambda x: x.get("payout_score", 0), reverse=True)
+        war_zone_picks.sort(key=lambda x: x.get("probability_score", 0), reverse=True)
         
         filter_stats["final_picks"] = len(war_zone_picks)
         
@@ -833,8 +838,9 @@ class PicksGetterService:
         # Log top picks
         for i, pick in enumerate(final_picks[:5], 1):
             status_tag = " [LOCKED]" if pick.get("is_locked") else ""
+            prob_score = pick.get('probability_score', 0)
             logger.info(f"[WAR_ZONE] #{i} {pick['player_name']} {pick['stat_type']} @ {pick['line']} | "
-                       f"L10: {pick['l10_hit_rate']:.0f}% | Payout: {pick['payout_score']}{status_tag}")
+                       f"L10: {pick['l10_hit_rate']:.0f}% | Prob: {prob_score:.1f}%{status_tag}")
         
         # SSOT: Enrich ALL picks with photos from master hub
         await self._enrich_picks_with_photos(final_picks)
@@ -846,7 +852,7 @@ class PicksGetterService:
             "locked_picks": locked_count,
             "waiting_list_count": len(active_picks) - min(len(active_picks), TARGET_PICKS),
             "filter_stats": filter_stats,
-            "filters_applied": ["l10_hit_rate_50pct", "highest_payout", "one_per_player", "game_status"]
+            "filters_applied": ["l10_hit_rate_50pct", "probability_score", "one_per_player", "game_status"]
         }
     
     def _get_season_avg(self, baseline_stats: Dict, stat_key: str) -> Optional[float]:
@@ -1076,16 +1082,17 @@ class PicksGetterService:
         """
         Get the Safe Haven - HIGH HIT RATE picks (80%+) for maximum safety.
         
-        SAFE HAVEN LOGIC v4.0 - VALUE FOCUSED:
+        SAFE HAVEN LOGIC v5.0 - PROBABILITY FOCUSED:
         1. Get ONE best pick per player (maximize variety)
         2. L10 Hit Rate >= 80% (Safe Haven tier)
         3. Include BOTH demons and goblins that meet criteria
-        4. Sort by VALUE: hit_rate × line (higher line = higher payout)
+        4. Sort by PROBABILITY SCORE: hit_rate + DvP + badges + line_value
         5. Target: 10 UNIQUE players
         
-        At same hit rate, prefer higher lines (e.g., 10.5 over 8.5)
-        because they pay more on PrizePicks.
+        Probability score factors in matchups and badges for true hit probability.
         """
+        from services.probability_score_service import ProbabilityScoreService
+        prob_service = ProbabilityScoreService(self.db)
         
         MIN_HIT_RATE = 80  # Safe Haven = 80%+ hit rate
         TARGET_PICKS = 10
@@ -1097,13 +1104,13 @@ class PicksGetterService:
         ).to_list(200)
         
         if not players:
-            logger.warning("[SAFE_HAVEN v3] No players with goblin props found")
+            logger.warning("[SAFE_HAVEN v5] No players with goblin props found")
             return {"picks": [], "picks_count": 0, "filters_applied": []}
         
         # Pre-fetch injured players
         injured_players = await self._get_injured_players()
         
-        logger.info(f"[SAFE_HAVEN v4] Processing {len(players)} players with demon/goblin props")
+        logger.info(f"[SAFE_HAVEN v5] Processing {len(players)} players with demon/goblin props")
         
         # STEP 1: For each player, find their SINGLE BEST pick (demon or goblin)
         all_player_best_picks = []
@@ -1211,7 +1218,7 @@ class PicksGetterService:
                 commence_time = prop.get("commence_time")
                 game_status = _get_game_status(commence_time)
 
-                player_picks.append({
+                pick = {
                     "player_name": player_name,
                     "team": player_doc.get("team"),
                     "opponent": player_doc.get("opponent"),
@@ -1245,21 +1252,26 @@ class PicksGetterService:
                     "game_status": game_status["status"],
                     "is_locked": game_status["is_locked"],
                     "minutes_since_start": game_status.get("minutes_since_start"),
-                })
+                }
+                
+                # Enrich with probability score (DvP + Badges + Line value)
+                pick = await prob_service.enrich_pick_with_probability(pick)
+                
+                player_picks.append(pick)
             
-            # Pick the SINGLE BEST pick for this player
+            # Pick the SINGLE BEST pick for this player by PROBABILITY SCORE
             if player_picks:
                 filter_stats["unique_players_with_picks"] += 1
-                player_picks.sort(key=lambda x: x["combined_score"], reverse=True)
+                player_picks.sort(key=lambda x: x.get("probability_score", 0), reverse=True)
                 all_player_best_picks.append(player_picks[0])  # Only take the best one
         
         # STEP 2: Separate active picks (upcoming games) from locked picks (in progress)
         active_picks = [p for p in all_player_best_picks if not p.get("is_locked")]
         locked_picks = [p for p in all_player_best_picks if p.get("is_locked")]
         
-        # Sort both lists by combined_score
-        active_picks.sort(key=lambda x: x["combined_score"], reverse=True)
-        locked_picks.sort(key=lambda x: x["combined_score"], reverse=True)
+        # Sort both lists by PROBABILITY SCORE
+        active_picks.sort(key=lambda x: x.get("probability_score", 0), reverse=True)
+        locked_picks.sort(key=lambda x: x.get("probability_score", 0), reverse=True)
         
         # Fill the board: prioritize active picks, then add locked picks if needed
         final_picks = []
@@ -1281,9 +1293,16 @@ class PicksGetterService:
         active_count = sum(1 for p in final_picks if not p.get("is_locked"))
         locked_count = sum(1 for p in final_picks if p.get("is_locked"))
         
-        logger.info(f"[SAFE_HAVEN v4] Generated {len(final_picks)} picks ({demons_in_final} demons, {goblins_in_final} goblins)")
-        logger.info(f"[SAFE_HAVEN v4] Game status: {active_count} active, {locked_count} locked")
-        logger.info(f"[SAFE_HAVEN v4] Filter stats: {filter_stats}")
+        logger.info(f"[SAFE_HAVEN v5] Generated {len(final_picks)} picks ({demons_in_final} demons, {goblins_in_final} goblins)")
+        logger.info(f"[SAFE_HAVEN v5] Game status: {active_count} active, {locked_count} locked")
+        logger.info(f"[SAFE_HAVEN v5] Filter stats: {filter_stats}")
+        
+        # Log top picks with probability scores
+        for i, pick in enumerate(final_picks[:5], 1):
+            status_tag = " [LOCKED]" if pick.get("is_locked") else ""
+            prob_score = pick.get('probability_score', 0)
+            logger.info(f"[SAFE_HAVEN] #{i} {pick['player_name']} {pick['stat_type']} @ {pick['line']} | "
+                       f"L10: {pick['l10_hit_rate']:.0f}% | Prob: {prob_score:.1f}%{status_tag}")
         
         return {
             "picks": final_picks,
@@ -1293,7 +1312,7 @@ class PicksGetterService:
             "locked_picks": locked_count,
             "waiting_list_count": len(active_picks) - min(len(active_picks), TARGET_PICKS),
             "filter_stats": filter_stats,
-            "filters_applied": ["l10_hit_rate_80pct", "value_sort", "one_per_player", "demons_and_goblins", "game_status"]
+            "filters_applied": ["l10_hit_rate_80pct", "probability_score", "one_per_player", "demons_and_goblins", "game_status"]
         }
     
     def _normalize_stat_key(self, stat_type: str) -> str:
@@ -1429,12 +1448,15 @@ class PicksGetterService:
         """
         Get THE FRONT LINES - Medium tier picks with solid probability.
         
-        FRONT LINES LOGIC:
+        FRONT LINES LOGIC v2.0 - PROBABILITY FOCUSED:
         1. L10 Hit Rate >= 65% (solid but not Safe Haven tier)
         2. Line can't be the LOWEST available (not the safest floor play)
         3. Must NOT qualify for Safe Haven (H10 >= 80%)
         4. Can be DEMON or GOBLIN picks
+        5. Sort by PROBABILITY SCORE: hit_rate + DvP + badges + line_value
         """
+        from services.probability_score_service import ProbabilityScoreService
+        prob_service = ProbabilityScoreService(self.db)
         
         # Get all players that have demon OR goblin props
         players = await self.cached_board.find(
@@ -1599,15 +1621,19 @@ class PicksGetterService:
                         "minutes_since_start": game_status.get("minutes_since_start"),
                     }
                     
+                    # Enrich with probability score (DvP + Badges + Line value)
+                    pick = await prob_service.enrich_pick_with_probability(pick)
+                    
                     front_line_picks.append(pick)
                     pick_type = "DEMON" if is_demon else "GOBLIN"
                     status_tag = " [LOCKED]" if game_status["is_locked"] else ""
-                    logger.info(f"[FRONT_LINES] ✓ {player_name} {stat_type} @ {line} | {pick_type} | L10: {l10_hit_rate:.0f}% | Value: {value_score:.2f}{status_tag}")
+                    prob_score = pick.get('probability_score', 0)
+                    logger.info(f"[FRONT_LINES] ✓ {player_name} {stat_type} @ {line} | {pick_type} | L10: {l10_hit_rate:.0f}% | Prob: {prob_score:.1f}%{status_tag}")
         
-        # Sort by VALUE SCORE (hit rate × payout), not just hit rate
-        front_line_picks.sort(key=lambda x: x.get("value_score", 0), reverse=True)
+        # Sort by PROBABILITY SCORE (hit rate + DvP + badges + line value)
+        front_line_picks.sort(key=lambda x: x.get("probability_score", 0), reverse=True)
         
-        # Limit to 1 pick per player (take the highest value score prop)
+        # Limit to 1 pick per player (take the highest probability score prop)
         seen_players = set()
         unique_picks = []
         for pick in front_line_picks:
@@ -1621,7 +1647,7 @@ class PicksGetterService:
         active_picks = [p for p in unique_picks if not p.get("is_locked")]
         locked_picks = [p for p in unique_picks if p.get("is_locked")]
         
-        # Both lists already sorted by value_score from the unique_picks sort above
+        # Both lists already sorted by probability_score from the unique_picks sort above
         
         # Fill the board: prioritize active picks, then add locked picks if needed
         final_picks = []
@@ -1650,7 +1676,7 @@ class PicksGetterService:
             "locked_picks": locked_count,
             "waiting_list_count": len(active_picks) - min(len(active_picks), TARGET_PICKS),
             "filter_stats": filter_stats,
-            "filters_applied": ["l10_hit_rate_65pct", "not_lowest_line", "exclude_safe_haven", "one_per_player", "demons_and_goblins", "game_status"]
+            "filters_applied": ["l10_hit_rate_65pct", "not_lowest_line", "exclude_safe_haven", "one_per_player", "probability_score", "game_status"]
         }
     
     def _calculate_l25_hit_rate(self, game_logs: List[Dict], stat_type: str, line: float) -> Dict:

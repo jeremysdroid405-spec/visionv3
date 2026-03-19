@@ -551,6 +551,21 @@ const UniversalPlayerCard = memo(({
           )}
         </div>
         
+        {/* DvP Matchup Badge - shows when opponent matchup is favorable or poor */}
+        {player.dvp_label && player.dvp_rank && (
+          <div className="flex items-center gap-1.5 text-[9px] mt-1">
+            <span className="text-zinc-500">vs {player.opponent}</span>
+            <span className={`px-1.5 py-0.5 rounded ${
+              player.dvp_rank >= 21 ? 'bg-green-500/20 text-green-400' : 
+              player.dvp_rank <= 10 ? 'bg-red-500/20 text-red-400' : 
+              'bg-zinc-700/50 text-zinc-400'
+            }`}>
+              {player.dvp_rank >= 26 ? '🔥' : player.dvp_rank >= 21 ? '✓' : player.dvp_rank <= 5 ? '⚠️' : ''} 
+              {player.dvp_label}
+            </span>
+          </div>
+        )}
+        
         {/* Stats Row - L5 / L10 / Avg */}
         <div className="flex items-center justify-between bg-zinc-800/50 rounded px-2 py-1.5 text-[10px]">
           <div className="text-center flex-1">
