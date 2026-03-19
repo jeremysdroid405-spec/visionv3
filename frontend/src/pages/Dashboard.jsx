@@ -396,7 +396,6 @@ const WarZoneSection = memo(({ picks, onPickClick, onQuickAdd, isLoading }) => {
           <div key={`warzone-${pick.player_name}-${pick.stat_type}-${idx}`} className="swipe-card">
             <UniversalPlayerCard 
               player={pick} 
-              rank={idx + 1} 
               onClick={() => onPickClick(pick)} 
               onQuickAdd={onQuickAdd}
               showStats={true}
@@ -454,7 +453,6 @@ const SafeHavenSection = memo(({ picks, onPickClick, onQuickAdd, isLoading }) =>
           <div key={`safehaven-${pick.player_name}-${pick.stat_type}-${idx}`} className="swipe-card">
             <UniversalPlayerCard 
               player={pick} 
-              rank={idx + 1} 
               onClick={() => onPickClick(pick)} 
               onQuickAdd={onQuickAdd}
               showStats={true}
@@ -512,7 +510,6 @@ const FrontLinesSection = memo(({ picks, onPickClick, onQuickAdd, isLoading }) =
           <div key={`frontlines-${pick.player_name}-${pick.stat_type}-${pick.photo_url || 'nophoto'}-${idx}`} className="swipe-card">
             <UniversalPlayerCard 
               player={pick} 
-              rank={idx + 1} 
               onClick={() => onPickClick(pick)} 
               onQuickAdd={onQuickAdd}
               showStats={true}
@@ -589,7 +586,6 @@ const ExpandedParlayView = memo(({ parlay, sectionType, onClose, onPickClick }) 
             <UniversalPlayerCard 
               key={`expanded-${pick.player_name}-${pick.stat_type}-${idx}`}
               player={pick}
-              rank={idx + 1}
               mode="compact"
               onClick={() => onPickClick(pick)}
               showStats={false}
@@ -613,7 +609,7 @@ const ExpandedParlayView = memo(({ parlay, sectionType, onClose, onPickClick }) 
 
 // ==================== POPULAR BETS SECTION ====================
 
-const PopularBetCard = memo(({ bet, rank, onClick }) => {
+const PopularBetCard = memo(({ bet, onClick }) => {
   const isDemon = bet.is_demon || bet.pick_type === 'demon';
   const isGoblin = bet.is_goblin || bet.pick_type === 'goblin';
   
@@ -643,7 +639,6 @@ const PopularBetCard = memo(({ bet, rank, onClick }) => {
           <div className="text-xs sm:text-sm font-medium text-white truncate">{bet.player_name}</div>
           <div className="text-[10px] sm:text-xs text-zinc-500">{bet.stat_type} {bet.line}</div>
         </div>
-        <Badge className="bg-zinc-800 text-zinc-300 border-none text-[10px] sm:text-xs">#{rank}</Badge>
       </div>
       
       {/* L5 Avg / L10 Hit Rate / Season Avg */}
@@ -738,7 +733,7 @@ const MostPopularBetsSection = memo(({ bets, status, onBetClick, allLocked, next
       <div className={`overflow-x-auto pb-2 -mx-3 px-3 ${allLocked ? 'blur-sm pointer-events-none' : ''}`}>
         <div className="flex gap-3" style={{ minWidth: 'max-content' }}>
           {bets.map((bet, idx) => (
-            <PopularBetCard key={`top-pick-${bet.player_name}-${bet.stat_type}-${idx}`} bet={bet} rank={idx + 1} onClick={() => onBetClick(bet)} />
+            <PopularBetCard key={`top-pick-${bet.player_name}-${bet.stat_type}-${idx}`} bet={bet} onClick={() => onBetClick(bet)} />
           ))}
         </div>
       </div>
