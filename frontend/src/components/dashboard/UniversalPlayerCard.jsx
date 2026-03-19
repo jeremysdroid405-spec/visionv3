@@ -35,7 +35,7 @@
 import React, { memo, useCallback, useState } from 'react';
 import { 
   Target, Shield, ChevronRight, Plus, ChevronDown,
-  Crosshair, TrendingUp, HeartPulse
+  Crosshair, TrendingUp, HeartPulse, Lock
 } from 'lucide-react';
 import { Badge } from '../ui/badge';
 
@@ -148,6 +148,28 @@ const getHitRateColor = (rate) => {
   if (rate >= 40) return 'text-orange-400';
   return 'text-red-400';
 };
+
+/**
+ * Locked Overlay for games in progress
+ * Shows when is_locked is true (game has started)
+ */
+const LockedOverlay = memo(({ isLocked, gameStatus, minutesSinceStart }) => {
+  if (!isLocked) return null;
+  
+  const statusText = gameStatus === 'completed' ? 'Game Completed' : 
+    minutesSinceStart ? `${minutesSinceStart} min in` : 'Game Underway';
+  
+  return (
+    <div className="absolute inset-0 bg-black/70 backdrop-blur-[2px] z-10 flex flex-col items-center justify-center rounded-lg">
+      <div className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-500/30 rounded-full border border-amber-500/50">
+        <Lock className="w-3.5 h-3.5 text-amber-400" />
+        <span className="text-amber-400 font-bold text-xs">LOCKED</span>
+      </div>
+      <span className="text-zinc-400 text-[10px] mt-1.5">{statusText}</span>
+    </div>
+  );
+});
+LockedOverlay.displayName = 'LockedOverlay';
 
 /**
  * Determine the highest tier from all props
@@ -452,7 +474,11 @@ const UniversalPlayerCard = memo(({
     // Tier info
     is_demon, is_goblin, tier_label,
     // Injury flag
-    is_injured
+    is_injured,
+    // Game status (for locking)
+    is_locked,
+    game_status,
+    minutes_since_start
   } = player;
   
   const displayName = player_name || name;
@@ -504,10 +530,13 @@ const UniversalPlayerCard = memo(({
     
     return (
       <div 
-        className={`flex items-center gap-3 p-3 rounded-lg border ${theme.border} bg-gradient-to-br ${theme.bg} cursor-pointer hover:scale-[1.01] transition-all ${theme.glow}`}
+        className={`relative flex items-center gap-3 p-3 rounded-lg border ${theme.border} bg-gradient-to-br ${theme.bg} cursor-pointer hover:scale-[1.01] transition-all ${theme.glow} ${is_locked ? 'opacity-80' : ''}`}
         onClick={handleCardClick}
         data-testid={`player-compact-${playerSlug}`}
       >
+        {/* Locked Overlay */}
+        <LockedOverlay isLocked={is_locked} gameStatus={game_status} minutesSinceStart={minutes_since_start} />
+        
         <div className={`relative ring-2 ${theme.ring} rounded-full`}>
           <PlayerHeadshot photoUrl={displayPhoto} playerName={displayName} team={team} size="md" />
           {rank && (
@@ -546,7 +575,7 @@ const UniversalPlayerCard = memo(({
           </div>
         </div>
         
-        {onQuickAdd && (
+        {onQuickAdd && !is_locked && (
           <button
             onClick={(e) => { e.stopPropagation(); handleQuickAdd(player); }}
             className="flex-shrink-0 w-8 h-8 rounded-full bg-cyan-500/20 border border-cyan-500/40 flex items-center justify-center text-cyan-400 hover:bg-cyan-500/30 transition-all"
@@ -668,5 +697,5 @@ const UniversalPlayerCard = memo(({
 UniversalPlayerCard.displayName = 'UniversalPlayerCard';
 
 // Export everything
-export { UniversalPlayerCard, PlayerHeadshot, VaultStatsRow, PropRow, TIER_THEMES, getHighestTier };
+export { UniversalPlayerCard, PlayerHeadshot, VaultStatsRow, PropRow, LockedOverlay, TIER_THEMES, getHighestTier };
 export default UniversalPlayerCard;

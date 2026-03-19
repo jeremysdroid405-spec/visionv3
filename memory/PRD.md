@@ -90,6 +90,13 @@ Build a sports betting analytics application (PickVision AI) that provides:
   - Backend image proxy (`/api/proxy/nba-headshot/{nba_id}`) now receives correct IDs
   - Frontend `UniversalPlayerCard.jsx` constructs absolute URLs correctly
 - [x] **Auth Bypass Removed** (March 19, 2026): Removed temporary `DEV_BYPASS_AUTH` from `ProtectedRoute.js`
+- [x] **Live Game Locking & Backfilling** (March 19, 2026):
+  - All three boards (Safe Haven, Front Lines, War Zone) now track game status
+  - `_get_game_status()` helper determines if game is upcoming/in_progress/completed
+  - Picks from live/completed games are marked as "LOCKED"
+  - Boards prioritize active (upcoming) picks, backfilling with locked picks if needed
+  - Frontend shows amber "LOCKED" badge overlay with game status text
+  - API responses include `active_picks`, `locked_picks`, and `waiting_list_count`
 
 ### Context Badges
 | Badge | Source | Status |

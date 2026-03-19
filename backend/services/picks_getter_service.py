@@ -761,11 +761,17 @@ class PicksGetterService:
                 # The "payout" score is the demon line itself - higher line = higher payout
                 payout_score = demon_line
                 
+                # Get game status for locking logic
+                commence_time = prop.get("commence_time")
+                game_status = _get_game_status(commence_time)
+                
                 pick = {
                     "player_name": player_name,
                     "team": player_doc.get("team"),
                     "opponent": player_doc.get("opponent"),
                     "game_id": player_doc.get("game_id"),
+                    "home_team": prop.get("home_team"),
+                    "away_team": prop.get("away_team"),
                     "stat_type": stat_type,
                     "line": demon_line,
                     "anchor_line": anchor_line,
@@ -782,7 +788,12 @@ class PicksGetterService:
                     "season_avg": hit_rates.get("season", {}).get("avg") if isinstance(hit_rates.get("season"), dict) else None,
                     "payout_score": payout_score,
                     "war_zone_qualified": True,
-                    "is_alternate_market": prop.get("is_alternate_market", True)
+                    "is_alternate_market": prop.get("is_alternate_market", True),
+                    # Game status fields for locking
+                    "commence_time": commence_time,
+                    "game_status": game_status["status"],
+                    "is_locked": game_status["is_locked"],
+                    "minutes_since_start": game_status.get("minutes_since_start"),
                 }
                 
                 # Keep only the highest payout pick for each player
@@ -797,21 +808,46 @@ class PicksGetterService:
         
         filter_stats["final_picks"] = len(war_zone_picks)
         
-        logger.info(f"[WAR_ZONE] Found {len(war_zone_picks)} picks | Filters: {filter_stats}")
+        TARGET_PICKS = 10
+        
+        # Separate active picks (upcoming games) from locked picks (in progress)
+        active_picks = [p for p in war_zone_picks if not p.get("is_locked")]
+        locked_picks = [p for p in war_zone_picks if p.get("is_locked")]
+        
+        # Fill the board: prioritize active picks, then add locked picks if needed
+        final_picks = []
+        
+        # Add active picks first (up to TARGET_PICKS)
+        final_picks.extend(active_picks[:TARGET_PICKS])
+        
+        # If we don't have enough active picks, backfill with locked picks
+        if len(final_picks) < TARGET_PICKS:
+            remaining_slots = TARGET_PICKS - len(final_picks)
+            final_picks.extend(locked_picks[:remaining_slots])
+        
+        active_count = sum(1 for p in final_picks if not p.get("is_locked"))
+        locked_count = sum(1 for p in final_picks if p.get("is_locked"))
+        
+        logger.info(f"[WAR_ZONE] Found {len(war_zone_picks)} total picks | Filters: {filter_stats}")
+        logger.info(f"[WAR_ZONE] Game status: {active_count} active, {locked_count} locked | Waiting list: {len(active_picks) - min(len(active_picks), TARGET_PICKS)}")
         
         # Log top picks
-        for i, pick in enumerate(war_zone_picks[:5], 1):
+        for i, pick in enumerate(final_picks[:5], 1):
+            status_tag = " [LOCKED]" if pick.get("is_locked") else ""
             logger.info(f"[WAR_ZONE] #{i} {pick['player_name']} {pick['stat_type']} @ {pick['line']} | "
-                       f"L10: {pick['l10_hit_rate']:.0f}% | Payout: {pick['payout_score']}")
+                       f"L10: {pick['l10_hit_rate']:.0f}% | Payout: {pick['payout_score']}{status_tag}")
         
         # SSOT: Enrich ALL picks with photos from master hub
-        await self._enrich_picks_with_photos(war_zone_picks)
+        await self._enrich_picks_with_photos(final_picks)
         
         return {
-            "picks": war_zone_picks[:10],  # Return top 10 picks
-            "picks_count": len(war_zone_picks),
+            "picks": final_picks,
+            "picks_count": len(final_picks),
+            "active_picks": active_count,
+            "locked_picks": locked_count,
+            "waiting_list_count": len(active_picks) - min(len(active_picks), TARGET_PICKS),
             "filter_stats": filter_stats,
-            "filters_applied": ["l10_hit_rate_50pct", "highest_payout", "one_per_player"]
+            "filters_applied": ["l10_hit_rate_50pct", "highest_payout", "one_per_player", "game_status"]
         }
     
     def _get_season_avg(self, baseline_stats: Dict, stat_key: str) -> Optional[float]:
@@ -1499,11 +1535,17 @@ class PicksGetterService:
                     else:
                         filter_stats["final_goblins"] += 1
                     
+                    # Get game status for locking logic
+                    commence_time = prop.get("commence_time")
+                    game_status = _get_game_status(commence_time)
+                    
                     pick = {
                         "player_name": player_name,
                         "team": player_doc.get("team"),
                         "opponent": player_doc.get("opponent"),
                         "game_id": player_doc.get("game_id"),
+                        "home_team": prop.get("home_team"),
+                        "away_team": prop.get("away_team"),
                         "stat_type": stat_type,
                         "line": line,
                         "anchor_line": prop.get("anchor_line"),
@@ -1521,17 +1563,23 @@ class PicksGetterService:
                         "lowest_line": lowest_line,
                         "payout_multiplier": round(payout_multiplier, 2),
                         "value_score": round(value_score, 3),
-                        "is_alternate_market": prop.get("is_alternate_market", True)
+                        "is_alternate_market": prop.get("is_alternate_market", True),
+                        # Game status fields for locking
+                        "commence_time": commence_time,
+                        "game_status": game_status["status"],
+                        "is_locked": game_status["is_locked"],
+                        "minutes_since_start": game_status.get("minutes_since_start"),
                     }
                     
                     front_line_picks.append(pick)
                     pick_type = "DEMON" if is_demon else "GOBLIN"
-                    logger.info(f"[FRONT_LINES] ✓ {player_name} {stat_type} @ {line} | {pick_type} | L10: {l10_hit_rate:.0f}% | Value: {value_score:.2f}")
+                    status_tag = " [LOCKED]" if game_status["is_locked"] else ""
+                    logger.info(f"[FRONT_LINES] ✓ {player_name} {stat_type} @ {line} | {pick_type} | L10: {l10_hit_rate:.0f}% | Value: {value_score:.2f}{status_tag}")
         
         # Sort by VALUE SCORE (hit rate × payout), not just hit rate
         front_line_picks.sort(key=lambda x: x.get("value_score", 0), reverse=True)
         
-        # Limit to 1 pick per player (take the highest hit rate prop)
+        # Limit to 1 pick per player (take the highest value score prop)
         seen_players = set()
         unique_picks = []
         for pick in front_line_picks:
@@ -1539,16 +1587,42 @@ class PicksGetterService:
                 seen_players.add(pick["player_name"])
                 unique_picks.append(pick)
         
+        TARGET_PICKS = 10
+        
+        # Separate active picks (upcoming games) from locked picks (in progress)
+        active_picks = [p for p in unique_picks if not p.get("is_locked")]
+        locked_picks = [p for p in unique_picks if p.get("is_locked")]
+        
+        # Both lists already sorted by value_score from the unique_picks sort above
+        
+        # Fill the board: prioritize active picks, then add locked picks if needed
+        final_picks = []
+        
+        # Add active picks first (up to TARGET_PICKS)
+        final_picks.extend(active_picks[:TARGET_PICKS])
+        
+        # If we don't have enough active picks, backfill with locked picks
+        if len(final_picks) < TARGET_PICKS:
+            remaining_slots = TARGET_PICKS - len(final_picks)
+            final_picks.extend(locked_picks[:remaining_slots])
+        
+        active_count = sum(1 for p in final_picks if not p.get("is_locked"))
+        locked_count = sum(1 for p in final_picks if p.get("is_locked"))
+        
         logger.info(f"[FRONT_LINES] Found {len(unique_picks)} unique player picks | Demons: {filter_stats['final_demons']} | Goblins: {filter_stats['final_goblins']}")
+        logger.info(f"[FRONT_LINES] Game status: {active_count} active, {locked_count} locked | Waiting list: {len(active_picks) - min(len(active_picks), TARGET_PICKS)}")
         
         # SSOT: Enrich ALL picks with photos from master hub
-        await self._enrich_picks_with_photos(unique_picks)
+        await self._enrich_picks_with_photos(final_picks)
         
         return {
-            "picks": unique_picks[:10],  # Return exactly 10 picks
-            "picks_count": len(unique_picks),
+            "picks": final_picks,
+            "picks_count": len(final_picks),
+            "active_picks": active_count,
+            "locked_picks": locked_count,
+            "waiting_list_count": len(active_picks) - min(len(active_picks), TARGET_PICKS),
             "filter_stats": filter_stats,
-            "filters_applied": ["l10_hit_rate_65pct", "not_lowest_line", "exclude_safe_haven", "one_per_player", "demons_and_goblins"]
+            "filters_applied": ["l10_hit_rate_65pct", "not_lowest_line", "exclude_safe_haven", "one_per_player", "demons_and_goblins", "game_status"]
         }
     
     def _calculate_l25_hit_rate(self, game_logs: List[Dict], stat_type: str, line: float) -> Dict:
