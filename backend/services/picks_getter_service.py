@@ -195,36 +195,62 @@ class PicksGetterService:
         This is the SINGLE SOURCE OF TRUTH for photo enrichment.
         All endpoints returning player data should use this method.
         
+        Lookup priority:
+        1. nba_id (most reliable - direct match to NBA CDN)
+        2. player_id (BDL ID)
+        3. player_name -> display_name (name matching)
+        
         Args:
             picks: List of pick dicts with 'player_name' field
             
         Returns:
-            Same list with photo_url, team, position enriched from master hub
+            Same list with photo_url, team, position, nba_id enriched from master hub
         """
         if not picks:
             return picks
         
         for pick in picks:
-            player_name = pick.get("player_name")
-            if not player_name:
-                continue
-            
             # Skip if already has photo
             if pick.get("photo_url"):
                 continue
             
-            # Look up in master hub by display_name
-            hub_player = await self.master_hub.find_one(
-                {"display_name": player_name},
-                {"_id": 0, "photo_url": 1, "headshot_url": 1, "team": 1, "position": 1}
-            )
+            hub_player = None
             
+            # PRIORITY 1: Look up by nba_id (most reliable)
+            nba_id = pick.get("nba_id")
+            if nba_id:
+                hub_player = await self.master_hub.find_one(
+                    {"nba_id": nba_id},
+                    {"_id": 0, "photo_url": 1, "headshot_url": 1, "team": 1, "position": 1, "nba_id": 1}
+                )
+            
+            # PRIORITY 2: Look up by player_id
+            if not hub_player:
+                player_id = pick.get("player_id")
+                if player_id:
+                    hub_player = await self.master_hub.find_one(
+                        {"player_id": player_id},
+                        {"_id": 0, "photo_url": 1, "headshot_url": 1, "team": 1, "position": 1, "nba_id": 1}
+                    )
+            
+            # PRIORITY 3: Look up by player_name -> display_name
+            if not hub_player:
+                player_name = pick.get("player_name")
+                if player_name:
+                    hub_player = await self.master_hub.find_one(
+                        {"display_name": player_name},
+                        {"_id": 0, "photo_url": 1, "headshot_url": 1, "team": 1, "position": 1, "nba_id": 1}
+                    )
+            
+            # Enrich pick with hub data
             if hub_player:
                 pick["photo_url"] = hub_player.get("photo_url") or hub_player.get("headshot_url")
                 if not pick.get("team"):
                     pick["team"] = hub_player.get("team")
                 if not pick.get("position"):
                     pick["position"] = hub_player.get("position")
+                if not pick.get("nba_id"):
+                    pick["nba_id"] = hub_player.get("nba_id")
         
         return picks
     
