@@ -223,7 +223,7 @@ const PlayerHeadshot = memo(({ photoUrl, playerName, team, size = 'md' }) => {
   return (
     <div className={`${sizeClasses[size]} rounded-full overflow-hidden bg-zinc-800`}>
       <img 
-        src={photoUrl} 
+        src={fullPhotoUrl} 
         alt={playerName}
         className="w-full h-full object-cover"
         style={{ objectPosition: 'center 20%', transform: 'scale(1.3)' }}

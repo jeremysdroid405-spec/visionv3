@@ -84,6 +84,12 @@ Build a sports betting analytics application (PickVision AI) that provides:
   - Scrapes UFAs, RFAs, and Player Options
   - 260+ contract year players tracked
   - 24-hour cache to avoid excessive scraping
+- [x] **Player Photo System** (March 19, 2026):
+  - Backend image proxy (`/api/proxy/nba-headshot/{bdl_id}`) bypasses NBA CDN CORS restrictions
+  - Photos synced to `nba_master_hub_2026` collection from NBA CDN
+  - Centralized photo enrichment in `picks_getter_service.py` for all endpoints
+  - Frontend `UniversalPlayerCard.jsx` correctly constructs absolute URLs for proxied images
+- [x] **Auth Bypass Removed** (March 19, 2026): Removed temporary `DEV_BYPASS_AUTH` from `ProtectedRoute.js`
 
 ### Context Badges
 | Badge | Source | Status |
@@ -100,6 +106,7 @@ Build a sports betting analytics application (PickVision AI) that provides:
 | `deep_water` | bdl_injuries + context_engine | ✅ Live |
 
 ### API Endpoints (New)
+- `GET /api/proxy/nba-headshot/{bdl_id}` - Proxy for NBA CDN player headshots (bypasses CORS)
 - `POST /api/v3/master-hub/sync-contracts` - Sync contract data from Spotrac
 - `GET /api/v3/master-hub/contract-year-players` - List all contract year players
 - `GET /api/v3/master-hub/contract/{player_name}` - Get contract info for a player
