@@ -134,23 +134,22 @@ const getHitRateColor = (rate) => {
 /**
  * Locked Overlay for games in progress
  * Shows when is_locked is true (game has started)
- * Color matches the section: green (Safe Haven/Goblin), red (War Zone/Demon), yellow (Front Lines)
+ * Color matches the SECTION: green (Safe Haven), yellow (Front Lines), red (War Zone)
  */
-const LockedOverlay = memo(({ isLocked, gameStatus, tierLabel }) => {
+const LockedOverlay = memo(({ isLocked, gameStatus, sectionColor }) => {
   if (!isLocked) return null;
   
   const statusText = gameStatus === 'completed' ? 'Game Completed' : 'Game Underway';
   
-  // Color based on tier/section
+  // Color based on section (passed from parent)
   const colorMap = {
-    GOBLIN: { bg: 'bg-green-500/30', border: 'border-green-500/50', text: 'text-green-400' },
-    DEMON: { bg: 'bg-red-500/30', border: 'border-red-500/50', text: 'text-red-400' },
-    WAR_ZONE: { bg: 'bg-red-500/30', border: 'border-red-500/50', text: 'text-red-400' },
-    FRONT_LINE: { bg: 'bg-yellow-500/30', border: 'border-yellow-500/50', text: 'text-yellow-400' },
-    SAFE_HAVEN: { bg: 'bg-green-500/30', border: 'border-green-500/50', text: 'text-green-400' },
+    green: { bg: 'bg-green-500/30', border: 'border-green-500/50', text: 'text-green-400' },
+    yellow: { bg: 'bg-yellow-500/30', border: 'border-yellow-500/50', text: 'text-yellow-400' },
+    red: { bg: 'bg-red-500/30', border: 'border-red-500/50', text: 'text-red-400' },
+    amber: { bg: 'bg-amber-500/30', border: 'border-amber-500/50', text: 'text-amber-400' },
   };
   
-  const colors = colorMap[tierLabel] || colorMap.GOBLIN;
+  const colors = colorMap[sectionColor] || colorMap.green;
   
   return (
     <div className="absolute inset-0 bg-black/70 backdrop-blur-[2px] z-10 flex flex-col items-center justify-center rounded-lg">
@@ -430,7 +429,8 @@ const UniversalPlayerCard = memo(({
   onClick,
   onQuickAdd,
   showStats = true,
-  showProps = true
+  showProps = true,
+  sectionColor = 'green'  // Section color for locked overlay
 }) => {
   const [isExpanded, setIsExpanded] = useState(mode === 'full');
   
@@ -525,7 +525,7 @@ const UniversalPlayerCard = memo(({
         data-testid={`player-compact-${playerSlug}`}
       >
         {/* Locked Overlay */}
-        <LockedOverlay isLocked={is_locked} gameStatus={game_status} tierLabel={tier_label} />
+        <LockedOverlay isLocked={is_locked} gameStatus={game_status} sectionColor={sectionColor} />
         
         {/* Header: Photo + Name + Icon */}
         <div className="flex items-center gap-2 mb-2">
