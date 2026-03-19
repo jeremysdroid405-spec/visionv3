@@ -152,16 +152,23 @@ OUTPUT: 3 tight sentences covering EDGE → MATCHUP → CONFLICTS"""
             chat = LlmChat(
                 api_key=self.api_key,
                 session_id=f"vision_{player_name}_{stat_type}",
-                system_message="You are an elite sports betting analyst specializing in player props. Deliver sharp, data-driven insights that cover the statistical edge, matchup context, and potential conflicts. Use only player last names. Be honest about both upside and risk."
+                system_message="You are an elite sports betting analyst specializing in player props. Deliver sharp, data-driven insights that cover the statistical edge, matchup context, and potential conflicts. Use only player last names. Be honest about both upside and risk. Do NOT use any markdown formatting like asterisks, bold, or italic."
             ).with_model("gemini", "gemini-3-flash-preview")
             
             # Send message and get response
             response = await chat.send_message(UserMessage(text=prompt))
             
             if response:
-                # Clean up response - no truncation
+                # Clean up response - remove markdown formatting
                 summary = response.strip()
-                return summary
+                # Remove asterisks (bold/italic markdown)
+                summary = summary.replace("**", "").replace("*", "")
+                # Remove other common markdown
+                summary = summary.replace("__", "").replace("_", " ")
+                # Clean up any double spaces
+                while "  " in summary:
+                    summary = summary.replace("  ", " ")
+                return summary.strip()
             
             return None
             
