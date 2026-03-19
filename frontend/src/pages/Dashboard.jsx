@@ -22,7 +22,7 @@ import { Card } from '../components/ui/card';
 import { 
   Search, X, LogOut, Crown, User, Radio, AlertTriangle, Activity, 
   ChevronRight, Eye, Zap, ChevronDown, Flame, ArrowLeft, Target,
-  TrendingUp, Newspaper, Clock, Crosshair, Lock
+  TrendingUp, Newspaper, Clock, Crosshair, Lock, Maximize2
 } from 'lucide-react';
 
 // Dashboard Components
@@ -944,6 +944,16 @@ const Dashboard = () => {
           </div>
           
           <div className="flex items-center gap-2">
+            {/* Fullscreen / Open in New Tab Button */}
+            <button 
+              onClick={() => window.open(window.location.href, '_blank')} 
+              className="flex items-center justify-center w-10 h-10 rounded-lg bg-zinc-800/50 hover:bg-zinc-700 border border-zinc-700/50 transition-all"
+              data-testid="fullscreen-btn"
+              title="Open in new tab"
+            >
+              <Maximize2 className="w-5 h-5 text-yellow-500" />
+            </button>
+            
             {/* Command Hub Button */}
             <button 
               onClick={() => setShowCommandPost(true)} 
