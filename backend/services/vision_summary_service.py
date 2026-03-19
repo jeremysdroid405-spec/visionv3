@@ -55,6 +55,10 @@ class VisionSummaryService:
             return None
         
         try:
+            # Extract last name (like on jersey)
+            name_parts = player_name.split()
+            last_name = name_parts[-1] if name_parts else player_name
+            
             # Build badge context
             badge_descriptions = []
             for badge in badges[:4]:  # Limit to 4 most relevant badges
@@ -65,29 +69,54 @@ class VisionSummaryService:
             
             badge_context = "\n".join(badge_descriptions) if badge_descriptions else "No special context"
             
-            # Determine pick type
-            pick_type = "DEMON (aggressive over)" if is_demon else "GOBLIN (safe floor)" if is_goblin else "balanced"
-            direction = "OVER" if line < season_avg else "UNDER" if line > season_avg else "AT"
+            # Determine pick direction based on line vs average
+            if is_goblin:
+                # Goblin picks are safe floors - we're betting OVER a low line
+                direction = "OVER"
+                pick_reasoning = f"This is a SAFE FLOOR play. The line of {line} is well below his average of {season_avg}."
+            elif is_demon:
+                # Demon picks are aggressive - betting player exceeds expectations
+                direction = "OVER"
+                pick_reasoning = f"This is an AGGRESSIVE play betting he exceeds {line} {stat_type}."
+            else:
+                # Determine based on line vs average
+                if season_avg and line < season_avg - 1:
+                    direction = "OVER"
+                    pick_reasoning = f"Line of {line} is below his {season_avg} average - taking the OVER."
+                elif season_avg and line > season_avg + 1:
+                    direction = "UNDER"
+                    pick_reasoning = f"Line of {line} is above his {season_avg} average - taking the UNDER."
+                else:
+                    direction = "OVER" if h10_rate and h10_rate >= 60 else "UNDER"
+                    pick_reasoning = f"Based on recent form, targeting {direction} {line} {stat_type}."
             
             # Build prompt
-            prompt = f"""You are a sports betting analyst explaining a pick in 2-3 short sentences. Be confident and insightful.
+            prompt = f"""You are a sharp sports betting analyst. Write a 2-sentence pick explanation.
 
-PICK: {player_name} {direction} {line} {stat_type}
-TYPE: {pick_type}
-SEASON AVG: {season_avg}
+PLAYER: {last_name}
+PICK: {direction} {line} {stat_type}
+SEASON AVG: {season_avg} {stat_type}
 L10 HIT RATE: {h10_rate}%
-OPPONENT: {opponent or 'Unknown'}
+OPPONENT: {opponent or 'TBD'}
+PICK TYPE: {pick_reasoning}
 
 CONTEXT BADGES:
 {badge_context}
 
-Write a brief, punchy explanation of why this is a smart pick. Focus on the most compelling badge/context. Use the player's first name. Don't start with "This pick" or "I recommend"."""
+RULES:
+- Use ONLY the player's LAST NAME (like on their jersey)
+- Clearly state the pick: "{last_name} {direction} {line} {stat_type}"
+- Reference the most compelling badge/context
+- Be confident and concise
+- Do NOT start with "This pick" or "I like"
+
+Write 2 punchy sentences explaining why {last_name} {direction} {line} {stat_type} is the play."""
 
             # Initialize Gemini chat
             chat = LlmChat(
                 api_key=self.api_key,
                 session_id=f"vision_{player_name}_{stat_type}",
-                system_message="You are a sharp sports betting analyst. Give brief, confident insights."
+                system_message="You are a sharp sports betting analyst. Give brief, confident insights using player last names only."
             ).with_model("gemini", "gemini-3-flash-preview")
             
             # Send message and get response
@@ -96,9 +125,9 @@ Write a brief, punchy explanation of why this is a smart pick. Focus on the most
             if response:
                 # Clean up response
                 summary = response.strip()
-                # Limit to ~200 chars if too long
-                if len(summary) > 250:
-                    summary = summary[:247] + "..."
+                # Limit to ~250 chars if too long
+                if len(summary) > 280:
+                    summary = summary[:277] + "..."
                 return summary
             
             return None
