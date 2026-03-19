@@ -31,6 +31,63 @@ from utils.player_lookup import get_player_by_id, get_player_by_name as shared_g
 logger = logging.getLogger(__name__)
 
 
+# ==================== GAME STATUS HELPER ====================
+def _get_game_status(commence_time_str: str) -> Dict[str, Any]:
+    """
+    Determine game status based on commence time.
+    
+    Returns:
+        {
+            "status": "upcoming" | "in_progress" | "completed",
+            "is_locked": bool,
+            "time_until_start": timedelta or None,
+            "minutes_since_start": int or None
+        }
+    """
+    if not commence_time_str:
+        return {"status": "unknown", "is_locked": False, "time_until_start": None, "minutes_since_start": None}
+    
+    try:
+        # Parse the commence time
+        if isinstance(commence_time_str, str):
+            commence_time = datetime.fromisoformat(commence_time_str.replace('Z', '+00:00'))
+        else:
+            commence_time = commence_time_str
+        
+        now = datetime.now(timezone.utc)
+        time_diff = commence_time - now
+        
+        # Game hasn't started yet
+        if time_diff.total_seconds() > 0:
+            return {
+                "status": "upcoming",
+                "is_locked": False,
+                "time_until_start": time_diff,
+                "minutes_since_start": None
+            }
+        
+        # Game has started - check if it's still in progress (NBA games ~2.5 hours)
+        minutes_since_start = abs(time_diff.total_seconds()) / 60
+        
+        if minutes_since_start < 180:  # Less than 3 hours = in progress
+            return {
+                "status": "in_progress",
+                "is_locked": True,
+                "time_until_start": None,
+                "minutes_since_start": int(minutes_since_start)
+            }
+        else:
+            return {
+                "status": "completed",
+                "is_locked": True,
+                "time_until_start": None,
+                "minutes_since_start": int(minutes_since_start)
+            }
+    except Exception as e:
+        logger.warning(f"Error parsing commence time '{commence_time_str}': {e}")
+        return {"status": "unknown", "is_locked": False, "time_until_start": None, "minutes_since_start": None}
+
+
 # ==================== DNP FILTER HELPER ====================
 def _filter_played_games(game_logs: List[Dict]) -> List[Dict]:
     """
@@ -1096,6 +1153,10 @@ class PicksGetterService:
                 else:
                     filter_stats["final_goblins"] += 1
 
+                # Get game status
+                commence_time = prop.get("commence_time")
+                game_status = _get_game_status(commence_time)
+
                 player_picks.append({
                     "player_name": player_name,
                     "team": player_doc.get("team"),
@@ -1123,6 +1184,11 @@ class PicksGetterService:
                     "safe_haven_qualified": True,
                     "position": player_doc.get("position"),
                     "is_injured": player_name.lower() in injured_players,
+                    # Game status fields
+                    "commence_time": commence_time,
+                    "game_status": game_status["status"],
+                    "is_locked": game_status["is_locked"],
+                    "minutes_since_start": game_status.get("minutes_since_start"),
                 })
             
             # Pick the SINGLE BEST pick for this player
@@ -1131,10 +1197,24 @@ class PicksGetterService:
                 player_picks.sort(key=lambda x: x["combined_score"], reverse=True)
                 all_player_best_picks.append(player_picks[0])  # Only take the best one
         
-        # STEP 2: Sort all picks by combined_score (value-based) and return top TARGET_PICKS
-        all_player_best_picks.sort(key=lambda x: x["combined_score"], reverse=True)
+        # STEP 2: Separate active picks (upcoming games) from locked picks (in progress)
+        active_picks = [p for p in all_player_best_picks if not p.get("is_locked")]
+        locked_picks = [p for p in all_player_best_picks if p.get("is_locked")]
         
-        final_picks = all_player_best_picks[:TARGET_PICKS]
+        # Sort both lists by combined_score
+        active_picks.sort(key=lambda x: x["combined_score"], reverse=True)
+        locked_picks.sort(key=lambda x: x["combined_score"], reverse=True)
+        
+        # Fill the board: prioritize active picks, then add locked picks if needed
+        final_picks = []
+        
+        # Add active picks first (up to TARGET_PICKS)
+        final_picks.extend(active_picks[:TARGET_PICKS])
+        
+        # If we don't have enough active picks, backfill with locked picks
+        if len(final_picks) < TARGET_PICKS:
+            remaining_slots = TARGET_PICKS - len(final_picks)
+            final_picks.extend(locked_picks[:remaining_slots])
         
         # Enrich with photos from master hub (SSOT for photos)
         await self._enrich_picks_with_photos(final_picks)
@@ -1142,16 +1222,22 @@ class PicksGetterService:
         unique_players = len(set(p["player_name"] for p in final_picks))
         demons_in_final = sum(1 for p in final_picks if p.get("is_demon"))
         goblins_in_final = sum(1 for p in final_picks if p.get("is_goblin"))
+        active_count = sum(1 for p in final_picks if not p.get("is_locked"))
+        locked_count = sum(1 for p in final_picks if p.get("is_locked"))
         
         logger.info(f"[SAFE_HAVEN v4] Generated {len(final_picks)} picks ({demons_in_final} demons, {goblins_in_final} goblins)")
+        logger.info(f"[SAFE_HAVEN v4] Game status: {active_count} active, {locked_count} locked")
         logger.info(f"[SAFE_HAVEN v4] Filter stats: {filter_stats}")
         
         return {
             "picks": final_picks,
             "picks_count": len(final_picks),
             "unique_players": unique_players,
+            "active_picks": active_count,
+            "locked_picks": locked_count,
+            "waiting_list_count": len(active_picks) - min(len(active_picks), TARGET_PICKS),
             "filter_stats": filter_stats,
-            "filters_applied": ["l10_hit_rate_80pct", "value_sort", "one_per_player", "demons_and_goblins"]
+            "filters_applied": ["l10_hit_rate_80pct", "value_sort", "one_per_player", "demons_and_goblins", "game_status"]
         }
     
     def _normalize_stat_key(self, stat_type: str) -> str:
