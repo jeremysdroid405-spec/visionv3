@@ -767,6 +767,9 @@ class DemonGoblinEngine:
         """
         PROXY: Cached board building delegated to CachedBoardBuilderService.
         """
+        # Ensure mapper is loaded first
+        await self._ensure_odds_mapper_loaded()
+        
         # Update the mapper reference in the service
         self.cached_board_builder_service.set_odds_mapper(self._odds_mapper)
         

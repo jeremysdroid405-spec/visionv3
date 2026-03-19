@@ -1,148 +1,58 @@
-# PickVision AI - Product Requirements Document
+# PropVision - Product Requirements Document
 
-## Original Problem Statement
-Build a sports betting analytics application (PickVision AI) that provides:
-1. **War Zone**: High-risk, high-reward "DEMON" picks using composite scoring
-2. **Safe Haven**: Conservative "GOBLIN" picks with high consistency
-3. **Most Popular Bets**: Volume-based popular bets (uses synthetic score due to API limitations)
-4. **Vision Intel Suite**: Context badges and advanced analytics
-5. **Parlay Builder**: AI-generated parlay combinations
+## Overview
+PropVision is a sports analytics platform for NBA player props, providing data-driven insights for betting decisions.
 
 ## Core Architecture
-- **Frontend**: React + TanStack Query + Tailwind CSS + Shadcn UI
-- **Backend**: FastAPI + MongoDB
-- **Data Sources**: 
-  - **BallDontLie API** (PRIMARY) - Official season averages, injuries, advanced stats
-  - The Odds API (via emergentintegrations) - Betting lines
-  - ESPN API - Breaking news
-  - **nba_api** (v1.11.4) - Career stats from NBA.com
-  - **Spotrac.com** (Web Scraping) - Contract data for pay_day badge
 
-## BDL API Endpoints Used
-| Endpoint | Purpose | Status |
-|----------|---------|--------|
-| `/season_averages` | Official season stats | ✅ Active |
-| `/stats` | Game logs for L5/L10 | ✅ Active |
-| `/players/active` | Player ID mapping | ✅ Active |
-| `/player_injuries` | Injury reports | ✅ Active |
-| `/stats/advanced` | PIE, Net Rating | ✅ Active |
-| `/lineups` | Starting lineups | ⏳ Pending (need game_id) |
+### Data Flow
+1. **BDL Sync** (`bdl_comprehensive_sync.py`) - Syncs ALL active NBA players (~548) to `nba_master_hub_2026`
+   - Uses GOAT tier batch API: `/season_averages/general` + `/stats`
+   - Runs daily at 5 AM and 8 AM EST
+   - ~14 seconds for full sync
 
-## Data Model
-- `dg_cached_board`: Player-centric documents with props arrays
-- `nba_master_hub_2026`: Master player data vault with:
-  - `bdl_raw_stats`: Raw official stats from BDL /season_averages
-  - `baseline_stats`: Transformed stats with season_avg (official), L5/L10 (calculated)
-  - `bdl_game_logs`: Individual game box scores
-  - `advanced_stats`: PIE, Net Rating
-- `bdl_player_mapping`: Name → BDL ID mappings (537 players)
-- `bdl_injuries`: Current injury reports
-- `nba_context_engine`: Context flags for badges
-- `nba_career_stats`: Cached career stats from nba_api (24h TTL)
-- `spotrac_contracts_cache`: Contract year players from Spotrac (24h TTL)
+2. **Odds API Mapper** (`odds_api_mapper.py`) - Maps player names to bdl_id
+   - Rebuilt from master hub on demand
+   - 548 mappings in memory
+   - Lookup: name → bdl_id → full player data
 
-## What's Implemented (March 2026)
+3. **Cached Board Builder** (`cached_board_builder_service.py`) - Builds props board
+   - Uses mapper for player lookups (not legacy name matching)
+   - Calculates hit rates from baseline_stats
+   - Stores in `dg_cached_board`
 
-### Completed Features
-- [x] War Zone with composite scoring
-- [x] Safe Haven (Goblin Vault) v2.0 - Optimized goblin selection:
-  - Groups props by player + stat type
-  - Selects "Optimal Goblin" - highest line with ≥80% hit rate (max profit while safe)
-  - Combined score balancing safety (60%) and multiplier potential (40%)
-  - Max 2 stat types per player for variety
-  - No duplicate player+stat combinations
-- [x] Most Popular Bets (synthetic popularity)
-- [x] Vision Intel Suite with 10 context badges
-- [x] Parlay Builder (The Gauntlet, The Shield, The Strike)
-- [x] BDL Comprehensive Sync - uses OFFICIAL season averages
-- [x] BDL Player ID Mapping (537 active players)
-- [x] BDL Injuries Sync (25 injuries tracked)
-- [x] BDL Advanced Stats (PIE, Net Rating)
-- [x] Daily sync scheduler at 4 AM EST (10 steps):
-  1. ESPN injuries
-  2. BDL comprehensive sync
-  3. BDL injuries
-  4. Advanced stats (PIE, Net Rating)
-  5. DvP rankings
-  6. Full odds sync
-  7. Daily insights
-  8. Vision AI insights
-  9. Career stats from NBA.com (milestone badges)
-  10. Contract data from Spotrac (pay_day badges)
-- [x] Intel Search deduplication fix
-- [x] L5/L10 stats consistency fix - all calculation functions now sort game logs by date
-- [x] Team/Opponent display fix - shows player's actual team (from master hub) and correct opponent
-- [x] Injury data display - Combined ESPN + BDL injury sources
-- [x] Gassed badge enhanced - Now checks for back-to-back AND heavy minutes (38+)
-- [x] **BDL API Game Log Fix**: Increased limit to 100 games, date sorting, DNP filtering
-- [x] **Tank01 Complete Purge**: All Tank01 references removed
+4. **Tiers** - War Zone (demons), Safe Haven (goblins), Gauntlet (all)
 
-### March 2026 Updates
-- [x] **Anchor-Based Odds Classification**: Demon/Goblin classification now uses PrizePicks main line as anchor, with L5 average fallback
-- [x] **Live Career Milestones**: Integrated `nba_api` for real-time career stats from NBA.com (service: `/app/backend/services/nba_career_service.py`)
-- [x] **Spotrac Contract Scraper**: Automated `pay_day` badge with live contract data from Spotrac.com (service: `/app/backend/services/spotrac_contract_service.py`)
-  - Scrapes UFAs, RFAs, and Player Options
-  - 260+ contract year players tracked
-  - 24-hour cache to avoid excessive scraping
-- [x] **Player Photo System** (March 19, 2026):
-  - **ROOT CAUSE FIXED**: Photo URLs were using BDL API IDs, but NBA CDN requires NBA.com player IDs
-  - Used `nba_api` library to map all 1,499 players to correct NBA.com IDs
-  - Backend image proxy (`/api/proxy/nba-headshot/{nba_id}`) now receives correct IDs
-  - Frontend `UniversalPlayerCard.jsx` constructs absolute URLs correctly
-- [x] **Auth Bypass Removed** (March 19, 2026): Removed temporary `DEV_BYPASS_AUTH` from `ProtectedRoute.js`
-- [x] **Live Game Locking & Backfilling** (March 19, 2026):
-  - All three boards (Safe Haven, Front Lines, War Zone) now track game status
-  - `_get_game_status()` helper determines if game is upcoming/in_progress/completed
-  - Picks from live/completed games are marked as "LOCKED"
-  - Boards prioritize active (upcoming) picks, backfilling with locked picks if needed
-  - Frontend shows amber "LOCKED" badge overlay with game status text
-  - API responses include `active_picks`, `locked_picks`, and `waiting_list_count`
+### Database Schema (MongoDB)
+- `nba_master_hub_2026` - Player data with `bdl_id` as unique key
+- `odds_api_mapping_master` - Name → bdl_id mappings
+- `dg_cached_board` - Built board with props and hit rates
 
-### Context Badges
-| Badge | Source | Status |
-|-------|--------|--------|
-| `locked_in` | Game logs (L5 PPG > Season + 5) | ✅ Live |
-| `milestone` | nba_api career stats | ✅ Live |
-| `gassed` | Game logs (back-to-back, 38+ min) | ✅ Live |
-| `home_cookin` | Game logs (home vs away splits) | ✅ Live |
-| `jet_lag` | nba_context_engine | ✅ Live |
-| `legal_noise` | nba_context_engine | ✅ Live |
-| `distraction` | Static data (context_data.py) | ⚠️ Static |
-| `revenge` | nba_context_engine | ✅ Live |
-| `pay_day` | Spotrac scraper | ✅ Live |
-| `deep_water` | bdl_injuries + context_engine | ✅ Live |
+### Authentication
+- **Master Admin**: `admin@propvision.ai` / `PropVision2026!` (local JWT)
+- **Regular Users**: Supabase auth
 
-### API Endpoints (New)
-- `GET /api/proxy/nba-headshot/{bdl_id}` - Proxy for NBA CDN player headshots (bypasses CORS)
-- `POST /api/v3/master-hub/sync-contracts` - Sync contract data from Spotrac
-- `GET /api/v3/master-hub/contract-year-players` - List all contract year players
-- `GET /api/v3/master-hub/contract/{player_name}` - Get contract info for a player
-- `POST /api/v3/admin/sync-career-stats` - Sync career stats from nba_api
+## Completed Features ✅
+- [x] GOAT tier BDL batch sync (2026-03-19)
+- [x] Odds API Mapper with bdl_id keys (2026-03-19)
+- [x] War Zone hit rate calculation (2026-03-19)
+- [x] Dual auth system (JWT + Supabase)
+- [x] Dashboard scroll position restoration
+- [x] Locked picks UI (blur + countdown)
+- [x] Mobile responsiveness
+- [x] Second daily sync at 5 AM EST
 
-## Prioritized Backlog
+## In Progress
+- [ ] None
 
-### P1 - High Priority
-- [x] Schedule daily career stats sync (cron job) - Added to 4 AM EST daily sync
-- [x] Schedule daily contract data sync - Added to 4 AM EST daily sync
+## Pending Issues
+- [ ] P1: News ticker slow/empty
+- [ ] P2: 7 unmatched players (name variations)
+- [ ] P3: Update title to "PropVision"
+- [ ] P3: Remove deprecated components
 
-### P2 - Medium Priority  
-- [ ] Automate `distraction` badge with live trade rumor source
-- [ ] Delete deprecated UI components (PickCard, PlayerCard, TacticalPlayerCard)
-- [ ] Remove unused route `/api/v3/cached-player/{player_name}`
-- [ ] Clean up static data in career_milestones.py (now using live nba_api)
-
-### P3 - Future
-- [ ] Add "Last Updated" timestamp to dashboard
-- [ ] Add tooltips for context badges
-- [ ] Show War Zone composite score breakdown
-- [ ] Implement Stripe payments
-- [ ] Add "Copy Parlay" feature
-- [ ] Google/Apple OAuth authentication
-
-## Technical Notes
-- **Stats Source**: BDL `/season_averages` for official stats (DO NOT calculate)
-- **Player IDs**: Always use BDL ID for lookups (faster than name search)
-- **Game Logs**: BDL API returns games in ASCENDING order. Always sort by date descending.
-- **Career Stats**: Uses `nba_api` with 0.6s delay between calls to avoid rate limits. Cached 24h.
-- **Contract Data**: Scraped from Spotrac.com. Cached 24h. ~260 contract year players.
-- **DB_NAME**: Application uses `pick_vision` database (not `nba_props`).
+## Backlog
+- [ ] Google/Apple OAuth
+- [ ] Stripe payments
+- [ ] Copy Parlay feature
+- [ ] Automate distraction/deep_water badges

@@ -29,12 +29,10 @@ def set_master_hub_deps(db, hub_functions: dict):
 @router.get("/player/{player_id}")
 async def get_player_intel(player_id: str):
     """
-    THE VALET FUNCTION - Fetch player intel from Master Hub.
-    
-    This is the ONLY way to access player data from NBA_MASTER_HUB_2026.
+    Fetch player intel from Master Hub by bdl_id.
     
     Args:
-        player_id: Player ID (bdl_id, nba_id, or display_name)
+        player_id: Player's bdl_id (integer) - STRICTLY NUMBER BASED
         
     Returns:
         Complete player object with all fields
@@ -42,13 +40,23 @@ async def get_player_intel(player_id: str):
     if _hub_functions is None:
         raise HTTPException(status_code=500, detail="Master Hub not initialized")
     
-    player = await _hub_functions["fetchPlayerIntel"](player_id)
+    # Try as bdl_id first (number)
+    try:
+        bdl_id = int(player_id)
+        player = await _hub_functions["fetchPlayerIntel"](bdl_id)
+        if player:
+            return player
+    except (ValueError, TypeError):
+        pass
+    
+    # Fall back to name lookup
+    player = await _hub_functions["fetchPlayerIntelByName"](player_id)
     if not player:
         raise HTTPException(status_code=404, detail=f"Player not found: {player_id}")
     return player
 
 
-@router.get("/player/name/{display_name}")
+@router.get("/player/name/{display_name:path}")
 async def get_player_by_name(display_name: str):
     """Fetch player by display name."""
     if _hub_functions is None:
@@ -108,44 +116,39 @@ async def start_hub_scheduler():
 @router.post("/sync-bdl-all")
 async def trigger_bdl_full_sync():
     """
-    Trigger comprehensive BDL sync for ALL active players.
+    Trigger comprehensive BDL sync for ALL active NBA players (~530 players).
     
-    This pulls COMPLETE data from all BDL endpoints:
-    - /players: Profile metadata (height, weight, college, draft info)
-    - /season_averages: Full season stats (pts, reb, ast, fg_pct, fg3_pct, etc.)
-    - /stats: Last 15 game logs with full box scores
+    Uses GOAT tier BATCH API calls for maximum efficiency:
+    1. Fetches all active players from /players/active
+    2. BATCH call to /season_averages/general for official season stats
+    3. BATCH call to /stats for game logs (L5/L10 calculation)
     
-    WARNING: This syncs 500+ players and may take several minutes.
-    For faster sync, use /sync-bdl-prizepicks instead.
+    This ensures ALL players have fresh stats in nba_master_hub_2026,
+    not just those with props today. Should complete in ~15-20 seconds.
     """
     if _db is None:
         raise HTTPException(status_code=500, detail="Database not initialized")
     
     from services.bdl_comprehensive_sync import get_bdl_sync_service
     service = get_bdl_sync_service(_db)
-    result = await service.sync_active_players()
+    result = await service.sync_all_active_players()
     return result
 
 
 @router.post("/sync-bdl-prizepicks")
 async def trigger_bdl_prizepicks_sync():
     """
-    Sync BDL data for players currently on the PrizePicks board.
+    DEPRECATED - Use /sync-bdl-all instead.
     
-    More efficient than full sync - only syncs players with active lines.
-    Pulls complete data including:
-    - Player profile (height, weight, college, draft info)
-    - Season averages (all stats: pts, reb, ast, fg_pct, fg3_pct, ft_pct, etc.)
-    - Last 15 game logs with full box scores
-    
-    Data is stored EXACTLY as received from BDL - no field renaming.
+    This endpoint is kept for backwards compatibility but now calls
+    sync_all_active_players() which syncs ALL active NBA players.
     """
     if _db is None:
         raise HTTPException(status_code=500, detail="Database not initialized")
     
     from services.bdl_comprehensive_sync import get_bdl_sync_service
     service = get_bdl_sync_service(_db)
-    result = await service.sync_prizepicks_players()
+    result = await service.sync_all_active_players()
     return result
 
 

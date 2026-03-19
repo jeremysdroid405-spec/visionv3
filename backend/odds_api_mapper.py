@@ -84,7 +84,8 @@ class OddsApiMapper:
         """
         player_id = self.getPlayerIdFromOddsName(odds_api_name)
         if player_id:
-            return self._player_id_to_full_data.get(player_id)
+            # player_id can be int or str - always convert to str for lookup
+            return self._player_id_to_full_data.get(str(player_id))
         return None
     
     def getOddsNameFromPlayerId(self, player_id: str) -> Optional[str]:
@@ -124,12 +125,13 @@ class OddsApiMapper:
         
         for m in mappings:
             odds_name = m.get("odds_api_name", "")
-            player_id = m.get("player_id", "")
+            # Use bdl_id as primary, fall back to player_id for legacy
+            player_id = m.get("bdl_id") or m.get("player_id", "")
             
             if odds_name and player_id:
                 self._odds_name_to_player_id[odds_name.lower()] = player_id
-                self._player_id_to_odds_name[player_id] = odds_name
-                self._player_id_to_full_data[player_id] = m
+                self._player_id_to_odds_name[str(player_id)] = odds_name
+                self._player_id_to_full_data[str(player_id)] = m
         
         self._is_loaded = True
         self._last_loaded = datetime.now(timezone.utc)
@@ -148,7 +150,7 @@ class OddsApiMapper:
         
         This creates a permanent static mapping by:
         1. Reading all players from nba_master_hub_2026
-        2. Extracting the odds_api_name field (already populated)
+        2. Using display_name as the odds_api_name (what Odds API returns)
         3. Storing in odds_api_mapping_master for fast lookups
         
         Should be run:
@@ -169,10 +171,10 @@ class OddsApiMapper:
         }
         
         try:
-            # Step A: Iterate through nba_master_hub_2026
+            # Step A: Iterate through nba_master_hub_2026 (all records have bdl_id)
             logger.info("[ODDS_MAPPER] Step A: Reading from nba_master_hub_2026...")
             
-            cursor = self.master_hub.find({}, {"_id": 0})
+            cursor = self.master_hub.find({"bdl_id": {"$exists": True}}, {"_id": 0})
             all_players = await cursor.to_list(length=2000)
             
             results["players_processed"] = len(all_players)
@@ -183,34 +185,34 @@ class OddsApiMapper:
             
             mapping_docs = []
             for player in all_players:
-                player_id = player.get("player_id")
-                odds_api_name = player.get("odds_api_name")
+                # Use bdl_id as primary identifier (strictly number-based)
+                bdl_id = player.get("bdl_id")
                 display_name = player.get("display_name")
                 
-                if not player_id:
+                if not bdl_id:
                     continue
                 
-                # Use odds_api_name if available, otherwise fall back to display_name
-                effective_odds_name = odds_api_name or display_name
+                # Use display_name as the odds_api_name (what the Odds API returns)
+                effective_odds_name = display_name
                 
                 if not effective_odds_name:
                     results["missing_odds_name"] += 1
-                    logger.warning(f"[ODDS_MAPPER] No odds_api_name for player_id: {player_id}")
+                    logger.warning(f"[ODDS_MAPPER] No display_name for bdl_id: {bdl_id}")
                     continue
                 
-                # Create mapping document with essential fields for fast lookup
+                # Create mapping document with bdl_id as primary key
                 mapping_doc = {
-                    "player_id": player_id,
+                    "bdl_id": bdl_id,
+                    "player_id": str(bdl_id),  # Legacy compatibility
                     "odds_api_name": effective_odds_name,
                     "odds_api_name_lower": effective_odds_name.lower(),
                     "display_name": display_name,
+                    "normalized_name": player.get("normalized_name"),
                     "team": player.get("team"),
-                    "team_name": player.get("team_name"),
-                    "position": player.get("position"),
+                    "team_full_name": player.get("team_full_name"),
+                    "position": player.get("profile", {}).get("position"),
                     "headshot_url": player.get("headshot_url"),
-                    "espn_id": player.get("espn_id"),
-                    "nba_id": player.get("nba_id"),
-                    "tank01_id": player.get("tank01_id"),
+                    "baseline_stats": player.get("baseline_stats"),
                     "created_at": rebuild_start.isoformat(),
                     "source": "nba_master_hub_2026"
                 }
@@ -220,14 +222,14 @@ class OddsApiMapper:
             # Step C: Write to odds_api_mapping_master
             logger.info("[ODDS_MAPPER] Step C: Writing to odds_api_mapping_master...")
             
-            # Clear existing mappings
-            await self.mapping_collection.delete_many({})
+            # Clear existing mappings and drop old indexes
+            await self.mapping_collection.drop()
             
             if mapping_docs:
                 await self.mapping_collection.insert_many(mapping_docs)
                 
-                # Create indexes for fast lookups
-                await self.mapping_collection.create_index("player_id", unique=True)
+                # Create indexes for fast lookups (use bdl_id as primary)
+                await self.mapping_collection.create_index("bdl_id", unique=True)
                 await self.mapping_collection.create_index("odds_api_name_lower")
                 await self.mapping_collection.create_index("odds_api_name")
             

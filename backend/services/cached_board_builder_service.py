@@ -319,9 +319,10 @@ class CachedBoardBuilderService:
         stats_map = {}
         
         # Load from nba_master_hub_2026 (SSOT for player stats)
+        # All records have bdl_id - this is the primary key
         hub_cursor = self.db.nba_master_hub_2026.find(
-            {"baseline_stats": {"$exists": True}},
-            {"_id": 0, "display_name": 1, "baseline_stats": 1, "team": 1}
+            {"bdl_id": {"$exists": True}},
+            {"_id": 0, "bdl_id": 1, "display_name": 1, "baseline_stats": 1, "team": 1}
         )
         
         async for player in hub_cursor:
@@ -329,6 +330,7 @@ class CachedBoardBuilderService:
             normalized = sanitize_player_name(player_name).lower()
             if normalized and player.get("baseline_stats"):
                 stats_map[normalized] = {
+                    "bdl_id": player.get("bdl_id"),
                     "player_name": player_name,
                     "baseline_stats": player.get("baseline_stats", {}),
                     "team": player.get("team")
@@ -512,22 +514,23 @@ class CachedBoardBuilderService:
         """Create player dict from legacy roster data"""
         player_stats = stats_map.get(normalized_name, {})
         social = signals_map.get(player_name.lower(), {})
+        baseline_stats = player_stats.get("baseline_stats", {})
         
         return {
             "player_name": player_name,
-            "bdl_player_id": roster_player.get("bdl_player_id"),
+            "bdl_player_id": roster_player.get("bdl_player_id") or player_stats.get("bdl_id"),
             "nba_com_id": roster_player.get("nba_com_id"),
             "espn_id": roster_player.get("espn_id"),
-            "team": roster_player.get("team_abbreviation"),
+            "team": roster_player.get("team_abbreviation") or player_stats.get("team"),
             "team_name": roster_player.get("team_name"),
             "team_logo_url": roster_player.get("team_logo_url"),
             "photo_url": roster_player.get("photo_url"),
             "photo_source": roster_player.get("photo_source"),
             "position": roster_player.get("position"),
             "jersey_number": roster_player.get("jersey_number"),
-            "games_played": player_stats.get("games_played", 0),
-            # SSOT: Stats REMOVED - use Master Hub (PIPE 1) instead
-            # PURGED: l10_stats, l5_stats - redundant with master_hub
+            "games_played": baseline_stats.get("games_played") or player_stats.get("games_played", 0),
+            # CRITICAL: Include baseline_stats for hit rate calculation
+            "baseline_stats": baseline_stats,
             "volatility_flag": social.get("volatility_flag", False),
             "revenge_game": social.get("revenge_game", False),
             "injury_status": social.get("injury_status"),
@@ -541,8 +544,24 @@ class CachedBoardBuilderService:
     def _add_prop_to_player(self, player: Dict, prop: Dict) -> None:
         """Add prop to player with hit_rates calculated from baseline stats"""
         
-        # Calculate hit_rates from master hub baseline stats
-        stat_type = prop.get("market", "").replace("player_", "").replace("_alternate", "").upper()
+        # Get stat type - use extracted short form if available, otherwise derive from market
+        stat_type = prop.get("stat_type_extracted")
+        if not stat_type:
+            # Fallback: derive from market
+            market = prop.get("market", "")
+            stat_type = market.replace("player_", "").replace("_alternate", "").upper()
+            # Map common stat names to short form
+            stat_map = {
+                "POINTS": "PTS",
+                "REBOUNDS": "REB",
+                "ASSISTS": "AST",
+                "STEALS": "STL",
+                "BLOCKS": "BLK",
+                "THREES": "3PM",
+                "TURNOVERS": "TO",
+            }
+            stat_type = stat_map.get(stat_type, stat_type)
+        
         line = prop.get("line", 0)
         
         # Get baseline stats from master hub (stored in player during _create_matched_player)

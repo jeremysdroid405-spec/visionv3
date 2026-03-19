@@ -92,12 +92,12 @@ async def search_players(q: str = Query(..., min_length=1)) -> Dict[str, Any]:
 
 @router.get("/board")
 async def get_board() -> Dict[str, Any]:
-    """Get full board data"""
+    """Get full board data (alias for cached-props)"""
     if not engine:
         raise HTTPException(status_code=500, detail="Engine not initialized")
     
     try:
-        result = await engine.get_board()
+        result = await engine.get_cached_board()
         return result
     except Exception as e:
         logger.error(f"Error getting board: {e}")

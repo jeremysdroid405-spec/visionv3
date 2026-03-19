@@ -57,56 +57,68 @@ class NBAMasterHub:
     # ==================== THE VALET FUNCTION ====================
     # This is THE ONLY function allowed to read from the Master Hub
     
-    async def fetchPlayerIntel(self, player_id: str) -> Optional[Dict[str, Any]]:
+    async def fetchPlayerIntel(self, player_id) -> Optional[Dict[str, Any]]:
         """
-        THE MASTER VALET FUNCTION
+        THE MASTER VALET FUNCTION - STRICT BDL_ID BASED
         
         This is the ONLY function in the entire backend allowed to read 
         from NBA_MASTER_HUB_2026.
         
         Args:
-            player_id: Player's unique identifier (tank01_id, nba_id, or display_name)
+            player_id: Player's bdl_id (integer) - STRICTLY NUMBER BASED
             
         Returns:
-            Complete, clean player object with all fields:
-            - player_id
-            - display_name
-            - team
-            - position
-            - headshot_url
-            - stats: {season_avg, l10_games, fatigue_data}
+            Complete, clean player object with all fields
         """
-        # Try lookup by various ID formats
-        player = await self.hub.find_one({
-            "$or": [
-                {"player_id": player_id},
-                {"tank01_id": player_id},
-                {"nba_id": player_id},
-                {"display_name": {"$regex": f"^{player_id}$", "$options": "i"}}
-            ]
-        }, {"_id": 0})  # Exclude MongoDB _id
+        # Convert to int if string
+        try:
+            bdl_id = int(player_id)
+        except (ValueError, TypeError):
+            logger.warning(f"[MASTER HUB] Invalid bdl_id (must be number): {player_id}")
+            return None
+        
+        player = await self.hub.find_one({"bdl_id": bdl_id}, {"_id": 0})
         
         if not player:
-            logger.warning(f"[MASTER HUB] Player not found: {player_id}")
+            logger.warning(f"[MASTER HUB] Player not found by bdl_id: {bdl_id}")
             return None
             
         return player
     
-    async def fetchPlayerIntelByName(self, display_name: str) -> Optional[Dict[str, Any]]:
-        """Convenience wrapper for name-based lookup."""
-        return await self.fetchPlayerIntel(display_name)
+    async def fetchPlayerByName(self, display_name: str) -> Optional[Dict[str, Any]]:
+        """
+        Lookup player by display_name - returns bdl_id record.
+        Use this only when you don't have the bdl_id yet.
+        """
+        player = await self.hub.find_one({
+            "display_name": {"$regex": f"^{display_name}$", "$options": "i"}
+        }, {"_id": 0})
+        
+        if not player:
+            # Try normalized name
+            from services.bdl_comprehensive_sync import _normalize_name
+            normalized = _normalize_name(display_name)
+            player = await self.hub.find_one({
+                "normalized_name": normalized
+            }, {"_id": 0})
+        
+        return player
     
-    async def fetchMultiplePlayersIntel(self, player_ids: List[str]) -> List[Dict[str, Any]]:
-        """Batch fetch multiple players."""
+    async def fetchPlayerIntelByName(self, display_name: str) -> Optional[Dict[str, Any]]:
+        """Lookup player by name - delegates to fetchPlayerByName."""
+        return await self.fetchPlayerByName(display_name)
+    
+    async def fetchMultiplePlayersIntel(self, bdl_ids: List[int]) -> List[Dict[str, Any]]:
+        """Batch fetch multiple players by bdl_id."""
         players = []
-        for pid in player_ids:
-            player = await self.fetchPlayerIntel(pid)
+        for bdl_id in bdl_ids:
+            player = await self.fetchPlayerIntel(bdl_id)
             if player:
                 players.append(player)
         return players
     
     async def searchPlayers(self, query: str, limit: int = 10) -> List[Dict[str, Any]]:
-        """Search players by name (uses fetchPlayerIntel internally)."""
+        """Search players by name."""
         cursor = self.hub.find(
             {"display_name": {"$regex": query, "$options": "i"}},
             {"_id": 0}
@@ -114,8 +126,8 @@ class NBAMasterHub:
         return await cursor.to_list(length=limit)
     
     async def getAllActivePlayers(self) -> List[Dict[str, Any]]:
-        """Get all active players (for sync operations only)."""
-        cursor = self.hub.find({"status": "active"}, {"_id": 0})
+        """Get all players with bdl_id (all records are active BDL players)."""
+        cursor = self.hub.find({"bdl_id": {"$exists": True}}, {"_id": 0})
         return await cursor.to_list(length=1000)
     
     # ==================== HUB STATISTICS ====================

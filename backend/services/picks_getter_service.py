@@ -735,12 +735,10 @@ class PicksGetterService:
                 if not demon_line:
                     continue
                 
-                # Get hit rate from nested structure
+                # Get hit rate from flat structure
                 hit_rates = prop.get("hit_rates", {})
-                l10_data = hit_rates.get("l10", {})
-                l10_hit_rate = l10_data.get("hit_rate", 0) if isinstance(l10_data, dict) else 0
-                l5_data = hit_rates.get("l5", {})
-                l5_hit_rate = l5_data.get("hit_rate", 0) if isinstance(l5_data, dict) else 0
+                l10_hit_rate = hit_rates.get("l10_rate") or 0
+                l5_hit_rate = hit_rates.get("l5_rate") or 0
                 
                 # Convert to percentage if stored as decimal
                 if l10_hit_rate and l10_hit_rate <= 1:
@@ -784,9 +782,9 @@ class PicksGetterService:
                     "h10_rate": l10_hit_rate,  # Frontend expects h10_rate
                     "l10_hit_rate": l10_hit_rate,
                     "l5_hit_rate": l5_hit_rate,
-                    "l10_avg": l10_data.get("avg") if isinstance(l10_data, dict) else None,
-                    "l5_avg": l5_data.get("avg") if isinstance(l5_data, dict) else None,
-                    "season_avg": hit_rates.get("season", {}).get("avg") if isinstance(hit_rates.get("season"), dict) else None,
+                    "l10_avg": hit_rates.get("l10_avg"),
+                    "l5_avg": hit_rates.get("l5_avg"),
+                    "season_avg": hit_rates.get("season_avg"),
                     "payout_score": payout_score,
                     "war_zone_qualified": True,
                     "is_alternate_market": prop.get("is_alternate_market", True),

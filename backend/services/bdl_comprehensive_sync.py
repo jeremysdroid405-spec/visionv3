@@ -567,70 +567,289 @@ class BDLComprehensiveSyncService:
         
         return results
     
-    async def sync_prizepicks_players(self) -> Dict[str, Any]:
+    async def sync_all_active_players(self) -> Dict[str, Any]:
         """
-        Sync players on PrizePicks board using BATCH API calls.
-        Uses game logs only - calculates averages from them.
+        Sync ALL active NBA players to master hub using GOAT tier BATCH API calls.
+        
+        This ensures ALL players have fresh stats, not just those with props today.
+        
+        Flow:
+        1. Fetch all active players from BDL /players/active (~530 players)
+        2. BATCH call /season_averages/general for official season stats
+        3. BATCH call /stats for game logs (L5/L10 calculation)
+        4. Update nba_master_hub_2026 for all players
+        
+        This is the MASTER sync - runs daily to keep all player data fresh.
         """
         sync_start = datetime.now(timezone.utc)
-        logger.info("[BDL] Syncing players via BATCH game logs...")
+        logger.info("[BDL] === MASTER SYNC: All Active NBA Players ===")
         
-        # Get bdl_ids from master hub for players on the board
-        pipeline = [
-            {"$group": {"_id": "$player_name"}},
-            {"$lookup": {
-                "from": "nba_master_hub_2026",
-                "localField": "_id",
-                "foreignField": "display_name",
-                "as": "hub"
-            }},
-            {"$unwind": {"path": "$hub", "preserveNullAndEmptyArrays": True}},
-            {"$match": {"hub.bdl_id": {"$exists": True, "$ne": None}}},
-            {"$project": {"player_name": "$_id", "bdl_id": "$hub.bdl_id"}}
-        ]
+        # Step 1: Get all active players from BDL
+        logger.info("[BDL] Step 1: Fetching all active players from BDL...")
+        all_players = await self.fetch_all_players()
         
-        cursor = self.db.dg_cached_board.aggregate(pipeline)
-        players = [doc async for doc in cursor]
-        bdl_ids = [p["bdl_id"] for p in players]
+        # Filter to players with teams (truly active)
+        active_players = [p for p in all_players if p.get("team")]
+        bdl_ids = [p["id"] for p in active_players]
         
-        logger.info(f"[BDL] Found {len(bdl_ids)} players with bdl_id")
+        logger.info(f"[BDL] Found {len(bdl_ids)} active players with teams")
         
         if not bdl_ids:
             return {"success": 0, "failed": 0, "total": 0, "duration_seconds": 0}
         
-        # BATCH: Get all game logs (calculates season avg + L5/L10 from these)
-        logger.info(f"[BDL] Fetching game logs for {len(bdl_ids)} players...")
+        # Step 2: BATCH fetch season averages (GOAT tier - one call for all)
+        logger.info(f"[BDL] Step 2: BATCH fetching season averages for {len(bdl_ids)} players...")
+        season_avgs_map = await self._batch_fetch_season_averages(bdl_ids)
+        logger.info(f"[BDL] Got season averages for {len([k for k,v in season_avgs_map.items() if v])} players")
+        
+        # Step 3: BATCH fetch game logs for L5/L10
+        logger.info(f"[BDL] Step 3: BATCH fetching game logs for {len(bdl_ids)} players...")
         game_logs_map = await self._batch_fetch_game_logs(bdl_ids)
         logger.info(f"[BDL] Got game logs for {len([k for k,v in game_logs_map.items() if v])} players")
         
-        # Update master hub with calculated stats
+        # Step 4: Update master hub for ALL players
+        logger.info("[BDL] Step 4: Updating master hub...")
         success = 0
-        for player in players:
-            bdl_id = player["bdl_id"]
+        for player in active_players:
+            bdl_id = player["id"]
+            season_avg = season_avgs_map.get(bdl_id, {})
             game_logs = game_logs_map.get(bdl_id, [])
             
+            # Build display name
+            first_name = player.get("first_name", "")
+            last_name = player.get("last_name", "")
+            display_name = f"{first_name} {last_name}".strip()
+            team_data = player.get("team", {})
+            
+            # Merge official season averages with L5/L10 from game logs
+            baseline_stats = self._merge_season_avg_with_logs(season_avg, game_logs)
+            
+            update_doc = {
+                "bdl_id": bdl_id,
+                "display_name": display_name,
+                "normalized_name": _normalize_name(display_name),
+                "team": team_data.get("abbreviation", ""),
+                "team_full_name": team_data.get("full_name", ""),
+                "team_id": team_data.get("id"),
+                "profile": {
+                    "id": player.get("id"),
+                    "first_name": first_name,
+                    "last_name": last_name,
+                    "position": player.get("position"),
+                    "height": player.get("height"),
+                    "weight": player.get("weight"),
+                    "jersey_number": player.get("jersey_number"),
+                    "college": player.get("college"),
+                    "country": player.get("country"),
+                    "draft_year": player.get("draft_year"),
+                    "draft_round": player.get("draft_round"),
+                    "draft_number": player.get("draft_number"),
+                    "team": team_data
+                },
+                "baseline_stats": baseline_stats,
+                "last_bdl_sync": datetime.now(timezone.utc),
+                "season": CURRENT_SEASON
+            }
+            
+            # Store raw data for reference
+            if season_avg:
+                update_doc["bdl_raw_stats"] = season_avg
             if game_logs:
-                baseline_stats = self._calculate_baseline_from_logs(game_logs)
-                
+                update_doc["bdl_game_logs"] = game_logs[:15]
+            
+            try:
                 await self.master_hub.update_one(
                     {"bdl_id": bdl_id},
-                    {"$set": {
-                        "baseline_stats": baseline_stats,
-                        "bdl_game_logs": game_logs[:15],
-                        "last_bdl_sync": datetime.now(timezone.utc)
-                    }}
+                    {"$set": update_doc},
+                    upsert=True
                 )
                 success += 1
+            except Exception as e:
+                logger.error(f"[BDL] Error updating {display_name}: {e}")
         
         duration = round((datetime.now(timezone.utc) - sync_start).total_seconds(), 2)
-        logger.info(f"[BDL] Batch sync complete: {success}/{len(players)} in {duration}s")
+        logger.info(f"[BDL] === MASTER SYNC COMPLETE: {success}/{len(active_players)} players in {duration}s ===")
         
         return {
             "success": success,
-            "failed": len(players) - success,
-            "total": len(players),
-            "duration_seconds": duration
+            "failed": len(active_players) - success,
+            "total": len(active_players),
+            "duration_seconds": duration,
+            "sync_type": "all_active_players"
         }
+    
+    async def _batch_fetch_season_averages(self, bdl_ids: List[int]) -> Dict[int, Dict]:
+        """
+        GOAT tier batch endpoint for official season averages.
+        Uses /season_averages/general with player_ids[] array.
+        
+        Fetches in batches of 100 to handle pagination.
+        """
+        result = {pid: {} for pid in bdl_ids}
+        
+        # BDL has pagination, fetch in batches of 100
+        batch_size = 100
+        for i in range(0, len(bdl_ids), batch_size):
+            batch = bdl_ids[i:i+batch_size]
+            
+            # Build URL with player_ids
+            url = f"{BDL_BASE_URL}/season_averages/general?season={CURRENT_SEASON}&season_type=regular&type=base&per_page=100"
+            for pid in batch:
+                url += f"&player_ids[]={pid}"
+            
+            try:
+                async with httpx.AsyncClient(timeout=60.0) as client:
+                    response = await client.get(url, headers={"Authorization": BDL_API_KEY})
+                    
+                    if response.status_code == 200:
+                        data = response.json().get("data", [])
+                        
+                        for record in data:
+                            # Player ID is nested inside player object
+                            player = record.get("player", {})
+                            player_id = player.get("id") if isinstance(player, dict) else None
+                            stats = record.get("stats", {})
+                            
+                            if player_id and player_id in result:
+                                # Transform stats to expected format
+                                result[player_id] = {
+                                    "games_played": stats.get("gp"),
+                                    "pts": stats.get("pts"),
+                                    "reb": stats.get("reb"),
+                                    "ast": stats.get("ast"),
+                                    "stl": stats.get("stl"),
+                                    "blk": stats.get("blk"),
+                                    "turnover": stats.get("tov"),
+                                    "fg3m": stats.get("fg3m"),
+                                    "fgm": stats.get("fgm"),
+                                    "ftm": stats.get("ftm"),
+                                    "fg_pct": stats.get("fg_pct"),
+                                    "fg3_pct": stats.get("fg3_pct"),
+                                    "ft_pct": stats.get("ft_pct"),
+                                    "oreb": stats.get("oreb"),
+                                    "dreb": stats.get("dreb"),
+                                    "min": stats.get("min")
+                                }
+                    else:
+                        logger.error(f"[BDL] Season averages batch error: {response.status_code} - {response.text[:200]}")
+            except Exception as e:
+                logger.error(f"[BDL] Batch season_averages error: {e}")
+            
+            # Small delay between batches
+            if i + batch_size < len(bdl_ids):
+                await asyncio.sleep(0.2)
+        
+        return result
+    
+    def _merge_season_avg_with_logs(self, season_avg: Dict, game_logs: List[Dict]) -> Dict:
+        """
+        Merge official season averages with L5/L10 calculated from game logs.
+        
+        Season averages come from BDL /season_averages/general (official).
+        L5/L10 calculated from game logs.
+        """
+        if not season_avg and not game_logs:
+            return {}
+        
+        # Filter out DNP games
+        played_games = [g for g in game_logs if g.get("min") and g.get("min") != "00" and g.get("min") != "0"]
+        
+        stat_keys = {
+            "PTS": "pts",
+            "REB": "reb", 
+            "AST": "ast",
+            "STL": "stl",
+            "BLK": "blk",
+            "3PM": "fg3m",
+            "FGM": "fgm",
+            "FTM": "ftm",
+            "TO": "turnover",
+        }
+        
+        baseline = {}
+        
+        for our_key, bdl_key in stat_keys.items():
+            # Official season average from BDL
+            season_val = season_avg.get(bdl_key) if season_avg else None
+            if season_val is not None:
+                season_val = round(float(season_val), 1)
+            
+            # L5/L10 from game logs
+            l5_avg = None
+            l10_avg = None
+            l10_values = []
+            
+            if played_games:
+                values = [float(g.get(bdl_key, 0) or 0) for g in played_games]
+                l10 = values[:10]
+                l5 = values[:5]
+                l10_avg = round(sum(l10) / len(l10), 1) if l10 else None
+                l5_avg = round(sum(l5) / len(l5), 1) if l5 else None
+                l10_values = [round(v, 1) for v in l10]
+            
+            # Use calculated season avg from logs if no official one
+            if season_val is None and played_games:
+                values = [float(g.get(bdl_key, 0) or 0) for g in played_games]
+                season_val = round(sum(values) / len(values), 1) if values else None
+            
+            if season_val is not None or l5_avg is not None:
+                baseline[our_key] = {
+                    "season_avg": season_val,
+                    "l5_avg": l5_avg,
+                    "l10_avg": l10_avg,
+                    "l10_values": l10_values,
+                    "games_played": len(played_games)
+                }
+        
+        # Add percentages directly
+        if season_avg:
+            if season_avg.get("fg_pct"):
+                baseline["fg_pct"] = season_avg["fg_pct"]
+            if season_avg.get("fg3_pct"):
+                baseline["fg3_pct"] = season_avg["fg3_pct"]
+            if season_avg.get("ft_pct"):
+                baseline["ft_pct"] = season_avg["ft_pct"]
+            if season_avg.get("games_played"):
+                baseline["games_played"] = season_avg["games_played"]
+        
+        # Combo stats
+        pts = baseline.get("PTS", {}).get("season_avg") or 0
+        reb = baseline.get("REB", {}).get("season_avg") or 0
+        ast = baseline.get("AST", {}).get("season_avg") or 0
+        
+        pts_l5 = baseline.get("PTS", {}).get("l5_avg") or 0
+        reb_l5 = baseline.get("REB", {}).get("l5_avg") or 0
+        ast_l5 = baseline.get("AST", {}).get("l5_avg") or 0
+        
+        pts_l10 = baseline.get("PTS", {}).get("l10_avg") or 0
+        reb_l10 = baseline.get("REB", {}).get("l10_avg") or 0
+        ast_l10 = baseline.get("AST", {}).get("l10_avg") or 0
+        
+        baseline["PRA"] = {
+            "season_avg": round(pts + reb + ast, 1),
+            "l5_avg": round(pts_l5 + reb_l5 + ast_l5, 1) if played_games else None,
+            "l10_avg": round(pts_l10 + reb_l10 + ast_l10, 1) if played_games else None
+        }
+        baseline["PR"] = {
+            "season_avg": round(pts + reb, 1),
+            "l5_avg": round(pts_l5 + reb_l5, 1) if played_games else None,
+            "l10_avg": round(pts_l10 + reb_l10, 1) if played_games else None
+        }
+        baseline["PA"] = {
+            "season_avg": round(pts + ast, 1),
+            "l5_avg": round(pts_l5 + ast_l5, 1) if played_games else None,
+            "l10_avg": round(pts_l10 + ast_l10, 1) if played_games else None
+        }
+        baseline["RA"] = {
+            "season_avg": round(reb + ast, 1),
+            "l5_avg": round(reb_l5 + ast_l5, 1) if played_games else None,
+            "l10_avg": round(reb_l10 + ast_l10, 1) if played_games else None
+        }
+        
+        baseline["synced_from"] = "bdl_goat_tier_batch"
+        baseline["synced_at"] = datetime.now(timezone.utc).isoformat()
+        
+        return baseline
     
     def _calculate_baseline_from_logs(self, game_logs: List[Dict]) -> Dict:
         """Calculate baseline stats from game logs."""
