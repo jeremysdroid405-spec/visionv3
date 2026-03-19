@@ -9,47 +9,10 @@ import {
   Play, Lock, Crosshair, Radio, Cpu, Newspaper
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { DemonIcon, GoblinIcon } from '../components/dashboard/Icons';
 
 // ==================== ELITE ICON COMPONENTS ====================
-
-const DemonIcon = ({ size = 24, className = '' }) => (
-  <svg 
-    width={size} 
-    height={size} 
-    viewBox="0 0 24 24" 
-    fill="none" 
-    xmlns="http://www.w3.org/2000/svg"
-    className={`demon-glow ${className}`}
-  >
-    <defs>
-      <filter id="demon-glow-auth" x="-20%" y="-20%" width="140%" height="140%">
-        <feGaussianBlur stdDeviation="1.5" result="blur" />
-        <feComposite in="SourceGraphic" in2="blur" operator="over" />
-      </filter>
-    </defs>
-    <path d="M12 22C16.4183 22 20 18.4183 20 14C20 9.58172 16.4183 6 12 6C7.58172 6 4 9.58172 4 14C4 18.4183 7.58172 22 12 22Z" fill="#FF0000" filter="url(#demon-glow-auth)"/>
-    <path d="M5 8L2 2L9 5" stroke="#FF0000" strokeWidth="2.5" strokeLinejoin="round"/>
-    <path d="M19 8L22 2L15 5" stroke="#FF0000" strokeWidth="2.5" strokeLinejoin="round"/>
-    <path d="M8 12L10 14M16 12L14 14" stroke="white" strokeWidth="2" strokeLinecap="round"/>
-  </svg>
-);
-
-const GoblinIcon = ({ size = 24, className = '' }) => (
-  <svg 
-    width={size} 
-    height={size} 
-    viewBox="0 0 24 24" 
-    fill="none" 
-    xmlns="http://www.w3.org/2000/svg"
-    className={`goblin-glow ${className}`}
-  >
-    <path d="M12 20C15.866 20 19 16.866 19 13C19 9.13401 15.866 6 12 6C8.13401 6 5 9.13401 5 13C5 16.866 8.13401 20 12 20Z" fill="#00FF7F" fillOpacity="0.9"/>
-    <path d="M5 11L1 7L6 12" fill="#00FF7F"/>
-    <path d="M19 11L23 7L18 12" fill="#00FF7F"/>
-    <path d="M9 13H10M14 13H15" stroke="black" strokeWidth="2.5" strokeLinecap="round"/>
-    <path d="M10 16.5C10.5 17.5 13.5 17.5 14 16.5" stroke="black" strokeWidth="1" strokeLinecap="round"/>
-  </svg>
-);
+// DemonIcon and GoblinIcon imported from ../components/dashboard/Icons
 
 // ==================== ANIMATED COMPONENTS ====================
 
@@ -313,7 +276,7 @@ export const Auth = () => {
             <div className="p-3 sm:p-4 space-y-1.5 sm:space-y-2">
               <div className="flex items-center gap-2 text-[10px] sm:text-xs font-mono">
                 <Radio className="w-3 h-3 text-emerald-500 animate-pulse" />
-                <span className="text-zinc-600">[SCANNING TANK01 FEEDS...]</span>
+                <span className="text-zinc-600">[SCANNING BALL IS LIFE FEEDS...]</span>
                 <span className="text-emerald-400">STABLE</span>
               </div>
               <div className="flex items-center gap-2 text-[10px] sm:text-xs font-mono">
@@ -427,7 +390,7 @@ export const Auth = () => {
 
           {/* System Status Terminal */}
           <div className="bg-zinc-950 rounded-lg border border-zinc-800/50 p-3 sm:p-4 mb-4 sm:mb-6 font-mono text-[10px] sm:text-xs">
-            <TerminalLine label="SCANNING TANK01 FEEDS..." status="STABLE" delay={0} />
+            <TerminalLine label="SCANNING BALL IS LIFE FEEDS..." status="STABLE" delay={0} />
             <TerminalLine label="LLM HANDSHAKE..." status="ENCRYPTED" delay={300} />
             <TerminalLine label="DEMON TARGETS DETECTED..." status={demonCount.toString()} statusColor="red" delay={600} />
             <TerminalLine label="GOBLIN LOCKS FOUND..." status={goblinCount.toString()} delay={900} />
