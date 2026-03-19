@@ -31,15 +31,6 @@ from .utils_service import (
     calculate_implied_probability, probability_to_american_odds,
     NBA_TEAM_MAP, NBA_TEAM_ABBREV_TO_FULL, NAME_ALIASES
 )
-from .social_scout import (
-    SocialSignalAnalyzer, get_team_pace as social_get_team_pace,
-    calculate_pace_factor as social_calculate_pace_factor,
-    get_high_usage_players as social_get_high_usage_players,
-    calculate_usage_bump as social_calculate_usage_bump,
-    calculate_volatility as social_calculate_volatility,
-    generate_insight_summary as social_generate_insight_summary,
-    calculate_confidence_rating as social_calculate_confidence_rating
-)
 
 # High-level services using repository pattern
 from .picks_service import PicksService

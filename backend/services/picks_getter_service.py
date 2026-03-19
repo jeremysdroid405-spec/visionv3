@@ -28,6 +28,9 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 # CONSOLIDATED: Use shared player lookup utility
 from utils.player_lookup import get_player_by_id, get_player_by_name as shared_get_player_by_name
 
+# Probability scoring service - imported once at module level
+from services.probability_score_service import ProbabilityScoreService
+
 logger = logging.getLogger(__name__)
 
 
@@ -701,7 +704,6 @@ class PicksGetterService:
         
         Returns top 10 demon picks sorted by PROBABILITY SCORE.
         """
-        from services.probability_score_service import ProbabilityScoreService
         prob_service = ProbabilityScoreService(self.db)
         
         # Get all players that have demon props
@@ -923,7 +925,7 @@ class PicksGetterService:
             if date_str:
                 try:
                     return datetime.strptime(date_str[:10], "%Y-%m-%d")
-                except:
+                except Exception:
                     pass
             return datetime.min
         
@@ -980,7 +982,7 @@ class PicksGetterService:
             if date_str:
                 try:
                     return datetime.strptime(date_str[:10], "%Y-%m-%d")
-                except:
+                except Exception:
                     pass
             return datetime.min
         
@@ -1035,7 +1037,7 @@ class PicksGetterService:
             if date_str:
                 try:
                     return datetime.strptime(date_str[:10], "%Y-%m-%d")
-                except:
+                except Exception:
                     pass
             return datetime.min
         
@@ -1091,7 +1093,6 @@ class PicksGetterService:
         
         Probability score factors in matchups and badges for true hit probability.
         """
-        from services.probability_score_service import ProbabilityScoreService
         prob_service = ProbabilityScoreService(self.db)
         
         MIN_HIT_RATE = 80  # Safe Haven = 80%+ hit rate
@@ -1364,7 +1365,7 @@ class PicksGetterService:
             if date_str:
                 try:
                     return datetime.strptime(date_str[:10], "%Y-%m-%d")
-                except:
+                except Exception:
                     pass
             return datetime.min
         
@@ -1455,7 +1456,6 @@ class PicksGetterService:
         4. Can be DEMON or GOBLIN picks
         5. Sort by PROBABILITY SCORE: hit_rate + DvP + badges + line_value
         """
-        from services.probability_score_service import ProbabilityScoreService
         prob_service = ProbabilityScoreService(self.db)
         
         # Get all players that have demon OR goblin props
@@ -1711,7 +1711,7 @@ class PicksGetterService:
             if date_str:
                 try:
                     return datetime.strptime(date_str[:10], "%Y-%m-%d")
-                except:
+                except Exception:
                     pass
             return datetime.min
         
