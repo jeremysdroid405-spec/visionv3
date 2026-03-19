@@ -781,6 +781,7 @@ class PicksGetterService:
                     "is_demon": True,
                     "is_goblin": False,
                     "tier_label": "WAR_ZONE",
+                    "h10_rate": l10_hit_rate,  # Frontend expects h10_rate
                     "l10_hit_rate": l10_hit_rate,
                     "l5_hit_rate": l5_hit_rate,
                     "l10_avg": l10_data.get("avg") if isinstance(l10_data, dict) else None,
@@ -1150,8 +1151,11 @@ class PicksGetterService:
                 # Get embedded hit rates
                 hit_rates = prop.get("hit_rates", {})
                 l10_data = hit_rates.get("l10", {})
+                l5_data = hit_rates.get("l5", {})
                 l10_hit_rate = l10_data.get("hit_rate", 0)
                 l10_games = l10_data.get("total_games", 0)
+                l10_avg = l10_data.get("avg")
+                l5_avg = l5_data.get("avg")
                 season_data = hit_rates.get("season", {})
                 season_avg = season_data.get("avg", 0)
                 
@@ -1210,6 +1214,8 @@ class PicksGetterService:
                     "tier_label": "DEMON" if is_demon else "GOBLIN",
                     "is_alternate_market": True,
                     "season_avg": round(season_avg, 1) if season_avg else None,
+                    "l5_avg": round(l5_avg, 1) if l5_avg else None,
+                    "l10_avg": round(l10_avg, 1) if l10_avg else None,
                     "h10_rate": round(l10_pct, 1),  # Frontend expects h10_rate
                     "l10_hit_rate": round(l10_pct, 1),
                     "l10_games": l10_games,
@@ -1554,6 +1560,7 @@ class PicksGetterService:
                         "is_demon": is_demon,
                         "is_goblin": is_goblin,
                         "tier_label": "FRONT_LINE",
+                        "h10_rate": l10_hit_rate,  # Frontend expects h10_rate
                         "l10_hit_rate": l10_hit_rate,
                         "l5_hit_rate": l5_hit_rate,
                         "l10_avg": l10_data.get("avg") if isinstance(l10_data, dict) else None,
