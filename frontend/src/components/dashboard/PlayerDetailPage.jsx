@@ -13,8 +13,11 @@ import {
   ArrowLeft, Target, Zap, Crosshair, Plus
 } from 'lucide-react';
 import { DemonIcon, GoblinIcon } from './Icons';
-import { STAT_CATEGORIES, getCategoryKey, TEAM_LOGOS } from './constants';
+import { STAT_CATEGORIES, getCategoryKey, TEAM_LOGOS, BACKEND_URL } from './constants';
 import { BadgeRow, BADGE_REGISTRY } from '../ui/BadgePill';
+
+// API URL for fetching player data
+const API = BACKEND_URL || process.env.REACT_APP_BACKEND_URL || '';
 
 // SSOT Global State Hooks
 import { useMasterStats } from '../../hooks/useMasterStats';
@@ -129,10 +132,14 @@ const PropRow = memo(({ prop, isHighlighted, highlightRef, onVisionClick }) => {
   
   // Handle click for Vision Pick
   const handleClick = () => {
-    if (isHighlighted && onVisionClick) {
+    // Allow clicking on highlighted props OR props with intel_suite
+    if ((isHighlighted || prop.intel_suite) && onVisionClick) {
       onVisionClick(prop);
     }
   };
+  
+  // Determine if this prop is clickable (has vision data)
+  const isVisionProp = isHighlighted || prop.intel_suite;
   
   return (
     <div 
@@ -141,13 +148,15 @@ const PropRow = memo(({ prop, isHighlighted, highlightRef, onVisionClick }) => {
       className={`flex items-center justify-between py-3 px-4 rounded-lg transition-all ${
         isHighlighted
           ? 'bg-gradient-to-r from-amber-950/50 via-yellow-900/30 to-amber-950/50 border-2 border-amber-400 ring-2 ring-amber-400/50 shadow-[0_0_20px_rgba(251,191,36,0.3)] cursor-pointer hover:shadow-[0_0_30px_rgba(251,191,36,0.5)]' 
-          : isDemon 
-            ? 'bg-gradient-to-r from-red-950/40 to-zinc-900 border border-red-500/30' 
-            : isGoblin 
-              ? 'bg-gradient-to-r from-green-950/40 to-zinc-900 border border-green-500/30'
-              : 'bg-zinc-800/30 border border-zinc-700/30'
+          : isVisionProp
+            ? 'bg-gradient-to-r from-amber-950/30 to-zinc-900 border border-amber-500/40 cursor-pointer hover:border-amber-400 hover:shadow-[0_0_15px_rgba(251,191,36,0.2)]'
+            : isDemon 
+              ? 'bg-gradient-to-r from-red-950/40 to-zinc-900 border border-red-500/30' 
+              : isGoblin 
+                ? 'bg-gradient-to-r from-green-950/40 to-zinc-900 border border-green-500/30'
+                : 'bg-zinc-800/30 border border-zinc-700/30'
       }`}
-      data-testid={`prop-row-${prop.stat_type}-${line}${isHighlighted ? '-vision' : ''}`}
+      data-testid={`prop-row-${prop.stat_type}-${line}${isHighlighted ? '-vision' : isVisionProp ? '-clickable' : ''}`}
     >
       {/* Left: Type indicator + Line */}
       <div className="flex items-center gap-3">
@@ -176,6 +185,12 @@ const PropRow = memo(({ prop, isHighlighted, highlightRef, onVisionClick }) => {
                 VISION PICK
               </span>
             )}
+            {!isHighlighted && isVisionProp && (
+              <span className="px-2 py-0.5 text-[9px] font-semibold bg-amber-500/20 text-amber-400 rounded-full flex items-center gap-1">
+                <Zap className="w-3 h-3" />
+                INTEL
+              </span>
+            )}
           </div>
           {prop.price && (
             <span className={`text-[10px] font-mono ${isHighlighted ? 'text-amber-400/70' : 'text-zinc-500'}`}>
@@ -185,6 +200,11 @@ const PropRow = memo(({ prop, isHighlighted, highlightRef, onVisionClick }) => {
           {isHighlighted && (
             <span className="text-[10px] text-amber-400/80 mt-0.5 block">
               Tap to view Intel Suite →
+            </span>
+          )}
+          {!isHighlighted && isVisionProp && (
+            <span className="text-[10px] text-amber-400/60 mt-0.5 block">
+              Tap for AI analysis →
             </span>
           )}
         </div>
@@ -260,17 +280,77 @@ const CategoryHeader = memo(({ category, count, hasDemon, hasGoblin }) => {
 // ==================== MAIN COMPONENT ====================
 // SSOT: Uses useMasterStats hook for player data (PIPE 1)
 export const PlayerDetailPage = ({ playerName, playerData = null, onBack, highlightProp = null, highlightType = 'demon' }) => {
-  // PIPE 1: Fetch player stats from Master Hub (24hr cache)
-  const { data: masterData, isLoading: masterLoading, error: masterError } = useMasterStats(playerName);
+  // Direct state-based fetch
+  const [player, setPlayer] = useState(playerData);
+  const [loading, setLoading] = useState(!playerData);
+  const [error, setError] = useState(null);
+  const mountedRef = useRef(true);
   
-  // Merge passed playerData with masterData (masterData takes precedence for stats)
-  const player = useMemo(() => {
-    if (!masterData && !playerData) return null;
-    return masterData || playerData;
-  }, [masterData, playerData]);
-  
-  const loading = masterLoading && !playerData;
-  const error = masterError?.message || null;
+  useEffect(() => {
+    mountedRef.current = true;
+    
+    if (playerData) {
+      setPlayer(playerData);
+      setLoading(false);
+      return;
+    }
+    
+    if (!playerName) return;
+    
+    // Use the module-level constant and construct URL
+    const fetchUrl = `${API}/api/v3/player-with-badges/${encodeURIComponent(playerName)}`;
+    
+    console.log('[PlayerDetailPage] Fetching:', fetchUrl);
+    setLoading(true);
+    setError(null);
+    
+    // Use XMLHttpRequest instead of fetch to bypass any potential issues
+    const xhr = new XMLHttpRequest();
+    xhr.open('GET', fetchUrl, true);
+    xhr.setRequestHeader('Accept', 'application/json');
+    
+    xhr.onload = function() {
+      if (!mountedRef.current) return;
+      
+      console.log('[PlayerDetailPage] XHR complete, status:', xhr.status);
+      
+      if (xhr.status >= 200 && xhr.status < 300) {
+        try {
+          const data = JSON.parse(xhr.responseText);
+          console.log('[PlayerDetailPage] Got data:', { 
+            success: data.success, 
+            propsCount: data.player?.props?.length 
+          });
+          
+          if (data.success && data.player) {
+            setPlayer(data.player);
+          } else {
+            setError('Player not found');
+          }
+        } catch (e) {
+          console.error('[PlayerDetailPage] Parse error:', e);
+          setError('Failed to parse response');
+        }
+      } else {
+        setError(`HTTP error: ${xhr.status}`);
+      }
+      setLoading(false);
+    };
+    
+    xhr.onerror = function() {
+      if (!mountedRef.current) return;
+      console.error('[PlayerDetailPage] XHR error');
+      setError('Network error');
+      setLoading(false);
+    };
+    
+    xhr.send();
+    
+    return () => {
+      mountedRef.current = false;
+      xhr.abort();
+    };
+  }, [playerName, playerData]);
   
   const [showIntelSuite, setShowIntelSuite] = useState(false);
   const [selectedVisionProp, setSelectedVisionProp] = useState(null);

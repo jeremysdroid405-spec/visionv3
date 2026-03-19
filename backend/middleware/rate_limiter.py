@@ -73,8 +73,8 @@ class RateLimitConfig:
 
 # Rate limit tiers by endpoint pattern
 RATE_LIMIT_TIERS: Dict[str, RateLimitConfig] = {
-    # High-frequency endpoints (read-heavy)
-    "default": RateLimitConfig(requests_per_minute=100, burst_size=20),
+    # High-frequency endpoints (read-heavy) - increased for dashboard loading
+    "default": RateLimitConfig(requests_per_minute=200, burst_size=50),
     
     # AI/Sync endpoints (expensive operations)
     "sync": RateLimitConfig(requests_per_minute=10, burst_size=3),
@@ -88,9 +88,9 @@ RATE_LIMIT_TIERS: Dict[str, RateLimitConfig] = {
     # Authentication endpoints (prevent brute force)
     "auth": RateLimitConfig(requests_per_minute=20, burst_size=5),
     
-    # Data-heavy endpoints
-    "board": RateLimitConfig(requests_per_minute=60, burst_size=15),
-    "players": RateLimitConfig(requests_per_minute=60, burst_size=15),
+    # Data-heavy endpoints - increased for player detail pages
+    "board": RateLimitConfig(requests_per_minute=120, burst_size=30),
+    "players": RateLimitConfig(requests_per_minute=120, burst_size=30),
 }
 
 # Endpoint pattern to tier mapping
@@ -126,6 +126,11 @@ ENDPOINT_TIER_MAP: Dict[str, str] = {
     "/api/v3/war-zone": "board",
     "/api/v3/goblin-vault": "board",
     "/api/v3/front-lines": "board",
+    "/api/v3/player-with-badges": "players",
+    "/api/v3/safe-haven": "board",
+    "/api/v3/most-popular-bets": "board",
+    "/api/command": "players",
+    "/api/live": "board",
 }
 
 
@@ -261,6 +266,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             "/api/openapi.json",
             "/api/health",
             "/api/",  # Root endpoint
+            "/api/proxy/nba-headshot",  # Images are cached, no need to rate limit
         ]
         self.storage = get_rate_limit_storage()
     

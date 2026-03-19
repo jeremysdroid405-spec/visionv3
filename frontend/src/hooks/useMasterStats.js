@@ -28,10 +28,16 @@ const TWENTY_FOUR_HOURS = 24 * 60 * 60 * 1000;
  * This is the ONLY authorized stats fetch function
  */
 const fetchMasterStats = async (playerIdentifier) => {
-  if (!playerIdentifier) return null;
+  console.log('[fetchMasterStats] Starting fetch for:', playerIdentifier);
+  
+  if (!playerIdentifier) {
+    console.log('[fetchMasterStats] No identifier, returning null');
+    return null;
+  }
   
   // For numeric IDs, use master hub player endpoint
   if (typeof playerIdentifier === 'number') {
+    console.log('[fetchMasterStats] Fetching by ID:', playerIdentifier);
     const response = await fetch(`${API}/api/v3/master-hub/player/${playerIdentifier}`);
     if (!response.ok) {
       throw new Error(`Master stats fetch failed: ${response.status}`);
@@ -40,13 +46,17 @@ const fetchMasterStats = async (playerIdentifier) => {
   }
   
   // For string names, try cached player first (has betting lines)
+  console.log('[fetchMasterStats] Fetching player-with-badges for:', playerIdentifier);
   const cachedResponse = await fetch(`${API}/api/v3/player-with-badges/${encodeURIComponent(playerIdentifier)}`);
   
   if (cachedResponse.ok) {
     const data = await cachedResponse.json();
+    console.log('[fetchMasterStats] Got response:', { success: data.success, hasPlayer: !!data.player, propsCount: data.player?.props?.length });
     if (data.success && data.player) {
       return data.player;
     }
+  } else {
+    console.log('[fetchMasterStats] Response not OK:', cachedResponse.status);
   }
   
   // Fallback: Use command profile endpoint which has full lines data
@@ -116,17 +126,17 @@ export const useMasterStats = (playerIdentifier) => {
     queryFn: () => fetchMasterStats(playerIdentifier),
     enabled: Boolean(playerIdentifier),
     
-    // HEAVY CACHE - Data only changes at 0400 EST CRON
-    staleTime: TWENTY_FOUR_HOURS,
-    gcTime: TWENTY_FOUR_HOURS,
+    // Cache for 5 minutes - allow refetch on player change
+    staleTime: 5 * 60 * 1000,
+    gcTime: 10 * 60 * 1000,
     
-    // Never refetch automatically
-    refetchOnMount: false,
+    // Refetch when mounting with a different player
+    refetchOnMount: 'always',
     refetchOnWindowFocus: false,
     refetchOnReconnect: false,
     
-    // Keep previous data while fetching new player
-    placeholderData: (previousData) => previousData,
+    // Don't use placeholder data - let the loading state show
+    // placeholderData can cause stale data issues when switching players
   });
 };
 

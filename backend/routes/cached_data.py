@@ -735,10 +735,35 @@ async def get_cached_player(player_name: str):
         team_abbr = TEAM_ABBREV_MAP.get(team, team[:3].upper() if team else "UNK")
         opp_abbr = TEAM_ABBREV_MAP.get(opponent, opponent[:3].upper() if opponent else "UNK")
         
+        # ========== IDENTIFY THE FEATURED PROP ==========
+        # Only ONE prop per player gets the Vision Intel Suite (badges + summary)
+        # Cross-reference with actual boards to find the REAL featured prop
+        
+        # Get board data to find this player's actual featured pick
+        picks_service = engine.picks_getter_service
+        safe_haven_data = await picks_service.get_goblin_vault()  # Safe Haven = Goblin Vault
+        war_zone_data = await picks_service.get_war_zone()
+        front_lines_data = await picks_service.get_front_lines()
+        
+        all_board_picks = (
+            safe_haven_data.get("picks", []) + 
+            war_zone_data.get("picks", []) + 
+            front_lines_data.get("picks", [])
+        )
+        
+        # Find THIS player's board pick
+        featured_prop_key = None
+        for board_pick in all_board_picks:
+            if board_pick.get("player_name", "").lower() == pname.lower():
+                stat_type = board_pick.get("stat_type", "")
+                line = board_pick.get("line", 0)
+                featured_prop_key = f"{stat_type}|{line}"
+                logger.info(f"[PLAYER_DETAIL] Found {pname} on board: {stat_type} @ {line}")
+                break
+        
+        logger.info(f"[PLAYER_DETAIL] {pname}: Featured prop = {featured_prop_key}")
+        
         for prop in player.get("props", []):
-            prop["active_badges"] = badge_keys
-            
-            # Build full intel_suite with all expected fields
             stat_type = prop.get("stat_type_extracted", "PTS")
             line = prop.get("line", 0)
             l5_avg = prop.get("l5_avg", 0)
@@ -746,6 +771,12 @@ async def get_cached_player(player_name: str):
             season_avg = prop.get("season_avg", 0)
             l10_hit_rate = prop.get("l10_hit_rate", 0)
             l5_hit_rate = prop.get("l5_hit_rate", 0)
+            is_demon = prop.get("is_demon", False)
+            is_goblin = prop.get("is_goblin", False)
+            
+            # Check if THIS prop is the featured one
+            prop_key = f"{stat_type}|{line}"
+            is_featured = (prop_key == featured_prop_key)
             
             # Build hit_rates object for frontend compatibility
             # Frontend expects: hit_rates.l10.hit_rate, hit_rates.l10.games_over, hit_rates.l10.total_games
@@ -769,6 +800,18 @@ async def get_cached_player(player_name: str):
                     "avg": season_avg
                 }
             }
+            
+            # ========== VISION INTEL SUITE - ONLY FOR FEATURED PROP ==========
+            # Only the prop that qualified for the boards gets the full intel suite
+            if not is_featured:
+                # Regular prop - REMOVE intel suite, badges, summary (may have been added elsewhere)
+                prop.pop("intel_suite", None)
+                prop.pop("active_badges", None)
+                prop.pop("vision_summary", None)
+                continue
+            
+            # This IS the featured prop - add badges and intel suite
+            prop["active_badges"] = badge_keys
             
             # Calculate stability index from hit rate
             stability_score = int((l10_hit_rate or 0) * 100) if l10_hit_rate else 50
@@ -917,7 +960,7 @@ async def get_cached_player(player_name: str):
                 }
             }
             
-            # Generate AI Vision Summary using Gemini (only if badges exist)
+            # Generate AI Vision Summary using Gemini - ONLY for the featured prop
             if badges:
                 try:
                     vision_service = get_vision_service()
@@ -935,6 +978,7 @@ async def get_cached_player(player_name: str):
                     if ai_summary:
                         prop["vision_summary"] = ai_summary
                         prop["intel_suite"]["vision_insight"]["ai_summary"] = ai_summary
+                        logger.info(f"[VISION] Generated summary for {pname} {stat_type}@{line}")
                 except Exception as e:
                     logger.error(f"[VISION] Error generating AI summary for {pname}: {e}")
         
