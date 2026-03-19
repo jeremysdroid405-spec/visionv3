@@ -434,17 +434,23 @@ const UniversalPlayerCard = memo(({
 }) => {
   const [isExpanded, setIsExpanded] = useState(mode === 'full');
   
+  // Check if locked (game in progress or completed)
+  const isLocked = player?.is_locked;
+  
   const handleCardClick = useCallback(() => {
+    if (isLocked) return; // Don't allow clicks when locked
     if (player) onClick?.(player);
-  }, [onClick, player]);
+  }, [onClick, player, isLocked]);
   
   const handlePropClick = useCallback((prop) => {
+    if (isLocked) return; // Don't allow clicks when locked
     onClick?.({ ...player, ...prop, selectedProp: prop });
-  }, [onClick, player]);
+  }, [onClick, player, isLocked]);
   
   const handleQuickAdd = useCallback((prop) => {
+    if (isLocked) return; // Don't allow quick add when locked
     onQuickAdd?.({ ...player, ...prop });
-  }, [onQuickAdd, player]);
+  }, [onQuickAdd, player, isLocked]);
   
   if (!player) return null;
   
@@ -491,7 +497,7 @@ const UniversalPlayerCard = memo(({
   if (mode === 'mini') {
     return (
       <div 
-        className={`flex items-center gap-2 p-2 rounded-lg border ${theme.border} bg-zinc-900/80 cursor-pointer hover:bg-zinc-800/80 transition-all ${theme.glow}`}
+        className={`flex items-center gap-2 p-2 rounded-lg border ${theme.border} bg-zinc-900/80 ${is_locked ? 'cursor-not-allowed opacity-60' : 'cursor-pointer hover:bg-zinc-800/80'} transition-all ${theme.glow}`}
         onClick={handleCardClick}
         data-testid={`player-mini-${playerSlug}`}
       >
@@ -520,7 +526,7 @@ const UniversalPlayerCard = memo(({
     
     return (
       <div 
-        className={`relative p-3 rounded-lg border ${theme.border} bg-gradient-to-br ${theme.bg} cursor-pointer hover:scale-[1.02] transition-all min-w-[200px] ${is_locked ? 'opacity-80' : ''}`}
+        className={`relative p-3 rounded-lg border ${theme.border} bg-gradient-to-br ${theme.bg} ${is_locked ? 'cursor-not-allowed' : 'cursor-pointer hover:scale-[1.02]'} transition-all min-w-[200px] ${is_locked ? 'opacity-80' : ''}`}
         onClick={handleCardClick}
         data-testid={`player-compact-${playerSlug}`}
       >
@@ -592,13 +598,13 @@ const UniversalPlayerCard = memo(({
   
   return (
     <div 
-      className={`rounded-xl border ${theme.border} bg-gradient-to-b ${theme.bg} overflow-hidden transition-all ${theme.glow}`}
+      className={`rounded-xl border ${theme.border} bg-gradient-to-b ${theme.bg} overflow-hidden transition-all ${theme.glow} ${is_locked ? 'opacity-80' : ''}`}
       data-testid={`player-card-${playerSlug}`}
     >
       {/* HEADER: Player Identity + Vault Stats */}
       <div 
-        className="p-4 cursor-pointer hover:bg-zinc-800/30 transition-all"
-        onClick={hasProps && showProps ? () => setIsExpanded(!isExpanded) : handleCardClick}
+        className={`p-4 ${is_locked ? 'cursor-not-allowed' : 'cursor-pointer hover:bg-zinc-800/30'} transition-all`}
+        onClick={hasProps && showProps && !is_locked ? () => setIsExpanded(!isExpanded) : handleCardClick}
       >
         <div className="flex items-center gap-4">
           {/* Photo with Rank */}
