@@ -251,17 +251,20 @@ async def _fetch_bdl_defensive_stats() -> Optional[Dict[str, Dict[str, float]]]:
         return None
 
 
-def _parse_bdl_opponent_stats(data: Dict) -> Optional[Dict[str, Dict[str, float]]]:
+def _parse_bdl_opponent_stats(data: Dict) -> Optional[Dict[str, Dict[str, int]]]:
     """
     Parse BallDontLie team_season_averages response (type=opponent).
     
-    The 'stats' object contains opponent stats like:
-    - opp_pts: Opponent points allowed
-    - opp_ast: Opponent assists allowed
-    - opp_reb: Opponent rebounds allowed
-    - opp_fg3m: Opponent 3-pointers made allowed
-    - opp_blk: Opponent blocks 
-    - opp_stl: Opponent steals
+    The 'stats' object contains opponent stats and PRE-CALCULATED ranks:
+    - opp_pts_rank: Defensive rank for points (1 = allows fewest = best defense)
+    - opp_ast_rank: Defensive rank for assists
+    - opp_reb_rank: Defensive rank for rebounds
+    - opp_fg3m_rank: Defensive rank for 3PM
+    - opp_blk_rank: Opponent blocks rank
+    - opp_stl_rank: Opponent steals rank
+    
+    We use BDL's pre-calculated ranks directly for accuracy.
+    Returns rankings directly (not raw stats).
     """
     try:
         teams_data = data.get("data", [])
@@ -269,7 +272,15 @@ def _parse_bdl_opponent_stats(data: Dict) -> Optional[Dict[str, Dict[str, float]
             logger.warning("[DVP] No team data in BDL response")
             return None
         
-        team_stats: Dict[str, Dict[str, float]] = {}
+        # Build rankings dict: {stat_type: {team: rank}}
+        rankings: Dict[str, Dict[str, int]] = {
+            "PTS": {},
+            "AST": {},
+            "REB": {},
+            "3PM": {},
+            "BLK": {},
+            "STL": {},
+        }
         
         for team_entry in teams_data:
             team_info = team_entry.get("team", {})
@@ -285,30 +296,23 @@ def _parse_bdl_opponent_stats(data: Dict) -> Optional[Dict[str, Dict[str, float]
             
             stats = team_entry.get("stats", {})
             
-            # Map BDL stat names to our internal names
-            # For opponent stats, we want:
-            # - pts (opponent points allowed to them) - lower is better defense
-            # - ast (opponent assists allowed to them)
-            # - reb (opponent rebounds allowed to them)
-            # - fg3m (opponent 3PM allowed to them)
-            # - blk (opponent blocks - this is what the opposing team blocked)
-            # - stl (opponent steals - this is what opposing team stole)
-            
-            team_stats[team_abbrev] = {
-                "PTS": float(stats.get("pts", stats.get("opp_pts", 0))) if stats.get("pts") or stats.get("opp_pts") else 0.0,
-                "AST": float(stats.get("ast", stats.get("opp_ast", 0))) if stats.get("ast") or stats.get("opp_ast") else 0.0,
-                "REB": float(stats.get("reb", stats.get("opp_reb", 0))) if stats.get("reb") or stats.get("opp_reb") else 0.0,
-                "3PM": float(stats.get("fg3m", stats.get("opp_fg3m", 0))) if stats.get("fg3m") or stats.get("opp_fg3m") else 0.0,
-                "BLK": float(stats.get("blk", stats.get("opp_blk", 0))) if stats.get("blk") or stats.get("opp_blk") else 0.0,
-                "STL": float(stats.get("stl", stats.get("opp_stl", 0))) if stats.get("stl") or stats.get("opp_stl") else 0.0,
-            }
+            # Use BDL's pre-calculated ranks directly
+            # These are already: 1 = best defense (allows least), 30 = worst defense
+            rankings["PTS"][team_abbrev] = stats.get("opp_pts_rank", 15)
+            rankings["AST"][team_abbrev] = stats.get("opp_ast_rank", 15)
+            rankings["REB"][team_abbrev] = stats.get("opp_reb_rank", 15)
+            rankings["3PM"][team_abbrev] = stats.get("opp_fg3m_rank", 15)
+            rankings["BLK"][team_abbrev] = stats.get("opp_blk_rank", 15)
+            rankings["STL"][team_abbrev] = stats.get("opp_stl_rank", 15)
         
-        if len(team_stats) < 20:
-            logger.warning(f"[DVP] Only got {len(team_stats)} teams from BDL, expected ~30")
+        # Check we got enough teams
+        teams_count = len(rankings.get("PTS", {}))
+        if teams_count < 20:
+            logger.warning(f"[DVP] Only got {teams_count} teams from BDL, expected ~30")
             return None
         
-        logger.info(f"[DVP] Parsed opponent stats for {len(team_stats)} teams")
-        return team_stats
+        logger.info(f"[DVP] Parsed BDL pre-calculated ranks for {teams_count} teams")
+        return rankings
         
     except Exception as e:
         logger.error(f"[DVP] Parse error: {e}")
@@ -482,34 +486,32 @@ async def fetch_live_dvp() -> Tuple[Dict[str, Dict[str, int]], str, Dict[str, An
         
         # Try BallDontLie API
         logger.info("[DVP] Attempting live data fetch from BallDontLie API")
-        raw_stats = await _fetch_bdl_defensive_stats()
+        rankings = await _fetch_bdl_defensive_stats()
         
-        if raw_stats:
-            rankings = _convert_stats_to_rankings(raw_stats)
+        # _parse_bdl_opponent_stats now returns rankings directly (using BDL's pre-calculated ranks)
+        if rankings and len(rankings) >= 3:  # At least PTS, AST, REB
+            # Save to MongoDB for persistence
+            await _save_to_mongodb(rankings, DvPDataSource.BDL_API)
             
-            if rankings and len(rankings) >= 3:  # At least PTS, AST, REB
-                # Save to MongoDB for persistence
-                await _save_to_mongodb(rankings, DvPDataSource.BDL_API)
-                
-                # Update in-memory cache
-                _dvp_cache = DvPCacheEntry(
-                    rankings=rankings,
-                    source=DvPDataSource.DYNAMIC_LIVE,
-                    fetched_at=datetime.now(timezone.utc),
-                    season=get_current_season_str(),
-                    expires_at=datetime.now(timezone.utc) + timedelta(hours=DVP_CACHE_TTL_HOURS)
-                )
-                _fetch_failures = 0
-                
-                logger.info(f"[DVP] Live data fetched: {len(rankings)} stat types, {len(next(iter(rankings.values())))} teams")
-                
-                return rankings, DvPDataSource.DYNAMIC_LIVE, {
-                    "dvp_type": "dynamic_live",
-                    "cache_hit": False,
-                    "teams_count": len(next(iter(rankings.values()))),
-                    "stat_types": list(rankings.keys()),
-                    "season": get_current_season_str()
-                }
+            # Update in-memory cache
+            _dvp_cache = DvPCacheEntry(
+                rankings=rankings,
+                source=DvPDataSource.DYNAMIC_LIVE,
+                fetched_at=datetime.now(timezone.utc),
+                season=get_current_season_str(),
+                expires_at=datetime.now(timezone.utc) + timedelta(hours=DVP_CACHE_TTL_HOURS)
+            )
+            _fetch_failures = 0
+            
+            logger.info(f"[DVP] Live data fetched: {len(rankings)} stat types, {len(next(iter(rankings.values())))} teams")
+            
+            return rankings, DvPDataSource.DYNAMIC_LIVE, {
+                "dvp_type": "dynamic_live",
+                "cache_hit": False,
+                "teams_count": len(next(iter(rankings.values()))),
+                "stat_types": list(rankings.keys()),
+                "season": get_current_season_str()
+            }
         
         # Fallback to hardcoded data
         _fetch_failures += 1
