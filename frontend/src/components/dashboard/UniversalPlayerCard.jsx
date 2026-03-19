@@ -35,9 +35,10 @@
 import React, { memo, useCallback, useState } from 'react';
 import { 
   Target, Shield, ChevronRight, Plus, ChevronDown,
-  Crosshair, TrendingUp, HeartPulse, Lock
+  Crosshair, TrendingUp, HeartPulse, Lock, Flame, TrendingDown
 } from 'lucide-react';
 import { Badge } from '../ui/badge';
+import { DemonIcon, GoblinIcon } from './Icons';
 
 // ==================== TEAM LOGOS (FALLBACK) ====================
 const TEAM_LOGOS = {
@@ -73,27 +74,8 @@ const TEAM_LOGOS = {
   WAS: 'https://cdn.nba.com/logos/nba/1610612764/global/L/logo.svg',
 };
 
-// ==================== TIER ICONS (SVG) ====================
-const DemonIcon = ({ size = 16, className = "" }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" className={className}>
-    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z" fillOpacity="0"/>
-    <path d="M5 3L3 1M19 3L21 1"/>
-    <circle cx="8.5" cy="10" r="1.5"/>
-    <circle cx="15.5" cy="10" r="1.5"/>
-    <path d="M12 2C7 2 3 6 3 11c0 3 1.5 5.5 4 7l1-2c-1.5-1-2.5-2.5-2.5-4.5 0-3.5 3-6.5 6.5-6.5s6.5 3 6.5 6.5c0 2-1 3.5-2.5 4.5l1 2c2.5-1.5 4-4 4-7 0-5-4-9-9-9z"/>
-    <path d="M8 16c0 0 2 2 4 2s4-2 4-2"/>
-  </svg>
-);
-
-const GoblinIcon = ({ size = 16, className = "" }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" className={className}>
-    <ellipse cx="12" cy="13" rx="8" ry="7"/>
-    <circle cx="9" cy="11" r="1.5" fill="black"/>
-    <circle cx="15" cy="11" r="1.5" fill="black"/>
-    <ellipse cx="12" cy="15" rx="2" ry="1" fill="black"/>
-    <path d="M6 8Q4 6 5 4M18 8Q20 6 19 4"/>
-  </svg>
-);
+// ==================== TIER ICONS - Using shared Icons from ./Icons.jsx ====================
+// DemonIcon and GoblinIcon are imported from './Icons'
 
 // ==================== THEME CONFIG (TIER-BASED GLOW) ====================
 const TIER_THEMES = {
@@ -519,68 +501,70 @@ const UniversalPlayerCard = memo(({
     );
   }
   
-  // ==================== COMPACT MODE (Search Results) ====================
+  // ==================== COMPACT MODE (Board Cards - matches Top Picks style) ====================
   if (mode === 'compact') {
-    // Icon is ALWAYS based on actual pick type (red demon / green goblin)
     const isDemon = is_demon || tier_label === 'DEMON';
     const isGoblin = is_goblin || tier_label === 'GOBLIN' || tier_label === 'FRONT_LINE';
-    const CompactIcon = isDemon ? DemonIcon : isGoblin ? GoblinIcon : null;
-    const iconColor = isDemon ? 'text-red-400' : 'text-green-400';
     
     return (
       <div 
-        className={`relative flex items-center gap-3 p-3 rounded-lg border ${theme.border} bg-gradient-to-br ${theme.bg} cursor-pointer hover:scale-[1.01] transition-all ${theme.glow} ${is_locked ? 'opacity-80' : ''}`}
+        className={`relative p-3 rounded-lg border ${theme.border} bg-gradient-to-br ${theme.bg} cursor-pointer hover:scale-[1.02] transition-all min-w-[200px] ${is_locked ? 'opacity-80' : ''}`}
         onClick={handleCardClick}
         data-testid={`player-compact-${playerSlug}`}
       >
         {/* Locked Overlay */}
         <LockedOverlay isLocked={is_locked} gameStatus={game_status} />
         
-        <div className={`relative ring-2 ${theme.ring} rounded-full`}>
-          <PlayerHeadshot photoUrl={displayPhoto} playerName={displayName} team={team} size="md" />
+        {/* Header: Photo + Name + Icon */}
+        <div className="flex items-center gap-2 mb-2">
+          <div className="relative">
+            <PlayerHeadshot photoUrl={displayPhoto} playerName={displayName} team={team} size="sm" />
+            {/* Tier icon on photo - same as Top Picks */}
+            <div className="absolute -top-1 -right-1">
+              {isDemon ? <DemonIcon size={14} /> : isGoblin ? <GoblinIcon size={14} /> : null}
+            </div>
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="text-sm font-medium text-white truncate">{displayName}</div>
+            <div className={`text-xs ${theme.text}`}>{stat_type} {line}</div>
+          </div>
           {rank && (
-            <div className={`absolute -bottom-1 -right-1 w-5 h-5 rounded-full ${theme.accent} flex items-center justify-center text-[10px] font-bold text-white border-2 border-zinc-900`}>
-              {rank}
-            </div>
+            <Badge className="bg-zinc-800 text-zinc-300 border-none text-xs">#{rank}</Badge>
           )}
         </div>
         
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
-            {CompactIcon && <CompactIcon size={16} className={iconColor} />}
-            <span className="font-bold text-white text-sm truncate">{displayName}</span>
-            <span className="text-[10px] text-zinc-500">{team}</span>
-            {is_injured && (
-              <HeartPulse size={14} className="text-red-500 animate-pulse" title="Injury Alert" />
-            )}
-          </div>
-          
-          {/* Primary Prop */}
-          {stat_type && (
-            <div className={`text-xs ${theme.text} mt-0.5`}>
-              {stat_type} {line}
+        {/* Stats Row - L5 / L10 / Avg */}
+        <div className="flex items-center justify-between bg-zinc-800/50 rounded px-2 py-1.5 text-[10px]">
+          <div className="text-center flex-1">
+            <div className="text-zinc-500">L5</div>
+            <div className="font-bold text-white">
+              {player.l5_avg != null ? (player.l5_avg.toFixed?.(1) || player.l5_avg) : '---'}
             </div>
-          )}
-          
-          {/* Stats Row */}
-          <div className="flex items-center gap-3 mt-1 text-[10px]">
-            {h10_rate != null && <span className="text-zinc-400">L10: <span className={getHitRateColor(h10_rate)}>{h10_rate}%</span></span>}
-            {season_avg != null && <span className="text-zinc-400">Avg: <span className="text-white">{season_avg?.toFixed?.(1) || season_avg}</span></span>}
-            {diff_from_avg != null && (
-              <span className={`px-1 py-0.5 rounded text-[9px] ${diff_from_avg >= 0 ? 'bg-red-500/20 text-red-400' : 'bg-green-500/20 text-green-400'}`}>
-                {diff_from_avg >= 0 ? '+' : ''}{diff_from_avg}%
-              </span>
-            )}
+          </div>
+          <div className="h-4 w-px bg-zinc-700" />
+          <div className="text-center flex-1">
+            <div className="text-zinc-500">L10</div>
+            <div className={`font-bold ${getHitRateColor(h10_rate || 0)}`}>
+              {h10_rate != null ? `${h10_rate}%` : '---'}
+            </div>
+          </div>
+          <div className="h-4 w-px bg-zinc-700" />
+          <div className="text-center flex-1">
+            <div className="text-zinc-500">Avg</div>
+            <div className="font-bold text-white">
+              {season_avg != null ? (season_avg.toFixed?.(1) || season_avg) : '---'}
+            </div>
           </div>
         </div>
         
+        {/* Quick Add Button */}
         {onQuickAdd && !is_locked && (
           <button
             onClick={(e) => { e.stopPropagation(); handleQuickAdd(player); }}
-            className="flex-shrink-0 w-8 h-8 rounded-full bg-cyan-500/20 border border-cyan-500/40 flex items-center justify-center text-cyan-400 hover:bg-cyan-500/30 transition-all"
+            className="absolute top-2 right-2 w-6 h-6 rounded-full bg-cyan-500/20 border border-cyan-500/40 flex items-center justify-center text-cyan-400 hover:bg-cyan-500/30 transition-all"
             data-testid={`quick-add-${playerSlug}`}
           >
-            <Plus className="w-4 h-4" />
+            <Plus className="w-3 h-3" />
           </button>
         )}
       </div>
