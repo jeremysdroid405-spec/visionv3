@@ -943,9 +943,73 @@ async def startup_event():
     logger.info(f"[SCHEDULER] Morning Props: 05:00 AM EST (10:00 UTC)")
     logger.info(f"[SCHEDULER] Weekly Roster: Sunday 00:00 UTC")
     
-    # DISABLED: Full auto-sync on startup to prevent credit drain
-    # The adaptive sync engine handles real-time odds polling
-    logger.info("[STARTUP] Full sync DISABLED - Adaptive Sync Engine handles real-time odds")
+    # AUTO-SYNC: Check if database is empty and trigger initial population
+    # This runs only once when deployed to a new environment with empty DB
+    asyncio.create_task(check_and_run_initial_sync(db))
+    logger.info("[STARTUP] Initial sync check scheduled (runs in background)")
+
+
+async def check_and_run_initial_sync(db):
+    """
+    Check if the database is empty and run initial sync if needed.
+    This ensures newly deployed environments get populated automatically.
+    """
+    try:
+        await asyncio.sleep(5)  # Wait for server to fully start
+        
+        # Check if master hub is empty
+        master_hub_count = await db.nba_master_hub_2026.count_documents({})
+        cached_board_count = await db.dg_cached_board.count_documents({})
+        
+        logger.info(f"[INITIAL_SYNC] Database check: master_hub={master_hub_count}, cached_board={cached_board_count}")
+        
+        if master_hub_count == 0:
+            logger.info("[INITIAL_SYNC] Empty database detected! Starting initial population...")
+            
+            # Step 1: Sync player roster from BDL
+            try:
+                from services.bdl_comprehensive_sync import get_bdl_comprehensive_service
+                bdl_service = get_bdl_comprehensive_service(db)
+                
+                logger.info("[INITIAL_SYNC] Step 1/4: Syncing player roster from BallDontLie...")
+                result = await bdl_service.sync_active_players()
+                logger.info(f"[INITIAL_SYNC] Roster sync complete: {result.get('players_synced', 0)} players")
+            except Exception as e:
+                logger.error(f"[INITIAL_SYNC] Roster sync failed: {e}")
+            
+            # Step 2: Sync game-by-game values for hit rates
+            try:
+                logger.info("[INITIAL_SYNC] Step 2/4: Syncing game-by-game stats for hit rates...")
+                result = await bdl_service.enrich_with_game_values()
+                logger.info(f"[INITIAL_SYNC] Game values sync complete: {result.get('enriched', 0)} players enriched")
+            except Exception as e:
+                logger.error(f"[INITIAL_SYNC] Game values sync failed: {e}")
+            
+            # Step 3: Sync DvP rankings
+            try:
+                from services.dvp_service import force_refresh_dvp
+                logger.info("[INITIAL_SYNC] Step 3/4: Syncing DvP rankings...")
+                result = await force_refresh_dvp()
+                logger.info(f"[INITIAL_SYNC] DvP sync complete: {result.get('teams_count', 0)} teams")
+            except Exception as e:
+                logger.error(f"[INITIAL_SYNC] DvP sync failed: {e}")
+            
+            # Step 4: Sync context badges
+            try:
+                from services.context_badge_service import get_context_badge_service
+                badge_service = get_context_badge_service(db)
+                logger.info("[INITIAL_SYNC] Step 4/4: Populating context badges...")
+                result = await badge_service.populate_all_badges()
+                logger.info(f"[INITIAL_SYNC] Badge sync complete: {result.get('updated', 0)} players updated")
+            except Exception as e:
+                logger.error(f"[INITIAL_SYNC] Badge sync failed: {e}")
+            
+            logger.info("[INITIAL_SYNC] ✅ Initial database population complete!")
+        else:
+            logger.info(f"[INITIAL_SYNC] Database already populated ({master_hub_count} players). Skipping initial sync.")
+            
+    except Exception as e:
+        logger.error(f"[INITIAL_SYNC] Error during initial sync check: {e}")
 
 
 @app.on_event("shutdown")
