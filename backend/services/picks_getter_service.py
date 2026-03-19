@@ -2139,9 +2139,7 @@ class PicksGetterService:
             pick['player_id'] = master_player.get('player_id')
             pick['nba_id'] = master_player.get('nba_id') or master_player.get('nba_player_id')
             pick['espn_id'] = master_player.get('espn_id')
-            # PHOTOS FROM MASTER HUB ONLY - photo_url has correct NBA CDN IDs
-            pick['photo_url'] = master_player.get('photo_url') or master_player.get('headshot_url')
-            pick['headshot_url'] = master_player.get('photo_url') or master_player.get('headshot_url')
+            # DO NOT set photo_url here - let _enrich_picks_with_photos handle it (SSOT)
             if not pick.get('team'):
                 pick['team'] = master_player.get('team')
             if not pick.get('position'):
@@ -2223,9 +2221,7 @@ class PicksGetterService:
             player['player_id'] = master_player.get('player_id')
             player['nba_id'] = master_player.get('nba_id')
             player['espn_id'] = master_player.get('espn_id')
-            # PHOTOS FROM MASTER HUB ONLY - photo_url has correct NBA CDN IDs
-            player['photo_url'] = master_player.get('photo_url') or master_player.get('headshot_url')
-            player['headshot_url'] = master_player.get('photo_url') or master_player.get('headshot_url')
+            # DO NOT set photo_url here - let _enrich_picks_with_photos handle it (SSOT)
             if not player.get('team'):
                 player['team'] = master_player.get('team')
             if not player.get('position'):

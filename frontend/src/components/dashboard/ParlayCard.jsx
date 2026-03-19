@@ -63,7 +63,7 @@ const ParlayCard = memo(({
         </div>
       </div>
       
-      {/* Picks Preview - Using player_id as key, headshot_url for photos */}
+      {/* Picks Preview - Using photo_url from master hub (SSOT) */}
       <div className="space-y-1.5 mb-2">
         {picks.slice(0, 3).map((pick, idx) => (
           <div 
@@ -71,7 +71,7 @@ const ParlayCard = memo(({
             className="flex items-center gap-2 py-1 border-b border-zinc-800/50 last:border-0"
           >
             <PlayerPhoto 
-              photoUrl={pick.headshot_url || pick.photo_url} 
+              photoUrl={pick.photo_url || pick.headshot_url} 
               playerName={pick.player_name} 
               size="sm" 
             />

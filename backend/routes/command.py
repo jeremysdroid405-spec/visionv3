@@ -252,7 +252,8 @@ async def get_tactical_profile(
         master_player = await get_player_by_name(db, player_name)
         
         if master_player:
-            photo_url = master_player.get("photo_url") or master_player.get("headshot_url", "")
+            # ALWAYS use photo_url from master hub (has correct NBA CDN ID)
+            photo_url = master_player.get("photo_url", "")
             player_team = master_player.get("team", "")
             player_position = master_player.get("position", "")
             player_id = master_player.get("player_id")
@@ -268,13 +269,11 @@ async def get_tactical_profile(
                 player_team = first_prop.get("home_team") if first_prop.get("direction") == "home" else first_prop.get("away_team", "")
             detected_opponent = first_prop.get("away_team") if player_team == first_prop.get("home_team") else first_prop.get("home_team", "")
         
-        # Override with board picks data if available
+        # Override with board picks data if available (but NOT photo_url - master hub is SSOT)
         if board_picks:
             first_pick = board_picks[0]
             player_team = first_pick.get("team") or player_team
             player_position = first_pick.get("position") or player_position
-            if not photo_url:
-                photo_url = first_pick.get("photo_url", "")
             detected_opponent = first_pick.get("opponent_abbr") or first_pick.get("opponent") or detected_opponent
         
         # ===== STEP 5: Build ALL prop lines with COUPLED stats from MASTER HUB =====

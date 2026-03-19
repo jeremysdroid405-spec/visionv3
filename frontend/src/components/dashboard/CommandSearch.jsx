@@ -97,11 +97,11 @@ const CommandSearch = memo(({ onPlayerSelect, placeholder = "Search players..." 
                   className="flex items-center gap-3 px-4 py-3 hover:bg-zinc-800 cursor-pointer border-b border-zinc-800 last:border-0 transition-colors"
                   data-testid={`search-result-${player.id}`}
                 >
-                  {/* Player Photo */}
-                  {player.headshot_url ? (
+                  {/* Player Photo - Use photo_url (SSOT from master hub) */}
+                  {(player.photo_url || player.headshot_url) ? (
                     <div className="w-8 h-8 rounded-full overflow-hidden bg-zinc-700">
                       <img 
-                        src={player.headshot_url} 
+                        src={player.photo_url || player.headshot_url} 
                         alt={player.player_name}
                         className="w-full h-full object-cover"
                         style={{ objectPosition: 'center 20%', transform: 'scale(1.3)' }}

@@ -657,20 +657,21 @@ async def get_cached_player(player_name: str):
         db = engine.db
         master_hub = db.nba_master_hub_2026
         
-        # Look up correct team from master hub
+        # Look up correct team and photo from master hub
         hub_player = await master_hub.find_one(
             {"$or": [
                 {"display_name": {"$regex": f"^{pname}$", "$options": "i"}},
                 {"normalized_name": {"$regex": f"^{pname}$", "$options": "i"}}
             ]},
-            {"_id": 0, "team": 1, "photo_url": 1, "headshot_url": 1, "position": 1}
+            {"_id": 0, "team": 1, "photo_url": 1, "position": 1, "nba_id": 1}
         )
         
         correct_team = hub_player.get("team") if hub_player else player.get("team", "Team")
         
-        # Add photo from master hub
+        # Add photo from master hub - ALWAYS use photo_url (has correct NBA CDN ID)
         if hub_player:
-            player["photo_url"] = hub_player.get("photo_url") or hub_player.get("headshot_url")
+            player["photo_url"] = hub_player.get("photo_url")
+            player["nba_id"] = hub_player.get("nba_id")
             if not player.get("position"):
                 player["position"] = hub_player.get("position")
         

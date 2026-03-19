@@ -974,7 +974,7 @@ const Dashboard = () => {
                       onClick={() => handlePlayerClick(player.player_name)}
                       data-testid={`player-row-${player.player_name?.replace(/\s/g, '-')}`}
                     >
-                      <PlayerHeadshot playerName={player.player_name} team={player.team} photoUrl={player.headshot_url} size="md" />
+                      <PlayerHeadshot playerName={player.player_name} team={player.team} photoUrl={player.photo_url || player.headshot_url} size="md" />
                       <div className="flex-1 min-w-0">
                         <div className="font-medium text-white truncate">{player.player_name}</div>
                         <div className="text-xs text-zinc-500">{player.team_name || player.team} • {player.position}</div>
