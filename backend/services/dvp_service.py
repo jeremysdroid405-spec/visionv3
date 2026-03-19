@@ -106,6 +106,73 @@ def set_db_reference(db):
     logger.info("[DVP] MongoDB reference set for persistent storage")
 
 
+async def initialize_dvp_cache():
+    """
+    Initialize DvP cache from MongoDB on startup.
+    This ensures we have live data immediately instead of falling back to static.
+    Should be called during server startup after DB connection is established.
+    """
+    global _dvp_cache, _db_ref
+    
+    if _db_ref is None:
+        logger.warning("[DVP] Cannot initialize cache - no DB reference")
+        return False
+    
+    try:
+        # Look up by type (matches how _save_to_mongodb stores it)
+        cached_data = await _db_ref[DVP_COLLECTION].find_one(
+            {"type": "dvp_rankings"},
+            {"_id": 0}
+        )
+        
+        if cached_data and cached_data.get("rankings"):
+            # Check if data is still valid (less than 24 hours old)
+            # Try fetched_at first (new format), then synced_at (old format)
+            fetched_at = cached_data.get("fetched_at") or cached_data.get("synced_at")
+            
+            if fetched_at:
+                # Handle both datetime objects and strings
+                if isinstance(fetched_at, str):
+                    synced_at = datetime.fromisoformat(fetched_at.replace("Z", "+00:00"))
+                else:
+                    synced_at = fetched_at.replace(tzinfo=timezone.utc) if fetched_at.tzinfo is None else fetched_at
+                
+                age_hours = (datetime.now(timezone.utc) - synced_at).total_seconds() / 3600
+                
+                if age_hours < DVP_CACHE_TTL_HOURS:
+                    _dvp_cache = DvPCacheEntry(
+                        rankings=cached_data["rankings"],
+                        source=DvPDataSource.MONGODB,
+                        fetched_at=synced_at,
+                        season=cached_data.get("season", get_current_season_str()),
+                        expires_at=synced_at + timedelta(hours=DVP_CACHE_TTL_HOURS)
+                    )
+                    teams_count = len(next(iter(_dvp_cache.rankings.values()), {}))
+                    logger.info(f"[DVP] Cache initialized from MongoDB: {teams_count} teams, age {age_hours:.1f}h")
+                    return True
+                else:
+                    logger.info(f"[DVP] MongoDB data expired ({age_hours:.1f}h old), will fetch fresh")
+            else:
+                # No timestamp - data exists but we can't verify age, use it anyway
+                _dvp_cache = DvPCacheEntry(
+                    rankings=cached_data["rankings"],
+                    source=DvPDataSource.MONGODB,
+                    fetched_at=datetime.now(timezone.utc),
+                    season=cached_data.get("season", get_current_season_str()),
+                    expires_at=datetime.now(timezone.utc) + timedelta(hours=DVP_CACHE_TTL_HOURS)
+                )
+                teams_count = len(next(iter(_dvp_cache.rankings.values()), {}))
+                logger.info(f"[DVP] Cache initialized from MongoDB (no timestamp): {teams_count} teams")
+                return True
+            
+        logger.info("[DVP] No valid MongoDB cache found, will fetch on first request")
+        return False
+        
+    except Exception as e:
+        logger.error(f"[DVP] Cache initialization error: {e}")
+        return False
+
+
 # ==================== CORE FUNCTIONS ====================
 
 def get_current_season() -> int:
@@ -720,8 +787,18 @@ def get_full_dvp_analysis(opponent_team: str, stat_type: str, player_position: O
 
 
 def _get_defensive_rank(opponent_team: str, stat_type: str) -> Optional[int]:
-    """Get raw defensive rank (1-30)."""
-    rankings = _dvp_cache.rankings if _dvp_cache and not _dvp_cache.is_expired else DVP_RANKINGS
+    """Get raw defensive rank (1-30). Uses in-memory cache or static fallback."""
+    global _dvp_cache
+    
+    # Check in-memory cache first
+    if _dvp_cache and not _dvp_cache.is_expired:
+        rankings = _dvp_cache.rankings
+    else:
+        # Fallback to static if cache is empty/expired
+        # Note: The async fetch_live_dvp() should be called periodically to refresh _dvp_cache
+        rankings = DVP_RANKINGS
+        logger.warning(f"[DVP] Using static fallback - cache is {'expired' if _dvp_cache else 'empty'}")
+    
     stat_key = STAT_TYPE_MAP.get(stat_type, stat_type.upper())
     
     if stat_key in rankings and opponent_team in rankings[stat_key]:

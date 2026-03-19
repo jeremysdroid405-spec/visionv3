@@ -751,8 +751,10 @@ async def startup_event():
     logger.info("Social Signal Engine initialized (News + Revenge Detection)")
     
     # Initialize DvP Service with MongoDB reference for persistent storage
-    from services.dvp_service import set_db_reference as set_dvp_db_reference
+    from services.dvp_service import set_db_reference as set_dvp_db_reference, initialize_dvp_cache
     set_dvp_db_reference(db)
+    # Initialize cache from MongoDB to avoid static fallback on startup
+    await initialize_dvp_cache()
     logger.info("DvP Service initialized (MongoDB-backed DvP rankings)")
     
     # Initialize Adaptive Sync Engine - Mission-critical polling
