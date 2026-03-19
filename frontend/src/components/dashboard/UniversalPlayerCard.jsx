@@ -32,7 +32,7 @@
  * NO OTHER CARD COMPONENTS SHOULD EXIST.
  */
 
-import React, { memo, useCallback, useState } from 'react';
+import React, { memo, useCallback, useState, useEffect } from 'react';
 import { 
   Target, Shield, ChevronRight, Plus, ChevronDown,
   Crosshair, TrendingUp, HeartPulse
@@ -186,6 +186,11 @@ const PlayerHeadshot = memo(({ photoUrl, playerName, team, size = 'md' }) => {
   };
   
   const [imgError, setImgError] = useState(false);
+  
+  // Reset imgError when photoUrl changes
+  useEffect(() => {
+    setImgError(false);
+  }, [photoUrl]);
   
   // Build full photo URL - handle relative paths from API
   const getPhotoUrl = (url) => {

@@ -500,7 +500,7 @@ const FrontLinesSection = memo(({ picks, onPickClick, onQuickAdd, isLoading }) =
       />
       <SwipeContainer>
         {picks.slice(0, 10).map((pick, idx) => (
-          <div key={`frontlines-${pick.player_name}-${pick.stat_type}-${idx}`} className="swipe-card">
+          <div key={`frontlines-${pick.player_name}-${pick.stat_type}-${pick.photo_url || 'nophoto'}-${idx}`} className="swipe-card">
             <UniversalPlayerCard 
               player={pick} 
               rank={idx + 1} 
