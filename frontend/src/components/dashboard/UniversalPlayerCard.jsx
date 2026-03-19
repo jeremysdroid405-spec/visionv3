@@ -134,17 +134,29 @@ const getHitRateColor = (rate) => {
 /**
  * Locked Overlay for games in progress
  * Shows when is_locked is true (game has started)
+ * Color matches the section: green (Safe Haven/Goblin), red (War Zone/Demon), yellow (Front Lines)
  */
-const LockedOverlay = memo(({ isLocked, gameStatus }) => {
+const LockedOverlay = memo(({ isLocked, gameStatus, tierLabel }) => {
   if (!isLocked) return null;
   
   const statusText = gameStatus === 'completed' ? 'Game Completed' : 'Game Underway';
   
+  // Color based on tier/section
+  const colorMap = {
+    GOBLIN: { bg: 'bg-green-500/30', border: 'border-green-500/50', text: 'text-green-400' },
+    DEMON: { bg: 'bg-red-500/30', border: 'border-red-500/50', text: 'text-red-400' },
+    WAR_ZONE: { bg: 'bg-red-500/30', border: 'border-red-500/50', text: 'text-red-400' },
+    FRONT_LINE: { bg: 'bg-yellow-500/30', border: 'border-yellow-500/50', text: 'text-yellow-400' },
+    SAFE_HAVEN: { bg: 'bg-green-500/30', border: 'border-green-500/50', text: 'text-green-400' },
+  };
+  
+  const colors = colorMap[tierLabel] || colorMap.GOBLIN;
+  
   return (
     <div className="absolute inset-0 bg-black/70 backdrop-blur-[2px] z-10 flex flex-col items-center justify-center rounded-lg">
-      <div className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-500/30 rounded-full border border-amber-500/50">
-        <Lock className="w-3.5 h-3.5 text-amber-400" />
-        <span className="text-amber-400 font-bold text-xs">LOCKED</span>
+      <div className={`flex items-center gap-1.5 px-3 py-1.5 ${colors.bg} rounded-full border ${colors.border}`}>
+        <Lock className={`w-3.5 h-3.5 ${colors.text}`} />
+        <span className={`${colors.text} font-bold text-xs`}>LOCKED</span>
       </div>
       <span className="text-zinc-400 text-[10px] mt-1.5">{statusText}</span>
     </div>
@@ -513,7 +525,7 @@ const UniversalPlayerCard = memo(({
         data-testid={`player-compact-${playerSlug}`}
       >
         {/* Locked Overlay */}
-        <LockedOverlay isLocked={is_locked} gameStatus={game_status} />
+        <LockedOverlay isLocked={is_locked} gameStatus={game_status} tierLabel={tier_label} />
         
         {/* Header: Photo + Name + Icon */}
         <div className="flex items-center gap-2 mb-2">
