@@ -45,7 +45,9 @@ const fetchLiveOdds = async () => {
 const fetchWarZone = async () => {
   const response = await fetch(`${API}/api/v3/war-zone`);
   if (!response.ok) throw new Error('War Zone fetch failed');
-  return response.json();
+  const data = await response.json();
+  preloadImages(data.picks);
+  return data;
 };
 
 /**
@@ -54,7 +56,28 @@ const fetchWarZone = async () => {
 const fetchSafeHaven = async () => {
   const response = await fetch(`${API}/api/v3/goblin-vault`);
   if (!response.ok) throw new Error('Safe Haven fetch failed');
-  return response.json();
+  const data = await response.json();
+  preloadImages(data.picks);
+  return data;
+};
+
+/**
+ * Preload images for faster rendering
+ * Call this after fetching picks data
+ */
+const preloadImages = (picks) => {
+  if (!picks || !Array.isArray(picks)) return;
+  
+  const backendUrl = process.env.REACT_APP_BACKEND_URL || '';
+  
+  picks.forEach(pick => {
+    const photoUrl = pick.photo_url;
+    if (photoUrl && photoUrl.startsWith('/api')) {
+      const fullUrl = `${backendUrl}${photoUrl}`;
+      const img = new Image();
+      img.src = fullUrl;
+    }
+  });
 };
 
 /**
@@ -63,7 +86,10 @@ const fetchSafeHaven = async () => {
 const fetchFrontLines = async () => {
   const response = await fetch(`${API}/api/v3/front-lines`);
   if (!response.ok) throw new Error('Front Lines fetch failed');
-  return response.json();
+  const data = await response.json();
+  // Preload images immediately after fetch
+  preloadImages(data.picks);
+  return data;
 };
 
 /**
