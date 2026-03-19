@@ -32,7 +32,7 @@
  * NO OTHER CARD COMPONENTS SHOULD EXIST.
  */
 
-import React, { memo, useCallback, useState, useEffect } from 'react';
+import React, { memo, useCallback, useState } from 'react';
 import { 
   Target, Shield, ChevronRight, Plus, ChevronDown,
   Crosshair, TrendingUp, HeartPulse
@@ -185,21 +185,12 @@ const PlayerHeadshot = memo(({ photoUrl, playerName, team, size = 'md' }) => {
     xl: 'w-20 h-20'
   };
   
-  const [imgError, setImgError] = useState(false);
-  
-  // Reset imgError when photoUrl changes
-  useEffect(() => {
-    setImgError(false);
-  }, [photoUrl]);
-  
   // Build full photo URL - handle relative paths from API
   const getPhotoUrl = (url) => {
     if (!url) return null;
-    // If it's already absolute, use as-is
     if (url.startsWith('http://') || url.startsWith('https://')) {
       return url;
     }
-    // If it's a relative path (starts with /api), prepend backend URL
     if (url.startsWith('/api')) {
       const backendUrl = process.env.REACT_APP_BACKEND_URL || '';
       return `${backendUrl}${url}`;
@@ -209,12 +200,13 @@ const PlayerHeadshot = memo(({ photoUrl, playerName, team, size = 'md' }) => {
   
   const fullPhotoUrl = getPhotoUrl(photoUrl);
   
-  if (!fullPhotoUrl || imgError) {
+  // If no photo URL, show team logo or initials
+  if (!fullPhotoUrl) {
     const teamLogo = TEAM_LOGOS[team];
     if (teamLogo) {
       return (
         <div className={`${sizeClasses[size]} rounded-full overflow-hidden bg-zinc-800 flex items-center justify-center p-1.5`}>
-          <img src={teamLogo} alt={team} className="w-full h-full object-contain" onError={(e) => e.target.style.display = 'none'} />
+          <img src={teamLogo} alt={team} className="w-full h-full object-contain" />
         </div>
       );
     }
@@ -225,6 +217,7 @@ const PlayerHeadshot = memo(({ photoUrl, playerName, team, size = 'md' }) => {
     );
   }
   
+  // Show photo with fallback on error
   return (
     <div className={`${sizeClasses[size]} rounded-full overflow-hidden bg-zinc-800`}>
       <img 
@@ -232,7 +225,18 @@ const PlayerHeadshot = memo(({ photoUrl, playerName, team, size = 'md' }) => {
         alt={playerName}
         className="w-full h-full object-cover"
         style={{ objectPosition: 'center 20%', transform: 'scale(1.3)' }}
-        onError={() => setImgError(true)}
+        onError={(e) => {
+          // On error, replace with team logo or initials
+          const teamLogo = TEAM_LOGOS[team];
+          if (teamLogo) {
+            e.target.src = teamLogo;
+            e.target.style.objectFit = 'contain';
+            e.target.style.transform = 'none';
+            e.target.style.padding = '6px';
+          } else {
+            e.target.style.display = 'none';
+          }
+        }}
       />
     </div>
   );
