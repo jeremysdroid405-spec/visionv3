@@ -216,27 +216,34 @@ const LiveScoresTicker = memo(() => {
             const isLive = game.status?.startsWith('Q') || game.status === 'live';
             const isFinal = game.status === 'final';
             
+            // Determine winner and loser
+            const awayWins = game.away_score > game.home_score;
+            const winnerTeam = awayWins ? game.away_team : game.home_team;
+            const loserTeam = awayWins ? game.home_team : game.away_team;
+            const winnerScore = awayWins ? game.away_score : game.home_score;
+            const loserScore = awayWins ? game.home_score : game.away_score;
+            
             return (
               <div key={`score-${idx}`} className={`flex items-center gap-2.5 px-4 py-1.5 border-r border-zinc-700/50 ${isLive ? 'bg-zinc-800/50' : ''}`}>
-                {/* Away Team */}
-                <img src={TEAM_LOGOS[game.away_team]} alt={game.away_team} className="w-5 h-5 flex-shrink-0" onError={(e) => e.target.style.display='none'} />
+                {/* Winner First */}
+                <img src={TEAM_LOGOS[winnerTeam]} alt={winnerTeam} className="w-5 h-5 flex-shrink-0" onError={(e) => e.target.style.display='none'} />
                 <span className="text-sm font-bold text-white">
-                  {game.away_team}
+                  {winnerTeam}
                 </span>
-                <span className={`text-base font-black ${game.away_score > game.home_score ? 'text-white' : 'text-red-400'}`}>
-                  {game.away_score}
+                <span className="text-base font-black text-white">
+                  {winnerScore}
                 </span>
                 
-                <span className="text-zinc-600 text-xs">@</span>
+                <span className="text-zinc-600 text-xs">-</span>
                 
-                {/* Home Team */}
-                <span className={`text-base font-black ${game.home_score > game.away_score ? 'text-white' : 'text-red-400'}`}>
-                  {game.home_score}
+                {/* Loser Second */}
+                <span className="text-base font-black text-red-400">
+                  {loserScore}
                 </span>
                 <span className="text-sm font-bold text-white">
-                  {game.home_team}
+                  {loserTeam}
                 </span>
-                <img src={TEAM_LOGOS[game.home_team]} alt={game.home_team} className="w-5 h-5 flex-shrink-0" onError={(e) => e.target.style.display='none'} />
+                <img src={TEAM_LOGOS[loserTeam]} alt={loserTeam} className="w-5 h-5 flex-shrink-0" onError={(e) => e.target.style.display='none'} />
                 
                 {/* Status Badge - separated with margin */}
                 <Badge className={`text-[10px] font-bold px-2 py-0.5 ml-1 ${
