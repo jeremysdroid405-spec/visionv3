@@ -252,7 +252,7 @@ async def get_tactical_profile(
         master_player = await get_player_by_name(db, player_name)
         
         if master_player:
-            photo_url = master_player.get("headshot_url", "")
+            photo_url = master_player.get("photo_url") or master_player.get("headshot_url", "")
             player_team = master_player.get("team", "")
             player_position = master_player.get("position", "")
             player_id = master_player.get("player_id")

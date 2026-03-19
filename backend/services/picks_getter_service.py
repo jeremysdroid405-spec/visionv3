@@ -475,7 +475,7 @@ class PicksGetterService:
                 "diff_from_avg": diff_from_avg,
                 "is_stale": is_stale,
                 "stats_source": "bdl_baseline" if not game_logs else "bdl_baseline+game_logs",
-                "photo_url": player.get("headshot_url") or player.get("photo_url"),
+                "photo_url": player.get("photo_url") or player.get("headshot_url"),
                 # BDL shooting/defensive stats - OPEN DOOR POPULATION
                 "fg_pct": round(bdl_fg_pct * 100, 1) if bdl_fg_pct else None,
                 "fg3_pct": round(bdl_fg3_pct * 100, 1) if bdl_fg3_pct else None,
@@ -509,7 +509,7 @@ class PicksGetterService:
                 "diff_from_avg": diff_from_avg,
                 "is_stale": is_stale,
                 "stats_source": "baseline_stats" if not game_logs else "baseline_stats+game_logs",
-                "photo_url": player.get("headshot_url") or player.get("photo_url"),
+                "photo_url": player.get("photo_url") or player.get("headshot_url"),
                 # BDL shooting/defensive stats
                 "fg_pct": round(bdl_fg_pct * 100, 1) if bdl_fg_pct else None,
                 "fg3_pct": round(bdl_fg3_pct * 100, 1) if bdl_fg3_pct else None,
@@ -528,7 +528,7 @@ class PicksGetterService:
                 "l5_avg": 0, "l10_avg": 0, 
                 "diff_from_avg": None,
                 "is_stale": is_stale, "stats_source": "no_data",
-                "photo_url": player.get("headshot_url") or player.get("photo_url"),
+                "photo_url": player.get("photo_url") or player.get("headshot_url"),
                 # BDL shooting/defensive stats (may still exist even without game logs)
                 "fg_pct": round(bdl_fg_pct * 100, 1) if bdl_fg_pct else None,
                 "fg3_pct": round(bdl_fg3_pct * 100, 1) if bdl_fg3_pct else None,
@@ -599,7 +599,7 @@ class PicksGetterService:
             "diff_from_avg": diff_from_avg,
             "is_stale": is_stale,
             "stats_source": "game_logs",
-            "photo_url": player.get("headshot_url") or player.get("photo_url"),
+            "photo_url": player.get("photo_url") or player.get("headshot_url"),
             # BDL shooting/defensive stats
             "fg_pct": round(bdl_fg_pct * 100, 1) if bdl_fg_pct else None,
             "fg3_pct": round(bdl_fg3_pct * 100, 1) if bdl_fg3_pct else None,
@@ -795,7 +795,7 @@ class PicksGetterService:
                     "l5_beats_line": l5_beats_line,
                     "risk_level": risk_level,
                     # Photo
-                    "photo_url": hub_player.get("headshot_url") or hub_player.get("photo_url"),
+                    "photo_url": hub_player.get("photo_url") or hub_player.get("headshot_url"),
                     "position": hub_player.get("position")
                 }
                 
@@ -1498,6 +1498,9 @@ class PicksGetterService:
         
         logger.info(f"[FRONT_LINES] Filters: {filter_stats}")
         
+        # SSOT: Enrich ALL picks with photos from master hub
+        await self._enrich_picks_with_photos(front_line_picks)
+        
         return {
             "picks": front_line_picks[:20],
             "picks_count": len(front_line_picks),
@@ -1693,6 +1696,9 @@ class PicksGetterService:
         for player in players:
             self._clean_object_ids(player)
         
+        # SSOT: Enrich ALL players with photos from master hub
+        await self._enrich_picks_with_photos(players)
+        
         # Get trending (top 10)
         trending = players[:10] if players else []
         
@@ -1827,8 +1833,8 @@ class PicksGetterService:
         
         # Add structural data - PHOTOS FROM MASTER HUB ONLY
         player["baseline_stats"] = baseline_stats
-        player["photo_url"] = hub_player.get("headshot_url")
-        player["headshot_url"] = hub_player.get("headshot_url")
+        player["photo_url"] = hub_player.get("photo_url") or hub_player.get("headshot_url")
+        player["headshot_url"] = hub_player.get("photo_url") or hub_player.get("headshot_url")
         
         # Import the coupled stats calculator (uses game_logs from PIPE 1)
         from services.stats_service import calculate_coupled_stats
@@ -2063,7 +2069,7 @@ class PicksGetterService:
             for bet in selected_bets:
                 hub_player = await self._get_master_player_by_name(bet["player_name"])
                 if hub_player:
-                    bet["photo_url"] = hub_player.get("headshot_url") or hub_player.get("photo_url")
+                    bet["photo_url"] = hub_player.get("photo_url") or hub_player.get("headshot_url")
                     bet["position"] = hub_player.get("position")
                     
                     # If stats still missing, get from master hub game logs
@@ -2115,9 +2121,9 @@ class PicksGetterService:
             pick['player_id'] = master_player.get('player_id')
             pick['nba_id'] = master_player.get('nba_id') or master_player.get('nba_player_id')
             pick['espn_id'] = master_player.get('espn_id')
-            # PHOTOS FROM MASTER HUB ONLY
-            pick['headshot_url'] = master_player.get('headshot_url')
-            pick['photo_url'] = master_player.get('headshot_url')
+            # PHOTOS FROM MASTER HUB ONLY - photo_url has correct NBA CDN IDs
+            pick['photo_url'] = master_player.get('photo_url') or master_player.get('headshot_url')
+            pick['headshot_url'] = master_player.get('photo_url') or master_player.get('headshot_url')
             if not pick.get('team'):
                 pick['team'] = master_player.get('team')
             if not pick.get('position'):
@@ -2199,8 +2205,9 @@ class PicksGetterService:
             player['player_id'] = master_player.get('player_id')
             player['nba_id'] = master_player.get('nba_id')
             player['espn_id'] = master_player.get('espn_id')
-            player['headshot_url'] = master_player.get('headshot_url')
-            player['photo_url'] = master_player.get('headshot_url')
+            # PHOTOS FROM MASTER HUB ONLY - photo_url has correct NBA CDN IDs
+            player['photo_url'] = master_player.get('photo_url') or master_player.get('headshot_url')
+            player['headshot_url'] = master_player.get('photo_url') or master_player.get('headshot_url')
             if not player.get('team'):
                 player['team'] = master_player.get('team')
             if not player.get('position'):
