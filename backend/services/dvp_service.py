@@ -161,6 +161,9 @@ async def _fetch_bdl_defensive_stats() -> Optional[Dict[str, Dict[str, float]]]:
     
     Endpoint: GET /nba/v1/team_season_averages/general?type=opponent
     
+    The BDL API uses cursor-based pagination. We need to loop through all pages
+    using the `next_cursor` from the `meta` object to get all 30 NBA teams.
+    
     Returns raw opponent stats per team: pts_allowed, ast_allowed, reb_allowed, etc.
     """
     api_key = _get_bdl_api_key()
@@ -171,38 +174,74 @@ async def _fetch_bdl_defensive_stats() -> Optional[Dict[str, Dict[str, float]]]:
     season = get_current_season()
     
     try:
-        params = {
-            "season": season,
-            "season_type": "regular",
-            "type": "opponent",  # Get opponent stats = defensive stats
-            "per_page": 100  # Get all 30 teams
-        }
-        
         headers = {
             "Authorization": api_key  # BDL uses API key directly, not Bearer
         }
         
         logger.info(f"[DVP] Fetching BallDontLie opponent stats for season {season}")
         
+        all_teams_data = []
+        cursor = None
+        page_count = 0
+        max_pages = 5  # Safety limit to prevent infinite loops
+        
         async with httpx.AsyncClient(timeout=20.0) as client:
-            response = await client.get(
-                BDL_TEAM_SEASON_AVERAGES,
-                params=params,
-                headers=headers
-            )
-            
-            if response.status_code == 200:
-                data = response.json()
-                return _parse_bdl_opponent_stats(data)
-            elif response.status_code == 401:
-                logger.error("[DVP] BallDontLie API key unauthorized - check tier (GOAT required for team_season_averages)")
-                return None
-            elif response.status_code == 429:
-                logger.warning("[DVP] BallDontLie rate limited - backing off")
-                return None
-            else:
-                logger.warning(f"[DVP] BallDontLie returned status {response.status_code}: {response.text[:200]}")
-                return None
+            while page_count < max_pages:
+                page_count += 1
+                
+                params = {
+                    "season": season,
+                    "season_type": "regular",
+                    "type": "opponent",  # Get opponent stats = defensive stats
+                    "per_page": 100  # Request max per page
+                }
+                
+                # Add cursor for subsequent pages
+                if cursor:
+                    params["cursor"] = cursor
+                
+                logger.info(f"[DVP] Fetching page {page_count} (cursor: {cursor})")
+                
+                response = await client.get(
+                    BDL_TEAM_SEASON_AVERAGES,
+                    params=params,
+                    headers=headers
+                )
+                
+                if response.status_code == 200:
+                    data = response.json()
+                    page_data = data.get("data", [])
+                    all_teams_data.extend(page_data)
+                    
+                    logger.info(f"[DVP] Page {page_count}: Got {len(page_data)} teams (total: {len(all_teams_data)})")
+                    
+                    # Check for next page
+                    meta = data.get("meta", {})
+                    next_cursor = meta.get("next_cursor")
+                    
+                    if next_cursor and len(page_data) > 0:
+                        cursor = next_cursor
+                        logger.info(f"[DVP] More data available, next_cursor: {next_cursor}")
+                    else:
+                        # No more pages
+                        logger.info(f"[DVP] Pagination complete. Total teams fetched: {len(all_teams_data)}")
+                        break
+                        
+                elif response.status_code == 401:
+                    logger.error("[DVP] BallDontLie API key unauthorized - check tier (GOAT required for team_season_averages)")
+                    return None
+                elif response.status_code == 429:
+                    logger.warning("[DVP] BallDontLie rate limited - backing off")
+                    return None
+                else:
+                    logger.warning(f"[DVP] BallDontLie returned status {response.status_code}: {response.text[:200]}")
+                    return None
+        
+        # Parse the combined data from all pages
+        if all_teams_data:
+            return _parse_bdl_opponent_stats({"data": all_teams_data})
+        
+        return None
                 
     except httpx.TimeoutException:
         logger.error("[DVP] BallDontLie API timeout")

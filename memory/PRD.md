@@ -110,6 +110,7 @@ probability_score = base_hit_rate + dvp_modifier + badge_modifier + line_modifie
 - `GET /api/v3/player-with-badges/{name}` - Player detail with hit rates
 
 ## Completed Features ✅
+- [x] **DvP Pagination Fix** (2026-03-19) - Fixed BDL API pagination to fetch all 30 teams
 - [x] Hit rate calculation fixed with `l10_values` (2026-03-19) 
 - [x] BDL game logs integration for game-by-game values (2026-03-19)
 - [x] 4:10 AM BDL game values sync added to scheduler (2026-03-19)
@@ -118,14 +119,27 @@ probability_score = base_hit_rate + dvp_modifier + badge_modifier + line_modifie
 - [x] 5 staggered NBA.com syncs at 4:00-4:08 AM
 - [x] War Zone, Safe Haven, Front Lines working correctly
 - [x] Dual ID system (bdl_id + nba_id)
+- [x] Probability score system for comprehensive pick ranking
+- [x] Context badge population (home_cookin, jet_lag, locked_in)
+- [x] Daily ticker sync (news + scores) at 4:15 AM EST
+- [x] Vision Intel Suite percentage display bug fixed
+
+### DvP Service Details
+- **File:** `/app/backend/services/dvp_service.py`
+- **Fix:** Added cursor-based pagination loop to `_fetch_bdl_defensive_stats()`
+- **Result:** All 30 NBA teams now included (Spurs was missing before)
+- **Endpoint:** BDL `/nba/v1/team_season_averages/general?type=opponent`
 
 ## Known Issues
 - ~46 players without `nba_id` (rookies/two-way)
 - NBA.com API can timeout - staggered syncs handle retries
-- News ticker not working
+- News ticker CSS animation may be slow (P2)
 
 ## Backlog
-- [ ] Fix news ticker
-- [ ] Deprecated code cleanup
+- [ ] Add tooltips for context badges (P1)
+- [ ] Add UI for War Zone score breakdown (P1)
+- [ ] News ticker animation optimization (P2)
+- [ ] Deprecated code cleanup (P2)
 - [ ] Google/Apple OAuth
 - [ ] Stripe payments
+- [ ] Automate distraction/deep_water badges
