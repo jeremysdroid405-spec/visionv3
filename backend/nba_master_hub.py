@@ -154,21 +154,21 @@ class NBAMasterHub:
         """
         DAILY SYNC PROTOCOL (4:00 AM ET)
         
-        Syncs player data from BallDontLie API (BDL) - the SOLE data source.
-        - Fetches players currently on the PrizePicks board
-        - Updates stats (Season Avg, L5, L10 from game logs)
-        - Preserves photo URLs and other metadata
+        Syncs player data from:
+        1. BallDontLie API (BDL) - Season averages for ALL active players
+        2. NBA.com API (nba_api) - Official L5/L10/L15/L20 pre-calculated stats
         
-        NOTE: Tank01 has been PURGED. All data comes from BDL exclusively.
+        This ensures every player has up-to-date stats from official sources.
         """
         logger.info("=" * 60)
-        logger.info("[MASTER HUB] DAILY SYNC STARTING (BDL Protocol)")
+        logger.info("[MASTER HUB] DAILY SYNC STARTING (BDL + NBA.com Protocol)")
         logger.info("=" * 60)
         
         sync_start = datetime.now(timezone.utc)
         results = {
             "started_at": sync_start.isoformat(),
             "players_synced": 0,
+            "nba_enriched": 0,
             "players_removed": 0,
             "photos_updated": 0,
             "stats_updated": 0,
@@ -176,23 +176,24 @@ class NBAMasterHub:
         }
         
         try:
-            # Use BDL Comprehensive Sync for PrizePicks players
+            # Use BDL Comprehensive Sync which includes NBA.com L5/L10 enrichment
             from services.bdl_comprehensive_sync import get_bdl_sync_service
             bdl_service = get_bdl_sync_service(self.hub.database)
             
-            logger.info("[MASTER HUB] Step 1: Syncing players from PrizePicks board via BDL...")
-            bdl_result = await bdl_service.sync_prizepicks_players()
+            logger.info("[MASTER HUB] Step 1: Syncing ALL active players (BDL + NBA.com L5/L10)...")
+            sync_result = await bdl_service.sync_all_active_players()
             
-            results["players_synced"] = bdl_result.get("success", 0)
-            results["players_removed"] = 0  # BDL sync doesn't remove players
+            results["players_synced"] = sync_result.get("success", 0)
+            results["nba_enriched"] = sync_result.get("nba_enriched", 0)
+            results["players_removed"] = 0
             
-            if bdl_result.get("not_found", 0) > 0:
-                results["errors"].append(f"{bdl_result['not_found']} players not found in BDL")
+            if sync_result.get("failed", 0) > 0:
+                results["errors"].append(f"{sync_result['failed']} players failed to sync")
             
             results["success"] = True
             self._last_sync = sync_start
             
-            logger.info("[MASTER HUB] Photo enrichment SKIPPED (photos are locked)")
+            logger.info(f"[MASTER HUB] Sync complete: {results['players_synced']} synced, {results['nba_enriched']} enriched with NBA.com L5/L10")
             
         except Exception as e:
             logger.error(f"[MASTER HUB] Daily sync error: {e}")
@@ -202,7 +203,7 @@ class NBAMasterHub:
         results["completed_at"] = datetime.now(timezone.utc).isoformat()
         results["duration"] = (datetime.now(timezone.utc) - sync_start).total_seconds()
         
-        logger.info(f"[MASTER HUB] Daily sync complete: {results['players_synced']} synced")
+        logger.info(f"[MASTER HUB] Daily sync complete in {results['duration']:.1f}s")
         logger.info("=" * 60)
         
         return results

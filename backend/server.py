@@ -405,18 +405,19 @@ async def scheduled_daily_sync():
                 except Exception as ie:
                     logger.error(f"[SCHEDULER] Injury sync failed (non-critical): {ie}")
             
-            # Step 2: BDL Comprehensive Sync - Primary stats source
-            # This syncs game logs, season averages, and player profiles from BallDontLie
-            # Season averages come DIRECTLY from BDL /season_averages endpoint (OFFICIAL)
-            # L5/L10 averages are calculated from game logs
-            logger.info("[SCHEDULER] Step 2/10: Running BDL comprehensive sync...")
+            # Step 2: BDL + NBA.com Comprehensive Sync - Primary stats source
+            # This syncs ALL active NBA players with:
+            # - Season averages from BDL /season_averages endpoint (OFFICIAL)
+            # - L5/L10/L15/L20 from NBA.com playerdashboardbylastngames (OFFICIAL)
+            logger.info("[SCHEDULER] Step 2/10: Running BDL + NBA.com comprehensive sync...")
             try:
                 from services.bdl_comprehensive_sync import get_bdl_sync_service
                 bdl_service = get_bdl_sync_service(db)
-                bdl_result = await bdl_service.sync_prizepicks_players()
-                logger.info(f"[SCHEDULER] BDL sync: {bdl_result.get('success', 0)}/{bdl_result.get('total', 0)} players synced from BallDontLie")
+                bdl_result = await bdl_service.sync_all_active_players()
+                logger.info(f"[SCHEDULER] BDL sync: {bdl_result.get('success', 0)}/{bdl_result.get('total', 0)} players synced")
+                logger.info(f"[SCHEDULER] NBA.com L5/L10: {bdl_result.get('nba_enriched', 0)} players enriched with official stats")
             except Exception as bdl_e:
-                logger.error(f"[SCHEDULER] BDL sync failed: {bdl_e}")
+                logger.error(f"[SCHEDULER] BDL + NBA.com sync failed: {bdl_e}")
                 # Fallback to legacy stats sync
                 logger.info("[SCHEDULER] Falling back to legacy stats sync...")
                 stats_result = await demon_goblin_engine.sync_player_stats()
@@ -499,6 +500,85 @@ async def scheduled_daily_sync():
             logger.error(f"[SCHEDULER] Daily sync failed: {e}")
     else:
         logger.error("[SCHEDULER] Demon & Goblin Engine not initialized")
+
+
+async def scheduled_nba_l5l10_sync():
+    """
+    Scheduled job that runs at 4:05 AM EST (09:05 UTC) daily.
+    
+    Batch enriches ALL players with NBA.com L5/L10 stats.
+    This runs 5 minutes AFTER the main odds sync to ensure the board
+    has fresh hit rate data immediately.
+    
+    Uses playerdashboardbylastngames for official pre-calculated stats.
+    """
+    logger.info("=" * 70)
+    logger.info(f"[SCHEDULER] 4:05 AM NBA.COM L5/L10 BATCH ENRICHMENT")
+    logger.info(f"[SCHEDULER] Time: {datetime.now(timezone.utc).isoformat()}")
+    logger.info("=" * 70)
+    
+    try:
+        from services.bdl_comprehensive_sync import get_bdl_sync_service
+        bdl_service = get_bdl_sync_service(db)
+        
+        # Batch enrich all players that need NBA.com L5/L10 data
+        # This gets players that have nba_id but missing l5_avg
+        players_needing = await db.nba_master_hub_2026.count_documents({
+            "nba_id": {"$exists": True, "$ne": None},
+            "$or": [
+                {"baseline_stats.PTS.l5_avg": {"$exists": False}},
+                {"baseline_stats.PTS.l5_avg": None}
+            ]
+        })
+        
+        logger.info(f"[SCHEDULER] Found {players_needing} players needing L5/L10 enrichment")
+        
+        # Enrich in batches of 100
+        total_enriched = 0
+        max_batches = 6  # Max 600 players
+        
+        for batch in range(max_batches):
+            if players_needing <= 0:
+                break
+                
+            players = await db.nba_master_hub_2026.find({
+                "nba_id": {"$exists": True, "$ne": None},
+                "$or": [
+                    {"baseline_stats.PTS.l5_avg": {"$exists": False}},
+                    {"baseline_stats.PTS.l5_avg": None}
+                ]
+            }, {"bdl_id": 1, "display_name": 1}).limit(100).to_list(100)
+            
+            if not players:
+                break
+            
+            batch_success = 0
+            for player in players:
+                try:
+                    result = await bdl_service.enrich_baseline_with_nba_stats(player["bdl_id"])
+                    if result:
+                        batch_success += 1
+                except Exception as e:
+                    logger.debug(f"[SCHEDULER] Failed to enrich {player.get('display_name')}: {e}")
+            
+            total_enriched += batch_success
+            logger.info(f"[SCHEDULER] Batch {batch+1}: {batch_success}/{len(players)} enriched")
+            
+            # Recount remaining
+            players_needing = await db.nba_master_hub_2026.count_documents({
+                "nba_id": {"$exists": True, "$ne": None},
+                "$or": [
+                    {"baseline_stats.PTS.l5_avg": {"$exists": False}},
+                    {"baseline_stats.PTS.l5_avg": None}
+                ]
+            })
+        
+        logger.info(f"[SCHEDULER] NBA.com L5/L10 enrichment complete: {total_enriched} players enriched")
+        logger.info(f"[SCHEDULER] Remaining without L5/L10: {players_needing}")
+        logger.info("=" * 70)
+        
+    except Exception as e:
+        logger.error(f"[SCHEDULER] NBA.com L5/L10 batch enrichment failed: {e}")
 
 
 async def scheduled_roster_sync():
@@ -656,6 +736,16 @@ async def startup_event():
         replace_existing=True
     )
     
+    # NBA.com L5/L10 batch enrichment at 4:05 AM EST (9:05 AM UTC)
+    # Runs RIGHT AFTER daily sync to ensure board has fresh hit rates
+    scheduler.add_job(
+        scheduled_nba_l5l10_sync,
+        CronTrigger(hour=9, minute=5, timezone=SCHEDULER_TIMEZONE),  # 4:05 AM EST = 9:05 AM UTC
+        id='nba_l5l10_sync',
+        name='4:05 AM EST NBA.com L5/L10 Batch Enrichment',
+        replace_existing=True
+    )
+    
     # Morning props sync at 5:00 AM EST (10:00 AM UTC) - Odds/Props refresh
     scheduler.add_job(
         scheduled_daily_sync,
@@ -676,7 +766,8 @@ async def startup_event():
     
     scheduler.start()
     logger.info(f"[SCHEDULER] APScheduler started")
-    logger.info(f"[SCHEDULER] Daily Full Sync: 04:00 AM EST (09:00 UTC) - 10 Steps: Stats + DvP + Vision AI + Career Stats + Contracts")
+    logger.info(f"[SCHEDULER] Daily Full Sync: 04:00 AM EST (09:00 UTC) - BDL + NBA.com L5/L10")
+    logger.info(f"[SCHEDULER] NBA.com L5/L10 Batch: 04:05 AM EST (09:05 UTC) - Catch any missed players")
     logger.info(f"[SCHEDULER] Morning Props Sync: 05:00 AM EST (10:00 UTC)")
     logger.info(f"[SCHEDULER] Weekly Roster: Sunday 00:00 UTC")
     

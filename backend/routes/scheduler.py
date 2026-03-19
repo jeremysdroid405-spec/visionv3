@@ -141,8 +141,7 @@ async def sync_bdl_comprehensive():
     This syncs:
     - Player profiles (height, weight, position, draft info)
     - Season averages (pts, reb, ast, etc.) - OFFICIAL from BDL API
-    - Game logs (last 100 games with full box scores)
-    - L5/L10 averages calculated from game logs
+    - L5/L10/L15/L20 averages - OFFICIAL from NBA.com API (nba_api)
     
     This is the PRIMARY data source for accurate player stats.
     Automatically runs daily at 4:00 AM EST.
@@ -157,34 +156,31 @@ async def sync_bdl_comprehensive():
     if not mongo_url:
         raise HTTPException(status_code=503, detail="Database not configured")
     
-    logger.info("[MANUAL SYNC] Triggering BDL comprehensive sync...")
+    logger.info("[MANUAL SYNC] Triggering BDL + NBA.com comprehensive sync...")
     
     try:
         client = AsyncIOMotorClient(mongo_url)
         db = client[db_name]
         
-        # Sync from BDL API - this sets OFFICIAL season averages + calculates L5/L10
+        # Sync from BDL API + NBA.com for L5/L10
         bdl_service = get_bdl_sync_service(db)
-        bdl_result = await bdl_service.sync_prizepicks_players()
-        
-        # NO recalculation needed - BDL sync already computes everything correctly
-        # Season averages come directly from BDL /season_averages endpoint
-        # L5/L10 are calculated from game logs in _transform_bdl_stats()
+        sync_result = await bdl_service.sync_all_active_players()
         
         return {
             "success": True,
-            "sync_type": "bdl_comprehensive",
-            "bdl_sync": {
-                "players_synced": bdl_result.get("success", 0),
-                "players_failed": bdl_result.get("failed", 0),
-                "players_not_found": bdl_result.get("not_found", 0),
-                "total_attempted": bdl_result.get("total", 0)
+            "sync_type": "bdl_plus_nba",
+            "sync_result": {
+                "players_synced": sync_result.get("success", 0),
+                "players_failed": sync_result.get("failed", 0),
+                "nba_enriched": sync_result.get("nba_enriched", 0),
+                "total_players": sync_result.get("total", 0),
+                "duration_seconds": sync_result.get("duration_seconds", 0)
             },
-            "note": "Season averages are OFFICIAL from BDL API. L5/L10 calculated from game logs.",
+            "note": "Season averages from BDL API. L5/L10 from NBA.com official stats.",
             "triggered_at": datetime.now(timezone.utc).isoformat()
         }
     except Exception as e:
-        logger.error(f"[MANUAL SYNC] BDL comprehensive sync failed: {e}")
+        logger.error(f"[MANUAL SYNC] BDL + NBA.com sync failed: {e}")
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
@@ -231,6 +227,91 @@ async def sync_bdl_player_mapping():
         }
     except Exception as e:
         logger.error(f"[MANUAL SYNC] BDL mapping sync failed: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/v3/sync-nba-l5l10")
+async def sync_nba_l5l10(limit: int = 200):
+    """
+    Manually trigger NBA.com L5/L10 batch enrichment.
+    
+    Uses playerdashboardbylastngames endpoint to fetch official
+    pre-calculated L5/L10/L15/L20 stats from NBA.com.
+    
+    This runs automatically at 4:05 AM EST, but can be triggered manually
+    to ensure the board has fresh hit rate data.
+    
+    Args:
+        limit: Max number of players to enrich (default 200)
+    
+    Returns:
+        Summary of enrichment results
+    """
+    import os
+    from motor.motor_asyncio import AsyncIOMotorClient
+    from services.bdl_comprehensive_sync import get_bdl_sync_service
+    
+    mongo_url = os.environ.get("MONGO_URL")
+    db_name = os.environ.get("DB_NAME", "pick_vision")
+    
+    if not mongo_url:
+        raise HTTPException(status_code=503, detail="Database not configured")
+    
+    logger.info(f"[MANUAL SYNC] Triggering NBA.com L5/L10 batch enrichment (limit={limit})...")
+    
+    try:
+        client = AsyncIOMotorClient(mongo_url)
+        db = client[db_name]
+        
+        bdl_service = get_bdl_sync_service(db)
+        
+        # Find players needing enrichment
+        players = await db.nba_master_hub_2026.find({
+            "nba_id": {"$exists": True, "$ne": None},
+            "$or": [
+                {"baseline_stats.PTS.l5_avg": {"$exists": False}},
+                {"baseline_stats.PTS.l5_avg": None}
+            ]
+        }, {"bdl_id": 1, "display_name": 1}).limit(limit).to_list(limit)
+        
+        logger.info(f"[MANUAL SYNC] Found {len(players)} players needing L5/L10 enrichment")
+        
+        success = 0
+        failed = 0
+        
+        for player in players:
+            try:
+                result = await bdl_service.enrich_baseline_with_nba_stats(player["bdl_id"])
+                if result:
+                    success += 1
+                else:
+                    failed += 1
+            except Exception as e:
+                logger.debug(f"[MANUAL SYNC] Failed to enrich {player.get('display_name')}: {e}")
+                failed += 1
+        
+        remaining = await db.nba_master_hub_2026.count_documents({
+            "nba_id": {"$exists": True, "$ne": None},
+            "$or": [
+                {"baseline_stats.PTS.l5_avg": {"$exists": False}},
+                {"baseline_stats.PTS.l5_avg": None}
+            ]
+        })
+        
+        return {
+            "success": True,
+            "sync_type": "nba_l5l10_batch",
+            "players_processed": len(players),
+            "enriched": success,
+            "failed": failed,
+            "remaining": remaining,
+            "note": "L5/L10/L15/L20 stats from NBA.com playerdashboardbylastngames",
+            "triggered_at": datetime.now(timezone.utc).isoformat()
+        }
+    except Exception as e:
+        logger.error(f"[MANUAL SYNC] NBA.com L5/L10 batch enrichment failed: {e}")
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
@@ -399,15 +480,16 @@ async def sync_full_daily():
     Manually trigger the FULL daily sync (same as 4:00 AM scheduled job).
     
     This is a comprehensive sync that includes:
-    1. Master Hub baseline stats (L5, L10, season averages)
-    2. DvP rankings refresh (Defense vs Position)
+    1. ALL active NBA players from BDL (season averages)
+    2. NBA.com L5/L10/L15/L20 stats (official pre-calculated)
+    3. DvP rankings refresh (Defense vs Position)
     
     For the complete scheduled sync (including injuries, odds, insights, Vision AI),
     use the scheduled job or wait for the 4:00 AM automatic run.
     """
     import os
     from motor.motor_asyncio import AsyncIOMotorClient
-    from services.master_hub_sync import MasterHubSyncService
+    from services.bdl_comprehensive_sync import get_bdl_sync_service
     from services.dvp_service import force_refresh_dvp, get_dvp_status
     
     mongo_url = os.environ.get("MONGO_URL")
@@ -416,31 +498,34 @@ async def sync_full_daily():
     if not mongo_url:
         raise HTTPException(status_code=503, detail="Database not configured")
     
-    logger.info("[8AM SYNC] Starting combined Stats + DvP sync...")
+    logger.info("[DAILY SYNC] Starting combined BDL + NBA.com + DvP sync...")
     
     results = {
         "success": True,
-        "sync_type": "8am_full",
+        "sync_type": "daily_full",
         "triggered_at": datetime.now(timezone.utc).isoformat(),
         "components": {}
     }
     
-    # Step 1: Baseline Stats
+    # Step 1: BDL + NBA.com Stats
     try:
-        logger.info("[8AM SYNC] Step 1/2: Baseline stats sync...")
+        logger.info("[DAILY SYNC] Step 1/2: BDL + NBA.com stats sync...")
         client = AsyncIOMotorClient(mongo_url)
         db = client[db_name]
         
-        service = MasterHubSyncService(db)
-        stats_result = await service.run_full_sync()
-        results["components"]["baseline_stats"] = {
+        bdl_service = get_bdl_sync_service(db)
+        sync_result = await bdl_service.sync_all_active_players()
+        
+        results["components"]["player_stats"] = {
             "success": True,
-            "result": stats_result
+            "players_synced": sync_result.get("success", 0),
+            "nba_enriched": sync_result.get("nba_enriched", 0),
+            "duration_seconds": sync_result.get("duration_seconds", 0)
         }
-        logger.info(f"[8AM SYNC] Baseline stats complete: {stats_result}")
+        logger.info(f"[DAILY SYNC] Stats complete: {sync_result.get('success', 0)} players, {sync_result.get('nba_enriched', 0)} NBA.com enriched")
     except Exception as e:
-        logger.error(f"[8AM SYNC] Baseline stats failed: {e}")
-        results["components"]["baseline_stats"] = {
+        logger.error(f"[DAILY SYNC] Stats sync failed: {e}")
+        results["components"]["player_stats"] = {
             "success": False,
             "error": str(e)
         }
@@ -448,7 +533,7 @@ async def sync_full_daily():
     
     # Step 2: DvP Rankings
     try:
-        logger.info("[8AM SYNC] Step 2/2: DvP rankings refresh...")
+        logger.info("[DAILY SYNC] Step 2/2: DvP rankings refresh...")
         dvp_result = await force_refresh_dvp()
         dvp_status = get_dvp_status()
         results["components"]["dvp_rankings"] = {
@@ -458,16 +543,16 @@ async def sync_full_daily():
             "stat_types": dvp_result.get("stat_types", []),
             "status": dvp_status
         }
-        logger.info(f"[8AM SYNC] DvP refresh complete: {dvp_result.get('source')}")
+        logger.info(f"[DAILY SYNC] DvP refresh complete: {dvp_result.get('source')}")
     except Exception as e:
-        logger.error(f"[8AM SYNC] DvP refresh failed: {e}")
+        logger.error(f"[DAILY SYNC] DvP refresh failed: {e}")
         results["components"]["dvp_rankings"] = {
             "success": False,
             "error": str(e)
         }
         results["success"] = False
     
-    logger.info(f"[8AM SYNC] Complete. Success: {results['success']}")
+    logger.info(f"[DAILY SYNC] Complete. Success: {results['success']}")
     return results
 
 
