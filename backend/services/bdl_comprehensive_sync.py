@@ -609,51 +609,45 @@ class BDLComprehensiveSyncService:
     
     async def sync_all_active_players(self) -> Dict[str, Any]:
         """
-        Sync ALL active NBA players to master hub using GOAT tier BATCH API calls.
-        
-        This ensures ALL players have fresh stats, not just those with props today.
+        Sync ALL active NBA players to master hub.
         
         Flow:
         1. Fetch all active players from BDL /players/active (~530 players)
         2. BATCH call /season_averages/general for official season stats
-        3. BATCH call /stats for game logs (L5/L10 calculation)
+        3. Fetch L5/L10 from NBA.com API (official pre-calculated stats)
         4. Update nba_master_hub_2026 for all players
         
         This is the MASTER sync - runs daily to keep all player data fresh.
         """
         sync_start = datetime.now(timezone.utc)
-        logger.info("[BDL] === MASTER SYNC: All Active NBA Players ===")
+        logger.info("[SYNC] === MASTER SYNC: All Active NBA Players ===")
         
         # Step 1: Get all active players from BDL
-        logger.info("[BDL] Step 1: Fetching all active players from BDL...")
+        logger.info("[SYNC] Step 1: Fetching all active players from BDL...")
         all_players = await self.fetch_all_players()
         
         # Filter to players with teams (truly active)
         active_players = [p for p in all_players if p.get("team")]
         bdl_ids = [p["id"] for p in active_players]
         
-        logger.info(f"[BDL] Found {len(bdl_ids)} active players with teams")
+        logger.info(f"[SYNC] Found {len(bdl_ids)} active players with teams")
         
         if not bdl_ids:
             return {"success": 0, "failed": 0, "total": 0, "duration_seconds": 0}
         
-        # Step 2: BATCH fetch season averages (GOAT tier - one call for all)
-        logger.info(f"[BDL] Step 2: BATCH fetching season averages for {len(bdl_ids)} players...")
+        # Step 2: BATCH fetch season averages from BDL (GOAT tier)
+        logger.info(f"[SYNC] Step 2: BATCH fetching season averages from BDL...")
         season_avgs_map = await self._batch_fetch_season_averages(bdl_ids)
-        logger.info(f"[BDL] Got season averages for {len([k for k,v in season_avgs_map.items() if v])} players")
+        logger.info(f"[SYNC] Got season averages for {len([k for k,v in season_avgs_map.items() if v])} players")
         
-        # Step 3: BATCH fetch game logs for L5/L10
-        logger.info(f"[BDL] Step 3: BATCH fetching game logs for {len(bdl_ids)} players...")
-        game_logs_map = await self._batch_fetch_game_logs(bdl_ids)
-        logger.info(f"[BDL] Got game logs for {len([k for k,v in game_logs_map.items() if v])} players")
-        
-        # Step 4: Update master hub for ALL players
-        logger.info("[BDL] Step 4: Updating master hub...")
+        # Step 3: Update master hub for ALL players (with NBA.com L5/L10 fetch)
+        logger.info("[SYNC] Step 3: Updating master hub with NBA.com L5/L10 stats...")
         success = 0
-        for player in active_players:
+        nba_enriched = 0
+        
+        for idx, player in enumerate(active_players):
             bdl_id = player["id"]
             season_avg = season_avgs_map.get(bdl_id, {})
-            game_logs = game_logs_map.get(bdl_id, [])
             
             # Build display name
             first_name = player.get("first_name", "")
@@ -661,11 +655,18 @@ class BDLComprehensiveSyncService:
             display_name = f"{first_name} {last_name}".strip()
             team_data = player.get("team", {})
             
-            # Merge official season averages with L5/L10 from game logs
-            baseline_stats = self._merge_season_avg_with_logs(season_avg, game_logs)
-            
             # Get NBA.com ID for this player
             nba_id = get_nba_id_for_name(display_name)
+            
+            # Fetch L5/L10 from NBA.com if we have nba_id
+            nba_stats = None
+            if nba_id:
+                nba_stats = await self.fetch_nba_last_n_games(nba_id)
+                if nba_stats:
+                    nba_enriched += 1
+            
+            # Build baseline stats combining BDL season avg + NBA.com L5/L10
+            baseline_stats = self._build_baseline_stats(season_avg, nba_stats)
             
             update_doc = {
                 "bdl_id": bdl_id,
@@ -698,11 +699,11 @@ class BDLComprehensiveSyncService:
             if nba_id:
                 update_doc["nba_id"] = nba_id
             
-            # Store raw data for reference
+            # Store raw stats for reference
             if season_avg:
                 update_doc["bdl_raw_stats"] = season_avg
-            if game_logs:
-                update_doc["bdl_game_logs"] = game_logs[:15]
+            if nba_stats:
+                update_doc["nba_stats_raw"] = nba_stats
             
             try:
                 await self.master_hub.update_one(
@@ -712,18 +713,123 @@ class BDLComprehensiveSyncService:
                 )
                 success += 1
             except Exception as e:
-                logger.error(f"[BDL] Error updating {display_name}: {e}")
+                logger.error(f"[SYNC] Error updating {display_name}: {e}")
+            
+            # Progress logging every 50 players
+            if (idx + 1) % 50 == 0:
+                logger.info(f"[SYNC] Progress: {idx + 1}/{len(active_players)} players synced")
         
         duration = round((datetime.now(timezone.utc) - sync_start).total_seconds(), 2)
-        logger.info(f"[BDL] === MASTER SYNC COMPLETE: {success}/{len(active_players)} players in {duration}s ===")
+        logger.info(f"[SYNC] === MASTER SYNC COMPLETE: {success}/{len(active_players)} players, {nba_enriched} with NBA.com L5/L10, in {duration}s ===")
         
         return {
             "success": success,
             "failed": len(active_players) - success,
             "total": len(active_players),
+            "nba_enriched": nba_enriched,
             "duration_seconds": duration,
-            "sync_type": "all_active_players"
+            "sync_type": "all_active_players_with_nba"
         }
+    
+    def _build_baseline_stats(self, bdl_season_avg: Dict, nba_stats: Optional[Dict]) -> Dict:
+        """
+        Build baseline stats combining BDL season averages with NBA.com L5/L10.
+        
+        BDL provides: Official season averages
+        NBA.com provides: Pre-calculated L5/L10/L15/L20 averages
+        """
+        baseline = {}
+        
+        # Mapping from BDL keys to our keys
+        bdl_to_our = {
+            'pts': 'PTS', 'reb': 'REB', 'ast': 'AST', 'stl': 'STL',
+            'blk': 'BLK', 'fg3m': '3PM', 'fgm': 'FGM', 'ftm': 'FTM', 'turnover': 'TO'
+        }
+        
+        # NBA.com key mapping
+        nba_to_our = {
+            'PTS': 'PTS', 'REB': 'REB', 'AST': 'AST', 'STL': 'STL',
+            'BLK': 'BLK', 'FG3M': '3PM', 'FGM': 'FGM', 'FTM': 'FTM', 'TOV': 'TO'
+        }
+        
+        # Build stats for each category
+        for bdl_key, our_key in bdl_to_our.items():
+            stat_entry = {}
+            
+            # Season average from BDL
+            if bdl_season_avg and bdl_key in bdl_season_avg:
+                val = bdl_season_avg[bdl_key]
+                if val is not None:
+                    stat_entry['season_avg'] = round(float(val), 1)
+            
+            # L5/L10 from NBA.com
+            if nba_stats:
+                # Find the NBA.com key for this stat
+                nba_key = None
+                for nk, ok in nba_to_our.items():
+                    if ok == our_key:
+                        nba_key = nk
+                        break
+                
+                if nba_key:
+                    if 'last5' in nba_stats and nba_key in nba_stats['last5']:
+                        stat_entry['l5_avg'] = nba_stats['last5'][nba_key]
+                    if 'last10' in nba_stats and nba_key in nba_stats['last10']:
+                        stat_entry['l10_avg'] = nba_stats['last10'][nba_key]
+                    if 'overall' in nba_stats and nba_key in nba_stats['overall']:
+                        # Use NBA.com overall if BDL doesn't have it
+                        if 'season_avg' not in stat_entry:
+                            stat_entry['season_avg'] = nba_stats['overall'][nba_key]
+            
+            if stat_entry:
+                baseline[our_key] = stat_entry
+        
+        # Add shooting percentages from BDL
+        if bdl_season_avg:
+            for pct_key in ['fg_pct', 'fg3_pct', 'ft_pct']:
+                if pct_key in bdl_season_avg and bdl_season_avg[pct_key] is not None:
+                    baseline[pct_key] = bdl_season_avg[pct_key]
+            if 'games_played' in bdl_season_avg:
+                baseline['games_played'] = bdl_season_avg['games_played']
+        
+        # Combo stats (PRA, PR, PA, RA)
+        pts = baseline.get('PTS', {}).get('season_avg', 0) or 0
+        reb = baseline.get('REB', {}).get('season_avg', 0) or 0
+        ast = baseline.get('AST', {}).get('season_avg', 0) or 0
+        
+        pts_l5 = baseline.get('PTS', {}).get('l5_avg', 0) or 0
+        reb_l5 = baseline.get('REB', {}).get('l5_avg', 0) or 0
+        ast_l5 = baseline.get('AST', {}).get('l5_avg', 0) or 0
+        
+        pts_l10 = baseline.get('PTS', {}).get('l10_avg', 0) or 0
+        reb_l10 = baseline.get('REB', {}).get('l10_avg', 0) or 0
+        ast_l10 = baseline.get('AST', {}).get('l10_avg', 0) or 0
+        
+        baseline['PRA'] = {
+            'season_avg': round(pts + reb + ast, 1),
+            'l5_avg': round(pts_l5 + reb_l5 + ast_l5, 1) if nba_stats else None,
+            'l10_avg': round(pts_l10 + reb_l10 + ast_l10, 1) if nba_stats else None
+        }
+        baseline['PR'] = {
+            'season_avg': round(pts + reb, 1),
+            'l5_avg': round(pts_l5 + reb_l5, 1) if nba_stats else None,
+            'l10_avg': round(pts_l10 + reb_l10, 1) if nba_stats else None
+        }
+        baseline['PA'] = {
+            'season_avg': round(pts + ast, 1),
+            'l5_avg': round(pts_l5 + ast_l5, 1) if nba_stats else None,
+            'l10_avg': round(pts_l10 + ast_l10, 1) if nba_stats else None
+        }
+        baseline['RA'] = {
+            'season_avg': round(reb + ast, 1),
+            'l5_avg': round(reb_l5 + ast_l5, 1) if nba_stats else None,
+            'l10_avg': round(reb_l10 + ast_l10, 1) if nba_stats else None
+        }
+        
+        baseline['synced_from'] = 'bdl_season_avg_plus_nba_l5l10'
+        baseline['synced_at'] = datetime.now(timezone.utc).isoformat()
+        
+        return baseline
     
     async def _batch_fetch_season_averages(self, bdl_ids: List[int]) -> Dict[int, Dict]:
         """
@@ -1083,30 +1189,11 @@ class BDLComprehensiveSyncService:
         if not nba_stats:
             return False
         
-        # Merge into baseline_stats
-        baseline = player.get("baseline_stats", {})
+        # Get existing BDL season averages
+        bdl_raw = player.get("bdl_raw_stats", {})
         
-        # Map NBA.com columns to our stat keys
-        nba_to_our = {
-            'PTS': 'PTS', 'REB': 'REB', 'AST': 'AST', 'STL': 'STL',
-            'BLK': 'BLK', 'FG3M': '3PM', 'FGM': 'FGM', 'FTM': 'FTM', 'TOV': 'TO'
-        }
-        
-        for nba_col, our_key in nba_to_our.items():
-            if our_key not in baseline:
-                baseline[our_key] = {}
-            
-            # Update L5/L10 from NBA.com (official source)
-            if 'last5' in nba_stats and nba_col in nba_stats['last5']:
-                baseline[our_key]['l5_avg_nba'] = nba_stats['last5'][nba_col]
-            if 'last10' in nba_stats and nba_col in nba_stats['last10']:
-                baseline[our_key]['l10_avg_nba'] = nba_stats['last10'][nba_col]
-            
-            # Use overall as season average if not present
-            if 'overall' in nba_stats and nba_col in nba_stats['overall']:
-                if baseline[our_key].get('season_avg') is None:
-                    baseline[our_key]['season_avg'] = nba_stats['overall'][nba_col]
-        
+        # Rebuild baseline_stats using the new method
+        baseline = self._build_baseline_stats(bdl_raw, nba_stats)
         baseline['nba_enriched_at'] = datetime.now(timezone.utc).isoformat()
         
         # Update in database
@@ -1115,7 +1202,7 @@ class BDLComprehensiveSyncService:
             {"$set": {"baseline_stats": baseline, "nba_stats_raw": nba_stats}}
         )
         
-        logger.debug(f"[NBA] Enriched {player.get('display_name')} with NBA.com L5/L10")
+        logger.info(f"[NBA] Enriched {player.get('display_name')} with NBA.com L5/L10")
         return True
 
 

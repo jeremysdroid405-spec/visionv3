@@ -223,6 +223,66 @@ async def get_nba_last_n_stats(bdl_id: int):
         "stats": nba_stats
     }
 
+
+@router.post("/enrich-all-nba-stats")
+async def enrich_all_players_nba_stats(limit: int = 100):
+    """
+    Batch enrich players with NBA.com L5/L10 stats.
+    
+    Finds players that have nba_id but missing l5_avg in baseline_stats,
+    fetches their L5/L10 from NBA.com, and updates their records.
+    
+    Args:
+        limit: Max number of players to enrich (default 100)
+        
+    Returns:
+        Summary of enrichment results
+    """
+    if _db is None:
+        raise HTTPException(status_code=500, detail="Database not initialized")
+    
+    from services.bdl_comprehensive_sync import get_bdl_sync_service
+    service = get_bdl_sync_service(_db)
+    
+    # Find players needing enrichment
+    players = await _db.nba_master_hub_2026.find({
+        "nba_id": {"$exists": True, "$ne": None},
+        "$or": [
+            {"baseline_stats.PTS.l5_avg": {"$exists": False}},
+            {"baseline_stats.PTS.l5_avg": None}
+        ]
+    }, {"bdl_id": 1, "display_name": 1, "nba_id": 1}).limit(limit).to_list(limit)
+    
+    logger.info(f"[NBA] Batch enrichment: {len(players)} players need L5/L10")
+    
+    success = 0
+    failed = 0
+    
+    for player in players:
+        try:
+            result = await service.enrich_baseline_with_nba_stats(player["bdl_id"])
+            if result:
+                success += 1
+            else:
+                failed += 1
+        except Exception as e:
+            logger.error(f"[NBA] Error enriching {player.get('display_name')}: {e}")
+            failed += 1
+    
+    return {
+        "total_processed": len(players),
+        "success": success,
+        "failed": failed,
+        "remaining": await _db.nba_master_hub_2026.count_documents({
+            "nba_id": {"$exists": True, "$ne": None},
+            "$or": [
+                {"baseline_stats.PTS.l5_avg": {"$exists": False}},
+                {"baseline_stats.PTS.l5_avg": None}
+            ]
+        })
+    }
+
+
 @router.post("/sync-career-stats")
 async def sync_career_stats():
     """

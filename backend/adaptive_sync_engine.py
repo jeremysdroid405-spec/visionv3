@@ -298,21 +298,28 @@ class AdaptiveSyncEngine:
                     game_values.append(0)
             
             if game_values:
-                # Calculate L5 and L10 averages
+                # Calculate L5 and L10 averages ONLY if not already present from baseline_stats
                 l5_values = game_values[:5]
                 l10_values = game_values[:10]
                 
-                if l5_values:
+                # Only calculate from game logs if baseline_stats doesn't have it
+                if l5_values and not result.get("l5_avg"):
                     result["l5_avg"] = round(sum(l5_values) / len(l5_values), 1)
-                if l10_values:
+                if l10_values and not result.get("l10_avg"):
                     result["l10_avg"] = round(sum(l10_values) / len(l10_values), 1)
                 
                 # Calculate H10 hit rate (> line, not >=)
-                if l10_values:
-                    hits = sum(1 for v in l10_values if v > float(line))
-                    result["h10_hit_rate"] = round((hits / len(l10_values)) * 100, 1)
+                # Use l10_values from game logs OR baseline_stats l10_values if available
+                values_for_hit_rate = l10_values
+                baseline_l10_values = baseline_stats.get(stat_key, {}).get("l10_values", []) if baseline_stats else []
+                if baseline_l10_values and len(baseline_l10_values) > len(l10_values):
+                    values_for_hit_rate = baseline_l10_values
+                
+                if values_for_hit_rate:
+                    hits = sum(1 for v in values_for_hit_rate if v > float(line))
+                    result["h10_hit_rate"] = round((hits / len(values_for_hit_rate)) * 100, 1)
                     result["h10_hits"] = hits
-                    result["h10_games"] = len(l10_values)
+                    result["h10_games"] = len(values_for_hit_rate)
                 
                 # Cache for reuse
                 self._player_stats_cache[cache_key] = {
