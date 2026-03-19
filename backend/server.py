@@ -513,7 +513,26 @@ async def scheduled_nba_l5l10_sync():
     Uses playerdashboardbylastngames for official pre-calculated stats.
     """
     logger.info("=" * 70)
-    logger.info(f"[SCHEDULER] 4:05 AM NBA.COM L5/L10 BATCH ENRICHMENT")
+    logger.info(f"[SCHEDULER] 4:05 AM NBA.COM L5/L10 BATCH ENRICHMENT (deprecated - using staggered syncs)")
+    logger.info("=" * 70)
+    # This is now handled by staggered syncs at 4:00, 4:02, 4:04, 4:06, 4:08 AM
+
+
+async def scheduled_nba_l5l10_batch(batch_num: int, limit: int = 125):
+    """
+    Staggered NBA.com L5/L10 batch enrichment.
+    
+    5 batches run 2 minutes apart starting at 4:00 AM EST:
+    - Batch 1: 4:00 AM - 125 players
+    - Batch 2: 4:02 AM - 125 players
+    - Batch 3: 4:04 AM - 125 players
+    - Batch 4: 4:06 AM - 125 players
+    - Batch 5: 4:08 AM - 125 players
+    
+    Total: 625 players covered (handles all ~550 active players)
+    """
+    logger.info("=" * 70)
+    logger.info(f"[SCHEDULER] NBA.COM L5/L10 BATCH {batch_num}/5 ({limit} players)")
     logger.info(f"[SCHEDULER] Time: {datetime.now(timezone.utc).isoformat()}")
     logger.info("=" * 70)
     
@@ -521,8 +540,7 @@ async def scheduled_nba_l5l10_sync():
         from services.bdl_comprehensive_sync import get_bdl_sync_service
         bdl_service = get_bdl_sync_service(db)
         
-        # Batch enrich all players that need NBA.com L5/L10 data
-        # This gets players that have nba_id but missing l5_avg
+        # Find players needing enrichment
         players_needing = await db.nba_master_hub_2026.count_documents({
             "nba_id": {"$exists": True, "$ne": None},
             "$or": [
@@ -531,54 +549,52 @@ async def scheduled_nba_l5l10_sync():
             ]
         })
         
-        logger.info(f"[SCHEDULER] Found {players_needing} players needing L5/L10 enrichment")
+        logger.info(f"[SCHEDULER] Batch {batch_num}: {players_needing} players need L5/L10 enrichment")
         
-        # Enrich in batches of 100
-        total_enriched = 0
-        max_batches = 6  # Max 600 players
+        if players_needing == 0:
+            logger.info(f"[SCHEDULER] Batch {batch_num}: All players already enriched!")
+            return
         
-        for batch in range(max_batches):
-            if players_needing <= 0:
-                break
-                
-            players = await db.nba_master_hub_2026.find({
-                "nba_id": {"$exists": True, "$ne": None},
-                "$or": [
-                    {"baseline_stats.PTS.l5_avg": {"$exists": False}},
-                    {"baseline_stats.PTS.l5_avg": None}
-                ]
-            }, {"bdl_id": 1, "display_name": 1}).limit(100).to_list(100)
-            
-            if not players:
-                break
-            
-            batch_success = 0
-            for player in players:
-                try:
-                    result = await bdl_service.enrich_baseline_with_nba_stats(player["bdl_id"])
-                    if result:
-                        batch_success += 1
-                except Exception as e:
-                    logger.debug(f"[SCHEDULER] Failed to enrich {player.get('display_name')}: {e}")
-            
-            total_enriched += batch_success
-            logger.info(f"[SCHEDULER] Batch {batch+1}: {batch_success}/{len(players)} enriched")
-            
-            # Recount remaining
-            players_needing = await db.nba_master_hub_2026.count_documents({
-                "nba_id": {"$exists": True, "$ne": None},
-                "$or": [
-                    {"baseline_stats.PTS.l5_avg": {"$exists": False}},
-                    {"baseline_stats.PTS.l5_avg": None}
-                ]
-            })
+        # Get players to enrich
+        players = await db.nba_master_hub_2026.find({
+            "nba_id": {"$exists": True, "$ne": None},
+            "$or": [
+                {"baseline_stats.PTS.l5_avg": {"$exists": False}},
+                {"baseline_stats.PTS.l5_avg": None}
+            ]
+        }, {"bdl_id": 1, "display_name": 1}).limit(limit).to_list(limit)
         
-        logger.info(f"[SCHEDULER] NBA.com L5/L10 enrichment complete: {total_enriched} players enriched")
-        logger.info(f"[SCHEDULER] Remaining without L5/L10: {players_needing}")
+        enriched = 0
+        for player in players:
+            try:
+                result = await bdl_service.enrich_baseline_with_nba_stats(player["bdl_id"])
+                if result:
+                    enriched += 1
+            except Exception as e:
+                logger.debug(f"[SCHEDULER] Failed to enrich {player.get('display_name')}: {e}")
+        
+        logger.info(f"[SCHEDULER] Batch {batch_num} complete: {enriched}/{len(players)} enriched")
         logger.info("=" * 70)
         
     except Exception as e:
-        logger.error(f"[SCHEDULER] NBA.com L5/L10 batch enrichment failed: {e}")
+        logger.error(f"[SCHEDULER] NBA.com L5/L10 batch {batch_num} failed: {e}")
+
+
+# Wrapper functions for each batch (APScheduler requires named functions)
+async def scheduled_nba_batch_1():
+    await scheduled_nba_l5l10_batch(1, 125)
+
+async def scheduled_nba_batch_2():
+    await scheduled_nba_l5l10_batch(2, 125)
+
+async def scheduled_nba_batch_3():
+    await scheduled_nba_l5l10_batch(3, 125)
+
+async def scheduled_nba_batch_4():
+    await scheduled_nba_l5l10_batch(4, 125)
+
+async def scheduled_nba_batch_5():
+    await scheduled_nba_l5l10_batch(5, 125)
 
 
 async def scheduled_roster_sync():
@@ -736,13 +752,52 @@ async def startup_event():
         replace_existing=True
     )
     
-    # NBA.com L5/L10 batch enrichment at 4:05 AM EST (9:05 AM UTC)
-    # Runs RIGHT AFTER daily sync to ensure board has fresh hit rates
+    # NBA.com L5/L10 STAGGERED BATCH ENRICHMENT
+    # 5 batches of 125 players each, 2 minutes apart
+    # Ensures ALL players get fresh L5/L10 from NBA.com official stats
+    
+    # Batch 1: 4:00 AM EST (9:00 AM UTC) - 125 players
     scheduler.add_job(
-        scheduled_nba_l5l10_sync,
-        CronTrigger(hour=9, minute=5, timezone=SCHEDULER_TIMEZONE),  # 4:05 AM EST = 9:05 AM UTC
-        id='nba_l5l10_sync',
-        name='4:05 AM EST NBA.com L5/L10 Batch Enrichment',
+        scheduled_nba_batch_1,
+        CronTrigger(hour=9, minute=0, timezone=SCHEDULER_TIMEZONE),
+        id='nba_l5l10_batch_1',
+        name='4:00 AM EST NBA.com L5/L10 Batch 1/5',
+        replace_existing=True
+    )
+    
+    # Batch 2: 4:02 AM EST (9:02 AM UTC) - 125 players
+    scheduler.add_job(
+        scheduled_nba_batch_2,
+        CronTrigger(hour=9, minute=2, timezone=SCHEDULER_TIMEZONE),
+        id='nba_l5l10_batch_2',
+        name='4:02 AM EST NBA.com L5/L10 Batch 2/5',
+        replace_existing=True
+    )
+    
+    # Batch 3: 4:04 AM EST (9:04 AM UTC) - 125 players
+    scheduler.add_job(
+        scheduled_nba_batch_3,
+        CronTrigger(hour=9, minute=4, timezone=SCHEDULER_TIMEZONE),
+        id='nba_l5l10_batch_3',
+        name='4:04 AM EST NBA.com L5/L10 Batch 3/5',
+        replace_existing=True
+    )
+    
+    # Batch 4: 4:06 AM EST (9:06 AM UTC) - 125 players
+    scheduler.add_job(
+        scheduled_nba_batch_4,
+        CronTrigger(hour=9, minute=6, timezone=SCHEDULER_TIMEZONE),
+        id='nba_l5l10_batch_4',
+        name='4:06 AM EST NBA.com L5/L10 Batch 4/5',
+        replace_existing=True
+    )
+    
+    # Batch 5: 4:08 AM EST (9:08 AM UTC) - 125 players
+    scheduler.add_job(
+        scheduled_nba_batch_5,
+        CronTrigger(hour=9, minute=8, timezone=SCHEDULER_TIMEZONE),
+        id='nba_l5l10_batch_5',
+        name='4:08 AM EST NBA.com L5/L10 Batch 5/5',
         replace_existing=True
     )
     
@@ -766,9 +821,9 @@ async def startup_event():
     
     scheduler.start()
     logger.info(f"[SCHEDULER] APScheduler started")
-    logger.info(f"[SCHEDULER] Daily Full Sync: 04:00 AM EST (09:00 UTC) - BDL + NBA.com L5/L10")
-    logger.info(f"[SCHEDULER] NBA.com L5/L10 Batch: 04:05 AM EST (09:05 UTC) - Catch any missed players")
-    logger.info(f"[SCHEDULER] Morning Props Sync: 05:00 AM EST (10:00 UTC)")
+    logger.info(f"[SCHEDULER] Daily Full Sync: 04:00 AM EST (09:00 UTC)")
+    logger.info(f"[SCHEDULER] NBA.com L5/L10: 5 batches x 125 players @ 04:00, 04:02, 04:04, 04:06, 04:08 AM EST")
+    logger.info(f"[SCHEDULER] Morning Props: 05:00 AM EST (10:00 UTC)")
     logger.info(f"[SCHEDULER] Weekly Roster: Sunday 00:00 UTC")
     
     # DISABLED: Full auto-sync on startup to prevent credit drain
