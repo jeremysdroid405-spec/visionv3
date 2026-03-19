@@ -91,6 +91,8 @@ class VisionSummaryService:
             # Build prompt
             prompt = f"""You are a sharp sports betting analyst. Write a 2-sentence pick explanation.
 
+INPUT:
+
 PLAYER: {last_name}
 PICK: {direction} {line} {stat_type}
 SEASON AVG: {season_avg} {stat_type}
@@ -102,19 +104,34 @@ CONTEXT BADGES:
 {badge_context}
 
 RULES:
-- Use ONLY the player's LAST NAME (like on their jersey)
-- Clearly state the pick: "{last_name} {direction} {line} {stat_type}"
-- Reference the most compelling badge/context
-- Be confident and concise
-- Do NOT start with "This pick" or "I like"
 
-Write 2 punchy sentences explaining why {last_name} {direction} {line} {stat_type} is the play."""
+Use ONLY the player's last name
+
+First sentence MUST clearly state the pick:
+→ "{last_name} {direction} {line} {stat_type}"
+
+Use numbers when possible (averages, hit rate, trends)
+
+Reference the strongest badge or trend as the main edge
+
+Tone: confident, sharp, no hesitation
+
+No filler, no hedging, no soft language
+
+DO NOT say: "This pick" or "I like"
+
+Keep it tight and impactful
+
+OUTPUT FORMAT:
+
+Sentence 1: Clear pick + strongest statistical edge
+Sentence 2: Supporting trend, matchup, or badge-based insight"""
 
             # Initialize Gemini chat
             chat = LlmChat(
                 api_key=self.api_key,
                 session_id=f"vision_{player_name}_{stat_type}",
-                system_message="You are a sharp sports betting analyst. Give brief, confident insights using player last names only."
+                system_message="You are an elite sports betting analyst specializing in player props. Deliver sharp, confident, data-driven insights using only player last names. Avoid filler, stay concise, and prioritize the strongest statistical edge."
             ).with_model("gemini", "gemini-3-flash-preview")
             
             # Send message and get response
