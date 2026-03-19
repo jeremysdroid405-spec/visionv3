@@ -21,7 +21,7 @@ import { Badge } from '../components/ui/badge';
 import { Card } from '../components/ui/card';
 import { 
   Search, X, LogOut, Crown, User, Radio, AlertTriangle, Activity, 
-  RefreshCw, ChevronRight, Eye, Zap, ChevronDown, Flame, ArrowLeft, Target,
+  ChevronRight, Eye, Zap, ChevronDown, Flame, ArrowLeft, Target,
   TrendingUp, Newspaper, Clock
 } from 'lucide-react';
 
@@ -875,10 +875,6 @@ const Dashboard = () => {
             >
               <Target className="w-4 h-4 text-cyan-400" />
               <span className="text-xs font-medium text-cyan-400 hidden sm:inline">Command Post</span>
-            </button>
-            
-            <button onClick={triggerSync} disabled={syncing} className="p-2 rounded-lg bg-zinc-800/50 hover:bg-zinc-800" data-testid="sync-btn">
-              <RefreshCw className={`w-4 h-4 text-zinc-400 ${syncing ? 'animate-spin' : ''}`} />
             </button>
             
             <div className="relative">
