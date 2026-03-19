@@ -781,35 +781,45 @@ async def get_cached_player(player_name: str):
         for prop in player.get("props", []):
             stat_type = prop.get("stat_type_extracted", "PTS")
             line = prop.get("line", 0)
-            l5_avg = prop.get("l5_avg", 0)
-            l10_avg = prop.get("l10_avg", 0)
-            season_avg = prop.get("season_avg", 0)
-            l10_hit_rate = prop.get("l10_hit_rate", 0)
-            l5_hit_rate = prop.get("l5_hit_rate", 0)
+            
+            # Get hit rates from the nested hit_rates object (source of truth)
+            hit_rates_obj = prop.get("hit_rates", {})
+            l10_data = hit_rates_obj.get("l10", {})
+            l5_data = hit_rates_obj.get("l5", {})
+            season_data = hit_rates_obj.get("season", {})
+            
+            l10_hit_rate = l10_data.get("hit_rate", 0) or 0
+            l5_hit_rate = l5_data.get("hit_rate", 0) or 0
+            l10_avg = l10_data.get("avg", 0)
+            l5_avg = l5_data.get("avg", 0)
+            season_avg = season_data.get("avg", 0)
+            l10_games_over = l10_data.get("games_over", 0)
+            l10_total_games = l10_data.get("total_games", 10)
+            l5_games_over = l5_data.get("games_over", 0)
+            
             is_demon = prop.get("is_demon", False)
             is_goblin = prop.get("is_goblin", False)
             
             # Add stat_type for frontend compatibility
             prop["stat_type"] = stat_type
             
-            # Add normalized hit rate fields for frontend
+            # Add normalized hit rate fields for frontend (convert decimal to percentage)
             prop["h10_rate"] = round(l10_hit_rate * 100, 1) if l10_hit_rate and l10_hit_rate <= 1 else l10_hit_rate
             prop["h5_rate"] = round(l5_hit_rate * 100, 1) if l5_hit_rate and l5_hit_rate <= 1 else l5_hit_rate
+            prop["l5_avg"] = l5_avg
+            prop["l10_avg"] = l10_avg
+            prop["season_avg"] = season_avg
             
             # Check if THIS prop is the featured one
             prop_key = f"{stat_type}|{line}"
             is_featured = (prop_key == featured_prop_key)
             
-            # Build hit_rates object for frontend compatibility
-            # Frontend expects: hit_rates.l10.hit_rate, hit_rates.l10.games_over, hit_rates.l10.total_games
-            l10_games_over = int((l10_hit_rate or 0) * 10)  # Approximate from hit rate
-            l5_games_over = int((l5_hit_rate or 0) * 5)
-            
+            # Build hit_rates object for frontend compatibility (use actual values from data)
             prop["hit_rates"] = {
                 "l10": {
                     "hit_rate": l10_hit_rate,
                     "games_over": l10_games_over,
-                    "total_games": 10,
+                    "total_games": l10_total_games,
                     "avg": l10_avg
                 },
                 "l5": {
