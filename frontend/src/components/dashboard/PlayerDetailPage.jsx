@@ -934,7 +934,7 @@ export const PlayerDetailPage = ({ playerName, playerData = null, onBack, highli
                     <div className="text-xs text-zinc-500">LAST 10 GAMES</div>
                     <div className="text-2xl font-bold text-green-400">
                       {selectedVisionProp.hit_rates?.l10?.hit_rate != null 
-                        ? `${Math.round(selectedVisionProp.hit_rates.l10.hit_rate * 100)}%`
+                        ? `${Math.round(selectedVisionProp.hit_rates.l10.hit_rate)}%`
                         : '-'}
                     </div>
                     <div className="text-xs text-zinc-500 mt-1">
@@ -945,7 +945,7 @@ export const PlayerDetailPage = ({ playerName, playerData = null, onBack, highli
                     <div className="text-xs text-zinc-500">LAST 5 GAMES</div>
                     <div className="text-2xl font-bold text-green-400">
                       {selectedVisionProp.hit_rates?.l5?.hit_rate != null 
-                        ? `${Math.round(selectedVisionProp.hit_rates.l5.hit_rate * 100)}%`
+                        ? `${Math.round(selectedVisionProp.hit_rates.l5.hit_rate)}%`
                         : '-'}
                     </div>
                     <div className="text-xs text-zinc-500 mt-1">

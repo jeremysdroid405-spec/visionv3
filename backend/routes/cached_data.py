@@ -852,7 +852,8 @@ async def get_cached_player(player_name: str):
             prop["active_badges"] = badge_keys
             
             # Calculate stability index from hit rate
-            stability_score = int((l10_hit_rate or 0) * 100) if l10_hit_rate else 50
+            # Note: l10_hit_rate is already a percentage (0-100), not a decimal
+            stability_score = int(l10_hit_rate or 50) if l10_hit_rate is not None else 50
             if stability_score >= 70:
                 consistency = "HIGHLY CONSISTENT"
             elif stability_score >= 50:
