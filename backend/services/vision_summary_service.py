@@ -51,23 +51,21 @@ class VisionSummaryService:
         if not self.api_key:
             return None
         
-        if not badges:
-            return None
-        
         try:
             # Extract last name (like on jersey)
             name_parts = player_name.split()
             last_name = name_parts[-1] if name_parts else player_name
             
-            # Build badge context
+            # Build badge context (may be empty)
             badge_descriptions = []
-            for badge in badges[:4]:  # Limit to 4 most relevant badges
-                badge_key = badge.get("badge_key", "")
-                headline = badge.get("headline", "")
-                if badge_key and headline:
-                    badge_descriptions.append(f"- {badge_key.upper()}: {headline}")
+            if badges:
+                for badge in badges[:4]:  # Limit to 4 most relevant badges
+                    badge_key = badge.get("badge_key", "")
+                    headline = badge.get("headline", "")
+                    if badge_key and headline:
+                        badge_descriptions.append(f"- {badge_key.upper()}: {headline}")
             
-            badge_context = "\n".join(badge_descriptions) if badge_descriptions else "No special context"
+            badge_context = "\n".join(badge_descriptions) if badge_descriptions else "No special situational factors"
             
             # Determine pick direction based on line vs average
             if is_goblin:

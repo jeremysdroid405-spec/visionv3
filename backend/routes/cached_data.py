@@ -960,27 +960,27 @@ async def get_cached_player(player_name: str):
                 }
             }
             
-            # Generate AI Vision Summary using Gemini - ONLY for the featured prop
-            if badges:
-                try:
-                    vision_service = get_vision_service()
-                    ai_summary = await vision_service.generate_pick_summary(
-                        player_name=pname,
-                        stat_type=stat_type,
-                        line=line,
-                        season_avg=season_avg or l10_avg or l5_avg,
-                        h10_rate=l10_hit_rate * 100 if l10_hit_rate and l10_hit_rate <= 1 else l10_hit_rate or 0,
-                        badges=badges,
-                        opponent=opp_abbr,
-                        is_demon=is_demon,
-                        is_goblin=is_goblin
-                    )
-                    if ai_summary:
-                        prop["vision_summary"] = ai_summary
-                        prop["intel_suite"]["vision_insight"]["ai_summary"] = ai_summary
-                        logger.info(f"[VISION] Generated summary for {pname} {stat_type}@{line}")
-                except Exception as e:
-                    logger.error(f"[VISION] Error generating AI summary for {pname}: {e}")
+            # Generate AI Vision Summary using Gemini - for ALL featured props with intel_suite
+            # Summary is tied to the Intel Suite, not badges
+            try:
+                vision_service = get_vision_service()
+                ai_summary = await vision_service.generate_pick_summary(
+                    player_name=pname,
+                    stat_type=stat_type,
+                    line=line,
+                    season_avg=season_avg or l10_avg or l5_avg,
+                    h10_rate=l10_hit_rate * 100 if l10_hit_rate and l10_hit_rate <= 1 else l10_hit_rate or 0,
+                    badges=badges,  # May be empty, that's ok
+                    opponent=opp_abbr,
+                    is_demon=is_demon,
+                    is_goblin=is_goblin
+                )
+                if ai_summary:
+                    prop["vision_summary"] = ai_summary
+                    prop["intel_suite"]["vision_insight"]["ai_summary"] = ai_summary
+                    logger.info(f"[VISION] Generated summary for {pname} {stat_type}@{line}")
+            except Exception as e:
+                logger.error(f"[VISION] Error generating AI summary for {pname}: {e}")
         
         # Add advanced stats to player object (for Vision Intel Suite header)
         master_hub = engine.picks_getter_service.master_hub
