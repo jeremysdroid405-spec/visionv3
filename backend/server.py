@@ -656,6 +656,34 @@ async def scheduled_ticker_sync():
         logger.error(f"[SCHEDULER] Ticker sync failed: {e}")
 
 
+async def scheduled_badge_sync():
+    """
+    Scheduled job that syncs context badges at 4:20 AM EST.
+    
+    Computes badges for all players with active props:
+    - home_cookin (home game)
+    - jet_lag (long travel)
+    - revenge (former team)
+    - locked_in (hot streak)
+    """
+    logger.info("=" * 70)
+    logger.info("[SCHEDULER] CONTEXT BADGE SYNC")
+    logger.info(f"[SCHEDULER] Time: {datetime.now(timezone.utc).isoformat()}")
+    logger.info("=" * 70)
+    
+    try:
+        from services.context_badge_service import get_badge_service
+        badge_service = get_badge_service(db)
+        
+        result = await badge_service.sync_badges_for_all_players(limit=500)
+        
+        logger.info(f"[SCHEDULER] Badge sync: {result['updated']} updated, {result['skipped']} skipped")
+        logger.info("=" * 70)
+        
+    except Exception as e:
+        logger.error(f"[SCHEDULER] Badge sync failed: {e}")
+
+
 async def scheduled_roster_sync():
     """
     Scheduled job that runs every Sunday at midnight UTC.
@@ -876,6 +904,15 @@ async def startup_event():
         CronTrigger(hour=9, minute=15, timezone=SCHEDULER_TIMEZONE),
         id='ticker_sync',
         name='4:15 AM EST Ticker Games/News Sync',
+        replace_existing=True
+    )
+    
+    # Badge Sync at 4:20 AM EST (9:20 AM UTC) - Context Badges
+    scheduler.add_job(
+        scheduled_badge_sync,
+        CronTrigger(hour=9, minute=20, timezone=SCHEDULER_TIMEZONE),
+        id='badge_sync',
+        name='4:20 AM EST Context Badge Sync',
         replace_existing=True
     )
     

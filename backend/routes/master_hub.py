@@ -648,3 +648,62 @@ async def enrich_single_player_game_values(bdl_id: int):
         "success": True,
         "message": f"Enriched player bdl_id={bdl_id} with game values"
     }
+
+
+
+@router.post("/sync-badges")
+async def sync_context_badges(limit: int = 500):
+    """
+    Sync context badges for all players with active props.
+    
+    Computes badges based on:
+    - Home/Away game (home_cookin)
+    - Travel distance (jet_lag)
+    - Former team matchups (revenge)
+    - Hot streaks (locked_in)
+    
+    Args:
+        limit: Maximum number of players to process (default 500)
+    """
+    if _db is None:
+        raise HTTPException(status_code=500, detail="Database not initialized")
+    
+    from services.context_badge_service import get_badge_service
+    badge_service = get_badge_service(_db)
+    
+    result = await badge_service.sync_badges_for_all_players(limit=limit)
+    
+    return {
+        "success": True,
+        "message": f"Synced badges for {result['updated']} players",
+        "details": result
+    }
+
+
+@router.post("/add-badge/{player_name}")
+async def add_manual_badge(player_name: str, badge_key: str, description: str = None):
+    """
+    Manually add a badge to a player.
+    
+    Useful for news-based badges like 'distraction', 'milestone', 'legal_noise'.
+    
+    Args:
+        player_name: Player's display name
+        badge_key: Badge key (milestone, distraction, legal_noise, pay_day, deep_water)
+        description: Optional custom description
+    """
+    if _db is None:
+        raise HTTPException(status_code=500, detail="Database not initialized")
+    
+    from services.context_badge_service import get_badge_service
+    badge_service = get_badge_service(_db)
+    
+    success = await badge_service.add_manual_badge(player_name, badge_key, description)
+    
+    if not success:
+        raise HTTPException(status_code=404, detail=f"Failed to add badge for {player_name}")
+    
+    return {
+        "success": True,
+        "message": f"Added '{badge_key}' badge to {player_name}"
+    }
