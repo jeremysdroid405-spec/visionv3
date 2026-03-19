@@ -897,6 +897,12 @@ class AdaptiveSyncEngine:
         """
         logger.info("[ADAPTIVE_SYNC] Starting adaptive poll loop")
         
+        # Track last sync times (sync every 30 min at most)
+        last_injury_sync = None
+        last_ticker_sync = None
+        INJURY_SYNC_INTERVAL = 1800  # 30 minutes
+        TICKER_SYNC_INTERVAL = 1800  # 30 minutes
+        
         while self.is_running:
             try:
                 # Fetch current odds
@@ -907,6 +913,18 @@ class AdaptiveSyncEngine:
                 
                 # Update cached board
                 await self._update_cached_board(events)
+                
+                now = datetime.now(timezone.utc)
+                
+                # Sync injuries periodically (every 30 min) alongside odds
+                if last_injury_sync is None or (now - last_injury_sync).total_seconds() >= INJURY_SYNC_INTERVAL:
+                    await self._sync_injuries()
+                    last_injury_sync = now
+                
+                # Sync ticker (games/news) periodically (every 30 min)
+                if last_ticker_sync is None or (now - last_ticker_sync).total_seconds() >= TICKER_SYNC_INTERVAL:
+                    await self._sync_ticker()
+                    last_ticker_sync = now
                 
                 # Determine next poll interval based on most urgent game
                 min_interval = PollInterval.STANDBY.value  # Default to 60 minutes
@@ -937,6 +955,34 @@ class AdaptiveSyncEngine:
             except Exception as e:
                 logger.error(f"[ADAPTIVE_SYNC] Poll loop error: {e}")
                 await asyncio.sleep(60)  # Wait 1 minute on error
+    
+    async def _sync_injuries(self) -> None:
+        """Sync injury reports from BDL API."""
+        try:
+            from services.bdl_enhanced_data import get_bdl_enhanced_service
+            
+            bdl_service = get_bdl_enhanced_service(self.db)
+            result = await bdl_service.sync_injuries()
+            
+            if result.get('success'):
+                logger.info(f"[ADAPTIVE_SYNC] Injury sync: {result.get('injuries_count', 0)} injuries updated")
+            else:
+                logger.warning(f"[ADAPTIVE_SYNC] Injury sync failed: {result.get('error', 'Unknown')}")
+        except Exception as e:
+            logger.error(f"[ADAPTIVE_SYNC] Injury sync error: {e}")
+    
+    async def _sync_ticker(self) -> None:
+        """Sync ticker data (games and news)."""
+        try:
+            from routes.live import sync_todays_games, sync_news_headlines
+            
+            games_result = await sync_todays_games()
+            news_result = await sync_news_headlines()
+            
+            logger.info(f"[ADAPTIVE_SYNC] Ticker sync: {games_result.get('games_count', 0)} games, "
+                       f"{news_result.get('headlines_count', 0)} headlines")
+        except Exception as e:
+            logger.error(f"[ADAPTIVE_SYNC] Ticker sync error: {e}")
     
     async def start(self) -> None:
         """Start the adaptive sync engine."""
