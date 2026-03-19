@@ -747,6 +747,11 @@ const Dashboard = () => {
     toast.success('Data refreshed');
   }, [refetchWarZone, refetchSafeHaven, refetchFrontLines, refetchBoard]);
   
+  // Scroll to top on mount
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, []);
+  
   // Local UI state
   const [searchTerm, setSearchTerm] = useState('');
   const [showUserMenu, setShowUserMenu] = useState(false);
