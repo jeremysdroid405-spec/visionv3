@@ -982,26 +982,25 @@ class PicksGetterService:
     
     async def get_goblin_vault(self) -> Dict[str, Any]:
         """
-        Get the Safe Haven - OPTIMIZED GOBLIN picks for maximum VARIETY and profit.
+        Get the Safe Haven - HIGH HIT RATE picks (80%+) for maximum safety.
         
-        SAFE HAVEN LOGIC v3.0 - VARIETY FOCUSED:
-        1. Get ONE best pick per player (maximize variety first)
-        2. Find "Optimal Goblin" - highest line with ≥70% L10 hit rate
-        3. Use embedded hit_rates from cached_board (no master hub lookup needed)
-        4. Target: 20 UNIQUE players minimum
+        SAFE HAVEN LOGIC v4.0 - VALUE FOCUSED:
+        1. Get ONE best pick per player (maximize variety)
+        2. L10 Hit Rate >= 80% (Safe Haven tier)
+        3. Include BOTH demons and goblins that meet criteria
+        4. Sort by VALUE: hit_rate × line (higher line = higher payout)
+        5. Target: 10 UNIQUE players
         
-        This ensures:
-        - Maximum variety (different players)
-        - Best line per player (highest multiplier while safe)
-        - High quality picks (≥70% L10 hit rate)
+        At same hit rate, prefer higher lines (e.g., 10.5 over 8.5)
+        because they pay more on PrizePicks.
         """
         
-        MIN_HIT_RATE = 70  # Minimum L10 hit rate
-        TARGET_PICKS = 20
+        MIN_HIT_RATE = 80  # Safe Haven = 80%+ hit rate
+        TARGET_PICKS = 10
         
-        # Get all players that have goblin props
+        # Get all players that have demon OR goblin props
         players = await self.cached_board.find(
-            {"props.is_goblin": True},
+            {"$or": [{"props.is_demon": True}, {"props.is_goblin": True}]},
             {"_id": 0}
         ).to_list(200)
         
@@ -1012,16 +1011,19 @@ class PicksGetterService:
         # Pre-fetch injured players
         injured_players = await self._get_injured_players()
         
-        logger.info(f"[SAFE_HAVEN v3] Processing {len(players)} players with goblin props")
+        logger.info(f"[SAFE_HAVEN v4] Processing {len(players)} players with demon/goblin props")
         
-        # STEP 1: For each player, find their SINGLE BEST optimal goblin
+        # STEP 1: For each player, find their SINGLE BEST pick (demon or goblin)
         all_player_best_picks = []
         
         filter_stats = {
             "total_players": len(players),
-            "total_goblin_props": 0,
-            "with_hit_rates": 0,
-            "passed_hit_rate": 0,
+            "total_qualifying_props": 0,
+            "demons_checked": 0,
+            "goblins_checked": 0,
+            "passed_hit_rate_80": 0,
+            "final_demons": 0,
+            "final_goblins": 0,
             "unique_players_with_picks": 0
         }
         
@@ -1030,18 +1032,26 @@ class PicksGetterService:
             if not player_name:
                 continue
             
-            goblin_props = [p for p in player_doc.get("props", []) if p.get("is_goblin")]
-            filter_stats["total_goblin_props"] += len(goblin_props)
+            # Get ALL demon and goblin props
+            qualifying_props = [p for p in player_doc.get("props", []) if p.get("is_demon") or p.get("is_goblin")]
+            filter_stats["total_qualifying_props"] += len(qualifying_props)
             
             # Collect all qualifying picks for this player
             player_picks = []
             
-            for prop in goblin_props:
+            for prop in qualifying_props:
+                is_demon = prop.get("is_demon", False)
+                is_goblin = prop.get("is_goblin", False)
+                
+                if is_demon:
+                    filter_stats["demons_checked"] += 1
+                if is_goblin:
+                    filter_stats["goblins_checked"] += 1
+                
                 line = prop.get("line")
                 anchor_line = prop.get("anchor_line")
                 
-                # Must be valid goblin (line < anchor)
-                if not line or not anchor_line or line >= anchor_line:
+                if not line:
                     continue
                 
                 # Get embedded hit rates
@@ -1055,27 +1065,37 @@ class PicksGetterService:
                 if l10_games < 5:
                     continue
                 
-                filter_stats["with_hit_rates"] += 1
-                
                 # Convert hit rate to percentage (it's stored as decimal 0-1)
                 l10_pct = l10_hit_rate * 100 if l10_hit_rate <= 1 else l10_hit_rate
                 
-                # Check minimum hit rate
+                # Check minimum hit rate (Safe Haven = 80%+)
                 if l10_pct < MIN_HIT_RATE:
                     continue
                 
-                filter_stats["passed_hit_rate"] += 1
+                filter_stats["passed_hit_rate_80"] += 1
                 
                 # Calculate multiplier potential (how close to anchor)
                 gap_from_anchor = anchor_line - line
                 multiplier_potential = 1 - (gap_from_anchor / anchor_line) if anchor_line > 0 else 0
                 
-                # Combined score: balance safety and profit
+                # VALUE SCORE: Higher line = higher payout
+                # At same hit rate, prefer 10.5 over 8.5 because it pays more
+                # Normalize line to a 0-1 scale based on typical ranges
+                line_value = line / 50  # Normalize (e.g., 10.5 pts = 0.21, 25 pts = 0.5)
+                
+                # Combined score: balance safety, payout potential, and line value
                 safety_score = l10_pct / 100
-                combined_score = (safety_score * 0.6) + (multiplier_potential * 0.4)
+                # Weight: 50% safety, 30% line value (higher line = more payout), 20% multiplier potential
+                combined_score = (safety_score * 0.50) + (line_value * 0.30) + (multiplier_potential * 0.20)
                 
                 stat_type = prop.get("stat_type_extracted") or prop.get("market", "").replace("player_", "").replace("_alternate", "").upper()
                 
+                # Track demon vs goblin counts
+                if is_demon:
+                    filter_stats["final_demons"] += 1
+                else:
+                    filter_stats["final_goblins"] += 1
+
                 player_picks.append({
                     "player_name": player_name,
                     "team": player_doc.get("team"),
@@ -1088,16 +1108,16 @@ class PicksGetterService:
                     "anchor_line": anchor_line,
                     "odds": prop.get("price", -110),
                     "direction": prop.get("direction", "over"),
-                    "is_demon": False,
-                    "is_goblin": True,
-                    "tier_label": "GOBLIN",
+                    "is_demon": is_demon,
+                    "is_goblin": is_goblin,
+                    "tier_label": "DEMON" if is_demon else "GOBLIN",
                     "is_alternate_market": True,
                     "season_avg": round(season_avg, 1) if season_avg else None,
                     "h10_rate": round(l10_pct, 1),  # Frontend expects h10_rate
                     "l10_hit_rate": round(l10_pct, 1),
                     "l10_games": l10_games,
                     "floor_margin": round(season_avg - line, 1) if season_avg else None,
-                    "gap_from_anchor": round(gap_from_anchor, 1),
+                    "gap_from_anchor": round(gap_from_anchor, 1) if anchor_line else None,
                     "multiplier_potential": round(multiplier_potential, 3),
                     "combined_score": round(combined_score, 4),
                     "safe_haven_qualified": True,
@@ -1111,7 +1131,7 @@ class PicksGetterService:
                 player_picks.sort(key=lambda x: x["combined_score"], reverse=True)
                 all_player_best_picks.append(player_picks[0])  # Only take the best one
         
-        # STEP 2: Sort all picks by combined_score and return top TARGET_PICKS
+        # STEP 2: Sort all picks by combined_score (value-based) and return top TARGET_PICKS
         all_player_best_picks.sort(key=lambda x: x["combined_score"], reverse=True)
         
         final_picks = all_player_best_picks[:TARGET_PICKS]
@@ -1120,16 +1140,18 @@ class PicksGetterService:
         await self._enrich_picks_with_photos(final_picks)
         
         unique_players = len(set(p["player_name"] for p in final_picks))
+        demons_in_final = sum(1 for p in final_picks if p.get("is_demon"))
+        goblins_in_final = sum(1 for p in final_picks if p.get("is_goblin"))
         
-        logger.info(f"[SAFE_HAVEN v3] Generated {len(final_picks)} picks from {unique_players} unique players")
-        logger.info(f"[SAFE_HAVEN v3] Filter stats: {filter_stats}")
+        logger.info(f"[SAFE_HAVEN v4] Generated {len(final_picks)} picks ({demons_in_final} demons, {goblins_in_final} goblins)")
+        logger.info(f"[SAFE_HAVEN v4] Filter stats: {filter_stats}")
         
         return {
             "picks": final_picks,
             "picks_count": len(final_picks),
             "unique_players": unique_players,
             "filter_stats": filter_stats,
-            "filters_applied": ["optimal_goblin", f"l10_hit_rate_{MIN_HIT_RATE}pct", "one_per_player", "combined_score_sort"]
+            "filters_applied": ["l10_hit_rate_80pct", "value_sort", "one_per_player", "demons_and_goblins"]
         }
     
     def _normalize_stat_key(self, stat_type: str) -> str:
