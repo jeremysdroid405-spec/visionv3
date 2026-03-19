@@ -16,12 +16,22 @@ from services.dvp_service import (
     calculate_dvp_modifier
 )
 from config.settings import TEAM_PACE, LEAGUE_AVG_PACE, DVP_RANKINGS
+from services.vision_summary_service import VisionSummaryService
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["Cached Data"])
 
 # Reference to DemonGoblinEngine (set via dependency injection)
 _demon_goblin_engine = None
+
+# Vision Summary Service singleton
+_vision_service = None
+
+def get_vision_service():
+    global _vision_service
+    if _vision_service is None:
+        _vision_service = VisionSummaryService()
+    return _vision_service
 
 
 def set_cached_data_engine(engine):
@@ -906,6 +916,27 @@ async def get_cached_player(player_name: str):
                     "confidence": "HIGH" if len(reasons) >= 3 else "MEDIUM" if len(reasons) >= 2 else "STANDARD"
                 }
             }
+            
+            # Generate AI Vision Summary using Gemini (only if badges exist)
+            if badges:
+                try:
+                    vision_service = get_vision_service()
+                    ai_summary = await vision_service.generate_pick_summary(
+                        player_name=pname,
+                        stat_type=stat_type,
+                        line=line,
+                        season_avg=season_avg or l10_avg or l5_avg,
+                        h10_rate=l10_hit_rate * 100 if l10_hit_rate and l10_hit_rate <= 1 else l10_hit_rate or 0,
+                        badges=badges,
+                        opponent=opp_abbr,
+                        is_demon=is_demon,
+                        is_goblin=is_goblin
+                    )
+                    if ai_summary:
+                        prop["vision_summary"] = ai_summary
+                        prop["intel_suite"]["vision_insight"]["ai_summary"] = ai_summary
+                except Exception as e:
+                    logger.error(f"[VISION] Error generating AI summary for {pname}: {e}")
         
         # Add advanced stats to player object (for Vision Intel Suite header)
         master_hub = engine.picks_getter_service.master_hub
