@@ -22,7 +22,7 @@ import { Card } from '../components/ui/card';
 import { 
   Search, X, LogOut, Crown, User, Radio, AlertTriangle, Activity, 
   ChevronRight, Eye, Zap, ChevronDown, Flame, ArrowLeft, Target,
-  TrendingUp, Newspaper, Clock, Crosshair
+  TrendingUp, Newspaper, Clock, Crosshair, Lock
 } from 'lucide-react';
 
 // Dashboard Components
@@ -673,7 +673,35 @@ const PopularBetCard = memo(({ bet, rank, onClick }) => {
   );
 });
 
-const MostPopularBetsSection = memo(({ bets, status, onBetClick }) => {
+const MostPopularBetsSection = memo(({ bets, status, onBetClick, allLocked, nextReleaseTime }) => {
+  const [countdown, setCountdown] = useState('');
+  
+  // Countdown timer effect
+  useEffect(() => {
+    if (!allLocked || !nextReleaseTime) return;
+    
+    const updateCountdown = () => {
+      const now = new Date();
+      const release = new Date(nextReleaseTime);
+      const diff = release - now;
+      
+      if (diff <= 0) {
+        setCountdown('New picks arriving soon...');
+        return;
+      }
+      
+      const hours = Math.floor(diff / (1000 * 60 * 60));
+      const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+      const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+      
+      setCountdown(`${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`);
+    };
+    
+    updateCountdown();
+    const interval = setInterval(updateCountdown, 1000);
+    return () => clearInterval(interval);
+  }, [allLocked, nextReleaseTime]);
+  
   if (status === 'awaiting_action' || !bets?.length) {
     return (
       <div className="mb-4 p-4 bg-zinc-900/50 border border-zinc-800 rounded-xl text-center">
@@ -685,13 +713,29 @@ const MostPopularBetsSection = memo(({ bets, status, onBetClick }) => {
   }
   
   return (
-    <div className="mb-4">
+    <div className="mb-4 relative">
       <SectionHeader 
         icon={<Flame className="w-4 h-4 text-red-400" />}
         title="TOP PICKS"
         subtitle="Best of Safe Haven, Front Lines & War Zone"
       />
-      <div className="overflow-x-auto pb-2 -mx-3 px-3">
+      
+      {/* Blur overlay when all locked */}
+      {allLocked && (
+        <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-black/60 backdrop-blur-sm rounded-xl mt-10">
+          <div className="flex items-center gap-2 mb-2">
+            <Lock className="w-5 h-5 text-yellow-400" />
+            <span className="text-yellow-400 font-bold text-sm">ALL PICKS LOCKED</span>
+          </div>
+          <p className="text-zinc-400 text-xs mb-3">New picks release at 4:00 AM EST</p>
+          <div className="bg-zinc-900/80 border border-yellow-500/30 rounded-lg px-4 py-2">
+            <div className="text-[10px] text-zinc-500 uppercase tracking-wider mb-1">Next Release In</div>
+            <div className="text-2xl font-mono font-bold text-yellow-400">{countdown}</div>
+          </div>
+        </div>
+      )}
+      
+      <div className={`overflow-x-auto pb-2 -mx-3 px-3 ${allLocked ? 'blur-sm pointer-events-none' : ''}`}>
         <div className="flex gap-3" style={{ minWidth: 'max-content' }}>
           {bets.map((bet, idx) => (
             <PopularBetCard key={`top-pick-${bet.player_name}-${bet.stat_type}-${idx}`} bet={bet} rank={idx + 1} onClick={() => onBetClick(bet)} />
@@ -726,6 +770,8 @@ const Dashboard = () => {
   const trending = useMemo(() => players.slice(0, 8), [players]);
   const popularBets = useMemo(() => mostPopularData?.bets || [], [mostPopularData]);
   const popularBetsStatus = mostPopularData?.status || (popularLoading ? 'loading' : 'awaiting_action');
+  const allPicksLocked = mostPopularData?.all_locked || false;
+  const nextReleaseTime = mostPopularData?.next_release_time || null;
   
   // Status flags derived from query state
   const linesLoaded = !boardLoading && players.length > 0;
@@ -1008,7 +1054,13 @@ const Dashboard = () => {
       {/* Main Content */}
       <div className="p-3 space-y-4">
         {/* Most Popular Bets - FIRST */}
-        <MostPopularBetsSection bets={popularBets} status={popularBetsStatus} onBetClick={handlePopularBetClick} />
+        <MostPopularBetsSection 
+          bets={popularBets} 
+          status={popularBetsStatus} 
+          onBetClick={handlePopularBetClick}
+          allLocked={allPicksLocked}
+          nextReleaseTime={nextReleaseTime}
+        />
         
         {/* Safe Haven */}
         <SafeHavenSection picks={vaultPicks} onPickClick={handleVaultClick} onQuickAdd={handleQuickAdd} isLoading={safeHavenLoading} />

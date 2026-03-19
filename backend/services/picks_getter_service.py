@@ -2072,13 +2072,40 @@ class PicksGetterService:
                 "WAR_ZONE": len(war_zone_picks)
             }
             
-            logger.info(f"[TOP_PICKS] Returning {len(top_picks)} picks | Distribution: {section_counts}")
+            # Check if all picks are locked
+            all_locked = all(pick.get("is_locked", False) for pick in top_picks) if top_picks else False
+            locked_count = sum(1 for pick in top_picks if pick.get("is_locked", False))
+            
+            # Calculate next release time (props sync at 4:00 AM EST daily)
+            next_release_time = None
+            if all_locked:
+                from datetime import timedelta
+                import pytz
+                
+                et_tz = pytz.timezone('America/New_York')
+                now_et = now.astimezone(et_tz)
+                
+                # Set to 4:00 AM EST (next sync time)
+                # If it's before 4 AM today, use today; otherwise use tomorrow
+                today_4am = now_et.replace(hour=4, minute=0, second=0, microsecond=0)
+                if now_et < today_4am:
+                    next_sync_et = today_4am
+                else:
+                    next_sync_et = today_4am + timedelta(days=1)
+                
+                next_release_time = next_sync_et.astimezone(timezone.utc).isoformat()
+            
+            logger.info(f"[TOP_PICKS] Returning {len(top_picks)} picks | Distribution: {section_counts} | Locked: {locked_count}/{len(top_picks)} | All Locked: {all_locked}")
             
             return {
-                "status": "live",
+                "status": "live" if not all_locked else "all_locked",
                 "bets": top_picks,
                 "source": "best_of_all_sections",
                 "section_distribution": section_counts,
+                "all_locked": all_locked,
+                "locked_count": locked_count,
+                "total_count": len(top_picks),
+                "next_release_time": next_release_time,
                 "timestamp": now.isoformat()
             }
             
