@@ -223,14 +223,14 @@ const LiveScoresTicker = memo(() => {
                 <span className="text-sm font-bold text-white">
                   {game.away_team}
                 </span>
-                <span className={`text-base font-black ${game.away_score > game.home_score ? 'text-emerald-400' : 'text-red-400'}`}>
+                <span className={`text-base font-black ${game.away_score > game.home_score ? 'text-emerald-400' : 'text-zinc-400'}`}>
                   {game.away_score}
                 </span>
                 
                 <span className="text-zinc-600 text-xs">@</span>
                 
                 {/* Home Team */}
-                <span className={`text-base font-black ${game.home_score > game.away_score ? 'text-emerald-400' : 'text-red-400'}`}>
+                <span className={`text-base font-black ${game.home_score > game.away_score ? 'text-emerald-400' : 'text-zinc-400'}`}>
                   {game.home_score}
                 </span>
                 <span className="text-sm font-bold text-white">
@@ -241,7 +241,7 @@ const LiveScoresTicker = memo(() => {
                 {/* Status Badge - separated with margin */}
                 <Badge className={`text-[10px] font-bold px-2 py-0.5 ml-1 ${
                   isLive ? 'bg-red-600 text-white border-red-500 animate-pulse' :
-                  isFinal ? 'bg-zinc-700 text-zinc-300 border-zinc-600' :
+                  isFinal ? 'bg-red-500/30 text-red-400 border-red-500/30' :
                   'bg-amber-500/30 text-amber-300 border-amber-500/30'
                 }`}>
                   {game.status?.toUpperCase() || game.period}
