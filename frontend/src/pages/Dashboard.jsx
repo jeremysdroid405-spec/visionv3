@@ -683,8 +683,6 @@ const MostPopularBetsSection = memo(({ bets, status, onBetClick }) => {
         icon={<Flame className="w-4 h-4 text-red-400" />}
         title="TOP PICKS"
         subtitle="Best of Safe Haven, Front Lines & War Zone"
-        badgeText="LIVE"
-        badgeColor="amber"
       />
       <div className="overflow-x-auto pb-2 -mx-3 px-3">
         <div className="flex gap-3" style={{ minWidth: 'max-content' }}>
