@@ -745,32 +745,40 @@ async def get_cached_player(player_name: str):
         war_zone_data = await picks_service.get_war_zone()
         front_lines_data = await picks_service.get_front_lines()
         
-        # Priority: War Zone (highest conviction) > Front Lines > Safe Haven
-        all_board_picks = (
-            war_zone_data.get("picks", []) + 
-            front_lines_data.get("picks", []) +
-            safe_haven_data.get("picks", [])
-        )
+        # Find ALL of this player's board picks (they may be on multiple boards)
+        # Each board pick should get its own intel suite
+        featured_props = {}  # key: "STAT|LINE", value: board_name
         
-        # Find THIS player's board pick (first match = highest priority board)
-        featured_prop_key = None
-        featured_board = None
-        for board_pick in all_board_picks:
+        # Check War Zone first (highest priority)
+        for board_pick in war_zone_data.get("picks", []):
             if board_pick.get("player_name", "").lower() == pname.lower():
                 stat_type = board_pick.get("stat_type", "")
                 line = board_pick.get("line", 0)
-                featured_prop_key = f"{stat_type}|{line}"
-                # Determine which board this came from
-                if board_pick in war_zone_data.get("picks", []):
-                    featured_board = "War Zone"
-                elif board_pick in front_lines_data.get("picks", []):
-                    featured_board = "Front Lines"
-                else:
-                    featured_board = "Safe Haven"
-                logger.info(f"[PLAYER_DETAIL] Found {pname} on {featured_board}: {stat_type} @ {line}")
-                break
+                key = f"{stat_type}|{line}"
+                featured_props[key] = "War Zone"
+                logger.info(f"[PLAYER_DETAIL] Found {pname} on War Zone: {stat_type} @ {line}")
         
-        logger.info(f"[PLAYER_DETAIL] {pname}: Featured prop = {featured_prop_key}")
+        # Check Front Lines
+        for board_pick in front_lines_data.get("picks", []):
+            if board_pick.get("player_name", "").lower() == pname.lower():
+                stat_type = board_pick.get("stat_type", "")
+                line = board_pick.get("line", 0)
+                key = f"{stat_type}|{line}"
+                if key not in featured_props:  # Don't override higher priority board
+                    featured_props[key] = "Front Lines"
+                    logger.info(f"[PLAYER_DETAIL] Found {pname} on Front Lines: {stat_type} @ {line}")
+        
+        # Check Safe Haven
+        for board_pick in safe_haven_data.get("picks", []):
+            if board_pick.get("player_name", "").lower() == pname.lower():
+                stat_type = board_pick.get("stat_type", "")
+                line = board_pick.get("line", 0)
+                key = f"{stat_type}|{line}"
+                if key not in featured_props:  # Don't override higher priority board
+                    featured_props[key] = "Safe Haven"
+                    logger.info(f"[PLAYER_DETAIL] Found {pname} on Safe Haven: {stat_type} @ {line}")
+        
+        logger.info(f"[PLAYER_DETAIL] {pname}: Featured props = {list(featured_props.keys())}")
         
         # Deduplicate props by stat_type + line
         seen_props = set()
@@ -825,9 +833,10 @@ async def get_cached_player(player_name: str):
             prop["l10_avg"] = l10_avg
             prop["season_avg"] = season_avg
             
-            # Check if THIS prop is the featured one
+            # Check if THIS prop is a featured one (on any board)
             prop_key = f"{stat_type}|{line}"
-            is_featured = (prop_key == featured_prop_key)
+            is_featured = prop_key in featured_props
+            featured_board = featured_props.get(prop_key, None)
             
             # Build hit_rates object for frontend compatibility (use actual values from data)
             prop["hit_rates"] = {
