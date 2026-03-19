@@ -223,14 +223,14 @@ const LiveScoresTicker = memo(() => {
                 <span className="text-sm font-bold text-white">
                   {game.away_team}
                 </span>
-                <span className={`text-base font-black ${game.away_score > game.home_score ? 'text-emerald-400' : 'text-zinc-400'}`}>
+                <span className={`text-base font-black ${game.away_score > game.home_score ? 'text-emerald-400' : 'text-red-400'}`}>
                   {game.away_score}
                 </span>
                 
                 <span className="text-zinc-600 text-xs">@</span>
                 
                 {/* Home Team */}
-                <span className={`text-base font-black ${game.home_score > game.away_score ? 'text-emerald-400' : 'text-zinc-400'}`}>
+                <span className={`text-base font-black ${game.home_score > game.away_score ? 'text-emerald-400' : 'text-red-400'}`}>
                   {game.home_score}
                 </span>
                 <span className="text-sm font-bold text-white">
