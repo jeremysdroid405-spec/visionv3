@@ -569,8 +569,9 @@ class CachedBoardBuilderService:
         stat_baseline = baseline.get(stat_type, {})
         
         # Calculate hit rates based on L10/L5 values
+        # l10_values is ordered most-recent-first, so L5 = first 5 values
         l10_values = stat_baseline.get("l10_values", [])
-        l5_values = l10_values[-5:] if len(l10_values) >= 5 else l10_values
+        l5_values = l10_values[:5] if len(l10_values) >= 5 else l10_values
         
         hit_rates = {
             "l10_rate": None,

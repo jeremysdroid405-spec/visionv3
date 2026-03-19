@@ -1205,6 +1205,226 @@ class BDLComprehensiveSyncService:
         logger.info(f"[NBA] Enriched {player.get('display_name')} with NBA.com L5/L10")
         return True
 
+    async def fetch_bdl_game_logs(self, bdl_id: int, limit: int = 15) -> List[Dict]:
+        """
+        Fetch player's game logs from BDL /stats endpoint.
+        Returns only games where player actually played (filters DNPs).
+        
+        Args:
+            bdl_id: BallDontLie player ID
+            limit: Max number of played games to return
+            
+        Returns:
+            List of game stats dicts, most recent first
+        """
+        headers = {"Authorization": BDL_API_KEY}
+        url = f"{BDL_BASE_URL}/stats"
+        
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                resp = await client.get(url, headers=headers, params={
+                    "player_ids[]": bdl_id,
+                    "seasons[]": CURRENT_SEASON,
+                    "per_page": 100  # Fetch more to account for DNPs
+                })
+                
+                if resp.status_code != 200:
+                    logger.warning(f"[BDL] Game logs fetch failed for {bdl_id}: {resp.status_code}")
+                    return []
+                
+                data = resp.json()
+                games = data.get("data", [])
+                
+                # Filter out DNP games (0 minutes)
+                played_games = []
+                for g in games:
+                    mins = g.get("min", "0") or "0"
+                    if isinstance(mins, str):
+                        mins = mins.split(":")[0] if ":" in mins else mins
+                        try:
+                            if int(mins) > 0:
+                                played_games.append(g)
+                        except ValueError:
+                            pass
+                    elif mins and float(mins) > 0:
+                        played_games.append(g)
+                
+                # Sort by game date descending (most recent first)
+                played_games.sort(
+                    key=lambda x: x.get("game", {}).get("date", ""),
+                    reverse=True
+                )
+                
+                return played_games[:limit]
+                
+        except Exception as e:
+            logger.error(f"[BDL] Error fetching game logs for {bdl_id}: {e}")
+            return []
+
+    async def enrich_player_with_game_values(self, bdl_id: int) -> bool:
+        """
+        CRITICAL FIX: Enrich player with l10_values from BDL game logs.
+        
+        This is the SINGLE SOURCE OF TRUTH for hit rate calculations.
+        Uses BDL /stats endpoint to get actual game-by-game values,
+        then stores them in baseline_stats[STAT].l10_values.
+        
+        Hit rates CANNOT be calculated without l10_values!
+        """
+        # Get player from master hub
+        player = await self.master_hub.find_one({"bdl_id": bdl_id})
+        if not player:
+            logger.warning(f"[BDL] Player bdl_id={bdl_id} not found")
+            return False
+        
+        player_name = player.get("display_name", f"ID:{bdl_id}")
+        
+        # Fetch game logs from BDL
+        game_logs = await self.fetch_bdl_game_logs(bdl_id, limit=15)
+        if not game_logs:
+            logger.debug(f"[BDL] No game logs for {player_name}")
+            return False
+        
+        # Get existing baseline_stats
+        baseline = player.get("baseline_stats", {})
+        
+        # Stat type mapping: BDL key -> our key
+        stat_map = {
+            "pts": "PTS",
+            "reb": "REB",
+            "ast": "AST",
+            "stl": "STL",
+            "blk": "BLK",
+            "fg3m": "3PM",
+            "fgm": "FGM",
+            "ftm": "FTM",
+            "turnover": "TO"
+        }
+        
+        # Extract l10_values for each stat type
+        for bdl_key, our_key in stat_map.items():
+            values = []
+            for g in game_logs[:10]:  # L10
+                val = g.get(bdl_key, 0)
+                values.append(round(float(val), 1) if val else 0)
+            
+            # Calculate L5/L10 averages from actual values
+            l5_values = values[:5]
+            l10_values = values[:10]
+            
+            l5_avg = round(sum(l5_values) / len(l5_values), 1) if l5_values else None
+            l10_avg = round(sum(l10_values) / len(l10_values), 1) if l10_values else None
+            
+            # Update baseline_stats with l10_values
+            if our_key not in baseline:
+                baseline[our_key] = {}
+            
+            baseline[our_key]["l10_values"] = l10_values
+            baseline[our_key]["l5_avg"] = l5_avg
+            baseline[our_key]["l10_avg"] = l10_avg
+        
+        # Calculate combo stats l10_values (PRA, PR, PA, RA)
+        pts_vals = baseline.get("PTS", {}).get("l10_values", [])
+        reb_vals = baseline.get("REB", {}).get("l10_values", [])
+        ast_vals = baseline.get("AST", {}).get("l10_values", [])
+        
+        if pts_vals and reb_vals and ast_vals:
+            # PRA (Points + Rebounds + Assists)
+            pra_vals = [round(pts_vals[i] + reb_vals[i] + ast_vals[i], 1) 
+                       for i in range(min(len(pts_vals), len(reb_vals), len(ast_vals)))]
+            baseline["PRA"] = baseline.get("PRA", {})
+            baseline["PRA"]["l10_values"] = pra_vals
+            baseline["PRA"]["l5_avg"] = round(sum(pra_vals[:5]) / len(pra_vals[:5]), 1) if pra_vals else None
+            baseline["PRA"]["l10_avg"] = round(sum(pra_vals[:10]) / len(pra_vals[:10]), 1) if pra_vals else None
+            
+            # PR (Points + Rebounds)
+            pr_vals = [round(pts_vals[i] + reb_vals[i], 1) 
+                      for i in range(min(len(pts_vals), len(reb_vals)))]
+            baseline["PR"] = baseline.get("PR", {})
+            baseline["PR"]["l10_values"] = pr_vals
+            baseline["PR"]["l5_avg"] = round(sum(pr_vals[:5]) / len(pr_vals[:5]), 1) if pr_vals else None
+            baseline["PR"]["l10_avg"] = round(sum(pr_vals[:10]) / len(pr_vals[:10]), 1) if pr_vals else None
+            
+            # PA (Points + Assists)
+            pa_vals = [round(pts_vals[i] + ast_vals[i], 1) 
+                      for i in range(min(len(pts_vals), len(ast_vals)))]
+            baseline["PA"] = baseline.get("PA", {})
+            baseline["PA"]["l10_values"] = pa_vals
+            baseline["PA"]["l5_avg"] = round(sum(pa_vals[:5]) / len(pa_vals[:5]), 1) if pa_vals else None
+            baseline["PA"]["l10_avg"] = round(sum(pa_vals[:10]) / len(pa_vals[:10]), 1) if pa_vals else None
+            
+            # RA (Rebounds + Assists)
+            ra_vals = [round(reb_vals[i] + ast_vals[i], 1) 
+                      for i in range(min(len(reb_vals), len(ast_vals)))]
+            baseline["RA"] = baseline.get("RA", {})
+            baseline["RA"]["l10_values"] = ra_vals
+            baseline["RA"]["l5_avg"] = round(sum(ra_vals[:5]) / len(ra_vals[:5]), 1) if ra_vals else None
+            baseline["RA"]["l10_avg"] = round(sum(ra_vals[:10]) / len(ra_vals[:10]), 1) if ra_vals else None
+        
+        # Update metadata
+        baseline["game_values_synced_at"] = datetime.now(timezone.utc).isoformat()
+        baseline["synced_from"] = "bdl_game_logs"
+        
+        # Save to database
+        await self.master_hub.update_one(
+            {"bdl_id": bdl_id},
+            {"$set": {
+                "baseline_stats": baseline,
+                "bdl_game_logs": game_logs[:15]  # Store raw logs for reference
+            }}
+        )
+        
+        logger.info(f"[BDL] Enriched {player_name} with l10_values from game logs")
+        return True
+
+    async def batch_enrich_game_values(self, limit: int = 100) -> Dict[str, int]:
+        """
+        Batch enrich players with l10_values from BDL game logs.
+        
+        Prioritizes players who:
+        1. Have props in dg_cached_board
+        2. Are missing l10_values in baseline_stats
+        """
+        # Get players with active props
+        active_players = await self.db.dg_cached_board.distinct("player_name")
+        logger.info(f"[BDL] Found {len(active_players)} players with active props")
+        
+        # Find their bdl_ids from master hub
+        enriched = 0
+        failed = 0
+        skipped = 0
+        
+        for player_name in active_players[:limit]:
+            player = await self.master_hub.find_one(
+                {"display_name": {"$regex": f"^{re.escape(player_name)}$", "$options": "i"}},
+                {"bdl_id": 1, "baseline_stats": 1}
+            )
+            
+            if not player or not player.get("bdl_id"):
+                skipped += 1
+                continue
+            
+            # Check if already has l10_values
+            baseline = player.get("baseline_stats", {})
+            pts_has_values = baseline.get("PTS", {}).get("l10_values")
+            
+            if pts_has_values and len(pts_has_values) >= 5:
+                skipped += 1
+                continue
+            
+            # Enrich with game values
+            success = await self.enrich_player_with_game_values(player["bdl_id"])
+            if success:
+                enriched += 1
+            else:
+                failed += 1
+            
+            # Rate limit: 1 request per 0.2 seconds
+            await asyncio.sleep(0.2)
+        
+        logger.info(f"[BDL] Batch enrichment complete: {enriched} enriched, {failed} failed, {skipped} skipped")
+        return {"enriched": enriched, "failed": failed, "skipped": skipped}
+
 
 # ==================== SINGLETON INSTANCE ====================
 _bdl_sync_service: Optional[BDLComprehensiveSyncService] = None

@@ -1149,6 +1149,9 @@ class PicksGetterService:
                 # Get embedded hit rates - support both flat and nested structures
                 hit_rates = prop.get("hit_rates", {})
                 
+                # Initialize defaults
+                l10_games = hit_rates.get("l10_hit_count", 10)  # Default to 10 games
+                
                 # Flat structure (from cached_board_builder)
                 l10_hit_rate = hit_rates.get("l10_rate")
                 l5_avg = hit_rates.get("l5_avg")
@@ -1160,7 +1163,7 @@ class PicksGetterService:
                     l10_data = hit_rates.get("l10", {})
                     l5_data = hit_rates.get("l5", {})
                     l10_hit_rate = l10_data.get("hit_rate", 0)
-                    l10_games = l10_data.get("total_games", 0)
+                    l10_games = l10_data.get("total_games", 10)
                     l10_avg = l10_data.get("avg")
                     l5_avg = l5_data.get("avg")
                     season_data = hit_rates.get("season", {})
@@ -1168,9 +1171,6 @@ class PicksGetterService:
                     
                     if l10_games < 5:
                         continue
-                else:
-                    # For flat structure, skip the games check since we don't have that data
-                    pass
                 
                 # If still no hit rate, skip (need hit rate for filtering)
                 if l10_hit_rate is None:

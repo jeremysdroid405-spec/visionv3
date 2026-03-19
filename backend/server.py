@@ -597,6 +597,35 @@ async def scheduled_nba_batch_5():
     await scheduled_nba_l5l10_batch(5, 125)
 
 
+async def scheduled_bdl_game_values_sync():
+    """
+    BDL Game Values Enrichment - CRITICAL for hit rate calculations.
+    
+    Runs at 4:10 AM EST, after the NBA.com L5/L10 batches complete.
+    Fetches actual game-by-game values from BDL /stats endpoint and stores
+    them in baseline_stats[STAT].l10_values.
+    
+    Without l10_values, hit rates cannot be calculated per betting line!
+    """
+    logger.info("=" * 70)
+    logger.info("[SCHEDULER] BDL GAME VALUES ENRICHMENT")
+    logger.info(f"[SCHEDULER] Time: {datetime.now(timezone.utc).isoformat()}")
+    logger.info("=" * 70)
+    
+    try:
+        from services.bdl_comprehensive_sync import get_bdl_sync_service
+        bdl_service = get_bdl_sync_service(db)
+        
+        # Enrich all players with active props
+        result = await bdl_service.batch_enrich_game_values(limit=200)
+        
+        logger.info(f"[SCHEDULER] BDL game values: {result['enriched']} enriched, {result['failed']} failed, {result['skipped']} skipped")
+        logger.info("=" * 70)
+        
+    except Exception as e:
+        logger.error(f"[SCHEDULER] BDL game values enrichment failed: {e}")
+
+
 async def scheduled_roster_sync():
     """
     Scheduled job that runs every Sunday at midnight UTC.
@@ -798,6 +827,16 @@ async def startup_event():
         CronTrigger(hour=9, minute=8, timezone=SCHEDULER_TIMEZONE),
         id='nba_l5l10_batch_5',
         name='4:08 AM EST NBA.com L5/L10 Batch 5/5',
+        replace_existing=True
+    )
+    
+    # BDL Game Values Enrichment at 4:10 AM EST (9:10 AM UTC)
+    # CRITICAL: Provides l10_values for hit rate calculations
+    scheduler.add_job(
+        scheduled_bdl_game_values_sync,
+        CronTrigger(hour=9, minute=10, timezone=SCHEDULER_TIMEZONE),
+        id='bdl_game_values_sync',
+        name='4:10 AM EST BDL Game Values Enrichment',
         replace_existing=True
     )
     

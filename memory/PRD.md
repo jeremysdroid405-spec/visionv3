@@ -8,14 +8,26 @@ PropVision is a sports analytics platform for NBA player props, providing data-d
 ### Data Pipeline (Updated 2026-03-19)
 
 **Data Sources:**
-1. **BDL (BallDontLie)** - Season averages ONLY (GOAT tier subscription)
-   - Endpoint: `/season_averages/general`
-   - ⚠️ Game logs have many DNPs - NOT reliable for L5/L10
+1. **BDL (BallDontLie)** - Season averages + Game Logs (GOAT tier subscription)
+   - Endpoint: `/season_averages/general` - Season stats
+   - Endpoint: `/stats` - **GAME-BY-GAME VALUES** (CRITICAL for hit rates)
+   - ⚠️ Must filter DNPs (0 minute games)
 
-2. **NBA.com (nba_api)** - L5/L10/L15/L20 stats (PRIMARY SOURCE)
+2. **NBA.com (nba_api)** - L5/L10/L15/L20 averages
    - Endpoint: `playerdashboardbylastngames`
-   - Pre-calculated, official, accurate
+   - Pre-calculated averages (no game values)
    - ~550 active players
+
+### Hit Rate Calculation (CRITICAL FIX - 2026-03-19)
+
+**Problem Solved:** Hit rates were showing 100% even when clearly wrong (e.g., Zion averaging 20.2 PTS showing 100% hit rate over 25.5 line).
+
+**Root Cause:** The system had L5/L10 **averages** but not the individual **game values** (`l10_values`). Without game values, hit rates cannot be calculated per betting line.
+
+**Solution:** 
+1. Fetch BDL game logs via `/stats` endpoint
+2. Store `l10_values: [14, 27, 21, 19, 20, ...]` in `baseline_stats[STAT]`
+3. Calculate hit rates by counting games over the line
 
 ### Scheduled Syncs (EST)
 
@@ -27,6 +39,7 @@ PropVision is a sports analytics platform for NBA player props, providing data-d
 | 4:04 AM | NBA Batch 3/5 | 125 players L5/L10 from NBA.com |
 | 4:06 AM | NBA Batch 4/5 | 125 players L5/L10 from NBA.com |
 | 4:08 AM | NBA Batch 5/5 | 125 players L5/L10 from NBA.com |
+| **4:10 AM** | **BDL Game Values** | **l10_values for hit rate calcs** |
 | 5:00 AM | Morning Props | Odds/props refresh |
 | Sunday 00:00 UTC | Roster Sync | Weekly team mappings |
 
@@ -34,22 +47,25 @@ PropVision is a sports analytics platform for NBA player props, providing data-d
 
 ### Database Schema
 - `nba_master_hub_2026` - Unique indexes on `bdl_id` AND `nba_id`
-  - `baseline_stats.synced_from`: `bdl_season_avg_plus_nba_l5l10` (good) or `pending_nba_enrichment` (needs sync)
-- `dg_cached_board` - Props with `hit_rates` object
+  - `baseline_stats.PTS.l10_values`: `[14, 27, 21, 19, 20, ...]` (REQUIRED for hit rates)
+  - `baseline_stats.PTS.l5_avg`: 20.2
+  - `baseline_stats.PTS.l10_avg`: 19.1
+- `dg_cached_board` - Props with calculated `hit_rates` object
 - `odds_api_mapping_master` - Name → bdl_id mappings
 
 ### Hit Rates Structure
 ```json
 {
-  "l5_avg": 5.0,
-  "l10_avg": 5.9,
-  "season_avg": 6.2,
-  "h10_rate": 60,
+  "l5_avg": 20.2,
+  "l10_avg": 19.1,
+  "season_avg": 21.4,
+  "h5_rate": 20,
+  "h10_rate": 10,
   "hit_rates": {
-    "l10_rate": 60,
-    "l5_rate": 40,
-    "l10_avg": 5.9,
-    "l5_avg": 5.0
+    "l10_rate": 10,
+    "l5_rate": 20,
+    "l10_hit_count": 1,
+    "l5_hit_count": 1
   }
 }
 ```
@@ -64,7 +80,8 @@ PropVision is a sports analytics platform for NBA player props, providing data-d
 - `POST /api/v3/sync` - Rebuild cached board
 - `POST /api/v3/sync-bdl` - BDL + NBA.com full sync
 - `POST /api/v3/sync-nba-l5l10?limit=125` - Manual NBA.com batch enrichment
-- `POST /api/v3/master-hub/enrich-nba-stats/{bdl_id}` - Single player enrichment
+- `POST /api/v3/master-hub/enrich-game-values?limit=200` - BDL game values enrichment
+- `POST /api/v3/master-hub/enrich-player-game-values/{bdl_id}` - Single player game values
 
 ### Data Endpoints
 - `GET /api/v3/war-zone` - War Zone picks
@@ -73,18 +90,22 @@ PropVision is a sports analytics platform for NBA player props, providing data-d
 - `GET /api/v3/player-with-badges/{name}` - Player detail with hit rates
 
 ## Completed Features ✅
-- [x] NBA.com L5/L10 as PRIMARY source (2026-03-19)
-- [x] 5 staggered NBA.com syncs at 4:00-4:08 AM (2026-03-19)
-- [x] Fixed bad BDL L5/L10 data (cleared 392 players)
-- [x] Hit rates displaying correctly
-- [x] War Zone, Safe Haven, Front Lines working
+- [x] Hit rate calculation fixed with `l10_values` (2026-03-19) 
+- [x] BDL game logs integration for game-by-game values (2026-03-19)
+- [x] 4:10 AM BDL game values sync added to scheduler (2026-03-19)
+- [x] Fixed `l5_values` extraction (was using last 5, now first 5 of sorted array)
+- [x] NBA.com L5/L10 as PRIMARY source for averages
+- [x] 5 staggered NBA.com syncs at 4:00-4:08 AM
+- [x] War Zone, Safe Haven, Front Lines working correctly
 - [x] Dual ID system (bdl_id + nba_id)
 
 ## Known Issues
 - ~46 players without `nba_id` (rookies/two-way)
 - NBA.com API can timeout - staggered syncs handle retries
+- News ticker not working
 
 ## Backlog
+- [ ] Fix news ticker
+- [ ] Deprecated code cleanup
 - [ ] Google/Apple OAuth
 - [ ] Stripe payments
-- [ ] Code cleanup

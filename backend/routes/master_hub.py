@@ -596,3 +596,55 @@ async def get_player_contract(player_name: str):
         "in_contract_year": True,
         "contract_info": info
     }
+
+
+
+@router.post("/enrich-game-values")
+async def enrich_game_values(limit: int = 100):
+    """
+    Batch enrich players with l10_values from BDL game logs.
+    
+    This is CRITICAL for hit rate calculations. Without l10_values,
+    hit rates cannot be calculated per betting line.
+    
+    Args:
+        limit: Maximum number of players to enrich (default 100)
+    """
+    if _db is None:
+        raise HTTPException(status_code=500, detail="Database not initialized")
+    
+    from services.bdl_comprehensive_sync import get_bdl_sync_service
+    sync_service = get_bdl_sync_service(_db)
+    
+    result = await sync_service.batch_enrich_game_values(limit=limit)
+    
+    return {
+        "success": True,
+        "message": f"Enriched {result['enriched']} players with game values",
+        "details": result
+    }
+
+
+@router.post("/enrich-player-game-values/{bdl_id}")
+async def enrich_single_player_game_values(bdl_id: int):
+    """
+    Enrich a single player with l10_values from BDL game logs.
+    
+    Args:
+        bdl_id: BallDontLie player ID
+    """
+    if _db is None:
+        raise HTTPException(status_code=500, detail="Database not initialized")
+    
+    from services.bdl_comprehensive_sync import get_bdl_sync_service
+    sync_service = get_bdl_sync_service(_db)
+    
+    success = await sync_service.enrich_player_with_game_values(bdl_id)
+    
+    if not success:
+        raise HTTPException(status_code=404, detail=f"Failed to enrich player bdl_id={bdl_id}")
+    
+    return {
+        "success": True,
+        "message": f"Enriched player bdl_id={bdl_id} with game values"
+    }
