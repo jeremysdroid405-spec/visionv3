@@ -364,13 +364,13 @@ export const Auth = () => {
             <SpecRow 
               spec="TARGETING"
               title="War Zone"
-              edge={<>High-alpha, high-variance exploits. This is for the strategist looking to turn a single session into a season-defining win. <span className="text-red-500">🔥🔥🔥🔥</span></>}
+              edge={<>High-alpha, high-variance exploits. This is for the strategist looking to turn a single session into a season-defining win.</>}
               icon={<DemonIcon size={24} />}
             />
             <SpecRow 
               spec="SAFETY"
               title="Goblin Recon"
-              edge={<>Surgical bankroll stabilization. Recon replaces luck with Statistical Certainty. High-probability infiltration data for consistent, low-friction resource accumulation. <span className="text-cyan-400">💎💎💎💎</span></>}
+              edge={<>Surgical bankroll stabilization. Recon replaces luck with Statistical Certainty. High-probability infiltration data for consistent, low-friction resource accumulation.</>}
               icon={<GoblinIcon size={24} />}
             />
           </div>
