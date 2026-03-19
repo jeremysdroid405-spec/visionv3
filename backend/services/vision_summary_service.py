@@ -137,11 +137,8 @@ OUTPUT: 3 tight sentences covering EDGE → MATCHUP → CONFLICTS"""
             response = await chat.send_message(UserMessage(text=prompt))
             
             if response:
-                # Clean up response
+                # Clean up response - no truncation
                 summary = response.strip()
-                # Limit to ~500 chars for 3 sentences
-                if len(summary) > 520:
-                    summary = summary[:517] + "..."
                 return summary
             
             return None
