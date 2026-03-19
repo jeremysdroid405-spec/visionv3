@@ -1012,7 +1012,9 @@ async def get_cached_player(player_name: str):
                     badges=badges,  # May be empty, that's ok
                     opponent=opp_abbr,
                     is_demon=is_demon,
-                    is_goblin=is_goblin
+                    is_goblin=is_goblin,
+                    dvp_rank=dvp_rank,  # Pass DvP rank (1-30)
+                    dvp_friction=friction_level  # Pass friction level (Low/Medium/High/Elite)
                 )
                 if ai_summary:
                     prop["vision_summary"] = ai_summary

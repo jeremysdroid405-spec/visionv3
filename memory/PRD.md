@@ -111,6 +111,7 @@ probability_score = base_hit_rate + dvp_modifier + badge_modifier + line_modifie
 
 ## Completed Features ✅
 - [x] **DvP Pagination Fix** (2026-03-19) - Fixed BDL API pagination to fetch all 30 teams
+- [x] **AI Summary DvP Fix** (2026-03-19) - Vision AI summaries now include actual DvP rank data
 - [x] Hit rate calculation fixed with `l10_values` (2026-03-19) 
 - [x] BDL game logs integration for game-by-game values (2026-03-19)
 - [x] 4:10 AM BDL game values sync added to scheduler (2026-03-19)
@@ -129,6 +130,13 @@ probability_score = base_hit_rate + dvp_modifier + badge_modifier + line_modifie
 - **Fix:** Added cursor-based pagination loop to `_fetch_bdl_defensive_stats()`
 - **Result:** All 30 NBA teams now included (Spurs was missing before)
 - **Endpoint:** BDL `/nba/v1/team_season_averages/general?type=opponent`
+
+### AI Vision Summary DvP Fix
+- **File:** `/app/backend/services/vision_summary_service.py`
+- **Fix:** Added `dvp_rank` and `dvp_friction` parameters to `generate_pick_summary()`
+- **Result:** AI summaries now accurately reflect opponent defensive strength
+- **Before:** AI would hallucinate matchup quality (e.g., "favorable" when facing elite defense)
+- **After:** AI uses actual DvP rank data to correctly describe matchup difficulty
 
 ## Known Issues
 - ~46 players without `nba_id` (rookies/two-way)

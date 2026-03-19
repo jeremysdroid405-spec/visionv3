@@ -29,7 +29,9 @@ class VisionSummaryService:
         badges: list,
         opponent: str = None,
         is_demon: bool = False,
-        is_goblin: bool = False
+        is_goblin: bool = False,
+        dvp_rank: int = None,
+        dvp_friction: str = None
     ) -> Optional[str]:
         """
         Generate a 2-3 sentence summary explaining why Vision picked this bet.
@@ -44,6 +46,8 @@ class VisionSummaryService:
             opponent: Opponent team abbreviation
             is_demon: True if this is a demon (over) pick
             is_goblin: True if this is a goblin (under/safe) pick
+            dvp_rank: Opponent's defensive rank for this stat (1=best defense, 30=worst)
+            dvp_friction: Friction level (Low/Medium/High/Elite)
             
         Returns:
             A short summary string or None if generation fails
@@ -88,6 +92,21 @@ class VisionSummaryService:
                     direction = "OVER" if h10_rate and h10_rate >= 60 else "UNDER"
                     pick_reasoning = f"Based on recent form, targeting {direction} {line} {stat_type}."
             
+            # Build DvP context for the AI
+            if dvp_rank and dvp_friction:
+                if dvp_rank <= 5:
+                    dvp_context = f"ELITE DEFENSE - {opponent} ranks #{dvp_rank} vs {stat_type} (Top 5 - very tough matchup)"
+                elif dvp_rank <= 10:
+                    dvp_context = f"STRONG DEFENSE - {opponent} ranks #{dvp_rank} vs {stat_type} (Top 10 - tough matchup)"
+                elif dvp_rank <= 20:
+                    dvp_context = f"AVERAGE DEFENSE - {opponent} ranks #{dvp_rank} vs {stat_type} (neutral matchup)"
+                elif dvp_rank <= 25:
+                    dvp_context = f"WEAK DEFENSE - {opponent} ranks #{dvp_rank} vs {stat_type} (favorable matchup)"
+                else:
+                    dvp_context = f"POOR DEFENSE - {opponent} ranks #{dvp_rank} vs {stat_type} (Bottom 5 - very favorable matchup)"
+            else:
+                dvp_context = f"Matchup data unavailable for {opponent}"
+            
             # Build prompt
             prompt = f"""You are an elite sports betting analyst. Write a 3-sentence pick breakdown.
 
@@ -98,6 +117,7 @@ PICK: {direction} {line} {stat_type}
 SEASON AVG: {season_avg} {stat_type}
 L10 HIT RATE: {h10_rate}%
 OPPONENT: {opponent or 'TBD'}
+DEFENSIVE MATCHUP: {dvp_context}
 PICK TYPE: {pick_reasoning}
 
 CONTEXT BADGES:
@@ -108,19 +128,21 @@ TASK:
 Sentence 1 - THE EDGE: State the pick clearly with the primary statistical edge
 → "{last_name} {direction} {line} {stat_type}" + why the numbers favor this
 
-Sentence 2 - MATCHUP CONTEXT: Analyze opponent matchup
-→ How does {opponent}'s defense/pace affect this stat?
-→ Are they elite, average, or weak against this stat type?
-→ Does this help or create friction for the pick?
+Sentence 2 - MATCHUP CONTEXT: Analyze the DEFENSIVE MATCHUP data provided
+→ The DVP rank tells you if the opponent is good/bad at defending this stat
+→ Rank 1-10 = tough matchup (defense is strong), Rank 21-30 = favorable (defense is weak)
+→ Use the actual ranking provided - do NOT guess or assume
 
 Sentence 3 - POTENTIAL CONFLICTS: Flag any risks or factors working against this pick
-→ Recent cold streak, tough travel, injury concern, elite defender matchup, etc.
+→ If facing elite defense (rank 1-10), that IS a conflict - acknowledge it
+→ Recent cold streak, tough travel, injury concern, etc.
 → If no major conflicts exist, note why this is a clean spot
 
 RULES:
 - Use ONLY the player's last name
 - Be specific with numbers (averages, rates, rankings)
-- Be honest about both edge AND risk
+- Be ACCURATE about the defensive matchup - use the DVP data provided
+- Do NOT say a matchup is "favorable" if the defense ranks in the Top 10
 - No filler words, no hedging language
 - DO NOT say "This pick" or "I like"
 
