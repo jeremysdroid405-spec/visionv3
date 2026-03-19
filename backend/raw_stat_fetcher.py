@@ -57,7 +57,7 @@ class RawStatFetcher:
     """
     
     # Default API keys
-    DEFAULT_BDL_KEY = "ad5544be-9969-434b-9389-2b7cf658c8e0"
+    DEFAULT_BDL_KEY = os.environ.get("BDL_API_KEY")
     DEFAULT_TANK01_KEY = "402edbcac6mshd04997e7ca01d17p1879eajsn65ab176cdb1e"
     
     def __init__(self, db):

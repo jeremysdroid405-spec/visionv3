@@ -109,10 +109,10 @@ MAX_DELAY = 16.0  # seconds
 
 # ==================== API CONFIGURATION ====================
 
-ODDS_API_KEY = os.environ.get("ODDS_API_KEY", "e1ae76ab21c34ee88ed552cffb4449fd")
+ODDS_API_KEY = os.environ.get("ODDS_API_KEY")
 ODDS_API_BASE = "https://api.the-odds-api.com/v4"
 
-BDL_API_KEY = os.environ.get("BDL_API_KEY", "ad5544be-9969-434b-9389-2b7cf658c8e0")
+BDL_API_KEY = os.environ.get("BDL_API_KEY")
 BDL_BASE_URL = "https://api.balldontlie.io/v1"
 
 # NOTE: Tank01 has been REMOVED. All stats come from BDL.

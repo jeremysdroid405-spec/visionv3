@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 
 # API Configuration - BDL ONLY (Tank01 REMOVED)
 BDL_BASE_URL = "https://api.balldontlie.io/v1"
-BDL_API_KEY = os.environ.get("BDL_API_KEY", "ad5544be-9969-434b-9389-2b7cf658c8e0")
+BDL_API_KEY = os.environ.get("BDL_API_KEY")
 
 CURRENT_SEASON = os.environ.get("NBA_SEASON", "2025")
 

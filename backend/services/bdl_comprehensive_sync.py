@@ -34,7 +34,7 @@ from nba_api.stats.endpoints import playerdashboardbylastngames
 logger = logging.getLogger(__name__)
 
 # BallDontLie API Configuration
-BDL_API_KEY = os.environ.get("BDL_API_KEY", "ad5544be-9969-434b-9389-2b7cf658c8e0")
+BDL_API_KEY = os.environ.get("BDL_API_KEY")
 BDL_BASE_URL = "https://api.balldontlie.io/v1"
 
 # Season configuration (BDL uses start year: 2025 = 2025-26 season)

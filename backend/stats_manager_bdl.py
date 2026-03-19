@@ -17,7 +17,7 @@ import asyncio
 logger = logging.getLogger(__name__)
 
 # BallDontLie API Configuration
-BDL_API_KEY = "ad5544be-9969-434b-9389-2b7cf658c8e0"
+BDL_API_KEY = os.environ.get("BDL_API_KEY")
 BDL_BASE_URL = "https://api.balldontlie.io/v1"
 # Use 2024 season (2024-2025 NBA) which has actual data
 # Note: BallDontLie uses the season START year (e.g., 2024 = 2024-2025 season)

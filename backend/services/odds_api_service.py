@@ -19,7 +19,7 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 logger = logging.getLogger(__name__)
 
 # API Configuration
-ODDS_API_KEY = os.environ.get("ODDS_API_KEY", "e1ae76ab21c34ee88ed552cffb4449fd")
+ODDS_API_KEY = os.environ.get("ODDS_API_KEY")
 ODDS_API_BASE = "https://api.the-odds-api.com/v4"
 
 # PrizePicks Configuration
