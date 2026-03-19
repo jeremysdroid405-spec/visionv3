@@ -357,7 +357,7 @@ const EmptyStateMessage = ({ icon, title, message }) => (
 const WarZoneSection = memo(({ picks, onPickClick, onQuickAdd, isLoading }) => {
   if (isLoading) {
     return <SectionLoadingSkeleton 
-      icon={<DemonIcon size={20} />} 
+      icon={null} 
       title="WAR ZONE" 
       subtitle="Loading demon plays..." 
     />;
@@ -367,7 +367,7 @@ const WarZoneSection = memo(({ picks, onPickClick, onQuickAdd, isLoading }) => {
     return (
       <div className="war-zone-section mb-4">
         <SectionHeader 
-          icon={<DemonIcon size={20} />}
+          icon={null}
           title="WAR ZONE"
           subtitle="High-risk, high-reward demon plays"
           badgeText="NO GAMES"
@@ -385,7 +385,7 @@ const WarZoneSection = memo(({ picks, onPickClick, onQuickAdd, isLoading }) => {
   return (
     <div className="war-zone-section mb-4">
       <SectionHeader 
-        icon={<DemonIcon size={20} />}
+        icon={null}
         title="WAR ZONE"
         subtitle="High-risk, high-reward demon plays"
         badgeText={`TOP ${Math.min(10, picks.length)} DEMONS`}
@@ -415,7 +415,7 @@ const WarZoneSection = memo(({ picks, onPickClick, onQuickAdd, isLoading }) => {
 const SafeHavenSection = memo(({ picks, onPickClick, onQuickAdd, isLoading }) => {
   if (isLoading) {
     return <SectionLoadingSkeleton 
-      icon={<GoblinIcon size={20} />} 
+      icon={null} 
       title="SAFE HAVEN" 
       subtitle="Loading plays..." 
     />;
@@ -425,7 +425,7 @@ const SafeHavenSection = memo(({ picks, onPickClick, onQuickAdd, isLoading }) =>
     return (
       <div className="goblin-recon-section mb-4">
         <SectionHeader 
-          icon={<GoblinIcon size={20} />}
+          icon={null}
           title="SAFE HAVEN"
           subtitle="High-floor plays with best consistency"
           badgeText="NO GAMES"
@@ -443,7 +443,7 @@ const SafeHavenSection = memo(({ picks, onPickClick, onQuickAdd, isLoading }) =>
   return (
     <div className="goblin-recon-section mb-4">
       <SectionHeader 
-        icon={<GoblinIcon size={20} />}
+        icon={null}
         title="SAFE HAVEN"
         subtitle="High-floor plays with best consistency"
         badgeText="TOP 10 SAFEST PLAYS"
@@ -473,7 +473,7 @@ const SafeHavenSection = memo(({ picks, onPickClick, onQuickAdd, isLoading }) =>
 const FrontLinesSection = memo(({ picks, onPickClick, onQuickAdd, isLoading }) => {
   if (isLoading) {
     return <SectionLoadingSkeleton 
-      icon={<span className="text-lg">🎯</span>} 
+      icon={null} 
       title="FRONT LINES" 
       subtitle="Loading tactical plays..." 
     />;
@@ -483,7 +483,7 @@ const FrontLinesSection = memo(({ picks, onPickClick, onQuickAdd, isLoading }) =
     return (
       <div className="front-lines-section mb-4">
         <SectionHeader 
-          icon={<span className="text-lg">🎯</span>}
+          icon={null}
           title="FRONT LINES"
           subtitle="Balanced demon/goblin mix for tactical plays"
           badgeText="NO GAMES"
@@ -501,7 +501,7 @@ const FrontLinesSection = memo(({ picks, onPickClick, onQuickAdd, isLoading }) =
   return (
     <div className="front-lines-section mb-4">
       <SectionHeader 
-        icon={<span className="text-lg">🎯</span>}
+        icon={null}
         title="FRONT LINES"
         subtitle="Balanced demon/goblin mix for tactical plays"
         badgeText={`${Math.min(10, picks.length)} PICKS`}
