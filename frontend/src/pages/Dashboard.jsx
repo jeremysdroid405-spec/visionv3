@@ -747,11 +747,6 @@ const Dashboard = () => {
     toast.success('Data refreshed');
   }, [refetchWarZone, refetchSafeHaven, refetchFrontLines, refetchBoard]);
   
-  // Scroll to top on mount
-  useEffect(() => {
-    window.scrollTo(0, 0);
-  }, []);
-  
   // Local UI state
   const [searchTerm, setSearchTerm] = useState('');
   const [showUserMenu, setShowUserMenu] = useState(false);
@@ -760,6 +755,14 @@ const Dashboard = () => {
   const [highlightType, setHighlightType] = useState('demon');
   const [selectedPlayer, setSelectedPlayer] = useState(null);
   const [showCommandPost, setShowCommandPost] = useState(false);
+  const [savedScrollPosition, setSavedScrollPosition] = useState(null);
+  
+  // Scroll to top only on initial mount (not when returning from detail views)
+  useEffect(() => {
+    if (savedScrollPosition === null && !selectedPlayer && !expandedParlay) {
+      window.scrollTo(0, 0);
+    }
+  }, []);
   
   // Intel Search state (API-driven)
   const [searchResults, setSearchResults] = useState([]);
@@ -783,6 +786,7 @@ const Dashboard = () => {
   
   // Navigation handlers
   const handlePlayerClick = useCallback((playerName, highlight = null, type = 'demon') => {
+    setSavedScrollPosition(window.scrollY);
     setHighlightProp(highlight);
     setHighlightType(type);
     setSelectedPlayer(playerName);
@@ -791,7 +795,13 @@ const Dashboard = () => {
   const handleBackFromPlayer = useCallback(() => {
     setSelectedPlayer(null);
     setHighlightProp(null);
-  }, []);
+    // Restore scroll position after render
+    setTimeout(() => {
+      if (savedScrollPosition !== null) {
+        window.scrollTo(0, savedScrollPosition);
+      }
+    }, 0);
+  }, [savedScrollPosition]);
   
   const handleRadarClick = useCallback((pick) => {
     const lineValue = pick.demon_line || pick.line;
@@ -806,6 +816,7 @@ const Dashboard = () => {
   }, [handlePlayerClick]);
   
   const handleParlayClick = useCallback((parlay, sectionType) => {
+    setSavedScrollPosition(window.scrollY);
     setExpandedParlay({ parlay, sectionType });
   }, []);
   
@@ -1044,7 +1055,15 @@ const Dashboard = () => {
         <ExpandedParlayView 
           parlay={expandedParlay.parlay}
           sectionType={expandedParlay.sectionType}
-          onClose={() => setExpandedParlay(null)}
+          onClose={() => {
+            setExpandedParlay(null);
+            // Restore scroll position after render
+            setTimeout(() => {
+              if (savedScrollPosition !== null) {
+                window.scrollTo(0, savedScrollPosition);
+              }
+            }, 0);
+          }}
           onPickClick={(pick) => {
             setExpandedParlay(null);
             const lineValue = pick.demon_line || pick.goblin_line || pick.line;
