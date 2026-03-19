@@ -1360,6 +1360,31 @@ class PicksGetterService:
                         filter_stats["excluded_lowest_line"] += 1
                         continue
                     
+                    # Calculate value score (hit rate × payout factor)
+                    # Demons pay more, so they get a higher payout multiplier
+                    # Goblins pay less (safer but lower reward)
+                    if is_demon:
+                        # Demons: calculate boost from anchor
+                        anchor_line = prop.get("anchor_line", line)
+                        if anchor_line and anchor_line > 0:
+                            boost_pct = ((line - anchor_line) / anchor_line) * 100
+                        else:
+                            boost_pct = 10  # Default demon boost
+                        # Higher boost = higher payout potential (1.5x to 3x+ multiplier)
+                        payout_multiplier = 1.5 + (boost_pct / 20)  # 10% boost = 2x, 20% = 2.5x, etc.
+                    else:
+                        # Goblins: lower payout (typically 1.0x to 1.5x)
+                        anchor_line = prop.get("anchor_line", line)
+                        if anchor_line and anchor_line > 0:
+                            discount_pct = ((anchor_line - line) / anchor_line) * 100
+                        else:
+                            discount_pct = 10
+                        payout_multiplier = 1.0 + (discount_pct / 50)  # Lower multiplier for goblins
+                    
+                    # VALUE SCORE = hit_rate × payout_multiplier
+                    # This rewards high hit rate demons over same hit rate goblins
+                    value_score = (l10_hit_rate / 100) * payout_multiplier
+                    
                     # PASSED ALL FILTERS
                     if is_demon:
                         filter_stats["final_demons"] += 1
@@ -1373,6 +1398,7 @@ class PicksGetterService:
                         "game_id": player_doc.get("game_id"),
                         "stat_type": stat_type,
                         "line": line,
+                        "anchor_line": prop.get("anchor_line"),
                         "odds": prop.get("price"),
                         "direction": prop.get("direction", "over"),
                         "is_demon": is_demon,
@@ -1385,15 +1411,17 @@ class PicksGetterService:
                         "season_avg": hit_rates.get("season", {}).get("avg") if isinstance(hit_rates.get("season"), dict) else None,
                         "front_line_qualified": True,
                         "lowest_line": lowest_line,
+                        "payout_multiplier": round(payout_multiplier, 2),
+                        "value_score": round(value_score, 3),
                         "is_alternate_market": prop.get("is_alternate_market", True)
                     }
                     
                     front_line_picks.append(pick)
                     pick_type = "DEMON" if is_demon else "GOBLIN"
-                    logger.info(f"[FRONT_LINES] ✓ {player_name} {stat_type} @ {line} | {pick_type} | L10: {l10_hit_rate:.0f}%")
+                    logger.info(f"[FRONT_LINES] ✓ {player_name} {stat_type} @ {line} | {pick_type} | L10: {l10_hit_rate:.0f}% | Value: {value_score:.2f}")
         
-        # Sort by L10 hit rate (highest first)
-        front_line_picks.sort(key=lambda x: x.get("l10_hit_rate", 0), reverse=True)
+        # Sort by VALUE SCORE (hit rate × payout), not just hit rate
+        front_line_picks.sort(key=lambda x: x.get("value_score", 0), reverse=True)
         
         # Limit to 1 pick per player (take the highest hit rate prop)
         seen_players = set()
