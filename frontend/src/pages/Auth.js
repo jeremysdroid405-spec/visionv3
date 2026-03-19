@@ -124,7 +124,7 @@ const SpecRow = ({ spec, title, edge, icon }) => (
 export const Auth = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const { signup, login, isAuthenticated } = useAuth();
+  const { signup, login, isAuthenticated, enterDemoMode } = useAuth();
   const [loading, setLoading] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
   const [scanSpeed, setScanSpeed] = useState(3);
@@ -558,7 +558,10 @@ export const Auth = () => {
           {/* Demo Mode */}
           <div className="mt-8 text-center">
             <Button
-              onClick={() => navigate('/v3/demo')}
+              onClick={() => {
+                enterDemoMode();
+                navigate('/v3');
+              }}
               data-testid="try-demo-btn"
               variant="ghost"
               className="text-zinc-600 hover:text-white hover:bg-zinc-900/50 transition-all font-mono text-xs"
