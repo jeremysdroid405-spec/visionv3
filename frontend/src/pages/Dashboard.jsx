@@ -680,7 +680,7 @@ const MostPopularBetsSection = memo(({ bets, status, onBetClick }) => {
   return (
     <div className="mb-4">
       <SectionHeader 
-        icon={<Flame className="w-4 h-4 text-orange-400" />}
+        icon={<Flame className="w-4 h-4 text-red-400" />}
         title="TOP PICKS"
         subtitle="Best of Safe Haven, Front Lines & War Zone"
         badgeText="LIVE"
