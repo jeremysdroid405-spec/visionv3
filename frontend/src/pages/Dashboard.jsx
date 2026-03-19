@@ -956,7 +956,7 @@ const Dashboard = () => {
             
             <div className="relative">
               <button onClick={() => setShowUserMenu(!showUserMenu)} className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-zinc-800/50 hover:bg-zinc-700 border border-zinc-700/50 transition-all" data-testid="user-menu-btn">
-                <User className="w-5 h-5 text-zinc-400" />
+                <User className="w-5 h-5 text-yellow-400" />
                 <span className="text-sm font-medium text-white">{isDemo ? 'Demo' : user?.email?.split('@')[0]}</span>
               </button>
               
