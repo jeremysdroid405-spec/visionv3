@@ -926,7 +926,7 @@ const Dashboard = () => {
       <div className="px-3 pt-3">
         <div className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-4" data-testid="intel-search-section">
           <div className="flex items-center gap-2 mb-3">
-            <Search className="w-4 h-4 text-cyan-400" />
+            <Search className="w-4 h-4 text-red-400" />
             <span className="text-sm font-medium text-white">INTEL SEARCH</span>
             <span className="text-[10px] text-zinc-500">Search any player for tactical profile</span>
           </div>
