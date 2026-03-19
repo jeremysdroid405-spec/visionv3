@@ -745,20 +745,29 @@ async def get_cached_player(player_name: str):
         war_zone_data = await picks_service.get_war_zone()
         front_lines_data = await picks_service.get_front_lines()
         
+        # Priority: War Zone (highest conviction) > Front Lines > Safe Haven
         all_board_picks = (
-            safe_haven_data.get("picks", []) + 
             war_zone_data.get("picks", []) + 
-            front_lines_data.get("picks", [])
+            front_lines_data.get("picks", []) +
+            safe_haven_data.get("picks", [])
         )
         
-        # Find THIS player's board pick
+        # Find THIS player's board pick (first match = highest priority board)
         featured_prop_key = None
+        featured_board = None
         for board_pick in all_board_picks:
             if board_pick.get("player_name", "").lower() == pname.lower():
                 stat_type = board_pick.get("stat_type", "")
                 line = board_pick.get("line", 0)
                 featured_prop_key = f"{stat_type}|{line}"
-                logger.info(f"[PLAYER_DETAIL] Found {pname} on board: {stat_type} @ {line}")
+                # Determine which board this came from
+                if board_pick in war_zone_data.get("picks", []):
+                    featured_board = "War Zone"
+                elif board_pick in front_lines_data.get("picks", []):
+                    featured_board = "Front Lines"
+                else:
+                    featured_board = "Safe Haven"
+                logger.info(f"[PLAYER_DETAIL] Found {pname} on {featured_board}: {stat_type} @ {line}")
                 break
         
         logger.info(f"[PLAYER_DETAIL] {pname}: Featured prop = {featured_prop_key}")
