@@ -152,7 +152,76 @@ async def trigger_bdl_prizepicks_sync():
     return result
 
 
-# ==================== CAREER STATS ENDPOINTS ====================
+# ==================== NBA.COM L5/L10 ENRICHMENT ====================
+
+@router.post("/enrich-nba-stats/{bdl_id}")
+async def enrich_player_nba_stats(bdl_id: int):
+    """
+    Enrich a single player with official NBA.com L5/L10 stats.
+    
+    Uses the player's nba_id (stored in master hub) to fetch pre-calculated
+    last N games averages from NBA.com's playerdashboardbylastngames endpoint.
+    
+    Args:
+        bdl_id: Player's BDL ID
+        
+    Returns:
+        Updated player with nba_stats_raw and enriched baseline_stats
+    """
+    if _db is None:
+        raise HTTPException(status_code=500, detail="Database not initialized")
+    
+    from services.bdl_comprehensive_sync import get_bdl_sync_service
+    service = get_bdl_sync_service(_db)
+    
+    success = await service.enrich_baseline_with_nba_stats(bdl_id)
+    if not success:
+        raise HTTPException(status_code=404, detail=f"Could not enrich player {bdl_id} - check nba_id exists")
+    
+    # Return updated player
+    player = await _db.nba_master_hub_2026.find_one({"bdl_id": bdl_id}, {"_id": 0})
+    return player
+
+
+@router.get("/nba-stats/{bdl_id}")
+async def get_nba_last_n_stats(bdl_id: int):
+    """
+    Fetch L5/L10/L15/L20 stats from NBA.com for a player.
+    
+    Does NOT update the database - just fetches and returns the stats.
+    Use /enrich-nba-stats/{bdl_id} to persist the data.
+    
+    Args:
+        bdl_id: Player's BDL ID
+        
+    Returns:
+        Dict with overall, last5, last10, last15, last20 stats
+    """
+    if _db is None:
+        raise HTTPException(status_code=500, detail="Database not initialized")
+    
+    # Get player's nba_id
+    player = await _db.nba_master_hub_2026.find_one({"bdl_id": bdl_id}, {"nba_id": 1, "display_name": 1})
+    if not player:
+        raise HTTPException(status_code=404, detail=f"Player {bdl_id} not found")
+    
+    nba_id = player.get("nba_id")
+    if not nba_id:
+        raise HTTPException(status_code=400, detail=f"No nba_id for {player.get('display_name')}")
+    
+    from services.bdl_comprehensive_sync import get_bdl_sync_service
+    service = get_bdl_sync_service(_db)
+    
+    nba_stats = await service.fetch_nba_last_n_games(nba_id)
+    if not nba_stats:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch NBA.com stats for nba_id={nba_id}")
+    
+    return {
+        "bdl_id": bdl_id,
+        "nba_id": nba_id,
+        "display_name": player.get("display_name"),
+        "stats": nba_stats
+    }
 
 @router.post("/sync-career-stats")
 async def sync_career_stats():

@@ -11,6 +11,10 @@ Endpoints consumed:
 
 Data is stored EXACTLY as received from BDL - no field renaming.
 Stored in: pick_vision.nba_master_hub_2026.baseline_stats
+
+NBA.com Integration (nba_api):
+- Uses nba_id for official L5/L10/L15/L20 stats from playerdashboardbylastngames
+- Master hub stores both bdl_id (BDL) and nba_id (NBA.com) for each player
 """
 
 import httpx
@@ -18,9 +22,14 @@ import logging
 import os
 import re
 import asyncio
+import unicodedata
 from datetime import datetime, timezone, timedelta
 from typing import Optional, Dict, List, Any
 from motor.motor_asyncio import AsyncIOMotorDatabase
+
+# NBA.com API for L5/L10 stats
+from nba_api.stats.static import players as nba_players_static
+from nba_api.stats.endpoints import playerdashboardbylastngames
 
 logger = logging.getLogger(__name__)
 
@@ -30,21 +39,52 @@ BDL_BASE_URL = "https://api.balldontlie.io/v1"
 
 # Season configuration (BDL uses start year: 2025 = 2025-26 season)
 CURRENT_SEASON = 2025
+NBA_SEASON = "2025-26"  # NBA.com format
+
+# Build NBA.com player ID lookup once at module load
+_NBA_ID_LOOKUP: Dict[str, int] = {}
+
+
+def _build_nba_id_lookup():
+    """Build normalized name -> nba_id lookup from nba_api static data."""
+    global _NBA_ID_LOOKUP
+    if _NBA_ID_LOOKUP:
+        return _NBA_ID_LOOKUP
+    
+    try:
+        all_players = nba_players_static.get_active_players()
+        for p in all_players:
+            norm = _normalize_name(p['full_name'])
+            _NBA_ID_LOOKUP[norm] = p['id']
+        logger.info(f"[NBA] Built ID lookup with {len(_NBA_ID_LOOKUP)} players")
+    except Exception as e:
+        logger.error(f"[NBA] Failed to build ID lookup: {e}")
+    
+    return _NBA_ID_LOOKUP
 
 
 def _normalize_name(name: str) -> str:
     """
     Normalize player names for consistent matching.
-    Strips periods, commas, and suffixes (Jr, Sr, II, III, IV, V).
+    Handles diacritics, periods, commas, apostrophes, and suffixes.
     """
     if not name:
         return ""
-    normalized = name.lower().strip()
-    normalized = normalized.replace(".", "").replace(",", "")
+    # Remove diacritics (ć -> c, č -> c, ö -> o, etc.)
+    normalized = unicodedata.normalize('NFKD', name).encode('ASCII', 'ignore').decode('ASCII')
+    normalized = normalized.lower().strip()
+    normalized = normalized.replace(".", "").replace(",", "").replace("'", "").replace("'", "").replace("-", " ")
     suffix_pattern = r'\b(jr|sr|ii|iii|iv|v)\b'
     normalized = re.sub(suffix_pattern, '', normalized, flags=re.IGNORECASE)
     normalized = re.sub(r'\s+', ' ', normalized).strip()
     return normalized
+
+
+def get_nba_id_for_name(display_name: str) -> Optional[int]:
+    """Get NBA.com player ID by display name."""
+    lookup = _build_nba_id_lookup()
+    norm = _normalize_name(display_name)
+    return lookup.get(norm)
 
 
 class BDLComprehensiveSyncService:
@@ -624,6 +664,9 @@ class BDLComprehensiveSyncService:
             # Merge official season averages with L5/L10 from game logs
             baseline_stats = self._merge_season_avg_with_logs(season_avg, game_logs)
             
+            # Get NBA.com ID for this player
+            nba_id = get_nba_id_for_name(display_name)
+            
             update_doc = {
                 "bdl_id": bdl_id,
                 "display_name": display_name,
@@ -650,6 +693,10 @@ class BDLComprehensiveSyncService:
                 "last_bdl_sync": datetime.now(timezone.utc),
                 "season": CURRENT_SEASON
             }
+            
+            # Add nba_id if matched
+            if nba_id:
+                update_doc["nba_id"] = nba_id
             
             # Store raw data for reference
             if season_avg:
@@ -942,6 +989,134 @@ class BDLComprehensiveSyncService:
             )
         
         return result
+    
+    # ==================== NBA.COM API METHODS ====================
+    async def fetch_nba_last_n_games(self, nba_id: int, retry_count: int = 2) -> Optional[Dict]:
+        """
+        Fetch pre-calculated L5/L10/L15/L20 averages from NBA.com.
+        
+        Uses playerdashboardbylastngames endpoint which provides official
+        aggregated stats directly from NBA.com - no manual calculation needed.
+        
+        Tries current season first, falls back to previous season if needed.
+        
+        Returns dict with keys: overall, last5, last10, last15, last20
+        Each contains: PTS, REB, AST, STL, BLK, FG3M, FGM, FTM, TOV, MIN, GP
+        """
+        # Try current season first, then previous
+        seasons_to_try = [NBA_SEASON, "2024-25"]
+        
+        for season in seasons_to_try:
+            for attempt in range(retry_count):
+                try:
+                    # Run in thread pool to avoid blocking async
+                    loop = asyncio.get_event_loop()
+                    dashboard = await loop.run_in_executor(
+                        None,
+                        lambda s=season: playerdashboardbylastngames.PlayerDashboardByLastNGames(
+                            player_id=nba_id,
+                            season=s,
+                            per_mode_detailed='PerGame',
+                            timeout=60
+                        )
+                    )
+                    
+                    result_sets = dashboard.get_dict().get('resultSets', [])
+                    
+                    # Map result set names to our keys
+                    name_map = {
+                        'OverallPlayerDashboard': 'overall',
+                        'Last5PlayerDashboard': 'last5',
+                        'Last10PlayerDashboard': 'last10',
+                        'Last15PlayerDashboard': 'last15',
+                        'Last20PlayerDashboard': 'last20'
+                    }
+                    
+                    stats = {}
+                    for rs in result_sets:
+                        key = name_map.get(rs['name'])
+                        if key and rs['rowSet']:
+                            headers = rs['headers']
+                            row = rs['rowSet'][0]
+                            
+                            # Extract the stats we care about
+                            stats[key] = {}
+                            stat_cols = ['GP', 'PTS', 'REB', 'AST', 'STL', 'BLK', 'FG3M', 'FGM', 'FTM', 'TOV', 'MIN']
+                            for col in stat_cols:
+                                if col in headers:
+                                    idx = headers.index(col)
+                                    stats[key][col] = row[idx]
+                    
+                    if stats:
+                        stats['season'] = season
+                        logger.debug(f"[NBA] Got L5/L10 for nba_id={nba_id} from {season}")
+                        return stats
+                        
+                except Exception as e:
+                    logger.debug(f"[NBA] Attempt {attempt+1} failed for nba_id={nba_id}, season={season}: {e}")
+                    if attempt < retry_count - 1:
+                        await asyncio.sleep(1)  # Brief delay before retry
+        
+        logger.debug(f"[NBA] All attempts failed for nba_id={nba_id}")
+        return None
+    
+    async def enrich_baseline_with_nba_stats(self, bdl_id: int) -> bool:
+        """
+        Enrich a player's baseline_stats with official NBA.com L5/L10 data.
+        
+        Looks up the player by bdl_id, fetches NBA.com stats if nba_id exists,
+        and updates the baseline_stats with official L5/L10 averages.
+        """
+        # Get player from master hub
+        player = await self.master_hub.find_one({"bdl_id": bdl_id})
+        if not player:
+            logger.warning(f"[NBA] Player bdl_id={bdl_id} not found in master hub")
+            return False
+        
+        nba_id = player.get("nba_id")
+        if not nba_id:
+            logger.debug(f"[NBA] No nba_id for {player.get('display_name')}")
+            return False
+        
+        # Fetch NBA.com stats
+        nba_stats = await self.fetch_nba_last_n_games(nba_id)
+        if not nba_stats:
+            return False
+        
+        # Merge into baseline_stats
+        baseline = player.get("baseline_stats", {})
+        
+        # Map NBA.com columns to our stat keys
+        nba_to_our = {
+            'PTS': 'PTS', 'REB': 'REB', 'AST': 'AST', 'STL': 'STL',
+            'BLK': 'BLK', 'FG3M': '3PM', 'FGM': 'FGM', 'FTM': 'FTM', 'TOV': 'TO'
+        }
+        
+        for nba_col, our_key in nba_to_our.items():
+            if our_key not in baseline:
+                baseline[our_key] = {}
+            
+            # Update L5/L10 from NBA.com (official source)
+            if 'last5' in nba_stats and nba_col in nba_stats['last5']:
+                baseline[our_key]['l5_avg_nba'] = nba_stats['last5'][nba_col]
+            if 'last10' in nba_stats and nba_col in nba_stats['last10']:
+                baseline[our_key]['l10_avg_nba'] = nba_stats['last10'][nba_col]
+            
+            # Use overall as season average if not present
+            if 'overall' in nba_stats and nba_col in nba_stats['overall']:
+                if baseline[our_key].get('season_avg') is None:
+                    baseline[our_key]['season_avg'] = nba_stats['overall'][nba_col]
+        
+        baseline['nba_enriched_at'] = datetime.now(timezone.utc).isoformat()
+        
+        # Update in database
+        await self.master_hub.update_one(
+            {"bdl_id": bdl_id},
+            {"$set": {"baseline_stats": baseline, "nba_stats_raw": nba_stats}}
+        )
+        
+        logger.debug(f"[NBA] Enriched {player.get('display_name')} with NBA.com L5/L10")
+        return True
 
 
 # ==================== SINGLETON INSTANCE ====================
