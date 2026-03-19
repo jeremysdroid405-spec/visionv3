@@ -409,7 +409,7 @@ const SafeHavenSection = memo(({ picks, onPickClick, onQuickAdd, isLoading }) =>
     return <SectionLoadingSkeleton 
       icon={<GoblinIcon size={20} />} 
       title="SAFE HAVEN" 
-      subtitle="Loading goblin plays..." 
+      subtitle="Loading plays..." 
     />;
   }
   
@@ -419,7 +419,7 @@ const SafeHavenSection = memo(({ picks, onPickClick, onQuickAdd, isLoading }) =>
         <SectionHeader 
           icon={<GoblinIcon size={20} />}
           title="SAFE HAVEN"
-          subtitle="High-floor goblin plays with best consistency"
+          subtitle="High-floor plays with best consistency"
           badgeText="NO GAMES"
           badgeColor="zinc"
         />
@@ -437,8 +437,8 @@ const SafeHavenSection = memo(({ picks, onPickClick, onQuickAdd, isLoading }) =>
       <SectionHeader 
         icon={<GoblinIcon size={20} />}
         title="SAFE HAVEN"
-        subtitle="High-floor goblin plays with best consistency"
-        badgeText={`TOP ${Math.min(10, picks.length)} GOBLINS`}
+        subtitle="High-floor plays with best consistency"
+        badgeText="TOP 10 SAFEST PLAYS"
         badgeColor="green"
       />
       <SwipeContainer>
