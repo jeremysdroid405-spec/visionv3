@@ -501,7 +501,6 @@ class PicksGetterService:
                 "diff_from_avg": diff_from_avg,
                 "is_stale": is_stale,
                 "stats_source": "bdl_baseline" if not game_logs else "bdl_baseline+game_logs",
-                "photo_url": player.get("photo_url") or player.get("headshot_url"),
                 # BDL shooting/defensive stats - OPEN DOOR POPULATION
                 "fg_pct": round(bdl_fg_pct * 100, 1) if bdl_fg_pct else None,
                 "fg3_pct": round(bdl_fg3_pct * 100, 1) if bdl_fg3_pct else None,
@@ -535,7 +534,6 @@ class PicksGetterService:
                 "diff_from_avg": diff_from_avg,
                 "is_stale": is_stale,
                 "stats_source": "baseline_stats" if not game_logs else "baseline_stats+game_logs",
-                "photo_url": player.get("photo_url") or player.get("headshot_url"),
                 # BDL shooting/defensive stats
                 "fg_pct": round(bdl_fg_pct * 100, 1) if bdl_fg_pct else None,
                 "fg3_pct": round(bdl_fg3_pct * 100, 1) if bdl_fg3_pct else None,
@@ -554,7 +552,6 @@ class PicksGetterService:
                 "l5_avg": 0, "l10_avg": 0, 
                 "diff_from_avg": None,
                 "is_stale": is_stale, "stats_source": "no_data",
-                "photo_url": player.get("photo_url") or player.get("headshot_url"),
                 # BDL shooting/defensive stats (may still exist even without game logs)
                 "fg_pct": round(bdl_fg_pct * 100, 1) if bdl_fg_pct else None,
                 "fg3_pct": round(bdl_fg3_pct * 100, 1) if bdl_fg3_pct else None,
@@ -625,7 +622,6 @@ class PicksGetterService:
             "diff_from_avg": diff_from_avg,
             "is_stale": is_stale,
             "stats_source": "game_logs",
-            "photo_url": player.get("photo_url") or player.get("headshot_url"),
             # BDL shooting/defensive stats
             "fg_pct": round(bdl_fg_pct * 100, 1) if bdl_fg_pct else None,
             "fg3_pct": round(bdl_fg3_pct * 100, 1) if bdl_fg3_pct else None,
@@ -820,8 +816,7 @@ class PicksGetterService:
                     "composite_score": round(composite_score, 3),
                     "l5_beats_line": l5_beats_line,
                     "risk_level": risk_level,
-                    # Photo
-                    "photo_url": hub_player.get("photo_url") or hub_player.get("headshot_url"),
+                    # Position only - photo handled by _enrich_picks_with_photos
                     "position": hub_player.get("position")
                 }
                 
@@ -1203,7 +1198,6 @@ class PicksGetterService:
                     "multiplier_potential": round(multiplier_potential, 3),
                     "combined_score": round(combined_score, 4),
                     "safe_haven_qualified": True,
-                    "photo_url": player_doc.get("photo_url"),
                     "position": player_doc.get("position"),
                     "is_injured": player_name.lower() in injured_players,
                 })
@@ -1501,8 +1495,7 @@ class PicksGetterService:
             pick["l25_hit_rate"] = l25_result["hit_rate"]
             pick["front_line_qualified"] = True
             
-            # Add photo and enrichment from master hub (source of truth)
-            pick["photo_url"] = hub_player.get("photo_url") or hub_player.get("headshot_url")
+            # Position from master hub
             pick["position"] = hub_player.get("position")
             # CRITICAL: Use team from master hub (not cached_board which may be incorrect)
             player_team = hub_player.get("team")
@@ -2095,7 +2088,6 @@ class PicksGetterService:
             for bet in selected_bets:
                 hub_player = await self._get_master_player_by_name(bet["player_name"])
                 if hub_player:
-                    bet["photo_url"] = hub_player.get("photo_url") or hub_player.get("headshot_url")
                     bet["position"] = hub_player.get("position")
                     
                     # If stats still missing, get from master hub game logs
@@ -2111,7 +2103,7 @@ class PicksGetterService:
                 
                 enriched_bets.append(bet)
             
-            # Ensure all bets have photos (SSOT enrichment)
+            # SSOT: Enrich ALL bets with photos from master hub
             await self._enrich_picks_with_photos(enriched_bets)
             
             logger.info(f"[MOST_POPULAR] Returning {len(enriched_bets)} bets by synthetic popularity")
