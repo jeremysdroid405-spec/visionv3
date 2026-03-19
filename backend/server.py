@@ -3,6 +3,7 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
+from pymongo import MongoClient
 import os
 import logging
 from pathlib import Path
@@ -73,6 +74,7 @@ from odds_api_mapper import (
 )
 from ai_context_engine import AiContextEngine
 from routes import register_all_routes
+from services.photo_storage_service import PhotoStorageService
 from middleware import (
     RateLimitMiddleware,
     RequestTracerMiddleware,
@@ -607,6 +609,10 @@ async def startup_event():
     # Initialize APScheduler for daily and weekly syncs
     scheduler = AsyncIOScheduler(timezone=SCHEDULER_TIMEZONE)
     
+    # Initialize photo storage service (for base64 photo caching)
+    sync_db = MongoClient(mongo_url)[os.environ['DB_NAME']]
+    photo_service = PhotoStorageService(sync_db)
+    
     register_all_routes(
         app, 
         demon_goblin_engine, 
@@ -623,7 +629,8 @@ async def startup_event():
         social_signal_engine=social_signal_engine,
         demon_goblin_engine_class=DemonGoblinEngine,
         stats_manager=stats_manager,
-        scheduler=scheduler
+        scheduler=scheduler,
+        photo_service=photo_service
     )
     logger.info("[ROUTES] Modular routes registered from /routes/ directory (Phase 18: +4 new modules)")
     

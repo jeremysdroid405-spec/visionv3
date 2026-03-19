@@ -144,3 +144,44 @@ async def get_hydrated_board() -> Dict[str, Any]:
     except Exception as e:
         logger.error(f"Error getting hydrated board: {e}")
         return {"success": False, "error": str(e)}
+
+
+# Photo storage endpoints
+photo_service = None
+
+def set_photo_service(svc):
+    """Set the photo service instance"""
+    global photo_service
+    photo_service = svc
+
+
+@router.post("/sync-photos")
+async def sync_photos() -> Dict[str, Any]:
+    """
+    Download and store all active player photos as base64 in MongoDB.
+    This is a one-time operation to cache all photos locally.
+    """
+    if not photo_service:
+        raise HTTPException(status_code=500, detail="Photo service not initialized")
+    
+    try:
+        stats = await photo_service.sync_all_active_player_photos()
+        return {"success": True, "stats": stats}
+    except Exception as e:
+        logger.error(f"Error syncing photos: {e}")
+        return {"success": False, "error": str(e)}
+
+
+@router.get("/photo-stats")
+async def get_photo_stats() -> Dict[str, Any]:
+    """Get statistics about cached photos."""
+    if not photo_service:
+        raise HTTPException(status_code=500, detail="Photo service not initialized")
+    
+    try:
+        stats = photo_service.get_sync_stats()
+        return {"success": True, "stats": stats}
+    except Exception as e:
+        logger.error(f"Error getting photo stats: {e}")
+        return {"success": False, "error": str(e)}
+

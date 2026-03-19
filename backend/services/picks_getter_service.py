@@ -213,7 +213,7 @@ class PicksGetterService:
             if pick.get("photo_url"):
                 continue
             
-            # Look up in master hub
+            # Look up in master hub by display_name
             hub_player = await self.master_hub.find_one(
                 {"display_name": player_name},
                 {"_id": 0, "photo_url": 1, "headshot_url": 1, "team": 1, "position": 1}
@@ -1169,6 +1169,7 @@ class PicksGetterService:
                     "tier_label": "GOBLIN",
                     "is_alternate_market": True,
                     "season_avg": round(season_avg, 1) if season_avg else None,
+                    "h10_rate": round(l10_pct, 1),  # Frontend expects h10_rate
                     "l10_hit_rate": round(l10_pct, 1),
                     "l10_games": l10_games,
                     "floor_margin": round(season_avg - line, 1) if season_avg else None,

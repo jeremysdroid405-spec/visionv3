@@ -1,7 +1,7 @@
 """Routes module initialization"""
 from .picks import router as picks_router, set_engine as set_picks_engine
 from .parlays import router as parlays_router, set_engine as set_parlays_engine
-from .board import router as board_router, set_engine as set_board_engine
+from .board import router as board_router, set_engine as set_board_engine, set_photo_service
 from .intel import router as intel_router, set_engine as set_intel_engine
 from .board_intel import router as board_intel_router, set_engine as set_board_intel_engine
 from .board_intel_v2 import router as board_intel_v2_router, set_board_intel_deps
@@ -38,7 +38,7 @@ def register_all_routes(app, engine, game_lock_engine=None, db=None,
                         master_hub_funcs=None, get_odds_mapper_func=None,
                         demon_tracker=None, raw_stat_fetcher=None,
                         social_signal_engine=None, demon_goblin_engine_class=None,
-                        stats_manager=None, scheduler=None):
+                        stats_manager=None, scheduler=None, photo_service=None):
     """Register all route modules and set engine"""
     # Set engine for all route modules
     set_picks_engine(engine)
@@ -52,6 +52,10 @@ def register_all_routes(app, engine, game_lock_engine=None, db=None,
     set_tier_engine(engine)
     set_intel_sync_engine(engine)
     set_legacy_deps(engine, stats_manager)
+    
+    # Set photo service for board routes
+    if photo_service is not None:
+        set_photo_service(photo_service)
     
     # Set services for new routes
     if injury_service is not None:

@@ -85,10 +85,10 @@ Build a sports betting analytics application (PickVision AI) that provides:
   - 260+ contract year players tracked
   - 24-hour cache to avoid excessive scraping
 - [x] **Player Photo System** (March 19, 2026):
-  - Backend image proxy (`/api/proxy/nba-headshot/{bdl_id}`) bypasses NBA CDN CORS restrictions
-  - Photos synced to `nba_master_hub_2026` collection from NBA CDN
-  - Centralized photo enrichment in `picks_getter_service.py` for all endpoints
-  - Frontend `UniversalPlayerCard.jsx` correctly constructs absolute URLs for proxied images
+  - **ROOT CAUSE FIXED**: Photo URLs were using BDL API IDs, but NBA CDN requires NBA.com player IDs
+  - Used `nba_api` library to map all 1,499 players to correct NBA.com IDs
+  - Backend image proxy (`/api/proxy/nba-headshot/{nba_id}`) now receives correct IDs
+  - Frontend `UniversalPlayerCard.jsx` constructs absolute URLs correctly
 - [x] **Auth Bypass Removed** (March 19, 2026): Removed temporary `DEV_BYPASS_AUTH` from `ProtectedRoute.js`
 
 ### Context Badges
