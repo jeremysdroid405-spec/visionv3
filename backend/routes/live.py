@@ -3,12 +3,13 @@ Live Data Routes
 ================
 Real-time NBA scores and breaking news endpoints.
 
-SSOT ARCHITECTURE: Scores/news come from cached data.
-NO external BallDontLie API calls.
+SSOT ARCHITECTURE: Scores/news come from cached data in MongoDB.
+Data is refreshed daily at 4 AM EST via scheduler.
 
 Endpoints:
-- GET /api/live/scores - Live NBA game scores (from cache/Odds API data)
-- GET /api/live/news - Breaking news and injury updates (from RSS feeds)
+- GET /api/live/scores - Today's NBA games from DB cache
+- GET /api/live/news - Breaking news from DB cache
+- POST /api/live/sync-ticker - Manual sync trigger (admin only)
 """
 import os
 import httpx
@@ -73,16 +74,6 @@ def get_team_abbrev(team_name: str) -> str:
     # Fallback to first 3 letters
     return team_name[:3].upper()
 
-router = APIRouter(prefix="/live", tags=["Live Data"])
-
-# PURGED: BallDontLie API - scores now come from cached events/Odds API
-# BDL_API_KEY = REMOVED
-# BDL_BASE = REMOVED
-
-# Cache for scores (refresh every 30 seconds)
-_scores_cache = {"data": [], "timestamp": None}
-_news_cache = {"data": [], "timestamp": None}
-
 # Database reference
 _db = None
 
@@ -91,21 +82,14 @@ def set_db(db):
     _db = db
 
 
-@router.get("/scores")
-async def get_live_scores():
+async def sync_todays_games():
     """
-    Get live NBA game scores from official NBA API.
+    Sync today's NBA games to the database.
+    Called at 4 AM daily by the scheduler.
     
-    Returns today's games with real scores, periods, and status.
-    Data comes from nba_api live scoreboard.
+    Fetches from NBA API and stores in ticker_games collection.
     """
-    global _scores_cache
-    
-    now = datetime.now(timezone.utc)
-    
-    # Return cached if fresh (< 30 seconds old)
-    if _scores_cache["timestamp"] and (now - _scores_cache["timestamp"]).seconds < 30:
-        return {"success": True, "games": _scores_cache["data"], "cached": True}
+    logger.info("[TICKER] Starting daily games sync...")
     
     try:
         from nba_api.live.nba.endpoints import scoreboard
@@ -116,95 +100,93 @@ async def get_live_scores():
         
         games = []
         scoreboard_data = data.get("scoreboard", {})
+        game_date = scoreboard_data.get("gameDate", datetime.now().strftime("%Y-%m-%d"))
         
         for game in scoreboard_data.get("games", []):
             home = game.get("homeTeam", {})
             away = game.get("awayTeam", {})
             
-            # Parse game status
-            status_code = game.get("gameStatus", 1)
-            status_text = game.get("gameStatusText", "")
-            
-            if status_code == 1:
-                status = "upcoming"
-            elif status_code == 2:
-                status = status_text  # "Q2 8:50", "Halftime", etc.
-            elif status_code == 3:
-                status = "final"
-            else:
-                status = status_text or "unknown"
+            # Parse game time for display
+            game_time_utc = game.get("gameTimeUTC", "")
+            start_time_display = ""
+            if game_time_utc:
+                try:
+                    # Convert to EST for display
+                    utc_time = datetime.fromisoformat(game_time_utc.replace("Z", "+00:00"))
+                    est_time = utc_time - timedelta(hours=5)
+                    start_time_display = est_time.strftime("%-I:%M %p ET")
+                except:
+                    start_time_display = game.get("gameStatusText", "")
             
             games.append({
                 "game_id": game.get("gameId"),
                 "home_team": home.get("teamTricode", "???"),
                 "home_score": home.get("score", 0),
+                "home_name": home.get("teamName", ""),
                 "away_team": away.get("teamTricode", "???"),
                 "away_score": away.get("score", 0),
-                "status": status,
+                "away_name": away.get("teamName", ""),
+                "status": game.get("gameStatusText", ""),
+                "status_code": game.get("gameStatus", 1),
                 "period": game.get("period", 0),
-                "clock": game.get("gameStatusText", ""),
-                "start_time": game.get("gameTimeUTC", ""),
+                "start_time": game_time_utc,
+                "start_time_display": start_time_display,
                 "home_record": f"{home.get('wins', 0)}-{home.get('losses', 0)}",
-                "away_record": f"{away.get('wins', 0)}-{away.get('losses', 0)}"
+                "away_record": f"{away.get('wins', 0)}-{away.get('losses', 0)}",
+                "arena": game.get("arena", {}).get("arenaName", ""),
+                "broadcasters": game.get("broadcasters", {})
             })
         
-        # Update cache
-        _scores_cache = {"data": games, "timestamp": now}
+        # Store in database
+        if _db is not None:
+            await _db.ticker_cache.update_one(
+                {"type": "games"},
+                {"$set": {
+                    "type": "games",
+                    "date": game_date,
+                    "games": games,
+                    "games_count": len(games),
+                    "synced_at": datetime.now(timezone.utc).isoformat()
+                }},
+                upsert=True
+            )
+            logger.info(f"[TICKER] Synced {len(games)} games for {game_date}")
         
-        return {"success": True, "games": games, "cached": False, "source": "nba_api"}
+        return {"success": True, "games_count": len(games), "date": game_date}
         
     except Exception as e:
-        logger.error(f"[LIVE] Scores error: {e}")
-        # Fallback to cached data or empty
-        return {"success": True, "games": _scores_cache.get("data", []), "error": str(e)}
+        logger.error(f"[TICKER] Games sync error: {e}")
+        return {"success": False, "error": str(e)}
 
 
-@router.get("/news")
-async def get_breaking_news():
+async def sync_news_headlines():
     """
-    Get breaking NBA news from multiple sources.
+    Sync NBA news headlines to the database.
+    Called at 4 AM daily by the scheduler.
     
-    Pulls from:
-    - ESPN NBA headlines
-    - CBS Sports NBA
-    - Sporting News NBA
-    - Clutch Points
-    - Ball Is Life
-    - Injury reports from database
-    - Line movements
-    - Real-time game updates
-    
-    Caches results for 60 seconds.
+    Fetches from ESPN, CBS Sports, and other RSS feeds.
     """
-    global _news_cache
-    
-    now = datetime.now(timezone.utc)
-    
-    # Return cached if fresh (< 60 seconds old)
-    if _news_cache["timestamp"] and (now - _news_cache["timestamp"]).seconds < 60:
-        return {"success": True, "headlines": _news_cache["data"], "cached": True}
+    logger.info("[TICKER] Starting daily news sync...")
     
     try:
-        mongo_url = os.environ.get("MONGO_URL")
-        db_name = os.environ.get("DB_NAME", "pick_vision")
-        
         headlines = []
         import re
         
-        async with httpx.AsyncClient(timeout=8.0, follow_redirects=True) as client:
+        async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:
             # ===== ESPN NBA News RSS =====
             try:
                 espn_response = await client.get("https://www.espn.com/espn/rss/nba/news")
                 if espn_response.status_code == 200:
                     items = re.findall(r'<item>.*?<title><!\[CDATA\[(.*?)\]\]></title>.*?</item>', 
-                                      espn_response.text, re.DOTALL)[:4]
+                                      espn_response.text, re.DOTALL)[:5]
                     for item in items:
                         clean_title = item.strip()
                         if clean_title and len(clean_title) > 10:
                             headlines.append({
                                 "text": f"ESPN: {clean_title}",
                                 "type": "breaking",
-                                "source": "espn"
+                                "source": "espn",
+                                "priority": 1
                             })
             except Exception as e:
                 logger.debug(f"ESPN fetch failed: {e}")
@@ -213,166 +195,257 @@ async def get_breaking_news():
             try:
                 cbs_response = await client.get("https://www.cbssports.com/rss/headlines/nba/")
                 if cbs_response.status_code == 200:
-                    items = re.findall(r'<title><!\[CDATA\[(.*?)\]\]></title>', cbs_response.text)[:4]
-                    for item in items[1:]:  # Skip channel title
+                    items = re.findall(r'<title><!\[CDATA\[(.*?)\]\]></title>', cbs_response.text)[:5]
+                    for item in items[1:]:
                         clean_title = item.strip()
                         if clean_title and len(clean_title) > 10:
                             headlines.append({
                                 "text": f"CBS: {clean_title}",
                                 "type": "info",
-                                "source": "cbs"
+                                "source": "cbs",
+                                "priority": 2
                             })
             except Exception as e:
                 logger.debug(f"CBS fetch failed: {e}")
             
-            # ===== Sporting News NBA =====
+            # ===== Bleacher Report NBA =====
             try:
-                sn_response = await client.get("https://www.sportingnews.com/us/rss/nba")
-                if sn_response.status_code == 200:
-                    items = re.findall(r'<title><!\[CDATA\[(.*?)\]\]></title>', sn_response.text)
-                    if not items:
-                        items = re.findall(r'<title>(.*?)</title>', sn_response.text)[2:5]
-                    for item in items[1:4]:
-                        clean_title = item.strip()
-                        if clean_title and len(clean_title) > 10 and 'Sporting News' not in clean_title:
-                            headlines.append({
-                                "text": f"SN: {clean_title}",
-                                "type": "info",
-                                "source": "sporting_news"
-                            })
-            except Exception as e:
-                logger.debug(f"Sporting News fetch failed: {e}")
-            
-            # ===== Clutch Points =====
-            try:
-                cp_response = await client.get("https://clutchpoints.com/feed/")
-                if cp_response.status_code == 200:
-                    # Get NBA-related items only
-                    items = re.findall(r'<item>.*?<title><!\[CDATA\[(.*?)\]\]></title>.*?<category.*?>(.*?)</category>.*?</item>', 
-                                      cp_response.text, re.DOTALL)[:10]
-                    nba_items = [item[0] for item in items if 'NBA' in item[1] or 'nba' in item[1].lower()][:3]
-                    if not nba_items:
-                        # Fallback to all items
-                        nba_items = re.findall(r'<title><!\[CDATA\[(.*?)\]\]></title>', cp_response.text)[1:4]
+                br_response = await client.get("https://bleacherreport.com/articles/feed")
+                if br_response.status_code == 200:
+                    # Try to find NBA items
+                    items = re.findall(r'<title>(.*?)</title>', br_response.text)
+                    nba_items = [i for i in items if any(term in i.lower() for term in ['nba', 'lakers', 'celtics', 'warriors', 'knicks', 'nets', 'heat', 'bucks'])][:3]
                     for item in nba_items:
                         clean_title = item.strip()
                         if clean_title and len(clean_title) > 10:
                             headlines.append({
-                                "text": f"Clutch: {clean_title}",
-                                "type": "breaking",
-                                "source": "clutchpoints"
-                            })
-            except Exception as e:
-                logger.debug(f"Clutch Points fetch failed: {e}")
-            
-            # ===== Ball Is Life =====
-            try:
-                bil_response = await client.get("https://ballislife.com/feed/")
-                if bil_response.status_code == 200:
-                    items = re.findall(r'<title><!\[CDATA\[(.*?)\]\]></title>', bil_response.text)
-                    if not items:
-                        items = re.findall(r'<title>(.*?)</title>', bil_response.text)[2:5]
-                    for item in items[1:4]:
-                        clean_title = item.strip()
-                        if clean_title and len(clean_title) > 10:
-                            headlines.append({
-                                "text": f"BIL: {clean_title}",
+                                "text": f"BR: {clean_title}",
                                 "type": "info",
-                                "source": "ballislife"
+                                "source": "bleacher_report",
+                                "priority": 3
                             })
             except Exception as e:
-                logger.debug(f"Ball Is Life fetch failed: {e}")
+                logger.debug(f"Bleacher Report fetch failed: {e}")
         
         # Add injury updates from database
-        if mongo_url:
-            client = AsyncIOMotorClient(mongo_url)
-            db = client[db_name]
+        if _db is not None:
+            injuries = await _db.bdl_injuries.find(
+                {"status": {"$in": ["Out", "Doubtful", "Questionable"]}},
+                {"_id": 0, "player_name": 1, "status": 1, "reason": 1}
+            ).limit(5).to_list(5)
             
-            # Get recent injury updates
-            injuries = await db.injury_cache.find(
-                {"status": {"$ne": "Healthy"}},
-                {"_id": 0, "player_name": 1, "team": 1, "status": 1, "return_date": 1}
-            ).sort("updated_at", -1).limit(5).to_list(5)
-            
-            for injury in injuries:
-                player = injury.get("player_name", "Unknown")
-                team = injury.get("team", "")
-                status = injury.get("status", "")
-                
-                if "Out" in status:
-                    headlines.append({
-                        "text": f"INJURY: {player} ({team}) ruled OUT - Monitor usage ripple",
-                        "type": "injury",
-                        "source": "internal"
-                    })
-                elif "Questionable" in status or "Doubtful" in status:
-                    headlines.append({
-                        "text": f"INJURY: {player} ({team}) {status} - Watch for late scratch",
-                        "type": "injury",
-                        "source": "internal"
-                    })
-            
-            # Get line movements
-            movements = await db.line_movements.find(
-                {},
-                {"_id": 0}
-            ).sort("timestamp", -1).limit(3).to_list(3)
-            
-            for move in movements:
-                player = move.get("player_name", "")
-                stat = move.get("stat_type", "")
-                direction = "up" if move.get("direction") == "up" else "down"
-                
-                if player and stat:
-                    headlines.append({
-                        "text": f"LINE MOVE: {player} {stat} shifted {direction}",
-                        "type": "breaking",
-                        "source": "internal"
-                    })
-        
-        # Add live game updates
-        if _scores_cache.get("data"):
-            live_games = [g for g in _scores_cache["data"] if g.get("status", "").startswith("Q")]
-            for game in live_games[:2]:
-                away = game.get("away_team", "")
-                home = game.get("home_team", "")
-                away_score = game.get("away_score", 0)
-                home_score = game.get("home_score", 0)
-                period = game.get("status", "")
+            for inj in injuries:
                 headlines.append({
-                    "text": f"LIVE: {away} {away_score} @ {home} {home_score} ({period})",
-                    "type": "breaking",
-                    "source": "live"
+                    "text": f"INJURY: {inj.get('player_name')} ({inj.get('status')}) - {inj.get('reason', 'N/A')}",
+                    "type": "injury",
+                    "source": "injuries_db",
+                    "priority": 1
                 })
         
-        # Add fallback headlines if we don't have enough
-        if len(headlines) < 5:
-            defaults = [
-                {"text": "AI insights powered by real-time defensive matchup analysis", "type": "info", "source": "system"},
-                {"text": "Defense vs Position (DvP) rankings updated daily at 8AM EST", "type": "info", "source": "system"},
-                {"text": "Usage Ripple adjusts projections when key players are OUT", "type": "info", "source": "system"},
-                {"text": "Command Post: Build and simulate parlay risk profiles", "type": "info", "source": "system"},
-                {"text": "Track line movements and betting trends in real-time", "type": "info", "source": "system"}
-            ]
-            headlines.extend(defaults[:8 - len(headlines)])
+        # Sort by priority and limit
+        headlines.sort(key=lambda x: x.get("priority", 99))
+        headlines = headlines[:15]
         
-        # Shuffle to mix sources
-        import random
-        random.shuffle(headlines)
+        # Store in database
+        if _db is not None:
+            await _db.ticker_cache.update_one(
+                {"type": "news"},
+                {"$set": {
+                    "type": "news",
+                    "headlines": headlines,
+                    "headlines_count": len(headlines),
+                    "synced_at": datetime.now(timezone.utc).isoformat()
+                }},
+                upsert=True
+            )
+            logger.info(f"[TICKER] Synced {len(headlines)} news headlines")
         
-        # Update cache
-        _news_cache = {"data": headlines, "timestamp": now}
+        return {"success": True, "headlines_count": len(headlines)}
         
-        return {"success": True, "headlines": headlines, "cached": False, "count": len(headlines)}
+    except Exception as e:
+        logger.error(f"[TICKER] News sync error: {e}")
+        return {"success": False, "error": str(e)}
+
+
+@router.get("/scores")
+async def get_live_scores():
+    """
+    Get today's NBA games from cached data.
+    
+    Returns games synced at 4 AM, with live updates if games are in progress.
+    """
+    try:
+        # First try to get from DB cache
+        if _db is not None:
+            cached = await _db.ticker_cache.find_one(
+                {"type": "games"},
+                {"_id": 0}
+            )
+            
+            if cached and cached.get("games"):
+                # Check if any games are live - if so, fetch live scores
+                games = cached.get("games", [])
+                any_live = any(g.get("status_code") == 2 for g in games)
+                
+                if any_live:
+                    # Fetch live scores for in-progress games
+                    try:
+                        from nba_api.live.nba.endpoints import scoreboard
+                        board = scoreboard.ScoreBoard()
+                        data = board.get_dict()
+                        
+                        live_games = {}
+                        for game in data.get("scoreboard", {}).get("games", []):
+                            live_games[game.get("gameId")] = {
+                                "home_score": game.get("homeTeam", {}).get("score", 0),
+                                "away_score": game.get("awayTeam", {}).get("score", 0),
+                                "status": game.get("gameStatusText", ""),
+                                "status_code": game.get("gameStatus", 1),
+                                "period": game.get("period", 0)
+                            }
+                        
+                        # Update cached games with live scores
+                        for game in games:
+                            if game.get("game_id") in live_games:
+                                game.update(live_games[game["game_id"]])
+                    except:
+                        pass  # Use cached scores if live fetch fails
+                
+                return {
+                    "success": True, 
+                    "games": games, 
+                    "date": cached.get("date"),
+                    "synced_at": cached.get("synced_at"),
+                    "cached": True
+                }
+        
+        # Fallback: fetch live if no cache
+        return await _fetch_live_scores_fallback()
+        
+    except Exception as e:
+        logger.error(f"[LIVE] Scores error: {e}")
+        return {"success": False, "games": [], "error": str(e)}
+
+
+async def _fetch_live_scores_fallback():
+    """Fallback to fetch live scores directly from NBA API."""
+    try:
+        from nba_api.live.nba.endpoints import scoreboard
+        
+        board = scoreboard.ScoreBoard()
+        data = board.get_dict()
+        
+        games = []
+        scoreboard_data = data.get("scoreboard", {})
+        
+        for game in scoreboard_data.get("games", []):
+            home = game.get("homeTeam", {})
+            away = game.get("awayTeam", {})
+            
+            game_time_utc = game.get("gameTimeUTC", "")
+            start_time_display = ""
+            if game_time_utc:
+                try:
+                    utc_time = datetime.fromisoformat(game_time_utc.replace("Z", "+00:00"))
+                    est_time = utc_time - timedelta(hours=5)
+                    start_time_display = est_time.strftime("%-I:%M %p ET")
+                except:
+                    start_time_display = game.get("gameStatusText", "")
+            
+            games.append({
+                "game_id": game.get("gameId"),
+                "home_team": home.get("teamTricode", "???"),
+                "home_score": home.get("score", 0),
+                "away_team": away.get("teamTricode", "???"),
+                "away_score": away.get("score", 0),
+                "status": game.get("gameStatusText", ""),
+                "status_code": game.get("gameStatus", 1),
+                "period": game.get("period", 0),
+                "start_time": game_time_utc,
+                "start_time_display": start_time_display,
+                "home_record": f"{home.get('wins', 0)}-{home.get('losses', 0)}",
+                "away_record": f"{away.get('wins', 0)}-{away.get('losses', 0)}"
+            })
+        
+        return {"success": True, "games": games, "cached": False, "source": "nba_api_live"}
+        
+    except Exception as e:
+        logger.error(f"[LIVE] Fallback scores error: {e}")
+        return {"success": False, "games": [], "error": str(e)}
+
+
+@router.get("/news")
+async def get_breaking_news():
+    """
+    Get breaking NBA news from cached data.
+    
+    Returns headlines synced at 4 AM daily.
+    """
+    try:
+        # Get from DB cache
+        if _db is not None:
+            cached = await _db.ticker_cache.find_one(
+                {"type": "news"},
+                {"_id": 0}
+            )
+            
+            if cached and cached.get("headlines"):
+                return {
+                    "success": True,
+                    "headlines": cached.get("headlines", []),
+                    "synced_at": cached.get("synced_at"),
+                    "cached": True
+                }
+        
+        # Fallback: fetch live if no cache
+        return await _fetch_news_fallback()
         
     except Exception as e:
         logger.error(f"[LIVE] News error: {e}")
-        # Return default headlines on error
-        return {
-            "success": True,
-            "headlines": [
-                {"text": "Real-time NBA prop analysis powered by AI", "type": "info"},
-                {"text": "Injury reports and usage ripple tracked automatically", "type": "info"},
-                {"text": "Defense vs Position rankings update daily", "type": "info"}
-            ]
-        }
+        return {"success": False, "headlines": [], "error": str(e)}
+
+
+async def _fetch_news_fallback():
+    """Fallback to fetch news directly from RSS feeds."""
+    try:
+        headlines = []
+        import re
+        
+        async with httpx.AsyncClient(timeout=8.0, follow_redirects=True) as client:
+            try:
+                espn_response = await client.get("https://www.espn.com/espn/rss/nba/news")
+                if espn_response.status_code == 200:
+                    items = re.findall(r'<item>.*?<title><!\[CDATA\[(.*?)\]\]></title>.*?</item>', 
+                                      espn_response.text, re.DOTALL)[:5]
+                    for item in items:
+                        clean_title = item.strip()
+                        if clean_title and len(clean_title) > 10:
+                            headlines.append({
+                                "text": f"ESPN: {clean_title}",
+                                "type": "breaking",
+                                "source": "espn"
+                            })
+            except:
+                pass
+        
+        return {"success": True, "headlines": headlines, "cached": False}
+        
+    except Exception as e:
+        return {"success": False, "headlines": [], "error": str(e)}
+
+
+@router.post("/sync-ticker")
+async def manual_sync_ticker():
+    """
+    Manually trigger ticker data sync.
+    Syncs both games and news headlines.
+    """
+    games_result = await sync_todays_games()
+    news_result = await sync_news_headlines()
+    
+    return {
+        "success": True,
+        "games": games_result,
+        "news": news_result,
+        "synced_at": datetime.now(timezone.utc).isoformat()
+    }

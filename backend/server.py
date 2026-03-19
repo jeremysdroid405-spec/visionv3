@@ -626,6 +626,36 @@ async def scheduled_bdl_game_values_sync():
         logger.error(f"[SCHEDULER] BDL game values enrichment failed: {e}")
 
 
+async def scheduled_ticker_sync():
+    """
+    Scheduled job that syncs ticker data (games and news) at 4:15 AM EST.
+    
+    - Fetches today's NBA games from NBA API
+    - Fetches breaking news from ESPN, CBS, and other sources
+    - Stores both in ticker_cache collection for fast retrieval
+    """
+    logger.info("=" * 70)
+    logger.info("[SCHEDULER] TICKER SYNC (GAMES + NEWS)")
+    logger.info(f"[SCHEDULER] Time: {datetime.now(timezone.utc).isoformat()}")
+    logger.info("=" * 70)
+    
+    try:
+        from routes.live import sync_todays_games, sync_news_headlines
+        
+        # Sync today's games
+        games_result = await sync_todays_games()
+        logger.info(f"[SCHEDULER] Games sync: {games_result}")
+        
+        # Sync news headlines
+        news_result = await sync_news_headlines()
+        logger.info(f"[SCHEDULER] News sync: {news_result}")
+        
+        logger.info("=" * 70)
+        
+    except Exception as e:
+        logger.error(f"[SCHEDULER] Ticker sync failed: {e}")
+
+
 async def scheduled_roster_sync():
     """
     Scheduled job that runs every Sunday at midnight UTC.
@@ -837,6 +867,15 @@ async def startup_event():
         CronTrigger(hour=9, minute=10, timezone=SCHEDULER_TIMEZONE),
         id='bdl_game_values_sync',
         name='4:10 AM EST BDL Game Values Enrichment',
+        replace_existing=True
+    )
+    
+    # Ticker Sync at 4:15 AM EST (9:15 AM UTC) - Games and News
+    scheduler.add_job(
+        scheduled_ticker_sync,
+        CronTrigger(hour=9, minute=15, timezone=SCHEDULER_TIMEZONE),
+        id='ticker_sync',
+        name='4:15 AM EST Ticker Games/News Sync',
         replace_existing=True
     )
     
