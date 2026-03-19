@@ -782,20 +782,26 @@ async def get_cached_player(player_name: str):
             stat_type = prop.get("stat_type_extracted", "PTS")
             line = prop.get("line", 0)
             
-            # Get hit rates from the nested hit_rates object (source of truth)
+            # Get hit rates - support BOTH nested and flat formats
+            # FLAT format (from _flatten_hit_rates_to_props): l5_avg, l10_avg, h10_rate at prop level
+            # NESTED format (legacy): hit_rates.l10.avg, hit_rates.l10.hit_rate
             hit_rates_obj = prop.get("hit_rates", {})
-            l10_data = hit_rates_obj.get("l10", {})
-            l5_data = hit_rates_obj.get("l5", {})
-            season_data = hit_rates_obj.get("season", {})
             
-            l10_hit_rate = l10_data.get("hit_rate", 0) or 0
-            l5_hit_rate = l5_data.get("hit_rate", 0) or 0
-            l10_avg = l10_data.get("avg", 0)
-            l5_avg = l5_data.get("avg", 0)
-            season_avg = season_data.get("avg", 0)
-            l10_games_over = l10_data.get("games_over", 0)
-            l10_total_games = l10_data.get("total_games", 10)
-            l5_games_over = l5_data.get("games_over", 0)
+            # Try flat format first (prop-level), then nested (hit_rates.l10.*)
+            l10_hit_rate = prop.get("h10_rate") or hit_rates_obj.get("l10_rate") or hit_rates_obj.get("l10", {}).get("hit_rate", 0) or 0
+            l5_hit_rate = prop.get("h5_rate") or hit_rates_obj.get("l5_rate") or hit_rates_obj.get("l5", {}).get("hit_rate", 0) or 0
+            l10_avg = prop.get("l10_avg") or hit_rates_obj.get("l10_avg") or hit_rates_obj.get("l10", {}).get("avg", 0)
+            l5_avg = prop.get("l5_avg") or hit_rates_obj.get("l5_avg") or hit_rates_obj.get("l5", {}).get("avg", 0)
+            season_avg = prop.get("season_avg") or hit_rates_obj.get("season_avg") or hit_rates_obj.get("season", {}).get("avg", 0)
+            l10_games_over = hit_rates_obj.get("l10_hit_count") or hit_rates_obj.get("l10", {}).get("games_over", 0)
+            l10_total_games = hit_rates_obj.get("l10", {}).get("total_games", 10)
+            l5_games_over = hit_rates_obj.get("l5_hit_count") or hit_rates_obj.get("l5", {}).get("games_over", 0)
+            
+            # Normalize hit rates - ensure they're percentages (0-100)
+            if l10_hit_rate and l10_hit_rate <= 1:
+                l10_hit_rate = l10_hit_rate * 100
+            if l5_hit_rate and l5_hit_rate <= 1:
+                l5_hit_rate = l5_hit_rate * 100
             
             is_demon = prop.get("is_demon", False)
             is_goblin = prop.get("is_goblin", False)
@@ -803,9 +809,9 @@ async def get_cached_player(player_name: str):
             # Add stat_type for frontend compatibility
             prop["stat_type"] = stat_type
             
-            # Add normalized hit rate fields for frontend (convert decimal to percentage)
-            prop["h10_rate"] = round(l10_hit_rate * 100, 1) if l10_hit_rate and l10_hit_rate <= 1 else l10_hit_rate
-            prop["h5_rate"] = round(l5_hit_rate * 100, 1) if l5_hit_rate and l5_hit_rate <= 1 else l5_hit_rate
+            # Add normalized hit rate fields for frontend
+            prop["h10_rate"] = round(l10_hit_rate, 1) if l10_hit_rate else 0
+            prop["h5_rate"] = round(l5_hit_rate, 1) if l5_hit_rate else 0
             prop["l5_avg"] = l5_avg
             prop["l10_avg"] = l10_avg
             prop["season_avg"] = season_avg

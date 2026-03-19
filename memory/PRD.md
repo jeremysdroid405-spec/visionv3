@@ -5,90 +5,72 @@ PropVision is a sports analytics platform for NBA player props, providing data-d
 
 ## Core Architecture
 
-### Data Flow
-1. **BDL Sync** (`bdl_comprehensive_sync.py`) - Syncs ALL active NBA players (~548) to `nba_master_hub_2026`
-   - Uses GOAT tier batch API: `/season_averages/general`
-   - Runs daily at 5 AM and 8 AM EST
-   - ~14 seconds for full sync
+### Data Pipeline (Fixed 2026-03-19)
+1. **BDL Sync** - Season averages from GOAT tier batch API
+2. **NBA.com Integration** (`nba_api`) - Pre-calculated L5/L10/L15/L20 from `playerdashboardbylastngames`
+3. **Dual ID System** - Master hub stores both `bdl_id` and `nba_id` (502/548 matched)
+4. **Hit Rate Flow**:
+   - `baseline_stats` populated from NBA.com (preferred) or BDL
+   - `_flatten_hit_rates_to_props()` flattens nested hit_rates to prop level
+   - Frontend reads flat `l5_avg`, `l10_avg`, `h10_rate` from props
 
-2. **NBA.com Integration** (via `nba_api`) - Official L5/L10/L15/L20 stats
-   - Uses `playerdashboardbylastngames` endpoint
-   - Master hub stores both `bdl_id` (BDL) and `nba_id` (NBA.com)
-   - Provides pre-calculated last N games averages - no manual calculation needed
-   - Endpoints: 
-     - `GET /api/v3/master-hub/nba-stats/{bdl_id}` - Fetch L5/L10 (read-only)
-     - `POST /api/v3/master-hub/enrich-nba-stats/{bdl_id}` - Persist to player
-     - `POST /api/v3/master-hub/enrich-all-nba-stats` - Batch enrich players
+### Key Fixes (2026-03-19)
+- Fixed `_enrich_player_with_master_hub_stats()` to prefer NBA.com baseline_stats over BDL game logs
+- Fixed `/api/v3/player-with-badges/` to read from flat hit_rates structure
+- Fixed None comparisons in `intel_suite_calculator.py`
+- Fixed `calculate_hit_rate_for_games()` to filter None values
+- Added `normalizeHitRate()` in frontend to handle both decimal and percentage formats
 
-3. **Odds API Mapper** (`odds_api_mapper.py`) - Maps player names to bdl_id
-   - Rebuilt from master hub on demand
-   - ~548 mappings in memory
-
-4. **Cached Board Builder** (`cached_board_builder_service.py`) - Builds props board
-   - Uses mapper for player lookups (not legacy name matching)
-   - Calculates hit rates from baseline_stats (which now has NBA.com L5/L10)
-   - Stores in `dg_cached_board`
-
-5. **Adaptive Sync Engine** (`adaptive_sync_engine.py`) - Enriches props with stats
-   - Reads L5/L10 from baseline_stats (populated by NBA.com)
-   - Falls back to game log calculation if baseline_stats missing
-   - Does NOT overwrite L5/L10 if already present
-
-6. **Tiers** - War Zone (demons), Safe Haven (goblins), Gauntlet (all)
-
-### Database Schema (MongoDB)
-- `nba_master_hub_2026` - Player data with unique indexes on both `bdl_id` AND `nba_id` (sparse)
+### Database Schema
+- `nba_master_hub_2026` - Unique indexes on `bdl_id` AND `nba_id`
+- `dg_cached_board` - Props with `hit_rates` object
 - `odds_api_mapping_master` - Name → bdl_id mappings
-- `dg_cached_board` - Built board with props and hit_rates
 
 ### Hit Rates Structure
-In the cached board, each prop has a `hit_rates` object:
+Props have both nested and flat formats:
 ```json
 {
-  "l10_rate": 50,
-  "l5_rate": 50,
-  "l10_hit_count": 5,
-  "l5_hit_count": 2,
-  "l5_avg": 31.2,
-  "l10_avg": 31.2,
-  "season_avg": 28.5
+  "l5_avg": 27.0,
+  "l10_avg": 27.0,
+  "season_avg": 21.4,
+  "h10_rate": 100,
+  "hit_rates": {
+    "l10_rate": 100,
+    "l5_rate": 100,
+    "l10_avg": 27.0,
+    "l5_avg": 27.0,
+    "season_avg": 21.4
+  }
 }
 ```
 
 ### Authentication
-- **Master Admin**: `admin@propvision.ai` / `PropVision2026!` (local JWT)
-- **Regular Users**: Supabase auth
+- **Master Admin**: `admin@propvision.ai` / `PropVision2026!`
+- **Demo Mode**: Click "DEMO MODE" button on auth page
 
 ## Completed Features ✅
-- [x] GOAT tier BDL batch sync (2026-03-19)
-- [x] Odds API Mapper with bdl_id keys (2026-03-19)
-- [x] War Zone hit rate calculation (2026-03-19)
-- [x] NBA.com L5/L10 API integration via nba_api (2026-03-19)
-- [x] Dual ID system: bdl_id + nba_id in master hub (2026-03-19)
-- [x] Batch NBA.com enrichment endpoint (2026-03-19)
-- [x] Fixed adaptive sync to use baseline_stats L5/L10 (2026-03-19)
-- [x] HTML title updated to "PropVision" (2026-03-19)
-- [x] Dual auth system (JWT + Supabase)
-
-## In Progress
-- [ ] None
+- [x] NBA.com L5/L10 integration via nba_api
+- [x] Hit rates displaying correctly on Dashboard
+- [x] Hit rates displaying correctly on Player Detail page
+- [x] War Zone, Safe Haven, Front Lines all working
+- [x] Dual ID system (bdl_id + nba_id)
+- [x] GOAT tier BDL batch sync
+- [x] HTML title "PropVision"
 
 ## Pending Issues
-- [ ] P2: 46 unmatched players without nba_id (rookies/two-way players)
-- [ ] P3: Remove deprecated components (code cleanup)
+- [ ] P2: 46 players without nba_id (rookies/two-way)
+- [ ] P3: Deprecated code cleanup
+
+## API Endpoints
+- `POST /api/v3/master-hub/sync-bdl-all` - Sync all active players
+- `POST /api/v3/master-hub/enrich-all-nba-stats` - Batch enrich NBA.com data
+- `GET /api/v3/player-with-badges/{player_name}` - Player detail with hit rates
+- `GET /api/v3/war-zone` - War Zone picks
+- `GET /api/v3/front-lines` - Front Lines picks
+- `GET /api/v3/goblin-vault` - Safe Haven picks
 
 ## Backlog
 - [ ] Google/Apple OAuth
 - [ ] Stripe payments
 - [ ] Copy Parlay feature
-- [ ] Automate distraction/deep_water badges
-- [ ] Tooltips for context badges
-- [ ] War Zone score breakdown UI
-
-## API Endpoints
-- `POST /api/v3/master-hub/sync-bdl-all` - Sync all active players
-- `GET /api/v3/master-hub/nba-stats/{bdl_id}` - Fetch L5/L10 from NBA.com
-- `POST /api/v3/master-hub/enrich-nba-stats/{bdl_id}` - Enrich single player
-- `POST /api/v3/master-hub/enrich-all-nba-stats` - Batch enrich (default 100)
-- `POST /api/v3/sync` - Trigger full sync (rebuilds board)
-- `GET /api/v3/war-zone` - Get War Zone picks with hit rates
+- [ ] Automate context badges

@@ -1493,14 +1493,21 @@ class PicksGetterService:
                     
                     line = prop.get("line")
                     
-                    # Get hit rate from nested structure
+                    # Get hit rate from FLAT structure (cached_board_builder format)
                     hit_rates = prop.get("hit_rates", {})
-                    l10_data = hit_rates.get("l10", {})
-                    l10_hit_rate = l10_data.get("hit_rate", 0) if isinstance(l10_data, dict) else 0
-                    l5_data = hit_rates.get("l5", {})
-                    l5_hit_rate = l5_data.get("hit_rate", 0) if isinstance(l5_data, dict) else 0
                     
-                    # Convert to percentage if stored as decimal
+                    # Flat structure: hit_rates.l10_rate, hit_rates.l5_rate, etc.
+                    l10_hit_rate = hit_rates.get("l10_rate") or 0
+                    l5_hit_rate = hit_rates.get("l5_rate") or 0
+                    l10_avg = hit_rates.get("l10_avg")
+                    l5_avg = hit_rates.get("l5_avg")
+                    season_avg = hit_rates.get("season_avg")
+                    
+                    # Skip if no hit rate data
+                    if l10_hit_rate == 0:
+                        continue
+                    
+                    # Convert to percentage if stored as decimal (shouldn't be, but just in case)
                     if l10_hit_rate and l10_hit_rate <= 1:
                         l10_hit_rate = l10_hit_rate * 100
                     if l5_hit_rate and l5_hit_rate <= 1:
@@ -1577,9 +1584,9 @@ class PicksGetterService:
                         "h10_rate": l10_hit_rate,  # Frontend expects h10_rate
                         "l10_hit_rate": l10_hit_rate,
                         "l5_hit_rate": l5_hit_rate,
-                        "l10_avg": l10_data.get("avg") if isinstance(l10_data, dict) else None,
-                        "l5_avg": l5_data.get("avg") if isinstance(l5_data, dict) else None,
-                        "season_avg": hit_rates.get("season", {}).get("avg") if isinstance(hit_rates.get("season"), dict) else None,
+                        "l10_avg": l10_avg,
+                        "l5_avg": l5_avg,
+                        "season_avg": season_avg,
                         "front_line_qualified": True,
                         "lowest_line": lowest_line,
                         "payout_multiplier": round(payout_multiplier, 2),
@@ -1830,9 +1837,21 @@ class PicksGetterService:
             {"_id": 0}
         ).sort("rank", 1).to_list(500)
         
-        # Clean any remaining ObjectIds
+        # Clean any remaining ObjectIds and flatten hit_rates to prop level
         for player in players:
             self._clean_object_ids(player)
+            # Flatten hit_rates for frontend compatibility
+            for prop in player.get("props", []):
+                hit_rates = prop.get("hit_rates", {})
+                if hit_rates:
+                    # Flatten to prop level for frontend
+                    prop["l5_avg"] = hit_rates.get("l5_avg")
+                    prop["l10_avg"] = hit_rates.get("l10_avg")
+                    prop["season_avg"] = hit_rates.get("season_avg")
+                    prop["h10_rate"] = hit_rates.get("l10_rate")  # Frontend expects h10_rate
+                    prop["h5_rate"] = hit_rates.get("l5_rate")
+                    prop["l10_hit_count"] = hit_rates.get("l10_hit_count")
+                    prop["l5_hit_count"] = hit_rates.get("l5_hit_count")
         
         # SSOT: Enrich ALL players with photos from master hub
         await self._enrich_picks_with_photos(players)
@@ -1865,6 +1884,7 @@ class PicksGetterService:
         
         if player:
             self._clean_object_ids(player)
+            self._flatten_hit_rates_to_props(player)  # Flatten for frontend
             await self._enrich_player_with_master_hub_stats(player)
             await self._add_player_insights(player)
             return {"success": True, "player": player, "source": "cached_board"}
@@ -1877,6 +1897,7 @@ class PicksGetterService:
         
         if player:
             self._clean_object_ids(player)
+            self._flatten_hit_rates_to_props(player)  # Flatten for frontend
             await self._enrich_player_with_master_hub_stats(player)
             await self._add_player_insights(player)
             return {"success": True, "player": player, "source": "cached_board"}
@@ -1889,6 +1910,7 @@ class PicksGetterService:
         
         if player:
             self._clean_object_ids(player)
+            self._flatten_hit_rates_to_props(player)  # Flatten for frontend
             await self._enrich_player_with_master_hub_stats(player)
             await self._add_player_insights(player)
             return {"success": True, "player": player, "source": "player_data"}
@@ -1901,6 +1923,7 @@ class PicksGetterService:
         
         if player:
             self._clean_object_ids(player)
+            self._flatten_hit_rates_to_props(player)  # Flatten for frontend
             await self._enrich_player_with_master_hub_stats(player)
             await self._add_player_insights(player)
             return {"success": True, "player": player, "source": "player_data"}
@@ -1935,6 +1958,7 @@ class PicksGetterService:
                 {"_id": 0}
             )
             self._clean_object_ids(player)
+            self._flatten_hit_rates_to_props(player)  # Flatten for frontend
             await self._enrich_player_with_master_hub_stats(player)
             await self._add_player_insights(player)
             return {"success": True, "player": player, "matched_name": best_match, "source": match_source}
@@ -1992,30 +2016,63 @@ class PicksGetterService:
             norm_map = {"P+R": "PR", "P+A": "PA", "R+A": "RA"}
             stat_key = norm_map.get(stat_type, stat_type)
             
-            # Calculate COUPLED stats from PIPE 1 game_logs
-            if game_logs and line_value > 0:
+            # PRIORITY: Use baseline_stats from NBA.com (has reliable L5/L10)
+            # Fallback to game_logs calculation only if baseline_stats missing
+            stat_data = baseline_stats.get(stat_key, {})
+            
+            # Check if baseline_stats has NBA.com L5/L10 data
+            has_nba_l5 = stat_data.get("l5_avg") is not None
+            has_nba_l10 = stat_data.get("l10_avg") is not None
+            
+            if has_nba_l5 or has_nba_l10:
+                # Use NBA.com baseline_stats (preferred - more reliable)
+                prop["l5_avg"] = stat_data.get("l5_avg")
+                prop["l10_avg"] = stat_data.get("l10_avg")
+                prop["season_avg"] = stat_data.get("season_avg")
+                
+                # Calculate hit rates from baseline l10_values if available
+                l10_values = stat_data.get("l10_values", [])
+                if l10_values and line_value > 0:
+                    hits = sum(1 for v in l10_values if v is not None and v >= line_value)
+                    prop["l10_hit_rate"] = round((hits / len(l10_values)) * 100, 1) if l10_values else 0
+                    prop["l10_games_over"] = hits
+                    prop["l10_total_games"] = len(l10_values)
+                    # L5 from first 5 values
+                    l5_values = l10_values[:5]
+                    if l5_values:
+                        l5_hits = sum(1 for v in l5_values if v is not None and v >= line_value)
+                        prop["l5_hit_rate"] = round((l5_hits / len(l5_values)) * 100, 1)
+                        prop["l5_games_over"] = l5_hits
+                        prop["l5_total_games"] = len(l5_values)
+                
+                prop["stats_coupled"] = False
+                prop["stats_source"] = "nba_baseline"
+            elif game_logs and line_value > 0:
+                # Fallback: Calculate from BDL game_logs (may be DNPs)
                 coupled = calculate_coupled_stats(game_logs, stat_type, line_value)
                 
-                # Use coupled stats for L5 and L10 (guaranteed consistent)
-                prop["l5_avg"] = coupled["l5"]["avg"]
-                prop["l10_avg"] = coupled["l10"]["avg"]
-                prop["l5_hit_rate"] = coupled["l5"]["hit_rate"]
-                prop["l10_hit_rate"] = coupled["l10"]["hit_rate"]
-                prop["l5_games_over"] = coupled["l5"]["games_over"]
-                prop["l10_games_over"] = coupled["l10"]["games_over"]
-                prop["l5_total_games"] = coupled["l5"]["total_games"]
-                prop["l10_total_games"] = coupled["l10"]["total_games"]
-                
-                # Season avg from coupled calculation (or fallback to baseline)
-                prop["season_avg"] = coupled["season"]["avg"] or baseline_stats.get(stat_key, {}).get("season_avg")
-                prop["season_hit_rate"] = coupled["season"]["hit_rate"]
-                
-                # Mark stats source
-                prop["stats_coupled"] = True
-                prop["stats_source"] = "ssot_game_logs"
+                # Only use coupled if it has actual data
+                if coupled["l5"]["total_games"] > 0:
+                    prop["l5_avg"] = coupled["l5"]["avg"]
+                    prop["l10_avg"] = coupled["l10"]["avg"]
+                    prop["l5_hit_rate"] = coupled["l5"]["hit_rate"]
+                    prop["l10_hit_rate"] = coupled["l10"]["hit_rate"]
+                    prop["l5_games_over"] = coupled["l5"]["games_over"]
+                    prop["l10_games_over"] = coupled["l10"]["games_over"]
+                    prop["l5_total_games"] = coupled["l5"]["total_games"]
+                    prop["l10_total_games"] = coupled["l10"]["total_games"]
+                    prop["season_avg"] = coupled["season"]["avg"] or stat_data.get("season_avg")
+                    prop["season_hit_rate"] = coupled["season"]["hit_rate"]
+                    prop["stats_coupled"] = True
+                    prop["stats_source"] = "bdl_game_logs"
+                else:
+                    # Game logs are all DNPs, use whatever we have in baseline
+                    prop["l5_avg"] = stat_data.get("l5_avg")
+                    prop["l10_avg"] = stat_data.get("l10_avg")
+                    prop["season_avg"] = stat_data.get("season_avg")
+                    prop["stats_source"] = "baseline_fallback"
             else:
-                # Fallback to baseline_stats if no game logs
-                stat_data = baseline_stats.get(stat_key, {})
+                # No game logs at all, use baseline_stats
                 prop["l5_avg"] = stat_data.get("l5_avg")
                 prop["l10_avg"] = stat_data.get("l10_avg")
                 prop["season_avg"] = stat_data.get("season_avg")
@@ -2266,3 +2323,24 @@ class PicksGetterService:
                 for item in player[key]:
                     if isinstance(item, dict):
                         item.pop("_id", None)
+    
+    def _flatten_hit_rates_to_props(self, player: Dict) -> None:
+        """
+        Flatten hit_rates object to prop level for frontend compatibility.
+        
+        The cached_board stores hit rates in nested hit_rates object:
+        { hit_rates: { l5_avg: X, l10_avg: Y, season_avg: Z, l10_rate: R } }
+        
+        Frontend expects flat props:
+        { l5_avg: X, l10_avg: Y, season_avg: Z, h10_rate: R }
+        """
+        for prop in player.get("props", []):
+            hit_rates = prop.get("hit_rates", {})
+            if hit_rates:
+                prop["l5_avg"] = hit_rates.get("l5_avg")
+                prop["l10_avg"] = hit_rates.get("l10_avg")
+                prop["season_avg"] = hit_rates.get("season_avg")
+                prop["h10_rate"] = hit_rates.get("l10_rate")
+                prop["h5_rate"] = hit_rates.get("l5_rate")
+                prop["l10_hit_count"] = hit_rates.get("l10_hit_count")
+                prop["l5_hit_count"] = hit_rates.get("l5_hit_count")

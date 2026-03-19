@@ -114,14 +114,28 @@ const PropRow = memo(({ prop, isHighlighted, highlightRef, onVisionClick }) => {
   const l10Avg = prop.l10_avg ?? hitRates.l10?.avg ?? hitRates.l10_avg;
   const seasonAvg = prop.season_avg ?? hitRates.season?.avg ?? hitRates.season_avg;
   
-  // Hit rates (percentage) - Prefer direct fields over hit_rates object
-  // l10_hit_rate is 0-1 decimal, h10_rate is already percentage
-  const h10Rate = prop.l10_hit_rate != null 
-    ? Math.round(prop.l10_hit_rate * 100) 
-    : (hitRates.l10?.hit_rate != null ? Math.round(hitRates.l10.hit_rate * 100) : (prop.h10_rate || 0));
-  const h5Rate = prop.l5_hit_rate != null 
-    ? Math.round(prop.l5_hit_rate * 100) 
-    : (hitRates.l5?.hit_rate != null ? Math.round(hitRates.l5.hit_rate * 100) : (prop.h5_rate || 0));
+  // Hit rates (percentage) - Handle both decimal (0-1) and percentage (0-100) formats
+  // h10_rate and h5_rate are already percentages, l10_hit_rate/l5_hit_rate could be either
+  const normalizeHitRate = (rate) => {
+    if (rate == null) return 0;
+    // If rate is > 1 and <= 100, it's already a percentage
+    if (rate > 1 && rate <= 100) return Math.round(rate);
+    // If rate is > 100, it's been double-converted, divide by 100
+    if (rate > 100) return Math.round(rate / 100);
+    // If rate is <= 1, it's a decimal, multiply by 100
+    return Math.round(rate * 100);
+  };
+  
+  const h10Rate = prop.h10_rate != null 
+    ? normalizeHitRate(prop.h10_rate)
+    : (prop.l10_hit_rate != null 
+        ? normalizeHitRate(prop.l10_hit_rate) 
+        : (hitRates.l10?.hit_rate != null ? normalizeHitRate(hitRates.l10.hit_rate) : (hitRates.l10_rate ?? 0)));
+  const h5Rate = prop.h5_rate != null 
+    ? normalizeHitRate(prop.h5_rate)
+    : (prop.l5_hit_rate != null 
+        ? normalizeHitRate(prop.l5_hit_rate) 
+        : (hitRates.l5?.hit_rate != null ? normalizeHitRate(hitRates.l5.hit_rate) : (hitRates.l5_rate ?? 0)));
   
   const getHitRateColor = (rate) => {
     if (rate >= 80) return 'text-green-400';

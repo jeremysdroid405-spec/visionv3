@@ -83,13 +83,18 @@ def calculate_hit_rate_for_games(games: List[Dict], fields, line_value: float) -
         return {"hit_rate": 0, "games_over": 0, "total_games": 0, "avg": 0}
     
     values = [get_stat_value(g, fields) for g in games]
+    # Filter out None values and ensure all are numeric
+    values = [v for v in values if v is not None]
+    if not values:
+        return {"hit_rate": 0, "games_over": 0, "total_games": 0, "avg": 0}
+    
     games_over = sum(1 for v in values if v >= line_value)
     avg = sum(values) / len(values) if values else 0
     
     return {
-        "hit_rate": games_over / len(games) if games else 0,
+        "hit_rate": games_over / len(values) if values else 0,
         "games_over": games_over,
-        "total_games": len(games),
+        "total_games": len(values),
         "avg": round(avg, 1)
     }
 

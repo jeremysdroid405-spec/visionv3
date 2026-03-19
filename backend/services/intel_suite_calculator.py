@@ -368,8 +368,9 @@ class IntelSuiteCalculator:
         confidence_factors = []
         
         # Analyze usage ripple
-        if usage_ripple.get("bump_percent", 0) >= 3:
-            reasons.append(f"Usage projected +{usage_ripple['bump_percent']}% due to lineup changes")
+        bump_percent = usage_ripple.get("bump_percent") or 0
+        if bump_percent >= 3:
+            reasons.append(f"Usage projected +{bump_percent}% due to lineup changes")
             confidence_factors.append("volume_increase")
         
         # Analyze matchup
@@ -394,11 +395,13 @@ class IntelSuiteCalculator:
         
         # Check board pick for additional context
         if board_pick:
-            if board_pick.get("h10_rate", 0) >= 0.8:
-                reasons.append(f"Strong L10 hit rate ({int(board_pick['h10_rate']*100)}%)")
+            h10_rate = board_pick.get("h10_rate") or 0
+            edge_percent = board_pick.get("edge_percent") or 0
+            if h10_rate >= 0.8:
+                reasons.append(f"Strong L10 hit rate ({int(h10_rate*100)}%)")
                 confidence_factors.append("hit_rate")
-            if board_pick.get("edge_percent", 0) >= 5:
-                reasons.append(f"Market edge detected (+{board_pick['edge_percent']:.1f}%)")
+            if edge_percent >= 5:
+                reasons.append(f"Market edge detected (+{edge_percent:.1f}%)")
                 confidence_factors.append("market_edge")
         
         # Build primary insight
