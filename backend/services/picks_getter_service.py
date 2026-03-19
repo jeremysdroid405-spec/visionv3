@@ -1269,11 +1269,12 @@ class PicksGetterService:
         1. L10 Hit Rate >= 65% (solid but not Safe Haven tier)
         2. Line can't be the LOWEST available (not the safest floor play)
         3. Must NOT qualify for Safe Haven (H10 >= 80%)
+        4. Can be DEMON or GOBLIN picks
         """
         
-        # Get all players that have goblin props
+        # Get all players that have demon OR goblin props
         players = await self.cached_board.find(
-            {"props.is_goblin": True},
+            {"$or": [{"props.is_demon": True}, {"props.is_goblin": True}]},
             {"_id": 0}
         ).to_list(200)
         
@@ -1281,11 +1282,14 @@ class PicksGetterService:
         front_line_picks = []
         filter_stats = {
             "total_players": len(players),
-            "total_goblin_props": 0,
+            "total_qualifying_props": 0,
+            "demons_checked": 0,
+            "goblins_checked": 0,
             "passed_hit_rate_65": 0,
             "excluded_safe_haven_80": 0,
             "excluded_lowest_line": 0,
-            "final_picks": 0
+            "final_demons": 0,
+            "final_goblins": 0
         }
         
         for player_doc in players:
@@ -1301,19 +1305,28 @@ class PicksGetterService:
                     props_by_stat[stat_type] = []
                 props_by_stat[stat_type].append(prop)
             
-            # Find goblin props that meet criteria
+            # Find demon/goblin props that meet criteria
             for stat_type, props in props_by_stat.items():
-                goblin_props = [p for p in props if p.get("is_goblin")]
-                if not goblin_props:
+                # Get all demon and goblin props for this stat
+                qualifying_props = [p for p in props if p.get("is_demon") or p.get("is_goblin")]
+                if not qualifying_props:
                     continue
                 
-                filter_stats["total_goblin_props"] += len(goblin_props)
+                filter_stats["total_qualifying_props"] += len(qualifying_props)
                 
                 # Sort props by line to find lowest
                 all_lines_for_stat = sorted([p.get("line", 0) for p in props if p.get("line")])
                 lowest_line = all_lines_for_stat[0] if all_lines_for_stat else None
                 
-                for prop in goblin_props:
+                for prop in qualifying_props:
+                    is_demon = prop.get("is_demon", False)
+                    is_goblin = prop.get("is_goblin", False)
+                    
+                    if is_demon:
+                        filter_stats["demons_checked"] += 1
+                    if is_goblin:
+                        filter_stats["goblins_checked"] += 1
+                    
                     line = prop.get("line")
                     
                     # Get hit rate from nested structure
@@ -1348,7 +1361,10 @@ class PicksGetterService:
                         continue
                     
                     # PASSED ALL FILTERS
-                    filter_stats["final_picks"] += 1
+                    if is_demon:
+                        filter_stats["final_demons"] += 1
+                    else:
+                        filter_stats["final_goblins"] += 1
                     
                     pick = {
                         "player_name": player_name,
@@ -1359,8 +1375,8 @@ class PicksGetterService:
                         "line": line,
                         "odds": prop.get("price"),
                         "direction": prop.get("direction", "over"),
-                        "is_demon": False,
-                        "is_goblin": True,
+                        "is_demon": is_demon,
+                        "is_goblin": is_goblin,
                         "tier_label": "FRONT_LINE",
                         "l10_hit_rate": l10_hit_rate,
                         "l5_hit_rate": l5_hit_rate,
@@ -1373,7 +1389,8 @@ class PicksGetterService:
                     }
                     
                     front_line_picks.append(pick)
-                    logger.info(f"[FRONT_LINES] ✓ {player_name} {stat_type} @ {line} | L10: {l10_hit_rate:.0f}%")
+                    pick_type = "DEMON" if is_demon else "GOBLIN"
+                    logger.info(f"[FRONT_LINES] ✓ {player_name} {stat_type} @ {line} | {pick_type} | L10: {l10_hit_rate:.0f}%")
         
         # Sort by L10 hit rate (highest first)
         front_line_picks.sort(key=lambda x: x.get("l10_hit_rate", 0), reverse=True)
@@ -1386,7 +1403,7 @@ class PicksGetterService:
                 seen_players.add(pick["player_name"])
                 unique_picks.append(pick)
         
-        logger.info(f"[FRONT_LINES] Found {len(unique_picks)} unique player picks | Filters: {filter_stats}")
+        logger.info(f"[FRONT_LINES] Found {len(unique_picks)} unique player picks | Demons: {filter_stats['final_demons']} | Goblins: {filter_stats['final_goblins']}")
         
         # SSOT: Enrich ALL picks with photos from master hub
         await self._enrich_picks_with_photos(unique_picks)
@@ -1395,7 +1412,7 @@ class PicksGetterService:
             "picks": unique_picks[:10],  # Return exactly 10 picks
             "picks_count": len(unique_picks),
             "filter_stats": filter_stats,
-            "filters_applied": ["l10_hit_rate_65pct", "not_lowest_line", "exclude_safe_haven", "one_per_player"]
+            "filters_applied": ["l10_hit_rate_65pct", "not_lowest_line", "exclude_safe_haven", "one_per_player", "demons_and_goblins"]
         }
     
     def _calculate_l25_hit_rate(self, game_logs: List[Dict], stat_type: str, line: float) -> Dict:
