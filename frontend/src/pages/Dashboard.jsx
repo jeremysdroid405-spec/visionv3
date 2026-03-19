@@ -22,7 +22,7 @@ import { Card } from '../components/ui/card';
 import { 
   Search, X, LogOut, Crown, User, Radio, AlertTriangle, Activity, 
   ChevronRight, Eye, Zap, ChevronDown, Flame, ArrowLeft, Target,
-  TrendingUp, Newspaper, Clock
+  TrendingUp, Newspaper, Clock, Crosshair
 } from 'lucide-react';
 
 // Dashboard Components
@@ -862,9 +862,17 @@ const Dashboard = () => {
       <header className="sticky top-0 z-50 bg-zinc-950/95 backdrop-blur-sm border-b border-zinc-800 px-4 py-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
+            <Crosshair className="w-8 h-8 text-emerald-400" />
             <div>
               <h1 className="text-2xl font-black tracking-tight text-white">PROPVISION</h1>
-              <p className="text-[10px] text-zinc-500 -mt-0.5">AI-POWERED PROP INTEL</p>
+              <div className="flex items-center gap-2 text-[10px] text-zinc-500 -mt-0.5">
+                <span>AI-POWERED PROP INTEL</span>
+                <span className="text-zinc-700">•</span>
+                <Radio className={`w-2.5 h-2.5 ${syncStatus.has_stale_intel ? 'text-amber-400' : 'text-emerald-400 animate-pulse'}`} />
+                <span className="font-mono">
+                  {boardIntelStatus.time_since_sync_display || 'syncing...'}
+                </span>
+              </div>
             </div>
           </div>
           
@@ -902,13 +910,6 @@ const Dashboard = () => {
               )}
             </div>
           </div>
-        </div>
-        
-        <div className="flex items-center gap-2 mt-1.5 text-[10px] text-zinc-500">
-          <Radio className={`w-3 h-3 ${syncStatus.has_stale_intel ? 'text-amber-400' : 'text-emerald-400'}`} />
-          <span className="font-mono">
-            {syncStatus.has_stale_intel ? `⚠️ STALE (${boardIntelStatus.time_since_sync_display})` : `Intel: ${boardIntelStatus.time_since_sync_display}`}
-          </span>
         </div>
       </header>
       
