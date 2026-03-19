@@ -861,11 +861,10 @@ const Dashboard = () => {
       {/* Header */}
       <header className="sticky top-0 z-50 bg-zinc-950/95 backdrop-blur-sm border-b border-zinc-800 px-4 py-3">
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <DemonIcon size={28} />
+          <div className="flex items-center gap-3">
             <div>
-              <h1 className="text-lg font-black tracking-tight text-white">PICKVISION</h1>
-              <p className="text-[9px] text-zinc-500 -mt-0.5">AI-POWERED PROP INTEL</p>
+              <h1 className="text-2xl font-black tracking-tight text-white">PROPVISION</h1>
+              <p className="text-[10px] text-zinc-500 -mt-0.5">AI-POWERED PROP INTEL</p>
             </div>
           </div>
           
@@ -1058,7 +1057,7 @@ const Dashboard = () => {
               </span>
             )}
           </div>
-          <span className="text-zinc-600">PickVision AI</span>
+          <span className="text-zinc-600">PropVision AI</span>
         </div>
       </div>
       
