@@ -140,160 +140,30 @@ class SyncOrchestrationService:
             await self._engine.fetch_news()
             results["injuries_found"] = len(injuries)
             
-            # ===== PILLAR 2: PROCESS STATS =====
-            logger.info("\n[PILLAR 2] Processing stats from BallDontLie...")
+            # ===== FAST PATH: Build cached board directly =====
+            # Skip the slow per-prop processing loop - it was doing API calls for EACH prop
+            # The cached_board builder does the same work but optimized
             
-            # Deduplicate by player+market+line+direction
-            unique_props = {}
-            for prop in all_props:
-                key = f"{prop['player_name']}|{prop['market']}|{prop['line']}|{prop['direction']}"
-                if key not in unique_props:
-                    unique_props[key] = prop
+            logger.info(f"\n[PILLAR 2] Building cached board from {len(all_props)} props...")
+            results["total_props"] = len(all_props)
+            results["unique_players"] = len(all_players)
+            results["standard_count"] = sum(1 for p in all_props if p.get("prop_type") == "standard")
+            results["demons_count"] = sum(1 for p in all_props if p.get("is_demon"))
+            results["goblins_count"] = sum(1 for p in all_props if p.get("is_goblin"))
             
-            processed_props = []
-            prop_list = list(unique_props.values())
-            batch_size = 50
+            logger.info(f"  Props: {results['total_props']} | Players: {results['unique_players']}")
+            logger.info(f"  Standard: {results['standard_count']} | Demons: {results['demons_count']} | Goblins: {results['goblins_count']}")
             
-            logger.info(f"  Processing {len(prop_list)} unique props...")
-            
-            for i in range(0, len(prop_list), batch_size):
-                batch = prop_list[i:i+batch_size]
-                
-                for prop in batch:
-                    try:
-                        processed = await self._engine.process_player_prop(prop)
-                        processed_props.append(processed)
-                        
-                        if processed.get("bdl_player_id"):
-                            results["stats_fetched"] += 1
-                        
-                        if processed.get("has_goblin_warning"):
-                            results["goblin_warnings"] += 1
-                        
-                        # Track verification stats
-                        if processed.get("source_verified"):
-                            results["verification_stats"]["verified_count"] += 1
-                        else:
-                            verification_status = processed.get("verification_status", "")
-                            if verification_status == "NAJI_SAFEGUARD_FAILED":
-                                results["verification_stats"]["naji_safeguard_failures"] += 1
-                                results["verification_stats"]["failed_count"] += 1
-                            elif verification_status == "HALLUCINATION_DETECTED":
-                                results["verification_stats"]["hallucinations_detected"] += 1
-                                results["verification_stats"]["failed_count"] += 1
-                            elif verification_status == "DISCREPANCY":
-                                results["verification_stats"]["discrepancies_found"] += 1
-                                results["verification_stats"]["failed_count"] += 1
-                        
-                        await asyncio.sleep(0.1)
-                        
-                    except Exception as e:
-                        results["errors"].append(f"Prop error: {str(e)[:50]}")
-                
-                logger.info(f"  Processed {min(i+batch_size, len(prop_list))}/{len(prop_list)} props")
-            
-            # ===== STORE RESULTS GROUPED BY PLAYER =====
-            logger.info("\n[STORAGE] Organizing data by player via OddsApiMapper...")
-            
-            mapper_ready = await self._engine._ensure_odds_mapper_loaded()
-            if not mapper_ready or not self._engine._odds_mapper:
-                logger.error("[STORAGE] CRITICAL: OddsApiMapper not available!")
-                results["errors"].append("OddsApiMapper initialization failed")
-            else:
-                logger.info("[STORAGE] OddsApiMapper loaded - enriching all players from nba_master_hub_2026")
-            
-            # Collect unique player names for batch lookup
-            unique_players = set(prop.get("player_name", "Unknown") for prop in processed_props)
-            logger.info(f"[STORAGE] Found {len(unique_players)} unique players to enrich")
-            
-            # Batch lookup all players via mapper
-            player_hub_data = {}
-            unmatched_players = []
-            
-            if mapper_ready and self._engine._odds_mapper:
-                for player_name in unique_players:
-                    player_id = self._engine._odds_mapper.getPlayerIdFromOddsName(player_name)
-                    if player_id:
-                        hub_data = self._engine._odds_mapper.getFullPlayerData(player_name)
-                        if hub_data:
-                            player_hub_data[player_name] = hub_data
-                        else:
-                            unmatched_players.append(player_name)
-                    else:
-                        unmatched_players.append(player_name)
-                
-                logger.info(f"[STORAGE] Mapper matched: {len(player_hub_data)}/{len(unique_players)} players")
-                if unmatched_players:
-                    logger.warning(f"[STORAGE] Unmatched players ({len(unmatched_players)}): {unmatched_players[:10]}...")
-            
-            # Build player data dictionary
-            player_data = self._build_player_data_dict(
-                processed_props, player_hub_data, self._engine._player_popularity
-            )
-            
-            # Log enrichment stats
-            mapper_matched = sum(1 for p in player_data.values() if p.get("is_mapper_matched"))
-            with_player_id = sum(1 for p in player_data.values() if p.get("player_id"))
-            with_photo = sum(1 for p in player_data.values() if p.get("headshot_url"))
-            
-            logger.info(f"[STORAGE] ENRICHMENT COMPLETE:")
-            logger.info(f"  Total Players: {len(player_data)}")
-            logger.info(f"  Mapper Matched: {mapper_matched}")
-            logger.info(f"  With player_id: {with_player_id}")
-            logger.info(f"  With headshot_url: {with_photo}")
-            
-            # Build trending 10
-            trending_10 = self._build_trending_10(player_data)
-            await self._engine.trending_cache.delete_many({})
-            if trending_10:
-                await self._engine.trending_cache.insert_many(trending_10)
-            results["trending_count"] = len(trending_10)
-            logger.info(f"  Trending 10: {[t['player_name'] for t in trending_10]}")
-            
-            # Store all player data
-            await self.player_data.delete_many({})
-            if player_data:
-                await self.player_data.insert_many(list(player_data.values()))
-            
-            # Store static shell cache
-            logger.info("\n[CACHE] Storing static shell (24h TTL)...")
-            await self._engine.store_static_shell(list(player_data.values()), trending_10)
-            
-            # Build tier collections
-            logger.info("\n[WAR ZONE/VAULT] Building top 10 pick sections...")
-            
+            # Build the centralized cached board (THE FAST PATH)
             try:
-                await self._engine._build_war_zone(player_data, sync_start)
-                logger.info("[WAR ZONE] Rebuilt successfully")
+                board_result = await self._engine._build_cached_board(all_props, sync_start)
+                results["records_updated"] = board_result.get("players_count", 0)
+                logger.info(f"[CACHED_BOARD] Built successfully with {results['records_updated']} players")
             except Exception as e:
-                logger.error(f"[WAR ZONE] Error building: {e}")
-            
-            try:
-                await self._engine._build_front_lines(player_data, sync_start)
-                logger.info("[FRONT LINES] Rebuilt successfully")
-            except Exception as e:
-                logger.error(f"[FRONT LINES] Error building: {e}")
-            
-            try:
-                await self._engine._build_goblin_vault(player_data, sync_start)
-                logger.info("[GOBLIN VAULT] Rebuilt successfully")
-            except Exception as e:
-                logger.error(f"[GOBLIN VAULT] Error building: {e}")
-            
-            # Build parlay generators
-            logger.info("\n[PARLAYS] Building parlay generators...")
-            
-            try:
-                await self._engine._build_parlay_builder(player_data, sync_start)
-            except Exception as e:
-                logger.error(f"[PARLAY BUILDER] Error building demon parlays: {e}")
-            
-            try:
-                await self._engine._build_goblin_recon(player_data, sync_start)
-            except Exception as e:
-                logger.error(f"[GOBLIN RECON] Error building goblin parlays: {e}")
-            
-            logger.info("[PARLAYS] Parlay generators built successfully")
+                logger.error(f"[CACHED_BOARD] Error building: {e}")
+                import traceback
+                logger.error(traceback.format_exc())
+                results["errors"].append(f"Cached board error: {str(e)}")
             
             # Log sync result
             await self.sync_log.insert_one({
@@ -370,11 +240,16 @@ class SyncOrchestrationService:
             all_players = set()
             
             for event in events:
-                props = await self._engine.fetch_prizepicks_odds(event)
-                if props:
-                    all_props.extend(props)
-                    for prop in props:
-                        all_players.add(prop.get("player_name", ""))
+                event_id = event.get("id")
+                if event_id:
+                    odds_data = await self._engine.fetch_prizepicks_odds(event_id, event)
+                    if odds_data:
+                        props = self._engine.extract_prizepicks_props(odds_data)
+                        if props:
+                            all_props.extend(props)
+                            for prop in props:
+                                all_players.add(prop.get("player_name", ""))
+                    await asyncio.sleep(0.3)
             
             logger.info(f"[DELTA] Fetched {len(all_props)} props for {len(all_players)} players")
             

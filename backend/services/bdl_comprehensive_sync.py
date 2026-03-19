@@ -256,19 +256,33 @@ class BDLComprehensiveSyncService:
         """
         Sync ALL available data for a single player.
         Combines: profile, season_averages, and game_logs.
+        Uses parallel fetching for speed.
         
         Returns complete document to be stored in nba_master_hub_2026.
         """
-        # Fetch profile
-        profile = await self.fetch_player_by_id(player_id)
-        if not profile:
+        # Fetch all data in parallel
+        results = await asyncio.gather(
+            self.fetch_player_by_id(player_id),
+            self.fetch_season_averages(player_id),
+            self.fetch_player_game_logs(player_id, limit=100),
+            return_exceptions=True
+        )
+        
+        profile, season_avg, game_logs = results
+        
+        # Handle exceptions
+        if isinstance(profile, Exception):
+            logger.error(f"[BDL] Profile fetch error for {player_id}: {profile}")
             return None
-        
-        # Fetch season averages
-        season_avg = await self.fetch_season_averages(player_id)
-        
-        # Fetch game logs (last 100 games to cover the full season)
-        game_logs = await self.fetch_player_game_logs(player_id, limit=100)
+        if not profile:
+            logger.warning(f"[BDL] No profile for player {player_id}")
+            return None
+        if isinstance(season_avg, Exception):
+            logger.debug(f"[BDL] Season avg error for {player_id}: {season_avg}")
+            season_avg = None
+        if isinstance(game_logs, Exception):
+            logger.debug(f"[BDL] Game logs error for {player_id}: {game_logs}")
+            game_logs = []
         
         # Build display name
         first_name = profile.get("first_name", "")
@@ -309,15 +323,12 @@ class BDLComprehensiveSyncService:
             "team_id": team_data.get("id"),
             
             # Baseline stats - Transform BDL format to our expected format
-            # Season averages come DIRECTLY from BDL /season_averages (official stats)
-            # L5/L10 averages calculated from game_logs
             "baseline_stats": self._transform_bdl_stats(season_avg, game_logs) if season_avg else {},
             
             # Raw BDL stats (preserved for reference)
             "bdl_raw_stats": season_avg if season_avg else {},
             
             # Individual game logs (EXACTLY as received from BDL /stats)
-            # Last 15 games with full box scores
             "bdl_game_logs": game_logs,
             
             # Sync metadata
@@ -558,56 +569,160 @@ class BDLComprehensiveSyncService:
     
     async def sync_prizepicks_players(self) -> Dict[str, Any]:
         """
-        Sync only players currently on the PrizePicks board.
-        Uses BDL ID mapping for efficient lookups (no name searches).
+        Sync players on PrizePicks board using BATCH API calls.
+        Uses game logs only - calculates averages from them.
         """
-        from services.bdl_player_mapping import get_bdl_mapping_service
+        sync_start = datetime.now(timezone.utc)
+        logger.info("[BDL] Syncing players via BATCH game logs...")
         
-        logger.info("[BDL] Syncing players from PrizePicks board...")
-        
-        # Get mapping service
-        mapping_service = get_bdl_mapping_service(self.db)
-        
-        # Get unique players from cached board
+        # Get bdl_ids from master hub for players on the board
         pipeline = [
             {"$group": {"_id": "$player_name"}},
-            {"$limit": 200}
+            {"$lookup": {
+                "from": "nba_master_hub_2026",
+                "localField": "_id",
+                "foreignField": "display_name",
+                "as": "hub"
+            }},
+            {"$unwind": {"path": "$hub", "preserveNullAndEmptyArrays": True}},
+            {"$match": {"hub.bdl_id": {"$exists": True, "$ne": None}}},
+            {"$project": {"player_name": "$_id", "bdl_id": "$hub.bdl_id"}}
         ]
         
         cursor = self.db.dg_cached_board.aggregate(pipeline)
-        player_names = [doc["_id"] async for doc in cursor]
+        players = [doc async for doc in cursor]
+        bdl_ids = [p["bdl_id"] for p in players]
         
-        logger.info(f"[BDL] Found {len(player_names)} unique players on PrizePicks board")
+        logger.info(f"[BDL] Found {len(bdl_ids)} players with bdl_id")
         
-        results = {
-            "success": 0,
-            "failed": 0,
-            "not_found": 0,
-            "total": len(player_names)
+        if not bdl_ids:
+            return {"success": 0, "failed": 0, "total": 0, "duration_seconds": 0}
+        
+        # BATCH: Get all game logs (calculates season avg + L5/L10 from these)
+        logger.info(f"[BDL] Fetching game logs for {len(bdl_ids)} players...")
+        game_logs_map = await self._batch_fetch_game_logs(bdl_ids)
+        logger.info(f"[BDL] Got game logs for {len([k for k,v in game_logs_map.items() if v])} players")
+        
+        # Update master hub with calculated stats
+        success = 0
+        for player in players:
+            bdl_id = player["bdl_id"]
+            game_logs = game_logs_map.get(bdl_id, [])
+            
+            if game_logs:
+                baseline_stats = self._calculate_baseline_from_logs(game_logs)
+                
+                await self.master_hub.update_one(
+                    {"bdl_id": bdl_id},
+                    {"$set": {
+                        "baseline_stats": baseline_stats,
+                        "bdl_game_logs": game_logs[:15],
+                        "last_bdl_sync": datetime.now(timezone.utc)
+                    }}
+                )
+                success += 1
+        
+        duration = round((datetime.now(timezone.utc) - sync_start).total_seconds(), 2)
+        logger.info(f"[BDL] Batch sync complete: {success}/{len(players)} in {duration}s")
+        
+        return {
+            "success": success,
+            "failed": len(players) - success,
+            "total": len(players),
+            "duration_seconds": duration
+        }
+    
+    def _calculate_baseline_from_logs(self, game_logs: List[Dict]) -> Dict:
+        """Calculate baseline stats from game logs."""
+        if not game_logs:
+            return {}
+        
+        # Filter out DNP games (0 minutes)
+        played_games = [g for g in game_logs if g.get("min") and g.get("min") != "00" and g.get("min") != "0"]
+        
+        if not played_games:
+            return {}
+        
+        stat_keys = {
+            "PTS": "pts",
+            "REB": "reb", 
+            "AST": "ast",
+            "STL": "stl",
+            "BLK": "blk",
+            "FG3M": "fg3m",
+            "FGM": "fgm",
+            "FTM": "ftm",
+            "OREB": "oreb",
+            "DREB": "dreb",
+            "TO": "turnover",
+            "PF": "pf",
+            "MIN": "min"
         }
         
-        # Get all BDL IDs at once (uses cache)
-        name_to_id = await mapping_service.get_all_bdl_ids(player_names)
+        baseline = {}
         
-        # Sync by ID (much faster than name search)
-        for name, bdl_id in name_to_id.items():
-            if bdl_id:
-                success = await self.sync_player_to_master_hub(bdl_id)
-                if success:
-                    results["success"] += 1
-                else:
-                    results["failed"] += 1
-            else:
-                results["not_found"] += 1
-                logger.warning(f"[BDL] Player not found: {name}")
+        for our_key, bdl_key in stat_keys.items():
+            values = []
+            for game in played_games:
+                val = game.get(bdl_key)
+                if val is not None:
+                    # Handle MIN specially (convert "33:18" to 33.3)
+                    if bdl_key == "min" and isinstance(val, str) and ":" in val:
+                        parts = val.split(":")
+                        val = int(parts[0]) + int(parts[1])/60 if len(parts) == 2 else 0
+                    values.append(float(val) if val else 0)
             
-            # Rate limit protection (reduced since we're not searching)
+            if values:
+                l10 = values[:10]
+                l5 = values[:5]
+                baseline[our_key] = {
+                    "season_avg": round(sum(values) / len(values), 2),
+                    "l10_avg": round(sum(l10) / len(l10), 2) if l10 else None,
+                    "l5_avg": round(sum(l5) / len(l5), 2) if l5 else None,
+                    "l10_values": [round(v, 1) for v in l10],
+                    "games_played": len(values)
+                }
+        
+        return baseline
+    
+    async def _batch_fetch_game_logs(self, bdl_ids: List[int]) -> Dict[int, List[Dict]]:
+        """Fetch game logs for multiple players in batches."""
+        result = {pid: [] for pid in bdl_ids}
+        
+        batch_size = 30
+        for i in range(0, len(bdl_ids), batch_size):
+            batch = bdl_ids[i:i+batch_size]
+            
+            url = f"{BDL_BASE_URL}/stats?seasons[]={CURRENT_SEASON}&per_page=100&postseason=false"
+            for pid in batch:
+                url += f"&player_ids[]={pid}"
+            
+            try:
+                async with httpx.AsyncClient(timeout=60.0) as client:
+                    response = await client.get(url, headers={"Authorization": BDL_API_KEY})
+                    if response.status_code == 200:
+                        data = response.json().get("data", [])
+                        for game in data:
+                            player = game.get("player", {})
+                            pid = player.get("id") if isinstance(player, dict) else None
+                            if pid and pid in result:
+                                result[pid].append(game)
+                    else:
+                        logger.error(f"[BDL] Game logs batch error: {response.status_code}")
+            except Exception as e:
+                logger.error(f"[BDL] Batch game_logs error: {e}")
+            
             await asyncio.sleep(0.2)
         
-        results["synced_at"] = datetime.now(timezone.utc).isoformat()
-        logger.info(f"[BDL] PrizePicks sync complete: {results['success']}/{results['total']}")
+        # Sort by date descending
+        for pid in result:
+            result[pid] = sorted(
+                result[pid],
+                key=lambda x: x.get("game", {}).get("date", "") if isinstance(x.get("game"), dict) else "",
+                reverse=True
+            )
         
-        return results
+        return result
 
 
 # ==================== SINGLETON INSTANCE ====================

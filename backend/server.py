@@ -656,6 +656,15 @@ async def startup_event():
         replace_existing=True
     )
     
+    # Morning props sync at 5:00 AM EST (10:00 AM UTC) - Odds/Props refresh
+    scheduler.add_job(
+        scheduled_daily_sync,
+        CronTrigger(hour=10, minute=0, timezone=SCHEDULER_TIMEZONE),  # 5:00 AM EST = 10:00 AM UTC
+        id='morning_props_sync',
+        name='5:00 AM EST Morning Props Sync',
+        replace_existing=True
+    )
+    
     # Weekly Master Roster sync every Sunday at midnight UTC
     scheduler.add_job(
         scheduled_roster_sync,
@@ -668,6 +677,7 @@ async def startup_event():
     scheduler.start()
     logger.info(f"[SCHEDULER] APScheduler started")
     logger.info(f"[SCHEDULER] Daily Full Sync: 04:00 AM EST (09:00 UTC) - 10 Steps: Stats + DvP + Vision AI + Career Stats + Contracts")
+    logger.info(f"[SCHEDULER] Morning Props Sync: 05:00 AM EST (10:00 UTC)")
     logger.info(f"[SCHEDULER] Weekly Roster: Sunday 00:00 UTC")
     
     # DISABLED: Full auto-sync on startup to prevent credit drain

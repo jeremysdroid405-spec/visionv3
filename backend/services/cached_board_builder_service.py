@@ -449,6 +449,7 @@ class CachedBoardBuilderService:
         
         hub_stats = hub_player.get("stats", {})
         season_avg = hub_stats.get("season_avg", {})
+        baseline_stats = player_stats.get("baseline_stats", {})
         
         return {
             # Primary identifiers
@@ -472,12 +473,10 @@ class CachedBoardBuilderService:
             "position": hub_player.get("position"),
             "jersey_number": hub_player.get("jersey"),
             
-            # SSOT: Stats REMOVED from cached_board - use Master Hub (PIPE 1) instead
-            # l5_stats and l10_stats are calculated on-the-fly from master_hub.game_logs
+            # Stats for hit_rates calculation
+            "baseline_stats": baseline_stats,
             "season_avg": season_avg,
             "games_played": season_avg.get("gp", player_stats.get("games_played", 0)),
-            # PURGED: l10_stats - redundant with master_hub.baseline_stats
-            # PURGED: l5_stats - redundant with master_hub.baseline_stats
             
             # Social signals
             "volatility_flag": social.get("volatility_flag", False),
@@ -540,7 +539,44 @@ class CachedBoardBuilderService:
         }
     
     def _add_prop_to_player(self, player: Dict, prop: Dict) -> None:
-        """Add prop to player and calculate opponent"""
+        """Add prop to player with hit_rates calculated from baseline stats"""
+        
+        # Calculate hit_rates from master hub baseline stats
+        stat_type = prop.get("market", "").replace("player_", "").replace("_alternate", "").upper()
+        line = prop.get("line", 0)
+        
+        # Get baseline stats from master hub (stored in player during _create_matched_player)
+        baseline = player.get("baseline_stats", {})
+        stat_baseline = baseline.get(stat_type, {})
+        
+        # Calculate hit rates based on L10/L5 values
+        l10_values = stat_baseline.get("l10_values", [])
+        l5_values = l10_values[-5:] if len(l10_values) >= 5 else l10_values
+        
+        hit_rates = {
+            "l10_rate": None,
+            "l5_rate": None,
+            "l10_hit_count": 0,
+            "l5_hit_count": 0,
+            "l5_avg": stat_baseline.get("l5_avg"),
+            "season_avg": stat_baseline.get("season_avg"),
+            "l10_avg": stat_baseline.get("l10_avg")
+        }
+        
+        if l10_values and line:
+            over_hits = sum(1 for v in l10_values if v >= line)
+            hit_rates["l10_rate"] = round((over_hits / len(l10_values)) * 100)
+            hit_rates["l10_hit_count"] = over_hits
+        
+        if l5_values and line:
+            over_hits = sum(1 for v in l5_values if v >= line)
+            hit_rates["l5_rate"] = round((over_hits / len(l5_values)) * 100) if l5_values else None
+            hit_rates["l5_hit_count"] = over_hits
+        
+        # Add hit_rates to prop
+        prop["hit_rates"] = hit_rates
+        prop["stat_type"] = stat_type
+        
         player["props"].append(prop)
         
         if prop.get("is_demon"):

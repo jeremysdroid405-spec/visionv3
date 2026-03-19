@@ -1148,18 +1148,34 @@ class PicksGetterService:
                 if not line:
                     continue
                 
-                # Get embedded hit rates
+                # Get embedded hit rates - support both flat and nested structures
                 hit_rates = prop.get("hit_rates", {})
-                l10_data = hit_rates.get("l10", {})
-                l5_data = hit_rates.get("l5", {})
-                l10_hit_rate = l10_data.get("hit_rate", 0)
-                l10_games = l10_data.get("total_games", 0)
-                l10_avg = l10_data.get("avg")
-                l5_avg = l5_data.get("avg")
-                season_data = hit_rates.get("season", {})
-                season_avg = season_data.get("avg", 0)
                 
-                if l10_games < 5:
+                # Flat structure (from cached_board_builder)
+                l10_hit_rate = hit_rates.get("l10_rate")
+                l5_avg = hit_rates.get("l5_avg")
+                l10_avg = hit_rates.get("l10_avg")
+                season_avg = hit_rates.get("season_avg", 0)
+                
+                # If flat structure not available, try nested structure (legacy)
+                if l10_hit_rate is None:
+                    l10_data = hit_rates.get("l10", {})
+                    l5_data = hit_rates.get("l5", {})
+                    l10_hit_rate = l10_data.get("hit_rate", 0)
+                    l10_games = l10_data.get("total_games", 0)
+                    l10_avg = l10_data.get("avg")
+                    l5_avg = l5_data.get("avg")
+                    season_data = hit_rates.get("season", {})
+                    season_avg = season_data.get("avg", 0)
+                    
+                    if l10_games < 5:
+                        continue
+                else:
+                    # For flat structure, skip the games check since we don't have that data
+                    pass
+                
+                # If still no hit rate, skip (need hit rate for filtering)
+                if l10_hit_rate is None:
                     continue
                 
                 # Convert hit rate to percentage (it's stored as decimal 0-1)
