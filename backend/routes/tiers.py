@@ -3,7 +3,8 @@ Tier Routes
 ===========
 War Zone, Safe Haven (Goblin Vault), and Front Lines tier endpoints.
 """
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Response
+from fastapi.responses import JSONResponse
 import logging
 
 logger = logging.getLogger(__name__)
@@ -28,6 +29,7 @@ def get_engine():
 
 @router.get("/v3/war-zone")
 async def get_war_zone(
+    response: Response,
     limit: int = Query(50, ge=1, le=200),
     include_vision: bool = Query(True)
 ):
@@ -39,6 +41,11 @@ async def get_war_zone(
     
     Display with red/orange gradient cards in the UI.
     """
+    # Prevent browser caching to ensure fresh photo data
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+    
     engine = get_engine()
     result = await engine.get_war_zone()
     return result
@@ -46,6 +53,7 @@ async def get_war_zone(
 
 @router.get("/v3/goblin-vault")
 async def get_goblin_vault(
+    response: Response,
     limit: int = Query(50, ge=1, le=200),
     include_vision: bool = Query(True)
 ):
@@ -57,6 +65,11 @@ async def get_goblin_vault(
     
     Display with green gradient cards in the UI.
     """
+    # Prevent browser caching to ensure fresh photo data
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+    
     engine = get_engine()
     result = await engine.get_goblin_vault()
     return result
@@ -64,17 +77,19 @@ async def get_goblin_vault(
 
 @router.get("/v3/safe-haven")
 async def get_safe_haven(
+    response: Response,
     limit: int = Query(50, ge=1, le=200),
     include_vision: bool = Query(True)
 ):
     """
     Alias for /v3/goblin-vault (user-friendly name).
     """
-    return await get_goblin_vault(limit=limit, include_vision=include_vision)
+    return await get_goblin_vault(response=response, limit=limit, include_vision=include_vision)
 
 
 @router.get("/v3/front-lines")
 async def get_front_lines(
+    response: Response,
     limit: int = Query(50, ge=1, le=200),
     include_vision: bool = Query(True)
 ):
@@ -86,6 +101,11 @@ async def get_front_lines(
     
     Display with mixed gradient cards in the UI.
     """
+    # Prevent browser caching to ensure fresh photo data
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+    
     engine = get_engine()
     result = await engine.get_front_lines()
     return result

@@ -38,11 +38,11 @@ const queryClient = new QueryClient({
       retry: 1,
       retryDelay: 1000,
       
-      // Default stale time (5 minutes for most queries)
-      staleTime: 5 * 60 * 1000,
+      // Reduce stale time to force fresh data (photos were added)
+      staleTime: 1 * 60 * 1000, // 1 minute
       
-      // Keep data in cache for 30 minutes
-      gcTime: 30 * 60 * 1000,
+      // Keep data in cache for 10 minutes (reduced from 30)
+      gcTime: 10 * 60 * 1000,
     },
   },
 });
