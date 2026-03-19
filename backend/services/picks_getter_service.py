@@ -69,7 +69,7 @@ def _get_game_status(commence_time_str: str) -> Dict[str, Any]:
         # Game has started - check if it's still in progress (NBA games ~2.5 hours)
         minutes_since_start = abs(time_diff.total_seconds()) / 60
         
-        if minutes_since_start < 180:  # Less than 3 hours = in progress
+        if minutes_since_start < 150:  # Less than 2.5 hours = in progress
             return {
                 "status": "in_progress",
                 "is_locked": True,
