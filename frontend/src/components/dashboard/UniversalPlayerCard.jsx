@@ -646,7 +646,7 @@ const UniversalPlayerCard = memo(({
               <button
                 onClick={(e) => { e.stopPropagation(); handleQuickAdd(player); }}
                 className="w-9 h-9 rounded-full bg-cyan-500/20 border border-cyan-500/40 flex items-center justify-center text-cyan-400 hover:bg-cyan-500/30 transition-all"
-                title="Add to Command Post"
+                title="Add to Command Hub"
                 data-testid={`quick-add-${playerSlug}`}
               >
                 <Plus className="w-5 h-5" />

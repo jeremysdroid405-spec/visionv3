@@ -237,7 +237,7 @@ const CommandPost = memo(({ isOpen, onClose, pendingLeg, onPendingLegProcessed }
     if (pendingLeg && onPendingLegProcessed) {
       // STRICT CONFLICT CHECK: Block if player already exists
       if (isPlayerInLegs(pendingLeg.player_id, pendingLeg.player_name)) {
-        toast.error(`Conflict: ${pendingLeg.player_name} is already in your Command Post`, {
+        toast.error(`Conflict: ${pendingLeg.player_name} is already in your Command Hub`, {
           description: 'Remove the existing prop first to add a different one.',
           icon: <Ban className="w-4 h-4" />,
           duration: 4000,
@@ -298,7 +298,7 @@ const CommandPost = memo(({ isOpen, onClose, pendingLeg, onPendingLegProcessed }
     
     // STRICT CONFLICT CHECK: Block if player already exists
     if (isPlayerInLegs(selectedProfile.player_id, selectedProfile.player_name)) {
-      toast.error(`Conflict: ${selectedProfile.player_name} is already in your Command Post`, {
+      toast.error(`Conflict: ${selectedProfile.player_name} is already in your Command Hub`, {
         description: 'Remove the existing prop first to add a different one.',
         icon: <Ban className="w-4 h-4" />,
         duration: 4000,
@@ -434,8 +434,8 @@ const CommandPost = memo(({ isOpen, onClose, pendingLeg, onPendingLegProcessed }
         <div className="flex items-center justify-between">
           <div>
             <h2 className="text-lg font-bold text-white flex items-center gap-2">
-              <Target className="w-5 h-5 text-cyan-400" />
-              Command Post
+              <Target className="w-5 h-5 text-emerald-400" />
+              Command Hub
             </h2>
             <p className="text-[10px] text-zinc-500 uppercase tracking-wider">
               Risk Assessment Hub
@@ -500,7 +500,7 @@ const CommandPost = memo(({ isOpen, onClose, pendingLeg, onPendingLegProcessed }
                 onClick={(playerOrProp) => {
                   // When clicking a prop in the player card
                   if (isPlayerInLegs(selectedProfile.player_id, selectedProfile.player_name)) {
-                    toast.error(`Conflict: ${selectedProfile.player_name} is already in your Command Post`, {
+                    toast.error(`Conflict: ${selectedProfile.player_name} is already in your Command Hub`, {
                       description: 'Remove the existing prop first to add a different one.',
                       icon: <Ban className="w-4 h-4" />,
                       duration: 4000,

@@ -763,7 +763,7 @@ const Dashboard = () => {
   const handleQuickAdd = useCallback((pick) => {
     setPendingLeg(pick);
     setShowCommandPost(true);
-    toast.success(`Added ${pick.player_name} to Command Post`);
+    toast.success(`Added ${pick.player_name} to Command Hub`);
   }, []);
   
   // Called by CommandPost after processing the pending leg
@@ -870,14 +870,14 @@ const Dashboard = () => {
           </div>
           
           <div className="flex items-center gap-2">
-            {/* Command Post Button */}
+            {/* Command Hub Button */}
             <button 
               onClick={() => setShowCommandPost(true)} 
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-cyan-600/20 hover:bg-cyan-600/30 border border-cyan-500/30 transition-colors"
+              className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-black font-bold transition-all shadow-lg shadow-emerald-500/20 hover:shadow-emerald-400/40"
               data-testid="command-post-btn"
             >
-              <Target className="w-4 h-4 text-cyan-400" />
-              <span className="text-xs font-medium text-cyan-400 hidden sm:inline">Command Post</span>
+              <Target className="w-5 h-5" />
+              <span className="text-sm font-bold tracking-wide hidden sm:inline">Command Hub</span>
             </button>
             
             <div className="relative">
