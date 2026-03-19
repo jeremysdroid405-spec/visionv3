@@ -625,7 +625,7 @@ const PopularBetCard = memo(({ bet, rank, onClick }) => {
   
   return (
     <Card 
-      className={`p-3 cursor-pointer hover:scale-[1.02] transition-all min-w-[220px] ${
+      className={`p-2.5 sm:p-3 cursor-pointer hover:scale-[1.02] transition-all min-w-[180px] sm:min-w-[220px] ${
         isDemon ? 'bg-red-950/30 border-red-500/30' : 
         isGoblin ? 'bg-green-950/30 border-green-500/30' : 
         'bg-zinc-900 border-zinc-800'
@@ -636,33 +636,33 @@ const PopularBetCard = memo(({ bet, rank, onClick }) => {
         <div className="relative">
           <PlayerHeadshot playerName={bet.player_name} team={bet.team} photoUrl={bet.photo_url} size="sm" />
           <div className="absolute -top-1 -right-1">
-            {isDemon ? <DemonIcon size={14} /> : isGoblin ? <GoblinIcon size={14} /> : null}
+            {isDemon ? <DemonIcon size={12} /> : isGoblin ? <GoblinIcon size={12} /> : null}
           </div>
         </div>
         <div className="flex-1 min-w-0">
-          <div className="text-sm font-medium text-white truncate">{bet.player_name}</div>
-          <div className="text-xs text-zinc-500">{bet.stat_type} {bet.line}</div>
+          <div className="text-xs sm:text-sm font-medium text-white truncate">{bet.player_name}</div>
+          <div className="text-[10px] sm:text-xs text-zinc-500">{bet.stat_type} {bet.line}</div>
         </div>
-        <Badge className="bg-zinc-800 text-zinc-300 border-none text-xs">#{rank}</Badge>
+        <Badge className="bg-zinc-800 text-zinc-300 border-none text-[10px] sm:text-xs">#{rank}</Badge>
       </div>
       
       {/* L5 Avg / L10 Hit Rate / Season Avg */}
-      <div className="flex items-center justify-between bg-zinc-800/50 rounded px-2 py-1.5 text-[10px]">
-        <div className="text-center">
+      <div className="flex items-center justify-between bg-zinc-800/50 rounded px-2 py-1.5 text-[9px] sm:text-[10px]">
+        <div className="text-center flex-1">
           <div className="text-zinc-500">L5</div>
           <div className="font-bold text-white">
             {bet.l5_avg != null ? bet.l5_avg.toFixed?.(1) || bet.l5_avg : '---'}
           </div>
         </div>
         <div className="h-4 w-px bg-zinc-700" />
-        <div className="text-center">
+        <div className="text-center flex-1">
           <div className="text-zinc-500">L10</div>
           <div className={`font-bold ${getHitRateColor(bet.h10_rate || 0)}`}>
             {bet.h10_rate != null ? `${bet.h10_rate}%` : '---'}
           </div>
         </div>
         <div className="h-4 w-px bg-zinc-700" />
-        <div className="text-center">
+        <div className="text-center flex-1">
           <div className="text-zinc-500">Avg</div>
           <div className="font-bold text-white">
             {bet.season_avg != null ? bet.season_avg.toFixed?.(1) || bet.season_avg : '---'}
@@ -926,13 +926,13 @@ const Dashboard = () => {
   return (
     <div className="min-h-screen bg-zinc-950 pb-16">
       {/* Header */}
-      <header className="sticky top-0 z-50 bg-zinc-950/95 backdrop-blur-sm border-b border-zinc-800 px-4 py-3">
+      <header className="sticky top-0 z-50 bg-zinc-950/95 backdrop-blur-sm border-b border-zinc-800 px-3 sm:px-4 py-2 sm:py-3">
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Crosshair className="w-8 h-8 text-yellow-500" />
+          <div className="flex items-center gap-2 sm:gap-3">
+            <Crosshair className="w-6 h-6 sm:w-8 sm:h-8 text-yellow-500" />
             <div>
-              <h1 className="text-2xl font-black tracking-tight text-white">PROPVISION</h1>
-              <div className="flex items-center gap-2 text-[10px] text-zinc-500 -mt-0.5">
+              <h1 className="text-lg sm:text-2xl font-black tracking-tight text-white">PROPVISION</h1>
+              <div className="hidden sm:flex items-center gap-2 text-[10px] text-zinc-500 -mt-0.5">
                 <span>AI-POWERED PROP INTEL</span>
                 <span className="text-zinc-700">•</span>
                 <Radio className={`w-2.5 h-2.5 ${syncStatus.has_stale_intel ? 'text-amber-400' : 'text-emerald-400 animate-pulse'}`} />
@@ -943,31 +943,31 @@ const Dashboard = () => {
             </div>
           </div>
           
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1 sm:gap-2">
             {/* Fullscreen / Open in New Tab Button */}
             <button 
               onClick={() => window.open(window.location.href, '_blank')} 
-              className="flex items-center justify-center w-10 h-10 rounded-lg bg-zinc-800/50 hover:bg-zinc-700 border border-zinc-700/50 transition-all"
+              className="flex items-center justify-center w-9 h-9 sm:w-10 sm:h-10 rounded-lg bg-zinc-800/50 hover:bg-zinc-700 border border-zinc-700/50 transition-all"
               data-testid="fullscreen-btn"
               title="Open in new tab"
             >
-              <Maximize2 className="w-5 h-5 text-yellow-500" />
+              <Maximize2 className="w-4 h-4 sm:w-5 sm:h-5 text-yellow-500" />
             </button>
             
             {/* Command Hub Button */}
             <button 
               onClick={() => setShowCommandPost(true)} 
-              className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-zinc-800/50 hover:bg-zinc-700 border border-zinc-700/50 transition-all"
+              className="flex items-center justify-center gap-2 w-9 h-9 sm:w-auto sm:h-auto sm:px-4 sm:py-2.5 rounded-lg bg-zinc-800/50 hover:bg-zinc-700 border border-zinc-700/50 transition-all"
               data-testid="command-post-btn"
             >
-              <Target className="w-5 h-5 text-yellow-500" />
+              <Target className="w-4 h-4 sm:w-5 sm:h-5 text-yellow-500" />
               <span className="text-sm font-medium text-white hidden sm:inline">Command Hub</span>
             </button>
             
             <div className="relative">
-              <button onClick={() => setShowUserMenu(!showUserMenu)} className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-zinc-800/50 hover:bg-zinc-700 border border-zinc-700/50 transition-all" data-testid="user-menu-btn">
-                <User className="w-5 h-5 text-yellow-400" />
-                <span className="text-sm font-medium text-white">{isDemo ? 'Demo' : user?.email?.split('@')[0]}</span>
+              <button onClick={() => setShowUserMenu(!showUserMenu)} className="flex items-center gap-1 sm:gap-2 px-2 sm:px-4 py-2 sm:py-2.5 rounded-lg bg-zinc-800/50 hover:bg-zinc-700 border border-zinc-700/50 transition-all" data-testid="user-menu-btn">
+                <User className="w-4 h-4 sm:w-5 sm:h-5 text-yellow-400" />
+                <span className="text-xs sm:text-sm font-medium text-white max-w-[60px] sm:max-w-none truncate">{isDemo ? 'Demo' : user?.email?.split('@')[0]}</span>
               </button>
               
               {showUserMenu && (
@@ -1000,7 +1000,7 @@ const Dashboard = () => {
           <div className="flex items-center gap-2 mb-3">
             <Search className="w-4 h-4 text-red-400" />
             <span className="text-sm font-medium text-white">INTEL SEARCH</span>
-            <span className="text-[10px] text-zinc-500">Search any player for tactical profile</span>
+            <span className="text-[10px] text-zinc-500 hidden sm:inline">Search any player for tactical profile</span>
           </div>
           
           <div className="relative">
