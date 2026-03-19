@@ -635,23 +635,15 @@ class PicksGetterService:
     
     async def get_war_zone(self) -> Dict[str, Any]:
         """
-        Get the War Zone - HIGH-TIER DEMON picks with COMPOSITE RISK/REWARD scoring.
+        Get the War Zone - HIGH-RISK/HIGH-REWARD demon picks.
         
-        WAR ZONE LOGIC (Balanced Risk/Reward):
-        Uses a composite score that balances:
-        1. CONSISTENCY (50%): H10 hit rate - how often player hits this line
-        2. PAYOUT (30%): Boost percentage - how much above standard line
-        3. HOT HAND (20%): Heater bonus if L5 > Season avg
-        4. SAFETY (Bonus): Extra points if L5 average already beats the demon line
+        WAR ZONE LOGIC:
+        1. L10 Hit Rate >= 50% (minimum consistency threshold)
+        2. Highest payout = highest demon line with 50%+ hit rate
+        3. One pick per player (their best payout opportunity)
         
-        Minimum Requirements:
-        - Valid anchor line comparison
-        - At least 5 games of data
-        - H10 hit rate >= 40% (minimum consistency)
-        
-        Returns top 20 demon picks sorted by composite score (best risk/reward).
+        Returns top 10 demon picks sorted by payout potential.
         """
-        from datetime import datetime, timezone
         
         # Get all players that have demon props
         players = await self.cached_board.find(
@@ -659,13 +651,12 @@ class PicksGetterService:
             {"_id": 0}
         ).to_list(200)
         
-        # Build and score ALL demon props
-        scored_picks = []
+        # Build picks - find best payout per player
+        player_best_picks = {}  # player_name -> best pick
         filter_stats = {
-            "total_demons": 0,
-            "valid_anchor": 0,
-            "has_stats": 0,
-            "passed_h10_min": 0,
+            "total_players": len(players),
+            "total_demon_props": 0,
+            "passed_hit_rate_50": 0,
             "final_picks": 0
         }
         
@@ -674,122 +665,50 @@ class PicksGetterService:
             if not player_name:
                 continue
             
-            # Get master hub data for stats
-            hub_player = await self._get_master_player_by_name(player_name)
-            if not hub_player:
-                continue
-            
-            baseline_stats = hub_player.get("baseline_stats", {})
-            game_logs = hub_player.get("bdl_game_logs", []) or hub_player.get("game_logs", [])
-            
-            # Need at least 5 games for meaningful stats
-            if not game_logs or len(game_logs) < 5:
-                continue
-            
             # Get ALL demon props for this player
             demon_props = [p for p in player_doc.get("props", []) if p.get("is_demon")]
             
             for prop in demon_props:
-                filter_stats["total_demons"] += 1
+                filter_stats["total_demon_props"] += 1
                 
                 stat_type = prop.get("stat_type_extracted") or prop.get("market", "").replace("player_", "")
                 demon_line = prop.get("line")
                 anchor_line = prop.get("anchor_line")
                 
-                # Must have valid lines
-                if not demon_line or not anchor_line or anchor_line <= 0:
-                    continue
-                filter_stats["valid_anchor"] += 1
-                
-                # Calculate boost percentage
-                boost_pct = ((demon_line - anchor_line) / anchor_line) * 100
-                
-                # Get season avg
-                stat_key = self._normalize_stat_key(stat_type)
-                season_avg = self._get_season_avg(baseline_stats, stat_key)
-                
-                if not season_avg or season_avg <= 0:
+                if not demon_line:
                     continue
                 
-                # Calculate L5 and L10 averages
-                l5_result = self._calculate_l5_avg(game_logs, stat_type)
-                l5_avg = l5_result["avg"]
+                # Get hit rate from nested structure
+                hit_rates = prop.get("hit_rates", {})
+                l10_data = hit_rates.get("l10", {})
+                l10_hit_rate = l10_data.get("hit_rate", 0) if isinstance(l10_data, dict) else 0
+                l5_data = hit_rates.get("l5", {})
+                l5_hit_rate = l5_data.get("hit_rate", 0) if isinstance(l5_data, dict) else 0
                 
-                l10_result = self._calculate_l10_avg(game_logs, stat_type)
-                l10_avg = l10_result["avg"]
+                # Convert to percentage if stored as decimal
+                if l10_hit_rate and l10_hit_rate <= 1:
+                    l10_hit_rate = l10_hit_rate * 100
+                if l5_hit_rate and l5_hit_rate <= 1:
+                    l5_hit_rate = l5_hit_rate * 100
                 
-                if l5_avg <= 0:
+                # FILTER: L10 Hit Rate >= 50%
+                if l10_hit_rate < 50:
                     continue
-                filter_stats["has_stats"] += 1
+                filter_stats["passed_hit_rate_50"] += 1
                 
-                # Calculate H10 hit rate against demon line
-                h10_result = self._calculate_h10_hit_rate(game_logs, stat_type, demon_line)
-                h10_rate = h10_result["hit_rate"]
-                h5_result = self._calculate_h5_hit_rate(game_logs, stat_type, demon_line)
-                h5_rate = h5_result["hit_rate"]
+                # Calculate boost/payout potential
+                boost_pct = 0
+                if anchor_line and anchor_line > 0:
+                    boost_pct = ((demon_line - anchor_line) / anchor_line) * 100
                 
-                # MINIMUM FILTER: H10 must be at least 40%
-                if h10_rate < 40:
-                    continue
-                filter_stats["passed_h10_min"] += 1
-                
-                # Calculate heater percentage
-                heater_pct = ((l5_avg - season_avg) / season_avg) * 100 if season_avg > 0 else 0
-                
-                # ========================================
-                # COMPOSITE SCORE CALCULATION
-                # ========================================
-                
-                # 1. CONSISTENCY SCORE (50% weight): H10 hit rate normalized to 0-1
-                consistency_score = h10_rate / 100
-                
-                # 2. PAYOUT SCORE (30% weight): Boost %, capped at 100% for scoring
-                #    Higher boost = higher potential payout
-                payout_score = min(boost_pct / 100, 1.0)
-                
-                # 3. HEATER BONUS (0.15 points): If L5 is trending up vs season
-                heater_bonus = 0.15 if heater_pct > 10 else (0.08 if heater_pct > 0 else 0)
-                
-                # 4. SAFETY BONUS (0.20 points): If L5 average already beats the demon line
-                #    This is the SAFEST indicator - player is already averaging above the line
-                l5_beats_line = l5_avg >= demon_line
-                safety_bonus = 0.20 if l5_beats_line else 0
-                
-                # 5. RECENT FORM BONUS (0.10 points): If H5 > H10 (improving recently)
-                form_bonus = 0.10 if h5_rate > h10_rate else 0
-                
-                # FINAL COMPOSITE SCORE
-                composite_score = (
-                    (consistency_score * 0.50) +  # 50% weight on consistency
-                    (payout_score * 0.30) +       # 30% weight on payout potential
-                    heater_bonus +                 # Up to 0.15 bonus
-                    safety_bonus +                 # Up to 0.20 bonus
-                    form_bonus                     # Up to 0.10 bonus
-                )
-                
-                # Determine risk level based on score components
-                if l5_beats_line and h10_rate >= 60:
-                    risk_level = "LOW"
-                elif h10_rate >= 50 and heater_pct > 0:
-                    risk_level = "MEDIUM"
-                else:
-                    risk_level = "HIGH"
-                
-                # Derive correct opponent using game_id lookup
-                player_team = hub_player.get("team")
-                game_id = player_doc.get("game_id")
-                game_info = await self._get_game_info(game_id)
-                opponent = _get_opponent_from_game(player_team, game_info.get("home_team"), game_info.get("away_team"))
-                
-                # Check if player is injured
-                injured_players = await self._get_injured_players()
-                is_injured = player_name.lower() in injured_players
+                # The "payout" score is the demon line itself - higher line = higher payout
+                payout_score = demon_line
                 
                 pick = {
                     "player_name": player_name,
-                    "team": player_team,  # Use master hub team (source of truth)
-                    "opponent": opponent,
-                    "game_id": game_id,
+                    "team": player_doc.get("team"),
+                    "opponent": player_doc.get("opponent"),
+                    "game_id": player_doc.get("game_id"),
                     "stat_type": stat_type,
                     "line": demon_line,
                     "anchor_line": anchor_line,
@@ -798,60 +717,44 @@ class PicksGetterService:
                     "direction": prop.get("direction", "over"),
                     "is_demon": True,
                     "is_goblin": False,
-                    "tier_label": "DEMON",
-                    "tier_source": "war_zone_composite",
-                    "is_alternate_market": prop.get("is_alternate_market", True),
-                    "is_injured": is_injured,
-                    # Stats
-                    "season_avg": round(season_avg, 1),
-                    "l5_avg": round(l5_avg, 1),
-                    "l10_avg": round(l10_avg, 1),
-                    "heater_pct": round(heater_pct, 1),
-                    "heater_qualified": heater_pct > 0,
-                    "h5_rate": round(h5_rate, 1),
-                    "h10_rate": round(h10_rate, 1),
-                    "h10_hits": h10_result["hits"],
-                    "h10_games": h10_result["games_counted"],
-                    # Scoring
-                    "composite_score": round(composite_score, 3),
-                    "l5_beats_line": l5_beats_line,
-                    "risk_level": risk_level,
-                    # Position only - photo handled by _enrich_picks_with_photos
-                    "position": hub_player.get("position")
+                    "tier_label": "WAR_ZONE",
+                    "l10_hit_rate": l10_hit_rate,
+                    "l5_hit_rate": l5_hit_rate,
+                    "l10_avg": l10_data.get("avg") if isinstance(l10_data, dict) else None,
+                    "l5_avg": l5_data.get("avg") if isinstance(l5_data, dict) else None,
+                    "season_avg": hit_rates.get("season", {}).get("avg") if isinstance(hit_rates.get("season"), dict) else None,
+                    "payout_score": payout_score,
+                    "war_zone_qualified": True,
+                    "is_alternate_market": prop.get("is_alternate_market", True)
                 }
                 
-                scored_picks.append(pick)
+                # Keep only the highest payout pick for each player
+                if player_name not in player_best_picks:
+                    player_best_picks[player_name] = pick
+                elif payout_score > player_best_picks[player_name]["payout_score"]:
+                    player_best_picks[player_name] = pick
         
-        # Sort by composite score (highest first)
-        scored_picks.sort(key=lambda x: x.get("composite_score", 0), reverse=True)
+        # Convert to list and sort by payout (highest demon line first)
+        war_zone_picks = list(player_best_picks.values())
+        war_zone_picks.sort(key=lambda x: x.get("payout_score", 0), reverse=True)
         
-        # Take top 20
-        war_zone_picks = scored_picks[:20]
         filter_stats["final_picks"] = len(war_zone_picks)
         
-        # Ensure all picks have photos (SSOT enrichment)
-        await self._enrich_picks_with_photos(war_zone_picks)
+        logger.info(f"[WAR_ZONE] Found {len(war_zone_picks)} picks | Filters: {filter_stats}")
         
         # Log top picks
         for i, pick in enumerate(war_zone_picks[:5], 1):
             logger.info(f"[WAR_ZONE] #{i} {pick['player_name']} {pick['stat_type']} @ {pick['line']} | "
-                       f"Score: {pick['composite_score']:.2f} | H10: {pick['h10_rate']}% | "
-                       f"L5: {pick['l5_avg']} | Risk: {pick['risk_level']}")
+                       f"L10: {pick['l10_hit_rate']:.0f}% | Payout: {pick['payout_score']}")
         
-        logger.info(f"[WAR_ZONE] Filter stats: {filter_stats}")
+        # SSOT: Enrich ALL picks with photos from master hub
+        await self._enrich_picks_with_photos(war_zone_picks)
         
         return {
-            "picks": war_zone_picks,
+            "picks": war_zone_picks[:10],  # Return top 10 picks
             "picks_count": len(war_zone_picks),
             "filter_stats": filter_stats,
-            "filters_applied": ["composite_score", "h10_min_40pct"],
-            "scoring_weights": {
-                "consistency": "50%",
-                "payout": "30%",
-                "heater_bonus": "up to 15%",
-                "safety_bonus": "up to 20%",
-                "form_bonus": "up to 10%"
-            }
+            "filters_applied": ["l10_hit_rate_50pct", "highest_payout", "one_per_player"]
         }
     
     def _get_season_avg(self, baseline_stats: Dict, stat_key: str) -> Optional[float]:
