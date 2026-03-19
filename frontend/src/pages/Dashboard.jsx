@@ -594,10 +594,6 @@ const ExpandedParlayView = memo(({ parlay, sectionType, onClose, onPickClick }) 
               <span className="text-zinc-500">Combined Prob:</span>
               <span className="ml-2 text-white font-bold">{parlay.combined_probability?.toFixed(1)}%</span>
             </div>
-            <div>
-              <span className="text-zinc-500">Payout:</span>
-              <span className={`ml-2 font-bold ${theme.text}`}>{parlay.estimated_payout}x</span>
-            </div>
           </div>
         </div>
       </div>

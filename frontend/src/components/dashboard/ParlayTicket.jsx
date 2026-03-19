@@ -67,8 +67,6 @@ export const ParlayTicket = memo(({ ticket, onClick, sectionType = 'war_zone' })
   const combinedProb = ticket.combined_probability || 
     (picks.reduce((acc, p) => acc * ((p.h10_rate || 50) / 100), 1) * 100);
   
-  const payoutMultiplier = ticket.estimated_payout || Math.round(Math.pow(1.8, size) * 10) / 10;
-  
   return (
     <Card 
       className={`
@@ -119,8 +117,8 @@ export const ParlayTicket = memo(({ ticket, onClick, sectionType = 'war_zone' })
           </div>
           <div className="h-8 w-px bg-zinc-700" />
           <div className="text-center">
-            <div className="text-[9px] text-zinc-500 uppercase">Payout</div>
-            <div className={`text-sm font-bold ${theme.text}`}>{payoutMultiplier}x</div>
+            <div className="text-[9px] text-zinc-500 uppercase">Picks</div>
+            <div className={`text-sm font-bold ${theme.text}`}>{size}</div>
           </div>
           <div className="h-8 w-px bg-zinc-700" />
           <div className="text-center">

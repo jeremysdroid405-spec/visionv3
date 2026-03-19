@@ -10,7 +10,7 @@
 
 import React, { memo } from 'react';
 import { ChevronRight, CheckCircle, XCircle } from 'lucide-react';
-import { PlayerPhoto, PayoutDisplay, formatStatType } from '../../lib/PickVisionUtils';
+import { PlayerPhoto, formatStatType } from '../../lib/PickVisionUtils';
 
 const ParlayCard = memo(({ 
   parlay, 
@@ -59,7 +59,6 @@ const ParlayCard = memo(({
           <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${bgColor} ${accentColor}`}>
             {pick_count || picks.length}-PICK
           </span>
-          <PayoutDisplay multiplier={payoutValue} />
         </div>
       </div>
       
