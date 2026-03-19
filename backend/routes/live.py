@@ -84,30 +84,43 @@ def set_db(db):
 
 async def sync_todays_games():
     """
-    Sync today's NBA games to the database.
+    Sync today's upcoming NBA games to the database.
     Called at 4 AM daily by the scheduler.
     
-    Fetches from NBA API and stores in ticker_games collection.
+    Uses BallDontLie API to get today's scheduled games.
     """
     logger.info("[TICKER] Starting daily games sync...")
     
     try:
-        from nba_api.live.nba.endpoints import scoreboard
+        # Use BDL API for today's games
+        api_key = os.environ.get("BDL_API_KEY") or os.environ.get("BALLDONTLIE_API_KEY")
+        if not api_key:
+            logger.warning("[TICKER] No BDL API key found")
+            return {"success": False, "error": "No BDL API key"}
         
-        # Get live scoreboard from NBA API
-        board = scoreboard.ScoreBoard()
-        data = board.get_dict()
+        today = datetime.now().strftime("%Y-%m-%d")
+        
+        async with httpx.AsyncClient(timeout=20.0) as client:
+            response = await client.get(
+                "https://api.balldontlie.io/v1/games",
+                params={"dates[]": today, "per_page": 20},
+                headers={"Authorization": api_key}
+            )
+            
+            if response.status_code != 200:
+                logger.error(f"[TICKER] BDL API error: {response.status_code}")
+                return {"success": False, "error": f"BDL API error: {response.status_code}"}
+            
+            data = response.json()
+            bdl_games = data.get("data", [])
         
         games = []
-        scoreboard_data = data.get("scoreboard", {})
-        game_date = scoreboard_data.get("gameDate", datetime.now().strftime("%Y-%m-%d"))
-        
-        for game in scoreboard_data.get("games", []):
-            home = game.get("homeTeam", {})
-            away = game.get("awayTeam", {})
+        for game in bdl_games:
+            home = game.get("home_team", {})
+            away = game.get("visitor_team", {})
             
             # Parse game time for display
-            game_time_utc = game.get("gameTimeUTC", "")
+            game_time_utc = game.get("datetime", "")
             start_time_display = ""
             if game_time_utc:
                 try:
@@ -116,26 +129,39 @@ async def sync_todays_games():
                     est_time = utc_time - timedelta(hours=5)
                     start_time_display = est_time.strftime("%-I:%M %p ET")
                 except:
-                    start_time_display = game.get("gameStatusText", "")
+                    start_time_display = game.get("status", "")
+            
+            # Determine status
+            status_text = game.get("status", "")
+            game_status = game.get("period", 0)
+            if status_text == "Final":
+                status_display = "Final"
+            elif game_status == 0:
+                status_display = start_time_display or "Scheduled"
+            else:
+                status_display = status_text
             
             games.append({
-                "game_id": game.get("gameId"),
-                "home_team": home.get("teamTricode", "???"),
-                "home_score": home.get("score", 0),
-                "home_name": home.get("teamName", ""),
-                "away_team": away.get("teamTricode", "???"),
-                "away_score": away.get("score", 0),
-                "away_name": away.get("teamName", ""),
-                "status": game.get("gameStatusText", ""),
-                "status_code": game.get("gameStatus", 1),
-                "period": game.get("period", 0),
+                "game_id": str(game.get("id")),
+                "home_team": home.get("abbreviation", "???"),
+                "home_score": game.get("home_team_score", 0),
+                "home_name": home.get("name", ""),
+                "away_team": away.get("abbreviation", "???"),
+                "away_score": game.get("visitor_team_score", 0),
+                "away_name": away.get("name", ""),
+                "status": status_display,
+                "status_code": 1 if game_status == 0 else (3 if status_text == "Final" else 2),
+                "period": game_status,
                 "start_time": game_time_utc,
                 "start_time_display": start_time_display,
-                "home_record": f"{home.get('wins', 0)}-{home.get('losses', 0)}",
-                "away_record": f"{away.get('wins', 0)}-{away.get('losses', 0)}",
-                "arena": game.get("arena", {}).get("arenaName", ""),
-                "broadcasters": game.get("broadcasters", {})
+                "home_record": "",  # BDL doesn't provide records in this endpoint
+                "away_record": "",
+                "arena": "",
+                "broadcasters": {}
             })
+        
+        # Sort by start time
+        games.sort(key=lambda x: x.get("start_time", ""))
         
         # Store in database
         if _db is not None:
@@ -143,16 +169,16 @@ async def sync_todays_games():
                 {"type": "games"},
                 {"$set": {
                     "type": "games",
-                    "date": game_date,
+                    "date": today,
                     "games": games,
                     "games_count": len(games),
                     "synced_at": datetime.now(timezone.utc).isoformat()
                 }},
                 upsert=True
             )
-            logger.info(f"[TICKER] Synced {len(games)} games for {game_date}")
+            logger.info(f"[TICKER] Synced {len(games)} games for {today}")
         
-        return {"success": True, "games_count": len(games), "date": game_date}
+        return {"success": True, "games_count": len(games), "date": today}
         
     except Exception as e:
         logger.error(f"[TICKER] Games sync error: {e}")
@@ -270,12 +296,96 @@ async def sync_news_headlines():
 @router.get("/scores")
 async def get_live_scores():
     """
-    Get today's NBA games from cached data.
+    Get today's NBA games with live scores.
     
-    Returns games synced at 4 AM, with live updates if games are in progress.
+    Uses BDL live box scores endpoint for real-time updates.
     """
     try:
-        # First try to get from DB cache
+        # Always fetch fresh from BDL live endpoint for most current data
+        api_key = os.environ.get("BDL_API_KEY") or os.environ.get("BALLDONTLIE_API_KEY")
+        
+        if api_key:
+            try:
+                async with httpx.AsyncClient(timeout=15.0) as client:
+                    response = await client.get(
+                        "https://api.balldontlie.io/v1/box_scores/live",
+                        headers={"Authorization": api_key}
+                    )
+                    
+                    if response.status_code == 200:
+                        data = response.json()
+                        bdl_games = data.get("data", [])
+                        
+                        if bdl_games:
+                            games = []
+                            today = datetime.now().strftime("%Y-%m-%d")
+                            
+                            for game in bdl_games:
+                                home = game.get("home_team", {})
+                                away = game.get("visitor_team", {})
+                                
+                                # Parse game time
+                                game_time_utc = game.get("datetime", "")
+                                start_time_display = ""
+                                if game_time_utc:
+                                    try:
+                                        utc_time = datetime.fromisoformat(game_time_utc.replace("Z", "+00:00"))
+                                        est_time = utc_time - timedelta(hours=5)
+                                        start_time_display = est_time.strftime("%-I:%M %p ET")
+                                    except:
+                                        pass
+                                
+                                # Determine status
+                                period = game.get("period", 0)
+                                time_remaining = game.get("time", "")
+                                status_raw = game.get("status", "")
+                                
+                                if "Final" in str(status_raw):
+                                    status_display = "Final"
+                                    status_code = 3
+                                elif period > 0:
+                                    # Game in progress
+                                    if time_remaining:
+                                        status_display = f"Q{period} {time_remaining}"
+                                    else:
+                                        status_display = f"Q{period}"
+                                    status_code = 2
+                                else:
+                                    # Game not started
+                                    status_display = start_time_display or "Scheduled"
+                                    status_code = 1
+                                
+                                games.append({
+                                    "game_id": str(game.get("id")),
+                                    "home_team": home.get("abbreviation", "???"),
+                                    "home_score": game.get("home_team_score", 0),
+                                    "home_name": home.get("name", ""),
+                                    "away_team": away.get("abbreviation", "???"),
+                                    "away_score": game.get("visitor_team_score", 0),
+                                    "away_name": away.get("name", ""),
+                                    "status": status_display,
+                                    "status_code": status_code,
+                                    "period": period,
+                                    "start_time": game_time_utc,
+                                    "start_time_display": start_time_display,
+                                    "home_record": "",
+                                    "away_record": ""
+                                })
+                            
+                            # Sort by start time
+                            games.sort(key=lambda x: x.get("start_time", ""))
+                            
+                            return {
+                                "games": games,
+                                "date": today,
+                                "games_count": len(games),
+                                "source": "bdl_live",
+                                "synced_at": datetime.now(timezone.utc).isoformat()
+                            }
+            except Exception as e:
+                logger.warning(f"[TICKER] BDL live fetch failed: {e}")
+        
+        # Fallback to DB cache if BDL fails
         if _db is not None:
             cached = await _db.ticker_cache.find_one(
                 {"type": "games"},
@@ -283,94 +393,18 @@ async def get_live_scores():
             )
             
             if cached and cached.get("games"):
-                # Check if any games are live - if so, fetch live scores
-                games = cached.get("games", [])
-                any_live = any(g.get("status_code") == 2 for g in games)
-                
-                if any_live:
-                    # Fetch live scores for in-progress games
-                    try:
-                        from nba_api.live.nba.endpoints import scoreboard
-                        board = scoreboard.ScoreBoard()
-                        data = board.get_dict()
-                        
-                        live_games = {}
-                        for game in data.get("scoreboard", {}).get("games", []):
-                            live_games[game.get("gameId")] = {
-                                "home_score": game.get("homeTeam", {}).get("score", 0),
-                                "away_score": game.get("awayTeam", {}).get("score", 0),
-                                "status": game.get("gameStatusText", ""),
-                                "status_code": game.get("gameStatus", 1),
-                                "period": game.get("period", 0)
-                            }
-                        
-                        # Update cached games with live scores
-                        for game in games:
-                            if game.get("game_id") in live_games:
-                                game.update(live_games[game["game_id"]])
-                    except:
-                        pass  # Use cached scores if live fetch fails
-                
                 return {
-                    "success": True, 
-                    "games": games, 
+                    "games": cached.get("games", []),
                     "date": cached.get("date"),
-                    "synced_at": cached.get("synced_at"),
-                    "cached": True
+                    "games_count": cached.get("games_count", 0),
+                    "source": "cache",
+                    "synced_at": cached.get("synced_at")
                 }
         
-        # Fallback: fetch live if no cache
-        return await _fetch_live_scores_fallback()
+        return {"games": [], "date": None, "games_count": 0, "source": "empty"}
         
     except Exception as e:
         logger.error(f"[LIVE] Scores error: {e}")
-        return {"success": False, "games": [], "error": str(e)}
-
-
-async def _fetch_live_scores_fallback():
-    """Fallback to fetch live scores directly from NBA API."""
-    try:
-        from nba_api.live.nba.endpoints import scoreboard
-        
-        board = scoreboard.ScoreBoard()
-        data = board.get_dict()
-        
-        games = []
-        scoreboard_data = data.get("scoreboard", {})
-        
-        for game in scoreboard_data.get("games", []):
-            home = game.get("homeTeam", {})
-            away = game.get("awayTeam", {})
-            
-            game_time_utc = game.get("gameTimeUTC", "")
-            start_time_display = ""
-            if game_time_utc:
-                try:
-                    utc_time = datetime.fromisoformat(game_time_utc.replace("Z", "+00:00"))
-                    est_time = utc_time - timedelta(hours=5)
-                    start_time_display = est_time.strftime("%-I:%M %p ET")
-                except:
-                    start_time_display = game.get("gameStatusText", "")
-            
-            games.append({
-                "game_id": game.get("gameId"),
-                "home_team": home.get("teamTricode", "???"),
-                "home_score": home.get("score", 0),
-                "away_team": away.get("teamTricode", "???"),
-                "away_score": away.get("score", 0),
-                "status": game.get("gameStatusText", ""),
-                "status_code": game.get("gameStatus", 1),
-                "period": game.get("period", 0),
-                "start_time": game_time_utc,
-                "start_time_display": start_time_display,
-                "home_record": f"{home.get('wins', 0)}-{home.get('losses', 0)}",
-                "away_record": f"{away.get('wins', 0)}-{away.get('losses', 0)}"
-            })
-        
-        return {"success": True, "games": games, "cached": False, "source": "nba_api_live"}
-        
-    except Exception as e:
-        logger.error(f"[LIVE] Fallback scores error: {e}")
         return {"success": False, "games": [], "error": str(e)}
 
 
