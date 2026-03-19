@@ -153,11 +153,10 @@ const getHitRateColor = (rate) => {
  * Locked Overlay for games in progress
  * Shows when is_locked is true (game has started)
  */
-const LockedOverlay = memo(({ isLocked, gameStatus, minutesSinceStart }) => {
+const LockedOverlay = memo(({ isLocked, gameStatus }) => {
   if (!isLocked) return null;
   
-  const statusText = gameStatus === 'completed' ? 'Game Completed' : 
-    minutesSinceStart ? `${minutesSinceStart} min in` : 'Game Underway';
+  const statusText = gameStatus === 'completed' ? 'Game Completed' : 'Game Underway';
   
   return (
     <div className="absolute inset-0 bg-black/70 backdrop-blur-[2px] z-10 flex flex-col items-center justify-center rounded-lg">
@@ -535,7 +534,7 @@ const UniversalPlayerCard = memo(({
         data-testid={`player-compact-${playerSlug}`}
       >
         {/* Locked Overlay */}
-        <LockedOverlay isLocked={is_locked} gameStatus={game_status} minutesSinceStart={minutes_since_start} />
+        <LockedOverlay isLocked={is_locked} gameStatus={game_status} />
         
         <div className={`relative ring-2 ${theme.ring} rounded-full`}>
           <PlayerHeadshot photoUrl={displayPhoto} playerName={displayName} team={team} size="md" />
