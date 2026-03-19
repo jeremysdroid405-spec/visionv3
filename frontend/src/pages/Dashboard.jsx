@@ -669,7 +669,7 @@ const MostPopularBetsSection = memo(({ bets, status, onBetClick }) => {
       <div className="mb-4 p-4 bg-zinc-900/50 border border-zinc-800 rounded-xl text-center">
         <Activity className="w-6 h-6 text-zinc-500 mx-auto mb-2" />
         <p className="text-sm text-zinc-500">Awaiting live action...</p>
-        <p className="text-xs text-zinc-600">Popular bets will appear when games tip off</p>
+        <p className="text-xs text-zinc-600">Top picks will appear when games tip off</p>
       </div>
     );
   }
@@ -678,15 +678,15 @@ const MostPopularBetsSection = memo(({ bets, status, onBetClick }) => {
     <div className="mb-4">
       <SectionHeader 
         icon={<Flame className="w-4 h-4 text-orange-400" />}
-        title="MOST POPULAR"
-        subtitle="Top 20 hottest bets right now"
+        title="TOP PICKS"
+        subtitle="Best of Safe Haven, Front Lines & War Zone"
         badgeText="LIVE"
         badgeColor="amber"
       />
       <div className="overflow-x-auto pb-2 -mx-3 px-3">
         <div className="flex gap-3" style={{ minWidth: 'max-content' }}>
-          {bets.slice(0, 20).map((bet, idx) => (
-            <PopularBetCard key={`popular-${bet.player_name}-${bet.stat_type}-${idx}`} bet={bet} rank={idx + 1} onClick={() => onBetClick(bet)} />
+          {bets.map((bet, idx) => (
+            <PopularBetCard key={`top-pick-${bet.player_name}-${bet.stat_type}-${idx}`} bet={bet} rank={idx + 1} onClick={() => onBetClick(bet)} />
           ))}
         </div>
       </div>
@@ -714,7 +714,7 @@ const Dashboard = () => {
   const frontLinesPicks = useMemo(() => frontLinesData?.picks || [], [frontLinesData]);
   const players = useMemo(() => liveOddsData?.players || [], [liveOddsData]);
   
-  // Most Popular - directly from API (volume-based, all types)
+  // Top Picks - Best of all sections (4 from each board)
   const trending = useMemo(() => players.slice(0, 8), [players]);
   const popularBets = useMemo(() => mostPopularData?.bets || [], [mostPopularData]);
   const popularBetsStatus = mostPopularData?.status || (popularLoading ? 'loading' : 'awaiting_action');

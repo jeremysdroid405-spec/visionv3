@@ -2018,205 +2018,65 @@ class PicksGetterService:
     
     async def get_most_popular_bets(self) -> Dict[str, Any]:
         """
-        Get Top 20 Most Popular BETS - ALL TYPES BY POPULARITY SCORE
+        Get TOP PICKS - Best of the best from all three sections.
         
-        Since the Odds API doesn't provide betting volume, we calculate a 
-        SYNTHETIC POPULARITY SCORE based on:
-        1. Player exposure (number of markets available)
-        2. Player star power (season average performance)
-        3. Bet appeal (demon/goblin status)
-        4. Market variety bonus
+        Pulls 4 picks from each board:
+        - 4 from Safe Haven (highest hit rate goblins)
+        - 4 from Front Lines (best value demons/goblins)
+        - 4 from War Zone (highest payout demons)
         
-        Returns a mix of STANDARD, DEMON, and GOBLIN bets that are likely to be popular.
+        Total: 12 elite picks representing each strategy.
         """
         try:
             now = datetime.now(timezone.utc)
             
-            # Get all players from cached board with props
-            players = await self.cached_board.find(
-                {"props": {"$exists": True}},
-                {"_id": 0}
-            ).to_list(500)
+            # Get picks from all three boards
+            safe_haven_result = await self.get_goblin_vault()
+            front_lines_result = await self.get_front_lines()
+            war_zone_result = await self.get_war_zone()
             
-            # First pass: Calculate player exposure (number of props per player)
-            player_exposure = {}
-            for player_doc in players:
-                pname = player_doc.get("player_name")
-                if pname:
-                    player_exposure[pname] = len(player_doc.get("props", []))
+            top_picks = []
             
-            max_exposure = max(player_exposure.values()) if player_exposure else 1
+            # Take top 4 from Safe Haven (already sorted by combined_score)
+            safe_haven_picks = safe_haven_result.get("picks", [])[:4]
+            for pick in safe_haven_picks:
+                pick["source_section"] = "SAFE_HAVEN"
+                pick["section_label"] = "Safe Haven"
+                top_picks.append(pick)
             
-            # Extract ALL props with popularity scoring
-            all_bets = []
-            seen_props = set()
+            # Take top 4 from Front Lines (already sorted by value_score)
+            front_lines_picks = front_lines_result.get("picks", [])[:4]
+            for pick in front_lines_picks:
+                pick["source_section"] = "FRONT_LINES"
+                pick["section_label"] = "Front Lines"
+                top_picks.append(pick)
             
-            for player_doc in players:
-                player_name = player_doc.get("player_name")
-                if not player_name:
-                    continue
-                
-                props = player_doc.get("props", [])
-                exposure = player_exposure.get(player_name, 0)
-                
-                for prop in props:
-                    stat_type = prop.get("stat_type_extracted") or prop.get("market", "").replace("player_", "")
-                    line = prop.get("line")
-                    
-                    if not stat_type or not line:
-                        continue
-                    
-                    # Dedupe
-                    prop_key = f"{player_name}_{stat_type}_{line}"
-                    if prop_key in seen_props:
-                        continue
-                    seen_props.add(prop_key)
-                    
-                    # Get stats from prop (pre-computed during sync)
-                    season_avg = prop.get("season_avg", 0) or 0
-                    l5_avg = prop.get("l5_avg")
-                    l10_avg = prop.get("l10_avg")
-                    l10_hit_rate = prop.get("l10_hit_rate")
-                    
-                    # Determine tier
-                    is_demon = prop.get("is_demon", False)
-                    is_goblin = prop.get("is_goblin", False)
-                    tier_label = "DEMON" if is_demon else "GOBLIN" if is_goblin else "STANDARD"
-                    
-                    # ====================================
-                    # SYNTHETIC POPULARITY SCORE (0-100)
-                    # ====================================
-                    popularity_score = 0
-                    
-                    # 1. EXPOSURE SCORE (0-30): More markets = more popular player
-                    exposure_score = (exposure / max_exposure) * 30
-                    popularity_score += exposure_score
-                    
-                    # 2. STAR POWER SCORE (0-25): Higher season avg = bigger name
-                    # PTS: 20+ is star level, AST: 7+ is star level, etc.
-                    star_thresholds = {"PTS": 20, "AST": 7, "REB": 8, "3PM": 2.5, "BLK": 1.5, "STL": 1.5, 
-                                      "PRA": 35, "P+R": 28, "P+A": 27, "R+A": 15}
-                    threshold = star_thresholds.get(stat_type, 10)
-                    if season_avg > 0 and threshold > 0:
-                        star_ratio = min(season_avg / threshold, 2.0)  # Cap at 2x threshold
-                        star_score = star_ratio * 12.5  # Max 25 points
-                        popularity_score += star_score
-                    
-                    # 3. BET APPEAL SCORE (0-25): Demon/Goblin bets attract more action
-                    if is_demon:
-                        popularity_score += 25  # Demons are exciting high-risk bets
-                    elif is_goblin:
-                        popularity_score += 20  # Goblins are popular "safe" value bets
-                    else:
-                        popularity_score += 10  # Standard lines still get action
-                    
-                    # 4. HIT RATE BONUS (0-20): High hit rates attract bettors
-                    if l10_hit_rate is not None:
-                        hit_rate = l10_hit_rate * 100 if l10_hit_rate <= 1 else l10_hit_rate
-                        if hit_rate >= 70:
-                            popularity_score += 20
-                        elif hit_rate >= 50:
-                            popularity_score += 10
-                    
-                    # Calculate h10_rate for display
-                    h10_rate = None
-                    if l10_hit_rate is not None:
-                        h10_rate = round(l10_hit_rate * 100, 1) if l10_hit_rate <= 1 else l10_hit_rate
-                    
-                    all_bets.append({
-                        "player_name": player_name,
-                        "team": player_doc.get("team"),
-                        "opponent": player_doc.get("opponent"),
-                        "stat_type": stat_type,
-                        "line": line,
-                        "direction": prop.get("direction", "over"),
-                        "is_demon": is_demon,
-                        "is_goblin": is_goblin,
-                        "tier_label": tier_label,
-                        "tier_source": "most_popular_synthetic",
-                        "popularity_score": round(popularity_score, 1),
-                        # Stats from cached props
-                        "season_avg": season_avg,
-                        "l5_avg": l5_avg,
-                        "l10_avg": l10_avg,
-                        "l5_hit_rate": prop.get("l5_hit_rate"),
-                        "l10_hit_rate": l10_hit_rate,
-                        "h10_rate": h10_rate,
-                        "volume": round(popularity_score)  # Use popularity score as synthetic volume
-                    })
+            # Take top 4 from War Zone (already sorted by payout_score)
+            war_zone_picks = war_zone_result.get("picks", [])[:4]
+            for pick in war_zone_picks:
+                pick["source_section"] = "WAR_ZONE"
+                pick["section_label"] = "War Zone"
+                top_picks.append(pick)
             
-            if not all_bets:
-                return {"status": "no_data", "bets": [], "message": "No bets available"}
+            # Count by section
+            section_counts = {
+                "SAFE_HAVEN": len(safe_haven_picks),
+                "FRONT_LINES": len(front_lines_picks),
+                "WAR_ZONE": len(war_zone_picks)
+            }
             
-            # Sort by popularity score (highest first)
-            all_bets.sort(key=lambda x: x.get("popularity_score", 0), reverse=True)
-            
-            # Select top 20 with variety - ensure mix of tiers and players
-            selected_bets = []
-            players_selected = set()
-            tier_counts = {"DEMON": 0, "GOBLIN": 0, "STANDARD": 0}
-            
-            for bet in all_bets:
-                if len(selected_bets) >= 20:
-                    break
-                
-                player = bet["player_name"]
-                tier = bet["tier_label"]
-                
-                # Limit 2 bets per player for variety
-                player_count = sum(1 for b in selected_bets if b["player_name"] == player)
-                if player_count >= 2:
-                    continue
-                
-                # Ensure tier variety (at least some of each type if available)
-                if len(selected_bets) < 15:
-                    # First 15: just take top by score
-                    selected_bets.append(bet)
-                    tier_counts[tier] = tier_counts.get(tier, 0) + 1
-                else:
-                    # Last 5: fill in missing tier variety
-                    if tier_counts.get(tier, 0) < 3:
-                        selected_bets.append(bet)
-                        tier_counts[tier] = tier_counts.get(tier, 0) + 1
-                    elif len(selected_bets) < 20:
-                        selected_bets.append(bet)
-            
-            # Enrich with photos from master hub
-            enriched_bets = []
-            for bet in selected_bets:
-                hub_player = await self._get_master_player_by_name(bet["player_name"])
-                if hub_player:
-                    bet["position"] = hub_player.get("position")
-                    
-                    # If stats still missing, get from master hub game logs
-                    if bet.get("l5_avg") is None or bet.get("h10_rate") is None:
-                        game_logs = hub_player.get("bdl_game_logs", []) or hub_player.get("game_logs", [])
-                        if game_logs:
-                            if bet.get("l5_avg") is None:
-                                l5_result = self._calculate_l5_avg(game_logs, bet["stat_type"])
-                                bet["l5_avg"] = l5_result["avg"]
-                            if bet.get("h10_rate") is None:
-                                h10_result = self._calculate_h10_hit_rate(game_logs, bet["stat_type"], bet["line"])
-                                bet["h10_rate"] = h10_result["hit_rate"]
-                
-                enriched_bets.append(bet)
-            
-            # SSOT: Enrich ALL bets with photos from master hub
-            await self._enrich_picks_with_photos(enriched_bets)
-            
-            logger.info(f"[MOST_POPULAR] Returning {len(enriched_bets)} bets by synthetic popularity")
-            logger.info(f"[MOST_POPULAR] Tier distribution: {tier_counts}")
+            logger.info(f"[TOP_PICKS] Returning {len(top_picks)} picks | Distribution: {section_counts}")
             
             return {
                 "status": "live",
-                "bets": enriched_bets,
-                "source": "synthetic_popularity_score",
-                "tier_distribution": tier_counts,
+                "bets": top_picks,
+                "source": "best_of_all_sections",
+                "section_distribution": section_counts,
                 "timestamp": now.isoformat()
             }
             
         except Exception as e:
-            logger.error(f"[MOST_POPULAR] Error: {e}")
+            logger.error(f"[TOP_PICKS] Error: {e}")
             import traceback
             traceback.print_exc()
             return {"status": "error", "bets": [], "error": str(e)}
