@@ -272,11 +272,6 @@ export const Auth = () => {
         
         {/* Logo */}
         <div className="relative z-10 flex flex-col items-center">
-          <div className="flex items-center gap-2 sm:gap-3 mb-2 sm:mb-3">
-            <Crosshair className="w-5 h-5 sm:w-6 sm:h-6 text-zinc-600" />
-            <Eye className="w-7 h-7 sm:w-8 sm:h-8 text-zinc-400" />
-            <Crosshair className="w-5 h-5 sm:w-6 sm:h-6 text-zinc-600" />
-          </div>
           <h1 className="text-4xl sm:text-5xl md:text-7xl font-black tracking-tighter gradient-text-silver">
             PROPVISION AI
           </h1>
@@ -286,10 +281,10 @@ export const Auth = () => {
         {/* THE Headline - War Room Version */}
         <div className="mt-5 sm:mt-8 text-center relative z-10 max-w-2xl">
           <p className="text-lg sm:text-xl md:text-2xl text-zinc-500 font-light tracking-wide">
-            The books have an edge.
+            The books have the edge.
           </p>
           <p className="text-xl sm:text-2xl md:text-3xl text-white font-bold mt-1 sm:mt-2">
-            Now, you have a <span className="text-emerald-400">weapon</span>.
+            Now, you have the <span className="text-emerald-400">weapon</span>.
           </p>
         </div>
 
@@ -418,7 +413,7 @@ export const Auth = () => {
           <div className="text-center mb-6 sm:mb-8">
             <p className="text-zinc-600 font-mono text-[10px] sm:text-xs tracking-widest mb-3 sm:mb-4">// OPERATOR AUTHENTICATION</p>
             <h2 className="text-lg sm:text-xl md:text-2xl font-bold gradient-text-silver tracking-wide uppercase">
-              "The books have an edge.<br/>Now, you have a weapon."
+              "The books have the edge.<br/>Now, you have the weapon."
             </h2>
           </div>
 
