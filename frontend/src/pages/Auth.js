@@ -11,8 +11,42 @@ import {
 import { toast } from 'sonner';
 import { DemonIcon, GoblinIcon } from '../components/dashboard/Icons';
 
-// ==================== ELITE ICON COMPONENTS ====================
-// DemonIcon and GoblinIcon imported from ../components/dashboard/Icons
+// ==================== CUSTOM TACTICAL ICONS ====================
+const BrainCircuitIcon = ({ className }) => (
+  <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+    <path d="M12 2a6 6 0 0 1 6 6c0 2-1 3.5-2 4.5M12 2a6 6 0 0 0-6 6c0 2 1 3.5 2 4.5" />
+    <circle cx="12" cy="16" r="4" />
+    <path d="M12 12v-2M8 16H4M20 16h-4M12 20v2" />
+    <circle cx="12" cy="16" r="1" fill="currentColor" />
+  </svg>
+);
+
+const RadarSweepIcon = ({ className }) => (
+  <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+    <circle cx="12" cy="12" r="10" strokeDasharray="3 3" />
+    <circle cx="12" cy="12" r="6" />
+    <circle cx="12" cy="12" r="2" fill="currentColor" />
+    <path d="M12 2v4M12 18v4M2 12h4M18 12h4" />
+    <path d="M12 12L18 6" strokeWidth="2" />
+  </svg>
+);
+
+const WaveformIcon = ({ className }) => (
+  <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <path d="M2 12h2l2-8 3 16 3-12 2 8 2-4h6" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+);
+
+const NetworkPulseIcon = ({ className }) => (
+  <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+    <circle cx="12" cy="12" r="3" fill="currentColor" />
+    <circle cx="4" cy="8" r="2" />
+    <circle cx="20" cy="8" r="2" />
+    <circle cx="4" cy="16" r="2" />
+    <circle cx="20" cy="16" r="2" />
+    <path d="M6 8l3 2.5M18 8l-3 2.5M6 16l3-2.5M18 16l-3-2.5" />
+  </svg>
+);
 
 // ==================== ANIMATED COMPONENTS ====================
 
@@ -341,25 +375,25 @@ export const Auth = () => {
               spec="MODEL"
               title="PropVision AI (Flash Architecture)"
               edge="Built on zero-latency infrastructure. While legacy models refresh on a delay, Flash Architecture processes the entry in real-time. No lag, no slippage—just synchronized speed."
-              icon={<Cpu className="w-5 h-5 sm:w-6 sm:h-6 text-zinc-400" />}
+              icon={<BrainCircuitIcon className="w-6 h-6 sm:w-7 sm:h-7 text-emerald-400" />}
             />
             <SpecRow 
               spec="LOGIC"
               title="Anomaly Detection"
               edge="We hunt for Systemic Glitches. Our AI scans millions of data points to isolate the 1% of lines where the sportsbooks' mathematical models have objectively fractured."
-              icon={<Zap className="w-5 h-5 sm:w-6 sm:h-6 text-yellow-500" />}
+              icon={<RadarSweepIcon className="w-6 h-6 sm:w-7 sm:h-7 text-yellow-500" />}
             />
             <SpecRow 
               spec="INTEL"
               title="Usage Ripple™"
               edge="Automated roster recalculation. When injury news drops or a roster shift occurs, the Ripple re-maps the floor and ceiling for the entire squad within 60s. You get the value before the market can adjust."
-              icon={<Radio className="w-5 h-5 sm:w-6 sm:h-6 text-cyan-400" />}
+              icon={<WaveformIcon className="w-6 h-6 sm:w-7 sm:h-7 text-cyan-400" />}
             />
             <SpecRow 
               spec="SENTIMENT"
               title="Social Signal™"
               edge="Beyond the box score. We track high-impact external factors. From personal disruptions and off-court volatility to Revenge Game narratives. If a player's focus is fractured or their motivation is peaked, the Objectives are re-prioritized in real-time."
-              icon={<Newspaper className="w-5 h-5 sm:w-6 sm:h-6 text-purple-400" />}
+              icon={<NetworkPulseIcon className="w-6 h-6 sm:w-7 sm:h-7 text-purple-400" />}
             />
             <SpecRow 
               spec="TARGETING"
