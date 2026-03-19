@@ -89,7 +89,7 @@ class VisionSummaryService:
                     pick_reasoning = f"Based on recent form, targeting {direction} {line} {stat_type}."
             
             # Build prompt
-            prompt = f"""You are a sharp sports betting analyst. Write a 2-sentence pick explanation.
+            prompt = f"""You are an elite sports betting analyst. Write a 3-sentence pick breakdown.
 
 INPUT:
 
@@ -103,35 +103,34 @@ PICK TYPE: {pick_reasoning}
 CONTEXT BADGES:
 {badge_context}
 
+TASK:
+
+Sentence 1 - THE EDGE: State the pick clearly with the primary statistical edge
+→ "{last_name} {direction} {line} {stat_type}" + why the numbers favor this
+
+Sentence 2 - MATCHUP CONTEXT: Analyze opponent matchup
+→ How does {opponent}'s defense/pace affect this stat?
+→ Are they elite, average, or weak against this stat type?
+→ Does this help or create friction for the pick?
+
+Sentence 3 - POTENTIAL CONFLICTS: Flag any risks or factors working against this pick
+→ Recent cold streak, tough travel, injury concern, elite defender matchup, etc.
+→ If no major conflicts exist, note why this is a clean spot
+
 RULES:
+- Use ONLY the player's last name
+- Be specific with numbers (averages, rates, rankings)
+- Be honest about both edge AND risk
+- No filler words, no hedging language
+- DO NOT say "This pick" or "I like"
 
-Use ONLY the player's last name
-
-First sentence MUST clearly state the pick:
-→ "{last_name} {direction} {line} {stat_type}"
-
-Use numbers when possible (averages, hit rate, trends)
-
-Reference the strongest badge or trend as the main edge
-
-Tone: confident, sharp, no hesitation
-
-No filler, no hedging, no soft language
-
-DO NOT say: "This pick" or "I like"
-
-Keep it tight and impactful
-
-OUTPUT FORMAT:
-
-Sentence 1: Clear pick + strongest statistical edge
-Sentence 2: Supporting trend, matchup, or badge-based insight"""
+OUTPUT: 3 tight sentences covering EDGE → MATCHUP → CONFLICTS"""
 
             # Initialize Gemini chat
             chat = LlmChat(
                 api_key=self.api_key,
                 session_id=f"vision_{player_name}_{stat_type}",
-                system_message="You are an elite sports betting analyst specializing in player props. Deliver sharp, confident, data-driven insights using only player last names. Avoid filler, stay concise, and prioritize the strongest statistical edge."
+                system_message="You are an elite sports betting analyst specializing in player props. Deliver sharp, data-driven insights that cover the statistical edge, matchup context, and potential conflicts. Use only player last names. Be honest about both upside and risk."
             ).with_model("gemini", "gemini-3-flash-preview")
             
             # Send message and get response
@@ -140,9 +139,9 @@ Sentence 2: Supporting trend, matchup, or badge-based insight"""
             if response:
                 # Clean up response
                 summary = response.strip()
-                # Limit to ~250 chars if too long
-                if len(summary) > 280:
-                    summary = summary[:277] + "..."
+                # Limit to ~500 chars for 3 sentences
+                if len(summary) > 520:
+                    summary = summary[:517] + "..."
                 return summary
             
             return None
