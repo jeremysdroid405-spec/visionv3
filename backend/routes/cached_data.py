@@ -763,6 +763,21 @@ async def get_cached_player(player_name: str):
         
         logger.info(f"[PLAYER_DETAIL] {pname}: Featured prop = {featured_prop_key}")
         
+        # Deduplicate props by stat_type + line
+        seen_props = set()
+        unique_props = []
+        for prop in player.get("props", []):
+            stat_type = prop.get("stat_type_extracted", "PTS")
+            line = prop.get("line", 0)
+            dedupe_key = f"{stat_type}|{line}"
+            if dedupe_key in seen_props:
+                continue
+            seen_props.add(dedupe_key)
+            unique_props.append(prop)
+        
+        # Replace props with deduplicated list
+        player["props"] = unique_props
+        
         for prop in player.get("props", []):
             stat_type = prop.get("stat_type_extracted", "PTS")
             line = prop.get("line", 0)
@@ -773,6 +788,13 @@ async def get_cached_player(player_name: str):
             l5_hit_rate = prop.get("l5_hit_rate", 0)
             is_demon = prop.get("is_demon", False)
             is_goblin = prop.get("is_goblin", False)
+            
+            # Add stat_type for frontend compatibility
+            prop["stat_type"] = stat_type
+            
+            # Add normalized hit rate fields for frontend
+            prop["h10_rate"] = round(l10_hit_rate * 100, 1) if l10_hit_rate and l10_hit_rate <= 1 else l10_hit_rate
+            prop["h5_rate"] = round(l5_hit_rate * 100, 1) if l5_hit_rate and l5_hit_rate <= 1 else l5_hit_rate
             
             # Check if THIS prop is the featured one
             prop_key = f"{stat_type}|{line}"

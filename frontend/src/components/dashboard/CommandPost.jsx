@@ -475,33 +475,24 @@ const CommandPost = memo(({ isOpen, onClose, pendingLeg, onPendingLegProcessed }
           {selectedProfile && !profileLoading && (
             <div className="mt-3">
               <UniversalPlayerCard 
-                player={{
+                player={selectedProfile.playerData || {
                   player_name: selectedProfile.player_name,
                   player_id: selectedProfile.player_id,
                   team: selectedProfile.team,
                   position: selectedProfile.position,
                   photo_url: selectedProfile.photo_url,
                   opponent: selectedProfile.opponent,
-                  // BDL Vault Stats from Master Hub
-                  baseline_stats: selectedProfile.baseline_stats,
-                  fg_pct: selectedProfile.fg_pct,
-                  fg3_pct: selectedProfile.fg3_pct,
-                  stl: selectedProfile.stl,
-                  blk: selectedProfile.blk,
-                  pts: selectedProfile.pts,
-                  reb: selectedProfile.reb,
-                  ast: selectedProfile.ast
                 }}
                 props={selectedProfile.lines?.map(line => ({
                   stat_type: line.stat_type,
                   line: line.line,
                   direction: line.direction || 'over',
                   odds: line.odds,
-                  l5_avg: line.hit_rates?.l5_avg || line.l5_avg,
-                  l10_avg: line.hit_rates?.l10_avg || line.l10_avg,
-                  season_avg: line.season_avg || line.hit_rates?.season_avg,
-                  h5_rate: line.hit_rates?.h5 || line.h5_rate,
-                  h10_rate: line.hit_rates?.h10 || line.h10_rate,
+                  l5_avg: line.l5_avg || line.hit_rates?.l5?.avg,
+                  l10_avg: line.l10_avg || line.hit_rates?.l10?.avg,
+                  season_avg: line.season_avg || line.hit_rates?.season?.avg,
+                  h5_rate: line.h5_rate || (line.hit_rates?.l5?.hit_rate ? line.hit_rates.l5.hit_rate * 100 : null),
+                  h10_rate: line.h10_rate || (line.hit_rates?.l10?.hit_rate ? line.hit_rates.l10.hit_rate * 100 : null),
                   is_demon: line.is_demon,
                   is_goblin: line.is_goblin,
                   tier_label: line.tier_label

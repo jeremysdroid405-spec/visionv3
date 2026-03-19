@@ -311,6 +311,10 @@ async def get_tactical_profile(
             if not stat or not line:
                 continue
             
+            # Only show "over" props (PrizePicks standard)
+            if direction != "over":
+                continue
+            
             # Dedupe key
             dedupe_key = f"{stat}|{line}|{direction}"
             if dedupe_key in seen_props:
