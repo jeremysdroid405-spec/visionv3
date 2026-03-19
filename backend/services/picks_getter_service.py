@@ -1360,15 +1360,13 @@ class PicksGetterService:
     
     async def get_front_lines(self) -> Dict[str, Any]:
         """
-        Get THE FRONT LINES - Medium tier picks with statistical probability focus.
+        Get THE FRONT LINES - Medium tier picks with solid probability.
         
         FRONT LINES LOGIC:
-        1. ANCHOR COMPARISON (Discount): Line must be GOBLIN, 7-12% below Standard
-        2. PROBABILITY FLOOR: Line must be at least 5% LOWER than season_avg
-        3. CONSISTENCY CHECK: L25 Hit Rate >= 72% (18+ of last 25 games)
-        4. EXCLUSION: Must NOT qualify for Safe Haven (H10 >= 80%)
+        1. L10 Hit Rate >= 65% (solid but not Safe Haven tier)
+        2. Line can't be the LOWEST available (not the safest floor play)
+        3. Must NOT qualify for Safe Haven (H10 >= 80%)
         """
-        from services.bdl_comprehensive_sync import _normalize_name
         
         # Get all players that have goblin props
         players = await self.cached_board.find(
@@ -1376,155 +1374,125 @@ class PicksGetterService:
             {"_id": 0}
         ).to_list(200)
         
-        # Build candidate picks from goblin props
-        candidates = []
+        # Build candidate picks
+        front_line_picks = []
+        filter_stats = {
+            "total_players": len(players),
+            "total_goblin_props": 0,
+            "passed_hit_rate_65": 0,
+            "excluded_safe_haven_80": 0,
+            "excluded_lowest_line": 0,
+            "final_picks": 0
+        }
+        
         for player_doc in players:
             player_name = player_doc.get("player_name")
             if not player_name:
                 continue
             
-            # Find goblin props for this player
-            goblin_props = [p for p in player_doc.get("props", []) if p.get("is_goblin")]
-            
-            for prop in goblin_props:
+            # Get all props for this player grouped by stat type
+            props_by_stat = {}
+            for prop in player_doc.get("props", []):
                 stat_type = prop.get("stat_type_extracted") or prop.get("market", "").replace("player_", "")
-                line = prop.get("line")
-                anchor_line = prop.get("anchor_line")
-                
-                if not line or not anchor_line or line >= anchor_line:
+                if stat_type not in props_by_stat:
+                    props_by_stat[stat_type] = []
+                props_by_stat[stat_type].append(prop)
+            
+            # Find goblin props that meet criteria
+            for stat_type, props in props_by_stat.items():
+                goblin_props = [p for p in props if p.get("is_goblin")]
+                if not goblin_props:
                     continue
                 
-                # FILTER 1: ANCHOR COMPARISON - Must be 7-12% below Standard
-                discount_pct = ((anchor_line - line) / anchor_line) * 100
-                if discount_pct < 7 or discount_pct > 12:
-                    continue
+                filter_stats["total_goblin_props"] += len(goblin_props)
                 
-                candidates.append({
-                    "player_name": player_name,
-                    "team": player_doc.get("team"),
-                    "opponent": player_doc.get("opponent"),
-                    "game_id": player_doc.get("game_id"),
-                    "home_team": prop.get("home_team"),
-                    "away_team": prop.get("away_team"),
-                    "stat_type": stat_type,
-                    "line": line,
-                    "odds": prop.get("price"),
-                    "direction": prop.get("direction", "over"),
-                    "is_demon": False,
-                    "is_goblin": True,
-                    "tier_label": "FRONT_LINE",
-                    "anchor_line": anchor_line,
-                    "discount_pct": round(discount_pct, 1),
-                    "is_alternate_market": prop.get("is_alternate_market", True)
-                })
+                # Sort props by line to find lowest
+                all_lines_for_stat = sorted([p.get("line", 0) for p in props if p.get("line")])
+                lowest_line = all_lines_for_stat[0] if all_lines_for_stat else None
+                
+                for prop in goblin_props:
+                    line = prop.get("line")
+                    
+                    # Get hit rate from nested structure
+                    hit_rates = prop.get("hit_rates", {})
+                    l10_data = hit_rates.get("l10", {})
+                    l10_hit_rate = l10_data.get("hit_rate", 0) if isinstance(l10_data, dict) else 0
+                    l5_data = hit_rates.get("l5", {})
+                    l5_hit_rate = l5_data.get("hit_rate", 0) if isinstance(l5_data, dict) else 0
+                    
+                    # Convert to percentage if stored as decimal
+                    if l10_hit_rate and l10_hit_rate <= 1:
+                        l10_hit_rate = l10_hit_rate * 100
+                    if l5_hit_rate and l5_hit_rate <= 1:
+                        l5_hit_rate = l5_hit_rate * 100
+                    
+                    if not line:
+                        continue
+                    
+                    # FILTER 1: L10 Hit Rate >= 65%
+                    if l10_hit_rate < 65:
+                        continue
+                    filter_stats["passed_hit_rate_65"] += 1
+                    
+                    # FILTER 2: Exclude Safe Haven tier (>= 80%)
+                    if l10_hit_rate >= 80:
+                        filter_stats["excluded_safe_haven_80"] += 1
+                        continue
+                    
+                    # FILTER 3: Can't be the lowest line (not safest floor play)
+                    if lowest_line and line == lowest_line and len(all_lines_for_stat) > 1:
+                        filter_stats["excluded_lowest_line"] += 1
+                        continue
+                    
+                    # PASSED ALL FILTERS
+                    filter_stats["final_picks"] += 1
+                    
+                    pick = {
+                        "player_name": player_name,
+                        "team": player_doc.get("team"),
+                        "opponent": player_doc.get("opponent"),
+                        "game_id": player_doc.get("game_id"),
+                        "stat_type": stat_type,
+                        "line": line,
+                        "odds": prop.get("price"),
+                        "direction": prop.get("direction", "over"),
+                        "is_demon": False,
+                        "is_goblin": True,
+                        "tier_label": "FRONT_LINE",
+                        "l10_hit_rate": l10_hit_rate,
+                        "l5_hit_rate": l5_hit_rate,
+                        "l10_avg": l10_data.get("avg") if isinstance(l10_data, dict) else None,
+                        "l5_avg": l5_data.get("avg") if isinstance(l5_data, dict) else None,
+                        "season_avg": hit_rates.get("season", {}).get("avg") if isinstance(hit_rates.get("season"), dict) else None,
+                        "front_line_qualified": True,
+                        "lowest_line": lowest_line,
+                        "is_alternate_market": prop.get("is_alternate_market", True)
+                    }
+                    
+                    front_line_picks.append(pick)
+                    logger.info(f"[FRONT_LINES] ✓ {player_name} {stat_type} @ {line} | L10: {l10_hit_rate:.0f}%")
         
-        if not candidates:
-            logger.warning("[FRONT_LINES] No candidates found with 7-12% discount")
-            return {"picks": [], "picks_count": 0, "filters_applied": ["anchor_7_12_pct"]}
+        # Sort by L10 hit rate (highest first)
+        front_line_picks.sort(key=lambda x: x.get("l10_hit_rate", 0), reverse=True)
         
-        # Apply probability filters
-        front_line_picks = []
-        filter_stats = {
-            "total_candidates": len(candidates), 
-            "passed_discount": len(candidates),
-            "passed_season_floor": 0, 
-            "passed_l25": 0,
-            "excluded_safe_haven": 0
-        }
+        # Limit to 1 pick per player (take the highest hit rate prop)
+        seen_players = set()
+        unique_picks = []
+        for pick in front_line_picks:
+            if pick["player_name"] not in seen_players:
+                seen_players.add(pick["player_name"])
+                unique_picks.append(pick)
         
-        for pick in candidates:
-            player_name = pick["player_name"]
-            stat_type = pick["stat_type"]
-            line = pick["line"]
-            
-            # Get master hub data for this player
-            hub_player = await self._get_master_player_by_name(player_name)
-            
-            if not hub_player:
-                logger.debug(f"[FRONT_LINES] No master hub data for: {player_name}")
-                continue
-            
-            # FILTER 2: PROBABILITY FLOOR - Line must be 5% LOWER than season_avg
-            baseline_stats = hub_player.get("baseline_stats", {})
-            stat_key = self._normalize_stat_key(stat_type)
-            stat_data = baseline_stats.get(stat_key, {})
-            season_avg = stat_data.get("season_avg") if isinstance(stat_data, dict) else stat_data
-            
-            if season_avg is None:
-                logger.debug(f"[FRONT_LINES] No season_avg for {player_name} {stat_type}")
-                continue
-            
-            # Line must be at least 5% lower than season_avg
-            season_floor = season_avg * 0.95  # 5% buffer
-            if line > season_floor:
-                logger.debug(f"[FRONT_LINES] Line {line} > season_floor {season_floor:.1f} for {player_name}")
-                continue
-            filter_stats["passed_season_floor"] += 1
-            
-            # Get game logs for H10 and L25 calculation
-            game_logs = hub_player.get("bdl_game_logs", []) or hub_player.get("game_logs", [])
-            
-            # Check H10 - EXCLUDE if >= 80% (those go to Safe Haven)
-            h10_result = self._calculate_h10_hit_rate(game_logs, stat_type, line)
-            if h10_result["games_counted"] >= 10 and h10_result["hit_rate"] >= 80:
-                logger.debug(f"[FRONT_LINES] Excluded (Safe Haven): {player_name} {stat_type} H10={h10_result['hit_rate']}%")
-                filter_stats["excluded_safe_haven"] += 1
-                continue
-            
-            # FILTER 3: L25 HIT RATE - Must hit in 72% of available games (up to 25)
-            l25_result = self._calculate_l25_hit_rate(game_logs, stat_type, line)
-            
-            if l25_result["games_counted"] < 10:  # Need at least 10 games for reliability
-                logger.debug(f"[FRONT_LINES] Insufficient games for {player_name}: {l25_result['games_counted']}")
-                continue
-            
-            if l25_result["hit_rate"] < 72:
-                logger.debug(f"[FRONT_LINES] L25 {l25_result['hit_rate']}% < 72% for {player_name} {stat_type}")
-                continue
-            filter_stats["passed_l25"] += 1
-            
-            # PASSED ALL FILTERS - Add to Front Lines
-            pick["season_avg"] = season_avg
-            pick["season_floor"] = round(season_floor, 1)
-            pick["floor_buffer_pct"] = round(((season_avg - line) / season_avg) * 100, 1)
-            pick["h10_hits"] = h10_result["hits"]
-            pick["h10_games"] = h10_result["games_counted"]
-            pick["h10_hit_rate"] = h10_result["hit_rate"]
-            pick["l25_hits"] = l25_result["hits"]
-            pick["l25_games"] = l25_result["games_counted"]
-            pick["l25_hit_rate"] = l25_result["hit_rate"]
-            pick["front_line_qualified"] = True
-            
-            # Position from master hub
-            pick["position"] = hub_player.get("position")
-            # CRITICAL: Use team from master hub (not cached_board which may be incorrect)
-            player_team = hub_player.get("team")
-            pick["team"] = player_team
-            # Derive correct opponent using game_id lookup
-            game_id = pick.get("game_id")
-            game_info = await self._get_game_info(game_id)
-            pick["opponent"] = _get_opponent_from_game(player_team, game_info.get("home_team"), game_info.get("away_team"))
-            
-            # Check if player is injured
-            injured_players = await self._get_injured_players()
-            pick["is_injured"] = pick.get("player_name", "").lower() in injured_players
-            
-            front_line_picks.append(pick)
-            logger.info(f"[FRONT_LINES] ✓ {player_name} {stat_type} @ {line} | Discount: {pick['discount_pct']}% | L25: {l25_result['hit_rate']}%")
-        
-        # Sort by L25 hit rate (highest first), then by discount
-        front_line_picks.sort(key=lambda x: (x.get("l25_hit_rate", 0), x.get("discount_pct", 0)), reverse=True)
-        
-        logger.info(f"[FRONT_LINES] Filters: {filter_stats}")
+        logger.info(f"[FRONT_LINES] Found {len(unique_picks)} unique player picks | Filters: {filter_stats}")
         
         # SSOT: Enrich ALL picks with photos from master hub
-        await self._enrich_picks_with_photos(front_line_picks)
+        await self._enrich_picks_with_photos(unique_picks)
         
         return {
-            "picks": front_line_picks[:20],
-            "picks_count": len(front_line_picks),
+            "picks": unique_picks[:10],  # Return exactly 10 picks
+            "picks_count": len(unique_picks),
             "filter_stats": filter_stats,
-            "filters_applied": ["anchor_7_12_pct", "season_floor_5pct", "l25_hit_rate_72pct", "exclude_safe_haven"]
+            "filters_applied": ["l10_hit_rate_65pct", "not_lowest_line", "exclude_safe_haven", "one_per_player"]
         }
     
     def _calculate_l25_hit_rate(self, game_logs: List[Dict], stat_type: str, line: float) -> Dict:
