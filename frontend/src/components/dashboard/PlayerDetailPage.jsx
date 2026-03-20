@@ -298,11 +298,9 @@ export const PlayerDetailPage = ({ playerName, playerData = null, onBack, highli
   const [player, setPlayer] = useState(playerData);
   const [loading, setLoading] = useState(!playerData);
   const [error, setError] = useState(null);
-  const mountedRef = useRef(true);
+  const fetchIdRef = useRef(0);
   
   useEffect(() => {
-    mountedRef.current = true;
-    
     if (playerData) {
       setPlayer(playerData);
       setLoading(false);
@@ -311,23 +309,26 @@ export const PlayerDetailPage = ({ playerName, playerData = null, onBack, highli
     
     if (!playerName) return;
     
-    // Use the module-level constant and construct URL
+    // Increment fetch ID to track current request
+    const currentFetchId = ++fetchIdRef.current;
+    
     const fetchUrl = `${API}/api/v3/player-with-badges/${encodeURIComponent(playerName)}`;
     
     console.log('[PlayerDetailPage] Fetching:', fetchUrl);
     setLoading(true);
     setError(null);
     
-    // Use XMLHttpRequest instead of fetch to bypass any potential issues
+    // Use XMLHttpRequest with onreadystatechange for better compatibility
     const xhr = new XMLHttpRequest();
     xhr.open('GET', fetchUrl, true);
     xhr.setRequestHeader('Accept', 'application/json');
     
-    xhr.onload = function() {
-      if (!mountedRef.current) return;
+    xhr.onreadystatechange = function() {
+      console.log('[PlayerDetailPage] XHR state:', xhr.readyState, 'status:', xhr.status, 'fetchId:', currentFetchId, 'current:', fetchIdRef.current);
       
-      console.log('[PlayerDetailPage] XHR complete, status:', xhr.status);
+      if (xhr.readyState !== 4) return;
       
+      // Always process, don't skip based on fetchId
       if (xhr.status >= 200 && xhr.status < 300) {
         try {
           const data = JSON.parse(xhr.responseText);
@@ -345,25 +346,20 @@ export const PlayerDetailPage = ({ playerName, playerData = null, onBack, highli
           console.error('[PlayerDetailPage] Parse error:', e);
           setError('Failed to parse response');
         }
-      } else {
+      } else if (xhr.status > 0) {
         setError(`HTTP error: ${xhr.status}`);
       }
       setLoading(false);
     };
     
     xhr.onerror = function() {
-      if (!mountedRef.current) return;
+      if (fetchIdRef.current !== currentFetchId) return;
       console.error('[PlayerDetailPage] XHR error');
       setError('Network error');
       setLoading(false);
     };
     
     xhr.send();
-    
-    return () => {
-      mountedRef.current = false;
-      xhr.abort();
-    };
   }, [playerName, playerData]);
   
   const [showIntelSuite, setShowIntelSuite] = useState(false);

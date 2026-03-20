@@ -1878,104 +1878,98 @@ class PicksGetterService:
     
     async def get_cached_player(self, player_name: str) -> Dict[str, Any]:
         """
-        Get a single player from the CACHED board or player_data.
-        Also includes advanced analytics insights.
+        Get a single player from the CACHED board.
+        Aggregates all props for the player from the flat document structure.
         NO API CALLS - reads only from database.
         
         Stats (L5/L10/SZN) come EXCLUSIVELY from nba_master_hub_2026.baseline_stats.
         """
-        # Try dg_cached_board first (has opponent data)
-        player = await self.cached_board.find_one(
-            {"player_name": player_name},
+        # Get current time for filtering upcoming games
+        now = datetime.now(timezone.utc)
+        now_iso = now.isoformat().replace('+00:00', 'Z')
+        
+        # In flat structure, each document is a single prop
+        # Aggregate all props for this player from UPCOMING games
+        props = await self.cached_board.find(
+            {
+                "player_name": {"$regex": f"^{player_name}$", "$options": "i"},
+                "commence_time": {"$gt": now_iso}
+            },
             {"_id": 0}
-        )
+        ).to_list(100)
         
-        if player:
-            self._clean_object_ids(player)
-            self._flatten_hit_rates_to_props(player)  # Flatten for frontend
-            await self._enrich_player_with_master_hub_stats(player)
-            await self._add_player_insights(player)
-            return {"success": True, "player": player, "source": "cached_board"}
-        
-        # Try case-insensitive search in cached_board
-        player = await self.cached_board.find_one(
-            {"player_name": {"$regex": f"^{player_name}$", "$options": "i"}},
-            {"_id": 0}
-        )
-        
-        if player:
-            self._clean_object_ids(player)
-            self._flatten_hit_rates_to_props(player)  # Flatten for frontend
-            await self._enrich_player_with_master_hub_stats(player)
-            await self._add_player_insights(player)
-            return {"success": True, "player": player, "source": "cached_board"}
-        
-        # Fallback: Try player_data (exact match)
-        player = await self.player_data.find_one(
-            {"player_name": player_name},
-            {"_id": 0}
-        )
-        
-        if player:
-            self._clean_object_ids(player)
-            self._flatten_hit_rates_to_props(player)  # Flatten for frontend
-            await self._enrich_player_with_master_hub_stats(player)
-            await self._add_player_insights(player)
-            return {"success": True, "player": player, "source": "player_data"}
-        
-        # Try case-insensitive in player_data
-        player = await self.player_data.find_one(
-            {"player_name": {"$regex": f"^{player_name}$", "$options": "i"}},
-            {"_id": 0}
-        )
-        
-        if player:
-            self._clean_object_ids(player)
-            self._flatten_hit_rates_to_props(player)  # Flatten for frontend
-            await self._enrich_player_with_master_hub_stats(player)
-            await self._add_player_insights(player)
-            return {"success": True, "player": player, "source": "player_data"}
-        
-        # Normalized name search in both collections (replaces fuzzy matching)
-        all_players_pd = await self.player_data.find({}, {"player_name": 1, "_id": 0}).to_list(500)
-        all_players_cb = await self.cached_board.find({}, {"player_name": 1, "_id": 0}).to_list(500)
-        
-        normalized_search = _normalize_name(player_name)
-        best_match = None
-        match_source = None
-        
-        # Check player_data first
-        for p in all_players_pd:
-            if _normalize_name(p.get("player_name", "")) == normalized_search:
-                best_match = p["player_name"]
-                match_source = "player_data"
-                break
-        
-        # Check cached_board if not found
-        if not best_match:
-            for p in all_players_cb:
-                if _normalize_name(p.get("player_name", "")) == normalized_search:
-                    best_match = p["player_name"]
-                    match_source = "cached_board"
+        if not props:
+            # Try normalized name search
+            normalized_search = _normalize_name(player_name)
+            all_players = await self.cached_board.distinct("player_name", {"commence_time": {"$gt": now_iso}})
+            
+            matched_name = None
+            for pname in all_players:
+                if _normalize_name(pname) == normalized_search:
+                    matched_name = pname
                     break
+            
+            if matched_name:
+                props = await self.cached_board.find(
+                    {
+                        "player_name": matched_name,
+                        "commence_time": {"$gt": now_iso}
+                    },
+                    {"_id": 0}
+                ).to_list(100)
         
-        if best_match:
-            collection = self.player_data if match_source == "player_data" else self.cached_board
-            player = await collection.find_one(
-                {"player_name": best_match},
-                {"_id": 0}
-            )
-            self._clean_object_ids(player)
-            self._flatten_hit_rates_to_props(player)  # Flatten for frontend
-            await self._enrich_player_with_master_hub_stats(player)
-            await self._add_player_insights(player)
-            return {"success": True, "player": player, "matched_name": best_match, "source": match_source}
+        if not props:
+            return {
+                "success": False,
+                "message": "Lines loading... Player not in cache.",
+                "player": None
+            }
         
-        return {
-            "success": False,
-            "message": "Lines loading... Player not in cache.",
-            "player": None
+        # Build player object from first prop (they all have same player metadata)
+        first_prop = props[0]
+        player = {
+            "player_name": first_prop.get("player_name"),
+            "team": first_prop.get("team"),
+            "opponent": first_prop.get("opponent"),
+            "game_id": first_prop.get("game_id"),
+            "home_team": first_prop.get("home_team"),
+            "away_team": first_prop.get("away_team"),
+            "commence_time": first_prop.get("commence_time"),
+            "position": first_prop.get("position"),
+            "photo_url": first_prop.get("photo_url"),
+            "nba_id": first_prop.get("nba_id"),
+            # Aggregate all props
+            "props": []
         }
+        
+        # Add all props to the player object
+        for prop in props:
+            player["props"].append({
+                "stat_type_extracted": prop.get("stat_type_extracted"),
+                "stat_type": prop.get("stat_type_extracted"),
+                "line": prop.get("line"),
+                "anchor_line": prop.get("anchor_line"),
+                "is_demon": prop.get("is_demon"),
+                "is_goblin": prop.get("is_goblin"),
+                "tier_label": prop.get("tier_label"),
+                "direction": prop.get("direction"),
+                "price": prop.get("price"),
+                "h10_hit_rate": prop.get("h10_hit_rate"),
+                "h10_rate": prop.get("h10_hit_rate"),
+                "l5_avg": prop.get("l5_avg"),
+                "l10_avg": prop.get("l10_avg"),
+                "season_avg": prop.get("season_avg"),
+                "is_alternate_market": prop.get("is_alternate_market"),
+                "commence_time": prop.get("commence_time"),
+                "home_team": prop.get("home_team"),
+                "away_team": prop.get("away_team"),
+            })
+        
+        self._clean_object_ids(player)
+        await self._enrich_player_with_master_hub_stats(player)
+        await self._add_player_insights(player)
+        
+        return {"success": True, "player": player, "source": "cached_board"}
     
     async def _enrich_player_with_master_hub_stats(self, player: Dict) -> None:
         """
