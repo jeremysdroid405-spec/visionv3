@@ -304,9 +304,13 @@ class NBAOfficialSyncService:
         results["players_on_active_roster"] = len(active_player_ids)
         
         # STEP 2: Query ONLY players on active rosters (filtered at DB level)
+        # Support both nba_player_id and nba_id fields
         cursor = self.hub.find(
-            {"nba_player_id": {"$in": list(active_player_ids)}},
-            {"display_name": 1, "nba_player_id": 1, "team": 1}
+            {"$or": [
+                {"nba_player_id": {"$in": list(active_player_ids)}},
+                {"nba_id": {"$in": list(active_player_ids)}}
+            ]},
+            {"display_name": 1, "nba_player_id": 1, "nba_id": 1, "team": 1}
         )
         players = await cursor.to_list(length=600)
         
@@ -315,7 +319,12 @@ class NBAOfficialSyncService:
         
         for i, player in enumerate(players):
             player_name = player.get("display_name", "Unknown")
-            nba_id = player.get("nba_player_id")
+            # Support both field names
+            nba_id = player.get("nba_player_id") or player.get("nba_id")
+            
+            if not nba_id:
+                results["players_failed"] += 1
+                continue
             
             try:
                 

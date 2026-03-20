@@ -261,38 +261,41 @@ class AdaptiveSyncEngine:
             result["season_avg"] = stat_data
         
         # Calculate from game logs for accurate L5/L10/H10
-        # Prefer game_logs (more complete) over bdl_game_logs
-        game_logs = player.get("game_logs", [])
+        # Use bdl_game_logs as PRIMARY source (correct field names: fg3m, turnover)
+        # Fall back to game_logs only if bdl_game_logs is empty
         bdl_logs = player.get("bdl_game_logs", [])
+        game_logs = player.get("game_logs", [])
         
-        # Use whichever source has more data
-        if len(game_logs) >= len(bdl_logs):
+        # Prefer bdl_game_logs - it has consistent field names from BDL API
+        if len(bdl_logs) >= 5:
+            logs_to_use = bdl_logs
+            log_source = "bdl_game_logs"
+            log_key_map = {
+                "PTS": "pts", "REB": "reb", "AST": "ast", "STL": "stl",
+                "BLK": "blk", "THREES": "fg3m", "3PM": "fg3m", "TO": "turnover"
+            }
+        elif len(game_logs) >= 5:
             logs_to_use = game_logs
             log_source = "game_logs"
-            # game_logs field mappings (different from BDL)
             log_key_map = {
                 "PTS": "pts", "REB": "reb", "AST": "ast", "STL": "stl",
                 "BLK": "blk", "THREES": "tptfgm", "3PM": "tptfgm", "TO": "TOV"
             }
         else:
-            logs_to_use = bdl_logs
-            log_source = "bdl_game_logs"
-            # BDL game logs field mappings
+            logs_to_use = bdl_logs if bdl_logs else game_logs
+            log_source = "bdl_game_logs" if bdl_logs else "game_logs"
             log_key_map = {
                 "PTS": "pts", "REB": "reb", "AST": "ast", "STL": "stl",
-                "BLK": "blk", "THREES": "fg3m", "3PM": "fg3m", "TO": "turnover"
+                "BLK": "blk", "THREES": "fg3m" if bdl_logs else "tptfgm",
+                "3PM": "fg3m" if bdl_logs else "tptfgm",
+                "TO": "turnover" if bdl_logs else "TOV"
             }
         
         if logs_to_use:
             # Sort by date (most recent first)
             if log_source == "bdl_game_logs":
-                logs_to_use = sorted(
-                    logs_to_use,
-                    key=lambda x: x.get('game', {}).get('date', '') if isinstance(x.get('game'), dict) else x.get('date', ''),
-                    reverse=True
-                )
+                logs_to_use = sorted(logs_to_use, key=lambda x: x.get('date', ''), reverse=True)
             else:
-                # game_logs uses gameID format like '20250228_TOR@CHI'
                 logs_to_use = sorted(
                     logs_to_use,
                     key=lambda x: x.get('gameID', '')[:8] if x.get('gameID') else '',
