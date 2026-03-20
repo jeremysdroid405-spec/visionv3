@@ -479,7 +479,8 @@ class PicksGetterService:
         bdl_field = bdl_stat_map.get(stat_key)
         
         # Get game logs for hit rate calculation (ALWAYS needed for L5/L10 hit rates)
-        game_logs = player.get("game_logs", []) or player.get("bdl_game_logs", [])
+        # PRIORITY: bdl_game_logs (2025-26 season) > game_logs (legacy)
+        game_logs = player.get("bdl_game_logs", []) or player.get("game_logs", [])
         
         # Helper function to calculate hit rates from game logs
         def calculate_hit_rates(logs, stat_type, line):
@@ -487,13 +488,15 @@ class PicksGetterService:
             if not logs:
                 return {"h5_rate": 0, "h10_rate": 0, "l5_avg": 0, "l10_avg": 0, "season_avg": 0}
             
-            # Sort by date descending
-            sorted_logs = sorted(logs, key=lambda x: x.get("game_date", "") or x.get("game", {}).get("date", ""), reverse=True)
+            # Sort by date descending - handle both "date" (bdl_game_logs) and "game_date" (game_logs) formats
+            sorted_logs = sorted(logs, key=lambda x: x.get("date", "") or x.get("game_date", "") or x.get("game", {}).get("date", ""), reverse=True)
             
             # Map stat type to game log field
+            # NOTE: bdl_game_logs uses "fg3m" for 3PM, game_logs uses "tptfgm"
+            # NOTE: bdl_game_logs uses "turnover" for TO, game_logs uses "tov"
             stat_map = {
                 "PTS": "pts", "REB": "reb", "AST": "ast", "STL": "stl", "BLK": "blk",
-                "3PM": "tptfgm", "THREES": "tptfgm", "TO": "tov", 
+                "3PM": "fg3m", "THREES": "fg3m", "TO": "turnover", 
                 "PRA": "pra", "P+R": "pts_reb", "PR": "pts_reb",
                 "P+A": "pts_ast", "PA": "pts_ast", "R+A": "reb_ast", "RA": "reb_ast"
             }
@@ -623,13 +626,14 @@ class PicksGetterService:
                 "games_played": bdl_games_played
             }
         
-        # Sort by date descending
-        game_logs = sorted(game_logs, key=lambda x: x.get("game_date", "") or x.get("game", {}).get("date", ""), reverse=True)
+        # Sort by date descending - handle both "date" (bdl_game_logs) and "game_date" (game_logs)
+        game_logs = sorted(game_logs, key=lambda x: x.get("date", "") or x.get("game_date", "") or x.get("game", {}).get("date", ""), reverse=True)
         
         # Map stat type to game log field
+        # NOTE: bdl_game_logs uses "fg3m" for 3PM and "turnover" for TO
         stat_map = {
             "PTS": "pts", "REB": "reb", "AST": "ast", "STL": "stl", "BLK": "blk",
-            "3PM": "fg3m", "THREES": "fg3m", "TO": "tov", "PRA": "pra", 
+            "3PM": "fg3m", "THREES": "fg3m", "TO": "turnover", "PRA": "pra", 
             "P+R": "pts_reb", "PR": "pts_reb",
             "P+A": "pts_ast", "PA": "pts_ast",
             "R+A": "reb_ast", "RA": "reb_ast"

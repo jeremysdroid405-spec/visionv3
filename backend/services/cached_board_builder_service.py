@@ -315,14 +315,17 @@ class CachedBoardBuilderService:
         This includes baseline_stats with L5/L10/season averages needed for:
         - L5 fallback anchor classification
         - Stats display on player cards
+        
+        Also includes bdl_game_logs for accurate per-line hit rate calculations.
         """
         stats_map = {}
         
         # Load from nba_master_hub_2026 (SSOT for player stats)
         # All records have bdl_id - this is the primary key
+        # CRITICAL: Include bdl_game_logs for per-line hit rate calculation
         hub_cursor = self.db.nba_master_hub_2026.find(
             {"bdl_id": {"$exists": True}},
-            {"_id": 0, "bdl_id": 1, "display_name": 1, "baseline_stats": 1, "team": 1}
+            {"_id": 0, "bdl_id": 1, "display_name": 1, "baseline_stats": 1, "team": 1, "bdl_game_logs": 1}
         )
         
         async for player in hub_cursor:
@@ -333,7 +336,8 @@ class CachedBoardBuilderService:
                     "bdl_id": player.get("bdl_id"),
                     "player_name": player_name,
                     "baseline_stats": player.get("baseline_stats", {}),
-                    "team": player.get("team")
+                    "team": player.get("team"),
+                    "bdl_game_logs": player.get("bdl_game_logs", [])
                 }
         
         logger.info(f"[CACHED_BOARD] Loaded {len(stats_map)} player stats from master hub")
@@ -452,6 +456,7 @@ class CachedBoardBuilderService:
         hub_stats = hub_player.get("stats", {})
         season_avg = hub_stats.get("season_avg", {})
         baseline_stats = player_stats.get("baseline_stats", {})
+        bdl_game_logs = player_stats.get("bdl_game_logs", [])
         
         return {
             # Primary identifiers
@@ -477,6 +482,7 @@ class CachedBoardBuilderService:
             
             # Stats for hit_rates calculation
             "baseline_stats": baseline_stats,
+            "bdl_game_logs": bdl_game_logs,  # CRITICAL: For per-line hit rate calculation
             "season_avg": season_avg,
             "games_played": season_avg.get("gp", player_stats.get("games_played", 0)),
             
@@ -542,7 +548,7 @@ class CachedBoardBuilderService:
         }
     
     def _add_prop_to_player(self, player: Dict, prop: Dict) -> None:
-        """Add prop to player with hit_rates calculated from baseline stats"""
+        """Add prop to player with hit_rates calculated from bdl_game_logs"""
         
         # Get stat type - use extracted short form if available, otherwise derive from market
         stat_type = prop.get("stat_type_extracted")
@@ -564,13 +570,49 @@ class CachedBoardBuilderService:
         
         line = prop.get("line", 0)
         
-        # Get baseline stats from master hub (stored in player during _create_matched_player)
+        # Get baseline stats for averages display
         baseline = player.get("baseline_stats", {})
         stat_baseline = baseline.get(stat_type, {})
         
-        # Calculate hit rates based on L10/L5 values
-        # l10_values is ordered most-recent-first, so L5 = first 5 values
-        l10_values = stat_baseline.get("l10_values", [])
+        # Get bdl_game_logs for per-line hit rate calculation
+        # These are sorted most-recent-first by the sync service
+        bdl_logs = player.get("bdl_game_logs", [])
+        
+        # Map stat types to bdl_game_logs field names
+        # bdl_game_logs uses: pts, reb, ast, fg3m (not tptfgm), turnover (not tov), stl, blk
+        stat_field_map = {
+            "PTS": "pts", "REB": "reb", "AST": "ast", "STL": "stl", "BLK": "blk",
+            "3PM": "fg3m", "THREES": "fg3m", "TO": "turnover"
+        }
+        log_field = stat_field_map.get(stat_type.upper(), stat_type.lower())
+        
+        # Extract values from game logs for this stat type
+        def get_stat_value(game: Dict) -> float:
+            """Get the stat value from a game log, handling combined stats"""
+            if stat_type.upper() in ["PRA"]:
+                return (game.get("pts", 0) or 0) + (game.get("reb", 0) or 0) + (game.get("ast", 0) or 0)
+            elif stat_type.upper() in ["P+R", "PR"]:
+                return (game.get("pts", 0) or 0) + (game.get("reb", 0) or 0)
+            elif stat_type.upper() in ["P+A", "PA"]:
+                return (game.get("pts", 0) or 0) + (game.get("ast", 0) or 0)
+            elif stat_type.upper() in ["R+A", "RA"]:
+                return (game.get("reb", 0) or 0) + (game.get("ast", 0) or 0)
+            else:
+                return game.get(log_field, 0) or 0
+        
+        # Filter out DNP games (min = 0 or "0" or empty)
+        def did_play(game: Dict) -> bool:
+            mins = game.get("min", "0") or "0"
+            if isinstance(mins, str):
+                mins = mins.split(":")[0] if ":" in mins else mins
+                try:
+                    return int(mins) > 0
+                except ValueError:
+                    return False
+            return float(mins) > 0 if mins else False
+        
+        played_games = [g for g in bdl_logs if did_play(g)]
+        l10_values = [get_stat_value(g) for g in played_games[:10]]
         l5_values = l10_values[:5] if len(l10_values) >= 5 else l10_values
         
         hit_rates = {
@@ -583,13 +625,14 @@ class CachedBoardBuilderService:
             "l10_avg": stat_baseline.get("l10_avg")
         }
         
+        # Calculate hit rates using > (strictly over) for betting props
         if l10_values and line:
-            over_hits = sum(1 for v in l10_values if v >= line)
+            over_hits = sum(1 for v in l10_values if v > line)
             hit_rates["l10_rate"] = round((over_hits / len(l10_values)) * 100)
             hit_rates["l10_hit_count"] = over_hits
         
         if l5_values and line:
-            over_hits = sum(1 for v in l5_values if v >= line)
+            over_hits = sum(1 for v in l5_values if v > line)
             hit_rates["l5_rate"] = round((over_hits / len(l5_values)) * 100) if l5_values else None
             hit_rates["l5_hit_count"] = over_hits
         

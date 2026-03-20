@@ -22,7 +22,7 @@ import os
 logger = logging.getLogger(__name__)
 
 BDL_BASE_URL = "https://api.balldontlie.io/v1"
-CURRENT_SEASON = 2024  # 2024-25 season
+CURRENT_SEASON = 2025  # 2025-26 season
 
 
 class BDLGameLogsSync:

@@ -55,14 +55,42 @@ probability_score = base_hit_rate + dvp_modifier + badge_modifier + line_modifie
 - `/app/backend/services/probability_score_service.py` - Scoring logic
 - `/app/backend/services/picks_getter_service.py` - Uses prob_score in War Zone, Safe Haven, Front Lines
 
-### Hit Rate Calculation (CRITICAL FIX - 2026-03-19)
+### Hit Rate Calculation (CRITICAL FIX - 2026-03-20)
 
-**Problem Solved:** Hit rates were showing 100% even when clearly wrong.
+**Problem Solved:** Hit rates were showing incorrect values (e.g., 90% when actual was 60%) due to:
+1. **Wrong season data**: BDL sync was using `CURRENT_SEASON = 2024` (2024-25 playoffs) instead of `2025` (2025-26 season)
+2. **Wrong field mappings**: Hit rate calculation looked for `l10_values` in `baseline_stats` instead of extracting from `bdl_game_logs`
+3. **Date field mismatch**: Sorting used `game_date` but `bdl_game_logs` uses `date`
+4. **Stat field mismatch**: 3PM mapping used `tptfgm` but `bdl_game_logs` uses `fg3m`
 
-**Solution:** 
-1. Fetch BDL game logs via `/stats` endpoint
-2. Store `l10_values: [14, 27, 21, 19, 20, ...]` in `baseline_stats[STAT]`
-3. Calculate hit rates by counting games over the line
+**Solution (2026-03-20):** 
+1. **Fixed season**: Updated `/app/backend/services/bdl_game_logs_sync.py` to use `CURRENT_SEASON = 2025`
+2. **Fixed data source**: Updated `/app/backend/services/cached_board_builder_service.py`:
+   - `_load_stats_map()` now includes `bdl_game_logs` from master hub
+   - `_create_matched_player()` passes `bdl_game_logs` to player dict
+   - `_add_prop_to_player()` extracts game values from `bdl_game_logs` for per-line hit rate calculation
+3. **Fixed field mappings**: 
+   - Date sorting: `x.get("date", "") or x.get("game_date", "")`
+   - 3PM: Uses `fg3m` 
+   - TO: Uses `turnover`
+
+**Data Flow:**
+```
+BDL /stats endpoint (season=2025)
+    ↓
+nba_master_hub_2026.bdl_game_logs
+    ↓
+cached_board_builder_service._load_stats_map() 
+    ↓
+_add_prop_to_player() extracts values per stat type
+    ↓
+Calculates L5/L10 hit rates against prop line
+    ↓
+dg_cached_board.props[].hit_rates
+```
+
+**Verification:**
+- Jamal Murray REB 3.5 Over: L5=60% (3/5), L10=60% (6/10) ✓
 
 ### Scheduled Syncs (EST)
 
@@ -74,7 +102,8 @@ probability_score = base_hit_rate + dvp_modifier + badge_modifier + line_modifie
 | 4:04 AM | NBA Batch 3/5 | 125 players L5/L10 from NBA.com |
 | 4:06 AM | NBA Batch 4/5 | 125 players L5/L10 from NBA.com |
 | 4:08 AM | NBA Batch 5/5 | 125 players L5/L10 from NBA.com |
-| **4:10 AM** | **BDL Game Values** | **l10_values for hit rate calcs** |
+| 4:20 AM | Context Badges | Badge sync and enrichment |
+| **4:25 AM** | **BDL Game Logs Sync** | **2025-26 season game-by-game stats for hit rates** |
 | 5:00 AM | Morning Props | Odds/props refresh |
 | Sunday 00:00 UTC | Roster Sync | Weekly team mappings |
 

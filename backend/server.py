@@ -705,6 +705,40 @@ async def scheduled_roster_sync():
         logger.error("[SCHEDULER] Demon & Goblin Engine not initialized")
 
 
+async def scheduled_bdl_game_logs_sync():
+    """
+    Scheduled job that runs at 4:25 AM EST (09:25 UTC) daily.
+    
+    Syncs game-by-game stats from BDL /stats endpoint for all players.
+    This data is CRITICAL for accurate per-line hit rate calculations.
+    
+    The sync fetches the current 2025-26 season data and stores it in
+    nba_master_hub_2026.bdl_game_logs for each player.
+    """
+    logger.info("=" * 70)
+    logger.info("[SCHEDULER] BDL GAME LOGS SYNC (2025-26 SEASON)")
+    logger.info(f"[SCHEDULER] Time: {datetime.now(timezone.utc).isoformat()}")
+    logger.info("=" * 70)
+    
+    try:
+        from services.bdl_game_logs_sync import BDLGameLogsSync
+        
+        sync_service = BDLGameLogsSync(db)
+        
+        # Sync all players with bdl_id
+        result = await sync_service.sync_all_players(batch_size=10)
+        
+        logger.info(f"[SCHEDULER] BDL Game Logs sync complete:")
+        logger.info(f"[SCHEDULER]   - Players synced: {result.get('players_synced', 0)}/{result.get('total_players', 0)}")
+        logger.info(f"[SCHEDULER]   - Total games: {result.get('total_games', 0)}")
+        logger.info(f"[SCHEDULER]   - Failed: {result.get('players_failed', 0)}")
+        logger.info(f"[SCHEDULER]   - Duration: {result.get('duration_seconds', 0):.1f}s")
+        logger.info("=" * 70)
+        
+    except Exception as e:
+        logger.error(f"[SCHEDULER] BDL game logs sync failed: {e}")
+
+
 @app.on_event("startup")
 async def startup_event():
     global stats_manager, demon_tracker, demon_goblin_engine, vision_ai_service, injury_service, raw_stat_fetcher, social_signal_engine, adaptive_sync, intel_briefing_engine, live_scores_engine, game_lock_engine, scheduler
@@ -936,10 +970,21 @@ async def startup_event():
         replace_existing=True
     )
     
+    # BDL Game Logs Sync at 4:25 AM EST (09:25 AM UTC) - CRITICAL for hit rates
+    # This syncs game-by-game stats from BDL for accurate per-line hit rate calculations
+    scheduler.add_job(
+        scheduled_bdl_game_logs_sync,
+        CronTrigger(hour=9, minute=25, timezone=SCHEDULER_TIMEZONE),  # 4:25 AM EST = 9:25 AM UTC
+        id='bdl_game_logs_sync',
+        name='4:25 AM EST BDL Game Logs Sync',
+        replace_existing=True
+    )
+    
     scheduler.start()
     logger.info(f"[SCHEDULER] APScheduler started")
     logger.info(f"[SCHEDULER] Daily Full Sync: 04:00 AM EST (09:00 UTC)")
     logger.info(f"[SCHEDULER] NBA.com L5/L10: 5 batches x 125 players @ 04:00, 04:02, 04:04, 04:06, 04:08 AM EST")
+    logger.info(f"[SCHEDULER] BDL Game Logs: 04:25 AM EST (09:25 UTC)")
     logger.info(f"[SCHEDULER] Morning Props: 05:00 AM EST (10:00 UTC)")
     logger.info(f"[SCHEDULER] Weekly Roster: Sunday 00:00 UTC")
     
