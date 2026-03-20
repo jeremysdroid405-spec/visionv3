@@ -636,9 +636,20 @@ class CachedBoardBuilderService:
             hit_rates["l5_rate"] = round((over_hits / len(l5_values)) * 100) if l5_values else None
             hit_rates["l5_hit_count"] = over_hits
         
-        # Add hit_rates to prop
+        # Add hit_rates to prop (nested object)
         prop["hit_rates"] = hit_rates
         prop["stat_type"] = stat_type
+        
+        # ALSO flatten to prop level for functions that expect h5_rate/h10_hit_rate
+        prop["h5_rate"] = hit_rates["l5_rate"]
+        prop["h10_rate"] = hit_rates["l10_rate"]
+        prop["h10_hit_rate"] = hit_rates["l10_rate"]  # Legacy field name
+        prop["h5_hit_rate"] = hit_rates["l5_rate"]    # Legacy field name
+        prop["l5_avg"] = hit_rates["l5_avg"]
+        prop["l10_avg"] = hit_rates["l10_avg"]
+        prop["season_avg"] = hit_rates["season_avg"]
+        prop["l10_hit_count"] = hit_rates["l10_hit_count"]
+        prop["l5_hit_count"] = hit_rates["l5_hit_count"]
         
         player["props"].append(prop)
         

@@ -641,12 +641,12 @@ const PopularBetCard = memo(({ bet, onClick }) => {
         </div>
       </div>
       
-      {/* L5 Avg / L10 Hit Rate / Season Avg */}
+      {/* L5 Hit Rate / L10 Hit Rate / Season Avg */}
       <div className="flex items-center justify-between bg-zinc-800/50 rounded px-2 py-1.5 text-[9px] sm:text-[10px]">
         <div className="text-center flex-1">
           <div className="text-zinc-500">L5</div>
-          <div className="font-bold text-white">
-            {bet.l5_avg != null ? bet.l5_avg.toFixed?.(1) || bet.l5_avg : '---'}
+          <div className={`font-bold ${getHitRateColor(bet.h5_rate || 0)}`}>
+            {bet.h5_rate != null ? `${bet.h5_rate}%` : '---'}
           </div>
         </div>
         <div className="h-4 w-px bg-zinc-700" />

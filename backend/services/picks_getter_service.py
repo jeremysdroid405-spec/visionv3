@@ -714,14 +714,35 @@ class PicksGetterService:
         now = datetime.now(timezone.utc)
         now_iso = now.isoformat().replace('+00:00', 'Z')
         
-        # Get all demon props from UPCOMING games only (commence_time > now)
-        demon_props = await self.cached_board.find(
-            {
-                "is_demon": True,
-                "commence_time": {"$gt": now_iso}
-            },
-            {"_id": 0}
-        ).to_list(2000)
+        # Get all demon props from UPCOMING games
+        # Data is stored as PLAYER DOCUMENTS with nested props arrays
+        # We need to unwind and filter for demons
+        pipeline = [
+            {"$unwind": "$props"},
+            {"$match": {
+                "props.is_demon": True,
+                "props.commence_time": {"$gt": now_iso}
+            }},
+            {"$project": {
+                "_id": 0,
+                "player_name": 1,
+                "team": 1,
+                "photo_url": 1,
+                "headshot_url": 1,
+                "prop": "$props"
+            }}
+        ]
+        
+        demon_results = await self.cached_board.aggregate(pipeline).to_list(2000)
+        
+        # Flatten to prop documents with player info
+        demon_props = []
+        for result in demon_results:
+            prop = result.get("prop", {})
+            prop["player_name"] = result.get("player_name")
+            prop["team"] = result.get("team") or prop.get("team")
+            prop["photo_url"] = result.get("photo_url") or result.get("headshot_url")
+            demon_props.append(prop)
         
         # Build picks - find best payout per player
         player_best_picks = {}  # player_name -> best pick
@@ -741,18 +762,32 @@ class PicksGetterService:
             
             unique_players.add(player_name)
             
-            stat_type = prop.get("stat_type_extracted") or prop.get("market", "").replace("player_", "")
+            stat_type = prop.get("stat_type_extracted") or prop.get("stat_type") or prop.get("market", "").replace("player_", "").replace("_alternate", "").upper()
             demon_line = prop.get("line")
             anchor_line = prop.get("anchor_line")
             
             if not demon_line:
                 continue
             
-            # Get hit rate directly from flat prop document
-            l10_hit_rate = prop.get("h10_hit_rate") or 0
+            # Get hit rate from prop - use flattened h10_rate or nested hit_rates
+            l10_hit_rate = prop.get("h10_rate") or prop.get("h10_hit_rate") or 0
+            l5_hit_rate = prop.get("h5_rate") or prop.get("h5_hit_rate") or 0
             l5_avg = prop.get("l5_avg") or 0
             l10_avg = prop.get("l10_avg") or 0
             season_avg = prop.get("season_avg") or 0
+            
+            # Fallback to nested hit_rates object
+            hit_rates = prop.get("hit_rates", {})
+            if not l10_hit_rate and hit_rates:
+                l10_hit_rate = hit_rates.get("l10_rate") or 0
+            if not l5_hit_rate and hit_rates:
+                l5_hit_rate = hit_rates.get("l5_rate") or 0
+            if not l5_avg and hit_rates:
+                l5_avg = hit_rates.get("l5_avg") or 0
+            if not l10_avg and hit_rates:
+                l10_avg = hit_rates.get("l10_avg") or 0
+            if not season_avg and hit_rates:
+                season_avg = hit_rates.get("season_avg") or 0
             
             # Convert to percentage if stored as decimal
             if l10_hit_rate and l10_hit_rate <= 1:
@@ -782,6 +817,7 @@ class PicksGetterService:
                 "game_id": prop.get("game_id"),
                 "home_team": prop.get("home_team"),
                 "away_team": prop.get("away_team"),
+                "photo_url": prop.get("photo_url"),
                 "stat_type": stat_type,
                 "line": demon_line,
                 "anchor_line": anchor_line,
@@ -791,9 +827,10 @@ class PicksGetterService:
                 "is_demon": True,
                 "is_goblin": False,
                 "tier_label": "WAR_ZONE",
-                "h10_rate": l10_hit_rate,  # Frontend expects h10_rate
+                "h5_rate": l5_hit_rate,   # L5 hit rate for frontend
+                "h10_rate": l10_hit_rate,  # L10 hit rate for frontend
                 "l10_hit_rate": l10_hit_rate,
-                "l5_hit_rate": l10_hit_rate,  # Use same for consistency
+                "l5_hit_rate": l5_hit_rate,
                 "l10_avg": l10_avg,
                 "l5_avg": l5_avg,
                 "season_avg": season_avg,
@@ -1112,14 +1149,34 @@ class PicksGetterService:
         now = datetime.now(timezone.utc)
         now_iso = now.isoformat().replace('+00:00', 'Z')
         
-        # Get all demon and goblin props from UPCOMING games only
-        all_props = await self.cached_board.find(
-            {
-                "$or": [{"is_demon": True}, {"is_goblin": True}],
-                "commence_time": {"$gt": now_iso}
-            },
-            {"_id": 0}
-        ).to_list(3000)
+        # Get all demon and goblin props from UPCOMING games
+        # Data is stored as PLAYER DOCUMENTS with nested props arrays
+        pipeline = [
+            {"$unwind": "$props"},
+            {"$match": {
+                "$or": [{"props.is_demon": True}, {"props.is_goblin": True}],
+                "props.commence_time": {"$gt": now_iso}
+            }},
+            {"$project": {
+                "_id": 0,
+                "player_name": 1,
+                "team": 1,
+                "photo_url": 1,
+                "headshot_url": 1,
+                "prop": "$props"
+            }}
+        ]
+        
+        results = await self.cached_board.aggregate(pipeline).to_list(3000)
+        
+        # Flatten to prop documents with player info
+        all_props = []
+        for result in results:
+            prop = result.get("prop", {})
+            prop["player_name"] = result.get("player_name")
+            prop["team"] = result.get("team") or prop.get("team")
+            prop["photo_url"] = result.get("photo_url") or result.get("headshot_url")
+            all_props.append(prop)
         
         if not all_props:
             logger.warning("[SAFE_HAVEN v5] No demon/goblin props found")
@@ -1168,12 +1225,14 @@ class PicksGetterService:
             if not line:
                 continue
             
-            # Get hit rate directly from flat prop document
-            l10_hit_rate = prop.get("h10_hit_rate") or 0
+            # Get hit rate from prop - use flattened h10_rate or nested hit_rates
+            hit_rates = prop.get("hit_rates", {})
+            l10_hit_rate = prop.get("h10_rate") or prop.get("h10_hit_rate") or hit_rates.get("l10_rate") or 0
+            l5_hit_rate = prop.get("h5_rate") or prop.get("h5_hit_rate") or hit_rates.get("l5_rate") or 0
             l10_games = prop.get("h10_games") or 10
-            l5_avg = prop.get("l5_avg")
-            l10_avg = prop.get("l10_avg")
-            season_avg = prop.get("season_avg") or 0
+            l5_avg = prop.get("l5_avg") or hit_rates.get("l5_avg")
+            l10_avg = prop.get("l10_avg") or hit_rates.get("l10_avg")
+            season_avg = prop.get("season_avg") or hit_rates.get("season_avg") or 0
             
             # If still no hit rate, skip
             if l10_hit_rate is None or l10_hit_rate == 0:
@@ -1218,6 +1277,7 @@ class PicksGetterService:
                 "game_id": prop.get("game_id"),
                 "home_team": prop.get("home_team"),
                 "away_team": prop.get("away_team"),
+                "photo_url": prop.get("photo_url"),
                 "stat_type": stat_type,
                 "line": line,
                 "anchor_line": anchor_line,
@@ -1230,7 +1290,9 @@ class PicksGetterService:
                 "season_avg": round(season_avg, 1) if season_avg else None,
                 "l5_avg": round(l5_avg, 1) if l5_avg else None,
                 "l10_avg": round(l10_avg, 1) if l10_avg else None,
-                "h10_rate": round(l10_pct, 1),  # Frontend expects h10_rate
+                "h5_rate": round(l5_hit_rate, 1) if l5_hit_rate else None,  # L5 hit rate for frontend
+                "h10_rate": round(l10_pct, 1),  # L10 hit rate for frontend
+                "l5_hit_rate": round(l5_hit_rate, 1) if l5_hit_rate else None,
                 "l10_hit_rate": round(l10_pct, 1),
                 "l10_games": l10_games,
                 "floor_margin": round(season_avg - line, 1) if season_avg else None,
@@ -1455,14 +1517,34 @@ class PicksGetterService:
         now = datetime.now(timezone.utc)
         now_iso = now.isoformat().replace('+00:00', 'Z')
         
-        # Get all demon and goblin props from UPCOMING games only
-        all_props = await self.cached_board.find(
-            {
-                "$or": [{"is_demon": True}, {"is_goblin": True}],
-                "commence_time": {"$gt": now_iso}
-            },
-            {"_id": 0}
-        ).to_list(3000)
+        # Get all demon and goblin props from UPCOMING games
+        # Data is stored as PLAYER DOCUMENTS with nested props arrays
+        pipeline = [
+            {"$unwind": "$props"},
+            {"$match": {
+                "$or": [{"props.is_demon": True}, {"props.is_goblin": True}],
+                "props.commence_time": {"$gt": now_iso}
+            }},
+            {"$project": {
+                "_id": 0,
+                "player_name": 1,
+                "team": 1,
+                "photo_url": 1,
+                "headshot_url": 1,
+                "prop": "$props"
+            }}
+        ]
+        
+        results = await self.cached_board.aggregate(pipeline).to_list(3000)
+        
+        # Flatten to prop documents with player info
+        all_props = []
+        for result in results:
+            prop = result.get("prop", {})
+            prop["player_name"] = result.get("player_name")
+            prop["team"] = result.get("team") or prop.get("team")
+            prop["photo_url"] = result.get("photo_url") or result.get("headshot_url")
+            all_props.append(prop)
         
         # Group props by player and stat_type for line comparison
         props_by_player_stat = {}
@@ -1514,11 +1596,13 @@ class PicksGetterService:
                 
                 line = prop.get("line")
                 
-                # Get hit rate directly from flat prop document
-                l10_hit_rate = prop.get("h10_hit_rate") or 0
-                l5_avg = prop.get("l5_avg")
-                l10_avg = prop.get("l10_avg")
-                season_avg = prop.get("season_avg")
+                # Get hit rate from prop - use flattened h10_rate or nested hit_rates
+                hit_rates = prop.get("hit_rates", {})
+                l10_hit_rate = prop.get("h10_rate") or prop.get("h10_hit_rate") or hit_rates.get("l10_rate") or 0
+                l5_hit_rate = prop.get("h5_rate") or prop.get("h5_hit_rate") or hit_rates.get("l5_rate") or 0
+                l5_avg = prop.get("l5_avg") or hit_rates.get("l5_avg")
+                l10_avg = prop.get("l10_avg") or hit_rates.get("l10_avg")
+                season_avg = prop.get("season_avg") or hit_rates.get("season_avg")
                 
                 # Skip if no hit rate data
                 if l10_hit_rate == 0:
@@ -1581,6 +1665,7 @@ class PicksGetterService:
                     "game_id": prop.get("game_id"),
                     "home_team": prop.get("home_team"),
                     "away_team": prop.get("away_team"),
+                    "photo_url": prop.get("photo_url"),
                     "stat_type": stat_type,
                     "line": line,
                     "anchor_line": prop.get("anchor_line"),
@@ -1589,9 +1674,10 @@ class PicksGetterService:
                     "is_demon": is_demon,
                     "is_goblin": is_goblin,
                     "tier_label": "FRONT_LINE",
-                    "h10_rate": l10_hit_rate,  # Frontend expects h10_rate
+                    "h5_rate": l5_hit_rate,   # L5 hit rate for frontend
+                    "h10_rate": l10_hit_rate,  # L10 hit rate for frontend
                     "l10_hit_rate": l10_hit_rate,
-                    "l5_hit_rate": l10_hit_rate,  # Use same for consistency
+                    "l5_hit_rate": l5_hit_rate,
                     "l10_avg": l10_avg,
                     "l5_avg": l5_avg,
                     "season_avg": season_avg,

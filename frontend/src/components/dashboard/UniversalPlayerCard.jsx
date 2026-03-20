@@ -570,8 +570,8 @@ const UniversalPlayerCard = memo(({
         <div className="flex items-center justify-between bg-zinc-800/50 rounded px-2 py-1.5 text-[10px]">
           <div className="text-center flex-1">
             <div className="text-zinc-500">L5</div>
-            <div className="font-bold text-white">
-              {player.l5_avg != null ? (player.l5_avg.toFixed?.(1) || player.l5_avg) : '---'}
+            <div className={`font-bold ${getHitRateColor(h5_rate || 0)}`}>
+              {h5_rate != null ? `${h5_rate}%` : '---'}
             </div>
           </div>
           <div className="h-4 w-px bg-zinc-700" />
