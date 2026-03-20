@@ -1969,7 +1969,7 @@ class PicksGetterService:
     async def get_cached_player(self, player_name: str) -> Dict[str, Any]:
         """
         Get a single player from the CACHED board.
-        Aggregates all props for the player from the flat document structure.
+        Works with NESTED structure (player docs with props arrays).
         NO API CALLS - reads only from database.
         
         Stats (L5/L10/SZN) come EXCLUSIVELY from nba_master_hub_2026.baseline_stats.
@@ -1978,20 +1978,17 @@ class PicksGetterService:
         now = datetime.now(timezone.utc)
         now_iso = now.isoformat().replace('+00:00', 'Z')
         
-        # In flat structure, each document is a single prop
-        # Aggregate all props for this player from UPCOMING games
-        props = await self.cached_board.find(
-            {
-                "player_name": {"$regex": f"^{player_name}$", "$options": "i"},
-                "commence_time": {"$gt": now_iso}
-            },
+        # NESTED STRUCTURE: Player document with props array
+        # Find the player document first
+        player_doc = await self.cached_board.find_one(
+            {"player_name": {"$regex": f"^{player_name}$", "$options": "i"}},
             {"_id": 0}
-        ).to_list(100)
+        )
         
-        if not props:
+        if not player_doc:
             # Try normalized name search
             normalized_search = _normalize_name(player_name)
-            all_players = await self.cached_board.distinct("player_name", {"commence_time": {"$gt": now_iso}})
+            all_players = await self.cached_board.distinct("player_name")
             
             matched_name = None
             for pname in all_players:
@@ -2000,43 +1997,59 @@ class PicksGetterService:
                     break
             
             if matched_name:
-                props = await self.cached_board.find(
-                    {
-                        "player_name": matched_name,
-                        "commence_time": {"$gt": now_iso}
-                    },
+                player_doc = await self.cached_board.find_one(
+                    {"player_name": matched_name},
                     {"_id": 0}
-                ).to_list(100)
+                )
         
-        if not props:
+        if not player_doc:
             return {
                 "success": False,
                 "message": "Lines loading... Player not in cache.",
                 "player": None
             }
         
-        # Build player object from first prop (they all have same player metadata)
-        first_prop = props[0]
+        # Extract props from the nested structure and filter for upcoming games
+        raw_props = player_doc.get("props", [])
+        
+        # Filter for upcoming props only
+        upcoming_props = []
+        for prop in raw_props:
+            commence_time = prop.get("commence_time", "")
+            if commence_time and commence_time > now_iso:
+                upcoming_props.append(prop)
+        
+        # Build player object from the player document
         player = {
-            "player_name": first_prop.get("player_name"),
-            "team": first_prop.get("team"),
-            "opponent": first_prop.get("opponent"),
-            "game_id": first_prop.get("game_id"),
-            "home_team": first_prop.get("home_team"),
-            "away_team": first_prop.get("away_team"),
-            "commence_time": first_prop.get("commence_time"),
-            "position": first_prop.get("position"),
-            "photo_url": first_prop.get("photo_url"),
-            "nba_id": first_prop.get("nba_id"),
-            # Aggregate all props
+            "player_name": player_doc.get("player_name"),
+            "team": player_doc.get("team"),
+            "opponent": player_doc.get("opponent"),
+            "game_id": player_doc.get("game_id"),
+            "home_team": player_doc.get("home_team"),
+            "away_team": player_doc.get("away_team"),
+            "commence_time": player_doc.get("commence_time"),
+            "position": player_doc.get("position"),
+            "photo_url": player_doc.get("photo_url") or player_doc.get("headshot_url"),
+            "nba_id": player_doc.get("nba_id"),
+            "bdl_game_logs": player_doc.get("bdl_game_logs", []),
+            # Aggregate all upcoming props
             "props": []
         }
         
-        # Add all props to the player object
-        for prop in props:
+        # Add all upcoming props to the player object with correct field mapping
+        for prop in upcoming_props:
+            # Get hit rates from nested object or flattened fields
+            hit_rates = prop.get("hit_rates", {})
+            h10_rate = prop.get("h10_rate") or prop.get("h10_hit_rate") or hit_rates.get("l10_rate")
+            h5_rate = prop.get("h5_rate") or prop.get("h5_hit_rate") or hit_rates.get("l5_rate")
+            l5_avg = prop.get("l5_avg") or hit_rates.get("l5_avg")
+            l10_avg = prop.get("l10_avg") or hit_rates.get("l10_avg")
+            season_avg = prop.get("season_avg") or hit_rates.get("season_avg")
+            
             player["props"].append({
-                "stat_type_extracted": prop.get("stat_type_extracted"),
-                "stat_type": prop.get("stat_type_extracted"),
+                "stat_type_extracted": prop.get("stat_type_extracted") or prop.get("stat_type"),
+                "stat_type": prop.get("stat_type_extracted") or prop.get("stat_type"),
+                "market": prop.get("market"),
                 "line": prop.get("line"),
                 "anchor_line": prop.get("anchor_line"),
                 "is_demon": prop.get("is_demon"),
@@ -2044,11 +2057,14 @@ class PicksGetterService:
                 "tier_label": prop.get("tier_label"),
                 "direction": prop.get("direction"),
                 "price": prop.get("price"),
-                "h10_hit_rate": prop.get("h10_hit_rate"),
-                "h10_rate": prop.get("h10_hit_rate"),
-                "l5_avg": prop.get("l5_avg"),
-                "l10_avg": prop.get("l10_avg"),
-                "season_avg": prop.get("season_avg"),
+                "h10_hit_rate": h10_rate,
+                "h10_rate": h10_rate,
+                "h5_rate": h5_rate,
+                "h5_hit_rate": h5_rate,
+                "l5_avg": l5_avg,
+                "l10_avg": l10_avg,
+                "season_avg": season_avg,
+                "hit_rates": hit_rates,  # Keep nested object too
                 "is_alternate_market": prop.get("is_alternate_market"),
                 "commence_time": prop.get("commence_time"),
                 "home_team": prop.get("home_team"),
