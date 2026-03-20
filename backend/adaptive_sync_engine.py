@@ -429,12 +429,13 @@ class AdaptiveSyncEngine:
                     if not event_id:
                         continue
                     
-                    # Fetch PrizePicks odds for this event
+                    # Fetch DFS odds for this event
+                    # Support multiple DFS platforms: underdog, prizepicks, pick6, fliff
                     odds_url = f"{self.base_url}/sports/basketball_nba/events/{event_id}/odds"
                     odds_params = {
                         "apiKey": self.odds_api_key,
-                        "regions": "us_dfs",  # PRIZEPICKS: Daily Fantasy Sports region
-                        "bookmakers": "prizepicks",  # PRIZEPICKS: Target only PrizePicks
+                        "regions": "us_dfs",  # Daily Fantasy Sports region
+                        "bookmakers": "underdog,prizepicks,pick6,fliff",  # Multiple DFS platforms
                         "markets": prizepicks_markets,
                         "oddsFormat": "american"
                     }
@@ -447,13 +448,12 @@ class AdaptiveSyncEngine:
                             odds_data["event_id"] = event_id
                             enriched_events.append(odds_data)
                             
-                            # Log PrizePicks data found
-                            pp_markets = 0
+                            # Log DFS data found
                             for bm in odds_data.get("bookmakers", []):
-                                if bm.get("key") == "prizepicks":
-                                    pp_markets = len(bm.get("markets", []))
-                            if pp_markets > 0:
-                                logger.info(f"  [PRIZEPICKS] {event.get('away_team')} @ {event.get('home_team')}: {pp_markets} markets")
+                                bm_key = bm.get("key", "")
+                                bm_markets = len(bm.get("markets", []))
+                                if bm_markets > 0:
+                                    logger.info(f"  [DFS:{bm_key.upper()}] {event.get('away_team')} @ {event.get('home_team')}: {bm_markets} markets")
                                 
                         elif odds_response.status_code == 422:
                             # Try with core markets only
@@ -464,10 +464,10 @@ class AdaptiveSyncEngine:
                                 odds_data["event_id"] = event_id
                                 enriched_events.append(odds_data)
                     except Exception as e:
-                        logger.warning(f"[PRIZEPICKS_SYNC] Failed to fetch odds for event {event_id}: {e}")
+                        logger.warning(f"[DFS_SYNC] Failed to fetch odds for event {event_id}: {e}")
                         continue
                 
-                logger.info(f"[PRIZEPICKS_SYNC] Fetched PrizePicks odds for {len(enriched_events)} events")
+                logger.info(f"[DFS_SYNC] Fetched DFS odds for {len(enriched_events)} events")
                 return enriched_events
                 
         except httpx.HTTPStatusError as e:
