@@ -233,13 +233,13 @@ class AdaptiveSyncEngine:
         # Find player
         player = await self.db[self.master_hub_collection].find_one(
             {"display_name": player_name},
-            {"_id": 0, "baseline_stats": 1, "bdl_game_logs": 1}
+            {"_id": 0, "baseline_stats": 1, "bdl_game_logs": 1, "game_logs": 1}
         )
         
         if not player:
             normalized = _normalize_name(player_name)
             all_players = await self.db[self.master_hub_collection].find(
-                {}, {"display_name": 1, "baseline_stats": 1, "bdl_game_logs": 1, "_id": 0}
+                {}, {"display_name": 1, "baseline_stats": 1, "bdl_game_logs": 1, "game_logs": 1, "_id": 0}
             ).to_list(1000)
             
             for p in all_players:
@@ -260,37 +260,76 @@ class AdaptiveSyncEngine:
         elif stat_data:
             result["season_avg"] = stat_data
         
-        # Calculate from BDL game logs for accurate L5/L10/H10
-        game_logs = player.get("bdl_game_logs", [])
-        if game_logs:
-            # Sort by date (most recent first)
-            game_logs = sorted(
-                game_logs,
-                key=lambda x: x.get('game', {}).get('date', '') if isinstance(x.get('game'), dict) else x.get('date', ''),
-                reverse=True
-            )
-            
-            # Map stat_key to game log field
+        # Calculate from game logs for accurate L5/L10/H10
+        # Prefer game_logs (more complete) over bdl_game_logs
+        game_logs = player.get("game_logs", [])
+        bdl_logs = player.get("bdl_game_logs", [])
+        
+        # Use whichever source has more data
+        if len(game_logs) >= len(bdl_logs):
+            logs_to_use = game_logs
+            log_source = "game_logs"
+            # game_logs field mappings (different from BDL)
+            log_key_map = {
+                "PTS": "pts", "REB": "reb", "AST": "ast", "STL": "stl",
+                "BLK": "blk", "THREES": "tptfgm", "3PM": "tptfgm", "TO": "TOV"
+            }
+        else:
+            logs_to_use = bdl_logs
+            log_source = "bdl_game_logs"
+            # BDL game logs field mappings
             log_key_map = {
                 "PTS": "pts", "REB": "reb", "AST": "ast", "STL": "stl",
                 "BLK": "blk", "THREES": "fg3m", "3PM": "fg3m", "TO": "turnover"
             }
+        
+        if logs_to_use:
+            # Sort by date (most recent first)
+            if log_source == "bdl_game_logs":
+                logs_to_use = sorted(
+                    logs_to_use,
+                    key=lambda x: x.get('game', {}).get('date', '') if isinstance(x.get('game'), dict) else x.get('date', ''),
+                    reverse=True
+                )
+            else:
+                # game_logs uses gameID format like '20250228_TOR@CHI'
+                logs_to_use = sorted(
+                    logs_to_use,
+                    key=lambda x: x.get('gameID', '')[:8] if x.get('gameID') else '',
+                    reverse=True
+                )
+            
             log_key = log_key_map.get(stat_key)
             
             # Extract values from game logs
             game_values = []
-            for g in game_logs:
+            for g in logs_to_use:
                 try:
                     if stat_key in ["PRA"]:
-                        val = float(g.get("pts", 0) or 0) + float(g.get("reb", 0) or 0) + float(g.get("ast", 0) or 0)
+                        pts_val = g.get("pts", 0)
+                        reb_val = g.get("reb", 0)
+                        ast_val = g.get("ast", 0)
+                        # Handle string values from game_logs
+                        pts_val = float(pts_val) if pts_val else 0
+                        reb_val = float(reb_val) if reb_val else 0
+                        ast_val = float(ast_val) if ast_val else 0
+                        val = pts_val + reb_val + ast_val
                     elif stat_key in ["PR", "P+R"]:
-                        val = float(g.get("pts", 0) or 0) + float(g.get("reb", 0) or 0)
+                        pts_val = float(g.get("pts", 0) or 0)
+                        reb_val = float(g.get("reb", 0) or 0)
+                        val = pts_val + reb_val
                     elif stat_key in ["PA", "P+A"]:
-                        val = float(g.get("pts", 0) or 0) + float(g.get("ast", 0) or 0)
+                        pts_val = float(g.get("pts", 0) or 0)
+                        ast_val = float(g.get("ast", 0) or 0)
+                        val = pts_val + ast_val
                     elif stat_key in ["RA", "R+A"]:
-                        val = float(g.get("reb", 0) or 0) + float(g.get("ast", 0) or 0)
+                        reb_val = float(g.get("reb", 0) or 0)
+                        ast_val = float(g.get("ast", 0) or 0)
+                        val = reb_val + ast_val
                     elif log_key:
-                        val = float(g.get(log_key, 0) or 0)
+                        raw_val = g.get(log_key, 0)
+                        # Handle string values (game_logs stores as strings)
+                        val = float(raw_val) if raw_val else 0
                     else:
                         val = 0
                     game_values.append(val)
