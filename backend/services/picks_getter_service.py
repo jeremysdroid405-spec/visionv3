@@ -706,107 +706,113 @@ class PicksGetterService:
         """
         prob_service = ProbabilityScoreService(self.db)
         
-        # Get all players that have demon props
-        players = await self.cached_board.find(
-            {"props.is_demon": True},
+        # Get current time for filtering upcoming games
+        now = datetime.now(timezone.utc)
+        now_iso = now.isoformat().replace('+00:00', 'Z')
+        
+        # Get all demon props from UPCOMING games only (commence_time > now)
+        demon_props = await self.cached_board.find(
+            {
+                "is_demon": True,
+                "commence_time": {"$gt": now_iso}
+            },
             {"_id": 0}
-        ).to_list(200)
+        ).to_list(2000)
         
         # Build picks - find best payout per player
         player_best_picks = {}  # player_name -> best pick
+        unique_players = set()
+        
         filter_stats = {
-            "total_players": len(players),
-            "total_demon_props": 0,
+            "total_players": 0,
+            "total_demon_props": len(demon_props),
             "passed_hit_rate_50": 0,
             "final_picks": 0
         }
         
-        for player_doc in players:
-            player_name = player_doc.get("player_name")
+        for prop in demon_props:
+            player_name = prop.get("player_name")
             if not player_name:
                 continue
             
-            # Get ALL demon props for this player
-            demon_props = [p for p in player_doc.get("props", []) if p.get("is_demon")]
+            unique_players.add(player_name)
             
-            for prop in demon_props:
-                filter_stats["total_demon_props"] += 1
-                
-                stat_type = prop.get("stat_type_extracted") or prop.get("market", "").replace("player_", "")
-                demon_line = prop.get("line")
-                anchor_line = prop.get("anchor_line")
-                
-                if not demon_line:
-                    continue
-                
-                # Get hit rate from flat structure
-                hit_rates = prop.get("hit_rates", {})
-                l10_hit_rate = hit_rates.get("l10_rate") or 0
-                l5_hit_rate = hit_rates.get("l5_rate") or 0
-                
-                # Convert to percentage if stored as decimal
-                if l10_hit_rate and l10_hit_rate <= 1:
-                    l10_hit_rate = l10_hit_rate * 100
-                if l5_hit_rate and l5_hit_rate <= 1:
-                    l5_hit_rate = l5_hit_rate * 100
-                
-                # FILTER: L10 Hit Rate >= 50%
-                if l10_hit_rate < 50:
-                    continue
-                filter_stats["passed_hit_rate_50"] += 1
-                
-                # Calculate boost/payout potential
-                boost_pct = 0
-                if anchor_line and anchor_line > 0:
-                    boost_pct = ((demon_line - anchor_line) / anchor_line) * 100
-                
-                # The "payout" score is the demon line itself - higher line = higher payout
-                payout_score = demon_line
-                
-                # Get game status for locking logic
-                commence_time = prop.get("commence_time")
-                game_status = _get_game_status(commence_time)
-                
-                pick = {
-                    "player_name": player_name,
-                    "team": player_doc.get("team"),
-                    "opponent": player_doc.get("opponent"),
-                    "game_id": player_doc.get("game_id"),
-                    "home_team": prop.get("home_team"),
-                    "away_team": prop.get("away_team"),
-                    "stat_type": stat_type,
-                    "line": demon_line,
-                    "anchor_line": anchor_line,
-                    "boost_pct": round(boost_pct, 1),
-                    "odds": prop.get("price"),
-                    "direction": prop.get("direction", "over"),
-                    "is_demon": True,
-                    "is_goblin": False,
-                    "tier_label": "WAR_ZONE",
-                    "h10_rate": l10_hit_rate,  # Frontend expects h10_rate
-                    "l10_hit_rate": l10_hit_rate,
-                    "l5_hit_rate": l5_hit_rate,
-                    "l10_avg": hit_rates.get("l10_avg"),
-                    "l5_avg": hit_rates.get("l5_avg"),
-                    "season_avg": hit_rates.get("season_avg"),
-                    "payout_score": payout_score,
-                    "war_zone_qualified": True,
-                    "is_alternate_market": prop.get("is_alternate_market", True),
-                    # Game status fields for locking
-                    "commence_time": commence_time,
-                    "game_status": game_status["status"],
-                    "is_locked": game_status["is_locked"],
-                    "minutes_since_start": game_status.get("minutes_since_start"),
-                }
-                
-                # Enrich with probability score (DvP + Badges + Line value)
-                pick = await prob_service.enrich_pick_with_probability(pick)
-                
-                # Keep only the highest PROBABILITY SCORE pick for each player
-                if player_name not in player_best_picks:
-                    player_best_picks[player_name] = pick
-                elif pick.get("probability_score", 0) > player_best_picks[player_name].get("probability_score", 0):
-                    player_best_picks[player_name] = pick
+            stat_type = prop.get("stat_type_extracted") or prop.get("market", "").replace("player_", "")
+            demon_line = prop.get("line")
+            anchor_line = prop.get("anchor_line")
+            
+            if not demon_line:
+                continue
+            
+            # Get hit rate directly from flat prop document
+            l10_hit_rate = prop.get("h10_hit_rate") or 0
+            l5_avg = prop.get("l5_avg") or 0
+            l10_avg = prop.get("l10_avg") or 0
+            season_avg = prop.get("season_avg") or 0
+            
+            # Convert to percentage if stored as decimal
+            if l10_hit_rate and l10_hit_rate <= 1:
+                l10_hit_rate = l10_hit_rate * 100
+            
+            # FILTER: L10 Hit Rate >= 50%
+            if l10_hit_rate < 50:
+                continue
+            filter_stats["passed_hit_rate_50"] += 1
+            
+            # Calculate boost/payout potential
+            boost_pct = 0
+            if anchor_line and anchor_line > 0:
+                boost_pct = ((demon_line - anchor_line) / anchor_line) * 100
+            
+            # The "payout" score is the demon line itself - higher line = higher payout
+            payout_score = demon_line
+            
+            # Get game status for locking logic
+            commence_time = prop.get("commence_time")
+            game_status = _get_game_status(commence_time)
+            
+            pick = {
+                "player_name": player_name,
+                "team": prop.get("team"),
+                "opponent": prop.get("opponent"),
+                "game_id": prop.get("game_id"),
+                "home_team": prop.get("home_team"),
+                "away_team": prop.get("away_team"),
+                "stat_type": stat_type,
+                "line": demon_line,
+                "anchor_line": anchor_line,
+                "boost_pct": round(boost_pct, 1),
+                "odds": prop.get("price"),
+                "direction": prop.get("direction", "over"),
+                "is_demon": True,
+                "is_goblin": False,
+                "tier_label": "WAR_ZONE",
+                "h10_rate": l10_hit_rate,  # Frontend expects h10_rate
+                "l10_hit_rate": l10_hit_rate,
+                "l5_hit_rate": l10_hit_rate,  # Use same for consistency
+                "l10_avg": l10_avg,
+                "l5_avg": l5_avg,
+                "season_avg": season_avg,
+                "payout_score": payout_score,
+                "war_zone_qualified": True,
+                "is_alternate_market": prop.get("is_alternate_market", True),
+                # Game status fields for locking
+                "commence_time": commence_time,
+                "game_status": game_status["status"],
+                "is_locked": game_status["is_locked"],
+                "minutes_since_start": game_status.get("minutes_since_start"),
+            }
+            
+            # Enrich with probability score (DvP + Badges + Line value)
+            pick = await prob_service.enrich_pick_with_probability(pick)
+            
+            # Keep only the highest PROBABILITY SCORE pick for each player
+            if player_name not in player_best_picks:
+                player_best_picks[player_name] = pick
+            elif pick.get("probability_score", 0) > player_best_picks[player_name].get("probability_score", 0):
+                player_best_picks[player_name] = pick
+        
+        filter_stats["total_players"] = len(unique_players)
         
         # Convert to list and sort by PROBABILITY SCORE (highest first)
         war_zone_picks = list(player_best_picks.values())
@@ -1098,27 +1104,39 @@ class PicksGetterService:
         MIN_HIT_RATE = 80  # Safe Haven = 80%+ hit rate
         TARGET_PICKS = 10
         
-        # Get all players that have demon OR goblin props
-        players = await self.cached_board.find(
-            {"$or": [{"props.is_demon": True}, {"props.is_goblin": True}]},
-            {"_id": 0}
-        ).to_list(200)
+        # Get current time for filtering upcoming games
+        now = datetime.now(timezone.utc)
+        now_iso = now.isoformat().replace('+00:00', 'Z')
         
-        if not players:
-            logger.warning("[SAFE_HAVEN v5] No players with goblin props found")
+        # Get all demon and goblin props from UPCOMING games only
+        all_props = await self.cached_board.find(
+            {
+                "$or": [{"is_demon": True}, {"is_goblin": True}],
+                "commence_time": {"$gt": now_iso}
+            },
+            {"_id": 0}
+        ).to_list(3000)
+        
+        if not all_props:
+            logger.warning("[SAFE_HAVEN v5] No demon/goblin props found")
             return {"picks": [], "picks_count": 0, "filters_applied": []}
         
         # Pre-fetch injured players
         injured_players = await self._get_injured_players()
         
-        logger.info(f"[SAFE_HAVEN v5] Processing {len(players)} players with demon/goblin props")
+        unique_players = set()
+        for p in all_props:
+            if p.get("player_name"):
+                unique_players.add(p.get("player_name"))
+        
+        logger.info(f"[SAFE_HAVEN v5] Processing {len(all_props)} props from {len(unique_players)} unique players")
         
         # STEP 1: For each player, find their SINGLE BEST pick (demon or goblin)
-        all_player_best_picks = []
+        player_best_picks = {}  # player_name -> best pick
         
         filter_stats = {
-            "total_players": len(players),
-            "total_qualifying_props": 0,
+            "total_players": len(unique_players),
+            "total_qualifying_props": len(all_props),
             "demons_checked": 0,
             "goblins_checked": 0,
             "passed_hit_rate_80": 0,
@@ -1127,144 +1145,115 @@ class PicksGetterService:
             "unique_players_with_picks": 0
         }
         
-        for player_doc in players:
-            player_name = player_doc.get("player_name")
+        for prop in all_props:
+            player_name = prop.get("player_name")
             if not player_name:
                 continue
             
-            # Get ALL demon and goblin props
-            qualifying_props = [p for p in player_doc.get("props", []) if p.get("is_demon") or p.get("is_goblin")]
-            filter_stats["total_qualifying_props"] += len(qualifying_props)
+            is_demon = prop.get("is_demon", False)
+            is_goblin = prop.get("is_goblin", False)
             
-            # Collect all qualifying picks for this player
-            player_picks = []
+            if is_demon:
+                filter_stats["demons_checked"] += 1
+            if is_goblin:
+                filter_stats["goblins_checked"] += 1
             
-            for prop in qualifying_props:
-                is_demon = prop.get("is_demon", False)
-                is_goblin = prop.get("is_goblin", False)
-                
-                if is_demon:
-                    filter_stats["demons_checked"] += 1
-                if is_goblin:
-                    filter_stats["goblins_checked"] += 1
-                
-                line = prop.get("line")
-                anchor_line = prop.get("anchor_line")
-                
-                if not line:
-                    continue
-                
-                # Get embedded hit rates - support both flat and nested structures
-                hit_rates = prop.get("hit_rates", {})
-                
-                # Initialize defaults
-                l10_games = hit_rates.get("l10_hit_count", 10)  # Default to 10 games
-                
-                # Flat structure (from cached_board_builder)
-                l10_hit_rate = hit_rates.get("l10_rate")
-                l5_avg = hit_rates.get("l5_avg")
-                l10_avg = hit_rates.get("l10_avg")
-                season_avg = hit_rates.get("season_avg", 0)
-                
-                # If flat structure not available, try nested structure (legacy)
-                if l10_hit_rate is None:
-                    l10_data = hit_rates.get("l10", {})
-                    l5_data = hit_rates.get("l5", {})
-                    l10_hit_rate = l10_data.get("hit_rate", 0)
-                    l10_games = l10_data.get("total_games", 10)
-                    l10_avg = l10_data.get("avg")
-                    l5_avg = l5_data.get("avg")
-                    season_data = hit_rates.get("season", {})
-                    season_avg = season_data.get("avg", 0)
-                    
-                    if l10_games < 5:
-                        continue
-                
-                # If still no hit rate, skip (need hit rate for filtering)
-                if l10_hit_rate is None:
-                    continue
-                
-                # Convert hit rate to percentage (it's stored as decimal 0-1)
-                l10_pct = l10_hit_rate * 100 if l10_hit_rate <= 1 else l10_hit_rate
-                
-                # Check minimum hit rate (Safe Haven = 80%+)
-                if l10_pct < MIN_HIT_RATE:
-                    continue
-                
-                filter_stats["passed_hit_rate_80"] += 1
-                
-                # Calculate multiplier potential (how close to anchor)
-                gap_from_anchor = anchor_line - line
-                multiplier_potential = 1 - (gap_from_anchor / anchor_line) if anchor_line > 0 else 0
-                
-                # VALUE SCORE: Higher line = higher payout
-                # At same hit rate, prefer 10.5 over 8.5 because it pays more
-                # Normalize line to a 0-1 scale based on typical ranges
-                line_value = line / 50  # Normalize (e.g., 10.5 pts = 0.21, 25 pts = 0.5)
-                
-                # Combined score: balance safety, payout potential, and line value
-                safety_score = l10_pct / 100
-                # Weight: 50% safety, 30% line value (higher line = more payout), 20% multiplier potential
-                combined_score = (safety_score * 0.50) + (line_value * 0.30) + (multiplier_potential * 0.20)
-                
-                stat_type = prop.get("stat_type_extracted") or prop.get("market", "").replace("player_", "").replace("_alternate", "").upper()
-                
-                # Track demon vs goblin counts
-                if is_demon:
-                    filter_stats["final_demons"] += 1
-                else:
-                    filter_stats["final_goblins"] += 1
+            line = prop.get("line")
+            anchor_line = prop.get("anchor_line")
+            
+            if not line:
+                continue
+            
+            # Get hit rate directly from flat prop document
+            l10_hit_rate = prop.get("h10_hit_rate") or 0
+            l10_games = prop.get("h10_games") or 10
+            l5_avg = prop.get("l5_avg")
+            l10_avg = prop.get("l10_avg")
+            season_avg = prop.get("season_avg") or 0
+            
+            # If still no hit rate, skip
+            if l10_hit_rate is None or l10_hit_rate == 0:
+                continue
+            
+            # Convert hit rate to percentage (it's stored as decimal 0-1 sometimes)
+            l10_pct = l10_hit_rate * 100 if l10_hit_rate <= 1 else l10_hit_rate
+            
+            # Check minimum hit rate (Safe Haven = 80%+)
+            if l10_pct < MIN_HIT_RATE:
+                continue
+            
+            filter_stats["passed_hit_rate_80"] += 1
+            
+            # Calculate multiplier potential (how close to anchor)
+            gap_from_anchor = (anchor_line - line) if anchor_line else 0
+            multiplier_potential = 1 - (gap_from_anchor / anchor_line) if anchor_line and anchor_line > 0 else 0
+            
+            # VALUE SCORE: Higher line = higher payout
+            line_value = line / 50  # Normalize
+            
+            # Combined score: balance safety, payout potential, and line value
+            safety_score = l10_pct / 100
+            combined_score = (safety_score * 0.50) + (line_value * 0.30) + (multiplier_potential * 0.20)
+            
+            stat_type = prop.get("stat_type_extracted") or prop.get("market", "").replace("player_", "").replace("_alternate", "").upper()
+            
+            # Track demon vs goblin counts
+            if is_demon:
+                filter_stats["final_demons"] += 1
+            else:
+                filter_stats["final_goblins"] += 1
 
-                # Get game status
-                commence_time = prop.get("commence_time")
-                game_status = _get_game_status(commence_time)
+            # Get game status
+            commence_time = prop.get("commence_time")
+            game_status = _get_game_status(commence_time)
 
-                pick = {
-                    "player_name": player_name,
-                    "team": player_doc.get("team"),
-                    "opponent": player_doc.get("opponent"),
-                    "game_id": prop.get("event_id"),
-                    "home_team": prop.get("home_team"),
-                    "away_team": prop.get("away_team"),
-                    "stat_type": stat_type,
-                    "line": line,
-                    "anchor_line": anchor_line,
-                    "odds": prop.get("price", -110),
-                    "direction": prop.get("direction", "over"),
-                    "is_demon": is_demon,
-                    "is_goblin": is_goblin,
-                    "tier_label": "DEMON" if is_demon else "GOBLIN",
-                    "is_alternate_market": True,
-                    "season_avg": round(season_avg, 1) if season_avg else None,
-                    "l5_avg": round(l5_avg, 1) if l5_avg else None,
-                    "l10_avg": round(l10_avg, 1) if l10_avg else None,
-                    "h10_rate": round(l10_pct, 1),  # Frontend expects h10_rate
-                    "l10_hit_rate": round(l10_pct, 1),
-                    "l10_games": l10_games,
-                    "floor_margin": round(season_avg - line, 1) if season_avg else None,
-                    "gap_from_anchor": round(gap_from_anchor, 1) if anchor_line else None,
-                    "multiplier_potential": round(multiplier_potential, 3),
-                    "combined_score": round(combined_score, 4),
-                    "safe_haven_qualified": True,
-                    "position": player_doc.get("position"),
-                    "is_injured": player_name.lower() in injured_players,
-                    # Game status fields
-                    "commence_time": commence_time,
-                    "game_status": game_status["status"],
-                    "is_locked": game_status["is_locked"],
-                    "minutes_since_start": game_status.get("minutes_since_start"),
-                }
-                
-                # Enrich with probability score (DvP + Badges + Line value)
-                pick = await prob_service.enrich_pick_with_probability(pick)
-                
-                player_picks.append(pick)
+            pick = {
+                "player_name": player_name,
+                "team": prop.get("team"),
+                "opponent": prop.get("opponent"),
+                "game_id": prop.get("game_id"),
+                "home_team": prop.get("home_team"),
+                "away_team": prop.get("away_team"),
+                "stat_type": stat_type,
+                "line": line,
+                "anchor_line": anchor_line,
+                "odds": prop.get("price", -110),
+                "direction": prop.get("direction", "over"),
+                "is_demon": is_demon,
+                "is_goblin": is_goblin,
+                "tier_label": "DEMON" if is_demon else "GOBLIN",
+                "is_alternate_market": True,
+                "season_avg": round(season_avg, 1) if season_avg else None,
+                "l5_avg": round(l5_avg, 1) if l5_avg else None,
+                "l10_avg": round(l10_avg, 1) if l10_avg else None,
+                "h10_rate": round(l10_pct, 1),  # Frontend expects h10_rate
+                "l10_hit_rate": round(l10_pct, 1),
+                "l10_games": l10_games,
+                "floor_margin": round(season_avg - line, 1) if season_avg else None,
+                "gap_from_anchor": round(gap_from_anchor, 1) if anchor_line else None,
+                "multiplier_potential": round(multiplier_potential, 3),
+                "combined_score": round(combined_score, 4),
+                "safe_haven_qualified": True,
+                "position": prop.get("position"),
+                "is_injured": player_name.lower() in injured_players,
+                # Game status fields
+                "commence_time": commence_time,
+                "game_status": game_status["status"],
+                "is_locked": game_status["is_locked"],
+                "minutes_since_start": game_status.get("minutes_since_start"),
+            }
             
-            # Pick the SINGLE BEST pick for this player by PROBABILITY SCORE
-            if player_picks:
+            # Enrich with probability score (DvP + Badges + Line value)
+            pick = await prob_service.enrich_pick_with_probability(pick)
+            
+            # Keep only the highest probability score pick for this player
+            if player_name not in player_best_picks:
+                player_best_picks[player_name] = pick
                 filter_stats["unique_players_with_picks"] += 1
-                player_picks.sort(key=lambda x: x.get("probability_score", 0), reverse=True)
-                all_player_best_picks.append(player_picks[0])  # Only take the best one
+            elif pick.get("probability_score", 0) > player_best_picks[player_name].get("probability_score", 0):
+                player_best_picks[player_name] = pick
+        
+        all_player_best_picks = list(player_best_picks.values())
         
         # STEP 2: Separate active picks (upcoming games) from locked picks (in progress)
         active_picks = [p for p in all_player_best_picks if not p.get("is_locked")]
@@ -1458,17 +1447,41 @@ class PicksGetterService:
         """
         prob_service = ProbabilityScoreService(self.db)
         
-        # Get all players that have demon OR goblin props
-        players = await self.cached_board.find(
-            {"$or": [{"props.is_demon": True}, {"props.is_goblin": True}]},
+        # Get current time for filtering upcoming games
+        now = datetime.now(timezone.utc)
+        now_iso = now.isoformat().replace('+00:00', 'Z')
+        
+        # Get all demon and goblin props from UPCOMING games only
+        all_props = await self.cached_board.find(
+            {
+                "$or": [{"is_demon": True}, {"is_goblin": True}],
+                "commence_time": {"$gt": now_iso}
+            },
             {"_id": 0}
-        ).to_list(200)
+        ).to_list(3000)
+        
+        # Group props by player and stat_type for line comparison
+        props_by_player_stat = {}
+        unique_players = set()
+        
+        for prop in all_props:
+            player_name = prop.get("player_name")
+            if not player_name:
+                continue
+            unique_players.add(player_name)
+            
+            stat_type = prop.get("stat_type_extracted") or prop.get("market", "").replace("player_", "")
+            key = (player_name, stat_type)
+            
+            if key not in props_by_player_stat:
+                props_by_player_stat[key] = []
+            props_by_player_stat[key].append(prop)
         
         # Build candidate picks
         front_line_picks = []
         filter_stats = {
-            "total_players": len(players),
-            "total_qualifying_props": 0,
+            "total_players": len(unique_players),
+            "total_qualifying_props": len(all_props),
             "demons_checked": 0,
             "goblins_checked": 0,
             "passed_hit_rate_65": 0,
@@ -1478,157 +1491,126 @@ class PicksGetterService:
             "final_goblins": 0
         }
         
-        for player_doc in players:
-            player_name = player_doc.get("player_name")
-            if not player_name:
-                continue
+        for (player_name, stat_type), props in props_by_player_stat.items():
+            # Sort props by line to find lowest
+            all_lines_for_stat = sorted([p.get("line", 0) for p in props if p.get("line")])
+            lowest_line = all_lines_for_stat[0] if all_lines_for_stat else None
             
-            # Get all props for this player grouped by stat type
-            props_by_stat = {}
-            for prop in player_doc.get("props", []):
-                stat_type = prop.get("stat_type_extracted") or prop.get("market", "").replace("player_", "")
-                if stat_type not in props_by_stat:
-                    props_by_stat[stat_type] = []
-                props_by_stat[stat_type].append(prop)
-            
-            # Find demon/goblin props that meet criteria
-            for stat_type, props in props_by_stat.items():
-                # Get all demon and goblin props for this stat
-                qualifying_props = [p for p in props if p.get("is_demon") or p.get("is_goblin")]
-                if not qualifying_props:
+            for prop in props:
+                is_demon = prop.get("is_demon", False)
+                is_goblin = prop.get("is_goblin", False)
+                
+                if not is_demon and not is_goblin:
                     continue
                 
-                filter_stats["total_qualifying_props"] += len(qualifying_props)
+                if is_demon:
+                    filter_stats["demons_checked"] += 1
+                if is_goblin:
+                    filter_stats["goblins_checked"] += 1
                 
-                # Sort props by line to find lowest
-                all_lines_for_stat = sorted([p.get("line", 0) for p in props if p.get("line")])
-                lowest_line = all_lines_for_stat[0] if all_lines_for_stat else None
+                line = prop.get("line")
                 
-                for prop in qualifying_props:
-                    is_demon = prop.get("is_demon", False)
-                    is_goblin = prop.get("is_goblin", False)
-                    
-                    if is_demon:
-                        filter_stats["demons_checked"] += 1
-                    if is_goblin:
-                        filter_stats["goblins_checked"] += 1
-                    
-                    line = prop.get("line")
-                    
-                    # Get hit rate from FLAT structure (cached_board_builder format)
-                    hit_rates = prop.get("hit_rates", {})
-                    
-                    # Flat structure: hit_rates.l10_rate, hit_rates.l5_rate, etc.
-                    l10_hit_rate = hit_rates.get("l10_rate") or 0
-                    l5_hit_rate = hit_rates.get("l5_rate") or 0
-                    l10_avg = hit_rates.get("l10_avg")
-                    l5_avg = hit_rates.get("l5_avg")
-                    season_avg = hit_rates.get("season_avg")
-                    
-                    # Skip if no hit rate data
-                    if l10_hit_rate == 0:
-                        continue
-                    
-                    # Convert to percentage if stored as decimal (shouldn't be, but just in case)
-                    if l10_hit_rate and l10_hit_rate <= 1:
-                        l10_hit_rate = l10_hit_rate * 100
-                    if l5_hit_rate and l5_hit_rate <= 1:
-                        l5_hit_rate = l5_hit_rate * 100
-                    
-                    if not line:
-                        continue
-                    
-                    # FILTER 1: L10 Hit Rate >= 65%
-                    if l10_hit_rate < 65:
-                        continue
-                    filter_stats["passed_hit_rate_65"] += 1
-                    
-                    # FILTER 2: Exclude Safe Haven tier (>= 80%)
-                    if l10_hit_rate >= 80:
-                        filter_stats["excluded_safe_haven_80"] += 1
-                        continue
-                    
-                    # FILTER 3: Can't be the lowest line (not safest floor play)
-                    if lowest_line and line == lowest_line and len(all_lines_for_stat) > 1:
-                        filter_stats["excluded_lowest_line"] += 1
-                        continue
-                    
-                    # Calculate value score (hit rate × payout factor)
-                    # Demons pay more, so they get a higher payout multiplier
-                    # Goblins pay less (safer but lower reward)
-                    if is_demon:
-                        # Demons: calculate boost from anchor
-                        anchor_line = prop.get("anchor_line", line)
-                        if anchor_line and anchor_line > 0:
-                            boost_pct = ((line - anchor_line) / anchor_line) * 100
-                        else:
-                            boost_pct = 10  # Default demon boost
-                        # Higher boost = higher payout potential (1.5x to 3x+ multiplier)
-                        payout_multiplier = 1.5 + (boost_pct / 20)  # 10% boost = 2x, 20% = 2.5x, etc.
+                # Get hit rate directly from flat prop document
+                l10_hit_rate = prop.get("h10_hit_rate") or 0
+                l5_avg = prop.get("l5_avg")
+                l10_avg = prop.get("l10_avg")
+                season_avg = prop.get("season_avg")
+                
+                # Skip if no hit rate data
+                if l10_hit_rate == 0:
+                    continue
+                
+                # Convert to percentage if stored as decimal
+                if l10_hit_rate and l10_hit_rate <= 1:
+                    l10_hit_rate = l10_hit_rate * 100
+                
+                if not line:
+                    continue
+                
+                # FILTER 1: L10 Hit Rate >= 65%
+                if l10_hit_rate < 65:
+                    continue
+                filter_stats["passed_hit_rate_65"] += 1
+                
+                # FILTER 2: Exclude Safe Haven tier (>= 80%)
+                if l10_hit_rate >= 80:
+                    filter_stats["excluded_safe_haven_80"] += 1
+                    continue
+                
+                # FILTER 3: Can't be the lowest line (not safest floor play)
+                if lowest_line and line == lowest_line and len(all_lines_for_stat) > 1:
+                    filter_stats["excluded_lowest_line"] += 1
+                    continue
+                
+                # Calculate value score (hit rate × payout factor)
+                if is_demon:
+                    anchor_line = prop.get("anchor_line", line)
+                    if anchor_line and anchor_line > 0:
+                        boost_pct = ((line - anchor_line) / anchor_line) * 100
                     else:
-                        # Goblins: lower payout (typically 1.0x to 1.5x)
-                        anchor_line = prop.get("anchor_line", line)
-                        if anchor_line and anchor_line > 0:
-                            discount_pct = ((anchor_line - line) / anchor_line) * 100
-                        else:
-                            discount_pct = 10
-                        payout_multiplier = 1.0 + (discount_pct / 50)  # Lower multiplier for goblins
-                    
-                    # VALUE SCORE = hit_rate × payout_multiplier
-                    # This rewards high hit rate demons over same hit rate goblins
-                    value_score = (l10_hit_rate / 100) * payout_multiplier
-                    
-                    # PASSED ALL FILTERS
-                    if is_demon:
-                        filter_stats["final_demons"] += 1
+                        boost_pct = 10
+                    payout_multiplier = 1.5 + (boost_pct / 20)
+                else:
+                    anchor_line = prop.get("anchor_line", line)
+                    if anchor_line and anchor_line > 0:
+                        discount_pct = ((anchor_line - line) / anchor_line) * 100
                     else:
-                        filter_stats["final_goblins"] += 1
-                    
-                    # Get game status for locking logic
-                    commence_time = prop.get("commence_time")
-                    game_status = _get_game_status(commence_time)
-                    
-                    pick = {
-                        "player_name": player_name,
-                        "team": player_doc.get("team"),
-                        "opponent": player_doc.get("opponent"),
-                        "game_id": player_doc.get("game_id"),
-                        "home_team": prop.get("home_team"),
-                        "away_team": prop.get("away_team"),
-                        "stat_type": stat_type,
-                        "line": line,
-                        "anchor_line": prop.get("anchor_line"),
-                        "odds": prop.get("price"),
-                        "direction": prop.get("direction", "over"),
-                        "is_demon": is_demon,
-                        "is_goblin": is_goblin,
-                        "tier_label": "FRONT_LINE",
-                        "h10_rate": l10_hit_rate,  # Frontend expects h10_rate
-                        "l10_hit_rate": l10_hit_rate,
-                        "l5_hit_rate": l5_hit_rate,
-                        "l10_avg": l10_avg,
-                        "l5_avg": l5_avg,
-                        "season_avg": season_avg,
-                        "front_line_qualified": True,
-                        "lowest_line": lowest_line,
-                        "payout_multiplier": round(payout_multiplier, 2),
-                        "value_score": round(value_score, 3),
-                        "is_alternate_market": prop.get("is_alternate_market", True),
-                        # Game status fields for locking
-                        "commence_time": commence_time,
-                        "game_status": game_status["status"],
-                        "is_locked": game_status["is_locked"],
-                        "minutes_since_start": game_status.get("minutes_since_start"),
-                    }
-                    
-                    # Enrich with probability score (DvP + Badges + Line value)
-                    pick = await prob_service.enrich_pick_with_probability(pick)
-                    
-                    front_line_picks.append(pick)
-                    pick_type = "DEMON" if is_demon else "GOBLIN"
-                    status_tag = " [LOCKED]" if game_status["is_locked"] else ""
-                    prob_score = pick.get('probability_score', 0)
-                    logger.info(f"[FRONT_LINES] ✓ {player_name} {stat_type} @ {line} | {pick_type} | L10: {l10_hit_rate:.0f}% | Prob: {prob_score:.1f}%{status_tag}")
+                        discount_pct = 10
+                    payout_multiplier = 1.0 + (discount_pct / 50)
+                
+                value_score = (l10_hit_rate / 100) * payout_multiplier
+                
+                # PASSED ALL FILTERS
+                if is_demon:
+                    filter_stats["final_demons"] += 1
+                else:
+                    filter_stats["final_goblins"] += 1
+                
+                # Get game status for locking logic
+                commence_time = prop.get("commence_time")
+                game_status = _get_game_status(commence_time)
+                
+                pick = {
+                    "player_name": player_name,
+                    "team": prop.get("team"),
+                    "opponent": prop.get("opponent"),
+                    "game_id": prop.get("game_id"),
+                    "home_team": prop.get("home_team"),
+                    "away_team": prop.get("away_team"),
+                    "stat_type": stat_type,
+                    "line": line,
+                    "anchor_line": prop.get("anchor_line"),
+                    "odds": prop.get("price"),
+                    "direction": prop.get("direction", "over"),
+                    "is_demon": is_demon,
+                    "is_goblin": is_goblin,
+                    "tier_label": "FRONT_LINE",
+                    "h10_rate": l10_hit_rate,  # Frontend expects h10_rate
+                    "l10_hit_rate": l10_hit_rate,
+                    "l5_hit_rate": l10_hit_rate,  # Use same for consistency
+                    "l10_avg": l10_avg,
+                    "l5_avg": l5_avg,
+                    "season_avg": season_avg,
+                    "front_line_qualified": True,
+                    "lowest_line": lowest_line,
+                    "payout_multiplier": round(payout_multiplier, 2),
+                    "value_score": round(value_score, 3),
+                    "is_alternate_market": prop.get("is_alternate_market", True),
+                    # Game status fields for locking
+                    "commence_time": commence_time,
+                    "game_status": game_status["status"],
+                    "is_locked": game_status["is_locked"],
+                    "minutes_since_start": game_status.get("minutes_since_start"),
+                }
+                
+                # Enrich with probability score (DvP + Badges + Line value)
+                pick = await prob_service.enrich_pick_with_probability(pick)
+                
+                front_line_picks.append(pick)
+                pick_type = "DEMON" if is_demon else "GOBLIN"
+                status_tag = " [LOCKED]" if game_status["is_locked"] else ""
+                prob_score = pick.get('probability_score', 0)
+                logger.info(f"[FRONT_LINES] ✓ {player_name} {stat_type} @ {line} | {pick_type} | L10: {l10_hit_rate:.0f}% | Prob: {prob_score:.1f}%{status_tag}")
         
         # Sort by PROBABILITY SCORE (hit rate + DvP + badges + line value)
         front_line_picks.sort(key=lambda x: x.get("probability_score", 0), reverse=True)

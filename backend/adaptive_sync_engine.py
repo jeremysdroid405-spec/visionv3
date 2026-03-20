@@ -372,14 +372,14 @@ class AdaptiveSyncEngine:
     
     async def _fetch_live_odds(self) -> List[Dict[str, Any]]:
         """
-        Fetch PrizePicks odds from The Odds API.
+        Fetch Underdog odds from The Odds API.
         
-        PRIZEPICKS-SPECIFIC FETCH:
-        - Uses regions=us_dfs (Daily Fantasy Sports region for PrizePicks)
-        - Uses bookmakers=prizepicks (specifically target PrizePicks)
+        UNDERDOG-SPECIFIC FETCH:
+        - Uses regions=us_dfs (Daily Fantasy Sports region for Underdog)
+        - Uses bookmakers=underdog (specifically target Underdog)
         - Fetches both standard and alternate markets for proper tier classification
         
-        PrizePicks Classification:
+        Underdog Classification:
         - STANDARD (Gray): Main market lines (player_points, player_rebounds, player_assists)
         - GOBLIN (Green): Alternate market lines with odds != +100 (discount/promo lines)
         - DEMON (Red): Alternate market lines with +100 odds (boosted/hard lines)
@@ -402,7 +402,7 @@ class AdaptiveSyncEngine:
                 events_response = await client.get(events_url, params=events_params)
                 events_response.raise_for_status()
                 events = events_response.json()
-                logger.info(f"[PRIZEPICKS_SYNC] Found {len(events)} NBA events")
+                logger.info(f"[UNDERDOG_SYNC] Found {len(events)} NBA events")
                 
                 if not events:
                     return []
@@ -464,17 +464,17 @@ class AdaptiveSyncEngine:
                                 odds_data["event_id"] = event_id
                                 enriched_events.append(odds_data)
                     except Exception as e:
-                        logger.warning(f"[DFS_SYNC] Failed to fetch odds for event {event_id}: {e}")
+                        logger.warning(f"[UNDERDOG_SYNC] Failed to fetch odds for event {event_id}: {e}")
                         continue
                 
-                logger.info(f"[DFS_SYNC] Fetched DFS odds for {len(enriched_events)} events")
+                logger.info(f"[UNDERDOG_SYNC] Fetched DFS odds for {len(enriched_events)} events")
                 return enriched_events
                 
         except httpx.HTTPStatusError as e:
-            logger.error(f"[PRIZEPICKS_SYNC] Odds API HTTP error: {e.response.status_code}")
+            logger.error(f"[UNDERDOG_SYNC] Odds API HTTP error: {e.response.status_code}")
             return []
         except Exception as e:
-            logger.error(f"[PRIZEPICKS_SYNC] Odds API error: {e}")
+            logger.error(f"[UNDERDOG_SYNC] Odds API error: {e}")
             return []
     
     async def _update_game_registry(self, events: List[Dict[str, Any]]) -> None:
@@ -556,8 +556,8 @@ class AdaptiveSyncEngine:
             for bookmaker in bookmakers:
                 bookmaker_key = bookmaker.get("key", "")
                 
-                # Only process PrizePicks
-                if bookmaker_key != "prizepicks":
+                # Only process Underdog (primary DFS source)
+                if bookmaker_key != "underdog":
                     continue
                     
                 markets = bookmaker.get("markets", [])
@@ -616,7 +616,7 @@ class AdaptiveSyncEngine:
                             main_lines[key] = line
                             logger.debug(f"[ANCHOR] {player_name} {stat_type_extracted}: main_line = {line}")
         
-        logger.info(f"[PRIZEPICKS_SYNC_V3] Pass 1 complete: {len(main_lines)} main lines (anchors) identified")
+        logger.info(f"[UNDERDOG_SYNC_V3] Pass 1 complete: {len(main_lines)} main lines (anchors) identified")
         
         # ============================================================
         # PASS 2: Classify each prop based on comparison to anchor
@@ -720,7 +720,7 @@ class AdaptiveSyncEngine:
                     "name": prop["name"],
                     "last_updated": now,
                     "last_updated_iso": now.isoformat(),
-                    "sync_source": "prizepicks_sync_v3",
+                    "sync_source": "underdog_sync_v3",
                     # Market metadata
                     "is_alternate_market": is_alternate_market,
                     # ANCHOR-BASED tier classification
@@ -760,18 +760,18 @@ class AdaptiveSyncEngine:
                 
             except Exception as e:
                 error_count += 1
-                logger.error(f"[PRIZEPICKS_SYNC] Error updating {player_name}: {e}")
+                logger.error(f"[UNDERDOG_SYNC] Error updating {player_name}: {e}")
         
         # Log classification distribution
         if updated_count > 0:
-            logger.info(f"[PRIZEPICKS_SYNC_V3] Anchor-Based Classification: "
+            logger.info(f"[UNDERDOG_SYNC_V3] Anchor-Based Classification: "
                        f"{demon_count} Demon (above anchor), "
                        f"{goblin_count} Goblin (below anchor), "
                        f"{standard_count} Standard")
             if l5_fallback_count > 0:
-                logger.info(f"[PRIZEPICKS_SYNC_V3] L5/Season fallback used for {l5_fallback_count} player/stat combos (no main line)")
+                logger.info(f"[UNDERDOG_SYNC_V3] L5/Season fallback used for {l5_fallback_count} player/stat combos (no main line)")
             if no_anchor_count > 0:
-                logger.warning(f"[PRIZEPICKS_SYNC_V3] {no_anchor_count} player/stat combos had NO anchor (no main line, no stats)")
+                logger.warning(f"[UNDERDOG_SYNC_V3] {no_anchor_count} player/stat combos had NO anchor (no main line, no stats)")
         
         # Update sync status
         await self._update_sync_status(now, updated_count, error_count)

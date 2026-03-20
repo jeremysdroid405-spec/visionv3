@@ -5,7 +5,7 @@ PropVision is a sports analytics platform for NBA player props, providing data-d
 
 ## Core Architecture
 
-### Data Pipeline (Updated 2026-03-19)
+### Data Pipeline (Updated 2026-03-20)
 
 **Data Sources:**
 1. **BDL (BallDontLie)** - Season averages + Game Logs (GOAT tier subscription)
@@ -17,6 +17,21 @@ PropVision is a sports analytics platform for NBA player props, providing data-d
    - Endpoint: `playerdashboardbylastngames`
    - Pre-calculated averages (no game values)
    - ~550 active players
+
+3. **The Odds API** - Player props (DFS markets)
+   - **PRIMARY: Underdog** (as of 2026-03-20)
+   - Region: `us_dfs` (Daily Fantasy Sports)
+   - ⚠️ PrizePicks removed from API as of 2026-03-20
+
+### Odds API Data Source Change (CRITICAL - 2026-03-20)
+
+**Issue:** PrizePicks data no longer available from The Odds API.
+
+**Resolution:** Switched to **Underdog** as primary DFS data source.
+
+**Files Updated:**
+- `/app/backend/adaptive_sync_engine.py` - Changed bookmaker filter from `prizepicks` to `underdog`
+- `/app/backend/services/picks_getter_service.py` - Updated queries to use flat document structure, filter for upcoming games only
 
 ### Probability Score System (NEW - 2026-03-19)
 
