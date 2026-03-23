@@ -333,3 +333,4 @@ android-sdk/ -e
 # Environment files
 *.env
 *.env.*
+pick_vision_export.json
