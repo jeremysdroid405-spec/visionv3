@@ -185,13 +185,14 @@ dg_cached_board.props[].hit_rates
 ## Known Issues
 - ~46 players without `nba_id` (rookies/two-way)
 - NBA.com API can timeout - staggered syncs handle retries
-- News ticker CSS animation may be slow (P2)
+
+## Completed (2026-03-23)
+- [x] News ticker animation optimization (P2) - Updated to use translate3d, will-change, backface-visibility for GPU acceleration. Reduced news ticker duration from 120s to 60s for better readability.
+- [x] Deprecated code cleanup (P2) - Added deprecation notice to `_convert_stats_to_rankings()` in dvp_service.py
 
 ## Backlog
 - [ ] Add tooltips for context badges (P1)
 - [ ] Add UI for War Zone score breakdown (P1)
-- [ ] News ticker animation optimization (P2)
-- [ ] Deprecated code cleanup (P2)
 - [ ] Google/Apple OAuth
 - [ ] Stripe payments
 - [ ] Automate distraction/deep_water badges

@@ -276,8 +276,8 @@
 
 /* ==================== TICKER ANIMATIONS ==================== */
 @keyframes ticker-scroll {
-  0% { transform: translateX(0); }
-  100% { transform: translateX(-50%); }
+  0% { transform: translate3d(0, 0, 0); }
+  100% { transform: translate3d(-50%, 0, 0); }
 }
 
 .ticker-scroll {
@@ -286,23 +286,27 @@
 
 .ticker-content {
   display: flex;
-  animation: ticker-scroll 40s linear infinite;
+  animation: ticker-scroll 30s linear infinite;
   width: fit-content;
+  will-change: transform;
+  backface-visibility: hidden;
 }
 
 .ticker-content:hover {
   animation-play-state: paused;
 }
 
-/* News ticker - slower speed */
+/* News ticker - moderate speed for readability */
 .news-ticker-scroll {
   overflow: hidden;
 }
 
 .news-ticker-content {
   display: flex;
-  animation: ticker-scroll 120s linear infinite;
+  animation: ticker-scroll 60s linear infinite;
   width: fit-content;
+  will-change: transform;
+  backface-visibility: hidden;
 }
 
 .news-ticker-content:hover {

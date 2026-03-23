@@ -388,6 +388,10 @@ def _parse_bdl_opponent_stats(data: Dict) -> Optional[Dict[str, Dict[str, int]]]
 
 def _convert_stats_to_rankings(raw_stats: Dict[str, Dict[str, float]]) -> Dict[str, Dict[str, int]]:
     """
+    DEPRECATED: This function is no longer used in production.
+    Rankings are now calculated directly in _compute_dvp_rankings_from_raw_stats().
+    Kept for backward compatibility with existing tests.
+    
     Convert raw defensive stats to rankings (1-30).
     
     For opponent stats (pts allowed, ast allowed, etc.):
