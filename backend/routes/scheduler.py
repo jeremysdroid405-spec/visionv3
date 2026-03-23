@@ -40,6 +40,112 @@ def get_db():
     return _db
 
 
+
+@router.post("/v3/init-database")
+async def init_database():
+    """
+    Initialize the database with all required data.
+    
+    This should be called after deploying to a new environment.
+    It will:
+    1. Sync master roster from BallDontLie
+    2. Sync game logs for hit rate calculations
+    3. Sync DvP rankings
+    4. Sync odds and props
+    5. Create database indexes
+    
+    This is equivalent to running: python scripts/init_database.py
+    """
+    db = get_db()
+    engine = get_engine()
+    
+    results = {
+        "started_at": datetime.now(timezone.utc).isoformat(),
+        "steps": {}
+    }
+    
+    # Step 1: Sync Master Roster
+    logger.info("[INIT] Step 1: Syncing Master Roster...")
+    try:
+        roster_result = await engine.sync_master_roster()
+        results["steps"]["roster"] = {
+            "success": True,
+            "players_synced": roster_result.get("players_synced", 0),
+            "teams_found": roster_result.get("teams_found", 0)
+        }
+    except Exception as e:
+        logger.error(f"[INIT] Roster sync failed: {e}")
+        results["steps"]["roster"] = {"success": False, "error": str(e)}
+    
+    # Step 2: Sync BDL Game Logs
+    logger.info("[INIT] Step 2: Syncing BDL Game Logs...")
+    try:
+        from services.bdl_game_logs_sync import BDLGameLogsSync
+        sync_service = BDLGameLogsSync(db)
+        logs_result = await sync_service.sync_all_players(batch_size=10)
+        results["steps"]["game_logs"] = {
+            "success": True,
+            "players_synced": logs_result.get("players_synced", 0),
+            "total_games": logs_result.get("total_games", 0)
+        }
+    except Exception as e:
+        logger.error(f"[INIT] Game logs sync failed: {e}")
+        results["steps"]["game_logs"] = {"success": False, "error": str(e)}
+    
+    # Step 3: Sync DvP Rankings
+    logger.info("[INIT] Step 3: Syncing DvP Rankings...")
+    try:
+        from services.dvp_service import force_refresh_dvp, initialize_dvp_cache
+        from services import dvp_service
+        dvp_service._db_ref = db
+        await force_refresh_dvp()
+        await initialize_dvp_cache()
+        results["steps"]["dvp"] = {"success": True}
+    except Exception as e:
+        logger.error(f"[INIT] DvP sync failed: {e}")
+        results["steps"]["dvp"] = {"success": False, "error": str(e)}
+    
+    # Step 4: Sync Odds & Props
+    logger.info("[INIT] Step 4: Syncing Odds & Props...")
+    try:
+        odds_result = await engine.sync_odds_to_mongo()
+        results["steps"]["odds"] = {
+            "success": True,
+            "total_props": odds_result.get("total_props", 0),
+            "unique_players": odds_result.get("unique_players", 0)
+        }
+    except Exception as e:
+        logger.error(f"[INIT] Odds sync failed: {e}")
+        results["steps"]["odds"] = {"success": False, "error": str(e)}
+    
+    # Step 5: Create Indexes
+    logger.info("[INIT] Step 5: Creating Indexes...")
+    try:
+        await db.nba_master_hub_2026.create_index("display_name")
+        await db.nba_master_hub_2026.create_index("bdl_id")
+        await db.dg_cached_board.create_index("player_name")
+        await db.dvp_rankings.create_index("type")
+        results["steps"]["indexes"] = {"success": True}
+    except Exception as e:
+        logger.error(f"[INIT] Index creation failed: {e}")
+        results["steps"]["indexes"] = {"success": False, "error": str(e)}
+    
+    # Summary
+    results["completed_at"] = datetime.now(timezone.utc).isoformat()
+    results["success"] = all(step.get("success", False) for step in results["steps"].values())
+    
+    # Verify data counts
+    results["data_counts"] = {
+        "nba_master_hub_2026": await db.nba_master_hub_2026.count_documents({}),
+        "dg_cached_board": await db.dg_cached_board.count_documents({}),
+        "dvp_rankings": await db.dvp_rankings.count_documents({})
+    }
+    
+    logger.info(f"[INIT] Complete: {results}")
+    return results
+
+
+
 @router.get("/v3/scheduler-status")
 async def get_scheduler_status():
     """

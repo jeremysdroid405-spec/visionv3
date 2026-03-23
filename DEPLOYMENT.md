@@ -236,3 +236,59 @@ Returns:
 ## Support
 
 This is a standalone application with no external dependencies on any proprietary platforms.
+
+---
+
+## First-Time Setup / Database Initialization
+
+After deploying to a new environment, the database will be empty. You need to run the initialization to populate it with player data, game logs, and odds.
+
+### Option 1: API Endpoint (Recommended)
+
+After the app is running, call the initialization endpoint:
+
+```bash
+curl -X POST https://your-domain.com/api/v3/init-database
+```
+
+This will:
+1. Sync ~600 NBA players from BallDontLie
+2. Fetch game-by-game stats for hit rate calculations
+3. Load DvP (Defense vs Position) rankings
+4. Sync current odds and props
+5. Create database indexes
+
+**Expected time:** 5-10 minutes (depending on API rate limits)
+
+### Option 2: Command Line Script
+
+```bash
+cd backend
+python scripts/init_database.py
+```
+
+### Verifying Initialization
+
+Check the health endpoint:
+```bash
+curl https://your-domain.com/api/v3/status
+```
+
+You should see:
+```json
+{
+  "success": true,
+  "data": {
+    "unique_players": 600+,
+    "season": "2025-26"
+  }
+}
+```
+
+### If Database is Empty
+
+If you see 0 players or empty picks:
+1. Check that your server IP (203.161.43.198) is whitelisted in MongoDB Atlas
+2. Run the init endpoint: `POST /api/v3/init-database`
+3. Wait for the sync to complete (check logs)
+4. Refresh the dashboard
