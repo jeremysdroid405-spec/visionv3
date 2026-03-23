@@ -93,7 +93,29 @@ RATE_LIMITING_ENABLED = os.environ.get("RATE_LIMITING_ENABLED", "true").lower() 
 CURRENT_SEASON = "2025"  # 2025-26 NBA season
 
 mongo_url = os.environ['MONGO_URL']
-client = AsyncIOMotorClient(mongo_url)
+
+# MongoDB connection with Atlas-compatible settings
+# Build connection options based on whether this is Atlas or local
+is_atlas = 'mongodb.net' in mongo_url or 'mongodb+srv' in mongo_url
+
+connection_opts = {
+    'serverSelectionTimeoutMS': 30000,  # 30 seconds for server selection
+    'connectTimeoutMS': 30000,           # 30 seconds for initial connection
+    'socketTimeoutMS': 60000,            # 60 seconds for socket operations
+    'maxPoolSize': 50,                   # Connection pool size
+    'minPoolSize': 5,                    # Minimum connections to keep
+    'maxIdleTimeMS': 60000,              # Close idle connections after 60s
+    'retryWrites': True,                 # Retry failed writes
+    'retryReads': True,                  # Retry failed reads
+}
+
+# Only add TLS settings for Atlas connections
+if is_atlas:
+    connection_opts['tls'] = True
+    connection_opts['tlsAllowInvalidCertificates'] = False
+    connection_opts['w'] = 'majority'
+
+client = AsyncIOMotorClient(mongo_url, **connection_opts)
 db = client[os.environ['DB_NAME']]
 
 SUPABASE_URL = os.environ.get('SUPABASE_URL')
@@ -829,7 +851,19 @@ async def startup_event():
     scheduler = AsyncIOScheduler(timezone=SCHEDULER_TIMEZONE)
     
     # Initialize photo storage service (for base64 photo caching)
-    sync_db = MongoClient(mongo_url)[os.environ['DB_NAME']]
+    # Use synchronous client with same Atlas-compatible settings
+    sync_opts = {
+        'serverSelectionTimeoutMS': 30000,
+        'connectTimeoutMS': 30000,
+        'socketTimeoutMS': 60000,
+        'maxPoolSize': 10,
+        'retryWrites': True,
+    }
+    if is_atlas:
+        sync_opts['tls'] = True
+    
+    sync_client = MongoClient(mongo_url, **sync_opts)
+    sync_db = sync_client[os.environ['DB_NAME']]
     photo_service = PhotoStorageService(sync_db)
     
     register_all_routes(

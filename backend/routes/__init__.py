@@ -82,7 +82,7 @@ def register_all_routes(app, engine, game_lock_engine=None, db=None,
     if stats_manager is not None and db is not None:
         set_admin_deps(stats_manager, db)
     if engine is not None and live_scores_engine is not None:
-        set_scheduler_deps(engine, live_scores_engine, scheduler)
+        set_scheduler_deps(engine, live_scores_engine, scheduler, db)
     
     # Include routers with /api prefix to match frontend expectations
     app.include_router(picks_router, prefix="/api")

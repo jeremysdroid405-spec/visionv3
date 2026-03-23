@@ -182,18 +182,11 @@ async def get_tactical_profile(
     - lines: ALL prop lines with is_radar flag for Target-Lock identification
     - radar_picks: List of {stat_type, line, direction} that are PropVision objectives
     """
-    from motor.motor_asyncio import AsyncIOMotorClient
-    
     try:
-        mongo_url = os.environ.get("MONGO_URL")
-        db_name = os.environ.get("DB_NAME", "pick_vision")
-        
-        if not mongo_url:
+        if _db is None:
             raise HTTPException(status_code=503, detail="Database not configured")
         
-        client = AsyncIOMotorClient(mongo_url)
-        db = client[db_name]
-        
+        db = _db
         player_name_regex = {"$regex": player_name, "$options": "i"}
         
         # ===== STEP 1: Fetch ALL available props from dg_cached_board =====

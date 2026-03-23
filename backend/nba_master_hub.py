@@ -48,7 +48,20 @@ class NBAMasterHub:
     COLLECTION_NAME = "nba_master_hub_2026"
     
     def __init__(self, mongo_url: str, db_name: str):
-        self.client = AsyncIOMotorClient(mongo_url)
+        # MongoDB Atlas-compatible connection settings
+        is_atlas = 'mongodb.net' in mongo_url or 'mongodb+srv' in mongo_url
+        
+        connection_opts = {
+            'serverSelectionTimeoutMS': 30000,
+            'connectTimeoutMS': 30000,
+            'socketTimeoutMS': 60000,
+            'maxPoolSize': 20,
+            'retryWrites': True,
+        }
+        if is_atlas:
+            connection_opts['tls'] = True
+        
+        self.client = AsyncIOMotorClient(mongo_url, **connection_opts)
         self.db = self.client[db_name]
         self.hub = self.db[self.COLLECTION_NAME]
         self._scheduler_running = False

@@ -73,7 +73,20 @@ async def run_daily_sync():
         return
     
     try:
-        client = AsyncIOMotorClient(mongo_url)
+        # MongoDB Atlas-compatible connection settings
+        is_atlas = 'mongodb.net' in mongo_url or 'mongodb+srv' in mongo_url
+        
+        connection_opts = {
+            'serverSelectionTimeoutMS': 30000,
+            'connectTimeoutMS': 30000,
+            'socketTimeoutMS': 60000,
+            'maxPoolSize': 10,
+            'retryWrites': True,
+        }
+        if is_atlas:
+            connection_opts['tls'] = True
+        
+        client = AsyncIOMotorClient(mongo_url, **connection_opts)
         db = client[db_name]
         
         # PHASE 1: Run Official NBA API stats sync (hit rates, game logs)

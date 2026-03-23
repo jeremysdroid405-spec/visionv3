@@ -14,14 +14,16 @@ router = APIRouter(tags=["Scheduler"])
 _demon_goblin_engine = None
 _live_scores_engine = None
 _scheduler = None
+_db = None  # Database reference - use this instead of creating new connections
 
 
-def set_scheduler_deps(engine, live_scores_engine, scheduler):
+def set_scheduler_deps(engine, live_scores_engine, scheduler, db=None):
     """Set scheduler route dependencies."""
-    global _demon_goblin_engine, _live_scores_engine, _scheduler
+    global _demon_goblin_engine, _live_scores_engine, _scheduler, _db
     _demon_goblin_engine = engine
     _live_scores_engine = live_scores_engine
     _scheduler = scheduler
+    _db = db
 
 
 def get_engine():
@@ -29,6 +31,13 @@ def get_engine():
     if _demon_goblin_engine is None:
         raise HTTPException(status_code=500, detail="Engine not initialized")
     return _demon_goblin_engine
+
+
+def get_db():
+    """Get the database instance - NEVER create new connections."""
+    if _db is None:
+        raise HTTPException(status_code=500, detail="Database not initialized")
+    return _db
 
 
 @router.get("/v3/scheduler-status")
@@ -103,22 +112,13 @@ async def sync_baseline_stats():
     This ensures the frontend can instantly access pre-computed
     player stats without any external API calls.
     """
-    import os
-    from motor.motor_asyncio import AsyncIOMotorClient
     from services.master_hub_sync import MasterHubSyncService
     
-    mongo_url = os.environ.get("MONGO_URL")
-    db_name = os.environ.get("DB_NAME", "pick_vision")
-    
-    if not mongo_url:
-        raise HTTPException(status_code=503, detail="Database not configured")
+    db = get_db()
     
     logger.info("[MANUAL SYNC] Triggering Master Hub baseline stats sync...")
     
     try:
-        client = AsyncIOMotorClient(mongo_url)
-        db = client[db_name]
-        
         service = MasterHubSyncService(db)
         result = await service.run_full_sync()
         
@@ -146,22 +146,13 @@ async def sync_bdl_comprehensive():
     This is the PRIMARY data source for accurate player stats.
     Automatically runs daily at 4:00 AM EST.
     """
-    import os
-    from motor.motor_asyncio import AsyncIOMotorClient
     from services.bdl_comprehensive_sync import get_bdl_sync_service
     
-    mongo_url = os.environ.get("MONGO_URL")
-    db_name = os.environ.get("DB_NAME", "pick_vision")
-    
-    if not mongo_url:
-        raise HTTPException(status_code=503, detail="Database not configured")
+    db = get_db()
     
     logger.info("[MANUAL SYNC] Triggering BDL + NBA.com comprehensive sync...")
     
     try:
-        client = AsyncIOMotorClient(mongo_url)
-        db = client[db_name]
-        
         # Sync from BDL API + NBA.com for L5/L10
         bdl_service = get_bdl_sync_service(db)
         sync_result = await bdl_service.sync_all_active_players()
@@ -198,22 +189,13 @@ async def sync_bdl_player_mapping():
     - Once on initial setup
     - Weekly to catch roster changes
     """
-    import os
-    from motor.motor_asyncio import AsyncIOMotorClient
     from services.bdl_player_mapping import get_bdl_mapping_service
     
-    mongo_url = os.environ.get("MONGO_URL")
-    db_name = os.environ.get("DB_NAME", "pick_vision")
-    
-    if not mongo_url:
-        raise HTTPException(status_code=503, detail="Database not configured")
+    db = get_db()
     
     logger.info("[MANUAL SYNC] Syncing BDL player ID mappings...")
     
     try:
-        client = AsyncIOMotorClient(mongo_url)
-        db = client[db_name]
-        
         mapping_service = get_bdl_mapping_service(db)
         result = await mapping_service.sync_all_active_players()
         
@@ -249,22 +231,13 @@ async def sync_nba_l5l10(limit: int = 200):
     Returns:
         Summary of enrichment results
     """
-    import os
-    from motor.motor_asyncio import AsyncIOMotorClient
     from services.bdl_comprehensive_sync import get_bdl_sync_service
     
-    mongo_url = os.environ.get("MONGO_URL")
-    db_name = os.environ.get("DB_NAME", "pick_vision")
-    
-    if not mongo_url:
-        raise HTTPException(status_code=503, detail="Database not configured")
+    db = get_db()
     
     logger.info(f"[MANUAL SYNC] Triggering NBA.com L5/L10 batch enrichment (limit={limit})...")
     
     try:
-        client = AsyncIOMotorClient(mongo_url)
-        db = client[db_name]
-        
         bdl_service = get_bdl_sync_service(db)
         
         # Find players needing enrichment
@@ -328,21 +301,14 @@ async def sync_injuries():
     
     Automatically included in the 4:00 AM EST daily sync.
     """
-    import os
-    from motor.motor_asyncio import AsyncIOMotorClient
     from services.bdl_enhanced_data import get_bdl_enhanced_service
     
-    mongo_url = os.environ.get("MONGO_URL")
-    db_name = os.environ.get("DB_NAME", "pick_vision")
-    
-    if not mongo_url:
-        raise HTTPException(status_code=503, detail="Database not configured")
+    db = get_db()
     
     logger.info("[MANUAL SYNC] Triggering injury reports sync...")
     
     try:
-        client = AsyncIOMotorClient(mongo_url)
-        db = client[db_name]
+        db = get_db()
         
         service = get_bdl_enhanced_service(db)
         result = await service.sync_injuries()
@@ -373,21 +339,14 @@ async def sync_advanced_stats():
     
     These metrics enhance player analysis in the Vision Intel Suite.
     """
-    import os
-    from motor.motor_asyncio import AsyncIOMotorClient
     from services.bdl_enhanced_data import get_bdl_enhanced_service
     
-    mongo_url = os.environ.get("MONGO_URL")
-    db_name = os.environ.get("DB_NAME", "pick_vision")
-    
-    if not mongo_url:
-        raise HTTPException(status_code=503, detail="Database not configured")
+    db = get_db()
     
     logger.info("[MANUAL SYNC] Triggering advanced stats sync...")
     
     try:
-        client = AsyncIOMotorClient(mongo_url)
-        db = client[db_name]
+        db = get_db()
         
         service = get_bdl_enhanced_service(db)
         result = await service.sync_advanced_stats()
@@ -413,18 +372,8 @@ async def get_injuries():
     
     Returns list of injured players with status and severity.
     """
-    import os
-    from motor.motor_asyncio import AsyncIOMotorClient
-    
-    mongo_url = os.environ.get("MONGO_URL")
-    db_name = os.environ.get("DB_NAME", "best_bet_finder")
-    
-    if not mongo_url:
-        raise HTTPException(status_code=503, detail="Database not configured")
-    
     try:
-        client = AsyncIOMotorClient(mongo_url)
-        db = client[db_name]
+        db = get_db()
         
         # Query directly from the collection
         injuries = await db.bdl_injuries.find(
@@ -487,16 +436,8 @@ async def sync_full_daily():
     For the complete scheduled sync (including injuries, odds, insights, Vision AI),
     use the scheduled job or wait for the 4:00 AM automatic run.
     """
-    import os
-    from motor.motor_asyncio import AsyncIOMotorClient
     from services.bdl_comprehensive_sync import get_bdl_sync_service
     from services.dvp_service import force_refresh_dvp, get_dvp_status
-    
-    mongo_url = os.environ.get("MONGO_URL")
-    db_name = os.environ.get("DB_NAME", "pick_vision")
-    
-    if not mongo_url:
-        raise HTTPException(status_code=503, detail="Database not configured")
     
     logger.info("[DAILY SYNC] Starting combined BDL + NBA.com + DvP sync...")
     
@@ -510,8 +451,7 @@ async def sync_full_daily():
     # Step 1: BDL + NBA.com Stats
     try:
         logger.info("[DAILY SYNC] Step 1/2: BDL + NBA.com stats sync...")
-        client = AsyncIOMotorClient(mongo_url)
-        db = client[db_name]
+        db = get_db()
         
         bdl_service = get_bdl_sync_service(db)
         sync_result = await bdl_service.sync_all_active_players()

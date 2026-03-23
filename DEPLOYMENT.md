@@ -6,8 +6,39 @@ This application is fully standalone and can be deployed on any server infrastru
 
 - Python 3.11+
 - Node.js 18+
-- MongoDB 6.0+
+- MongoDB 6.0+ (local) OR MongoDB Atlas (cloud)
 - A Google Cloud account with Gemini API enabled
+
+## MongoDB Configuration
+
+### Option A: Local MongoDB
+```bash
+MONGO_URL=mongodb://localhost:27017
+```
+
+### Option B: MongoDB Atlas (Recommended for Production)
+
+1. Create a MongoDB Atlas cluster at https://cloud.mongodb.com
+2. **Important:** Add your server's IP address to the Network Access whitelist
+3. Get your connection string from Atlas (should start with `mongodb+srv://`)
+
+```bash
+MONGO_URL=mongodb+srv://username:password@cluster.xxxxx.mongodb.net/?retryWrites=true&w=majority
+```
+
+**Note:** The application automatically detects Atlas connections and enables:
+- TLS encryption
+- Increased connection timeouts (30s)
+- Connection pooling
+- Retry logic for writes and reads
+
+### Troubleshooting Atlas Connections
+
+If you see `timed out` errors:
+1. **Check IP Whitelist:** Atlas → Network Access → Add your server IP
+2. **Check Credentials:** Ensure username/password in connection string are correct
+3. **Check DNS:** Ensure your server can resolve `*.mongodb.net` domains
+4. **Check Firewall:** Ensure port 27017 is not blocked outbound
 
 ## Environment Variables
 
