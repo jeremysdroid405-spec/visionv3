@@ -1,6 +1,6 @@
 """
 Vision AI Service - Generates "badass" AI insights for NBA player props
-Uses Claude Sonnet 4.5 via Emergent LLM integration
+Uses Google Gemini via direct API
 
 This module provides:
 1. AI insight generation for Demons, Goblins, and High Volatility players
@@ -17,12 +17,10 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from emergentintegrations.llm.chat import LlmChat, UserMessage
-
 logger = logging.getLogger(__name__)
 
-# Configuration
-EMERGENT_LLM_KEY = os.environ.get('EMERGENT_LLM_KEY')
+# Configuration - Use Google Gemini API Key
+GOOGLE_API_KEY = os.environ.get('GOOGLE_API_KEY')
 SUPABASE_URL = os.environ.get('SUPABASE_URL')
 SUPABASE_SERVICE_ROLE_KEY = os.environ.get('SUPABASE_SERVICE_ROLE_KEY')
 
@@ -67,8 +65,8 @@ Examples of good insights:
         self.daily_insights = db.dg_daily_insights
         self.cached_board = db.dg_cached_board
         
-        if not EMERGENT_LLM_KEY:
-            logger.warning("[VISION] EMERGENT_LLM_KEY not found - AI insights will be disabled")
+        if not GOOGLE_API_KEY:
+            logger.warning("[VISION] GOOGLE_API_KEY not found - AI insights will be disabled")
     
     def _detect_conflicts(
         self,
@@ -229,11 +227,12 @@ Examples of good insights:
         Generate a single AI insight for a player prop.
         Now includes CONFLICT FINDER logic to detect anomalies.
         Now includes mandatory DvP defensive ranking context.
+        Uses Google Gemini API.
         """
-        if not EMERGENT_LLM_KEY:
+        if not GOOGLE_API_KEY:
             return {
                 "success": False,
-                "error": "EMERGENT_LLM_KEY not configured",
+                "error": "GOOGLE_API_KEY not configured",
                 "insight": None
             }
         
@@ -311,19 +310,22 @@ Volatility: {volatility}
 
 Generate a 1-sentence VISION INSIGHT. You MUST include the DvP matchup context (friction level) in your insight. Do NOT say "standard projection." Find the story."""
 
-            # Initialize Claude Sonnet 4.5 via Emergent
-            chat = LlmChat(
-                api_key=EMERGENT_LLM_KEY,
-                session_id=f"vision-{player_name.replace(' ', '-')}-{datetime.now().timestamp()}",
-                system_message=self.SYSTEM_PROMPT
-            ).with_model("anthropic", "claude-sonnet-4-5-20250929")
+            # Initialize Google Gemini
+            from google import genai
             
-            # Send message and get response
-            message = UserMessage(text=user_prompt)
-            insight = await chat.send_message(message)
+            client = genai.Client(api_key=GOOGLE_API_KEY)
             
-            # Clean up the insight
-            insight = insight.strip().strip('"').strip("'")
+            # Build full prompt with system context
+            full_prompt = f"{self.SYSTEM_PROMPT}\n\n{user_prompt}"
+            
+            # Call Gemini API
+            response = await asyncio.to_thread(
+                client.models.generate_content,
+                model="gemini-3.1-flash-lite-preview",
+                contents=full_prompt
+            )
+            
+            insight = response.text.strip().strip('"').strip("'")
             
             logger.info(f"[VISION] Generated insight for {player_name}: {insight[:50]}...")
             
@@ -367,10 +369,10 @@ Generate a 1-sentence VISION INSIGHT. You MUST include the DvP matchup context (
         Returns:
             Summary of batch processing results
         """
-        if not EMERGENT_LLM_KEY:
+        if not GOOGLE_API_KEY:
             return {
                 "success": False,
-                "error": "EMERGENT_LLM_KEY not configured",
+                "error": "GOOGLE_API_KEY not configured",
                 "insights_generated": 0
             }
         
@@ -463,7 +465,7 @@ Generate a 1-sentence VISION INSIGHT. You MUST include the DvP matchup context (
                     "$set": {
                         "insight_summary": result['insight'],
                         "ai_generated_at": result['generated_at'],
-                        "ai_model": "claude-sonnet-4.5",
+                        "ai_model": "gemini-3.1-flash-lite-preview",
                         "classification": result.get('classification', 'Standard'),
                         "has_high_conflict": result.get('has_high_conflict', False),
                         "conflict_types": result.get('conflict_types', [])

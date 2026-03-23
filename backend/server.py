@@ -463,16 +463,16 @@ async def scheduled_daily_sync():
             insights_result = await demon_goblin_engine.sync_daily_insights()
             logger.info(f"[SCHEDULER] Insights: {insights_result.get('insights_calculated', 0)} players analyzed")
             
-            # Step 8: Generate Vision AI insights for eligible players
-            if vision_ai_service and os.environ.get('EMERGENT_LLM_KEY'):
-                logger.info("[SCHEDULER] Step 8/10: Generating Vision AI insights...")
+            # Step 8: Generate Vision AI insights for eligible players (using Google Gemini)
+            if vision_ai_service and os.environ.get('GOOGLE_API_KEY'):
+                logger.info("[SCHEDULER] Step 8/10: Generating Vision AI insights (Gemini)...")
                 try:
                     vision_result = await vision_ai_service.trigger_insights_for_sync()
                     logger.info(f"[SCHEDULER] Vision AI: {vision_result.get('insights_generated', 0)} insights generated")
                 except Exception as ve:
                     logger.error(f"[SCHEDULER] Vision AI failed (non-critical): {ve}")
             else:
-                logger.info("[SCHEDULER] Step 8/10: Vision AI skipped (not configured)")
+                logger.info("[SCHEDULER] Step 8/10: Vision AI skipped (GOOGLE_API_KEY not configured)")
             
             # Step 9: Sync career stats from NBA.com (for milestone badges)
             logger.info("[SCHEDULER] Step 9/10: Syncing career stats from NBA.com...")

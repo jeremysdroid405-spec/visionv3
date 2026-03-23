@@ -1,13 +1,13 @@
 """
 Vision AI Summary Service
 =========================
-Uses Gemini to generate short, insightful summaries explaining why a pick was made.
+Uses Google Gemini to generate short, insightful summaries explaining why a pick was made.
 Only for "Vision" picks that have context badges and matchup data.
 """
 import os
+import asyncio
 import logging
 from typing import Optional, Dict, Any
-from emergentintegrations.llm.chat import LlmChat, UserMessage
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -15,9 +15,9 @@ logger = logging.getLogger(__name__)
 
 class VisionSummaryService:
     def __init__(self):
-        self.api_key = os.environ.get("EMERGENT_LLM_KEY")
+        self.api_key = os.environ.get("GOOGLE_API_KEY")
         if not self.api_key:
-            logger.warning("[VISION] No EMERGENT_LLM_KEY found - summaries will be disabled")
+            logger.warning("[VISION] No GOOGLE_API_KEY found - summaries will be disabled")
     
     async def generate_pick_summary(
         self,
@@ -148,19 +148,25 @@ RULES:
 
 OUTPUT: 3 tight sentences covering EDGE → MATCHUP → CONFLICTS"""
 
-            # Initialize Gemini chat
-            chat = LlmChat(
-                api_key=self.api_key,
-                session_id=f"vision_{player_name}_{stat_type}",
-                system_message="You are an elite sports betting analyst specializing in player props. Deliver sharp, data-driven insights that cover the statistical edge, matchup context, and potential conflicts. Use only player last names. Be honest about both upside and risk. Do NOT use any markdown formatting like asterisks, bold, or italic."
-            ).with_model("gemini", "gemini-3-flash-preview")
+            # Initialize Google Gemini directly
+            from google import genai
             
-            # Send message and get response
-            response = await chat.send_message(UserMessage(text=prompt))
+            client = genai.Client(api_key=self.api_key)
             
-            if response:
+            system_msg = "You are an elite sports betting analyst specializing in player props. Deliver sharp, data-driven insights that cover the statistical edge, matchup context, and potential conflicts. Use only player last names. Be honest about both upside and risk. Do NOT use any markdown formatting like asterisks, bold, or italic."
+            
+            full_prompt = f"{system_msg}\n\n{prompt}"
+            
+            # Call Gemini API
+            response = await asyncio.to_thread(
+                client.models.generate_content,
+                model="gemini-3.1-flash-lite-preview",
+                contents=full_prompt
+            )
+            
+            if response and response.text:
                 # Clean up response - remove markdown formatting
-                summary = response.strip()
+                summary = response.text.strip()
                 # Remove asterisks (bold/italic markdown)
                 summary = summary.replace("**", "").replace("*", "")
                 # Remove other common markdown

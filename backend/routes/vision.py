@@ -121,7 +121,7 @@ async def trigger_vision_batch():
 @router.get("/status")
 async def get_vision_status():
     """Get Vision AI service status and configuration."""
-    emergent_key_configured = bool(os.environ.get('EMERGENT_LLM_KEY'))
+    google_key_configured = bool(os.environ.get('GOOGLE_API_KEY'))
     
     ai_insights_count = 0
     if _vision_service is not None and _db is not None:
@@ -132,9 +132,9 @@ async def get_vision_status():
     return {
         "success": True,
         "service_initialized": _vision_service is not None,
-        "emergent_key_configured": emergent_key_configured,
-        "model": "claude-sonnet-4.5",
-        "provider": "anthropic",
+        "google_key_configured": google_key_configured,
+        "model": "gemini-3.1-flash-lite-preview",
+        "provider": "google",
         "ai_insights_count": ai_insights_count,
         "cost_filters": {
             "demons_only": True,
