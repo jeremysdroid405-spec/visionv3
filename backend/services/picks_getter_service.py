@@ -699,14 +699,16 @@ class PicksGetterService:
     
     async def get_war_zone(self) -> Dict[str, Any]:
         """
-        Get the War Zone - HIGH-RISK/HIGH-REWARD demon picks.
+        Get the War Zone - HIGH-VALUE demon picks where players consistently beat the line.
         
-        WAR ZONE LOGIC (Enhanced with Probability Scoring):
-        1. L10 Hit Rate >= 50% (minimum consistency threshold)
-        2. Probability score factors in: Hit Rate + DvP Matchup + Badges + Line Value
-        3. One pick per player (their highest probability opportunity)
+        WAR ZONE CRITERIA (Fixed Logic):
+        A "good demon" is an alternate line ABOVE the main line that the player ACTUALLY HITS:
+        1. L10 average >= Line (player's recent average beats the demon line)
+        2. OR L10 hit rate >= 70% (player has consistently cleared this line)
+        3. Line must be above the anchor (true demon)
+        4. Prioritize picks with highest (L10_avg - line) margin
         
-        Returns top 10 demon picks sorted by PROBABILITY SCORE.
+        This ensures we're showing HITTABLE demons, not just any line above anchor.
         """
         prob_service = ProbabilityScoreService(self.db)
         
@@ -715,8 +717,6 @@ class PicksGetterService:
         now_iso = now.isoformat().replace('+00:00', 'Z')
         
         # Get all demon props from UPCOMING games
-        # Data is stored as PLAYER DOCUMENTS with nested props arrays
-        # We need to unwind and filter for demons
         pipeline = [
             {"$unwind": "$props"},
             {"$match": {
@@ -744,14 +744,15 @@ class PicksGetterService:
             prop["photo_url"] = result.get("photo_url") or result.get("headshot_url")
             demon_props.append(prop)
         
-        # Build picks - find best payout per player
-        player_best_picks = {}  # player_name -> best pick
+        # Build picks - find BEST HITTABLE demon per player
+        player_best_picks = {}
         unique_players = set()
         
         filter_stats = {
             "total_players": 0,
             "total_demon_props": len(demon_props),
-            "passed_hit_rate_50": 0,
+            "passed_l10_avg_check": 0,
+            "passed_hit_rate_check": 0,
             "final_picks": 0
         }
         
@@ -769,7 +770,7 @@ class PicksGetterService:
             if not demon_line:
                 continue
             
-            # Get hit rate from prop - use flattened h10_rate or nested hit_rates
+            # Get stats from prop
             l10_hit_rate = prop.get("h10_rate") or prop.get("h10_hit_rate") or 0
             l5_hit_rate = prop.get("h5_rate") or prop.get("h5_hit_rate") or 0
             l5_avg = prop.get("l5_avg") or 0
@@ -786,29 +787,53 @@ class PicksGetterService:
                 l5_avg = hit_rates.get("l5_avg") or 0
             if not l10_avg and hit_rates:
                 l10_avg = hit_rates.get("l10_avg") or 0
-            if not season_avg and hit_rates:
-                season_avg = hit_rates.get("season_avg") or 0
             
             # Convert to percentage if stored as decimal
             if l10_hit_rate and l10_hit_rate <= 1:
                 l10_hit_rate = l10_hit_rate * 100
+            if l5_hit_rate and l5_hit_rate <= 1:
+                l5_hit_rate = l5_hit_rate * 100
             
-            # FILTER: L10 Hit Rate >= 50%
-            if l10_hit_rate < 50:
+            # =================================================================
+            # WAR ZONE FILTER: Only show HITTABLE demons
+            # =================================================================
+            # A good War Zone pick is a demon line that the player CLEARS
+            
+            # Calculate margin: How much does the player's average exceed the line?
+            margin = (l10_avg - demon_line) if l10_avg else 0
+            margin_pct = (margin / demon_line * 100) if demon_line > 0 else 0
+            
+            # CRITERIA FOR WAR ZONE:
+            # MUST: L10 average >= line (player's recent average beats this line)
+            # OR: Line is within 5% of their average AND hit rate >= 70%
+            #     (allows for slight variance in players who consistently hit)
+            
+            avg_beats_line = l10_avg >= demon_line if l10_avg and demon_line else False
+            
+            # Allow close calls only if hit rate is very high and margin isn't too negative
+            close_to_avg_with_high_hr = (margin >= -0.5 or margin_pct >= -10) and l10_hit_rate >= 70
+            
+            # Must pass: avg beats line OR (close enough with very high hit rate)
+            if not (avg_beats_line or close_to_avg_with_high_hr):
                 continue
-            filter_stats["passed_hit_rate_50"] += 1
             
-            # Calculate boost/payout potential
+            if avg_beats_line:
+                filter_stats["passed_l10_avg_check"] += 1
+            if close_to_avg_with_high_hr and not avg_beats_line:
+                filter_stats["passed_hit_rate_check"] += 1
+            
+            # Calculate boost from anchor
             boost_pct = 0
             if anchor_line and anchor_line > 0:
                 boost_pct = ((demon_line - anchor_line) / anchor_line) * 100
             
-            # The "payout" score is the demon line itself - higher line = higher payout
-            payout_score = demon_line
-            
             # Get game status for locking logic
             commence_time = prop.get("commence_time")
             game_status = _get_game_status(commence_time)
+            
+            # WAR ZONE SCORE: Prioritize picks where player crushes the line
+            # Higher margin = better pick, also factor in hit rate
+            war_zone_score = margin + (l10_hit_rate / 10)  # Margin + hit rate bonus
             
             pick = {
                 "player_name": player_name,
@@ -822,22 +847,23 @@ class PicksGetterService:
                 "line": demon_line,
                 "anchor_line": anchor_line,
                 "boost_pct": round(boost_pct, 1),
+                "margin": round(margin, 1),  # How much avg exceeds line
+                "margin_pct": round(margin_pct, 1),
                 "odds": prop.get("price"),
                 "direction": prop.get("direction", "over"),
                 "is_demon": True,
                 "is_goblin": False,
                 "tier_label": "WAR_ZONE",
-                "h5_rate": l5_hit_rate,   # L5 hit rate for frontend
-                "h10_rate": l10_hit_rate,  # L10 hit rate for frontend
+                "h5_rate": l5_hit_rate,
+                "h10_rate": l10_hit_rate,
                 "l10_hit_rate": l10_hit_rate,
                 "l5_hit_rate": l5_hit_rate,
                 "l10_avg": l10_avg,
                 "l5_avg": l5_avg,
                 "season_avg": season_avg,
-                "payout_score": payout_score,
+                "war_zone_score": war_zone_score,
                 "war_zone_qualified": True,
                 "is_alternate_market": prop.get("is_alternate_market", True),
-                # Game status fields for locking
                 "commence_time": commence_time,
                 "game_status": game_status["status"],
                 "is_locked": game_status["is_locked"],
@@ -847,17 +873,25 @@ class PicksGetterService:
             # Enrich with probability score (DvP + Badges + Line value)
             pick = await prob_service.enrich_pick_with_probability(pick)
             
-            # Keep only the highest PROBABILITY SCORE pick for each player
+            # Keep only the HIGHEST scoring pick for each player
+            # Use war_zone_score as primary, probability_score as tiebreaker
+            combined_score = pick.get("war_zone_score", 0) + (pick.get("probability_score", 0) / 10)
+            
             if player_name not in player_best_picks:
                 player_best_picks[player_name] = pick
-            elif pick.get("probability_score", 0) > player_best_picks[player_name].get("probability_score", 0):
+                player_best_picks[player_name]["_combined_score"] = combined_score
+            elif combined_score > player_best_picks[player_name].get("_combined_score", 0):
                 player_best_picks[player_name] = pick
+                player_best_picks[player_name]["_combined_score"] = combined_score
         
         filter_stats["total_players"] = len(unique_players)
         
-        # Convert to list and sort by PROBABILITY SCORE (highest first)
+        # Convert to list and sort by WAR ZONE SCORE (highest margin first)
         war_zone_picks = list(player_best_picks.values())
-        war_zone_picks.sort(key=lambda x: x.get("probability_score", 0), reverse=True)
+        # Remove internal scoring field
+        for pick in war_zone_picks:
+            pick.pop("_combined_score", None)
+        war_zone_picks.sort(key=lambda x: x.get("war_zone_score", 0), reverse=True)
         
         filter_stats["final_picks"] = len(war_zone_picks)
         
