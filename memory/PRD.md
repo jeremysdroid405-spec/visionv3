@@ -26,9 +26,24 @@ Modified `server.py`:
    `adaptive_sync.set_sync_callback(demon_goblin_engine.sync_odds_to_mongo)`
 
 ### Files Changed
-- `/app/backend/adaptive_sync_engine.py` - Added callback mechanism
-- `/app/backend/server.py` - Wired callback to DemonGoblinEngine
+- `/app/backend/adaptive_sync_engine.py` - Added callback mechanism + periodic BDL game logs refresh every 4 hours
+- `/app/backend/server.py` - Wired callback to DemonGoblinEngine + added BDL game logs to initial sync
 - `/app/backend/routes/core_v3.py` - Fixed status endpoint to count demons/goblins correctly
+
+## Additional Fix: BDL Game Logs Sync (2026-03-24)
+
+### Problem
+Hit rates were calculated incorrectly because `bdl_game_logs` (the source of truth for L5/L10 stats) were:
+1. Only synced at 4:25 AM EST via scheduled job
+2. NOT included in the initial startup sync
+3. NOT refreshed by the adaptive sync engine
+
+This meant that on a fresh deployment or after several hours, the game logs became stale, causing incorrect hit rate percentages.
+
+### Fix Applied
+1. **Initial Sync** (`server.py`): Now includes `BDLGameLogsSync` as Step 2/5
+2. **Initial Sync** (`server.py`): Checks if game logs are >12 hours old and refreshes them
+3. **Adaptive Sync** (`adaptive_sync_engine.py`): Refreshes BDL game logs every 4 hours
 
 ## Core Architecture
 

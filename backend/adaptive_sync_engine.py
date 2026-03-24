@@ -950,12 +950,28 @@ class AdaptiveSyncEngine:
         # Track last sync times (sync every 30 min at most)
         last_injury_sync = None
         last_ticker_sync = None
+        last_game_logs_sync = None
         INJURY_SYNC_INTERVAL = 1800  # 30 minutes
         TICKER_SYNC_INTERVAL = 1800  # 30 minutes
+        GAME_LOGS_SYNC_INTERVAL = 14400  # 4 hours - refresh game logs to keep hit rates accurate
         
         while self.is_running:
             try:
                 now = datetime.now(timezone.utc)
+                
+                # Sync BDL game logs periodically (every 4 hours) for accurate hit rates
+                # This is CRITICAL - without fresh game logs, hit rates will be wrong
+                if last_game_logs_sync is None or (now - last_game_logs_sync).total_seconds() >= GAME_LOGS_SYNC_INTERVAL:
+                    try:
+                        from services.bdl_game_logs_sync import BDLGameLogsSync
+                        logger.info("[ADAPTIVE_SYNC] Refreshing BDL game logs for accurate hit rates...")
+                        game_logs_service = BDLGameLogsSync(self.db)
+                        result = await game_logs_service.sync_all_players(batch_size=10)
+                        logger.info(f"[ADAPTIVE_SYNC] Game logs refreshed: {result.get('players_synced', 0)} players, {result.get('total_games', 0)} games")
+                        last_game_logs_sync = now
+                    except Exception as e:
+                        logger.error(f"[ADAPTIVE_SYNC] Game logs refresh failed: {e}")
+                        last_game_logs_sync = now  # Don't retry immediately on failure
                 
                 # USE PROPER SYNC: Call the main sync function that builds nested player docs
                 if self._sync_odds_callback:

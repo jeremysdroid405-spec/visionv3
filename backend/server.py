@@ -1056,34 +1056,44 @@ async def check_and_run_initial_sync(db):
                 from services.bdl_comprehensive_sync import get_bdl_comprehensive_service
                 bdl_service = get_bdl_comprehensive_service(db)
                 
-                logger.info("[INITIAL_SYNC] Step 1/4: Syncing player roster from BallDontLie...")
+                logger.info("[INITIAL_SYNC] Step 1/5: Syncing player roster from BallDontLie...")
                 result = await bdl_service.sync_active_players()
                 logger.info(f"[INITIAL_SYNC] Roster sync complete: {result.get('players_synced', 0)} players")
             except Exception as e:
                 logger.error(f"[INITIAL_SYNC] Roster sync failed: {e}")
             
-            # Step 2: Sync game-by-game values for hit rates
+            # Step 2: Sync BDL Game Logs (CRITICAL for hit rate calculations)
             try:
-                logger.info("[INITIAL_SYNC] Step 2/4: Syncing game-by-game stats for hit rates...")
+                from services.bdl_game_logs_sync import BDLGameLogsSync
+                logger.info("[INITIAL_SYNC] Step 2/5: Syncing BDL game logs for hit rates...")
+                game_logs_service = BDLGameLogsSync(db)
+                result = await game_logs_service.sync_all_players(batch_size=10)
+                logger.info(f"[INITIAL_SYNC] BDL game logs sync complete: {result.get('players_synced', 0)} players, {result.get('total_games', 0)} games")
+            except Exception as e:
+                logger.error(f"[INITIAL_SYNC] BDL game logs sync failed: {e}")
+            
+            # Step 3: Sync game-by-game values for additional enrichment
+            try:
+                logger.info("[INITIAL_SYNC] Step 3/5: Syncing game-by-game stats for hit rates...")
                 result = await bdl_service.enrich_with_game_values()
                 logger.info(f"[INITIAL_SYNC] Game values sync complete: {result.get('enriched', 0)} players enriched")
             except Exception as e:
                 logger.error(f"[INITIAL_SYNC] Game values sync failed: {e}")
             
-            # Step 3: Sync DvP rankings
+            # Step 4: Sync DvP rankings
             try:
                 from services.dvp_service import force_refresh_dvp
-                logger.info("[INITIAL_SYNC] Step 3/4: Syncing DvP rankings...")
+                logger.info("[INITIAL_SYNC] Step 4/5: Syncing DvP rankings...")
                 result = await force_refresh_dvp()
                 logger.info(f"[INITIAL_SYNC] DvP sync complete: {result.get('teams_count', 0)} teams")
             except Exception as e:
                 logger.error(f"[INITIAL_SYNC] DvP sync failed: {e}")
             
-            # Step 4: Sync context badges
+            # Step 5: Sync context badges
             try:
                 from services.context_badge_service import get_context_badge_service
                 badge_service = get_context_badge_service(db)
-                logger.info("[INITIAL_SYNC] Step 4/4: Populating context badges...")
+                logger.info("[INITIAL_SYNC] Step 5/5: Populating context badges...")
                 result = await badge_service.populate_all_badges()
                 logger.info(f"[INITIAL_SYNC] Badge sync complete: {result.get('updated', 0)} players updated")
             except Exception as e:
@@ -1091,6 +1101,46 @@ async def check_and_run_initial_sync(db):
             
             logger.info("[INITIAL_SYNC] ✅ Initial database population complete!")
         else:
+            # Database has data, but check if game logs are stale
+            # Game logs should be refreshed if they haven't been updated in 12+ hours
+            sample_player = await db.nba_master_hub_2026.find_one(
+                {"bdl_game_logs": {"$exists": True, "$ne": []}},
+                {"bdl_game_logs_updated_at": 1}
+            )
+            
+            if sample_player:
+                last_update = sample_player.get("bdl_game_logs_updated_at")
+                if last_update:
+                    # Check if update was more than 12 hours ago
+                    from datetime import datetime, timezone
+                    if isinstance(last_update, str):
+                        last_update = datetime.fromisoformat(last_update.replace('Z', '+00:00'))
+                    hours_since_update = (datetime.now(timezone.utc) - last_update).total_seconds() / 3600
+                    
+                    if hours_since_update > 12:
+                        logger.info(f"[INITIAL_SYNC] Game logs are {hours_since_update:.1f}h old. Refreshing...")
+                        try:
+                            from services.bdl_game_logs_sync import BDLGameLogsSync
+                            game_logs_service = BDLGameLogsSync(db)
+                            result = await game_logs_service.sync_all_players(batch_size=10)
+                            logger.info(f"[INITIAL_SYNC] Game logs refresh complete: {result.get('players_synced', 0)} players")
+                        except Exception as e:
+                            logger.error(f"[INITIAL_SYNC] Game logs refresh failed: {e}")
+                    else:
+                        logger.info(f"[INITIAL_SYNC] Game logs are fresh ({hours_since_update:.1f}h old). Skipping refresh.")
+                else:
+                    logger.warning("[INITIAL_SYNC] Game logs have no timestamp. Consider refreshing.")
+            else:
+                # No game logs at all - sync them
+                logger.info("[INITIAL_SYNC] No game logs found. Syncing...")
+                try:
+                    from services.bdl_game_logs_sync import BDLGameLogsSync
+                    game_logs_service = BDLGameLogsSync(db)
+                    result = await game_logs_service.sync_all_players(batch_size=10)
+                    logger.info(f"[INITIAL_SYNC] Game logs sync complete: {result.get('players_synced', 0)} players")
+                except Exception as e:
+                    logger.error(f"[INITIAL_SYNC] Game logs sync failed: {e}")
+            
             logger.info(f"[INITIAL_SYNC] Database already populated ({master_hub_count} players). Skipping initial sync.")
             
     except Exception as e:
