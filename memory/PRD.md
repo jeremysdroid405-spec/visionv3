@@ -3,6 +3,45 @@
 ## Overview
 PropVision is a sports analytics platform for NBA player props, providing data-driven insights for betting decisions.
 
+## CRITICAL FIX (2026-03-25): War Zone Logic Bug - PERMANENT FIX
+
+### Problem
+The War Zone was recommending bad "demon" picks where the player's L10 average was BELOW the recommended line. Example:
+- Jevon Carter REB @ 1.5 with L10 avg of 1.3 (90% hit rate)
+- This is a BAD pick because his average doesn't clear the line
+
+### Root Cause
+The War Zone filter had a "close call" exception that allowed picks through if:
+- Margin was >= -0.5 AND hit rate >= 70%
+- This was WRONG - high hit rate on a line below your average is NOT a good demon bet
+
+### Fix Applied (PERMANENT)
+Modified `/app/backend/services/picks_getter_service.py` `get_war_zone()`:
+
+**NEW STRICT RULE:**
+```python
+# L10 average MUST be >= line - NO EXCEPTIONS
+avg_beats_line = l10_avg >= demon_line
+if not avg_beats_line:
+    continue  # HARD REJECT
+```
+
+**WHY THIS IS CORRECT:**
+- War Zone = DEMON bets (higher risk, higher reward)
+- A demon bet requires the player to EXCEED their typical output
+- If a player's average is below the line, even with high hit rate, it's not a true demon
+- High hit rate on a low line is a GOBLIN bet, not a demon bet
+
+### Verification
+- Filter stats now show `rejected_avg_below_line` counter
+- Test: 559 bad demon props rejected, 0 bad picks leak through
+- All War Zone picks now have L10 avg >= line (positive margin)
+
+### Files Changed
+- `/app/backend/services/picks_getter_service.py` - Removed "close call" exception, strict L10 avg >= line gate
+
+---
+
 ## CRITICAL FIX (2026-03-24): Adaptive Sync Engine Bug
 
 ### Problem

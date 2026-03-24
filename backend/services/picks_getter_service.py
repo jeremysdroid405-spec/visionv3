@@ -701,14 +701,22 @@ class PicksGetterService:
         """
         Get the War Zone - HIGH-VALUE demon picks where players consistently beat the line.
         
-        WAR ZONE CRITERIA (Fixed Logic):
+        WAR ZONE CRITERIA (STRICT - PERMANENT FIX):
         A "good demon" is an alternate line ABOVE the main line that the player ACTUALLY HITS:
-        1. L10 average >= Line (player's recent average beats the demon line)
-        2. OR L10 hit rate >= 70% (player has consistently cleared this line)
-        3. Line must be above the anchor (true demon)
-        4. Prioritize picks with highest (L10_avg - line) margin
         
-        This ensures we're showing HITTABLE demons, not just any line above anchor.
+        1. L10 average >= Line (REQUIRED - NO EXCEPTIONS)
+           - Player's recent 10-game average MUST beat or meet the demon line
+           - High hit rate alone is NOT enough - that's sample variance on low lines
+        2. Line must be above the anchor (true demon by definition)
+        3. Prioritize picks with highest (L10_avg - line) margin
+        
+        WHY THIS IS STRICT:
+        - A player with 90% hit rate on a line BELOW their average is NOT a good demon bet
+        - That's a goblin bet masquerading as a demon
+        - True demon bets require the player to EXCEED their typical output
+        - We want players whose AVERAGE performance clears the demon line
+        
+        This ensures we're showing HITTABLE demons, not statistical flukes.
         """
         prob_service = ProbabilityScoreService(self.db)
         
@@ -752,7 +760,7 @@ class PicksGetterService:
             "total_players": 0,
             "total_demon_props": len(demon_props),
             "passed_l10_avg_check": 0,
-            "passed_hit_rate_check": 0,
+            "rejected_avg_below_line": 0,
             "final_picks": 0
         }
         
@@ -798,29 +806,31 @@ class PicksGetterService:
             # WAR ZONE FILTER: Only show HITTABLE demons
             # =================================================================
             # A good War Zone pick is a demon line that the player CLEARS
+            # 
+            # PERMANENT FIX: War Zone picks must have L10 avg >= line.
+            # High hit rate alone is NOT enough - a 90% hit rate on a line
+            # BELOW their average is a goblin bet, not a demon/War Zone bet.
             
             # Calculate margin: How much does the player's average exceed the line?
             margin = (l10_avg - demon_line) if l10_avg else 0
             margin_pct = (margin / demon_line * 100) if demon_line > 0 else 0
             
-            # CRITERIA FOR WAR ZONE:
-            # MUST: L10 average >= line (player's recent average beats this line)
-            # OR: Line is within 5% of their average AND hit rate >= 70%
-            #     (allows for slight variance in players who consistently hit)
+            # STRICT CRITERIA FOR WAR ZONE:
+            # L10 average MUST be >= line (player's recent average beats this demon line)
+            # This is the ONLY way into War Zone - no exceptions for "close calls"
+            # 
+            # Rationale: War Zone = high-reward DEMON bets that players can EXCEED
+            # If a player's avg is below the line, even with a high hit rate,
+            # that's NOT a good demon bet - it's luck or small sample variance
             
             avg_beats_line = l10_avg >= demon_line if l10_avg and demon_line else False
             
-            # Allow close calls only if hit rate is very high and margin isn't too negative
-            close_to_avg_with_high_hr = (margin >= -0.5 or margin_pct >= -10) and l10_hit_rate >= 70
-            
-            # Must pass: avg beats line OR (close enough with very high hit rate)
-            if not (avg_beats_line or close_to_avg_with_high_hr):
+            # HARD GATE: Must have average >= line to enter War Zone
+            if not avg_beats_line:
+                filter_stats["rejected_avg_below_line"] += 1
                 continue
             
-            if avg_beats_line:
-                filter_stats["passed_l10_avg_check"] += 1
-            if close_to_avg_with_high_hr and not avg_beats_line:
-                filter_stats["passed_hit_rate_check"] += 1
+            filter_stats["passed_l10_avg_check"] += 1
             
             # Calculate boost from anchor
             boost_pct = 0
@@ -935,7 +945,7 @@ class PicksGetterService:
             "locked_picks": locked_count,
             "waiting_list_count": len(active_picks) - min(len(active_picks), TARGET_PICKS),
             "filter_stats": filter_stats,
-            "filters_applied": ["l10_hit_rate_50pct", "probability_score", "one_per_player", "game_status"]
+            "filters_applied": ["strict_l10_avg_gte_line", "probability_score", "one_per_player", "game_status"]
         }
     
     def _get_season_avg(self, baseline_stats: Dict, stat_key: str) -> Optional[float]:
