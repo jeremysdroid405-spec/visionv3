@@ -422,17 +422,17 @@ class AdaptiveSyncEngine:
     
     async def _fetch_live_odds(self) -> List[Dict[str, Any]]:
         """
-        Fetch Underdog odds from The Odds API.
+        Fetch PrizePicks odds from The Odds API.
         
-        UNDERDOG-SPECIFIC FETCH:
-        - Uses regions=us_dfs (Daily Fantasy Sports region for Underdog)
-        - Uses bookmakers=underdog (specifically target Underdog)
+        PRIZEPICKS-SPECIFIC FETCH:
+        - Uses regions=us_dfs (Daily Fantasy Sports region)
+        - Uses bookmakers=prizepicks (primary), underdog (fallback)
         - Fetches both standard and alternate markets for proper tier classification
         
-        Underdog Classification:
+        PrizePicks Classification:
         - STANDARD (Gray): Main market lines (player_points, player_rebounds, player_assists)
-        - GOBLIN (Green): Alternate market lines with odds != +100 (discount/promo lines)
-        - DEMON (Red): Alternate market lines with +100 odds (boosted/hard lines)
+        - GOBLIN (Green): Alternate lines BELOW player's L10 average
+        - DEMON (Red): Alternate lines ABOVE player's L10 average
         
         Returns raw odds data for processing.
         """
@@ -480,12 +480,12 @@ class AdaptiveSyncEngine:
                         continue
                     
                     # Fetch DFS odds for this event
-                    # Support multiple DFS platforms: underdog, prizepicks, pick6, fliff
+                    # PrizePicks is primary, with fallback to other DFS platforms
                     odds_url = f"{self.base_url}/sports/basketball_nba/events/{event_id}/odds"
                     odds_params = {
                         "apiKey": self.odds_api_key,
                         "regions": "us_dfs",  # Daily Fantasy Sports region
-                        "bookmakers": "underdog,prizepicks,pick6,fliff",  # Multiple DFS platforms
+                        "bookmakers": "prizepicks,underdog,pick6,fliff",  # PrizePicks first
                         "markets": prizepicks_markets,
                         "oddsFormat": "american"
                     }
@@ -606,8 +606,8 @@ class AdaptiveSyncEngine:
             for bookmaker in bookmakers:
                 bookmaker_key = bookmaker.get("key", "")
                 
-                # Only process Underdog (primary DFS source)
-                if bookmaker_key != "underdog":
+                # Prioritize PrizePicks, then Underdog, then others
+                if bookmaker_key not in ["prizepicks", "underdog"]:
                     continue
                     
                 markets = bookmaker.get("markets", [])
