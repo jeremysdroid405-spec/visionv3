@@ -18,7 +18,7 @@ import logging
 
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from services.utils_service import sanitize_player_name
-from services.anchor_classification_service import classify_props_by_anchor
+from services.anchor_classification_service import classify_props_by_anchor, _normalize_name as anchor_normalize_name
 
 logger = logging.getLogger(__name__)
 
@@ -82,16 +82,119 @@ class CachedBoardBuilderService:
         
         # Build player_stats dict for anchor classification (L5 fallback)
         # Format: "player_name|STAT" -> {"l5_avg": X, "season_avg": Y}
+        # CRITICAL: Calculate L5 from bdl_game_logs, NOT from stale baseline_stats
         player_stats_for_anchor = {}
+        
+        # Stat field mapping for game logs
+        stat_field_map = {
+            "PTS": "pts", "REB": "reb", "AST": "ast", "STL": "stl", "BLK": "blk",
+            "3PM": "fg3m", "THREES": "fg3m", "TO": "turnover"
+        }
+        
         for player_name, player_stats in stats_map.items():
+            game_logs = player_stats.get("bdl_game_logs", [])
             baseline = player_stats.get("baseline_stats", {})
-            for stat_key, stat_data in baseline.items():
+            
+            # Filter DNP games
+            def did_play(game):
+                mins = game.get("min", "0") or "0"
+                if isinstance(mins, str):
+                    mins = mins.split(":")[0] if ":" in mins else mins
+                    try:
+                        return int(mins) > 0
+                    except ValueError:
+                        return False
+                return float(mins) > 0 if mins else False
+            
+            played_games = [g for g in game_logs if did_play(g)] if game_logs else []
+            l5_games = played_games[:5]
+            l10_games = played_games[:10]
+            
+            # Calculate fresh L5 and L10 averages for each stat type
+            for stat_key in ["PTS", "REB", "AST", "STL", "BLK", "3PM", "TO"]:
+                key = f"{anchor_normalize_name(player_name)}|{stat_key}"
+                log_field = stat_field_map.get(stat_key, stat_key.lower())
+                
+                # Calculate L5 from game logs (FRESH data)
+                l5_avg = None
+                if l5_games:
+                    values = [g.get(log_field, 0) or 0 for g in l5_games]
+                    if values:
+                        l5_avg = round(sum(values) / len(values), 1)
+                
+                # Calculate L10 from game logs (FRESH data) - PREFERRED for anchor
+                l10_avg = None
+                if l10_games:
+                    values = [g.get(log_field, 0) or 0 for g in l10_games]
+                    if values:
+                        l10_avg = round(sum(values) / len(values), 1)
+                
+                # Fallback to baseline only if no game logs
+                if l5_avg is None:
+                    stat_data = baseline.get(stat_key, {})
+                    if isinstance(stat_data, dict):
+                        l5_avg = stat_data.get("l5_avg")
+                
+                if l10_avg is None:
+                    stat_data = baseline.get(stat_key, {})
+                    if isinstance(stat_data, dict):
+                        l10_avg = stat_data.get("l10_avg")
+                
+                # Get season avg from baseline (this is OK since it's not recency-sensitive)
+                season_avg = None
+                stat_data = baseline.get(stat_key, {})
                 if isinstance(stat_data, dict):
-                    key = f"{player_name.lower().strip()}|{stat_key.upper()}"
+                    season_avg = stat_data.get("season_avg")
+                
+                if l5_avg or l10_avg or season_avg:
                     player_stats_for_anchor[key] = {
-                        "l5_avg": stat_data.get("l5_avg"),
-                        "season_avg": stat_data.get("season_avg")
+                        "l5_avg": l5_avg,
+                        "l10_avg": l10_avg,
+                        "season_avg": season_avg
                     }
+            
+            # Also handle combo stats (PRA, PR, PA, RA)
+            if l10_games:
+                pts_vals_l10 = [g.get("pts", 0) or 0 for g in l10_games]
+                reb_vals_l10 = [g.get("reb", 0) or 0 for g in l10_games]
+                ast_vals_l10 = [g.get("ast", 0) or 0 for g in l10_games]
+                
+                pts_l10 = sum(pts_vals_l10) / len(pts_vals_l10) if pts_vals_l10 else 0
+                reb_l10 = sum(reb_vals_l10) / len(reb_vals_l10) if reb_vals_l10 else 0
+                ast_l10 = sum(ast_vals_l10) / len(ast_vals_l10) if ast_vals_l10 else 0
+                
+                pts_vals_l5 = [g.get("pts", 0) or 0 for g in l5_games] if l5_games else []
+                reb_vals_l5 = [g.get("reb", 0) or 0 for g in l5_games] if l5_games else []
+                ast_vals_l5 = [g.get("ast", 0) or 0 for g in l5_games] if l5_games else []
+                
+                pts_l5 = sum(pts_vals_l5) / len(pts_vals_l5) if pts_vals_l5 else 0
+                reb_l5 = sum(reb_vals_l5) / len(reb_vals_l5) if reb_vals_l5 else 0
+                ast_l5 = sum(ast_vals_l5) / len(ast_vals_l5) if ast_vals_l5 else 0
+                
+                # PRA
+                player_stats_for_anchor[f"{anchor_normalize_name(player_name)}|PRA"] = {
+                    "l5_avg": round(pts_l5 + reb_l5 + ast_l5, 1),
+                    "l10_avg": round(pts_l10 + reb_l10 + ast_l10, 1),
+                    "season_avg": baseline.get("PRA", {}).get("season_avg") if isinstance(baseline.get("PRA"), dict) else None
+                }
+                # PR
+                player_stats_for_anchor[f"{anchor_normalize_name(player_name)}|PR"] = {
+                    "l5_avg": round(pts_l5 + reb_l5, 1),
+                    "l10_avg": round(pts_l10 + reb_l10, 1),
+                    "season_avg": baseline.get("PR", {}).get("season_avg") if isinstance(baseline.get("PR"), dict) else None
+                }
+                # PA
+                player_stats_for_anchor[f"{anchor_normalize_name(player_name)}|PA"] = {
+                    "l5_avg": round(pts_l5 + ast_l5, 1),
+                    "l10_avg": round(pts_l10 + ast_l10, 1),
+                    "season_avg": baseline.get("PA", {}).get("season_avg") if isinstance(baseline.get("PA"), dict) else None
+                }
+                # RA
+                player_stats_for_anchor[f"{anchor_normalize_name(player_name)}|RA"] = {
+                    "l5_avg": round(reb_l5 + ast_l5, 1),
+                    "l10_avg": round(reb_l10 + ast_l10, 1),
+                    "season_avg": baseline.get("RA", {}).get("season_avg") if isinstance(baseline.get("RA"), dict) else None
+                }
         
         logger.info(f"[CACHED_BOARD] Loaded {len(player_stats_for_anchor)} player/stat combos for L5 fallback")
         
@@ -202,16 +305,107 @@ class CachedBoardBuilderService:
         stats_map = await self._load_stats_map()
         
         # Build player_stats dict for anchor classification (L5 fallback)
+        # CRITICAL: Calculate L5 from bdl_game_logs, NOT from stale baseline_stats
         player_stats_for_anchor = {}
+        
+        stat_field_map = {
+            "PTS": "pts", "REB": "reb", "AST": "ast", "STL": "stl", "BLK": "blk",
+            "3PM": "fg3m", "THREES": "fg3m", "TO": "turnover"
+        }
+        
         for player_name, player_stats in stats_map.items():
+            game_logs = player_stats.get("bdl_game_logs", [])
             baseline = player_stats.get("baseline_stats", {})
-            for stat_key, stat_data in baseline.items():
+            
+            def did_play(game):
+                mins = game.get("min", "0") or "0"
+                if isinstance(mins, str):
+                    mins = mins.split(":")[0] if ":" in mins else mins
+                    try:
+                        return int(mins) > 0
+                    except ValueError:
+                        return False
+                return float(mins) > 0 if mins else False
+            
+            played_games = [g for g in game_logs if did_play(g)] if game_logs else []
+            l5_games = played_games[:5]
+            l10_games = played_games[:10]
+            
+            for stat_key in ["PTS", "REB", "AST", "STL", "BLK", "3PM", "TO"]:
+                key = f"{anchor_normalize_name(player_name)}|{stat_key}"
+                log_field = stat_field_map.get(stat_key, stat_key.lower())
+                
+                l5_avg = None
+                l10_avg = None
+                if l5_games:
+                    values = [g.get(log_field, 0) or 0 for g in l5_games]
+                    if values:
+                        l5_avg = round(sum(values) / len(values), 1)
+                
+                if l10_games:
+                    values = [g.get(log_field, 0) or 0 for g in l10_games]
+                    if values:
+                        l10_avg = round(sum(values) / len(values), 1)
+                
+                if l5_avg is None:
+                    stat_data = baseline.get(stat_key, {})
+                    if isinstance(stat_data, dict):
+                        l5_avg = stat_data.get("l5_avg")
+                
+                if l10_avg is None:
+                    stat_data = baseline.get(stat_key, {})
+                    if isinstance(stat_data, dict):
+                        l10_avg = stat_data.get("l10_avg")
+                
+                season_avg = None
+                stat_data = baseline.get(stat_key, {})
                 if isinstance(stat_data, dict):
-                    key = f"{player_name.lower().strip()}|{stat_key.upper()}"
+                    season_avg = stat_data.get("season_avg")
+                
+                if l5_avg or l10_avg or season_avg:
                     player_stats_for_anchor[key] = {
-                        "l5_avg": stat_data.get("l5_avg"),
-                        "season_avg": stat_data.get("season_avg")
+                        "l5_avg": l5_avg,
+                        "l10_avg": l10_avg,
+                        "season_avg": season_avg
                     }
+            
+            if l10_games:
+                pts_vals_l10 = [g.get("pts", 0) or 0 for g in l10_games]
+                reb_vals_l10 = [g.get("reb", 0) or 0 for g in l10_games]
+                ast_vals_l10 = [g.get("ast", 0) or 0 for g in l10_games]
+                
+                pts_l10 = sum(pts_vals_l10) / len(pts_vals_l10) if pts_vals_l10 else 0
+                reb_l10 = sum(reb_vals_l10) / len(reb_vals_l10) if reb_vals_l10 else 0
+                ast_l10 = sum(ast_vals_l10) / len(ast_vals_l10) if ast_vals_l10 else 0
+                
+                pts_vals_l5 = [g.get("pts", 0) or 0 for g in l5_games] if l5_games else []
+                reb_vals_l5 = [g.get("reb", 0) or 0 for g in l5_games] if l5_games else []
+                ast_vals_l5 = [g.get("ast", 0) or 0 for g in l5_games] if l5_games else []
+                
+                pts_l5 = sum(pts_vals_l5) / len(pts_vals_l5) if pts_vals_l5 else 0
+                reb_l5 = sum(reb_vals_l5) / len(reb_vals_l5) if reb_vals_l5 else 0
+                ast_l5 = sum(ast_vals_l5) / len(ast_vals_l5) if ast_vals_l5 else 0
+                
+                player_stats_for_anchor[f"{anchor_normalize_name(player_name)}|PRA"] = {
+                    "l5_avg": round(pts_l5 + reb_l5 + ast_l5, 1),
+                    "l10_avg": round(pts_l10 + reb_l10 + ast_l10, 1),
+                    "season_avg": baseline.get("PRA", {}).get("season_avg") if isinstance(baseline.get("PRA"), dict) else None
+                }
+                player_stats_for_anchor[f"{anchor_normalize_name(player_name)}|PR"] = {
+                    "l5_avg": round(pts_l5 + reb_l5, 1),
+                    "l10_avg": round(pts_l10 + reb_l10, 1),
+                    "season_avg": baseline.get("PR", {}).get("season_avg") if isinstance(baseline.get("PR"), dict) else None
+                }
+                player_stats_for_anchor[f"{anchor_normalize_name(player_name)}|PA"] = {
+                    "l5_avg": round(pts_l5 + ast_l5, 1),
+                    "l10_avg": round(pts_l10 + ast_l10, 1),
+                    "season_avg": baseline.get("PA", {}).get("season_avg") if isinstance(baseline.get("PA"), dict) else None
+                }
+                player_stats_for_anchor[f"{anchor_normalize_name(player_name)}|RA"] = {
+                    "l5_avg": round(reb_l5 + ast_l5, 1),
+                    "l10_avg": round(reb_l10 + ast_l10, 1),
+                    "season_avg": baseline.get("RA", {}).get("season_avg") if isinstance(baseline.get("RA"), dict) else None
+                }
         
         # STEP 1: APPLY ANCHOR-BASED CLASSIFICATION (with L5 fallback)
         props = classify_props_by_anchor(props, player_stats_for_anchor)

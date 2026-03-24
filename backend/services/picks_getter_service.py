@@ -699,24 +699,24 @@ class PicksGetterService:
     
     async def get_war_zone(self) -> Dict[str, Any]:
         """
-        Get the War Zone - HIGH-VALUE demon picks where players consistently beat the line.
+        Get the War Zone - HIGH-VALUE demon picks that players can actually hit.
         
-        WAR ZONE CRITERIA (STRICT - PERMANENT FIX):
-        A "good demon" is an alternate line ABOVE the main line that the player ACTUALLY HITS:
+        WAR ZONE CRITERIA (March 2026 - Post Anchor Fix):
+        With the new anchor classification, demons are lines ABOVE the player's
+        L10 average. So a "hittable demon" is one where:
         
-        1. L10 average >= Line (REQUIRED - NO EXCEPTIONS)
-           - Player's recent 10-game average MUST beat or meet the demon line
-           - High hit rate alone is NOT enough - that's sample variance on low lines
-        2. Line must be above the anchor (true demon by definition)
-        3. Prioritize picks with highest (L10_avg - line) margin
+        1. Line is within 20% of player's L10 average (not too far above)
+        2. Hit rate >= 50% (player clears this line at least half the time)
+        3. OR hit rate >= 40% if line is within 10% of average
         
-        WHY THIS IS STRICT:
-        - A player with 90% hit rate on a line BELOW their average is NOT a good demon bet
-        - That's a goblin bet masquerading as a demon
-        - True demon bets require the player to EXCEED their typical output
-        - We want players whose AVERAGE performance clears the demon line
+        This ensures we're showing demons that are:
+        - Achievable (close to their normal output)
+        - Proven (high historical hit rate)
+        - Valuable (above average = demon pricing)
         
-        This ensures we're showing HITTABLE demons, not statistical flukes.
+        Example: Player with L10 avg of 20.0 PTS
+        - Line 21.5 with 60% HR = GOOD (within 7.5%, good hit rate)
+        - Line 25.5 with 30% HR = BAD (too far above avg, low hit rate)
         """
         prob_service = ProbabilityScoreService(self.db)
         
@@ -805,28 +805,33 @@ class PicksGetterService:
             # =================================================================
             # WAR ZONE FILTER: Only show HITTABLE demons
             # =================================================================
-            # A good War Zone pick is a demon line that the player CLEARS
+            # With the new anchor classification (March 2026), demons are now
+            # properly defined as lines ABOVE the player's L10 average.
             # 
-            # PERMANENT FIX: War Zone picks must have L10 avg >= line.
-            # High hit rate alone is NOT enough - a 90% hit rate on a line
-            # BELOW their average is a goblin bet, not a demon/War Zone bet.
+            # So a "hittable demon" is one where:
+            # 1. The line is close to the player's average (within 15-20%)
+            # 2. The player has a HIGH HIT RATE against this line (50%+)
+            # 3. OR the player has exceeded this line frequently (high variance player)
+            #
+            # We want demons that the player CAN hit, not impossible lines.
             
-            # Calculate margin: How much does the player's average exceed the line?
-            margin = (l10_avg - demon_line) if l10_avg else 0
-            margin_pct = (margin / demon_line * 100) if demon_line > 0 else 0
+            # Calculate margin: How much does the line exceed the player's average?
+            margin = (l10_avg - demon_line) if l10_avg else 0  # Will be negative for true demons
+            margin_pct = (margin / l10_avg * 100) if l10_avg > 0 else 0
             
-            # STRICT CRITERIA FOR WAR ZONE:
-            # L10 average MUST be >= line (player's recent average beats this demon line)
-            # This is the ONLY way into War Zone - no exceptions for "close calls"
-            # 
-            # Rationale: War Zone = high-reward DEMON bets that players can EXCEED
-            # If a player's avg is below the line, even with a high hit rate,
-            # that's NOT a good demon bet - it's luck or small sample variance
+            # HITTABLE DEMON CRITERIA:
+            # 1. Line is within 20% of player's L10 average
+            #    (e.g., avg 10, line up to 12 is acceptable)
+            # 2. Hit rate >= 50% (player clears this line at least half the time)
+            # 3. OR hit rate >= 40% if margin is very small (within 10%)
             
-            avg_beats_line = l10_avg >= demon_line if l10_avg and demon_line else False
+            line_within_range = abs(margin_pct) <= 20  # Line within 20% of average
+            has_good_hit_rate = l10_hit_rate >= 50
+            has_decent_hit_rate_close_line = l10_hit_rate >= 40 and abs(margin_pct) <= 10
             
-            # HARD GATE: Must have average >= line to enter War Zone
-            if not avg_beats_line:
+            is_hittable = line_within_range and (has_good_hit_rate or has_decent_hit_rate_close_line)
+            
+            if not is_hittable:
                 filter_stats["rejected_avg_below_line"] += 1
                 continue
             
@@ -841,9 +846,10 @@ class PicksGetterService:
             commence_time = prop.get("commence_time")
             game_status = _get_game_status(commence_time)
             
-            # WAR ZONE SCORE: Prioritize picks where player crushes the line
-            # Higher margin = better pick, also factor in hit rate
-            war_zone_score = margin + (l10_hit_rate / 10)  # Margin + hit rate bonus
+            # WAR ZONE SCORE: Prioritize picks with highest hit rate and closest to average
+            # Higher hit rate = more likely to hit
+            # Closer to average = safer demon bet
+            war_zone_score = l10_hit_rate + (20 - abs(margin_pct))  # Hit rate + closeness bonus
             
             pick = {
                 "player_name": player_name,

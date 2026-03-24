@@ -105,37 +105,62 @@ def classify_props_by_anchor(props: List[Dict], player_stats: Dict[str, Dict] = 
         
         anchor_line = None
         anchor_source = None
+        main_line_value = None
         
         if standard_lines:
-            # Use the standard line as anchor (prefer Over direction)
+            # Get the odds provider's main line (for reference)
             over_standards = [p for p in standard_lines if p.get("direction", "").lower() == "over"]
-            anchor_line = (over_standards[0] if over_standards else standard_lines[0]).get("line")
+            main_line_value = (over_standards[0] if over_standards else standard_lines[0]).get("line")
+        
+        # Get player's averages (PREFERRED anchor for betting relevance)
+        stats = player_stats.get(key, {})
+        l5_avg = stats.get("l5_avg")
+        l10_avg = stats.get("l10_avg")
+        season_avg = stats.get("season_avg")
+        
+        # =================================================================
+        # ANCHOR SELECTION LOGIC (PERMANENT FIX - March 2026)
+        # =================================================================
+        # For BETTING purposes, what matters is: can the player exceed this line?
+        # The odds provider's main line is their opinion, but it may be set low
+        # to entice bets. We use the PLAYER'S ACTUAL AVERAGE as the anchor.
+        #
+        # Priority:
+        # 1. L10 average (used for War Zone filtering, most representative)
+        # 2. L5 average (if no L10)
+        # 3. Season average (if no L5/L10)
+        # 4. Main line (ONLY if no player stats available)
+        #
+        # This ensures that a "demon" is truly ABOVE the player's average,
+        # and a "goblin" is truly BELOW the player's average.
+        # =================================================================
+        
+        if l10_avg and l10_avg > 0:
+            anchor_line = l10_avg
+            anchor_source = "l10_avg"
+            l5_fallback_count += 1
+            logger.debug(f"[ANCHOR] {key}: using L10 avg = {anchor_line} (main_line was {main_line_value})")
+        elif l5_avg and l5_avg > 0:
+            anchor_line = l5_avg
+            anchor_source = "l5_avg"
+            l5_fallback_count += 1
+            logger.debug(f"[ANCHOR] {key}: using L5 avg = {anchor_line} (main_line was {main_line_value})")
+        elif season_avg and season_avg > 0:
+            anchor_line = season_avg
+            anchor_source = "season_avg"
+            l5_fallback_count += 1
+            logger.debug(f"[ANCHOR] {key}: using season avg = {anchor_line} (main_line was {main_line_value})")
+        elif main_line_value:
+            # Last resort: use main line if no player stats
+            anchor_line = main_line_value
             anchor_source = "main_line"
-            logger.debug(f"[ANCHOR] {key}: main_line = {anchor_line}")
+            logger.debug(f"[ANCHOR] {key}: no player stats, using main_line = {anchor_line}")
         else:
-            # FALLBACK: No standard line - use L5 average as anchor
-            stats = player_stats.get(key, {})
-            l5_avg = stats.get("l5_avg")
-            
-            if l5_avg and l5_avg > 0:
-                anchor_line = l5_avg
-                anchor_source = "l5_avg"
-                l5_fallback_count += 1
-                logger.debug(f"[ANCHOR] {key}: no main line, using L5 avg = {anchor_line}")
-            else:
-                # No L5 avg available - try season average
-                season_avg = stats.get("season_avg")
-                if season_avg and season_avg > 0:
-                    anchor_line = season_avg
-                    anchor_source = "season_avg"
-                    l5_fallback_count += 1
-                    logger.debug(f"[ANCHOR] {key}: no main line or L5, using season avg = {anchor_line}")
-                else:
-                    # No anchor available at all
-                    anchor_line = None
-                    anchor_source = "none"
-                    no_anchor_count += 1
-                    logger.debug(f"[ANCHOR] {key}: NO ANCHOR AVAILABLE")
+            # No anchor available at all
+            anchor_line = None
+            anchor_source = "none"
+            no_anchor_count += 1
+            logger.debug(f"[ANCHOR] {key}: NO ANCHOR AVAILABLE")
         
         # Classify each prop relative to anchor
         for prop in group_props:

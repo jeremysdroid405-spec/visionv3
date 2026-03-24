@@ -3,80 +3,69 @@
 ## Overview
 PropVision is a sports analytics platform for NBA player props, providing data-driven insights for betting decisions.
 
-## CRITICAL FIX (2026-03-25): Stale Averages Bug - ROOT CAUSE FIXED
+## CRITICAL FIX (2026-03-25): Anchor Classification Overhaul - PERMANENT
 
-### Problem
-The War Zone and other pick displays were showing **wrong L5/L10 averages** that didn't match the actual game logs.
+### Problem Summary
+Props were being misclassified as demons when they were actually goblins (and vice versa). This happened because:
+1. The anchor (reference line) came from **stale baseline_stats** instead of fresh game logs
+2. When no main line existed, the anchor fell back to wrong/outdated L5 averages
+3. The odds provider's main line was used even when it was set incorrectly
 
-Example: Jordan Goodwin showed L5 avg of 2.6 when his actual last 5 games averaged 7.0 rebounds.
+### Root Cause: ANCHOR = ODDS PROVIDER'S MAIN LINE (WRONG)
+The old system used the odds provider's "main line" as the anchor for classification:
+- Demon = line above main line
+- Goblin = line below main line
 
-### Root Cause: TWO COMPETING DATA SOURCES
-The architecture had two sources for player averages:
+**Problem:** The main line is the odds provider's opinion, which can be set LOW to entice bets.
+If main line = 27.5 but player averages 30.0, then 29.5 is marked as "demon" even though it's BELOW the player's average.
 
-1. **`baseline_stats`** - Pre-calculated averages in `nba_master_hub_2026`
-   - Updated: Only during scheduled syncs (4:00 AM, etc.)
-   - **GETS STALE** between syncs
+### Fix Applied: ANCHOR = PLAYER'S L10 AVERAGE (CORRECT)
+Now the system uses the **player's actual L10 average** as the anchor:
+- Demon = line above player's L10 average (harder to hit)
+- Goblin = line below player's L10 average (easier to hit)
+
+**Changes Made:**
+1. `/app/backend/services/anchor_classification_service.py`:
+   - Priority: L10 avg > L5 avg > Season avg > Main line (last resort)
    
-2. **`bdl_game_logs`** - Raw game-by-game values
-   - Updated: On startup + every 4 hours
-   - **ALWAYS FRESH** (source of truth)
+2. `/app/backend/services/cached_board_builder_service.py`:
+   - Calculate fresh L5/L10 from `bdl_game_logs` (not stale `baseline_stats`)
+   - Use `anchor_normalize_name()` for consistent key matching
+   
+3. `/app/backend/services/picks_getter_service.py`:
+   - War Zone now filters for "hittable demons" (within 20% of avg + 50%+ hit rate)
 
-The `cached_board_builder_service.py` was pulling `l5_avg`/`l10_avg` from `baseline_stats` (stale) instead of calculating from `bdl_game_logs` (fresh).
+### Verification Results
+- Before: 67 "bad demons" (line < L10 avg)
+- After: 0 "bad demons"
+- Anchor sources: 493 l10_avg, 7 main_line (only for players without game logs)
 
-### Fix Applied (PERMANENT)
-Modified `/app/backend/services/cached_board_builder_service.py`:
-
-**BEFORE (WRONG):**
-```python
-hit_rates = {
-    "l5_avg": stat_baseline.get("l5_avg"),   # FROM STALE baseline_stats
-    "l10_avg": stat_baseline.get("l10_avg")  # FROM STALE baseline_stats
-}
-```
-
-**AFTER (CORRECT):**
-```python
-# Calculate from ACTUAL game log values
-if l10_values:
-    hit_rates["l10_avg"] = round(sum(l10_values) / len(l10_values), 1)
-if l5_values:
-    hit_rates["l5_avg"] = round(sum(l5_values) / len(l5_values), 1)
-```
-
-### Architectural Rule (DO NOT VIOLATE)
-**SINGLE SOURCE OF TRUTH for L5/L10 averages = `bdl_game_logs`**
-
-- NEVER use `baseline_stats.l5_avg` or `baseline_stats.l10_avg` for display
-- ALWAYS calculate from the actual game log values
-- This ensures averages are always fresh and match the game data
-
-### Files Changed
-- `/app/backend/services/cached_board_builder_service.py` - Calculate l5_avg/l10_avg from game logs
+### Architectural Rules (DO NOT VIOLATE)
+1. **ANCHOR = Player's L10 Average** (not odds provider's main line)
+2. **L5/L10 calculated from `bdl_game_logs`** (not stale `baseline_stats`)
+3. **Use `anchor_normalize_name()` for key matching** (removes suffixes like Jr, III)
 
 ---
 
-## CRITICAL FIX (2026-03-25): War Zone Logic Bug - PERMANENT FIX
+## CRITICAL FIX (2026-03-25): War Zone Logic Updated for New Anchor System
 
 ### Problem
-The War Zone was recommending bad "demon" picks where the player's L10 average was BELOW the recommended line. Example:
-- Jevon Carter REB @ 1.5 with L10 avg of 1.3 (90% hit rate)
-- This is a BAD pick because his average doesn't clear the line
+After the anchor fix, demons are now properly defined as lines ABOVE the player's L10 average.
+The old War Zone filter (L10 avg >= line) would never pass for true demons.
 
-### Root Cause
-The War Zone filter had a "close call" exception that allowed picks through if:
-- Margin was >= -0.5 AND hit rate >= 70%
-- This was WRONG - high hit rate on a line below your average is NOT a good demon bet
+### Fix Applied
+New War Zone criteria for "hittable demons":
+1. Line is within 20% of player's L10 average
+2. Hit rate >= 50% (or 40% if within 10% of average)
 
-### Fix Applied (PERMANENT)
-Modified `/app/backend/services/picks_getter_service.py` `get_war_zone()`:
+**Example:** Player with L10 avg of 20.0 PTS
+- Line 21.5 with 60% HR = GOOD (7.5% above avg, good hit rate)
+- Line 25.5 with 30% HR = BAD (27.5% above avg, low hit rate)
 
-**NEW STRICT RULE:**
-```python
-# L10 average MUST be >= line - NO EXCEPTIONS
-avg_beats_line = l10_avg >= demon_line
-if not avg_beats_line:
-    continue  # HARD REJECT
-```
+### Files Changed
+- `/app/backend/services/picks_getter_service.py` - New hittable demon criteria
+
+---
 
 **WHY THIS IS CORRECT:**
 - War Zone = DEMON bets (higher risk, higher reward)
