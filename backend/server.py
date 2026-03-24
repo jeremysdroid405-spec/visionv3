@@ -817,6 +817,12 @@ async def startup_event():
     adaptive_sync = init_adaptive_sync_engine(db, ODDS_API_KEY)
     logger.info("Adaptive Sync Engine initialized (Mission-Critical Polling)")
     
+    # CRITICAL FIX: Wire up the adaptive sync to use the proper sync function
+    # This ensures the adaptive sync uses CachedBoardBuilderService to create
+    # nested player documents (with props arrays) instead of flat documents
+    adaptive_sync.set_sync_callback(demon_goblin_engine.sync_odds_to_mongo)
+    logger.info("[ADAPTIVE_SYNC] Callback wired to DemonGoblinEngine.sync_odds_to_mongo")
+    
     # Initialize Intel Briefing Engine - Gemini 3 Flash
     intel_briefing_engine = init_intel_briefing_engine(db)
     google_key = os.environ.get('GOOGLE_API_KEY')

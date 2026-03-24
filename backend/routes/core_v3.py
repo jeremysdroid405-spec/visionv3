@@ -36,22 +36,35 @@ async def get_v3_status():
     # Get status from cached_board collection
     latest = await engine.cached_board.find_one(
         {},
-        {"_id": 0, "sync_time": 1},
-        sort=[("sync_time", -1)]
+        {"_id": 0, "sync_time": 1, "synced_at": 1},
+        sort=[("synced_at", -1)]
     )
     
     total_players = await engine.cached_board.count_documents({})
-    demons_count = await engine.radar_picks.count_documents({})
-    goblins_count = await engine.goblin_vault.count_documents({})
+    
+    # Count demons and goblins from the nested props structure
+    # Each player document has a props array with is_demon/is_goblin booleans
+    pipeline = [
+        {"$unwind": "$props"},
+        {"$group": {
+            "_id": None,
+            "demons": {"$sum": {"$cond": ["$props.is_demon", 1, 0]}},
+            "goblins": {"$sum": {"$cond": ["$props.is_goblin", 1, 0]}}
+        }}
+    ]
+    counts = {"demons": 0, "goblins": 0}
+    async for doc in engine.cached_board.aggregate(pipeline):
+        counts["demons"] = doc.get("demons", 0)
+        counts["goblins"] = doc.get("goblins", 0)
     
     return {
         "success": True,
         "data": {
-            "last_sync": latest.get("sync_time") if latest else None,
+            "last_sync": latest.get("synced_at") or latest.get("sync_time") if latest else None,
             "sync_source": "adaptive_sync_engine",
             "total_players": total_players,
-            "demons_count": demons_count,
-            "goblins_count": goblins_count,
+            "demons_count": counts["demons"],
+            "goblins_count": counts["goblins"],
             "season": "2025"
         }
     }

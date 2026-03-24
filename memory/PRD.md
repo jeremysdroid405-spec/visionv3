@@ -3,6 +3,33 @@
 ## Overview
 PropVision is a sports analytics platform for NBA player props, providing data-driven insights for betting decisions.
 
+## CRITICAL FIX (2026-03-24): Adaptive Sync Engine Bug
+
+### Problem
+The adaptive sync engine was fetching odds from the API but **NOT saving them correctly to the database**. This caused:
+- Empty picks on deployed instances (Emergent production, user's server)
+- Manual sync worked, but background polling did not
+- App appeared as an empty shell after deployment
+
+### Root Cause
+The `AdaptiveSyncEngine._update_cached_board()` method was saving **FLAT prop documents** directly to MongoDB, but the `picks_getter_service` expected **NESTED player documents** with a `props` array.
+
+The manual `/api/v3/sync` endpoint used `DemonGoblinEngine.sync_odds_to_mongo()` which correctly called `CachedBoardBuilderService.build_cached_board()` to create nested documents.
+
+### Fix Applied
+Modified `adaptive_sync_engine.py`:
+1. Added `set_sync_callback()` method to accept a proper sync function
+2. Modified poll loop to call the callback instead of its own broken `_update_cached_board()`
+
+Modified `server.py`:
+1. After initializing the adaptive sync engine, wires up the callback:
+   `adaptive_sync.set_sync_callback(demon_goblin_engine.sync_odds_to_mongo)`
+
+### Files Changed
+- `/app/backend/adaptive_sync_engine.py` - Added callback mechanism
+- `/app/backend/server.py` - Wired callback to DemonGoblinEngine
+- `/app/backend/routes/core_v3.py` - Fixed status endpoint to count demons/goblins correctly
+
 ## Core Architecture
 
 ### Data Pipeline (Updated 2026-03-20)

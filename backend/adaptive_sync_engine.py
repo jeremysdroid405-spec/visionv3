@@ -102,7 +102,15 @@ class AdaptiveSyncEngine:
         # Player stats cache (refreshed each sync cycle)
         self._player_stats_cache: Dict[str, Dict] = {}
         
+        # Reference to main sync function (set by server.py)
+        self._sync_odds_callback = None
+        
         logger.info("[ADAPTIVE_SYNC] Engine initialized")
+    
+    def set_sync_callback(self, callback):
+        """Set the callback to the proper sync_odds_to_mongo function."""
+        self._sync_odds_callback = callback
+        logger.info("[ADAPTIVE_SYNC] Sync callback registered")
     
     async def _get_player_season_avg(self, player_name: str, stat_type: str) -> Optional[float]:
         """
@@ -947,16 +955,19 @@ class AdaptiveSyncEngine:
         
         while self.is_running:
             try:
-                # Fetch current odds
-                events = await self._fetch_live_odds()
-                
-                # Update game registry with current statuses
-                await self._update_game_registry(events)
-                
-                # Update cached board
-                await self._update_cached_board(events)
-                
                 now = datetime.now(timezone.utc)
+                
+                # USE PROPER SYNC: Call the main sync function that builds nested player docs
+                if self._sync_odds_callback:
+                    logger.info("[ADAPTIVE_SYNC] Triggering proper sync via callback...")
+                    sync_result = await self._sync_odds_callback()
+                    logger.info(f"[ADAPTIVE_SYNC] Sync complete: {sync_result.get('demons_count', 0)} demons, {sync_result.get('goblins_count', 0)} goblins")
+                else:
+                    # Fallback to old method (for backwards compatibility during transition)
+                    logger.warning("[ADAPTIVE_SYNC] No sync callback set - using legacy method")
+                    events = await self._fetch_live_odds()
+                    await self._update_game_registry(events)
+                    await self._update_cached_board(events)
                 
                 # Sync injuries periodically (every 30 min) alongside odds
                 if last_injury_sync is None or (now - last_injury_sync).total_seconds() >= INJURY_SYNC_INTERVAL:
