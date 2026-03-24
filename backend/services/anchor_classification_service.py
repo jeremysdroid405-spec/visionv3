@@ -219,52 +219,22 @@ def classify_props_by_anchor(props: List[Dict], player_stats: Dict[str, Dict] = 
                     prop["tier_source"] = "equals_standard"
                     
             else:
-                # No standard line - use player's L10 avg as anchor if available
-                # Otherwise fall back to odds-only classification
+                # No standard line - classify by ODDS (PrizePicks' actual system)
+                # +100 or higher = DEMON (boosted/harder line)
+                # Negative odds = GOBLIN (discounted/easier line)
                 
-                # Try to get player's L10 average
-                stats = player_stats.get(key, {}) if player_stats else {}
-                l10_avg = stats.get("l10_avg")
-                l5_avg = stats.get("l5_avg")
-                player_avg = l10_avg or l5_avg
-                
-                if player_avg and prop_line:
-                    # Use player average as anchor
-                    prop["anchor_line"] = player_avg
-                    prop["anchor_source"] = "player_avg"
-                    
-                    if prop_line > player_avg:
-                        # Line above player's average = DEMON
-                        prop["is_demon"] = True
-                        prop["is_goblin"] = False
-                        prop["tier_label"] = "DEMON"
-                        prop["tier_source"] = "above_player_avg"
-                    elif prop_line < player_avg:
-                        # Line below player's average = GOBLIN
-                        prop["is_demon"] = False
-                        prop["is_goblin"] = True
-                        prop["tier_label"] = "GOBLIN"
-                        prop["tier_source"] = "below_player_avg"
-                    else:
-                        # Line equals average
-                        prop["is_demon"] = False
-                        prop["is_goblin"] = False
-                        prop["tier_label"] = "STANDARD"
-                        prop["tier_source"] = "equals_player_avg"
-                elif price >= 100:
-                    # No player avg - use odds: +100 = DEMON
+                if price >= 100:
                     prop["is_demon"] = True
                     prop["is_goblin"] = False
                     prop["tier_label"] = "DEMON"
                     prop["tier_source"] = "odds_boosted"
                 elif price < 0:
-                    # No player avg - use odds: negative = GOBLIN
                     prop["is_demon"] = False
                     prop["is_goblin"] = True
                     prop["tier_label"] = "GOBLIN"
                     prop["tier_source"] = "odds_discounted"
                 else:
-                    # Edge case: no anchor, no useful odds
+                    # Edge case: odds = 0 or missing
                     prop["is_demon"] = False
                     prop["is_goblin"] = False
                     prop["tier_label"] = "STANDARD"
