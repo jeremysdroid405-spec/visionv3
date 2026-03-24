@@ -701,22 +701,15 @@ class PicksGetterService:
         """
         Get the War Zone - HIGH-VALUE demon picks that players can actually hit.
         
-        WAR ZONE CRITERIA (March 2026 - Post Anchor Fix):
-        With the new anchor classification, demons are lines ABOVE the player's
-        L10 average. So a "hittable demon" is one where:
+        WAR ZONE CRITERIA (PrizePicks Classification):
+        Demons are now classified as: Line ABOVE standard + boosted odds (+100)
         
-        1. Line is within 20% of player's L10 average (not too far above)
-        2. Hit rate >= 50% (player clears this line at least half the time)
-        3. OR hit rate >= 40% if line is within 10% of average
+        A "good" War Zone pick is a demon where:
+        1. Player has a high hit rate (50%+) against this line
+        2. The line is achievable based on recent performance
         
-        This ensures we're showing demons that are:
-        - Achievable (close to their normal output)
-        - Proven (high historical hit rate)
-        - Valuable (above average = demon pricing)
-        
-        Example: Player with L10 avg of 20.0 PTS
-        - Line 21.5 with 60% HR = GOOD (within 7.5%, good hit rate)
-        - Line 25.5 with 30% HR = BAD (too far above avg, low hit rate)
+        This shows players who consistently beat demon lines despite the
+        boosted odds, indicating real value.
         """
         prob_service = ProbabilityScoreService(self.db)
         
@@ -805,31 +798,28 @@ class PicksGetterService:
             # =================================================================
             # WAR ZONE FILTER: Only show HITTABLE demons
             # =================================================================
-            # With the new anchor classification (March 2026), demons are now
-            # properly defined as lines ABOVE the player's L10 average.
+            # With PrizePicks classification:
+            # - DEMON = Line ABOVE standard + odds >= +100 (boosted)
             # 
-            # So a "hittable demon" is one where:
-            # 1. The line is close to the player's average (within 15-20%)
-            # 2. The player has a HIGH HIT RATE against this line (50%+)
-            # 3. OR the player has exceeded this line frequently (high variance player)
+            # A "hittable demon" is one where:
+            # 1. Hit rate >= 50% (player clears this demon line half the time)
+            # 2. OR hit rate >= 40% if line is close to their L10 average
             #
             # We want demons that the player CAN hit, not impossible lines.
             
-            # Calculate margin: How much does the line exceed the player's average?
-            margin = (l10_avg - demon_line) if l10_avg else 0  # Will be negative for true demons
+            # Calculate margin: How much does the player's avg exceed the demon line?
+            margin = (l10_avg - demon_line) if l10_avg else 0
             margin_pct = (margin / l10_avg * 100) if l10_avg > 0 else 0
             
             # HITTABLE DEMON CRITERIA:
-            # 1. Line is within 20% of player's L10 average
-            #    (e.g., avg 10, line up to 12 is acceptable)
-            # 2. Hit rate >= 50% (player clears this line at least half the time)
-            # 3. OR hit rate >= 40% if margin is very small (within 10%)
+            # - Hit rate >= 50% (proven track record against this line)
+            # - OR hit rate >= 40% if L10 avg is close to/above the demon line
             
-            line_within_range = abs(margin_pct) <= 20  # Line within 20% of average
             has_good_hit_rate = l10_hit_rate >= 50
-            has_decent_hit_rate_close_line = l10_hit_rate >= 40 and abs(margin_pct) <= 10
+            avg_close_to_line = l10_avg and l10_avg >= (demon_line * 0.9)  # Within 10% of line
+            has_decent_hit_rate_close_line = l10_hit_rate >= 40 and avg_close_to_line
             
-            is_hittable = line_within_range and (has_good_hit_rate or has_decent_hit_rate_close_line)
+            is_hittable = has_good_hit_rate or has_decent_hit_rate_close_line
             
             if not is_hittable:
                 filter_stats["rejected_avg_below_line"] += 1

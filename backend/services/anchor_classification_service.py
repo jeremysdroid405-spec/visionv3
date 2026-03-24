@@ -1,25 +1,23 @@
 """
 Anchor-Based Tier Classification Service
 =========================================
-PRIZEPICKS ANCHOR-BASED CLASSIFICATION
+PRIZEPICKS DEMON/GOBLIN CLASSIFICATION
 
-Uses the PrizePicks "Standard Line" as the baseline anchor.
-All alternate lines are classified relative to this anchor:
+Uses PrizePicks' actual classification system based on:
+1. The Standard Line as the anchor
+2. The odds/price to determine tier
 
-- Alternate Line > Standard Line -> DEMON (Red)
-- Alternate Line < Standard Line -> GOBLIN (Green)  
-- Standard Line itself -> STANDARD (Gray)
+Classification Rules:
+- DEMON (Red): Alternate line ABOVE standard + odds >= +100
+- GOBLIN (Green): Alternate line BELOW standard + odds around -137
+- STANDARD (Gray): The main/standard line itself
 
-FALLBACK FOR PLAYERS WITHOUT MAIN LINE:
-When a player only has alternate markets (no standard line),
-use the player's L5 average as the anchor:
+FALLBACK (No Standard Line):
+When no standard line exists, classify by odds alone:
+- odds >= +100 → DEMON (harder line, boosted)
+- odds < 0 → GOBLIN (easier line, discounted)
 
-- Line > L5 Avg -> DEMON (Red)
-- Line < L5 Avg -> GOBLIN (Green)
-- Line == L5 Avg -> STANDARD (Gray)
-
-ALL bets (over AND under) are classified this way.
-This logic OVERRIDES any is_demon/is_goblin flags from the Odds API.
+This matches how PrizePicks actually labels their picks.
 """
 import logging
 from typing import Dict, List, Any, Optional
@@ -42,18 +40,20 @@ def _normalize_name(name: str) -> str:
 
 def classify_props_by_anchor(props: List[Dict], player_stats: Dict[str, Dict] = None) -> List[Dict]:
     """
-    Apply anchor-based classification to all props.
+    Apply PrizePicks-style classification to all props.
     
-    For each player/stat combination:
+    Classification Logic:
     1. Find the Standard Line (is_alternate_market=False) - this is the ANCHOR
-    2. If no standard line exists, use L5 average as the fallback anchor
-    3. Compare all lines to the anchor
-    4. Set is_demon/is_goblin based on comparison
+    2. For alternate lines:
+       - Line > Standard AND odds >= +100 → DEMON
+       - Line < Standard AND odds < 0 → GOBLIN
+    3. If no standard line exists:
+       - odds >= +100 → DEMON
+       - odds < 0 → GOBLIN
     
     Args:
         props: List of prop dictionaries
-        player_stats: Optional dict mapping "player_name|STAT" -> {"l5_avg": X, "season_avg": Y}
-                     Used as fallback anchor when no main line exists
+        player_stats: Optional (not used in new PrizePicks-based classification)
         
     Returns:
         Props list with updated tier classifications
@@ -96,7 +96,8 @@ def classify_props_by_anchor(props: List[Dict], player_stats: Dict[str, Dict] = 
     
     # Process each group
     classified_props = []
-    l5_fallback_count = 0
+    standard_count = 0
+    odds_fallback_count = 0
     no_anchor_count = 0
     
     for key, group_props in groups.items():
@@ -105,123 +106,118 @@ def classify_props_by_anchor(props: List[Dict], player_stats: Dict[str, Dict] = 
         
         anchor_line = None
         anchor_source = None
-        main_line_value = None
         
         if standard_lines:
-            # Get the odds provider's main line (for reference)
+            # Get the standard line as anchor (prefer Over direction)
             over_standards = [p for p in standard_lines if p.get("direction", "").lower() == "over"]
-            main_line_value = (over_standards[0] if over_standards else standard_lines[0]).get("line")
-        
-        # Get player's averages (PREFERRED anchor for betting relevance)
-        stats = player_stats.get(key, {})
-        l5_avg = stats.get("l5_avg")
-        l10_avg = stats.get("l10_avg")
-        season_avg = stats.get("season_avg")
-        
-        # =================================================================
-        # ANCHOR SELECTION LOGIC (PERMANENT FIX - March 2026)
-        # =================================================================
-        # For BETTING purposes, what matters is: can the player exceed this line?
-        # The odds provider's main line is their opinion, but it may be set low
-        # to entice bets. We use the PLAYER'S ACTUAL AVERAGE as the anchor.
-        #
-        # Priority:
-        # 1. L10 average (used for War Zone filtering, most representative)
-        # 2. L5 average (if no L10)
-        # 3. Season average (if no L5/L10)
-        # 4. Main line (ONLY if no player stats available)
-        #
-        # This ensures that a "demon" is truly ABOVE the player's average,
-        # and a "goblin" is truly BELOW the player's average.
-        # =================================================================
-        
-        if l10_avg and l10_avg > 0:
-            anchor_line = l10_avg
-            anchor_source = "l10_avg"
-            l5_fallback_count += 1
-            logger.debug(f"[ANCHOR] {key}: using L10 avg = {anchor_line} (main_line was {main_line_value})")
-        elif l5_avg and l5_avg > 0:
-            anchor_line = l5_avg
-            anchor_source = "l5_avg"
-            l5_fallback_count += 1
-            logger.debug(f"[ANCHOR] {key}: using L5 avg = {anchor_line} (main_line was {main_line_value})")
-        elif season_avg and season_avg > 0:
-            anchor_line = season_avg
-            anchor_source = "season_avg"
-            l5_fallback_count += 1
-            logger.debug(f"[ANCHOR] {key}: using season avg = {anchor_line} (main_line was {main_line_value})")
-        elif main_line_value:
-            # Last resort: use main line if no player stats
-            anchor_line = main_line_value
-            anchor_source = "main_line"
-            logger.debug(f"[ANCHOR] {key}: no player stats, using main_line = {anchor_line}")
+            anchor_prop = over_standards[0] if over_standards else standard_lines[0]
+            anchor_line = anchor_prop.get("line")
+            anchor_source = "standard_line"
+            standard_count += 1
+            logger.debug(f"[ANCHOR] {key}: standard_line = {anchor_line}")
         else:
-            # No anchor available at all
-            anchor_line = None
-            anchor_source = "none"
-            no_anchor_count += 1
-            logger.debug(f"[ANCHOR] {key}: NO ANCHOR AVAILABLE")
+            # No standard line - will classify by odds alone
+            anchor_source = "odds_only"
+            odds_fallback_count += 1
+            logger.debug(f"[ANCHOR] {key}: no standard line, using odds-based classification")
         
-        # Classify each prop relative to anchor
+        # =================================================================
+        # PRIZEPICKS CLASSIFICATION LOGIC
+        # =================================================================
+        # DEMON: Alternate line ABOVE standard + odds >= +100
+        # GOBLIN: Alternate line BELOW standard + odds < 0 (like -137)
+        # STANDARD: The main line itself (non-alternate)
+        #
+        # No standard line? Use odds alone:
+        # - odds >= +100 → DEMON (boosted/harder)
+        # - odds < 0 → GOBLIN (discounted/easier)
+        # =================================================================
+        
         for prop in group_props:
             prop_line = prop.get("line")
             is_alternate = prop.get("is_alternate_market", False)
+            price = prop.get("price", 0)  # Odds like +100 or -137
             
-            if anchor_line is None or prop_line is None:
-                # No anchor - keep as standard (unclassified)
+            # Store anchor info
+            prop["anchor_line"] = anchor_line
+            prop["anchor_source"] = anchor_source
+            
+            if not is_alternate:
+                # This IS the standard line
                 prop["is_demon"] = False
                 prop["is_goblin"] = False
                 prop["tier_label"] = "STANDARD"
-                prop["tier_source"] = "no_anchor"
-                prop["anchor_line"] = None
-                prop["anchor_source"] = "none"
-            elif not is_alternate and anchor_source == "main_line":
-                # This IS the standard line (main line anchor)
-                prop["is_demon"] = False
-                prop["is_goblin"] = False
-                prop["tier_label"] = "STANDARD"
-                prop["tier_source"] = "is_main_line"
-                prop["anchor_line"] = anchor_line
-                prop["anchor_source"] = anchor_source
-            elif prop_line > anchor_line:
-                # Line ABOVE anchor = DEMON (harder to hit)
-                prop["is_demon"] = True
-                prop["is_goblin"] = False
-                prop["tier_label"] = "DEMON"
-                prop["tier_source"] = f"above_{anchor_source}"
-                prop["anchor_line"] = anchor_line
-                prop["anchor_source"] = anchor_source
-                prop["diff_from_anchor"] = round(((prop_line - anchor_line) / anchor_line) * 100, 1) if anchor_line > 0 else 0
-            elif prop_line < anchor_line:
-                # Line BELOW anchor = GOBLIN (easier to hit)
-                prop["is_demon"] = False
-                prop["is_goblin"] = True
-                prop["tier_label"] = "GOBLIN"
-                prop["tier_source"] = f"below_{anchor_source}"
-                prop["anchor_line"] = anchor_line
-                prop["anchor_source"] = anchor_source
-                prop["diff_from_anchor"] = round(((prop_line - anchor_line) / anchor_line) * 100, 1) if anchor_line > 0 else 0
+                prop["tier_source"] = "standard_line"
+                
+            elif anchor_line is not None and prop_line is not None:
+                # We have a standard line to compare against
+                # DEMON: Line > Standard AND odds >= +100
+                # GOBLIN: Line < Standard AND odds < 0
+                
+                if prop_line > anchor_line and price >= 100:
+                    prop["is_demon"] = True
+                    prop["is_goblin"] = False
+                    prop["tier_label"] = "DEMON"
+                    prop["tier_source"] = "above_standard_boosted"
+                elif prop_line < anchor_line and price < 0:
+                    prop["is_demon"] = False
+                    prop["is_goblin"] = True
+                    prop["tier_label"] = "GOBLIN"
+                    prop["tier_source"] = "below_standard_discounted"
+                elif prop_line > anchor_line:
+                    # Above standard but not +100 odds - still treat as demon
+                    prop["is_demon"] = True
+                    prop["is_goblin"] = False
+                    prop["tier_label"] = "DEMON"
+                    prop["tier_source"] = "above_standard"
+                elif prop_line < anchor_line:
+                    # Below standard but not -137 odds - still treat as goblin
+                    prop["is_demon"] = False
+                    prop["is_goblin"] = True
+                    prop["tier_label"] = "GOBLIN"
+                    prop["tier_source"] = "below_standard"
+                else:
+                    # Line equals standard
+                    prop["is_demon"] = False
+                    prop["is_goblin"] = False
+                    prop["tier_label"] = "STANDARD"
+                    prop["tier_source"] = "equals_standard"
+                    
             else:
-                # Equal to anchor = STANDARD
-                prop["is_demon"] = False
-                prop["is_goblin"] = False
-                prop["tier_label"] = "STANDARD"
-                prop["tier_source"] = f"equal_{anchor_source}"
-                prop["anchor_line"] = anchor_line
-                prop["anchor_source"] = anchor_source
+                # No standard line - classify by ODDS ALONE
+                # +100 or higher = DEMON (boosted/harder line)
+                # Negative odds = GOBLIN (discounted/easier line)
+                
+                if price >= 100:
+                    prop["is_demon"] = True
+                    prop["is_goblin"] = False
+                    prop["tier_label"] = "DEMON"
+                    prop["tier_source"] = "odds_boosted"
+                elif price < 0:
+                    prop["is_demon"] = False
+                    prop["is_goblin"] = True
+                    prop["tier_label"] = "GOBLIN"
+                    prop["tier_source"] = "odds_discounted"
+                else:
+                    # Edge case: odds = 0 or missing
+                    prop["is_demon"] = False
+                    prop["is_goblin"] = False
+                    prop["tier_label"] = "STANDARD"
+                    prop["tier_source"] = "no_classification"
+                    no_anchor_count += 1
             
             classified_props.append(prop)
+    
+    logger.info(f"[ANCHOR_CLASSIFY] Processed {len(classified_props)} props: "
+                f"{standard_count} with standard lines, {odds_fallback_count} odds-only, "
+                f"{no_anchor_count} unclassified")
     
     # Log summary
     demons = sum(1 for p in classified_props if p.get("is_demon"))
     goblins = sum(1 for p in classified_props if p.get("is_goblin"))
     standards = len(classified_props) - demons - goblins
     
-    logger.info(f"[ANCHOR_CLASSIFY] {len(classified_props)} props: {demons} demons, {goblins} goblins, {standards} standard")
-    if l5_fallback_count > 0:
-        logger.info(f"[ANCHOR_CLASSIFY] Used L5/season avg as fallback anchor for {l5_fallback_count} player/stat groups")
-    if no_anchor_count > 0:
-        logger.warning(f"[ANCHOR_CLASSIFY] {no_anchor_count} player/stat groups had NO anchor available")
+    logger.info(f"[ANCHOR_CLASSIFY] Result: {demons} demons, {goblins} goblins, {standards} standard")
     
     return classified_props
 
