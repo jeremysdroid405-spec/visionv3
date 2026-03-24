@@ -102,20 +102,50 @@ def classify_props_by_anchor(props: List[Dict], player_stats: Dict[str, Dict] = 
     
     for key, group_props in groups.items():
         # Find the standard line (anchor) - non-alternate market
-        standard_lines = [p for p in group_props if not p.get("is_alternate_market", True)]
+        standard_props = [p for p in group_props if not p.get("is_alternate_market", True)]
+        alternate_props = [p for p in group_props if p.get("is_alternate_market", True)]
         
         anchor_line = None
         anchor_source = None
         
-        if standard_lines:
-            # Get the standard line as anchor (prefer Over direction)
-            over_standards = [p for p in standard_lines if p.get("direction", "").lower() == "over"]
-            anchor_prop = over_standards[0] if over_standards else standard_lines[0]
-            anchor_line = anchor_prop.get("line")
-            anchor_source = "standard_line"
-            standard_count += 1
-            logger.debug(f"[ANCHOR] {key}: standard_line = {anchor_line}")
-        else:
+        if standard_props:
+            # Get unique standard line values
+            standard_line_values = list(set(p.get("line") for p in standard_props if p.get("line")))
+            
+            if len(standard_line_values) == 1:
+                # Only one standard line - use it
+                anchor_line = standard_line_values[0]
+            elif len(standard_line_values) > 1:
+                # Multiple "standard" lines - find the TRUE standard
+                # The real standard should have alternate lines BOTH above AND below it
+                # If not, pick the middle/highest value as the standard
+                
+                alternate_lines = [p.get("line") for p in alternate_props if p.get("line")]
+                
+                best_standard = None
+                for std_line in sorted(standard_line_values, reverse=True):
+                    has_above = any(alt > std_line for alt in alternate_lines)
+                    has_below = any(alt < std_line for alt in alternate_lines)
+                    
+                    if has_above and has_below:
+                        # This standard has alternates both above and below - likely the true standard
+                        best_standard = std_line
+                        break
+                
+                if best_standard:
+                    anchor_line = best_standard
+                    logger.debug(f"[ANCHOR] {key}: multiple standards {standard_line_values}, picked {anchor_line} (has alts above/below)")
+                else:
+                    # No standard has alternates both ways - use the highest standard
+                    anchor_line = max(standard_line_values)
+                    logger.debug(f"[ANCHOR] {key}: multiple standards {standard_line_values}, picked highest {anchor_line}")
+            
+            if anchor_line:
+                anchor_source = "standard_line"
+                standard_count += 1
+                logger.debug(f"[ANCHOR] {key}: standard_line = {anchor_line}")
+        
+        if not anchor_line:
             # No standard line - will classify by odds alone
             anchor_source = "odds_only"
             odds_fallback_count += 1
