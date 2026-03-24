@@ -615,15 +615,43 @@ class CachedBoardBuilderService:
         l10_values = [get_stat_value(g) for g in played_games[:10]]
         l5_values = l10_values[:5] if len(l10_values) >= 5 else l10_values
         
+        # =====================================================================
+        # CRITICAL: SINGLE SOURCE OF TRUTH FOR L5/L10 AVERAGES
+        # =====================================================================
+        # We calculate l5_avg and l10_avg from bdl_game_logs, NOT baseline_stats.
+        #
+        # WHY: baseline_stats can be STALE (updated only during scheduled syncs)
+        #      but bdl_game_logs are the RAW game values that are always current.
+        #
+        # NEVER use: stat_baseline.get("l5_avg") or stat_baseline.get("l10_avg")
+        # ALWAYS calculate from the l5_values/l10_values arrays extracted above.
+        #
+        # This was a CRITICAL BUG that caused incorrect averages to appear in
+        # War Zone, Safe Haven, and all other pick displays (March 2026).
+        # =====================================================================
+        
         hit_rates = {
             "l10_rate": None,
             "l5_rate": None,
             "l10_hit_count": 0,
             "l5_hit_count": 0,
-            "l5_avg": stat_baseline.get("l5_avg"),
-            "season_avg": stat_baseline.get("season_avg"),
-            "l10_avg": stat_baseline.get("l10_avg")
+            "l5_avg": None,
+            "season_avg": stat_baseline.get("season_avg"),  # season_avg is OK from baseline
+            "l10_avg": None
         }
+        
+        # Calculate averages from ACTUAL game log values (not stale baseline_stats)
+        if l10_values:
+            hit_rates["l10_avg"] = round(sum(l10_values) / len(l10_values), 1)
+        else:
+            # Fallback to baseline ONLY if no game logs exist at all
+            hit_rates["l10_avg"] = stat_baseline.get("l10_avg")
+        
+        if l5_values:
+            hit_rates["l5_avg"] = round(sum(l5_values) / len(l5_values), 1)
+        else:
+            # Fallback to baseline ONLY if no game logs exist at all
+            hit_rates["l5_avg"] = stat_baseline.get("l5_avg")
         
         # Calculate hit rates using > (strictly over) for betting props
         if l10_values and line:

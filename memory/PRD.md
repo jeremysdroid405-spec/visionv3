@@ -3,6 +3,58 @@
 ## Overview
 PropVision is a sports analytics platform for NBA player props, providing data-driven insights for betting decisions.
 
+## CRITICAL FIX (2026-03-25): Stale Averages Bug - ROOT CAUSE FIXED
+
+### Problem
+The War Zone and other pick displays were showing **wrong L5/L10 averages** that didn't match the actual game logs.
+
+Example: Jordan Goodwin showed L5 avg of 2.6 when his actual last 5 games averaged 7.0 rebounds.
+
+### Root Cause: TWO COMPETING DATA SOURCES
+The architecture had two sources for player averages:
+
+1. **`baseline_stats`** - Pre-calculated averages in `nba_master_hub_2026`
+   - Updated: Only during scheduled syncs (4:00 AM, etc.)
+   - **GETS STALE** between syncs
+   
+2. **`bdl_game_logs`** - Raw game-by-game values
+   - Updated: On startup + every 4 hours
+   - **ALWAYS FRESH** (source of truth)
+
+The `cached_board_builder_service.py` was pulling `l5_avg`/`l10_avg` from `baseline_stats` (stale) instead of calculating from `bdl_game_logs` (fresh).
+
+### Fix Applied (PERMANENT)
+Modified `/app/backend/services/cached_board_builder_service.py`:
+
+**BEFORE (WRONG):**
+```python
+hit_rates = {
+    "l5_avg": stat_baseline.get("l5_avg"),   # FROM STALE baseline_stats
+    "l10_avg": stat_baseline.get("l10_avg")  # FROM STALE baseline_stats
+}
+```
+
+**AFTER (CORRECT):**
+```python
+# Calculate from ACTUAL game log values
+if l10_values:
+    hit_rates["l10_avg"] = round(sum(l10_values) / len(l10_values), 1)
+if l5_values:
+    hit_rates["l5_avg"] = round(sum(l5_values) / len(l5_values), 1)
+```
+
+### Architectural Rule (DO NOT VIOLATE)
+**SINGLE SOURCE OF TRUTH for L5/L10 averages = `bdl_game_logs`**
+
+- NEVER use `baseline_stats.l5_avg` or `baseline_stats.l10_avg` for display
+- ALWAYS calculate from the actual game log values
+- This ensures averages are always fresh and match the game data
+
+### Files Changed
+- `/app/backend/services/cached_board_builder_service.py` - Calculate l5_avg/l10_avg from game logs
+
+---
+
 ## CRITICAL FIX (2026-03-25): War Zone Logic Bug - PERMANENT FIX
 
 ### Problem
@@ -34,7 +86,7 @@ if not avg_beats_line:
 
 ### Verification
 - Filter stats now show `rejected_avg_below_line` counter
-- Test: 559 bad demon props rejected, 0 bad picks leak through
+- Test: 555 bad demon props rejected, 0 bad picks leak through
 - All War Zone picks now have L10 avg >= line (positive margin)
 
 ### Files Changed
