@@ -131,39 +131,37 @@ const GameLogBarChart = memo(({
   // Averages are now displayed as text above the chart (no reference lines)
   
   return (
-    <div className={`relative ${className}`}>
-      {/* Header with averages as text */}
-      <div className="flex items-center justify-between mb-1 px-1">
-        <div className="flex items-center gap-3">
-          <span className={`text-[10px] font-bold ${hitRate >= 70 ? 'text-emerald-400' : hitRate >= 50 ? 'text-amber-400' : 'text-red-400'}`}>
-            {hits}/{total}
+    <div className={`relative ${className}`} style={{ maxWidth: '500px' }}>
+      {/* Header with averages as text - bigger, white */}
+      <div className="flex items-center gap-4 mb-2 px-1">
+        <span className={`text-xs font-bold ${hitRate >= 70 ? 'text-emerald-400' : hitRate >= 50 ? 'text-amber-400' : 'text-red-400'}`}>
+          {hits}/{total}
+        </span>
+        {seasonAvg != null && (
+          <span className="text-xs text-white font-medium">
+            SZN AVG: <span className="font-bold">{seasonAvg}</span>
           </span>
-          {seasonAvg != null && (
-            <span className="text-[10px] text-cyan-400 font-medium">
-              SZN: <span className="font-bold">{seasonAvg}</span>
-            </span>
-          )}
-          {l10Avg != null && (
-            <span className="text-[10px] text-purple-400 font-medium">
-              L10: <span className="font-bold">{l10Avg}</span>
-            </span>
-          )}
-          {l5Avg != null && (
-            <span className="text-[10px] text-pink-400 font-medium">
-              L5: <span className="font-bold">{l5Avg}</span>
-            </span>
-          )}
-        </div>
+        )}
+        {l10Avg != null && (
+          <span className="text-xs text-white font-medium">
+            L10 AVG: <span className="font-bold">{l10Avg}</span>
+          </span>
+        )}
+        {l5Avg != null && (
+          <span className="text-xs text-white font-medium">
+            L5 AVG: <span className="font-bold">{l5Avg}</span>
+          </span>
+        )}
       </div>
       
-      {/* Chart container - no reference lines inside, just the target line */}
+      {/* Chart container - fixed aspect ratio */}
       <div 
-        className="relative bg-zinc-900/50 rounded border border-zinc-800"
+        className="relative bg-zinc-900/50 rounded border border-zinc-800 overflow-hidden"
         style={{ height: `${height}px` }}
       >
-        {/* Main target line (amber, solid) */}
+        {/* Main target line (amber, solid) - positioned within the bar area */}
         <div 
-          className="absolute left-0 right-0 border-t-2 border-amber-500 z-10"
+          className="absolute left-0 right-0 border-t-2 border-amber-500 z-10 pointer-events-none"
           style={{ bottom: `${linePosition}%` }}
         >
           <span className="absolute -right-1 -top-2.5 text-[9px] text-amber-400 font-bold bg-zinc-900/90 px-1 rounded">
@@ -171,23 +169,31 @@ const GameLogBarChart = memo(({
           </span>
         </div>
         
-        {/* Bars - all grow upward from bottom */}
-        <div className="absolute inset-x-1 bottom-0 top-3 flex items-end justify-around">
+        {/* Bars - all grow upward from bottom, fill entire container */}
+        <div className="absolute inset-0 flex items-end justify-around px-1">
           {values.map((item, idx) => {
             const isHit = item.value >= line;
-            const barHeight = (item.value / chartMax) * 100;
+            // Calculate bar height as percentage - ensure visual accuracy
+            // For misses, cap the bar slightly below the line for visual clarity
+            let barHeightPercent = (item.value / chartMax) * 100;
+            
+            // Ensure hits visually cross the line, misses stay visibly below
+            if (!isHit && barHeightPercent > linePosition - 3) {
+              // If miss is too close to line, reduce slightly for visual gap
+              barHeightPercent = Math.min(barHeightPercent, linePosition - 2);
+            }
             
             return (
               <div 
                 key={idx}
                 className="relative flex flex-col items-center h-full justify-end"
-                style={{ width: `${90 / values.length}%` }}
+                style={{ width: `${85 / values.length}%` }}
               >
                 {/* Value label on top of bar */}
                 <div 
                   className={`absolute text-[9px] font-bold z-20 ${isHit ? 'text-emerald-400' : 'text-red-400'}`}
                   style={{ 
-                    bottom: `${barHeight + 2}%`,
+                    bottom: `${barHeightPercent + 2}%`,
                   }}
                 >
                   {Math.round(item.value)}
@@ -195,14 +201,14 @@ const GameLogBarChart = memo(({
                 
                 {/* The bar - grows from bottom */}
                 <div 
-                  className={`w-full rounded-t transition-all ${
+                  className={`w-full rounded-t ${
                     isHit 
                       ? 'bg-emerald-500' 
                       : 'bg-red-500'
                   }`}
                   style={{ 
-                    height: `${barHeight}%`,
-                    minHeight: '3px'
+                    height: `${barHeightPercent}%`,
+                    minHeight: '4px'
                   }}
                 />
               </div>

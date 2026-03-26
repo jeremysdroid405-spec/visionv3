@@ -216,15 +216,15 @@ const PropRow = memo(({ prop, isHighlighted, highlightRef, onVisionClick, gameLo
         </div>
       </div>
       
-      {/* Right: Full-width Bar Chart with averages - stretches to fill available space */}
+      {/* Right: Bar Chart with balanced proportions */}
       {gameLogs && gameLogs.length > 0 ? (
-        <div className="flex-1 ml-4" style={{ minWidth: '60%' }}>
+        <div className="flex-1 ml-4" style={{ maxWidth: '480px' }}>
           <GameLogBarChart
             gameLogs={gameLogs}
             statType={statType}
             line={line}
             showGames={10}
-            height={75}
+            height={90}
             l5Avg={l5Avg}
             l10Avg={l10Avg}
             seasonAvg={seasonAvg}
