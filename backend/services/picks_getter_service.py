@@ -836,10 +836,18 @@ class PicksGetterService:
             commence_time = prop.get("commence_time")
             game_status = _get_game_status(commence_time)
             
-            # WAR ZONE SCORE: Prioritize picks with highest hit rate and closest to average
-            # Higher hit rate = more likely to hit
-            # Closer to average = safer demon bet
-            war_zone_score = l10_hit_rate + (20 - abs(margin_pct))  # Hit rate + closeness bonus
+            # WAR ZONE SCORE: Prioritize TRUE ANOMALIES
+            # An anomaly is when the player's average BEATS the demon line
+            # Higher margin = bigger oddsmaker mistake = more value
+            # Hit rate confirms they're still hitting it
+            
+            # Primary: Does L10 avg beat the line? (TRUE anomaly)
+            is_true_anomaly = l10_avg >= demon_line if l10_avg and demon_line else False
+            anomaly_bonus = 50 if is_true_anomaly else 0
+            
+            # Secondary: Hit rate (proving they can clear it)
+            # Tertiary: Margin (how much they beat it by)
+            war_zone_score = anomaly_bonus + l10_hit_rate + margin
             
             pick = {
                 "player_name": player_name,
@@ -1287,16 +1295,23 @@ class PicksGetterService:
             
             filter_stats["passed_hit_rate_80"] += 1
             
-            # Calculate multiplier potential (how close to anchor)
-            gap_from_anchor = (anchor_line - line) if anchor_line else 0
-            multiplier_potential = 1 - (gap_from_anchor / anchor_line) if anchor_line and anchor_line > 0 else 0
+            # ANOMALY SCORE: Prioritize TRUE ANOMALIES (near-guaranteed hits)
+            # 100% hit rate = HUGE bonus (basically free money)
+            # 90%+ hit rate = Strong bonus
+            # Also factor in how much avg beats the line
             
-            # VALUE SCORE: Higher line = higher payout
-            line_value = line / 50  # Normalize
+            anomaly_bonus = 0
+            if l10_pct >= 100:
+                anomaly_bonus = 100  # Perfect hit rate = maximum priority
+            elif l10_pct >= 90:
+                anomaly_bonus = 50   # Near-perfect
             
-            # Combined score: balance safety, payout potential, and line value
+            # Margin: how much does avg beat the line?
+            margin = (l10_avg - line) if l10_avg and line else 0
+            
+            # Combined score: prioritize anomalies
             safety_score = l10_pct / 100
-            combined_score = (safety_score * 0.50) + (line_value * 0.30) + (multiplier_potential * 0.20)
+            combined_score = anomaly_bonus + (safety_score * 50) + margin
             
             stat_type = prop.get("stat_type_extracted") or prop.get("market", "").replace("player_", "").replace("_alternate", "").upper()
             
@@ -1330,19 +1345,18 @@ class PicksGetterService:
                 "season_avg": round(season_avg, 1) if season_avg else None,
                 "l5_avg": round(l5_avg, 1) if l5_avg else None,
                 "l10_avg": round(l10_avg, 1) if l10_avg else None,
-                "h5_rate": round(l5_hit_rate, 1) if l5_hit_rate else None,  # L5 hit rate for frontend
-                "h10_rate": round(l10_pct, 1),  # L10 hit rate for frontend
+                "h5_rate": round(l5_hit_rate, 1) if l5_hit_rate else None,
+                "h10_rate": round(l10_pct, 1),
                 "l5_hit_rate": round(l5_hit_rate, 1) if l5_hit_rate else None,
                 "l10_hit_rate": round(l10_pct, 1),
                 "l10_games": l10_games,
+                "margin": round(margin, 1),  # How much avg beats line
                 "floor_margin": round(season_avg - line, 1) if season_avg else None,
-                "gap_from_anchor": round(gap_from_anchor, 1) if anchor_line else None,
-                "multiplier_potential": round(multiplier_potential, 3),
                 "combined_score": round(combined_score, 4),
+                "is_anomaly": l10_pct >= 90,  # Flag true anomalies
                 "safe_haven_qualified": True,
                 "position": prop.get("position"),
                 "is_injured": player_name.lower() in injured_players,
-                # Game status fields
                 "commence_time": commence_time,
                 "game_status": game_status["status"],
                 "is_locked": game_status["is_locked"],
