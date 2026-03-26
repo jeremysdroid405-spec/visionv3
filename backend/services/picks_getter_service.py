@@ -1909,89 +1909,323 @@ class PicksGetterService:
     
     async def get_parlay_builder(self) -> Dict[str, Any]:
         """
-        Get the Parlay Builder (Gauntlet) parlays from MongoDB.
-        Data is PRE-ENRICHED during sync. Just reads and returns with AI insights.
-        """
-        doc = await self.parlay_builder.find_one({}, {"_id": 0})
+        Build War Zone parlays DYNAMICALLY from curated tier picks.
         
-        if not doc:
+        SOURCE OF TRUTH: get_war_zone() picks (demon anomalies)
+        This ensures parlays use the same picks users see on the board.
+        """
+        # Get War Zone picks as source of truth
+        war_zone_data = await self.get_war_zone()
+        war_zone_picks = war_zone_data.get("picks", [])
+        
+        if not war_zone_picks:
             return {
                 "success": False,
-                "message": "No parlay data. Run /api/v3/sync first.",
+                "message": "No War Zone picks available for parlays.",
                 "parlays": {}
             }
         
-        # Add AI insights to parlay picks
-        parlays = doc.get("parlays", {})
-        for parlay_key, parlay_data in parlays.items():
-            picks = parlay_data.get("picks", [])
-            for pick in picks:
-                insight = await self.daily_insights.find_one(
-                    {"player_name": pick.get('player_name')},
-                    {"_id": 0, "insight_summary": 1, "ai_confidence_rating": 1}
-                )
-                if insight:
-                    pick['insight_summary'] = insight.get('insight_summary', '')
-                    pick['ai_confidence_rating'] = insight.get('ai_confidence_rating', 50)
+        # Sort by probability score (highest first)
+        candidates = sorted(war_zone_picks, key=lambda x: x.get("probability_score", 0), reverse=True)
+        
+        parlays = {}
+        
+        # Build parlays using 2-team rule
+        def get_multi_team_picks(picks_list, count):
+            """Select picks enforcing PrizePicks 2-Team minimum rule."""
+            if len(picks_list) < count:
+                return [], False, 0
             
-            # Ensure all picks have photos (SSOT enrichment)
-            await self._enrich_picks_with_photos(picks)
+            selected = []
+            used_players = set()
+            teams_used = set()
+            
+            # Pick #1: Best available
+            pick_1 = picks_list[0]
+            selected.append(pick_1)
+            used_players.add(pick_1["player_name"])
+            teams_used.add(pick_1.get("team", ""))
+            
+            # Pick #2: MUST be from different team
+            for p in picks_list[1:]:
+                if p["player_name"] not in used_players and p.get("team") != pick_1.get("team"):
+                    selected.append(p)
+                    used_players.add(p["player_name"])
+                    teams_used.add(p.get("team", ""))
+                    break
+            
+            # Fill remaining slots
+            for p in picks_list:
+                if len(selected) >= count:
+                    break
+                if p["player_name"] not in used_players:
+                    selected.append(p)
+                    used_players.add(p["player_name"])
+                    teams_used.add(p.get("team", ""))
+            
+            is_valid = len(teams_used) >= 2
+            return selected[:count], is_valid, len(teams_used)
+        
+        def calculate_combined_probability(picks):
+            """Calculate combined probability from individual hit rates."""
+            if not picks:
+                return 0
+            prob = 1.0
+            for p in picks:
+                hr = p.get("h10_rate") or p.get("l10_hit_rate") or 50
+                prob *= (hr / 100)
+            return round(prob * 100, 2)
+        
+        # Daily Double (2-Pick) - WAR ZONE
+        if len(candidates) >= 2:
+            picks_2, is_valid, team_count = get_multi_team_picks(candidates, 2)
+            if picks_2:
+                combined_prob = calculate_combined_probability(picks_2)
+                parlays["daily_double"] = {
+                    "name": "War Zone Double",
+                    "tier": "daily_double",
+                    "picks": picks_2,
+                    "pick_count": 2,
+                    "combined_probability": combined_prob,
+                    "estimated_payout": 3.0,
+                    "payout_display": "3.0x",
+                    "description": "Top 2 demon anomalies",
+                    "badge": "HIGH VALUE",
+                    "lineup_valid": is_valid,
+                    "team_count": team_count
+                }
+        
+        # Power Play (3-Pick)
+        if len(candidates) >= 3:
+            picks_3, is_valid, team_count = get_multi_team_picks(candidates, 3)
+            if picks_3:
+                combined_prob = calculate_combined_probability(picks_3)
+                parlays["power_play"] = {
+                    "name": "Power Play",
+                    "tier": "power_play",
+                    "picks": picks_3,
+                    "pick_count": 3,
+                    "combined_probability": combined_prob,
+                    "estimated_payout": 5.0,
+                    "payout_display": "5.0x",
+                    "description": "3 demon anomalies",
+                    "badge": "AGGRESSIVE",
+                    "lineup_valid": is_valid,
+                    "team_count": team_count
+                }
+        
+        # Flex Play (4-Pick)
+        if len(candidates) >= 4:
+            picks_4, is_valid, team_count = get_multi_team_picks(candidates, 4)
+            if picks_4:
+                combined_prob = calculate_combined_probability(picks_4)
+                parlays["flex_play"] = {
+                    "name": "Flex Play",
+                    "tier": "flex_play",
+                    "picks": picks_4,
+                    "pick_count": 4,
+                    "combined_probability": combined_prob,
+                    "estimated_payout": 10.0,
+                    "payout_display": "10x",
+                    "description": "4-pick flex (allows 1 miss)",
+                    "badge": "FLEX MODE",
+                    "lineup_valid": is_valid,
+                    "team_count": team_count
+                }
         
         return {
             "success": True,
-            "synced_at": doc.get("synced_at"),
-            "total_demons_analyzed": doc.get("total_demons_analyzed", 0),
-            "games_with_correlation": doc.get("games_with_correlation", 0),
+            "synced_at": datetime.now(timezone.utc).isoformat(),
+            "total_demons_analyzed": len(war_zone_picks),
+            "games_with_correlation": len(set(p.get("game_id") for p in war_zone_picks if p.get("game_id"))),
             "parlays": parlays,
             "algorithm": {
-                "description": "Whale Scoring + Correlation Filter",
-                "whale_score": "(H10 × 0.6) + (H5 × 0.4) × heat_boost",
-                "correlation": "Same-game pairing for 4-6 picks"
+                "description": "Anomaly-Based Selection",
+                "source": "War Zone tier picks (demon anomalies where season_avg >= line)",
+                "sorting": "Probability score (hit_rate + DvP + badges)"
             }
         }
     
     async def get_goblin_recon(self) -> Dict[str, Any]:
         """
-        Get the Goblin Recon (Safe Haven) parlays from MongoDB.
-        Data is PRE-ENRICHED during sync. Just reads and returns with AI insights.
-        """
-        doc = await self.goblin_recon.find_one({}, {"_id": 0})
+        Build Safe Haven parlays DYNAMICALLY from curated tier picks.
         
-        if not doc:
+        SOURCE OF TRUTH: get_goblin_vault() picks (goblin anomalies with 80%+ HR)
+        This ensures parlays use the same picks users see on the board.
+        """
+        # Get Safe Haven (goblin_vault) picks as source of truth
+        safe_haven_data = await self.get_goblin_vault()
+        safe_haven_picks = safe_haven_data.get("picks", [])
+        
+        if not safe_haven_picks:
             return {
                 "success": False,
-                "message": "No Recon data. Run /api/v3/sync first.",
+                "message": "No Safe Haven picks available for parlays.",
                 "parlays": {}
             }
         
-        # Add AI insights to parlay picks
-        parlays = doc.get("parlays", {})
-        for parlay_key, parlay_data in parlays.items():
-            picks = parlay_data.get("picks", [])
-            for pick in picks:
-                insight = await self.daily_insights.find_one(
-                    {"player_name": pick.get('player_name')},
-                    {"_id": 0, "insight_summary": 1, "ai_confidence_rating": 1}
-                )
-                if insight:
-                    pick['insight_summary'] = insight.get('insight_summary', '')
-                    pick['ai_confidence_rating'] = insight.get('ai_confidence_rating', 50)
+        # Sort by probability score (highest first), then by hit rate
+        candidates = sorted(
+            safe_haven_picks, 
+            key=lambda x: (x.get("probability_score", 0), x.get("h10_rate") or x.get("l10_hit_rate") or 0), 
+            reverse=True
+        )
+        
+        parlays = {}
+        
+        # Build parlays using 2-team rule
+        def get_multi_team_picks(picks_list, count):
+            """Select picks enforcing PrizePicks 2-Team minimum rule."""
+            if len(picks_list) < count:
+                return [], False, 0
             
-            # Ensure all picks have photos (SSOT enrichment)
-            await self._enrich_picks_with_photos(picks)
+            selected = []
+            used_players = set()
+            teams_used = set()
+            
+            # Pick #1: Best available
+            pick_1 = picks_list[0]
+            selected.append(pick_1)
+            used_players.add(pick_1["player_name"])
+            teams_used.add(pick_1.get("team", ""))
+            
+            # Pick #2: MUST be from different team
+            for p in picks_list[1:]:
+                if p["player_name"] not in used_players and p.get("team") != pick_1.get("team"):
+                    selected.append(p)
+                    used_players.add(p["player_name"])
+                    teams_used.add(p.get("team", ""))
+                    break
+            
+            # Fill remaining slots (prioritize different teams for diversification)
+            for p in picks_list:
+                if len(selected) >= count:
+                    break
+                if p["player_name"] not in used_players:
+                    selected.append(p)
+                    used_players.add(p["player_name"])
+                    teams_used.add(p.get("team", ""))
+            
+            is_valid = len(teams_used) >= 2
+            return selected[:count], is_valid, len(teams_used)
+        
+        def calculate_combined_probability(picks):
+            """Calculate combined probability from individual hit rates."""
+            if not picks:
+                return 0
+            prob = 1.0
+            for p in picks:
+                hr = p.get("h10_rate") or p.get("l10_hit_rate") or 80
+                prob *= (hr / 100)
+            return round(prob * 100, 2)
+        
+        # Daily Double (2-Pick) - SAFE HAVEN
+        if len(candidates) >= 2:
+            picks_2, is_valid, team_count = get_multi_team_picks(candidates, 2)
+            if picks_2:
+                combined_prob = calculate_combined_probability(picks_2)
+                parlays["daily_double"] = {
+                    "name": "Daily Double",
+                    "tier": "daily_double",
+                    "picks": picks_2,
+                    "pick_count": 2,
+                    "combined_probability": combined_prob,
+                    "estimated_payout": 1.44,
+                    "payout_display": "1.44x",
+                    "description": "Top 2 Safe Haven picks (highest probability)",
+                    "badge": "SAFEST BET",
+                    "lineup_valid": is_valid,
+                    "team_count": team_count
+                }
+        
+        # Green Ladder 3-Pick
+        if len(candidates) >= 3:
+            picks_3, is_valid, team_count = get_multi_team_picks(candidates, 3)
+            if picks_3:
+                combined_prob = calculate_combined_probability(picks_3)
+                parlays["green_ladder_3"] = {
+                    "name": "Green Ladder",
+                    "tier": "green_ladder_3",
+                    "picks": picks_3,
+                    "pick_count": 3,
+                    "combined_probability": combined_prob,
+                    "estimated_payout": 1.73,
+                    "payout_display": "1.73x",
+                    "description": "3 high-consistency picks",
+                    "badge": "CONSISTENT",
+                    "lineup_valid": is_valid,
+                    "team_count": team_count
+                }
+        
+        # Green Ladder 4-Pick
+        if len(candidates) >= 4:
+            picks_4, is_valid, team_count = get_multi_team_picks(candidates, 4)
+            if picks_4:
+                combined_prob = calculate_combined_probability(picks_4)
+                parlays["green_ladder_4"] = {
+                    "name": "Green Fortress",
+                    "tier": "green_ladder_4",
+                    "picks": picks_4,
+                    "pick_count": 4,
+                    "combined_probability": combined_prob,
+                    "estimated_payout": 2.07,
+                    "payout_display": "2.07x",
+                    "description": "4-pick fortress (allows 1 miss on flex)",
+                    "badge": "FORTRESS",
+                    "lineup_valid": is_valid,
+                    "team_count": team_count
+                }
+        
+        # 5-Pick Flex
+        if len(candidates) >= 5:
+            picks_5, is_valid, team_count = get_multi_team_picks(candidates, 5)
+            if picks_5:
+                combined_prob = calculate_combined_probability(picks_5)
+                parlays["flex_5"] = {
+                    "name": "5-Pick Flex",
+                    "tier": "flex_5",
+                    "picks": picks_5,
+                    "pick_count": 5,
+                    "combined_probability": combined_prob,
+                    "estimated_payout": 2.49,
+                    "payout_display": "2.49x",
+                    "description": "5 picks with flex protection",
+                    "badge": "FLEX MODE",
+                    "lineup_valid": is_valid,
+                    "team_count": team_count
+                }
+        
+        # 6-Pick Fortress
+        if len(candidates) >= 6:
+            picks_6, is_valid, team_count = get_multi_team_picks(candidates, 6)
+            if picks_6:
+                combined_prob = calculate_combined_probability(picks_6)
+                parlays["fortress_6"] = {
+                    "name": "6-Pick Fortress",
+                    "tier": "fortress_6",
+                    "picks": picks_6,
+                    "pick_count": 6,
+                    "combined_probability": combined_prob,
+                    "estimated_payout": 2.99,
+                    "payout_display": "2.99x",
+                    "description": "Maximum flex protection (allows 2 misses)",
+                    "badge": "MAXIMUM FLEX",
+                    "lineup_valid": is_valid,
+                    "team_count": team_count
+                }
         
         return {
             "success": True,
-            "synced_at": doc.get("synced_at"),
-            "total_candidates": doc.get("total_candidates", 0),
-            "recon_locks": doc.get("recon_locks", 0),
-            "games_available": doc.get("games_available", 0),
+            "synced_at": datetime.now(timezone.utc).isoformat(),
+            "total_candidates": len(safe_haven_picks),
+            "recon_locks": len([p for p in safe_haven_picks if (p.get("h10_rate") or p.get("l10_hit_rate") or 0) >= 90]),
+            "games_available": len(set(p.get("game_id") for p in safe_haven_picks if p.get("game_id"))),
             "parlays": parlays,
             "algorithm": {
-                "name": "Floor Scoring",
-                "description": "Maximum win probability using high-consistency picks",
-                "min_hit_rate": "88%+",
-                "flex_play": "6-Pick Fortress designed for PrizePicks Flex"
+                "name": "Anomaly Floor Scoring",
+                "description": "Maximum win probability using Safe Haven tier picks",
+                "source": "Safe Haven picks (goblin anomalies with 80%+ hit rate)",
+                "sorting": "Probability score + Hit rate"
             }
         }
     
