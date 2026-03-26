@@ -837,17 +837,21 @@ class PicksGetterService:
             game_status = _get_game_status(commence_time)
             
             # WAR ZONE SCORE: Prioritize TRUE ANOMALIES
-            # An anomaly is when the player's average BEATS the demon line
-            # Higher margin = bigger oddsmaker mistake = more value
-            # Hit rate confirms they're still hitting it
+            # An anomaly is when SEASON AVERAGE beats the demon line
+            # Then confirmed by L10 hit rate (still hitting it)
+            # Higher season margin = bigger oddsmaker mistake = more value
             
-            # Primary: Does L10 avg beat the line? (TRUE anomaly)
-            is_true_anomaly = l10_avg >= demon_line if l10_avg and demon_line else False
+            # Primary: Does SEASON avg beat the line? (TRUE anomaly)
+            season_avg = prop.get("season_avg") or 0
+            is_true_anomaly = season_avg >= demon_line if season_avg and demon_line else False
             anomaly_bonus = 50 if is_true_anomaly else 0
             
+            # Season margin (how much season avg beats line)
+            season_margin = (season_avg - demon_line) if season_avg and demon_line else 0
+            
             # Secondary: Hit rate (proving they can clear it)
-            # Tertiary: Margin (how much they beat it by)
-            war_zone_score = anomaly_bonus + l10_hit_rate + margin
+            # Tertiary: Season margin (how much they beat it by historically)
+            war_zone_score = anomaly_bonus + l10_hit_rate + season_margin
             
             pick = {
                 "player_name": player_name,
@@ -1686,18 +1690,19 @@ class PicksGetterService:
                 
                 # Calculate margin (how much avg beats line)
                 margin = (l10_avg - line) if l10_avg and line else 0
+                season_margin = (season_avg - line) if season_avg and line else 0
                 
                 # ANOMALY DETECTION: Is this an oddsmaker error?
-                # Demon anomaly: L10 avg >= line (player beats demon line)
+                # Demon anomaly: SEASON avg >= line (historical proof) + L10 HR confirms
                 # Goblin anomaly: 90%+ hit rate (near-guaranteed)
-                is_demon_anomaly = is_demon and l10_avg and l10_avg >= line
+                is_demon_anomaly = is_demon and season_avg and season_avg >= line
                 is_goblin_anomaly = is_goblin and l10_hit_rate >= 90
                 is_anomaly = is_demon_anomaly or is_goblin_anomaly
                 
-                # ANOMALY SCORE: Prioritize anomalies
+                # ANOMALY SCORE: Prioritize anomalies based on SEASON margin
                 anomaly_bonus = 0
                 if is_demon_anomaly:
-                    anomaly_bonus = 50 + margin  # Bigger margin = bigger mistake
+                    anomaly_bonus = 50 + season_margin  # Bigger season margin = bigger mistake
                 elif is_goblin_anomaly:
                     anomaly_bonus = 30
                 
