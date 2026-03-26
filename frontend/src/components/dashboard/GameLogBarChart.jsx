@@ -1,13 +1,14 @@
 /**
  * GameLogBarChart - PrizePicks-style bar graph showing game outcomes vs line
  * 
- * Bars diverge from the line:
- * - Green bars go UP from line when value > line (hit)
- * - Red bars go DOWN from line when value < line (miss)
+ * All bars grow upward from bottom:
+ * - GREEN bars bust THROUGH the line (value >= line)
+ * - RED bars stop SHORT of the line with a gap (value < line)
  * 
  * Layout:
  * - Values on TOP of bars
  * - Opponent abbreviations at BOTTOM
+ * - Constant horizontal line
  */
 import React, { memo, useMemo } from 'react';
 
@@ -88,16 +89,9 @@ const GameLogBarChart = memo(({
     
     if (values.length === 0) return null;
     
-    // Find the range for scaling
-    const allValues = values.map(v => v.value);
-    const maxValue = Math.max(...allValues, line);
-    const minValue = Math.min(...allValues, line);
-    
-    // Add padding above and below
-    const range = maxValue - minValue;
-    const padding = Math.max(range * 0.2, 2);
-    const chartMax = maxValue + padding;
-    const chartMin = Math.max(0, minValue - padding);
+    // Find max value for scaling (include line and add padding)
+    const maxValue = Math.max(...values.map(v => v.value), line);
+    const chartMax = maxValue * 1.15; // 15% padding above highest bar
     
     const hits = values.filter(v => v.value >= line).length;
     const hitRate = Math.round((hits / values.length) * 100);
@@ -105,7 +99,6 @@ const GameLogBarChart = memo(({
     return {
       values: values.reverse(), // Oldest first for left-to-right
       chartMax,
-      chartMin,
       line,
       hits,
       total: values.length,
@@ -121,9 +114,9 @@ const GameLogBarChart = memo(({
     );
   }
   
-  const { values, chartMax, chartMin, hits, total, hitRate } = chartData;
-  const chartRange = chartMax - chartMin;
-  const linePosition = ((line - chartMin) / chartRange) * 100;
+  const { values, chartMax, hits, total, hitRate } = chartData;
+  // Line position as percentage from bottom
+  const linePosition = (line / chartMax) * 100;
   
   return (
     <div className={`relative ${className}`}>
@@ -142,55 +135,48 @@ const GameLogBarChart = memo(({
         className="relative bg-zinc-900/50 rounded border border-zinc-800"
         style={{ height: `${height}px` }}
       >
-        {/* Line indicator (horizontal) */}
+        {/* Constant horizontal line */}
         <div 
-          className="absolute left-0 right-0 border-t-2 border-dashed border-amber-500/80 z-10"
+          className="absolute left-0 right-0 border-t-2 border-amber-500 z-10"
           style={{ bottom: `${linePosition}%` }}
         >
-          <span className="absolute -right-1 -top-2.5 text-[9px] text-amber-400 font-mono bg-zinc-900/90 px-1 rounded">
+          <span className="absolute -right-1 -top-2.5 text-[9px] text-amber-400 font-bold bg-zinc-900/90 px-1 rounded">
             {line}
           </span>
         </div>
         
-        {/* Bars container */}
-        <div className="absolute inset-0 flex items-stretch justify-around px-1">
+        {/* Bars - all grow upward from bottom */}
+        <div className="absolute inset-x-1 bottom-0 top-3 flex items-end justify-around">
           {values.map((item, idx) => {
             const isHit = item.value >= line;
-            const valuePosition = ((item.value - chartMin) / chartRange) * 100;
-            
-            // Bar goes from line to value
-            const barBottom = isHit ? linePosition : valuePosition;
-            const barTop = isHit ? valuePosition : linePosition;
-            const barHeight = Math.abs(barTop - barBottom);
+            const barHeight = (item.value / chartMax) * 100;
             
             return (
               <div 
                 key={idx}
-                className="relative flex flex-col items-center justify-end h-full"
-                style={{ width: `${100 / values.length - 1}%` }}
+                className="relative flex flex-col items-center h-full justify-end"
+                style={{ width: `${90 / values.length}%` }}
               >
                 {/* Value label on top of bar */}
                 <div 
-                  className="absolute text-[9px] font-bold z-20"
+                  className={`absolute text-[9px] font-bold z-20 ${isHit ? 'text-emerald-400' : 'text-red-400'}`}
                   style={{ 
-                    bottom: `${Math.max(valuePosition, linePosition) + 2}%`,
+                    bottom: `${barHeight + 2}%`,
                   }}
                 >
-                  <span className={isHit ? 'text-emerald-400' : 'text-red-400'}>
-                    {Math.round(item.value)}
-                  </span>
+                  {Math.round(item.value)}
                 </div>
                 
-                {/* The bar */}
+                {/* The bar - grows from bottom */}
                 <div 
-                  className={`absolute w-[80%] rounded-sm transition-all ${
+                  className={`w-full rounded-t transition-all ${
                     isHit 
-                      ? 'bg-gradient-to-t from-emerald-600 to-emerald-400' 
-                      : 'bg-gradient-to-b from-red-600 to-red-400'
+                      ? 'bg-emerald-500' 
+                      : 'bg-red-500'
                   }`}
                   style={{ 
-                    bottom: `${barBottom}%`,
-                    height: `${Math.max(barHeight, 2)}%`,
+                    height: `${barHeight}%`,
+                    minHeight: '3px'
                   }}
                 />
               </div>
@@ -204,7 +190,7 @@ const GameLogBarChart = memo(({
         {values.map((item, idx) => (
           <span 
             key={idx} 
-            className="text-[8px] text-zinc-500 font-medium"
+            className="text-[8px] text-zinc-400 font-medium"
             style={{ width: `${100 / values.length}%`, textAlign: 'center' }}
           >
             {item.opponent}
