@@ -140,6 +140,7 @@ async def search_players(
                     "team": player.get("team", ""),
                     "position": player.get("position", ""),
                     "headshot_url": player.get("headshot_url"),
+                    "photo_url": f"/api/proxy/nba-headshot/{player.get('nba_id')}" if player.get("nba_id") else None,
                     "nba_id": player.get("nba_id"),
                     "has_stats": bool(player.get("baseline_stats"))
                 })
