@@ -4,9 +4,10 @@ Cached Data Routes
 Endpoints for reading cached/warehouse data with zero API calls.
 """
 from fastapi import APIRouter, HTTPException, Query
-from typing import Optional
+from typing import Optional, Dict, List, Set
 import logging
 import sys
+from datetime import datetime, timezone
 
 # Import DvP service and config for real matchup data
 from services.dvp_service import (
@@ -27,6 +28,12 @@ _demon_goblin_engine = None
 # Vision Summary Service singleton
 _vision_service = None
 
+# PERFORMANCE CACHE: Store board membership to avoid re-computing for each player
+# Format: {player_name_lower: {"stat|line": "Board Name", ...}}
+_board_membership_cache: Dict[str, Dict[str, str]] = {}
+_board_cache_timestamp: Optional[datetime] = None
+_BOARD_CACHE_TTL_SECONDS = 60  # Refresh every 60 seconds
+
 def get_vision_service():
     global _vision_service
     if _vision_service is None:
@@ -45,6 +52,78 @@ def get_engine():
     if _demon_goblin_engine is None:
         raise HTTPException(status_code=500, detail="Engine not initialized")
     return _demon_goblin_engine
+
+
+async def get_board_membership(player_name: str) -> Dict[str, str]:
+    """
+    Fast lookup of which boards a player is on.
+    Uses a module-level cache that refreshes every 60 seconds.
+    
+    Returns:
+        Dict mapping "STAT|LINE" to board name (e.g., {"PTS|14.5": "Safe Haven"})
+    """
+    global _board_membership_cache, _board_cache_timestamp
+    
+    now = datetime.now(timezone.utc)
+    
+    # Check if cache needs refresh (older than TTL or empty)
+    cache_expired = (
+        _board_cache_timestamp is None or 
+        (now - _board_cache_timestamp).total_seconds() > _BOARD_CACHE_TTL_SECONDS
+    )
+    
+    if cache_expired:
+        # Refresh the entire cache in one batch
+        logger.info("[BOARD_CACHE] Refreshing board membership cache...")
+        engine = get_engine()
+        picks_service = engine.picks_getter_service
+        
+        # Fetch all boards in parallel-ish (they're cached internally)
+        safe_haven_data = await picks_service.get_goblin_vault()
+        war_zone_data = await picks_service.get_war_zone()
+        front_lines_data = await picks_service.get_front_lines()
+        
+        # Build new cache
+        new_cache: Dict[str, Dict[str, str]] = {}
+        
+        # War Zone first (highest priority)
+        for pick in war_zone_data.get("picks", []):
+            pname = pick.get("player_name", "").lower()
+            stat_type = pick.get("stat_type", "")
+            line = pick.get("line", 0)
+            key = f"{stat_type}|{line}"
+            if pname not in new_cache:
+                new_cache[pname] = {}
+            new_cache[pname][key] = "War Zone"
+        
+        # Front Lines
+        for pick in front_lines_data.get("picks", []):
+            pname = pick.get("player_name", "").lower()
+            stat_type = pick.get("stat_type", "")
+            line = pick.get("line", 0)
+            key = f"{stat_type}|{line}"
+            if pname not in new_cache:
+                new_cache[pname] = {}
+            if key not in new_cache[pname]:  # Don't override higher priority
+                new_cache[pname][key] = "Front Lines"
+        
+        # Safe Haven
+        for pick in safe_haven_data.get("picks", []):
+            pname = pick.get("player_name", "").lower()
+            stat_type = pick.get("stat_type", "")
+            line = pick.get("line", 0)
+            key = f"{stat_type}|{line}"
+            if pname not in new_cache:
+                new_cache[pname] = {}
+            if key not in new_cache[pname]:  # Don't override higher priority
+                new_cache[pname][key] = "Safe Haven"
+        
+        _board_membership_cache = new_cache
+        _board_cache_timestamp = now
+        logger.info(f"[BOARD_CACHE] Cached {len(new_cache)} players' board memberships")
+    
+    # Fast lookup
+    return _board_membership_cache.get(player_name.lower(), {})
 
 
 @router.get("/v3/static-shell")
@@ -739,44 +818,9 @@ async def get_cached_player(player_name: str):
         # Only ONE prop per player gets the Vision Intel Suite (badges + summary)
         # Cross-reference with actual boards to find the REAL featured prop
         
-        # Get board data to find this player's actual featured pick
-        picks_service = engine.picks_getter_service
-        safe_haven_data = await picks_service.get_goblin_vault()  # Safe Haven = Goblin Vault
-        war_zone_data = await picks_service.get_war_zone()
-        front_lines_data = await picks_service.get_front_lines()
-        
-        # Find ALL of this player's board picks (they may be on multiple boards)
-        # Each board pick should get its own intel suite
-        featured_props = {}  # key: "STAT|LINE", value: board_name
-        
-        # Check War Zone first (highest priority)
-        for board_pick in war_zone_data.get("picks", []):
-            if board_pick.get("player_name", "").lower() == pname.lower():
-                stat_type = board_pick.get("stat_type", "")
-                line = board_pick.get("line", 0)
-                key = f"{stat_type}|{line}"
-                featured_props[key] = "War Zone"
-                logger.info(f"[PLAYER_DETAIL] Found {pname} on War Zone: {stat_type} @ {line}")
-        
-        # Check Front Lines
-        for board_pick in front_lines_data.get("picks", []):
-            if board_pick.get("player_name", "").lower() == pname.lower():
-                stat_type = board_pick.get("stat_type", "")
-                line = board_pick.get("line", 0)
-                key = f"{stat_type}|{line}"
-                if key not in featured_props:  # Don't override higher priority board
-                    featured_props[key] = "Front Lines"
-                    logger.info(f"[PLAYER_DETAIL] Found {pname} on Front Lines: {stat_type} @ {line}")
-        
-        # Check Safe Haven
-        for board_pick in safe_haven_data.get("picks", []):
-            if board_pick.get("player_name", "").lower() == pname.lower():
-                stat_type = board_pick.get("stat_type", "")
-                line = board_pick.get("line", 0)
-                key = f"{stat_type}|{line}"
-                if key not in featured_props:  # Don't override higher priority board
-                    featured_props[key] = "Safe Haven"
-                    logger.info(f"[PLAYER_DETAIL] Found {pname} on Safe Haven: {stat_type} @ {line}")
+        # FAST LOOKUP: Use cached board membership (refreshes every 60s)
+        # This avoids re-computing all 3 boards for EACH player card click!
+        featured_props = await get_board_membership(pname)
         
         logger.info(f"[PLAYER_DETAIL] {pname}: Featured props = {list(featured_props.keys())}")
         

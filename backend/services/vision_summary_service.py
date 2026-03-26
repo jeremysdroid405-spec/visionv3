@@ -3,17 +3,30 @@ Vision AI Summary Service
 =========================
 Uses Google Gemini to generate short, insightful summaries explaining why a pick was made.
 Only for "Vision" picks that have context badges and matchup data.
+Includes aggressive caching to avoid repeated API calls.
 """
 import os
 import asyncio
 import logging
 from typing import Optional, Dict, Any
+from datetime import datetime, timezone
 from dotenv import load_dotenv
 
 load_dotenv()
 logger = logging.getLogger(__name__)
 
 class VisionSummaryService:
+    # Class-level cache for AI summaries
+    # Key: "player_name|stat_type|line" -> summary string
+    _summary_cache: Dict[str, str] = {}
+    _cache_timestamps: Dict[str, datetime] = {}
+    _CACHE_TTL_SECONDS = 3600  # Cache summaries for 1 hour
+    
+    # Circuit breaker: If API fails, skip subsequent calls for a period
+    _circuit_breaker_open = False
+    _circuit_breaker_until: Optional[datetime] = None
+    _CIRCUIT_BREAKER_DURATION = 60  # Skip API calls for 60 seconds after failure
+    
     def __init__(self):
         self.api_key = os.environ.get("GOOGLE_API_KEY")
         if not self.api_key:
@@ -54,6 +67,27 @@ class VisionSummaryService:
         """
         if not self.api_key:
             return None
+        
+        now = datetime.now(timezone.utc)
+        
+        # Circuit breaker: Skip API calls if recently failed
+        if VisionSummaryService._circuit_breaker_open:
+            if VisionSummaryService._circuit_breaker_until and now < VisionSummaryService._circuit_breaker_until:
+                logger.debug(f"[VISION] Circuit breaker OPEN - skipping API call")
+                return None
+            else:
+                # Reset circuit breaker
+                VisionSummaryService._circuit_breaker_open = False
+                VisionSummaryService._circuit_breaker_until = None
+        
+        # Check cache first - use player|stat|line as key
+        cache_key = f"{player_name}|{stat_type}|{line}"
+        
+        if cache_key in VisionSummaryService._summary_cache:
+            cached_time = VisionSummaryService._cache_timestamps.get(cache_key)
+            if cached_time and (now - cached_time).total_seconds() < VisionSummaryService._CACHE_TTL_SECONDS:
+                logger.debug(f"[VISION] Cache HIT for {cache_key}")
+                return VisionSummaryService._summary_cache[cache_key]
         
         try:
             # Extract last name (like on jersey)
@@ -157,12 +191,23 @@ OUTPUT: 3 tight sentences covering EDGE → MATCHUP → CONFLICTS"""
             
             full_prompt = f"{system_msg}\n\n{prompt}"
             
-            # Call Gemini API
-            response = await asyncio.to_thread(
-                client.models.generate_content,
-                model="gemini-3.1-flash-lite-preview",
-                contents=full_prompt
-            )
+            # Call Gemini API with timeout (don't hang forever on slow API)
+            try:
+                response = await asyncio.wait_for(
+                    asyncio.to_thread(
+                        client.models.generate_content,
+                        model="gemini-3.1-flash-lite-preview",
+                        contents=full_prompt
+                    ),
+                    timeout=5.0  # 5 second timeout
+                )
+            except asyncio.TimeoutError:
+                logger.warning(f"[VISION] Timeout for {player_name} - API too slow")
+                # Open circuit breaker on timeout
+                VisionSummaryService._circuit_breaker_open = True
+                VisionSummaryService._circuit_breaker_until = datetime.now(timezone.utc) + \
+                    __import__('datetime').timedelta(seconds=VisionSummaryService._CIRCUIT_BREAKER_DURATION)
+                return None
             
             if response and response.text:
                 # Clean up response - remove markdown formatting
@@ -174,12 +219,23 @@ OUTPUT: 3 tight sentences covering EDGE → MATCHUP → CONFLICTS"""
                 # Clean up any double spaces
                 while "  " in summary:
                     summary = summary.replace("  ", " ")
-                return summary.strip()
+                summary = summary.strip()
+                
+                # Cache the result
+                VisionSummaryService._summary_cache[cache_key] = summary
+                VisionSummaryService._cache_timestamps[cache_key] = now
+                logger.info(f"[VISION] Cached summary for {cache_key}")
+                
+                return summary
             
             return None
             
         except Exception as e:
-            logger.error(f"[VISION] Error generating summary for {player_name}: {e}")
+            # Open circuit breaker on failure
+            VisionSummaryService._circuit_breaker_open = True
+            VisionSummaryService._circuit_breaker_until = datetime.now(timezone.utc) + \
+                __import__('datetime').timedelta(seconds=VisionSummaryService._CIRCUIT_BREAKER_DURATION)
+            logger.warning(f"[VISION] Error for {player_name}, circuit breaker OPEN for {VisionSummaryService._CIRCUIT_BREAKER_DURATION}s: {e}")
             return None
     
     async def enrich_picks_with_vision_summary(self, picks: list) -> list:

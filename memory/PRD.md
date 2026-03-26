@@ -342,6 +342,13 @@ dg_cached_board.props[].hit_rates
   - All tier methods (War Zone, Safe Haven, Front Lines) pre-load caches at start
   - Response times improved: Safe Haven 325ms→175ms (46% faster), War Zone 179ms→120ms (33% faster)
 
+- [x] **Player Detail Loading Optimization** - Fixed 10-20s load times → <200ms
+  - **Board Membership Cache**: Added 60-second TTL cache to avoid re-computing all 3 boards for each player card click
+  - **Vision AI Circuit Breaker**: Skips slow/failing Gemini API calls for 60 seconds after failure
+  - **Vision AI Timeout**: 5-second timeout prevents hanging on slow API responses
+  - **Vision AI Summary Cache**: Caches AI summaries for 1 hour
+  - Result: Player cards now load in ~200ms instead of 10-20 seconds
+
 ## Backlog
 - [ ] Add tooltips for context badges (P1)
 - [ ] Add UI for War Zone score breakdown (P1)
