@@ -108,9 +108,6 @@ const PropRow = memo(({ prop, isHighlighted, highlightRef, onVisionClick, gameLo
   const direction = (prop.direction || 'over').toUpperCase();
   const statType = prop.stat_type || prop.market || '';
   
-  // Toggle for showing L5 vs L10 chart
-  const [showL10, setShowL10] = React.useState(true);
-  
   // Stats from baseline or hit_rates (different API formats)
   // Format 1: prop.l5_avg, prop.l10_avg, prop.season_avg
   // Format 2: prop.hit_rates.l5.avg, prop.hit_rates.l10.avg, prop.hit_rates.season.avg
@@ -229,64 +226,19 @@ const PropRow = memo(({ prop, isHighlighted, highlightRef, onVisionClick, gameLo
         </div>
       </div>
       
-      {/* Center: L5/L10/SZN Averages */}
-      <div className="flex items-center gap-5 text-xs">
-        <div className="text-center min-w-[40px]">
-          <div className={`text-[9px] ${isHighlighted ? 'text-amber-400/70' : 'text-zinc-500'}`}>L5</div>
-          <div className={`font-bold ${isHighlighted ? 'text-amber-300' : l5Avg != null ? 'text-white' : 'text-zinc-600'}`}>
-            {l5Avg != null ? l5Avg : '-'}
-          </div>
-        </div>
-        <div className="text-center min-w-[40px]">
-          <div className={`text-[9px] ${isHighlighted ? 'text-amber-400/70' : 'text-zinc-500'}`}>L10</div>
-          <div className={`font-bold ${isHighlighted ? 'text-amber-300' : l10Avg != null ? 'text-white' : 'text-zinc-600'}`}>
-            {l10Avg != null ? l10Avg : '-'}
-          </div>
-        </div>
-        <div className="text-center min-w-[40px]">
-          <div className={`text-[9px] ${isHighlighted ? 'text-amber-400/70' : 'text-zinc-500'}`}>SZN</div>
-          <div className={`font-bold ${isHighlighted ? 'text-amber-300' : seasonAvg != null ? 'text-white' : 'text-zinc-600'}`}>
-            {seasonAvg != null ? seasonAvg : '-'}
-          </div>
-        </div>
-      </div>
-      
-      {/* Right: Bar Chart OR Hit Rates (if no game logs) */}
+      {/* Right: Full-width Bar Chart with averages */}
       {gameLogs && gameLogs.length > 0 ? (
-        <div className="flex items-center gap-2">
-          {/* Toggle buttons */}
-          <div className="flex flex-col gap-0.5">
-            <button
-              onClick={(e) => { e.stopPropagation(); setShowL10(false); }}
-              className={`px-2 py-0.5 text-[9px] rounded transition-colors ${
-                !showL10 
-                  ? 'bg-amber-500/30 text-amber-300 font-bold' 
-                  : 'bg-zinc-800/50 text-zinc-500 hover:text-zinc-300'
-              }`}
-            >
-              L5
-            </button>
-            <button
-              onClick={(e) => { e.stopPropagation(); setShowL10(true); }}
-              className={`px-2 py-0.5 text-[9px] rounded transition-colors ${
-                showL10 
-                  ? 'bg-amber-500/30 text-amber-300 font-bold' 
-                  : 'bg-zinc-800/50 text-zinc-500 hover:text-zinc-300'
-              }`}
-            >
-              L10
-            </button>
-          </div>
-          {/* Bar Chart */}
-          <div className="w-[180px]">
-            <GameLogBarChart
-              gameLogs={gameLogs}
-              statType={statType}
-              line={line}
-              showGames={showL10 ? 10 : 5}
-              height={70}
-            />
-          </div>
+        <div className="flex-1 min-w-[250px] max-w-[350px]">
+          <GameLogBarChart
+            gameLogs={gameLogs}
+            statType={statType}
+            line={line}
+            showGames={10}
+            height={70}
+            l5Avg={l5Avg}
+            l10Avg={l10Avg}
+            seasonAvg={seasonAvg}
+          />
         </div>
       ) : (
         /* Fallback: Text-based hit rates */
@@ -301,6 +253,12 @@ const PropRow = memo(({ prop, isHighlighted, highlightRef, onVisionClick, gameLo
             <div className={`text-[9px] ${isHighlighted ? 'text-amber-400/70' : 'text-zinc-500'}`}>L5 HR</div>
             <div className={`font-bold ${isHighlighted ? 'text-amber-300' : getHitRateColor(h5Rate)}`}>
               {h5Rate > 0 ? `${h5Rate}%` : '-'}
+            </div>
+          </div>
+          <div className="text-center min-w-[35px]">
+            <div className={`text-[9px] ${isHighlighted ? 'text-amber-400/70' : 'text-zinc-500'}`}>SZN</div>
+            <div className={`font-bold ${isHighlighted ? 'text-amber-300' : 'text-white'}`}>
+              {seasonAvg != null ? seasonAvg : '-'}
             </div>
           </div>
         </div>

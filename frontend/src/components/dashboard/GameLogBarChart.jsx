@@ -67,7 +67,10 @@ const GameLogBarChart = memo(({
   line, 
   showGames = 10,
   height = 80,
-  className = ''
+  className = '',
+  l5Avg = null,
+  l10Avg = null,
+  seasonAvg = null
 }) => {
   const chartData = useMemo(() => {
     if (!gameLogs || !Array.isArray(gameLogs) || !statType || line === undefined) {
@@ -89,8 +92,15 @@ const GameLogBarChart = memo(({
     
     if (values.length === 0) return null;
     
-    // Find max value for scaling (include line and add padding)
-    const maxValue = Math.max(...values.map(v => v.value), line);
+    // Find max value for scaling (include line, averages and add padding)
+    const allRelevantValues = [
+      ...values.map(v => v.value), 
+      line,
+      l5Avg, 
+      l10Avg, 
+      seasonAvg
+    ].filter(v => v != null && v > 0);
+    const maxValue = Math.max(...allRelevantValues);
     const chartMax = maxValue * 1.15; // 15% padding above highest bar
     
     const hits = values.filter(v => v.value >= line).length;
@@ -104,7 +114,7 @@ const GameLogBarChart = memo(({
       total: values.length,
       hitRate
     };
-  }, [gameLogs, statType, line, showGames]);
+  }, [gameLogs, statType, line, showGames, l5Avg, l10Avg, seasonAvg]);
   
   if (!chartData) {
     return (
@@ -118,16 +128,35 @@ const GameLogBarChart = memo(({
   // Line position as percentage from bottom
   const linePosition = (line / chartMax) * 100;
   
+  // Calculate average line positions
+  const seasonAvgPosition = seasonAvg ? (seasonAvg / chartMax) * 100 : null;
+  const l10AvgPosition = l10Avg ? (l10Avg / chartMax) * 100 : null;
+  const l5AvgPosition = l5Avg ? (l5Avg / chartMax) * 100 : null;
+  
   return (
     <div className={`relative ${className}`}>
-      {/* Header */}
+      {/* Header with averages */}
       <div className="flex items-center justify-between mb-1 px-1">
-        <span className="text-[10px] text-zinc-500 uppercase tracking-wide">
-          L{total}
-        </span>
-        <span className={`text-[10px] font-bold ${hitRate >= 70 ? 'text-emerald-400' : hitRate >= 50 ? 'text-amber-400' : 'text-red-400'}`}>
-          {hits}/{total} ({hitRate}%)
-        </span>
+        <div className="flex items-center gap-2">
+          <span className={`text-[10px] font-bold ${hitRate >= 70 ? 'text-emerald-400' : hitRate >= 50 ? 'text-amber-400' : 'text-red-400'}`}>
+            {hits}/{total}
+          </span>
+          {seasonAvg != null && (
+            <span className="text-[9px] text-cyan-400">
+              SZN:<span className="font-bold ml-0.5">{seasonAvg}</span>
+            </span>
+          )}
+          {l10Avg != null && (
+            <span className="text-[9px] text-purple-400">
+              L10:<span className="font-bold ml-0.5">{l10Avg}</span>
+            </span>
+          )}
+          {l5Avg != null && (
+            <span className="text-[9px] text-pink-400">
+              L5:<span className="font-bold ml-0.5">{l5Avg}</span>
+            </span>
+          )}
+        </div>
       </div>
       
       {/* Chart container */}
@@ -135,7 +164,31 @@ const GameLogBarChart = memo(({
         className="relative bg-zinc-900/50 rounded border border-zinc-800"
         style={{ height: `${height}px` }}
       >
-        {/* Constant horizontal line */}
+        {/* Season Average line (cyan, dashed) */}
+        {seasonAvgPosition != null && (
+          <div 
+            className="absolute left-0 right-0 border-t border-dashed border-cyan-500/60 z-5"
+            style={{ bottom: `${seasonAvgPosition}%` }}
+          />
+        )}
+        
+        {/* L10 Average line (purple, dashed) */}
+        {l10AvgPosition != null && (
+          <div 
+            className="absolute left-0 right-0 border-t border-dashed border-purple-500/60 z-5"
+            style={{ bottom: `${l10AvgPosition}%` }}
+          />
+        )}
+        
+        {/* L5 Average line (pink, dashed) */}
+        {l5AvgPosition != null && (
+          <div 
+            className="absolute left-0 right-0 border-t border-dashed border-pink-500/60 z-5"
+            style={{ bottom: `${l5AvgPosition}%` }}
+          />
+        )}
+        
+        {/* Main target line (amber, solid) */}
         <div 
           className="absolute left-0 right-0 border-t-2 border-amber-500 z-10"
           style={{ bottom: `${linePosition}%` }}
