@@ -1699,18 +1699,17 @@ class PicksGetterService:
                 season_margin = (season_avg - line) if season_avg and line else 0
                 
                 # ANOMALY DETECTION: Is this an oddsmaker error?
-                # Demon anomaly: SEASON avg >= line (historical proof) + L10 HR confirms
-                # Goblin anomaly: 90%+ hit rate (near-guaranteed)
-                is_demon_anomaly = is_demon and season_avg and season_avg >= line
-                is_goblin_anomaly = is_goblin and l10_hit_rate >= 90
-                is_anomaly = is_demon_anomaly or is_goblin_anomaly
+                # For Front Lines, we already verified is_season_anomaly (season_avg >= line)
+                # Mark as anomaly since it passed the season average filter
+                is_demon_anomaly = is_demon and is_season_anomaly
+                is_goblin_anomaly = is_goblin and is_season_anomaly
+                is_anomaly = is_season_anomaly  # All Front Lines picks are season anomalies
                 
                 # ANOMALY SCORE: Prioritize anomalies based on SEASON margin
+                # All Front Lines picks are season anomalies, give bonus based on margin
                 anomaly_bonus = 0
-                if is_demon_anomaly:
-                    anomaly_bonus = 50 + season_margin  # Bigger season margin = bigger mistake
-                elif is_goblin_anomaly:
-                    anomaly_bonus = 30
+                if is_anomaly:
+                    anomaly_bonus = 30 + season_margin  # Bigger season margin = bigger oddsmaker mistake
                 
                 # Calculate value score with anomaly bonus
                 if is_demon:

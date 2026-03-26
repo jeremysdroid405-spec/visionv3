@@ -312,9 +312,17 @@ dg_cached_board.props[].hit_rates
 - [x] News ticker animation optimization (P2) - Updated to use translate3d, will-change, backface-visibility for GPU acceleration. Reduced news ticker duration from 120s to 60s for better readability.
 - [x] Deprecated code cleanup (P2) - Added deprecation notice to `_convert_stats_to_rankings()` in dvp_service.py
 
+## Completed (2026-03-26)
+- [x] **Front Lines Anomaly Detection** - Applied season average anomaly logic to Front Lines tier
+  - All Front Lines picks now use same anomaly detection as War Zone/Safe Haven
+  - Filters for middle-ground anomalies (65-79% hit rate)
+  - Mutual exclusivity verified: 0 overlaps between War Zone, Safe Haven, and Front Lines
+  - Fixed anomaly flags (`is_anomaly`, `is_goblin_anomaly`) to correctly mark all season-based anomalies
+
 ## Backlog
 - [ ] Add tooltips for context badges (P1)
 - [ ] Add UI for War Zone score breakdown (P1)
+- [ ] Production deployment sync (P0) - Live server severely out of sync with current codebase
 - [ ] Google/Apple OAuth
 - [ ] Stripe payments
 - [ ] Automate distraction/deep_water badges
