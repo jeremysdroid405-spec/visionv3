@@ -131,7 +131,7 @@ const GameLogBarChart = memo(({
   // Averages are now displayed as text above the chart (no reference lines)
   
   return (
-    <div className={`relative ${className}`} style={{ maxWidth: '500px' }}>
+    <div className={`relative ${className}`}>
       {/* Header with averages as text - bigger, white */}
       <div className="flex items-center gap-4 mb-2 px-1">
         <span className={`text-xs font-bold ${hitRate >= 70 ? 'text-emerald-400' : hitRate >= 50 ? 'text-amber-400' : 'text-red-400'}`}>

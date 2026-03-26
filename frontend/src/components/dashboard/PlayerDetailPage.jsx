@@ -216,9 +216,9 @@ const PropRow = memo(({ prop, isHighlighted, highlightRef, onVisionClick, gameLo
         </div>
       </div>
       
-      {/* Right: Bar Chart with balanced proportions */}
+      {/* Right: Bar Chart - full width */}
       {gameLogs && gameLogs.length > 0 ? (
-        <div className="flex-1 ml-4" style={{ maxWidth: '480px' }}>
+        <div className="flex-1 ml-4">
           <GameLogBarChart
             gameLogs={gameLogs}
             statType={statType}
