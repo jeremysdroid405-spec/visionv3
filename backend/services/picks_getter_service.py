@@ -796,36 +796,32 @@ class PicksGetterService:
                 l5_hit_rate = l5_hit_rate * 100
             
             # =================================================================
-            # WAR ZONE FILTER: Only show HITTABLE demons
+            # WAR ZONE FILTER: Only show TRUE ANOMALIES
             # =================================================================
-            # With PrizePicks classification:
-            # - DEMON = Line ABOVE standard + odds >= +100 (boosted)
-            # 
-            # A "hittable demon" is one where:
-            # 1. Hit rate >= 50% (player clears this demon line half the time)
-            # 2. OR hit rate >= 40% if line is close to their L10 average
+            # A TRUE ANOMALY is an oddsmaker mistake:
+            # 1. SEASON average >= demon line (historically beats it)
+            # 2. L10 hit rate >= 50% (still hitting it recently)
             #
-            # We want demons that the player CAN hit, not impossible lines.
+            # This finds lines where the player SHOULD clear based on
+            # their season performance, confirmed by recent results.
             
-            # Calculate margin: How much does the player's avg exceed the demon line?
-            margin = (l10_avg - demon_line) if l10_avg else 0
-            margin_pct = (margin / l10_avg * 100) if l10_avg > 0 else 0
+            season_avg = prop.get("season_avg") or 0
             
-            # HITTABLE DEMON CRITERIA:
-            # - Hit rate >= 50% (proven track record against this line)
-            # - OR hit rate >= 40% if L10 avg is close to/above the demon line
-            
+            # ANOMALY CRITERIA: Season avg beats line + confirmed by L10 HR
+            is_season_anomaly = season_avg >= demon_line if season_avg and demon_line else False
             has_good_hit_rate = l10_hit_rate >= 50
-            avg_close_to_line = l10_avg and l10_avg >= (demon_line * 0.9)  # Within 10% of line
-            has_decent_hit_rate_close_line = l10_hit_rate >= 40 and avg_close_to_line
             
-            is_hittable = has_good_hit_rate or has_decent_hit_rate_close_line
+            is_true_anomaly = is_season_anomaly and has_good_hit_rate
             
-            if not is_hittable:
+            if not is_true_anomaly:
                 filter_stats["rejected_avg_below_line"] += 1
                 continue
             
             filter_stats["passed_l10_avg_check"] += 1
+            
+            # Calculate margins
+            margin = (l10_avg - demon_line) if l10_avg else 0
+            season_margin = (season_avg - demon_line) if season_avg else 0
             
             # Calculate boost from anchor
             boost_pct = 0
@@ -865,8 +861,8 @@ class PicksGetterService:
                 "line": demon_line,
                 "anchor_line": anchor_line,
                 "boost_pct": round(boost_pct, 1),
-                "margin": round(margin, 1),  # How much avg exceeds line
-                "margin_pct": round(margin_pct, 1),
+                "margin": round(margin, 1),  # How much L10 avg exceeds line
+                "season_margin": round(season_margin, 1),  # How much season avg exceeds line
                 "odds": prop.get("price"),
                 "direction": prop.get("direction", "over"),
                 "is_demon": True,
@@ -913,28 +909,21 @@ class PicksGetterService:
         
         filter_stats["final_picks"] = len(war_zone_picks)
         
-        TARGET_PICKS = 10
+        # NO LIMIT - Show ALL anomalies on the board
+        # These are oddsmaker mistakes - we want to see them all
         
         # Separate active picks (upcoming games) from locked picks (in progress)
         active_picks = [p for p in war_zone_picks if not p.get("is_locked")]
         locked_picks = [p for p in war_zone_picks if p.get("is_locked")]
         
-        # Fill the board: prioritize active picks, then add locked picks if needed
-        final_picks = []
+        # Show ALL picks - active first, then locked
+        final_picks = active_picks + locked_picks
         
-        # Add active picks first (up to TARGET_PICKS)
-        final_picks.extend(active_picks[:TARGET_PICKS])
+        active_count = len(active_picks)
+        locked_count = len(locked_picks)
         
-        # If we don't have enough active picks, backfill with locked picks
-        if len(final_picks) < TARGET_PICKS:
-            remaining_slots = TARGET_PICKS - len(final_picks)
-            final_picks.extend(locked_picks[:remaining_slots])
-        
-        active_count = sum(1 for p in final_picks if not p.get("is_locked"))
-        locked_count = sum(1 for p in final_picks if p.get("is_locked"))
-        
-        logger.info(f"[WAR_ZONE] Found {len(war_zone_picks)} total picks | Filters: {filter_stats}")
-        logger.info(f"[WAR_ZONE] Game status: {active_count} active, {locked_count} locked | Waiting list: {len(active_picks) - min(len(active_picks), TARGET_PICKS)}")
+        logger.info(f"[WAR_ZONE] Found {len(war_zone_picks)} anomalies | Filters: {filter_stats}")
+        logger.info(f"[WAR_ZONE] Game status: {active_count} active, {locked_count} locked")
         
         # Log top picks
         for i, pick in enumerate(final_picks[:5], 1):
@@ -951,9 +940,9 @@ class PicksGetterService:
             "picks_count": len(final_picks),
             "active_picks": active_count,
             "locked_picks": locked_count,
-            "waiting_list_count": len(active_picks) - min(len(active_picks), TARGET_PICKS),
+            "waiting_list_count": 0,
             "filter_stats": filter_stats,
-            "filters_applied": ["strict_l10_avg_gte_line", "probability_score", "one_per_player", "game_status"]
+            "filters_applied": ["season_avg_gte_line", "l10_hit_rate_50pct", "one_per_player", "game_status"]
         }
     
     def _get_season_avg(self, baseline_stats: Dict, stat_key: str) -> Optional[float]:
@@ -1387,16 +1376,9 @@ class PicksGetterService:
         active_picks.sort(key=lambda x: x.get("probability_score", 0), reverse=True)
         locked_picks.sort(key=lambda x: x.get("probability_score", 0), reverse=True)
         
-        # Fill the board: prioritize active picks, then add locked picks if needed
-        final_picks = []
-        
-        # Add active picks first (up to TARGET_PICKS)
-        final_picks.extend(active_picks[:TARGET_PICKS])
-        
-        # If we don't have enough active picks, backfill with locked picks
-        if len(final_picks) < TARGET_PICKS:
-            remaining_slots = TARGET_PICKS - len(final_picks)
-            final_picks.extend(locked_picks[:remaining_slots])
+        # NO LIMIT - Show ALL goblin anomalies on the board
+        # Show all picks - active first, then locked
+        final_picks = active_picks + locked_picks
         
         # Enrich with photos from master hub (SSOT for photos)
         await self._enrich_picks_with_photos(final_picks)
@@ -1404,8 +1386,8 @@ class PicksGetterService:
         unique_players = len(set(p["player_name"] for p in final_picks))
         demons_in_final = sum(1 for p in final_picks if p.get("is_demon"))
         goblins_in_final = sum(1 for p in final_picks if p.get("is_goblin"))
-        active_count = sum(1 for p in final_picks if not p.get("is_locked"))
-        locked_count = sum(1 for p in final_picks if p.get("is_locked"))
+        active_count = len(active_picks)
+        locked_count = len(locked_picks)
         
         logger.info(f"[SAFE_HAVEN v5] Generated {len(final_picks)} picks ({demons_in_final} demons, {goblins_in_final} goblins)")
         logger.info(f"[SAFE_HAVEN v5] Game status: {active_count} active, {locked_count} locked")
@@ -1424,7 +1406,7 @@ class PicksGetterService:
             "unique_players": unique_players,
             "active_picks": active_count,
             "locked_picks": locked_count,
-            "waiting_list_count": len(active_picks) - min(len(active_picks), TARGET_PICKS),
+            "waiting_list_count": 0,
             "filter_stats": filter_stats,
             "filters_applied": ["l10_hit_rate_80pct", "probability_score", "one_per_player", "demons_and_goblins", "game_status"]
         }
