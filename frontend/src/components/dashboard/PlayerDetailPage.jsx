@@ -340,7 +340,7 @@ export const PlayerDetailPage = ({ playerName, playerData = null, onBack, highli
           if (data.success && data.player) {
             setPlayer(data.player);
           } else {
-            setError('Player not found');
+            setError('No available Bets today');
           }
         } catch (e) {
           console.error('[PlayerDetailPage] Parse error:', e);
@@ -618,7 +618,7 @@ export const PlayerDetailPage = ({ playerName, playerData = null, onBack, highli
             ) : (
               <div className="text-center py-12 text-zinc-500">
                 <Target className="w-12 h-12 mx-auto mb-3 opacity-30" />
-                <p className="text-lg">No props available</p>
+                <p className="text-lg">No available Bets today</p>
                 <p className="text-sm mt-1">Check back closer to game time</p>
               </div>
             )}
