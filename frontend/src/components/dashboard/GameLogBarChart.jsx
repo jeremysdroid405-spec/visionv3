@@ -3,8 +3,19 @@
  * 
  * Displays last 5 or last 10 games as bars with the line as a reference
  * Green bars = hit (over line), Red bars = miss (under line)
+ * Shows opponent abbreviation and stat value below each bar
  */
 import React, { memo, useMemo } from 'react';
+
+// BDL Team ID to Abbreviation mapping
+const TEAM_ID_TO_ABBR = {
+  1: 'ATL', 2: 'BOS', 3: 'BKN', 4: 'CHA', 5: 'CHI',
+  6: 'CLE', 7: 'DAL', 8: 'DEN', 9: 'DET', 10: 'GSW',
+  11: 'HOU', 12: 'IND', 13: 'LAC', 14: 'LAL', 15: 'MEM',
+  16: 'MIA', 17: 'MIL', 18: 'MIN', 19: 'NOP', 20: 'NYK',
+  21: 'OKC', 22: 'ORL', 23: 'PHI', 24: 'PHX', 25: 'POR',
+  26: 'SAC', 27: 'SAS', 28: 'TOR', 29: 'UTA', 30: 'WAS'
+};
 
 // Map stat types to game log fields
 const STAT_FIELD_MAP = {
@@ -65,13 +76,18 @@ const GameLogBarChart = memo(({
     // Take the most recent games (already sorted by date desc)
     const recentGames = gameLogs.slice(0, showGames);
     
-    // Extract stat values
-    const values = recentGames.map(game => ({
-      value: getStatValue(game, statType),
-      date: game.date,
-      opponent: game.opponent || game.opponent_team_id,
-      isHome: game.home_game
-    })).filter(v => v.value !== null);
+    // Extract stat values with opponent info
+    const values = recentGames.map(game => {
+      const oppId = game.opponent_team_id;
+      const oppAbbr = TEAM_ID_TO_ABBR[oppId] || game.opponent || '???';
+      
+      return {
+        value: getStatValue(game, statType),
+        date: game.date,
+        opponent: oppAbbr,
+        isHome: game.home_game
+      };
+    }).filter(v => v.value !== null);
     
     if (values.length === 0) return null;
     
@@ -169,13 +185,25 @@ const GameLogBarChart = memo(({
           })}
         </div>
         
-        {/* Game numbers at bottom */}
+        {/* Opponent & Value labels at bottom */}
         <div className="absolute bottom-0 left-0 right-0 flex justify-around px-1 transform translate-y-full pt-0.5">
-          {values.map((_, idx) => (
-            <span key={idx} className="text-[8px] text-zinc-600" style={{ width: `${barWidth}%`, textAlign: 'center' }}>
-              {values.length - idx}
-            </span>
-          ))}
+          {values.map((item, idx) => {
+            const isHit = item.value >= line;
+            return (
+              <div 
+                key={idx} 
+                className="flex flex-col items-center" 
+                style={{ width: `${barWidth}%` }}
+              >
+                <span className={`text-[8px] font-bold ${isHit ? 'text-emerald-400' : 'text-red-400'}`}>
+                  {Math.round(item.value)}
+                </span>
+                <span className="text-[7px] text-zinc-500">
+                  {item.isHome ? 'vs' : '@'}{item.opponent}
+                </span>
+              </div>
+            );
+          })}
         </div>
       </div>
     </div>
