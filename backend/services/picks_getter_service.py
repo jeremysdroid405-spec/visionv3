@@ -900,12 +900,20 @@ class PicksGetterService:
         
         filter_stats["total_players"] = len(unique_players)
         
-        # Convert to list and sort by WAR ZONE SCORE (highest margin first)
+        # Convert to list and sort by: HIT RATE (highest), then SEASON MARGIN (biggest anomaly)
+        # This ensures the best oddsmaker mistakes appear first
         war_zone_picks = list(player_best_picks.values())
         # Remove internal scoring field
         for pick in war_zone_picks:
             pick.pop("_combined_score", None)
-        war_zone_picks.sort(key=lambda x: x.get("war_zone_score", 0), reverse=True)
+        war_zone_picks.sort(
+            key=lambda x: (
+                x.get("l10_hit_rate", 0),  # Primary: Hit rate
+                x.get("season_margin", 0),  # Secondary: Season margin (bigger = better anomaly)
+                x.get("war_zone_score", 0)  # Tertiary: War zone score
+            ), 
+            reverse=True
+        )
         
         filter_stats["final_picks"] = len(war_zone_picks)
         
@@ -1372,9 +1380,24 @@ class PicksGetterService:
         active_picks = [p for p in all_player_best_picks if not p.get("is_locked")]
         locked_picks = [p for p in all_player_best_picks if p.get("is_locked")]
         
-        # Sort both lists by HIT RATE first (highest first), then PROBABILITY SCORE
-        active_picks.sort(key=lambda x: (x.get("l10_hit_rate", 0), x.get("probability_score", 0)), reverse=True)
-        locked_picks.sort(key=lambda x: (x.get("l10_hit_rate", 0), x.get("probability_score", 0)), reverse=True)
+        # Sort both lists by: HIT RATE (highest), then SEASON MARGIN (biggest anomaly), then PROBABILITY SCORE
+        # This ensures picks with same HR are ranked by how much season avg beats the line
+        active_picks.sort(
+            key=lambda x: (
+                x.get("l10_hit_rate", 0),  # Primary: Hit rate
+                (x.get("season_avg") or 0) - (x.get("line") or 0),  # Secondary: Season margin
+                x.get("probability_score", 0)  # Tertiary: Probability score
+            ), 
+            reverse=True
+        )
+        locked_picks.sort(
+            key=lambda x: (
+                x.get("l10_hit_rate", 0),
+                (x.get("season_avg") or 0) - (x.get("line") or 0),
+                x.get("probability_score", 0)
+            ), 
+            reverse=True
+        )
         
         # NO LIMIT - Show ALL goblin anomalies on the board
         # Show all picks - active first, then locked
@@ -1786,8 +1809,16 @@ class PicksGetterService:
                 prob_score = pick.get('probability_score', 0)
                 logger.info(f"[FRONT_LINES] ✓ {player_name} {stat_type} @ {line} | {pick_type} | L10: {l10_hit_rate:.0f}% | Prob: {prob_score:.1f}%{status_tag}")
         
-        # Sort by PROBABILITY SCORE (hit rate + DvP + badges + line value)
-        front_line_picks.sort(key=lambda x: x.get("probability_score", 0), reverse=True)
+        # Sort by: HIT RATE (highest first), then SEASON MARGIN (biggest anomaly first), then PROBABILITY SCORE
+        # This ensures picks with same HR are ranked by how much the season avg beats the line
+        front_line_picks.sort(
+            key=lambda x: (
+                x.get("l10_hit_rate") or x.get("h10_rate") or 0,  # Primary: Hit rate
+                (x.get("season_avg") or 0) - (x.get("line") or 0),  # Secondary: Season margin (bigger = better anomaly)
+                x.get("probability_score", 0)  # Tertiary: Probability score
+            ), 
+            reverse=True
+        )
         
         # Limit to 1 pick per player (take the highest probability score prop)
         seen_players = set()
