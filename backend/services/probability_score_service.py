@@ -270,16 +270,62 @@ def _get_dvp_label(rank: Optional[int]) -> str:
 class ProbabilityScoreService:
     """
     Service class for calculating probability scores with database access.
+    Uses in-memory caching to avoid repeated DB queries.
     """
+    
+    # Class-level caches - shared across all instances
+    _dvp_cache = {}  # team_stat -> rank
+    _badges_cache = {}  # player_name -> badges
+    _dvp_cache_loaded = False
+    _badges_cache_loaded = False
     
     def __init__(self, db):
         self.db = db
         self.master_hub = db.nba_master_hub_2026
         self.dvp_rankings = db.dvp_rankings
     
+    async def _preload_dvp_cache(self):
+        """Pre-load all DvP rankings into memory."""
+        if ProbabilityScoreService._dvp_cache_loaded:
+            return
+        
+        cursor = self.dvp_rankings.find({}, {"_id": 0})
+        docs = await cursor.to_list(50)
+        
+        for doc in docs:
+            team = doc.get("team", "").upper()
+            rankings = doc.get("rankings", {})
+            for stat, rank in rankings.items():
+                cache_key = f"{team}_{stat}"
+                ProbabilityScoreService._dvp_cache[cache_key] = rank
+        
+        ProbabilityScoreService._dvp_cache_loaded = True
+        logger.info(f"[PROB_CACHE] Loaded {len(ProbabilityScoreService._dvp_cache)} DvP rankings")
+    
+    async def _preload_badges_cache(self):
+        """Pre-load all player badges into memory."""
+        if ProbabilityScoreService._badges_cache_loaded:
+            return
+        
+        cursor = self.master_hub.find(
+            {"context_badges": {"$exists": True}},
+            {"_id": 0, "display_name": 1, "context_badges": 1}
+        )
+        players = await cursor.to_list(6000)
+        
+        for player in players:
+            name = player.get("display_name", "").lower().strip()
+            badges = player.get("context_badges", [])
+            if name and badges:
+                ProbabilityScoreService._badges_cache[name] = badges
+        
+        ProbabilityScoreService._badges_cache_loaded = True
+        logger.info(f"[PROB_CACHE] Loaded {len(ProbabilityScoreService._badges_cache)} player badges")
+    
     async def get_dvp_rank(self, opponent: str, stat_type: str) -> Optional[int]:
         """
         Get DvP rank for opponent team and stat type.
+        Uses in-memory cache for instant lookups.
         
         Args:
             opponent: Team abbreviation (e.g., "LAL")
@@ -291,19 +337,19 @@ class ProbabilityScoreService:
         if not opponent or not stat_type:
             return None
         
+        # Ensure cache is loaded
+        await self._preload_dvp_cache()
+        
         # Normalize stat type
         stat_key = stat_type.upper().replace("PLAYER_", "").replace("_ALTERNATE", "")
         
-        # Try to get from cached DvP data
-        dvp_doc = await self.dvp_rankings.find_one(
-            {"team": opponent.upper()},
-            {"_id": 0, f"rankings.{stat_key}": 1}
-        )
+        # Fast lookup from cache
+        cache_key = f"{opponent.upper()}_{stat_key}"
+        cached_rank = ProbabilityScoreService._dvp_cache.get(cache_key)
+        if cached_rank is not None:
+            return cached_rank
         
-        if dvp_doc and "rankings" in dvp_doc:
-            return dvp_doc["rankings"].get(stat_key)
-        
-        # Fall back to hardcoded data
+        # Fall back to hardcoded data (no DB query)
         from services.dvp_service import calculate_dvp_modifier
         modifier = calculate_dvp_modifier(opponent, stat_type)
         # Convert modifier (0-1) back to approximate rank
@@ -312,7 +358,8 @@ class ProbabilityScoreService:
     
     async def get_player_badges(self, player_name: str) -> List[Dict[str, Any]]:
         """
-        Get active badges for a player from master hub.
+        Get active badges for a player.
+        Uses in-memory cache for instant lookups.
         
         Args:
             player_name: Player's display name
@@ -320,24 +367,20 @@ class ProbabilityScoreService:
         Returns:
             List of badge dictionaries
         """
-        player = await self.master_hub.find_one(
-            {"display_name": {"$regex": f"^{player_name}$", "$options": "i"}},
-            {"_id": 0, "context_badges": 1, "active_flags": 1}
-        )
-        
-        if not player:
+        if not player_name:
             return []
         
-        # Return stored badges or resolve from flags
-        badges = player.get("context_badges", [])
-        if badges:
-            return badges
+        # Ensure cache is loaded
+        await self._preload_badges_cache()
         
-        # If no pre-computed badges, resolve from flags
-        from services.badge_resolver import BadgeResolver
-        resolver = BadgeResolver(self.db)
-        flags = player.get("active_flags", [])
-        return await resolver.resolve_badges(flags) if flags else []
+        # Fast lookup from cache
+        name_key = player_name.lower().strip()
+        cached_badges = ProbabilityScoreService._badges_cache.get(name_key)
+        if cached_badges is not None:
+            return cached_badges
+        
+        # Return empty list if not in cache (no DB query)
+        return []
     
     async def enrich_pick_with_probability(
         self,
@@ -414,3 +457,62 @@ class ProbabilityScoreService:
         enriched.sort(key=lambda x: x.get("probability_score", 0), reverse=True)
         
         return enriched
+    
+    async def batch_enrich_picks(self, picks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """
+        Batch enrich picks with probability scores.
+        Pre-loads caches before processing for maximum speed.
+        
+        Args:
+            picks: List of pick dictionaries
+        
+        Returns:
+            List with probability scores added
+        """
+        if not picks:
+            return picks
+        
+        # Pre-load caches once (instant if already loaded)
+        await self._preload_dvp_cache()
+        await self._preload_badges_cache()
+        
+        # Now enrich each pick (all cache lookups are instant)
+        for pick in picks:
+            player_name = pick.get("player_name")
+            stat_type = pick.get("stat_type")
+            opponent = pick.get("opponent")
+            line = pick.get("line")
+            direction = pick.get("direction", "over")
+            
+            # Get hit rates from pick
+            hit_rate_l10 = pick.get("h10_rate") or pick.get("l10_hit_rate")
+            hit_rate_l5 = pick.get("h5_rate") or pick.get("l5_hit_rate")
+            l5_avg = pick.get("l5_avg")
+            l10_avg = pick.get("l10_avg")
+            season_avg = pick.get("season_avg")
+            
+            # Fast cache lookups (no DB queries)
+            dvp_rank = await self.get_dvp_rank(opponent, stat_type)
+            badges = await self.get_player_badges(player_name)
+            
+            # Calculate probability score
+            result = calculate_probability_score(
+                hit_rate_l10=hit_rate_l10,
+                hit_rate_l5=hit_rate_l5,
+                dvp_rank=dvp_rank,
+                badges=badges,
+                line=line,
+                l5_avg=l5_avg,
+                l10_avg=l10_avg,
+                season_avg=season_avg,
+                direction=direction
+            )
+            
+            # Add to pick
+            pick["probability_score"] = result["probability_score"]
+            pick["prob_breakdown"] = result["breakdown"]
+            pick["dvp_rank"] = dvp_rank
+            pick["dvp_label"] = _get_dvp_label(dvp_rank)
+            pick["active_badges"] = [b.get("badge_key") for b in badges]
+        
+        return picks

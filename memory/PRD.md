@@ -336,6 +336,12 @@ dg_cached_board.props[].hit_rates
   - Cache-Control headers set to 30 days
   - Photos now loading correctly in all sections
 
+- [x] **Probability Score Caching** - Eliminated N+1 query problem
+  - Added `_dvp_cache` and `_badges_cache` class-level dicts in `ProbabilityScoreService`
+  - Pre-loads DvP rankings and player badges on first request
+  - All tier methods (War Zone, Safe Haven, Front Lines) pre-load caches at start
+  - Response times improved: Safe Haven 325ms→175ms (46% faster), War Zone 179ms→120ms (33% faster)
+
 ## Backlog
 - [ ] Add tooltips for context badges (P1)
 - [ ] Add UI for War Zone score breakdown (P1)

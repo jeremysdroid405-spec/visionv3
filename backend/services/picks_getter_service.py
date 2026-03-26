@@ -764,6 +764,10 @@ class PicksGetterService:
         """
         prob_service = ProbabilityScoreService(self.db)
         
+        # Pre-load probability caches ONCE (subsequent calls are instant)
+        await prob_service._preload_dvp_cache()
+        await prob_service._preload_badges_cache()
+        
         # Get current time for filtering upcoming games
         now = datetime.now(timezone.utc)
         now_iso = now.isoformat().replace('+00:00', 'Z')
@@ -1242,6 +1246,10 @@ class PicksGetterService:
         """
         prob_service = ProbabilityScoreService(self.db)
         
+        # Pre-load probability caches ONCE (subsequent calls are instant)
+        await prob_service._preload_dvp_cache()
+        await prob_service._preload_badges_cache()
+        
         MIN_HIT_RATE = 80  # Safe Haven = 80%+ hit rate
         TARGET_PICKS = 10
         
@@ -1626,6 +1634,10 @@ class PicksGetterService:
         5. Sort by PROBABILITY SCORE: hit_rate + DvP + badges + line_value
         """
         prob_service = ProbabilityScoreService(self.db)
+        
+        # Pre-load probability caches ONCE (subsequent calls are instant)
+        await prob_service._preload_dvp_cache()
+        await prob_service._preload_badges_cache()
         
         # Get current time for filtering upcoming games
         now = datetime.now(timezone.utc)
