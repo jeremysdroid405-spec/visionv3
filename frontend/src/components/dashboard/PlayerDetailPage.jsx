@@ -161,7 +161,7 @@ const PropRow = memo(({ prop, isHighlighted, highlightRef, onVisionClick, gameLo
     <div 
       ref={isHighlighted ? highlightRef : null}
       onClick={handleClick}
-      className={`flex items-center gap-4 py-3 px-4 rounded-lg transition-all ${
+      className={`flex items-center gap-4 py-4 px-4 rounded-lg transition-all ${
         isHighlighted
           ? 'bg-gradient-to-r from-amber-950/50 via-yellow-900/30 to-amber-950/50 border-2 border-amber-400 ring-2 ring-amber-400/50 shadow-[0_0_20px_rgba(251,191,36,0.3)] cursor-pointer hover:shadow-[0_0_30px_rgba(251,191,36,0.5)]' 
           : isVisionProp
@@ -224,7 +224,7 @@ const PropRow = memo(({ prop, isHighlighted, highlightRef, onVisionClick, gameLo
             statType={statType}
             line={line}
             showGames={10}
-            height={90}
+            height={110}
             l5Avg={l5Avg}
             l10Avg={l10Avg}
             seasonAvg={seasonAvg}
