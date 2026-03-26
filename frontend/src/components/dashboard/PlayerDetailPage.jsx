@@ -278,13 +278,13 @@ const PropRow = memo(({ prop, isHighlighted, highlightRef, onVisionClick, gameLo
             </button>
           </div>
           {/* Bar Chart */}
-          <div className="w-[160px]">
+          <div className="w-[180px]">
             <GameLogBarChart
               gameLogs={gameLogs}
               statType={statType}
               line={line}
               showGames={showL10 ? 10 : 5}
-              height={55}
+              height={70}
             />
           </div>
         </div>

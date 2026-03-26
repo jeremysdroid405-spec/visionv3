@@ -1,9 +1,13 @@
 /**
  * GameLogBarChart - PrizePicks-style bar graph showing game outcomes vs line
  * 
- * Displays last 5 or last 10 games as bars with the line as a reference
- * Green bars = hit (over line), Red bars = miss (under line)
- * Shows opponent abbreviation and stat value below each bar
+ * Bars diverge from the line:
+ * - Green bars go UP from line when value > line (hit)
+ * - Red bars go DOWN from line when value < line (miss)
+ * 
+ * Layout:
+ * - Values on TOP of bars
+ * - Opponent abbreviations at BOTTOM
  */
 import React, { memo, useMemo } from 'react';
 
@@ -27,7 +31,7 @@ const STAT_FIELD_MAP = {
   'FG3M': 'fg3m',
   '3PM': 'fg3m',
   'TO': 'turnover',
-  'PRA': ['pts', 'reb', 'ast'],  // Combined stats
+  'PRA': ['pts', 'reb', 'ast'],
   'PR': ['pts', 'reb'],
   'PA': ['pts', 'ast'],
   'RA': ['reb', 'ast'],
@@ -38,15 +42,12 @@ const STAT_FIELD_MAP = {
 
 const getStatValue = (game, statType) => {
   const field = STAT_FIELD_MAP[statType?.toUpperCase()];
-  
   if (!field) return null;
   
-  // Handle combined stats (PRA, PR, etc.)
   if (Array.isArray(field)) {
     return field.reduce((sum, f) => sum + (parseFloat(game[f]) || 0), 0);
   }
   
-  // Handle minutes (can be string like "24:30")
   if (field === 'min') {
     const min = game[field];
     if (typeof min === 'string' && min.includes(':')) {
@@ -63,27 +64,23 @@ const GameLogBarChart = memo(({
   gameLogs = [], 
   statType, 
   line, 
-  showGames = 10,  // 5 or 10
+  showGames = 10,
   height = 80,
   className = ''
 }) => {
-  // Get the relevant games and values
   const chartData = useMemo(() => {
     if (!gameLogs || !Array.isArray(gameLogs) || !statType || line === undefined) {
       return null;
     }
     
-    // Take the most recent games (already sorted by date desc)
     const recentGames = gameLogs.slice(0, showGames);
     
-    // Extract stat values with opponent info
     const values = recentGames.map(game => {
       const oppId = game.opponent_team_id;
       const oppAbbr = TEAM_ID_TO_ABBR[oppId] || game.opponent || '???';
       
       return {
         value: getStatValue(game, statType),
-        date: game.date,
         opponent: oppAbbr,
         isHome: game.home_game
       };
@@ -91,18 +88,24 @@ const GameLogBarChart = memo(({
     
     if (values.length === 0) return null;
     
-    // Calculate max for scaling (at least 20% higher than line or max value)
-    const maxValue = Math.max(...values.map(v => v.value), line);
-    const chartMax = Math.max(maxValue * 1.2, line * 1.3);
+    // Find the range for scaling
+    const allValues = values.map(v => v.value);
+    const maxValue = Math.max(...allValues, line);
+    const minValue = Math.min(...allValues, line);
     
-    // Count hits
+    // Add padding above and below
+    const range = maxValue - minValue;
+    const padding = Math.max(range * 0.2, 2);
+    const chartMax = maxValue + padding;
+    const chartMin = Math.max(0, minValue - padding);
+    
     const hits = values.filter(v => v.value >= line).length;
     const hitRate = Math.round((hits / values.length) * 100);
     
     return {
-      values: values.reverse(), // Oldest first for left-to-right display
-      maxValue,
+      values: values.reverse(), // Oldest first for left-to-right
       chartMax,
+      chartMin,
       line,
       hits,
       total: values.length,
@@ -113,21 +116,21 @@ const GameLogBarChart = memo(({
   if (!chartData) {
     return (
       <div className={`text-zinc-500 text-xs text-center py-2 ${className}`}>
-        No game data available
+        No game data
       </div>
     );
   }
   
-  const { values, chartMax, hits, total, hitRate } = chartData;
-  const barWidth = Math.max(12, Math.floor(100 / values.length) - 2);
-  const linePosition = (line / chartMax) * 100;
+  const { values, chartMax, chartMin, hits, total, hitRate } = chartData;
+  const chartRange = chartMax - chartMin;
+  const linePosition = ((line - chartMin) / chartRange) * 100;
   
   return (
     <div className={`relative ${className}`}>
-      {/* Header with hit rate */}
+      {/* Header */}
       <div className="flex items-center justify-between mb-1 px-1">
         <span className="text-[10px] text-zinc-500 uppercase tracking-wide">
-          L{total} Games
+          L{total}
         </span>
         <span className={`text-[10px] font-bold ${hitRate >= 70 ? 'text-emerald-400' : hitRate >= 50 ? 'text-amber-400' : 'text-red-400'}`}>
           {hits}/{total} ({hitRate}%)
@@ -139,72 +142,74 @@ const GameLogBarChart = memo(({
         className="relative bg-zinc-900/50 rounded border border-zinc-800"
         style={{ height: `${height}px` }}
       >
-        {/* Line indicator */}
+        {/* Line indicator (horizontal) */}
         <div 
-          className="absolute left-0 right-0 border-t-2 border-dashed border-amber-500/70 z-10"
+          className="absolute left-0 right-0 border-t-2 border-dashed border-amber-500/80 z-10"
           style={{ bottom: `${linePosition}%` }}
         >
-          <span className="absolute -right-1 -top-3 text-[9px] text-amber-400 font-mono bg-zinc-900 px-1 rounded">
+          <span className="absolute -right-1 -top-2.5 text-[9px] text-amber-400 font-mono bg-zinc-900/90 px-1 rounded">
             {line}
           </span>
         </div>
         
-        {/* Bars */}
-        <div className="absolute inset-0 flex items-end justify-around px-1 pb-1">
+        {/* Bars container */}
+        <div className="absolute inset-0 flex items-stretch justify-around px-1">
           {values.map((item, idx) => {
-            const barHeight = (item.value / chartMax) * 100;
             const isHit = item.value >= line;
+            const valuePosition = ((item.value - chartMin) / chartRange) * 100;
+            
+            // Bar goes from line to value
+            const barBottom = isHit ? linePosition : valuePosition;
+            const barTop = isHit ? valuePosition : linePosition;
+            const barHeight = Math.abs(barTop - barBottom);
             
             return (
               <div 
                 key={idx}
-                className="relative group flex flex-col items-center"
-                style={{ width: `${barWidth}%` }}
+                className="relative flex flex-col items-center justify-end h-full"
+                style={{ width: `${100 / values.length - 1}%` }}
               >
-                {/* Bar */}
+                {/* Value label on top of bar */}
                 <div 
-                  className={`w-full rounded-t transition-all duration-200 ${
+                  className="absolute text-[9px] font-bold z-20"
+                  style={{ 
+                    bottom: `${Math.max(valuePosition, linePosition) + 2}%`,
+                  }}
+                >
+                  <span className={isHit ? 'text-emerald-400' : 'text-red-400'}>
+                    {Math.round(item.value)}
+                  </span>
+                </div>
+                
+                {/* The bar */}
+                <div 
+                  className={`absolute w-[80%] rounded-sm transition-all ${
                     isHit 
                       ? 'bg-gradient-to-t from-emerald-600 to-emerald-400' 
-                      : 'bg-gradient-to-t from-red-600 to-red-400'
-                  } group-hover:opacity-80`}
+                      : 'bg-gradient-to-b from-red-600 to-red-400'
+                  }`}
                   style={{ 
-                    height: `${Math.max(barHeight, 5)}%`,
-                    minHeight: '4px'
+                    bottom: `${barBottom}%`,
+                    height: `${Math.max(barHeight, 2)}%`,
                   }}
                 />
-                
-                {/* Value tooltip on hover */}
-                <div className="absolute bottom-full mb-1 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-20">
-                  <div className="bg-zinc-800 border border-zinc-700 rounded px-1.5 py-0.5 text-[10px] text-white font-mono whitespace-nowrap shadow-lg">
-                    {item.value.toFixed(1)}
-                  </div>
-                </div>
               </div>
             );
           })}
         </div>
-        
-        {/* Opponent & Value labels at bottom */}
-        <div className="absolute bottom-0 left-0 right-0 flex justify-around px-1 transform translate-y-full pt-0.5">
-          {values.map((item, idx) => {
-            const isHit = item.value >= line;
-            return (
-              <div 
-                key={idx} 
-                className="flex flex-col items-center" 
-                style={{ width: `${barWidth}%` }}
-              >
-                <span className={`text-[8px] font-bold ${isHit ? 'text-emerald-400' : 'text-red-400'}`}>
-                  {Math.round(item.value)}
-                </span>
-                <span className="text-[7px] text-zinc-500">
-                  {item.isHome ? 'vs' : '@'}{item.opponent}
-                </span>
-              </div>
-            );
-          })}
-        </div>
+      </div>
+      
+      {/* Opponent abbreviations at bottom */}
+      <div className="flex justify-around px-1 mt-1">
+        {values.map((item, idx) => (
+          <span 
+            key={idx} 
+            className="text-[8px] text-zinc-500 font-medium"
+            style={{ width: `${100 / values.length}%`, textAlign: 'center' }}
+          >
+            {item.opponent}
+          </span>
+        ))}
       </div>
     </div>
   );
