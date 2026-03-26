@@ -154,15 +154,15 @@ const GameLogBarChart = memo(({
         )}
       </div>
       
-      {/* Chart container - fixed aspect ratio */}
+      {/* Chart container - fixed aspect ratio, isolated stacking context */}
       <div 
-        className="relative bg-zinc-900/50 rounded border border-zinc-800 overflow-hidden"
+        className="relative bg-zinc-900/50 rounded border border-zinc-800 overflow-hidden isolate"
         style={{ height: `${height}px` }}
       >
         {/* Main target line (amber, solid) - positioned within the bar area */}
         <div 
-          className="absolute left-0 right-0 border-t-2 border-amber-500 z-10 pointer-events-none"
-          style={{ bottom: `${linePosition}%` }}
+          className="absolute left-0 right-0 border-t-2 border-amber-500 pointer-events-none"
+          style={{ bottom: `${linePosition}%`, zIndex: 2 }}
         >
           <span className="absolute -right-1 -top-2.5 text-[9px] text-amber-400 font-bold bg-zinc-900/90 px-1 rounded">
             {line}
@@ -170,7 +170,7 @@ const GameLogBarChart = memo(({
         </div>
         
         {/* Bars - all grow upward from bottom, fill entire container */}
-        <div className="absolute inset-0 flex items-end justify-around px-1">
+        <div className="absolute inset-0 flex items-end justify-around px-1" style={{ zIndex: 1 }}>
           {values.map((item, idx) => {
             const isHit = item.value >= line;
             // Calculate bar height as percentage - ensure visual accuracy
@@ -191,9 +191,10 @@ const GameLogBarChart = memo(({
               >
                 {/* Value label on top of bar */}
                 <div 
-                  className={`absolute text-[9px] font-bold z-20 ${isHit ? 'text-emerald-400' : 'text-red-400'}`}
+                  className={`absolute text-[9px] font-bold ${isHit ? 'text-emerald-400' : 'text-red-400'}`}
                   style={{ 
                     bottom: `${barHeightPercent + 2}%`,
+                    zIndex: 3
                   }}
                 >
                   {Math.round(item.value)}
