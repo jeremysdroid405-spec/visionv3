@@ -863,6 +863,55 @@ export const PlayerDetailPage = ({ playerName, playerData = null, onBack, highli
                     </div>
                   </div>
                   
+                  {/* Blowout Risk Warning */}
+                  {selectedVisionProp.intel_suite?.blowout_risk?.risk_level && 
+                   selectedVisionProp.intel_suite.blowout_risk.risk_level !== 'NONE' &&
+                   selectedVisionProp.intel_suite.blowout_risk.risk_level !== 'UNKNOWN' && (
+                    <div className={`border rounded-lg p-4 ${
+                      selectedVisionProp.intel_suite.blowout_risk.risk_level === 'HIGH'
+                        ? 'bg-gradient-to-r from-red-950/50 to-zinc-900 border-red-500/50'
+                        : selectedVisionProp.intel_suite.blowout_risk.risk_level === 'MEDIUM'
+                          ? 'bg-gradient-to-r from-orange-950/50 to-zinc-900 border-orange-500/40'
+                          : 'bg-zinc-800/50 border-zinc-700'
+                    }`}>
+                      <h3 className={`text-sm font-bold mb-2 flex items-center gap-2 ${
+                        selectedVisionProp.intel_suite.blowout_risk.risk_level === 'HIGH'
+                          ? 'text-red-400'
+                          : selectedVisionProp.intel_suite.blowout_risk.risk_level === 'MEDIUM'
+                            ? 'text-orange-400'
+                            : 'text-zinc-400'
+                      }`}>
+                        {selectedVisionProp.intel_suite.blowout_risk.risk_level === 'HIGH' ? '⚠️' : '⚡'} BLOWOUT RISK
+                      </h3>
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="text-sm text-white">
+                          {selectedVisionProp.intel_suite.blowout_risk.player_team_record} vs {selectedVisionProp.intel_suite.blowout_risk.opponent_team_record}
+                        </div>
+                        <div className={`px-2 py-1 rounded text-xs font-bold ${
+                          selectedVisionProp.intel_suite.blowout_risk.risk_level === 'HIGH'
+                            ? 'bg-red-500 text-white'
+                            : selectedVisionProp.intel_suite.blowout_risk.risk_level === 'MEDIUM'
+                              ? 'bg-orange-500 text-white'
+                              : 'bg-zinc-600 text-white'
+                        }`}>
+                          {selectedVisionProp.intel_suite.blowout_risk.risk_level} RISK
+                        </div>
+                      </div>
+                      <div className="text-xs text-zinc-400">
+                        {selectedVisionProp.intel_suite.blowout_risk.risk_reason}
+                      </div>
+                      {selectedVisionProp.intel_suite.blowout_risk.warning && (
+                        <div className={`mt-2 text-xs font-medium ${
+                          selectedVisionProp.intel_suite.blowout_risk.risk_level === 'HIGH'
+                            ? 'text-red-400'
+                            : 'text-orange-400'
+                        }`}>
+                          {selectedVisionProp.intel_suite.blowout_risk.warning}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  
                   {/* Vision Insight (Target-Lock Rationale) */}
                   <div className="bg-gradient-to-r from-amber-950/50 to-zinc-900 border border-amber-500/30 rounded-lg p-4">
                     <h3 className="text-sm font-bold text-amber-300 mb-2 flex items-center gap-2">

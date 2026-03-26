@@ -44,7 +44,8 @@ class VisionSummaryService:
         is_demon: bool = False,
         is_goblin: bool = False,
         dvp_rank: int = None,
-        dvp_friction: str = None
+        dvp_friction: str = None,
+        player_team: str = None
     ) -> Optional[str]:
         """
         Generate a 2-3 sentence summary explaining why Vision picked this bet.
@@ -61,6 +62,7 @@ class VisionSummaryService:
             is_goblin: True if this is a goblin (under/safe) pick
             dvp_rank: Opponent's defensive rank for this stat (1=best defense, 30=worst)
             dvp_friction: Friction level (Low/Medium/High/Elite)
+            player_team: Player's team abbreviation (for blowout risk calculation)
             
         Returns:
             A short summary string or None if generation fails
@@ -141,6 +143,18 @@ class VisionSummaryService:
             else:
                 dvp_context = f"Matchup data unavailable for {opponent}"
             
+            # Calculate blowout risk if we have team data
+            blowout_context = "Game competitiveness data unavailable"
+            blowout_warning = None
+            if player_team and opponent:
+                try:
+                    from services.standings_service import StandingsService
+                    blowout_data = await StandingsService.calculate_blowout_risk(player_team, opponent)
+                    blowout_context = StandingsService.format_blowout_context(blowout_data)
+                    blowout_warning = blowout_data.get("warning")
+                except Exception as e:
+                    logger.warning(f"[VISION] Blowout risk calculation failed: {e}")
+            
             # Build prompt
             prompt = f"""You're a sharp sports bettor sharing a quick take with a friend. Keep it real and conversational.
 
@@ -151,6 +165,7 @@ PICK INFO:
 - L10 Hit Rate: {h10_rate}%
 - Opponent: {opponent or 'TBD'}
 - Defense: {dvp_context}
+- Game Context: {blowout_context}
 - Why it's on the board: {pick_reasoning}
 
 Active situational factors:
@@ -162,7 +177,7 @@ Give me 3 quick sentences like you're texting a buddy:
 
 2. THE MATCHUP - How does the opponent factor in? Use the defensive ranking I gave you (1-10 = tough, 21-30 = soft).
 
-3. THE CATCH - Any red flags? Bad recent form, brutal schedule, injury worry? If it's a clean spot, say so.
+3. THE CATCH - Any red flags? {"IMPORTANT: " + blowout_warning + " Factor this into your analysis." if blowout_warning else "Bad recent form, brutal schedule, injury worry? If it's a clean spot, say so."}
 
 Keep it tight. No fluff. Talk like a real person, not a robot. Use {last_name}'s name naturally. Skip any "I think" or "This pick" openers."""
 

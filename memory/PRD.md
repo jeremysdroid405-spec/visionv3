@@ -360,9 +360,25 @@ dg_cached_board.props[].hit_rates
   - Displays last 10 games as vertical bars with opponent abbreviations
   - GREEN bars bust through target line (hits), RED bars stop short with gap (misses)
   - Values displayed on top of each bar, opponent abbreviations at bottom
-  - Averages (SZN, L10, L5) shown as text above chart (not lines inside)
+  - Averages (SZN AVG, L10 AVG, L5 AVG) shown as white text above chart
   - Full-width layout: chart stretches across entire row width
-  - Integrated into PlayerDetailPage.jsx PropRow component
+  - Taller prop boxes (py-4, height=110px) for better visual ratio
+  - Games ordered: oldest on left → newest on right
+
+- [x] **AI Vision Prompt Update** - More human, conversational tone
+  - Updated `/app/backend/services/vision_summary_service.py`
+  - Changed from formal "elite sports betting analyst" to "sharp sports bettor sharing a quick take with a friend"
+  - Natural language structure: THE PLAY, THE MATCHUP, THE CATCH
+  - "Keep it tight. No fluff. Talk like a real person, not a robot."
+
+- [x] **Blowout Risk Warning System** - Protects against reduced minutes
+  - Created `/app/backend/services/standings_service.py`
+  - Fetches team standings from BallDontLie `/standings` endpoint
+  - Calculates win % differential between teams
+  - Risk levels: HIGH (25%+ diff), MEDIUM (18-25%), LOW (10-18%), NONE (<10%)
+  - Warning displayed in Intel Suite modal when blowout risk is HIGH or MEDIUM
+  - AI Vision prompt includes blowout context for analysis
+  - Integrated into `/app/backend/routes/cached_data.py` intel_suite response
 
 ## Backlog
 - [ ] Add tooltips for context badges (P1)

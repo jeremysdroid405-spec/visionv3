@@ -1063,6 +1063,19 @@ async def get_cached_player(player_name: str):
                 }
             }
             
+            # Calculate blowout risk and add to intel_suite
+            try:
+                from services.standings_service import StandingsService
+                blowout_data = await StandingsService.calculate_blowout_risk(team_abbr, opp_abbr)
+                prop["intel_suite"]["blowout_risk"] = blowout_data
+                
+                # Add warning to reasons if blowout risk is HIGH or MEDIUM
+                if blowout_data.get("warning"):
+                    reasons.append(blowout_data["warning"])
+                    prop["intel_suite"]["vision_insight"]["reasons"] = reasons
+            except Exception as e:
+                logger.warning(f"[PLAYER_DETAIL] Blowout risk calculation failed: {e}")
+            
             # Generate AI Vision Summary using Gemini - for ALL featured props with intel_suite
             # Summary is tied to the Intel Suite, not badges
             try:
@@ -1078,7 +1091,8 @@ async def get_cached_player(player_name: str):
                     is_demon=is_demon,
                     is_goblin=is_goblin,
                     dvp_rank=dvp_rank,  # Pass DvP rank (1-30)
-                    dvp_friction=friction_level  # Pass friction level (Low/Medium/High/Elite)
+                    dvp_friction=friction_level,  # Pass friction level (Low/Medium/High/Elite)
+                    player_team=team_abbr  # Pass player's team for blowout risk calculation
                 )
                 if ai_summary:
                     prop["vision_summary"] = ai_summary
