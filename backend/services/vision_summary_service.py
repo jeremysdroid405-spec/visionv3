@@ -25,7 +25,7 @@ class VisionSummaryService:
     # Circuit breaker: If API fails, skip subsequent calls for a period
     _circuit_breaker_open = False
     _circuit_breaker_until: Optional[datetime] = None
-    _CIRCUIT_BREAKER_DURATION = 60  # Skip API calls for 60 seconds after failure
+    _CIRCUIT_BREAKER_DURATION = 30  # Skip API calls for 30 seconds after failure (reduced since fast model)
     
     def __init__(self):
         self.api_key = os.environ.get("GOOGLE_API_KEY")
@@ -191,15 +191,15 @@ OUTPUT: 3 tight sentences covering EDGE → MATCHUP → CONFLICTS"""
             
             full_prompt = f"{system_msg}\n\n{prompt}"
             
-            # Call Gemini API with timeout (don't hang forever on slow API)
+            # Call Gemini API with timeout - using gemini-flash-lite-latest for speed
             try:
                 response = await asyncio.wait_for(
                     asyncio.to_thread(
                         client.models.generate_content,
-                        model="gemini-3.1-flash-lite-preview",
+                        model="gemini-flash-lite-latest",  # Fast lite model for quick responses
                         contents=full_prompt
                     ),
-                    timeout=5.0  # 5 second timeout
+                    timeout=3.0  # 3 second timeout - should complete in <1s
                 )
             except asyncio.TimeoutError:
                 logger.warning(f"[VISION] Timeout for {player_name} - API too slow")

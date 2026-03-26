@@ -344,10 +344,11 @@ dg_cached_board.props[].hit_rates
 
 - [x] **Player Detail Loading Optimization** - Fixed 10-20s load times → <200ms
   - **Board Membership Cache**: Added 60-second TTL cache to avoid re-computing all 3 boards for each player card click
-  - **Vision AI Circuit Breaker**: Skips slow/failing Gemini API calls for 60 seconds after failure
-  - **Vision AI Timeout**: 5-second timeout prevents hanging on slow API responses
+  - **Vision AI Circuit Breaker**: Skips slow/failing Gemini API calls for 30 seconds after failure
+  - **Vision AI Timeout**: 3-second timeout prevents hanging on slow API responses
   - **Vision AI Summary Cache**: Caches AI summaries for 1 hour
-  - Result: Player cards now load in ~200ms instead of 10-20 seconds
+  - **Fixed Model**: Changed from non-existent `gemini-3.1-flash-lite-preview` to `gemini-flash-lite-latest`
+  - Result: Player cards now load in ~200ms, Vision AI summaries generate in ~1-2 seconds
 
 ## Backlog
 - [ ] Add tooltips for context badges (P1)
