@@ -328,6 +328,14 @@ dg_cached_board.props[].hit_rates
     - Bigger margin = bigger oddsmaker mistake = better value
   - Verified: Towns+Cardwell lead Daily Double, White+Brunson lead Quick Strike
 
+- [x] **Photo Caching Optimization** - Aggressive caching for player photos
+  - Added class-level `_photo_cache` dict for instant lookups (no DB queries per pick)
+  - Pre-loads all player photo data on first request via `_load_photo_cache()`
+  - Image proxy now caches up to 5000 images in memory
+  - Returns placeholder on timeout instead of 502 errors
+  - Cache-Control headers set to 30 days
+  - Photos now loading correctly in all sections
+
 ## Backlog
 - [ ] Add tooltips for context badges (P1)
 - [ ] Add UI for War Zone score breakdown (P1)

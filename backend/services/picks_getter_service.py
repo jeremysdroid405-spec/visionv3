@@ -196,6 +196,10 @@ class PicksGetterService:
     NO external API calls. NO secondary internal APIs.
     """
     
+    # CLASS-LEVEL CACHE: Shared across all instances, survives request cycles
+    _photo_cache = {}  # player_name -> {photo_url, team, position, nba_id}
+    _photo_cache_loaded = False
+    
     def __init__(self, db: AsyncIOMotorDatabase):
         self.db = db
         
@@ -220,6 +224,69 @@ class PicksGetterService:
         
         # Cache for injured players
         self._injured_players_cache = None
+    
+    async def _load_photo_cache(self):
+        """
+        Pre-load ALL player photo data into memory for instant lookups.
+        This eliminates individual DB queries for each pick.
+        """
+        if PicksGetterService._photo_cache_loaded:
+            return
+        
+        logger.info("[PHOTO_CACHE] Loading player photo data...")
+        
+        # Load from master hub
+        cursor = self.master_hub.find(
+            {},
+            {"_id": 0, "display_name": 1, "photo_url": 1, "headshot_url": 1, "team": 1, "position": 1, "nba_id": 1}
+        )
+        players = await cursor.to_list(6000)
+        
+        for player in players:
+            name = player.get("display_name")
+            if name:
+                # Normalize name for lookup
+                name_key = name.lower().strip()
+                nba_id = player.get("nba_id")
+                
+                # Prefer proxy URL if we have nba_id, else use stored photo_url
+                photo_url = None
+                if nba_id:
+                    photo_url = f"/api/proxy/nba-headshot/{nba_id}"
+                else:
+                    photo_url = player.get("photo_url") or player.get("headshot_url")
+                
+                PicksGetterService._photo_cache[name_key] = {
+                    "photo_url": photo_url,
+                    "team": player.get("team"),
+                    "position": player.get("position"),
+                    "nba_id": nba_id
+                }
+        
+        # Also load from master roster as backup
+        roster_cursor = self.db.dg_master_roster.find(
+            {},
+            {"_id": 0, "full_name": 1, "team_abbreviation": 1, "nba_id": 1}
+        )
+        roster = await roster_cursor.to_list(6000)
+        
+        for player in roster:
+            name = player.get("full_name")
+            if name:
+                name_key = name.lower().strip()
+                nba_id = player.get("nba_id")
+                
+                # Only add if not already in cache
+                if name_key not in PicksGetterService._photo_cache and nba_id:
+                    PicksGetterService._photo_cache[name_key] = {
+                        "photo_url": f"/api/proxy/nba-headshot/{nba_id}",
+                        "team": player.get("team_abbreviation"),
+                        "position": None,
+                        "nba_id": nba_id
+                    }
+        
+        PicksGetterService._photo_cache_loaded = True
+        logger.info(f"[PHOTO_CACHE] Loaded {len(PicksGetterService._photo_cache)} player photos into memory")
     
     async def _get_injured_players(self) -> set:
         """
@@ -250,67 +317,51 @@ class PicksGetterService:
     
     async def _enrich_picks_with_photos(self, picks: list) -> list:
         """
-        Enrich a list of picks with photos from master hub.
+        Enrich a list of picks with photos using IN-MEMORY CACHE.
         
         This is the SINGLE SOURCE OF TRUTH for photo enrichment.
-        All endpoints returning player data should use this method.
-        
-        Lookup priority:
-        1. nba_id (most reliable - direct match to NBA CDN)
-        2. player_id (BDL ID)
-        3. player_name -> display_name (name matching)
+        Uses pre-loaded cache for instant lookups - NO DB queries.
         
         Args:
             picks: List of pick dicts with 'player_name' field
             
         Returns:
-            Same list with photo_url, team, position, nba_id enriched from master hub
+            Same list with photo_url, team, position, nba_id enriched
         """
         if not picks:
             return picks
         
+        # Ensure cache is loaded
+        await self._load_photo_cache()
+        
         for pick in picks:
-            # Skip if already has photo
-            if pick.get("photo_url"):
+            # Skip if already has a valid photo URL
+            if pick.get("photo_url") and not pick["photo_url"].endswith("None"):
                 continue
             
-            hub_player = None
+            player_name = pick.get("player_name")
+            if not player_name:
+                continue
             
-            # PRIORITY 1: Look up by nba_id (most reliable)
-            nba_id = pick.get("nba_id")
-            if nba_id:
-                hub_player = await self.master_hub.find_one(
-                    {"nba_id": nba_id},
-                    {"_id": 0, "photo_url": 1, "headshot_url": 1, "team": 1, "position": 1, "nba_id": 1}
-                )
+            # Fast lookup from in-memory cache
+            name_key = player_name.lower().strip()
+            cached = PicksGetterService._photo_cache.get(name_key)
             
-            # PRIORITY 2: Look up by player_id
-            if not hub_player:
-                player_id = pick.get("player_id")
-                if player_id:
-                    hub_player = await self.master_hub.find_one(
-                        {"player_id": player_id},
-                        {"_id": 0, "photo_url": 1, "headshot_url": 1, "team": 1, "position": 1, "nba_id": 1}
-                    )
-            
-            # PRIORITY 3: Look up by player_name -> display_name
-            if not hub_player:
-                player_name = pick.get("player_name")
-                if player_name:
-                    hub_player = await self.master_hub.find_one(
-                        {"display_name": player_name},
-                        {"_id": 0, "photo_url": 1, "headshot_url": 1, "team": 1, "position": 1, "nba_id": 1}
-                    )
-            
-            # Enrich pick with hub data
-            if hub_player:
-                pick["photo_url"] = hub_player.get("photo_url") or hub_player.get("headshot_url")
+            if cached:
+                pick["photo_url"] = cached.get("photo_url")
                 if not pick.get("team"):
-                    pick["team"] = hub_player.get("team")
+                    pick["team"] = cached.get("team")
                 if not pick.get("position"):
-                    pick["position"] = hub_player.get("position")
+                    pick["position"] = cached.get("position")
                 if not pick.get("nba_id"):
-                    pick["nba_id"] = hub_player.get("nba_id")
+                    pick["nba_id"] = cached.get("nba_id")
+            else:
+                # Fallback: If we have nba_id on the pick, construct the URL directly
+                nba_id = pick.get("nba_id")
+                if nba_id:
+                    pick["photo_url"] = f"/api/proxy/nba-headshot/{nba_id}"
+        
+        return picks
         
         return picks
     
