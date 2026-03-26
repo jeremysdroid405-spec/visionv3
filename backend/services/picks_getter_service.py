@@ -1660,19 +1660,28 @@ class PicksGetterService:
                     continue
                 filter_stats["passed_hit_rate_65"] += 1
                 
-                # FILTER 2: Exclude Safe Haven tier (>= 80% HR for goblins)
+                # FRONT LINES = MIDDLE GROUND (65-79% HR)
+                # War Zone gets the best demons (season avg >= line + HR >= 50%)
+                # Safe Haven gets the safest goblins (HR >= 80%)
+                # Front Lines gets the middle ground - good but not top tier
+                
+                # Exclude picks that belong in Safe Haven (goblin with 80%+ HR)
                 if is_goblin and l10_hit_rate >= 80:
                     filter_stats["excluded_safe_haven_80"] += 1
                     continue
                 
-                # FILTER 3: Exclude War Zone picks (demon anomalies)
-                # War Zone = demon where season_avg >= line AND HR >= 50%
+                # Exclude picks that belong in War Zone (demon anomaly)
                 is_war_zone_pick = is_demon and season_avg and season_avg >= line and l10_hit_rate >= 50
                 if is_war_zone_pick:
                     filter_stats["excluded_war_zone"] = filter_stats.get("excluded_war_zone", 0) + 1
                     continue
                 
-                # FILTER 4: Can't be the lowest line (not safest floor play)
+                # What's left for Front Lines:
+                # - Demons with HR 65-79% that AREN'T season anomalies (season avg < line)
+                # - Goblins with HR 65-79%
+                # These are the "middle ground" - good picks but not top tier
+                
+                # FILTER: Can't be the lowest line (not safest floor play)
                 if lowest_line and line == lowest_line and len(all_lines_for_stat) > 1:
                     filter_stats["excluded_lowest_line"] += 1
                     continue
