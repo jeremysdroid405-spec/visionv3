@@ -128,66 +128,39 @@ const GameLogBarChart = memo(({
   // Line position as percentage from bottom
   const linePosition = (line / chartMax) * 100;
   
-  // Calculate average line positions
-  const seasonAvgPosition = seasonAvg ? (seasonAvg / chartMax) * 100 : null;
-  const l10AvgPosition = l10Avg ? (l10Avg / chartMax) * 100 : null;
-  const l5AvgPosition = l5Avg ? (l5Avg / chartMax) * 100 : null;
+  // Averages are now displayed as text above the chart (no reference lines)
   
   return (
     <div className={`relative ${className}`}>
-      {/* Header with averages */}
+      {/* Header with averages as text */}
       <div className="flex items-center justify-between mb-1 px-1">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
           <span className={`text-[10px] font-bold ${hitRate >= 70 ? 'text-emerald-400' : hitRate >= 50 ? 'text-amber-400' : 'text-red-400'}`}>
             {hits}/{total}
           </span>
           {seasonAvg != null && (
-            <span className="text-[9px] text-cyan-400">
-              SZN:<span className="font-bold ml-0.5">{seasonAvg}</span>
+            <span className="text-[10px] text-cyan-400 font-medium">
+              SZN: <span className="font-bold">{seasonAvg}</span>
             </span>
           )}
           {l10Avg != null && (
-            <span className="text-[9px] text-purple-400">
-              L10:<span className="font-bold ml-0.5">{l10Avg}</span>
+            <span className="text-[10px] text-purple-400 font-medium">
+              L10: <span className="font-bold">{l10Avg}</span>
             </span>
           )}
           {l5Avg != null && (
-            <span className="text-[9px] text-pink-400">
-              L5:<span className="font-bold ml-0.5">{l5Avg}</span>
+            <span className="text-[10px] text-pink-400 font-medium">
+              L5: <span className="font-bold">{l5Avg}</span>
             </span>
           )}
         </div>
       </div>
       
-      {/* Chart container */}
+      {/* Chart container - no reference lines inside, just the target line */}
       <div 
         className="relative bg-zinc-900/50 rounded border border-zinc-800"
         style={{ height: `${height}px` }}
       >
-        {/* Season Average line (cyan, dashed) */}
-        {seasonAvgPosition != null && (
-          <div 
-            className="absolute left-0 right-0 border-t border-dashed border-cyan-500/60 z-5"
-            style={{ bottom: `${seasonAvgPosition}%` }}
-          />
-        )}
-        
-        {/* L10 Average line (purple, dashed) */}
-        {l10AvgPosition != null && (
-          <div 
-            className="absolute left-0 right-0 border-t border-dashed border-purple-500/60 z-5"
-            style={{ bottom: `${l10AvgPosition}%` }}
-          />
-        )}
-        
-        {/* L5 Average line (pink, dashed) */}
-        {l5AvgPosition != null && (
-          <div 
-            className="absolute left-0 right-0 border-t border-dashed border-pink-500/60 z-5"
-            style={{ bottom: `${l5AvgPosition}%` }}
-          />
-        )}
-        
         {/* Main target line (amber, solid) */}
         <div 
           className="absolute left-0 right-0 border-t-2 border-amber-500 z-10"

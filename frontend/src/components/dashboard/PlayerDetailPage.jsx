@@ -161,7 +161,7 @@ const PropRow = memo(({ prop, isHighlighted, highlightRef, onVisionClick, gameLo
     <div 
       ref={isHighlighted ? highlightRef : null}
       onClick={handleClick}
-      className={`flex items-center justify-between py-3 px-4 rounded-lg transition-all ${
+      className={`flex items-center gap-4 py-3 px-4 rounded-lg transition-all ${
         isHighlighted
           ? 'bg-gradient-to-r from-amber-950/50 via-yellow-900/30 to-amber-950/50 border-2 border-amber-400 ring-2 ring-amber-400/50 shadow-[0_0_20px_rgba(251,191,36,0.3)] cursor-pointer hover:shadow-[0_0_30px_rgba(251,191,36,0.5)]' 
           : isVisionProp
@@ -174,8 +174,8 @@ const PropRow = memo(({ prop, isHighlighted, highlightRef, onVisionClick, gameLo
       }`}
       data-testid={`prop-row-${prop.stat_type}-${line}${isHighlighted ? '-vision' : isVisionProp ? '-clickable' : ''}`}
     >
-      {/* Left: Type indicator + Line */}
-      <div className="flex items-center gap-3">
+      {/* Left: Type indicator + Line - compact fixed width */}
+      <div className="flex items-center gap-3 flex-shrink-0" style={{ minWidth: '140px', maxWidth: '180px' }}>
         <div className="flex items-center gap-1.5">
           {isHighlighted ? (
             <Crosshair className="w-5 h-5 text-amber-400 animate-pulse" />
@@ -196,14 +196,14 @@ const PropRow = memo(({ prop, isHighlighted, highlightRef, onVisionClick, gameLo
               {direction} {line}
             </span>
             {isHighlighted && (
-              <span className="px-2 py-0.5 text-[9px] font-black bg-gradient-to-r from-amber-500 to-yellow-400 text-black rounded-full flex items-center gap-1 animate-pulse">
-                <Crosshair className="w-3 h-3" />
-                VISION PICK
+              <span className="px-1.5 py-0.5 text-[8px] font-black bg-gradient-to-r from-amber-500 to-yellow-400 text-black rounded-full flex items-center gap-0.5 animate-pulse">
+                <Crosshair className="w-2.5 h-2.5" />
+                VISION
               </span>
             )}
             {!isHighlighted && isVisionProp && (
-              <span className="px-2 py-0.5 text-[9px] font-semibold bg-amber-500/20 text-amber-400 rounded-full flex items-center gap-1">
-                <Zap className="w-3 h-3" />
+              <span className="px-1.5 py-0.5 text-[8px] font-semibold bg-amber-500/20 text-amber-400 rounded-full flex items-center gap-0.5">
+                <Zap className="w-2.5 h-2.5" />
                 INTEL
               </span>
             )}
@@ -213,28 +213,18 @@ const PropRow = memo(({ prop, isHighlighted, highlightRef, onVisionClick, gameLo
               @ {prop.price > 0 ? '+' : ''}{prop.price}
             </span>
           )}
-          {isHighlighted && (
-            <span className="text-[10px] text-amber-400/80 mt-0.5 block">
-              Tap to view Intel Suite →
-            </span>
-          )}
-          {!isHighlighted && isVisionProp && (
-            <span className="text-[10px] text-amber-400/60 mt-0.5 block">
-              Tap for AI analysis →
-            </span>
-          )}
         </div>
       </div>
       
-      {/* Right: Full-width Bar Chart with averages */}
+      {/* Right: Full-width Bar Chart with averages - stretches to fill available space */}
       {gameLogs && gameLogs.length > 0 ? (
-        <div className="flex-1 min-w-[250px] max-w-[350px]">
+        <div className="flex-1 ml-4" style={{ minWidth: '60%' }}>
           <GameLogBarChart
             gameLogs={gameLogs}
             statType={statType}
             line={line}
             showGames={10}
-            height={70}
+            height={75}
             l5Avg={l5Avg}
             l10Avg={l10Avg}
             seasonAvg={seasonAvg}

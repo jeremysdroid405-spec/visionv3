@@ -355,6 +355,15 @@ dg_cached_board.props[].hit_rates
   - Added proper `useRef` + `handleClickOutside` event listener for closing dropdown
   - Search, player selection, prop adding, and simulation all working
 
+- [x] **Game Log Bar Chart** - PrizePicks-style visual data representation
+  - Created `/app/frontend/src/components/dashboard/GameLogBarChart.jsx`
+  - Displays last 10 games as vertical bars with opponent abbreviations
+  - GREEN bars bust through target line (hits), RED bars stop short with gap (misses)
+  - Values displayed on top of each bar, opponent abbreviations at bottom
+  - Averages (SZN, L10, L5) shown as text above chart (not lines inside)
+  - Full-width layout: chart stretches across entire row width
+  - Integrated into PlayerDetailPage.jsx PropRow component
+
 ## Backlog
 - [ ] Add tooltips for context badges (P1)
 - [ ] Add UI for War Zone score breakdown (P1)
