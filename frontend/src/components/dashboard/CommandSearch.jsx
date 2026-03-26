@@ -18,6 +18,9 @@ const CommandSearch = memo(({ onPlayerSelect, placeholder = "Search players..." 
   const [query, setQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
   const [showResults, setShowResults] = useState(false);
+  
+  // Ref to track if we're clicking inside the component
+  const containerRef = React.useRef(null);
 
   // Debounce the query for API calls
   const debouncedSetQuery = useCallback(
@@ -29,6 +32,18 @@ const CommandSearch = memo(({ onPlayerSelect, placeholder = "Search players..." 
   useEffect(() => {
     debouncedSetQuery(query);
   }, [query, debouncedSetQuery]);
+  
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (containerRef.current && !containerRef.current.contains(event.target)) {
+        setShowResults(false);
+      }
+    };
+    
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   // PIPE 2: Search players via usePlayerSearch hook
   const { data: searchData, isLoading: loading } = usePlayerSearch(debouncedQuery);
@@ -54,7 +69,7 @@ const CommandSearch = memo(({ onPlayerSelect, placeholder = "Search players..." 
   };
 
   return (
-    <div className="relative" data-testid="command-search">
+    <div className="relative" data-testid="command-search" ref={containerRef}>
       {/* Search Input */}
       <div className="relative">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
@@ -139,14 +154,6 @@ const CommandSearch = memo(({ onPlayerSelect, placeholder = "Search players..." 
             </div>
           ) : null}
         </div>
-      )}
-
-      {/* Click outside to close */}
-      {showResults && (
-        <div 
-          className="fixed inset-0 z-40" 
-          onClick={() => setShowResults(false)}
-        />
       )}
     </div>
   );

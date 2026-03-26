@@ -350,6 +350,11 @@ dg_cached_board.props[].hit_rates
   - **Fixed Model**: Changed from non-existent `gemini-3.1-flash-lite-preview` to `gemini-flash-lite-latest`
   - Result: Player cards now load in ~200ms, Vision AI summaries generate in ~1-2 seconds
 
+- [x] **Command Hub Fix** - Search overlay was blocking clicks on results
+  - Removed problematic `fixed inset-0 z-40` overlay from CommandSearch.jsx
+  - Added proper `useRef` + `handleClickOutside` event listener for closing dropdown
+  - Search, player selection, prop adding, and simulation all working
+
 ## Backlog
 - [ ] Add tooltips for context badges (P1)
 - [ ] Add UI for War Zone score breakdown (P1)
