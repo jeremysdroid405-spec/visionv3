@@ -873,6 +873,32 @@ class CachedBoardBuilderService:
         prop["l10_hit_count"] = hit_rates["l10_hit_count"]
         prop["l5_hit_count"] = hit_rates["l5_hit_count"]
         
+        # =====================================================================
+        # ANOMALY DETECTION: Flag oddsmaker errors
+        # =====================================================================
+        # Demon anomaly: L10 avg >= line AND hit rate >= 50% (player BEATS demon line)
+        # Goblin anomaly: Hit rate >= 90% (near-guaranteed hit)
+        # These are picks where the oddsmaker made a mistake
+        
+        l10_avg = hit_rates["l10_avg"]
+        h10_rate = hit_rates["l10_rate"] or 0
+        is_demon = prop.get("is_demon", False)
+        is_goblin = prop.get("is_goblin", False)
+        
+        is_demon_anomaly = is_demon and l10_avg and line and l10_avg >= line and h10_rate >= 50
+        is_goblin_anomaly = is_goblin and h10_rate >= 90
+        is_anomaly = is_demon_anomaly or is_goblin_anomaly
+        
+        prop["is_anomaly"] = is_anomaly
+        prop["is_demon_anomaly"] = is_demon_anomaly
+        prop["is_goblin_anomaly"] = is_goblin_anomaly
+        
+        # Calculate margin (how much avg beats line)
+        if l10_avg and line:
+            prop["margin"] = round(l10_avg - line, 1)
+        else:
+            prop["margin"] = 0
+        
         player["props"].append(prop)
         
         if prop.get("is_demon"):

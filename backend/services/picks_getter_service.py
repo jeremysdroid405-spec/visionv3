@@ -1684,7 +1684,24 @@ class PicksGetterService:
                     filter_stats["excluded_lowest_line"] += 1
                     continue
                 
-                # Calculate value score (hit rate × payout factor)
+                # Calculate margin (how much avg beats line)
+                margin = (l10_avg - line) if l10_avg and line else 0
+                
+                # ANOMALY DETECTION: Is this an oddsmaker error?
+                # Demon anomaly: L10 avg >= line (player beats demon line)
+                # Goblin anomaly: 90%+ hit rate (near-guaranteed)
+                is_demon_anomaly = is_demon and l10_avg and l10_avg >= line
+                is_goblin_anomaly = is_goblin and l10_hit_rate >= 90
+                is_anomaly = is_demon_anomaly or is_goblin_anomaly
+                
+                # ANOMALY SCORE: Prioritize anomalies
+                anomaly_bonus = 0
+                if is_demon_anomaly:
+                    anomaly_bonus = 50 + margin  # Bigger margin = bigger mistake
+                elif is_goblin_anomaly:
+                    anomaly_bonus = 30
+                
+                # Calculate value score with anomaly bonus
                 if is_demon:
                     anchor_line = prop.get("anchor_line", line)
                     if anchor_line and anchor_line > 0:
@@ -1700,7 +1717,7 @@ class PicksGetterService:
                         discount_pct = 10
                     payout_multiplier = 1.0 + (discount_pct / 50)
                 
-                value_score = (l10_hit_rate / 100) * payout_multiplier
+                value_score = anomaly_bonus + (l10_hit_rate / 100) * payout_multiplier
                 
                 # PASSED ALL FILTERS
                 if is_demon:
@@ -1728,19 +1745,22 @@ class PicksGetterService:
                     "is_demon": is_demon,
                     "is_goblin": is_goblin,
                     "tier_label": "FRONT_LINE",
-                    "h5_rate": l5_hit_rate,   # L5 hit rate for frontend
-                    "h10_rate": l10_hit_rate,  # L10 hit rate for frontend
+                    "h5_rate": l5_hit_rate,
+                    "h10_rate": l10_hit_rate,
                     "l10_hit_rate": l10_hit_rate,
                     "l5_hit_rate": l5_hit_rate,
                     "l10_avg": l10_avg,
                     "l5_avg": l5_avg,
                     "season_avg": season_avg,
+                    "margin": round(margin, 1),
+                    "is_anomaly": is_anomaly,
+                    "is_demon_anomaly": is_demon_anomaly,
+                    "is_goblin_anomaly": is_goblin_anomaly,
                     "front_line_qualified": True,
                     "lowest_line": lowest_line,
                     "payout_multiplier": round(payout_multiplier, 2),
                     "value_score": round(value_score, 3),
                     "is_alternate_market": prop.get("is_alternate_market", True),
-                    # Game status fields for locking
                     "commence_time": commence_time,
                     "game_status": game_status["status"],
                     "is_locked": game_status["is_locked"],
