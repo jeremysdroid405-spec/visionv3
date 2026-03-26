@@ -142,52 +142,36 @@ class VisionSummaryService:
                 dvp_context = f"Matchup data unavailable for {opponent}"
             
             # Build prompt
-            prompt = f"""You are an elite sports betting analyst. Write a 3-sentence pick breakdown.
+            prompt = f"""You're a sharp sports bettor sharing a quick take with a friend. Keep it real and conversational.
 
-INPUT:
+PICK INFO:
+- Player: {last_name}
+- Bet: {direction} {line} {stat_type}
+- Season Average: {season_avg}
+- L10 Hit Rate: {h10_rate}%
+- Opponent: {opponent or 'TBD'}
+- Defense: {dvp_context}
+- Why it's on the board: {pick_reasoning}
 
-PLAYER: {last_name}
-PICK: {direction} {line} {stat_type}
-SEASON AVG: {season_avg} {stat_type}
-L10 HIT RATE: {h10_rate}%
-OPPONENT: {opponent or 'TBD'}
-DEFENSIVE MATCHUP: {dvp_context}
-PICK TYPE: {pick_reasoning}
-
-CONTEXT BADGES:
+Active situational factors:
 {badge_context}
 
-TASK:
+Give me 3 quick sentences like you're texting a buddy:
 
-Sentence 1 - THE EDGE: State the pick clearly with the primary statistical edge
-→ "{last_name} {direction} {line} {stat_type}" + why the numbers favor this
+1. THE PLAY - What's the bet and why does it hit? Lead with the numbers.
 
-Sentence 2 - MATCHUP CONTEXT: Analyze the DEFENSIVE MATCHUP data provided
-→ The DVP rank tells you if the opponent is good/bad at defending this stat
-→ Rank 1-10 = tough matchup (defense is strong), Rank 21-30 = favorable (defense is weak)
-→ Use the actual ranking provided - do NOT guess or assume
+2. THE MATCHUP - How does the opponent factor in? Use the defensive ranking I gave you (1-10 = tough, 21-30 = soft).
 
-Sentence 3 - POTENTIAL CONFLICTS: Flag any risks or factors working against this pick
-→ If facing elite defense (rank 1-10), that IS a conflict - acknowledge it
-→ Recent cold streak, tough travel, injury concern, etc.
-→ If no major conflicts exist, note why this is a clean spot
+3. THE CATCH - Any red flags? Bad recent form, brutal schedule, injury worry? If it's a clean spot, say so.
 
-RULES:
-- Use ONLY the player's last name
-- Be specific with numbers (averages, rates, rankings)
-- Be ACCURATE about the defensive matchup - use the DVP data provided
-- Do NOT say a matchup is "favorable" if the defense ranks in the Top 10
-- No filler words, no hedging language
-- DO NOT say "This pick" or "I like"
-
-OUTPUT: 3 tight sentences covering EDGE → MATCHUP → CONFLICTS"""
+Keep it tight. No fluff. Talk like a real person, not a robot. Use {last_name}'s name naturally. Skip any "I think" or "This pick" openers."""
 
             # Initialize Google Gemini directly
             from google import genai
             
             client = genai.Client(api_key=self.api_key)
             
-            system_msg = "You are an elite sports betting analyst specializing in player props. Deliver sharp, data-driven insights that cover the statistical edge, matchup context, and potential conflicts. Use only player last names. Be honest about both upside and risk. Do NOT use any markdown formatting like asterisks, bold, or italic."
+            system_msg = "You're a seasoned sports bettor who knows their stuff. You talk like a real person - confident but not cocky, honest about the risks. Use the player's last name naturally. No markdown formatting (no asterisks, bold, or italics). Just clean, straight talk."
             
             full_prompt = f"{system_msg}\n\n{prompt}"
             
