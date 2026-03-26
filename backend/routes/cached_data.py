@@ -983,8 +983,10 @@ async def get_cached_player(player_name: str):
             reasons = []
             if l5_avg and line and l5_avg >= line:
                 reasons.append(f"L5 avg ({l5_avg}) already exceeds target line ({line})")
-            if l10_hit_rate and l10_hit_rate >= 0.6:
-                reasons.append(f"Hit this line in {int(l10_hit_rate * 10)}/10 recent games")
+            if l10_hit_rate and l10_hit_rate >= 60:
+                # l10_hit_rate is a percentage (0-100), convert to X/10 format
+                hits_out_of_10 = int(l10_hit_rate / 10)
+                reasons.append(f"Hit this line in {hits_out_of_10}/10 recent games")
             if season_avg and line and line < season_avg:
                 reasons.append(f"Line set below season average ({season_avg})")
             
