@@ -1660,26 +1660,34 @@ class PicksGetterService:
                     continue
                 filter_stats["passed_hit_rate_65"] += 1
                 
-                # FRONT LINES = MIDDLE GROUND (65-79% HR)
-                # War Zone gets the best demons (season avg >= line + HR >= 50%)
-                # Safe Haven gets the safest goblins (HR >= 80%)
-                # Front Lines gets the middle ground - good but not top tier
+                # FRONT LINES = MIDDLE GROUND ANOMALIES
+                # Uses same season average anomaly detection as War Zone/Safe Haven
+                # but captures the middle tier picks
+                
+                # Check if it's an anomaly (season avg >= line)
+                is_season_anomaly = season_avg and line and season_avg >= line
                 
                 # Exclude picks that belong in Safe Haven (goblin with 80%+ HR)
                 if is_goblin and l10_hit_rate >= 80:
                     filter_stats["excluded_safe_haven_80"] += 1
                     continue
                 
-                # Exclude picks that belong in War Zone (demon anomaly)
-                is_war_zone_pick = is_demon and season_avg and season_avg >= line and l10_hit_rate >= 50
+                # Exclude picks that belong in War Zone (demon anomaly with HR >= 50%)
+                is_war_zone_pick = is_demon and is_season_anomaly and l10_hit_rate >= 50
                 if is_war_zone_pick:
                     filter_stats["excluded_war_zone"] = filter_stats.get("excluded_war_zone", 0) + 1
                     continue
                 
-                # What's left for Front Lines:
-                # - Demons with HR 65-79% that AREN'T season anomalies (season avg < line)
-                # - Goblins with HR 65-79%
-                # These are the "middle ground" - good picks but not top tier
+                # FRONT LINES CRITERIA:
+                # Must be a season anomaly (season avg >= line)
+                # This ensures we're still finding oddsmaker mistakes
+                if not is_season_anomaly:
+                    filter_stats["excluded_not_anomaly"] = filter_stats.get("excluded_not_anomaly", 0) + 1
+                    continue
+                
+                # What makes it to Front Lines:
+                # - Goblin anomalies with HR 65-79% (good but not Safe Haven tier)
+                # - Demon anomalies that didn't qualify for War Zone
                 
                 # FILTER: Can't be the lowest line (not safest floor play)
                 if lowest_line and line == lowest_line and len(all_lines_for_stat) > 1:
