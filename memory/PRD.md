@@ -319,6 +319,13 @@ dg_cached_board.props[].hit_rates
   - Mutual exclusivity verified: 0 overlaps between War Zone, Safe Haven, and Front Lines
   - Fixed anomaly flags (`is_anomaly`, `is_goblin_anomaly`) to correctly mark all season-based anomalies
 
+- [x] **Parlay Builder Fix** - Parlays now use tier picks as source of truth
+  - Rewrote `get_parlay_builder()` and `get_goblin_recon()` to build parlays dynamically from tier endpoints
+  - Safe Haven parlays now use `get_goblin_vault()` picks (sorted by hit rate, then probability score)
+  - War Zone parlays now use `get_war_zone()` picks
+  - Fixed sorting: highest hit rate players appear first (Towns 100%, Cardwell 100% now lead Daily Double)
+  - Ensures parlays match exactly what users see on the board
+
 ## Backlog
 - [ ] Add tooltips for context badges (P1)
 - [ ] Add UI for War Zone score breakdown (P1)

@@ -1372,9 +1372,9 @@ class PicksGetterService:
         active_picks = [p for p in all_player_best_picks if not p.get("is_locked")]
         locked_picks = [p for p in all_player_best_picks if p.get("is_locked")]
         
-        # Sort both lists by PROBABILITY SCORE
-        active_picks.sort(key=lambda x: x.get("probability_score", 0), reverse=True)
-        locked_picks.sort(key=lambda x: x.get("probability_score", 0), reverse=True)
+        # Sort both lists by HIT RATE first (highest first), then PROBABILITY SCORE
+        active_picks.sort(key=lambda x: (x.get("l10_hit_rate", 0), x.get("probability_score", 0)), reverse=True)
+        locked_picks.sort(key=lambda x: (x.get("l10_hit_rate", 0), x.get("probability_score", 0)), reverse=True)
         
         # NO LIMIT - Show ALL goblin anomalies on the board
         # Show all picks - active first, then locked
