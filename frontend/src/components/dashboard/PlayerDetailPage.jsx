@@ -14,7 +14,7 @@ import {
 } from 'lucide-react';
 import { DemonIcon, GoblinIcon } from './Icons';
 import { STAT_CATEGORIES, getCategoryKey, TEAM_LOGOS, BACKEND_URL } from './constants';
-import { BadgeRow, BADGE_REGISTRY } from '../ui/BadgePill';
+import { BadgeRow, BADGE_REGISTRY, BadgeGridItem } from '../ui/BadgePill';
 import GameLogBarChart from './GameLogBarChart';
 
 // API URL for fetching player data
@@ -693,41 +693,19 @@ export const PlayerDetailPage = ({ playerName, playerData = null, onBack, highli
                 </h3>
                 <p className="text-xs text-zinc-500 mb-4">Situational factors affecting tonight's performance</p>
                 
-                {/* Badge Grid - All 10 Badges */}
+                {/* Badge Grid - All 11 Badges with Tooltips */}
                 <div className="grid grid-cols-2 gap-3">
                   {Object.entries(BADGE_REGISTRY).map(([badgeKey, badge]) => {
-                    const Icon = badge.icon;
-                    // Check if this badge is active for this player (would come from API)
+                    // Check if this badge is active for this player
                     const isActive = selectedVisionProp.active_badges?.includes(badgeKey) || 
                                      selectedVisionProp.intel_suite?.context_badges?.includes(badgeKey);
                     
                     return (
-                      <div 
+                      <BadgeGridItem 
                         key={badgeKey}
-                        className={`flex items-center gap-2 p-2 rounded-lg border transition-all ${
-                          isActive 
-                            ? `${badge.bgClass} ${badge.borderClass} shadow-lg ${badge.glowClass}`
-                            : 'bg-zinc-800/30 border-zinc-700/50 opacity-40'
-                        }`}
-                        title={badge.trigger}
-                      >
-                        <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
-                          isActive ? badge.bgClass : 'bg-zinc-800'
-                        }`}>
-                          <Icon size={16} className={isActive ? badge.textClass : 'text-zinc-600'} />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className={`text-xs font-bold ${isActive ? badge.textClass : 'text-zinc-600'}`}>
-                            {badge.label}
-                          </div>
-                          <div className="text-[9px] text-zinc-500 truncate">
-                            {badge.trigger}
-                          </div>
-                        </div>
-                        {isActive && (
-                          <div className={`w-2 h-2 rounded-full ${badge.bgClass.replace('/20', '')} animate-pulse`} />
-                        )}
-                      </div>
+                        badgeKey={badgeKey}
+                        isActive={isActive}
+                      />
                     );
                   })}
                 </div>
