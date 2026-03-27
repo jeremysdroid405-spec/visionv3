@@ -1,0 +1,1 @@
+{"indexes":[{"v":{"$numberInt":"2"},"key":{"_id":{"$numberInt":"1"}},"name":"_id_"}],"uuid":"e910eea37a3646b685dd31e6b22be0bd","collectionName":"dg_radar_picks","type":"collection"}

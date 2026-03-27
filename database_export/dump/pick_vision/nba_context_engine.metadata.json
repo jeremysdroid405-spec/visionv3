@@ -1,0 +1,1 @@
+{"indexes":[{"v":{"$numberInt":"2"},"key":{"_id":{"$numberInt":"1"}},"name":"_id_"}],"uuid":"332438f6dca74a189ac69601e82ba22d","collectionName":"nba_context_engine","type":"collection"}
