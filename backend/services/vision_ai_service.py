@@ -388,7 +388,7 @@ Generate a 1-sentence VISION INSIGHT. You MUST include the DvP matchup context (
         team_injury_cache = {}
         unique_teams = set(p.get('team', '') for p in eligible_players if p.get('team'))
         
-        from injury_service import get_injury_service
+        from services.injury_service import get_injury_service
         injury_service = get_injury_service(self.db)
         
         for team in unique_teams:

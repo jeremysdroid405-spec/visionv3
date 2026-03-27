@@ -224,7 +224,7 @@ class BoardIntelligenceEngine:
             logger.info(f"[EARLY BIRD] Star players with lines: {star_players_with_lines[:5]}...")
             
             # Generate Vision for star players immediately
-            from intel_briefing_engine import IntelBriefingEngine
+            from services.engines.intel_briefing_engine import IntelBriefingEngine
             intel_engine = IntelBriefingEngine(
                 os.environ.get("MONGO_URL"),
                 os.environ.get("DB_NAME", "pick_vision")
@@ -531,7 +531,7 @@ class BoardIntelligenceEngine:
             if new_entries:
                 logger.info(f"[BOARD INTEL] New entries detected: {list(new_entries)[:5]}...")
                 # Trigger Vision for new entries
-                from intel_briefing_engine import IntelBriefingEngine
+                from services.engines.intel_briefing_engine import IntelBriefingEngine
                 intel_engine = IntelBriefingEngine(
                     os.environ.get("MONGO_URL"),
                     os.environ.get("DB_NAME", "pick_vision")

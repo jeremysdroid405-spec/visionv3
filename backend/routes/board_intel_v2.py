@@ -7,8 +7,8 @@ from fastapi import APIRouter, HTTPException
 from typing import Dict, Any, Optional
 import logging
 
-from board_intelligence_engine import get_board_intel_engine
-from game_lock_engine import get_game_lock_engine
+from services.engines.board_intelligence_engine import get_board_intel_engine
+from services.engines.game_lock_engine import get_game_lock_engine
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["Board Intelligence"])

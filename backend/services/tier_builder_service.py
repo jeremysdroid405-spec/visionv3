@@ -1,7 +1,7 @@
 """
 Tier Builder Service - War Zone, Safe Haven, Front Lines
 =========================================================
-Extracted from demon_goblin_engine.py for modularity.
+Extracted from services.engines.demon_goblin_engine.py for modularity.
 
 Handles the 4-Pillar scoring formulas for each tier:
 - War Zone: High-ceiling demon plays

@@ -1,7 +1,7 @@
 """
 Sync Service - Data Sync Coordination
 ======================================
-Extracted from demon_goblin_engine.py for modularity.
+Extracted from services.engines.demon_goblin_engine.py for modularity.
 
 Handles:
 - Full sync orchestration

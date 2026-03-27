@@ -1,7 +1,7 @@
 """
 Parlay Builder Service - High-Level Parlay Generation
 ======================================================
-Extracted from demon_goblin_engine.py for modularity.
+Extracted from services.engines.demon_goblin_engine.py for modularity.
 
 Handles:
 - Big Money Builder parlay generation (demon-based)

@@ -1,7 +1,7 @@
 """
 Odds Sync Service
 =================
-Extracted from demon_goblin_engine.py for modularity.
+Extracted from services.engines.demon_goblin_engine.py for modularity.
 
 Handles the main sync orchestration:
 - Fetching events and odds from The Odds API

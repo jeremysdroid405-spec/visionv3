@@ -72,7 +72,7 @@ async def generate_intel_briefings(
     
     # Use the intel_briefing_engine if available
     try:
-        from intel_briefing_engine import get_intel_briefing_engine
+        from services.engines.intel_briefing_engine import get_intel_briefing_engine
         briefing_engine = get_intel_briefing_engine()
         if briefing_engine and player_names:
             results = []

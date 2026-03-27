@@ -1,7 +1,7 @@
 """
 Stats Enrichment Service
 ========================
-Extracted from demon_goblin_engine.py for modularity.
+Extracted from services.engines.demon_goblin_engine.py for modularity.
 
 Handles stats fetching and enrichment from multiple sources:
 - BallDontLie API (primary)

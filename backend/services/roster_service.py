@@ -1,7 +1,7 @@
 """
 Roster Service - Master Roster and Player Data Management
 ==========================================================
-Extracted from demon_goblin_engine.py for modularity.
+Extracted from services.engines.demon_goblin_engine.py for modularity.
 
 Handles:
 - Master roster sync from BallDontLie

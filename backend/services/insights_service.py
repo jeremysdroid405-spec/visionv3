@@ -1,7 +1,7 @@
 """
 Insights Service - Player Analytics and AI Summaries
 =====================================================
-Extracted from demon_goblin_engine.py for modularity.
+Extracted from services.engines.demon_goblin_engine.py for modularity.
 """
 from typing import Dict, Any, List, Tuple, Optional
 import statistics

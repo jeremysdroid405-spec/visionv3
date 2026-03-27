@@ -1,7 +1,7 @@
 """
 Test Suite for Newly Extracted Services - Post-Refactoring Verification
 
-Tests the new service modules extracted from demon_goblin_engine.py:
+Tests the new service modules extracted from services.engines.demon_goblin_engine.py:
 - CachedBoardBuilderService: Board building and player data aggregation  
 - OddsApiService: Odds API interactions and prop extraction
 - TierBuilderService: Tier-based pick scoring (War Zone, Safe Haven, Front Lines)

@@ -1,7 +1,7 @@
 """
 Utils Service - Common Utilities and Normalization
 ===================================================
-Extracted from demon_goblin_engine.py for modularity.
+Extracted from services.engines.demon_goblin_engine.py for modularity.
 """
 from typing import Dict, Optional
 from datetime import datetime, timezone

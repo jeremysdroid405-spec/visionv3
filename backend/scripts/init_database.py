@@ -88,7 +88,7 @@ async def sync_master_roster(db):
     logger.info("="*60)
     
     try:
-        from demon_goblin_engine import DemonGoblinEngine
+        from services.engines.demon_goblin_engine import DemonGoblinEngine
         
         engine = DemonGoblinEngine(db)
         result = await engine.sync_master_roster()
@@ -156,7 +156,7 @@ async def sync_odds_and_props(db):
         return False
     
     try:
-        from demon_goblin_engine import DemonGoblinEngine
+        from services.engines.demon_goblin_engine import DemonGoblinEngine
         
         engine = DemonGoblinEngine(db)
         result = await engine.sync_odds_to_mongo()

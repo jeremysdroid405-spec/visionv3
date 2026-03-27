@@ -1,7 +1,7 @@
 """
 Sync Orchestration Service
 ==========================
-Extracted from demon_goblin_engine.py for modularity.
+Extracted from services.engines.demon_goblin_engine.py for modularity.
 
 Handles the main sync orchestration workflows:
 - Full sync (run_full_sync) - 3-Pillar complete sync
@@ -17,7 +17,7 @@ import logging
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
 if TYPE_CHECKING:
-    from demon_goblin_engine import DemonGoblinEngine
+    from services.engines.demon_goblin_engine import DemonGoblinEngine
 
 logger = logging.getLogger(__name__)
 

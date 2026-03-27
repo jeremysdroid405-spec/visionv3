@@ -8,7 +8,7 @@ from pydantic import BaseModel
 from typing import List
 import logging
 
-from game_lock_engine import get_game_lock_engine
+from services.engines.game_lock_engine import get_game_lock_engine
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["Game Lock"])

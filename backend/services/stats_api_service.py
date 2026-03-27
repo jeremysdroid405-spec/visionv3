@@ -1,7 +1,7 @@
 """
 Stats API Service (BallDontLie Integration)
 ============================================
-Extracted from demon_goblin_engine.py for modularity.
+Extracted from services.engines.demon_goblin_engine.py for modularity.
 
 Handles all BallDontLie API interactions:
 - Player search and mapping

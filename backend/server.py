@@ -18,46 +18,46 @@ from thefuzz import fuzz
 import asyncio
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
-from stats_manager_bdl import StatsManager
-from demon_tracker_engine import DeepIngestionEngine
-from demon_goblin_engine import DemonGoblinEngine
-from vision_ai_service import VisionAIService, get_vision_service
-from injury_service import InjuryIntelligenceService, get_injury_service
-from raw_stat_fetcher import RawStatFetcher
-from social_signal_engine import SocialSignalEngine, get_social_signal_engine
-from payout_engine import (
+from services.stats_manager_bdl import StatsManager
+from services.engines.demon_tracker_engine import DeepIngestionEngine
+from services.engines.demon_goblin_engine import DemonGoblinEngine
+from services.vision_ai_service import VisionAIService, get_vision_service
+from services.injury_service import InjuryIntelligenceService, get_injury_service
+from services.raw_stat_fetcher import RawStatFetcher
+from services.engines.social_signal_engine import SocialSignalEngine, get_social_signal_engine
+from services.engines.payout_engine import (
     calculate_payout_from_picks, 
     estimate_payout, 
     calculate_leg_modifier,
     AssetType,
     BASE_MULTIPLIERS
 )
-from adaptive_sync_engine import (
+from services.engines.adaptive_sync_engine import (
     AdaptiveSyncEngine,
     init_adaptive_sync_engine,
     get_adaptive_sync_engine,
     STALE_DATA_THRESHOLD_SECONDS
 )
-from intel_briefing_engine import (
+from services.engines.intel_briefing_engine import (
     IntelBriefingEngine,
     init_intel_briefing_engine,
     get_intel_briefing_engine
 )
-from live_scores_engine import (
+from services.engines.live_scores_engine import (
     LiveScoresEngine,
     init_live_scores_engine,
     get_live_scores_engine
 )
-from game_lock_engine import (
+from services.engines.game_lock_engine import (
     GameLockEngine,
     init_game_lock_engine,
     get_game_lock_engine
 )
-from board_intelligence_engine import (
+from services.engines.board_intelligence_engine import (
     BoardIntelligenceEngine,
     get_board_intel_engine
 )
-from nba_master_hub import (
+from services.engines.nba_master_hub import (
     get_master_hub,
     fetchPlayerIntel,
     fetchPlayerIntelByName,
@@ -65,14 +65,14 @@ from nba_master_hub import (
     getHubStats,
     runDailySync as runHubSync
 )
-from odds_api_mapper import (
+from services.odds_api_mapper import (
     get_odds_api_mapper,
     init_odds_api_mapper,
     getPlayerIdFromOddsName,
     getFullPlayerData,
     rebuildMapping as rebuildOddsMapping
 )
-from ai_context_engine import AiContextEngine
+from services.engines.ai_context_engine import AiContextEngine
 from routes import register_all_routes
 from services.photo_storage_service import PhotoStorageService
 from middleware import (
@@ -841,7 +841,7 @@ async def startup_event():
     logger.info("Game Lock Engine initialized (60s auto-cleanup)")
     
     # Register modular routes (from /routes/ directory)
-    from ai_context_engine import AiContextEngine
+    from services.engines.ai_context_engine import AiContextEngine
     
     # Create master hub function references
     master_hub_funcs = {

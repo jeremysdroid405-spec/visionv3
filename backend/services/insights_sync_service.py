@@ -1,7 +1,7 @@
 """
 Insights Sync Service
 =====================
-Extracted from demon_goblin_engine.py for modularity.
+Extracted from services.engines.demon_goblin_engine.py for modularity.
 
 Handles:
 - Daily insights synchronization
@@ -15,7 +15,7 @@ import logging
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
 if TYPE_CHECKING:
-    from demon_goblin_engine import DemonGoblinEngine
+    from services.engines.demon_goblin_engine import DemonGoblinEngine
 
 logger = logging.getLogger(__name__)
 

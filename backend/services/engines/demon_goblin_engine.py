@@ -78,7 +78,7 @@ from services.utils_service import (
 )
 
 # Payout Calculation Engine
-from payout_engine import (
+from services.engines.payout_engine import (
     calculate_payout_from_picks,
     calculate_leg_modifier,
     estimate_payout,
@@ -87,10 +87,10 @@ from payout_engine import (
 )
 
 # NBA Master Hub - SINGLE SOURCE OF TRUTH
-from nba_master_hub import fetchPlayerIntel, fetchPlayerIntelByName, get_master_hub
+from services.engines.nba_master_hub import fetchPlayerIntel, fetchPlayerIntelByName, get_master_hub
 
 # Odds API Mapper - Permanent player name to ID mapping
-from odds_api_mapper import get_odds_api_mapper, init_odds_api_mapper
+from services.odds_api_mapper import get_odds_api_mapper, init_odds_api_mapper
 
 # NBA.com API fallback for players missing from BallDontLie
 try:

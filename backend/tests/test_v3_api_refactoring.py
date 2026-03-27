@@ -2,7 +2,7 @@
 Test Suite for v3 API Endpoints - Post-Refactoring Verification
 
 Tests all v3 endpoints to verify no regressions occurred after extracting
-services from demon_goblin_engine.py:
+services from services.engines.demon_goblin_engine.py:
 - RosterService, PhotoService, PropsService, SyncService
 
 Endpoints tested:

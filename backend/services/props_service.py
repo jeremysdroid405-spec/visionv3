@@ -1,7 +1,7 @@
 """
 Props Service - Prop Building and Enrichment
 =============================================
-Extracted from demon_goblin_engine.py for modularity.
+Extracted from services.engines.demon_goblin_engine.py for modularity.
 
 Handles:
 - Prop classification (Demon/Goblin/Standard)

@@ -1,7 +1,7 @@
 """
 Data Integrity Service
 ======================
-Extracted from demon_goblin_engine.py for modularity.
+Extracted from services.engines.demon_goblin_engine.py for modularity.
 
 Handles data verification and integrity checking:
 - Verification failure logging

@@ -1,7 +1,7 @@
 """
 Cached Board Builder Service
 ============================
-Extracted from demon_goblin_engine.py for modularity.
+Extracted from services.engines.demon_goblin_engine.py for modularity.
 
 Handles building the centralized cached board from props data.
 All tier sections (War Zone, Goblin Vault, Front Lines) read from here.

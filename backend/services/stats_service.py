@@ -1,7 +1,7 @@
 """
 Stats Service - Hit Rate and Statistical Calculations
 ======================================================
-Extracted from demon_goblin_engine.py for modularity.
+Extracted from services.engines.demon_goblin_engine.py for modularity.
 
 CRITICAL: All hit rates and averages MUST be calculated from the SAME
 array of games to prevent mathematical contradictions (e.g., 100% hit

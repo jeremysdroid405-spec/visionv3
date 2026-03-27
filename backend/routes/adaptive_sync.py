@@ -7,7 +7,7 @@ from fastapi import APIRouter, HTTPException
 from typing import Optional
 import logging
 
-from adaptive_sync_engine import get_adaptive_sync_engine
+from services.engines.adaptive_sync_engine import get_adaptive_sync_engine
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["Adaptive Sync"])

@@ -1,7 +1,7 @@
 """
 Odds API Service
 ================
-Extracted from demon_goblin_engine.py for modularity.
+Extracted from services.engines.demon_goblin_engine.py for modularity.
 
 Handles all interactions with The Odds API:
 - Fetching NBA events
