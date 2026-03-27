@@ -424,13 +424,20 @@ dg_cached_board.props[].hit_rates
 ### Bug Fix: Player Headshots Missing (2026-03-27)
 **Problem**: `dg_cached_board.photo_url` was null for all players despite `nba_master_hub_2026` having valid URLs.
 
-**Root Cause**: 
-- Odds API Mapper was reading `headshot_url` but master hub stores photos in `photo_url` field
-- Cached board builder was also reading from wrong field
+**Root Cause Analysis**:
+1. Odds API Mapper was reading `headshot_url` but master hub stores photos in `photo_url` field
+2. Cached board builder was also reading from wrong field (`headshot_url` instead of `photo_url`)
+3. **Critical**: `bdl_id` (the primary join key) was stored as `bdl_player_id` but not as `bdl_id`, causing inconsistent field naming
 
-**Fix**:
-1. Updated `odds_api_mapper.py` to read `photo_url` (with headshot_url fallback)
-2. Updated `cached_board_builder_service._create_matched_player()` to prefer `photo_url`, fallback to `nba_id` proxy URL
-3. Rebuilt mapper and triggered full sync
+**Fix Applied**:
+1. Updated `odds_api_mapper.py` to read `photo_url` (with headshot_url fallback) and include `nba_id`
+2. Updated `cached_board_builder_service._create_matched_player()`:
+   - Now stores BOTH `bdl_id` AND `bdl_player_id` for compatibility
+   - Prefers `photo_url`, falls back to `headshot_url`, then constructs from `nba_id` proxy URL
+3. Updated `_create_unmatched_player()` and `_create_matched_player_legacy()` to also include `bdl_id`
+4. Rebuilt mapper and triggered full sync
 
-**Result**: 134/148 players now have valid photo URLs (remaining 14 are rookies without nba_id)
+**Result**: 
+- 141/154 players now have `bdl_id` in `dg_cached_board`
+- 140/154 players now have valid `photo_url`
+- Remaining ~14 are rookies without `nba_id` in master hub yet

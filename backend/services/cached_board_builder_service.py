@@ -614,7 +614,8 @@ class CachedBoardBuilderService:
         return {
             "player_name": player_name,
             "player_id": None,
-            "bdl_player_id": None,
+            "bdl_id": None,  # Primary join key (missing for unmatched)
+            "bdl_player_id": None,  # Legacy field name
             "team": prop.get("home_team") or prop.get("away_team") or "UNK",
             "photo_url": None,
             "headshot_url": None,
@@ -661,11 +662,15 @@ class CachedBoardBuilderService:
         if not photo_url and nba_id:
             photo_url = f"/api/proxy/nba-headshot/{nba_id}"
         
+        # Get the bdl_id - this is the primary join key
+        bdl_id = hub_player.get("bdl_id")
+        
         return {
-            # Primary identifiers
+            # Primary identifiers - CRITICAL: bdl_id is the primary join key
             "player_name": player_name,
             "player_id": player_id,
-            "bdl_player_id": hub_player.get("bdl_id"),
+            "bdl_id": bdl_id,  # Primary join key for master hub lookups
+            "bdl_player_id": bdl_id,  # Legacy field name (same value)
             "nba_com_id": nba_id,
             "espn_id": hub_player.get("espn_id"),
             
@@ -725,9 +730,13 @@ class CachedBoardBuilderService:
         social = signals_map.get(player_name.lower(), {})
         baseline_stats = player_stats.get("baseline_stats", {})
         
+        # Get bdl_id - primary join key
+        bdl_id = roster_player.get("bdl_player_id") or player_stats.get("bdl_id")
+        
         return {
             "player_name": player_name,
-            "bdl_player_id": roster_player.get("bdl_player_id") or player_stats.get("bdl_id"),
+            "bdl_id": bdl_id,  # Primary join key
+            "bdl_player_id": bdl_id,  # Legacy field name (same value)
             "nba_com_id": roster_player.get("nba_com_id"),
             "espn_id": roster_player.get("espn_id"),
             "team": roster_player.get("team_abbreviation") or player_stats.get("team"),
