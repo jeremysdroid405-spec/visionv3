@@ -652,12 +652,21 @@ class CachedBoardBuilderService:
         baseline_stats = player_stats.get("baseline_stats", {})
         bdl_game_logs = player_stats.get("bdl_game_logs", [])
         
+        # Photo URL: prefer photo_url from mapper/hub, fallback to headshot_url
+        # The nba_id can also be used to construct a proxy URL if available
+        nba_id = hub_player.get("nba_id")
+        photo_url = hub_player.get("photo_url") or hub_player.get("headshot_url")
+        
+        # If no photo_url but we have nba_id, construct proxy URL
+        if not photo_url and nba_id:
+            photo_url = f"/api/proxy/nba-headshot/{nba_id}"
+        
         return {
             # Primary identifiers
             "player_name": player_name,
             "player_id": player_id,
             "bdl_player_id": hub_player.get("bdl_id"),
-            "nba_com_id": hub_player.get("nba_id"),
+            "nba_com_id": nba_id,
             "espn_id": hub_player.get("espn_id"),
             
             # Team info
@@ -665,9 +674,9 @@ class CachedBoardBuilderService:
             "team_name": hub_player.get("team_name"),
             "team_logo_url": None,
             
-            # Photo
-            "photo_url": hub_player.get("headshot_url"),
-            "headshot_url": hub_player.get("headshot_url"),
+            # Photo - FIXED: prefer photo_url, fallback to headshot_url or nba_id proxy
+            "photo_url": photo_url,
+            "headshot_url": photo_url,  # Keep in sync for legacy compatibility
             "photo_source": "nba_master_hub_2026",
             
             # Player info

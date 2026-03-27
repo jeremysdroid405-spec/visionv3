@@ -211,7 +211,10 @@ class OddsApiMapper:
                     "team": player.get("team"),
                     "team_full_name": player.get("team_full_name"),
                     "position": player.get("profile", {}).get("position"),
-                    "headshot_url": player.get("headshot_url"),
+                    "nba_id": player.get("nba_id"),  # For photo proxy URL generation
+                    # Photo URL: prefer photo_url from master hub, fallback to headshot_url
+                    "photo_url": player.get("photo_url") or player.get("headshot_url"),
+                    "headshot_url": player.get("photo_url") or player.get("headshot_url"),  # Legacy compat
                     "baseline_stats": player.get("baseline_stats"),
                     "created_at": rebuild_start.isoformat(),
                     "source": "nba_master_hub_2026"

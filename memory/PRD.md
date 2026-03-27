@@ -416,3 +416,21 @@ dg_cached_board.props[].hit_rates
 - `/app/backend/routes/roster_sync.py` - Deprecated `/v3/roster/players`
 - `/app/frontend/src/services/DataService.js` - Added roster fetch functions
 - `/app/API_SURFACE.md` - Documented new roster endpoints
+- `/app/frontend/src/components/ui/BadgePill.jsx` - Added tooltip support for context badges
+- `/app/frontend/src/components/dashboard/PlayerDetailPage.jsx` - Updated badge grid to use tooltips
+- `/app/backend/services/odds_api_mapper.py` - Fixed photo_url mapping (was reading headshot_url instead of photo_url)
+- `/app/backend/services/cached_board_builder_service.py` - Fixed photo enrichment to use photo_url with nba_id fallback
+
+### Bug Fix: Player Headshots Missing (2026-03-27)
+**Problem**: `dg_cached_board.photo_url` was null for all players despite `nba_master_hub_2026` having valid URLs.
+
+**Root Cause**: 
+- Odds API Mapper was reading `headshot_url` but master hub stores photos in `photo_url` field
+- Cached board builder was also reading from wrong field
+
+**Fix**:
+1. Updated `odds_api_mapper.py` to read `photo_url` (with headshot_url fallback)
+2. Updated `cached_board_builder_service._create_matched_player()` to prefer `photo_url`, fallback to `nba_id` proxy URL
+3. Rebuilt mapper and triggered full sync
+
+**Result**: 134/148 players now have valid photo URLs (remaining 14 are rookies without nba_id)
