@@ -146,6 +146,42 @@ Base URL: `https://your-domain.com/api`
 
 ---
 
+## Roster (Canonical Endpoints)
+
+**Created: P0 - Roster API Semantic Separation**
+
+These are the canonical endpoints for roster data with clear, distinct semantics:
+
+| Method | Endpoint | Description | Source |
+|--------|----------|-------------|--------|
+| GET | `/roster/full-active` | **Full Active NBA Roster** (~430-450 players) - Complete roster from Master Hub | `routes/roster.py` |
+| GET | `/roster/mapped` | **Mapped/Supported Roster** - Players with full system support (BDL + stats) | `routes/roster.py` |
+| GET | `/roster/live-today` | **Live/Today Roster** (~100-200 players) - Players with active props today | `routes/roster.py` |
+| GET | `/roster/status` | Roster summary with counts for all three roster types | `routes/roster.py` |
+| GET | `/roster/players` | **DEPRECATED** - Use `/roster/full-active` instead | `routes/roster.py` |
+
+### Roster Endpoint Details
+
+#### `/roster/full-active`
+- **Source**: `nba_master_hub_2026` (Single Source of Truth)
+- **Count**: ~430-450 players
+- **Use when**: You need the complete league roster, player search/lookup, pre-game research
+- **Query params**: `team`, `position`, `limit`, `offset`
+
+#### `/roster/mapped`
+- **Source**: `nba_master_hub_2026` (filtered)
+- **Count**: Players with `bdl_id` + `baseline_stats`
+- **Use when**: You need players guaranteed to work with analytics, coverage monitoring
+- **Query params**: `team`, `limit`, `offset`
+
+#### `/roster/live-today`
+- **Source**: `dg_cached_board` (derived, rebuilt on sync)
+- **Count**: ~100-200 depending on daily slate
+- **Use when**: Building the live odds board, showing playable players
+- **Query params**: `team`, `has_props`, `limit`, `offset`
+
+---
+
 ## Master Hub
 
 | Method | Endpoint | Description | Source |

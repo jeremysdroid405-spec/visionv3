@@ -387,3 +387,32 @@ dg_cached_board.props[].hit_rates
 - [ ] Google/Apple OAuth
 - [ ] Stripe payments
 - [ ] Automate distraction/deep_water badges
+
+## Completed (2026-03-27)
+
+- [x] **P0 - Roster API Semantic Separation** - Created distinct, clearly-named endpoints for roster data
+  - `/api/roster/full-active` - Full current NBA roster (~548 players) from Master Hub
+  - `/api/roster/mapped` - Players with full system support (543 with BDL + stats = 99.1% coverage)
+  - `/api/roster/live-today` - Players with active props today (~141 players)
+  - `/api/roster/status` - Summary with counts for all three roster types
+  - Added frontend DataService functions: `fetchFullActiveRoster()`, `fetchMappedRoster()`, `fetchLiveTodayRoster()`, `fetchRosterStatus()`
+  - Deprecated old `/v3/roster/players` with warning logs
+  - Updated `API_SURFACE.md` with complete documentation
+
+- [x] **P1 - picks_getter_service.py Modularization** - Reviewed and validated existing extractions
+  - Confirmed Phase 1-3 complete: `game_utils.py`, `hit_rate_service.py`, `photo_service.py`
+  - Confirmed Phase 4 and 7 partial: `player_stats_resolver.py`, `board_formatter.py`
+  - Main file remains 2866 lines (orchestrator pattern per Option C)
+  - Tier builders (War Zone, Safe Haven, Front Lines) remain in main file due to complex interdependencies
+
+- [x] **P2 - News Ticker Performance** - Verified already optimized
+  - Ticker durations already at optimal values (30s live scores, 60s news)
+  - GPU acceleration CSS already applied (`will-change: transform`, `backface-visibility: hidden`)
+  - No changes needed
+
+### Files Changed (2026-03-27)
+- `/app/backend/routes/roster.py` (NEW) - Semantic roster endpoints
+- `/app/backend/routes/__init__.py` - Registered new roster router
+- `/app/backend/routes/roster_sync.py` - Deprecated `/v3/roster/players`
+- `/app/frontend/src/services/DataService.js` - Added roster fetch functions
+- `/app/API_SURFACE.md` - Documented new roster endpoints

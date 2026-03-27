@@ -17,6 +17,7 @@ from .payouts import router as payouts_router
 from .validation import router as validation_router, set_raw_stat_fetcher
 from .social import router as social_router, set_social_signal_engine
 from .roster_sync import router as roster_sync_router, set_demon_goblin_engine as set_roster_engine
+from .roster import router as roster_router, set_roster_db
 from .game_lock import router as game_lock_router
 from .adaptive_sync import router as adaptive_sync_router
 from .admin import router as admin_router, set_admin_deps
@@ -114,6 +115,12 @@ def register_all_routes(app, engine, game_lock_engine=None, db=None,
     app.include_router(validation_router, prefix="/api")
     app.include_router(social_router, prefix="/api")
     app.include_router(roster_sync_router, prefix="/api")
+    
+    # Semantic Roster Endpoints (P0 - Roster API Separation)
+    if db is not None:
+        set_roster_db(db)
+    app.include_router(roster_router, prefix="/api")
+    
     app.include_router(board_intel_v2_router, prefix="/api")
     app.include_router(game_lock_router, prefix="/api")
     app.include_router(adaptive_sync_router, prefix="/api")

@@ -332,6 +332,105 @@ export const fetchHydratedBoard = async () => {
   }
 };
 
+// ==================== ROSTER ENDPOINTS (Semantic Separation) ====================
+
+/**
+ * Fetch full active NBA roster (~430-450 players)
+ * Complete roster from Master Hub - all active NBA players
+ * Use for: player search, complete league view, pre-game research
+ */
+export const fetchFullActiveRoster = async (options = {}) => {
+  try {
+    const { team, position, limit = 500, offset = 0 } = options;
+    const params = new URLSearchParams();
+    if (team) params.append('team', team);
+    if (position) params.append('position', position);
+    if (limit) params.append('limit', limit);
+    if (offset) params.append('offset', offset);
+    
+    const response = await apiClient.get(`/roster/full-active?${params.toString()}`);
+    return { 
+      success: true, 
+      players: response.data?.players || [],
+      total: response.data?.total || 0,
+      count: response.data?.count || 0
+    };
+  } catch (error) {
+    console.error('[DataService] fetchFullActiveRoster error:', error);
+    return { success: false, players: [], total: 0, count: 0, error: error.message };
+  }
+};
+
+/**
+ * Fetch mapped/supported roster
+ * Players with full system support (BDL mapping + baseline stats)
+ * Use for: analytics-ready players, coverage monitoring
+ */
+export const fetchMappedRoster = async (options = {}) => {
+  try {
+    const { team, limit = 500, offset = 0 } = options;
+    const params = new URLSearchParams();
+    if (team) params.append('team', team);
+    if (limit) params.append('limit', limit);
+    if (offset) params.append('offset', offset);
+    
+    const response = await apiClient.get(`/roster/mapped?${params.toString()}`);
+    return { 
+      success: true, 
+      players: response.data?.players || [],
+      total: response.data?.total || 0,
+      count: response.data?.count || 0,
+      coveragePercent: response.data?.coverage_percent || 0
+    };
+  } catch (error) {
+    console.error('[DataService] fetchMappedRoster error:', error);
+    return { success: false, players: [], total: 0, count: 0, error: error.message };
+  }
+};
+
+/**
+ * Fetch live/today roster (~100-200 players)
+ * Players with active props available for betting today
+ * Use for: live odds board, today's playable slate
+ */
+export const fetchLiveTodayRoster = async (options = {}) => {
+  try {
+    const { team, hasProps = true, limit = 200, offset = 0 } = options;
+    const params = new URLSearchParams();
+    if (team) params.append('team', team);
+    params.append('has_props', hasProps);
+    if (limit) params.append('limit', limit);
+    if (offset) params.append('offset', offset);
+    
+    const response = await apiClient.get(`/roster/live-today?${params.toString()}`);
+    return { 
+      success: true, 
+      players: response.data?.players || [],
+      total: response.data?.total || 0,
+      count: response.data?.count || 0,
+      propsBreakdown: response.data?.props_breakdown || {},
+      lastSync: response.data?.last_sync
+    };
+  } catch (error) {
+    console.error('[DataService] fetchLiveTodayRoster error:', error);
+    return { success: false, players: [], total: 0, count: 0, error: error.message };
+  }
+};
+
+/**
+ * Fetch roster status summary (counts for all roster types)
+ * Use for: dashboard overview, health monitoring
+ */
+export const fetchRosterStatus = async () => {
+  try {
+    const response = await apiClient.get('/roster/status');
+    return { success: true, ...response.data };
+  } catch (error) {
+    console.error('[DataService] fetchRosterStatus error:', error);
+    return { success: false, error: error.message };
+  }
+};
+
 // ==================== EXPORTS ====================
 
 const DataService = {
@@ -365,6 +464,12 @@ const DataService = {
   
   // Full board
   fetchHydratedBoard,
+  
+  // Roster (Semantic Endpoints)
+  fetchFullActiveRoster,
+  fetchMappedRoster,
+  fetchLiveTodayRoster,
+  fetchRosterStatus,
 };
 
 export default DataService;

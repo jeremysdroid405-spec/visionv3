@@ -121,11 +121,16 @@ async def refresh_all_photos():
     return result
 
 
-@router.get("/v3/roster/players")
+@router.get("/v3/roster/players", deprecated=True)
 async def get_all_players_roster():
     """
-    Get all active NBA players with their headshots.
+    DEPRECATED: Use /api/roster/full-active instead.
+    
+    This endpoint returns from dg_master_roster.
+    For the canonical full NBA roster, use /api/roster/full-active which
+    queries from nba_master_hub_2026 (the Single Source of Truth).
     """
+    logger.warning("[DEPRECATED] /v3/roster/players called - use /roster/full-active instead")
     engine = get_engine()
     
     players = await engine.master_roster.find(
