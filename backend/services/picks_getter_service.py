@@ -2341,6 +2341,9 @@ class PicksGetterService:
         Get the CACHED board from MongoDB.
         NO API CALLS - reads only from database.
         
+        LEAN PAYLOAD: Returns only essential fields for the board listing.
+        Full player data is fetched on-demand via get_cached_player().
+        
         Returns player-centric documents (those with props array).
         """
         sync_meta = await self.sync_log.find_one({"type": "cached_board"})
@@ -2354,10 +2357,33 @@ class PicksGetterService:
                 "trending": []
             }
         
+        # LEAN PAYLOAD PROJECTION - Only fields needed for board listing
+        # Full data (game_logs, advanced_stats, etc.) loaded on player detail click
+        lean_projection = {
+            "_id": 0,
+            "player_name": 1,
+            "team": 1,
+            "opponent": 1,
+            "game_id": 1,
+            "home_team": 1,
+            "away_team": 1,
+            "commence_time": 1,
+            "position": 1,
+            "photo_url": 1,
+            "headshot_url": 1,
+            "nba_id": 1,
+            "nba_com_id": 1,
+            "rank": 1,
+            # Props array - contains line data for cards
+            "props": 1
+            # EXCLUDED: bdl_game_logs, game_logs, advanced_stats, baseline_stats
+            # These are fetched on-demand via get_cached_player()
+        }
+        
         # Get only player-centric documents (those with props array)
         players = await self.cached_board.find(
             {"props": {"$exists": True}},
-            {"_id": 0}
+            lean_projection
         ).sort("rank", 1).to_list(500)
         
         # Clean any remaining ObjectIds and flatten hit_rates to prop level

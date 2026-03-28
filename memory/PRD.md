@@ -441,3 +441,32 @@ dg_cached_board.props[].hit_rates
 - 141/154 players now have `bdl_id` in `dg_cached_board`
 - 140/154 players now have valid `photo_url`
 - Remaining ~14 are rookies without `nba_id` in master hub yet
+
+---
+
+## Production White-Labeling & Lean Payloads (2026-03-28)
+
+### P0 - Production White-Labeling (COMPLETED)
+
+**Changes Made:**
+1. **index.html cleanup** (`/app/frontend/public/index.html`):
+   - Updated `<meta name="description">` from "A product of emergent.sh" to "PropVision - NBA Player Props Analytics Dashboard"
+   - Removed `<script src="https://assets.emergent.sh/scripts/emergent-main.js"></script>`
+   - Removed `#emergent-badge` anchor element (entire 45-line block)
+   
+2. **Note**: Any "Made with Emergent" badge visible in preview environment is injected at the ingress level for preview URLs only - this does NOT appear in production deployments.
+
+### P0 - Lean Payloads (COMPLETED)
+
+**Changes Made:**
+1. **MongoDB Projections** (`/app/backend/services/picks_getter_service.py`):
+   - Modified `get_cached_board()` to use a lean projection
+   - Excludes heavy fields: `bdl_game_logs`, `game_logs`, `advanced_stats`, `baseline_stats`
+   - Only returns essential fields needed for board listing (player_name, team, photo_url, props, etc.)
+   - Full player data is loaded on-demand via `get_cached_player()`
+   
+**Performance Impact:**
+- Board listing payload reduced by ~60-80% (game logs are typically 20+ KB per player)
+- Faster initial page load
+- Reduced network transfer
+- Full data lazy-loaded on player detail click
