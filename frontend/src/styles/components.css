@@ -177,7 +177,7 @@
   display: flex !important;
   flex-direction: row !important;
   overflow-x: auto !important;
-  scroll-snap-type: x mandatory;
+  scroll-snap-type: x mandatory !important;
   scroll-behavior: smooth;
   -webkit-overflow-scrolling: touch;
   scrollbar-width: none;
@@ -185,7 +185,6 @@
   gap: 16px !important;
   /* Remove internal padding - parent section already has 16px padding */
   padding: 8px 0 !important;
-  scroll-padding: 0 !important;
   margin: 0 !important;
 }
 
@@ -194,17 +193,17 @@
 }
 
 .swipe-card {
-  scroll-snap-align: center;
+  scroll-snap-align: center !important;
+  scroll-snap-stop: always !important;
   flex-shrink: 0 !important;
-  /* Parent has 16px padding, so card should be 100vw - 32px - 32px = 100vw - 64px */
-  /* But we want it nearly full width of the section, so just use 100% */
   width: 100% !important;
   min-width: 100% !important;
   max-width: 100% !important;
 }
 
 .swipe-card-parlay {
-  scroll-snap-align: center;
+  scroll-snap-align: center !important;
+  scroll-snap-stop: always !important;
   flex-shrink: 0 !important;
   width: 100% !important;
   min-width: 100% !important;
