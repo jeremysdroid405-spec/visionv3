@@ -406,7 +406,7 @@ export const BadgeGridItem = ({
         <div className={`text-xs font-bold ${isActive ? badge.textClass : 'text-zinc-600'}`}>
           {badge.label}
         </div>
-        <div className="text-[9px] text-zinc-500 truncate">
+        <div className={`text-[9px] truncate ${isActive ? 'text-white' : 'text-zinc-500'}`}>
           {displayTrigger}
         </div>
       </div>
