@@ -132,28 +132,6 @@ const GameLogBarChart = memo(({
   
   return (
     <div className={`relative ${className}`}>
-      {/* Header with averages as text - bigger, white */}
-      <div className="flex items-center gap-4 mb-2 px-1">
-        <span className={`text-xs font-bold ${hitRate >= 70 ? 'text-emerald-400' : hitRate >= 50 ? 'text-amber-400' : 'text-red-400'}`}>
-          {hits}/{total}
-        </span>
-        {seasonAvg != null && (
-          <span className="text-xs text-white font-medium">
-            SZN AVG: <span className="font-bold">{seasonAvg}</span>
-          </span>
-        )}
-        {l10Avg != null && (
-          <span className="text-xs text-white font-medium">
-            L10 AVG: <span className="font-bold">{l10Avg}</span>
-          </span>
-        )}
-        {l5Avg != null && (
-          <span className="text-xs text-white font-medium">
-            L5 AVG: <span className="font-bold">{l5Avg}</span>
-          </span>
-        )}
-      </div>
-      
       {/* Chart container - fixed aspect ratio, isolated stacking context */}
       <div 
         className="relative bg-zinc-900/50 rounded border border-zinc-800 overflow-hidden isolate"
