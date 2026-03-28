@@ -223,18 +223,9 @@ const LiveScoresTicker = memo(() => {
             const winnerScore = awayWins ? game.away_score : game.home_score;
             const loserScore = awayWins ? game.home_score : game.away_score;
             
-            // Format status display - avoid duplicates
-            // Show quarter + clock for live games, just status for others
-            let displayStatus = '';
-            if (isLive && game.period) {
-              // Format: "Q2 5:30" - single clean display
-              const clock = game.game_clock || '';
-              displayStatus = clock ? `${game.period} ${clock}` : game.period;
-            } else if (isFinal) {
-              displayStatus = 'FINAL';
-            } else {
-              displayStatus = game.status?.toUpperCase() || game.period || '';
-            }
+            // Get quarter (period) - use game.period only, not status (avoids duplicate)
+            const quarter = game.period || '';
+            const gameClock = game.game_clock || '';
             
             return (
               <div key={`score-${idx}`} className={`flex items-center gap-2.5 px-4 py-1.5 border-r border-zinc-700/50 ${isLive ? 'bg-zinc-800/50' : ''}`}>
@@ -258,14 +249,26 @@ const LiveScoresTicker = memo(() => {
                 </span>
                 <img src={TEAM_LOGOS[loserTeam]} alt={loserTeam} className="w-5 h-5 flex-shrink-0" onError={(e) => e.target.style.display='none'} />
                 
-                {/* Status Badge - single clean display */}
-                <Badge className={`text-[9px] font-bold px-1.5 py-0.5 ml-1 whitespace-nowrap ${
-                  isLive ? 'bg-red-600 text-white border-red-500 animate-pulse' :
-                  isFinal ? 'bg-zinc-700 text-zinc-300 border-zinc-600' :
-                  'bg-amber-500/30 text-amber-300 border-amber-500/30'
-                }`}>
-                  {displayStatus}
-                </Badge>
+                {/* Quarter & Clock - single row, slightly larger */}
+                {isLive ? (
+                  <div className="flex items-center gap-1.5 ml-2">
+                    <Badge className="text-[11px] font-black px-2 py-0.5 bg-red-600 text-white border-red-500 animate-pulse">
+                      {quarter}
+                    </Badge>
+                    {gameClock && (
+                      <span className="text-[12px] font-bold text-amber-400 tabular-nums">
+                        {gameClock}
+                      </span>
+                    )}
+                  </div>
+                ) : (
+                  <Badge className={`text-[11px] font-bold px-2 py-0.5 ml-2 ${
+                    isFinal ? 'bg-zinc-700 text-zinc-300 border-zinc-600' :
+                    'bg-amber-500/30 text-amber-300 border-amber-500/30'
+                  }`}>
+                    {isFinal ? 'FINAL' : (quarter || game.status?.toUpperCase() || '')}
+                  </Badge>
+                )}
               </div>
             );
           })}
