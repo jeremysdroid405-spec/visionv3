@@ -836,6 +836,8 @@ const Dashboard = () => {
     setHighlightProp(highlight);
     setHighlightType(type);
     setSelectedPlayer(playerName);
+    // Push state so browser back button works
+    window.history.pushState({ view: 'player', player: playerName }, '');
   }, []);
   
   const handleBackFromPlayer = useCallback(() => {
@@ -848,6 +850,25 @@ const Dashboard = () => {
       }
     }, 0);
   }, [savedScrollPosition]);
+  
+  // Handle browser back button
+  useEffect(() => {
+    const handlePopState = (event) => {
+      // If we have a selected player or expanded parlay, close it
+      if (selectedPlayer) {
+        setSelectedPlayer(null);
+        setHighlightProp(null);
+        if (savedScrollPosition !== null) {
+          setTimeout(() => window.scrollTo(0, savedScrollPosition), 0);
+        }
+      } else if (expandedParlay) {
+        setExpandedParlay(null);
+      }
+    };
+    
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, [selectedPlayer, expandedParlay, savedScrollPosition]);
   
   const handleRadarClick = useCallback((pick) => {
     const lineValue = pick.demon_line || pick.line;
@@ -864,6 +885,8 @@ const Dashboard = () => {
   const handleParlayClick = useCallback((parlay, sectionType) => {
     setSavedScrollPosition(window.scrollY);
     setExpandedParlay({ parlay, sectionType });
+    // Push state so browser back button works
+    window.history.pushState({ view: 'parlay' }, '');
   }, []);
   
   const handlePopularBetClick = useCallback((bet) => {
