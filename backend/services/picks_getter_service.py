@@ -537,7 +537,7 @@ class PicksGetterService:
         def calculate_hit_rates(logs, stat_type, line):
             """Calculate L5/L10 hit rates from game logs"""
             if not logs:
-                return {"h5_rate": 0, "h10_rate": 0, "l5_avg": 0, "l10_avg": 0, "season_avg": 0}
+                return {"h5_rate": 0, "h10_rate": 0, "l5_avg": 0, "l10_avg": 0, "season_avg": 0, "l5_values": [], "l10_values": []}
             
             # Sort by date descending - handle both "date" (bdl_game_logs) and "game_date" (game_logs) formats
             sorted_logs = sorted(logs, key=lambda x: x.get("date", "") or x.get("game_date", "") or x.get("game", {}).get("date", ""), reverse=True)
@@ -555,7 +555,7 @@ class PicksGetterService:
             
             def calc_stats(game_list):
                 if not game_list:
-                    return 0, 0
+                    return 0, 0, []
                 values = []
                 hits = 0
                 for g in game_list:
@@ -574,22 +574,33 @@ class PicksGetterService:
                         hits += 1
                 avg = sum(values) / len(values) if values else 0
                 hit_rate = (hits / len(values) * 100) if values else 0
-                return avg, hit_rate
+                return avg, hit_rate, values
             
-            l5_avg, h5_rate = calc_stats(sorted_logs[:5])
-            l10_avg, h10_rate = calc_stats(sorted_logs[:10])
-            season_avg, _ = calc_stats(sorted_logs)
+            l5_avg, h5_rate, l5_values = calc_stats(sorted_logs[:5])
+            l10_avg, h10_rate, l10_values = calc_stats(sorted_logs[:10])
+            season_avg, _, _ = calc_stats(sorted_logs)
             
             return {
                 "h5_rate": round(h5_rate, 1),
                 "h10_rate": round(h10_rate, 1),
                 "l5_avg": round(l5_avg, 1),
                 "l10_avg": round(l10_avg, 1),
-                "season_avg": round(season_avg, 1)
+                "season_avg": round(season_avg, 1),
+                "l5_values": l5_values,
+                "l10_values": l10_values
             }
         
         # Calculate hit rates from game logs (even if baseline_stats exists)
         hit_rate_data = calculate_hit_rates(game_logs, stat_type, line)
+        
+        # SSOT ENFORCEMENT: L5/L10 averages MUST come from the same game logs as hit rates
+        # This ensures data consistency - if average is 35.2 over L5, hit rate reflects same games
+        l5_avg_from_logs = hit_rate_data["l5_avg"]
+        l10_avg_from_logs = hit_rate_data["l10_avg"]
+        
+        # Log SSOT debug info for data integrity verification
+        if hit_rate_data["l5_values"]:
+            logger.debug(f"[SSOT] {player_name} {stat_type} L5 values: {hit_rate_data['l5_values']} -> avg={l5_avg_from_logs}, line={line}, hits={sum(1 for v in hit_rate_data['l5_values'] if v > line)}")
         
         # PRIMARY SOURCE: Check baseline_stats first (BDL data) for season avg
         season_avg = None
@@ -610,11 +621,12 @@ class PicksGetterService:
                 "h5_rate": hit_rate_data["h5_rate"],
                 "h10_rate": hit_rate_data["h10_rate"],
                 "season_avg": round(season_avg, 1),
-                "l5_avg": hit_rate_data["l5_avg"] if hit_rate_data["l5_avg"] > 0 else round(season_avg, 1),
-                "l10_avg": hit_rate_data["l10_avg"] if hit_rate_data["l10_avg"] > 0 else round(season_avg, 1),
+                # SSOT: L5/L10 averages MUST come from game logs (same source as hit rates)
+                "l5_avg": l5_avg_from_logs if l5_avg_from_logs > 0 else round(season_avg, 1),
+                "l10_avg": l10_avg_from_logs if l10_avg_from_logs > 0 else round(season_avg, 1),
                 "diff_from_avg": diff_from_avg,
                 "is_stale": is_stale,
-                "stats_source": "bdl_baseline" if not game_logs else "bdl_baseline+game_logs",
+                "stats_source": "bdl_baseline" if not game_logs else "bdl_game_logs_ssot",
                 # BDL shooting/defensive stats - OPEN DOOR POPULATION
                 "fg_pct": round(bdl_fg_pct * 100, 1) if bdl_fg_pct else None,
                 "fg3_pct": round(bdl_fg3_pct * 100, 1) if bdl_fg3_pct else None,
@@ -643,11 +655,12 @@ class PicksGetterService:
                 "h5_rate": hit_rate_data["h5_rate"] if hit_rate_data["h5_rate"] > 0 else stat_data.get("l5_hit_rate", 0),
                 "h10_rate": hit_rate_data["h10_rate"] if hit_rate_data["h10_rate"] > 0 else stat_data.get("l10_hit_rate", 0),
                 "season_avg": round(season_avg, 1),
-                "l5_avg": hit_rate_data["l5_avg"] if hit_rate_data["l5_avg"] > 0 else round(l5_avg, 1),
-                "l10_avg": hit_rate_data["l10_avg"] if hit_rate_data["l10_avg"] > 0 else round(l10_avg, 1),
+                # SSOT: L5/L10 averages MUST come from game logs (same source as hit rates)
+                "l5_avg": l5_avg_from_logs if l5_avg_from_logs > 0 else round(l5_avg, 1),
+                "l10_avg": l10_avg_from_logs if l10_avg_from_logs > 0 else round(l10_avg, 1),
                 "diff_from_avg": diff_from_avg,
                 "is_stale": is_stale,
-                "stats_source": "baseline_stats" if not game_logs else "baseline_stats+game_logs",
+                "stats_source": "baseline_stats" if not game_logs else "bdl_game_logs_ssot",
                 # BDL shooting/defensive stats
                 "fg_pct": round(bdl_fg_pct * 100, 1) if bdl_fg_pct else None,
                 "fg3_pct": round(bdl_fg3_pct * 100, 1) if bdl_fg3_pct else None,
