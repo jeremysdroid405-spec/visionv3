@@ -9,7 +9,7 @@ Daily sync job to populate nba_master_hub_2026 with:
 Data Source: BallDontLie API (Primary and ONLY source)
 Scheduled to run daily at 0300 EST via CRON.
 
-NOTE: Tank01 has been REMOVED. All stats come from BDL.
+NOTE: BDL is the only stats source. All stats come from BDL.
 """
 
 import os

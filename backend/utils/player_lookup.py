@@ -45,7 +45,6 @@ async def _build_caches(db: AsyncIOMotorDatabase) -> None:
             "nba_player_id": 1,
             "nba_id": 1, 
             "espn_id": 1,
-            "tank01_id": 1,
             "headshot_url": 1, 
             "photo_url": 1,
             "team": 1, 
@@ -77,10 +76,6 @@ async def _build_caches(db: AsyncIOMotorDatabase) -> None:
         if nba_id:
             _player_id_cache[str(nba_id)] = player
         
-        # Also index by tank01_id for backwards compat
-        tank01_id = player.get("tank01_id")
-        if tank01_id:
-            _player_id_cache[str(tank01_id)] = player
         
         # SECONDARY: Index by name (fallback only)
         display_name = player.get("display_name", "")
@@ -120,7 +115,6 @@ async def get_player_by_id(db: AsyncIOMotorDatabase, player_id: str) -> Optional
     
     Args:
         db: Motor async database instance
-        player_id: Player ID (player_id, nba_player_id, or tank01_id)
         
     Returns:
         Player data dict or None if not found

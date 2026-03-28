@@ -10,7 +10,7 @@ This module calculates and stores advanced predictive metrics for NBA player pro
 
 Data Sources:
 - nba_api: Schedule, pace data, player stats
-- Tank01: Injury reports, player status
+- ESPN: Injury reports
 - BallDontLie: Historical game logs
 
 Storage: Supabase daily_insights table
@@ -55,9 +55,7 @@ USAGE_REDISTRIBUTION_BASE = 12.0  # Base % increase when star is out
 VOLATILITY_HIGH_THRESHOLD = 10.0  # Std dev > 10 = high volatility
 VOLATILITY_MED_THRESHOLD = 5.0    # Std dev > 5 = medium volatility
 
-# Tank01 API config
-TANK01_API_KEY = os.environ.get("TANK01_API_KEY", "")
-TANK01_HOST = "tank01-fantasy-stats.p.rapidapi.com"
+# BDL is the only stats source
 
 
 class AdvancedAnalyticsEngine:
@@ -352,38 +350,24 @@ CREATE INDEX IF NOT EXISTS idx_daily_insights_team ON public.daily_insights (tea
         return HIGH_USAGE_BY_TEAM.get(team, [])
     
     async def fetch_team_injuries(self, team: str) -> List[str]:
-        """Fetch current injuries for a team from Tank01 API."""
-        if not TANK01_API_KEY:
-            return []
+        """
+        Fetch current injuries for a team from master hub.
         
+        NOTE: This uses cached injury data from nba_master_hub_2026.
+        """
         try:
-            # Use Tank01 injury endpoint
-            url = f"https://{TANK01_HOST}/getNBATeams"
-            headers = {
-                "X-RapidAPI-Key": TANK01_API_KEY,
-                "X-RapidAPI-Host": TANK01_HOST
-            }
+            # Get injuries from master hub (populated by BDL sync)
+            cursor = self.db.nba_master_hub_2026.find({
+                "team": team,
+                "injury.status": {"$in": ["Out", "Doubtful", "Questionable"]}
+            }, {"display_name": 1, "injury": 1})
             
-            async with httpx.AsyncClient() as client:
-                response = await client.get(url, headers=headers, timeout=15.0)
-                
-                if response.status_code == 200:
-                    data = response.json()
-                    # Parse injury data from response
-                    # This is simplified - actual implementation depends on Tank01 response format
-                    injured_players = []
-                    for team_data in data.get("body", []):
-                        if team_data.get("teamAbv") == team:
-                            injuries = team_data.get("injury", [])
-                            for inj in injuries:
-                                if inj.get("designation") in ["Out", "Doubtful"]:
-                                    injured_players.append(inj.get("longName", ""))
-                    return injured_players
-                    
+            players = await cursor.to_list(length=50)
+            injured = [p["display_name"] for p in players if p.get("injury", {}).get("status") in ["Out", "Doubtful"]]
+            return injured
         except Exception as e:
             logger.error(f"[ANALYTICS] Error fetching injuries: {e}")
-        
-        return []
+            return []
     
     # ==================== VOLATILITY SCORE ====================
     

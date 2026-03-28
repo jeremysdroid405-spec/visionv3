@@ -28,12 +28,56 @@ logger = logging.getLogger(__name__)
 # ==================== CONFIGURATION ====================
 
 DAILY_SYNC_TIME = "04:00"  # 4:00 AM ET
-TANK01_API_KEY = os.environ.get("TANK01_API_KEY", "402edbcac6mshd04997e7ca01d17p1879eajsn65ab176cdb1e")
 BALLDONTLIE_API_KEY = os.environ.get("BALLDONTLIE_API_KEY", "")
+
+# NOTE: BDL is the only stats source from this application. BDL is the only stats source.
 
 # NBA CDN headshot URL template
 NBA_HEADSHOT_URL = "https://cdn.nba.com/headshots/nba/latest/1040x760/{nba_id}.png"
 ESPN_HEADSHOT_URL = "https://a.espncdn.com/i/headshots/nba/players/full/{espn_id}.png"
+
+# Patterns that indicate a team logo (NOT a player headshot)
+TEAM_LOGO_PATTERNS = [
+    "cdn.nba.com/logos/nba/",
+    "/logos/nba/",
+    "/global/L/logo",
+    "/global/D/logo",
+    "team-logos",
+]
+
+
+def is_team_logo_url(url: str) -> bool:
+    """
+    Check if a URL is a team logo instead of a player headshot.
+    Team logos should never be used as player photo_url.
+    """
+    if not url:
+        return False
+    url_lower = url.lower()
+    return any(pattern.lower() in url_lower for pattern in TEAM_LOGO_PATTERNS)
+
+
+def sanitize_photo_url(photo_url: str, nba_id: int = None) -> str:
+    """
+    Sanitize photo URL - replace team logos with proper headshot proxy.
+    
+    Args:
+        photo_url: The URL to sanitize
+        nba_id: NBA.com player ID for constructing proxy URL
+    
+    Returns:
+        A valid player headshot URL (proxy if original was a team logo)
+    """
+    # If it's a team logo and we have nba_id, use proxy
+    if is_team_logo_url(photo_url) and nba_id:
+        return f"/api/proxy/nba-headshot/{nba_id}"
+    
+    # If no photo_url but we have nba_id, use proxy
+    if not photo_url and nba_id:
+        return f"/api/proxy/nba-headshot/{nba_id}"
+    
+    return photo_url
+
 
 # ==================== MASTER HUB CLASS ====================
 
@@ -221,145 +265,110 @@ class NBAMasterHub:
         
         return results
     
-    async def _enrichPhotosFromLegacyRoster(self) -> int:
-        """Enrich hub players with photos by fetching nbaComHeadshot from Tank01."""
+    async def _enrichPhotosFromBDL(self) -> int:
+        """
+        Enrich hub players with photos using NBA CDN proxy URLs.
+        
+        NOTE: BDL is the only stats source. Photos are now constructed from nba_id
+        using the /api/proxy/nba-headshot/{nba_id} pattern.
+        """
         photos_added = 0
         
         try:
-            # Get players without photos (check for null, empty, or missing)
+            # Get players without photos but with nba_id
             cursor = self.hub.find({
-                "$or": [
-                    {"headshot_url": None},
-                    {"headshot_url": ""},
-                    {"headshot_url": {"$exists": False}}
+                "$and": [
+                    {"nba_id": {"$exists": True, "$ne": None}},
+                    {"$or": [
+                        {"photo_url": None},
+                        {"photo_url": ""},
+                        {"photo_url": {"$exists": False}},
+                        {"headshot_url": None},
+                        {"headshot_url": ""},
+                        {"headshot_url": {"$exists": False}}
+                    ]}
                 ]
-            }, {"player_id": 1, "display_name": 1, "tank01_id": 1})
+            }, {"player_id": 1, "display_name": 1, "nba_id": 1})
             players_without_photos = await cursor.to_list(length=2000)
             logger.info(f"[MASTER HUB] Found {len(players_without_photos)} players without photos")
             
-            # Fetch photos from Tank01 player info (only first 50 to avoid rate limits)
-            async with aiohttp.ClientSession() as session:
-                for i, player in enumerate(players_without_photos[:50]):
-                    tank01_id = player.get("tank01_id")
-                    if not tank01_id:
-                        continue
-                    
-                    try:
-                        url = f"https://tank01-fantasy-stats.p.rapidapi.com/getNBAPlayerInfo"
-                        headers = {
-                            "X-RapidAPI-Key": TANK01_API_KEY,
-                            "X-RapidAPI-Host": "tank01-fantasy-stats.p.rapidapi.com"
-                        }
-                        params = {"playerID": tank01_id}
-                        
-                        async with session.get(url, headers=headers, params=params) as response:
-                            if response.status == 200:
-                                data = await response.json()
-                                body = data.get("body", {})
-                                
-                                photo_url = (
-                                    body.get("nbaComHeadshot") or
-                                    body.get("espnHeadshot") or
-                                    body.get("cbsHeadshot")
-                                )
-                                
-                                if photo_url:
-                                    await self.hub.update_one(
-                                        {"player_id": player["player_id"]},
-                                        {"$set": {"headshot_url": photo_url}}
-                                    )
-                                    photos_added += 1
-                        
-                        # Small delay to respect rate limits
-                        await asyncio.sleep(0.1)
-                        
-                    except Exception as e:
-                        logger.warning(f"[MASTER HUB] Photo fetch error for {player.get('display_name')}: {e}")
+            # Construct photo URLs from nba_id
+            for player in players_without_photos:
+                nba_id = player.get("nba_id")
+                if nba_id:
+                    photo_url = f"/api/proxy/nba-headshot/{nba_id}"
+                    await self.hub.update_one(
+                        {"player_id": player["player_id"]},
+                        {"$set": {
+                            "headshot_url": photo_url,
+                            "photo_url": photo_url
+                        }}
+                    )
+                    photos_added += 1
             
-            logger.info(f"[MASTER HUB] Enriched {photos_added} players with photos")
+            logger.info(f"[MASTER HUB] Enriched {photos_added} players with photos from nba_id")
             
         except Exception as e:
             logger.warning(f"[MASTER HUB] Photo enrichment error: {e}")
         
         return photos_added
     
-    async def _fetchActiveRosterFromTank01(self) -> List[Dict[str, Any]]:
-        """Fetch all active NBA players from Tank01 API."""
-        players = []
+    async def _fetchActiveRosterFromBDL(self) -> List[Dict[str, Any]]:
+        """
+        NOTE: BDL is the only stats source. Active roster is now maintained via BDL sync.
         
-        try:
-            async with aiohttp.ClientSession() as session:
-                # Tank01 roster endpoint
-                url = "https://tank01-fantasy-stats.p.rapidapi.com/getNBAPlayerList"
-                headers = {
-                    "X-RapidAPI-Key": TANK01_API_KEY,
-                    "X-RapidAPI-Host": "tank01-fantasy-stats.p.rapidapi.com"
-                }
-                
-                async with session.get(url, headers=headers) as response:
-                    if response.status == 200:
-                        data = await response.json()
-                        player_list = data.get("body", [])
-                        
-                        for p in player_list:
-                            # Only include active players
-                            if p.get("team") and p.get("team") != "FA":
-                                player = self._buildPlayerEntry(p)
-                                if player:
-                                    players.append(player)
-                    else:
-                        logger.error(f"[MASTER HUB] Tank01 API error: {response.status}")
-        except Exception as e:
-            logger.error(f"[MASTER HUB] Roster fetch error: {e}")
+        This method is kept for compatibility but the roster is populated by
+        the BDL comprehensive sync service (bdl_comprehensive_sync.py).
         
-        return players
+        Returns empty list - roster comes from BDL sync.
+        """
+        logger.info("[MASTER HUB] Roster fetch skipped - using BDL sync instead")
+        return []
     
-    def _buildPlayerEntry(self, raw_data: Dict) -> Optional[Dict[str, Any]]:
-        """Build a clean player entry for the Master Hub."""
+    def _buildPlayerEntryFromBDL(self, bdl_player: Dict) -> Optional[Dict[str, Any]]:
+        """Build a clean player entry from BDL player data."""
         try:
-            # Tank01 uses playerID as the main identifier
-            player_id = raw_data.get("playerID")
-            if not player_id:
+            bdl_id = bdl_player.get("id")
+            if not bdl_id:
                 return None
             
-            # Get IDs for headshot
-            nba_id = raw_data.get("nbaComID") or raw_data.get("nbaComHeadshot")
-            espn_id = raw_data.get("espnID") or raw_data.get("espnIDFull")
+            # Get names
+            first_name = bdl_player.get("first_name", "")
+            last_name = bdl_player.get("last_name", "")
+            display_name = f"{first_name} {last_name}".strip()
             
-            # Build headshot URL - try multiple sources
-            headshot_url = None
+            # Get team
+            team_data = bdl_player.get("team", {})
+            team = team_data.get("abbreviation") if isinstance(team_data, dict) else None
             
-            # First try: nbaComHeadshot directly (Tank01 sometimes provides this)
-            if raw_data.get("nbaComHeadshot"):
-                headshot_url = raw_data.get("nbaComHeadshot")
-            # Second try: Build from NBA ID
-            elif nba_id:
-                headshot_url = NBA_HEADSHOT_URL.format(nba_id=nba_id)
-            # Third try: Build from ESPN ID
-            elif espn_id:
-                headshot_url = ESPN_HEADSHOT_URL.format(espn_id=espn_id)
-            # Fourth try: Use espnHeadshot if available
-            elif raw_data.get("espnHeadshot"):
-                headshot_url = raw_data.get("espnHeadshot")
+            # Get position
+            position = bdl_player.get("position")
             
-            display_name = raw_data.get("longName") or raw_data.get("espnName") or raw_data.get("cbsShortName")
+            # Build photo URL from nba_id if available, otherwise use bdl_id proxy
+            nba_id = bdl_player.get("nba_id")
+            if nba_id:
+                photo_url = f"/api/proxy/nba-headshot/{nba_id}"
+            else:
+                photo_url = None
             
             return {
-                "player_id": str(player_id),
-                "tank01_id": player_id,
+                "player_id": str(bdl_id),
+                "bdl_id": bdl_id,
                 "nba_id": nba_id,
-                "espn_id": espn_id,
                 "display_name": display_name,
-                "team": raw_data.get("team"),
-                "team_id": raw_data.get("teamID"),
-                "position": raw_data.get("pos"),
-                "jersey": raw_data.get("jerseyNum"),
-                "headshot_url": headshot_url,
-                "height": raw_data.get("height"),
-                "weight": raw_data.get("weight"),
-                "college": raw_data.get("college"),
-                "injury": raw_data.get("injury", {}),
-                "stats": {},  # Will be populated separately
+                "team": team,
+                "position": position,
+                "jersey": bdl_player.get("jersey_number"),
+                "headshot_url": photo_url,
+                "photo_url": photo_url,
+                "height": bdl_player.get("height"),
+                "weight": bdl_player.get("weight"),
+                "college": bdl_player.get("college"),
+                "country": bdl_player.get("country"),
+                "draft_year": bdl_player.get("draft_year"),
+                "draft_round": bdl_player.get("draft_round"),
+                "draft_number": bdl_player.get("draft_number"),
+                "stats": {},
                 "status": "active"
             }
         except Exception as e:
@@ -367,53 +376,19 @@ class NBAMasterHub:
             return None
     
     async def _fetchPlayerStats(self, player_id: str) -> Dict[str, Any]:
-        """Fetch stats for a single player."""
-        stats = {
+        """
+        Fetch stats for a single player.
+        
+        NOTE: BDL is the only stats source. Stats come from BDL sync service.
+        This method returns empty stats - actual stats are populated by
+        bdl_stats_calculator.py and bdl_comprehensive_sync.py
+        """
+        # Stats are populated by BDL sync, not fetched here
+        return {
             "season_avg": {},
             "l10_games": [],
             "fatigue_data": {}
         }
-        
-        try:
-            async with aiohttp.ClientSession() as session:
-                # Tank01 player stats
-                url = f"https://tank01-fantasy-stats.p.rapidapi.com/getNBAPlayerInfo"
-                headers = {
-                    "X-RapidAPI-Key": TANK01_API_KEY,
-                    "X-RapidAPI-Host": "tank01-fantasy-stats.p.rapidapi.com"
-                }
-                params = {"playerID": player_id}
-                
-                async with session.get(url, headers=headers, params=params) as response:
-                    if response.status == 200:
-                        data = await response.json()
-                        body = data.get("body", {})
-                        
-                        # Season averages
-                        stats["season_avg"] = {
-                            "pts": float(body.get("pts", 0) or 0),
-                            "reb": float(body.get("reb", 0) or 0),
-                            "ast": float(body.get("ast", 0) or 0),
-                            "stl": float(body.get("stl", 0) or 0),
-                            "blk": float(body.get("blk", 0) or 0),
-                            "tov": float(body.get("TOV", 0) or 0),
-                            "mins": float(body.get("mins", 0) or 0),
-                            "fgp": float(body.get("fgPct", 0) or 0),
-                            "tpp": float(body.get("tptPct", 0) or 0),
-                            "ftp": float(body.get("ftPct", 0) or 0),
-                            "gp": int(body.get("gamesPlayed", 0) or 0)
-                        }
-                        
-                        # Fatigue/minutes data
-                        stats["fatigue_data"] = {
-                            "avg_minutes": float(body.get("mins", 0) or 0),
-                            "games_played": int(body.get("gamesPlayed", 0) or 0),
-                            "b2b_games": 0  # Would need game log to calculate
-                        }
-        except Exception as e:
-            logger.warning(f"[MASTER HUB] Stats fetch error for {player_id}: {e}")
-        
-        return stats
     
     # ==================== SCHEDULER ====================
     

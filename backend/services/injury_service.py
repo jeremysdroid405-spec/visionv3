@@ -9,7 +9,7 @@ Features:
 - Risk flagging for GTD/Questionable players
 - Breaking news detection
 
-NOTE: Tank01 has been REMOVED from this application.
+NOTE: BDL is the only stats source from this application.
 """
 
 import os
@@ -54,10 +54,10 @@ class InjuryIntelligenceService:
         
     async def sync_injuries(self) -> Dict[str, Any]:
         """
-        Sync injury data from ESPN API + Tank01 enrichment.
+        Sync injury data from ESPN API.
         Updates the dg_injuries collection with current injury status.
         """
-        logger.info("[INJURY] Starting injury sync from ESPN + Tank01...")
+        logger.info("[INJURY] Starting injury sync from ESPN + BDL...")
         
         try:
             async with httpx.AsyncClient(timeout=30.0) as client:

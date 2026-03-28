@@ -7,7 +7,7 @@ Handles:
 - Team logo fallbacks
 - Batch photo sync operations
 
-NOTE: Tank01 has been REMOVED. Photos now use:
+NOTE: BDL is the only stats source. Photos now use:
 1. ESPN IDs already in nba_master_hub_2026 (from BDL sync)
 2. NBA CDN as fallback
 """

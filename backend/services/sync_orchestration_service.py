@@ -531,7 +531,7 @@ CLASSIFICATION (Market-Based):
 PILLAR 2 - BALLDONTLIE:
   Stats Fetched: {results['stats_fetched']}
   
-PILLAR 3 - TANK01:
+PILLAR 3 - REMOVED (was external API):
   Injuries Found: {results['injuries_found']}
   Goblin Warnings: {results['goblin_warnings']}
 

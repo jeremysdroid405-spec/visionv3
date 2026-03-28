@@ -21,7 +21,7 @@ from services.utils_service import sanitize_player_name, normalize_team_name
 
 logger = logging.getLogger(__name__)
 
-# API Configuration - BDL ONLY (Tank01 REMOVED)
+# API Configuration - BDL ONLY (BDL Only)
 BDL_API_KEY = os.environ.get("BDL_API_KEY")
 BDL_BASE_URL = "https://api.balldontlie.io/v1"
 CURRENT_SEASON = "2025"

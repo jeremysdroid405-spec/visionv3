@@ -33,7 +33,7 @@ STAT_FIELD_MAP = {
 }
 
 # Alternative field names (BDL -> BDL)
-TANK01_TO_BDL = {
+STAT_FIELD_MAPPING = {
     "tptfgm": "fg3m",
     "TOV": "turnover"
 }

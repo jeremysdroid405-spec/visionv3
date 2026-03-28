@@ -115,7 +115,7 @@ ODDS_API_BASE = "https://api.the-odds-api.com/v4"
 BDL_API_KEY = os.environ.get("BDL_API_KEY")
 BDL_BASE_URL = "https://api.balldontlie.io/v1"
 
-# NOTE: Tank01 has been REMOVED. All stats come from BDL.
+# NOTE: BDL is the only stats source. All stats come from BDL.
 
 CURRENT_SEASON = "2025"  # 2025-26 NBA Season
 
@@ -399,7 +399,7 @@ class DemonGoblinEngine:
         )
         self.odds_api_service = OddsApiService(db)
         self.stats_api_service = StatsApiService(db)
-        self.bdl_service = get_bdl_sync_service(db)  # BDL sync service (Tank01 REMOVED)
+        self.bdl_service = get_bdl_sync_service(db)  # BDL sync service (BDL Only)
         self.picks_getter_service = PicksGetterService(db)
         self.data_integrity_service = DataIntegrityService(db)
         self.stats_enrichment_service = StatsEnrichmentService(db)
@@ -655,14 +655,14 @@ class DemonGoblinEngine:
         """
         PROXY: Global photo sync delegated to PhotoService.
         """
-        # Photo sync uses NBA CDN - no Tank01 needed
+        # Photo sync uses NBA CDN - uses NBA CDN
         return await self.photo_service.sync_all_photos()
     
     async def sync_active_players_with_photos(self) -> Dict[str, Any]:
         """
         PROXY: Active player sync delegated to PhotoService.
         """
-        # Photo sync uses NBA CDN - no Tank01 needed
+        # Photo sync uses NBA CDN - uses NBA CDN
         return await self.photo_service.sync_active_players_with_photos()
     
     def get_player_photo_url(self, player_name: str, team: str = None, nba_id: int = None) -> Dict[str, str]:
@@ -921,7 +921,7 @@ class DemonGoblinEngine:
             player_name, player_id, team_abbrev
         )
     
-    # ==================== INJURIES & NEWS (ESPN + BDL - Tank01 REMOVED) ====================
+    # ==================== INJURIES & NEWS (ESPN + BDL - BDL Only) ====================
     
     async def fetch_injuries(self) -> Dict[str, Any]:
         """Fetch injury data from ESPN + BDL."""

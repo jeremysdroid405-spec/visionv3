@@ -26,6 +26,34 @@ logger = logging.getLogger(__name__)
 COLLECTION_NAME = "odds_api_mapping_master"
 MASTER_HUB_COLLECTION = "nba_master_hub_2026"
 
+# Patterns that indicate a team logo (NOT a player headshot)
+TEAM_LOGO_PATTERNS = [
+    "cdn.nba.com/logos/nba/",
+    "/logos/nba/",
+    "/global/L/logo",
+    "/global/D/logo",
+    "team-logos",
+]
+
+
+def is_team_logo_url(url: str) -> bool:
+    """Check if a URL is a team logo instead of a player headshot."""
+    if not url:
+        return False
+    url_lower = url.lower()
+    return any(pattern.lower() in url_lower for pattern in TEAM_LOGO_PATTERNS)
+
+
+def sanitize_photo_url(photo_url: str, nba_id: int = None) -> str:
+    """
+    Sanitize photo URL - replace team logos with proper headshot proxy.
+    """
+    if is_team_logo_url(photo_url) and nba_id:
+        return f"/api/proxy/nba-headshot/{nba_id}"
+    if not photo_url and nba_id:
+        return f"/api/proxy/nba-headshot/{nba_id}"
+    return photo_url
+
 
 class OddsApiMapper:
     """
@@ -153,9 +181,11 @@ class OddsApiMapper:
                 hub_record = hub_lookup.get(str(player_id), {})
                 merged = {**m, **hub_record}
                 
-                # Ensure photo_url is set (construct from nba_id if needed)
-                if not merged.get("photo_url") and merged.get("nba_id"):
-                    merged["photo_url"] = f"/api/proxy/nba-headshot/{merged['nba_id']}"
+                # CRITICAL: Sanitize photo_url - replace team logos with headshot proxy
+                nba_id = merged.get("nba_id")
+                raw_photo = merged.get("photo_url") or merged.get("headshot_url")
+                merged["photo_url"] = sanitize_photo_url(raw_photo, nba_id)
+                merged["headshot_url"] = merged["photo_url"]  # Keep in sync
                 
                 self._player_id_to_full_data[str(player_id)] = merged
                 

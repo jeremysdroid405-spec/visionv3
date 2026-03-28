@@ -5,7 +5,7 @@ Demon Tracker v3 - Two-Step Deep Ingestion Engine
 Step 1: Event Discovery - Get ALL event IDs for today
 Step 2: Deep Prop Pull - For EACH event, pull ALL markets
 Step 3: BallDontLie Integration - Map ALL players, calculate hit rates
-Step 4: Tank01 Safety Check - Query injuries and news for warnings
+Step 4: Safety Check - Query injuries and news for warnings (ESPN + BDL)
 
 Final Output: Scrollable list of ALL players with lines and verified stats
 """
@@ -32,7 +32,7 @@ ODDS_API_BASE = "https://api.the-odds-api.com/v4"
 BDL_API_KEY = os.environ.get("BDL_API_KEY")
 BDL_BASE_URL = "https://api.balldontlie.io/v1"
 
-# NOTE: Tank01 has been REMOVED from this application. BDL is the only stats source.
+# NOTE: BDL is the only stats source. ESPN for injuries/news.
 
 # Current NBA Season (2025-26)
 CURRENT_SEASON = "2025"
@@ -451,13 +451,13 @@ class DeepIngestionEngine:
     # ==================== STEP 4: INJURY/NEWS CHECK (BDL + ESPN) ====================
     
     async def fetch_injuries(self) -> Dict[str, Any]:
-        """Fetch injury data from BDL/ESPN (Tank01 REMOVED)"""
+        """Fetch injury data from ESPN/BDL"""
         # Injuries are synced via injury_service.py from ESPN + BDL
         # This method is kept for interface compatibility but returns cached data
         return self._injury_data or {}
     
     async def fetch_news(self) -> List[Dict[str, Any]]:
-        """Fetch latest NBA news (Tank01 REMOVED)"""
+        """Fetch latest NBA news from ESPN"""
         # News is now fetched via ESPN in injury_service.py
         return self._news_data or []
     
@@ -540,7 +540,7 @@ class DeepIngestionEngine:
                 result["hit_rates"] = hit_rates
                 result["card_color"] = hit_rates.get("card_color", "standard")
         
-        # Step 4: Tank01 safety check
+        # Step 4: Injury safety check
         injury_info = self.check_player_injury_and_news(player_name)
         result["injury_info"] = injury_info
         
@@ -613,15 +613,15 @@ class DeepIngestionEngine:
             results["step2_unique_players"] = len(all_players)
             logger.info(f"✓ STEP 2 COMPLETE: {len(all_props)} props, {len(all_players)} unique players")
             
-            # ===== STEP 4: TANK01 SAFETY CHECK (before processing) =====
+            # ===== STEP 4: SAFETY CHECK (ESPN + BDL Injuries) =====
             logger.info("=" * 60)
-            logger.info("STEP 4: TANK01 SAFETY CHECK")
+            logger.info("STEP 4: INJURY SAFETY CHECK")
             logger.info("=" * 60)
             
-            injuries = await self.fetch_tank01_injuries()
-            news = await self.fetch_tank01_news()
-            results["step4_injuries_found"] = len(injuries)
-            results["step4_news_items"] = len(news)
+            injuries = await self.fetch_injuries()
+            news = await self.fetch_news()
+            results["step4_injuries_found"] = len(injuries) if isinstance(injuries, list) else 0
+            results["step4_news_items"] = len(news) if isinstance(news, list) else 0
             
             # ===== STEP 3: BALLDONTLIE INTEGRATION =====
             logger.info("=" * 60)

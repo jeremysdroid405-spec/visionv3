@@ -20,7 +20,7 @@ from thefuzz import fuzz
 
 logger = logging.getLogger(__name__)
 
-# API Configuration - BDL ONLY (Tank01 REMOVED)
+# API Configuration - BDL ONLY (BDL Only)
 BDL_BASE_URL = "https://api.balldontlie.io/v1"
 BDL_API_KEY = os.environ.get("BDL_API_KEY")
 
@@ -286,7 +286,7 @@ class StatsEnrichmentService:
     async def _fetch_bdl_player_stats(self, player_name: str) -> Dict[str, Any]:
         """
         Fetch player stats from BDL API.
-        NOTE: Tank01 has been REMOVED. This now uses BDL exclusively.
+        NOTE: BDL is the only stats source. This now uses BDL exclusively.
         """
         try:
             # Search for player in BDL
