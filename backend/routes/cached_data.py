@@ -363,38 +363,33 @@ async def resolve_context_badges(engine, player_name: str, player_data: dict) ->
                 })
         
         # ===== 2. MILESTONE: Career milestone tracking =====
-        # Uses NBA API for real career stats (cached in MongoDB)
+        # Try both NBA API and static data, use whichever has more recent/higher stats
+        milestone = None
         try:
-            from services.nba_career_service import get_milestone_for_player
-            milestone = await get_milestone_for_player(db, player_name)
-            if milestone:
-                badges.append({
-                    "badge_key": "milestone",
-                    "display": milestone.get("headline", "Milestone"),
-                    "icon": "Trophy",
-                    "color": "#eab308",
-                    "description": milestone.get("description"),
-                    "severity": milestone.get("severity", 7),
-                    "detail": milestone
-                })
+            # Try static data FIRST (more reliable, manually curated)
+            from data.career_milestones import get_best_milestone
+            milestone = get_best_milestone(player_name)
         except Exception as e:
-            # Fallback to static data if NBA API fails
+            logger.debug(f"Static milestone check failed for {player_name}: {e}")
+        
+        # If no static milestone, try NBA API
+        if not milestone:
             try:
-                from data.career_milestones import get_best_milestone
-                milestone = get_best_milestone(player_name)
-                if milestone:
-                    badges.append({
-                        "badge_key": "milestone",
-                        "display": milestone.get("headline", "Milestone"),
-                        "icon": "Trophy",
-                        "color": "#eab308",
-                        "description": milestone.get("description"),
-                        "severity": milestone.get("severity", 7),
-                        "detail": milestone
-                    })
-            except:
-                pass
-            logger.debug(f"Milestone check failed for {player_name}: {e}")
+                from services.nba_career_service import get_milestone_for_player
+                milestone = await get_milestone_for_player(db, player_name)
+            except Exception as e:
+                logger.debug(f"NBA API milestone check failed for {player_name}: {e}")
+        
+        if milestone:
+            badges.append({
+                "badge_key": "milestone",
+                "display": milestone.get("headline", "Milestone"),
+                "icon": "Trophy",
+                "color": "#eab308",
+                "description": milestone.get("description"),
+                "severity": milestone.get("severity", 7),
+                "detail": milestone
+            })
         
         # ===== 3. GASSED: Back-to-back (2nd night) =====
         if game_logs and len(game_logs) >= 2:
