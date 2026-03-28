@@ -235,16 +235,36 @@ async def _find_prop_index(db: AsyncIOMotorDatabase, pick: Dict) -> int:
         {"_id": 0, "props": 1}
     )
     if not player:
+        logger.warning(f"[BOARD_INTEL] Player {pick['player_name']} not found in dg_cached_board")
         return -1
     
     stat = pick.get("stat_type") or pick.get("stat_type_raw", "")
     line = pick.get("line", 0)
     
+    # First try exact match
     for i, prop in enumerate(player.get("props", [])):
         prop_stat = prop.get("stat_type_extracted") or prop.get("stat_type", "")
         prop_line = prop.get("line", 0)
         if prop_stat == stat and abs(prop_line - line) < 0.1:
             return i
+    
+    # If no exact match, find the prop with matching stat_type and closest line
+    best_idx = -1
+    best_diff = float('inf')
+    for i, prop in enumerate(player.get("props", [])):
+        prop_stat = prop.get("stat_type_extracted") or prop.get("stat_type", "")
+        prop_line = prop.get("line", 0)
+        if prop_stat == stat:
+            diff = abs(prop_line - line)
+            if diff < best_diff:
+                best_diff = diff
+                best_idx = i
+    
+    if best_idx >= 0:
+        logger.debug(f"[BOARD_INTEL] Fuzzy match for {pick['player_name']} {stat}: wanted {line}, found index {best_idx}")
+        return best_idx
+    
+    logger.warning(f"[BOARD_INTEL] No matching prop for {pick['player_name']} {stat}@{line}")
     return -1
 
 
