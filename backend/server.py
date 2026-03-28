@@ -19,6 +19,7 @@ from thefuzz import fuzz
 import asyncio
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
+from apscheduler.triggers.interval import IntervalTrigger
 from services.stats_manager_bdl import StatsManager
 from services.engines.demon_tracker_engine import DeepIngestionEngine
 from services.engines.demon_goblin_engine import DemonGoblinEngine
@@ -777,6 +778,105 @@ async def scheduled_bdl_game_logs_sync():
         logger.error(f"[SCHEDULER] BDL game logs sync failed: {e}")
 
 
+# =============================================================================
+# WEEKEND-READY INTERVAL JOBS (High-Performance Refresh)
+# =============================================================================
+
+async def scheduled_hourly_full_sync():
+    """
+    HOURLY ODDS & PROPS SYNC (The Engine)
+    
+    Runs every 60 minutes to keep props fresh during game days.
+    This is the main data refresh that powers all pick recommendations.
+    """
+    logger.info("=" * 70)
+    logger.info("[SCHEDULER] HOURLY FULL SYNC (INTERVAL)")
+    logger.info(f"[SCHEDULER] Time: {datetime.now(timezone.utc).isoformat()}")
+    logger.info("=" * 70)
+    
+    if demon_goblin_engine:
+        try:
+            result = await demon_goblin_engine.run_full_sync()
+            logger.info(f"[SCHEDULER] Hourly sync complete: {result.get('unique_players', 0)} players")
+            logger.info(f"[SCHEDULER] Standard: {result.get('standard_count', 0)}, Demons: {result.get('demons_count', 0)}, Goblins: {result.get('goblins_count', 0)}")
+            logger.info("=" * 70)
+        except Exception as e:
+            logger.error(f"[SCHEDULER] Hourly full sync failed: {e}")
+    else:
+        logger.error("[SCHEDULER] Demon & Goblin Engine not initialized")
+
+
+async def scheduled_hourly_badge_sync():
+    """
+    HOURLY CONTEXT BADGE SYNC (The Intel)
+    
+    Runs every 60 minutes to update context badges for all players.
+    Badges: home_cookin, jet_lag, revenge, locked_in, distraction, deep_water
+    """
+    logger.info("=" * 70)
+    logger.info("[SCHEDULER] HOURLY BADGE SYNC (INTERVAL)")
+    logger.info(f"[SCHEDULER] Time: {datetime.now(timezone.utc).isoformat()}")
+    logger.info("=" * 70)
+    
+    try:
+        from services.context_badge_service import get_badge_service
+        badge_service = get_badge_service(db)
+        
+        result = await badge_service.sync_badges_for_all_players(limit=500)
+        
+        logger.info(f"[SCHEDULER] Hourly badge sync: {result['updated']} updated, {result['skipped']} skipped")
+        logger.info("=" * 70)
+        
+    except Exception as e:
+        logger.error(f"[SCHEDULER] Hourly badge sync failed: {e}")
+
+
+async def scheduled_hourly_injury_sync():
+    """
+    HOURLY INJURY SYNC (The Roster)
+    
+    Runs every 60 minutes to catch injury report updates.
+    Critical for Usage Ripple calculations and player availability.
+    """
+    logger.info("=" * 70)
+    logger.info("[SCHEDULER] HOURLY INJURY SYNC (INTERVAL)")
+    logger.info(f"[SCHEDULER] Time: {datetime.now(timezone.utc).isoformat()}")
+    logger.info("=" * 70)
+    
+    if injury_service:
+        try:
+            result = await injury_service.sync_injuries()
+            logger.info(f"[SCHEDULER] Hourly injury sync: {result.get('injuries_synced', 0)} injuries, {result.get('usage_ripple_updates', 0)} ripple updates")
+            logger.info("=" * 70)
+        except Exception as e:
+            logger.error(f"[SCHEDULER] Hourly injury sync failed: {e}")
+    else:
+        logger.error("[SCHEDULER] Injury service not initialized")
+
+
+async def scheduled_half_hourly_social_sync():
+    """
+    HALF-HOURLY SOCIAL SIGNAL SYNC (The News)
+    
+    Runs every 30 minutes to catch late-breaking lineup news and social signals.
+    Faster refresh to capture game-time decisions and injury updates.
+    """
+    logger.info("=" * 70)
+    logger.info("[SCHEDULER] HALF-HOURLY SOCIAL SYNC (INTERVAL)")
+    logger.info(f"[SCHEDULER] Time: {datetime.now(timezone.utc).isoformat()}")
+    logger.info("=" * 70)
+    
+    if social_signal_engine:
+        try:
+            result = await social_signal_engine.sync_social_signals()
+            logger.info(f"[SCHEDULER] Half-hourly social sync: {result.get('players_checked', 0)} checked, {result.get('signals_updated', 0)} updated")
+            logger.info("=" * 70)
+        except Exception as e:
+            logger.error(f"[SCHEDULER] Half-hourly social sync failed: {e}")
+    else:
+        logger.error("[SCHEDULER] Social signal engine not initialized")
+
+
 @app.on_event("startup")
 async def startup_event():
     global stats_manager, demon_tracker, demon_goblin_engine, vision_ai_service, injury_service, raw_stat_fetcher, social_signal_engine, adaptive_sync, intel_briefing_engine, live_scores_engine, game_lock_engine, scheduler
@@ -921,15 +1021,63 @@ async def startup_event():
     else:
         logger.warning("[ADAPTIVE_SYNC] No Odds API key - adaptive sync disabled")
     
-    # Daily sync at 4:00 AM EST (9:00 AM UTC) - FULL Vision Intel sync
-    # Includes: Injuries, Player Stats, Master Hub, DvP Rankings, Odds, Insights, Vision AI
+    # ==========================================================================
+    # WEEKEND-READY SCHEDULER: High-Performance Interval System
+    # ==========================================================================
+    
+    # 1. DAILY HARD REFRESH at 4:00 AM EST (9:00 AM UTC) - Safety Backup
+    # This is the comprehensive daily sync that runs all 10 steps
     scheduler.add_job(
         scheduled_daily_sync,
         CronTrigger(hour=9, minute=0, timezone=SCHEDULER_TIMEZONE),  # 4:00 AM EST = 9:00 AM UTC
-        id='daily_sync',
-        name='4:00 AM EST Full Vision Intel Sync',
+        id='daily_hard_refresh',
+        name='4:00 AM EST Daily Hard Refresh (Safety Backup)',
         replace_existing=True
     )
+    
+    # 2. HOURLY FULL SYNC (The Engine) - Every 60 minutes
+    # Keeps props fresh during game days
+    scheduler.add_job(
+        scheduled_hourly_full_sync,
+        IntervalTrigger(minutes=60, timezone=SCHEDULER_TIMEZONE),
+        id='hourly_full_sync',
+        name='Hourly Full Sync (60 min interval)',
+        replace_existing=True
+    )
+    
+    # 3. HOURLY BADGE SYNC (The Intel) - Every 60 minutes
+    # Updates context badges for all players
+    scheduler.add_job(
+        scheduled_hourly_badge_sync,
+        IntervalTrigger(minutes=60, timezone=SCHEDULER_TIMEZONE),
+        id='hourly_badge_sync',
+        name='Hourly Badge Sync (60 min interval)',
+        replace_existing=True
+    )
+    
+    # 4. HOURLY INJURY SYNC (The Roster) - Every 60 minutes
+    # Catches injury report updates for Usage Ripple
+    scheduler.add_job(
+        scheduled_hourly_injury_sync,
+        IntervalTrigger(minutes=60, timezone=SCHEDULER_TIMEZONE),
+        id='hourly_injury_sync',
+        name='Hourly Injury Sync (60 min interval)',
+        replace_existing=True
+    )
+    
+    # 5. HALF-HOURLY SOCIAL SYNC (The News) - Every 30 minutes
+    # Catches late-breaking lineup news and social signals
+    scheduler.add_job(
+        scheduled_half_hourly_social_sync,
+        IntervalTrigger(minutes=30, timezone=SCHEDULER_TIMEZONE),
+        id='half_hourly_social_sync',
+        name='Half-Hourly Social Sync (30 min interval)',
+        replace_existing=True
+    )
+    
+    # ==========================================================================
+    # DAILY ENRICHMENT JOBS (Keep existing for comprehensive data refresh)
+    # ==========================================================================
     
     # NBA.com L5/L10 STAGGERED BATCH ENRICHMENT
     # 5 batches of 125 players each, 2 minutes apart
@@ -999,24 +1147,6 @@ async def startup_event():
         replace_existing=True
     )
     
-    # Badge Sync at 4:20 AM EST (9:20 AM UTC) - Context Badges
-    scheduler.add_job(
-        scheduled_badge_sync,
-        CronTrigger(hour=9, minute=20, timezone=SCHEDULER_TIMEZONE),
-        id='badge_sync',
-        name='4:20 AM EST Context Badge Sync',
-        replace_existing=True
-    )
-    
-    # Morning props sync at 5:00 AM EST (10:00 AM UTC) - Odds/Props refresh
-    scheduler.add_job(
-        scheduled_daily_sync,
-        CronTrigger(hour=10, minute=0, timezone=SCHEDULER_TIMEZONE),  # 5:00 AM EST = 10:00 AM UTC
-        id='morning_props_sync',
-        name='5:00 AM EST Morning Props Sync',
-        replace_existing=True
-    )
-    
     # Weekly Master Roster sync every Sunday at midnight UTC
     scheduler.add_job(
         scheduled_roster_sync,
@@ -1037,11 +1167,16 @@ async def startup_event():
     )
     
     scheduler.start()
-    logger.info(f"[SCHEDULER] APScheduler started")
-    logger.info(f"[SCHEDULER] Daily Full Sync: 04:00 AM EST (09:00 UTC)")
-    logger.info(f"[SCHEDULER] NBA.com L5/L10: 5 batches x 125 players @ 04:00, 04:02, 04:04, 04:06, 04:08 AM EST")
-    logger.info(f"[SCHEDULER] BDL Game Logs: 04:25 AM EST (09:25 UTC)")
-    logger.info(f"[SCHEDULER] Morning Props: 05:00 AM EST (10:00 UTC)")
+    logger.info(f"[SCHEDULER] APScheduler started - WEEKEND-READY MODE")
+    logger.info(f"[SCHEDULER] === INTERVAL JOBS (High-Performance) ===")
+    logger.info(f"[SCHEDULER] Hourly Full Sync: Every 60 min (id: hourly_full_sync)")
+    logger.info(f"[SCHEDULER] Hourly Badge Sync: Every 60 min (id: hourly_badge_sync)")
+    logger.info(f"[SCHEDULER] Hourly Injury Sync: Every 60 min (id: hourly_injury_sync)")
+    logger.info(f"[SCHEDULER] Half-Hourly Social: Every 30 min (id: half_hourly_social_sync)")
+    logger.info(f"[SCHEDULER] === DAILY CRON JOBS ===")
+    logger.info(f"[SCHEDULER] Daily Hard Refresh: 04:00 AM EST (id: daily_hard_refresh)")
+    logger.info(f"[SCHEDULER] NBA.com L5/L10: 5 batches @ 04:00, 04:02, 04:04, 04:06, 04:08 AM EST")
+    logger.info(f"[SCHEDULER] BDL Game Logs: 04:25 AM EST")
     logger.info(f"[SCHEDULER] Weekly Roster: Sunday 00:00 UTC")
     
     # AUTO-SYNC: Check if database is empty and trigger initial population
