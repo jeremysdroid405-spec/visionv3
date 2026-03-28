@@ -17,6 +17,24 @@ import time
 
 logger = logging.getLogger(__name__)
 
+# ========== EXCLUSION LIST ==========
+# Players who are confirmed NOT in contract years (signed extensions, etc.)
+# This overrides any Spotrac data that may be stale/incorrect
+CONTRACT_YEAR_EXCLUSIONS = {
+    # Star max extensions signed
+    "shai gilgeous-alexander",  # Signed 5-year $207M extension in 2024
+    "jayson tatum",             # Signed supermax extension
+    "luka doncic",              # Signed supermax extension  
+    "anthony edwards",          # Signed max extension
+    "evan mobley",              # Signed max extension
+    "scottie barnes",           # Signed max extension
+    "cade cunningham",          # Signed max extension
+    "franz wagner",             # Signed max extension
+    "tyrese haliburton",        # Signed max extension
+    "paolo banchero",           # Signed extension
+    "jalen brunson",            # Signed extension with Knicks
+}
+
 # Spotrac URLs
 SPOTRAC_NBA_CONTRACTS_URL = "https://www.spotrac.com/nba/contracts"
 SPOTRAC_FA_URL = "https://www.spotrac.com/nba/free-agents"
@@ -405,6 +423,13 @@ async def get_contract_year_info(player_name: str, db: Optional[AsyncIOMotorData
     Returns:
         Dict with contract info or None if not in contract year
     """
+    # ========== CHECK EXCLUSION LIST FIRST ==========
+    # Players confirmed to have signed extensions should NOT get pay_day badge
+    normalized_check = player_name.lower().strip()
+    if normalized_check in CONTRACT_YEAR_EXCLUSIONS:
+        logger.debug(f"[PAY_DAY] {player_name} excluded (signed extension)")
+        return None
+    
     if db is None:
         db = get_db()
     
@@ -432,6 +457,11 @@ async def get_contract_year_info(player_name: str, db: Optional[AsyncIOMotorData
     
     # Normalize player name for lookup
     normalized = normalize_name(player_name)
+    
+    # Double-check exclusion with normalized name
+    if normalized in CONTRACT_YEAR_EXCLUSIONS:
+        logger.debug(f"[PAY_DAY] {player_name} excluded (normalized match)")
+        return None
     
     contract = contracts.get(normalized)
     if not contract:
