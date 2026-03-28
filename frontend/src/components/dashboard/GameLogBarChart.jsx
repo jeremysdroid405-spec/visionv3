@@ -200,7 +200,7 @@ const GameLogBarChart = memo(({
                 style={{ width: `${85 / values.length}%` }}
               >
                 <div 
-                  className="absolute text-[10px] font-bold text-white"
+                  className="absolute text-[13px] font-bold text-white"
                   style={{ 
                     bottom: `${barHeightPercent + 3}%`,
                     textShadow: '0 1px 3px rgba(0,0,0,0.9), 0 0 5px rgba(0,0,0,0.5)'
@@ -219,7 +219,7 @@ const GameLogBarChart = memo(({
         {values.map((item, idx) => (
           <span 
             key={idx} 
-            className="text-[8px] text-white font-medium"
+            className="text-[10px] text-white font-medium"
             style={{ width: `${100 / values.length}%`, textAlign: 'center' }}
           >
             {item.opponent}
