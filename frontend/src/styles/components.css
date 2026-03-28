@@ -183,7 +183,10 @@
   scrollbar-width: none;
   -ms-overflow-style: none;
   gap: 12px;
-  padding: 4px 16px;
+  padding: 4px 24px;
+  /* Center the first card when scrolled to start */
+  scroll-padding-left: 24px;
+  scroll-padding-right: 24px;
 }
 
 .swipe-container::-webkit-scrollbar {
@@ -193,9 +196,10 @@
 .swipe-card {
   scroll-snap-align: center;
   flex-shrink: 0 !important;
-  width: calc(100vw - 48px) !important;
-  max-width: 340px !important;
-  min-width: calc(100vw - 48px) !important;
+  /* Smaller width to show borders on sides */
+  width: calc(100vw - 64px) !important;
+  max-width: 320px !important;
+  min-width: calc(100vw - 64px) !important;
 }
 
 @media (min-width: 640px) {
