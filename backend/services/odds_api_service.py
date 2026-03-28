@@ -57,6 +57,24 @@ class OddsApiService:
         
         # In-memory caches
         self._player_popularity: Dict[str, int] = {}
+        
+        # Shared HTTP client for parallel requests
+        self._client: Optional[httpx.AsyncClient] = None
+    
+    async def _get_client(self) -> httpx.AsyncClient:
+        """Get or create shared HTTP client."""
+        if self._client is None or self._client.is_closed:
+            self._client = httpx.AsyncClient(
+                timeout=30.0,
+                limits=httpx.Limits(max_connections=10)
+            )
+        return self._client
+    
+    async def close_client(self):
+        """Close HTTP client."""
+        if self._client and not self._client.is_closed:
+            await self._client.aclose()
+            self._client = None
     
     async def fetch_todays_events(self) -> List[Dict[str, Any]]:
         """
@@ -69,17 +87,17 @@ class OddsApiService:
             url = f"{ODDS_API_BASE}/sports/basketball_nba/events"
             params = {"apiKey": ODDS_API_KEY, "dateFormat": "iso"}
             
-            async with httpx.AsyncClient() as client:
-                response = await client.get(url, params=params, timeout=15.0)
+            client = await self._get_client()
+            response = await client.get(url, params=params)
+            
+            if response.status_code == 200:
+                events = response.json()
                 
-                if response.status_code == 200:
-                    events = response.json()
-                    
-                    # Store all events in cache
-                    await self.events_cache.delete_many({})
-                    for event in events:
-                        event["fetched_at"] = datetime.now(timezone.utc).isoformat()
-                        await self.events_cache.insert_one(event)
+                # Store all events in cache
+                await self.events_cache.delete_many({})
+                for event in events:
+                    event["fetched_at"] = datetime.now(timezone.utc).isoformat()
+                    await self.events_cache.insert_one(event)
                     
                     logger.info(f"[ODDS_API] Found {len(events)} NBA events")
                     for e in events[:10]:
@@ -134,7 +152,7 @@ class OddsApiService:
                         logger.debug(f"  [PRIZEPICKS] Using cached data for {event_id} (age: {age_minutes:.1f}m)")
                         return cached
             
-            # FETCH FROM API
+            # FETCH FROM API using shared client
             url = f"{ODDS_API_BASE}/sports/basketball_nba/events/{event_id}/odds"
             
             params = {
@@ -145,61 +163,61 @@ class OddsApiService:
                 "oddsFormat": "american"
             }
             
-            async with httpx.AsyncClient() as client:
-                response = await client.get(url, params=params, timeout=30.0)
+            client = await self._get_client()
+            response = await client.get(url, params=params)
+            
+            if response.status_code == 200:
+                odds_data = response.json()
+                odds_data["event_id"] = event_id
+                odds_data["fetched_at"] = datetime.now(timezone.utc).isoformat()
+                odds_data["source"] = "prizepicks"
                 
+                # Count outcomes
+                total_outcomes = 0
+                players_found = set()
+                for bm in odds_data.get("bookmakers", []):
+                    for market in bm.get("markets", []):
+                        for outcome in market.get("outcomes", []):
+                            total_outcomes += 1
+                            if outcome.get("description"):
+                                players_found.add(outcome.get("description"))
+                
+                logger.info(
+                    f"  [PRIZEPICKS] {event_info.get('away_team')} @ "
+                    f"{event_info.get('home_team')}: {total_outcomes} lines, "
+                    f"{len(players_found)} players"
+                )
+                
+                # Store in cache
+                await self.odds_cache.update_one(
+                    {"event_id": event_id, "source": "prizepicks"},
+                    {"$set": odds_data},
+                    upsert=True
+                )
+                
+                return odds_data
+                
+            elif response.status_code == 422:
+                # Try with basic markets only
+                logger.warning(
+                    f"  [PRIZEPICKS] Some markets unavailable for {event_id}, "
+                    "trying basic markets"
+                )
+                params["markets"] = (
+                    "player_points,player_points_alternate,"
+                    "player_rebounds,player_rebounds_alternate,"
+                    "player_assists,player_assists_alternate"
+                )
+                response = await client.get(url, params=params)
                 if response.status_code == 200:
                     odds_data = response.json()
                     odds_data["event_id"] = event_id
-                    odds_data["fetched_at"] = datetime.now(timezone.utc).isoformat()
                     odds_data["source"] = "prizepicks"
-                    
-                    # Count outcomes
-                    total_outcomes = 0
-                    players_found = set()
-                    for bm in odds_data.get("bookmakers", []):
-                        for market in bm.get("markets", []):
-                            for outcome in market.get("outcomes", []):
-                                total_outcomes += 1
-                                if outcome.get("description"):
-                                    players_found.add(outcome.get("description"))
-                    
-                    logger.info(
-                        f"  [PRIZEPICKS] {event_info.get('away_team')} @ "
-                        f"{event_info.get('home_team')}: {total_outcomes} lines, "
-                        f"{len(players_found)} players"
-                    )
-                    
-                    # Store in cache
-                    await self.odds_cache.update_one(
-                        {"event_id": event_id, "source": "prizepicks"},
-                        {"$set": odds_data},
-                        upsert=True
-                    )
-                    
                     return odds_data
-                    
-                elif response.status_code == 422:
-                    # Try with basic markets only
-                    logger.warning(
-                        f"  [PRIZEPICKS] Some markets unavailable for {event_id}, "
-                        "trying basic markets"
-                    )
-                    params["markets"] = (
-                        "player_points,player_points_alternate,"
-                        "player_rebounds,player_rebounds_alternate,"
-                        "player_assists,player_assists_alternate"
-                    )
-                    response = await client.get(url, params=params, timeout=30.0)
-                    if response.status_code == 200:
-                        odds_data = response.json()
-                        odds_data["event_id"] = event_id
-                        odds_data["source"] = "prizepicks"
-                        return odds_data
-                else:
-                    logger.warning(
-                        f"  [PRIZEPICKS] API returned {response.status_code} for {event_id}"
-                    )
+            else:
+                logger.warning(
+                    f"  [PRIZEPICKS] API returned {response.status_code} for {event_id}"
+                )
                         
         except Exception as e:
             logger.error(f"[ODDS_API] PrizePicks odds fetch error for {event_id}: {e}")
@@ -227,11 +245,11 @@ class OddsApiService:
                 "oddsFormat": "american"
             }
             
-            async with httpx.AsyncClient() as client:
-                response = await client.get(url, params=params, timeout=30.0)
-                
-                if response.status_code == 200:
-                    return response.json()
+            client = await self._get_client()
+            response = await client.get(url, params=params)
+            
+            if response.status_code == 200:
+                return response.json()
                         
         except Exception as e:
             logger.error(f"[ODDS_API] Standard odds fetch error: {e}")

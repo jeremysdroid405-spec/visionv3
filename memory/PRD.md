@@ -529,28 +529,39 @@ dg_cached_board.props[].hit_rates
    - Bulk MongoDB updates for efficiency
    - Performance: 549 players synced in ~57 seconds (vs 3+ minutes sequential)
 
-2. **Integration Points Updated**
+2. **Odds API Parallel Fetching** (`odds_sync_service.py` + `odds_api_service.py`)
+   - All game events fetched in PARALLEL via `asyncio.gather`
+   - Shared HTTP client for connection reuse
+   - Performance: 9 events synced in ~7s (vs ~20s sequential)
+
+3. **Integration Points Updated**
    - `server.py` - Scheduled BDL sync now uses batched version
    - `scheduler.py` - Init sync uses batched version  
    - `adaptive_sync_engine.py` - Background polling uses batched version
 
-3. **Dead Code Cleanup**
+4. **Dead Code Cleanup**
    - Removed 246 lines of unreachable JIT calculation code from `picks_getter_service.py`
    - File reduced from 3215 to 2969 lines
 
 ### Configuration
 ```python
+# BDL Batching
 BATCH_SIZE = 25        # Players per API request
 PARALLEL_BATCHES = 2   # Concurrent batch requests
 RATE_LIMIT_DELAY = 1.0 # Seconds between parallel batch groups
+
+# Odds API
+# All events fetched in parallel via asyncio.gather
+# Shared httpx.AsyncClient for connection pooling
 ```
 
 ### Performance Results
-- API calls reduced from ~550 to ~22 per full sync
-- Sync duration reduced from ~180s to ~60s (3x faster)
+- BDL: API calls reduced from ~550 to ~22 per full sync
+- BDL: Sync duration reduced from ~180s to ~60s (3x faster)
+- Odds: 9 parallel event fetches in ~7s vs ~20s sequential
 - No rate limiting issues with current configuration
 
-**Status:** COMPLETE - Tested and verified working
+**Status:** COMPLETE - Both BDL and Odds API using parallel/batched fetching
 
 ---
 

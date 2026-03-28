@@ -106,27 +106,42 @@ class OddsSyncService:
                 results["errors"].append("No NBA events found")
                 return results
             
-            # Step 2: Fetch odds for each event
+            # Step 2: Fetch odds for ALL events in PARALLEL (batched)
             all_props = []
             seen_players_raw = set()
             seen_players_normalized = set()
             
-            for event in events:
-                event_id = event.get("id")
-                if not event_id:
-                    continue
+            # Filter valid events
+            valid_events = [(e.get("id"), e) for e in events if e.get("id")]
+            
+            if valid_events:
+                logger.info(f"[SYNC_ODDS_TO_MONGO] Fetching odds for {len(valid_events)} events in PARALLEL...")
                 
-                odds_data = await fetch_prizepicks_odds(event_id, event)
-                results["api_calls_made"] += 1
+                # Create tasks for parallel execution
+                async def fetch_event_odds(event_id: str, event_info: dict):
+                    """Fetch odds for a single event."""
+                    try:
+                        return await fetch_prizepicks_odds(event_id, event_info)
+                    except Exception as e:
+                        logger.error(f"[SYNC_ODDS_TO_MONGO] Error fetching {event_id}: {e}")
+                        return None
                 
-                if odds_data:
-                    props = extract_prizepicks_props(odds_data)
-                    all_props.extend(props)
-                    
-                    for prop in props:
-                        seen_players_raw.add(prop.get("player_name"))
+                # Execute all fetches in parallel
+                tasks = [fetch_event_odds(eid, einfo) for eid, einfo in valid_events]
+                odds_results = await asyncio.gather(*tasks, return_exceptions=True)
                 
-                await asyncio.sleep(0.3)
+                results["api_calls_made"] += len(valid_events)
+                
+                # Process results
+                for odds_data in odds_results:
+                    if isinstance(odds_data, Exception):
+                        continue
+                    if odds_data:
+                        props = extract_prizepicks_props(odds_data)
+                        all_props.extend(props)
+                        
+                        for prop in props:
+                            seen_players_raw.add(prop.get("player_name"))
             
             # Step 3: Normalize all props
             logger.info(f"[NORMALIZATION] Processing {len(all_props)} props...")
