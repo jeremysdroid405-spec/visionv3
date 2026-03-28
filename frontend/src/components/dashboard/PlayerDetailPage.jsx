@@ -696,11 +696,16 @@ export const PlayerDetailPage = ({ playerName, playerData = null, onBack, highli
                     const isActive = selectedVisionProp.active_badges?.includes(badgeKey) || 
                                      selectedVisionProp.intel_suite?.context_badges?.includes(badgeKey);
                     
+                    // Get custom description from player badges if available (e.g., milestone details)
+                    const playerBadge = player?.badges?.find(b => b.badge_key === badgeKey);
+                    const customDescription = isActive ? playerBadge?.description : null;
+                    
                     return (
                       <BadgeGridItem 
                         key={badgeKey}
                         badgeKey={badgeKey}
                         isActive={isActive}
+                        customDescription={customDescription}
                       />
                     );
                   })}

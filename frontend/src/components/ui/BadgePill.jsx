@@ -361,13 +361,19 @@ export const BadgeRow = ({ badges = [], size = 'md', showTooltip = true, classNa
  */
 export const BadgeGridItem = ({ 
   badgeKey, 
-  isActive = false 
+  isActive = false,
+  customDescription = null,  // Dynamic description from backend (e.g., "220 away from 1,000 career steals")
+  customDetail = null        // Additional detail object from backend
 }) => {
   const badge = BADGE_REGISTRY[badgeKey];
   if (!badge) return null;
   
   const Icon = badge.icon;
   const tooltip = badge.tooltip;
+  
+  // Use custom description if provided (for dynamic badges like milestone)
+  const displayTrigger = customDescription || badge.trigger;
+  const tooltipDescription = customDescription || tooltip?.description;
   
   // Sentiment colors for tooltip
   const sentimentColors = {
@@ -400,7 +406,7 @@ export const BadgeGridItem = ({
           {badge.label}
         </div>
         <div className="text-[9px] text-zinc-500 truncate">
-          {badge.trigger}
+          {displayTrigger}
         </div>
       </div>
       {isActive && (
@@ -412,7 +418,7 @@ export const BadgeGridItem = ({
   // If no tooltip data, return card with title fallback
   if (!tooltip) {
     return (
-      <div title={badge.trigger}>
+      <div title={displayTrigger}>
         {cardContent}
       </div>
     );
@@ -443,9 +449,9 @@ export const BadgeGridItem = ({
               </span>
             </div>
             
-            {/* Description */}
+            {/* Description - Use custom description if provided */}
             <p className="text-xs text-zinc-300 mb-2 leading-relaxed">
-              {tooltip.description}
+              {tooltipDescription}
             </p>
             
             {/* Impact */}
