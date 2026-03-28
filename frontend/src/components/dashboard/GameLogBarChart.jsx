@@ -173,7 +173,7 @@ const GameLogBarChart = memo(({
                     isHit 
                       ? 'bg-emerald-500' 
                       : 'bg-red-500'
-                  }`}
+                  } ring-1 ring-white/80`}
                   style={{ 
                     height: `${barHeightPercent}%`,
                     minHeight: '4px'
