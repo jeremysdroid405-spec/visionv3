@@ -276,15 +276,36 @@ const CommandPost = memo(({ isOpen, onClose, pendingLeg, onPendingLegProcessed }
 
   // State for profile fetching via hook
   const [profilePlayerName, setProfilePlayerName] = useState(null);
-  const { data: profileData, isLoading: profileQueryLoading } = usePlayerProfile(profilePlayerName);
+  const { data: profileData, isLoading: profileQueryLoading, error: profileError } = usePlayerProfile(profilePlayerName);
   
   // Sync profile data from TanStack Query
   useEffect(() => {
-    if (profileData?.success) {
-      setSelectedProfile(profileData);
+    if (profileData) {
+      if (profileData.success) {
+        setSelectedProfile(profileData);
+      } else {
+        // Profile fetch returned but player not in cache
+        setSelectedProfile(null);
+        toast.error(`Player not found: ${profilePlayerName}`, {
+          description: profileData.message || 'Player data not available',
+          duration: 3000,
+        });
+      }
       setProfileLoading(false);
     }
-  }, [profileData]);
+  }, [profileData, profilePlayerName]);
+  
+  // Handle profile fetch errors
+  useEffect(() => {
+    if (profileError) {
+      setProfileLoading(false);
+      setSelectedProfile(null);
+      toast.error(`Error loading player profile`, {
+        description: profileError.message || 'Please try again',
+        duration: 3000,
+      });
+    }
+  }, [profileError]);
 
   // PIPE 2: Fetch player profile via usePlayerProfile hook
   const fetchProfile = useCallback((player) => {

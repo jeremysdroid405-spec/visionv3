@@ -134,29 +134,38 @@ const fetchPlayerSearch = async (query) => {
  */
 const fetchPlayerProfile = async (playerName) => {
   if (!playerName) return null;
-  // Use player-with-badges endpoint which returns data in UniversalPlayerCard format
-  const response = await fetch(`${API}/api/v3/player-with-badges/${encodeURIComponent(playerName)}`);
-  if (!response.ok) throw new Error('Profile fetch failed');
-  const data = await response.json();
-  // Transform to expected format
-  if (data.success && data.player) {
-    return {
-      success: true,
-      player_name: data.player.player_name,
-      player_id: data.player.bdl_player_id,
-      team: data.player.team,
-      position: data.player.position,
-      photo_url: data.player.photo_url,
-      opponent: data.player.props?.[0]?.opponent || '',
-      // Pass the full player object for UniversalPlayerCard
-      playerData: data.player,
-      // Lines/props for selection
-      lines: data.player.props || [],
-      demons: data.player.demons || [],
-      goblins: data.player.goblins || []
-    };
+  try {
+    // Use player-with-badges endpoint which returns data in UniversalPlayerCard format
+    const response = await fetch(`${API}/api/v3/player-with-badges/${encodeURIComponent(playerName)}`);
+    if (!response.ok) {
+      // Return structured error instead of throwing
+      return { success: false, message: `Player not found (${response.status})`, player: null };
+    }
+    const data = await response.json();
+    // Transform to expected format
+    if (data.success && data.player) {
+      return {
+        success: true,
+        player_name: data.player.player_name,
+        player_id: data.player.bdl_player_id,
+        team: data.player.team,
+        position: data.player.position,
+        photo_url: data.player.photo_url,
+        opponent: data.player.props?.[0]?.opponent || '',
+        // Pass the full player object for UniversalPlayerCard
+        playerData: data.player,
+        // Lines/props for selection
+        lines: data.player.props || [],
+        demons: data.player.demons || [],
+        goblins: data.player.goblins || []
+      };
+    }
+    // Return the data with success: false
+    return { success: false, message: data.message || 'Player not in cache', player: null };
+  } catch (error) {
+    console.error('[fetchPlayerProfile] Error:', error);
+    return { success: false, message: error.message || 'Failed to fetch player', player: null };
   }
-  return data;
 };
 
 /**
