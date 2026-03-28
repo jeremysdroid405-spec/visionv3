@@ -340,6 +340,22 @@ class CachedBoardBuilderService:
         # Build derived collections
         await self._build_derived_collections(players_dict, sync_time)
         
+        # TRACK LINE MOVEMENTS for Top Picks
+        try:
+            from services.line_movement_tracker import get_line_tracker
+            line_tracker = get_line_tracker(self.db)
+            
+            # First detect movements (compare to previous lines)
+            movements = await line_tracker.detect_line_movements(sorted_players)
+            logger.info(f"[CACHED_BOARD] Detected {len(movements)} line movements")
+            
+            # Then record current lines for next sync comparison
+            lines_recorded = await line_tracker.record_current_lines(sorted_players)
+            logger.info(f"[CACHED_BOARD] Recorded {lines_recorded} lines for tracking")
+            
+        except Exception as e:
+            logger.warning(f"[CACHED_BOARD] Line tracking failed (non-fatal): {e}")
+        
         return {
             "success": True,
             "players_count": len(sorted_players),

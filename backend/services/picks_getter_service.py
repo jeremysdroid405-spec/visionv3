@@ -2655,79 +2655,102 @@ class PicksGetterService:
     
     async def get_most_popular_bets(self) -> Dict[str, Any]:
         """
-        Get TOP PICKS - Enriched with Action Network public betting data.
+        Get TOP PICKS - Picks with the biggest line movements.
         
-        Pulls top picks and enriches them with:
-        - Public betting % (what % of bettors are on this team)
-        - Sharp vs public sentiment
-        - Popularity ranking
+        Line movement is the best indicator of where money is flowing:
+        - Line moves UP (24.5 -> 25.5) = Heavy OVER action
+        - Line moves DOWN (24.5 -> 23.5) = Heavy UNDER action
+        - Big moves = Sharp money or heavy public action
         
-        This transforms "Top Picks" from redundant data to genuine popularity intel.
+        Falls back to top picks from sections if no movements detected.
         """
         try:
             now = datetime.now(timezone.utc)
             
-            # Get picks from all three boards
-            safe_haven_result = await self.get_goblin_vault()
-            front_lines_result = await self.get_front_lines()
-            war_zone_result = await self.get_war_zone()
+            # First, try to get picks based on line movements
+            trending_picks = []
+            line_movement_status = "unavailable"
             
-            top_picks = []
-            
-            # Take top 4 from Safe Haven (already sorted by combined_score)
-            safe_haven_picks = safe_haven_result.get("picks", [])[:4]
-            for pick in safe_haven_picks:
-                pick["source_section"] = "SAFE_HAVEN"
-                pick["section_label"] = "Safe Haven"
-                top_picks.append(pick)
-            
-            # Take top 4 from Front Lines (already sorted by value_score)
-            front_lines_picks = front_lines_result.get("picks", [])[:4]
-            for pick in front_lines_picks:
-                pick["source_section"] = "FRONT_LINES"
-                pick["section_label"] = "Front Lines"
-                top_picks.append(pick)
-            
-            # Take top 4 from War Zone (already sorted by payout_score)
-            war_zone_picks = war_zone_result.get("picks", [])[:4]
-            for pick in war_zone_picks:
-                pick["source_section"] = "WAR_ZONE"
-                pick["section_label"] = "War Zone"
-                top_picks.append(pick)
-            
-            # Enrich with Action Network public betting data
             try:
-                from services.action_network_scraper import get_action_network_scraper
-                scraper = get_action_network_scraper()
+                from services.line_movement_tracker import get_line_tracker
+                line_tracker = get_line_tracker(self.db)
+                trending_picks = await line_tracker.get_trending_picks(limit=12)
                 
-                public_data = await scraper.get_public_betting_data()
-                top_picks = await scraper.enrich_picks_with_public_data(top_picks, public_data)
-                
-                # Sort by popularity score (highest first)
-                for pick in top_picks:
-                    pick["popularity_score"] = scraper.calculate_popularity_score(pick)
-                
-                # Re-sort by popularity score for "Top Picks"
-                top_picks.sort(key=lambda x: x.get("popularity_score", 0), reverse=True)
-                
-                public_betting_status = "live" if public_data.get("games") else "unavailable"
-                
+                if trending_picks:
+                    line_movement_status = "live"
+                    logger.info(f"[TOP_PICKS] Found {len(trending_picks)} trending picks from line movements")
             except Exception as e:
-                logger.warning(f"[TOP_PICKS] Action Network enrichment failed: {e}")
-                public_betting_status = "unavailable"
+                logger.warning(f"[TOP_PICKS] Line tracker error: {e}")
             
-            # Count by section
-            section_counts = {
-                "SAFE_HAVEN": len(safe_haven_picks),
-                "FRONT_LINES": len(front_lines_picks),
-                "WAR_ZONE": len(war_zone_picks)
-            }
+            # If we have trending picks from line movements, use those
+            if trending_picks:
+                # Enrich with additional data from cached board
+                enriched_picks = []
+                for pick in trending_picks:
+                    # Get full player data from cache if available
+                    player = await self.cached_board.find_one(
+                        {"player_name": pick.get("player_name")},
+                        {"_id": 0}
+                    )
+                    
+                    if player:
+                        # Find the matching prop
+                        for prop in player.get("props", []):
+                            if prop.get("stat_type") == pick.get("stat_type"):
+                                # Merge line movement data with prop data
+                                enriched = {**prop, **pick}
+                                enriched["photo_url"] = player.get("photo_url") or player.get("headshot_url")
+                                enriched["team"] = player.get("team")
+                                enriched["player_name"] = player.get("player_name")
+                                enriched["source_section"] = "LINE_MOVEMENT"
+                                enriched["section_label"] = "Trending"
+                                enriched_picks.append(enriched)
+                                break
+                        else:
+                            # Prop not found in current board, use line movement data as-is
+                            pick["source_section"] = "LINE_MOVEMENT"
+                            pick["section_label"] = "Trending"
+                            enriched_picks.append(pick)
+                    else:
+                        # Player not in cache, use line movement data
+                        pick["source_section"] = "LINE_MOVEMENT"
+                        pick["section_label"] = "Trending"
+                        enriched_picks.append(pick)
+                
+                trending_picks = enriched_picks
+            
+            # If no line movements, fall back to top picks from each section
+            if not trending_picks:
+                logger.info("[TOP_PICKS] No line movements - falling back to section picks")
+                
+                safe_haven_result = await self.get_goblin_vault()
+                front_lines_result = await self.get_front_lines()
+                war_zone_result = await self.get_war_zone()
+                
+                # Take top 4 from each section
+                safe_haven_picks = safe_haven_result.get("picks", [])[:4]
+                for pick in safe_haven_picks:
+                    pick["source_section"] = "SAFE_HAVEN"
+                    pick["section_label"] = "Safe Haven"
+                    trending_picks.append(pick)
+                
+                front_lines_picks = front_lines_result.get("picks", [])[:4]
+                for pick in front_lines_picks:
+                    pick["source_section"] = "FRONT_LINES"
+                    pick["section_label"] = "Front Lines"
+                    trending_picks.append(pick)
+                
+                war_zone_picks = war_zone_result.get("picks", [])[:4]
+                for pick in war_zone_picks:
+                    pick["source_section"] = "WAR_ZONE"
+                    pick["section_label"] = "War Zone"
+                    trending_picks.append(pick)
             
             # Check if all picks are locked
-            all_locked = all(pick.get("is_locked", False) for pick in top_picks) if top_picks else False
-            locked_count = sum(1 for pick in top_picks if pick.get("is_locked", False))
+            all_locked = all(pick.get("is_locked", False) for pick in trending_picks) if trending_picks else False
+            locked_count = sum(1 for pick in trending_picks if pick.get("is_locked", False))
             
-            # Calculate next release time (props sync at 4:00 AM EST daily)
+            # Calculate next release time
             next_release_time = None
             if all_locked:
                 from datetime import timedelta
@@ -2736,8 +2759,6 @@ class PicksGetterService:
                 et_tz = pytz.timezone('America/New_York')
                 now_et = now.astimezone(et_tz)
                 
-                # Set to 4:00 AM EST (next sync time)
-                # If it's before 4 AM today, use today; otherwise use tomorrow
                 today_4am = now_et.replace(hour=4, minute=0, second=0, microsecond=0)
                 if now_et < today_4am:
                     next_sync_et = today_4am
@@ -2746,18 +2767,17 @@ class PicksGetterService:
                 
                 next_release_time = next_sync_et.astimezone(timezone.utc).isoformat()
             
-            logger.info(f"[TOP_PICKS] Returning {len(top_picks)} picks | Distribution: {section_counts} | Locked: {locked_count}/{len(top_picks)} | All Locked: {all_locked} | Public Data: {public_betting_status}")
+            logger.info(f"[TOP_PICKS] Returning {len(trending_picks)} picks | Line Movement Status: {line_movement_status} | Locked: {locked_count}/{len(trending_picks)}")
             
             return {
                 "status": "live" if not all_locked else "all_locked",
-                "bets": top_picks,
-                "source": "best_of_all_sections",
-                "section_distribution": section_counts,
+                "bets": trending_picks,
+                "source": "line_movements" if line_movement_status == "live" else "section_fallback",
+                "line_movement_status": line_movement_status,
                 "all_locked": all_locked,
                 "locked_count": locked_count,
-                "total_count": len(top_picks),
+                "total_count": len(trending_picks),
                 "next_release_time": next_release_time,
-                "public_betting_status": public_betting_status,
                 "timestamp": now.isoformat()
             }
             

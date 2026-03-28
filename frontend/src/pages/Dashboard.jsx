@@ -617,6 +617,7 @@ const ExpandedParlayView = memo(({ parlay, sectionType, onClose, onPickClick }) 
 const PopularBetCard = memo(({ bet, onClick }) => {
   const isDemon = bet.is_demon || bet.pick_type === 'demon';
   const isGoblin = bet.is_goblin || bet.pick_type === 'goblin';
+  const hasLineMovement = bet.movement != null && bet.movement !== 0;
   
   const getHitRateColor = (rate) => {
     if (rate >= 80) return 'text-green-400';
@@ -624,19 +625,15 @@ const PopularBetCard = memo(({ bet, onClick }) => {
     return 'text-red-400';
   };
   
-  // Get sentiment badge styling
-  const getSentimentStyle = (sentiment) => {
-    switch(sentiment) {
-      case 'heavy_public':
+  // Get movement badge styling
+  const getMovementStyle = (category) => {
+    switch(category) {
+      case 'MASSIVE':
+        return 'bg-red-500/20 text-red-400 border-red-500/30';
+      case 'SIGNIFICANT':
         return 'bg-amber-500/20 text-amber-400 border-amber-500/30';
-      case 'slight_public':
-        return 'bg-blue-500/20 text-blue-400 border-blue-500/30';
-      case 'heavy_fade':
-        return 'bg-purple-500/20 text-purple-400 border-purple-500/30';
-      case 'slight_fade':
-        return 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30';
       default:
-        return 'bg-zinc-700/50 text-zinc-400 border-zinc-600/30';
+        return 'bg-blue-500/20 text-blue-400 border-blue-500/30';
     }
   };
   
@@ -658,15 +655,24 @@ const PopularBetCard = memo(({ bet, onClick }) => {
         </div>
         <div className="flex-1 min-w-0">
           <div className="text-xs sm:text-sm font-medium text-white truncate">{bet.player_name}</div>
-          <div className="text-[10px] sm:text-xs text-zinc-500">{bet.stat_type} {bet.line}</div>
+          <div className="text-[10px] sm:text-xs text-zinc-500">{bet.stat_type} {bet.line || bet.current_line}</div>
         </div>
       </div>
       
-      {/* Public Betting Sentiment - NEW */}
-      {bet.sentiment_label && (
-        <div className={`text-center mb-2 px-2 py-1 rounded text-[10px] font-medium border ${getSentimentStyle(bet.public_sentiment)}`}>
+      {/* Line Movement Badge */}
+      {hasLineMovement && (
+        <div className={`text-center mb-2 px-2 py-1 rounded text-[10px] font-medium border ${getMovementStyle(bet.movement_category)}`}>
+          <span>{bet.movement_badge || (bet.movement > 0 ? '📈 Line Moving UP' : '📉 Line Moving DOWN')}</span>
+          <div className="text-[9px] mt-0.5 opacity-75">
+            {bet.previous_line} → {bet.current_line} ({bet.movement > 0 ? '+' : ''}{bet.movement})
+          </div>
+        </div>
+      )}
+      
+      {/* Fallback sentiment for non-movement picks */}
+      {!hasLineMovement && bet.sentiment_label && (
+        <div className="text-center mb-2 px-2 py-1 rounded text-[10px] font-medium border bg-zinc-700/50 text-zinc-400 border-zinc-600/30">
           {bet.sentiment_label}
-          {bet.public_bets_pct && <span className="ml-1 opacity-75">({bet.public_bets_pct}%)</span>}
         </div>
       )}
       
@@ -741,7 +747,7 @@ const MostPopularBetsSection = memo(({ bets, status, onBetClick, allLocked, next
       <SectionHeader 
         icon={<Flame className="w-4 h-4 text-red-400" />}
         title="TOP PICKS"
-        subtitle="Ranked by public betting volume"
+        subtitle="Lines moving since last sync"
       />
       
       {/* Blur overlay when all locked */}
