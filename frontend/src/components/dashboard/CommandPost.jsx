@@ -31,11 +31,11 @@ import { usePlayerProfile, useSimulation } from '../../hooks/useLiveOdds';
 
 // Grade colors and styles
 const GRADE_STYLES = {
-  S: { bg: 'bg-emerald-500/20', border: 'border-emerald-500', text: 'text-emerald-400', glow: 'shadow-emerald-500/20' },
-  A: { bg: 'bg-blue-500/20', border: 'border-blue-500', text: 'text-blue-400', glow: 'shadow-blue-500/20' },
-  B: { bg: 'bg-amber-500/20', border: 'border-amber-500', text: 'text-amber-400', glow: 'shadow-amber-500/20' },
-  C: { bg: 'bg-orange-500/20', border: 'border-orange-500', text: 'text-orange-400', glow: 'shadow-orange-500/20' },
-  D: { bg: 'bg-red-500/20', border: 'border-red-500', text: 'text-red-400', glow: 'shadow-red-500/20' },
+  A: { bg: 'bg-emerald-500/20', border: 'border-emerald-500', text: 'text-emerald-400', glow: 'shadow-emerald-500/20' },
+  B: { bg: 'bg-lime-500/20', border: 'border-lime-500', text: 'text-lime-400', glow: 'shadow-lime-500/20' },
+  C: { bg: 'bg-yellow-500/20', border: 'border-yellow-500', text: 'text-yellow-400', glow: 'shadow-yellow-500/20' },
+  D: { bg: 'bg-orange-500/20', border: 'border-orange-500', text: 'text-orange-400', glow: 'shadow-orange-500/20' },
+  F: { bg: 'bg-red-500/20', border: 'border-red-500', text: 'text-red-400', glow: 'shadow-red-500/20' },
   '-': { bg: 'bg-zinc-700/50', border: 'border-zinc-600', text: 'text-zinc-400', glow: '' }
 };
 

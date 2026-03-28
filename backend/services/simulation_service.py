@@ -34,11 +34,11 @@ logger = logging.getLogger(__name__)
 
 # Infiltration Grade Thresholds
 GRADE_THRESHOLDS = {
-    "S": 75,  # High-Alpha / Optimal Alignment
-    "A": 65,  # Strong Tactical Position
-    "B": 55,  # Standard Tactical Exposure
-    "C": 45,  # Elevated Friction
-    "D": 0,   # High-Friction / Volatile Environment
+    "A": 75,  # Optimal Alignment - Low Risk
+    "B": 65,  # Strong Position - Moderate Risk  
+    "C": 55,  # Standard Exposure - Average Risk
+    "D": 45,  # Elevated Friction - Higher Risk
+    "F": 0,   # High-Friction / Volatile - Maximum Risk
 }
 
 # Volatility Index Thresholds
@@ -394,17 +394,17 @@ class SimulationEngine:
         return min(99.0, max(1.0, convergence))
     
     def _determine_grade(self, convergence_rate: float) -> Tuple[str, str]:
-        """Determine infiltration grade from convergence rate."""
-        if convergence_rate >= GRADE_THRESHOLDS["S"]:
-            return "S", "High-Alpha / Optimal Alignment"
-        elif convergence_rate >= GRADE_THRESHOLDS["A"]:
-            return "A", "Strong Tactical Position"
+        """Determine infiltration grade from convergence rate (A-F scale)."""
+        if convergence_rate >= GRADE_THRESHOLDS["A"]:
+            return "A", "Optimal Alignment - Low Risk"
         elif convergence_rate >= GRADE_THRESHOLDS["B"]:
-            return "B", "Standard Tactical Exposure"
+            return "B", "Strong Position - Moderate Risk"
         elif convergence_rate >= GRADE_THRESHOLDS["C"]:
-            return "C", "Elevated Friction"
+            return "C", "Standard Exposure - Average Risk"
+        elif convergence_rate >= GRADE_THRESHOLDS["D"]:
+            return "D", "Elevated Friction - Higher Risk"
         else:
-            return "D", "High-Friction / Volatile Environment"
+            return "F", "High-Friction / Volatile - Maximum Risk"
     
     def _calculate_overall_volatility(self, legs: List[SimulationLeg]) -> float:
         """Calculate overall volatility index for the configuration."""
