@@ -305,6 +305,10 @@ OPENAPI_TAGS = [
     },
 ]
 
+from starlette.middleware.base import BaseHTTPMiddleware
+from fastapi.responses import RedirectResponse
+
+
 app = FastAPI(
     title=API_TITLE,
     version=API_VERSION,
@@ -1506,3 +1510,24 @@ def fuzzy_match_player(name1: str, name2: str, threshold: int = 80) -> bool:
 
 # NOTE: Scheduler routes (scheduler-status, breaking-news) moved to routes/scheduler.py (Phase 17)
 
+
+# --- GLOBAL ROUTE REDIRECTS FOR FRONTEND COMPATIBILITY ---
+from starlette.middleware.base import BaseHTTPMiddleware
+from fastapi.responses import RedirectResponse
+
+class LegacyRouteMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request, call_next):
+        path = request.url.path
+        mapping = {
+            "/api/get-board": "/api/v3/board",
+            "/api/full-board": "/api/v3/board",
+            "/api/get-goblins": "/api/v3/goblins",
+            "/api/get-demons": "/api/v3/demons",
+            "/api/status": "/api/v3/status",
+            "/api/players": "/api/v3/players"
+        }
+        if path in mapping:
+            return RedirectResponse(url=mapping[path])
+        return await call_next(request)
+
+app.add_middleware(LegacyRouteMiddleware)
