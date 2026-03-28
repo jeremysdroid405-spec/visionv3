@@ -574,10 +574,10 @@ Vision Intel Suite (AI summaries, badges, intel_suite metrics) took 1+ minute to
 Created `/app/backend/services/vision_intel_enrichment_service.py` with:
 
 1. **Pre-caching Pipeline**
-   - Runs automatically after BDL sync completes
-   - Queries War Zone, Safe Haven, Front Lines for `pick=true` players
+   - Runs automatically after BDL sync completes in adaptive_sync_engine
+   - Queries `dg_cached_board` for players with `is_demon=true` or `is_goblin=true`
    - Batches Gemini AI calls using `asyncio.gather` with `Semaphore(5)`
-   - Stores pre-computed intel_suite + vision_summary in `dg_cached_board`
+   - Stores pre-computed intel_suite + vision_summary in `dg_cached_board` props
 
 2. **Error Handling (NBA API "char 0" fix)**
    - Updated `/app/backend/services/nba_career_service.py`
@@ -588,17 +588,29 @@ Created `/app/backend/services/vision_intel_enrichment_service.py` with:
    - Refactored `/api/v3/player-with-badges/` (in `cached_data.py`)
    - Serves pre-cached vision_summary from MongoDB
    - NO JIT Gemini calls during user requests
+   - Returns `source: "pre_cached"` for enriched props
    - Returns `source: "pending_enrichment"` if summary not yet cached
 
-4. **Scheduled Jobs**
+4. **Vision Data Preservation**
+   - Updated `/app/backend/services/picks_getter_service.py` to include vision fields in prop output
+   - Updated `/app/backend/services/cached_board_builder_service.py` to preserve vision fields during sync rebuilds
+
+5. **Scheduled Jobs**
    - Added `scheduled_hourly_vision_intel_sync()` in server.py
    - Runs every 60 minutes to refresh AI summaries
-   - Also runs in adaptive_sync_engine poll loop
+   - Also runs in adaptive_sync_engine poll loop after each sync
 
 ### Performance
 - Before: 60+ seconds for Vision Intel to load
-- After: <1 second (serves directly from MongoDB)
+- After: <0.2 seconds (serves directly from MongoDB)
+- 50 players enriched per cycle in ~7 seconds
 - Semaphore(5) prevents Gemini rate limiting
+
+### Testing Results (iteration_28)
+- All 13 backend tests PASSED
+- Response times: Kyle Anderson 0.177s, Paul George 0.149s, Joel Embiid 0.140s
+- Pre-cached vision_summary confirmed with source='pre_cached'
+- No JIT Gemini calls during API requests
 
 **Status:** COMPLETE - Vision Intel now 100% local-first
 
