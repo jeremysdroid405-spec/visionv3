@@ -624,6 +624,22 @@ const PopularBetCard = memo(({ bet, onClick }) => {
     return 'text-red-400';
   };
   
+  // Get sentiment badge styling
+  const getSentimentStyle = (sentiment) => {
+    switch(sentiment) {
+      case 'heavy_public':
+        return 'bg-amber-500/20 text-amber-400 border-amber-500/30';
+      case 'slight_public':
+        return 'bg-blue-500/20 text-blue-400 border-blue-500/30';
+      case 'heavy_fade':
+        return 'bg-purple-500/20 text-purple-400 border-purple-500/30';
+      case 'slight_fade':
+        return 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30';
+      default:
+        return 'bg-zinc-700/50 text-zinc-400 border-zinc-600/30';
+    }
+  };
+  
   return (
     <Card 
       className={`p-2.5 sm:p-3 cursor-pointer hover:scale-[1.02] transition-all min-w-[180px] sm:min-w-[220px] ${
@@ -645,6 +661,14 @@ const PopularBetCard = memo(({ bet, onClick }) => {
           <div className="text-[10px] sm:text-xs text-zinc-500">{bet.stat_type} {bet.line}</div>
         </div>
       </div>
+      
+      {/* Public Betting Sentiment - NEW */}
+      {bet.sentiment_label && (
+        <div className={`text-center mb-2 px-2 py-1 rounded text-[10px] font-medium border ${getSentimentStyle(bet.public_sentiment)}`}>
+          {bet.sentiment_label}
+          {bet.public_bets_pct && <span className="ml-1 opacity-75">({bet.public_bets_pct}%)</span>}
+        </div>
+      )}
       
       {/* L5 Hit Rate / L10 Hit Rate / Season Avg */}
       <div className="flex items-center justify-between bg-zinc-800/50 rounded px-2 py-1.5 text-[9px] sm:text-[10px]">
@@ -717,7 +741,7 @@ const MostPopularBetsSection = memo(({ bets, status, onBetClick, allLocked, next
       <SectionHeader 
         icon={<Flame className="w-4 h-4 text-red-400" />}
         title="TOP PICKS"
-        subtitle="Best of Safe Haven, Front Lines & War Zone"
+        subtitle="Ranked by public betting volume"
       />
       
       {/* Blur overlay when all locked */}

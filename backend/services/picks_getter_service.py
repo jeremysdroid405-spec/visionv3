@@ -2655,14 +2655,14 @@ class PicksGetterService:
     
     async def get_most_popular_bets(self) -> Dict[str, Any]:
         """
-        Get TOP PICKS - Best of the best from all three sections.
+        Get TOP PICKS - Enriched with Action Network public betting data.
         
-        Pulls 4 picks from each board:
-        - 4 from Safe Haven (highest hit rate goblins)
-        - 4 from Front Lines (best value demons/goblins)
-        - 4 from War Zone (highest payout demons)
+        Pulls top picks and enriches them with:
+        - Public betting % (what % of bettors are on this team)
+        - Sharp vs public sentiment
+        - Popularity ranking
         
-        Total: 12 elite picks representing each strategy.
+        This transforms "Top Picks" from redundant data to genuine popularity intel.
         """
         try:
             now = datetime.now(timezone.utc)
@@ -2695,6 +2695,27 @@ class PicksGetterService:
                 pick["section_label"] = "War Zone"
                 top_picks.append(pick)
             
+            # Enrich with Action Network public betting data
+            try:
+                from services.action_network_scraper import get_action_network_scraper
+                scraper = get_action_network_scraper()
+                
+                public_data = await scraper.get_public_betting_data()
+                top_picks = await scraper.enrich_picks_with_public_data(top_picks, public_data)
+                
+                # Sort by popularity score (highest first)
+                for pick in top_picks:
+                    pick["popularity_score"] = scraper.calculate_popularity_score(pick)
+                
+                # Re-sort by popularity score for "Top Picks"
+                top_picks.sort(key=lambda x: x.get("popularity_score", 0), reverse=True)
+                
+                public_betting_status = "live" if public_data.get("games") else "unavailable"
+                
+            except Exception as e:
+                logger.warning(f"[TOP_PICKS] Action Network enrichment failed: {e}")
+                public_betting_status = "unavailable"
+            
             # Count by section
             section_counts = {
                 "SAFE_HAVEN": len(safe_haven_picks),
@@ -2725,7 +2746,7 @@ class PicksGetterService:
                 
                 next_release_time = next_sync_et.astimezone(timezone.utc).isoformat()
             
-            logger.info(f"[TOP_PICKS] Returning {len(top_picks)} picks | Distribution: {section_counts} | Locked: {locked_count}/{len(top_picks)} | All Locked: {all_locked}")
+            logger.info(f"[TOP_PICKS] Returning {len(top_picks)} picks | Distribution: {section_counts} | Locked: {locked_count}/{len(top_picks)} | All Locked: {all_locked} | Public Data: {public_betting_status}")
             
             return {
                 "status": "live" if not all_locked else "all_locked",
@@ -2736,6 +2757,7 @@ class PicksGetterService:
                 "locked_count": locked_count,
                 "total_count": len(top_picks),
                 "next_release_time": next_release_time,
+                "public_betting_status": public_betting_status,
                 "timestamp": now.isoformat()
             }
             
