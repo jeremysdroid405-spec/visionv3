@@ -245,16 +245,17 @@ const PropRow = memo(({ prop, isHighlighted, highlightRef, onVisionClick, gameLo
         
         {/* RIGHT: Bar Chart */}
         {gameLogs && gameLogs.length > 0 && (
-          <div className="flex-1">
+          <div className="flex-1 flex flex-col">
             <GameLogBarChart
               gameLogs={gameLogs}
               statType={statType}
               line={line}
               showGames={10}
-              height={140}
+              height="100%"
               l5Avg={l5Avg}
               l10Avg={l10Avg}
               seasonAvg={seasonAvg}
+              className="flex-1"
             />
           </div>
         )}
