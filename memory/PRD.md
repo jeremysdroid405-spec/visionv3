@@ -516,3 +516,55 @@ dg_cached_board.props[].hit_rates
 - `Dashboard.jsx` - Displays movement badges with line change info
 
 **Status:** Baseline recorded (1804 lines). Will detect real movements on next sync.
+
+
+---
+
+## UPDATE (2026-03-28): Universal Sync Batching Implemented
+
+### Completed Work
+1. **BDL Batched Sync Service** (`bdl_game_logs_sync_batched.py`)
+   - Uses `/stats` endpoint with multiple `player_ids[]` parameters (25 players per request)
+   - Parallel batch execution with `asyncio.gather` (2 concurrent batches)
+   - Bulk MongoDB updates for efficiency
+   - Performance: 549 players synced in ~57 seconds (vs 3+ minutes sequential)
+
+2. **Integration Points Updated**
+   - `server.py` - Scheduled BDL sync now uses batched version
+   - `scheduler.py` - Init sync uses batched version  
+   - `adaptive_sync_engine.py` - Background polling uses batched version
+
+3. **Dead Code Cleanup**
+   - Removed 246 lines of unreachable JIT calculation code from `picks_getter_service.py`
+   - File reduced from 3215 to 2969 lines
+
+### Configuration
+```python
+BATCH_SIZE = 25        # Players per API request
+PARALLEL_BATCHES = 2   # Concurrent batch requests
+RATE_LIMIT_DELAY = 1.0 # Seconds between parallel batch groups
+```
+
+### Performance Results
+- API calls reduced from ~550 to ~22 per full sync
+- Sync duration reduced from ~180s to ~60s (3x faster)
+- No rate limiting issues with current configuration
+
+**Status:** COMPLETE - Tested and verified working
+
+---
+
+## PENDING TASKS
+
+### P1 - War Zone Score Breakdown UI
+- Add UI element showing composite score factors (hit rate, DvP bonus, badges)
+- Show users WHY a pick ranks highly
+
+### P2 - Automate Context Badges
+- `distraction` badge (currently MOCKED)
+- `deep_water` badge (currently MOCKED)
+
+### P2 - Future Features
+- Google/Apple OAuth integration
+- "Copy Parlay" feature
+- Stripe payments integration

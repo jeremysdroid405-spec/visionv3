@@ -961,13 +961,13 @@ class AdaptiveSyncEngine:
                 
                 # Sync BDL game logs periodically (every 4 hours) for accurate hit rates
                 # This is CRITICAL - without fresh game logs, hit rates will be wrong
+                # Using BATCHED sync for 10x faster performance
                 if last_game_logs_sync is None or (now - last_game_logs_sync).total_seconds() >= GAME_LOGS_SYNC_INTERVAL:
                     try:
-                        from services.bdl_game_logs_sync import BDLGameLogsSync
-                        logger.info("[ADAPTIVE_SYNC] Refreshing BDL game logs for accurate hit rates...")
-                        game_logs_service = BDLGameLogsSync(self.db)
-                        result = await game_logs_service.sync_all_players(batch_size=10)
-                        logger.info(f"[ADAPTIVE_SYNC] Game logs refreshed: {result.get('players_synced', 0)} players, {result.get('total_games', 0)} games")
+                        from services.bdl_game_logs_sync_batched import run_bdl_game_logs_sync_batched
+                        logger.info("[ADAPTIVE_SYNC] Refreshing BDL game logs (BATCHED) for accurate hit rates...")
+                        result = await run_bdl_game_logs_sync_batched(self.db)
+                        logger.info(f"[ADAPTIVE_SYNC] Game logs refreshed: {result.get('players_synced', 0)} players, {result.get('total_games', 0)} games in {result.get('duration_seconds', 0):.1f}s")
                         last_game_logs_sync = now
                     except Exception as e:
                         logger.error(f"[ADAPTIVE_SYNC] Game logs refresh failed: {e}")

@@ -31,8 +31,8 @@ CURRENT_SEASON = 2025  # 2025-26 season
 
 # BATCHING CONFIGURATION
 BATCH_SIZE = 25  # Players per API request (safe limit under 50)
-PARALLEL_BATCHES = 4  # Concurrent batch requests
-RATE_LIMIT_DELAY = 0.3  # Seconds between parallel batch groups
+PARALLEL_BATCHES = 2  # Reduced to 2 to avoid rate limiting
+RATE_LIMIT_DELAY = 1.0  # Increased to 1s between parallel batch groups
 
 
 class BDLGameLogsSyncBatched:

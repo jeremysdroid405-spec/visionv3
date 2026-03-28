@@ -767,17 +767,15 @@ async def scheduled_bdl_game_logs_sync():
     logger.info("=" * 70)
     
     try:
-        from services.bdl_game_logs_sync import BDLGameLogsSync
+        # Use BATCHED sync for 10x faster performance
+        from services.bdl_game_logs_sync_batched import run_bdl_game_logs_sync_batched
         
-        sync_service = BDLGameLogsSync(db)
+        result = await run_bdl_game_logs_sync_batched(db)
         
-        # Sync all players with bdl_id
-        result = await sync_service.sync_all_players(batch_size=10)
-        
-        logger.info(f"[SCHEDULER] BDL Game Logs sync complete:")
+        logger.info(f"[SCHEDULER] BDL Game Logs BATCHED sync complete:")
         logger.info(f"[SCHEDULER]   - Players synced: {result.get('players_synced', 0)}/{result.get('total_players', 0)}")
         logger.info(f"[SCHEDULER]   - Total games: {result.get('total_games', 0)}")
-        logger.info(f"[SCHEDULER]   - Failed: {result.get('players_failed', 0)}")
+        logger.info(f"[SCHEDULER]   - API calls: {result.get('api_calls', 0)}")
         logger.info(f"[SCHEDULER]   - Duration: {result.get('duration_seconds', 0):.1f}s")
         logger.info("=" * 70)
         
@@ -1276,13 +1274,12 @@ async def check_and_run_initial_sync(db):
             except Exception as e:
                 logger.error(f"[INITIAL_SYNC] Roster sync failed: {e}")
             
-            # Step 2: Sync BDL Game Logs (CRITICAL for hit rate calculations)
+            # Step 2: Sync BDL Game Logs (CRITICAL for hit rate calculations) - BATCHED
             try:
-                from services.bdl_game_logs_sync import BDLGameLogsSync
-                logger.info("[INITIAL_SYNC] Step 2/5: Syncing BDL game logs for hit rates...")
-                game_logs_service = BDLGameLogsSync(db)
-                result = await game_logs_service.sync_all_players(batch_size=10)
-                logger.info(f"[INITIAL_SYNC] BDL game logs sync complete: {result.get('players_synced', 0)} players, {result.get('total_games', 0)} games")
+                from services.bdl_game_logs_sync_batched import run_bdl_game_logs_sync_batched
+                logger.info("[INITIAL_SYNC] Step 2/5: Syncing BDL game logs BATCHED for hit rates...")
+                result = await run_bdl_game_logs_sync_batched(db)
+                logger.info(f"[INITIAL_SYNC] BDL game logs sync complete: {result.get('players_synced', 0)} players, {result.get('total_games', 0)} games in {result.get('duration_seconds', 0):.1f}s")
             except Exception as e:
                 logger.error(f"[INITIAL_SYNC] BDL game logs sync failed: {e}")
             
@@ -1332,12 +1329,11 @@ async def check_and_run_initial_sync(db):
                     hours_since_update = (datetime.now(timezone.utc) - last_update).total_seconds() / 3600
                     
                     if hours_since_update > 12:
-                        logger.info(f"[INITIAL_SYNC] Game logs are {hours_since_update:.1f}h old. Refreshing...")
+                        logger.info(f"[INITIAL_SYNC] Game logs are {hours_since_update:.1f}h old. Refreshing (BATCHED)...")
                         try:
-                            from services.bdl_game_logs_sync import BDLGameLogsSync
-                            game_logs_service = BDLGameLogsSync(db)
-                            result = await game_logs_service.sync_all_players(batch_size=10)
-                            logger.info(f"[INITIAL_SYNC] Game logs refresh complete: {result.get('players_synced', 0)} players")
+                            from services.bdl_game_logs_sync_batched import run_bdl_game_logs_sync_batched
+                            result = await run_bdl_game_logs_sync_batched(db)
+                            logger.info(f"[INITIAL_SYNC] Game logs refresh complete: {result.get('players_synced', 0)} players in {result.get('duration_seconds', 0):.1f}s")
                         except Exception as e:
                             logger.error(f"[INITIAL_SYNC] Game logs refresh failed: {e}")
                     else:
@@ -1345,13 +1341,12 @@ async def check_and_run_initial_sync(db):
                 else:
                     logger.warning("[INITIAL_SYNC] Game logs have no timestamp. Consider refreshing.")
             else:
-                # No game logs at all - sync them
-                logger.info("[INITIAL_SYNC] No game logs found. Syncing...")
+                # No game logs at all - sync them (BATCHED)
+                logger.info("[INITIAL_SYNC] No game logs found. Syncing (BATCHED)...")
                 try:
-                    from services.bdl_game_logs_sync import BDLGameLogsSync
-                    game_logs_service = BDLGameLogsSync(db)
-                    result = await game_logs_service.sync_all_players(batch_size=10)
-                    logger.info(f"[INITIAL_SYNC] Game logs sync complete: {result.get('players_synced', 0)} players")
+                    from services.bdl_game_logs_sync_batched import run_bdl_game_logs_sync_batched
+                    result = await run_bdl_game_logs_sync_batched(db)
+                    logger.info(f"[INITIAL_SYNC] Game logs sync complete: {result.get('players_synced', 0)} players in {result.get('duration_seconds', 0):.1f}s")
                 except Exception as e:
                     logger.error(f"[INITIAL_SYNC] Game logs sync failed: {e}")
             

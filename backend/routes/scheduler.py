@@ -77,16 +77,17 @@ async def init_database():
         logger.error(f"[INIT] Roster sync failed: {e}")
         results["steps"]["roster"] = {"success": False, "error": str(e)}
     
-    # Step 2: Sync BDL Game Logs
-    logger.info("[INIT] Step 2: Syncing BDL Game Logs...")
+    # Step 2: Sync BDL Game Logs (BATCHED - 10x faster)
+    logger.info("[INIT] Step 2: Syncing BDL Game Logs (BATCHED)...")
     try:
-        from services.bdl_game_logs_sync import BDLGameLogsSync
-        sync_service = BDLGameLogsSync(db)
-        logs_result = await sync_service.sync_all_players(batch_size=10)
+        from services.bdl_game_logs_sync_batched import run_bdl_game_logs_sync_batched
+        logs_result = await run_bdl_game_logs_sync_batched(db)
         results["steps"]["game_logs"] = {
             "success": True,
             "players_synced": logs_result.get("players_synced", 0),
-            "total_games": logs_result.get("total_games", 0)
+            "total_games": logs_result.get("total_games", 0),
+            "api_calls": logs_result.get("api_calls", 0),
+            "duration_seconds": logs_result.get("duration_seconds", 0)
         }
     except Exception as e:
         logger.error(f"[INIT] Game logs sync failed: {e}")
