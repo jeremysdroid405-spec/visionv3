@@ -1,10 +1,12 @@
 from fastapi import FastAPI, APIRouter, Depends, HTTPException, status, Query
+from fastapi.responses import ORJSONResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.staticfiles import StaticFiles
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
+from starlette.middleware.gzip import GZipMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
-from pymongo import MongoClient
+from pymongo import MongoClient, ASCENDING, DESCENDING
 import os
 import logging
 from pathlib import Path
@@ -317,8 +319,13 @@ app = FastAPI(
     },
     license_info={
         "name": "Proprietary",
-    }
+    },
+    # PERFORMANCE: Use orjson for faster JSON serialization (3-10x faster)
+    default_response_class=ORJSONResponse
 )
+
+# PERFORMANCE: Add Gzip compression for large responses (reduces payload size 70-90%)
+app.add_middleware(GZipMiddleware, minimum_size=1000)  # Compress responses > 1KB
 
 # Mount static files for local headshot serving
 # CRITICAL: Use production path with fallback for development
@@ -880,6 +887,42 @@ async def scheduled_half_hourly_social_sync():
 @app.on_event("startup")
 async def startup_event():
     global stats_manager, demon_tracker, demon_goblin_engine, vision_ai_service, injury_service, raw_stat_fetcher, social_signal_engine, adaptive_sync, intel_briefing_engine, live_scores_engine, game_lock_engine, scheduler
+    
+    # ==========================================================================
+    # PERFORMANCE: Create MongoDB indexes for fast queries
+    # ==========================================================================
+    logger.info("[INDEXES] Creating MongoDB indexes for performance...")
+    
+    try:
+        # dg_cached_board - Main board with player props
+        await db.dg_cached_board.create_index([("player_name", ASCENDING)], background=True)
+        await db.dg_cached_board.create_index([("team", ASCENDING)], background=True)
+        await db.dg_cached_board.create_index([("synced_at", DESCENDING)], background=True)
+        await db.dg_cached_board.create_index([("props.stat_type", ASCENDING)], background=True)
+        
+        # nba_master_hub_2026 - Player stats vault
+        await db.nba_master_hub_2026.create_index([("display_name", ASCENDING)], background=True)
+        await db.nba_master_hub_2026.create_index([("bdl_id", ASCENDING)], unique=True, sparse=True, background=True)
+        await db.nba_master_hub_2026.create_index([("nba_id", ASCENDING)], sparse=True, background=True)
+        await db.nba_master_hub_2026.create_index([("team", ASCENDING)], background=True)
+        
+        # odds_api_mapping_master - Player name mapping
+        await db.odds_api_mapping_master.create_index([("odds_api_name", ASCENDING)], background=True)
+        await db.odds_api_mapping_master.create_index([("hub_player_name", ASCENDING)], background=True)
+        await db.odds_api_mapping_master.create_index([("bdl_id", ASCENDING)], sparse=True, background=True)
+        
+        # dg_stats_cache - Stats cache with TTL
+        await db.dg_stats_cache.create_index([("player_name", ASCENDING), ("stat_type", ASCENDING)], unique=True, background=True)
+        await db.dg_stats_cache.create_index([("cached_at", ASCENDING)], expireAfterSeconds=21600, background=True)  # 6-hour TTL
+        
+        # dg_war_zone, dg_front_lines, dg_goblin_vault - Tier collections
+        await db.dg_war_zone.create_index([("synced_at", DESCENDING)], background=True)
+        await db.dg_front_lines.create_index([("synced_at", DESCENDING)], background=True)
+        await db.dg_goblin_vault.create_index([("synced_at", DESCENDING)], background=True)
+        
+        logger.info("[INDEXES] MongoDB indexes created successfully")
+    except Exception as e:
+        logger.error(f"[INDEXES] Error creating indexes: {e}")
     
     # Initialize stats manager (BallDontLie)
     stats_manager = StatsManager(db)
