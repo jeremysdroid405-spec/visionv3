@@ -136,20 +136,24 @@
   -webkit-overflow-scrolling: touch;
   scrollbar-width: none;
   -ms-overflow-style: none;
-  gap: 12px;
-  padding: 4px 16px;
+  gap: 16px;
+  /* Card is 100vw - 32px wide, so 16px padding each side centers it */
+  padding: 8px 16px;
+  scroll-padding: 0 16px;
 }
 
 .swipe-container::-webkit-scrollbar {
   display: none;
 }
 
-.swipe-card {
+.swipe-card,
+.swipe-card-parlay {
   scroll-snap-align: center;
   flex-shrink: 0 !important;
-  width: calc(100vw - 48px) !important;
-  max-width: 340px !important;
-  min-width: calc(100vw - 48px) !important;
+  /* Card width + gap + padding must equal viewport for centering */
+  width: calc(100vw - 32px) !important;
+  min-width: calc(100vw - 32px) !important;
+  max-width: 360px !important;
 }
 
 @media (min-width: 640px) {

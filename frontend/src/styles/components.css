@@ -182,11 +182,11 @@
   -webkit-overflow-scrolling: touch;
   scrollbar-width: none;
   -ms-overflow-style: none;
-  gap: 16px;
-  /* Center cards with equal padding */
-  padding: 8px 20px;
-  /* Snap alignment matches padding */
-  scroll-padding-inline: 20px;
+  gap: 16px !important;
+  /* Remove internal padding - parent section already has 16px padding */
+  padding: 8px 0 !important;
+  scroll-padding: 0 !important;
+  margin: 0 !important;
 }
 
 .swipe-container::-webkit-scrollbar {
@@ -196,19 +196,19 @@
 .swipe-card {
   scroll-snap-align: center;
   flex-shrink: 0 !important;
-  /* Card takes most of viewport with visible margins */
-  width: calc(100vw - 48px) !important;
-  max-width: 340px !important;
-  min-width: calc(100vw - 48px) !important;
+  /* Parent has 16px padding, so card should be 100vw - 32px - 32px = 100vw - 64px */
+  /* But we want it nearly full width of the section, so just use 100% */
+  width: 100% !important;
+  min-width: 100% !important;
+  max-width: 100% !important;
 }
 
-/* Parlay cards - slightly wider */
 .swipe-card-parlay {
   scroll-snap-align: center;
   flex-shrink: 0 !important;
-  width: calc(100vw - 32px) !important;
-  max-width: 380px !important;
-  min-width: calc(100vw - 32px) !important;
+  width: 100% !important;
+  min-width: 100% !important;
+  max-width: 100% !important;
 }
 
 @media (min-width: 640px) {

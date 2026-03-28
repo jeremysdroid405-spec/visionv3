@@ -72,7 +72,7 @@ export const ParlayTicket = memo(({ ticket, onClick, sectionType = 'war_zone' })
       className={`
         bg-gradient-to-br ${theme.bg} to-zinc-900 border ${theme.border}
         hover:scale-[1.02] transition-all duration-300 cursor-pointer
-        min-w-[260px] max-w-[280px] flex-shrink-0
+        w-full flex-shrink-0
       `}
       style={{ boxShadow: `0 0 15px ${theme.glow}` }}
       onClick={onClick}
