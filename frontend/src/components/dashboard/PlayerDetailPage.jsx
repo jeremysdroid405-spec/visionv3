@@ -442,12 +442,12 @@ export const PlayerDetailPage = ({ playerName, playerData = null, onBack, highli
     <div className="min-h-screen bg-zinc-950">
       {/* Header */}
       <div className="sticky top-0 z-10 bg-zinc-950/95 backdrop-blur border-b border-zinc-800 px-4 py-3">
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-3 sm:gap-4">
           <Button 
             variant="ghost" 
             size="sm" 
             onClick={onBack} 
-            className="text-zinc-400 hover:text-white p-1" 
+            className="text-zinc-400 hover:text-white p-1 shrink-0" 
             data-testid="back-btn"
           >
             <ArrowLeft className="w-5 h-5" />
@@ -458,14 +458,15 @@ export const PlayerDetailPage = ({ playerName, playerData = null, onBack, highli
               playerName={playerName}
               team={player.team}
               photoUrl={player.photo_url}
-              size="xl"
+              size="lg"
+              className="shrink-0 sm:w-24 sm:h-24"
             />
           )}
           
-          <div className="flex-1 min-w-0">
-            <h1 className="text-2xl font-bold text-white truncate">{playerName}</h1>
+          <div className="flex-1 min-w-0 overflow-hidden">
+            <h1 className="text-lg sm:text-2xl font-bold text-white leading-tight" style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}>{playerName}</h1>
             {player && (
-              <div className="flex items-center gap-2 text-sm text-zinc-400">
+              <div className="flex items-center gap-2 text-xs sm:text-sm text-zinc-400 mt-0.5">
                 <span className="font-mono">{player.team}</span>
                 {player.position && <span>· {player.position}</span>}
               </div>
