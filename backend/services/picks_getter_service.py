@@ -763,19 +763,83 @@ class PicksGetterService:
     
     async def get_war_zone(self) -> Dict[str, Any]:
         """
-        Get the War Zone - HIGH-VALUE demon picks that players can actually hit.
+        Get the War Zone - Pre-built cache of demon picks.
         
-        WAR ZONE CRITERIA (PrizePicks Classification):
-        Demons are now classified as: Line ABOVE standard + boosted odds (+100)
+        STATIC ROUTE: This method performs a simple MongoDB find() only.
+        All calculations are done during the background sync by tier_builder_service.
         
-        A "good" War Zone pick is a demon where:
-        1. Player has a high hit rate (50%+) against this line
-        2. The line is achievable based on recent performance
-        
-        This shows players who consistently beat demon lines despite the
-        boosted odds, indicating real value.
+        Returns demon picks sorted by score from the dg_goblin_recon collection
+        (War Zone demons are stored there with is_demon=True).
         """
-        prob_service = ProbabilityScoreService(self.db)
+        try:
+            now = datetime.now(timezone.utc)
+            
+            # Simple find from pre-built cache - NO calculations
+            picks = await self.cached_board.aggregate([
+                {"$unwind": "$props"},
+                {"$match": {
+                    "props.is_demon": True,
+                    "props.commence_time": {"$gt": now.isoformat().replace('+00:00', 'Z')}
+                }},
+                {"$project": {
+                    "_id": 0,
+                    "player_name": 1,
+                    "team": 1,
+                    "photo_url": 1,
+                    "headshot_url": 1,
+                    "position": 1,
+                    "opponent": "$props.opponent",
+                    "game_id": "$props.game_id",
+                    "commence_time": "$props.commence_time",
+                    "stat_type": "$props.stat_type",
+                    "line": "$props.line",
+                    "anchor_line": "$props.anchor_line",
+                    "h5_rate": "$props.h5_rate",
+                    "h10_rate": "$props.h10_rate",
+                    "l5_avg": "$props.l5_avg",
+                    "l10_avg": "$props.l10_avg",
+                    "season_avg": "$props.season_avg",
+                    "is_demon": "$props.is_demon",
+                    "is_goblin": "$props.is_goblin",
+                    "tier_label": {"$literal": "DEMON"},
+                    "pick_type": {"$literal": "demon"},
+                    "combined_score": "$props.combined_score",
+                    "payout_score": "$props.payout_score"
+                }},
+                {"$sort": {"h10_rate": -1, "combined_score": -1}},
+                {"$limit": 100}
+            ]).to_list(100)
+            
+            # De-duplicate by player (one pick per player)
+            seen_players = set()
+            unique_picks = []
+            for pick in picks:
+                pname = pick.get("player_name")
+                if pname and pname not in seen_players:
+                    seen_players.add(pname)
+                    # Add game status
+                    game_status = _get_game_status(pick.get("commence_time"))
+                    pick["is_locked"] = game_status.get("is_locked", False)
+                    pick["game_status"] = game_status.get("status", "upcoming")
+                    unique_picks.append(pick)
+                    if len(unique_picks) >= 20:
+                        break
+            
+            # Enrich with photos
+            unique_picks = await self._enrich_picks_with_photos(unique_picks)
+            
+            logger.info(f"[WAR_ZONE] Served {len(unique_picks)} picks (static cache read)")
+            
+            return {
+                "status": "live",
+                "picks": unique_picks,
+                "count": len(unique_picks),
+                "source": "cached_board_demons"
+            }
+            
+        except Exception as e:
+            logger.error(f"[WAR_ZONE] Error: {e}")
+            return {"status": "error", "picks": [], "error": str(e)}
         
         # Pre-load probability caches ONCE (subsequent calls are instant)
         await prob_service._preload_dvp_cache()
@@ -2945,3 +3009,206 @@ class PicksGetterService:
                 prop["h5_rate"] = hit_rates.get("l5_rate")
                 prop["l10_hit_count"] = hit_rates.get("l10_hit_count")
                 prop["l5_hit_count"] = hit_rates.get("l5_hit_count")
+
+
+    # ============================================================================
+    # STATIC CACHE METHODS - Simple MongoDB reads, NO JIT calculations
+    # ============================================================================
+    
+    async def get_war_zone_static(self) -> Dict[str, Any]:
+        """
+        STATIC ROUTE: Simple MongoDB read for War Zone (demons).
+        All calculations done during background sync.
+        """
+        try:
+            now = datetime.now(timezone.utc)
+            now_iso = now.isoformat().replace('+00:00', 'Z')
+            
+            picks = await self.cached_board.aggregate([
+                {"$unwind": "$props"},
+                {"$match": {
+                    "props.is_demon": True,
+                    "props.commence_time": {"$gt": now_iso}
+                }},
+                {"$project": {
+                    "_id": 0,
+                    "player_name": 1,
+                    "team": 1,
+                    "photo_url": 1,
+                    "headshot_url": 1,
+                    "position": 1,
+                    "opponent": "$props.opponent",
+                    "game_id": "$props.game_id",
+                    "commence_time": "$props.commence_time",
+                    "stat_type": "$props.stat_type",
+                    "line": "$props.line",
+                    "anchor_line": "$props.anchor_line",
+                    "h5_rate": "$props.h5_rate",
+                    "h10_rate": "$props.h10_rate",
+                    "l5_avg": "$props.l5_avg",
+                    "l10_avg": "$props.l10_avg",
+                    "season_avg": "$props.season_avg",
+                    "is_demon": "$props.is_demon",
+                    "is_goblin": "$props.is_goblin",
+                    "tier_label": {"$literal": "DEMON"},
+                    "pick_type": {"$literal": "demon"},
+                    "combined_score": "$props.combined_score",
+                    "payout_score": "$props.payout_score"
+                }},
+                {"$sort": {"h10_rate": -1, "combined_score": -1}},
+                {"$limit": 100}
+            ]).to_list(100)
+            
+            # De-duplicate by player
+            seen = set()
+            unique = []
+            for p in picks:
+                name = p.get("player_name")
+                if name and name not in seen:
+                    seen.add(name)
+                    gs = _get_game_status(p.get("commence_time"))
+                    p["is_locked"] = gs.get("is_locked", False)
+                    p["game_status"] = gs.get("status", "upcoming")
+                    unique.append(p)
+                    if len(unique) >= 20:
+                        break
+            
+            await self._enrich_picks_with_photos(unique)
+            logger.info(f"[WAR_ZONE_STATIC] Served {len(unique)} picks")
+            
+            return {"status": "live", "picks": unique, "count": len(unique), "source": "static_cache"}
+        except Exception as e:
+            logger.error(f"[WAR_ZONE_STATIC] Error: {e}")
+            return {"status": "error", "picks": [], "error": str(e)}
+    
+    async def get_goblin_vault_static(self) -> Dict[str, Any]:
+        """
+        STATIC ROUTE: Simple MongoDB read for Safe Haven (goblins 80%+).
+        All calculations done during background sync.
+        """
+        try:
+            now = datetime.now(timezone.utc)
+            now_iso = now.isoformat().replace('+00:00', 'Z')
+            
+            picks = await self.cached_board.aggregate([
+                {"$unwind": "$props"},
+                {"$match": {
+                    "props.is_goblin": True,
+                    "props.h10_rate": {"$gte": 80},
+                    "props.commence_time": {"$gt": now_iso}
+                }},
+                {"$project": {
+                    "_id": 0,
+                    "player_name": 1,
+                    "team": 1,
+                    "photo_url": 1,
+                    "headshot_url": 1,
+                    "position": 1,
+                    "opponent": "$props.opponent",
+                    "game_id": "$props.game_id",
+                    "commence_time": "$props.commence_time",
+                    "stat_type": "$props.stat_type",
+                    "line": "$props.line",
+                    "anchor_line": "$props.anchor_line",
+                    "h5_rate": "$props.h5_rate",
+                    "h10_rate": "$props.h10_rate",
+                    "l5_avg": "$props.l5_avg",
+                    "l10_avg": "$props.l10_avg",
+                    "season_avg": "$props.season_avg",
+                    "is_demon": "$props.is_demon",
+                    "is_goblin": "$props.is_goblin",
+                    "tier_label": {"$literal": "GOBLIN"},
+                    "pick_type": {"$literal": "goblin"},
+                    "combined_score": "$props.combined_score"
+                }},
+                {"$sort": {"h10_rate": -1, "combined_score": -1}},
+                {"$limit": 100}
+            ]).to_list(100)
+            
+            # De-duplicate by player
+            seen = set()
+            unique = []
+            for p in picks:
+                name = p.get("player_name")
+                if name and name not in seen:
+                    seen.add(name)
+                    gs = _get_game_status(p.get("commence_time"))
+                    p["is_locked"] = gs.get("is_locked", False)
+                    p["game_status"] = gs.get("status", "upcoming")
+                    unique.append(p)
+                    if len(unique) >= 20:
+                        break
+            
+            await self._enrich_picks_with_photos(unique)
+            logger.info(f"[SAFE_HAVEN_STATIC] Served {len(unique)} picks")
+            
+            return {"status": "live", "picks": unique, "count": len(unique), "source": "static_cache"}
+        except Exception as e:
+            logger.error(f"[SAFE_HAVEN_STATIC] Error: {e}")
+            return {"status": "error", "picks": [], "error": str(e)}
+    
+    async def get_front_lines_static(self) -> Dict[str, Any]:
+        """
+        STATIC ROUTE: Simple MongoDB read for Front Lines (60-79% goblins).
+        All calculations done during background sync.
+        """
+        try:
+            now = datetime.now(timezone.utc)
+            now_iso = now.isoformat().replace('+00:00', 'Z')
+            
+            picks = await self.cached_board.aggregate([
+                {"$unwind": "$props"},
+                {"$match": {
+                    "props.is_goblin": True,
+                    "props.h10_rate": {"$gte": 60, "$lt": 80},
+                    "props.commence_time": {"$gt": now_iso}
+                }},
+                {"$project": {
+                    "_id": 0,
+                    "player_name": 1,
+                    "team": 1,
+                    "photo_url": 1,
+                    "headshot_url": 1,
+                    "position": 1,
+                    "opponent": "$props.opponent",
+                    "game_id": "$props.game_id",
+                    "commence_time": "$props.commence_time",
+                    "stat_type": "$props.stat_type",
+                    "line": "$props.line",
+                    "anchor_line": "$props.anchor_line",
+                    "h5_rate": "$props.h5_rate",
+                    "h10_rate": "$props.h10_rate",
+                    "l5_avg": "$props.l5_avg",
+                    "l10_avg": "$props.l10_avg",
+                    "season_avg": "$props.season_avg",
+                    "is_demon": "$props.is_demon",
+                    "is_goblin": "$props.is_goblin",
+                    "tier_label": {"$literal": "FRONT_LINE"},
+                    "pick_type": {"$literal": "goblin"},
+                    "combined_score": "$props.combined_score"
+                }},
+                {"$sort": {"h10_rate": -1, "combined_score": -1}},
+                {"$limit": 100}
+            ]).to_list(100)
+            
+            # De-duplicate by player
+            seen = set()
+            unique = []
+            for p in picks:
+                name = p.get("player_name")
+                if name and name not in seen:
+                    seen.add(name)
+                    gs = _get_game_status(p.get("commence_time"))
+                    p["is_locked"] = gs.get("is_locked", False)
+                    p["game_status"] = gs.get("status", "upcoming")
+                    unique.append(p)
+                    if len(unique) >= 20:
+                        break
+            
+            await self._enrich_picks_with_photos(unique)
+            logger.info(f"[FRONT_LINES_STATIC] Served {len(unique)} picks")
+            
+            return {"status": "live", "picks": unique, "count": len(unique), "source": "static_cache"}
+        except Exception as e:
+            logger.error(f"[FRONT_LINES_STATIC] Error: {e}")
+            return {"status": "error", "picks": [], "error": str(e)}

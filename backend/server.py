@@ -926,6 +926,17 @@ async def startup_event():
         await db.nba_master_hub_2026.create_index([("player_name", ASCENDING), ("nba_id", ASCENDING)], background=True)
         await db.nba_master_hub_2026.create_index([("is_active", ASCENDING), ("team", ASCENDING)], background=True)
         
+        # TIER INDEXES - Optimized for static tier queries (is_demon, is_goblin, h10_rate)
+        await db.dg_cached_board.create_index([
+            ("props.is_demon", ASCENDING), 
+            ("props.is_goblin", ASCENDING),
+            ("props.commence_time", ASCENDING)
+        ], background=True)
+        await db.dg_cached_board.create_index([
+            ("props.h10_rate", DESCENDING),
+            ("props.is_goblin", ASCENDING)
+        ], background=True)
+        
         # dg_cached_board_temp - Shadow table for zero-downtime sync
         await db.dg_cached_board_temp.create_index([("player_name", ASCENDING)], background=True)
         

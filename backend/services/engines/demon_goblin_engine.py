@@ -853,6 +853,19 @@ class DemonGoblinEngine:
         """PROXY: Get Front Lines picks - delegated to PicksGetterService."""
         return await self.picks_getter_service.get_front_lines()
     
+    # STATIC CACHE METHODS - Zero JIT calculations
+    async def get_war_zone_static(self) -> Dict[str, Any]:
+        """STATIC: Simple MongoDB read for War Zone - no calculations."""
+        return await self.picks_getter_service.get_war_zone_static()
+    
+    async def get_goblin_vault_static(self) -> Dict[str, Any]:
+        """STATIC: Simple MongoDB read for Safe Haven - no calculations."""
+        return await self.picks_getter_service.get_goblin_vault_static()
+    
+    async def get_front_lines_static(self) -> Dict[str, Any]:
+        """STATIC: Simple MongoDB read for Front Lines - no calculations."""
+        return await self.picks_getter_service.get_front_lines_static()
+    
     async def get_parlay_builder(self) -> Dict[str, Any]:
         """PROXY: Get Parlay Builder data - delegated to PicksGetterService."""
         return await self.picks_getter_service.get_parlay_builder()

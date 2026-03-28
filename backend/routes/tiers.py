@@ -36,10 +36,8 @@ async def get_war_zone(
     """
     THE WAR ZONE - High-risk Demon picks
     
-    Returns top demon picks sorted by Expected Value (EV).
-    These are aggressive plays with lines above season average.
-    
-    Display with red/orange gradient cards in the UI.
+    STATIC ROUTE: Simple MongoDB read, no JIT calculations.
+    All tier calculations done during background sync.
     """
     # Prevent browser caching to ensure fresh photo data
     response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
@@ -47,7 +45,7 @@ async def get_war_zone(
     response.headers["Expires"] = "0"
     
     engine = get_engine()
-    result = await engine.get_war_zone()
+    result = await engine.get_war_zone_static()
     return result
 
 
@@ -58,12 +56,10 @@ async def get_goblin_vault(
     include_vision: bool = Query(True)
 ):
     """
-    THE SAFE HAVEN (Goblin Vault) - Safer Goblin picks
+    THE SAFE HAVEN (Goblin Vault) - Safer Goblin picks (80%+ hit rate)
     
-    Returns top goblin picks with high hit rates.
-    These are consistent plays for building parlays.
-    
-    Display with green gradient cards in the UI.
+    STATIC ROUTE: Simple MongoDB read, no JIT calculations.
+    All tier calculations done during background sync.
     """
     # Prevent browser caching to ensure fresh photo data
     response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
@@ -71,7 +67,7 @@ async def get_goblin_vault(
     response.headers["Expires"] = "0"
     
     engine = get_engine()
-    result = await engine.get_goblin_vault()
+    result = await engine.get_goblin_vault_static()
     return result
 
 
@@ -94,12 +90,10 @@ async def get_front_lines(
     include_vision: bool = Query(True)
 ):
     """
-    THE FRONT LINES - Balanced mix (50% Demons, 50% Goblins)
+    THE FRONT LINES - Goblin picks with 60-79% hit rate
     
-    Returns a balanced mix of demon and goblin picks.
-    Good for users who want variety in their selections.
-    
-    Display with mixed gradient cards in the UI.
+    STATIC ROUTE: Simple MongoDB read, no JIT calculations.
+    All tier calculations done during background sync.
     """
     # Prevent browser caching to ensure fresh photo data
     response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
@@ -107,7 +101,7 @@ async def get_front_lines(
     response.headers["Expires"] = "0"
     
     engine = get_engine()
-    result = await engine.get_front_lines()
+    result = await engine.get_front_lines_static()
     return result
 
 

@@ -544,3 +544,12 @@ V3.1 TRUTH ENGINE - DATA INTEGRITY:
   Verification Rate: {results['verification_stats']['verification_rate']}%
 """)
         logger.info("=" * 70)
+        
+        # EAGER INITIALIZATION COMPLETE - All tiers pre-calculated and cached
+        logger.info("")
+        logger.info("*" * 70)
+        logger.info("*  ALL TIERS CACHED AND READY                                        *")
+        logger.info("*  War Zone, Safe Haven, Front Lines - Serving from static cache    *")
+        logger.info("*  Cold Start Duration: {:.1f}s                                       *".format(results['duration']))
+        logger.info("*" * 70)
+        logger.info("")
