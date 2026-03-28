@@ -535,19 +535,19 @@ const UniversalPlayerCard = memo(({
         
         {/* Header: Photo + Name + Icon */}
         <div className="flex items-center gap-2 mb-2">
-          <div className="relative">
+          <div className="relative flex-shrink-0">
             <PlayerHeadshot photoUrl={displayPhoto} playerName={displayName} team={team} size="sm" />
             {/* Tier icon on photo - same as Top Picks */}
             <div className="absolute -top-1 -right-1">
               {isDemon ? <DemonIcon size={14} /> : isGoblin ? <GoblinIcon size={14} /> : null}
             </div>
           </div>
-          <div className="flex-1 min-w-0">
-            <div className="text-sm font-medium text-white truncate">{displayName}</div>
-            <div className={`text-xs ${theme.text}`}>{stat_type} {line}</div>
+          <div className="flex-1 min-w-0 overflow-hidden">
+            <div className="text-sm font-medium text-white truncate max-w-full">{displayName}</div>
+            <div className={`text-xs ${theme.text} truncate`}>{stat_type} {line}</div>
           </div>
           {rank && (
-            <Badge className="bg-zinc-800 text-zinc-300 border-none text-xs">#{rank}</Badge>
+            <Badge className="bg-zinc-800 text-zinc-300 border-none text-xs flex-shrink-0">#{rank}</Badge>
           )}
         </div>
         
