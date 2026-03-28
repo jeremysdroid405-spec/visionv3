@@ -161,7 +161,7 @@ const PropRow = memo(({ prop, isHighlighted, highlightRef, onVisionClick, gameLo
     <div 
       ref={isHighlighted ? highlightRef : null}
       onClick={handleClick}
-      className={`flex items-center gap-4 py-4 px-4 rounded-lg transition-all ${
+      className={`flex flex-col p-4 rounded-lg transition-all ${
         isHighlighted
           ? 'bg-gradient-to-r from-amber-950/50 via-yellow-900/30 to-amber-950/50 border-2 border-amber-400 ring-2 ring-amber-400/50 shadow-[0_0_20px_rgba(251,191,36,0.3)] cursor-pointer hover:shadow-[0_0_30px_rgba(251,191,36,0.5)]' 
           : isVisionProp
@@ -174,81 +174,91 @@ const PropRow = memo(({ prop, isHighlighted, highlightRef, onVisionClick, gameLo
       }`}
       data-testid={`prop-row-${prop.stat_type}-${line}${isHighlighted ? '-vision' : isVisionProp ? '-clickable' : ''}`}
     >
-      {/* Left: Type indicator + Line - compact fixed width */}
-      <div className="flex items-center gap-3 flex-shrink-0" style={{ minWidth: '140px', maxWidth: '180px' }}>
-        <div className="flex items-center gap-1.5">
-          {isHighlighted ? (
-            <Crosshair className="w-5 h-5 text-amber-400 animate-pulse" />
-          ) : isDemon ? (
-            <DemonIcon size={16} />
-          ) : isGoblin ? (
-            <GoblinIcon size={16} />
-          ) : (
-            <Target className="w-4 h-4 text-zinc-500" />
-          )}
-        </div>
-        
-        <div>
-          <div className="flex items-center gap-2">
-            <span className={`text-base font-bold ${
-              isHighlighted ? 'text-amber-300' : isDemon ? 'text-red-400' : isGoblin ? 'text-green-400' : 'text-white'
-            }`}>
-              {direction} {line}
-            </span>
-            {isHighlighted && (
-              <span className="px-1.5 py-0.5 text-[8px] font-black bg-gradient-to-r from-amber-500 to-yellow-400 text-black rounded-full flex items-center gap-0.5 animate-pulse">
-                <Crosshair className="w-2.5 h-2.5" />
-                VISION
-              </span>
-            )}
-            {!isHighlighted && isVisionProp && (
-              <span className="px-1.5 py-0.5 text-[8px] font-semibold bg-amber-500/20 text-amber-400 rounded-full flex items-center gap-0.5">
-                <Zap className="w-2.5 h-2.5" />
-                INTEL
-              </span>
-            )}
-          </div>
-          {/* Odds removed per user request */}
-        </div>
+      {/* TOP ROW: Icon + Line + Badges */}
+      <div className="flex items-center gap-2 mb-3">
+        {isHighlighted ? (
+          <Crosshair className="w-5 h-5 text-amber-400 animate-pulse" />
+        ) : isDemon ? (
+          <DemonIcon size={18} />
+        ) : isGoblin ? (
+          <GoblinIcon size={18} />
+        ) : (
+          <Target className="w-4 h-4 text-zinc-500" />
+        )}
+        <span className={`text-lg font-bold ${
+          isHighlighted ? 'text-amber-300' : isDemon ? 'text-red-400' : isGoblin ? 'text-green-400' : 'text-white'
+        }`}>
+          {direction} {line}
+        </span>
+        {isHighlighted && (
+          <span className="px-1.5 py-0.5 text-[8px] font-black bg-gradient-to-r from-amber-500 to-yellow-400 text-black rounded-full flex items-center gap-0.5 animate-pulse">
+            <Crosshair className="w-2.5 h-2.5" />
+            VISION
+          </span>
+        )}
+        {!isHighlighted && isVisionProp && (
+          <span className="px-1.5 py-0.5 text-[8px] font-semibold bg-amber-500/20 text-amber-400 rounded-full flex items-center gap-0.5">
+            <Zap className="w-2.5 h-2.5" />
+            INTEL
+          </span>
+        )}
       </div>
       
-      {/* Right: Bar Chart - full width */}
-      {gameLogs && gameLogs.length > 0 ? (
-        <div className="flex-1 ml-4">
-          <GameLogBarChart
-            gameLogs={gameLogs}
-            statType={statType}
-            line={line}
-            showGames={10}
-            height={110}
-            l5Avg={l5Avg}
-            l10Avg={l10Avg}
-            seasonAvg={seasonAvg}
-          />
-        </div>
-      ) : (
-        /* Fallback: Text-based hit rates */
-        <div className="flex items-center gap-4 text-xs">
-          <div className="text-center min-w-[35px]">
-            <div className={`text-[9px] ${isHighlighted ? 'text-amber-400/70' : 'text-zinc-500'}`}>L10 HR</div>
-            <div className={`font-bold ${isHighlighted ? 'text-amber-300' : getHitRateColor(h10Rate)}`}>
+      {/* BOTTOM ROW: Stats column on left, Chart on right */}
+      <div className="flex items-stretch gap-4">
+        {/* LEFT: Stats Column */}
+        <div className={`flex flex-col justify-center gap-2 py-2 px-3 rounded-md ${
+          isHighlighted ? 'bg-amber-900/30' : 'bg-zinc-800/50'
+        }`} style={{ minWidth: '90px' }}>
+          <div className="text-center">
+            <div className={`text-[9px] uppercase tracking-wide ${isHighlighted ? 'text-amber-400/70' : 'text-zinc-500'}`}>L10 Hit</div>
+            <div className={`font-bold text-sm ${isHighlighted ? 'text-amber-300' : getHitRateColor(h10Rate)}`}>
               {h10Rate > 0 ? `${h10Rate}%` : '-'}
             </div>
           </div>
-          <div className="text-center min-w-[35px]">
-            <div className={`text-[9px] ${isHighlighted ? 'text-amber-400/70' : 'text-zinc-500'}`}>L5 HR</div>
-            <div className={`font-bold ${isHighlighted ? 'text-amber-300' : getHitRateColor(h5Rate)}`}>
+          <div className="text-center">
+            <div className={`text-[9px] uppercase tracking-wide ${isHighlighted ? 'text-amber-400/70' : 'text-zinc-500'}`}>L5 Hit</div>
+            <div className={`font-bold text-sm ${isHighlighted ? 'text-amber-300' : getHitRateColor(h5Rate)}`}>
               {h5Rate > 0 ? `${h5Rate}%` : '-'}
             </div>
           </div>
-          <div className="text-center min-w-[35px]">
-            <div className={`text-[9px] ${isHighlighted ? 'text-amber-400/70' : 'text-zinc-500'}`}>SZN</div>
-            <div className={`font-bold ${isHighlighted ? 'text-amber-300' : 'text-white'}`}>
+          <div className="w-full h-px bg-zinc-700 my-1" />
+          <div className="text-center">
+            <div className={`text-[9px] uppercase tracking-wide ${isHighlighted ? 'text-amber-400/70' : 'text-zinc-500'}`}>L5 Avg</div>
+            <div className={`font-bold text-sm ${isHighlighted ? 'text-amber-300' : 'text-white'}`}>
+              {l5Avg != null ? l5Avg : '-'}
+            </div>
+          </div>
+          <div className="text-center">
+            <div className={`text-[9px] uppercase tracking-wide ${isHighlighted ? 'text-amber-400/70' : 'text-zinc-500'}`}>L10 Avg</div>
+            <div className={`font-bold text-sm ${isHighlighted ? 'text-amber-300' : 'text-white'}`}>
+              {l10Avg != null ? l10Avg : '-'}
+            </div>
+          </div>
+          <div className="text-center">
+            <div className={`text-[9px] uppercase tracking-wide ${isHighlighted ? 'text-amber-400/70' : 'text-zinc-500'}`}>Season</div>
+            <div className={`font-bold text-sm ${isHighlighted ? 'text-amber-300' : 'text-white'}`}>
               {seasonAvg != null ? seasonAvg : '-'}
             </div>
           </div>
         </div>
-      )}
+        
+        {/* RIGHT: Bar Chart */}
+        {gameLogs && gameLogs.length > 0 && (
+          <div className="flex-1">
+            <GameLogBarChart
+              gameLogs={gameLogs}
+              statType={statType}
+              line={line}
+              showGames={10}
+              height={140}
+              l5Avg={l5Avg}
+              l10Avg={l10Avg}
+              seasonAvg={seasonAvg}
+            />
+          </div>
+        )}
+      </div>
     </div>
   );
 });
