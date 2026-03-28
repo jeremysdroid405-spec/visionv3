@@ -167,12 +167,12 @@ const GameLogBarChart = memo(({
                 className="relative flex flex-col items-center h-full justify-end"
                 style={{ width: `${85 / values.length}%` }}
               >
-                {/* Value label on top of bar */}
+                {/* Value label on top of bar - WHITE text, high z-index */}
                 <div 
-                  className={`absolute text-[9px] font-bold ${isHit ? 'text-emerald-400' : 'text-red-400'}`}
+                  className="absolute text-[10px] font-bold text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]"
                   style={{ 
                     bottom: `${barHeightPercent + 2}%`,
-                    zIndex: 3
+                    zIndex: 10
                   }}
                 >
                   {Math.round(item.value)}
@@ -187,7 +187,8 @@ const GameLogBarChart = memo(({
                   }`}
                   style={{ 
                     height: `${barHeightPercent}%`,
-                    minHeight: '4px'
+                    minHeight: '4px',
+                    zIndex: 1
                   }}
                 />
               </div>
