@@ -101,7 +101,7 @@ const GameLogBarChart = memo(({
       seasonAvg
     ].filter(v => v != null && v > 0);
     const maxValue = Math.max(...allRelevantValues);
-    const chartMax = maxValue * 1.15; // 15% padding above highest bar
+    const chartMax = maxValue * 1.25; // 25% padding above highest bar for value labels
     
     const hits = values.filter(v => v.value >= line).length;
     const hitRate = Math.round((hits / values.length) * 100);
@@ -134,9 +134,12 @@ const GameLogBarChart = memo(({
     <div className={`relative flex flex-col h-full w-full ${className}`}>
       {/* Chart container - fills available height and width, isolated stacking context */}
       <div 
-        className="relative bg-zinc-900/50 rounded border border-zinc-800 overflow-hidden isolate flex-1 w-full"
-        style={{ minHeight: '120px' }}
+        className="relative bg-zinc-900/50 rounded border border-zinc-800 overflow-visible isolate flex-1 w-full"
+        style={{ minHeight: '140px' }}
       >
+        {/* Top padding zone for value labels - ensures numbers aren't clipped */}
+        <div className="absolute inset-x-0 top-0 h-5 pointer-events-none" style={{ zIndex: 25 }} />
+        
         {/* Main target line (amber, solid) - positioned within the bar area */}
         <div 
           className="absolute left-0 right-0 border-t-2 border-amber-500 pointer-events-none"
