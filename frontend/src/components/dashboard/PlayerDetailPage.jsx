@@ -208,11 +208,7 @@ const PropRow = memo(({ prop, isHighlighted, highlightRef, onVisionClick, gameLo
               </span>
             )}
           </div>
-          {prop.price && (
-            <span className={`text-[10px] font-mono ${isHighlighted ? 'text-amber-400/70' : 'text-zinc-500'}`}>
-              @ {prop.price > 0 ? '+' : ''}{prop.price}
-            </span>
-          )}
+          {/* Odds removed per user request */}
         </div>
       </div>
       
