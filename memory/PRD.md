@@ -618,6 +618,32 @@ BDL/Odds Sync → Cached Board Build → Tier Classification (is_demon/is_goblin
 
 ---
 
+## CRITICAL FIX (2026-03-26): Safe Haven & Front Lines Vision Intel Missing
+
+### Problem
+Safe Haven (`/api/v3/goblin-vault`) and Front Lines (`/api/v3/front-lines`) endpoints were NOT returning Vision Intel data (`vision_summary`, `intel_suite`, `is_vision_enriched`) while War Zone (`/api/v3/war-zone`) worked correctly.
+
+### Root Cause
+The MongoDB `$project` stages in `get_goblin_vault_static()` and `get_front_lines_static()` were missing the three vision intel projection fields that were present in `get_war_zone_static()`.
+
+### Fix Applied
+Added the missing projection fields to both methods in `/app/backend/services/picks_getter_service.py`:
+```python
+"vision_summary": "$props.vision_summary",
+"intel_suite": "$props.intel_suite",
+"is_vision_enriched": "$props.is_vision_enriched"
+```
+
+### Verification
+All 3 endpoints now return complete vision intel data:
+- War Zone: ✅ 20 picks with vision_summary + intel_suite
+- Safe Haven: ✅ 20 picks with vision_summary + intel_suite  
+- Front Lines: ✅ 20 picks with vision_summary + intel_suite
+
+**Status:** COMPLETE
+
+---
+
 ## PENDING TASKS
 
 ### P1 - War Zone Score Breakdown UI

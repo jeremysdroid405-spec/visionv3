@@ -2813,7 +2813,10 @@ class PicksGetterService:
                     "tier_label": {"$literal": "DEMON"},
                     "pick_type": {"$literal": "demon"},
                     "combined_score": "$props.combined_score",
-                    "payout_score": "$props.payout_score"
+                    "payout_score": "$props.payout_score",
+                    "vision_summary": "$props.vision_summary",
+                    "intel_suite": "$props.intel_suite",
+                    "is_vision_enriched": "$props.is_vision_enriched"
                 }},
                 {"$sort": {"h10_rate": -1, "combined_score": -1}},
                 {"$limit": 100}
@@ -2879,7 +2882,11 @@ class PicksGetterService:
                     "is_goblin": "$props.is_goblin",
                     "tier_label": {"$literal": "GOBLIN"},
                     "pick_type": {"$literal": "goblin"},
-                    "combined_score": "$props.combined_score"
+                    "combined_score": "$props.combined_score",
+                    "payout_score": "$props.payout_score",
+                    "vision_summary": "$props.vision_summary",
+                    "intel_suite": "$props.intel_suite",
+                    "is_vision_enriched": "$props.is_vision_enriched"
                 }},
                 {"$sort": {"h10_rate": -1, "combined_score": -1}},
                 {"$limit": 100}
@@ -2945,7 +2952,11 @@ class PicksGetterService:
                     "is_goblin": "$props.is_goblin",
                     "tier_label": {"$literal": "FRONT_LINE"},
                     "pick_type": {"$literal": "goblin"},
-                    "combined_score": "$props.combined_score"
+                    "combined_score": "$props.combined_score",
+                    "payout_score": "$props.payout_score",
+                    "vision_summary": "$props.vision_summary",
+                    "intel_suite": "$props.intel_suite",
+                    "is_vision_enriched": "$props.is_vision_enriched"
                 }},
                 {"$sort": {"h10_rate": -1, "combined_score": -1}},
                 {"$limit": 100}
