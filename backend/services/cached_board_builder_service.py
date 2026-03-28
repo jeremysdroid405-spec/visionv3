@@ -1125,12 +1125,5 @@ class CachedBoardBuilderService:
         await self.parlay_builder_service.build_parlay_builder(players_dict, sync_time)
         await self.parlay_builder_service.build_goblin_recon(players_dict, sync_time)
         
-        # Trigger Board-Driven Vision Intel Enrichment immediately after boards are built
-        # This pre-caches AI summaries for the ~30 players on the tier boards
-        try:
-            from services.vision_intel_enrichment_service import run_vision_intel_enrichment
-            logger.info("[CACHED_BOARD] Triggering Board-Driven Vision Intel Enrichment...")
-            intel_result = await run_vision_intel_enrichment(self.db)
-            logger.info(f"[CACHED_BOARD] Vision Intel: {intel_result.get('props_enriched', 0)} props enriched, {intel_result.get('ai_summaries_generated', 0)} AI summaries")
-        except Exception as e:
-            logger.error(f"[CACHED_BOARD] Vision Intel Enrichment failed (non-critical): {e}")
+        # NOTE: Vision Intel enrichment is now triggered AFTER the entire sync completes
+        # in adaptive_sync_engine.py to ensure data isn't wiped by subsequent sync operations

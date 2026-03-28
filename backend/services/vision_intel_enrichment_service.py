@@ -1,17 +1,8 @@
 """
-Vision Intel Enrichment Service - SIMPLIFIED v2
-================================================
-Generates Vision Intel + AI Summaries for the ~30-50 props displayed on the 3 tier boards.
-
-The key insight: We use the SAME queries as the board endpoints to get the exact picks
-that users will see. This ensures we only enrich what's actually displayed.
-
-Flow:
-1. Run same queries as /api/v3/war-zone, /api/v3/goblin-vault, /api/v3/front-lines
-2. Dedupe to get ~30-50 unique props
-3. Generate AI summaries with Semaphore(5)
-4. Update props in dg_cached_board
-5. Done in <5 seconds
+Vision Intel Enrichment - EXACT COPY of board endpoint queries
+===============================================================
+Uses the EXACT SAME MongoDB queries as the 3 board endpoints.
+No interpretation, just copy-paste the query logic.
 """
 
 import asyncio
@@ -27,33 +18,110 @@ GEMINI_CONCURRENT_LIMIT = 5
 
 async def run_vision_intel_enrichment(db: AsyncIOMotorDatabase) -> Dict[str, Any]:
     """
-    Enrich Vision Intel for the exact picks shown on tier boards.
-    Should complete in <5 seconds.
+    Enrich Vision Intel for the exact picks on all 3 boards.
     """
     start = datetime.now(timezone.utc)
-    logger.info("[VISION_INTEL] Starting board pick enrichment...")
+    logger.info("[VISION_INTEL] Starting enrichment...")
     
-    # Get the exact picks from each board (same queries as the endpoints)
-    war_zone = await _get_war_zone_picks(db)
-    safe_haven = await _get_safe_haven_picks(db)
-    front_lines = await _get_front_lines_picks(db)
+    cached_board = db.dg_cached_board
+    now_iso = datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
     
-    # Combine and dedupe
-    all_picks = []
-    seen = set()
+    # ========== WAR ZONE: is_demon=True ==========
+    wz_picks = await cached_board.aggregate([
+        {"$unwind": "$props"},
+        {"$match": {
+            "props.is_demon": True,
+            "props.commence_time": {"$gt": now_iso}
+        }},
+        {"$project": {
+            "_id": 0,
+            "player_name": 1,
+            "team": 1,
+            "stat_type": "$props.stat_type_extracted",
+            "line": "$props.line",
+            "h10_rate": "$props.h10_rate",
+            "combined_score": "$props.combined_score",
+            "l5_avg": "$props.l5_avg",
+            "season_avg": "$props.season_avg",
+            "opponent": "$props.opponent",
+            "dvp_rank": "$props.dvp_rank",
+            "board": {"$literal": "war_zone"}
+        }},
+        {"$sort": {"h10_rate": -1, "combined_score": -1}},
+        {"$limit": 100}
+    ]).to_list(100)
     
-    for pick in war_zone + safe_haven + front_lines:
-        key = f"{pick['player_name']}|{pick['stat_type']}|{pick['line']}"
-        if key not in seen:
-            seen.add(key)
-            all_picks.append(pick)
+    # Dedupe by player, top 10
+    war_zone = _dedupe_by_player(wz_picks, 10)
     
-    logger.info(f"[VISION_INTEL] {len(all_picks)} unique picks (WZ:{len(war_zone)}, SH:{len(safe_haven)}, FL:{len(front_lines)})")
+    # ========== SAFE HAVEN: is_goblin=True AND h10_rate >= 80 ==========
+    sh_picks = await cached_board.aggregate([
+        {"$unwind": "$props"},
+        {"$match": {
+            "props.is_goblin": True,
+            "props.h10_rate": {"$gte": 80},
+            "props.commence_time": {"$gt": now_iso}
+        }},
+        {"$project": {
+            "_id": 0,
+            "player_name": 1,
+            "team": 1,
+            "stat_type": "$props.stat_type_extracted",
+            "line": "$props.line",
+            "h10_rate": "$props.h10_rate",
+            "combined_score": "$props.combined_score",
+            "l5_avg": "$props.l5_avg",
+            "season_avg": "$props.season_avg",
+            "opponent": "$props.opponent",
+            "dvp_rank": "$props.dvp_rank",
+            "board": {"$literal": "safe_haven"}
+        }},
+        {"$sort": {"h10_rate": -1, "combined_score": -1}},
+        {"$limit": 100}
+    ]).to_list(100)
+    
+    safe_haven = _dedupe_by_player(sh_picks, 10)
+    
+    # ========== FRONT LINES: is_goblin=True AND 60 <= h10_rate < 80 ==========
+    fl_picks = await cached_board.aggregate([
+        {"$unwind": "$props"},
+        {"$match": {
+            "props.is_goblin": True,
+            "props.h10_rate": {"$gte": 60, "$lt": 80},
+            "props.commence_time": {"$gt": now_iso}
+        }},
+        {"$project": {
+            "_id": 0,
+            "player_name": 1,
+            "team": 1,
+            "stat_type": "$props.stat_type_extracted",
+            "line": "$props.line",
+            "h10_rate": "$props.h10_rate",
+            "combined_score": "$props.combined_score",
+            "l5_avg": "$props.l5_avg",
+            "season_avg": "$props.season_avg",
+            "opponent": "$props.opponent",
+            "dvp_rank": "$props.dvp_rank",
+            "board": {"$literal": "front_lines"}
+        }},
+        {"$sort": {"h10_rate": -1, "combined_score": -1}},
+        {"$limit": 100}
+    ]).to_list(100)
+    
+    front_lines = _dedupe_by_player(fl_picks, 10)
+    
+    # Combine all
+    all_picks = war_zone + safe_haven + front_lines
+    logger.info(f"[VISION_INTEL] WZ:{len(war_zone)} SH:{len(safe_haven)} FL:{len(front_lines)} = {len(all_picks)} total")
     
     if not all_picks:
         return {"picks": 0, "enriched": 0, "duration": 0}
     
-    # Enrich with AI summaries (rate limited)
+    # Find prop indices
+    for pick in all_picks:
+        pick["prop_index"] = await _find_prop_index(db, pick)
+    
+    # Enrich with AI summaries
     semaphore = asyncio.Semaphore(GEMINI_CONCURRENT_LIMIT)
     tasks = [_enrich_pick(db, pick, semaphore) for pick in all_picks]
     results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -61,109 +129,30 @@ async def run_vision_intel_enrichment(db: AsyncIOMotorDatabase) -> Dict[str, Any
     enriched = sum(1 for r in results if r is True)
     duration = (datetime.now(timezone.utc) - start).total_seconds()
     
-    logger.info(f"[VISION_INTEL] DONE: {enriched}/{len(all_picks)} enriched in {duration:.1f}s")
+    logger.info(f"[VISION_INTEL] DONE: {enriched}/{len(all_picks)} in {duration:.1f}s")
     
-    return {"picks": len(all_picks), "enriched": enriched, "duration": round(duration, 2)}
+    return {
+        "war_zone": len(war_zone),
+        "safe_haven": len(safe_haven),
+        "front_lines": len(front_lines),
+        "total": len(all_picks),
+        "enriched": enriched,
+        "duration": round(duration, 2)
+    }
 
 
-async def _get_war_zone_picks(db: AsyncIOMotorDatabase) -> List[Dict]:
-    """Get War Zone picks (demons) - top 10."""
-    now_iso = datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
-    
-    picks = await db.dg_cached_board.aggregate([
-        {"$unwind": "$props"},
-        {"$match": {"props.is_demon": True, "props.commence_time": {"$gt": now_iso}}},
-        {"$project": {
-            "_id": 0,
-            "player_name": 1,
-            "team": 1,
-            "stat_type": "$props.stat_type_extracted",
-            "line": "$props.line",
-            "h10_rate": "$props.h10_rate",
-            "l5_avg": "$props.l5_avg",
-            "season_avg": "$props.season_avg",
-            "opponent": "$props.opponent",
-            "dvp_rank": "$props.dvp_rank",
-            "is_demon": "$props.is_demon",
-            "is_goblin": "$props.is_goblin",
-            "board": {"$literal": "war_zone"}
-        }},
-        {"$sort": {"h10_rate": -1}},
-        {"$limit": 10}
-    ]).to_list(10)
-    
-    # Find prop indices for updating
-    for pick in picks:
-        pick["prop_index"] = await _find_prop_index(db, pick)
-    
-    return picks
-
-
-async def _get_safe_haven_picks(db: AsyncIOMotorDatabase) -> List[Dict]:
-    """Get Safe Haven picks (goblins) - top 10."""
-    now_iso = datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
-    
-    picks = await db.dg_cached_board.aggregate([
-        {"$unwind": "$props"},
-        {"$match": {"props.is_goblin": True, "props.commence_time": {"$gt": now_iso}}},
-        {"$project": {
-            "_id": 0,
-            "player_name": 1,
-            "team": 1,
-            "stat_type": "$props.stat_type_extracted",
-            "line": "$props.line",
-            "h10_rate": "$props.h10_rate",
-            "l5_avg": "$props.l5_avg",
-            "season_avg": "$props.season_avg",
-            "opponent": "$props.opponent",
-            "dvp_rank": "$props.dvp_rank",
-            "is_demon": "$props.is_demon",
-            "is_goblin": "$props.is_goblin",
-            "board": {"$literal": "safe_haven"}
-        }},
-        {"$sort": {"h10_rate": -1}},
-        {"$limit": 10}
-    ]).to_list(10)
-    
-    for pick in picks:
-        pick["prop_index"] = await _find_prop_index(db, pick)
-    
-    return picks
-
-
-async def _get_front_lines_picks(db: AsyncIOMotorDatabase) -> List[Dict]:
-    """Get Front Lines picks (mixed high-value) - top 10."""
-    now_iso = datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
-    
-    picks = await db.dg_cached_board.aggregate([
-        {"$unwind": "$props"},
-        {"$match": {
-            "props.commence_time": {"$gt": now_iso},
-            "$or": [{"props.is_demon": True}, {"props.is_goblin": True}]
-        }},
-        {"$project": {
-            "_id": 0,
-            "player_name": 1,
-            "team": 1,
-            "stat_type": "$props.stat_type_extracted",
-            "line": "$props.line",
-            "h10_rate": "$props.h10_rate",
-            "l5_avg": "$props.l5_avg",
-            "season_avg": "$props.season_avg",
-            "opponent": "$props.opponent",
-            "dvp_rank": "$props.dvp_rank",
-            "is_demon": "$props.is_demon",
-            "is_goblin": "$props.is_goblin",
-            "board": {"$literal": "front_lines"}
-        }},
-        {"$sort": {"h10_rate": -1}},
-        {"$limit": 10}
-    ]).to_list(10)
-    
-    for pick in picks:
-        pick["prop_index"] = await _find_prop_index(db, pick)
-    
-    return picks
+def _dedupe_by_player(picks: List[Dict], limit: int) -> List[Dict]:
+    """Dedupe picks by player name, return top N."""
+    seen = set()
+    unique = []
+    for p in picks:
+        name = p.get("player_name")
+        if name and name not in seen:
+            seen.add(name)
+            unique.append(p)
+            if len(unique) >= limit:
+                break
+    return unique
 
 
 async def _find_prop_index(db: AsyncIOMotorDatabase, pick: Dict) -> int:
@@ -172,7 +161,6 @@ async def _find_prop_index(db: AsyncIOMotorDatabase, pick: Dict) -> int:
         {"player_name": pick["player_name"]},
         {"_id": 0, "props": 1}
     )
-    
     if not player:
         return -1
     
@@ -184,34 +172,55 @@ async def _find_prop_index(db: AsyncIOMotorDatabase, pick: Dict) -> int:
         prop_line = prop.get("line", 0)
         if prop_stat == stat and abs(prop_line - line) < 0.1:
             return i
-    
     return -1
 
 
 async def _enrich_pick(db: AsyncIOMotorDatabase, pick: Dict, semaphore: asyncio.Semaphore) -> bool:
     """Enrich a single pick with AI summary."""
     idx = pick.get("prop_index", -1)
+    player_name = pick.get("player_name", "Unknown")
+    
     if idx < 0:
+        logger.warning(f"[VISION_INTEL] Skipping {player_name} - no prop_index")
         return False
     
     try:
         async with semaphore:
             ai_summary = await _generate_ai_summary(pick)
         
-        intel_suite = _build_intel_suite(pick, ai_summary)
+        intel_suite = {
+            "matchup_dvp": {
+                "opponent": pick.get("opponent", ""),
+                "dvp_rank": pick.get("dvp_rank", 15) or 15,
+            },
+            "stability_index": {
+                "score": int(pick.get("h10_rate", 50) or 50),
+            },
+            "vision_insight": {
+                "ai_summary": ai_summary,
+                "status": "ready" if ai_summary else "loading"
+            },
+            "board": pick.get("board"),
+            "cached_at": datetime.now(timezone.utc).isoformat()
+        }
         
-        await db.dg_cached_board.update_one(
-            {"player_name": pick["player_name"]},
+        update_result = await db.dg_cached_board.update_one(
+            {"player_name": player_name},
             {"$set": {
                 f"props.{idx}.vision_summary": ai_summary,
                 f"props.{idx}.intel_suite": intel_suite,
                 f"props.{idx}.is_vision_enriched": True,
-                f"props.{idx}.vision_enriched_at": datetime.now(timezone.utc).isoformat()
+                f"props.{idx}.vision_enriched_at": datetime.now(timezone.utc).isoformat(),
+                f"props.{idx}.board": pick.get("board")
             }}
         )
+        
+        if update_result.modified_count == 0:
+            logger.warning(f"[VISION_INTEL] No update for {player_name} idx={idx}")
+        
         return True
     except Exception as e:
-        logger.error(f"[VISION_INTEL] Error: {pick['player_name']} - {e}")
+        logger.error(f"[VISION_INTEL] Error: {player_name} - {e}")
         return False
 
 
@@ -228,8 +237,8 @@ async def _generate_ai_summary(pick: Dict) -> Optional[str]:
             h10_rate=pick.get("h10_rate", 0) or 0,
             badges=[],
             opponent=pick.get("opponent", ""),
-            is_demon=pick.get("is_demon", False),
-            is_goblin=pick.get("is_goblin", False),
+            is_demon=pick.get("board") == "war_zone",
+            is_goblin=pick.get("board") in ["safe_haven", "front_lines"],
             dvp_rank=pick.get("dvp_rank"),
             dvp_friction=None,
             player_team=pick.get("team", "")
@@ -237,27 +246,3 @@ async def _generate_ai_summary(pick: Dict) -> Optional[str]:
     except Exception as e:
         logger.warning(f"[VISION_INTEL] Gemini error: {e}")
         return None
-
-
-def _build_intel_suite(pick: Dict, ai_summary: Optional[str]) -> Dict[str, Any]:
-    """Build intel suite object."""
-    h10 = pick.get("h10_rate", 0) or 0
-    dvp = pick.get("dvp_rank", 15) or 15
-    
-    return {
-        "matchup_dvp": {
-            "opponent": pick.get("opponent", ""),
-            "dvp_rank": dvp,
-            "friction_level": "Low" if dvp >= 20 else "Medium" if dvp >= 10 else "High"
-        },
-        "stability_index": {
-            "score": int(h10) if h10 else 50,
-            "consistency": "HIGH" if h10 >= 70 else "MEDIUM" if h10 >= 50 else "LOW"
-        },
-        "vision_insight": {
-            "ai_summary": ai_summary,
-            "status": "ready" if ai_summary else "loading"
-        },
-        "board": pick.get("board"),
-        "cached_at": datetime.now(timezone.utc).isoformat()
-    }

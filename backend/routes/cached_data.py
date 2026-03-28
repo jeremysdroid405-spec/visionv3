@@ -904,10 +904,11 @@ async def get_cached_player(player_name: str):
             # ========== VISION INTEL SUITE - ONLY FOR FEATURED PROP ==========
             # Only the prop that qualified for the boards gets the full intel suite
             if not is_featured:
-                # Regular prop - REMOVE intel suite, badges, summary (may have been added elsewhere)
+                # Regular prop - skip intel suite and badges, but PRESERVE vision_summary
+                # The summary was generated during background sync and should remain
                 prop.pop("intel_suite", None)
                 prop.pop("active_badges", None)
-                prop.pop("vision_summary", None)
+                # NOTE: We keep vision_summary since it was pre-cached during sync
                 continue
             
             # This IS the featured prop - add badges and intel suite

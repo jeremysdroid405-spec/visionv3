@@ -999,6 +999,16 @@ class AdaptiveSyncEngine:
                     await self._sync_ticker()
                     last_ticker_sync = now
                 
+                # ========== VISION INTEL ENRICHMENT (FINAL STEP) ==========
+                # Run AFTER all sync operations complete to ensure data isn't wiped
+                # Enriches the 30 picks on tier boards (10 per board) with AI summaries
+                try:
+                    from services.vision_intel_enrichment_service import run_vision_intel_enrichment
+                    intel_result = await run_vision_intel_enrichment(self.db)
+                    logger.info(f"[ADAPTIVE_SYNC] Vision Intel: {intel_result.get('enriched', 0)}/{intel_result.get('total', 0)} enriched in {intel_result.get('duration', 0)}s")
+                except Exception as e:
+                    logger.error(f"[ADAPTIVE_SYNC] Vision Intel failed: {e}")
+                
                 # Determine next poll interval based on most urgent game
                 min_interval = PollInterval.STANDBY.value  # Default to 60 minutes
                 

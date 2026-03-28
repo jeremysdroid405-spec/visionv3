@@ -1168,15 +1168,8 @@ async def startup_event():
         replace_existing=True
     )
     
-    # 5. HOURLY VISION INTEL ENRICHMENT (AI Summaries) - Every 60 minutes
-    # Pre-caches AI Vision summaries for featured picks
-    scheduler.add_job(
-        scheduled_hourly_vision_intel_sync,
-        IntervalTrigger(minutes=60, timezone=SCHEDULER_TIMEZONE),
-        id='hourly_vision_intel_sync',
-        name='Hourly Vision Intel Enrichment (60 min interval)',
-        replace_existing=True
-    )
+    # NOTE: Vision Intel enrichment now runs at the END of every sync cycle
+    # in adaptive_sync_engine.py - no separate scheduled job needed
     
     # 6. HALF-HOURLY SOCIAL SYNC (The News) - Every 30 minutes
     # Catches late-breaking lineup news and social signals
