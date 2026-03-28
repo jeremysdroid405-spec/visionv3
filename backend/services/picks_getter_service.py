@@ -2339,6 +2339,11 @@ class PicksGetterService:
                 "commence_time": prop.get("commence_time"),
                 "home_team": prop.get("home_team"),
                 "away_team": prop.get("away_team"),
+                # Vision Intel Pre-Cached fields
+                "vision_summary": prop.get("vision_summary"),
+                "is_vision_enriched": prop.get("is_vision_enriched"),
+                "vision_enriched_at": prop.get("vision_enriched_at"),
+                "intel_suite": prop.get("intel_suite"),  # Pre-built intel suite
             })
         
         self._clean_object_ids(player)

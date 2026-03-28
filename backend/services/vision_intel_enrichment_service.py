@@ -144,41 +144,45 @@ class VisionIntelEnrichmentService:
     
     async def _collect_featured_picks(self) -> List[Dict[str, Any]]:
         """
-        Collect all featured picks from tier boards.
+        Collect all featured picks from dg_cached_board.
         
         Returns picks that should receive Vision Intel enrichment:
-        - War Zone (demons) with pick=true
-        - Safe Haven (goblins) with pick=true
-        - Front Lines with pick=true
+        - Demons (is_demon=true) for War Zone
+        - Goblins (is_goblin=true) for Safe Haven
+        - High-value picks for Front Lines
+        
+        Data structure: dg_cached_board contains player docs with nested props[].
+        Each prop can have is_demon, is_goblin, h10_rate, etc.
         """
         featured_picks = []
         seen_keys = set()  # Dedupe by player+stat+line
         
-        # Query each tier board for active picks
-        tier_collections = [
-            ("war_zone", self.war_zone),
-            ("safe_haven", self.safe_haven),
-            ("front_lines", self.front_lines)
-        ]
-        
-        for tier_name, collection in tier_collections:
-            try:
-                # Get picks marked as featured/active
-                cursor = collection.find(
-                    {"$or": [
-                        {"pick": True},
-                        {"is_featured": True},
-                        {"is_active": True}
-                    ]},
-                    {"_id": 0}
-                ).sort("synced_at", -1).limit(20)
+        try:
+            # Query dg_cached_board for players with demon/goblin props
+            cursor = self.cached_board.find(
+                {},
+                {"_id": 0, "player_name": 1, "team": 1, "props": 1}
+            )
+            
+            player_count = 0
+            async for player_doc in cursor:
+                player_count += 1
+                player_name = player_doc.get("player_name", "")
+                team = player_doc.get("team", "")
+                props = player_doc.get("props", [])
                 
-                picks = await cursor.to_list(length=20)
-                
-                for pick in picks:
-                    player_name = pick.get("player_name", "")
-                    stat_type = pick.get("stat_type", pick.get("stat_type_extracted", "PTS"))
-                    line = pick.get("line", 0)
+                for prop in props:
+                    # Check if this prop is a demon or goblin
+                    is_demon = prop.get("is_demon", False)
+                    is_goblin = prop.get("is_goblin", False)
+                    h10_rate = prop.get("h10_rate", 0) or 0
+                    
+                    # Include if demon, goblin, or high hit rate (>=70%)
+                    if not (is_demon or is_goblin or h10_rate >= 70):
+                        continue
+                    
+                    stat_type = prop.get("stat_type_extracted", prop.get("stat_type", "PTS"))
+                    line = prop.get("line", 0)
                     
                     # Dedupe key
                     key = f"{player_name}|{stat_type}|{line}"
@@ -186,16 +190,32 @@ class VisionIntelEnrichmentService:
                         continue
                     seen_keys.add(key)
                     
-                    # Add tier source
-                    pick["_tier_source"] = tier_name
+                    # Build pick object for enrichment
+                    pick = {
+                        "player_name": player_name,
+                        "team": team,
+                        "stat_type": stat_type,
+                        "stat_type_extracted": stat_type,
+                        "line": line,
+                        "is_demon": is_demon,
+                        "is_goblin": is_goblin,
+                        "h10_rate": h10_rate,
+                        "l5_avg": prop.get("l5_avg"),
+                        "l10_avg": prop.get("l10_avg"),
+                        "season_avg": prop.get("season_avg"),
+                        "opponent": prop.get("opponent"),
+                        "dvp_rank": prop.get("dvp_rank"),
+                        "dvp_friction": prop.get("dvp_friction") or prop.get("friction_level"),
+                        "_tier_source": "war_zone" if is_demon else "safe_haven" if is_goblin else "front_lines"
+                    }
                     featured_picks.append(pick)
-                
-                logger.debug(f"[VISION_INTEL] {tier_name}: {len(picks)} picks found")
-                
-            except Exception as e:
-                logger.error(f"[VISION_INTEL] Error querying {tier_name}: {e}")
-        
-        return featured_picks
+            
+            logger.info(f"[VISION_INTEL] Scanned {player_count} players, found {len(featured_picks)} featured picks to enrich")
+            return featured_picks
+            
+        except Exception as e:
+            logger.error(f"[VISION_INTEL] Error collecting featured picks: {e}")
+            return []
     
     async def _enrich_single_pick(self, pick: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -386,15 +406,21 @@ class VisionIntelEnrichmentService:
         stat_type = target_prop.get("stat_type_extracted", target_prop.get("stat_type", "PTS"))
         line = target_prop.get("line", 0)
         
-        # Get averages
-        l10_avg = target_prop.get("l10_avg") or pick.get("l10_avg", 0)
-        l5_avg = target_prop.get("l5_avg") or pick.get("l5_avg", 0)
-        season_avg = target_prop.get("season_avg") or pick.get("season_avg", 0)
-        h10_rate = target_prop.get("h10_rate") or pick.get("h10_rate", 0)
+        # Get averages - ensure defaults for None values
+        l10_avg = target_prop.get("l10_avg") or pick.get("l10_avg") or 0
+        l5_avg = target_prop.get("l5_avg") or pick.get("l5_avg") or 0
+        season_avg = target_prop.get("season_avg") or pick.get("season_avg") or 0
+        h10_rate = target_prop.get("h10_rate") or pick.get("h10_rate") or 0
         
-        # Get matchup data
-        opponent = pick.get("opponent", player_doc.get("opponent", ""))
-        dvp_rank = pick.get("dvp_rank", 15)
+        # Get matchup data - ensure dvp_rank has a valid default
+        opponent = pick.get("opponent") or player_doc.get("opponent") or ""
+        dvp_rank = pick.get("dvp_rank") or target_prop.get("dvp_rank") or 15
+        
+        # Ensure dvp_rank is an integer
+        try:
+            dvp_rank = int(dvp_rank)
+        except (ValueError, TypeError):
+            dvp_rank = 15
         
         # Determine friction level
         if dvp_rank >= 25:
@@ -410,8 +436,11 @@ class VisionIntelEnrichmentService:
             friction_level = "Elite"
             friction_label = "Elite Defense - Tough Matchup"
         
-        # Calculate stability
-        stability_score = int(h10_rate) if h10_rate else 50
+        # Calculate stability - handle non-numeric h10_rate
+        try:
+            stability_score = int(float(h10_rate)) if h10_rate else 50
+        except (ValueError, TypeError):
+            stability_score = 50
         if stability_score >= 70:
             consistency = "HIGHLY CONSISTENT"
         elif stability_score >= 50:
@@ -421,13 +450,18 @@ class VisionIntelEnrichmentService:
         
         # Build reasons
         reasons = []
-        if l5_avg and line and l5_avg >= line:
-            reasons.append(f"L5 avg ({l5_avg}) already exceeds target line ({line})")
-        if h10_rate and h10_rate >= 60:
-            hits = int(h10_rate / 10)
+        line_val = line or 0
+        l5_val = l5_avg or 0
+        season_val = season_avg or 0
+        h10_val = h10_rate or 0
+        
+        if l5_val and line_val and l5_val >= line_val:
+            reasons.append(f"L5 avg ({l5_val}) already exceeds target line ({line_val})")
+        if h10_val and h10_val >= 60:
+            hits = int(h10_val / 10)
             reasons.append(f"Hit this line in {hits}/10 recent games")
-        if season_avg and line and line < season_avg:
-            reasons.append(f"Line set below season average ({season_avg})")
+        if season_val and line_val and line_val < season_val:
+            reasons.append(f"Line set below season average ({season_val})")
         if dvp_rank >= 25:
             reasons.append(f"Favorable matchup: opponent is #{dvp_rank} vs {stat_type}")
         
@@ -501,5 +535,6 @@ def get_vision_intel_enrichment_service(db: AsyncIOMotorDatabase) -> VisionIntel
 
 async def run_vision_intel_enrichment(db: AsyncIOMotorDatabase) -> Dict[str, Any]:
     """Convenience function to run Vision Intel enrichment."""
-    service = get_vision_intel_enrichment_service(db)
+    # Always create fresh service to ensure correct db reference
+    service = VisionIntelEnrichmentService(db)
     return await service.run_vision_intel_enrichment()

@@ -286,9 +286,37 @@ class CachedBoardBuilderService:
                     logger.info(f"[CACHED_BOARD] Atomic swap completed - zero downtime")
                 except Exception as rename_error:
                     # Fallback: bulk upsert to live collection
+                    # IMPORTANT: Preserve Vision Intel fields that were enriched
                     logger.warning(f"[CACHED_BOARD] Atomic rename failed, using bulk upsert: {rename_error}")
                     
                     from pymongo import UpdateOne
+                    
+                    # For each player, fetch existing vision enrichment data to preserve
+                    for player in sorted_players:
+                        existing = await self.cached_board.find_one(
+                            {"player_name": player["player_name"]},
+                            {"_id": 0, "props": 1}
+                        )
+                        if existing and existing.get("props"):
+                            # Create a lookup of existing enriched props by stat+line
+                            enriched_props = {}
+                            for prop in existing.get("props", []):
+                                if prop.get("is_vision_enriched"):
+                                    key = f"{prop.get('stat_type_extracted')}|{prop.get('line')}"
+                                    enriched_props[key] = {
+                                        "vision_summary": prop.get("vision_summary"),
+                                        "is_vision_enriched": prop.get("is_vision_enriched"),
+                                        "vision_enriched_at": prop.get("vision_enriched_at"),
+                                        "intel_suite": prop.get("intel_suite")
+                                    }
+                            
+                            # Transfer enriched data to new props
+                            if enriched_props:
+                                for new_prop in player.get("props", []):
+                                    key = f"{new_prop.get('stat_type_extracted')}|{new_prop.get('line')}"
+                                    if key in enriched_props:
+                                        new_prop.update(enriched_props[key])
+                    
                     bulk_ops = [
                         UpdateOne(
                             {"player_name": player["player_name"]},
