@@ -640,7 +640,14 @@ class CachedBoardBuilderService:
         sync_time: datetime,
         ripple_map: Dict[str, Any] = None
     ) -> Dict[str, Any]:
-        """Create player dict from mapper/hub data"""
+        """
+        Create player dict from mapper/hub data.
+        
+        CRITICAL (LOCAL-FIRST DATA MODEL):
+        - nba_id MUST come from nba_master_hub_2026 (SSOT)
+        - photo_url MUST be /static/player-headshots/{nba_id}.png
+        - NO /api/proxy/ URLs - they are BANNED
+        """
         player_id = hub_player.get("player_id")
         normalized_name = sanitize_player_name(player_name).lower()
         
@@ -653,14 +660,19 @@ class CachedBoardBuilderService:
         baseline_stats = player_stats.get("baseline_stats", {})
         bdl_game_logs = player_stats.get("bdl_game_logs", [])
         
-        # Photo URL: prefer photo_url from mapper/hub, fallback to headshot_url
-        # The nba_id can also be used to construct a proxy URL if available
+        # =====================================================================
+        # LOCAL-FIRST: Photo URL from static files ONLY
+        # =====================================================================
+        # nba_id is the ONLY valid source for player photos.
+        # Photo URL is ALWAYS /static/player-headshots/{nba_id}.png
+        # NO PROXY URLS - NO EXTERNAL FALLBACKS
         nba_id = hub_player.get("nba_id")
-        photo_url = hub_player.get("photo_url") or hub_player.get("headshot_url")
         
-        # If no photo_url but we have nba_id, construct proxy URL
-        if not photo_url and nba_id:
-            photo_url = f"/api/proxy/nba-headshot/{nba_id}"
+        # Hardcode local static path - NO PROXIES
+        if nba_id:
+            photo_url = f"/static/player-headshots/{nba_id}.png"
+        else:
+            photo_url = None  # No nba_id = no photo (don't use external fallbacks)
         
         # Get the bdl_id - this is the primary join key
         bdl_id = hub_player.get("bdl_id")
@@ -671,7 +683,8 @@ class CachedBoardBuilderService:
             "player_id": player_id,
             "bdl_id": bdl_id,  # Primary join key for master hub lookups
             "bdl_player_id": bdl_id,  # Legacy field name (same value)
-            "nba_com_id": nba_id,
+            "nba_com_id": nba_id,  # HYDRATED: Explicitly set from Master Hub nba_id
+            "nba_id": nba_id,  # Also store as nba_id for direct access
             "espn_id": hub_player.get("espn_id"),
             
             # Team info
@@ -679,10 +692,11 @@ class CachedBoardBuilderService:
             "team_name": hub_player.get("team_name"),
             "team_logo_url": None,
             
-            # Photo - FIXED: prefer photo_url, fallback to headshot_url or nba_id proxy
+            # Photo - LOCAL-FIRST: /static/player-headshots/{nba_id}.png ONLY
+            # NO PROXY URLS - NO EXTERNAL FALLBACKS
             "photo_url": photo_url,
             "headshot_url": photo_url,  # Keep in sync for legacy compatibility
-            "photo_source": "nba_master_hub_2026",
+            "photo_source": "local_static" if nba_id else None,
             
             # Player info
             "position": hub_player.get("position"),

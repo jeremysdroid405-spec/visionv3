@@ -68,13 +68,13 @@ def sanitize_photo_url(photo_url: str, nba_id: int = None) -> str:
     Returns:
         A valid player headshot URL (proxy if original was a team logo)
     """
-    # If it's a team logo and we have nba_id, use proxy
+    # If it's a team logo and we have nba_id, use local static
     if is_team_logo_url(photo_url) and nba_id:
-        return f"/api/proxy/nba-headshot/{nba_id}"
+        return f"/static/player-headshots/{nba_id}.png"
     
-    # If no photo_url but we have nba_id, use proxy
+    # If no photo_url but we have nba_id, use local static
     if not photo_url and nba_id:
-        return f"/api/proxy/nba-headshot/{nba_id}"
+        return f"/static/player-headshots/{nba_id}.png"
     
     return photo_url
 
@@ -267,10 +267,11 @@ class NBAMasterHub:
     
     async def _enrichPhotosFromBDL(self) -> int:
         """
-        Enrich hub players with photos using NBA CDN proxy URLs.
+        Enrich hub players with photos using local static URLs.
         
-        NOTE: BDL is the only stats source. Photos are now constructed from nba_id
-        using the /api/proxy/nba-headshot/{nba_id} pattern.
+        LOCAL-FIRST: Photos are constructed from nba_id
+        using the /static/player-headshots/{nba_id}.png pattern.
+        NO PROXY URLS.
         """
         photos_added = 0
         
@@ -292,11 +293,11 @@ class NBAMasterHub:
             players_without_photos = await cursor.to_list(length=2000)
             logger.info(f"[MASTER HUB] Found {len(players_without_photos)} players without photos")
             
-            # Construct photo URLs from nba_id
+            # Construct photo URLs from nba_id - LOCAL STATIC ONLY
             for player in players_without_photos:
                 nba_id = player.get("nba_id")
                 if nba_id:
-                    photo_url = f"/api/proxy/nba-headshot/{nba_id}"
+                    photo_url = f"/static/player-headshots/{nba_id}.png"
                     await self.hub.update_one(
                         {"player_id": player["player_id"]},
                         {"$set": {
@@ -344,10 +345,10 @@ class NBAMasterHub:
             # Get position
             position = bdl_player.get("position")
             
-            # Build photo URL from nba_id if available, otherwise use bdl_id proxy
+            # Build photo URL from nba_id - LOCAL STATIC ONLY
             nba_id = bdl_player.get("nba_id")
             if nba_id:
-                photo_url = f"/api/proxy/nba-headshot/{nba_id}"
+                photo_url = f"/static/player-headshots/{nba_id}.png"
             else:
                 photo_url = None
             

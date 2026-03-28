@@ -320,7 +320,16 @@ app = FastAPI(
 )
 
 # Mount static files for local headshot serving
-STATIC_DIR = Path("/app/backend/static")
+# CRITICAL: Use production path with fallback for development
+STATIC_DIR_PROD = Path("/var/www/app/backend/static")
+STATIC_DIR_DEV = Path("/app/backend/static")
+
+# Use production path if it exists and has content, otherwise use dev path
+if STATIC_DIR_PROD.exists() and any(STATIC_DIR_PROD.iterdir()):
+    STATIC_DIR = STATIC_DIR_PROD
+else:
+    STATIC_DIR = STATIC_DIR_DEV
+    
 STATIC_DIR.mkdir(parents=True, exist_ok=True)
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 

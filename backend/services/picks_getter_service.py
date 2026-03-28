@@ -249,10 +249,10 @@ class PicksGetterService:
                 name_key = name.lower().strip()
                 nba_id = player.get("nba_id")
                 
-                # Prefer proxy URL if we have nba_id, else use stored photo_url
+                # LOCAL-FIRST: Use static path if we have nba_id
                 photo_url = None
                 if nba_id:
-                    photo_url = f"/api/proxy/nba-headshot/{nba_id}"
+                    photo_url = f"/static/player-headshots/{nba_id}.png"
                 else:
                     photo_url = player.get("photo_url") or player.get("headshot_url")
                 
@@ -276,10 +276,10 @@ class PicksGetterService:
                 name_key = name.lower().strip()
                 nba_id = player.get("nba_id")
                 
-                # Only add if not already in cache
+                # Only add if not already in cache - LOCAL STATIC PATH
                 if name_key not in PicksGetterService._photo_cache and nba_id:
                     PicksGetterService._photo_cache[name_key] = {
-                        "photo_url": f"/api/proxy/nba-headshot/{nba_id}",
+                        "photo_url": f"/static/player-headshots/{nba_id}.png",
                         "team": player.get("team_abbreviation"),
                         "position": None,
                         "nba_id": nba_id
@@ -356,10 +356,10 @@ class PicksGetterService:
                 if not pick.get("nba_id"):
                     pick["nba_id"] = cached.get("nba_id")
             else:
-                # Fallback: If we have nba_id on the pick, construct the URL directly
+                # Fallback: If we have nba_id on the pick, construct LOCAL STATIC URL
                 nba_id = pick.get("nba_id")
                 if nba_id:
-                    pick["photo_url"] = f"/api/proxy/nba-headshot/{nba_id}"
+                    pick["photo_url"] = f"/static/player-headshots/{nba_id}.png"
         
         return picks
         

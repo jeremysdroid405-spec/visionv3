@@ -268,6 +268,9 @@ async def get_live_today_roster(
             "opponent": 1,
             "game_time": 1,
             "photo_url": 1,
+            "nba_com_id": 1,  # HYDRATED: nba_id from Master Hub
+            "nba_id": 1,      # Also expose as nba_id
+            "bdl_id": 1,      # Primary join key
             "is_home": 1,
             "synced_at": 1,
             "props_count": {"$size": {"$ifNull": ["$props", []]}},

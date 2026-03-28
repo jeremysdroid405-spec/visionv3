@@ -58,11 +58,8 @@ def get_canonical_photo_url(nba_id: int) -> str:
     2. Proxy URL as fallback
     """
     if nba_id:
-        local_path = HEADSHOT_DIR / f"{nba_id}.png"
-        if local_path.exists():
-            return LOCAL_URL_PATTERN.format(nba_id=nba_id)
-        # Fallback to proxy
-        return f"/api/proxy/nba-headshot/{nba_id}"
+        # LOCAL-FIRST: Always use static path, no proxy fallback
+        return LOCAL_URL_PATTERN.format(nba_id=nba_id)
     return None
 
 
