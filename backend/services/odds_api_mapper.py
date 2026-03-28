@@ -104,6 +104,9 @@ class OddsApiMapper:
         
         This should be called once at startup and the mapping stays in memory.
         Force reload can be used after a rebuild.
+        
+        IMPORTANT: Merges mapping docs with nba_master_hub_2026 data to ensure
+        _player_id_to_full_data contains complete player info including photo_url.
         """
         if self._is_loaded and not force_reload:
             return {
@@ -119,10 +122,23 @@ class OddsApiMapper:
         self._player_id_to_odds_name.clear()
         self._player_id_to_full_data.clear()
         
-        # Load from mapping collection
+        # STEP 1: Load master hub data for enrichment (photo_url, nba_id, etc.)
+        hub_cursor = self.master_hub.find({}, {"_id": 0})
+        hub_players = await hub_cursor.to_list(length=2000)
+        
+        # Build lookup by bdl_id (primary join key)
+        hub_lookup = {
+            str(p.get("bdl_id")): p
+            for p in hub_players
+            if p.get("bdl_id")
+        }
+        logger.info(f"[ODDS_MAPPER] Loaded {len(hub_lookup)} players from master hub for enrichment")
+        
+        # STEP 2: Load mapping documents
         cursor = self.mapping_collection.find({}, {"_id": 0})
         mappings = await cursor.to_list(length=2000)
         
+        enriched_count = 0
         for m in mappings:
             odds_name = m.get("odds_api_name", "")
             # Use bdl_id as primary, fall back to player_id for legacy
@@ -131,16 +147,30 @@ class OddsApiMapper:
             if odds_name and player_id:
                 self._odds_name_to_player_id[odds_name.lower()] = player_id
                 self._player_id_to_odds_name[str(player_id)] = odds_name
-                self._player_id_to_full_data[str(player_id)] = m
+                
+                # STEP 3: Merge mapping doc with master hub data
+                # Hub data takes precedence for photo_url, nba_id, etc.
+                hub_record = hub_lookup.get(str(player_id), {})
+                merged = {**m, **hub_record}
+                
+                # Ensure photo_url is set (construct from nba_id if needed)
+                if not merged.get("photo_url") and merged.get("nba_id"):
+                    merged["photo_url"] = f"/api/proxy/nba-headshot/{merged['nba_id']}"
+                
+                self._player_id_to_full_data[str(player_id)] = merged
+                
+                if hub_record:
+                    enriched_count += 1
         
         self._is_loaded = True
         self._last_loaded = datetime.now(timezone.utc)
         
-        logger.info(f"[ODDS_MAPPER] Loaded {len(self._odds_name_to_player_id)} mappings into memory")
+        logger.info(f"[ODDS_MAPPER] Loaded {len(self._odds_name_to_player_id)} mappings ({enriched_count} enriched with hub data)")
         
         return {
             "status": "loaded",
             "count": len(self._odds_name_to_player_id),
+            "enriched_count": enriched_count,
             "last_loaded": self._last_loaded.isoformat()
         }
     
