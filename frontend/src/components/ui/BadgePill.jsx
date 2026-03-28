@@ -371,9 +371,10 @@ export const BadgeGridItem = ({
   const Icon = badge.icon;
   const tooltip = badge.tooltip;
   
-  // Use custom description if provided (for dynamic badges like milestone)
+  // For active badges with custom description, show the custom one in the card
+  // The tooltip will show BOTH generic and specific descriptions
   const displayTrigger = customDescription || badge.trigger;
-  const tooltipDescription = customDescription || tooltip?.description;
+  const hasCustomDescription = customDescription && customDescription !== badge.trigger;
   
   // Sentiment colors for tooltip
   const sentimentColors = {
@@ -432,7 +433,7 @@ export const BadgeGridItem = ({
         </TooltipTrigger>
         <TooltipContent 
           side="top" 
-          className="max-w-[280px] p-0 bg-zinc-900 border border-zinc-700 shadow-xl z-[100]"
+          className="max-w-[300px] p-0 bg-zinc-900 border border-zinc-700 shadow-xl z-[100]"
           sideOffset={8}
         >
           <div className="p-3">
@@ -449,10 +450,19 @@ export const BadgeGridItem = ({
               </span>
             </div>
             
-            {/* Description - Use custom description if provided */}
+            {/* Generic Description - What this badge means */}
             <p className="text-xs text-zinc-300 mb-2 leading-relaxed">
-              {tooltipDescription}
+              {tooltip.description}
             </p>
+            
+            {/* Player-Specific Detail - If custom description provided */}
+            {hasCustomDescription && (
+              <div className="bg-zinc-800/50 rounded-md p-2 mb-2 border border-zinc-700/50">
+                <p className={`text-xs font-semibold ${badge.textClass}`}>
+                  {customDescription}
+                </p>
+              </div>
+            )}
             
             {/* Impact */}
             <div className="pt-2 border-t border-zinc-700">
