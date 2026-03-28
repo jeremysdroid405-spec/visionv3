@@ -2777,8 +2777,12 @@ class PicksGetterService:
     
     async def get_war_zone_static(self) -> Dict[str, Any]:
         """
-        STATIC ROUTE: Simple MongoDB read for War Zone (demons).
-        All calculations done during background sync.
+        STATIC ROUTE: War Zone (Demons with L10 HR >= 50%).
+        
+        Selection: is_demon=True AND h10_rate >= 50 AND board="war_zone"
+        Sorted by: vision_score desc, h10_rate desc
+        
+        All enrichment done by board_intelligence_service.py
         """
         try:
             now = datetime.now(timezone.utc)
@@ -2788,6 +2792,7 @@ class PicksGetterService:
                 {"$unwind": "$props"},
                 {"$match": {
                     "props.is_demon": True,
+                    "props.h10_rate": {"$gte": 50},
                     "props.commence_time": {"$gt": now_iso}
                 }},
                 {"$project": {
@@ -2816,25 +2821,42 @@ class PicksGetterService:
                     "payout_score": "$props.payout_score",
                     "vision_summary": "$props.vision_summary",
                     "intel_suite": "$props.intel_suite",
-                    "is_vision_enriched": "$props.is_vision_enriched"
+                    "is_vision_enriched": "$props.is_vision_enriched",
+                    "vision_score": "$props.vision_score",
+                    "board": "$props.board"
                 }},
-                {"$sort": {"h10_rate": -1, "combined_score": -1}},
+                {"$sort": {"vision_score": -1, "h10_rate": -1, "combined_score": -1}},
                 {"$limit": 100}
             ]).to_list(100)
             
-            # De-duplicate by player
+            # De-duplicate by player, prioritize board="war_zone" picks
             seen = set()
             unique = []
+            
+            # First pass: picks explicitly assigned to war_zone
             for p in picks:
                 name = p.get("player_name")
-                if name and name not in seen:
+                if name and name not in seen and p.get("board") == "war_zone":
                     seen.add(name)
                     gs = _get_game_status(p.get("commence_time"))
                     p["is_locked"] = gs.get("is_locked", False)
                     p["game_status"] = gs.get("status", "upcoming")
                     unique.append(p)
-                    if len(unique) >= 20:
+                    if len(unique) >= 10:
                         break
+            
+            # Second pass: fill remaining slots with other eligible demons
+            if len(unique) < 10:
+                for p in picks:
+                    name = p.get("player_name")
+                    if name and name not in seen:
+                        seen.add(name)
+                        gs = _get_game_status(p.get("commence_time"))
+                        p["is_locked"] = gs.get("is_locked", False)
+                        p["game_status"] = gs.get("status", "upcoming")
+                        unique.append(p)
+                        if len(unique) >= 10:
+                            break
             
             await self._enrich_picks_with_photos(unique)
             logger.info(f"[WAR_ZONE_STATIC] Served {len(unique)} picks")
@@ -2846,8 +2868,12 @@ class PicksGetterService:
     
     async def get_goblin_vault_static(self) -> Dict[str, Any]:
         """
-        STATIC ROUTE: Simple MongoDB read for Safe Haven (goblins 80%+).
-        All calculations done during background sync.
+        STATIC ROUTE: Safe Haven (Goblins with L10 HR >= 80%).
+        
+        Selection: is_goblin=True AND h10_rate >= 80 AND board="safe_haven"
+        Sorted by: vision_score desc, h10_rate desc
+        
+        All enrichment done by board_intelligence_service.py
         """
         try:
             now = datetime.now(timezone.utc)
@@ -2886,25 +2912,42 @@ class PicksGetterService:
                     "payout_score": "$props.payout_score",
                     "vision_summary": "$props.vision_summary",
                     "intel_suite": "$props.intel_suite",
-                    "is_vision_enriched": "$props.is_vision_enriched"
+                    "is_vision_enriched": "$props.is_vision_enriched",
+                    "vision_score": "$props.vision_score",
+                    "board": "$props.board"
                 }},
-                {"$sort": {"h10_rate": -1, "combined_score": -1}},
+                {"$sort": {"vision_score": -1, "h10_rate": -1, "combined_score": -1}},
                 {"$limit": 100}
             ]).to_list(100)
             
-            # De-duplicate by player
+            # De-duplicate by player, prioritize board="safe_haven" picks
             seen = set()
             unique = []
+            
+            # First pass: picks explicitly assigned to safe_haven
             for p in picks:
                 name = p.get("player_name")
-                if name and name not in seen:
+                if name and name not in seen and p.get("board") == "safe_haven":
                     seen.add(name)
                     gs = _get_game_status(p.get("commence_time"))
                     p["is_locked"] = gs.get("is_locked", False)
                     p["game_status"] = gs.get("status", "upcoming")
                     unique.append(p)
-                    if len(unique) >= 20:
+                    if len(unique) >= 10:
                         break
+            
+            # Second pass: fill remaining slots with other eligible goblins
+            if len(unique) < 10:
+                for p in picks:
+                    name = p.get("player_name")
+                    if name and name not in seen:
+                        seen.add(name)
+                        gs = _get_game_status(p.get("commence_time"))
+                        p["is_locked"] = gs.get("is_locked", False)
+                        p["game_status"] = gs.get("status", "upcoming")
+                        unique.append(p)
+                        if len(unique) >= 10:
+                            break
             
             await self._enrich_picks_with_photos(unique)
             logger.info(f"[SAFE_HAVEN_STATIC] Served {len(unique)} picks")
@@ -2916,8 +2959,12 @@ class PicksGetterService:
     
     async def get_front_lines_static(self) -> Dict[str, Any]:
         """
-        STATIC ROUTE: Simple MongoDB read for Front Lines (60-79% goblins).
-        All calculations done during background sync.
+        STATIC ROUTE: Front Lines (Hybrid tier with L10 HR >= 60%).
+        
+        Selection: h10_rate >= 60 AND board="front_lines" (can be goblin or demon)
+        Sorted by: vision_score desc, h10_rate desc
+        
+        All enrichment done by board_intelligence_service.py
         """
         try:
             now = datetime.now(timezone.utc)
@@ -2926,8 +2973,11 @@ class PicksGetterService:
             picks = await self.cached_board.aggregate([
                 {"$unwind": "$props"},
                 {"$match": {
-                    "props.is_goblin": True,
-                    "props.h10_rate": {"$gte": 60, "$lt": 80},
+                    "$or": [
+                        {"props.is_goblin": True},
+                        {"props.is_demon": True}
+                    ],
+                    "props.h10_rate": {"$gte": 60},
                     "props.commence_time": {"$gt": now_iso}
                 }},
                 {"$project": {
@@ -2950,31 +3000,48 @@ class PicksGetterService:
                     "season_avg": "$props.season_avg",
                     "is_demon": "$props.is_demon",
                     "is_goblin": "$props.is_goblin",
-                    "tier_label": {"$literal": "FRONT_LINE"},
-                    "pick_type": {"$literal": "goblin"},
+                    "tier_label": {"$cond": [{"$eq": ["$props.is_demon", True]}, "DEMON", "GOBLIN"]},
+                    "pick_type": {"$cond": [{"$eq": ["$props.is_demon", True]}, "demon", "goblin"]},
                     "combined_score": "$props.combined_score",
                     "payout_score": "$props.payout_score",
                     "vision_summary": "$props.vision_summary",
                     "intel_suite": "$props.intel_suite",
-                    "is_vision_enriched": "$props.is_vision_enriched"
+                    "is_vision_enriched": "$props.is_vision_enriched",
+                    "vision_score": "$props.vision_score",
+                    "board": "$props.board"
                 }},
-                {"$sort": {"h10_rate": -1, "combined_score": -1}},
+                {"$sort": {"vision_score": -1, "h10_rate": -1, "combined_score": -1}},
                 {"$limit": 100}
             ]).to_list(100)
             
-            # De-duplicate by player
+            # De-duplicate by player, prioritize board="front_lines" picks
             seen = set()
             unique = []
+            
+            # First pass: picks explicitly assigned to front_lines
             for p in picks:
                 name = p.get("player_name")
-                if name and name not in seen:
+                if name and name not in seen and p.get("board") == "front_lines":
                     seen.add(name)
                     gs = _get_game_status(p.get("commence_time"))
                     p["is_locked"] = gs.get("is_locked", False)
                     p["game_status"] = gs.get("status", "upcoming")
                     unique.append(p)
-                    if len(unique) >= 20:
+                    if len(unique) >= 10:
                         break
+            
+            # Second pass: fill remaining slots (excluding safe_haven/war_zone assigned)
+            if len(unique) < 10:
+                for p in picks:
+                    name = p.get("player_name")
+                    if name and name not in seen and p.get("board") not in ["safe_haven", "war_zone"]:
+                        seen.add(name)
+                        gs = _get_game_status(p.get("commence_time"))
+                        p["is_locked"] = gs.get("is_locked", False)
+                        p["game_status"] = gs.get("status", "upcoming")
+                        unique.append(p)
+                        if len(unique) >= 10:
+                            break
             
             await self._enrich_picks_with_photos(unique)
             logger.info(f"[FRONT_LINES_STATIC] Served {len(unique)} picks")

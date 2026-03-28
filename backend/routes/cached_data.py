@@ -126,6 +126,33 @@ async def get_board_membership(player_name: str) -> Dict[str, str]:
     return _board_membership_cache.get(player_name.lower(), {})
 
 
+
+@router.post("/v3/trigger-board-enrichment")
+async def trigger_board_enrichment():
+    """
+    Manual trigger for Board Intelligence Enrichment.
+    
+    Runs the AI-Weighted Waterfall selection and full Intel Suite enrichment
+    for all 3 boards (Safe Haven, Front Lines, War Zone).
+    
+    Use this to force refresh the board intelligence after a sync.
+    """
+    try:
+        engine = get_engine()
+        from services.board_intelligence_service import run_board_intelligence_enrichment
+        result = await run_board_intelligence_enrichment(engine.db)
+        
+        return {
+            "success": True,
+            "message": "Board Intelligence Enrichment completed",
+            "result": result
+        }
+    except Exception as e:
+        logger.error(f"[TRIGGER_ENRICHMENT] Error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+
 @router.get("/v3/static-shell")
 async def get_static_shell():
     """
@@ -824,6 +851,30 @@ async def get_cached_player(player_name: str):
         
         logger.info(f"[PLAYER_DETAIL] {pname}: Featured props = {list(featured_props.keys())}")
         
+        # ========== FETCH PRE-CACHED INTEL FROM dg_cached_board ==========
+        # The Board Intelligence Service enriches props with full intel_suite
+        # Fetch these pre-computed values instead of recalculating
+        cached_player = await db.dg_cached_board.find_one(
+            {"player_name": {"$regex": f"^{pname}$", "$options": "i"}},
+            {"_id": 0, "props": 1}
+        )
+        
+        # Build lookup map: {stat_type|line -> enriched_prop}
+        # Also build a map by stat_type only (for line variance between sources)
+        enriched_props_map = {}
+        enriched_by_stat = {}
+        if cached_player:
+            for cp in cached_player.get("props", []):
+                stat = cp.get("stat_type_extracted") or cp.get("stat_type", "")
+                line = cp.get("line", 0)
+                if cp.get("is_vision_enriched") and cp.get("intel_suite"):
+                    key = f"{stat}|{line}"
+                    enriched_props_map[key] = cp
+                    # Also map by stat_type only (first enriched prop wins)
+                    if stat not in enriched_by_stat:
+                        enriched_by_stat[stat] = cp
+            logger.info(f"[PLAYER_DETAIL] {pname}: Found {len(enriched_props_map)} pre-enriched props, stats={list(enriched_by_stat.keys())}")
+        
         # Deduplicate props by stat_type + line
         seen_props = set()
         unique_props = []
@@ -913,6 +964,29 @@ async def get_cached_player(player_name: str):
             
             # This IS the featured prop - add badges and intel suite
             prop["active_badges"] = badge_keys
+            
+            # ========== CHECK FOR PRE-CACHED INTEL SUITE ==========
+            # If this prop was enriched by the Board Intelligence Service, USE THAT DATA
+            # This ensures the same full intel suite is displayed regardless of how the player was accessed
+            enriched_key = f"{stat_type}|{line}"
+            enriched_prop = enriched_props_map.get(enriched_key)
+            
+            # If exact match not found, try by stat_type only (lines may differ between sources)
+            if not enriched_prop:
+                enriched_prop = enriched_by_stat.get(stat_type)
+            
+            if enriched_prop and enriched_prop.get("intel_suite"):
+                # USE PRE-CACHED INTEL SUITE (from Board Intelligence Enrichment)
+                prop["intel_suite"] = enriched_prop["intel_suite"]
+                prop["vision_summary"] = enriched_prop.get("vision_summary")
+                prop["vision_score"] = enriched_prop.get("vision_score")
+                prop["is_vision_enriched"] = True
+                prop["board"] = enriched_prop.get("board")
+                logger.debug(f"[PLAYER_DETAIL] Using pre-cached intel_suite for {pname} {stat_type}@{line} (from enriched {enriched_prop.get('stat_type_extracted')}@{enriched_prop.get('line')})")
+                continue
+            
+            # ========== FALLBACK: CALCULATE INTEL SUITE ON-THE-FLY ==========
+            # If no pre-cached intel exists, calculate it (legacy behavior)
             
             # Calculate stability index from hit rate
             # Note: l10_hit_rate is already a percentage (0-100), not a decimal

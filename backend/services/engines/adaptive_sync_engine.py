@@ -999,15 +999,16 @@ class AdaptiveSyncEngine:
                     await self._sync_ticker()
                     last_ticker_sync = now
                 
-                # ========== VISION INTEL ENRICHMENT (FINAL STEP) ==========
+                # ========== BOARD INTELLIGENCE ENRICHMENT (FINAL STEP) ==========
                 # Run AFTER all sync operations complete to ensure data isn't wiped
-                # Enriches the 30 picks on tier boards (10 per board) with AI summaries
+                # Uses AI-Weighted Waterfall to select 30 unique players (10 per board)
+                # Full Intel Suite enrichment (same code path for all boards)
                 try:
-                    from services.vision_intel_enrichment_service import run_vision_intel_enrichment
-                    intel_result = await run_vision_intel_enrichment(self.db)
-                    logger.info(f"[ADAPTIVE_SYNC] Vision Intel: {intel_result.get('enriched', 0)}/{intel_result.get('total', 0)} enriched in {intel_result.get('duration', 0)}s")
+                    from services.board_intelligence_service import run_board_intelligence_enrichment
+                    intel_result = await run_board_intelligence_enrichment(self.db)
+                    logger.info(f"[ADAPTIVE_SYNC] Board Intel: SH={intel_result.get('safe_haven', 0)} FL={intel_result.get('front_lines', 0)} WZ={intel_result.get('war_zone', 0)} | {intel_result.get('enriched', 0)}/{intel_result.get('total', 0)} enriched in {intel_result.get('duration', 0)}s")
                 except Exception as e:
-                    logger.error(f"[ADAPTIVE_SYNC] Vision Intel failed: {e}")
+                    logger.error(f"[ADAPTIVE_SYNC] Board Intelligence failed: {e}")
                 
                 # Determine next poll interval based on most urgent game
                 min_interval = PollInterval.STANDBY.value  # Default to 60 minutes

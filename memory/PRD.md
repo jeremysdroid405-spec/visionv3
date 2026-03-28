@@ -644,6 +644,61 @@ All 3 endpoints now return complete vision intel data:
 
 ---
 
+## MAJOR REFACTOR (2026-03-28): AI-Weighted Waterfall Selection & Unified Enrichment
+
+### Problem
+- Safe Haven and Front Lines boards showed "empty shell" data (missing usage_ripple, pace_delta, etc.)
+- Player overlap between boards (same player appearing on multiple boards)
+- No AI-driven scoring to prioritize quality picks
+- Inconsistent intel suite depth between boards
+
+### Solution: AI-Weighted Waterfall with Unified Enrichment
+
+#### 1. Vision Score Calculator (`/app/backend/services/vision_score_calculator.py`)
+AI-weighted scoring formula (0-100):
+- **Hit Rate (L10)**: 60% weight
+- **DvP (Defense vs Position)**: 25% weight (Top-5 penalize, Bottom-5 boost)
+- **Context Badges**: 15% weight (Positive add, Negative subtract)
+
+#### 2. Board Intelligence Service (`/app/backend/services/board_intelligence_service.py`)
+Waterfall selection with NO player overlap:
+1. **Safe Haven**: is_goblin=True, L10 HR >= 80%, Vision_Score >= 70 (10 players)
+2. **Front Lines**: L10 HR >= 60%, Vision_Score >= 55 (10 players, excluding Safe Haven)
+3. **War Zone**: is_demon=True, L10 HR >= 50%, Vision_Score >= 45 (10 players, excluding above)
+
+#### 3. Unified Enrichment Pipeline
+- **Same code path** for ALL boards (Safe Haven, Front Lines, War Zone)
+- Full intel_suite populated: usage_ripple, matchup_dvp, pace_delta, stability_index, vision_insight, blowout_risk
+- Each prop gets `board`, `vision_score`, `is_vision_enriched` fields
+
+#### 4. Player Detail Endpoint (`/api/v3/player-with-badges/`)
+- Now fetches pre-cached intel from `dg_cached_board`
+- Falls back to on-the-fly calculation only when no pre-cached data exists
+- Ensures consistent data display regardless of access path
+
+### Files Changed
+- `/app/backend/services/vision_score_calculator.py` (NEW)
+- `/app/backend/services/board_intelligence_service.py` (NEW)
+- `/app/backend/services/picks_getter_service.py` (Updated static methods)
+- `/app/backend/routes/cached_data.py` (Pre-cached intel lookup, trigger endpoint)
+- `/app/backend/services/engines/adaptive_sync_engine.py` (Wired new enrichment)
+
+### Verification
+```
+Safe Haven: 10 unique players, vision_score assigned, full intel_suite ✅
+Front Lines: 10 unique players, vision_score assigned, full intel_suite ✅
+War Zone: 10 unique players, vision_score assigned, full intel_suite ✅
+NO OVERLAP: All 30 players unique across boards ✅
+UI Parity: Same intel display for all boards ✅
+```
+
+### Manual Trigger
+POST `/api/v3/trigger-board-enrichment` - Forces refresh of board intelligence
+
+**Status:** COMPLETE
+
+---
+
 ## PENDING TASKS
 
 ### P1 - War Zone Score Breakdown UI
