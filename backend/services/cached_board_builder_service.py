@@ -244,8 +244,9 @@ class CachedBoardBuilderService:
             logger.warning(f"[CACHED_BOARD] {len(unmatched_players)} players not found in Odds API Mapper: {unmatched_players[:5]}...")
             await self._flag_unmatched_players(unmatched_players, sync_time)
         
-        # STEP 5: STORE IN CACHED_BOARD
-        await self.cached_board.delete_many({})
+        # STEP 5: UPDATE-IN-PLACE (No Blackout Pattern)
+        # Instead of delete_many + insert_many, we use bulk upserts
+        # This keeps the old data visible while new data is hydrated
         
         sorted_players = sorted(
             players_dict.values(),
@@ -256,8 +257,34 @@ class CachedBoardBuilderService:
         for idx, player in enumerate(sorted_players):
             player["rank"] = idx + 1
         
+        # BULK UPSERT - Update existing, insert new, keep old visible
         if sorted_players:
-            await self.cached_board.insert_many(sorted_players)
+            bulk_ops = []
+            for player in sorted_players:
+                bulk_ops.append({
+                    "filter": {"player_name": player["player_name"]},
+                    "update": {"$set": player},
+                    "upsert": True
+                })
+            
+            # Execute in batches to avoid memory issues
+            batch_size = 100
+            for i in range(0, len(bulk_ops), batch_size):
+                batch = bulk_ops[i:i+batch_size]
+                from pymongo import UpdateOne
+                await self.cached_board.bulk_write([
+                    UpdateOne(op["filter"], op["update"], upsert=op["upsert"]) 
+                    for op in batch
+                ])
+            
+            # Remove players no longer in the sync (stale data cleanup)
+            current_player_names = {p["player_name"] for p in sorted_players}
+            await self.cached_board.delete_many({
+                "player_name": {"$nin": list(current_player_names)},
+                "synced_at": {"$lt": sync_time.isoformat()}  # Only delete old stale entries
+            })
+            
+            logger.info(f"[CACHED_BOARD] Updated {len(sorted_players)} players in-place (no blackout)")
         
         # Store sync metadata
         verified_count = sum(1 for p in sorted_players if p.get("is_verified"))
@@ -459,8 +486,7 @@ class CachedBoardBuilderService:
         if unmatched_players:
             logger.warning(f"[CACHED_BOARD_LEGACY] {len(unmatched_players)} players not in master roster: {unmatched_players[:5]}...")
         
-        await self.cached_board.delete_many({})
-        
+        # UPDATE-IN-PLACE (No Blackout Pattern)
         sorted_players = sorted(
             players_dict.values(),
             key=lambda x: len(x["props"]),
@@ -470,8 +496,33 @@ class CachedBoardBuilderService:
         for idx, player in enumerate(sorted_players):
             player["rank"] = idx + 1
         
+        # BULK UPSERT - Update existing, insert new, keep old visible
         if sorted_players:
-            await self.cached_board.insert_many(sorted_players)
+            bulk_ops = []
+            for player in sorted_players:
+                bulk_ops.append({
+                    "filter": {"player_name": player["player_name"]},
+                    "update": {"$set": player},
+                    "upsert": True
+                })
+            
+            batch_size = 100
+            for i in range(0, len(bulk_ops), batch_size):
+                batch = bulk_ops[i:i+batch_size]
+                from pymongo import UpdateOne
+                await self.cached_board.bulk_write([
+                    UpdateOne(op["filter"], op["update"], upsert=op["upsert"]) 
+                    for op in batch
+                ])
+            
+            # Remove stale players
+            current_player_names = {p["player_name"] for p in sorted_players}
+            await self.cached_board.delete_many({
+                "player_name": {"$nin": list(current_player_names)},
+                "synced_at": {"$lt": sync_time.isoformat()}
+            })
+            
+            logger.info(f"[CACHED_BOARD_LEGACY] Updated {len(sorted_players)} players in-place (no blackout)")
         
         verified_count = sum(1 for p in sorted_players if p.get("is_verified"))
         await self.sync_log.update_one(
