@@ -148,7 +148,7 @@ const GameLogBarChart = memo(({
         </div>
         
         {/* Bars - all grow upward from bottom, fill entire container */}
-        <div className="absolute inset-0 flex items-end justify-around px-1" style={{ zIndex: 1 }}>
+        <div className="absolute inset-0 flex items-end justify-around px-1">
           {values.map((item, idx) => {
             const isHit = item.value >= line;
             // Calculate bar height as percentage - ensure visual accuracy
@@ -167,17 +167,6 @@ const GameLogBarChart = memo(({
                 className="relative flex flex-col items-center h-full justify-end"
                 style={{ width: `${85 / values.length}%` }}
               >
-                {/* Value label on top of bar - WHITE text, high z-index */}
-                <div 
-                  className="absolute text-[10px] font-bold text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]"
-                  style={{ 
-                    bottom: `${barHeightPercent + 2}%`,
-                    zIndex: 10
-                  }}
-                >
-                  {Math.round(item.value)}
-                </div>
-                
                 {/* The bar - grows from bottom */}
                 <div 
                   className={`w-full rounded-t ${
@@ -187,10 +176,38 @@ const GameLogBarChart = memo(({
                   }`}
                   style={{ 
                     height: `${barHeightPercent}%`,
-                    minHeight: '4px',
-                    zIndex: 1
+                    minHeight: '4px'
                   }}
                 />
+              </div>
+            );
+          })}
+        </div>
+        
+        {/* Value labels - rendered separately on top layer */}
+        <div className="absolute inset-0 flex items-end justify-around px-1 pointer-events-none" style={{ zIndex: 20 }}>
+          {values.map((item, idx) => {
+            let barHeightPercent = (item.value / chartMax) * 100;
+            const isHit = item.value >= line;
+            if (!isHit && barHeightPercent > linePosition - 3) {
+              barHeightPercent = Math.min(barHeightPercent, linePosition - 2);
+            }
+            
+            return (
+              <div 
+                key={idx}
+                className="relative flex flex-col items-center h-full justify-end"
+                style={{ width: `${85 / values.length}%` }}
+              >
+                <div 
+                  className="absolute text-[10px] font-bold text-white"
+                  style={{ 
+                    bottom: `${barHeightPercent + 3}%`,
+                    textShadow: '0 1px 3px rgba(0,0,0,0.9), 0 0 5px rgba(0,0,0,0.5)'
+                  }}
+                >
+                  {Math.round(item.value)}
+                </div>
               </div>
             );
           })}
