@@ -453,8 +453,6 @@ dg_cached_board.props[].hit_rates
    - Updated `<meta name="description">` from "A product of emergent.sh" to "PropVision - NBA Player Props Analytics Dashboard"
    - Removed `<script src="https://assets.emergent.sh/scripts/emergent-main.js"></script>`
    - Removed `#emergent-badge` anchor element (entire 45-line block)
-   
-2. **Note**: Any "Made with Emergent" badge visible in preview environment is injected at the ingress level for preview URLs only - this does NOT appear in production deployments.
 
 ### P0 - Lean Payloads (COMPLETED)
 
@@ -462,11 +460,59 @@ dg_cached_board.props[].hit_rates
 1. **MongoDB Projections** (`/app/backend/services/picks_getter_service.py`):
    - Modified `get_cached_board()` to use a lean projection
    - Excludes heavy fields: `bdl_game_logs`, `game_logs`, `advanced_stats`, `baseline_stats`
-   - Only returns essential fields needed for board listing (player_name, team, photo_url, props, etc.)
-   - Full player data is loaded on-demand via `get_cached_player()`
-   
-**Performance Impact:**
-- Board listing payload reduced by ~60-80% (game logs are typically 20+ KB per player)
-- Faster initial page load
-- Reduced network transfer
-- Full data lazy-loaded on player detail click
+
+---
+
+## Mobile UI Fixes (2026-03-28)
+
+### Card Centering & Sizing (COMPLETED)
+- Fixed swipe cards not centering in Safe Haven, Front Lines, War Zone sections
+- Cards now fill 100% of parent container width
+- Added `scroll-snap-stop: always` for proper snap behavior on swipe
+- Removed conflicting CSS from `DashboardTactical.css`
+
+### Player Detail Header (COMPLETED)
+- Reduced name text size on mobile: `text-base sm:text-2xl`
+- Removed PROPS count badge to save space
+- Hidden demon/goblin badges on mobile
+- Moved season stats to centered row below header
+
+### Bar Chart Heights (COMPLETED)
+- Increased min-height from 120px to 140px
+- Changed overflow to visible so value labels aren't clipped
+
+### Stat Type Display (COMPLETED)
+- Added `formatStatType()` function to convert internal names to abbreviations
+- `points_alternate` → `PTS`, `rebounds` → `REB`, etc.
+
+---
+
+## Top Picks - Line Movement Tracking (2026-03-28)
+
+### New Feature: Line Movement Tracker (COMPLETED)
+
+**Problem:** Top Picks section was redundant, just showing picks from other sections.
+
+**Solution:** Track line movements between syncs to show where money is flowing.
+
+**Files Created:**
+- `/app/backend/services/line_movement_tracker.py` - Tracks line changes
+
+**How it works:**
+1. Each sync records current lines to `line_history` collection
+2. Next sync compares to previous lines, detects movements (0.5+ point changes)
+3. Movements stored in `line_movements` collection
+4. Top Picks shows picks with biggest movements (sorted by absolute change)
+5. Falls back to section picks if no movements detected
+
+**Movement Categories:**
+- MASSIVE (2+ points): "🚨 MAJOR MOVE"
+- SIGNIFICANT (1+ points): "🔥 HOT"  
+- MODERATE (0.5+ points): "📈 MOVING"
+
+**Integration:**
+- `cached_board_builder_service.py` - Records lines and detects movements after each sync
+- `picks_getter_service.py` - Returns trending picks from line movements
+- `Dashboard.jsx` - Displays movement badges with line change info
+
+**Status:** Baseline recorded (1804 lines). Will detect real movements on next sync.
