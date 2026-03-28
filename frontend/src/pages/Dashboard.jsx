@@ -246,12 +246,17 @@ const LiveScoresTicker = memo(() => {
                 <img src={TEAM_LOGOS[loserTeam]} alt={loserTeam} className="w-5 h-5 flex-shrink-0" onError={(e) => e.target.style.display='none'} />
                 
                 {/* Status Badge - separated with margin */}
-                <Badge className={`text-[10px] font-bold px-2 py-0.5 ml-1 ${
+                <Badge className={`text-[10px] font-bold px-2 py-0.5 ml-1 whitespace-nowrap ${
                   isLive ? 'bg-red-600 text-white border-red-500 animate-pulse' :
                   isFinal ? 'bg-red-500/30 text-red-400 border-red-500/30' :
                   'bg-amber-500/30 text-amber-300 border-amber-500/30'
                 }`}>
-                  {game.status?.toUpperCase() || game.period}
+                  {(() => {
+                    const s = (game.status || game.period || '').toString();
+                    // Fix duplicate quarter: "Q4 Q4 4:02" -> "Q4 4:02"
+                    const deduped = s.replace(/(Q[1-4]|OT\d?)\s+\1/gi, '$1');
+                    return deduped.toUpperCase();
+                  })()}
                 </Badge>
               </div>
             );
