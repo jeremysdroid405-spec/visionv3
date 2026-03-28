@@ -413,29 +413,24 @@ async def initial_autonomous_sync():
     """
     Run autonomous sync on startup - Demon & Goblin Engine v3
     
-    This includes the new Vision Intel Enrichment phase that pre-caches
-    AI summaries for featured picks, eliminating JIT Gemini calls.
+    Vision Intel Enrichment is now triggered automatically by the Board Builder
+    immediately after tier boards are created (Board-Driven approach).
     """
     await asyncio.sleep(5)  # Wait for app to fully start
     
     # Run Demon & Goblin sync (v3)
+    # This will:
+    # 1. Sync odds/BDL data
+    # 2. Build tier boards (War Zone, Safe Haven, Front Lines)
+    # 3. Trigger Vision Intel Enrichment for board players (automatic)
     if demon_goblin_engine:
         logger.info("=" * 70)
         logger.info("DEMON & GOBLIN ENGINE v3.0 - AUTONOMOUS STARTUP SYNC")
+        logger.info("(Vision Intel will auto-trigger after Board Build)")
         logger.info("=" * 70)
         
-        # Step 1: Full odds sync
         result = await demon_goblin_engine.run_full_sync()
-        logger.info(f"[STARTUP] Step 1/2 - Odds Sync complete: {result.get('unique_players', 0)} players, {result.get('demons_count', 0)} demons, {result.get('goblins_count', 0)} goblins")
-        
-        # Step 2: Vision Intel Enrichment (pre-cache AI summaries)
-        try:
-            from services.vision_intel_enrichment_service import run_vision_intel_enrichment
-            logger.info("[STARTUP] Step 2/2 - Running Vision Intel Enrichment...")
-            intel_result = await run_vision_intel_enrichment(db)
-            logger.info(f"[STARTUP] Vision Intel: {intel_result.get('players_enriched', 0)} players, {intel_result.get('ai_summaries_generated', 0)} AI summaries")
-        except Exception as e:
-            logger.error(f"[STARTUP] Vision Intel Enrichment failed (non-critical): {e}")
+        logger.info(f"[STARTUP] Sync complete: {result.get('unique_players', 0)} players, {result.get('demons_count', 0)} demons, {result.get('goblins_count', 0)} goblins")
 
 
 async def scheduled_daily_sync():

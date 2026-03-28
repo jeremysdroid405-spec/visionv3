@@ -1077,34 +1077,42 @@ async def get_cached_player(player_name: str):
                 logger.warning(f"[PLAYER_DETAIL] Blowout risk calculation failed: {e}")
             
             # ========== STATIC VISION AI SUMMARY (from pre-cache) ==========
-            # Vision AI summaries are now PRE-COMPUTED by the Vision Intel Enrichment Service
-            # This endpoint serves them directly from MongoDB - NO JIT Gemini calls!
+            # Vision AI summaries are PRE-COMPUTED by the Board-Driven Vision Intel Service
+            # This endpoint serves ONLY from cache - NO JIT Gemini calls!
             #
-            # Pre-caching happens in:
-            # - Initial autonomous sync (after BDL sync)
-            # - Adaptive sync engine (after each sync cycle)
-            # - Scheduled jobs (hourly)
+            # If intel isn't ready, return "loading" state instead of blocking.
             
             # Check for pre-cached vision_summary in the prop
             pre_cached_summary = prop.get("vision_summary")
             pre_cached_intel = prop.get("intel_suite", {})
+            is_stale = prop.get("is_stale", False)
             
-            if pre_cached_summary:
+            if pre_cached_summary and not is_stale:
                 # Use pre-cached AI summary
                 prop["intel_suite"]["vision_insight"]["ai_summary"] = pre_cached_summary
                 prop["intel_suite"]["vision_insight"]["source"] = "pre_cached"
+                prop["intel_suite"]["vision_insight"]["status"] = "ready"
                 logger.debug(f"[VISION] Served pre-cached summary for {pname} {stat_type}@{line}")
-            elif pre_cached_intel.get("vision_insight", {}).get("ai_summary"):
+            elif pre_cached_intel.get("vision_insight", {}).get("ai_summary") and not is_stale:
                 # Summary was cached in intel_suite
                 prop["vision_summary"] = pre_cached_intel["vision_insight"]["ai_summary"]
                 prop["intel_suite"]["vision_insight"]["source"] = "pre_cached"
+                prop["intel_suite"]["vision_insight"]["status"] = "ready"
                 logger.debug(f"[VISION] Served pre-cached intel_suite summary for {pname} {stat_type}@{line}")
-            else:
-                # No pre-cached summary - return without AI summary (don't block on JIT call)
-                # The Vision Intel Enrichment Service will populate it on next sync
+            elif is_stale:
+                # Intel is stale (player rotated off boards)
                 prop["intel_suite"]["vision_insight"]["ai_summary"] = None
-                prop["intel_suite"]["vision_insight"]["source"] = "pending_enrichment"
-                logger.debug(f"[VISION] No pre-cached summary for {pname} {stat_type}@{line} - will enrich on next sync")
+                prop["intel_suite"]["vision_insight"]["source"] = "stale"
+                prop["intel_suite"]["vision_insight"]["status"] = "stale"
+                logger.debug(f"[VISION] Stale intel for {pname} {stat_type}@{line}")
+            else:
+                # No pre-cached summary - return "loading" state (don't block on JIT call)
+                # Frontend should show loading indicator, intel will be ready on next sync
+                prop["intel_suite"]["vision_insight"]["ai_summary"] = None
+                prop["intel_suite"]["vision_insight"]["source"] = "loading"
+                prop["intel_suite"]["vision_insight"]["status"] = "loading"
+                prop["intel_suite"]["vision_insight"]["message"] = "Generating insights..."
+                logger.debug(f"[VISION] Intel loading for {pname} {stat_type}@{line}")
         
         # Add advanced stats to player object (for Vision Intel Suite header)
         master_hub = engine.picks_getter_service.master_hub

@@ -945,8 +945,8 @@ class AdaptiveSyncEngine:
         Main adaptive polling loop.
         Adjusts polling frequency based on game proximity.
         
-        Includes Vision Intel Enrichment phase after each sync to pre-cache
-        AI summaries for featured picks.
+        Vision Intel Enrichment is now triggered automatically by the Board Builder
+        immediately after tier boards are created (Board-Driven approach).
         """
         logger.info("[ADAPTIVE_SYNC] Starting adaptive poll loop")
         
@@ -954,11 +954,9 @@ class AdaptiveSyncEngine:
         last_injury_sync = None
         last_ticker_sync = None
         last_game_logs_sync = None
-        last_vision_intel_sync = None
         INJURY_SYNC_INTERVAL = 1800  # 30 minutes
         TICKER_SYNC_INTERVAL = 1800  # 30 minutes
         GAME_LOGS_SYNC_INTERVAL = 14400  # 4 hours - refresh game logs to keep hit rates accurate
-        VISION_INTEL_SYNC_INTERVAL = 3600  # 1 hour - refresh AI summaries
         
         while self.is_running:
             try:
@@ -979,8 +977,9 @@ class AdaptiveSyncEngine:
                         last_game_logs_sync = now  # Don't retry immediately on failure
                 
                 # USE PROPER SYNC: Call the main sync function that builds nested player docs
+                # Vision Intel Enrichment is now triggered automatically by the Board Builder
                 if self._sync_odds_callback:
-                    logger.info("[ADAPTIVE_SYNC] Triggering proper sync via callback...")
+                    logger.info("[ADAPTIVE_SYNC] Triggering proper sync (Vision Intel auto-triggers after Board Build)...")
                     sync_result = await self._sync_odds_callback()
                     logger.info(f"[ADAPTIVE_SYNC] Sync complete: {sync_result.get('demons_count', 0)} demons, {sync_result.get('goblins_count', 0)} goblins")
                 else:
@@ -989,19 +988,6 @@ class AdaptiveSyncEngine:
                     events = await self._fetch_live_odds()
                     await self._update_game_registry(events)
                     await self._update_cached_board(events)
-                
-                # Vision Intel Enrichment (every 1 hour) - pre-cache AI summaries
-                # This eliminates JIT Gemini calls in /api/v3/player-with-badges/
-                if last_vision_intel_sync is None or (now - last_vision_intel_sync).total_seconds() >= VISION_INTEL_SYNC_INTERVAL:
-                    try:
-                        from services.vision_intel_enrichment_service import run_vision_intel_enrichment
-                        logger.info("[ADAPTIVE_SYNC] Running Vision Intel Enrichment...")
-                        intel_result = await run_vision_intel_enrichment(self.db)
-                        logger.info(f"[ADAPTIVE_SYNC] Vision Intel: {intel_result.get('players_enriched', 0)} players, {intel_result.get('ai_summaries_generated', 0)} AI summaries in {intel_result.get('duration_seconds', 0):.1f}s")
-                        last_vision_intel_sync = now
-                    except Exception as e:
-                        logger.error(f"[ADAPTIVE_SYNC] Vision Intel Enrichment failed (non-critical): {e}")
-                        last_vision_intel_sync = now  # Don't retry immediately on failure
                 
                 # Sync injuries periodically (every 30 min) alongside odds
                 if last_injury_sync is None or (now - last_injury_sync).total_seconds() >= INJURY_SYNC_INTERVAL:

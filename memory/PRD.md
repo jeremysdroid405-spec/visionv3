@@ -565,54 +565,56 @@ RATE_LIMIT_DELAY = 1.0 # Seconds between parallel batch groups
 
 ---
 
-## Phase 5: Vision Intel Pre-Caching (Dec 2025)
+## Phase 5: Vision Intel Pre-Caching v2.0 (Dec 2025)
 
 ### Problem
-Vision Intel Suite (AI summaries, badges, intel_suite metrics) took 1+ minute to load due to JIT (Just-In-Time) Gemini API calls during user requests.
+Vision Intel Suite took 1+ minute to load due to JIT Gemini calls. Previous implementation enriched ALL 1,300+ props instead of just the ~40 props on tier boards.
 
-### Solution: Vision Intel Enrichment Service
-Created `/app/backend/services/vision_intel_enrichment_service.py` with:
+### Solution: Board-Driven Vision Intel Enrichment
+Completely rewrote `/app/backend/services/vision_intel_enrichment_service.py` with:
 
-1. **Pre-caching Pipeline**
-   - Runs automatically after BDL sync completes in adaptive_sync_engine
-   - Queries `dg_cached_board` for players with `is_demon=true` or `is_goblin=true`
-   - Batches Gemini AI calls using `asyncio.gather` with `Semaphore(5)`
-   - Stores pre-computed intel_suite + vision_summary in `dg_cached_board` props
+1. **Board-Driven Scope**
+   - Queries `dg_cached_board` for props with `is_demon=True` or `is_goblin=True`
+   - Takes top 20 demons (War Zone) + top 20 goblins (Safe Haven) = 40 picks max
+   - Sorted by `h10_rate` (hit rate) descending
 
-2. **Error Handling (NBA API "char 0" fix)**
-   - Updated `/app/backend/services/nba_career_service.py`
-   - Catches `json.JSONDecodeError` (char 0) errors gracefully
-   - Returns None instead of crashing the sync pipeline
+2. **60-Count Cap**
+   - `MAX_PROPS_PER_CYCLE = 60` hard limit
+   - Currently enriches ~40 board-eligible props per cycle
 
-3. **Static Intel Serve**
-   - Refactored `/api/v3/player-with-badges/` (in `cached_data.py`)
-   - Serves pre-cached vision_summary from MongoDB
-   - NO JIT Gemini calls during user requests
-   - Returns `source: "pre_cached"` for enriched props
-   - Returns `source: "pending_enrichment"` if summary not yet cached
+3. **Pre-Cache Priority**
+   - Triggered immediately after Board Build completes
+   - Wired into `cached_board_builder_service._build_derived_collections()`
+   - No separate scheduled job needed
 
-4. **Vision Data Preservation**
-   - Updated `/app/backend/services/picks_getter_service.py` to include vision fields in prop output
-   - Updated `/app/backend/services/cached_board_builder_service.py` to preserve vision fields during sync rebuilds
+4. **Auto-Cleanup/Rotation**
+   - `_mark_stale_intel()` flags props that rotated off boards
+   - Stale props return `status: "stale"` in API response
 
-5. **Scheduled Jobs**
-   - Added `scheduled_hourly_vision_intel_sync()` in server.py
-   - Runs every 60 minutes to refresh AI summaries
-   - Also runs in adaptive_sync_engine poll loop after each sync
+5. **Static Serving (No JIT)**
+   - `/api/v3/player-with-badges/` serves ONLY from cache
+   - Returns `status: "loading"` if not yet enriched
+   - Returns `status: "stale"` if player rotated off boards
+   - Returns `status: "ready"` with AI summary for enriched props
+
+### Logic Flow
+```
+BDL/Odds Sync → Cached Board Build → Tier Classification (is_demon/is_goblin) 
+    → Vision Intel Enrichment (top 40 picks) → DB Cache → Frontend Request
+```
 
 ### Performance
-- Before: 60+ seconds for Vision Intel to load
-- After: <0.2 seconds (serves directly from MongoDB)
-- 50 players enriched per cycle in ~7 seconds
-- Semaphore(5) prevents Gemini rate limiting
+- Before: 60+ seconds (1,300+ props, all JIT)
+- After: 5.7 seconds (40 props, pre-cached)
+- Response time: <0.2 seconds (all from MongoDB)
 
-### Testing Results (iteration_28)
-- All 13 backend tests PASSED
-- Response times: Kyle Anderson 0.177s, Paul George 0.149s, Joel Embiid 0.140s
-- Pre-cached vision_summary confirmed with source='pre_cached'
-- No JIT Gemini calls during API requests
+### Testing Results
+- 40 board-eligible picks enriched
+- 20 unique players
+- 40 AI summaries generated in 5.68 seconds
+- 0 errors
 
-**Status:** COMPLETE - Vision Intel now 100% local-first
+**Status:** COMPLETE - Board-Driven Vision Intel now 100% local-first
 
 ---
 

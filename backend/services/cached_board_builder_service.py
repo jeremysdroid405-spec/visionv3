@@ -1118,9 +1118,19 @@ class CachedBoardBuilderService:
         players_dict: Dict[str, Dict],
         sync_time: datetime
     ) -> None:
-        """Build derived collections (War Zone, Goblin Vault, etc.)"""
+        """Build derived collections (War Zone, Goblin Vault, etc.) and trigger Vision Intel"""
         await self.tier_builder_service.build_war_zone(players_dict, sync_time)
         await self.tier_builder_service.build_goblin_vault(players_dict, sync_time)
         await self.tier_builder_service.build_front_lines(players_dict, sync_time)
         await self.parlay_builder_service.build_parlay_builder(players_dict, sync_time)
         await self.parlay_builder_service.build_goblin_recon(players_dict, sync_time)
+        
+        # Trigger Board-Driven Vision Intel Enrichment immediately after boards are built
+        # This pre-caches AI summaries for the ~30 players on the tier boards
+        try:
+            from services.vision_intel_enrichment_service import run_vision_intel_enrichment
+            logger.info("[CACHED_BOARD] Triggering Board-Driven Vision Intel Enrichment...")
+            intel_result = await run_vision_intel_enrichment(self.db)
+            logger.info(f"[CACHED_BOARD] Vision Intel: {intel_result.get('props_enriched', 0)} props enriched, {intel_result.get('ai_summaries_generated', 0)} AI summaries")
+        except Exception as e:
+            logger.error(f"[CACHED_BOARD] Vision Intel Enrichment failed (non-critical): {e}")
