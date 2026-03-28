@@ -132,6 +132,60 @@ const getHitRateColor = (rate) => {
 };
 
 /**
+ * Convert internal stat_type names to display-friendly abbreviations
+ */
+const formatStatType = (statType) => {
+  if (!statType) return '';
+  
+  const statMap = {
+    // Points variations
+    'points': 'PTS',
+    'points_alternate': 'PTS',
+    'pts': 'PTS',
+    // Rebounds variations  
+    'rebounds': 'REB',
+    'rebounds_alternate': 'REB',
+    'reb': 'REB',
+    // Assists variations
+    'assists': 'AST',
+    'assists_alternate': 'AST',
+    'ast': 'AST',
+    // Threes variations
+    'threes': '3PM',
+    'threes_alternate': '3PM',
+    '3pm': '3PM',
+    'three_pointers_made': '3PM',
+    // Steals
+    'steals': 'STL',
+    'steals_alternate': 'STL',
+    'stl': 'STL',
+    // Blocks
+    'blocks': 'BLK',
+    'blocks_alternate': 'BLK',
+    'blk': 'BLK',
+    // Turnovers
+    'turnovers': 'TO',
+    'turnovers_alternate': 'TO',
+    'tov': 'TO',
+    // Combos
+    'pts_rebs': 'PTS+REB',
+    'pts_asts': 'PTS+AST',
+    'rebs_asts': 'REB+AST',
+    'pts_rebs_asts': 'PRA',
+    'pra': 'PRA',
+    'fantasy_score': 'FPTS',
+    'double_double': 'DD',
+    'triple_double': 'TD',
+    // Minutes
+    'minutes': 'MIN',
+    'min': 'MIN',
+  };
+  
+  const lower = statType.toLowerCase();
+  return statMap[lower] || statType.toUpperCase().replace(/_/g, ' ');
+};
+
+/**
  * Locked Overlay for games in progress
  * Shows when is_locked is true (game has started)
  * Color matches the SECTION: green (Safe Haven), yellow (Front Lines), red (War Zone)
@@ -371,7 +425,7 @@ const PropRow = memo(({ prop, theme, onClick, onQuickAdd }) => {
         {(isGoblin || isFrontLine) && !isDemon && <GoblinIcon size={14} className={iconColor} />}
         <div>
           <span className="text-sm font-medium text-white">
-            {prop.stat_type} <span className={lineColor}>{prop.line}</span>
+            {formatStatType(prop.stat_type)} <span className={lineColor}>{prop.line}</span>
           </span>
         </div>
       </div>
@@ -506,7 +560,7 @@ const UniversalPlayerCard = memo(({
           <div className="text-xs font-medium text-white truncate">{displayName}</div>
           <div className="flex items-center gap-1.5 text-[10px]">
             <span className="text-zinc-500">{team}</span>
-            {stat_type && <span className={theme.text}>{stat_type} {line}</span>}
+            {stat_type && <span className={theme.text}>{formatStatType(stat_type)} {line}</span>}
           </div>
         </div>
         {rank && (
@@ -544,7 +598,7 @@ const UniversalPlayerCard = memo(({
           </div>
           <div className="flex-1 min-w-0 overflow-hidden">
             <div className="text-sm font-medium text-white truncate max-w-full">{displayName}</div>
-            <div className={`text-xs ${theme.text} truncate`}>{stat_type} {line}</div>
+            <div className={`text-xs ${theme.text} truncate`}>{formatStatType(stat_type)} {line}</div>
           </div>
           {rank && (
             <Badge className="bg-zinc-800 text-zinc-300 border-none text-xs flex-shrink-0">#{rank}</Badge>
@@ -654,7 +708,7 @@ const UniversalPlayerCard = memo(({
             {/* Primary Prop Display (if single prop mode) */}
             {stat_type && !hasProps && (
               <div className="flex items-center gap-2 mt-1.5">
-                <span className={`text-sm font-bold ${theme.text}`}>{stat_type} {line}</span>
+                <span className={`text-sm font-bold ${theme.text}`}>{formatStatType(stat_type)} {line}</span>
                 {h10_rate != null && <span className={`text-xs ${getHitRateColor(h10_rate)}`}>L10: {h10_rate}%</span>}
                 {season_avg != null && <span className="text-xs text-zinc-400">Avg: {season_avg?.toFixed?.(1)}</span>}
               </div>
