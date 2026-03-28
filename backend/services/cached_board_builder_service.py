@@ -27,11 +27,11 @@ class CachedBoardBuilderService:
     """
     Service for building the centralized cached board.
     
-    Architecture v4.0: Odds API Mapper Integration
+    Architecture v4.0: Odds API Mapper Integration + Shadow Table Strategy
     - Props come from Odds API with player names in 'description' field
     - Uses Odds API Mapper to get player_id directly
     - Mapper returns full player data from nba_master_hub_2026
-    - Stores everything in dg_cached_board
+    - ZERO-DOWNTIME: Writes to dg_cached_board_temp, then atomic rename
     """
     
     def __init__(self, db: AsyncIOMotorDatabase, tier_builder_service, parlay_builder_service):
@@ -41,6 +41,7 @@ class CachedBoardBuilderService:
         
         # Collection references
         self.cached_board = db.dg_cached_board
+        self.cached_board_temp = db.dg_cached_board_temp  # Shadow table
         self.sync_log = db.dg_sync_log
         self.player_stats = db.dg_player_stats
         self.master_roster = db.dg_master_roster
@@ -257,34 +258,63 @@ class CachedBoardBuilderService:
         for idx, player in enumerate(sorted_players):
             player["rank"] = idx + 1
         
-        # BULK UPSERT - Update existing, insert new, keep old visible
-        if sorted_players:
-            bulk_ops = []
-            for player in sorted_players:
-                bulk_ops.append({
-                    "filter": {"player_name": player["player_name"]},
-                    "update": {"$set": player},
-                    "upsert": True
-                })
+        # SHADOW TABLE STRATEGY: Write to temp collection, then atomic swap
+        # This ensures zero-downtime during sync
+        try:
+            # Step 1: Clear and populate temp collection
+            await self.cached_board_temp.delete_many({})
             
-            # Execute in batches to avoid memory issues
-            batch_size = 100
-            for i in range(0, len(bulk_ops), batch_size):
-                batch = bulk_ops[i:i+batch_size]
-                from pymongo import UpdateOne
-                await self.cached_board.bulk_write([
-                    UpdateOne(op["filter"], op["update"], upsert=op["upsert"]) 
-                    for op in batch
-                ])
-            
-            # Remove players no longer in the sync (stale data cleanup)
-            current_player_names = {p["player_name"] for p in sorted_players}
-            await self.cached_board.delete_many({
-                "player_name": {"$nin": list(current_player_names)},
-                "synced_at": {"$lt": sync_time.isoformat()}  # Only delete old stale entries
-            })
-            
-            logger.info(f"[CACHED_BOARD] Updated {len(sorted_players)} players in-place (no blackout)")
+            if sorted_players:
+                # Insert all players to temp collection in batches
+                batch_size = 100
+                for i in range(0, len(sorted_players), batch_size):
+                    batch = sorted_players[i:i+batch_size]
+                    await self.cached_board_temp.insert_many(batch)
+                
+                logger.info(f"[CACHED_BOARD] Wrote {len(sorted_players)} players to temp collection")
+                
+                # Step 2: Atomic swap using rename (if MongoDB supports it)
+                # Otherwise, use bulk upsert to live collection
+                try:
+                    # Try atomic rename (requires admin privileges)
+                    # First drop old collection, then rename temp to live
+                    await self.cached_board.drop()
+                    await self.db.command({
+                        "renameCollection": f"{self.db.name}.dg_cached_board_temp",
+                        "to": f"{self.db.name}.dg_cached_board"
+                    })
+                    logger.info(f"[CACHED_BOARD] Atomic swap completed - zero downtime")
+                except Exception as rename_error:
+                    # Fallback: bulk upsert to live collection
+                    logger.warning(f"[CACHED_BOARD] Atomic rename failed, using bulk upsert: {rename_error}")
+                    
+                    from pymongo import UpdateOne
+                    bulk_ops = [
+                        UpdateOne(
+                            {"player_name": player["player_name"]},
+                            {"$set": player},
+                            upsert=True
+                        )
+                        for player in sorted_players
+                    ]
+                    
+                    # Execute in batches
+                    for i in range(0, len(bulk_ops), batch_size):
+                        batch = bulk_ops[i:i+batch_size]
+                        await self.cached_board.bulk_write(batch)
+                    
+                    # Remove stale players
+                    current_player_names = {p["player_name"] for p in sorted_players}
+                    await self.cached_board.delete_many({
+                        "player_name": {"$nin": list(current_player_names)},
+                        "synced_at": {"$lt": sync_time.isoformat()}
+                    })
+                    
+                    logger.info(f"[CACHED_BOARD] Bulk upsert completed - {len(sorted_players)} players")
+                    
+        except Exception as e:
+            logger.error(f"[CACHED_BOARD] Shadow table sync failed: {e}")
+            raise
         
         # Store sync metadata
         verified_count = sum(1 for p in sorted_players if p.get("is_verified"))

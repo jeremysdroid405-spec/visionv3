@@ -163,7 +163,7 @@ const PropRow = memo(({ prop, isHighlighted, highlightRef, onVisionClick, gameLo
       onClick={handleClick}
       className={`flex flex-col p-4 rounded-lg transition-all ${
         isHighlighted
-          ? 'bg-gradient-to-r from-amber-950/50 via-yellow-900/30 to-amber-950/50 border-2 border-amber-400 ring-2 ring-amber-400/50 shadow-[0_0_20px_rgba(251,191,36,0.3)] cursor-pointer hover:shadow-[0_0_30px_rgba(251,191,36,0.5)]' 
+          ? 'bg-gradient-to-r from-amber-950/50 via-yellow-900/30 to-amber-950/50 border-2 border-amber-400 ring-2 ring-amber-400/50 cursor-pointer hover:ring-amber-300/70' 
           : isVisionProp
             ? 'bg-gradient-to-r from-amber-950/30 to-zinc-900 border border-amber-500/40 cursor-pointer hover:border-amber-400 hover:shadow-[0_0_15px_rgba(251,191,36,0.2)]'
             : isDemon 
@@ -172,6 +172,7 @@ const PropRow = memo(({ prop, isHighlighted, highlightRef, onVisionClick, gameLo
                 ? 'bg-gradient-to-r from-green-950/40 to-zinc-900 border border-green-500/30'
                 : 'bg-zinc-800/30 border border-zinc-700/30'
       }`}
+      style={isHighlighted ? { boxShadow: '0 0 25px rgba(251, 191, 36, 0.5), 0 0 50px rgba(251, 191, 36, 0.3), inset 0 0 20px rgba(251, 191, 36, 0.1)' } : {}}
       data-testid={`prop-row-${prop.stat_type}-${line}${isHighlighted ? '-vision' : isVisionProp ? '-clickable' : ''}`}
     >
       {/* TOP ROW: Icon + Line + Badges */}
@@ -204,10 +205,10 @@ const PropRow = memo(({ prop, isHighlighted, highlightRef, onVisionClick, gameLo
         )}
       </div>
       
-      {/* BOTTOM ROW: Stats column on left, Chart on right */}
-      <div className="flex items-stretch gap-4">
-        {/* LEFT: Stats Column */}
-        <div className={`flex flex-col justify-center gap-2 py-2 px-3 rounded-md ${
+      {/* BOTTOM ROW: Stats column on left, Chart on right - Stack on mobile */}
+      <div className="flex flex-col sm:flex-row items-stretch gap-4">
+        {/* LEFT: Stats Column - Full width on mobile */}
+        <div className={`flex flex-row sm:flex-col justify-around sm:justify-center gap-2 py-2 px-3 rounded-md ${
           isHighlighted ? 'bg-amber-900/30' : 'bg-zinc-800/50'
         }`} style={{ minWidth: '90px' }}>
           <div className="text-center">
@@ -222,7 +223,7 @@ const PropRow = memo(({ prop, isHighlighted, highlightRef, onVisionClick, gameLo
               {h5Rate > 0 ? `${h5Rate}%` : '-'}
             </div>
           </div>
-          <div className="w-full h-px bg-zinc-700 my-1" />
+          <div className="hidden sm:block w-full h-px bg-zinc-700 my-1" />
           <div className="text-center">
             <div className={`text-[9px] uppercase tracking-wide ${isHighlighted ? 'text-amber-400/70' : 'text-zinc-500'}`}>L5 Avg</div>
             <div className={`font-bold text-sm ${isHighlighted ? 'text-amber-300' : 'text-white'}`}>
@@ -243,9 +244,9 @@ const PropRow = memo(({ prop, isHighlighted, highlightRef, onVisionClick, gameLo
           </div>
         </div>
         
-        {/* RIGHT: Bar Chart */}
+        {/* RIGHT: Bar Chart - Full width on both mobile and desktop */}
         {gameLogs && gameLogs.length > 0 && (
-          <div className="flex-1 flex flex-col">
+          <div className="flex-1 flex flex-col w-full">
             <GameLogBarChart
               gameLogs={gameLogs}
               statType={statType}
@@ -255,7 +256,7 @@ const PropRow = memo(({ prop, isHighlighted, highlightRef, onVisionClick, gameLo
               l5Avg={l5Avg}
               l10Avg={l10Avg}
               seasonAvg={seasonAvg}
-              className="flex-1"
+              className="flex-1 w-full"
             />
           </div>
         )}
@@ -313,7 +314,6 @@ export const PlayerDetailPage = ({ playerName, playerData = null, onBack, highli
     
     const fetchUrl = `${API}/api/v3/player-with-badges/${encodeURIComponent(playerName)}`;
     
-    console.log('[PlayerDetailPage] Fetching:', fetchUrl);
     setLoading(true);
     setError(null);
     
@@ -323,18 +323,12 @@ export const PlayerDetailPage = ({ playerName, playerData = null, onBack, highli
     xhr.setRequestHeader('Accept', 'application/json');
     
     xhr.onreadystatechange = function() {
-      console.log('[PlayerDetailPage] XHR state:', xhr.readyState, 'status:', xhr.status, 'fetchId:', currentFetchId, 'current:', fetchIdRef.current);
-      
       if (xhr.readyState !== 4) return;
       
       // Always process, don't skip based on fetchId
       if (xhr.status >= 200 && xhr.status < 300) {
         try {
           const data = JSON.parse(xhr.responseText);
-          console.log('[PlayerDetailPage] Got data:', { 
-            success: data.success, 
-            propsCount: data.player?.props?.length 
-          });
           
           if (data.success && data.player) {
             setPlayer(data.player);
@@ -342,7 +336,6 @@ export const PlayerDetailPage = ({ playerName, playerData = null, onBack, highli
             setError('No available Bets today');
           }
         } catch (e) {
-          console.error('[PlayerDetailPage] Parse error:', e);
           setError('Failed to parse response');
         }
       } else if (xhr.status > 0) {
@@ -353,7 +346,6 @@ export const PlayerDetailPage = ({ playerName, playerData = null, onBack, highli
     
     xhr.onerror = function() {
       if (fetchIdRef.current !== currentFetchId) return;
-      console.error('[PlayerDetailPage] XHR error');
       setError('Network error');
       setLoading(false);
     };

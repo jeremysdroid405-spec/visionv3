@@ -920,7 +920,16 @@ async def startup_event():
         await db.dg_front_lines.create_index([("synced_at", DESCENDING)], background=True)
         await db.dg_goblin_vault.create_index([("synced_at", DESCENDING)], background=True)
         
-        logger.info("[INDEXES] MongoDB indexes created successfully")
+        # COMPOUND INDEXES for high-performance queries
+        await db.dg_cached_board.create_index([("player_name", ASCENDING), ("nba_id", ASCENDING)], background=True)
+        await db.dg_cached_board.create_index([("is_active", ASCENDING), ("props.stat_type", ASCENDING)], background=True)
+        await db.nba_master_hub_2026.create_index([("player_name", ASCENDING), ("nba_id", ASCENDING)], background=True)
+        await db.nba_master_hub_2026.create_index([("is_active", ASCENDING), ("team", ASCENDING)], background=True)
+        
+        # dg_cached_board_temp - Shadow table for zero-downtime sync
+        await db.dg_cached_board_temp.create_index([("player_name", ASCENDING)], background=True)
+        
+        logger.info("[INDEXES] MongoDB indexes created successfully (including compound indexes)")
     except Exception as e:
         logger.error(f"[INDEXES] Error creating indexes: {e}")
     

@@ -131,10 +131,10 @@ const GameLogBarChart = memo(({
   // Averages are now displayed as text above the chart (no reference lines)
   
   return (
-    <div className={`relative flex flex-col h-full ${className}`}>
-      {/* Chart container - fills available height, isolated stacking context */}
+    <div className={`relative flex flex-col h-full w-full ${className}`}>
+      {/* Chart container - fills available height and width, isolated stacking context */}
       <div 
-        className="relative bg-zinc-900/50 rounded border border-zinc-800 overflow-hidden isolate flex-1"
+        className="relative bg-zinc-900/50 rounded border border-zinc-800 overflow-hidden isolate flex-1 w-full"
         style={{ minHeight: '120px' }}
       >
         {/* Main target line (amber, solid) - positioned within the bar area */}

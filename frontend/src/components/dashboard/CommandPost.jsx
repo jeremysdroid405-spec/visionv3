@@ -464,7 +464,7 @@ const CommandPost = memo(({ isOpen, onClose, pendingLeg, onPendingLegProcessed }
 
   return (
     <div 
-      className="fixed right-0 top-0 h-full w-96 bg-zinc-950 border-l border-zinc-800 shadow-2xl z-50 flex flex-col"
+      className="fixed right-0 top-0 h-full w-full sm:w-96 bg-zinc-950 border-l border-zinc-800 shadow-2xl z-50 flex flex-col"
       data-testid="command-post"
     >
       {/* Header - Fixed */}
