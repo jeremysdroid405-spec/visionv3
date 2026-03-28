@@ -251,7 +251,7 @@ const LiveScoresTicker = memo(() => {
                   isFinal ? 'bg-red-500/30 text-red-400 border-red-500/30' :
                   'bg-amber-500/30 text-amber-300 border-amber-500/30'
                 }`}>
-                  {isLive ? game.period : (game.status?.toUpperCase() || game.period)}
+                  {game.status?.toUpperCase() || game.period}
                 </Badge>
               </div>
             );
