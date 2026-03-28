@@ -31,6 +31,7 @@ from .command import router as command_router, set_db as set_command_db
 from .live import router as live_router, set_db as set_live_db
 from .qa_testing import router as qa_router, set_qa_db
 from .image_proxy import router as image_proxy_router
+from .headshots import router as headshots_router, set_headshot_db
 
 
 def register_all_routes(app, engine, game_lock_engine=None, db=None, 
@@ -151,3 +152,8 @@ def register_all_routes(app, engine, game_lock_engine=None, db=None,
     
     # Image proxy route (for NBA CDN CORS bypass)
     app.include_router(image_proxy_router, prefix="/api")
+    
+    # Headshot management routes
+    if db is not None:
+        set_headshot_db(db)
+    app.include_router(headshots_router, prefix="/api")

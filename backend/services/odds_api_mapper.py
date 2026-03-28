@@ -15,6 +15,7 @@ CONSTRAINT: All Odds API player matching MUST go through this mapper.
 import asyncio
 import logging
 import os
+from pathlib import Path
 from datetime import datetime, timezone
 from typing import Dict, List, Optional, Any
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
@@ -25,6 +26,10 @@ logger = logging.getLogger(__name__)
 
 COLLECTION_NAME = "odds_api_mapping_master"
 MASTER_HUB_COLLECTION = "nba_master_hub_2026"
+
+# Local headshot storage
+HEADSHOT_DIR = Path("/app/backend/static/player-headshots")
+LOCAL_URL_PATTERN = "/static/player-headshots/{nba_id}.png"
 
 # Patterns that indicate a team logo (NOT a player headshot)
 TEAM_LOGO_PATTERNS = [
@@ -44,14 +49,35 @@ def is_team_logo_url(url: str) -> bool:
     return any(pattern.lower() in url_lower for pattern in TEAM_LOGO_PATTERNS)
 
 
+def get_canonical_photo_url(nba_id: int) -> str:
+    """
+    Get the canonical photo URL for a player.
+    
+    Priority:
+    1. Local file if it exists
+    2. Proxy URL as fallback
+    """
+    if nba_id:
+        local_path = HEADSHOT_DIR / f"{nba_id}.png"
+        if local_path.exists():
+            return LOCAL_URL_PATTERN.format(nba_id=nba_id)
+        # Fallback to proxy
+        return f"/api/proxy/nba-headshot/{nba_id}"
+    return None
+
+
 def sanitize_photo_url(photo_url: str, nba_id: int = None) -> str:
     """
-    Sanitize photo URL - replace team logos with proper headshot proxy.
+    Sanitize photo URL - use local file or fallback to proxy.
     """
-    if is_team_logo_url(photo_url) and nba_id:
-        return f"/api/proxy/nba-headshot/{nba_id}"
-    if not photo_url and nba_id:
-        return f"/api/proxy/nba-headshot/{nba_id}"
+    # If we have nba_id, always use canonical URL (local or proxy)
+    if nba_id:
+        return get_canonical_photo_url(nba_id)
+    
+    # Team logos should never be used
+    if is_team_logo_url(photo_url):
+        return None
+    
     return photo_url
 
 

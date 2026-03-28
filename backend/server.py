@@ -1,5 +1,6 @@
 from fastapi import FastAPI, APIRouter, Depends, HTTPException, status, Query
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi.staticfiles import StaticFiles
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -317,6 +318,12 @@ app = FastAPI(
         "name": "Proprietary",
     }
 )
+
+# Mount static files for local headshot serving
+STATIC_DIR = Path("/app/backend/static")
+STATIC_DIR.mkdir(parents=True, exist_ok=True)
+app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+
 api_router = APIRouter(prefix="/api")
 security = HTTPBearer()
 
