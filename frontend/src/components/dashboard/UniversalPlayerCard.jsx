@@ -526,7 +526,7 @@ const UniversalPlayerCard = memo(({
     
     return (
       <div 
-        className={`relative p-3 rounded-lg border ${theme.border} bg-gradient-to-br ${theme.bg} ${is_locked ? 'cursor-not-allowed' : 'cursor-pointer hover:scale-[1.02]'} transition-all min-w-[200px] ${is_locked ? 'opacity-80' : ''}`}
+        className={`relative p-3 rounded-lg border ${theme.border} bg-gradient-to-br ${theme.bg} ${is_locked ? 'cursor-not-allowed' : 'cursor-pointer hover:scale-[1.02]'} transition-all w-full ${is_locked ? 'opacity-80' : ''}`}
         onClick={handleCardClick}
         data-testid={`player-compact-${playerSlug}`}
       >

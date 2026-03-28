@@ -543,7 +543,7 @@ const ParlaySection = memo(({ picks, onParlayClick, sectionName, title, subtitle
       <SectionHeader icon={icon} title={title} subtitle={subtitle} badgeText="PARLAYS" badgeColor={badgeColor} />
       <SwipeContainer>
         {Object.entries(tickets).map(([size, ticket]) => (
-          <div key={`parlay-${sectionName}-${size}`} className="swipe-card">
+          <div key={`parlay-${sectionName}-${size}`} className="swipe-card-parlay">
             <ParlayTicket ticket={ticket} onClick={() => onParlayClick(ticket, sectionName)} sectionType={sectionName} />
           </div>
         ))}

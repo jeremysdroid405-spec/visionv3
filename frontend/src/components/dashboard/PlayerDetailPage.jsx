@@ -464,58 +464,18 @@ export const PlayerDetailPage = ({ playerName, playerData = null, onBack, highli
           )}
           
           <div className="flex-1 min-w-0 overflow-hidden">
-            <h1 className="text-lg sm:text-2xl font-bold text-white leading-tight" style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}>{playerName}</h1>
+            <h1 className="text-base sm:text-2xl font-bold text-white leading-snug">{playerName}</h1>
             {player && (
               <div className="flex items-center gap-2 text-xs sm:text-sm text-zinc-400 mt-0.5">
                 <span className="font-mono">{player.team}</span>
                 {player.position && <span>· {player.position}</span>}
               </div>
             )}
-            
-            {/* Player Season Stats */}
-            {player?.baseline_stats && (
-              <div className="flex items-center gap-4 mt-3">
-                {player.baseline_stats.PTS?.season_avg != null && (
-                  <div className="text-center">
-                    <div className="text-lg font-bold text-white">{player.baseline_stats.PTS.season_avg.toFixed(1)}</div>
-                    <div className="text-[10px] text-zinc-500">PPG</div>
-                  </div>
-                )}
-                {player.baseline_stats.REB?.season_avg != null && (
-                  <div className="text-center">
-                    <div className="text-lg font-bold text-white">{player.baseline_stats.REB.season_avg.toFixed(1)}</div>
-                    <div className="text-[10px] text-zinc-500">RPG</div>
-                  </div>
-                )}
-                {player.baseline_stats.AST?.season_avg != null && (
-                  <div className="text-center">
-                    <div className="text-lg font-bold text-white">{player.baseline_stats.AST.season_avg.toFixed(1)}</div>
-                    <div className="text-[10px] text-zinc-500">APG</div>
-                  </div>
-                )}
-                {player.baseline_stats.STL?.season_avg != null && (
-                  <div className="text-center">
-                    <div className="text-lg font-bold text-cyan-400">{player.baseline_stats.STL.season_avg.toFixed(1)}</div>
-                    <div className="text-[10px] text-zinc-500">STL</div>
-                  </div>
-                )}
-                {player.baseline_stats.BLK?.season_avg != null && (
-                  <div className="text-center">
-                    <div className="text-lg font-bold text-cyan-400">{player.baseline_stats.BLK.season_avg.toFixed(1)}</div>
-                    <div className="text-[10px] text-zinc-500">BLK</div>
-                  </div>
-                )}
-              </div>
-            )}
           </div>
           
-          {/* Props count badges */}
+          {/* Demon/Goblin count badges - hidden on mobile */}
           {player && (
-            <div className="flex items-center gap-3 flex-shrink-0">
-              <div className="text-center">
-                <div className="text-[10px] text-zinc-500">PROPS</div>
-                <div className="text-lg font-bold text-white">{totalProps}</div>
-              </div>
+            <div className="hidden sm:flex items-center gap-2 flex-shrink-0">
               {demons.length > 0 && (
                 <div className="flex items-center gap-1 px-2 py-1 rounded bg-red-500/20 border border-red-500/30">
                   <DemonIcon size={14} />
@@ -531,6 +491,42 @@ export const PlayerDetailPage = ({ playerName, playerData = null, onBack, highli
             </div>
           )}
         </div>
+        
+        {/* Player Season Stats - Below header for cleaner mobile layout */}
+        {player?.baseline_stats && (
+          <div className="flex items-center justify-center gap-4 sm:gap-6 mt-3 px-4 pb-2">
+            {player.baseline_stats.PTS?.season_avg != null && (
+              <div className="text-center">
+                <div className="text-base sm:text-lg font-bold text-white">{player.baseline_stats.PTS.season_avg.toFixed(1)}</div>
+                <div className="text-[10px] text-zinc-500">PPG</div>
+              </div>
+            )}
+            {player.baseline_stats.REB?.season_avg != null && (
+              <div className="text-center">
+                <div className="text-base sm:text-lg font-bold text-white">{player.baseline_stats.REB.season_avg.toFixed(1)}</div>
+                <div className="text-[10px] text-zinc-500">RPG</div>
+              </div>
+            )}
+            {player.baseline_stats.AST?.season_avg != null && (
+              <div className="text-center">
+                <div className="text-base sm:text-lg font-bold text-white">{player.baseline_stats.AST.season_avg.toFixed(1)}</div>
+                <div className="text-[10px] text-zinc-500">APG</div>
+              </div>
+            )}
+            {player.baseline_stats.STL?.season_avg != null && (
+              <div className="text-center">
+                <div className="text-base sm:text-lg font-bold text-cyan-400">{player.baseline_stats.STL.season_avg.toFixed(1)}</div>
+                <div className="text-[10px] text-zinc-500">STL</div>
+              </div>
+            )}
+            {player.baseline_stats.BLK?.season_avg != null && (
+              <div className="text-center">
+                <div className="text-base sm:text-lg font-bold text-cyan-400">{player.baseline_stats.BLK.season_avg.toFixed(1)}</div>
+                <div className="text-[10px] text-zinc-500">BLK</div>
+              </div>
+            )}
+          </div>
+        )}
         
         {/* Remove old badges and vision insight - moved stats to header */}
       </div>

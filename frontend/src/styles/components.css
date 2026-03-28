@@ -182,11 +182,11 @@
   -webkit-overflow-scrolling: touch;
   scrollbar-width: none;
   -ms-overflow-style: none;
-  gap: 12px;
-  padding: 4px 24px;
-  /* Center the first card when scrolled to start */
-  scroll-padding-left: 24px;
-  scroll-padding-right: 24px;
+  gap: 16px;
+  /* Center cards with equal padding */
+  padding: 8px 20px;
+  /* Snap alignment matches padding */
+  scroll-padding-inline: 20px;
 }
 
 .swipe-container::-webkit-scrollbar {
@@ -196,10 +196,19 @@
 .swipe-card {
   scroll-snap-align: center;
   flex-shrink: 0 !important;
-  /* Smaller width to show borders on sides */
-  width: calc(100vw - 64px) !important;
-  max-width: 320px !important;
-  min-width: calc(100vw - 64px) !important;
+  /* Card takes most of viewport with visible margins */
+  width: calc(100vw - 48px) !important;
+  max-width: 340px !important;
+  min-width: calc(100vw - 48px) !important;
+}
+
+/* Parlay cards - slightly wider */
+.swipe-card-parlay {
+  scroll-snap-align: center;
+  flex-shrink: 0 !important;
+  width: calc(100vw - 32px) !important;
+  max-width: 380px !important;
+  min-width: calc(100vw - 32px) !important;
 }
 
 @media (min-width: 640px) {
