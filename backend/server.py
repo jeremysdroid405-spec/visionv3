@@ -410,14 +410,32 @@ game_lock_engine = None  # Game Lock Engine - Auto-cleanup on game start
 scheduler = None  # APScheduler instance
 
 async def initial_autonomous_sync():
-    """Run autonomous sync on startup - Demon & Goblin Engine v3"""
+    """
+    Run autonomous sync on startup - Demon & Goblin Engine v3
+    
+    This includes the new Vision Intel Enrichment phase that pre-caches
+    AI summaries for featured picks, eliminating JIT Gemini calls.
+    """
     await asyncio.sleep(5)  # Wait for app to fully start
     
     # Run Demon & Goblin sync (v3)
     if demon_goblin_engine:
+        logger.info("=" * 70)
         logger.info("DEMON & GOBLIN ENGINE v3.0 - AUTONOMOUS STARTUP SYNC")
+        logger.info("=" * 70)
+        
+        # Step 1: Full odds sync
         result = await demon_goblin_engine.run_full_sync()
-        logger.info(f"Sync complete: {result.get('unique_players', 0)} players, {result.get('demons_count', 0)} demons, {result.get('goblins_count', 0)} goblins")
+        logger.info(f"[STARTUP] Step 1/2 - Odds Sync complete: {result.get('unique_players', 0)} players, {result.get('demons_count', 0)} demons, {result.get('goblins_count', 0)} goblins")
+        
+        # Step 2: Vision Intel Enrichment (pre-cache AI summaries)
+        try:
+            from services.vision_intel_enrichment_service import run_vision_intel_enrichment
+            logger.info("[STARTUP] Step 2/2 - Running Vision Intel Enrichment...")
+            intel_result = await run_vision_intel_enrichment(db)
+            logger.info(f"[STARTUP] Vision Intel: {intel_result.get('players_enriched', 0)} players, {intel_result.get('ai_summaries_generated', 0)} AI summaries")
+        except Exception as e:
+            logger.error(f"[STARTUP] Vision Intel Enrichment failed (non-critical): {e}")
 
 
 async def scheduled_daily_sync():
@@ -836,6 +854,35 @@ async def scheduled_hourly_badge_sync():
         logger.error(f"[SCHEDULER] Hourly badge sync failed: {e}")
 
 
+async def scheduled_hourly_vision_intel_sync():
+    """
+    HOURLY VISION INTEL ENRICHMENT (AI Summaries)
+    
+    Runs every 60 minutes to pre-cache AI Vision summaries for featured picks.
+    This eliminates the 1+ minute JIT load times in the Vision Intel Suite.
+    
+    Pre-caches:
+    - AI Vision Summaries (Gemini)
+    - Intel Suite metrics (DvP, Pace, Stability)
+    - Context badge data
+    """
+    logger.info("=" * 70)
+    logger.info("[SCHEDULER] HOURLY VISION INTEL ENRICHMENT (INTERVAL)")
+    logger.info(f"[SCHEDULER] Time: {datetime.now(timezone.utc).isoformat()}")
+    logger.info("=" * 70)
+    
+    try:
+        from services.vision_intel_enrichment_service import run_vision_intel_enrichment
+        
+        result = await run_vision_intel_enrichment(db)
+        
+        logger.info(f"[SCHEDULER] Vision Intel: {result.get('players_enriched', 0)} players, {result.get('ai_summaries_generated', 0)} AI summaries")
+        logger.info("=" * 70)
+        
+    except Exception as e:
+        logger.error(f"[SCHEDULER] Vision Intel Enrichment failed: {e}")
+
+
 async def scheduled_hourly_injury_sync():
     """
     HOURLY INJURY SYNC (The Roster)
@@ -1126,7 +1173,17 @@ async def startup_event():
         replace_existing=True
     )
     
-    # 5. HALF-HOURLY SOCIAL SYNC (The News) - Every 30 minutes
+    # 5. HOURLY VISION INTEL ENRICHMENT (AI Summaries) - Every 60 minutes
+    # Pre-caches AI Vision summaries for featured picks
+    scheduler.add_job(
+        scheduled_hourly_vision_intel_sync,
+        IntervalTrigger(minutes=60, timezone=SCHEDULER_TIMEZONE),
+        id='hourly_vision_intel_sync',
+        name='Hourly Vision Intel Enrichment (60 min interval)',
+        replace_existing=True
+    )
+    
+    # 6. HALF-HOURLY SOCIAL SYNC (The News) - Every 30 minutes
     # Catches late-breaking lineup news and social signals
     scheduler.add_job(
         scheduled_half_hourly_social_sync,

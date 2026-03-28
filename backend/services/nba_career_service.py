@@ -44,7 +44,14 @@ def _fetch_career_stats_sync(player_name: str) -> Optional[Dict]:
     Synchronously fetch career stats from NBA API.
     
     This is called in a thread pool to avoid blocking the event loop.
+    
+    Error Handling:
+    - JSON decode errors ("char 0"): Graceful skip with warning
+    - Timeout errors: Graceful skip with warning
+    - Player not found: Returns None silently
     """
+    import json
+    
     try:
         from nba_api.stats.static import players
         from nba_api.stats.endpoints import playercareerstats
@@ -69,9 +76,21 @@ def _fetch_career_stats_sync(player_name: str) -> Optional[Dict]:
         
         time.sleep(NBA_API_DELAY)  # Rate limiting
         
-        # Fetch career stats
-        career = playercareerstats.PlayerCareerStats(player_id=player_id)
-        totals_df = career.career_totals_regular_season.get_data_frame()
+        # Fetch career stats with enhanced error handling
+        try:
+            career = playercareerstats.PlayerCareerStats(player_id=player_id)
+            totals_df = career.career_totals_regular_season.get_data_frame()
+        except json.JSONDecodeError as jde:
+            # Handle "char 0" JSON decode errors - NBA API returns invalid JSON
+            logger.warning(f"[NBA_API] JSON decode error for {player_name} (char {jde.pos}): {jde.msg}")
+            return None
+        except Exception as api_err:
+            # Handle other API errors (timeout, connection, etc.)
+            err_str = str(api_err).lower()
+            if "timeout" in err_str or "connection" in err_str or "expecting value" in err_str:
+                logger.warning(f"[NBA_API] API error for {player_name} (graceful skip): {api_err}")
+                return None
+            raise  # Re-raise unexpected errors
         
         if totals_df.empty:
             logger.debug(f"[NBA_API] No career totals for: {player_name}")
@@ -99,7 +118,16 @@ def _fetch_career_stats_sync(player_name: str) -> Optional[Dict]:
         logger.info(f"[NBA_API] Fetched career stats for {player_name}: {stats['career_pts']:,} PTS")
         return stats
         
+    except json.JSONDecodeError as jde:
+        # Catch any JSON errors that slip through
+        logger.warning(f"[NBA_API] JSON error for {player_name} (graceful skip): char {jde.pos}")
+        return None
     except Exception as e:
+        # Log but don't crash the sync pipeline
+        err_str = str(e).lower()
+        if "json" in err_str or "decode" in err_str or "char 0" in err_str:
+            logger.warning(f"[NBA_API] Parse error for {player_name} (graceful skip): {e}")
+            return None
         logger.error(f"[NBA_API] Error fetching {player_name}: {e}")
         return None
 

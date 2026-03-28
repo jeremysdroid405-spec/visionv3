@@ -1076,30 +1076,35 @@ async def get_cached_player(player_name: str):
             except Exception as e:
                 logger.warning(f"[PLAYER_DETAIL] Blowout risk calculation failed: {e}")
             
-            # Generate AI Vision Summary using Gemini - for ALL featured props with intel_suite
-            # Summary is tied to the Intel Suite, not badges
-            try:
-                vision_service = get_vision_service()
-                ai_summary = await vision_service.generate_pick_summary(
-                    player_name=pname,
-                    stat_type=stat_type,
-                    line=line,
-                    season_avg=season_avg or l10_avg or l5_avg,
-                    h10_rate=l10_hit_rate * 100 if l10_hit_rate and l10_hit_rate <= 1 else l10_hit_rate or 0,
-                    badges=badges,  # May be empty, that's ok
-                    opponent=opp_abbr,
-                    is_demon=is_demon,
-                    is_goblin=is_goblin,
-                    dvp_rank=dvp_rank,  # Pass DvP rank (1-30)
-                    dvp_friction=friction_level,  # Pass friction level (Low/Medium/High/Elite)
-                    player_team=team_abbr  # Pass player's team for blowout risk calculation
-                )
-                if ai_summary:
-                    prop["vision_summary"] = ai_summary
-                    prop["intel_suite"]["vision_insight"]["ai_summary"] = ai_summary
-                    logger.info(f"[VISION] Generated summary for {pname} {stat_type}@{line}")
-            except Exception as e:
-                logger.error(f"[VISION] Error generating AI summary for {pname}: {e}")
+            # ========== STATIC VISION AI SUMMARY (from pre-cache) ==========
+            # Vision AI summaries are now PRE-COMPUTED by the Vision Intel Enrichment Service
+            # This endpoint serves them directly from MongoDB - NO JIT Gemini calls!
+            #
+            # Pre-caching happens in:
+            # - Initial autonomous sync (after BDL sync)
+            # - Adaptive sync engine (after each sync cycle)
+            # - Scheduled jobs (hourly)
+            
+            # Check for pre-cached vision_summary in the prop
+            pre_cached_summary = prop.get("vision_summary")
+            pre_cached_intel = prop.get("intel_suite", {})
+            
+            if pre_cached_summary:
+                # Use pre-cached AI summary
+                prop["intel_suite"]["vision_insight"]["ai_summary"] = pre_cached_summary
+                prop["intel_suite"]["vision_insight"]["source"] = "pre_cached"
+                logger.debug(f"[VISION] Served pre-cached summary for {pname} {stat_type}@{line}")
+            elif pre_cached_intel.get("vision_insight", {}).get("ai_summary"):
+                # Summary was cached in intel_suite
+                prop["vision_summary"] = pre_cached_intel["vision_insight"]["ai_summary"]
+                prop["intel_suite"]["vision_insight"]["source"] = "pre_cached"
+                logger.debug(f"[VISION] Served pre-cached intel_suite summary for {pname} {stat_type}@{line}")
+            else:
+                # No pre-cached summary - return without AI summary (don't block on JIT call)
+                # The Vision Intel Enrichment Service will populate it on next sync
+                prop["intel_suite"]["vision_insight"]["ai_summary"] = None
+                prop["intel_suite"]["vision_insight"]["source"] = "pending_enrichment"
+                logger.debug(f"[VISION] No pre-cached summary for {pname} {stat_type}@{line} - will enrich on next sync")
         
         # Add advanced stats to player object (for Vision Intel Suite header)
         master_hub = engine.picks_getter_service.master_hub

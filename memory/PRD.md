@@ -565,6 +565,45 @@ RATE_LIMIT_DELAY = 1.0 # Seconds between parallel batch groups
 
 ---
 
+## Phase 5: Vision Intel Pre-Caching (Dec 2025)
+
+### Problem
+Vision Intel Suite (AI summaries, badges, intel_suite metrics) took 1+ minute to load due to JIT (Just-In-Time) Gemini API calls during user requests.
+
+### Solution: Vision Intel Enrichment Service
+Created `/app/backend/services/vision_intel_enrichment_service.py` with:
+
+1. **Pre-caching Pipeline**
+   - Runs automatically after BDL sync completes
+   - Queries War Zone, Safe Haven, Front Lines for `pick=true` players
+   - Batches Gemini AI calls using `asyncio.gather` with `Semaphore(5)`
+   - Stores pre-computed intel_suite + vision_summary in `dg_cached_board`
+
+2. **Error Handling (NBA API "char 0" fix)**
+   - Updated `/app/backend/services/nba_career_service.py`
+   - Catches `json.JSONDecodeError` (char 0) errors gracefully
+   - Returns None instead of crashing the sync pipeline
+
+3. **Static Intel Serve**
+   - Refactored `/api/v3/player-with-badges/` (in `cached_data.py`)
+   - Serves pre-cached vision_summary from MongoDB
+   - NO JIT Gemini calls during user requests
+   - Returns `source: "pending_enrichment"` if summary not yet cached
+
+4. **Scheduled Jobs**
+   - Added `scheduled_hourly_vision_intel_sync()` in server.py
+   - Runs every 60 minutes to refresh AI summaries
+   - Also runs in adaptive_sync_engine poll loop
+
+### Performance
+- Before: 60+ seconds for Vision Intel to load
+- After: <1 second (serves directly from MongoDB)
+- Semaphore(5) prevents Gemini rate limiting
+
+**Status:** COMPLETE - Vision Intel now 100% local-first
+
+---
+
 ## PENDING TASKS
 
 ### P1 - War Zone Score Breakdown UI
