@@ -251,18 +251,7 @@ const LiveScoresTicker = memo(() => {
                   isFinal ? 'bg-red-500/30 text-red-400 border-red-500/30' :
                   'bg-amber-500/30 text-amber-300 border-amber-500/30'
                 }`}>
-                  {(() => {
-                    const status = game.status?.toUpperCase() || '';
-                    // Remove duplicate quarter (e.g., "Q4\nQ4\n8:17" -> "Q4\n8:17")
-                    const lines = status.split('\n').filter(Boolean);
-                    const seen = new Set();
-                    const unique = lines.filter(line => {
-                      if (seen.has(line)) return false;
-                      seen.add(line);
-                      return true;
-                    });
-                    return unique.join('\n');
-                  })()}
+                  {isLive ? `${game.period}\n${game.game_clock}` : (game.status?.toUpperCase() || game.period)}
                 </Badge>
               </div>
             );
