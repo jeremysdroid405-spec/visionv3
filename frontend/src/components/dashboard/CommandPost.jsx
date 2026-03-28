@@ -226,10 +226,21 @@ const CommandPost = memo(({ isOpen, onClose, pendingLeg, onPendingLegProcessed }
   // ==================== STRICT CONFLICT ENGINE ====================
   // Check if a player already exists in legs (BLOCK duplicate players entirely)
   const isPlayerInLegs = useCallback((playerId, playerName) => {
-    return legs.some(leg => 
-      leg.player_id === playerId || 
-      leg.player_name?.toLowerCase() === playerName?.toLowerCase()
-    );
+    // Must have either a valid playerId OR playerName to check
+    if (!playerId && !playerName) return false;
+    
+    return legs.some(leg => {
+      // Check by player_id (only if both are truthy)
+      if (playerId && leg.player_id && leg.player_id === playerId) {
+        return true;
+      }
+      // Check by player_name (case-insensitive)
+      if (playerName && leg.player_name && 
+          leg.player_name.toLowerCase() === playerName.toLowerCase()) {
+        return true;
+      }
+      return false;
+    });
   }, [legs]);
 
   // Process incoming pendingLeg from Quick-Add
@@ -309,6 +320,8 @@ const CommandPost = memo(({ isOpen, onClose, pendingLeg, onPendingLegProcessed }
 
   // PIPE 2: Fetch player profile via usePlayerProfile hook
   const fetchProfile = useCallback((player) => {
+    // Clear previous profile to avoid stale data conflicts
+    setSelectedProfile(null);
     setProfileLoading(true);
     setProfilePlayerName(player.player_name);
   }, []);
@@ -317,9 +330,13 @@ const CommandPost = memo(({ isOpen, onClose, pendingLeg, onPendingLegProcessed }
   const addLegFromLine = useCallback((line) => {
     if (!selectedProfile || !line) return;
     
+    // Use the player info from selectedProfile for this specific add
+    const playerName = selectedProfile.player_name;
+    const playerId = selectedProfile.player_id;
+    
     // STRICT CONFLICT CHECK: Block if player already exists
-    if (isPlayerInLegs(selectedProfile.player_id, selectedProfile.player_name)) {
-      toast.error(`Conflict: ${selectedProfile.player_name} is already in your Command Hub`, {
+    if (isPlayerInLegs(playerId, playerName)) {
+      toast.error(`Conflict: ${playerName} is already in your Command Hub`, {
         description: 'Remove the existing prop first to add a different one.',
         icon: <Ban className="w-4 h-4" />,
         duration: 4000,
@@ -328,8 +345,8 @@ const CommandPost = memo(({ isOpen, onClose, pendingLeg, onPendingLegProcessed }
     }
     
     const newLeg = {
-      player_name: selectedProfile.player_name,
-      player_id: selectedProfile.player_id,
+      player_name: playerName,
+      player_id: playerId,
       stat_type: line.stat_type,
       line: line.line,
       direction: line.direction || 'over',
