@@ -848,11 +848,11 @@ export const PlayerDetailPage = ({ playerName, playerData = null, onBack, highli
                    selectedVisionProp.intel_suite.blowout_risk.risk_level !== 'UNKNOWN' && (
                     <div className={`border rounded-lg p-4 ${
                       selectedVisionProp.intel_suite.blowout_risk.risk_level === 'HIGH'
-                        ? 'bg-gradient-to-r from-red-950/50 to-zinc-900 border-red-500/50'
+                        ? 'bg-gradient-to-r from-red-950/50 to-zinc-900 border-red-500/50 blowout-pulse-high'
                         : selectedVisionProp.intel_suite.blowout_risk.risk_level === 'MEDIUM'
-                          ? 'bg-gradient-to-r from-orange-950/50 to-zinc-900 border-orange-500/40'
+                          ? 'bg-gradient-to-r from-orange-950/50 to-zinc-900 border-orange-500/40 blowout-pulse-medium'
                           : 'bg-zinc-800/50 border-zinc-700'
-                    }`}>
+                    }`} data-testid="blowout-risk-warning">
                       <h3 className={`text-sm font-bold mb-2 flex items-center gap-2 ${
                         selectedVisionProp.intel_suite.blowout_risk.risk_level === 'HIGH'
                           ? 'text-red-400'

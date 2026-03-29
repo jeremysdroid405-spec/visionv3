@@ -54,7 +54,7 @@ class IntelSuiteCalculator:
         Calculate full Intel Suite metrics for a Radar Pick.
         
         Returns:
-            intel_suite dict with all 5 advanced metrics
+            intel_suite dict with all 6 advanced metrics (including blowout_risk)
         """
         # Get player data from master hub
         player = await self.master_hub.find_one(
@@ -80,12 +80,16 @@ class IntelSuiteCalculator:
             usage_ripple, matchup_dvp, pace_delta, stability_index, board_pick
         )
         
+        # Calculate blowout risk if we have team/opponent info
+        blowout_risk = await self._calculate_blowout_risk(team, opponent)
+        
         return {
             "usage_ripple": usage_ripple,
             "matchup_dvp": matchup_dvp,
             "pace_delta": pace_delta,
             "stability_index": stability_index,
             "vision_insight": vision_insight,
+            "blowout_risk": blowout_risk,
             "calculated_at": datetime.now(timezone.utc).isoformat()
         }
     
@@ -357,6 +361,47 @@ class IntelSuiteCalculator:
             "consistency": consistency,
             "variance_level": "Low" if stability_score >= 70 else "Medium" if stability_score >= 45 else "High"
         }
+    
+    async def _calculate_blowout_risk(
+        self,
+        team: Optional[str],
+        opponent: Optional[str]
+    ) -> Dict[str, Any]:
+        """
+        Calculate blowout risk based on team standings differential.
+        Uses StandingsService for accurate win percentage comparisons.
+        
+        Returns:
+            {
+                "risk_level": "HIGH" | "MEDIUM" | "LOW" | "NONE" | "UNKNOWN",
+                "risk_reason": str,
+                "player_team_record": "45-27",
+                "opponent_team_record": "20-52",
+                "win_pct_diff": 0.35,
+                "favored_team": "LAL",
+                "warning": str or None
+            }
+        """
+        # Return default if no team data
+        if not team or not opponent:
+            return {
+                "risk_level": "UNKNOWN",
+                "risk_reason": "Team or opponent data unavailable",
+                "warning": None
+            }
+        
+        try:
+            # Use StandingsService to calculate blowout risk
+            from services.standings_service import StandingsService
+            blowout_data = await StandingsService.calculate_blowout_risk(team, opponent)
+            return blowout_data
+        except Exception as e:
+            logger.warning(f"[INTEL] Blowout risk calculation failed: {e}")
+            return {
+                "risk_level": "UNKNOWN",
+                "risk_reason": f"Error calculating blowout risk: {str(e)}",
+                "warning": None
+            }
     
     def _generate_vision_insight(
         self,

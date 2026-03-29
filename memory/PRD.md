@@ -3,7 +3,35 @@
 ## Overview
 PropVision is a sports analytics platform for NBA player props, providing data-driven insights for betting decisions.
 
-## Latest Update (2026-03-29): Front Lines Vision Intel Fix
+## Latest Update (2026-03-29): Blowout Warning Feature Fix + Pulse Animation
+
+### Problem
+The Blowout Risk warning wasn't displaying in the Vision Intel Suite modal. The `blowout_risk` data was not being included in the `intel_suite` object.
+
+### Root Cause
+The `IntelSuiteCalculator.calculate_intel_suite()` method was not calling the `StandingsService.calculate_blowout_risk()` function to populate the blowout risk data.
+
+### Fixes Applied
+1. **`/app/backend/services/intel_suite_calculator.py`**:
+   - Added `_calculate_blowout_risk()` method that calls `StandingsService.calculate_blowout_risk()`
+   - Added `blowout_risk` to the returned intel_suite object
+
+2. **`/app/frontend/src/App.css`**:
+   - Added `blowout-pulse-high` animation (1.5s aggressive red pulse for HIGH risk)
+   - Added `blowout-pulse-medium` animation (2s subtle orange pulse for MEDIUM risk)
+
+3. **`/app/frontend/src/components/dashboard/PlayerDetailPage.jsx`**:
+   - Applied pulse animation classes to the blowout warning container
+   - Added `data-testid="blowout-risk-warning"` for testing
+
+### Verification
+- Donovan Clingan (POR vs WAS): Shows HIGH RISK with pulsing red warning, team records 37-38 vs 17-56
+- Tyler Herro (MIA): Shows HIGH RISK warning
+- Players without blowout risk don't display the warning section
+
+---
+
+## Previous Update (2026-03-29): Front Lines Vision Intel Fix
 
 ### Problem
 Front Lines picks were showing as "vision shell" in the Detail View - no badges, AI summary, or intel_suite data was displaying despite being enriched by the Board Intelligence Service.
