@@ -29,11 +29,11 @@ function App() {
           />
           <BrowserRouter>
             <Routes>
-              {/* Auth page - public */}
+              {/* Auth page - public landing page */}
+              <Route path="/" element={<Auth />} />
               <Route path="/auth" element={<Auth />} />
               
               {/* Protected routes - require login */}
-              <Route path="/" element={<Navigate to="/dashboard" replace />} />
               <Route 
                 path="/dashboard" 
                 element={
