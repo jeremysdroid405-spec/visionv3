@@ -2966,7 +2966,8 @@ class PicksGetterService:
                     "intel_suite": "$props.intel_suite",
                     "is_vision_enriched": "$props.is_vision_enriched",
                     "vision_score": "$props.vision_score",
-                    "board": "$props.board"
+                    "board": "$props.board",
+                    "context_badges": 1
                 }},
                 {"$sort": {"vision_score": -1, "h10_rate": -1, "combined_score": -1}},
                 {"$limit": 100}
@@ -3060,7 +3061,8 @@ class PicksGetterService:
                     "intel_suite": "$props.intel_suite",
                     "is_vision_enriched": "$props.is_vision_enriched",
                     "vision_score": "$props.vision_score",
-                    "board": "$props.board"
+                    "board": "$props.board",
+                    "context_badges": 1
                 }},
                 {"$sort": {"vision_score": -1, "h10_rate": -1, "combined_score": -1}},
                 {"$limit": 100}
@@ -3157,7 +3159,9 @@ class PicksGetterService:
                     "intel_suite": "$props.intel_suite",
                     "is_vision_enriched": "$props.is_vision_enriched",
                     "vision_score": "$props.vision_score",
-                    "board": "$props.board"
+                    "board": "$props.board",
+                    "context_badges": 1,
+                    "active_badges": "$props.active_badges"
                 }},
                 {"$sort": {"vision_score": -1, "h10_rate": -1, "combined_score": -1}},
                 {"$limit": 100}

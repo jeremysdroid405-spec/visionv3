@@ -428,7 +428,7 @@ async def _fetch_all_board_eligible_props(cached_board, now_iso: str) -> List[Di
             "is_demon": "$props.is_demon",
             "is_goblin": "$props.is_goblin",
             "active_badges": "$props.active_badges",
-            "context_badges": "$props.context_badges",
+            "context_badges": 1,  # Player-level field, not prop-level
             "price": "$props.price"
         }},
         {"$sort": {"h10_rate": -1, "combined_score": -1}}
