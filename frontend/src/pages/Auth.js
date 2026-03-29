@@ -130,6 +130,11 @@ export const Auth = () => {
   const [scanSpeed, setScanSpeed] = useState(3);
   const formRef = useRef(null);
   
+  // Countdown state
+  const [showCountdown, setShowCountdown] = useState(false);
+  const [countdown, setCountdown] = useState(3);
+  const [countdownMessage, setCountdownMessage] = useState('');
+  
   // Simulated live stats
   const [demonCount, setDemonCount] = useState(14);
   const [goblinCount, setGoblinCount] = useState(8);
@@ -145,10 +150,20 @@ export const Auth = () => {
   const from = location.state?.from?.pathname || '/v3';
 
   useEffect(() => {
-    if (isAuthenticated) {
+    if (isAuthenticated && !showCountdown) {
       navigate(from, { replace: true });
     }
-  }, [isAuthenticated, navigate, from]);
+  }, [isAuthenticated, navigate, from, showCountdown]);
+  
+  // Countdown effect
+  useEffect(() => {
+    if (showCountdown && countdown > 0) {
+      const timer = setTimeout(() => setCountdown(prev => prev - 1), 1000);
+      return () => clearTimeout(timer);
+    } else if (showCountdown && countdown === 0) {
+      navigate('/v3', { replace: true });
+    }
+  }, [showCountdown, countdown, navigate]);
 
   // Simulate live target updates
   useEffect(() => {
@@ -172,6 +187,13 @@ export const Auth = () => {
     setFormData(prev => ({ ...prev, [field]: value }));
     setIsTyping(value.length > 0);
   };
+  
+  // Start countdown animation
+  const startCountdown = (message) => {
+    setCountdownMessage(message);
+    setCountdown(3);
+    setShowCountdown(true);
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -185,7 +207,7 @@ export const Auth = () => {
         setTimeout(() => {
           document.body.classList.remove('flash-silver');
           toast.success('SYSTEM ACTIVATED');
-          navigate(from, { replace: true });
+          startCountdown('OPERATOR AUTHENTICATED');
         }, 300);
       } else {
         toast.error(result.error);
@@ -201,6 +223,11 @@ export const Auth = () => {
       }
     }
   };
+  
+  const handleDemoMode = () => {
+    enterDemoMode();
+    startCountdown('DEMO MODE ACTIVATED');
+  };
 
   const scrollToForm = () => {
     setTimeout(() => {
@@ -210,6 +237,60 @@ export const Auth = () => {
 
   return (
     <div className="min-h-screen bg-black overflow-x-hidden">
+      {/* Countdown Overlay */}
+      {showCountdown && (
+        <div className="fixed inset-0 z-[100] bg-black flex items-center justify-center">
+          <div className="text-center">
+            {/* Scanning rings */}
+            <div className="relative w-48 h-48 sm:w-64 sm:h-64 mx-auto mb-8">
+              {/* Outer ring */}
+              <div className="absolute inset-0 rounded-full border-2 border-emerald-500/30 animate-ping" style={{ animationDuration: '2s' }} />
+              {/* Middle ring */}
+              <div className="absolute inset-4 rounded-full border border-emerald-500/50 animate-pulse" />
+              {/* Inner ring with countdown */}
+              <div className="absolute inset-8 rounded-full border-2 border-emerald-500 flex items-center justify-center bg-zinc-950/80">
+                <span className="text-7xl sm:text-8xl font-black text-emerald-400 font-mono animate-pulse">
+                  {countdown}
+                </span>
+              </div>
+              {/* Rotating scanner line */}
+              <div 
+                className="absolute inset-0 rounded-full"
+                style={{
+                  background: 'conic-gradient(from 0deg, transparent 0deg, rgba(16, 185, 129, 0.3) 30deg, transparent 60deg)',
+                  animation: 'spin 1.5s linear infinite'
+                }}
+              />
+            </div>
+            
+            {/* Status message */}
+            <div className="space-y-3">
+              <p className="text-emerald-400 font-mono text-sm sm:text-base tracking-[0.3em] animate-pulse">
+                {countdownMessage}
+              </p>
+              <div className="flex items-center justify-center gap-2 text-zinc-500 font-mono text-xs">
+                <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                <span>INITIALIZING PROPVISION AI</span>
+              </div>
+              <div className="flex items-center justify-center gap-4 text-zinc-600 font-mono text-[10px] mt-4">
+                <span className="flex items-center gap-1">
+                  <Cpu className="w-3 h-3" />
+                  LOADING INTEL
+                </span>
+                <span className="flex items-center gap-1">
+                  <Radio className="w-3 h-3 animate-pulse text-emerald-500" />
+                  SYNCING FEEDS
+                </span>
+                <span className="flex items-center gap-1">
+                  <Target className="w-3 h-3" />
+                  SCANNING TARGETS
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      
       {/* CSS Animations */}
       <style>{`
         @keyframes scan-down {
@@ -558,11 +639,8 @@ export const Auth = () => {
           {/* Demo Mode */}
           <div className="mt-8 text-center">
             <Button
-              onClick={() => {
-                enterDemoMode();
-                navigate('/v3');
-              }}
-              data-testid="try-demo-btn"
+              onClick={handleDemoMode}
+              data-testid="demo-mode-btn"
               variant="ghost"
               className="text-zinc-600 hover:text-white hover:bg-zinc-900/50 transition-all font-mono text-xs"
             >
