@@ -1146,22 +1146,62 @@ const Dashboard = () => {
                   <p className="text-zinc-600 text-xs mt-1">Try searching by full name or team</p>
                 </div>
               ) : (
-                <div className="max-h-64 overflow-y-auto">
-                  {searchResults.map((player) => (
-                    <div 
-                      key={player.id || player.player_name}
-                      className="flex items-center gap-3 p-3 hover:bg-zinc-800/50 cursor-pointer border-b border-zinc-800/50 last:border-0"
-                      onClick={() => handlePlayerClick(player.player_name)}
-                      data-testid={`player-row-${player.player_name?.replace(/\s/g, '-')}`}
-                    >
-                      <PlayerHeadshot playerName={player.player_name} team={player.team} photoUrl={player.photo_url || player.headshot_url} size="md" />
-                      <div className="flex-1 min-w-0">
-                        <div className="font-medium text-white truncate">{player.player_name}</div>
-                        <div className="text-xs text-zinc-500">{player.team_name || player.team} • {player.position}</div>
+                <div className="max-h-[400px] overflow-y-auto p-2 space-y-2">
+                  {searchResults.map((player) => {
+                    // Check if player is on any board with Vision Intel
+                    const boardPick = [...radarPicks, ...vaultPicks, ...frontLinesPicks].find(
+                      pick => pick.player_name?.toLowerCase() === player.player_name?.toLowerCase()
+                    );
+                    
+                    // If player has a board pick, show their Vision card
+                    if (boardPick) {
+                      const board = boardPick.board || (radarPicks.includes(boardPick) ? 'war_zone' : vaultPicks.includes(boardPick) ? 'safe_haven' : 'front_lines');
+                      const sectionColor = board === 'war_zone' ? 'red' : board === 'safe_haven' ? 'green' : 'yellow';
+                      const forceTheme = board === 'front_lines' ? 'FRONT_LINE' : undefined;
+                      
+                      return (
+                        <div key={player.id || player.player_name} className="relative">
+                          {/* Vision Badge */}
+                          <div className="absolute -top-1 -right-1 z-10 px-2 py-0.5 text-[9px] font-black bg-gradient-to-r from-amber-500 to-yellow-400 text-black rounded-full flex items-center gap-1 shadow-lg">
+                            <Eye className="w-3 h-3" />
+                            VISION
+                          </div>
+                          <UniversalPlayerCard 
+                            player={boardPick} 
+                            onClick={() => {
+                              const lineValue = boardPick.line;
+                              const highlightKey = `${boardPick.stat_type}|${lineValue}|${boardPick.direction || 'Over'}`;
+                              const type = board === 'safe_haven' ? 'goblin' : board === 'war_zone' ? 'demon' : 'demon';
+                              handlePlayerClick(boardPick.player_name, highlightKey, type);
+                            }}
+                            onQuickAdd={handleQuickAdd}
+                            showStats={true}
+                            showProps={false}
+                            mode="compact"
+                            sectionColor={sectionColor}
+                            forceTheme={forceTheme}
+                          />
+                        </div>
+                      );
+                    }
+                    
+                    // Regular player row (no Vision Intel)
+                    return (
+                      <div 
+                        key={player.id || player.player_name}
+                        className="flex items-center gap-3 p-3 hover:bg-zinc-800/50 cursor-pointer border border-zinc-800/50 rounded-lg"
+                        onClick={() => handlePlayerClick(player.player_name)}
+                        data-testid={`player-row-${player.player_name?.replace(/\s/g, '-')}`}
+                      >
+                        <PlayerHeadshot playerName={player.player_name} team={player.team} photoUrl={player.photo_url || player.headshot_url} size="md" />
+                        <div className="flex-1 min-w-0">
+                          <div className="font-medium text-white truncate">{player.player_name}</div>
+                          <div className="text-xs text-zinc-500">{player.team_name || player.team} • {player.position}</div>
+                        </div>
+                        <ChevronRight className="w-4 h-4 text-zinc-500" />
                       </div>
-                      <ChevronRight className="w-4 h-4 text-zinc-500" />
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>

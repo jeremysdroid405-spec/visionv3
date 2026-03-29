@@ -416,21 +416,31 @@ export const PlayerDetailPage = ({ playerName, playerData = null, onBack, highli
   }, [highlightInfo, player]);
   
   // Check if prop is highlighted (Vision Pick)
+  // A prop is highlighted if:
+  // 1. It matches the highlightInfo passed from board click, OR
+  // 2. It has intel_suite (is Vision-enriched from any board)
   const isHighlightedProp = useCallback((prop) => {
-    if (!highlightInfo) return false;
+    // Check if prop has Vision Intel (from any board)
+    const hasVisionIntel = prop.intel_suite && prop.is_vision_enriched;
     
-    // Use stat_type_extracted directly (PTS, REB, AST, etc.)
-    const propStatType = normalizeStatType(prop.stat_type_extracted || prop.stat_type || '');
-    const highlightStatType = normalizeStatType(highlightInfo.statType || '');
+    // If highlightInfo is provided, check for exact match
+    if (highlightInfo) {
+      // Use stat_type_extracted directly (PTS, REB, AST, etc.)
+      const propStatType = normalizeStatType(prop.stat_type_extracted || prop.stat_type || '');
+      const highlightStatType = normalizeStatType(highlightInfo.statType || '');
+      
+      const propDirection = (prop.direction || 'over').toLowerCase();
+      const highlightDirection = (highlightInfo.direction || 'over').toLowerCase();
+      
+      const statMatch = propStatType.toUpperCase() === highlightStatType.toUpperCase();
+      const lineMatch = Math.abs((prop.line || 0) - highlightInfo.line) < 0.1;
+      const directionMatch = propDirection === highlightDirection;
+      
+      return statMatch && lineMatch && directionMatch;
+    }
     
-    const propDirection = (prop.direction || 'over').toLowerCase();
-    const highlightDirection = (highlightInfo.direction || 'over').toLowerCase();
-    
-    const statMatch = propStatType.toUpperCase() === highlightStatType.toUpperCase();
-    const lineMatch = Math.abs((prop.line || 0) - highlightInfo.line) < 0.1;
-    const directionMatch = propDirection === highlightDirection;
-    
-    return statMatch && lineMatch && directionMatch;
+    // If no highlightInfo but prop has Vision Intel, highlight it
+    return hasVisionIntel;
   }, [highlightInfo]);
   
   // Count demons/goblins
