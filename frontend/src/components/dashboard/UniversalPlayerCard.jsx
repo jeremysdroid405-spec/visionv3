@@ -219,13 +219,16 @@ LockedOverlay.displayName = 'LockedOverlay';
 
 /**
  * Determine the highest tier from all props
- * Priority: DEMON > FRONT_LINE > GOBLIN > STANDARD
- * FRONT_LINE gets yellow card theme, but icons are still DEMON/GOBLIN colored
+ * Priority: DEMON > GOBLIN > STANDARD
+ * Used for card theme coloring
+ * Note: Front Lines board overrides this to use FRONT_LINE theme (yellow)
  */
-const getHighestTier = (props) => {
+const getHighestTier = (props, forceTheme = null) => {
+  // Allow parent to force a specific theme (e.g., FRONT_LINE for Front Lines board)
+  if (forceTheme) return forceTheme;
+  
   if (!props || props.length === 0) return 'STANDARD';
   if (props.some(p => p.is_demon || p.tier_label === 'DEMON')) return 'DEMON';
-  if (props.some(p => p.tier_label === 'FRONT_LINE' || p.front_line_qualified)) return 'FRONT_LINE';
   if (props.some(p => p.is_goblin || p.tier_label === 'GOBLIN')) return 'GOBLIN';
   return 'STANDARD';
 };
@@ -484,7 +487,8 @@ const UniversalPlayerCard = memo(({
   onQuickAdd,
   showStats = true,
   showProps = true,
-  sectionColor = 'green'  // Section color for locked overlay
+  sectionColor = 'green',  // Section color for locked overlay
+  forceTheme = null        // Force a specific theme (e.g., 'FRONT_LINE' for yellow cards)
 }) => {
   const [isExpanded, setIsExpanded] = useState(mode === 'full');
   
@@ -542,9 +546,9 @@ const UniversalPlayerCard = memo(({
   const allProps = propsProp || player.props || [];
   const hasProps = allProps.length > 0;
   
-  // Determine card theme from HIGHEST tier
-  const highestTier = getHighestTier(allProps.length > 0 ? allProps : [player]);
-  const theme = TIER_THEMES[highestTier];
+  // Determine card theme - use forceTheme if provided, otherwise detect from tier
+  const highestTier = forceTheme || getHighestTier(allProps.length > 0 ? allProps : [player]);
+  const theme = TIER_THEMES[highestTier] || TIER_THEMES.STANDARD;
   const TierIcon = theme.Icon;
   
   // ==================== MINI MODE ====================

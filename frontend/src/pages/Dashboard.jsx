@@ -488,7 +488,7 @@ const FrontLinesSection = memo(({ picks, onPickClick, onQuickAdd, isLoading }) =
         <SectionHeader 
           icon={null}
           title="FRONT LINES"
-          subtitle="Balanced demon/goblin mix for tactical plays"
+          subtitle="Sharp money +EV plays"
           badgeText="NO GAMES"
           badgeColor="zinc"
         />
@@ -506,7 +506,7 @@ const FrontLinesSection = memo(({ picks, onPickClick, onQuickAdd, isLoading }) =
       <SectionHeader 
         icon={null}
         title="FRONT LINES"
-        subtitle="Balanced demon/goblin mix for tactical plays"
+        subtitle="Sharp money +EV plays"
         badgeText={`${Math.min(10, picks.length)} PICKS`}
         badgeColor="amber"
       />
@@ -521,6 +521,7 @@ const FrontLinesSection = memo(({ picks, onPickClick, onQuickAdd, isLoading }) =
               showProps={false}
               mode="compact"
               sectionColor="yellow"
+              forceTheme="FRONT_LINE"
             />
           </div>
         ))}
