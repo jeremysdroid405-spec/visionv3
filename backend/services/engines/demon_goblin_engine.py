@@ -731,7 +731,8 @@ class DemonGoblinEngine:
             extract_stat_type=self._extract_stat_type,
             enrich_props_with_stats=self._enrich_props_with_stats,
             build_cached_board=self._build_cached_board,
-            sync_master_roster=self.sync_master_roster
+            sync_master_roster=self.sync_master_roster,
+            fetch_sharp_book_odds=self.fetch_sharp_book_odds  # Phase 2
         )
     
     async def _enrich_props_with_stats(self, props: List[Dict], player_names: List[str]) -> List[Dict]:
@@ -891,6 +892,10 @@ class DemonGoblinEngine:
     async def fetch_prizepicks_odds(self, event_id: str, event_info: Dict) -> Dict[str, Any]:
         """PROXY: Fetch PrizePicks odds - delegated to OddsApiService."""
         return await self.odds_api_service.fetch_prizepicks_odds(event_id, event_info)
+    
+    async def fetch_sharp_book_odds(self, event_id: str, event_info: Dict) -> Dict[str, Any]:
+        """PROXY: Fetch Sharp Book odds (Pinnacle/DraftKings) - delegated to OddsApiService."""
+        return await self.odds_api_service.fetch_sharp_book_odds(event_id, event_info)
     
     async def fetch_standard_odds(self, event_id: str, event_info: Dict) -> Dict[str, Any]:
         """PROXY: Fetch standard odds - delegated to OddsApiService."""

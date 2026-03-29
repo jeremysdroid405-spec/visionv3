@@ -180,10 +180,21 @@ class SharpEdgeCalculator:
     
     async def fetch_pinnacle_odds(self, event_id: str, event_info: Dict) -> Dict[str, Any]:
         """
-        Fetch Pinnacle odds for an event.
+        Fetch Pinnacle/DraftKings odds for an event.
         
-        Uses caching to avoid excessive API calls.
+        First checks the MongoDB cache (populated during sync),
+        then falls back to API if needed.
         """
+        # Check MongoDB cache first (populated by sync)
+        cached = await self.db.dg_odds_cache.find_one({
+            "event_id": event_id,
+            "source": "sharp_books"
+        })
+        
+        if cached and cached.get("bookmakers"):
+            logger.debug(f"[SHARP] Using cached sharp_books for {event_id}")
+            return cached
+        
         # Check in-memory cache
         if event_id in self._pinnacle_cache:
             cache_data = self._pinnacle_cache[event_id]
@@ -192,6 +203,7 @@ class SharpEdgeCalculator:
                 if age < self._cache_ttl_minutes:
                     return cache_data
         
+        # Fallback to API (for games not in cache)
         if not ODDS_API_KEY:
             logger.warning("[SHARP] No ODDS_API_KEY configured")
             return {}
@@ -200,9 +212,9 @@ class SharpEdgeCalculator:
             url = f"{ODDS_API_BASE}/sports/basketball_nba/events/{event_id}/odds"
             params = {
                 "apiKey": ODDS_API_KEY,
-                "regions": "us",  # Pinnacle is in US region
+                "regions": "us",
                 "markets": ",".join(SHARP_MARKETS),
-                "bookmakers": "pinnacle",
+                "bookmakers": "pinnacle,draftkings",
                 "oddsFormat": "american"
             }
             
@@ -220,37 +232,46 @@ class SharpEdgeCalculator:
                     for market in bm.get("markets", []):
                         prop_count += len(market.get("outcomes", []))
                 
-                logger.info(f"[SHARP] Pinnacle: {event_info.get('away_team', '')} @ {event_info.get('home_team', '')}: {prop_count} props")
+                if prop_count > 0:
+                    logger.info(f"[SHARP] Pinnacle/DK: {event_info.get('away_team', '')} @ {event_info.get('home_team', '')}: {prop_count} props")
                 return data
             elif response.status_code == 422:
-                logger.debug(f"[SHARP] No Pinnacle props for {event_id}")
+                logger.debug(f"[SHARP] No sharp book props for {event_id}")
                 return {}
             else:
-                logger.warning(f"[SHARP] Pinnacle API returned {response.status_code}")
+                logger.warning(f"[SHARP] Sharp books API returned {response.status_code}")
                 return {}
                 
         except Exception as e:
-            logger.error(f"[SHARP] Error fetching Pinnacle odds: {e}")
+            logger.error(f"[SHARP] Error fetching sharp book odds: {e}")
             return {}
     
     def extract_pinnacle_lines(self, pinnacle_data: Dict) -> Dict[str, Dict]:
         """
-        Extract Pinnacle lines into a lookup dict.
+        Extract Pinnacle and DraftKings lines into a lookup dict.
         Uses normalized player names (via player_id when available).
+        
+        Prioritizes Pinnacle lines over DraftKings when both exist.
         
         Returns:
             {
                 "normalized_name|stat_type|line|direction": {
                     "odds": -150,
                     "line": 24.5,
+                    "bookmaker": "pinnacle" or "draftkings",
                     ...
                 }
             }
         """
         lines = {}
         
-        for bookmaker in pinnacle_data.get("bookmakers", []):
-            if bookmaker.get("key") != "pinnacle":
+        # Process bookmakers in priority order (Pinnacle first)
+        bookmakers = pinnacle_data.get("bookmakers", [])
+        bookmakers_sorted = sorted(bookmakers, key=lambda b: 0 if b.get("key") == "pinnacle" else 1)
+        
+        for bookmaker in bookmakers_sorted:
+            bm_key = bookmaker.get("key", "")
+            if bm_key not in ["pinnacle", "draftkings"]:
                 continue
             
             for market in bookmaker.get("markets", []):
@@ -269,15 +290,18 @@ class SharpEdgeCalculator:
                     stat_type = self._market_to_stat_type(market_key)
                     
                     key = f"{normalized_name}|{stat_type}|{line}|{direction}"
-                    lines[key] = {
-                        "player_name": player_name,
-                        "normalized_name": normalized_name,
-                        "stat_type": stat_type,
-                        "line": line,
-                        "direction": direction,
-                        "odds": odds,
-                        "bookmaker": "pinnacle"
-                    }
+                    
+                    # Only add if not already present (Pinnacle takes priority)
+                    if key not in lines:
+                        lines[key] = {
+                            "player_name": player_name,
+                            "normalized_name": normalized_name,
+                            "stat_type": stat_type,
+                            "line": line,
+                            "direction": direction,
+                            "odds": odds,
+                            "bookmaker": bm_key
+                        }
         
         return lines
     
@@ -355,6 +379,13 @@ class SharpEdgeCalculator:
                 
                 # Create lookup key
                 lookup_key = f"{normalized_name}|{stat_type}|{line}|{direction}"
+                
+                # Debug first few non-matches
+                if lookup_key not in pinnacle_lines and len(sharp_edges) < 3:
+                    # Show what keys ARE in pinnacle_lines for this player
+                    matching_keys = [k for k in pinnacle_lines.keys() if normalized_name in k.lower()]
+                    if matching_keys:
+                        logger.debug(f"[SHARP] Near miss for {player_name}: prop={lookup_key}, pinnacle has: {matching_keys[:3]}")
                 
                 if lookup_key in pinnacle_lines:
                     pinnacle_line = pinnacle_lines[lookup_key]

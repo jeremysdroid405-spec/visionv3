@@ -271,9 +271,11 @@ async def _select_front_lines_sharp(
     """
     Select Front Lines using Sharp Sniper logic.
     
-    Prioritizes +EV plays where Pinnacle is heavily juiced.
+    Prioritizes +EV plays where Pinnacle/DraftKings is heavily juiced.
     - Primary threshold: +3.5% edge
     - Fallback threshold: +2.0% if < 10 players
+    
+    Uses sharp_books data cached during sync (no additional API calls).
     """
     logger.info("[BOARD_INTEL] Running Sharp Sniper for Front Lines...")
     
@@ -288,27 +290,31 @@ async def _select_front_lines_sharp(
     
     try:
         if sharp_calculator:
-            # Build events from odds_cache for Pinnacle comparison
+            # Get unique event_ids from candidates
             event_ids = set()
             for prop in candidates:
                 eid = prop.get("game_id") or prop.get("event_id")
                 if eid:
                     event_ids.add(eid)
             
+            # Build events list from cached data
             events = []
             for event_id in event_ids:
-                odds_doc = await db.dg_odds_cache.find_one({"event_id": event_id})
-                if odds_doc:
+                # Check if we have sharp_books cached for this event
+                cached = await db.dg_odds_cache.find_one({
+                    "event_id": event_id,
+                    "source": "sharp_books"
+                })
+                if cached:
                     events.append({
                         "id": event_id,
-                        "home_team": odds_doc.get("home_team", ""),
-                        "away_team": odds_doc.get("away_team", ""),
-                        "commence_time": odds_doc.get("commence_time", "")
+                        "home_team": cached.get("home_team", ""),
+                        "away_team": cached.get("away_team", "")
                     })
             
-            logger.info(f"[SHARP_SNIPER] Found {len(events)} events, {len(candidates)} candidates")
+            logger.info(f"[SHARP_SNIPER] {len(events)} events with sharp_books cached, {len(candidates)} candidates")
             
-            # Calculate sharp edges
+            # Calculate sharp edges using cached data
             sharp_edges = await sharp_calculator.calculate_sharp_edges_for_props(candidates, events)
             logger.info(f"[SHARP_SNIPER] Calculated {len(sharp_edges)} sharp edges")
             

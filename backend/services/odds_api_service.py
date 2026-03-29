@@ -256,6 +256,98 @@ class OddsApiService:
         
         return {}
     
+    async def fetch_sharp_book_odds(
+        self,
+        event_id: str,
+        event_info: Dict,
+        cache_ttl_minutes: int = 10
+    ) -> Dict[str, Any]:
+        """
+        Fetch Sharp Book odds (Pinnacle + DraftKings) for arbitrage detection.
+        
+        These lines are used by the Sharp Edge Calculator to find +EV opportunities
+        where Vegas smart money disagrees with PrizePicks pricing.
+        
+        Returns:
+            Combined odds data from Pinnacle and DraftKings
+        """
+        try:
+            # CHECK CACHE FIRST
+            cached = await self.odds_cache.find_one({
+                "event_id": event_id, 
+                "source": "sharp_books"
+            })
+            
+            if cached:
+                fetched_at = cached.get("fetched_at")
+                if fetched_at:
+                    if isinstance(fetched_at, str):
+                        fetched_at = datetime.fromisoformat(fetched_at.replace("Z", "+00:00"))
+                    
+                    age_minutes = (datetime.now(timezone.utc) - fetched_at).total_seconds() / 60
+                    
+                    if age_minutes < cache_ttl_minutes:
+                        logger.debug(f"  [SHARP_BOOKS] Using cached data for {event_id} (age: {age_minutes:.1f}m)")
+                        return cached
+            
+            # FETCH FROM API
+            url = f"{ODDS_API_BASE}/sports/basketball_nba/events/{event_id}/odds"
+            params = {
+                "apiKey": ODDS_API_KEY,
+                "regions": "us",
+                "markets": ",".join(PRIZEPICKS_STANDARD_MARKETS),
+                "bookmakers": "pinnacle,draftkings",
+                "oddsFormat": "american"
+            }
+            
+            client = await self._get_client()
+            response = await client.get(url, params=params)
+            
+            if response.status_code == 200:
+                odds_data = response.json()
+                odds_data["event_id"] = event_id
+                odds_data["fetched_at"] = datetime.now(timezone.utc).isoformat()
+                odds_data["source"] = "sharp_books"
+                
+                # Count props by bookmaker
+                pinnacle_count = 0
+                draftkings_count = 0
+                
+                for bm in odds_data.get("bookmakers", []):
+                    bm_key = bm.get("key", "")
+                    for market in bm.get("markets", []):
+                        outcome_count = len(market.get("outcomes", []))
+                        if bm_key == "pinnacle":
+                            pinnacle_count += outcome_count
+                        elif bm_key == "draftkings":
+                            draftkings_count += outcome_count
+                
+                if pinnacle_count > 0 or draftkings_count > 0:
+                    logger.info(
+                        f"  [SHARP_BOOKS] {event_info.get('away_team', '')} @ "
+                        f"{event_info.get('home_team', '')}: "
+                        f"Pinnacle={pinnacle_count}, DraftKings={draftkings_count}"
+                    )
+                    
+                    # Store in cache
+                    await self.odds_cache.update_one(
+                        {"event_id": event_id, "source": "sharp_books"},
+                        {"$set": odds_data},
+                        upsert=True
+                    )
+                
+                return odds_data
+                
+            elif response.status_code == 422:
+                logger.debug(f"  [SHARP_BOOKS] No props available for {event_id}")
+            else:
+                logger.warning(f"  [SHARP_BOOKS] API returned {response.status_code} for {event_id}")
+                        
+        except Exception as e:
+            logger.error(f"[ODDS_API] Sharp books fetch error for {event_id}: {e}")
+        
+        return {}
+    
     def extract_prizepicks_props(
         self,
         odds_data: Dict[str, Any]

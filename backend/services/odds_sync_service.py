@@ -48,7 +48,8 @@ class OddsSyncService:
         extract_stat_type: Callable,
         enrich_props_with_stats: Callable,
         build_cached_board: Callable,
-        sync_master_roster: Callable
+        sync_master_roster: Callable,
+        fetch_sharp_book_odds: Callable = None  # Phase 2: Sharp books (Pinnacle/DraftKings)
     ) -> Dict[str, Any]:
         """
         THE ONLY API CALL - Single batch fetch to MongoDB.
@@ -142,6 +143,26 @@ class OddsSyncService:
                         
                         for prop in props:
                             seen_players_raw.add(prop.get("player_name"))
+                
+                # Phase 2: Fetch Sharp Book odds (Pinnacle/DraftKings) in parallel
+                # These are used for arbitrage detection in the Sharp Sniper engine
+                if fetch_sharp_book_odds:
+                    logger.info(f"[SYNC_ODDS_TO_MONGO] Fetching Sharp Book odds (Pinnacle/DraftKings)...")
+                    
+                    async def fetch_sharp_odds(event_id: str, event_info: dict):
+                        try:
+                            return await fetch_sharp_book_odds(event_id, event_info)
+                        except Exception as e:
+                            logger.debug(f"[SHARP_BOOKS] Error fetching {event_id}: {e}")
+                            return None
+                    
+                    sharp_tasks = [fetch_sharp_odds(eid, einfo) for eid, einfo in valid_events]
+                    sharp_results = await asyncio.gather(*sharp_tasks, return_exceptions=True)
+                    
+                    sharp_count = sum(1 for r in sharp_results if r and not isinstance(r, Exception) and r.get("bookmakers"))
+                    results["api_calls_made"] += len(valid_events)
+                    results["sharp_books_fetched"] = sharp_count
+                    logger.info(f"[SYNC_ODDS_TO_MONGO] Sharp Books: {sharp_count}/{len(valid_events)} events with data")
             
             # Step 3: Normalize all props
             logger.info(f"[NORMALIZATION] Processing {len(all_props)} props...")
