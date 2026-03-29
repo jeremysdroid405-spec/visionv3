@@ -2997,13 +2997,12 @@ class PicksGetterService:
                         gs = _get_game_status(p.get("commence_time"))
                         p["is_locked"] = gs.get("is_locked", False)
                         p["game_status"] = gs.get("status", "upcoming")
-                        p["_needs_enrichment"] = True  # Mark for on-demand enrichment
                         unique.append(p)
                         if len(unique) >= 10:
                             break
             
-            # On-demand enrich any fallback picks missing intel_suite/vision_summary
-            await self._enrich_fallback_picks_batch(unique)
+            # NO on-demand enrichment - serve from cache only for instant response
+            # Background worker handles enrichment separately
             
             await self._enrich_picks_with_photos(unique)
             logger.info(f"[WAR_ZONE_STATIC] Served {len(unique)} picks")
@@ -3092,13 +3091,12 @@ class PicksGetterService:
                         gs = _get_game_status(p.get("commence_time"))
                         p["is_locked"] = gs.get("is_locked", False)
                         p["game_status"] = gs.get("status", "upcoming")
-                        p["_needs_enrichment"] = True  # Mark for on-demand enrichment
                         unique.append(p)
                         if len(unique) >= 10:
                             break
             
-            # On-demand enrich any fallback picks missing intel_suite/vision_summary
-            await self._enrich_fallback_picks_batch(unique)
+            # NO on-demand enrichment - serve from cache only for instant response
+            # Background worker handles enrichment separately
             
             await self._enrich_picks_with_photos(unique)
             logger.info(f"[SAFE_HAVEN_STATIC] Served {len(unique)} picks")
@@ -3190,13 +3188,12 @@ class PicksGetterService:
                         gs = _get_game_status(p.get("commence_time"))
                         p["is_locked"] = gs.get("is_locked", False)
                         p["game_status"] = gs.get("status", "upcoming")
-                        p["_needs_enrichment"] = True  # Mark for on-demand enrichment
                         unique.append(p)
                         if len(unique) >= 10:
                             break
             
-            # On-demand enrich any fallback picks missing intel_suite/vision_summary
-            await self._enrich_fallback_picks_batch(unique)
+            # NO on-demand enrichment - serve from cache only for instant response
+            # Background worker handles enrichment separately
             
             await self._enrich_picks_with_photos(unique)
             logger.info(f"[FRONT_LINES_STATIC] Served {len(unique)} picks")

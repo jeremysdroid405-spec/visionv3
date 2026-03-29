@@ -128,25 +128,47 @@ async def get_board_membership(player_name: str) -> Dict[str, str]:
 
 
 @router.post("/v3/trigger-board-enrichment")
-async def trigger_board_enrichment():
+async def trigger_board_enrichment(background: bool = Query(False, description="Run in background (fire-and-forget)")):
     """
     Manual trigger for Board Intelligence Enrichment.
     
     Runs the AI-Weighted Waterfall selection and full Intel Suite enrichment
     for all 3 boards (Safe Haven, Front Lines, War Zone).
     
+    Args:
+        background: If True, starts enrichment and returns immediately without waiting.
+    
     Use this to force refresh the board intelligence after a sync.
     """
+    import asyncio
+    
     try:
         engine = get_engine()
         from services.board_intelligence_service import run_board_intelligence_enrichment
-        result = await run_board_intelligence_enrichment(engine.db)
         
-        return {
-            "success": True,
-            "message": "Board Intelligence Enrichment completed",
-            "result": result
-        }
+        if background:
+            # Fire-and-forget mode - returns immediately
+            async def _run_bg():
+                try:
+                    result = await run_board_intelligence_enrichment(engine.db)
+                    logger.info(f"[TRIGGER_ENRICHMENT_BG] Completed: {result.get('enriched', 0)} enriched, {result.get('errors', 0)} errors")
+                except Exception as e:
+                    logger.error(f"[TRIGGER_ENRICHMENT_BG] Failed: {e}")
+            
+            asyncio.create_task(_run_bg())
+            return {
+                "success": True,
+                "message": "Board Intelligence Enrichment started in background",
+                "mode": "background"
+            }
+        else:
+            # Synchronous mode - waits for completion
+            result = await run_board_intelligence_enrichment(engine.db)
+            return {
+                "success": True,
+                "message": "Board Intelligence Enrichment completed",
+                "result": result
+            }
     except Exception as e:
         logger.error(f"[TRIGGER_ENRICHMENT] Error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -174,6 +196,88 @@ async def get_static_shell():
         "players": shell.get("players", []),
         "trending": shell.get("trending", [])
     }
+
+
+@router.get("/v3/enrichment-status")
+async def get_enrichment_status():
+    """
+    Check the status of board intelligence enrichment cache.
+    
+    Returns:
+        - Total enriched players count
+        - Last enrichment timestamp
+        - Players per board (Safe Haven, Front Lines, War Zone)
+        - Cache staleness status
+    
+    Use this to verify background enrichment is working.
+    """
+    try:
+        engine = get_engine()
+        now = datetime.now(timezone.utc)
+        now_iso = now.isoformat().replace('+00:00', 'Z')
+        
+        # Count enriched players per board
+        pipeline = [
+            {"$unwind": "$props"},
+            {"$match": {
+                "props.commence_time": {"$gt": now_iso},
+                "props.is_vision_enriched": True
+            }},
+            {"$group": {
+                "_id": "$props.board",
+                "count": {"$sum": 1}
+            }}
+        ]
+        board_counts = {}
+        async for doc in engine.db.dg_cached_board.aggregate(pipeline):
+            board_counts[doc["_id"] or "unassigned"] = doc["count"]
+        
+        # Get latest enrichment timestamp
+        latest = await engine.db.dg_cached_board.find_one(
+            {"props.vision_enriched_at": {"$exists": True}},
+            {"props.vision_enriched_at": 1, "_id": 0},
+            sort=[("props.vision_enriched_at", -1)]
+        )
+        last_enriched_at = None
+        if latest and latest.get("props"):
+            for prop in latest.get("props", []):
+                if prop.get("vision_enriched_at"):
+                    last_enriched_at = prop["vision_enriched_at"]
+                    break
+        
+        # Total enriched (all time)
+        total_enriched = sum(board_counts.values())
+        
+        # Check staleness (>5 min since last enrichment)
+        is_stale = True
+        if last_enriched_at:
+            try:
+                last_dt = datetime.fromisoformat(last_enriched_at.replace('Z', '+00:00'))
+                age_seconds = (now - last_dt).total_seconds()
+                is_stale = age_seconds > 300  # >5 min is stale
+            except:
+                pass
+        
+        return {
+            "status": "healthy" if total_enriched >= 30 and not is_stale else "degraded",
+            "total_enriched": total_enriched,
+            "last_enriched_at": last_enriched_at,
+            "boards": {
+                "safe_haven": board_counts.get("safe_haven", 0),
+                "front_lines": board_counts.get("front_lines", 0),
+                "war_zone": board_counts.get("war_zone", 0),
+                "unassigned": board_counts.get("unassigned", 0)
+            },
+            "is_stale": is_stale,
+            "timestamp": now.isoformat()
+        }
+    except Exception as e:
+        logger.error(f"[ENRICHMENT_STATUS] Error: {e}")
+        return {
+            "status": "error",
+            "error": str(e),
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        }
 
 
 @router.get("/v3/live-lines")
