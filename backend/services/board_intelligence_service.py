@@ -168,6 +168,7 @@ async def _fetch_all_board_eligible_props(cached_board, now_iso: str) -> List[Di
             "team": 1,
             "photo_url": 1,
             "position": 1,
+            "opponent": 1,  # Opponent is at player level, not prop level
             "stat_type": "$props.stat_type_extracted",
             "stat_type_raw": "$props.stat_type",
             "line": "$props.line",
@@ -178,7 +179,6 @@ async def _fetch_all_board_eligible_props(cached_board, now_iso: str) -> List[Di
             "l10_avg": "$props.l10_avg",
             "season_avg": "$props.season_avg",
             "combined_score": "$props.combined_score",
-            "opponent": "$props.opponent",
             "dvp_rank": "$props.dvp_rank",
             "game_id": "$props.game_id",
             "commence_time": "$props.commence_time",
@@ -303,8 +303,14 @@ async def _enrich_pick_full(
             intel_suite["vision_score"] = pick.get("vision_score", 0)
             intel_suite["vision_score_breakdown"] = pick.get("vision_score_breakdown", {})
             
+            # Extract DVP data from intel_suite for AI summary
+            matchup_dvp = intel_suite.get("matchup_dvp", {})
+            dvp_rank = matchup_dvp.get("rank")  # Key is "rank" not "dvp_rank"
+            dvp_friction = matchup_dvp.get("friction_level")
+            
             # ========== AI VISION SUMMARY (Gemini) ==========
-            ai_summary = await _generate_ai_summary(pick)
+            # Pass the DVP data we just calculated to the AI summary generator
+            ai_summary = await _generate_ai_summary(pick, dvp_rank=dvp_rank, dvp_friction=dvp_friction)
             
             # Merge AI summary into vision_insight
             if intel_suite.get("vision_insight"):
@@ -336,7 +342,7 @@ async def _enrich_pick_full(
         return False
 
 
-async def _generate_ai_summary(pick: Dict) -> Optional[str]:
+async def _generate_ai_summary(pick: Dict, dvp_rank: int = None, dvp_friction: str = None) -> Optional[str]:
     """Generate AI summary using Gemini Vision Summary Service."""
     try:
         from services.vision_summary_service import VisionSummaryService
@@ -356,8 +362,8 @@ async def _generate_ai_summary(pick: Dict) -> Optional[str]:
             opponent=pick.get("opponent", ""),
             is_demon=is_demon,
             is_goblin=is_goblin,
-            dvp_rank=pick.get("dvp_rank"),
-            dvp_friction=None,
+            dvp_rank=dvp_rank or pick.get("dvp_rank"),
+            dvp_friction=dvp_friction,
             player_team=pick.get("team", "")
         )
     except Exception as e:

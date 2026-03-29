@@ -129,7 +129,7 @@ class VisionSummaryService:
                     pick_reasoning = f"Based on recent form, targeting {direction} {line} {stat_type}."
             
             # Build DvP context for the AI
-            if dvp_rank and dvp_friction:
+            if dvp_rank is not None:
                 if dvp_rank <= 5:
                     dvp_context = f"ELITE DEFENSE - {opponent} ranks #{dvp_rank} vs {stat_type} (Top 5 - very tough matchup)"
                 elif dvp_rank <= 10:
@@ -141,7 +141,7 @@ class VisionSummaryService:
                 else:
                     dvp_context = f"POOR DEFENSE - {opponent} ranks #{dvp_rank} vs {stat_type} (Bottom 5 - very favorable matchup)"
             else:
-                dvp_context = f"Matchup data unavailable for {opponent}"
+                dvp_context = f"Matchup data unavailable for {opponent}" if opponent else "No opponent data available"
             
             # Calculate blowout risk if we have team data
             blowout_context = "Game competitiveness data unavailable"

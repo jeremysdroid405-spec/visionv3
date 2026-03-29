@@ -179,10 +179,20 @@ class IntelSuiteCalculator:
         }
         position_label = stat_to_position.get(stat_type, "Players")
         
-        # If no DvP data, estimate based on team
+        # If no DvP data in board_pick, try to look it up from DVP service
+        if dvp_rank is None and opponent:
+            try:
+                from services.dvp_service import get_dvp_rank, get_dvp_rank_color
+                dvp_rank = get_dvp_rank(opponent, stat_type)
+                dvp_color = get_dvp_rank_color(dvp_rank)
+                logger.debug(f"[DVP_LOOKUP] {opponent} vs {stat_type}: rank={dvp_rank}")
+            except Exception as e:
+                logger.debug(f"[DVP_LOOKUP] Failed for {opponent}: {e}")
+                dvp_rank = None
+        
+        # If still no DvP data, use team-based estimates
         if dvp_rank is None:
-            # Default to middle-of-pack if no data
-            dvp_rank = 15
+            dvp_rank = 15  # Default to middle-of-pack
             if opponent:
                 # Some hardcoded team tendencies for demo
                 weak_defenses = ["WAS", "POR", "DET", "SAS", "CHA"]
