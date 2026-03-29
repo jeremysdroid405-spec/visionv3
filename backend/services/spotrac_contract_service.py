@@ -33,6 +33,7 @@ CONTRACT_YEAR_EXCLUSIONS = {
     "tyrese haliburton",        # Signed max extension
     "paolo banchero",           # Signed extension
     "jalen brunson",            # Signed extension with Knicks
+    "chet holmgren",            # Signed extension with Thunder
 }
 
 # Spotrac URLs
