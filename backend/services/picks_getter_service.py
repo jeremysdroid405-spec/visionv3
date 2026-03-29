@@ -2775,6 +2775,149 @@ class PicksGetterService:
     # STATIC CACHE METHODS - Simple MongoDB reads, NO JIT calculations
     # ============================================================================
     
+    async def _enrich_fallback_pick_on_demand(self, pick: Dict) -> Dict:
+        """
+        On-demand enrichment for fallback picks that weren't pre-enriched.
+        
+        When a game ends and new players fill board slots, they may not have
+        intel_suite or vision_summary. This method enriches them JIT.
+        """
+        # Skip if already enriched
+        if pick.get("is_vision_enriched") and pick.get("intel_suite") and pick.get("vision_summary"):
+            return pick
+        
+        try:
+            player_name = pick.get("player_name", "")
+            stat_type = pick.get("stat_type", "PTS")
+            line = pick.get("line", 0)
+            opponent = pick.get("opponent", "")
+            
+            logger.info(f"[ON_DEMAND_ENRICH] Enriching fallback pick: {player_name} {stat_type}@{line}")
+            
+            # Calculate Intel Suite
+            from services.intel_suite_calculator import IntelSuiteCalculator
+            intel_calculator = IntelSuiteCalculator(self.db)
+            
+            intel_suite = await intel_calculator.calculate_intel_suite(
+                player_name=player_name,
+                stat_type=stat_type,
+                line=line,
+                direction=pick.get("direction", "over"),
+                opponent=opponent,
+                board_pick=pick
+            )
+            
+            # Calculate Vision Score
+            from services.vision_score_calculator import calculate_vision_score
+            score_result = calculate_vision_score(
+                h10_rate=pick.get("h10_rate", 0),
+                dvp_rank=intel_suite.get("matchup_dvp", {}).get("rank"),
+                active_badges=pick.get("active_badges", []),
+                is_demon=pick.get("is_demon", False),
+                is_goblin=pick.get("is_goblin", False)
+            )
+            
+            intel_suite["vision_score"] = score_result["vision_score"]
+            intel_suite["vision_score_breakdown"] = score_result
+            
+            # Generate AI Summary
+            from services.vision_summary_service import VisionSummaryService
+            vision_service = VisionSummaryService()
+            
+            dvp_rank = intel_suite.get("matchup_dvp", {}).get("rank")
+            dvp_friction = intel_suite.get("matchup_dvp", {}).get("friction_level")
+            
+            ai_summary = await vision_service.generate_pick_summary(
+                player_name=player_name,
+                stat_type=stat_type,
+                line=line,
+                season_avg=pick.get("season_avg") or pick.get("l5_avg") or 0,
+                h10_rate=pick.get("h10_rate", 0) or 0,
+                badges=pick.get("active_badges") or pick.get("context_badges") or [],
+                opponent=opponent,
+                is_demon=pick.get("is_demon", False),
+                is_goblin=pick.get("is_goblin", False),
+                dvp_rank=dvp_rank,
+                dvp_friction=dvp_friction,
+                player_team=pick.get("team", "")
+            )
+            
+            # Update pick with enriched data
+            pick["intel_suite"] = intel_suite
+            pick["vision_summary"] = ai_summary
+            pick["vision_score"] = score_result["vision_score"]
+            pick["is_vision_enriched"] = True
+            
+            # Also persist to MongoDB for future reads
+            await self._persist_fallback_enrichment(pick)
+            
+            logger.info(f"[ON_DEMAND_ENRICH] Completed: {player_name} (score={score_result['vision_score']}, summary={'Yes' if ai_summary else 'No'})")
+            
+        except Exception as e:
+            logger.error(f"[ON_DEMAND_ENRICH] Error enriching {pick.get('player_name')}: {e}")
+        
+        return pick
+    
+    async def _persist_fallback_enrichment(self, pick: Dict):
+        """Persist on-demand enrichment to MongoDB for future reads."""
+        try:
+            player_name = pick.get("player_name")
+            stat_type = pick.get("stat_type", "")
+            line = pick.get("line", 0)
+            
+            # Find the prop index
+            player = await self.cached_board.find_one(
+                {"player_name": player_name},
+                {"_id": 0, "props": 1}
+            )
+            if not player:
+                return
+            
+            for i, prop in enumerate(player.get("props", [])):
+                prop_stat = prop.get("stat_type_extracted") or prop.get("stat_type", "")
+                prop_line = prop.get("line", 0)
+                if prop_stat == stat_type and abs(prop_line - line) < 0.1:
+                    await self.cached_board.update_one(
+                        {"player_name": player_name},
+                        {"$set": {
+                            f"props.{i}.intel_suite": pick.get("intel_suite"),
+                            f"props.{i}.vision_summary": pick.get("vision_summary"),
+                            f"props.{i}.vision_score": pick.get("vision_score"),
+                            f"props.{i}.is_vision_enriched": True,
+                            f"props.{i}.vision_enriched_at": datetime.now(timezone.utc).isoformat()
+                        }}
+                    )
+                    logger.debug(f"[ON_DEMAND_ENRICH] Persisted to MongoDB: {player_name} idx={i}")
+                    break
+        except Exception as e:
+            logger.warning(f"[ON_DEMAND_ENRICH] Persist failed for {pick.get('player_name')}: {e}")
+    
+    async def _enrich_fallback_picks_batch(self, picks: List[Dict]) -> List[Dict]:
+        """
+        Batch enrich fallback picks that are missing intel_suite/vision_summary.
+        Runs concurrently with a semaphore to avoid rate limiting.
+        """
+        import asyncio
+        
+        needs_enrichment = [p for p in picks if not (p.get("is_vision_enriched") and p.get("intel_suite") and p.get("vision_summary"))]
+        
+        if not needs_enrichment:
+            return picks
+        
+        logger.info(f"[ON_DEMAND_ENRICH] {len(needs_enrichment)} picks need enrichment")
+        
+        # Limit concurrency to avoid rate limiting
+        semaphore = asyncio.Semaphore(2)
+        
+        async def enrich_with_semaphore(pick):
+            async with semaphore:
+                return await self._enrich_fallback_pick_on_demand(pick)
+        
+        # Enrich all in parallel (limited by semaphore)
+        await asyncio.gather(*[enrich_with_semaphore(p) for p in needs_enrichment], return_exceptions=True)
+        
+        return picks
+
     async def get_war_zone_static(self) -> Dict[str, Any]:
         """
         STATIC ROUTE: War Zone (Demons with L10 HR >= 50%).
@@ -2854,9 +2997,13 @@ class PicksGetterService:
                         gs = _get_game_status(p.get("commence_time"))
                         p["is_locked"] = gs.get("is_locked", False)
                         p["game_status"] = gs.get("status", "upcoming")
+                        p["_needs_enrichment"] = True  # Mark for on-demand enrichment
                         unique.append(p)
                         if len(unique) >= 10:
                             break
+            
+            # On-demand enrich any fallback picks missing intel_suite/vision_summary
+            await self._enrich_fallback_picks_batch(unique)
             
             await self._enrich_picks_with_photos(unique)
             logger.info(f"[WAR_ZONE_STATIC] Served {len(unique)} picks")
@@ -2945,9 +3092,13 @@ class PicksGetterService:
                         gs = _get_game_status(p.get("commence_time"))
                         p["is_locked"] = gs.get("is_locked", False)
                         p["game_status"] = gs.get("status", "upcoming")
+                        p["_needs_enrichment"] = True  # Mark for on-demand enrichment
                         unique.append(p)
                         if len(unique) >= 10:
                             break
+            
+            # On-demand enrich any fallback picks missing intel_suite/vision_summary
+            await self._enrich_fallback_picks_batch(unique)
             
             await self._enrich_picks_with_photos(unique)
             logger.info(f"[SAFE_HAVEN_STATIC] Served {len(unique)} picks")
@@ -3039,9 +3190,13 @@ class PicksGetterService:
                         gs = _get_game_status(p.get("commence_time"))
                         p["is_locked"] = gs.get("is_locked", False)
                         p["game_status"] = gs.get("status", "upcoming")
+                        p["_needs_enrichment"] = True  # Mark for on-demand enrichment
                         unique.append(p)
                         if len(unique) >= 10:
                             break
+            
+            # On-demand enrich any fallback picks missing intel_suite/vision_summary
+            await self._enrich_fallback_picks_batch(unique)
             
             await self._enrich_picks_with_photos(unique)
             logger.info(f"[FRONT_LINES_STATIC] Served {len(unique)} picks")
