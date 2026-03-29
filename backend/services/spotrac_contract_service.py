@@ -21,19 +21,38 @@ logger = logging.getLogger(__name__)
 # Players who are confirmed NOT in contract years (signed extensions, etc.)
 # This overrides any Spotrac data that may be stale/incorrect
 CONTRACT_YEAR_EXCLUSIONS = {
-    # Star max extensions signed
-    "shai gilgeous-alexander",  # Signed 5-year $207M extension in 2024
-    "jayson tatum",             # Signed supermax extension
-    "luka doncic",              # Signed supermax extension  
-    "anthony edwards",          # Signed max extension
-    "evan mobley",              # Signed max extension
-    "scottie barnes",           # Signed max extension
-    "cade cunningham",          # Signed max extension
-    "franz wagner",             # Signed max extension
-    "tyrese haliburton",        # Signed max extension
-    "paolo banchero",           # Signed extension
-    "jalen brunson",            # Signed extension with Knicks
-    "chet holmgren",            # Signed extension with Thunder
+    # 2022 Draft Class - Rookie Scale Extensions (2024-25)
+    "paolo banchero",           # Magic - 5yr max extension
+    "chet holmgren",            # Thunder - 5yr max extension
+    "jabari smith jr",          # Rockets - 5yr extension
+    "jabari smith",             # Rockets - alternate name
+    "jalen williams",           # Thunder - 5yr extension
+    "keegan murray",            # Kings - 5yr $140M extension
+    
+    # Supermax / Max Extensions
+    "shai gilgeous-alexander",  # Thunder - 4yr $284M supermax
+    "jayson tatum",             # Celtics - supermax extension
+    "luka doncic",              # Lakers - 3yr max extension
+    "anthony edwards",          # Wolves - max extension
+    
+    # Veteran Extensions 2024-2025
+    "de'aaron fox",             # Spurs - 4yr $222M max
+    "jaren jackson jr",         # Grizzlies - 4yr $205M
+    "mikal bridges",            # Knicks - 4yr $150M
+    "evan mobley",              # Cavs - max extension
+    "scottie barnes",           # Raptors - max extension
+    "cade cunningham",          # Pistons - max extension
+    "franz wagner",             # Magic - max extension
+    "tyrese haliburton",        # Pacers - max extension
+    "jalen brunson",            # Knicks - extension
+    "toumani camara",           # Blazers - 4yr $81M
+    "herbert jones",            # Pelicans - 3yr $67.6M
+    "daniel gafford",           # Mavs - 3yr $54.4M
+    "aaron nesmith",            # Pacers - 2yr $40.4M
+    "nikola jovic",             # Heat - 4yr $62.4M
+    "a.j. green",               # Bucks - 4yr $45M
+    "aj green",                 # Bucks - alternate name
+    "gui santos",               # Warriors - 3yr $15M
 }
 
 # Spotrac URLs
