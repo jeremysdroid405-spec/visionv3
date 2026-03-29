@@ -302,12 +302,66 @@ const BreakingNewsTicker = memo(() => {
   );
 });
 
-// Swipe Container
-const SwipeContainer = memo(({ children, className = '' }) => (
-  <div className={`swipe-container ${className}`}>
-    {children}
-  </div>
-));
+// Swipe Container with mobile swipe indicator
+const SwipeContainer = memo(({ children, className = '', itemCount = 0 }) => {
+  const containerRef = React.useRef(null);
+  const [activeIndex, setActiveIndex] = React.useState(0);
+  const [showIndicator, setShowIndicator] = React.useState(true);
+  const childCount = itemCount || React.Children.count(children);
+  
+  // Handle scroll to update active index
+  const handleScroll = React.useCallback(() => {
+    if (!containerRef.current) return;
+    const container = containerRef.current;
+    const scrollLeft = container.scrollLeft;
+    const itemWidth = container.clientWidth;
+    const newIndex = Math.round(scrollLeft / itemWidth);
+    setActiveIndex(newIndex);
+    // Hide indicator after first scroll
+    if (scrollLeft > 10) setShowIndicator(false);
+  }, []);
+  
+  React.useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    container.addEventListener('scroll', handleScroll, { passive: true });
+    return () => container.removeEventListener('scroll', handleScroll);
+  }, [handleScroll]);
+  
+  return (
+    <div className="relative">
+      {/* Swipe hint gradient - only on mobile */}
+      {showIndicator && childCount > 1 && (
+        <div className="sm:hidden absolute right-0 top-0 bottom-0 w-12 bg-gradient-to-l from-zinc-950 via-zinc-950/50 to-transparent z-10 pointer-events-none flex items-center justify-end pr-1">
+          <div className="flex flex-col items-center gap-1 animate-pulse">
+            <ChevronRight className="w-5 h-5 text-zinc-500" />
+            <span className="text-[8px] text-zinc-600 font-medium">SWIPE</span>
+          </div>
+        </div>
+      )}
+      
+      <div ref={containerRef} className={`swipe-container ${className}`}>
+        {children}
+      </div>
+      
+      {/* Dot indicators - only on mobile when more than 1 item */}
+      {childCount > 1 && (
+        <div className="sm:hidden flex justify-center gap-1.5 mt-2">
+          {Array.from({ length: Math.min(childCount, 10) }).map((_, idx) => (
+            <div
+              key={idx}
+              className={`h-1.5 rounded-full transition-all duration-200 ${
+                idx === activeIndex 
+                  ? 'w-4 bg-yellow-500' 
+                  : 'w-1.5 bg-zinc-700'
+              }`}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+});
 
 // War Zone Section (Demons)
 // ==================== LOADING SKELETONS ====================

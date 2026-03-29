@@ -3,7 +3,26 @@
 ## Overview
 PropVision is a sports analytics platform for NBA player props, providing data-driven insights for betting decisions.
 
-## Latest Update (2026-03-29): Blowout Warning Feature Fix + Pulse Animation
+## Latest Update (2026-03-29): Mobile Swipe Indicator
+
+### Feature
+Added swipe indicators on mobile to show users they can swipe horizontally through pick sections (Safe Haven, Front Lines, War Zone, etc.).
+
+### Implementation
+1. **`/app/frontend/src/pages/Dashboard.jsx`** - Enhanced `SwipeContainer` component:
+   - Added dot pagination indicators below each section on mobile
+   - Active dot is yellow/wider, inactive dots are smaller gray circles
+   - Added "SWIPE" hint with chevron on right edge (disappears after first swipe)
+   - Tracks scroll position to update active index
+
+### Visual Design
+- Dot indicators: First dot yellow (active), others gray
+- Right edge gradient fade with "SWIPE" + chevron arrow
+- Indicators hidden on desktop (grid layout) - only visible on mobile
+
+---
+
+## Previous Update (2026-03-29): Blowout Warning Feature Fix + Pulse Animation
 
 ### Problem
 The Blowout Risk warning wasn't displaying in the Vision Intel Suite modal. The `blowout_risk` data was not being included in the `intel_suite` object.
