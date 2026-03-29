@@ -190,42 +190,58 @@ Keep it tight. No fluff. Talk like a real person, not a robot. Use {last_name}'s
             
             full_prompt = f"{system_msg}\n\n{prompt}"
             
-            # Call Gemini API with timeout - using gemini-flash-lite-latest for speed
-            try:
-                response = await asyncio.wait_for(
-                    asyncio.to_thread(
-                        client.models.generate_content,
-                        model="gemini-flash-lite-latest",  # Fast lite model for quick responses
-                        contents=full_prompt
-                    ),
-                    timeout=3.0  # 3 second timeout - should complete in <1s
-                )
-            except asyncio.TimeoutError:
-                logger.warning(f"[VISION] Timeout for {player_name} - API too slow")
-                # Open circuit breaker on timeout
-                VisionSummaryService._circuit_breaker_open = True
-                VisionSummaryService._circuit_breaker_until = datetime.now(timezone.utc) + \
-                    __import__('datetime').timedelta(seconds=VisionSummaryService._CIRCUIT_BREAKER_DURATION)
-                return None
+            # Call Gemini API with retry logic
+            max_retries = 3
+            base_timeout = 8.0  # Increased from 3s to 8s
             
-            if response and response.text:
-                # Clean up response - remove markdown formatting
-                summary = response.text.strip()
-                # Remove asterisks (bold/italic markdown)
-                summary = summary.replace("**", "").replace("*", "")
-                # Remove other common markdown
-                summary = summary.replace("__", "").replace("_", " ")
-                # Clean up any double spaces
-                while "  " in summary:
-                    summary = summary.replace("  ", " ")
-                summary = summary.strip()
-                
-                # Cache the result
-                VisionSummaryService._summary_cache[cache_key] = summary
-                VisionSummaryService._cache_timestamps[cache_key] = now
-                logger.info(f"[VISION] Cached summary for {cache_key}")
-                
-                return summary
+            for attempt in range(max_retries):
+                try:
+                    # Exponential backoff: 8s, 12s, 16s
+                    timeout = base_timeout + (attempt * 4)
+                    
+                    response = await asyncio.wait_for(
+                        asyncio.to_thread(
+                            client.models.generate_content,
+                            model="gemini-3.1-flash-lite-preview",  # Gemini 3.1 Flash Lite
+                            contents=full_prompt
+                        ),
+                        timeout=timeout
+                    )
+                    
+                    if response and response.text:
+                        # Clean up response - remove markdown formatting
+                        summary = response.text.strip()
+                        # Remove asterisks (bold/italic markdown)
+                        summary = summary.replace("**", "").replace("*", "")
+                        # Remove other common markdown
+                        summary = summary.replace("__", "").replace("_", " ")
+                        # Clean up any double spaces
+                        while "  " in summary:
+                            summary = summary.replace("  ", " ")
+                        summary = summary.strip()
+                        
+                        # Cache the result
+                        VisionSummaryService._summary_cache[cache_key] = summary
+                        VisionSummaryService._cache_timestamps[cache_key] = now
+                        logger.info(f"[VISION] Cached summary for {cache_key}")
+                        
+                        return summary
+                    
+                except asyncio.TimeoutError:
+                    if attempt < max_retries - 1:
+                        logger.warning(f"[VISION] Timeout for {player_name} (attempt {attempt + 1}/{max_retries}) - retrying...")
+                        await asyncio.sleep(1.0 * (attempt + 1))  # Brief delay before retry
+                        continue
+                    else:
+                        logger.warning(f"[VISION] Final timeout for {player_name} after {max_retries} attempts")
+                        return None
+                        
+                except Exception as e:
+                    logger.warning(f"[VISION] Error for {player_name}: {e}")
+                    if attempt < max_retries - 1:
+                        await asyncio.sleep(1.0 * (attempt + 1))
+                        continue
+                    return None
             
             return None
             

@@ -25,7 +25,7 @@ from services.intel_suite_calculator import IntelSuiteCalculator
 
 logger = logging.getLogger(__name__)
 
-GEMINI_CONCURRENT_LIMIT = 5
+GEMINI_CONCURRENT_LIMIT = 3  # Reduced from 5 to avoid rate limiting
 PLAYERS_PER_BOARD = 10
 
 

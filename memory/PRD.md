@@ -3,6 +3,21 @@
 ## Overview
 PropVision is a sports analytics platform for NBA player props, providing data-driven insights for betting decisions.
 
+## Latest Update (2026-03-29): Gemini AI Model Updated
+
+### Change
+Updated Vision AI Summary service to use `gemini-3.1-flash-lite-preview` model as requested by user.
+
+### File Changed
+- `/app/backend/services/vision_summary_service.py` - Line 205: Changed model from `gemini-2.5-flash` to `gemini-3.1-flash-lite-preview`
+
+### Verification
+- Board enrichment: 30 players enriched, 0 errors, ~17s duration
+- All 3 boards (Safe Haven, Front Lines, War Zone) have AI summaries populated
+- No 404 errors or API timeouts
+
+---
+
 ## CRITICAL FIX (2026-03-25): Anchor Classification Overhaul - PERMANENT
 
 ### Problem Summary
