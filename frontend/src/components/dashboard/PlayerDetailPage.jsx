@@ -494,35 +494,35 @@ export const PlayerDetailPage = ({ playerName, playerData = null, onBack, highli
         
         {/* Player Season Stats - Below header for cleaner mobile layout */}
         {player?.baseline_stats && (
-          <div className="flex items-center justify-center gap-4 sm:gap-6 mt-3 px-4 pb-2">
+          <div className="grid grid-cols-5 gap-2 mt-3 px-2 sm:px-4 pb-2 sm:flex sm:items-center sm:justify-center sm:gap-6">
             {player.baseline_stats.PTS?.season_avg != null && (
-              <div className="text-center">
-                <div className="text-base sm:text-lg font-bold text-white">{player.baseline_stats.PTS.season_avg.toFixed(1)}</div>
-                <div className="text-[10px] text-zinc-500">PPG</div>
+              <div className="text-center bg-zinc-800/50 rounded-lg py-2 sm:py-0 sm:bg-transparent">
+                <div className="text-xl sm:text-lg font-bold text-white">{player.baseline_stats.PTS.season_avg.toFixed(1)}</div>
+                <div className="text-[10px] sm:text-[10px] text-zinc-500 font-medium">PPG</div>
               </div>
             )}
             {player.baseline_stats.REB?.season_avg != null && (
-              <div className="text-center">
-                <div className="text-base sm:text-lg font-bold text-white">{player.baseline_stats.REB.season_avg.toFixed(1)}</div>
-                <div className="text-[10px] text-zinc-500">RPG</div>
+              <div className="text-center bg-zinc-800/50 rounded-lg py-2 sm:py-0 sm:bg-transparent">
+                <div className="text-xl sm:text-lg font-bold text-white">{player.baseline_stats.REB.season_avg.toFixed(1)}</div>
+                <div className="text-[10px] sm:text-[10px] text-zinc-500 font-medium">RPG</div>
               </div>
             )}
             {player.baseline_stats.AST?.season_avg != null && (
-              <div className="text-center">
-                <div className="text-base sm:text-lg font-bold text-white">{player.baseline_stats.AST.season_avg.toFixed(1)}</div>
-                <div className="text-[10px] text-zinc-500">APG</div>
+              <div className="text-center bg-zinc-800/50 rounded-lg py-2 sm:py-0 sm:bg-transparent">
+                <div className="text-xl sm:text-lg font-bold text-white">{player.baseline_stats.AST.season_avg.toFixed(1)}</div>
+                <div className="text-[10px] sm:text-[10px] text-zinc-500 font-medium">APG</div>
               </div>
             )}
             {player.baseline_stats.STL?.season_avg != null && (
-              <div className="text-center">
-                <div className="text-base sm:text-lg font-bold text-cyan-400">{player.baseline_stats.STL.season_avg.toFixed(1)}</div>
-                <div className="text-[10px] text-zinc-500">STL</div>
+              <div className="text-center bg-zinc-800/50 rounded-lg py-2 sm:py-0 sm:bg-transparent">
+                <div className="text-xl sm:text-lg font-bold text-cyan-400">{player.baseline_stats.STL.season_avg.toFixed(1)}</div>
+                <div className="text-[10px] sm:text-[10px] text-zinc-500 font-medium">STL</div>
               </div>
             )}
             {player.baseline_stats.BLK?.season_avg != null && (
-              <div className="text-center">
-                <div className="text-base sm:text-lg font-bold text-cyan-400">{player.baseline_stats.BLK.season_avg.toFixed(1)}</div>
-                <div className="text-[10px] text-zinc-500">BLK</div>
+              <div className="text-center bg-zinc-800/50 rounded-lg py-2 sm:py-0 sm:bg-transparent">
+                <div className="text-xl sm:text-lg font-bold text-cyan-400">{player.baseline_stats.BLK.season_avg.toFixed(1)}</div>
+                <div className="text-[10px] sm:text-[10px] text-zinc-500 font-medium">BLK</div>
               </div>
             )}
           </div>
