@@ -2340,10 +2340,13 @@ class PicksGetterService:
                 "home_team": prop.get("home_team"),
                 "away_team": prop.get("away_team"),
                 # Vision Intel Pre-Cached fields
+                "board": prop.get("board"),  # Which board this prop is featured on
                 "vision_summary": prop.get("vision_summary"),
+                "vision_score": prop.get("vision_score"),  # AI composite score
                 "is_vision_enriched": prop.get("is_vision_enriched"),
                 "vision_enriched_at": prop.get("vision_enriched_at"),
                 "intel_suite": prop.get("intel_suite"),  # Pre-built intel suite
+                "active_badges": prop.get("active_badges"),  # Badge keys
             })
         
         self._clean_object_ids(player)

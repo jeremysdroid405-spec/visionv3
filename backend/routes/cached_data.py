@@ -1028,9 +1028,14 @@ async def get_cached_player(player_name: str):
             prop["season_avg"] = season_avg
             
             # Check if THIS prop is a featured one (on any board)
+            # Method 1: Check the prop's own board field (set during sync enrichment)
+            prop_board = prop.get("board")
+            # Method 2: Check the board membership cache (from live API)
             prop_key = f"{stat_type}|{line}"
-            is_featured = prop_key in featured_props
-            featured_board = featured_props.get(prop_key, None)
+            cache_board = featured_props.get(prop_key, None)
+            # Prop is featured if it has a board assigned from EITHER source
+            is_featured = bool(prop_board and prop_board != "NONE") or bool(cache_board)
+            featured_board = prop_board or cache_board
             
             # Build hit_rates object for frontend compatibility (use actual values from data)
             prop["hit_rates"] = {

@@ -3,7 +3,35 @@
 ## Overview
 PropVision is a sports analytics platform for NBA player props, providing data-driven insights for betting decisions.
 
-## Latest Update (2026-03-29): Gemini AI Model Updated
+## Latest Update (2026-03-29): Front Lines Vision Intel Fix
+
+### Problem
+Front Lines picks were showing as "vision shell" in the Detail View - no badges, AI summary, or intel_suite data was displaying despite being enriched by the Board Intelligence Service.
+
+### Root Cause Analysis
+1. **Data Persistence Issue**: The background sync was dropping the `dg_cached_board` collection and replacing it with fresh data, which ERASED all vision intel enrichment.
+2. **Missing Field Mapping**: The `get_cached_player()` service was not including `board`, `vision_score`, and `active_badges` fields in the prop mapping.
+3. **Featured Prop Detection**: The code checked only the live board API (which changes as games lock) instead of the prop's own `board` field from the database.
+
+### Fixes Applied
+1. **`/app/backend/services/cached_board_builder_service.py`**:
+   - Added vision intel preservation logic BEFORE the atomic swap
+   - Enriched data (vision_summary, intel_suite, board, etc.) is now merged into new player data
+
+2. **`/app/backend/services/picks_getter_service.py`**:
+   - Added `board`, `vision_score`, and `active_badges` to the prop field mapping in `get_cached_player()`
+
+3. **`/app/backend/routes/cached_data.py`**:
+   - Updated featured prop detection to check BOTH the prop's `board` field AND the board membership cache
+
+### Verification
+- All 10 Front Lines picks now have `intel_suite=True` and `vision_summary` populated
+- Tyler Herro REB@4.5 shows: board=front_lines, vision_score=62.0, intel_suite with all keys
+- Vision Intel Suite modal displays: Context Badges (Milestone, Pay Day), Operational Volume, Defensive Friction, Tempo, Variance, and AI Vision Summary
+
+---
+
+## Previous Update (2026-03-29): Gemini AI Model Updated
 
 ### Change
 Updated Vision AI Summary service to use `gemini-3.1-flash-lite-preview` model as requested by user.

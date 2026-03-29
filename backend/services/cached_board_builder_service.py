@@ -258,14 +258,51 @@ class CachedBoardBuilderService:
         for idx, player in enumerate(sorted_players):
             player["rank"] = idx + 1
         
-        # SHADOW TABLE STRATEGY: Write to temp collection, then atomic swap
-        # This ensures zero-downtime during sync
+        # SHADOW TABLE STRATEGY: Write to temp collection, then merge with vision intel
+        # This ensures zero-downtime during sync AND preserves enrichment data
         try:
             # Step 1: Clear and populate temp collection
             await self.cached_board_temp.delete_many({})
             
             if sorted_players:
-                # Insert all players to temp collection in batches
+                # CRITICAL: Preserve vision intel from existing cached_board
+                # Fetch all enriched props BEFORE doing anything destructive
+                enriched_data = {}
+                async for existing in self.cached_board.find({"props.is_vision_enriched": True}, {"_id": 0}):
+                    pname = existing.get("player_name", "")
+                    enriched_data[pname] = {}
+                    for prop in existing.get("props", []):
+                        if prop.get("is_vision_enriched"):
+                            stat = prop.get("stat_type_extracted") or prop.get("stat_type", "")
+                            line = prop.get("line", 0)
+                            key = f"{stat}|{line}"
+                            enriched_data[pname][key] = {
+                                "vision_summary": prop.get("vision_summary"),
+                                "is_vision_enriched": prop.get("is_vision_enriched"),
+                                "vision_enriched_at": prop.get("vision_enriched_at"),
+                                "intel_suite": prop.get("intel_suite"),
+                                "vision_score": prop.get("vision_score"),
+                                "board": prop.get("board"),
+                                "active_badges": prop.get("active_badges"),
+                            }
+                
+                if enriched_data:
+                    logger.info(f"[CACHED_BOARD] Preserved vision intel for {len(enriched_data)} players")
+                
+                # Step 2: Merge preserved vision intel into new player data
+                for player in sorted_players:
+                    pname = player.get("player_name", "")
+                    player_enriched = enriched_data.get(pname, {})
+                    if player_enriched:
+                        for prop in player.get("props", []):
+                            stat = prop.get("stat_type_extracted") or prop.get("stat_type", "")
+                            line = prop.get("line", 0)
+                            key = f"{stat}|{line}"
+                            if key in player_enriched:
+                                # Preserve vision intel fields
+                                prop.update(player_enriched[key])
+                
+                # Step 3: Insert all players to temp collection in batches
                 batch_size = 100
                 for i in range(0, len(sorted_players), batch_size):
                     batch = sorted_players[i:i+batch_size]
@@ -273,7 +310,7 @@ class CachedBoardBuilderService:
                 
                 logger.info(f"[CACHED_BOARD] Wrote {len(sorted_players)} players to temp collection")
                 
-                # Step 2: Atomic swap using rename (if MongoDB supports it)
+                # Step 4: Atomic swap using rename (if MongoDB supports it)
                 # Otherwise, use bulk upsert to live collection
                 try:
                     # Try atomic rename (requires admin privileges)
@@ -283,10 +320,9 @@ class CachedBoardBuilderService:
                         "renameCollection": f"{self.db.name}.dg_cached_board_temp",
                         "to": f"{self.db.name}.dg_cached_board"
                     })
-                    logger.info(f"[CACHED_BOARD] Atomic swap completed - zero downtime")
+                    logger.info(f"[CACHED_BOARD] Atomic swap completed - vision intel preserved")
                 except Exception as rename_error:
                     # Fallback: bulk upsert to live collection
-                    # IMPORTANT: Preserve Vision Intel fields that were enriched
                     logger.warning(f"[CACHED_BOARD] Atomic rename failed, using bulk upsert: {rename_error}")
                     
                     from pymongo import UpdateOne
