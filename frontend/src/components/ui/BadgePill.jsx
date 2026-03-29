@@ -16,7 +16,7 @@
  * - deep_water: Elimination/playoff game 5+
  * - distraction: Trade rumors/drama
  */
-import React from 'react';
+import React, { useState } from 'react';
 import { 
   Gavel, 
   Trophy, 
@@ -28,7 +28,8 @@ import {
   Coins, 
   Waves, 
   AlertCircle,
-  HeartPulse
+  HeartPulse,
+  X
 } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './tooltip';
 
@@ -216,6 +217,8 @@ export const BADGE_REGISTRY = {
 /**
  * BadgePill Component
  * Renders a single badge as a glowing pill with icon and tooltip
+ * On mobile: Click to show description in a modal overlay
+ * On desktop: Hover tooltip
  */
 export const BadgePill = ({ 
   badgeId, 
@@ -225,6 +228,8 @@ export const BadgePill = ({
   showTooltip = true,
   className = '' 
 }) => {
+  const [showMobilePopup, setShowMobilePopup] = useState(false);
+  
   // Get badge config from registry or use custom
   const badge = BADGE_REGISTRY[badgeId] || {
     label: customLabel || badgeId,
@@ -264,19 +269,86 @@ export const BadgePill = ({
     cautionary: "Use Caution"
   };
   
+  // Handle click for mobile
+  const handleClick = (e) => {
+    e.stopPropagation();
+    if (badge.tooltip) {
+      setShowMobilePopup(true);
+    }
+  };
+  
   const pillContent = (
     <span 
+      onClick={handleClick}
       className={`
-        inline-flex items-center rounded-full border font-semibold uppercase tracking-wide cursor-help
+        inline-flex items-center rounded-full border font-semibold uppercase tracking-wide cursor-pointer
         ${badge.bgClass} ${badge.borderClass} ${badge.textClass}
         ${showGlow ? `shadow-lg ${badge.glowClass}` : ''}
         ${sizeClasses[size]}
         ${className}
+        active:scale-95 transition-transform
       `}
     >
       <Icon size={iconSizes[size]} className="flex-shrink-0" />
       <span>{badge.label}</span>
     </span>
+  );
+  
+  // Mobile popup overlay
+  const mobilePopup = showMobilePopup && badge.tooltip && (
+    <div 
+      className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center bg-black/70 backdrop-blur-sm"
+      onClick={() => setShowMobilePopup(false)}
+    >
+      <div 
+        className="w-full sm:w-auto sm:max-w-sm mx-4 mb-4 sm:mb-0 bg-zinc-900 border border-zinc-700 rounded-xl shadow-2xl animate-in slide-in-from-bottom-4 duration-200"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between p-4 border-b border-zinc-800">
+          <div className="flex items-center gap-3">
+            <div className={`w-10 h-10 rounded-full flex items-center justify-center ${badge.bgClass}`}>
+              <Icon size={20} className={badge.textClass} />
+            </div>
+            <div>
+              <span className={`text-base font-bold ${badge.textClass}`}>{badge.tooltip.title}</span>
+              <span className={`block text-xs font-medium ${sentimentColors[badge.tooltip.sentiment]}`}>
+                {sentimentLabels[badge.tooltip.sentiment]}
+              </span>
+            </div>
+          </div>
+          <button 
+            onClick={() => setShowMobilePopup(false)}
+            className="w-8 h-8 rounded-full bg-zinc-800 flex items-center justify-center text-zinc-400 hover:text-white"
+          >
+            <X size={16} />
+          </button>
+        </div>
+        
+        {/* Content */}
+        <div className="p-4">
+          <p className="text-sm text-zinc-300 leading-relaxed mb-4">
+            {badge.tooltip.description}
+          </p>
+          
+          <div className="pt-3 border-t border-zinc-800">
+            <p className="text-xs text-zinc-400 italic">
+              {badge.tooltip.impact}
+            </p>
+          </div>
+        </div>
+        
+        {/* Close button for mobile */}
+        <div className="p-4 pt-0 sm:hidden">
+          <button
+            onClick={() => setShowMobilePopup(false)}
+            className="w-full py-3 bg-zinc-800 rounded-lg text-zinc-300 text-sm font-medium active:bg-zinc-700"
+          >
+            Got it
+          </button>
+        </div>
+      </div>
+    </div>
   );
   
   // If no tooltip data or tooltips disabled, return pill with title fallback
@@ -291,45 +363,51 @@ export const BadgePill = ({
   const { title, description, impact, sentiment } = badge.tooltip;
   
   return (
-    <TooltipProvider delayDuration={200}>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          {pillContent}
-        </TooltipTrigger>
-        <TooltipContent 
-          side="top" 
-          className="max-w-[280px] p-0 bg-zinc-900 border border-zinc-700 shadow-xl"
-          sideOffset={8}
-        >
-          <div className="p-3">
-            {/* Header with badge icon and sentiment */}
-            <div className="flex items-center justify-between mb-2">
-              <div className="flex items-center gap-2">
-                <div className={`w-6 h-6 rounded-full flex items-center justify-center ${badge.bgClass}`}>
-                  <Icon size={14} className={badge.textClass} />
+    <>
+      {/* Mobile popup */}
+      {mobilePopup}
+      
+      {/* Desktop tooltip + pill */}
+      <TooltipProvider delayDuration={200}>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            {pillContent}
+          </TooltipTrigger>
+          <TooltipContent 
+            side="top" 
+            className="max-w-[280px] p-0 bg-zinc-900 border border-zinc-700 shadow-xl hidden sm:block"
+            sideOffset={8}
+          >
+            <div className="p-3">
+              {/* Header with badge icon and sentiment */}
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <div className={`w-6 h-6 rounded-full flex items-center justify-center ${badge.bgClass}`}>
+                    <Icon size={14} className={badge.textClass} />
+                  </div>
+                  <span className={`text-sm font-bold ${badge.textClass}`}>{title}</span>
                 </div>
-                <span className={`text-sm font-bold ${badge.textClass}`}>{title}</span>
+                <span className={`text-[10px] font-medium ${sentimentColors[sentiment]}`}>
+                  {sentimentLabels[sentiment]}
+                </span>
               </div>
-              <span className={`text-[10px] font-medium ${sentimentColors[sentiment]}`}>
-                {sentimentLabels[sentiment]}
-              </span>
-            </div>
-            
-            {/* Description */}
-            <p className="text-xs text-zinc-300 mb-2 leading-relaxed">
-              {description}
-            </p>
-            
-            {/* Impact */}
-            <div className="pt-2 border-t border-zinc-700">
-              <p className="text-[11px] text-zinc-400 italic">
-                {impact}
+              
+              {/* Description */}
+              <p className="text-xs text-zinc-300 mb-2 leading-relaxed">
+                {description}
               </p>
+              
+              {/* Impact */}
+              <div className="pt-2 border-t border-zinc-700">
+                <p className="text-[11px] text-zinc-400 italic">
+                  {impact}
+                </p>
+              </div>
             </div>
-          </div>
-        </TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    </>
   );
 };
 

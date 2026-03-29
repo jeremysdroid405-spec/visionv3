@@ -798,11 +798,11 @@ export const PlayerDetailPage = ({ playerName, playerData = null, onBack, highli
                   </div>
                   
                   {/* Pace Delta (Tempo Multiplier) + Stability Index */}
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-2 gap-2 sm:gap-4">
                     {/* Pace Delta */}
-                    <div className="bg-zinc-800/50 border border-zinc-700 rounded-lg p-4">
-                      <h3 className="text-xs font-bold text-zinc-400 mb-2">TEMPO MULTIPLIER</h3>
-                      <div className={`text-2xl font-bold ${
+                    <div className="bg-zinc-800/50 border border-zinc-700 rounded-lg p-2 sm:p-4 overflow-hidden">
+                      <h3 className="text-[10px] sm:text-xs font-bold text-zinc-400 mb-1 sm:mb-2 truncate">TEMPO</h3>
+                      <div className={`text-lg sm:text-2xl font-bold truncate ${
                         selectedVisionProp.intel_suite.pace_delta?.possessions >= 2 
                           ? 'text-green-400' 
                           : selectedVisionProp.intel_suite.pace_delta?.possessions <= -2
@@ -811,18 +811,18 @@ export const PlayerDetailPage = ({ playerName, playerData = null, onBack, highli
                       }`}>
                         {selectedVisionProp.intel_suite.pace_delta?.display || '-'}
                       </div>
-                      <div className="text-xs text-zinc-500 mt-1">
+                      <div className="text-[9px] sm:text-xs text-zinc-500 mt-1 truncate">
                         {selectedVisionProp.intel_suite.pace_delta?.tempo_label}
                       </div>
-                      <div className="text-[10px] text-zinc-600 mt-2">
-                        Game Pace: {selectedVisionProp.intel_suite.pace_delta?.expected_game_pace}
+                      <div className="text-[8px] sm:text-[10px] text-zinc-600 mt-1 sm:mt-2 truncate hidden sm:block">
+                        Pace: {selectedVisionProp.intel_suite.pace_delta?.expected_game_pace}
                       </div>
                     </div>
                     
                     {/* Stability Index */}
-                    <div className="bg-zinc-800/50 border border-zinc-700 rounded-lg p-4">
-                      <h3 className="text-xs font-bold text-zinc-400 mb-2">TACTICAL VARIANCE</h3>
-                      <div className={`text-2xl font-bold ${
+                    <div className="bg-zinc-800/50 border border-zinc-700 rounded-lg p-2 sm:p-4 overflow-hidden">
+                      <h3 className="text-[10px] sm:text-xs font-bold text-zinc-400 mb-1 sm:mb-2 truncate">VARIANCE</h3>
+                      <div className={`text-lg sm:text-2xl font-bold truncate ${
                         selectedVisionProp.intel_suite.stability_index?.score >= 75 
                           ? 'text-green-400' 
                           : selectedVisionProp.intel_suite.stability_index?.score >= 45
@@ -831,11 +831,11 @@ export const PlayerDetailPage = ({ playerName, playerData = null, onBack, highli
                       }`}>
                         {selectedVisionProp.intel_suite.stability_index?.display || '-'}
                       </div>
-                      <div className="text-xs text-zinc-500 mt-1">
+                      <div className="text-[9px] sm:text-xs text-zinc-500 mt-1 truncate">
                         {selectedVisionProp.intel_suite.stability_index?.consistency}
                       </div>
                       {selectedVisionProp.intel_suite.stability_index?.std_dev && (
-                        <div className="text-[10px] text-zinc-600 mt-2">
+                        <div className="text-[8px] sm:text-[10px] text-zinc-600 mt-1 sm:mt-2 truncate hidden sm:block">
                           Std Dev: {selectedVisionProp.intel_suite.stability_index.std_dev}
                         </div>
                       )}
