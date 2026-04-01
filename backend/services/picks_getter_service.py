@@ -2970,7 +2970,14 @@ class PicksGetterService:
                     "is_vision_enriched": "$props.is_vision_enriched",
                     "vision_score": "$props.vision_score",
                     "board": "$props.board",
-                    "context_badges": 1
+                    "context_badges": 1,
+                    "active_badges": "$props.active_badges",
+                    # Sharp book prices
+                    "pinnacle_price": "$props.pinnacle_price",
+                    "draftkings_price": "$props.draftkings_price",
+                    "sharp_price": "$props.sharp_price",
+                    "sharp_source": "$props.sharp_source",
+                    "multiplier": "$props.multiplier"
                 }},
                 {"$sort": {"vision_score": -1, "h10_rate": -1, "combined_score": -1}},
                 {"$limit": 100}
@@ -3065,7 +3072,14 @@ class PicksGetterService:
                     "is_vision_enriched": "$props.is_vision_enriched",
                     "vision_score": "$props.vision_score",
                     "board": "$props.board",
-                    "context_badges": 1
+                    "context_badges": 1,
+                    "active_badges": "$props.active_badges",
+                    # Sharp book prices
+                    "pinnacle_price": "$props.pinnacle_price",
+                    "draftkings_price": "$props.draftkings_price",
+                    "sharp_price": "$props.sharp_price",
+                    "sharp_source": "$props.sharp_source",
+                    "multiplier": "$props.multiplier"
                 }},
                 {"$sort": {"vision_score": -1, "h10_rate": -1, "combined_score": -1}},
                 {"$limit": 100}
@@ -3113,9 +3127,13 @@ class PicksGetterService:
     
     async def get_front_lines_static(self) -> Dict[str, Any]:
         """
-        STATIC ROUTE: Front Lines (Hybrid tier with L10 HR >= 60%).
+        STATIC ROUTE: Front Lines (Goblin picks with sharp book validation).
         
-        Selection: h10_rate >= 60 AND board="front_lines" (can be goblin or demon)
+        HARD FILTER: Only Goblins where:
+        - Pinnacle price <= -300, OR
+        - DraftKings price <= -300 (if no Pinnacle)
+        - If neither has a price, EXCLUDE from Front Lines
+        
         Sorted by: vision_score desc, h10_rate desc
         
         All enrichment done by board_intelligence_service.py
@@ -3127,12 +3145,17 @@ class PicksGetterService:
             picks = await self.cached_board.aggregate([
                 {"$unwind": "$props"},
                 {"$match": {
-                    "$or": [
-                        {"props.is_goblin": True},
-                        {"props.is_demon": True}
-                    ],
+                    "props.is_goblin": True,  # Front Lines = Goblins only
                     "props.h10_rate": {"$gte": 60},
-                    "props.commence_time": {"$gt": now_iso}
+                    "props.commence_time": {"$gt": now_iso},
+                    # HARD FILTER: Must have sharp price <= -300
+                    "$or": [
+                        {"props.pinnacle_price": {"$lte": -300}},
+                        {
+                            "props.pinnacle_price": None,
+                            "props.draftkings_price": {"$lte": -300}
+                        }
+                    ]
                 }},
                 {"$project": {
                     "_id": 0,
@@ -3154,8 +3177,8 @@ class PicksGetterService:
                     "season_avg": "$props.season_avg",
                     "is_demon": "$props.is_demon",
                     "is_goblin": "$props.is_goblin",
-                    "tier_label": {"$cond": [{"$eq": ["$props.is_demon", True]}, "DEMON", "GOBLIN"]},
-                    "pick_type": {"$cond": [{"$eq": ["$props.is_demon", True]}, "demon", "goblin"]},
+                    "tier_label": "GOBLIN",
+                    "pick_type": "goblin",
                     "combined_score": "$props.combined_score",
                     "payout_score": "$props.payout_score",
                     "vision_summary": "$props.vision_summary",
@@ -3164,7 +3187,13 @@ class PicksGetterService:
                     "vision_score": "$props.vision_score",
                     "board": "$props.board",
                     "context_badges": 1,
-                    "active_badges": "$props.active_badges"
+                    "active_badges": "$props.active_badges",
+                    # Sharp book prices
+                    "pinnacle_price": "$props.pinnacle_price",
+                    "draftkings_price": "$props.draftkings_price",
+                    "sharp_price": "$props.sharp_price",
+                    "sharp_source": "$props.sharp_source",
+                    "multiplier": "$props.multiplier"
                 }},
                 {"$sort": {"vision_score": -1, "h10_rate": -1, "combined_score": -1}},
                 {"$limit": 100}

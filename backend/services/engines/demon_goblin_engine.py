@@ -1434,19 +1434,63 @@ class DemonGoblinEngine:
                 if not event_id:
                     continue
                 
-                # Fetch PrizePicks lines - both standard and alternate
-                url = f"{ODDS_API_BASE}/sports/basketball_nba/events/{event_id}/odds"
-                params = {
-                    "apiKey": ODDS_API_KEY,
-                    "regions": PRIZEPICKS_REGION,
-                    "markets": PRIZEPICKS_ALL_MARKETS,  # Both standard and alternate
-                    "bookmakers": PRIZEPICKS_BOOKMAKER,
-                    "oddsFormat": "american",
-                    "includeMultipliers": "true"
-                }
+                odds_url = f"{ODDS_API_BASE}/sports/basketball_nba/events/{event_id}/odds"
                 
                 async with httpx.AsyncClient() as client:
-                    response = await client.get(url, params=params, timeout=15.0)
+                    # === FETCH 1: Sharp Books - Pinnacle (eu) + DraftKings (us) ===
+                    sharp_prices = {}  # {(player, market, line, direction): {pinnacle, draftkings}}
+                    
+                    sharp_params = {
+                        "apiKey": ODDS_API_KEY,
+                        "regions": "us,eu",
+                        "bookmakers": "pinnacle,draftkings",
+                        "markets": PRIZEPICKS_ALL_MARKETS,
+                        "oddsFormat": "american",
+                        "includeMultipliers": "true"
+                    }
+                    
+                    try:
+                        sharp_response = await client.get(odds_url, params=sharp_params, timeout=15.0)
+                        if sharp_response.status_code == 200:
+                            sharp_data = sharp_response.json()
+                            
+                            for bm in sharp_data.get("bookmakers", []):
+                                bm_key = bm.get("key", "")
+                                if bm_key not in ["pinnacle", "draftkings"]:
+                                    continue
+                                
+                                for market in bm.get("markets", []):
+                                    market_key = market.get("key", "")
+                                    for outcome in market.get("outcomes", []):
+                                        player_name = outcome.get("description", "")
+                                        line = outcome.get("point", 0)
+                                        direction = (outcome.get("name", "") or "over").lower()
+                                        price = outcome.get("price")
+                                        
+                                        lookup_key = (player_name, market_key, line, direction)
+                                        if lookup_key not in sharp_prices:
+                                            sharp_prices[lookup_key] = {"pinnacle_price": None, "draftkings_price": None}
+                                        
+                                        if bm_key == "pinnacle":
+                                            sharp_prices[lookup_key]["pinnacle_price"] = price
+                                        elif bm_key == "draftkings":
+                                            sharp_prices[lookup_key]["draftkings_price"] = price
+                                            
+                            logger.info(f"  [SHARP] {event.get('away_team')} @ {event.get('home_team')}: {len(sharp_prices)} prices")
+                    except Exception as e:
+                        logger.warning(f"[SHARP_FETCH] Error for {event_id}: {e}")
+                    
+                    # === FETCH 2: PrizePicks lines ===
+                    pp_params = {
+                        "apiKey": ODDS_API_KEY,
+                        "regions": PRIZEPICKS_REGION,
+                        "markets": PRIZEPICKS_ALL_MARKETS,
+                        "bookmakers": PRIZEPICKS_BOOKMAKER,
+                        "oddsFormat": "american",
+                        "includeMultipliers": "true"
+                    }
+                    
+                    response = await client.get(odds_url, params=pp_params, timeout=15.0)
                     
                     if response.status_code == 200:
                         data = response.json()
@@ -1465,6 +1509,17 @@ class DemonGoblinEngine:
                                         continue
                                     
                                     price = outcome.get("price")
+                                    line = outcome.get("point", 0)
+                                    direction = (outcome.get("name", "") or "over").lower()
+                                    multiplier = outcome.get("multiplier")
+                                    
+                                    # Look up sharp prices
+                                    lookup_key = (player_name, market_key, line, direction)
+                                    sharp_data = sharp_prices.get(lookup_key, {})
+                                    pinnacle_price = sharp_data.get("pinnacle_price")
+                                    draftkings_price = sharp_data.get("draftkings_price")
+                                    sharp_price = pinnacle_price if pinnacle_price is not None else draftkings_price
+                                    sharp_source = "pinnacle" if pinnacle_price is not None else ("draftkings" if draftkings_price is not None else None)
                                     
                                     # Classification logic
                                     if is_alternate_market:
@@ -1479,12 +1534,18 @@ class DemonGoblinEngine:
                                     line_data = {
                                         "market": market_key,
                                         "direction": outcome.get("name"),
-                                        "line": outcome.get("point"),
+                                        "line": line,
                                         "price": price,
+                                        "multiplier": multiplier,
                                         "is_alternate_market": is_alternate_market,
                                         "is_demon": is_demon,
                                         "is_goblin": is_goblin,
-                                        "prop_type": prop_type
+                                        "prop_type": prop_type,
+                                        # Sharp book prices
+                                        "pinnacle_price": pinnacle_price,
+                                        "draftkings_price": draftkings_price,
+                                        "sharp_price": sharp_price,
+                                        "sharp_source": sharp_source
                                     }
                                     
                                     if player_name not in lines_by_player:

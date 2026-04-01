@@ -107,6 +107,22 @@ class AdaptiveSyncEngine:
         
         logger.info("[ADAPTIVE_SYNC] Engine initialized")
     
+    def _extract_stat_type(self, market_key: str) -> str:
+        """Extract and normalize stat type from market key."""
+        stat_type = market_key.replace("_alternate", "").replace("player_", "").upper()
+        stat_type = stat_type.replace("POINTS_REBOUNDS_ASSISTS", "PRA")
+        stat_type = stat_type.replace("POINTS_REBOUNDS", "P+R")
+        stat_type = stat_type.replace("POINTS_ASSISTS", "P+A")
+        stat_type = stat_type.replace("REBOUNDS_ASSISTS", "R+A")
+        stat_type = stat_type.replace("THREES", "3PM")
+        stat_type = stat_type.replace("BLOCKS", "BLK")
+        stat_type = stat_type.replace("STEALS", "STL")
+        stat_type = stat_type.replace("TURNOVERS", "TO")
+        stat_type = stat_type.replace("POINTS", "PTS")
+        stat_type = stat_type.replace("REBOUNDS", "REB")
+        stat_type = stat_type.replace("ASSISTS", "AST")
+        return stat_type
+    
     def set_sync_callback(self, callback):
         """Set the callback to the proper sync_odds_to_mongo function."""
         self._sync_odds_callback = callback
@@ -479,44 +495,75 @@ class AdaptiveSyncEngine:
                     if not event_id:
                         continue
                     
-                    # Fetch DFS odds for this event
-                    # PrizePicks is primary, with fallback to other DFS platforms
                     odds_url = f"{self.base_url}/sports/basketball_nba/events/{event_id}/odds"
-                    odds_params = {
+                    
+                    # === FETCH 1: PrizePicks (DFS region) ===
+                    prizepicks_data = None
+                    prizepicks_params = {
                         "apiKey": self.odds_api_key,
-                        "regions": "us_dfs",  # Daily Fantasy Sports region
-                        "bookmakers": "prizepicks,underdog,pick6,fliff",  # PrizePicks first
+                        "regions": "us_dfs",
+                        "bookmakers": "prizepicks",
                         "markets": prizepicks_markets,
                         "oddsFormat": "american",
                         "includeMultipliers": "true"
                     }
                     
                     try:
-                        odds_response = await client.get(odds_url, params=odds_params, timeout=15.0)
-                        if odds_response.status_code == 200:
-                            odds_data = odds_response.json()
-                            # Merge event info with odds data
-                            odds_data["event_id"] = event_id
-                            enriched_events.append(odds_data)
-                            
-                            # Log DFS data found
-                            for bm in odds_data.get("bookmakers", []):
+                        pp_response = await client.get(odds_url, params=prizepicks_params, timeout=15.0)
+                        if pp_response.status_code == 200:
+                            prizepicks_data = pp_response.json()
+                    except Exception as e:
+                        logger.warning(f"[SYNC] PrizePicks fetch failed for {event_id}: {e}")
+                    
+                    # === FETCH 2: Sharp Books - Pinnacle (eu) + DraftKings (us) ===
+                    sharp_data = None
+                    sharp_params = {
+                        "apiKey": self.odds_api_key,
+                        "regions": "us,eu",
+                        "bookmakers": "pinnacle,draftkings",
+                        "markets": prizepicks_markets,
+                        "oddsFormat": "american",
+                        "includeMultipliers": "true"
+                    }
+                    
+                    try:
+                        sharp_response = await client.get(odds_url, params=sharp_params, timeout=15.0)
+                        if sharp_response.status_code == 200:
+                            sharp_data = sharp_response.json()
+                            # Log sharp book data
+                            for bm in sharp_data.get("bookmakers", []):
                                 bm_key = bm.get("key", "")
                                 bm_markets = len(bm.get("markets", []))
                                 if bm_markets > 0:
-                                    logger.info(f"  [DFS:{bm_key.upper()}] {event.get('away_team')} @ {event.get('home_team')}: {bm_markets} markets")
-                                
-                        elif odds_response.status_code == 422:
-                            # Try with core markets only
-                            odds_params["markets"] = "player_points,player_points_alternate,player_rebounds,player_rebounds_alternate,player_assists,player_assists_alternate"
-                            odds_response = await client.get(odds_url, params=odds_params, timeout=15.0)
-                            if odds_response.status_code == 200:
-                                odds_data = odds_response.json()
-                                odds_data["event_id"] = event_id
-                                enriched_events.append(odds_data)
+                                    logger.info(f"  [SHARP:{bm_key.upper()}] {event.get('away_team')} @ {event.get('home_team')}: {bm_markets} markets")
                     except Exception as e:
-                        logger.warning(f"[UNDERDOG_SYNC] Failed to fetch odds for event {event_id}: {e}")
-                        continue
+                        logger.warning(f"[SYNC] Sharp books fetch failed for {event_id}: {e}")
+                    
+                    # === MERGE: Combine PrizePicks with Sharp Books ===
+                    if prizepicks_data or sharp_data:
+                        merged_event = {
+                            "id": event_id,
+                            "event_id": event_id,
+                            "home_team": event.get("home_team"),
+                            "away_team": event.get("away_team"),
+                            "commence_time": event.get("commence_time"),
+                            "bookmakers": []
+                        }
+                        
+                        # Add PrizePicks bookmakers
+                        if prizepicks_data:
+                            merged_event["bookmakers"].extend(prizepicks_data.get("bookmakers", []))
+                        
+                        # Add Sharp bookmakers (Pinnacle, DraftKings)
+                        if sharp_data:
+                            merged_event["bookmakers"].extend(sharp_data.get("bookmakers", []))
+                        
+                        enriched_events.append(merged_event)
+                        
+                        # Log combined data
+                        pp_count = len(prizepicks_data.get("bookmakers", [])) if prizepicks_data else 0
+                        sharp_count = len(sharp_data.get("bookmakers", [])) if sharp_data else 0
+                        logger.info(f"  [MERGED] {event.get('away_team')} @ {event.get('home_team')}: PrizePicks={pp_count}, Sharp={sharp_count} bookmakers")
                 
                 logger.info(f"[UNDERDOG_SYNC] Fetched DFS odds for {len(enriched_events)} events")
                 return enriched_events
@@ -590,9 +637,12 @@ class AdaptiveSyncEngine:
         
         # ============================================================
         # PASS 1: Collect all props and identify MAIN LINES (anchors)
+        #         Also build sharp price lookup from Pinnacle/DraftKings
         # ============================================================
         # Key: (player_name, stat_type) -> main_line value
         main_lines: Dict[tuple, float] = {}
+        # Key: (player_name, stat_type, line, direction) -> {pinnacle_price, draftkings_price}
+        sharp_prices: Dict[tuple, Dict] = {}
         # Collect all props for Pass 2
         all_props: List[Dict] = []
         
@@ -604,11 +654,48 @@ class AdaptiveSyncEngine:
             
             bookmakers = event.get("bookmakers", [])
             
+            # === FIRST: Extract sharp prices from Pinnacle and DraftKings ===
             for bookmaker in bookmakers:
                 bookmaker_key = bookmaker.get("key", "")
                 
-                # Prioritize PrizePicks, then Underdog, then others
-                if bookmaker_key not in ["prizepicks", "underdog"]:
+                if bookmaker_key not in ["pinnacle", "draftkings"]:
+                    continue
+                
+                markets = bookmaker.get("markets", [])
+                
+                for market in markets:
+                    market_key = market.get("key", "")
+                    outcomes = market.get("outcomes", [])
+                    is_alternate_market = "_alternate" in market_key
+                    
+                    # Extract base stat type
+                    stat_type_extracted = self._extract_stat_type(market_key)
+                    
+                    for outcome in outcomes:
+                        player_name = outcome.get("description", "")
+                        if not player_name:
+                            continue
+                        
+                        price = outcome.get("price", 0)
+                        line = outcome.get("point", 0)
+                        direction = (outcome.get("name", "") or "over").lower()
+                        
+                        # Build lookup key
+                        lookup_key = (player_name, stat_type_extracted, line, direction)
+                        
+                        if lookup_key not in sharp_prices:
+                            sharp_prices[lookup_key] = {"pinnacle_price": None, "draftkings_price": None}
+                        
+                        if bookmaker_key == "pinnacle":
+                            sharp_prices[lookup_key]["pinnacle_price"] = price
+                        elif bookmaker_key == "draftkings":
+                            sharp_prices[lookup_key]["draftkings_price"] = price
+            
+            # === SECOND: Process PrizePicks props ===
+            for bookmaker in bookmakers:
+                bookmaker_key = bookmaker.get("key", "")
+                
+                if bookmaker_key != "prizepicks":
                     continue
                     
                 markets = bookmaker.get("markets", [])
@@ -621,18 +708,7 @@ class AdaptiveSyncEngine:
                     is_alternate_market = "_alternate" in market_key
                     
                     # Extract base stat type
-                    stat_type_extracted = market_key.replace("_alternate", "").replace("player_", "").upper()
-                    stat_type_extracted = stat_type_extracted.replace("POINTS_REBOUNDS_ASSISTS", "PRA")
-                    stat_type_extracted = stat_type_extracted.replace("POINTS_REBOUNDS", "P+R")
-                    stat_type_extracted = stat_type_extracted.replace("POINTS_ASSISTS", "P+A")
-                    stat_type_extracted = stat_type_extracted.replace("REBOUNDS_ASSISTS", "R+A")
-                    stat_type_extracted = stat_type_extracted.replace("THREES", "3PM")
-                    stat_type_extracted = stat_type_extracted.replace("BLOCKS", "BLK")
-                    stat_type_extracted = stat_type_extracted.replace("STEALS", "STL")
-                    stat_type_extracted = stat_type_extracted.replace("TURNOVERS", "TO")
-                    stat_type_extracted = stat_type_extracted.replace("POINTS", "PTS")
-                    stat_type_extracted = stat_type_extracted.replace("REBOUNDS", "REB")
-                    stat_type_extracted = stat_type_extracted.replace("ASSISTS", "AST")
+                    stat_type_extracted = self._extract_stat_type(market_key)
                     
                     for outcome in outcomes:
                         player_name = outcome.get("description", "")
@@ -642,6 +718,17 @@ class AdaptiveSyncEngine:
                         price = outcome.get("price", 0)
                         line = outcome.get("point", 0)
                         direction = (outcome.get("name", "") or "over").lower()
+                        multiplier = outcome.get("multiplier")
+                        
+                        # Look up sharp prices for this prop
+                        lookup_key = (player_name, stat_type_extracted, line, direction)
+                        sharp_data = sharp_prices.get(lookup_key, {})
+                        pinnacle_price = sharp_data.get("pinnacle_price")
+                        draftkings_price = sharp_data.get("draftkings_price")
+                        
+                        # Determine the sharp_price (Pinnacle first, then DraftKings fallback)
+                        sharp_price = pinnacle_price if pinnacle_price is not None else draftkings_price
+                        sharp_source = "pinnacle" if pinnacle_price is not None else ("draftkings" if draftkings_price is not None else None)
                         
                         # Store prop data for Pass 2
                         prop_data = {
@@ -654,10 +741,16 @@ class AdaptiveSyncEngine:
                             "player_name": player_name,
                             "line": line,
                             "price": price,
+                            "multiplier": multiplier,
                             "direction": direction,
                             "name": outcome.get("name", ""),
                             "is_alternate_market": is_alternate_market,
-                            "stat_type_extracted": stat_type_extracted
+                            "stat_type_extracted": stat_type_extracted,
+                            # Sharp book prices
+                            "pinnacle_price": pinnacle_price,
+                            "draftkings_price": draftkings_price,
+                            "sharp_price": sharp_price,
+                            "sharp_source": sharp_source
                         }
                         all_props.append(prop_data)
                         
@@ -667,7 +760,7 @@ class AdaptiveSyncEngine:
                             main_lines[key] = line
                             logger.debug(f"[ANCHOR] {player_name} {stat_type_extracted}: main_line = {line}")
         
-        logger.info(f"[UNDERDOG_SYNC_V3] Pass 1 complete: {len(main_lines)} main lines (anchors) identified")
+        logger.info(f"[SYNC_V3] Pass 1 complete: {len(main_lines)} anchors, {len(sharp_prices)} sharp prices")
         
         # ============================================================
         # PASS 2: Classify each prop based on comparison to anchor
@@ -767,11 +860,12 @@ class AdaptiveSyncEngine:
                     "player_name": player_name,
                     "line": line,
                     "price": prop["price"],
+                    "multiplier": prop.get("multiplier"),
                     "direction": prop["direction"],
                     "name": prop["name"],
                     "last_updated": now,
                     "last_updated_iso": now.isoformat(),
-                    "sync_source": "underdog_sync_v3",
+                    "sync_source": "adaptive_sync_v4",
                     # Market metadata
                     "is_alternate_market": is_alternate_market,
                     # ANCHOR-BASED tier classification
@@ -784,6 +878,11 @@ class AdaptiveSyncEngine:
                     "anchor_line": anchor_line,
                     "anchor_source": anchor_source,
                     "diff_from_anchor": diff_from_anchor,
+                    # Sharp book prices (Pinnacle primary, DraftKings fallback)
+                    "pinnacle_price": prop.get("pinnacle_price"),
+                    "draftkings_price": prop.get("draftkings_price"),
+                    "sharp_price": prop.get("sharp_price"),
+                    "sharp_source": prop.get("sharp_source"),
                     # Stats for display
                     "season_avg": round(season_avg, 1) if season_avg else None,
                     "l5_avg": l5_avg,
