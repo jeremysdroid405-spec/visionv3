@@ -40,10 +40,11 @@ const fetchLiveOdds = async () => {
 };
 
 /**
- * Fetch War Zone picks (top demon plays)
+ * Fetch War Zone picks (Elite Demons - Ferrari filtered)
+ * Sharp price >= +500, Bovada 200+ pts separation
  */
 const fetchWarZone = async () => {
-  const response = await fetch(`${API}/api/v3/war-zone`);
+  const response = await fetch(`${API}/api/v3/ferrari/war-zone`);
   if (!response.ok) throw new Error('War Zone fetch failed');
   const data = await response.json();
   preloadImages(data.picks);
@@ -51,10 +52,11 @@ const fetchWarZone = async () => {
 };
 
 /**
- * Fetch Safe Haven picks (goblin vault)
+ * Fetch Safe Haven picks (Elite Goblins - Ferrari filtered)
+ * Sharp price <= -250, L10 >= 70%
  */
 const fetchSafeHaven = async () => {
-  const response = await fetch(`${API}/api/v3/goblin-vault`);
+  const response = await fetch(`${API}/api/v3/ferrari/safe-haven`);
   if (!response.ok) throw new Error('Safe Haven fetch failed');
   const data = await response.json();
   preloadImages(data.picks);
@@ -81,10 +83,11 @@ const preloadImages = (picks) => {
 };
 
 /**
- * Fetch Front Lines picks (mixed)
+ * Fetch Front Lines picks (Battleground - Ferrari filtered)
+ * Sharp price -245 to -149, L10 >= 70%, sorted by hit rate
  */
 const fetchFrontLines = async () => {
-  const response = await fetch(`${API}/api/v3/front-lines`);
+  const response = await fetch(`${API}/api/v3/ferrari/front-lines`);
   if (!response.ok) throw new Error('Front Lines fetch failed');
   const data = await response.json();
   // Preload images immediately after fetch
