@@ -76,6 +76,57 @@ def calculate_line_delta(pp_line: float, anchor_line: float) -> float:
     return pp_line - anchor_line
 
 
+def calculate_mode(values: List[float]) -> Optional[float]:
+    """
+    Calculate the mode (most frequent value) from a list of values.
+    Returns None if no clear mode exists.
+    """
+    if not values:
+        return None
+    
+    from collections import Counter
+    # Round to nearest 0.5 for grouping similar values
+    rounded = [round(v * 2) / 2 for v in values]
+    counts = Counter(rounded)
+    
+    if not counts:
+        return None
+    
+    # Get the most common value
+    most_common = counts.most_common(1)[0]
+    mode_value, mode_count = most_common
+    
+    # Only return mode if it appears at least twice
+    if mode_count >= 2:
+        return mode_value
+    return None
+
+
+def calculate_median(values: List[float]) -> Optional[float]:
+    """
+    Calculate the median (middle value) from a sorted list.
+    """
+    if not values:
+        return None
+    
+    sorted_values = sorted(values)
+    n = len(sorted_values)
+    
+    if n % 2 == 0:
+        # Even number: average of two middle values
+        return (sorted_values[n//2 - 1] + sorted_values[n//2]) / 2
+    else:
+        # Odd number: middle value
+        return sorted_values[n//2]
+
+
+def calculate_mean(values: List[float]) -> Optional[float]:
+    """Calculate the mean (average) from a list of values."""
+    if not values:
+        return None
+    return sum(values) / len(values)
+
+
 class FerrariTierService:
     """
     Ferrari+ Hybrid Tier Service - Elite filtering with:
@@ -90,12 +141,63 @@ class FerrariTierService:
         self.cached_board = db.dg_cached_board
         self.dvp_rankings_col = db.dvp_rankings
         self.master_hub = db.nba_master_hub_2026
+        self.player_stats = db.dg_player_stats  # For game logs
         
         # Ferrari+ tier collections
         self.ferrari_safe_haven = db.ferrari_safe_haven
         self.ferrari_front_lines = db.ferrari_front_lines
         self.ferrari_war_zone = db.ferrari_war_zone
         self.ferrari_discarded = db.ferrari_discarded
+    
+    async def _load_player_game_stats(self) -> Dict[str, Dict[str, List[float]]]:
+        """
+        Load recent game stats for all players.
+        Returns: {player_name: {stat_type: [values from last 10 games]}}
+        """
+        player_stats_cache = {}
+        try:
+            cursor = self.player_stats.find({}, {"_id": 0, "player_name": 1, "games": 1})
+            async for doc in cursor:
+                player_name = doc.get("player_name")
+                games = doc.get("games", [])
+                
+                if not player_name or not games:
+                    continue
+                
+                # Sort by game date (most recent first) and take last 10
+                sorted_games = sorted(
+                    games, 
+                    key=lambda g: g.get("game", {}).get("date", ""),
+                    reverse=True
+                )[:10]
+                
+                # Extract stat values
+                stat_values = {
+                    "PTS": [g.get("pts") for g in sorted_games if g.get("pts") is not None],
+                    "AST": [g.get("ast") for g in sorted_games if g.get("ast") is not None],
+                    "REB": [g.get("reb") for g in sorted_games if g.get("reb") is not None],
+                    "3PM": [g.get("fg3m") for g in sorted_games if g.get("fg3m") is not None],
+                    "BLK": [g.get("blk") for g in sorted_games if g.get("blk") is not None],
+                    "STL": [g.get("stl") for g in sorted_games if g.get("stl") is not None],
+                }
+                
+                # Calculate PRA (Points + Rebounds + Assists)
+                pra_values = []
+                for g in sorted_games:
+                    pts = g.get("pts", 0) or 0
+                    reb = g.get("reb", 0) or 0
+                    ast = g.get("ast", 0) or 0
+                    if pts or reb or ast:
+                        pra_values.append(pts + reb + ast)
+                stat_values["PRA"] = pra_values
+                
+                player_stats_cache[player_name] = stat_values
+                
+        except Exception as e:
+            logger.warning(f"[FERRARI+] Could not load player game stats: {e}")
+        
+        logger.info(f"[FERRARI+] Loaded game stats for {len(player_stats_cache)} players")
+        return player_stats_cache
     
     async def _load_dvp_rankings(self) -> Dict[str, Dict[str, int]]:
         """Load DVP rankings: {stat_type: {team: rank}}"""
@@ -170,12 +272,14 @@ class FerrariTierService:
         }
         
         try:
-            # Pre-load DVP rankings and AI context
+            # Pre-load DVP rankings, AI context, and player game stats
             dvp_rankings = await self._load_dvp_rankings()
             ai_context_cache = await self._load_ai_context_scores()
+            player_game_stats = await self._load_player_game_stats()
             
             logger.info(f"[FERRARI+] Loaded DVP rankings for {len(dvp_rankings)} stat types")
             logger.info(f"[FERRARI+] Loaded AI context for {len(ai_context_cache)} players")
+            logger.info(f"[FERRARI+] Loaded game stats for {len(player_game_stats)} players")
             
             # Fetch all players from cached_board
             cursor = self.cached_board.find({}, {"_id": 0})
@@ -194,8 +298,20 @@ class FerrariTierService:
                 # Get AI context score for this player
                 ai_context_score = ai_context_cache.get(player_name, 50)  # Default 50
                 
+                # Get player's game stats for mode/median calculation
+                player_stats = player_game_stats.get(player_name, {})
+                
                 for prop in player.get("props", []):
                     results["total_props_scanned"] += 1
+                    
+                    # Get stat type and calculate mode/median from game logs
+                    stat_type = prop.get("stat_type", "")
+                    stat_values = player_stats.get(stat_type.upper(), [])
+                    
+                    # Calculate mode, median, mean from last 10 games
+                    l10_mode = calculate_mode(stat_values)
+                    l10_median = calculate_median(stat_values)
+                    l10_mean = calculate_mean(stat_values)
                     
                     # Get sharp market data
                     sharp_market = prop.get("sharp_market", {})
@@ -252,6 +368,7 @@ class FerrariTierService:
                         separation_pct, line_delta,
                         l10_rate, l5_rate, l10_hits,
                         dvp_rank, ai_context_score,
+                        l10_mode, l10_median, l10_mean,
                         sync_time
                     )
                     
@@ -350,6 +467,9 @@ class FerrariTierService:
         l10_hits: int,
         dvp_rank: int,
         ai_context_score: float,
+        l10_mode: Optional[float],
+        l10_median: Optional[float],
+        l10_mean: Optional[float],
         sync_time: datetime
     ) -> Dict[str, Any]:
         """Build a standardized candidate object for tier storage."""
@@ -403,6 +523,10 @@ class FerrariTierService:
             "l5_avg": l5_avg,
             "l10_avg": l10_avg,
             "season_avg": season_avg,
+            # MODE / MEDIAN / MEAN from last 10 games
+            "l10_mode": round(l10_mode, 1) if l10_mode is not None else None,
+            "l10_median": round(l10_median, 1) if l10_median is not None else None,
+            "l10_mean": round(l10_mean, 1) if l10_mean is not None else None,
             # Full hit_rates object
             "hit_rates": hit_rates,
             # Metadata
