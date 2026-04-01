@@ -624,8 +624,26 @@ const UniversalPlayerCard = memo(({
           </div>
         )}
         
-        {/* Stats Row - L5 / L10 / Avg */}
-        <div className="flex items-center justify-between bg-zinc-800/50 rounded px-2 py-1.5 text-[10px]">
+        {/* Sidecar Warning Flags - Hook Risk & Bait Detection */}
+        {player.sidecar?.enabled && (player.sidecar.hook_risk || player.sidecar.suspect_line_bait) && (
+          <div className="mt-1.5 space-y-1">
+            {player.sidecar.suspect_line_bait && (
+              <div className="flex items-center gap-1 px-2 py-1 bg-red-950/60 border border-red-500/40 rounded text-[10px] animate-pulse">
+                <span className="text-red-400 font-bold">🚨 SUSPECT LINE:</span>
+                <span className="text-red-300">Vegas Bait</span>
+              </div>
+            )}
+            {player.sidecar.hook_risk && !player.sidecar.suspect_line_bait && (
+              <div className="flex items-center gap-1 px-2 py-1 bg-amber-950/60 border border-amber-500/40 rounded text-[10px]">
+                <span className="text-amber-400 font-bold">⚠️ Hook Risk</span>
+                <span className="text-amber-300/70">Line near Mode ({player.sidecar.mode})</span>
+              </div>
+            )}
+          </div>
+        )}
+        
+        {/* Stats Row - L5 / L10 / Median (replaces Avg) */}
+        <div className="flex items-center justify-between bg-zinc-800/50 rounded px-2 py-1.5 text-[10px] mt-1">
           <div className="text-center flex-1">
             <div className="text-zinc-500">L5</div>
             <div className={`font-bold ${getHitRateColor(h5_rate || 0)}`}>
@@ -641,9 +659,15 @@ const UniversalPlayerCard = memo(({
           </div>
           <div className="h-4 w-px bg-zinc-700" />
           <div className="text-center flex-1">
-            <div className="text-zinc-500">Avg</div>
+            {/* Show Median if sidecar data available, else show Avg */}
+            <div className="text-zinc-500">
+              {player.sidecar?.median != null ? 'Med' : 'Avg'}
+            </div>
             <div className="font-bold text-white">
-              {season_avg != null ? (season_avg.toFixed?.(1) || season_avg) : '---'}
+              {player.sidecar?.median != null 
+                ? player.sidecar.median 
+                : (season_avg != null ? (season_avg.toFixed?.(1) || season_avg) : '---')
+              }
             </div>
           </div>
         </div>

@@ -3,7 +3,7 @@ Cached Data Routes
 ==================
 Endpoints for reading cached/warehouse data with zero API calls.
 """
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Response
 from typing import Optional, Dict, List, Set
 import logging
 import sys
@@ -18,6 +18,7 @@ from services.dvp_service import (
 )
 from config.settings import TEAM_PACE, LEAGUE_AVG_PACE, DVP_RANKINGS
 from services.vision_summary_service import VisionSummaryService
+from services.sidecar.hook_bait_detector import get_hook_bait_detector, HookBaitDetector
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["Cached Data"])
@@ -27,6 +28,9 @@ _demon_goblin_engine = None
 
 # Vision Summary Service singleton
 _vision_service = None
+
+# Hook/Bait Detector Sidecar instance
+_hook_bait_detector: Optional[HookBaitDetector] = None
 
 # PERFORMANCE CACHE: Store board membership to avoid re-computing for each player
 # Format: {player_name_lower: {"stat|line": "Board Name", ...}}
@@ -39,6 +43,15 @@ def get_vision_service():
     if _vision_service is None:
         _vision_service = VisionSummaryService()
     return _vision_service
+
+
+def get_detector():
+    """Get the hook/bait detector instance"""
+    global _hook_bait_detector
+    if _hook_bait_detector is None:
+        engine = get_engine()
+        _hook_bait_detector = get_hook_bait_detector(engine.db)
+    return _hook_bait_detector
 
 
 def set_cached_data_engine(engine):
@@ -124,6 +137,75 @@ async def get_board_membership(player_name: str) -> Dict[str, str]:
     
     # Fast lookup
     return _board_membership_cache.get(player_name.lower(), {})
+
+
+# ==================== SIDECAR FEATURE TOGGLE ENDPOINTS ====================
+
+@router.get("/v3/sidecar/status")
+async def get_sidecar_status():
+    """
+    Get the current status of sidecar modules (Hook Protector & Bait Detector).
+    """
+    try:
+        detector = get_detector()
+        return {
+            "success": True,
+            "hook_bait_detector": {
+                "enabled": detector.is_enabled(),
+                "hook_threshold": detector.HOOK_THRESHOLD,
+                "bait_threshold_percent": detector.BAIT_THRESHOLD * 100,
+                "description": "Detects hook lines (near Mode) and bait lines (below Median)"
+            }
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e),
+            "hook_bait_detector": {"enabled": False}
+        }
+
+
+@router.post("/v3/sidecar/toggle")
+async def toggle_sidecar(enabled: bool = Query(..., description="Enable or disable the sidecar module")):
+    """
+    Toggle the Hook Protector & Bait Detector sidecar module on/off.
+    This is the kill switch for the feature.
+    """
+    try:
+        detector = get_detector()
+        detector.toggle(enabled)
+        return {
+            "success": True,
+            "message": f"Hook/Bait Detector {'ENABLED' if enabled else 'DISABLED'}",
+            "enabled": enabled
+        }
+    except Exception as e:
+        logger.error(f"[SIDECAR] Toggle failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/v3/sidecar/analyze/{player_name}")
+async def analyze_player_sidecar(
+    player_name: str,
+    stat_type: str = Query("PTS", description="Stat type to analyze"),
+    line: float = Query(10.0, description="DFS line to check")
+):
+    """
+    Debug endpoint: Analyze a specific player/line for hook risk and bait detection.
+    """
+    try:
+        detector = get_detector()
+        result = await detector.analyze_prop(player_name, stat_type, line)
+        return {
+            "success": True,
+            "player_name": player_name,
+            "stat_type": stat_type,
+            "line": line,
+            "analysis": result
+        }
+    except Exception as e:
+        logger.error(f"[SIDECAR] Analysis failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 

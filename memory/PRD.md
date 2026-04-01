@@ -3,7 +3,45 @@
 ## Overview
 PropVision is a sports analytics platform for NBA player props, providing data-driven insights for betting decisions.
 
-## Latest Update (2026-03-29): Mobile Swipe Indicator
+## Latest Update (2026-04-01): Hook Protector & Bait Detector Sidecar Modules
+
+### Feature Description
+Decoupled "sidecar" modules that detect potentially dangerous betting lines:
+
+**Hook Protector**: Detects lines set at or near the statistical Mode (most frequent outcome). Vegas often sets lines at the Mode to maximize house edge.
+- Trigger: Line within 0.5 of the player's L10 Mode
+- Warning: "⚠️ Hook Risk - Line near Mode (X)"
+
+**Bait Detector**: Detects suspiciously low lines that may be "Vegas bait" (too good to be true).
+- Trigger: Line 25%+ below the player's L10 Median
+- Warning: "🚨 SUSPECT LINE: Vegas Bait"
+- Action: Overrides Safe Haven status
+
+### Data Pipeline
+- **Source**: BallDontLie (BDL) API via `bdl_game_logs_sync_batched.py`
+- **Storage**: `nba_master_hub_2026.bdl_game_logs` - raw game-by-game box scores (PTS, REB, AST, etc.)
+- **Calculation**: Exact Median and Mode computed from actual game data (NO estimation)
+
+### API Endpoints
+- `GET /api/v3/sidecar/status` - Check if sidecar is enabled
+- `POST /api/v3/sidecar/toggle?enabled=true|false` - Toggle feature on/off (kill switch)
+- `GET /api/v3/sidecar/analyze/{player_name}?stat_type=PTS&line=20.5` - Debug endpoint
+
+### Frontend Changes
+- Player cards now show "Med" (Median) instead of "Avg" when sidecar data available
+- Hook Risk: Amber warning banner with mode value
+- Suspect Bait: Red pulsing warning banner
+
+### Files Created/Modified
+- `/app/backend/services/sidecar/hook_bait_detector.py` - Core sidecar logic
+- `/app/backend/services/sidecar/__init__.py` - Package init
+- `/app/backend/routes/tiers.py` - Sidecar enrichment integration
+- `/app/backend/routes/cached_data.py` - Sidecar status/toggle endpoints
+- `/app/frontend/src/components/dashboard/UniversalPlayerCard.jsx` - Warning UI
+
+---
+
+## Previous Update (2026-03-29): Mobile Swipe Indicator
 
 ### Feature
 Added swipe indicators on mobile to show users they can swipe horizontally through pick sections (Safe Haven, Front Lines, War Zone, etc.).

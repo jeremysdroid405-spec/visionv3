@@ -13,11 +13,17 @@ router = APIRouter(tags=["Tiers"])
 # Reference to DemonGoblinEngine (set via dependency injection)
 _demon_goblin_engine = None
 
+# Sidecar detector instance
+_sidecar_detector = None
+
 
 def set_tier_engine(engine):
     """Set the demon goblin engine reference."""
-    global _demon_goblin_engine
+    global _demon_goblin_engine, _sidecar_detector
     _demon_goblin_engine = engine
+    # Initialize sidecar detector
+    from services.sidecar.hook_bait_detector import get_hook_bait_detector
+    _sidecar_detector = get_hook_bait_detector(engine.db)
 
 
 def get_engine():
@@ -25,6 +31,15 @@ def get_engine():
     if _demon_goblin_engine is None:
         raise HTTPException(status_code=500, detail="Engine not initialized")
     return _demon_goblin_engine
+
+
+def get_sidecar():
+    """Get the sidecar detector instance"""
+    global _sidecar_detector
+    if _sidecar_detector is None and _demon_goblin_engine is not None:
+        from services.sidecar.hook_bait_detector import get_hook_bait_detector
+        _sidecar_detector = get_hook_bait_detector(_demon_goblin_engine.db)
+    return _sidecar_detector
 
 
 @router.get("/v3/war-zone")
@@ -46,6 +61,20 @@ async def get_war_zone(
     
     engine = get_engine()
     result = await engine.get_war_zone_static()
+    
+    # Apply sidecar enrichment (hook/bait detection) - only if picks exist
+    sidecar = get_sidecar()
+    if sidecar and sidecar.is_enabled() and result and result.get("picks"):
+        try:
+            result["picks"] = await sidecar.enrich_board_picks(result["picks"])
+            result["sidecar_enabled"] = True
+        except Exception as e:
+            logger.warning(f"[SIDECAR] War Zone enrichment failed: {e}")
+            result["sidecar_enabled"] = False
+    else:
+        if result:
+            result["sidecar_enabled"] = False
+    
     return result
 
 
@@ -68,6 +97,20 @@ async def get_goblin_vault(
     
     engine = get_engine()
     result = await engine.get_goblin_vault_static()
+    
+    # Apply sidecar enrichment (hook/bait detection) - only if picks exist
+    sidecar = get_sidecar()
+    if sidecar and sidecar.is_enabled() and result and result.get("picks"):
+        try:
+            result["picks"] = await sidecar.enrich_board_picks(result["picks"])
+            result["sidecar_enabled"] = True
+        except Exception as e:
+            logger.warning(f"[SIDECAR] Goblin Vault enrichment failed: {e}")
+            result["sidecar_enabled"] = False
+    else:
+        if result:
+            result["sidecar_enabled"] = False
+    
     return result
 
 
@@ -102,6 +145,20 @@ async def get_front_lines(
     
     engine = get_engine()
     result = await engine.get_front_lines_static()
+    
+    # Apply sidecar enrichment (hook/bait detection) - only if picks exist
+    sidecar = get_sidecar()
+    if sidecar and sidecar.is_enabled() and result and result.get("picks"):
+        try:
+            result["picks"] = await sidecar.enrich_board_picks(result["picks"])
+            result["sidecar_enabled"] = True
+        except Exception as e:
+            logger.warning(f"[SIDECAR] Front Lines enrichment failed: {e}")
+            result["sidecar_enabled"] = False
+    else:
+        if result:
+            result["sidecar_enabled"] = False
+    
     return result
 
 
