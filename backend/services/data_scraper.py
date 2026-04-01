@@ -136,6 +136,7 @@ class OddsApiScraper:
                         "stat_type": self._normalize_stat_type(market_key),
                         "line": outcome.get("point"),
                         "price": outcome.get("price"),
+                        "multiplier": outcome.get("multiplier"),
                         "direction": outcome.get("name", "Over"),
                         "bookmaker": "prizepicks",
                         "fetched_at": datetime.utcnow().isoformat()

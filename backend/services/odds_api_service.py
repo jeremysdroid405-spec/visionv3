@@ -432,6 +432,7 @@ class OddsApiService:
                             "direction": direction,
                             "line": float(line),
                             "price": price,
+                            "multiplier": outcome.get("multiplier"),
                             "bookmaker": "prizepicks",
                             "is_alternate_market": is_alternate_market,
                             "is_demon": is_demon,
