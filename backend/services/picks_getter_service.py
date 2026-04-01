@@ -2989,11 +2989,11 @@ class PicksGetterService:
                     p["is_locked"] = gs.get("is_locked", False)
                     p["game_status"] = gs.get("status", "upcoming")
                     unique.append(p)
-                    if len(unique) >= 10:
+                    if len(unique) >= 30:  # Fetch more to allow for VIP filtering
                         break
             
             # Second pass: fill remaining slots with other eligible demons
-            if len(unique) < 10:
+            if len(unique) < 30:
                 for p in picks:
                     name = p.get("player_name")
                     if name and name not in seen:
@@ -3002,7 +3002,7 @@ class PicksGetterService:
                         p["is_locked"] = gs.get("is_locked", False)
                         p["game_status"] = gs.get("status", "upcoming")
                         unique.append(p)
-                        if len(unique) >= 10:
+                        if len(unique) >= 30:
                             break
             
             # NO on-demand enrichment - serve from cache only for instant response
@@ -3084,11 +3084,11 @@ class PicksGetterService:
                     p["is_locked"] = gs.get("is_locked", False)
                     p["game_status"] = gs.get("status", "upcoming")
                     unique.append(p)
-                    if len(unique) >= 10:
+                    if len(unique) >= 30:  # Fetch more to allow for VIP filtering
                         break
             
             # Second pass: fill remaining slots with other eligible goblins
-            if len(unique) < 10:
+            if len(unique) < 30:
                 for p in picks:
                     name = p.get("player_name")
                     if name and name not in seen:
@@ -3097,7 +3097,7 @@ class PicksGetterService:
                         p["is_locked"] = gs.get("is_locked", False)
                         p["game_status"] = gs.get("status", "upcoming")
                         unique.append(p)
-                        if len(unique) >= 10:
+                        if len(unique) >= 30:
                             break
             
             # NO on-demand enrichment - serve from cache only for instant response
@@ -3183,11 +3183,11 @@ class PicksGetterService:
                     p["is_locked"] = gs.get("is_locked", False)
                     p["game_status"] = gs.get("status", "upcoming")
                     unique.append(p)
-                    if len(unique) >= 10:
+                    if len(unique) >= 30:  # Fetch more to allow for VIP filtering
                         break
             
             # Second pass: fill remaining slots (excluding safe_haven/war_zone assigned)
-            if len(unique) < 10:
+            if len(unique) < 30:
                 for p in picks:
                     name = p.get("player_name")
                     if name and name not in seen and p.get("board") not in ["safe_haven", "war_zone"]:
@@ -3196,7 +3196,7 @@ class PicksGetterService:
                         p["is_locked"] = gs.get("is_locked", False)
                         p["game_status"] = gs.get("status", "upcoming")
                         unique.append(p)
-                        if len(unique) >= 10:
+                        if len(unique) >= 30:
                             break
             
             # NO on-demand enrichment - serve from cache only for instant response

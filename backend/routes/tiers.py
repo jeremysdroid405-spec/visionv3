@@ -44,12 +44,16 @@ def get_sidecar():
     return _sidecar_detector
 
 
-def filter_clean_picks(picks: List[Dict[str, Any]], limit: int = 15) -> tuple:
+def filter_clean_picks(picks: List[Dict[str, Any]], limit: int = 10) -> tuple:
     """
     VIP Room Logic: Filter out flagged picks and return clean ones.
     
+    Args:
+        picks: List of picks (should be pre-fetched with buffer, e.g., 30 picks)
+        limit: Target number of clean picks to return (default 10)
+    
     Returns:
-        Tuple of (clean_picks, trapped_picks)
+        Tuple of (clean_picks[:limit], trapped_picks)
     """
     clean_picks = []
     trapped_picks = []
@@ -72,7 +76,7 @@ def filter_clean_picks(picks: List[Dict[str, Any]], limit: int = 15) -> tuple:
 @router.get("/v3/war-zone")
 async def get_war_zone(
     response: Response,
-    limit: int = Query(15, ge=1, le=50),
+    limit: int = Query(10, ge=1, le=50),
     include_vision: bool = Query(True),
     include_traps: bool = Query(False, description="Include trapped picks (for Trap Graveyard)")
 ):
@@ -116,7 +120,7 @@ async def get_war_zone(
 @router.get("/v3/goblin-vault")
 async def get_goblin_vault(
     response: Response,
-    limit: int = Query(15, ge=1, le=50),
+    limit: int = Query(10, ge=1, le=50),
     include_vision: bool = Query(True),
     include_traps: bool = Query(False, description="Include trapped picks (for Trap Graveyard)")
 ):
@@ -160,7 +164,7 @@ async def get_goblin_vault(
 @router.get("/v3/safe-haven")
 async def get_safe_haven(
     response: Response,
-    limit: int = Query(15, ge=1, le=50),
+    limit: int = Query(10, ge=1, le=50),
     include_vision: bool = Query(True),
     include_traps: bool = Query(False)
 ):
@@ -173,7 +177,7 @@ async def get_safe_haven(
 @router.get("/v3/front-lines")
 async def get_front_lines(
     response: Response,
-    limit: int = Query(15, ge=1, le=50),
+    limit: int = Query(10, ge=1, le=50),
     include_vision: bool = Query(True),
     include_traps: bool = Query(False, description="Include trapped picks (for Trap Graveyard)")
 ):
