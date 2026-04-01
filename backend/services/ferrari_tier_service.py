@@ -21,18 +21,20 @@ logger = logging.getLogger(__name__)
 # Ferrari Tier Thresholds
 GLOBAL_MIN_SEPARATION_PCT = 15.0  # 15% minimum implied probability separation
 
-# Safe Haven Thresholds
+# DEAD ZONE: Props with sharp price between -137 and -148 are hidden from ALL dashboards
+DEAD_ZONE_MIN = -148
+DEAD_ZONE_MAX = -137
+
+# Safe Haven Thresholds - "Too Safe" stuff lives here ONLY
 SAFE_HAVEN_MAX_SHARP_PRICE = -250  # Sharp price must be <= -250
-SAFE_HAVEN_MIN_LINE_DELTA = 1.5    # PP line at least 1.5 below Bovada
 SAFE_HAVEN_MIN_L10_RATE = 0.70     # 70% L10 hit rate
 
-# Front Lines Thresholds
-FRONT_LINES_MIN_SHARP_PRICE = -149  # Sharp price floor
-FRONT_LINES_MAX_SHARP_PRICE = 110   # Sharp price ceiling
-FRONT_LINES_MIN_PRICE_GAP = 40      # 40-cent gap from PP -137
-FRONT_LINES_MIN_L5_RATE = 0.60      # 60% L5 momentum
+# Front Lines Thresholds - EXCLUSIVE window: -149 to -245
+FRONT_LINES_MIN_SHARP_PRICE = -245  # Sharp price floor (most negative allowed)
+FRONT_LINES_MAX_SHARP_PRICE = -149  # Sharp price ceiling (least negative allowed)
+FRONT_LINES_MIN_L10_RATE = 0.70     # 70%+ L10 hit rate preferred
 
-# War Zone Thresholds
+# War Zone Thresholds - Elite Demons only
 WAR_ZONE_MIN_SHARP_PRICE = 500      # Sharp price >= +500
 WAR_ZONE_MIN_SEPARATION_PTS = 200   # Bovada 200+ points shorter
 WAR_ZONE_MIN_L10_HITS = 2           # Hit at least 2 times in L10
@@ -158,6 +160,18 @@ class FerrariTierService:
                     if sharp_price is None:
                         continue
                     
+                    # DEAD ZONE CHECK: Props with sharp price -137 to -148 are HIDDEN
+                    if DEAD_ZONE_MIN <= sharp_price <= DEAD_ZONE_MAX:
+                        discarded_props.append({
+                            "player_name": player_name,
+                            "prop": prop,
+                            "reason": f"Dead Zone: Sharp {sharp_price} is between {DEAD_ZONE_MIN} and {DEAD_ZONE_MAX}",
+                            "separation_pct": 0,
+                            "pp_price": pp_price,
+                            "sharp_price": sharp_price
+                        })
+                        continue
+                    
                     # GLOBAL KILL-SWITCH: 15% separation requirement
                     separation_pct = calculate_separation_pct(pp_price, sharp_price)
                     
@@ -219,9 +233,9 @@ class FerrariTierService:
                         safe_haven_candidates.append(candidate)
                         results["safe_haven"]["candidates"] += 1
                     
-                    # FRONT LINES: Battleground
+                    # FRONT LINES: Battleground (exclusive -149 to -245 window)
                     elif self._qualifies_front_lines(
-                        sharp_price, price_gap, l5_rate, pp_price
+                        sharp_price, price_gap, l10_rate, pp_price
                     ):
                         front_lines_candidates.append(candidate)
                         results["front_lines"]["candidates"] += 1
@@ -236,19 +250,26 @@ class FerrariTierService:
             results["props_discarded"] = len(discarded_props)
             results["props_qualified"] = len(qualified_props)
             
-            # Sort and store each tier
+            # Sort and store each tier WITH CROSS-TIER DEDUPLICATION
+            # A player can only appear in ONE tier (priority: Safe Haven > Front Lines > War Zone)
+            
+            used_players = set()
             
             # SAFE HAVEN: Sort by most negative sharp_price (strongest locks)
             safe_haven_candidates.sort(key=lambda x: x.get("sharp_price", 0))
             top_safe_haven = self._dedupe_picks(safe_haven_candidates)[:10]
+            used_players.update(p.get("player_name") for p in top_safe_haven)
             
-            # FRONT LINES: Sort by highest L10 hit rate
+            # FRONT LINES: Sort by highest L10 hit rate (exclude Safe Haven players)
             front_lines_candidates.sort(key=lambda x: x.get("l10_rate", 0), reverse=True)
-            top_front_lines = self._dedupe_picks(front_lines_candidates)[:10]
+            front_lines_filtered = [p for p in front_lines_candidates if p.get("player_name") not in used_players]
+            top_front_lines = self._dedupe_picks(front_lines_filtered)[:10]
+            used_players.update(p.get("player_name") for p in top_front_lines)
             
-            # WAR ZONE: Sort by highest sharp_price (biggest payout edge)
+            # WAR ZONE: Sort by highest sharp_price (exclude Safe Haven + Front Lines players)
             war_zone_candidates.sort(key=lambda x: x.get("sharp_price", 0), reverse=True)
-            top_war_zone = self._dedupe_picks(war_zone_candidates)[:10]
+            war_zone_filtered = [p for p in war_zone_candidates if p.get("player_name") not in used_players]
+            top_war_zone = self._dedupe_picks(war_zone_filtered)[:10]
             
             # Store in MongoDB
             await self.ferrari_safe_haven.delete_many({})
@@ -298,10 +319,11 @@ class FerrariTierService:
         is_goblin: bool
     ) -> bool:
         """
-        SAFE HAVEN qualification:
-        - Sharp price <= -250, OR
-        - Bovada standard line >= 1.5 pts higher than PP
+        SAFE HAVEN qualification - EXCLUSIVE WINDOW:
+        - Sharp price <= -250 (the "too safe" stuff lives here ONLY)
         - L10 hit rate >= 70%
+        
+        IMPORTANT: Props with sharp -360 MUST go here, NOT Front Lines
         """
         if sharp_price is None:
             return False
@@ -310,12 +332,10 @@ class FerrariTierService:
         if l10_rate < SAFE_HAVEN_MIN_L10_RATE:
             return False
         
-        # Sharp price <= -250 (heavy favorite on sharp book)
+        # EXCLUSIVE: Sharp price <= -250 (heavy favorite on sharp book)
+        # This BANS -360 from Front Lines
         if sharp_price <= SAFE_HAVEN_MAX_SHARP_PRICE:
             return True
-        
-        # OR Bovada line is significantly higher (we'd need line comparison)
-        # For now, if sharp price is very negative, it qualifies
         
         return False
     
@@ -323,28 +343,27 @@ class FerrariTierService:
         self,
         sharp_price: Optional[int],
         price_gap: int,
-        l5_rate: float,
+        l10_rate: float,
         pp_price: int
     ) -> bool:
         """
-        FRONT LINES qualification:
-        - Sharp price between -149 and +110
-        - 40-cent price gap from PP
-        - L5 hit rate >= 60%
+        FRONT LINES qualification - EXCLUSIVE WINDOW:
+        - Sharp price between -149 and -245 (NO ultra-safe goblins!)
+        - L10 hit rate >= 70% (consistency is king)
+        
+        BANNED: Props with sharp <= -250 (those go to Safe Haven)
+        BANNED: Props with sharp > -149 (dead zone or positive)
         """
         if sharp_price is None:
             return False
         
-        # Sharp price in range
+        # EXCLUSIVE Sharp price window: -245 to -149
+        # This ensures NO leakage from Safe Haven (which is <= -250)
         if not (FRONT_LINES_MIN_SHARP_PRICE <= sharp_price <= FRONT_LINES_MAX_SHARP_PRICE):
             return False
         
-        # 40-cent gap requirement
-        if price_gap < FRONT_LINES_MIN_PRICE_GAP:
-            return False
-        
-        # L5 momentum check
-        if l5_rate < FRONT_LINES_MIN_L5_RATE:
+        # L10 consistency check (70%+ preferred)
+        if l10_rate < FRONT_LINES_MIN_L10_RATE:
             return False
         
         return True
@@ -464,7 +483,7 @@ class FerrariTierService:
             "thresholds": {
                 "sharp_price": f"<= {SAFE_HAVEN_MAX_SHARP_PRICE}",
                 "l10_rate": f">= {SAFE_HAVEN_MIN_L10_RATE * 100}%",
-                "line_delta": f">= {SAFE_HAVEN_MIN_LINE_DELTA} pts"
+                "description": "Too Safe - Ultra-high probability locks"
             }
         }
     
@@ -478,8 +497,8 @@ class FerrariTierService:
             "count": len(picks),
             "thresholds": {
                 "sharp_price": f"{FRONT_LINES_MIN_SHARP_PRICE} to {FRONT_LINES_MAX_SHARP_PRICE}",
-                "price_gap": f">= {FRONT_LINES_MIN_PRICE_GAP} cents",
-                "l5_rate": f">= {FRONT_LINES_MIN_L5_RATE * 100}%"
+                "l10_rate": f">= {FRONT_LINES_MIN_L10_RATE * 100}%",
+                "description": "Battleground - Consistent 70%+ picks with edge"
             }
         }
     
@@ -494,18 +513,20 @@ class FerrariTierService:
             "thresholds": {
                 "sharp_price": f">= +{WAR_ZONE_MIN_SHARP_PRICE}",
                 "separation": f">= {WAR_ZONE_MIN_SEPARATION_PTS} pts",
-                "l10_hits": f">= {WAR_ZONE_MIN_L10_HITS}"
+                "l10_hits": f">= {WAR_ZONE_MIN_L10_HITS}",
+                "description": "Elite Demons - High payout longshots"
             }
         }
     
     async def get_discarded(self, limit: int = 50) -> Dict[str, Any]:
-        """Get props that were discarded by the kill-switch."""
+        """Get props that were discarded by the kill-switch or dead zone."""
         cursor = self.ferrari_discarded.find({}, {"_id": 0}).limit(limit)
         discarded = await cursor.to_list(length=limit)
         return {
             "discarded": discarded,
             "count": len(discarded),
-            "kill_switch_threshold": f"{GLOBAL_MIN_SEPARATION_PCT}%"
+            "kill_switch_threshold": f"{GLOBAL_MIN_SEPARATION_PCT}%",
+            "dead_zone": f"{DEAD_ZONE_MIN} to {DEAD_ZONE_MAX}"
         }
 
 
