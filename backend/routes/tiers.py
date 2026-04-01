@@ -3,14 +3,52 @@ Tier Routes
 ===========
 War Zone, Safe Haven (Goblin Vault), and Front Lines tier endpoints.
 VIP Room Logic: Filters out flagged picks (hook_risk, suspect_line_bait) from main feeds.
+Cross-Board Deduplication: Ensures each player+stat+line combo appears in only ONE section.
 """
 from fastapi import APIRouter, HTTPException, Query, Response
 from fastapi.responses import JSONResponse
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Set
 import logging
+import time
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["Tiers"])
+
+# Reference to DemonGoblinEngine (set via dependency injection)
+_demon_goblin_engine = None
+
+# Sidecar detector instance
+_sidecar_detector = None
+
+# Cross-board deduplication cache (reset every 60 seconds)
+_served_picks_cache: Set[str] = set()
+_cache_timestamp: float = 0
+CACHE_TTL = 60  # seconds
+
+
+def _get_pick_key(pick: Dict[str, Any]) -> str:
+    """Generate unique key for a pick: player_name|stat_type|line"""
+    return f"{pick.get('player_name', '')}|{pick.get('stat_type', '')}|{pick.get('line', '')}"
+
+
+def _reset_cache_if_stale():
+    """Reset the served picks cache if it's older than TTL"""
+    global _served_picks_cache, _cache_timestamp
+    if time.time() - _cache_timestamp > CACHE_TTL:
+        _served_picks_cache = set()
+        _cache_timestamp = time.time()
+
+
+def _mark_picks_as_served(picks: List[Dict[str, Any]]):
+    """Add picks to the served cache"""
+    global _served_picks_cache
+    for pick in picks:
+        _served_picks_cache.add(_get_pick_key(pick))
+
+
+def _filter_already_served(picks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Remove picks that have already been served in another section"""
+    return [p for p in picks if _get_pick_key(p) not in _served_picks_cache]
 
 # Reference to DemonGoblinEngine (set via dependency injection)
 _demon_goblin_engine = None
@@ -44,21 +82,36 @@ def get_sidecar():
     return _sidecar_detector
 
 
-def filter_clean_picks(picks: List[Dict[str, Any]], limit: int = 10) -> tuple:
+def filter_clean_picks(
+    picks: List[Dict[str, Any]], 
+    limit: int = 10,
+    exclude_keys: Set[str] = None
+) -> tuple:
     """
     VIP Room Logic: Filter out flagged picks and return clean ones.
     
     Args:
         picks: List of picks (should be pre-fetched with buffer, e.g., 30 picks)
         limit: Target number of clean picks to return (default 10)
+        exclude_keys: Set of pick keys to exclude (for cross-board deduplication)
     
     Returns:
-        Tuple of (clean_picks[:limit], trapped_picks)
+        Tuple of (clean_picks[:limit], trapped_picks, served_keys)
     """
+    if exclude_keys is None:
+        exclude_keys = set()
+    
     clean_picks = []
     trapped_picks = []
+    served_keys = set()
     
     for pick in picks:
+        pick_key = _get_pick_key(pick)
+        
+        # Skip if already served in a higher-priority board
+        if pick_key in exclude_keys:
+            continue
+        
         sidecar = pick.get("sidecar", {})
         is_trapped = sidecar.get("hook_risk", False) or sidecar.get("suspect_line_bait", False)
         
@@ -66,11 +119,50 @@ def filter_clean_picks(picks: List[Dict[str, Any]], limit: int = 10) -> tuple:
             trapped_picks.append(pick)
         else:
             clean_picks.append(pick)
+            served_keys.add(pick_key)
     
     # Sort clean picks by vision_score (highest edge first) for backfill
     clean_picks.sort(key=lambda x: x.get("vision_score", 0) or 0, reverse=True)
     
-    return clean_picks[:limit], trapped_picks
+    # Only return keys for picks we're actually serving (up to limit)
+    final_picks = clean_picks[:limit]
+    final_keys = {_get_pick_key(p) for p in final_picks}
+    
+    return final_picks, trapped_picks, final_keys
+
+
+async def _get_board_pick_keys(engine, board_name: str, sidecar) -> Set[str]:
+    """
+    Get pick keys for a specific board (for cross-board exclusion).
+    """
+    try:
+        if board_name == "safe_haven":
+            result = await engine.get_goblin_vault_static()
+        elif board_name == "front_lines":
+            result = await engine.get_front_lines_static()
+        elif board_name == "war_zone":
+            result = await engine.get_war_zone_static()
+        else:
+            return set()
+        
+        picks = result.get("picks", [])
+        
+        # Apply sidecar enrichment to identify clean picks
+        if sidecar and sidecar.is_enabled() and picks:
+            picks = await sidecar.enrich_board_picks(picks)
+        
+        # Only include clean picks in exclusion set
+        clean_keys = set()
+        for pick in picks:
+            sc = pick.get("sidecar", {})
+            is_trapped = sc.get("hook_risk", False) or sc.get("suspect_line_bait", False)
+            if not is_trapped:
+                clean_keys.add(_get_pick_key(pick))
+        
+        return clean_keys
+    except Exception as e:
+        logger.warning(f"[DEDUP] Failed to get {board_name} keys: {e}")
+        return set()
 
 
 @router.get("/v3/war-zone")
@@ -82,6 +174,7 @@ async def get_war_zone(
 ):
     """
     THE WAR ZONE - High-risk Demon picks (VIP CLEAN FEED)
+    PRIORITY: THIRD - Excludes picks already in Safe Haven and Front Lines.
     
     By default, returns only CLEAN picks (no hook_risk or suspect_line_bait).
     Set include_traps=true to get raw unfiltered data.
@@ -91,21 +184,32 @@ async def get_war_zone(
     response.headers["Expires"] = "0"
     
     engine = get_engine()
+    sidecar = get_sidecar()
+    
+    # Get Safe Haven and Front Lines picks to exclude (higher priority boards)
+    exclude_keys = set()
+    if not include_traps:
+        safe_haven_keys = await _get_board_pick_keys(engine, "safe_haven", sidecar)
+        front_lines_keys = await _get_board_pick_keys(engine, "front_lines", sidecar)
+        exclude_keys = safe_haven_keys | front_lines_keys
+    
     result = await engine.get_war_zone_static()
     
     # Apply sidecar enrichment
-    sidecar = get_sidecar()
     if sidecar and sidecar.is_enabled() and result and result.get("picks"):
         try:
             result["picks"] = await sidecar.enrich_board_picks(result["picks"])
             result["sidecar_enabled"] = True
             
-            # VIP Room: Filter out traps unless explicitly requested
+            # VIP Room: Filter out traps and exclude Safe Haven/Front Lines duplicates
             if not include_traps:
-                clean_picks, trapped_picks = filter_clean_picks(result["picks"], limit)
+                clean_picks, trapped_picks, _ = filter_clean_picks(
+                    result["picks"], limit, exclude_keys=exclude_keys
+                )
                 result["picks"] = clean_picks
                 result["trapped_count"] = len(trapped_picks)
                 result["vip_filtered"] = True
+                result["excluded_from_other_boards"] = len(exclude_keys)
             
         except Exception as e:
             logger.warning(f"[SIDECAR] War Zone enrichment failed: {e}")
@@ -126,6 +230,7 @@ async def get_goblin_vault(
 ):
     """
     THE SAFE HAVEN (Goblin Vault) - Safer Goblin picks (VIP CLEAN FEED)
+    PRIORITY: HIGHEST - No exclusions, this is the primary board.
     
     By default, returns only CLEAN picks (no hook_risk or suspect_line_bait).
     Set include_traps=true to get raw unfiltered data.
@@ -145,8 +250,9 @@ async def get_goblin_vault(
             result["sidecar_enabled"] = True
             
             # VIP Room: Filter out traps unless explicitly requested
+            # Safe Haven has HIGHEST priority - no exclusions
             if not include_traps:
-                clean_picks, trapped_picks = filter_clean_picks(result["picks"], limit)
+                clean_picks, trapped_picks, _ = filter_clean_picks(result["picks"], limit)
                 result["picks"] = clean_picks
                 result["trapped_count"] = len(trapped_picks)
                 result["vip_filtered"] = True
@@ -183,6 +289,7 @@ async def get_front_lines(
 ):
     """
     THE FRONT LINES - Goblin picks with 60-79% hit rate (VIP CLEAN FEED)
+    PRIORITY: SECOND - Excludes picks already in Safe Haven.
     
     By default, returns only CLEAN picks (no hook_risk or suspect_line_bait).
     Set include_traps=true to get raw unfiltered data.
@@ -192,21 +299,30 @@ async def get_front_lines(
     response.headers["Expires"] = "0"
     
     engine = get_engine()
+    sidecar = get_sidecar()
+    
+    # Get Safe Haven picks to exclude (higher priority board)
+    exclude_keys = set()
+    if not include_traps:
+        exclude_keys = await _get_board_pick_keys(engine, "safe_haven", sidecar)
+    
     result = await engine.get_front_lines_static()
     
     # Apply sidecar enrichment
-    sidecar = get_sidecar()
     if sidecar and sidecar.is_enabled() and result and result.get("picks"):
         try:
             result["picks"] = await sidecar.enrich_board_picks(result["picks"])
             result["sidecar_enabled"] = True
             
-            # VIP Room: Filter out traps unless explicitly requested
+            # VIP Room: Filter out traps and exclude Safe Haven duplicates
             if not include_traps:
-                clean_picks, trapped_picks = filter_clean_picks(result["picks"], limit)
+                clean_picks, trapped_picks, _ = filter_clean_picks(
+                    result["picks"], limit, exclude_keys=exclude_keys
+                )
                 result["picks"] = clean_picks
                 result["trapped_count"] = len(trapped_picks)
                 result["vip_filtered"] = True
+                result["excluded_from_safe_haven"] = len(exclude_keys)
             
         except Exception as e:
             logger.warning(f"[SIDECAR] Front Lines enrichment failed: {e}")
