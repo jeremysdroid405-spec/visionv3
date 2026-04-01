@@ -353,6 +353,12 @@ class FerrariTierService:
         sync_time: datetime
     ) -> Dict[str, Any]:
         """Build a standardized candidate object for tier storage."""
+        # Extract averages from hit_rates
+        hit_rates = prop.get("hit_rates", {})
+        l5_avg = hit_rates.get("l5_avg")
+        l10_avg = hit_rates.get("l10_avg")
+        season_avg = hit_rates.get("season_avg")
+        
         return {
             "player_name": player.get("player_name"),
             "player_id": player.get("player_id"),
@@ -387,11 +393,18 @@ class FerrariTierService:
             "line_delta": round(line_delta, 1),
             "dvp_rank": dvp_rank,
             "ai_context_score": round(ai_context_score, 1),
-            # Hit rates
+            # Hit rates (frontend expects h5_rate, h10_rate format)
             "l10_rate": round(l10_rate * 100, 1),
             "l5_rate": round(l5_rate * 100, 1),
+            "h10_rate": round(l10_rate * 100, 1),  # Frontend format
+            "h5_rate": round(l5_rate * 100, 1),    # Frontend format
             "l10_hits": l10_hits,
-            "hit_rates": prop.get("hit_rates", {}),
+            # Averages (extracted to top level for frontend)
+            "l5_avg": l5_avg,
+            "l10_avg": l10_avg,
+            "season_avg": season_avg,
+            # Full hit_rates object
+            "hit_rates": hit_rates,
             # Metadata
             "synced_at": sync_time.isoformat(),
             "is_ferrari_pick": True
