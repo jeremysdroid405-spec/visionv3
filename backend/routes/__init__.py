@@ -32,6 +32,7 @@ from .live import router as live_router, set_db as set_live_db
 from .qa_testing import router as qa_router, set_qa_db
 from .image_proxy import router as image_proxy_router
 from .headshots import router as headshots_router, set_headshot_db
+from .ferrari_tiers import router as ferrari_router, set_ferrari_db
 
 
 def register_all_routes(app, engine, game_lock_engine=None, db=None, 
@@ -157,3 +158,8 @@ def register_all_routes(app, engine, game_lock_engine=None, db=None,
     if db is not None:
         set_headshot_db(db)
     app.include_router(headshots_router, prefix="/api")
+    
+    # Ferrari Tiers - Best of Best Bovada-filtered picks
+    if db is not None:
+        set_ferrari_db(db)
+    app.include_router(ferrari_router, prefix="/api")

@@ -3,7 +3,62 @@
 ## Overview
 PropVision is a sports analytics platform for NBA player props, providing data-driven insights for betting decisions.
 
-## Latest Update (2026-04-01): Sharp Market Odds Integration
+## Latest Update (2026-04-01): Ferrari Tiered Dashboard with Bovada Separation
+
+### Feature Description
+Implemented "Ferrari" tier filtering using Bovada as the primary sharp benchmark. This creates a "Best of the Best" dashboard with zero mid plays.
+
+### Global Kill-Switch
+- **15% Separation Rule**: Props with less than 15% implied probability separation from Bovada are discarded entirely
+- Formula: `abs(PP_implied - Sharp_implied) / Sharp_implied * 100`
+- Result: 650 props discarded, 1130 qualified
+
+### Tier Definitions
+
+**1. SAFE HAVEN (Elite Goblins)**
+- Sharp price ≤ -250 (heavy favorite on sharp book)
+- L10 hit rate ≥ 70%
+- Sorted by: Most negative sharp_price
+- Example: Brice Sensabaugh PTS 14.5 @ Sharp -900, 90% L10
+
+**2. FRONT LINES (Battleground)**
+- Sharp price between -149 and +110
+- 40-cent price gap from PP -137
+- L5 hit rate ≥ 60% (momentum check)
+- Sorted by: Highest L10 hit rate
+- Example: Dylan Harper PTS 12.5 @ Sharp -1, Gap 136, 80% L5
+
+**3. WAR ZONE (Elite Demons)**
+- Must be a demon (PP +100)
+- Sharp price ≥ +500
+- Bovada 200+ pts shorter than PP
+- Hit at least 2 times in L10
+- Sorted by: Highest sharp_price (biggest payout edge)
+- Example: Jock Landale REB 9.5 @ Sharp +2000, 2 L10 hits
+
+### API Endpoints
+- `GET /api/v3/ferrari/all` - All tiers in one response
+- `GET /api/v3/ferrari/safe-haven` - Elite goblins
+- `GET /api/v3/ferrari/front-lines` - Battleground picks
+- `GET /api/v3/ferrari/war-zone` - Elite demons
+- `GET /api/v3/ferrari/discarded` - Props that failed kill-switch
+- `POST /api/v3/ferrari/rebuild` - Manual tier rebuild
+
+### Files Created/Modified
+- `/app/backend/services/ferrari_tier_service.py` - Core Ferrari filtering logic
+- `/app/backend/routes/ferrari_tiers.py` - API endpoints
+- `/app/backend/routes/__init__.py` - Route registration
+- `/app/backend/services/odds_sync_service.py` - Ferrari callback integration
+- `/app/backend/services/engines/demon_goblin_engine.py` - Service initialization
+
+### Verification
+```bash
+curl -s "https://best-bet-finder-1.preview.emergentagent.com/api/v3/ferrari/all" | jq
+```
+
+---
+
+## Previous Update (2026-04-01): Sharp Market Odds Integration
 
 ### Feature Description
 Integrated sharp bookmaker pricing into the odds sync pipeline to establish benchmark prices for identifying +EV opportunities. Each PrizePicks prop now includes a nested `sharp_market` object with real market prices from Bovada, DraftKings, and FanDuel.

@@ -49,7 +49,8 @@ class OddsSyncService:
         enrich_props_with_stats: Callable,
         build_cached_board: Callable,
         sync_master_roster: Callable,
-        fetch_sharp_book_odds: Callable = None  # Phase 2: Sharp books (DraftKings/FanDuel)
+        fetch_sharp_book_odds: Callable = None,  # Phase 2: Sharp books (DraftKings/FanDuel)
+        build_ferrari_tiers: Callable = None  # Phase 3: Ferrari tier filtering
     ) -> Dict[str, Any]:
         """
         THE ONLY API CALL - Single batch fetch to MongoDB.
@@ -343,6 +344,25 @@ class OddsSyncService:
             
                 # Step 6: Build cached board
                 await build_cached_board(props_list, sync_start)
+                
+                # Step 7: Build Ferrari tiers (Bovada separation filtering)
+                if build_ferrari_tiers:
+                    try:
+                        ferrari_results = await build_ferrari_tiers(sync_start)
+                        results["ferrari_tiers"] = {
+                            "safe_haven": ferrari_results.get("safe_haven", {}).get("count", 0),
+                            "front_lines": ferrari_results.get("front_lines", {}).get("count", 0),
+                            "war_zone": ferrari_results.get("war_zone", {}).get("count", 0),
+                            "discarded": ferrari_results.get("props_discarded", 0)
+                        }
+                        logger.info(
+                            f"[FERRARI] Built: SH={results['ferrari_tiers']['safe_haven']}, "
+                            f"FL={results['ferrari_tiers']['front_lines']}, "
+                            f"WZ={results['ferrari_tiers']['war_zone']}, "
+                            f"Discarded={results['ferrari_tiers']['discarded']}"
+                        )
+                    except Exception as fe:
+                        logger.error(f"[FERRARI] Build failed: {fe}")
             
         except Exception as e:
             logger.error(f"[SYNC_ODDS_TO_MONGO] Error: {e}")

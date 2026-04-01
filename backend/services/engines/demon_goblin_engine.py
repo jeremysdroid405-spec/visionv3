@@ -411,6 +411,10 @@ class DemonGoblinEngine:
         self.insights_sync_service = InsightsSyncService(db)
         self.insights_sync_service.set_engine(self)
         
+        # Ferrari Tier Service - Best of Best filtering
+        from services.ferrari_tier_service import FerrariTierService
+        self.ferrari_tier_service = FerrariTierService(db)
+        
         # Legacy direct collection access (gradually migrating to repo)
         self.events_cache = db.dg_events_cache
         self.odds_cache = db.dg_odds_cache
@@ -732,8 +736,16 @@ class DemonGoblinEngine:
             enrich_props_with_stats=self._enrich_props_with_stats,
             build_cached_board=self._build_cached_board,
             sync_master_roster=self.sync_master_roster,
-            fetch_sharp_book_odds=self.fetch_sharp_book_odds  # Phase 2
+            fetch_sharp_book_odds=self.fetch_sharp_book_odds,  # Phase 2
+            build_ferrari_tiers=self._build_ferrari_tiers  # Phase 3
         )
+    
+    async def _build_ferrari_tiers(self, sync_time: datetime) -> Dict[str, Any]:
+        """
+        PROXY: Ferrari tier building delegated to FerrariTierService.
+        Applies Bovada separation filtering for Best of Best picks.
+        """
+        return await self.ferrari_tier_service.build_ferrari_tiers(sync_time)
     
     async def _enrich_props_with_stats(self, props: List[Dict], player_names: List[str]) -> List[Dict]:
         """PROXY: Enrich props with stats - delegated to StatsEnrichmentService."""
