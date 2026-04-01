@@ -35,10 +35,11 @@
 import React, { memo, useCallback, useState } from 'react';
 import { 
   Target, Shield, ChevronRight, Plus, ChevronDown,
-  Crosshair, TrendingUp, HeartPulse, Lock, Flame, TrendingDown
+  Crosshair, TrendingUp, HeartPulse, Lock, Flame, TrendingDown, Info
 } from 'lucide-react';
 import { Badge } from '../ui/badge';
 import { DemonIcon, GoblinIcon } from './Icons';
+import IntelligenceModal from './IntelligenceModal';
 
 // ==================== TEAM LOGOS (FALLBACK) ====================
 const TEAM_LOGOS = {
@@ -492,6 +493,12 @@ const UniversalPlayerCard = memo(({
 }) => {
   const [isExpanded, setIsExpanded] = useState(mode === 'full');
   
+  // Intelligence Modal state
+  const [intelligenceModal, setIntelligenceModal] = useState({
+    isOpen: false,
+    type: null, // 'hook_risk' | 'suspect_bait'
+  });
+  
   // Check if locked (game in progress or completed)
   const isLocked = player?.is_locked;
   
@@ -624,23 +631,54 @@ const UniversalPlayerCard = memo(({
           </div>
         )}
         
-        {/* Sidecar Warning Flags - Hook Risk & Bait Detection */}
+        {/* Sidecar Warning Flags - Hook Risk & Bait Detection (INTERACTIVE) */}
         {player.sidecar?.enabled && (player.sidecar.hook_risk || player.sidecar.suspect_line_bait) && (
           <div className="mt-1.5 space-y-1">
             {player.sidecar.suspect_line_bait && (
-              <div className="flex items-center gap-1 px-2 py-1 bg-red-950/60 border border-red-500/40 rounded text-[10px] animate-pulse">
-                <span className="text-red-400 font-bold">🚨 SUSPECT LINE:</span>
-                <span className="text-red-300">Vegas Bait</span>
-              </div>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setIntelligenceModal({ isOpen: true, type: 'suspect_bait' });
+                }}
+                className="w-full flex items-center justify-between gap-1 px-2 py-1.5 bg-red-950/60 border border-red-500/40 rounded text-[10px] animate-pulse hover:bg-red-900/60 transition-colors cursor-pointer"
+                data-testid="suspect-bait-badge"
+              >
+                <div className="flex items-center gap-1">
+                  <span className="text-red-400 font-bold">🚨 SUSPECT LINE:</span>
+                  <span className="text-red-300">Vegas Bait</span>
+                </div>
+                <Info className="w-3.5 h-3.5 text-red-400/70" />
+              </button>
             )}
             {player.sidecar.hook_risk && !player.sidecar.suspect_line_bait && (
-              <div className="flex items-center gap-1 px-2 py-1 bg-amber-950/60 border border-amber-500/40 rounded text-[10px]">
-                <span className="text-amber-400 font-bold">⚠️ Hook Risk</span>
-                <span className="text-amber-300/70">Line near Mode ({player.sidecar.mode})</span>
-              </div>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setIntelligenceModal({ isOpen: true, type: 'hook_risk' });
+                }}
+                className="w-full flex items-center justify-between gap-1 px-2 py-1.5 bg-amber-950/60 border border-amber-500/40 rounded text-[10px] hover:bg-amber-900/60 transition-colors cursor-pointer"
+                data-testid="hook-risk-badge"
+              >
+                <div className="flex items-center gap-1">
+                  <span className="text-amber-400 font-bold">⚠️ Hook Risk</span>
+                  <span className="text-amber-300/70">Tap for info</span>
+                </div>
+                <Info className="w-3.5 h-3.5 text-amber-400/70" />
+              </button>
             )}
           </div>
         )}
+        
+        {/* Intelligence Modal */}
+        <IntelligenceModal
+          isOpen={intelligenceModal.isOpen}
+          onClose={() => setIntelligenceModal({ isOpen: false, type: null })}
+          type={intelligenceModal.type}
+          playerName={player.player_name || player.name}
+          statType={player.stat_type}
+          line={player.line}
+          sidecarData={player.sidecar}
+        />
         
         {/* Stats Row - L5 / L10 / Median (replaces Avg) */}
         <div className="flex items-center justify-between bg-zinc-800/50 rounded px-2 py-1.5 text-[10px] mt-1">
