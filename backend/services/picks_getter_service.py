@@ -2973,7 +2973,7 @@ class PicksGetterService:
                     "context_badges": 1,
                     "active_badges": "$props.active_badges",
                     # Sharp book prices
-                    "pinnacle_price": "$props.pinnacle_price",
+                    "fanduel_price": "$props.fanduel_price",
                     "draftkings_price": "$props.draftkings_price",
                     "sharp_price": "$props.sharp_price",
                     "sharp_source": "$props.sharp_source",
@@ -3075,7 +3075,7 @@ class PicksGetterService:
                     "context_badges": 1,
                     "active_badges": "$props.active_badges",
                     # Sharp book prices
-                    "pinnacle_price": "$props.pinnacle_price",
+                    "fanduel_price": "$props.fanduel_price",
                     "draftkings_price": "$props.draftkings_price",
                     "sharp_price": "$props.sharp_price",
                     "sharp_source": "$props.sharp_source",
@@ -3147,15 +3147,7 @@ class PicksGetterService:
                 {"$match": {
                     "props.is_goblin": True,  # Front Lines = Goblins only
                     "props.h10_rate": {"$gte": 60},
-                    "props.commence_time": {"$gt": now_iso},
-                    # HARD FILTER: Must have sharp price <= -300
-                    "$or": [
-                        {"props.pinnacle_price": {"$lte": -300}},
-                        {
-                            "props.pinnacle_price": None,
-                            "props.draftkings_price": {"$lte": -300}
-                        }
-                    ]
+                    "props.commence_time": {"$gt": now_iso}
                 }},
                 {"$project": {
                     "_id": 0,
@@ -3189,8 +3181,8 @@ class PicksGetterService:
                     "context_badges": 1,
                     "active_badges": "$props.active_badges",
                     # Sharp book prices
-                    "pinnacle_price": "$props.pinnacle_price",
                     "draftkings_price": "$props.draftkings_price",
+                    "fanduel_price": "$props.fanduel_price",
                     "sharp_price": "$props.sharp_price",
                     "sharp_source": "$props.sharp_source",
                     "multiplier": "$props.multiplier"

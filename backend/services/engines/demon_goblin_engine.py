@@ -1437,13 +1437,13 @@ class DemonGoblinEngine:
                 odds_url = f"{ODDS_API_BASE}/sports/basketball_nba/events/{event_id}/odds"
                 
                 async with httpx.AsyncClient() as client:
-                    # === FETCH 1: Sharp Books - Pinnacle (eu) + DraftKings (us) ===
-                    sharp_prices = {}  # {(player, market, line, direction): {pinnacle, draftkings}}
+                    # === FETCH 1: Sharp Books - DraftKings + FanDuel (us region) ===
+                    sharp_prices = {}  # {(player, market, line, direction): {draftkings, fanduel}}
                     
                     sharp_params = {
                         "apiKey": ODDS_API_KEY,
-                        "regions": "us,eu",
-                        "bookmakers": "pinnacle,draftkings",
+                        "regions": "us",
+                        "bookmakers": "draftkings,fanduel",
                         "markets": PRIZEPICKS_ALL_MARKETS,
                         "oddsFormat": "american",
                         "includeMultipliers": "true"
@@ -1456,7 +1456,7 @@ class DemonGoblinEngine:
                             
                             for bm in sharp_data.get("bookmakers", []):
                                 bm_key = bm.get("key", "")
-                                if bm_key not in ["pinnacle", "draftkings"]:
+                                if bm_key not in ["draftkings", "fanduel"]:
                                     continue
                                 
                                 for market in bm.get("markets", []):
@@ -1469,12 +1469,12 @@ class DemonGoblinEngine:
                                         
                                         lookup_key = (player_name, market_key, line, direction)
                                         if lookup_key not in sharp_prices:
-                                            sharp_prices[lookup_key] = {"pinnacle_price": None, "draftkings_price": None}
+                                            sharp_prices[lookup_key] = {"draftkings_price": None, "fanduel_price": None}
                                         
-                                        if bm_key == "pinnacle":
-                                            sharp_prices[lookup_key]["pinnacle_price"] = price
-                                        elif bm_key == "draftkings":
+                                        if bm_key == "draftkings":
                                             sharp_prices[lookup_key]["draftkings_price"] = price
+                                        elif bm_key == "fanduel":
+                                            sharp_prices[lookup_key]["fanduel_price"] = price
                                             
                             logger.info(f"  [SHARP] {event.get('away_team')} @ {event.get('home_team')}: {len(sharp_prices)} prices")
                     except Exception as e:
@@ -1516,10 +1516,10 @@ class DemonGoblinEngine:
                                     # Look up sharp prices
                                     lookup_key = (player_name, market_key, line, direction)
                                     sharp_data = sharp_prices.get(lookup_key, {})
-                                    pinnacle_price = sharp_data.get("pinnacle_price")
                                     draftkings_price = sharp_data.get("draftkings_price")
-                                    sharp_price = pinnacle_price if pinnacle_price is not None else draftkings_price
-                                    sharp_source = "pinnacle" if pinnacle_price is not None else ("draftkings" if draftkings_price is not None else None)
+                                    fanduel_price = sharp_data.get("fanduel_price")
+                                    sharp_price = draftkings_price if draftkings_price is not None else fanduel_price
+                                    sharp_source = "draftkings" if draftkings_price is not None else ("fanduel" if fanduel_price is not None else None)
                                     
                                     # Classification logic
                                     if is_alternate_market:
@@ -1542,8 +1542,8 @@ class DemonGoblinEngine:
                                         "is_goblin": is_goblin,
                                         "prop_type": prop_type,
                                         # Sharp book prices
-                                        "pinnacle_price": pinnacle_price,
                                         "draftkings_price": draftkings_price,
+                                        "fanduel_price": fanduel_price,
                                         "sharp_price": sharp_price,
                                         "sharp_source": sharp_source
                                     }

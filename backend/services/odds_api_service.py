@@ -265,13 +265,13 @@ class OddsApiService:
         cache_ttl_minutes: int = 10
     ) -> Dict[str, Any]:
         """
-        Fetch Sharp Book odds (Pinnacle + DraftKings) for arbitrage detection.
+        Fetch Sharp Book odds (DraftKings + FanDuel) for arbitrage detection.
         
         These lines are used by the Sharp Edge Calculator to find +EV opportunities
         where Vegas smart money disagrees with PrizePicks pricing.
         
         Returns:
-            Combined odds data from Pinnacle and DraftKings
+            Combined odds data from DraftKings and FanDuel
         """
         try:
             # CHECK CACHE FIRST
@@ -298,7 +298,7 @@ class OddsApiService:
                 "apiKey": ODDS_API_KEY,
                 "regions": "us",
                 "markets": ",".join(PRIZEPICKS_STANDARD_MARKETS),
-                "bookmakers": "pinnacle,draftkings",
+                "bookmakers": "draftkings,fanduel",
                 "oddsFormat": "american",
                 "includeMultipliers": "true"
             }
@@ -313,23 +313,23 @@ class OddsApiService:
                 odds_data["source"] = "sharp_books"
                 
                 # Count props by bookmaker
-                pinnacle_count = 0
                 draftkings_count = 0
+                fanduel_count = 0
                 
                 for bm in odds_data.get("bookmakers", []):
                     bm_key = bm.get("key", "")
                     for market in bm.get("markets", []):
                         outcome_count = len(market.get("outcomes", []))
-                        if bm_key == "pinnacle":
-                            pinnacle_count += outcome_count
-                        elif bm_key == "draftkings":
+                        if bm_key == "draftkings":
                             draftkings_count += outcome_count
+                        elif bm_key == "fanduel":
+                            fanduel_count += outcome_count
                 
-                if pinnacle_count > 0 or draftkings_count > 0:
+                if draftkings_count > 0 or fanduel_count > 0:
                     logger.info(
                         f"  [SHARP_BOOKS] {event_info.get('away_team', '')} @ "
                         f"{event_info.get('home_team', '')}: "
-                        f"Pinnacle={pinnacle_count}, DraftKings={draftkings_count}"
+                        f"DraftKings={draftkings_count}, FanDuel={fanduel_count}"
                     )
                     
                     # Store in cache

@@ -49,7 +49,7 @@ class OddsSyncService:
         enrich_props_with_stats: Callable,
         build_cached_board: Callable,
         sync_master_roster: Callable,
-        fetch_sharp_book_odds: Callable = None  # Phase 2: Sharp books (Pinnacle/DraftKings)
+        fetch_sharp_book_odds: Callable = None  # Phase 2: Sharp books (DraftKings/FanDuel)
     ) -> Dict[str, Any]:
         """
         THE ONLY API CALL - Single batch fetch to MongoDB.
@@ -144,10 +144,12 @@ class OddsSyncService:
                         for prop in props:
                             seen_players_raw.add(prop.get("player_name"))
                 
-                # Phase 2: Fetch Sharp Book odds (Pinnacle/DraftKings) in parallel
+                # Phase 2: Fetch Sharp Book odds (DraftKings/FanDuel) in parallel
                 # These are used for arbitrage detection in the Sharp Sniper engine
+                sharp_prices = {}  # {(player, market, line, direction): {draftkings_price, fanduel_price}}
+                
                 if fetch_sharp_book_odds:
-                    logger.info(f"[SYNC_ODDS_TO_MONGO] Fetching Sharp Book odds (Pinnacle/DraftKings)...")
+                    logger.info(f"[SYNC_ODDS_TO_MONGO] Fetching Sharp Book odds (DraftKings/FanDuel)...")
                     
                     async def fetch_sharp_odds(event_id: str, event_info: dict):
                         try:
@@ -163,6 +165,55 @@ class OddsSyncService:
                     results["api_calls_made"] += len(valid_events)
                     results["sharp_books_fetched"] = sharp_count
                     logger.info(f"[SYNC_ODDS_TO_MONGO] Sharp Books: {sharp_count}/{len(valid_events)} events with data")
+                    
+                    # Build sharp price lookup table
+                    for sharp_data in sharp_results:
+                        if isinstance(sharp_data, Exception) or not sharp_data:
+                            continue
+                        
+                        for bm in sharp_data.get("bookmakers", []):
+                            bm_key = bm.get("key", "")
+                            if bm_key not in ["draftkings", "fanduel"]:
+                                continue
+                            
+                            for market in bm.get("markets", []):
+                                market_key = market.get("key", "")
+                                for outcome in market.get("outcomes", []):
+                                    player_name = outcome.get("description", "")
+                                    line = outcome.get("point", 0)
+                                    direction = (outcome.get("name", "") or "over").lower()
+                                    price = outcome.get("price")
+                                    
+                                    lookup_key = (player_name, market_key, line, direction)
+                                    if lookup_key not in sharp_prices:
+                                        sharp_prices[lookup_key] = {"draftkings_price": None, "fanduel_price": None}
+                                    
+                                    if bm_key == "draftkings":
+                                        sharp_prices[lookup_key]["draftkings_price"] = price
+                                    elif bm_key == "fanduel":
+                                        sharp_prices[lookup_key]["fanduel_price"] = price
+                    
+                    logger.info(f"[SYNC_ODDS_TO_MONGO] Built sharp price lookup: {len(sharp_prices)} unique props")
+                
+                # Merge sharp prices into PrizePicks props
+                for prop in all_props:
+                    player_name = prop.get("player_name", "")
+                    market_key = prop.get("market", "")
+                    line = prop.get("line", 0)
+                    direction = (prop.get("direction", "") or "over").lower()
+                    
+                    lookup_key = (player_name, market_key, line, direction)
+                    sharp_data = sharp_prices.get(lookup_key, {})
+                    
+                    draftkings_price = sharp_data.get("draftkings_price")
+                    fanduel_price = sharp_data.get("fanduel_price")
+                    sharp_price = draftkings_price if draftkings_price is not None else fanduel_price
+                    sharp_source = "draftkings" if draftkings_price is not None else ("fanduel" if fanduel_price is not None else None)
+                    
+                    prop["draftkings_price"] = draftkings_price
+                    prop["fanduel_price"] = fanduel_price
+                    prop["sharp_price"] = sharp_price
+                    prop["sharp_source"] = sharp_source
             
             # Step 3: Normalize all props
             logger.info(f"[NORMALIZATION] Processing {len(all_props)} props...")

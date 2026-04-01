@@ -515,12 +515,12 @@ class AdaptiveSyncEngine:
                     except Exception as e:
                         logger.warning(f"[SYNC] PrizePicks fetch failed for {event_id}: {e}")
                     
-                    # === FETCH 2: Sharp Books - Pinnacle (eu) + DraftKings (us) ===
+                    # === FETCH 2: Sharp Books - DraftKings + FanDuel (us region) ===
                     sharp_data = None
                     sharp_params = {
                         "apiKey": self.odds_api_key,
-                        "regions": "us,eu",
-                        "bookmakers": "pinnacle,draftkings",
+                        "regions": "us",
+                        "bookmakers": "draftkings,fanduel",
                         "markets": prizepicks_markets,
                         "oddsFormat": "american",
                         "includeMultipliers": "true"
@@ -554,7 +554,7 @@ class AdaptiveSyncEngine:
                         if prizepicks_data:
                             merged_event["bookmakers"].extend(prizepicks_data.get("bookmakers", []))
                         
-                        # Add Sharp bookmakers (Pinnacle, DraftKings)
+                        # Add Sharp bookmakers (DraftKings, FanDuel)
                         if sharp_data:
                             merged_event["bookmakers"].extend(sharp_data.get("bookmakers", []))
                         
@@ -565,7 +565,7 @@ class AdaptiveSyncEngine:
                         sharp_count = len(sharp_data.get("bookmakers", [])) if sharp_data else 0
                         logger.info(f"  [MERGED] {event.get('away_team')} @ {event.get('home_team')}: PrizePicks={pp_count}, Sharp={sharp_count} bookmakers")
                 
-                logger.info(f"[UNDERDOG_SYNC] Fetched DFS odds for {len(enriched_events)} events")
+                logger.info(f"[SYNC] Fetched odds for {len(enriched_events)} events (PrizePicks + DraftKings + FanDuel)")
                 return enriched_events
                 
         except httpx.HTTPStatusError as e:
@@ -637,11 +637,11 @@ class AdaptiveSyncEngine:
         
         # ============================================================
         # PASS 1: Collect all props and identify MAIN LINES (anchors)
-        #         Also build sharp price lookup from Pinnacle/DraftKings
+        #         Also build sharp price lookup from DraftKings/FanDuel
         # ============================================================
         # Key: (player_name, stat_type) -> main_line value
         main_lines: Dict[tuple, float] = {}
-        # Key: (player_name, stat_type, line, direction) -> {pinnacle_price, draftkings_price}
+        # Key: (player_name, stat_type, line, direction) -> {draftkings_price, fanduel_price}
         sharp_prices: Dict[tuple, Dict] = {}
         # Collect all props for Pass 2
         all_props: List[Dict] = []
@@ -654,11 +654,11 @@ class AdaptiveSyncEngine:
             
             bookmakers = event.get("bookmakers", [])
             
-            # === FIRST: Extract sharp prices from Pinnacle and DraftKings ===
+            # === FIRST: Extract sharp prices from DraftKings and FanDuel ===
             for bookmaker in bookmakers:
                 bookmaker_key = bookmaker.get("key", "")
                 
-                if bookmaker_key not in ["pinnacle", "draftkings"]:
+                if bookmaker_key not in ["draftkings", "fanduel"]:
                     continue
                 
                 markets = bookmaker.get("markets", [])
@@ -684,12 +684,12 @@ class AdaptiveSyncEngine:
                         lookup_key = (player_name, stat_type_extracted, line, direction)
                         
                         if lookup_key not in sharp_prices:
-                            sharp_prices[lookup_key] = {"pinnacle_price": None, "draftkings_price": None}
+                            sharp_prices[lookup_key] = {"draftkings_price": None, "fanduel_price": None}
                         
-                        if bookmaker_key == "pinnacle":
-                            sharp_prices[lookup_key]["pinnacle_price"] = price
-                        elif bookmaker_key == "draftkings":
+                        if bookmaker_key == "draftkings":
                             sharp_prices[lookup_key]["draftkings_price"] = price
+                        elif bookmaker_key == "fanduel":
+                            sharp_prices[lookup_key]["fanduel_price"] = price
             
             # === SECOND: Process PrizePicks props ===
             for bookmaker in bookmakers:
@@ -723,12 +723,12 @@ class AdaptiveSyncEngine:
                         # Look up sharp prices for this prop
                         lookup_key = (player_name, stat_type_extracted, line, direction)
                         sharp_data = sharp_prices.get(lookup_key, {})
-                        pinnacle_price = sharp_data.get("pinnacle_price")
                         draftkings_price = sharp_data.get("draftkings_price")
+                        fanduel_price = sharp_data.get("fanduel_price")
                         
-                        # Determine the sharp_price (Pinnacle first, then DraftKings fallback)
-                        sharp_price = pinnacle_price if pinnacle_price is not None else draftkings_price
-                        sharp_source = "pinnacle" if pinnacle_price is not None else ("draftkings" if draftkings_price is not None else None)
+                        # Determine the sharp_price (DraftKings first, then FanDuel fallback)
+                        sharp_price = draftkings_price if draftkings_price is not None else fanduel_price
+                        sharp_source = "draftkings" if draftkings_price is not None else ("fanduel" if fanduel_price is not None else None)
                         
                         # Store prop data for Pass 2
                         prop_data = {
@@ -747,8 +747,8 @@ class AdaptiveSyncEngine:
                             "is_alternate_market": is_alternate_market,
                             "stat_type_extracted": stat_type_extracted,
                             # Sharp book prices
-                            "pinnacle_price": pinnacle_price,
                             "draftkings_price": draftkings_price,
+                            "fanduel_price": fanduel_price,
                             "sharp_price": sharp_price,
                             "sharp_source": sharp_source
                         }
@@ -878,9 +878,9 @@ class AdaptiveSyncEngine:
                     "anchor_line": anchor_line,
                     "anchor_source": anchor_source,
                     "diff_from_anchor": diff_from_anchor,
-                    # Sharp book prices (Pinnacle primary, DraftKings fallback)
-                    "pinnacle_price": prop.get("pinnacle_price"),
+                    # Sharp book prices (DraftKings primary, FanDuel fallback)
                     "draftkings_price": prop.get("draftkings_price"),
+                    "fanduel_price": prop.get("fanduel_price"),
                     "sharp_price": prop.get("sharp_price"),
                     "sharp_source": prop.get("sharp_source"),
                     # Stats for display
