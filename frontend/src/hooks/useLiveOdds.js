@@ -272,6 +272,33 @@ export const useMostPopularBets = (options = {}) => {
 };
 
 /**
+ * Fetch Trap Graveyard picks (flagged hook/bait picks)
+ */
+const fetchTrapGraveyard = async () => {
+  const response = await fetch(`${API}/api/v3/trap-graveyard`);
+  if (!response.ok) throw new Error('Trap Graveyard fetch failed');
+  const data = await response.json();
+  preloadImages(data.picks);
+  return data;
+};
+
+/**
+ * useTrapGraveyard - Trap Graveyard (Hook Risk / Vegas Bait) picks
+ */
+export const useTrapGraveyard = (options = {}) => {
+  const { enabled = true, refetchInterval = LIVE_ODDS_REFETCH_INTERVAL } = options;
+  
+  return useQuery({
+    queryKey: ['trapGraveyard'],
+    queryFn: fetchTrapGraveyard,
+    enabled,
+    staleTime: LIVE_ODDS_STALE_TIME,
+    refetchInterval,
+    refetchOnWindowFocus: true,
+  });
+};
+
+/**
  * useLiveScores - Live game scores
  */
 export const useLiveScores = () => {

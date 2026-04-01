@@ -22,7 +22,7 @@ import { Card } from '../components/ui/card';
 import { 
   Search, X, LogOut, Crown, User, Radio, AlertTriangle, Activity, 
   ChevronRight, Eye, Zap, ChevronDown, Flame, ArrowLeft, Target,
-  TrendingUp, Newspaper, Clock, Crosshair, Lock, Maximize2
+  TrendingUp, Newspaper, Clock, Crosshair, Lock, Maximize2, Skull, ShieldAlert
 } from 'lucide-react';
 
 // Dashboard Components
@@ -46,7 +46,8 @@ import {
   useSafeHaven,
   useFrontLines,
   useLiveOdds,
-  useMostPopularBets
+  useMostPopularBets,
+  useTrapGraveyard
 } from '../hooks/useLiveOdds';
 import { useMasterStats } from '../hooks/useMasterStats';
 
@@ -584,6 +585,195 @@ const FrontLinesSection = memo(({ picks, onPickClick, onQuickAdd, isLoading }) =
   );
 });
 
+// ==================== TRAP GRAVEYARD SECTION ====================
+
+// Trap Card - Shows warning badges prominently
+const TrapCard = memo(({ pick, onClick }) => {
+  const sidecar = pick.sidecar || {};
+  const isHook = sidecar.hook_risk;
+  const isBait = sidecar.suspect_line_bait;
+  const sourceBoard = pick.source_board || pick.board;
+  
+  const getBoardLabel = (board) => {
+    switch(board) {
+      case 'safe_haven': return 'Safe Haven';
+      case 'war_zone': return 'War Zone';
+      case 'front_lines': return 'Front Lines';
+      default: return 'Unknown';
+    }
+  };
+  
+  const getBoardColor = (board) => {
+    switch(board) {
+      case 'safe_haven': return 'bg-green-500/20 text-green-400 border-green-500/30';
+      case 'war_zone': return 'bg-red-500/20 text-red-400 border-red-500/30';
+      case 'front_lines': return 'bg-amber-500/20 text-amber-400 border-amber-500/30';
+      default: return 'bg-zinc-500/20 text-zinc-400 border-zinc-500/30';
+    }
+  };
+  
+  return (
+    <Card 
+      className="p-3 cursor-pointer hover:scale-[1.02] transition-all bg-gradient-to-br from-red-950/40 to-zinc-900 border-red-500/30"
+      onClick={onClick}
+      data-testid={`trap-card-${pick.player_name?.replace(/\s/g, '-')}`}
+    >
+      {/* Header with player info */}
+      <div className="flex items-center gap-3 mb-2">
+        <div className="w-10 h-10 rounded-full bg-zinc-800 flex items-center justify-center overflow-hidden">
+          {pick.photo_url ? (
+            <img 
+              src={`${process.env.REACT_APP_BACKEND_URL}${pick.photo_url}`}
+              alt={pick.player_name}
+              className="w-full h-full object-cover"
+              onError={(e) => e.target.style.display='none'}
+            />
+          ) : (
+            <span className="text-zinc-500 text-xs font-bold">
+              {pick.player_name?.split(' ').map(n => n[0]).join('')}
+            </span>
+          )}
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="text-sm font-bold text-white truncate">{pick.player_name}</div>
+          <div className="flex items-center gap-2 text-xs">
+            <span className="text-zinc-500">{pick.team} vs {pick.opponent}</span>
+          </div>
+        </div>
+      </div>
+      
+      {/* Prop line */}
+      <div className="mb-2 px-2 py-1.5 bg-zinc-800/50 rounded text-center">
+        <span className="text-white font-bold text-sm">{pick.stat_type}</span>
+        <span className="text-zinc-400 mx-2">•</span>
+        <span className="text-white font-mono text-sm">{pick.line}</span>
+      </div>
+      
+      {/* Warning Badges */}
+      <div className="space-y-1.5">
+        {isHook && (
+          <div className="flex items-center gap-2 px-2 py-1.5 bg-amber-500/20 border border-amber-500/30 rounded text-amber-400 text-xs">
+            <ShieldAlert className="w-3.5 h-3.5 flex-shrink-0" />
+            <span className="font-medium">Hook Risk</span>
+            {sidecar.mode && (
+              <span className="ml-auto text-amber-300/70">Mode: {sidecar.mode}</span>
+            )}
+          </div>
+        )}
+        {isBait && (
+          <div className="flex items-center gap-2 px-2 py-1.5 bg-red-500/20 border border-red-500/30 rounded text-red-400 text-xs">
+            <Skull className="w-3.5 h-3.5 flex-shrink-0" />
+            <span className="font-medium">Vegas Bait</span>
+            {sidecar.median && (
+              <span className="ml-auto text-red-300/70">Med: {sidecar.median}</span>
+            )}
+          </div>
+        )}
+      </div>
+      
+      {/* Source board badge */}
+      <div className="mt-2 flex items-center justify-between">
+        <Badge className={`text-[10px] border ${getBoardColor(sourceBoard)}`}>
+          Filtered from {getBoardLabel(sourceBoard)}
+        </Badge>
+        <div className="text-[10px] text-zinc-500">
+          L10: {pick.h10_rate || 0}%
+        </div>
+      </div>
+    </Card>
+  );
+});
+
+// Trap Graveyard Section Component
+const TrapGraveyardSection = memo(({ picks, boardStats, onPickClick, isLoading, totalTrapped }) => {
+  if (isLoading) {
+    return (
+      <div className="mb-4">
+        <SectionHeader 
+          icon={<Skull className="w-4 h-4 text-red-400" />}
+          title="TRAP GRAVEYARD"
+          subtitle="Loading flagged picks..."
+          badgeText="LOADING..."
+          badgeColor="red"
+        />
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          {[1, 2, 3].map(i => (
+            <div key={i} className="h-40 bg-zinc-900/50 border border-zinc-800 rounded-lg animate-pulse" />
+          ))}
+        </div>
+      </div>
+    );
+  }
+  
+  if (!picks?.length) {
+    return (
+      <div className="mb-4">
+        <SectionHeader 
+          icon={<Skull className="w-4 h-4 text-red-400" />}
+          title="TRAP GRAVEYARD"
+          subtitle="All clear - no traps detected"
+          badgeText="CLEAN"
+          badgeColor="green"
+        />
+        <div className="p-6 bg-green-950/20 border border-green-500/30 rounded-lg text-center">
+          <div className="w-12 h-12 mx-auto mb-3 rounded-full bg-green-500/20 flex items-center justify-center">
+            <Activity className="w-6 h-6 text-green-400" />
+          </div>
+          <p className="text-green-400 font-medium">All picks are clean!</p>
+          <p className="text-zinc-500 text-xs mt-1">No Hook Risk or Vegas Bait detected today</p>
+        </div>
+      </div>
+    );
+  }
+  
+  return (
+    <div className="mb-4" data-testid="trap-graveyard-section">
+      <SectionHeader 
+        icon={<Skull className="w-4 h-4 text-red-400" />}
+        title="TRAP GRAVEYARD"
+        subtitle="Picks we saved you from"
+        badgeText={`${totalTrapped} TRAPS`}
+        badgeColor="red"
+      />
+      
+      {/* Board Stats Summary */}
+      {boardStats && (
+        <div className="flex gap-2 mb-3 overflow-x-auto pb-1">
+          {boardStats.safe_haven?.trapped > 0 && (
+            <div className="flex-shrink-0 px-2 py-1 bg-green-500/10 border border-green-500/30 rounded text-[10px]">
+              <span className="text-green-400 font-medium">Safe Haven:</span>
+              <span className="text-white ml-1">{boardStats.safe_haven.trapped}/{boardStats.safe_haven.total}</span>
+            </div>
+          )}
+          {boardStats.war_zone?.trapped > 0 && (
+            <div className="flex-shrink-0 px-2 py-1 bg-red-500/10 border border-red-500/30 rounded text-[10px]">
+              <span className="text-red-400 font-medium">War Zone:</span>
+              <span className="text-white ml-1">{boardStats.war_zone.trapped}/{boardStats.war_zone.total}</span>
+            </div>
+          )}
+          {boardStats.front_lines?.trapped > 0 && (
+            <div className="flex-shrink-0 px-2 py-1 bg-amber-500/10 border border-amber-500/30 rounded text-[10px]">
+              <span className="text-amber-400 font-medium">Front Lines:</span>
+              <span className="text-white ml-1">{boardStats.front_lines.trapped}/{boardStats.front_lines.total}</span>
+            </div>
+          )}
+        </div>
+      )}
+      
+      {/* Trap Cards Grid */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+        {picks.map((pick, idx) => (
+          <TrapCard 
+            key={`trap-${pick.player_name}-${pick.stat_type}-${idx}`}
+            pick={pick}
+            onClick={() => onPickClick(pick)}
+          />
+        ))}
+      </div>
+    </div>
+  );
+});
+
 // Parlay Section Builder
 const ParlaySection = memo(({ picks, onParlayClick, sectionName, title, subtitle, icon, badgeColor }) => {
   const tickets = React.useMemo(() => {
@@ -844,12 +1034,21 @@ const Dashboard = () => {
   const { data: frontLinesData, isLoading: frontLinesLoading, refetch: refetchFrontLines } = useFrontLines();
   const { data: liveOddsData, isLoading: boardLoading, refetch: refetchBoard } = useLiveOdds();
   const { data: mostPopularData, isLoading: popularLoading } = useMostPopularBets();
+  const { data: trapGraveyardData, isLoading: trapGraveyardLoading } = useTrapGraveyard();
+  
+  // Active tab state: 'vip' (clean picks) or 'traps' (flagged picks)
+  const [activeTab, setActiveTab] = useState('vip');
   
   // Extract picks from TanStack Query data
   const radarPicks = useMemo(() => warZoneData?.picks || [], [warZoneData]);
   const vaultPicks = useMemo(() => safeHavenData?.picks || [], [safeHavenData]);
   const frontLinesPicks = useMemo(() => frontLinesData?.picks || [], [frontLinesData]);
   const players = useMemo(() => liveOddsData?.players || [], [liveOddsData]);
+  
+  // Trap Graveyard data
+  const trappedPicks = useMemo(() => trapGraveyardData?.picks || [], [trapGraveyardData]);
+  const trapBoardStats = useMemo(() => trapGraveyardData?.board_stats || {}, [trapGraveyardData]);
+  const totalTrapped = trapGraveyardData?.total_trapped || 0;
   
   // Top Picks - Best of all sections (4 from each board)
   const trending = useMemo(() => players.slice(0, 8), [players]);
@@ -977,6 +1176,14 @@ const Dashboard = () => {
   const handlePopularBetClick = useCallback((bet) => {
     const type = bet.is_demon ? 'demon' : bet.is_goblin ? 'goblin' : 'demon';
     handlePlayerClick(bet.player_name, null, type);
+  }, [handlePlayerClick]);
+  
+  // Handler for trap graveyard picks
+  const handleTrapClick = useCallback((pick) => {
+    const lineValue = pick.line;
+    const highlightKey = `${pick.stat_type}|${lineValue}|${pick.direction || 'Over'}`;
+    const type = pick.is_goblin ? 'goblin' : 'demon';
+    handlePlayerClick(pick.player_name, highlightKey, type);
   }, [handlePlayerClick]);
   
   const handleLogout = async () => {
@@ -1211,53 +1418,109 @@ const Dashboard = () => {
       
       {/* Main Content */}
       <div className="p-3 space-y-4">
-        {/* Most Popular Bets - FIRST */}
-        <MostPopularBetsSection 
-          bets={popularBets} 
-          status={popularBetsStatus} 
-          onBetClick={handlePopularBetClick}
-          allLocked={allPicksLocked}
-          nextReleaseTime={nextReleaseTime}
-        />
+        {/* Tab Selector */}
+        <div className="flex gap-2 p-1 bg-zinc-900/50 border border-zinc-800 rounded-lg" data-testid="main-tabs">
+          <button
+            onClick={() => setActiveTab('vip')}
+            className={`flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all ${
+              activeTab === 'vip'
+                ? 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30'
+                : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
+            }`}
+            data-testid="tab-vip-room"
+          >
+            <Crown className="w-4 h-4" />
+            <span>VIP Room</span>
+            {!safeHavenLoading && (
+              <span className="ml-1 text-xs opacity-70">
+                ({vaultPicks.length + frontLinesPicks.length + radarPicks.length})
+              </span>
+            )}
+          </button>
+          <button
+            onClick={() => setActiveTab('traps')}
+            className={`flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all ${
+              activeTab === 'traps'
+                ? 'bg-red-500/20 text-red-400 border border-red-500/30'
+                : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
+            }`}
+            data-testid="tab-trap-graveyard"
+          >
+            <Skull className="w-4 h-4" />
+            <span>Trap Graveyard</span>
+            {totalTrapped > 0 && (
+              <span className={`ml-1 px-1.5 py-0.5 rounded text-xs ${
+                activeTab === 'traps' ? 'bg-red-500/30' : 'bg-zinc-700'
+              }`}>
+                {totalTrapped}
+              </span>
+            )}
+          </button>
+        </div>
         
-        {/* Safe Haven */}
-        <SafeHavenSection picks={vaultPicks} onPickClick={handleVaultClick} onQuickAdd={handleQuickAdd} isLoading={safeHavenLoading} />
+        {/* VIP Room Content (Clean Picks) */}
+        {activeTab === 'vip' && (
+          <>
+            {/* Most Popular Bets - FIRST */}
+            <MostPopularBetsSection 
+              bets={popularBets} 
+              status={popularBetsStatus} 
+              onBetClick={handlePopularBetClick}
+              allLocked={allPicksLocked}
+              nextReleaseTime={nextReleaseTime}
+            />
+            
+            {/* Safe Haven */}
+            <SafeHavenSection picks={vaultPicks} onPickClick={handleVaultClick} onQuickAdd={handleQuickAdd} isLoading={safeHavenLoading} />
+            
+            {/* Shield Parlays */}
+            <ParlaySection 
+              picks={vaultPicks} 
+              onParlayClick={handleParlayClick} 
+              sectionName="safe_haven"
+              title="THE SHIELD"
+              subtitle="Safe Haven parlay combinations"
+              badgeColor="green"
+            />
+            
+            {/* Front Lines */}
+            <FrontLinesSection picks={frontLinesPicks} onPickClick={handleRadarClick} onQuickAdd={handleQuickAdd} isLoading={frontLinesLoading} />
+            
+            {/* Strike Parlays */}
+            <ParlaySection 
+              picks={frontLinesPicks} 
+              onParlayClick={handleParlayClick} 
+              sectionName="front_lines"
+              title="THE STRIKE"
+              subtitle="Front Lines parlay combinations"
+              badgeColor="amber"
+            />
+            
+            {/* War Zone */}
+            <WarZoneSection picks={radarPicks} onPickClick={handleRadarClick} onQuickAdd={handleQuickAdd} isLoading={warZoneLoading} />
+            
+            {/* Gauntlet Parlays */}
+            <ParlaySection 
+              picks={radarPicks} 
+              onParlayClick={handleParlayClick} 
+              sectionName="war_zone"
+              title="THE GAUNTLET"
+              subtitle="War Zone parlay combinations"
+              badgeColor="red"
+            />
+          </>
+        )}
         
-        {/* Shield Parlays */}
-        <ParlaySection 
-          picks={vaultPicks} 
-          onParlayClick={handleParlayClick} 
-          sectionName="safe_haven"
-          title="THE SHIELD"
-          subtitle="Safe Haven parlay combinations"
-          badgeColor="green"
-        />
-        
-        {/* Front Lines */}
-        <FrontLinesSection picks={frontLinesPicks} onPickClick={handleRadarClick} onQuickAdd={handleQuickAdd} isLoading={frontLinesLoading} />
-        
-        {/* Strike Parlays */}
-        <ParlaySection 
-          picks={frontLinesPicks} 
-          onParlayClick={handleParlayClick} 
-          sectionName="front_lines"
-          title="THE STRIKE"
-          subtitle="Front Lines parlay combinations"
-          badgeColor="amber"
-        />
-        
-        {/* War Zone */}
-        <WarZoneSection picks={radarPicks} onPickClick={handleRadarClick} onQuickAdd={handleQuickAdd} isLoading={warZoneLoading} />
-        
-        {/* Gauntlet Parlays */}
-        <ParlaySection 
-          picks={radarPicks} 
-          onParlayClick={handleParlayClick} 
-          sectionName="war_zone"
-          title="THE GAUNTLET"
-          subtitle="War Zone parlay combinations"
-          badgeColor="red"
-        />
+        {/* Trap Graveyard Content (Flagged Picks) */}
+        {activeTab === 'traps' && (
+          <TrapGraveyardSection
+            picks={trappedPicks}
+            boardStats={trapBoardStats}
+            onPickClick={handleTrapClick}
+            isLoading={trapGraveyardLoading}
+            totalTrapped={totalTrapped}
+          />
+        )}
       </div>
       
       {/* Expanded Parlay Modal */}
