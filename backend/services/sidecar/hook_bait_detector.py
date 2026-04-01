@@ -510,6 +510,9 @@ class HookBaitDetector:
         
         enriched = []
         for pick in picks:
+            if pick is None:
+                continue
+                
             player_name = pick.get("player_name", "")
             stat_type = pick.get("stat_type", "")
             line = pick.get("line", 0)
@@ -518,15 +521,18 @@ class HookBaitDetector:
             # Analyze this prop with refined thresholds
             analysis = await self.analyze_prop(player_name, stat_type, line)
             
+            # Safely get advanced_stats (may be None)
+            advanced_stats = analysis.get("advanced_stats") or {}
+            
             # Add sidecar data
             pick["sidecar"] = {
                 "enabled": True,
                 "hook_risk": analysis.get("hook_risk", False),
                 "suspect_line_bait": analysis.get("suspect_line_bait", False),
-                "median": analysis.get("advanced_stats", {}).get("median"),
-                "mode": analysis.get("advanced_stats", {}).get("mode"),
-                "mode_frequency_pct": analysis.get("advanced_stats", {}).get("mode_frequency_pct"),
-                "std_dev": analysis.get("advanced_stats", {}).get("std_dev"),
+                "median": advanced_stats.get("median"),
+                "mode": advanced_stats.get("mode"),
+                "mode_frequency_pct": advanced_stats.get("mode_frequency_pct"),
+                "std_dev": advanced_stats.get("std_dev"),
             }
             
             # Add warnings (only for true anomalies)

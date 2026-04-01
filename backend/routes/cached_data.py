@@ -152,8 +152,9 @@ async def get_sidecar_status():
             "success": True,
             "hook_bait_detector": {
                 "enabled": detector.is_enabled(),
-                "hook_threshold": detector.HOOK_THRESHOLD,
-                "bait_threshold_percent": detector.BAIT_THRESHOLD * 100,
+                "hook_line_tolerance": detector.HOOK_LINE_TOLERANCE,
+                "hook_mode_frequency_min": detector.HOOK_MODE_FREQUENCY_MIN,
+                "bait_high_volume_floor": detector.BAIT_HIGH_VOLUME_FLOOR,
                 "description": "Detects hook lines (near Mode) and bait lines (below Median)"
             }
         }
