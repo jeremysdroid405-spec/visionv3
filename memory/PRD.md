@@ -3,7 +3,53 @@
 ## Overview
 PropVision is a sports analytics platform for NBA player props, providing data-driven insights for betting decisions.
 
-## Latest Update (2026-04-01): Hook Protector & Bait Detector Sidecar Modules
+## Latest Update (2026-04-01): Sharp Market Odds Integration
+
+### Feature Description
+Integrated sharp bookmaker pricing into the odds sync pipeline to establish benchmark prices for identifying +EV opportunities. Each PrizePicks prop now includes a nested `sharp_market` object with real market prices from Bovada, DraftKings, and FanDuel.
+
+### Data Sources
+- **Bovada**: Primary sharp reference for ALTERNATE lines (better alternate line coverage)
+- **DraftKings/FanDuel**: Sharp reference for STANDARD lines (averaged together)
+
+### Implementation
+1. **`/app/backend/services/odds_api_service.py`**:
+   - Updated `fetch_sharp_book_odds()` to request from `bovada,draftkings,fanduel`
+   - Added `regions=us,eu` for broader Bovada coverage
+   - Now fetches both standard AND alternate markets from sharp books
+
+2. **`/app/backend/services/odds_sync_service.py`**:
+   - Builds `sharp_prices` lookup table from sharp book responses
+   - Merges into each PrizePicks prop as nested `sharp_market` object:
+     ```json
+     {
+       "bovada_price": -120,
+       "draftkings_price": -110,
+       "fanduel_price": -115,
+       "dk_fd_average": -112,
+       "sharp_price": -112,
+       "sharp_source": "dk_fd_avg",
+       "is_alternate": false
+     }
+     ```
+
+### Coverage Results
+- 597 alternate props with sharp prices (Bovada primary)
+- 223 standard props with sharp prices (DK/FD average primary)
+- Total: ~820 props with real market benchmarks
+
+### Verification Commands
+```bash
+# View sharp market data for a player
+curl -s 'http://localhost:8001/api/v3/cached-props' | jq '.players[0].props[0].sharp_market'
+
+# Count props with sharp data
+curl -s 'http://localhost:8001/api/v3/cached-props' | jq '[.players[].props[] | select(.sharp_market.sharp_price != null)] | length'
+```
+
+---
+
+## Previous Update (2026-04-01): Hook Protector & Bait Detector Sidecar Modules
 
 ### Feature Description
 Decoupled "sidecar" modules that detect potentially dangerous betting lines:
