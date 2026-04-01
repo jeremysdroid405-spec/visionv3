@@ -827,6 +827,59 @@ POST `/api/v3/trigger-board-enrichment` - Forces refresh of board intelligence
 
 ---
 
+## UPDATE (2026-04-01): VIP Room & Trap Graveyard Implementation
+
+### Problem
+The main dashboard was showing ALL picks, including those flagged with Hook Risk or Vegas Bait warnings. Users needed a way to see only clean picks while also being able to browse the flagged picks separately.
+
+### Solution: VIP Room (Clean Picks) + Trap Graveyard (Flagged Picks)
+
+#### Backend Changes (`/app/backend/routes/tiers.py`)
+1. **`filter_clean_picks()` function**: Separates clean picks from flagged picks
+   - Clean picks: No `hook_risk` and no `suspect_line_bait` in sidecar
+   - Returns tuple of (clean_picks, trapped_picks)
+
+2. **VIP Room Filtering on Tier Endpoints**:
+   - `/api/v3/safe-haven`, `/api/v3/war-zone`, `/api/v3/front-lines`
+   - Now filter out trapped picks by default
+   - Returns `vip_filtered: true` and `trapped_count` in response
+   - Use `include_traps=true` parameter to get unfiltered data
+
+3. **New `/api/v3/trap-graveyard` Endpoint**:
+   - Collects ALL trapped picks across all boards
+   - Adds `source_board` field to each pick
+   - Returns `board_stats` summary (trapped/total counts per board)
+   - Sorts by trap severity (bait first, then hook)
+
+#### Frontend Changes (`/app/frontend/src/pages/Dashboard.jsx`)
+1. **Tab Interface**: Added two tabs below Intel Search
+   - **VIP Room** (yellow, default): Shows clean picks only
+   - **Trap Graveyard** (red): Shows flagged picks with warning badges
+
+2. **`TrapGraveyardSection` Component**: 
+   - Displays trapped picks in responsive grid (1-3 columns)
+   - Shows board stats summary chips
+   - Each card shows Hook Risk / Vegas Bait badges with Mode/Median values
+   - Source board label (e.g., "Filtered from Safe Haven")
+
+3. **`useTrapGraveyard` Hook** (`/app/frontend/src/hooks/useLiveOdds.js`):
+   - Fetches `/api/v3/trap-graveyard` with 30s polling
+   - Preloads player images
+
+#### Test Results
+- 14/14 backend tests passed
+- All frontend UI tests passed
+- 6 trapped picks currently from Safe Haven (Hook Risk + Vegas Bait)
+
+#### Files Changed
+- `/app/backend/routes/tiers.py` - VIP filtering + Trap Graveyard endpoint
+- `/app/frontend/src/pages/Dashboard.jsx` - Tab UI + TrapGraveyardSection
+- `/app/frontend/src/hooks/useLiveOdds.js` - useTrapGraveyard hook
+
+**Status:** COMPLETE
+
+---
+
 ## PENDING TASKS
 
 ### P1 - War Zone Score Breakdown UI
