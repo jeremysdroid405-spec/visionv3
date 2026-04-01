@@ -12,7 +12,7 @@ Feature Flag: ENABLE_HOOK_BAIT_DETECTOR (defaults to True)
 """
 
 import logging
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Tuple
 from statistics import median, mode, StatisticsError
 from motor.motor_asyncio import AsyncIOMotorDatabase
 import os
@@ -26,12 +26,23 @@ ENABLE_HOOK_BAIT_DETECTOR = os.environ.get("ENABLE_HOOK_BAIT_DETECTOR", "true").
 class HookBaitDetector:
     """
     Sidecar module for detecting:
-    1. Hook Risk: Lines dangerously close to the Mode (most frequent outcome)
-    2. Suspect Line Bait: Lines suspiciously below the Median
+    1. Hook Risk: Lines dangerously close to a highly frequent Mode
+    2. Suspect Line Bait: Lines that are statistical anomalies (1.5 SD below Median)
+    
+    REFINED THRESHOLDS (2026-04-01):
+    - Hook: Mode must occur 25%+ of L20, line exactly ±0.5 from Mode
+    - Bait: Median >= 10, line <= Median - 1.5*SD, AND 20%+ drop with min 3.0 pts
     """
     
-    HOOK_THRESHOLD = 0.5  # Line within 0.5 of Mode triggers hook_risk
-    BAIT_THRESHOLD = 0.25  # Line 25%+ below Median triggers suspect_line_bait
+    # HOOK PROTECTOR THRESHOLDS
+    HOOK_LINE_TOLERANCE = 0.5  # Line must be within ±0.5 of Mode
+    HOOK_MODE_FREQUENCY_MIN = 0.25  # Mode must occur in 25%+ of games (5/20)
+    
+    # BAIT DETECTOR THRESHOLDS
+    BAIT_MEDIAN_FLOOR = 10.0  # Ignore bait logic for stats with median < 10
+    BAIT_SD_MULTIPLIER = 1.5  # Line must be 1.5 SD below median
+    BAIT_PERCENT_DROP = 0.20  # Line must be 20%+ below median
+    BAIT_ABSOLUTE_DROP = 3.0  # Line must be at least 3.0 points below median
     
     def __init__(self, db: AsyncIOMotorDatabase):
         self.db = db
@@ -59,19 +70,46 @@ class HookBaitDetector:
             return None
     
     @staticmethod
-    def calculate_mode(values: List[float]) -> Optional[float]:
-        """Calculate mode (most frequent value) - rounds to nearest 0.5"""
-        if not values:
+    def calculate_std_dev(values: List[float]) -> Optional[float]:
+        """Calculate standard deviation of a list of values"""
+        if len(values) < 2:
             return None
         try:
-            # Round values to nearest 0.5 for mode calculation (common betting increments)
-            rounded_values = [round(v * 2) / 2 for v in values]
-            return mode(rounded_values)
-        except StatisticsError:
-            # No unique mode - return None
-            return None
+            mean = sum(values) / len(values)
+            variance = sum((x - mean) ** 2 for x in values) / len(values)
+            return round(variance ** 0.5, 2)
         except Exception:
             return None
+    
+    @staticmethod
+    def calculate_mode_with_frequency(values: List[float]) -> Tuple[Optional[float], int, int]:
+        """
+        Calculate mode (most frequent value) and its frequency.
+        Rounds values to nearest 0.5 for mode calculation (common betting increments).
+        
+        Returns:
+            Tuple of (mode_value, frequency_count, total_games)
+        """
+        if not values:
+            return None, 0, 0
+        
+        try:
+            # Round values to nearest 0.5 for mode calculation
+            rounded_values = [round(v * 2) / 2 for v in values]
+            
+            # Count frequencies
+            from collections import Counter
+            frequency = Counter(rounded_values)
+            
+            # Find most common
+            most_common = frequency.most_common(1)
+            if most_common:
+                mode_val, count = most_common[0]
+                return mode_val, count, len(values)
+            
+            return None, 0, len(values)
+        except Exception:
+            return None, 0, len(values)
     
     async def get_player_game_logs(
         self, 
@@ -116,7 +154,7 @@ class HookBaitDetector:
                 min_str = game.get("min", "0")
                 try:
                     mins = int(min_str.split(":")[0]) if ":" in str(min_str) else int(min_str) if min_str else 0
-                except:
+                except (ValueError, TypeError, AttributeError):
                     mins = 0
                 
                 if mins > 0:  # Player actually played
@@ -139,17 +177,30 @@ class HookBaitDetector:
         game_values: List[float]
     ) -> Dict[str, Any]:
         """
-        Calculate median and mode from game values.
-        Returns stats for L10 and L20.
+        Calculate median, mode (with frequency), and standard deviation from game values.
+        Uses L20 as primary source for more stable statistics.
         """
         l10 = game_values[:10] if len(game_values) >= 10 else game_values
         l20 = game_values[:20] if len(game_values) >= 20 else game_values
         
+        # Calculate mode with frequency for L20
+        l20_mode, l20_mode_count, l20_total = self.calculate_mode_with_frequency(l20)
+        l10_mode, l10_mode_count, l10_total = self.calculate_mode_with_frequency(l10)
+        
+        # Calculate standard deviation
+        l20_std_dev = self.calculate_std_dev(l20)
+        l10_std_dev = self.calculate_std_dev(l10)
+        
         return {
             "l10_median": self.calculate_median(l10),
-            "l10_mode": self.calculate_mode(l10),
+            "l10_mode": l10_mode,
+            "l10_mode_count": l10_mode_count,
+            "l10_std_dev": l10_std_dev,
             "l20_median": self.calculate_median(l20),
-            "l20_mode": self.calculate_mode(l20),
+            "l20_mode": l20_mode,
+            "l20_mode_count": l20_mode_count,
+            "l20_mode_frequency_pct": round(l20_mode_count / l20_total * 100, 1) if l20_total > 0 else 0,
+            "l20_std_dev": l20_std_dev,
             "sample_size_l10": len(l10),
             "sample_size_l20": len(l20)
         }
@@ -157,35 +208,92 @@ class HookBaitDetector:
     def detect_hook_risk(
         self, 
         line: float, 
-        mode_value: Optional[float]
-    ) -> bool:
+        mode_value: Optional[float],
+        mode_count: int,
+        sample_size: int
+    ) -> Tuple[bool, Optional[str]]:
         """
-        Hook Protector Logic:
-        If line is within 0.5 of the Mode, it's a hook risk.
-        Books often set lines at the most common outcome to maximize house edge.
-        """
-        if mode_value is None or line is None:
-            return False
+        REFINED Hook Protector Logic:
         
+        Threshold A: Mode must occur in >= 25% of L20 games (5+ times in 20 games)
+        Threshold B: DFS line is exactly ±0.5 points from this highly frequent Mode
+        
+        Returns:
+            Tuple of (is_hook_risk, reason_string)
+        """
+        if mode_value is None or line is None or sample_size == 0:
+            return False, None
+        
+        # Threshold A: Mode frequency must be >= 25%
+        mode_frequency = mode_count / sample_size
+        if mode_frequency < self.HOOK_MODE_FREQUENCY_MIN:
+            return False, None
+        
+        # Threshold B: Line must be within ±0.5 of Mode
         diff = abs(line - mode_value)
-        return diff <= self.HOOK_THRESHOLD
+        if diff > self.HOOK_LINE_TOLERANCE:
+            return False, None
+        
+        # Both thresholds met - this is a Hook Risk
+        freq_pct = round(mode_frequency * 100, 1)
+        reason = f"Mode {mode_value} occurs {mode_count}/{sample_size} ({freq_pct}%), line is {diff} away"
+        return True, reason
     
     def detect_suspect_bait(
         self, 
         line: float, 
-        median_value: Optional[float]
-    ) -> bool:
+        median_value: Optional[float],
+        std_dev: Optional[float]
+    ) -> Tuple[bool, Optional[str]]:
         """
-        Bait Detector Logic:
-        If line is 25%+ below the Median, it's suspect bait.
-        Vegas may be baiting the public with a "too good to be true" line.
-        """
-        if median_value is None or line is None or median_value == 0:
-            return False
+        REFINED Bait Detector Logic (The 1.5 SD Rule):
         
-        # Calculate how far below median the line is
-        percent_below = (median_value - line) / median_value
-        return percent_below >= self.BAIT_THRESHOLD
+        Threshold A (Volume Floor): Median must be >= 10.0 (ignore small stats)
+        Threshold B (1.5 SD Rule): Line <= Median - (1.5 * SD)
+        Threshold C (Absolute Drop): Line is 20%+ below Median AND min 3.0 points below
+        
+        ALL three thresholds must be true to flag suspect_line_bait.
+        
+        Returns:
+            Tuple of (is_suspect_bait, reason_string)
+        """
+        if median_value is None or line is None:
+            return False, None
+        
+        # Threshold A: Volume Floor - Median must be >= 10.0
+        if median_value < self.BAIT_MEDIAN_FLOOR:
+            return False, None
+        
+        # Threshold B: 1.5 SD Rule
+        # If no std_dev available, skip this check but note it
+        sd_threshold_met = False
+        if std_dev is not None and std_dev > 0:
+            sd_threshold = median_value - (self.BAIT_SD_MULTIPLIER * std_dev)
+            sd_threshold_met = line <= sd_threshold
+        else:
+            # Can't calculate SD threshold - don't flag
+            return False, None
+        
+        if not sd_threshold_met:
+            return False, None
+        
+        # Threshold C: 20% drop AND minimum 3.0 points
+        percent_drop = (median_value - line) / median_value
+        absolute_drop = median_value - line
+        
+        if percent_drop < self.BAIT_PERCENT_DROP:
+            return False, None
+        
+        if absolute_drop < self.BAIT_ABSOLUTE_DROP:
+            return False, None
+        
+        # ALL thresholds met - this is Suspect Bait
+        sd_below = round((median_value - line) / std_dev, 2) if std_dev else 0
+        reason = (
+            f"Line {line} is {sd_below} SD below Median {median_value} "
+            f"({round(percent_drop * 100, 1)}% drop, {round(absolute_drop, 1)} pts)"
+        )
+        return True, reason
     
     async def analyze_prop(
         self, 
@@ -195,7 +303,7 @@ class HookBaitDetector:
     ) -> Dict[str, Any]:
         """
         Analyze a single prop for hook risk and bait detection.
-        Returns warning flags and advanced stats.
+        Uses REFINED thresholds for extreme anomaly detection only.
         """
         if not self.enabled:
             return {
@@ -232,35 +340,43 @@ class HookBaitDetector:
                 "reason": "Insufficient game data"
             }
         
-        # Calculate advanced stats
+        # Calculate advanced stats (using L20 for refined detection)
         advanced = self.calculate_advanced_stats(stat_values)
         
-        # Prefer L10 for detection (more recent = more relevant)
-        use_median = advanced.get("l10_median") or advanced.get("l20_median")
-        use_mode = advanced.get("l10_mode") or advanced.get("l20_mode")
+        # Use L20 stats for detection (more stable sample)
+        l20_median = advanced.get("l20_median")
+        l20_mode = advanced.get("l20_mode")
+        l20_mode_count = advanced.get("l20_mode_count", 0)
+        l20_sample = advanced.get("sample_size_l20", 0)
+        l20_std_dev = advanced.get("l20_std_dev")
         
-        # Run detectors
-        hook_risk = self.detect_hook_risk(line, use_mode)
-        suspect_bait = self.detect_suspect_bait(line, use_median)
+        # Run REFINED detectors
+        hook_risk, hook_reason = self.detect_hook_risk(
+            line, l20_mode, l20_mode_count, l20_sample
+        )
+        suspect_bait, bait_reason = self.detect_suspect_bait(
+            line, l20_median, l20_std_dev
+        )
         
         result = {
             "sidecar_enabled": True,
             "hook_risk": hook_risk,
             "suspect_line_bait": suspect_bait,
             "advanced_stats": {
-                "median": use_median,
-                "mode": use_mode,
+                "median": l20_median,
+                "mode": l20_mode,
+                "mode_frequency_pct": advanced.get("l20_mode_frequency_pct"),
+                "std_dev": l20_std_dev,
                 **advanced
             }
         }
         
         # Add warning reasons
-        if hook_risk:
-            result["hook_warning"] = f"Line {line} is within 0.5 of Mode ({use_mode})"
+        if hook_risk and hook_reason:
+            result["hook_warning"] = hook_reason
         
-        if suspect_bait:
-            pct_below = round((use_median - line) / use_median * 100, 1) if use_median else 0
-            result["bait_warning"] = f"Line {line} is {pct_below}% below Median ({use_median})"
+        if suspect_bait and bait_reason:
+            result["bait_warning"] = bait_reason
         
         return result
     
@@ -302,33 +418,43 @@ class HookBaitDetector:
             
             stat_values = game_logs.get(stat_key, [])
             
-            # Calculate advanced stats
+            # Calculate advanced stats with REFINED thresholds
             if stat_values:
                 advanced = self.calculate_advanced_stats(stat_values)
-                use_median = advanced.get("l10_median") or advanced.get("l20_median")
-                use_mode = advanced.get("l10_mode") or advanced.get("l20_mode")
                 
-                # Detect risks
-                hook_risk = self.detect_hook_risk(line, use_mode)
-                suspect_bait = self.detect_suspect_bait(line, use_median)
+                # Use L20 for detection (more stable)
+                l20_median = advanced.get("l20_median")
+                l20_mode = advanced.get("l20_mode")
+                l20_mode_count = advanced.get("l20_mode_count", 0)
+                l20_sample = advanced.get("sample_size_l20", 0)
+                l20_std_dev = advanced.get("l20_std_dev")
+                
+                # Detect risks with REFINED thresholds
+                hook_risk, hook_reason = self.detect_hook_risk(
+                    line, l20_mode, l20_mode_count, l20_sample
+                )
+                suspect_bait, bait_reason = self.detect_suspect_bait(
+                    line, l20_median, l20_std_dev
+                )
                 
                 # Add sidecar fields
                 prop["sidecar"] = {
                     "enabled": True,
                     "hook_risk": hook_risk,
                     "suspect_line_bait": suspect_bait,
-                    "median": use_median,
-                    "mode": use_mode,
+                    "median": l20_median,
+                    "mode": l20_mode,
+                    "mode_frequency_pct": advanced.get("l20_mode_frequency_pct"),
+                    "std_dev": l20_std_dev,
                     "l10_median": advanced.get("l10_median"),
-                    "l20_median": advanced.get("l20_median"),
+                    "l20_median": l20_median,
                 }
                 
-                if hook_risk:
-                    prop["sidecar"]["hook_warning"] = f"⚠️ Line near Mode ({use_mode})"
+                if hook_risk and hook_reason:
+                    prop["sidecar"]["hook_warning"] = hook_reason
                 
-                if suspect_bait:
-                    pct = round((use_median - line) / use_median * 100, 1) if use_median else 0
-                    prop["sidecar"]["bait_warning"] = f"🚨 {pct}% below Median"
+                if suspect_bait and bait_reason:
+                    prop["sidecar"]["bait_warning"] = bait_reason
             else:
                 prop["sidecar"] = {
                     "enabled": True,
@@ -348,8 +474,8 @@ class HookBaitDetector:
         picks: List[Dict[str, Any]]
     ) -> List[Dict[str, Any]]:
         """
-        Enrich a list of board picks with hook/bait detection.
-        For Safe Haven picks: if suspect_bait is true, mark for override.
+        Enrich a list of board picks with REFINED hook/bait detection.
+        Uses strict thresholds to only flag extreme anomalies.
         """
         if not self.enabled:
             return picks
@@ -361,7 +487,7 @@ class HookBaitDetector:
             line = pick.get("line", 0)
             board = pick.get("board", "")
             
-            # Analyze this prop
+            # Analyze this prop with refined thresholds
             analysis = await self.analyze_prop(player_name, stat_type, line)
             
             # Add sidecar data
@@ -371,18 +497,20 @@ class HookBaitDetector:
                 "suspect_line_bait": analysis.get("suspect_line_bait", False),
                 "median": analysis.get("advanced_stats", {}).get("median"),
                 "mode": analysis.get("advanced_stats", {}).get("mode"),
+                "mode_frequency_pct": analysis.get("advanced_stats", {}).get("mode_frequency_pct"),
+                "std_dev": analysis.get("advanced_stats", {}).get("std_dev"),
             }
             
-            # Add warnings
+            # Add warnings (only for true anomalies)
             if analysis.get("hook_risk"):
                 pick["sidecar"]["hook_warning"] = analysis.get("hook_warning", "⚠️ Hook Risk")
             
             if analysis.get("suspect_line_bait"):
                 pick["sidecar"]["bait_warning"] = analysis.get("bait_warning", "🚨 Vegas Bait")
-                # Override Safe Haven status
+                # Override Safe Haven status for true bait
                 if board == "safe_haven":
                     pick["sidecar"]["override_board"] = True
-                    pick["sidecar"]["override_reason"] = "SUSPECT LINE: Vegas Bait detected"
+                    pick["sidecar"]["override_reason"] = "SUSPECT LINE: Extreme Vegas Bait"
             
             enriched.append(pick)
         
