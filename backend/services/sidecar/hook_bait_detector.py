@@ -38,11 +38,19 @@ class HookBaitDetector:
     HOOK_LINE_TOLERANCE = 0.5  # Line must be within ±0.5 of Mode
     HOOK_MODE_FREQUENCY_MIN = 0.25  # Mode must occur in 25%+ of games (5/20)
     
-    # BAIT DETECTOR THRESHOLDS
-    BAIT_MEDIAN_FLOOR = 10.0  # Ignore bait logic for stats with median < 10
-    BAIT_SD_MULTIPLIER = 1.5  # Line must be 1.5 SD below median
-    BAIT_PERCENT_DROP = 0.20  # Line must be 20%+ below median
-    BAIT_ABSOLUTE_DROP = 3.0  # Line must be at least 3.0 points below median
+    # BAIT DETECTOR THRESHOLDS (Branched by Volume)
+    # Branch 1: High Volume (Median >= 10.0)
+    BAIT_HIGH_VOLUME_FLOOR = 10.0
+    BAIT_HIGH_SD_MULTIPLIER = 1.5  # Line must be 1.5 SD below median
+    BAIT_HIGH_ABSOLUTE_DROP = 3.0  # Line must be at least 3.0 points below
+    
+    # Branch 2: Mid Volume (Median 4.0 - 9.5)
+    BAIT_MID_VOLUME_FLOOR = 4.0
+    BAIT_MID_VOLUME_CEILING = 9.5
+    BAIT_MID_ABSOLUTE_DROP = 1.5  # Line must be 1.5+ points below median
+    
+    # Branch 3: Micro Volume (Median < 4.0)
+    BAIT_MICRO_ABSOLUTE_DROP = 1.0  # Line must be 1.0+ points below median
     
     def __init__(self, db: AsyncIOMotorDatabase):
         self.db = db
@@ -246,13 +254,19 @@ class HookBaitDetector:
         std_dev: Optional[float]
     ) -> Tuple[bool, Optional[str]]:
         """
-        REFINED Bait Detector Logic (The 1.5 SD Rule):
+        BRANCHED Bait Detector Logic based on stat volume.
         
-        Threshold A (Volume Floor): Median must be >= 10.0 (ignore small stats)
-        Threshold B (1.5 SD Rule): Line <= Median - (1.5 * SD)
-        Threshold C (Absolute Drop): Line is 20%+ below Median AND min 3.0 points below
+        Branch 1: HIGH VOLUME (Median >= 10.0)
+            - Stats: Points, PRA, P+R, P+A
+            - Rule: Line <= (Median - 1.5*SD) AND absolute drop >= 3.0
         
-        ALL three thresholds must be true to flag suspect_line_bait.
+        Branch 2: MID VOLUME (Median 4.0 - 9.5)
+            - Stats: Assists, Rebounds
+            - Rule: Line is 1.5+ points below Median (no SD/percentage)
+        
+        Branch 3: MICRO VOLUME (Median < 4.0)
+            - Stats: Blocks, Steals, 3PM
+            - Rule: Line is 1.0+ points below Median
         
         Returns:
             Tuple of (is_suspect_bait, reason_string)
@@ -260,40 +274,54 @@ class HookBaitDetector:
         if median_value is None or line is None:
             return False, None
         
-        # Threshold A: Volume Floor - Median must be >= 10.0
-        if median_value < self.BAIT_MEDIAN_FLOOR:
-            return False, None
-        
-        # Threshold B: 1.5 SD Rule
-        # If no std_dev available, skip this check but note it
-        sd_threshold_met = False
-        if std_dev is not None and std_dev > 0:
-            sd_threshold = median_value - (self.BAIT_SD_MULTIPLIER * std_dev)
-            sd_threshold_met = line <= sd_threshold
-        else:
-            # Can't calculate SD threshold - don't flag
-            return False, None
-        
-        if not sd_threshold_met:
-            return False, None
-        
-        # Threshold C: 20% drop AND minimum 3.0 points
-        percent_drop = (median_value - line) / median_value
         absolute_drop = median_value - line
         
-        if percent_drop < self.BAIT_PERCENT_DROP:
-            return False, None
+        # ========== BRANCH 1: HIGH VOLUME (Median >= 10.0) ==========
+        if median_value >= self.BAIT_HIGH_VOLUME_FLOOR:
+            # Requires SD calculation
+            if std_dev is None or std_dev <= 0:
+                return False, None
+            
+            # Must be 1.5 SD below median
+            sd_threshold = median_value - (self.BAIT_HIGH_SD_MULTIPLIER * std_dev)
+            if line > sd_threshold:
+                return False, None
+            
+            # Must have absolute drop of 3.0+ points
+            if absolute_drop < self.BAIT_HIGH_ABSOLUTE_DROP:
+                return False, None
+            
+            # HIGH VOLUME BAIT DETECTED
+            sd_below = round(absolute_drop / std_dev, 2)
+            reason = (
+                f"HIGH VOL: Line {line} is {sd_below} SD below Median {median_value} "
+                f"(drop: {round(absolute_drop, 1)} pts)"
+            )
+            return True, reason
         
-        if absolute_drop < self.BAIT_ABSOLUTE_DROP:
-            return False, None
+        # ========== BRANCH 2: MID VOLUME (Median 4.0 - 9.5) ==========
+        elif median_value >= self.BAIT_MID_VOLUME_FLOOR:
+            # Simple rule: Line must be 1.5+ points below Median
+            if absolute_drop < self.BAIT_MID_ABSOLUTE_DROP:
+                return False, None
+            
+            # MID VOLUME BAIT DETECTED
+            reason = (
+                f"MID VOL: Line {line} is {round(absolute_drop, 1)} pts below Median {median_value}"
+            )
+            return True, reason
         
-        # ALL thresholds met - this is Suspect Bait
-        sd_below = round((median_value - line) / std_dev, 2) if std_dev else 0
-        reason = (
-            f"Line {line} is {sd_below} SD below Median {median_value} "
-            f"({round(percent_drop * 100, 1)}% drop, {round(absolute_drop, 1)} pts)"
-        )
-        return True, reason
+        # ========== BRANCH 3: MICRO VOLUME (Median < 4.0) ==========
+        else:
+            # Simple rule: Line must be 1.0+ points below Median
+            if absolute_drop < self.BAIT_MICRO_ABSOLUTE_DROP:
+                return False, None
+            
+            # MICRO VOLUME BAIT DETECTED
+            reason = (
+                f"MICRO VOL: Line {line} is {round(absolute_drop, 1)} pts below Median {median_value}"
+            )
+            return True, reason
     
     async def analyze_prop(
         self, 
