@@ -487,7 +487,8 @@ class AdaptiveSyncEngine:
                         "regions": "us_dfs",  # Daily Fantasy Sports region
                         "bookmakers": "prizepicks,underdog,pick6,fliff",  # PrizePicks first
                         "markets": prizepicks_markets,
-                        "oddsFormat": "american"
+                        "oddsFormat": "american",
+                        "includeMultipliers": "true"
                     }
                     
                     try:

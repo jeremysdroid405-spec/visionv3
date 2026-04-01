@@ -215,7 +215,8 @@ class SharpEdgeCalculator:
                 "regions": "us",
                 "markets": ",".join(SHARP_MARKETS),
                 "bookmakers": "pinnacle,draftkings",
-                "oddsFormat": "american"
+                "oddsFormat": "american",
+                "includeMultipliers": "true"
             }
             
             client = await self._get_client()

@@ -93,7 +93,8 @@ class GameScriptService:
                 "regions": "us",
                 "markets": "spreads,totals",
                 "bookmakers": "draftkings,fanduel,pinnacle",  # Consensus lines
-                "oddsFormat": "american"
+                "oddsFormat": "american",
+                "includeMultipliers": "true"
             }
             
             client = await self._get_client()

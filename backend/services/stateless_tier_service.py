@@ -154,7 +154,8 @@ class StatelessTierService:
                         "apiKey": ODDS_API_KEY,
                         "regions": "us",
                         "markets": "player_points,player_rebounds,player_assists,player_threes",
-                        "oddsFormat": "american"
+                        "oddsFormat": "american",
+                        "includeMultipliers": "true"
                     }
                 )
                 

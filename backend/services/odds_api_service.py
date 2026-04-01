@@ -160,7 +160,8 @@ class OddsApiService:
                 "regions": PRIZEPICKS_REGION,
                 "markets": PRIZEPICKS_ALL_MARKETS,
                 "bookmakers": PRIZEPICKS_BOOKMAKER,
-                "oddsFormat": "american"
+                "oddsFormat": "american",
+                "includeMultipliers": "true"
             }
             
             client = await self._get_client()
@@ -242,7 +243,8 @@ class OddsApiService:
                 "regions": "us",
                 "markets": ",".join(PRIZEPICKS_STANDARD_MARKETS),
                 "bookmakers": "draftkings,fanduel",
-                "oddsFormat": "american"
+                "oddsFormat": "american",
+                "includeMultipliers": "true"
             }
             
             client = await self._get_client()
@@ -297,7 +299,8 @@ class OddsApiService:
                 "regions": "us",
                 "markets": ",".join(PRIZEPICKS_STANDARD_MARKETS),
                 "bookmakers": "pinnacle,draftkings",
-                "oddsFormat": "american"
+                "oddsFormat": "american",
+                "includeMultipliers": "true"
             }
             
             client = await self._get_client()

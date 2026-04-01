@@ -158,7 +158,8 @@ class DeepIngestionEngine:
                 "regions": "us",
                 "markets": ALL_PLAYER_MARKETS,
                 "bookmakers": ",".join(TARGET_BOOKMAKERS),
-                "oddsFormat": "american"
+                "oddsFormat": "american",
+                "includeMultipliers": "true"
             }
             
             async with httpx.AsyncClient() as client:

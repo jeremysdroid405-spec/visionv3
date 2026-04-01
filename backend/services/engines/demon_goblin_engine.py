@@ -1441,7 +1441,8 @@ class DemonGoblinEngine:
                     "regions": PRIZEPICKS_REGION,
                     "markets": PRIZEPICKS_ALL_MARKETS,  # Both standard and alternate
                     "bookmakers": PRIZEPICKS_BOOKMAKER,
-                    "oddsFormat": "american"
+                    "oddsFormat": "american",
+                    "includeMultipliers": "true"
                 }
                 
                 async with httpx.AsyncClient() as client:
