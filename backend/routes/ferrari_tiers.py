@@ -116,21 +116,34 @@ async def get_ferrari_discarded(
 
 
 @router.post("/v3/ferrari/rebuild")
-async def rebuild_ferrari_tiers():
+async def rebuild_ferrari_tiers(use_optimized: bool = True):
     """
     Manually trigger a rebuild of all Ferrari tiers.
     
-    Reads from cached_board and applies:
-    1. Whistle Matrix sync (referee data)
-    2. Global 15% separation kill-switch
-    3. Power Score + Whistle Modifier calculation
-    4. Top 10 sorting per tier
+    With use_optimized=True (default):
+    1. Fetches ALL global data in parallel (standings, refs, momentum, vacuums)
+    2. Runs Ferrari pipeline with power score calculation
+    3. Enriches all picks with cached data
+    4. Generates AI summaries in batches (rate-limited)
+    5. Persists enriched data to dg_cached_board
+    
+    Target: Complete sync in under 5 seconds (excluding AI summaries)
+    
+    With use_optimized=False:
+    - Falls back to legacy sequential pipeline
     """
     from datetime import datetime, timezone
     
-    service = get_service()
-    result = await service.build_ferrari_tiers(datetime.now(timezone.utc))
-    return result
+    if use_optimized:
+        # Use the new optimized sync engine
+        from services.optimized_sync_engine import run_optimized_sync
+        result = await run_optimized_sync(_db)
+        return result
+    else:
+        # Legacy path
+        service = get_service()
+        result = await service.build_ferrari_tiers(datetime.now(timezone.utc))
+        return result
 
 
 @router.post("/v3/ferrari/sync-refs")

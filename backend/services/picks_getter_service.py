@@ -2302,6 +2302,15 @@ class PicksGetterService:
             "photo_url": player_doc.get("photo_url") or player_doc.get("headshot_url"),
             "nba_id": player_doc.get("nba_id"),
             "bdl_game_logs": player_doc.get("bdl_game_logs", []),
+            # Player-level enrichment (shared across all props)
+            "momentum_data": player_doc.get("momentum_data"),
+            "crew_chief": player_doc.get("crew_chief"),
+            "ref_ou_pct": player_doc.get("ref_ou_pct"),
+            "ref_ppg": player_doc.get("ref_ppg"),
+            "whistle_class": player_doc.get("whistle_class"),
+            "vacuum_data": player_doc.get("vacuum_data"),
+            "board_member": player_doc.get("board_member"),
+            "enriched_at": player_doc.get("enriched_at"),
             # Aggregate all upcoming props
             "props": []
         }
@@ -2347,6 +2356,24 @@ class PicksGetterService:
                 "vision_enriched_at": prop.get("vision_enriched_at"),
                 "intel_suite": prop.get("intel_suite"),  # Pre-built intel suite
                 "active_badges": prop.get("active_badges"),  # Badge keys
+                # Momentum data (from optimized sync engine)
+                "momentum_data": prop.get("momentum_data"),
+                "momentum_modifier": prop.get("momentum_modifier"),
+                "has_momentum_modifier": prop.get("has_momentum_modifier"),
+                # Whistle/Officiating data (from optimized sync engine)
+                "crew_chief": prop.get("crew_chief"),
+                "ref_ou_pct": prop.get("ref_ou_pct"),
+                "ref_ppg": prop.get("ref_ppg"),
+                "whistle_class": prop.get("whistle_class"),
+                "whistle_modifier": prop.get("whistle_modifier"),
+                "has_whistle_modifier": prop.get("has_whistle_modifier"),
+                "point_lift": prop.get("point_lift"),
+                "lift_label": prop.get("lift_label"),
+                "lift_type": prop.get("lift_type"),
+                # Vacuum data (from optimized sync engine)
+                "vacuum_data": prop.get("vacuum_data"),
+                "vacuum_modifier": prop.get("vacuum_modifier"),
+                "has_vacuum_modifier": prop.get("has_vacuum_modifier"),
             })
         
         self._clean_object_ids(player)
@@ -2468,7 +2495,7 @@ class PicksGetterService:
             # If this is a radar pick (demon or goblin), add full intel_suite
             is_radar = prop.get("is_demon") or prop.get("is_goblin") or prop.get("is_radar_pick")
             if is_radar:
-                intel_suite = await intel_calculator.calculate_intel_suite(
+                calculated_intel = await intel_calculator.calculate_intel_suite(
                     player_name=player_name,
                     stat_type=stat_key,
                     line=prop.get("line", 0),
@@ -2476,7 +2503,22 @@ class PicksGetterService:
                     opponent=player.get("opponent"),
                     board_pick=prop  # Pass prop as board_pick for additional context
                 )
-                prop["intel_suite"] = intel_suite
+                # MERGE with existing intel_suite (from optimized sync) instead of overwriting
+                existing_intel = prop.get("intel_suite") or {}
+                merged_intel = {**existing_intel, **calculated_intel}
+                # Preserve the enrichment data (momentum, whistle, vacuum) from optimized sync
+                if existing_intel.get("momentum_data"):
+                    merged_intel["momentum_data"] = existing_intel["momentum_data"]
+                if existing_intel.get("whistle_data"):
+                    merged_intel["whistle_data"] = existing_intel["whistle_data"]
+                if existing_intel.get("vacuum_data"):
+                    merged_intel["vacuum_data"] = existing_intel["vacuum_data"]
+                if existing_intel.get("ferrari_power_score"):
+                    merged_intel["ferrari_power_score"] = existing_intel["ferrari_power_score"]
+                if existing_intel.get("board"):
+                    merged_intel["board"] = existing_intel["board"]
+                logger.debug(f"[INTEL_MERGE] {player_name} merged keys: {list(merged_intel.keys())}")
+                prop["intel_suite"] = merged_intel
         
         logger.debug(f"[SSOT] Enriched {len(props)} props for {player_name}")
     

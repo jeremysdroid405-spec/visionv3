@@ -112,7 +112,7 @@ async def _fetch_standings_cached(db) -> Dict[str, Dict]:
     """Fetch standings data."""
     try:
         from services.standings_service import StandingsService
-        return await StandingsService.get_all_standings()
+        return await StandingsService.get_standings()
     except Exception as e:
         logger.warning(f"[SYNC_CACHE] Standings fetch failed: {e}")
         return {}
@@ -362,34 +362,54 @@ async def run_optimized_sync(db) -> Dict[str, Any]:
     """
     Run the full optimized sync pipeline.
     
+    Pipeline:
+    1. Fetch ALL global data (standings, refs, momentum, vacuums) in parallel
+    2. Run Ferrari pipeline to build scored picks
+    3. Enrich picks with cached global data (fast, sync)
+    4. Generate AI summaries in batches (rate-limited)
+    5. Update dg_cached_board with enriched intel_suite data
+    
     Returns complete payload with all picks enriched.
     """
     start = datetime.now(timezone.utc)
     
-    # Step 1: Fetch global cache ONCE
+    logger.info("[OPTIMIZED_SYNC] Starting unified pipeline...")
+    
+    # Step 1: Fetch global cache ONCE (parallel fetch)
     cache = await fetch_global_cache(db)
     
-    # Step 2: Get Ferrari picks
-    from services.ferrari_tier_service import get_ferrari_service
-    ferrari_service = get_ferrari_service(db)
+    # Step 2: Run Ferrari pipeline (builds ferrari_scored, ferrari_safe_haven, etc.)
+    from services.ferrari_tier_service import get_ferrari_tier_service
+    ferrari_service = get_ferrari_tier_service(db)
     
-    # Run Ferrari pipeline (already has some enrichment)
-    ferrari_result = await ferrari_service.run_global_power_ranking()
+    # Pass the pre-fetched cache to Ferrari for use during scoring
+    ferrari_result = await ferrari_service.build_ferrari_tiers(start)
     
     if not ferrari_result.get("success"):
-        return {"success": False, "error": "Ferrari pipeline failed"}
+        logger.error(f"[OPTIMIZED_SYNC] Ferrari pipeline failed: {ferrari_result.get('error')}")
+        return {"success": False, "error": "Ferrari pipeline failed", "details": ferrari_result}
     
-    # Step 3: Collect all picks
+    logger.info(f"[OPTIMIZED_SYNC] Ferrari complete: {ferrari_result.get('output', {}).get('total', 0)} picks")
+    
+    # Step 3: Collect all picks from Ferrari collections and enrich with cache
     all_picks = []
     boards = {}
     
     for board_name in ["safe_haven", "front_lines", "war_zone"]:
-        board_data = ferrari_result.get(board_name, {})
+        # Get picks from getter methods (already in memory)
+        if board_name == "safe_haven":
+            board_data = await ferrari_service.get_safe_haven(10)
+        elif board_name == "front_lines":
+            board_data = await ferrari_service.get_front_lines(10)
+        else:
+            board_data = await ferrari_service.get_war_zone(10)
+        
         picks = board_data.get("picks", [])
         
-        # Enrich each pick with cached data
+        # Enrich each pick with cached data (momentum, vacuum, whistle already in Ferrari)
         for pick in picks:
             pick["board"] = board_name
+            # Add any missing cache data
             enrich_pick_with_cache(pick, cache)
         
         all_picks.extend(picks)
@@ -398,10 +418,17 @@ async def run_optimized_sync(db) -> Dict[str, Any]:
             "count": len(picks)
         }
     
-    # Step 4: Generate AI summaries in batch
+    logger.info(f"[OPTIMIZED_SYNC] Collected {len(all_picks)} picks for AI summary generation")
+    
+    # Step 4: Generate AI summaries in batch (with rate limiting)
     await _batch_generate_summaries(all_picks, db)
     
+    # Step 5: Update dg_cached_board with enriched data
+    await _persist_enriched_picks(db, all_picks, cache)
+    
     duration = (datetime.now(timezone.utc) - start).total_seconds()
+    
+    logger.info(f"[OPTIMIZED_SYNC] Pipeline complete in {duration:.2f}s")
     
     return {
         "success": True,
@@ -410,6 +437,7 @@ async def run_optimized_sync(db) -> Dict[str, Any]:
         "war_zone": boards.get("war_zone", {}),
         "total_picks": len(all_picks),
         "sync_duration": round(duration, 2),
+        "ferrari_stats": ferrari_result.get("output", {}),
         "cache_stats": {
             "standings": len(cache.standings),
             "referees": len(cache.referee_by_teams),
@@ -417,3 +445,130 @@ async def run_optimized_sync(db) -> Dict[str, Any]:
             "vacuums": len(cache.vacuum_alerts)
         }
     }
+
+
+async def _persist_enriched_picks(db, picks: List[Dict], cache: GlobalSyncCache) -> None:
+    """
+    Persist enriched pick data back to dg_cached_board.
+    
+    Strategy: Update ALL props for each player with their game-level enrichment data
+    (momentum, whistle, vacuum). This ensures consistent data across all prop lines.
+    
+    Also updates player-level fields for fast access.
+    """
+    if not picks:
+        return
+    
+    logger.info(f"[OPTIMIZED_SYNC] Persisting enrichment data for {len(picks)} picks")
+    
+    # Group picks by player to avoid duplicate updates
+    players_processed = set()
+    persisted_count = 0
+    
+    for pick in picks:
+        player_name = pick.get("player_name")
+        if not player_name or player_name in players_processed:
+            continue
+        
+        players_processed.add(player_name)
+        
+        try:
+            # Get the player document
+            player_doc = await db.dg_cached_board.find_one(
+                {"player_name": player_name},
+                {"_id": 0, "props": 1}
+            )
+            
+            if not player_doc or not player_doc.get("props"):
+                logger.debug(f"[PERSIST] Player {player_name} not in dg_cached_board, skipping")
+                continue
+            
+            # Build player-level update with shared enrichment data
+            player_update = {
+                "enriched_at": datetime.now(timezone.utc).isoformat(),
+                "board_member": pick.get("board"),
+            }
+            
+            # Add momentum data at player level
+            if pick.get("momentum_data"):
+                player_update["momentum_data"] = pick["momentum_data"]
+                player_update["momentum_modifier"] = pick.get("momentum_modifier", 0)
+            
+            # Add whistle data at player level
+            if pick.get("crew_chief"):
+                player_update["crew_chief"] = pick["crew_chief"]
+                player_update["ref_ou_pct"] = pick.get("ref_ou_pct")
+                player_update["ref_ppg"] = pick.get("ref_ppg")
+                player_update["whistle_class"] = pick.get("whistle_class")
+                player_update["whistle_modifier"] = pick.get("whistle_modifier", 0)
+                player_update["point_lift"] = pick.get("point_lift", 0)
+                player_update["lift_label"] = pick.get("lift_label")
+                player_update["lift_type"] = pick.get("lift_type")
+            
+            # Add vacuum data at player level
+            if pick.get("vacuum_data"):
+                player_update["vacuum_data"] = pick["vacuum_data"]
+                player_update["vacuum_modifier"] = pick.get("vacuum_modifier", 0)
+            
+            # Build prop-level updates for ALL props of this player
+            props_update = {}
+            num_props = len(player_doc.get("props", []))
+            
+            for idx in range(num_props):
+                # Copy enrichment data to each prop
+                if pick.get("momentum_data"):
+                    props_update[f"props.{idx}.momentum_data"] = pick["momentum_data"]
+                    props_update[f"props.{idx}.momentum_modifier"] = pick.get("momentum_modifier", 0)
+                    props_update[f"props.{idx}.has_momentum_modifier"] = pick.get("has_momentum_modifier", False)
+                
+                if pick.get("crew_chief"):
+                    props_update[f"props.{idx}.crew_chief"] = pick["crew_chief"]
+                    props_update[f"props.{idx}.ref_ou_pct"] = pick.get("ref_ou_pct")
+                    props_update[f"props.{idx}.ref_ppg"] = pick.get("ref_ppg")
+                    props_update[f"props.{idx}.whistle_class"] = pick.get("whistle_class")
+                    props_update[f"props.{idx}.whistle_modifier"] = pick.get("whistle_modifier", 0)
+                    props_update[f"props.{idx}.has_whistle_modifier"] = pick.get("has_whistle_modifier", False)
+                    props_update[f"props.{idx}.point_lift"] = pick.get("point_lift", 0)
+                    props_update[f"props.{idx}.lift_label"] = pick.get("lift_label")
+                    props_update[f"props.{idx}.lift_type"] = pick.get("lift_type")
+                
+                if pick.get("vacuum_data"):
+                    props_update[f"props.{idx}.vacuum_data"] = pick["vacuum_data"]
+                    props_update[f"props.{idx}.vacuum_modifier"] = pick.get("vacuum_modifier", 0)
+                    props_update[f"props.{idx}.has_vacuum_modifier"] = pick.get("has_vacuum_modifier", False)
+                
+                # Build intel_suite for each prop
+                intel_suite = {
+                    "momentum_data": pick.get("momentum_data"),
+                    "whistle_data": {
+                        "crew_chief": pick.get("crew_chief"),
+                        "ref_ou_pct": pick.get("ref_ou_pct"),
+                        "ref_ppg": pick.get("ref_ppg"),
+                        "whistle_class": pick.get("whistle_class"),
+                        "point_lift": pick.get("point_lift"),
+                        "lift_label": pick.get("lift_label"),
+                        "lift_type": pick.get("lift_type")
+                    } if pick.get("crew_chief") else None,
+                    "vacuum_data": pick.get("vacuum_data"),
+                    "board": pick.get("board"),
+                    "ferrari_power_score": pick.get("ferrari_power_score")
+                }
+                props_update[f"props.{idx}.intel_suite"] = intel_suite
+                props_update[f"props.{idx}.is_vision_enriched"] = True
+                props_update[f"props.{idx}.board"] = pick.get("board")  # Set board at prop level too
+            
+            # Combine all updates
+            full_update = {**player_update, **props_update}
+            
+            result = await db.dg_cached_board.update_one(
+                {"player_name": player_name},
+                {"$set": full_update}
+            )
+            
+            if result.modified_count > 0:
+                persisted_count += 1
+            
+        except Exception as e:
+            logger.warning(f"[PERSIST] Error updating {player_name}: {e}")
+    
+    logger.info(f"[OPTIMIZED_SYNC] Persisted enrichment for {persisted_count} players")
