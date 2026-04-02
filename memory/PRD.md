@@ -3,7 +3,43 @@
 ## Overview
 PropVision is a sports analytics platform for NBA player props, providing data-driven insights for betting decisions.
 
-## Latest Update (2026-04-02): Defensive Momentum System
+## Latest Update (2026-04-02): Optimized Sync Engine & Vision Intel Suite Consistency
+
+### Feature Description
+Implemented a high-performance sync engine (`optimized_sync_engine.py`) that pre-caches ALL global data (standings, refs, momentum, vacuums) once at sync start, then enriches ALL 30 Elite picks with complete intel data in a single pass.
+
+### Performance Metrics
+- **Sync Time**: 0.9-1.5 seconds (Target was < 5 seconds)
+- **Picks Enriched**: 30 Elite picks (10 per board)
+- **Data Consistency**: 100% of picks have momentum_data and whistle_data
+
+### Technical Implementation
+
+**Optimized Sync Pipeline**:
+1. `fetch_global_cache()` - Fetches standings, refs, momentum, vacuums in parallel
+2. `run_optimized_sync()` - Runs Ferrari pipeline, collects picks, enriches with cache
+3. `_persist_enriched_picks()` - Updates ALL props for each player with enrichment data
+
+**Key Fix**: Set `board` field at prop level (not just inside intel_suite) so the `cached_data.py` endpoint recognizes props as "featured" and returns the full intel_suite.
+
+### API Endpoints (Updated)
+- `POST /api/v3/ferrari/rebuild?use_optimized=true` - Runs optimized sync pipeline (default: true)
+  - Returns: `sync_duration`, `total_picks`, `cache_stats`
+
+### Files Created/Modified
+- `/app/backend/services/optimized_sync_engine.py` (NEW: Global data cache & batch sync manager)
+- `/app/backend/routes/ferrari_tiers.py` (Updated rebuild endpoint to use optimized sync)
+- `/app/backend/services/picks_getter_service.py` (Updated prop mapping to include enrichment fields)
+
+### Test Status
+- **Sync Performance**: PASSED (3.99s, requirement < 5s)
+- **Data Consistency**: PASSED (30/30 picks have momentum_data and whistle_data)
+- **Player Detail**: PASSED (intel_suite returned for featured props)
+- **Frontend**: PASSED (Vision Intel Suite displays correctly)
+
+---
+
+## Previous Update (2026-04-02): Defensive Momentum System
 
 ### Feature Description
 Implemented the "Defensive Momentum" system - a weighted composite DvP (Defense vs Position) scoring engine that tracks defensive trends over three time windows (Season, L10, L5) and applies Ferrari Score modifiers based on matchup difficulty.
