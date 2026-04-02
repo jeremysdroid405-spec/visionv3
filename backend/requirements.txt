@@ -9,6 +9,7 @@ RapidFuzz==3.14.3
 StrEnum==0.4.15
 aiohappyeyeballs==2.6.1
 aiohttp==3.13.3
+aioredis==2.0.1
 aiosignal==1.4.0
 annotated-doc==0.0.4
 annotated-types==0.7.0
@@ -112,6 +113,7 @@ python-multipart==0.0.22
 pytokens==0.4.1
 pytz==2026.1.post1
 realtime==2.28.0
+redis==7.4.0
 referencing==0.37.0
 regex==2026.2.28
 requests-oauthlib==2.0.0

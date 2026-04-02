@@ -573,7 +573,11 @@ const UniversalPlayerCard = memo(({
     point_lift,
     lift_label,
     lift_type,
-    foul_rate_diff
+    foul_rate_diff,
+    // Usage Vacuum
+    has_vacuum_modifier,
+    vacuum_modifier,
+    vacuum_data
   } = player;
   
   const displayName = player_name || name;
@@ -795,6 +799,37 @@ const UniversalPlayerCard = memo(({
                   )}
                 </div>
               )}
+            </div>
+          </div>
+        )}
+        
+        {/* Usage Vacuum Alert Card */}
+        {has_vacuum_modifier && vacuum_data && (
+          <div className="mt-1.5 rounded-lg overflow-hidden bg-gradient-to-r from-orange-500/10 to-red-500/5 border border-orange-500/30" data-testid="usage-vacuum-card">
+            <div className="flex items-center gap-1.5 px-2 py-1 text-[9px] font-bold text-orange-400">
+              <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <circle cx="12" cy="12" r="10" />
+                <path d="M12 6v6l4 2" />
+              </svg>
+              USAGE VACUUM
+              <span className={`ml-auto text-[8px] font-bold px-1.5 py-0.5 rounded ${
+                vacuum_data.beneficiary_rank === 'primary' ? 'bg-green-500/30 text-green-400' : 'bg-yellow-500/30 text-yellow-400'
+              }`}>
+                {vacuum_data.beneficiary_rank === 'primary' ? '1ST' : '2ND'}
+              </span>
+            </div>
+            <div className="px-2 pb-1.5">
+              <div className="text-[9px] text-zinc-300">
+                <span className="text-red-400 font-bold">{vacuum_data.injured_player}</span> OUT
+              </div>
+              <div className="flex items-center justify-between text-[9px] mt-0.5">
+                <span className="text-zinc-500">
+                  Usage: <span className="text-green-400 font-bold">+{vacuum_data.usage_bump}%</span>
+                </span>
+                <span className="text-orange-400 font-bold">
+                  +{vacuum_modifier} Boost
+                </span>
+              </div>
             </div>
           </div>
         )}

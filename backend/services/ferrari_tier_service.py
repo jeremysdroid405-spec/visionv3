@@ -371,6 +371,10 @@ class FerrariTierService:
                 "red_light_applied": 0,
                 "neutral": 0
             },
+            "usage_vacuum": {
+                "active_vacuums": 0,
+                "beneficiaries_boosted": 0
+            },
             "output": {
                 "safe_haven": 0,
                 "front_lines": 0,
@@ -396,6 +400,16 @@ class FerrariTierService:
             ref_sync_result = await self._sync_referee_data()
             results["whistle_matrix"]["refs_synced"] = ref_sync_result.get("stats_count", 0)
             results["whistle_matrix"]["games_with_refs"] = ref_sync_result.get("assignments_count", 0)
+            
+            # =================================================================
+            # PHASE 0.5: USAGE VACUUM - Check Injuries
+            # =================================================================
+            logger.info("[PHASE 0.5] USAGE VACUUM - Checking injuries...")
+            from services.injury_vacuum_service import get_vacuum_service
+            vacuum_service = get_vacuum_service(self.db)
+            await vacuum_service.sync_star_profiles()
+            vacuum_check = await vacuum_service.check_injuries()
+            results["usage_vacuum"]["active_vacuums"] = len(vacuum_check.get("vacuums_triggered", []))
             
             # =================================================================
             # PHASE 1: UNIVERSAL SCAN - Load ALL Data (No Limits)
@@ -546,10 +560,20 @@ class FerrariTierService:
                         team_usage_avg=None
                     )
                     
-                    # FINAL POWER SCORE with Whistle Modifier
-                    power_score = round(base_power_score + whistle_modifier, 2)
-                    # Cap at 0-115 range (base max 100 + max modifier 15)
-                    power_score = max(0, min(power_score, 115))
+                    # ---------------------------------------------------------
+                    # USAGE VACUUM MODIFIER
+                    # ---------------------------------------------------------
+                    from services.injury_vacuum_service import get_vacuum_service
+                    vacuum_service = get_vacuum_service(self.db)
+                    vacuum_modifier, vacuum_data = vacuum_service.calculate_vacuum_modifier(player_name)
+                    
+                    if vacuum_modifier > 0:
+                        results["usage_vacuum"]["beneficiaries_boosted"] = results.get("usage_vacuum", {}).get("beneficiaries_boosted", 0) + 1
+                    
+                    # FINAL POWER SCORE with Whistle Modifier + Vacuum Modifier
+                    power_score = round(base_power_score + whistle_modifier + vacuum_modifier, 2)
+                    # Cap at 0-130 range (base max 100 + whistle 15 + vacuum 15)
+                    power_score = max(0, min(power_score, 130))
                     
                     # Determine tier
                     if effective_sharp <= SAFE_HAVEN_MAX:
@@ -617,6 +641,10 @@ class FerrariTierService:
                         "lift_label": point_lift_data.get("lift_label", ""),
                         "lift_type": point_lift_data.get("lift_type", "neutral"),
                         "foul_rate_diff": point_lift_data.get("foul_rate_diff", 0),
+                        # USAGE VACUUM INFO
+                        "vacuum_modifier": round(vacuum_modifier, 1),
+                        "has_vacuum_modifier": vacuum_modifier > 0,
+                        "vacuum_data": vacuum_data,
                         # Metrics
                         "separation_pct": round(separation, 1),
                         "line_delta": round(line_delta, 1),

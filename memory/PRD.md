@@ -3,7 +3,65 @@
 ## Overview
 PropVision is a sports analytics platform for NBA player props, providing data-driven insights for betting decisions.
 
-## Latest Update (2026-04-02): Point Lift Translation (Vegas Intel)
+## Latest Update (2026-04-02): Usage Vacuum Microservice
+
+### Feature Description
+Implemented the InjuryVacuumService - an event-driven microservice that monitors NBA injury reports and calculates "Usage Vacuum" beneficiaries when star players are ruled OUT.
+
+### Architecture
+- **Model**: Event-Driven (monitors state changes, broadcasts updates)
+- **Cache**: In-memory star usage profiles (Redis-ready)
+- **Database**: MongoDB `injury_log` and `vacuum_alerts` collections
+- **Latency Goal**: < 30 seconds from source update to score recalculation
+
+### Vacuum Engine Logic
+1. **Star Detection**: Players with Usage Rate > 25%
+2. **Trigger Conditions**: Status changes to "OUT" or "DOUBTFUL"
+3. **Beneficiary Calculation**: Top 2 teammates with highest historical usage increase
+
+### Modifiers
+| Beneficiary | Ferrari Score Boost |
+|-------------|---------------------|
+| Primary     | +15 points          |
+| Secondary   | +10 points          |
+
+### API Endpoints (New)
+- `POST /api/v3/vacuum/check` - Trigger injury check
+- `GET /api/v3/vacuum/updates` - Get current vacuum state for Ferrari Engine
+- `GET /api/v3/vacuum/active` - Get all active usage vacuums
+- `GET /api/v3/vacuum/beneficiary/{player_name}` - Check if player is a beneficiary
+- `POST /api/v3/vacuum/clear/{injured_player}` - Clear a vacuum
+
+### UI Component: Usage Vacuum Alert
+```
+USAGE VACUUM ALERT
+├── INJURY ALERT: Joel Embiid OUT
+├── PRIMARY BENEFICIARY badge
+├── "Tyrese Maxey usage projected +6.2%"
+└── +15 Ferrari Boost
+```
+
+### Sample Output
+```
+VACUUM: Joel Embiid (PHI) - OUT
+  Usage: 34.8%
+  -> Tyrese Maxey: +6.2% usage, +15 score (primary)
+  -> Paul George: +4.5% usage, +10 score (secondary)
+```
+
+### Files Created
+- `/app/backend/services/injury_vacuum_service.py` (524 lines)
+- `/app/backend/routes/vacuum.py` (168 lines)
+
+### Files Modified
+- `/app/backend/routes/__init__.py` (Added vacuum router)
+- `/app/backend/services/ferrari_tier_service.py` (Integrated vacuum modifier)
+- `/app/frontend/src/components/dashboard/PlayerDetailPage.jsx` (Usage Vacuum UI section)
+- `/app/frontend/src/components/dashboard/UniversalPlayerCard.jsx` (Usage Vacuum card)
+
+---
+
+## Previous Update (2026-04-02): Point Lift Translation (Vegas Intel)
 
 ### Feature Description
 Implemented "Point Lift" translation layer that converts the raw Whistle Matrix modifier (+15/-15) into human-readable projected stat boosts/ceilings.
