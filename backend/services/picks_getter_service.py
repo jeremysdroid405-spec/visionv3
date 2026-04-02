@@ -2492,9 +2492,11 @@ class PicksGetterService:
                 prop["stats_coupled"] = False
                 prop["stats_source"] = "ssot_baseline"
             
-            # If this is a radar pick (demon or goblin), add full intel_suite
+            # If this is a radar pick (demon or goblin) OR a board pick, add full intel_suite
             is_radar = prop.get("is_demon") or prop.get("is_goblin") or prop.get("is_radar_pick")
-            if is_radar:
+            is_board_pick = prop.get("board") is not None  # Featured props from Ferrari pipeline
+            
+            if is_radar or is_board_pick:
                 calculated_intel = await intel_calculator.calculate_intel_suite(
                     player_name=player_name,
                     stat_type=stat_key,

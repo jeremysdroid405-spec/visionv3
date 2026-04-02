@@ -1204,8 +1204,28 @@ async def get_cached_player(player_name: str):
                 enriched_prop = enriched_by_stat.get(stat_type)
             
             if enriched_prop and enriched_prop.get("intel_suite"):
-                # USE PRE-CACHED INTEL SUITE (from Board Intelligence Enrichment)
-                prop["intel_suite"] = enriched_prop["intel_suite"]
+                # MERGE PRE-CACHED INTEL with calculated intel (from picks_getter_service)
+                # Pre-cached has: momentum_data, whistle_data, vacuum_data, board, ferrari_power_score
+                # Calculated has: vision_insight, matchup_dvp, pace_delta, stability_index, etc.
+                pre_cached_intel = enriched_prop.get("intel_suite", {})
+                calculated_intel = prop.get("intel_suite") or {}
+                
+                # Start with calculated intel (has vision_insight, matchup_dvp, etc.)
+                merged_intel = {**calculated_intel}
+                
+                # Add pre-cached fields (momentum, whistle, vacuum, board, ferrari_score)
+                if pre_cached_intel.get("momentum_data"):
+                    merged_intel["momentum_data"] = pre_cached_intel["momentum_data"]
+                if pre_cached_intel.get("whistle_data"):
+                    merged_intel["whistle_data"] = pre_cached_intel["whistle_data"]
+                if pre_cached_intel.get("vacuum_data"):
+                    merged_intel["vacuum_data"] = pre_cached_intel["vacuum_data"]
+                if pre_cached_intel.get("board"):
+                    merged_intel["board"] = pre_cached_intel["board"]
+                if pre_cached_intel.get("ferrari_power_score"):
+                    merged_intel["ferrari_power_score"] = pre_cached_intel["ferrari_power_score"]
+                
+                prop["intel_suite"] = merged_intel
                 prop["vision_summary"] = enriched_prop.get("vision_summary")
                 prop["vision_score"] = enriched_prop.get("vision_score")
                 prop["is_vision_enriched"] = True
