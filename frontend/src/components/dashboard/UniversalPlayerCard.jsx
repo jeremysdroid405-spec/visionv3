@@ -505,8 +505,17 @@ const UniversalPlayerCard = memo(({
   // Intelligence Modal state
   const [intelligenceModal, setIntelligenceModal] = useState({
     isOpen: false,
-    type: null, // 'hook_risk' | 'suspect_bait'
+    type: null, // 'hook_risk' | 'suspect_bait' | 'officiating_impact'
   });
+  
+  // Officiating Impact modal handler
+  const handleOfficiatingClick = useCallback((e) => {
+    e.stopPropagation();
+    setIntelligenceModal({
+      isOpen: true,
+      type: 'officiating_impact'
+    });
+  }, []);
   
   // Check if locked (game in progress or completed)
   const isLocked = player?.is_locked;
@@ -732,15 +741,19 @@ const UniversalPlayerCard = memo(({
           </div>
         </div>
         
-        {/* Vegas Intel - Officiating Impact Section */}
+        {/* Vegas Intel - Officiating Impact Section (Clickable for details) */}
         {crew_chief && (
-          <div className={`mt-1.5 rounded-lg overflow-hidden ${
-            whistle_class === 'high_whistle' 
-              ? 'bg-gradient-to-r from-amber-500/10 to-amber-600/5 border border-amber-500/30' 
-              : whistle_class === 'low_whistle'
-                ? 'bg-gradient-to-r from-blue-500/10 to-blue-600/5 border border-blue-500/30'
-                : 'bg-zinc-800/50 border border-zinc-700/50'
-          }`} data-testid="vegas-intel-section">
+          <div 
+            className={`mt-1.5 rounded-lg overflow-hidden cursor-pointer hover:opacity-90 transition-opacity ${
+              whistle_class === 'high_whistle' 
+                ? 'bg-gradient-to-r from-amber-500/10 to-amber-600/5 border border-amber-500/30' 
+                : whistle_class === 'low_whistle'
+                  ? 'bg-gradient-to-r from-blue-500/10 to-blue-600/5 border border-blue-500/30'
+                  : 'bg-zinc-800/50 border border-zinc-700/50'
+            }`} 
+            data-testid="vegas-intel-section"
+            onClick={handleOfficiatingClick}
+          >
             {/* Header */}
             <div className={`flex items-center gap-1.5 px-2 py-1 text-[9px] font-bold ${
               whistle_class === 'high_whistle' ? 'text-amber-400' :
@@ -796,6 +809,25 @@ const UniversalPlayerCard = memo(({
             <Plus className="w-3 h-3" />
           </button>
         )}
+        
+        {/* Intelligence Modal for Officiating Impact */}
+        <IntelligenceModal
+          isOpen={intelligenceModal.isOpen && intelligenceModal.type === 'officiating_impact'}
+          onClose={() => setIntelligenceModal({ isOpen: false, type: null })}
+          type="officiating_impact"
+          playerName={displayName}
+          statType={stat_type}
+          line={line}
+          whistleData={{
+            crew_chief,
+            ref_ou_pct,
+            ref_ppg,
+            whistle_class,
+            lift_label,
+            point_lift,
+            foul_rate_diff
+          }}
+        />
       </div>
     );
   }

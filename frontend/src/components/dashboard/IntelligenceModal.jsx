@@ -2,27 +2,38 @@
  * IntelligenceModal.jsx
  * 
  * Reusable bottom-sheet (mobile) / centered popup (desktop) modal
- * for explaining PropVision intelligence badges (Hook Risk, Vegas Bait).
+ * for explaining PropVision intelligence badges (Hook Risk, Vegas Bait, Officiating Impact).
  * Uses React Portal to render at document body level for proper z-index.
  */
 
 import React from 'react';
 import { createPortal } from 'react-dom';
-import { X, AlertTriangle, Info, TrendingDown, Target } from 'lucide-react';
+import { X, AlertTriangle, Info, TrendingDown, Target, Scale, Snowflake } from 'lucide-react';
+
+// Gold Whistle Icon for High Whistle refs
+const GoldWhistleIcon = ({ className }) => (
+  <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <circle cx="12" cy="12" r="3" fill="#FFD700" stroke="#FFD700"/>
+    <path d="M12 9V4M12 4L9 7M12 4L15 7" stroke="#FFD700"/>
+    <ellipse cx="12" cy="15" rx="5" ry="3" stroke="#FFD700"/>
+  </svg>
+);
 
 const IntelligenceModal = ({ 
   isOpen, 
   onClose, 
-  type, // 'hook_risk' | 'suspect_bait'
+  type, // 'hook_risk' | 'suspect_bait' | 'officiating_impact'
   playerName,
   statType,
   line,
-  sidecarData // { median, mode, mode_frequency_pct, std_dev, hook_warning, bait_warning }
+  sidecarData, // { median, mode, mode_frequency_pct, std_dev, hook_warning, bait_warning }
+  whistleData  // { crew_chief, ref_ou_pct, ref_ppg, whistle_class, lift_label, point_lift, foul_rate_diff }
 }) => {
   if (!isOpen) return null;
 
   const isHookRisk = type === 'hook_risk';
   const isBait = type === 'suspect_bait';
+  const isOfficiating = type === 'officiating_impact';
 
   // Educational content based on badge type
   const getContent = () => {
@@ -152,6 +163,108 @@ const IntelligenceModal = ({
           </div>
         ),
         recommendation: "Ask yourself: Why would Vegas offer such a favorable-looking line? Proceed with extreme caution."
+      };
+    }
+
+    if (isOfficiating && whistleData) {
+      const isHighWhistle = whistleData.whistle_class === 'high_whistle';
+      const isLowWhistle = whistleData.whistle_class === 'low_whistle';
+      const foulRateDiff = whistleData.foul_rate_diff || 0;
+      
+      return {
+        icon: isHighWhistle ? (
+          <GoldWhistleIcon className="w-6 h-6" />
+        ) : isLowWhistle ? (
+          <Snowflake className="w-6 h-6 text-blue-400" />
+        ) : (
+          <Scale className="w-6 h-6 text-zinc-400" />
+        ),
+        title: isHighWhistle ? "High Whistle Crew" : isLowWhistle ? "Low Whistle Crew" : "Officiating Impact",
+        subtitle: isHighWhistle ? "Scoring Boost Expected" : isLowWhistle ? "Scoring Ceiling Expected" : "Neutral Impact",
+        color: isHighWhistle ? "amber" : isLowWhistle ? "blue" : "zinc",
+        bgGradient: isHighWhistle ? "from-amber-950/90 to-zinc-900" : isLowWhistle ? "from-blue-950/90 to-zinc-900" : "from-zinc-900 to-zinc-950",
+        borderColor: isHighWhistle ? "border-amber-500/30" : isLowWhistle ? "border-blue-500/30" : "border-zinc-700",
+        explanation: (
+          <>
+            <p className="text-zinc-300 text-sm leading-relaxed mb-4">
+              {isHighWhistle ? (
+                <>
+                  This game is officiated by a <span className="text-amber-400 font-semibold">high-whistle crew</span>. 
+                  Historically, games with this lead official average <span className="text-amber-400 font-semibold">{whistleData.ref_ppg} PPG</span> and 
+                  hit the over <span className="text-amber-400 font-semibold">{whistleData.ref_ou_pct}%</span> of the time.
+                  This suggests more free throw opportunities and higher-scoring possessions.
+                </>
+              ) : isLowWhistle ? (
+                <>
+                  This game is officiated by a <span className="text-blue-400 font-semibold">low-whistle crew</span>. 
+                  Games with this lead official average only <span className="text-blue-400 font-semibold">{whistleData.ref_ppg} PPG</span> and 
+                  hit the over just <span className="text-blue-400 font-semibold">{whistleData.ref_ou_pct}%</span> of the time.
+                  This suggests fewer stoppages and a lower scoring pace.
+                </>
+              ) : (
+                <>This official has a neutral whistle profile, meaning no significant deviation from league averages.</>
+              )}
+            </p>
+            <div className="bg-zinc-800/50 rounded-lg p-3 mb-4">
+              <div className="text-xs text-zinc-500 uppercase tracking-wide mb-2">Point Lift Translation</div>
+              <p className="text-zinc-400 text-sm">
+                {isHighWhistle ? (
+                  <>The referee modifier translates to an expected <span className="text-amber-400 font-bold">{whistleData.lift_label}</span> for high-usage scoring props in this matchup.</>
+                ) : isLowWhistle ? (
+                  <>The referee modifier suggests a <span className="text-blue-400 font-bold">{whistleData.lift_label}</span> for scoring props, as this crew typically suppresses offense.</>
+                ) : (
+                  <>No adjustment applied. This crew calls games close to league average.</>
+                )}
+              </p>
+            </div>
+          </>
+        ),
+        specificData: (
+          <div className={`${isHighWhistle ? 'bg-amber-950/30 border-amber-500/20' : isLowWhistle ? 'bg-blue-950/30 border-blue-500/20' : 'bg-zinc-800/50 border-zinc-700'} border rounded-lg p-3`}>
+            <div className={`text-xs ${isHighWhistle ? 'text-amber-400/70' : isLowWhistle ? 'text-blue-400/70' : 'text-zinc-500'} uppercase tracking-wide mb-2`}>Officiating Profile</div>
+            <div className="space-y-2 text-sm">
+              <div className="flex justify-between">
+                <span className="text-zinc-400">Lead Official</span>
+                <span className="text-white font-medium">{whistleData.crew_chief}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-zinc-400">O/U Win Rate</span>
+                <span className={`font-bold ${isHighWhistle ? 'text-amber-400' : isLowWhistle ? 'text-blue-400' : 'text-zinc-300'}`}>{whistleData.ref_ou_pct}%</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-zinc-400">Avg PPG</span>
+                <span className={`font-bold ${isHighWhistle ? 'text-amber-400' : isLowWhistle ? 'text-blue-400' : 'text-zinc-300'}`}>{whistleData.ref_ppg}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-zinc-400">Foul Rate vs League</span>
+                <span className={`font-bold ${foulRateDiff > 0 ? 'text-amber-400' : foulRateDiff < 0 ? 'text-blue-400' : 'text-zinc-300'}`}>
+                  {foulRateDiff > 0 ? '+' : ''}{foulRateDiff}%
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-zinc-400">Player</span>
+                <span className="text-white font-medium">{playerName}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-zinc-400">Prop</span>
+                <span className="text-white font-medium">{statType} @ {line}</span>
+              </div>
+              <div className="pt-2 border-t border-zinc-700/50">
+                <div className="flex justify-between">
+                  <span className="text-zinc-400">Impact</span>
+                  <span className={`font-bold ${isHighWhistle ? 'text-amber-400' : isLowWhistle ? 'text-blue-400' : 'text-zinc-300'}`}>
+                    {whistleData.lift_label || 'Neutral'}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+        ),
+        recommendation: isHighWhistle 
+          ? "High-whistle crews historically boost scoring. Consider this a tailwind for PTS/FTM props."
+          : isLowWhistle 
+            ? "Low-whistle crews suppress scoring. Factor this headwind into your prop selection."
+            : "Neutral crews have no significant impact on scoring variance."
       };
     }
 
