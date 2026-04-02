@@ -732,7 +732,7 @@ const UniversalPlayerCard = memo(({
                 whistle_class === 'low_whistle' ? 'text-red-400' : 'text-zinc-500'
               }`} />
               <span className="text-zinc-400">
-                Lead Official: {crew_chief}
+                Ref: {crew_chief}
               </span>
               {ref_ou_pct != null && (
                 <span className={`font-medium ${
@@ -744,9 +744,12 @@ const UniversalPlayerCard = memo(({
               )}
             </div>
             {has_whistle_modifier && whistle_modifier !== 0 && (
-              <span className={`font-bold ${whistle_modifier > 0 ? 'text-green-400' : 'text-red-400'}`}>
-                {whistle_modifier > 0 ? '+' : ''}{whistle_modifier}
-              </span>
+              <div className="flex items-center gap-1">
+                <Volume2 className={`w-3 h-3 ${whistle_modifier > 0 ? 'text-green-400' : 'text-red-400'}`} />
+                <span className={`font-bold ${whistle_modifier > 0 ? 'text-green-400' : 'text-red-400'}`}>
+                  {whistle_modifier > 0 ? '+' : ''}{whistle_modifier}
+                </span>
+              </div>
             )}
           </div>
         )}

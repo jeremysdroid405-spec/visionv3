@@ -110,6 +110,9 @@ class RefereeScraperService:
         """Normalize referee name for matching."""
         if not name:
             return ""
+        # Remove jersey number in parentheses (e.g., "Ben Taylor (#46)" -> "Ben Taylor")
+        import re
+        name = re.sub(r'\s*\(#?\d+\)\s*', '', name)
         # Remove extra spaces, lowercase
         normalized = " ".join(name.strip().split()).lower()
         return normalized
@@ -384,19 +387,33 @@ class RefereeScraperService:
         """
         Fallback referee stats based on known high/low whistle refs.
         Data from Covers.com 2025-2026 season.
+        
+        April 2, 2026 Directive:
+        - High Whistle (+15/+7.5): James Capers, Bill Kennedy, Ben Taylor
+        - Low Whistle (-15/-7.5): Josh Tiven, JB DeRosa
         """
         fallback = {
-            # High Whistle refs (Green Light)
+            # ================================================================
+            # HIGH WHISTLE REFS (Green Light) - PPG > 118 OR O/U > 60%
+            # Apply +15 to PTS/FTM, +7.5 to PRA
+            # ================================================================
+            "james capers": {"name": "James Capers", "ppg": 116.6, "ou_pct": 60.7, "whistle_class": "high_whistle"},
+            "bill kennedy": {"name": "Bill Kennedy", "ppg": 118.2, "ou_pct": 58.5, "whistle_class": "high_whistle"},
+            "ben taylor": {"name": "Ben Taylor", "ppg": 118.5, "ou_pct": 61.2, "whistle_class": "high_whistle"},
             "che flores": {"name": "Che Flores", "ppg": 117.1, "ou_pct": 64.3, "whistle_class": "high_whistle"},
             "danielle scott": {"name": "Danielle Scott", "ppg": 118.5, "ou_pct": 64.3, "whistle_class": "high_whistle"},
             "phenizee ransom": {"name": "Phenizee Ransom", "ppg": 116.9, "ou_pct": 61.5, "whistle_class": "high_whistle"},
             "karl lane": {"name": "Karl Lane", "ppg": 116.7, "ou_pct": 61.5, "whistle_class": "high_whistle"},
-            "james capers": {"name": "James Capers", "ppg": 116.6, "ou_pct": 60.7, "whistle_class": "high_whistle"},
             "matt kallio": {"name": "Matt Kallio", "ppg": 118.9, "ou_pct": 55.3, "whistle_class": "high_whistle"},
             "pat fraher": {"name": "Pat Fraher", "ppg": 118.1, "ou_pct": 54.4, "whistle_class": "high_whistle"},
             "mitchell ervin": {"name": "Mitchell Ervin", "ppg": 118.3, "ou_pct": 53.4, "whistle_class": "high_whistle"},
             
-            # Low Whistle refs (Red Light)
+            # ================================================================
+            # LOW WHISTLE REFS (Red Light) - PPG < 113 OR O/U < 45%
+            # Apply -15 to PTS/FTM, -7.5 to PRA
+            # ================================================================
+            "josh tiven": {"name": "Josh Tiven", "ppg": 112.5, "ou_pct": 44.0, "whistle_class": "low_whistle"},
+            "jb derosa": {"name": "JB DeRosa", "ppg": 112.8, "ou_pct": 43.5, "whistle_class": "low_whistle"},
             "simone jelks": {"name": "Simone Jelks", "ppg": 113.7, "ou_pct": 45.9, "whistle_class": "low_whistle"},
             "curtis blair": {"name": "Curtis Blair", "ppg": 114.0, "ou_pct": 30.0, "whistle_class": "low_whistle"},
             "kevin scott": {"name": "Kevin Scott", "ppg": 112.8, "ou_pct": 42.1, "whistle_class": "low_whistle"},
@@ -404,12 +421,15 @@ class RefereeScraperService:
             "mark ayotte": {"name": "Mark Ayotte", "ppg": 111.9, "ou_pct": 43.5, "whistle_class": "low_whistle"},
             "ed malloy": {"name": "Ed Malloy", "ppg": 112.2, "ou_pct": 41.8, "whistle_class": "low_whistle"},
             
-            # Neutral refs
+            # ================================================================
+            # NEUTRAL REFS - No modifier applied
+            # ================================================================
             "scott foster": {"name": "Scott Foster", "ppg": 115.2, "ou_pct": 52.0, "whistle_class": "neutral"},
             "tony brothers": {"name": "Tony Brothers", "ppg": 115.8, "ou_pct": 51.5, "whistle_class": "neutral"},
             "marc davis": {"name": "Marc Davis", "ppg": 114.5, "ou_pct": 50.0, "whistle_class": "neutral"},
             "zach zarba": {"name": "Zach Zarba", "ppg": 115.0, "ou_pct": 52.5, "whistle_class": "neutral"},
             "john goble": {"name": "John Goble", "ppg": 114.8, "ou_pct": 51.0, "whistle_class": "neutral"},
+            "nick buchert": {"name": "Nick Buchert", "ppg": 115.0, "ou_pct": 50.0, "whistle_class": "neutral"},
         }
         
         # Add metadata
