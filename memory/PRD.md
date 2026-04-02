@@ -3,7 +3,66 @@
 ## Overview
 PropVision is a sports analytics platform for NBA player props, providing data-driven insights for betting decisions.
 
-## Latest Update (2026-04-02): Ferrari v6 - Global Power Ranking & Universal Scan
+## Latest Update (2026-04-02): Feature 5 - Dynamic Whistle Matrix
+
+### Feature Description
+Integrated daily NBA referee assignments and stats into the Ferrari Power Score calculation to account for referee-driven scoring variance.
+
+### Data Sources
+- **Daily Assignments**: official.nba.com/referee-assignments/
+- **Referee Stats**: Covers.com O/U and PPG stats (with fallback data)
+
+### Whistle Classification
+- **High Whistle (Green Light)**: PPG > 118 OR O/U Win Rate > 60%
+- **Low Whistle (Red Light)**: PPG < 113 OR O/U Win Rate < 45%
+- **Neutral**: All other referees
+
+### Whistle Modifier Logic
+| Stat Type | High Whistle | Low Whistle | Neutral |
+|-----------|--------------|-------------|---------|
+| PTS, FTM  | +15 points   | -15 points  | 0       |
+| PRA       | +7.5 points  | -7.5 points | 0       |
+
+### Power Score Formula (Updated)
+```
+ferrari_power_score = base_power_score + whistle_modifier
+
+base_power_score = (Edge × 0.4) + (Cushion × 0.3) + (Consistency × 0.3)
+```
+
+### API Endpoints (New)
+- `POST /api/v3/ferrari/sync-refs` - Manually sync referee data
+- `GET /api/v3/ferrari/refs` - Get today's referee assignments
+
+### API Response Fields (Added)
+```json
+{
+  "crew_chief": "Che Flores",
+  "ref_ou_pct": 64.3,
+  "ref_ppg": 117.1,
+  "whistle_class": "high_whistle",
+  "has_whistle_modifier": true,
+  "whistle_modifier": 15.0,
+  "base_power_score": 68.31,
+  "ferrari_power_score": 83.31
+}
+```
+
+### UI Update
+- Volume2 icon + "Crew Chief (O/U%)" displayed on each player card
+- Green text for high whistle, red for low whistle, gray for neutral
+- Modifier value shown if non-zero
+
+### Files Modified
+- `/app/backend/services/referee_scraper_service.py` (NEW - 531 lines)
+- `/app/backend/services/ferrari_tier_service.py` (Updated - Whistle integration)
+- `/app/backend/routes/ferrari_tiers.py` (Updated - New endpoints)
+- `/app/frontend/src/components/dashboard/UniversalPlayerCard.jsx` (Updated - Whistle display)
+- `/app/frontend/src/components/dashboard/PlayerDetailPage.jsx` (Updated - Whistle badge)
+
+---
+
+## Previous Update (2026-04-02): Ferrari v6 - Global Power Ranking & Universal Scan
 
 ### Feature Description
 Implemented the final "Ferrari v6" pipeline with Global Power Ranking. Every prop is scored using a mathematical `ferrari_power_score` formula, sorted globally, and limited to Top 10 per tier.
