@@ -732,7 +732,7 @@ const UniversalPlayerCard = memo(({
                 whistle_class === 'low_whistle' ? 'text-red-400' : 'text-zinc-500'
               }`} />
               <span className="text-zinc-400">
-                {crew_chief}
+                Lead Official: {crew_chief}
               </span>
               {ref_ou_pct != null && (
                 <span className={`font-medium ${

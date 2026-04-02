@@ -220,7 +220,7 @@ const PropRow = memo(({ prop, isHighlighted, highlightRef, onVisionClick, gameLo
                 : 'bg-zinc-700/50 text-zinc-400'
           }`} data-testid="whistle-badge">
             <Volume2 className="w-2.5 h-2.5" />
-            {crewChief.split(' ').pop()} {/* Last name only */}
+            Lead Official: {crewChief.split(' ').pop()} {/* Last name only */}
             {refOuPct != null && <span className="ml-0.5">({refOuPct}%)</span>}
             {hasWhistleModifier && whistleModifier !== 0 && (
               <span className={`ml-1 font-bold ${whistleModifier > 0 ? 'text-green-300' : 'text-red-300'}`}>
