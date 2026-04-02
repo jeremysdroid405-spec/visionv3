@@ -10,12 +10,13 @@ import React, { useState, useCallback, useMemo, useRef, memo, useEffect } from '
 import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
 import { 
-  ArrowLeft, Target, Zap, Crosshair, Plus, Volume2, Snowflake, Scale
+  ArrowLeft, Target, Zap, Crosshair, Plus, Volume2, Snowflake, Scale, Shield
 } from 'lucide-react';
 import { DemonIcon, GoblinIcon } from './Icons';
 import { STAT_CATEGORIES, getCategoryKey, TEAM_LOGOS, BACKEND_URL } from './constants';
 import { BadgeRow, BADGE_REGISTRY, BadgeGridItem } from '../ui/BadgePill';
 import GameLogBarChart from './GameLogBarChart';
+import { MomentumTrackerFull } from './MomentumTracker';
 
 // Gold Whistle Icon for High Whistle refs
 const GoldWhistleIcon = ({ className }) => (
@@ -832,35 +833,46 @@ export const PlayerDetailPage = ({ playerName, playerData = null, onBack, highli
                     )}
                   </div>
                   
-                  {/* Matchup DvP (Defensive Friction) */}
-                  <div className="bg-gradient-to-r from-cyan-950/40 to-zinc-900 border border-cyan-500/30 rounded-lg p-4">
-                    <h3 className="text-sm font-bold text-white mb-2 flex items-center gap-2">
-                      <Target className="w-4 h-4 text-cyan-400" />
-                      DEFENSIVE FRICTION
-                    </h3>
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <div className="text-2xl font-bold text-cyan-300">
-                          {selectedVisionProp.intel_suite.matchup_dvp?.display || '-'}
+                  {/* Defensive Momentum (replaces old Matchup DvP / Defensive Friction) */}
+                  {selectedVisionProp.momentum_data && (
+                    <MomentumTrackerFull
+                      momentumData={selectedVisionProp.momentum_data}
+                      opponent={selectedVisionProp.intel_suite?.matchup_dvp?.opponent || selectedVisionProp.opponent || selectedVisionProp.opponent_abbr}
+                      statType={selectedVisionProp.stat_type}
+                    />
+                  )}
+                  
+                  {/* Legacy Matchup DvP fallback - only if no momentum data */}
+                  {!selectedVisionProp.momentum_data && selectedVisionProp.intel_suite.matchup_dvp && (
+                    <div className="bg-gradient-to-r from-cyan-950/40 to-zinc-900 border border-cyan-500/30 rounded-lg p-4">
+                      <h3 className="text-sm font-bold text-white mb-2 flex items-center gap-2">
+                        <Target className="w-4 h-4 text-cyan-400" />
+                        DEFENSIVE FRICTION
+                      </h3>
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <div className="text-2xl font-bold text-cyan-300">
+                            {selectedVisionProp.intel_suite.matchup_dvp?.display || '-'}
+                          </div>
+                          <div className="text-xs text-zinc-400 mt-1">
+                            vs {selectedVisionProp.intel_suite.matchup_dvp?.opponent || 'Opponent'}
+                          </div>
                         </div>
-                        <div className="text-xs text-zinc-400 mt-1">
-                          vs {selectedVisionProp.intel_suite.matchup_dvp?.opponent || 'Opponent'}
+                        <div className={`px-3 py-1 rounded-full text-xs font-bold ${
+                          selectedVisionProp.intel_suite.matchup_dvp?.color === 'green' 
+                            ? 'bg-green-500 text-white' 
+                            : selectedVisionProp.intel_suite.matchup_dvp?.color === 'red'
+                              ? 'bg-red-500 text-white'
+                              : 'bg-yellow-500 text-black'
+                        }`}>
+                          {selectedVisionProp.intel_suite.matchup_dvp?.friction_level} Friction
                         </div>
                       </div>
-                      <div className={`px-3 py-1 rounded-full text-xs font-bold ${
-                        selectedVisionProp.intel_suite.matchup_dvp?.color === 'green' 
-                          ? 'bg-green-500 text-white' 
-                          : selectedVisionProp.intel_suite.matchup_dvp?.color === 'red'
-                            ? 'bg-red-500 text-white'
-                            : 'bg-yellow-500 text-black'
-                      }`}>
-                        {selectedVisionProp.intel_suite.matchup_dvp?.friction_level} Friction
+                      <div className="text-xs text-cyan-400/70 mt-2">
+                        {selectedVisionProp.intel_suite.matchup_dvp?.friction_label}
                       </div>
                     </div>
-                    <div className="text-xs text-cyan-400/70 mt-2">
-                      {selectedVisionProp.intel_suite.matchup_dvp?.friction_label}
-                    </div>
-                  </div>
+                  )}
                   
                   {/* Pace Delta (Tempo Multiplier) + Stability Index */}
                   <div className="grid grid-cols-2 gap-2 sm:gap-4">

@@ -60,7 +60,24 @@ async def run_board_intelligence_enrichment(db: AsyncIOMotorDatabase) -> Dict[st
     logger.info("[BOARD_INTEL] Starting Phase 2: Predictive Market Edge Enrichment...")
     
     cached_board = db.dg_cached_board
+    ferrari_scored = db.ferrari_scored
     now_iso = datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
+    
+    # ========== STEP 0: Load Ferrari Picks for momentum/whistle/vacuum data ==========
+    # Build a lookup map: {player_name|stat_type|line -> ferrari_pick}
+    ferrari_picks_map = {}
+    try:
+        cursor = ferrari_scored.find({}, {"_id": 0})
+        ferrari_picks = await cursor.to_list(length=None)
+        for fp in ferrari_picks:
+            pname = fp.get("player_name", "")
+            stat = fp.get("stat_type", "")
+            line = fp.get("line", 0)
+            key = f"{pname}|{stat}|{line}"
+            ferrari_picks_map[key] = fp
+        logger.info(f"[BOARD_INTEL] Loaded {len(ferrari_picks_map)} Ferrari picks for enrichment data")
+    except Exception as e:
+        logger.warning(f"[BOARD_INTEL] Could not load Ferrari picks: {e}")
     
     # ========== STEP 1: Fetch ALL eligible props ==========
     all_props = await _fetch_all_board_eligible_props(cached_board, now_iso)
@@ -68,6 +85,45 @@ async def run_board_intelligence_enrichment(db: AsyncIOMotorDatabase) -> Dict[st
     
     if not all_props:
         return {"total": 0, "enriched": 0, "duration": 0}
+    
+    # ========== STEP 1.5: Merge Ferrari data (momentum/whistle/vacuum) ==========
+    merged_count = 0
+    for prop in all_props:
+        pname = prop.get("player_name", "")
+        stat = prop.get("stat_type") or prop.get("stat_type_raw", "")
+        line = prop.get("line", 0)
+        key = f"{pname}|{stat}|{line}"
+        
+        ferrari_pick = ferrari_picks_map.get(key)
+        if ferrari_pick:
+            # Merge momentum data
+            if ferrari_pick.get("momentum_data"):
+                prop["momentum_data"] = ferrari_pick["momentum_data"]
+                prop["momentum_modifier"] = ferrari_pick.get("momentum_modifier", 0)
+                prop["has_momentum_modifier"] = ferrari_pick.get("has_momentum_modifier", False)
+            
+            # Merge whistle data
+            if ferrari_pick.get("crew_chief"):
+                prop["crew_chief"] = ferrari_pick["crew_chief"]
+                prop["ref_ou_pct"] = ferrari_pick.get("ref_ou_pct")
+                prop["ref_ppg"] = ferrari_pick.get("ref_ppg")
+                prop["whistle_class"] = ferrari_pick.get("whistle_class")
+                prop["whistle_modifier"] = ferrari_pick.get("whistle_modifier", 0)
+                prop["has_whistle_modifier"] = ferrari_pick.get("has_whistle_modifier", False)
+                prop["point_lift"] = ferrari_pick.get("point_lift", 0)
+                prop["lift_label"] = ferrari_pick.get("lift_label")
+                prop["lift_type"] = ferrari_pick.get("lift_type")
+                prop["foul_rate_diff"] = ferrari_pick.get("foul_rate_diff", 0)
+            
+            # Merge vacuum data
+            if ferrari_pick.get("vacuum_data"):
+                prop["vacuum_data"] = ferrari_pick["vacuum_data"]
+                prop["vacuum_modifier"] = ferrari_pick.get("vacuum_modifier", 0)
+                prop["has_vacuum_modifier"] = ferrari_pick.get("has_vacuum_modifier", False)
+            
+            merged_count += 1
+    
+    logger.info(f"[BOARD_INTEL] Merged Ferrari data into {merged_count} props")
     
     # ========== STEP 2: Load Phase 2 Market Edge Data ==========
     # This runs in parallel to minimize latency
@@ -582,6 +638,31 @@ async def _enrich_pick_full(
             f"props.{idx}.board": board,
             f"props.{idx}.vision_score": pick.get("vision_score", 0)
         }
+        
+        # Add momentum data from Ferrari picks if available
+        if pick.get("momentum_data"):
+            update_data[f"props.{idx}.momentum_data"] = pick["momentum_data"]
+            update_data[f"props.{idx}.momentum_modifier"] = pick.get("momentum_modifier", 0)
+            update_data[f"props.{idx}.has_momentum_modifier"] = pick.get("has_momentum_modifier", False)
+        
+        # Add whistle/officiating data from Ferrari picks if available
+        if pick.get("crew_chief"):
+            update_data[f"props.{idx}.crew_chief"] = pick["crew_chief"]
+            update_data[f"props.{idx}.ref_ou_pct"] = pick.get("ref_ou_pct")
+            update_data[f"props.{idx}.ref_ppg"] = pick.get("ref_ppg")
+            update_data[f"props.{idx}.whistle_class"] = pick.get("whistle_class")
+            update_data[f"props.{idx}.whistle_modifier"] = pick.get("whistle_modifier", 0)
+            update_data[f"props.{idx}.has_whistle_modifier"] = pick.get("has_whistle_modifier", False)
+            update_data[f"props.{idx}.point_lift"] = pick.get("point_lift", 0)
+            update_data[f"props.{idx}.lift_label"] = pick.get("lift_label")
+            update_data[f"props.{idx}.lift_type"] = pick.get("lift_type")
+            update_data[f"props.{idx}.foul_rate_diff"] = pick.get("foul_rate_diff", 0)
+        
+        # Add vacuum data from Ferrari picks if available
+        if pick.get("vacuum_data"):
+            update_data[f"props.{idx}.vacuum_data"] = pick["vacuum_data"]
+            update_data[f"props.{idx}.vacuum_modifier"] = pick.get("vacuum_modifier", 0)
+            update_data[f"props.{idx}.has_vacuum_modifier"] = pick.get("has_vacuum_modifier", False)
         
         # Phase 2: Add market edge data at prop level for easy querying
         if pick.get("sharp_edge_data"):

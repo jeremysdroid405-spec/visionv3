@@ -1210,6 +1210,32 @@ async def get_cached_player(player_name: str):
                 prop["vision_score"] = enriched_prop.get("vision_score")
                 prop["is_vision_enriched"] = True
                 prop["board"] = enriched_prop.get("board")
+                
+                # Copy momentum data if available from enriched prop
+                if enriched_prop.get("momentum_data"):
+                    prop["momentum_data"] = enriched_prop["momentum_data"]
+                    prop["momentum_modifier"] = enriched_prop.get("momentum_modifier", 0)
+                    prop["has_momentum_modifier"] = enriched_prop.get("has_momentum_modifier", False)
+                else:
+                    # Fetch momentum data if not in enriched prop
+                    try:
+                        from services.defensive_momentum_service import get_momentum_service
+                        momentum_service = get_momentum_service(db)
+                        await momentum_service.ensure_cache()
+                        modifier, momentum_data = momentum_service.calculate_momentum_modifier(opp_abbr, stat_type)
+                        if momentum_data:
+                            prop["momentum_data"] = momentum_data
+                            prop["momentum_modifier"] = modifier
+                            prop["has_momentum_modifier"] = modifier != 0
+                    except Exception as e:
+                        logger.warning(f"[PLAYER_DETAIL] Momentum data for enriched prop failed: {e}")
+                
+                # Copy officiating data if available
+                for key in ["crew_chief", "ref_ou_pct", "ref_ppg", "whistle_class", "whistle_modifier", 
+                            "has_whistle_modifier", "lift_label", "lift_type", "point_lift", "foul_rate_diff"]:
+                    if key in enriched_prop:
+                        prop[key] = enriched_prop[key]
+                
                 logger.debug(f"[PLAYER_DETAIL] Using pre-cached intel_suite for {pname} {stat_type}@{line} (from enriched {enriched_prop.get('stat_type_extracted')}@{enriched_prop.get('line')})")
                 continue
             
@@ -1378,6 +1404,19 @@ async def get_cached_player(player_name: str):
                     prop["intel_suite"]["vision_insight"]["reasons"] = reasons
             except Exception as e:
                 logger.warning(f"[PLAYER_DETAIL] Blowout risk calculation failed: {e}")
+            
+            # Add momentum data from Defensive Momentum Service
+            try:
+                from services.defensive_momentum_service import get_momentum_service
+                momentum_service = get_momentum_service(db)
+                await momentum_service.ensure_cache()
+                modifier, momentum_data = momentum_service.calculate_momentum_modifier(opp_abbr, stat_type)
+                if momentum_data:
+                    prop["momentum_data"] = momentum_data
+                    prop["momentum_modifier"] = modifier
+                    prop["has_momentum_modifier"] = modifier != 0
+            except Exception as e:
+                logger.warning(f"[PLAYER_DETAIL] Momentum data calculation failed: {e}")
             
             # ========== STATIC VISION AI SUMMARY (from pre-cache) ==========
             # Vision AI summaries are PRE-COMPUTED by the Board-Driven Vision Intel Service
