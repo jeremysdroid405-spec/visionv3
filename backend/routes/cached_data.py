@@ -1023,6 +1023,20 @@ async def get_cached_player(player_name: str):
         team_abbr = TEAM_ABBREV_MAP.get(team, team[:3].upper() if team else "UNK")
         opp_abbr = TEAM_ABBREV_MAP.get(opponent, opponent[:3].upper() if opponent else "UNK")
         
+        # ========== OFFICIATING IMPACT (WHISTLE MATRIX) ==========
+        # Get referee data for this player's team
+        from services.referee_scraper_service import get_referee_service
+        ref_service = get_referee_service(db)
+        ref_info = ref_service.get_ref_for_team(team_abbr) if team_abbr else None
+        
+        # Store officiating data at player level
+        if ref_info:
+            player["crew_chief"] = ref_info.get("crew_chief")
+            player["ref_ou_pct"] = ref_info.get("ou_pct")
+            player["ref_ppg"] = ref_info.get("ppg")
+            player["whistle_class"] = ref_info.get("whistle_class", "neutral")
+            logger.info(f"[PLAYER_DETAIL] {pname}: Ref={ref_info.get('crew_chief')}, Whistle={ref_info.get('whistle_class')}")
+        
         # ========== IDENTIFY THE FEATURED PROP ==========
         # Only ONE prop per player gets the Vision Intel Suite (badges + summary)
         # Cross-reference with actual boards to find the REAL featured prop
@@ -1075,6 +1089,33 @@ async def get_cached_player(player_name: str):
         for prop in player.get("props", []):
             stat_type = prop.get("stat_type_extracted", "PTS")
             line = prop.get("line", 0)
+            
+            # ========== ADD OFFICIATING DATA TO PROP ==========
+            if ref_info:
+                whistle_class = ref_info.get("whistle_class", "neutral")
+                ref_ppg = ref_info.get("ppg", 115.5)
+                
+                # Calculate whistle modifier
+                whistle_modifier = ref_service.calculate_whistle_modifier(stat_type, whistle_class)
+                
+                # Calculate Point Lift translation
+                point_lift_data = ref_service.calculate_point_lift(
+                    stat_type=stat_type,
+                    ref_ppg=ref_ppg,
+                    whistle_class=whistle_class
+                )
+                
+                # Add to prop
+                prop["crew_chief"] = ref_info.get("crew_chief")
+                prop["ref_ou_pct"] = ref_info.get("ou_pct")
+                prop["ref_ppg"] = ref_ppg
+                prop["whistle_class"] = whistle_class
+                prop["has_whistle_modifier"] = whistle_modifier != 0
+                prop["whistle_modifier"] = whistle_modifier
+                prop["point_lift"] = point_lift_data.get("point_lift", 0)
+                prop["lift_label"] = point_lift_data.get("lift_label", "")
+                prop["lift_type"] = point_lift_data.get("lift_type", "neutral")
+                prop["foul_rate_diff"] = point_lift_data.get("foul_rate_diff", 0)
             
             # Get hit rates - support BOTH nested and flat formats
             # FLAT format (from _flatten_hit_rates_to_props): l5_avg, l10_avg, h10_rate at prop level

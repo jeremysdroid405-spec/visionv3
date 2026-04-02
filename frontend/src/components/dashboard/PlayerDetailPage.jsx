@@ -941,6 +941,89 @@ export const PlayerDetailPage = ({ playerName, playerData = null, onBack, highli
                     </div>
                   )}
                   
+                  {/* Officiating Impact (Whistle Matrix) */}
+                  {selectedVisionProp.crew_chief && (
+                    <div className={`border rounded-lg p-4 ${
+                      selectedVisionProp.whistle_class === 'high_whistle'
+                        ? 'bg-gradient-to-r from-amber-950/50 to-zinc-900 border-amber-500/40'
+                        : selectedVisionProp.whistle_class === 'low_whistle'
+                          ? 'bg-gradient-to-r from-blue-950/50 to-zinc-900 border-blue-500/40'
+                          : 'bg-zinc-800/50 border-zinc-700'
+                    }`} data-testid="officiating-impact-section">
+                      <h3 className={`text-sm font-bold mb-2 flex items-center gap-2 ${
+                        selectedVisionProp.whistle_class === 'high_whistle'
+                          ? 'text-amber-400'
+                          : selectedVisionProp.whistle_class === 'low_whistle'
+                            ? 'text-blue-400'
+                            : 'text-zinc-400'
+                      }`}>
+                        {selectedVisionProp.whistle_class === 'high_whistle' ? (
+                          <GoldWhistleIcon className="w-4 h-4" />
+                        ) : selectedVisionProp.whistle_class === 'low_whistle' ? (
+                          <Snowflake className="w-4 h-4 text-blue-400" />
+                        ) : (
+                          <Scale className="w-4 h-4" />
+                        )}
+                        OFFICIATING IMPACT
+                      </h3>
+                      
+                      <div className="flex items-center justify-between mb-3">
+                        <div>
+                          <div className="text-lg font-bold text-white">
+                            {selectedVisionProp.crew_chief}
+                          </div>
+                          <div className="text-xs text-zinc-400 mt-0.5">
+                            {selectedVisionProp.ref_ou_pct != null && `${selectedVisionProp.ref_ou_pct}% Over`}
+                            {selectedVisionProp.ref_ppg != null && ` | ${selectedVisionProp.ref_ppg} PPG`}
+                          </div>
+                        </div>
+                        {selectedVisionProp.has_whistle_modifier && (
+                          <div className={`px-3 py-1 rounded-full text-xs font-bold ${
+                            selectedVisionProp.whistle_class === 'high_whistle'
+                              ? 'bg-amber-500 text-white'
+                              : selectedVisionProp.whistle_class === 'low_whistle'
+                                ? 'bg-blue-500 text-white'
+                                : 'bg-zinc-600 text-white'
+                          }`}>
+                            {selectedVisionProp.whistle_class === 'high_whistle' ? 'HIGH WHISTLE' : 
+                             selectedVisionProp.whistle_class === 'low_whistle' ? 'LOW WHISTLE' : 'NEUTRAL'}
+                          </div>
+                        )}
+                      </div>
+                      
+                      {/* Point Lift Translation */}
+                      {selectedVisionProp.lift_label && selectedVisionProp.lift_type !== 'neutral' && (
+                        <div className={`bg-zinc-800/50 rounded-lg p-3 ${
+                          selectedVisionProp.whistle_class === 'high_whistle' ? 'border border-amber-500/20' :
+                          selectedVisionProp.whistle_class === 'low_whistle' ? 'border border-blue-500/20' : ''
+                        }`}>
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs text-zinc-500">POINT LIFT</span>
+                            <span className={`text-sm font-bold ${
+                              selectedVisionProp.lift_type === 'boost' ? 'text-amber-400' : 'text-blue-400'
+                            }`}>
+                              {selectedVisionProp.lift_label}
+                            </span>
+                          </div>
+                          <div className="text-xs text-zinc-400 mt-2">
+                            {selectedVisionProp.whistle_class === 'high_whistle' ? (
+                              <>This crew historically boosts scoring. Games average <span className="text-amber-400">{selectedVisionProp.ref_ppg} PPG</span> with a <span className="text-amber-400">{selectedVisionProp.ref_ou_pct}%</span> over rate.</>
+                            ) : selectedVisionProp.whistle_class === 'low_whistle' ? (
+                              <>This crew suppresses scoring. Games average only <span className="text-blue-400">{selectedVisionProp.ref_ppg} PPG</span> with just a <span className="text-blue-400">{selectedVisionProp.ref_ou_pct}%</span> over rate.</>
+                            ) : null}
+                          </div>
+                          {selectedVisionProp.foul_rate_diff !== 0 && (
+                            <div className="text-xs text-zinc-500 mt-1">
+                              Foul rate vs league avg: <span className={selectedVisionProp.foul_rate_diff > 0 ? 'text-amber-400' : 'text-blue-400'}>
+                                {selectedVisionProp.foul_rate_diff > 0 ? '+' : ''}{selectedVisionProp.foul_rate_diff}%
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  
                   {/* Vision Insight (Target-Lock Rationale) */}
                   <div className="bg-gradient-to-r from-amber-950/50 to-zinc-900 border border-amber-500/30 rounded-lg p-4">
                     <h3 className="text-sm font-bold text-amber-300 mb-2 flex items-center gap-2">
