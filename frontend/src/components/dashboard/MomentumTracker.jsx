@@ -92,7 +92,9 @@ const MomentumTrackerCompact = memo(({
     momentum,
     trend_alert,
     is_elite,
-    is_weak
+    is_weak,
+    using_proxy,
+    proxy_label
   } = momentumData;
 
   const compositeInt = Math.round(composite_rank);
@@ -115,6 +117,9 @@ const MomentumTrackerCompact = memo(({
       }`}>
         <Shield className="w-3 h-3" />
         DEFENSIVE MOMENTUM
+        {using_proxy && (
+          <span className="text-amber-400/70 font-normal">({proxy_label})</span>
+        )}
         <MomentumIndicator momentum={momentum} size="sm" />
         <Info className="w-2.5 h-2.5 ml-auto opacity-60" />
       </div>
@@ -249,10 +254,18 @@ const MomentumTrackerFull = memo(({
           </div>
           
           {showTooltip && tooltip && (
-            <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-zinc-900 border border-zinc-700 rounded-lg shadow-xl z-10 whitespace-nowrap">
-              <div className="text-[10px] text-cyan-400 font-mono">
-                {tooltip}
+            <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-zinc-900 border border-zinc-700 rounded-lg shadow-xl z-10 max-w-xs">
+              <div className="text-[10px] text-cyan-400 font-mono whitespace-nowrap">
+                {tooltip.split(' | ').slice(0, 3).join(' | ')}
               </div>
+              {/* Show proxy note if present */}
+              {momentumData.using_proxy && momentumData.proxy_description && (
+                <div className="mt-1 pt-1 border-t border-zinc-700">
+                  <div className="text-[9px] text-amber-400">
+                    {momentumData.proxy_description}
+                  </div>
+                </div>
+              )}
               <div className="absolute bottom-0 left-1/2 transform -translate-x-1/2 translate-y-1/2 rotate-45 w-2 h-2 bg-zinc-900 border-r border-b border-zinc-700" />
             </div>
           )}

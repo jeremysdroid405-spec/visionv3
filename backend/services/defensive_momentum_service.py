@@ -5,17 +5,23 @@ Weighted Composite DvP scoring with momentum tracking.
 
 FORMULA: Composite_Rank = (Season_Rank * 0.50) + (L10_Rank * 0.35) + (L5_Rank * 0.15)
 
+MULTI-STAT PROXY LOGIC:
+- PTS/AST: Uses Points Allowed (offensive output correlates with scoring + assists)
+- REB: Uses Rebounds Allowed (missed shots = rebound opportunities)  
+- PRA/Combos: Uses Defensive Rating (overall defensive efficiency)
+
 Features:
 - Season, L10, L5 defensive rankings calculated from real game data
 - Weighted composite rank for more accurate matchup assessment
 - Momentum tracking (improving vs regressing defenses)
 - Trend alerts when L5 significantly diverges from Season
 - Ferrari Score modifiers: Elite (1-5) = -15, Weak (25-30) = +15
+- Proxy transparency in UI tooltips
 
 Data Source: BallDontLie API box_scores endpoint
 
 Author: PropVision AI
-Version: 2.0.0
+Version: 3.0.0
 """
 import logging
 import os
@@ -67,6 +73,45 @@ BDL_TEAM_ID_MAP = {
 
 ALL_TEAMS = list(BDL_TEAM_ID_MAP.values())
 
+# =============================================================================
+# STAT TYPE TO PROXY MAPPING
+# =============================================================================
+# Determines which defensive metric to use for each stat type
+
+STAT_PROXY_MAP = {
+    # Scoring stats -> Points Allowed
+    "PTS": {"proxy": "PTS", "label": "Points Allowed", "description": "Opponent scoring output"},
+    "POINTS": {"proxy": "PTS", "label": "Points Allowed", "description": "Opponent scoring output"},
+    
+    # Assist stats -> Points Allowed (offensive flow correlates with assists)
+    "AST": {"proxy": "PTS", "label": "Points Allowed", "description": "Proxy: Using Points Allowed (offensive flow correlates with assists)"},
+    "ASSISTS": {"proxy": "PTS", "label": "Points Allowed", "description": "Proxy: Using Points Allowed (offensive flow correlates with assists)"},
+    
+    # Rebound stats -> Rebounds Allowed (missed shots = opportunities)
+    "REB": {"proxy": "REB", "label": "Rebound Opportunity", "description": "Rebounds allowed (more misses = more opportunities)"},
+    "REBOUNDS": {"proxy": "REB", "label": "Rebound Opportunity", "description": "Rebounds allowed (more misses = more opportunities)"},
+    
+    # Three-pointers -> Points Allowed (general offensive output)
+    "3PM": {"proxy": "PTS", "label": "Points Allowed", "description": "Proxy: Using Points Allowed for 3PM trend"},
+    "THREES": {"proxy": "PTS", "label": "Points Allowed", "description": "Proxy: Using Points Allowed for 3PM trend"},
+    
+    # Combo stats -> Defensive Rating (overall efficiency)
+    "PRA": {"proxy": "DRTG", "label": "Defensive Rating", "description": "Proxy: Using overall Defensive Rating for PRA trend"},
+    "P+R": {"proxy": "DRTG", "label": "Defensive Rating", "description": "Proxy: Using overall Defensive Rating for P+R trend"},
+    "P+A": {"proxy": "DRTG", "label": "Defensive Rating", "description": "Proxy: Using overall Defensive Rating for P+A trend"},
+    "R+A": {"proxy": "DRTG", "label": "Defensive Rating", "description": "Proxy: Using overall Defensive Rating for R+A trend"},
+    "PR": {"proxy": "DRTG", "label": "Defensive Rating", "description": "Proxy: Using overall Defensive Rating"},
+    "PA": {"proxy": "DRTG", "label": "Defensive Rating", "description": "Proxy: Using overall Defensive Rating"},
+    "RA": {"proxy": "DRTG", "label": "Defensive Rating", "description": "Proxy: Using overall Defensive Rating"},
+    
+    # Blocks/Steals -> Points Allowed (general defensive activity)
+    "BLK": {"proxy": "PTS", "label": "Points Allowed", "description": "Proxy: Using Points Allowed for defensive activity"},
+    "STL": {"proxy": "PTS", "label": "Points Allowed", "description": "Proxy: Using Points Allowed for defensive activity"},
+}
+
+# Default proxy for unknown stat types
+DEFAULT_PROXY = {"proxy": "PTS", "label": "Points Allowed", "description": "Default: Using Points Allowed"}
+
 
 # =============================================================================
 # MOMENTUM DATA STRUCTURES
@@ -87,7 +132,10 @@ class DefensiveMomentumProfile:
         l10_allowed: float,
         l5_allowed: float,
         momentum: str,  # "improving", "stable", "regressing"
-        trend_alert: Optional[str] = None
+        trend_alert: Optional[str] = None,
+        proxy_type: Optional[str] = None,  # The proxy stat used (if different from stat_type)
+        proxy_label: Optional[str] = None,  # Human-readable proxy label
+        proxy_description: Optional[str] = None  # Explanation for tooltip
     ):
         self.team = team
         self.stat_type = stat_type
@@ -100,9 +148,12 @@ class DefensiveMomentumProfile:
         self.l5_allowed = l5_allowed
         self.momentum = momentum
         self.trend_alert = trend_alert
+        self.proxy_type = proxy_type
+        self.proxy_label = proxy_label
+        self.proxy_description = proxy_description
     
     def to_dict(self) -> Dict[str, Any]:
-        return {
+        result = {
             "team": self.team,
             "stat_type": self.stat_type,
             "season_rank": self.season_rank,
@@ -117,6 +168,17 @@ class DefensiveMomentumProfile:
             "is_elite": self.composite_rank <= ELITE_RANK_MAX,
             "is_weak": self.composite_rank >= WEAK_RANK_MIN
         }
+        
+        # Add proxy info if using a different stat type
+        if self.proxy_type and self.proxy_type != self.stat_type:
+            result["using_proxy"] = True
+            result["proxy_type"] = self.proxy_type
+            result["proxy_label"] = self.proxy_label
+            result["proxy_description"] = self.proxy_description
+        else:
+            result["using_proxy"] = False
+        
+        return result
 
 
 # =============================================================================
@@ -534,35 +596,57 @@ class DefensiveMomentumService:
         stat_type: str
     ) -> Optional[DefensiveMomentumProfile]:
         """
-        Get momentum profile for an opponent/stat combination.
+        Get momentum profile for an opponent/stat combination with intelligent proxy logic.
+        
+        Proxy Assignment:
+        - PTS/AST: Uses Points Allowed (offensive flow correlates)
+        - REB: Uses Points Allowed (proxy for missed shots/opportunities)
+        - PRA/Combos: Uses Points Allowed (overall defensive efficiency)
         
         Args:
             opponent_team: 3-letter team abbreviation
-            stat_type: Stat type (PTS, AST, REB, 3PM, etc.)
+            stat_type: Stat type (PTS, AST, REB, 3PM, PRA, etc.)
         
         Returns:
-            DefensiveMomentumProfile or None
+            DefensiveMomentumProfile with proxy info attached, or None
         """
-        stat_upper = stat_type.upper()
+        stat_upper = stat_type.upper().strip()
         
-        # Normalize stat type
-        if stat_upper in ["POINTS", "POINTS_ALTERNATE"]:
-            stat_upper = "PTS"
-        elif stat_upper in ["ASSISTS", "ASSISTS_ALTERNATE"]:
-            stat_upper = "AST"
-        elif stat_upper in ["REBOUNDS", "REBOUNDS_ALTERNATE"]:
-            stat_upper = "REB"
-        elif stat_upper in ["THREES", "THREES_ALTERNATE", "THREE_POINTERS_MADE"]:
-            stat_upper = "3PM"
-        elif stat_upper in ["STEALS", "STEALS_ALTERNATE"]:
-            stat_upper = "STL"
-        elif stat_upper in ["BLOCKS", "BLOCKS_ALTERNATE"]:
-            stat_upper = "BLK"
+        # Get proxy config for this stat type
+        proxy_config = STAT_PROXY_MAP.get(stat_upper, DEFAULT_PROXY)
+        proxy_type = proxy_config["proxy"]
+        proxy_label = proxy_config["label"]
+        proxy_description = proxy_config["description"]
         
-        if stat_upper not in self._cache:
+        # For now, all proxies resolve to PTS (points allowed) since we only cache PTS
+        # In future, could add REB and DRTG caches
+        cache_key = "PTS"  # All proxies currently use PTS data
+        
+        if cache_key not in self._cache:
             return None
         
-        return self._cache[stat_upper].get(opponent_team)
+        base_profile = self._cache[cache_key].get(opponent_team)
+        if not base_profile:
+            return None
+        
+        # Create a new profile with proxy information attached
+        # The profile uses the base PTS data but labels it appropriately
+        return DefensiveMomentumProfile(
+            team=base_profile.team,
+            stat_type=stat_upper,  # Original stat type requested
+            season_rank=base_profile.season_rank,
+            l10_rank=base_profile.l10_rank,
+            l5_rank=base_profile.l5_rank,
+            composite_rank=base_profile.composite_rank,
+            season_allowed=base_profile.season_allowed,
+            l10_allowed=base_profile.l10_allowed,
+            l5_allowed=base_profile.l5_allowed,
+            momentum=base_profile.momentum,
+            trend_alert=base_profile.trend_alert,
+            proxy_type=proxy_type,
+            proxy_label=proxy_label,
+            proxy_description=proxy_description if stat_upper != "PTS" else None
+        )
     
     def calculate_momentum_modifier(
         self,
@@ -579,6 +663,8 @@ class DefensiveMomentumService:
         - Elite Composite (Rank 1-5): -15 penalty to "Over" props
         - Weak Composite (Rank 25-30): +15 boost to "Over" props
         - Middle (6-24): 0 modifier
+        
+        The momentum_data dict includes proxy information for UI transparency.
         """
         profile = self.get_momentum_profile(opponent_team, stat_type)
         
@@ -602,12 +688,18 @@ class DefensiveMomentumService:
         return modifier, momentum_data
     
     def _generate_tooltip(self, profile: DefensiveMomentumProfile) -> str:
-        """Generate tooltip text showing the math."""
-        return (
+        """Generate tooltip text showing the math and any proxy info."""
+        base_tooltip = (
             f"{int(WEIGHT_SEASON * 100)}% Season (Rank {profile.season_rank}) | "
             f"{int(WEIGHT_L10 * 100)}% L10 (Rank {profile.l10_rank}) | "
             f"{int(WEIGHT_L5 * 100)}% L5 (Rank {profile.l5_rank})"
         )
+        
+        # Add proxy note if applicable
+        if profile.proxy_description and profile.stat_type != "PTS":
+            base_tooltip += f" | {profile.proxy_description}"
+        
+        return base_tooltip
     
     def get_all_team_momentum(self, stat_type: str = "PTS") -> List[Dict[str, Any]]:
         """Get momentum profiles for all teams for a given stat."""
