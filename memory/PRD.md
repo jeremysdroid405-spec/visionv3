@@ -3,7 +3,77 @@
 ## Overview
 PropVision is a sports analytics platform for NBA player props, providing data-driven insights for betting decisions.
 
-## Latest Update (2026-04-01): Ferrari Tiered Dashboard with Bovada Separation
+## Latest Update (2026-04-02): Ferrari v6 - Global Power Ranking & Universal Scan
+
+### Feature Description
+Implemented the final "Ferrari v6" pipeline with Global Power Ranking. Every prop is scored using a mathematical `ferrari_power_score` formula, sorted globally, and limited to Top 10 per tier.
+
+### Power Score Formula (0-100 scale)
+```
+ferrari_power_score = (Edge × 0.4) + (Cushion × 0.3) + (Consistency × 0.3)
+
+Edge Weight (40%):
+  = (Bovada_Implied_Prob - PrizePicks_Implied_Prob) × 4 × 25 (normalized)
+  
+Cushion Weight (30%):
+  = ((Season_Median - PrizePicks_Line) / PrizePicks_Line) × 100
+
+Consistency Weight (30%):
+  = L10_Hit_Rate (0-100 scale)
+```
+
+### Universal Scan
+- 100% scan of ALL props (no early breaks or lazy loading)
+- Complete field analysis before selection
+- Example: Scanned 1,986 props → 336 survivors → 30 elite opportunities
+
+### Kill-Switch Filters
+1. **5% Absolute Edge**: Props with <5% implied probability separation from Bovada are killed
+2. **Median Anchor**: Props where PP line > Season Median are killed
+
+### Tier Windows
+- **Safe Haven**: Sharp price ≤ -250 (71%+ implied probability)
+- **Front Lines**: Sharp price -245 to -115 (53-71% implied)
+- **War Zone**: Sharp price -114 to +500 (value hunting zone)
+
+### Output
+- 10 picks per tier (30 total)
+- Sorted globally by `ferrari_power_score` descending
+- One player per tier (deduplication)
+
+### Market Intel Footer
+Frontend displays: `"Verified [X] active props to identify these [30] Elite opportunities."`
+
+### API Endpoints
+- `GET /api/v3/ferrari/all` - All tiers + verification stats
+- `GET /api/v3/ferrari/safe-haven` - Top 10 Safe Haven picks
+- `GET /api/v3/ferrari/front-lines` - Top 10 Front Lines picks
+- `GET /api/v3/ferrari/war-zone` - Top 10 War Zone picks
+- `GET /api/v3/ferrari/discarded` - Props killed by filters
+- `POST /api/v3/ferrari/rebuild` - Trigger pipeline rebuild
+
+### Verification Data Structure
+```json
+{
+  "verification": {
+    "active_props_verified": 336,
+    "elite_opportunities": 30,
+    "safe_haven_pool": 161,
+    "front_lines_pool": 72,
+    "war_zone_pool": 98,
+    "message": "Verified 336 active props to identify these 30 Elite opportunities."
+  }
+}
+```
+
+### Files Modified
+- `/app/backend/services/ferrari_tier_service.py` - Ferrari v6 pipeline with Power Score
+- `/app/backend/routes/ferrari_tiers.py` - API endpoints with verification stats
+- `/app/frontend/src/pages/Dashboard.jsx` - Market Intel footer
+
+---
+
+## Previous Update (2026-04-01): Ferrari Tiered Dashboard with Bovada Separation
 
 ### Feature Description
 Implemented "Ferrari" tier filtering using Bovada as the primary sharp benchmark. This creates a "Best of the Best" dashboard with zero mid plays.
