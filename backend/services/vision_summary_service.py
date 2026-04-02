@@ -294,3 +294,79 @@ Keep it tight. No fluff. Talk like a real person, not a robot. Use {last_name}'s
                 continue
         
         return picks
+    
+    async def batch_generate_summaries(
+        self,
+        picks: list,
+        max_concurrent: int = 5
+    ) -> list:
+        """
+        Generate AI summaries for multiple picks concurrently with rate limiting.
+        
+        Uses a semaphore to limit concurrent API calls and avoid rate limits.
+        """
+        if not self.api_key:
+            logger.warning("[VISION] No API key - skipping batch generation")
+            return picks
+        
+        semaphore = asyncio.Semaphore(max_concurrent)
+        
+        async def generate_one(pick: dict) -> None:
+            # Skip if already has summary
+            if pick.get("vision_summary"):
+                return
+            
+            # Skip if no badges
+            badges = pick.get("badges") or pick.get("context_badges") or pick.get("active_badges") or []
+            if not badges:
+                return
+            
+            async with semaphore:
+                try:
+                    summary = await self.generate_pick_summary(
+                        player_name=pick.get("player_name", ""),
+                        stat_type=pick.get("stat_type", ""),
+                        line=pick.get("line", 0),
+                        season_avg=pick.get("season_avg", 0),
+                        h10_rate=pick.get("h10_rate") or pick.get("l10_hit_rate", 0),
+                        badges=[b.get("key") if isinstance(b, dict) else b for b in badges],
+                        opponent=pick.get("opponent"),
+                        is_demon=pick.get("is_demon", False),
+                        is_goblin=pick.get("is_goblin", False)
+                    )
+                    
+                    if summary:
+                        pick["vision_summary"] = summary
+                        
+                except Exception as e:
+                    logger.warning(f"[VISION] Batch gen failed for {pick.get('player_name')}: {e}")
+        
+        # Run all generations concurrently (limited by semaphore)
+        tasks = [generate_one(pick) for pick in picks]
+        await asyncio.gather(*tasks, return_exceptions=True)
+        
+        return picks
+
+
+# Module-level convenience function
+async def generate_vision_summary(pick: dict) -> Optional[str]:
+    """
+    Convenience function to generate a summary for a single pick.
+    """
+    service = VisionSummaryService()
+    
+    badges = pick.get("badges") or pick.get("context_badges") or pick.get("active_badges") or []
+    if not badges:
+        return None
+    
+    return await service.generate_pick_summary(
+        player_name=pick.get("player_name", ""),
+        stat_type=pick.get("stat_type", ""),
+        line=pick.get("line", 0),
+        season_avg=pick.get("season_avg", 0),
+        h10_rate=pick.get("h10_rate") or pick.get("l10_hit_rate", 0),
+        badges=[b.get("key") if isinstance(b, dict) else b for b in badges],
+        opponent=pick.get("opponent"),
+        is_demon=pick.get("is_demon", False),
+        is_goblin=pick.get("is_goblin", False)
+    )
