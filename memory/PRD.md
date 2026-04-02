@@ -3,7 +3,67 @@
 ## Overview
 PropVision is a sports analytics platform for NBA player props, providing data-driven insights for betting decisions.
 
-## Latest Update (2026-04-02): Usage Vacuum Intel Suite Integration
+## Latest Update (2026-04-02): Defensive Momentum System
+
+### Feature Description
+Implemented the "Defensive Momentum" system - a weighted composite DvP (Defense vs Position) scoring engine that tracks defensive trends over three time windows (Season, L10, L5) and applies Ferrari Score modifiers based on matchup difficulty.
+
+### Backend: Weighted Composite Engine
+**Formula**: `Composite_Rank = (Season_Rank × 0.50) + (L10_Rank × 0.35) + (L5_Rank × 0.15)`
+
+**Data Source**: BallDontLie API `/box_scores` endpoint - fetches last 45 days of game data to calculate real defensive rankings.
+
+**Ferrari Score Modifiers**:
+| Defense Type | Composite Rank | Modifier |
+|--------------|----------------|----------|
+| Elite        | 1-5            | -15 pts  |
+| Average      | 6-24           | 0 pts    |
+| Weak         | 25-30          | +15 pts  |
+
+### Momentum Tracking
+- **Improving**: L5 rank significantly better than Season (defense getting stronger)
+- **Regressing**: L5 rank significantly worse than Season (defense collapsing)
+- **Trend Alerts**: Generated when L5 diverges 10+ spots from Season rank
+
+### Frontend: Momentum Tracker UI
+- Compact card on player picks showing opponent's composite rank and momentum direction
+- Clickable to open IntelligenceModal with full breakdown:
+  - 3-bar visual (Season/L10/L5 ranks)
+  - Formula tooltip
+  - Ferrari modifier explanation
+  - Trend alert if applicable
+
+### API Endpoints (New)
+- `GET /api/v3/momentum/status` - Service status with weights
+- `POST /api/v3/momentum/rebuild` - Rebuild rankings from BDL API
+- `GET /api/v3/momentum/rankings/{stat_type}` - All 30 teams ranked
+- `GET /api/v3/momentum/{team}/{stat_type}` - Team momentum profile
+- `GET /api/v3/momentum/modifier/{opponent}/{stat_type}` - Get Ferrari modifier
+
+### Files Created/Modified
+- `/app/backend/services/defensive_momentum_service.py` (NEW)
+- `/app/backend/routes/momentum.py` (NEW)
+- `/app/backend/services/ferrari_tier_service.py` (Updated with momentum integration)
+- `/app/frontend/src/components/dashboard/MomentumTracker.jsx` (NEW)
+- `/app/frontend/src/components/dashboard/MomentumToggle.jsx` (NEW)
+- `/app/frontend/src/components/dashboard/IntelligenceModal.jsx` (Added defensive_momentum type)
+- `/app/frontend/src/components/dashboard/UniversalPlayerCard.jsx` (Added momentum tracker display)
+
+### Test Status
+- **Backend**: All 22 tests PASSED (rankings, modifiers, trend alerts)
+- **Frontend**: Momentum cards display correctly, modal opens with formula breakdown
+- **Data**: 330 real games fetched from BDL API
+
+### Real Data Examples (April 2, 2026)
+| Team | Season | L10 | L5 | Composite | Momentum | Alert |
+|------|--------|-----|-----|-----------|----------|-------|
+| CHA  | 2      | 2   | 2   | 2.0       | stable   | -     |
+| OKC  | 3      | 3   | 7   | 3.6       | regressing | - |
+| NYK  | 4      | 6   | 14  | 6.2       | regressing | Defense collapsed 10 spots |
+
+---
+
+## Previous Update (2026-04-02): Usage Vacuum Intel Suite Integration
 
 ### Feature Description
 Enhanced the Usage Vacuum feature with an interactive Intel Suite modal. When a player card displays a Usage Vacuum badge (indicating they're benefiting from an injured star's absence), clicking the badge opens a detailed explanation modal showing:
