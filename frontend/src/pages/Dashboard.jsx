@@ -1068,6 +1068,20 @@ const Dashboard = () => {
   };
   const syncStatus = { last_sync: warZoneData?.synced_at };
   
+  // Market Intel verification stats (Ferrari v6)
+  const verificationStats = useMemo(() => {
+    const verification = safeHavenData?.verification || {};
+    const activeProps = verification.active_props_verified || 0;
+    const eliteCount = vaultPicks.length + frontLinesPicks.length + radarPicks.length;
+    return {
+      active_props_verified: activeProps,
+      elite_opportunities: eliteCount,
+      message: activeProps > 0 
+        ? `Verified ${activeProps.toLocaleString()} active props to identify these ${eliteCount} Elite opportunities.`
+        : null
+    };
+  }, [safeHavenData, vaultPicks.length, frontLinesPicks.length, radarPicks.length]);
+  
   // Refetch all data (replaces old triggerSync)
   const triggerSync = useCallback(() => {
     refetchWarZone();
@@ -1547,17 +1561,26 @@ const Dashboard = () => {
         />
       )}
       
-      {/* Footer */}
-      <div className="fixed bottom-0 left-0 right-0 bg-zinc-950/95 backdrop-blur-sm border-t border-zinc-800 px-4 py-2 z-40">
+      {/* Footer - Market Intel Verification */}
+      <div className="fixed bottom-0 left-0 right-0 bg-zinc-950/95 backdrop-blur-sm border-t border-zinc-800 px-4 py-2 z-40" data-testid="market-intel-footer">
         <div className="flex items-center justify-between text-xs">
           <div className="flex items-center gap-3">
-            <span className="text-zinc-500 font-mono">{boardIntelStatus.time_since_sync_display}</span>
-            {boardIntelStatus.last_sync_type && (
-              <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                boardIntelStatus.last_sync_type === 'primary' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-blue-500/20 text-blue-400'
-              }`}>
-                {boardIntelStatus.last_sync_type === 'primary' ? 'FULL SYNC' : 'DELTA'}
-              </span>
+            {verificationStats.message ? (
+              <div className="flex items-center gap-2">
+                <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                <span className="text-emerald-400 font-medium">{verificationStats.message}</span>
+              </div>
+            ) : (
+              <>
+                <span className="text-zinc-500 font-mono">{boardIntelStatus.time_since_sync_display}</span>
+                {boardIntelStatus.last_sync_type && (
+                  <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                    boardIntelStatus.last_sync_type === 'primary' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-blue-500/20 text-blue-400'
+                  }`}>
+                    {boardIntelStatus.last_sync_type === 'primary' ? 'FULL SYNC' : 'DELTA'}
+                  </span>
+                )}
+              </>
             )}
           </div>
           <span className="text-zinc-600">PropVision AI</span>

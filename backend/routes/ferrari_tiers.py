@@ -142,7 +142,7 @@ async def get_all_ferrari_tiers(
     - safe_haven: Top 10 elite goblins
     - front_lines: Top 10 battleground picks
     - war_zone: Top 10 elite demons
-    - scan_stats: Total props analyzed
+    - verification: Market Intel stats
     """
     response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
     
@@ -152,19 +152,21 @@ async def get_all_ferrari_tiers(
     front_lines = await service.get_front_lines(limit)
     war_zone = await service.get_war_zone(limit)
     
-    # Get total scored for verification display
-    total_scored = safe_haven.get("total_scored", 0)
+    # Get verification stats from any tier (they all share the same stats)
+    verification = safe_haven.get("verification", {})
+    active_props = verification.get("active_props_verified", 0)
+    output_total = safe_haven.get("count", 0) + front_lines.get("count", 0) + war_zone.get("count", 0)
     
     return {
         "safe_haven": safe_haven,
         "front_lines": front_lines,
         "war_zone": war_zone,
-        "scan_stats": {
-            "total_scored": total_scored,
-            "safe_haven_pool": safe_haven.get("pool_size", 0),
-            "front_lines_pool": front_lines.get("pool_size", 0),
-            "war_zone_pool": war_zone.get("pool_size", 0),
-            "output_total": safe_haven.get("count", 0) + front_lines.get("count", 0) + war_zone.get("count", 0),
-            "message": f"Scanned {total_scored} props to find these {safe_haven.get('count', 0) + front_lines.get('count', 0) + war_zone.get('count', 0)}"
+        "verification": {
+            "active_props_verified": active_props,
+            "elite_opportunities": output_total,
+            "safe_haven_pool": verification.get("safe_haven_pool", 0),
+            "front_lines_pool": verification.get("front_lines_pool", 0),
+            "war_zone_pool": verification.get("war_zone_pool", 0),
+            "message": f"Verified {active_props} active props to identify these {output_total} Elite opportunities."
         }
     }
