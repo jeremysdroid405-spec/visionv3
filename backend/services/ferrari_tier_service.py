@@ -1,25 +1,25 @@
 """
-Ferrari v4 Pipeline - FINAL ARCHITECTURAL LOCK
-===============================================
-"Math so tight you can copy-paste with 100% confidence."
+Ferrari v5 Pipeline - Full-Field Ranking & Dynamic Top-K Selection
+===================================================================
+"Rank all 5,000 before showing the Top 30."
 
-PROBABILITY STANDARD:
-- Kill Switch: |Sharp_Implied - 57.8%| >= 5% absolute edge
-- All calculations use implied probability
+GLOBAL SCORING:
+  ferrari_power_score = (Edge × 0.4) + (Cushion × 0.3) + (Form × 0.3)
+  
+  Where:
+    Edge = Absolute edge percentage (0-100)
+    Cushion = Line cushion below median (normalized 0-100)
+    Form = L10 hit rate (0-100)
 
-MEDIAN ANCHOR:
-- Season Median required for each player/stat
-- PP Line must be <= Season Median to qualify
+DYNAMIC RANKING:
+  - No early exits or limits during scoring
+  - Score ALL surviving props
+  - Global sort by power score
+  - Apply limit(10) only at final selection
 
-TIER WINDOWS:
-- Safe Haven: Sharp <= -250
-- Front Lines: Sharp -245 to -115
-- War Zone: Sharp -114 to +500
-
-OUTPUT:
-- 30 total plays (10 per tier)
-- One player per tier
-- Sorted by Line Delta, then L10 Hit Rate
+SCALING:
+  - Bulk writes for all database operations
+  - Handles 5,000+ props efficiently
 """
 from typing import Dict, List, Any, Optional
 from datetime import datetime, timezone
@@ -29,7 +29,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 # =============================================================================
-# FERRARI v4 CONSTANTS
+# FERRARI v5 CONSTANTS
 # =============================================================================
 
 # PROBABILITY STANDARD
@@ -43,6 +43,11 @@ FRONT_LINES_MAX = -115
 WAR_ZONE_MIN = -114             # -114 to +500
 WAR_ZONE_MAX = 500
 
+# POWER SCORE WEIGHTS
+WEIGHT_EDGE = 0.4
+WEIGHT_CUSHION = 0.3
+WEIGHT_FORM = 0.3
+
 # OUTPUT CAPS
 MAX_PICKS_PER_TIER = 10         # 30 total plays
 
@@ -52,13 +57,7 @@ MAX_PICKS_PER_TIER = 10         # 30 total plays
 # =============================================================================
 
 def american_to_implied(odds: int) -> float:
-    """
-    Convert American odds to implied probability.
-    
-    -200 → 66.7%
-    -137 → 57.8%
-    +200 → 33.3%
-    """
+    """Convert American odds to implied probability."""
     if odds is None:
         return 0.0
     if odds < 0:
@@ -69,30 +68,58 @@ def american_to_implied(odds: int) -> float:
 
 def calculate_absolute_edge(sharp_price: int) -> float:
     """
-    FERRARI v4 KILL SWITCH FORMULA:
-    
+    EDGE COMPONENT:
     Absolute Edge = |Sharp_Implied - PP_Implied|
-    
-    Where PP_Implied = 57.8% (standard -137 line)
-    
-    Example:
-        Sharp: -250 → 71.4%
-        Edge = |0.714 - 0.578| = 0.136 = 13.6%
+    Returns as percentage (0-100)
     """
     if sharp_price is None:
         return 0.0
-    
     sharp_implied = american_to_implied(sharp_price)
-    return abs(sharp_implied - PP_IMPLIED_PROBABILITY)
+    return abs(sharp_implied - PP_IMPLIED_PROBABILITY) * 100
+
+
+def calculate_cushion(pp_line: float, season_median: float) -> float:
+    """
+    CUSHION COMPONENT:
+    How far below the median is the line?
+    Normalized to 0-100 scale.
+    
+    Example: Line 29.5, Median 37.0
+    Cushion = (37.0 - 29.5) / 37.0 * 100 = 20.3%
+    """
+    if pp_line is None or season_median is None or season_median == 0:
+        return 0.0
+    
+    # Cushion = how much below median (as percentage of median)
+    if pp_line <= season_median:
+        cushion = ((season_median - pp_line) / season_median) * 100
+        return min(cushion, 100)  # Cap at 100
+    return 0.0  # Above median = no cushion
+
+
+def calculate_form(l10_rate: float) -> float:
+    """
+    FORM COMPONENT:
+    L10 hit rate as percentage (0-100)
+    Already in correct format from hit_rates.
+    """
+    return l10_rate if l10_rate else 0.0
+
+
+def calculate_power_score(edge: float, cushion: float, form: float) -> float:
+    """
+    FERRARI POWER SCORE:
+    
+    Score = (Edge × 0.4) + (Cushion × 0.3) + (Form × 0.3)
+    
+    All inputs should be 0-100 scale.
+    Output is 0-100 scale.
+    """
+    return (edge * WEIGHT_EDGE) + (cushion * WEIGHT_CUSHION) + (form * WEIGHT_FORM)
 
 
 def calculate_line_delta(pp_line: float, anchor_line: float) -> float:
-    """
-    Line Delta = PP Line - Anchor Line
-    
-    Negative = PP line is BELOW anchor (easier)
-    Positive = PP line is ABOVE anchor (harder)
-    """
+    """Line Delta = PP Line - Anchor Line"""
     if pp_line is None or anchor_line is None:
         return 0.0
     return pp_line - anchor_line
@@ -129,18 +156,18 @@ def calculate_mean(values: List[float]) -> Optional[float]:
 
 
 # =============================================================================
-# FERRARI v4 PIPELINE SERVICE
+# FERRARI v5 PIPELINE SERVICE
 # =============================================================================
 
 class FerrariTierService:
     """
-    Ferrari v4 Pipeline - Final Architectural Lock
+    Ferrari v5 Pipeline - Full-Field Ranking
     
-    1. Kill Switch: 5% absolute edge minimum
-    2. Median Anchor: PP Line <= Season Median
-    3. Tier Classification: New windows
-    4. Sorting: Line Delta → L10 Hit Rate
-    5. Deduplication: One player per tier
+    Key Changes:
+    - No early exits: Score ALL surviving props
+    - Power score ranking: Global sort before selection
+    - Bulk operations: Optimized for 5,000+ props
+    - Full transparency: Return total_scanned counts
     """
     
     def __init__(self, db):
@@ -153,15 +180,10 @@ class FerrariTierService:
         self.ferrari_front_lines = db.ferrari_front_lines
         self.ferrari_war_zone = db.ferrari_war_zone
         self.ferrari_discarded = db.ferrari_discarded
+        self.ferrari_scored = db.ferrari_scored  # NEW: All scored props
     
     async def _load_season_medians(self) -> Dict[str, Dict[str, float]]:
-        """
-        Load SEASON MEDIAN for each player/stat combination.
-        
-        Returns: {player_name: {stat_type: season_median}}
-        
-        This is the MEDIAN ANCHOR - props must be <= this value.
-        """
+        """Load SEASON MEDIAN for each player/stat combination."""
         medians = {}
         
         try:
@@ -173,7 +195,6 @@ class FerrariTierService:
                 if not player_name or not games:
                     continue
                 
-                # Extract ALL season games (not just L10)
                 stat_values = {
                     "PTS": [g["pts"] for g in games if g.get("pts") is not None],
                     "AST": [g["ast"] for g in games if g.get("ast") is not None],
@@ -193,7 +214,6 @@ class FerrariTierService:
                         pra_values.append(pts + reb + ast)
                 stat_values["PRA"] = pra_values
                 
-                # Calculate season median for each stat
                 player_medians = {}
                 for stat, values in stat_values.items():
                     if values:
@@ -202,9 +222,8 @@ class FerrariTierService:
                 medians[player_name] = player_medians
                 
         except Exception as e:
-            logger.error(f"[v4] Season median load failed: {e}")
+            logger.error(f"[v5] Season median load failed: {e}")
         
-        logger.info(f"[v4] Loaded season medians for {len(medians)} players")
         return medians
     
     async def _load_l10_stats(self) -> Dict[str, Dict[str, List[float]]]:
@@ -220,7 +239,6 @@ class FerrariTierService:
                 if not player_name or not games:
                     continue
                 
-                # Sort by date, take last 10
                 sorted_games = sorted(
                     games,
                     key=lambda g: g.get("game", {}).get("date", ""),
@@ -240,29 +258,31 @@ class FerrariTierService:
                     ]
                 }
         except Exception as e:
-            logger.error(f"[v4] L10 stats load failed: {e}")
+            logger.error(f"[v5] L10 stats load failed: {e}")
         
         return stats
     
     async def build_ferrari_tiers(self, sync_time: datetime) -> Dict[str, Any]:
         """
-        Execute Ferrari v4 Pipeline.
+        Execute Ferrari v5 Pipeline - Full-Field Ranking
         """
         logger.info("=" * 70)
-        logger.info("[FERRARI v4] FINAL ARCHITECTURAL LOCK")
+        logger.info("[FERRARI v5] FULL-FIELD RANKING PIPELINE")
         logger.info("=" * 70)
         
         results = {
             "success": True,
             "synced_at": sync_time.isoformat(),
-            "pipeline": "Ferrari v4",
+            "pipeline": "Ferrari v5",
             "total_scanned": 0,
             "kill_switch": {
                 "edge_too_small": 0,
                 "above_median": 0,
-                "no_sharp_data": 0
+                "no_sharp_data": 0,
+                "total_killed": 0
             },
-            "tier_qualified": {
+            "scored": {
+                "total": 0,
                 "safe_haven": 0,
                 "front_lines": 0,
                 "war_zone": 0
@@ -279,28 +299,25 @@ class FerrariTierService:
             # =================================================================
             # PHASE 1: DATA SOURCING
             # =================================================================
-            logger.info("[PHASE 1] Loading data sources...")
+            logger.info("[PHASE 1] Loading ALL data sources...")
             
             season_medians = await self._load_season_medians()
             l10_stats = await self._load_l10_stats()
             
             cursor = self.cached_board.find({}, {"_id": 0})
-            players = await cursor.to_list(length=500)
+            players = await cursor.to_list(length=None)  # NO LIMIT - get ALL
             
             logger.info(f"  Season Medians: {len(season_medians)} players")
             logger.info(f"  L10 Stats: {len(l10_stats)} players")
             logger.info(f"  Cached Board: {len(players)} players")
             
             # =================================================================
-            # PHASE 2 & 3: KILL SWITCH + TIER CLASSIFICATION
+            # PHASE 2: GLOBAL SCORING (No Early Exits)
             # =================================================================
-            logger.info("[PHASE 2] Kill Switch: 5% absolute edge + Median Anchor")
-            logger.info("[PHASE 3] Tier Classification: New Windows")
+            logger.info("[PHASE 2] Global Scoring - Processing EVERY prop...")
             
             discarded = []
-            safe_haven = []
-            front_lines = []
-            war_zone = []
+            all_scored_props = []  # ALL props that pass kill switch
             
             for player in players:
                 player_name = player.get("player_name", "")
@@ -322,21 +339,19 @@ class FerrariTierService:
                     # ---------------------------------------------------------
                     # KILL SWITCH 1: 5% Absolute Edge
                     # ---------------------------------------------------------
-                    absolute_edge = calculate_absolute_edge(sharp_price)
+                    edge = calculate_absolute_edge(sharp_price)
                     
-                    if absolute_edge < MIN_ABSOLUTE_EDGE:
+                    if edge < (MIN_ABSOLUTE_EDGE * 100):
                         discarded.append({
                             "player_name": player_name,
-                            "reason": f"EDGE: {absolute_edge*100:.1f}% < 5%",
-                            "sharp_price": sharp_price,
-                            "absolute_edge": round(absolute_edge * 100, 1)
+                            "reason": f"EDGE: {edge:.1f}% < 5%",
+                            "sharp_price": sharp_price
                         })
                         results["kill_switch"]["edge_too_small"] += 1
                         continue
                     
                     # ---------------------------------------------------------
                     # KILL SWITCH 2: Median Anchor
-                    # PP Line must be <= Season Median
                     # ---------------------------------------------------------
                     stat_type = prop.get("stat_type", "").upper()
                     pp_line = prop.get("line", 0)
@@ -346,28 +361,36 @@ class FerrariTierService:
                         discarded.append({
                             "player_name": player_name,
                             "reason": f"MEDIAN: Line {pp_line} > Median {season_median}",
-                            "sharp_price": sharp_price,
-                            "pp_line": pp_line,
-                            "season_median": season_median
+                            "sharp_price": sharp_price
                         })
                         results["kill_switch"]["above_median"] += 1
                         continue
                     
                     # ---------------------------------------------------------
-                    # EXTRACT STATS
+                    # CALCULATE POWER SCORE COMPONENTS
                     # ---------------------------------------------------------
                     hit_rates = prop.get("hit_rates", {})
                     
                     if "l10_rate" in hit_rates:
-                        l10_rate = (hit_rates.get("l10_rate") or 0) / 100.0
-                        l5_rate = (hit_rates.get("l5_rate") or 0) / 100.0
+                        l10_rate = (hit_rates.get("l10_rate") or 0)
+                        l5_rate = (hit_rates.get("l5_rate") or 0)
                         l10_hits = hit_rates.get("l10_hit_count") or 0
                     else:
                         l10_data = hit_rates.get("l10", {})
-                        l10_rate = l10_data.get("hit_rate", 0) if isinstance(l10_data, dict) else 0
+                        l10_rate = (l10_data.get("hit_rate", 0) * 100) if isinstance(l10_data, dict) else 0
                         l10_hits = l10_data.get("games_over", 0) if isinstance(l10_data, dict) else 0
                         l5_rate = 0
                     
+                    # Calculate cushion (line below median)
+                    cushion = calculate_cushion(pp_line, season_median) if season_median else 0
+                    
+                    # Calculate form (L10 hit rate)
+                    form = calculate_form(l10_rate)
+                    
+                    # FERRARI POWER SCORE
+                    power_score = calculate_power_score(edge, cushion, form)
+                    
+                    # Line delta
                     anchor_line = prop.get("anchor_line", pp_line)
                     line_delta = calculate_line_delta(pp_line, anchor_line)
                     
@@ -377,63 +400,91 @@ class FerrariTierService:
                     l10_median = calculate_median(stat_values)
                     l10_mean = calculate_mean(stat_values)
                     
-                    # Build candidate
-                    candidate = self._build_candidate(
+                    # Determine tier
+                    if sharp_price <= SAFE_HAVEN_MAX:
+                        tier = "safe_haven"
+                        results["scored"]["safe_haven"] += 1
+                    elif FRONT_LINES_MIN <= sharp_price <= FRONT_LINES_MAX:
+                        tier = "front_lines"
+                        results["scored"]["front_lines"] += 1
+                    elif WAR_ZONE_MIN <= sharp_price <= WAR_ZONE_MAX:
+                        tier = "war_zone"
+                        results["scored"]["war_zone"] += 1
+                    else:
+                        tier = "unclassified"
+                    
+                    # Build scored prop
+                    scored_prop = self._build_scored_prop(
                         player, prop, sharp_market,
-                        absolute_edge, line_delta,
+                        edge, cushion, form, power_score,
+                        line_delta, season_median,
                         l10_rate, l5_rate, l10_hits,
-                        season_median, l10_mode, l10_median, l10_mean,
-                        sync_time
+                        l10_mode, l10_median, l10_mean,
+                        tier, sync_time
                     )
                     
-                    # ---------------------------------------------------------
-                    # TIER CLASSIFICATION (New Windows)
-                    # ---------------------------------------------------------
-                    
-                    # SAFE HAVEN: Sharp <= -250
-                    if sharp_price <= SAFE_HAVEN_MAX:
-                        safe_haven.append(candidate)
-                        results["tier_qualified"]["safe_haven"] += 1
-                    
-                    # FRONT LINES: Sharp -245 to -115
-                    elif FRONT_LINES_MIN <= sharp_price <= FRONT_LINES_MAX:
-                        front_lines.append(candidate)
-                        results["tier_qualified"]["front_lines"] += 1
-                    
-                    # WAR ZONE: Sharp -114 to +500
-                    elif WAR_ZONE_MIN <= sharp_price <= WAR_ZONE_MAX:
-                        war_zone.append(candidate)
-                        results["tier_qualified"]["war_zone"] += 1
+                    all_scored_props.append(scored_prop)
             
-            logger.info(f"  Kill Switch - Edge too small: {results['kill_switch']['edge_too_small']}")
-            logger.info(f"  Kill Switch - Above median: {results['kill_switch']['above_median']}")
-            logger.info(f"  Kill Switch - No sharp data: {results['kill_switch']['no_sharp_data']}")
-            logger.info(f"  Qualified - SH: {len(safe_haven)}, FL: {len(front_lines)}, WZ: {len(war_zone)}")
+            results["kill_switch"]["total_killed"] = (
+                results["kill_switch"]["edge_too_small"] +
+                results["kill_switch"]["above_median"] +
+                results["kill_switch"]["no_sharp_data"]
+            )
+            results["scored"]["total"] = len(all_scored_props)
+            
+            logger.info(f"  Total Scanned: {results['total_scanned']}")
+            logger.info(f"  Killed: {results['kill_switch']['total_killed']}")
+            logger.info(f"  Scored: {results['scored']['total']}")
             
             # =================================================================
-            # PHASE 4: SORTING (Line Delta → L10 Hit Rate)
+            # PHASE 3: BULK WRITE ALL SCORED PROPS
             # =================================================================
-            logger.info("[PHASE 4] Sorting: Line Delta → L10 Hit Rate")
+            logger.info("[PHASE 3] Bulk writing all scored props...")
             
-            # Sort each tier: Line Delta (biggest first), then L10 Rate (highest first)
-            safe_haven.sort(key=lambda x: (-abs(x["line_delta"]), -x["l10_rate"]))
-            front_lines.sort(key=lambda x: (-abs(x["line_delta"]), -x["l10_rate"]))
-            war_zone.sort(key=lambda x: (-abs(x["line_delta"]), -x["l10_rate"]))
+            await self.ferrari_scored.delete_many({})
+            if all_scored_props:
+                # Bulk insert for scaling
+                await self.ferrari_scored.insert_many(all_scored_props)
             
             # =================================================================
-            # PHASE 5: DEDUPLICATION (One Player Per Tier)
+            # PHASE 4: DYNAMIC RANKING (Global Sort → Top-K Selection)
             # =================================================================
-            logger.info("[PHASE 5] Deduplication: One player per tier")
+            logger.info("[PHASE 4] Dynamic Ranking - Global sort by power score...")
             
             used_players = set()
             
-            top_safe_haven = self._dedupe_select(safe_haven, used_players, MAX_PICKS_PER_TIER)
-            top_front_lines = self._dedupe_select(front_lines, used_players, MAX_PICKS_PER_TIER)
-            top_war_zone = self._dedupe_select(war_zone, used_players, MAX_PICKS_PER_TIER)
+            # SAFE HAVEN: Query ALL, sort by power_score, then limit
+            safe_haven_cursor = self.ferrari_scored.find(
+                {"tier": "safe_haven"},
+                {"_id": 0}
+            ).sort("ferrari_power_score", -1)
+            
+            safe_haven_all = await safe_haven_cursor.to_list(length=None)
+            top_safe_haven = self._dedupe_select(safe_haven_all, used_players, MAX_PICKS_PER_TIER)
+            
+            # FRONT LINES: Query ALL, sort by power_score, then limit
+            front_lines_cursor = self.ferrari_scored.find(
+                {"tier": "front_lines"},
+                {"_id": 0}
+            ).sort("ferrari_power_score", -1)
+            
+            front_lines_all = await front_lines_cursor.to_list(length=None)
+            top_front_lines = self._dedupe_select(front_lines_all, used_players, MAX_PICKS_PER_TIER)
+            
+            # WAR ZONE: Query ALL, sort by power_score, then limit
+            war_zone_cursor = self.ferrari_scored.find(
+                {"tier": "war_zone"},
+                {"_id": 0}
+            ).sort("ferrari_power_score", -1)
+            
+            war_zone_all = await war_zone_cursor.to_list(length=None)
+            top_war_zone = self._dedupe_select(war_zone_all, used_players, MAX_PICKS_PER_TIER)
             
             # =================================================================
-            # STORE RESULTS
+            # PHASE 5: STORE FINAL SELECTIONS
             # =================================================================
+            logger.info("[PHASE 5] Storing final Top-10 selections...")
+            
             await self.ferrari_safe_haven.delete_many({})
             if top_safe_haven:
                 await self.ferrari_safe_haven.insert_many(top_safe_haven)
@@ -448,7 +499,7 @@ class FerrariTierService:
             
             await self.ferrari_discarded.delete_many({})
             if discarded:
-                await self.ferrari_discarded.insert_many(discarded[:200])
+                await self.ferrari_discarded.insert_many(discarded[:500])  # Keep more for debugging
             
             results["output"]["safe_haven"] = len(top_safe_haven)
             results["output"]["front_lines"] = len(top_front_lines)
@@ -456,15 +507,14 @@ class FerrariTierService:
             results["output"]["total"] = len(top_safe_haven) + len(top_front_lines) + len(top_war_zone)
             
             logger.info("=" * 70)
-            logger.info("[FERRARI v4] PIPELINE COMPLETE")
-            logger.info(f"  Safe Haven: {len(top_safe_haven)}/10")
-            logger.info(f"  Front Lines: {len(top_front_lines)}/10")
-            logger.info(f"  War Zone: {len(top_war_zone)}/10")
-            logger.info(f"  TOTAL: {results['output']['total']}/30")
+            logger.info("[FERRARI v5] PIPELINE COMPLETE")
+            logger.info(f"  Scanned: {results['total_scanned']} props")
+            logger.info(f"  Scored: {results['scored']['total']} props")
+            logger.info(f"  Selected: {results['output']['total']}/30")
             logger.info("=" * 70)
             
         except Exception as e:
-            logger.error(f"[v4] Pipeline error: {e}")
+            logger.error(f"[v5] Pipeline error: {e}")
             import traceback
             logger.error(traceback.format_exc())
             results["success"] = False
@@ -472,23 +522,27 @@ class FerrariTierService:
         
         return results
     
-    def _build_candidate(
+    def _build_scored_prop(
         self,
         player: Dict,
         prop: Dict,
         sharp_market: Dict,
-        absolute_edge: float,
+        edge: float,
+        cushion: float,
+        form: float,
+        power_score: float,
         line_delta: float,
+        season_median: Optional[float],
         l10_rate: float,
         l5_rate: float,
         l10_hits: int,
-        season_median: Optional[float],
         l10_mode: Optional[float],
         l10_median: Optional[float],
         l10_mean: Optional[float],
+        tier: str,
         sync_time: datetime
     ) -> Dict[str, Any]:
-        """Build standardized candidate object."""
+        """Build scored prop with all metrics."""
         hit_rates = prop.get("hit_rates", {})
         sharp_price = sharp_market.get("sharp_price")
         
@@ -522,15 +576,19 @@ class FerrariTierService:
             "bovada_price": sharp_market.get("bovada_price"),
             "draftkings_price": sharp_market.get("draftkings_price"),
             "fanduel_price": sharp_market.get("fanduel_price"),
-            # v4 Metrics
-            "absolute_edge": round(absolute_edge * 100, 1),
+            # POWER SCORE COMPONENTS
+            "edge": round(edge, 1),
+            "cushion": round(cushion, 1),
+            "form": round(form, 1),
+            "ferrari_power_score": round(power_score, 2),
+            # Other metrics
             "line_delta": round(line_delta, 1),
             "season_median": round(season_median, 1) if season_median else None,
             # Hit Rates
-            "l10_rate": round(l10_rate * 100, 1),
-            "l5_rate": round(l5_rate * 100, 1),
-            "h10_rate": round(l10_rate * 100, 1),
-            "h5_rate": round(l5_rate * 100, 1),
+            "l10_rate": round(l10_rate, 1),
+            "l5_rate": round(l5_rate, 1),
+            "h10_rate": round(l10_rate, 1),
+            "h5_rate": round(l5_rate, 1),
             "l10_hits": l10_hits,
             # Averages
             "l5_avg": hit_rates.get("l5_avg"),
@@ -540,11 +598,11 @@ class FerrariTierService:
             "l10_mode": round(l10_mode, 1) if l10_mode else None,
             "l10_median": round(l10_median, 1) if l10_median else None,
             "l10_mean": round(l10_mean, 1) if l10_mean else None,
-            # Full data
-            "hit_rates": hit_rates,
+            # Classification
+            "tier": tier,
             # Metadata
             "synced_at": sync_time.isoformat(),
-            "pipeline": "ferrari_v4"
+            "pipeline": "ferrari_v5"
         }
     
     def _dedupe_select(
@@ -565,48 +623,77 @@ class FerrariTierService:
         return selected
     
     # =========================================================================
-    # GETTER METHODS
+    # GETTER METHODS (Include total_scanned for verification)
     # =========================================================================
+    
+    async def _get_scan_stats(self) -> Dict[str, int]:
+        """Get scanning statistics for verification display."""
+        total_scored = await self.ferrari_scored.count_documents({})
+        safe_haven_count = await self.ferrari_scored.count_documents({"tier": "safe_haven"})
+        front_lines_count = await self.ferrari_scored.count_documents({"tier": "front_lines"})
+        war_zone_count = await self.ferrari_scored.count_documents({"tier": "war_zone"})
+        
+        return {
+            "total_scored": total_scored,
+            "safe_haven_pool": safe_haven_count,
+            "front_lines_pool": front_lines_count,
+            "war_zone_pool": war_zone_count
+        }
     
     async def get_safe_haven(self, limit: int = 10) -> Dict[str, Any]:
         cursor = self.ferrari_safe_haven.find({}, {"_id": 0}).limit(limit)
         picks = await cursor.to_list(length=limit)
+        stats = await self._get_scan_stats()
+        
         return {
             "tier": "safe_haven",
             "picks": picks,
             "count": len(picks),
             "window": f"Sharp <= {SAFE_HAVEN_MAX}",
-            "filters": ["5% absolute edge", "Line <= Season Median"]
+            "pool_size": stats["safe_haven_pool"],
+            "total_scored": stats["total_scored"],
+            "formula": "Power Score = (Edge×0.4) + (Cushion×0.3) + (Form×0.3)"
         }
     
     async def get_front_lines(self, limit: int = 10) -> Dict[str, Any]:
         cursor = self.ferrari_front_lines.find({}, {"_id": 0}).limit(limit)
         picks = await cursor.to_list(length=limit)
+        stats = await self._get_scan_stats()
+        
         return {
             "tier": "front_lines",
             "picks": picks,
             "count": len(picks),
             "window": f"Sharp {FRONT_LINES_MIN} to {FRONT_LINES_MAX}",
-            "filters": ["5% absolute edge", "Line <= Season Median"]
+            "pool_size": stats["front_lines_pool"],
+            "total_scored": stats["total_scored"],
+            "formula": "Power Score = (Edge×0.4) + (Cushion×0.3) + (Form×0.3)"
         }
     
     async def get_war_zone(self, limit: int = 10) -> Dict[str, Any]:
         cursor = self.ferrari_war_zone.find({}, {"_id": 0}).limit(limit)
         picks = await cursor.to_list(length=limit)
+        stats = await self._get_scan_stats()
+        
         return {
             "tier": "war_zone",
             "picks": picks,
             "count": len(picks),
             "window": f"Sharp {WAR_ZONE_MIN} to +{WAR_ZONE_MAX}",
-            "filters": ["5% absolute edge", "Line <= Season Median"]
+            "pool_size": stats["war_zone_pool"],
+            "total_scored": stats["total_scored"],
+            "formula": "Power Score = (Edge×0.4) + (Cushion×0.3) + (Form×0.3)"
         }
     
     async def get_discarded(self, limit: int = 50) -> Dict[str, Any]:
         cursor = self.ferrari_discarded.find({}, {"_id": 0}).limit(limit)
         discarded = await cursor.to_list(length=limit)
+        total_discarded = await self.ferrari_discarded.count_documents({})
+        
         return {
             "discarded": discarded,
             "count": len(discarded),
+            "total_discarded": total_discarded,
             "kill_switch": "5% absolute edge + Median Anchor"
         }
 

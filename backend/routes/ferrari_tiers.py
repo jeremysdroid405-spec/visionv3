@@ -142,7 +142,7 @@ async def get_all_ferrari_tiers(
     - safe_haven: Top 10 elite goblins
     - front_lines: Top 10 battleground picks
     - war_zone: Top 10 elite demons
-    - stats: Filtering statistics
+    - scan_stats: Total props analyzed
     """
     response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
     
@@ -151,14 +151,20 @@ async def get_all_ferrari_tiers(
     safe_haven = await service.get_safe_haven(limit)
     front_lines = await service.get_front_lines(limit)
     war_zone = await service.get_war_zone(limit)
-    discarded = await service.get_discarded(10)  # Just stats
+    
+    # Get total scored for verification display
+    total_scored = safe_haven.get("total_scored", 0)
     
     return {
         "safe_haven": safe_haven,
         "front_lines": front_lines,
         "war_zone": war_zone,
-        "stats": {
-            "discarded_sample": discarded.get("count", 0),
-            "kill_switch_threshold": discarded.get("kill_switch_threshold", "15%")
+        "scan_stats": {
+            "total_scored": total_scored,
+            "safe_haven_pool": safe_haven.get("pool_size", 0),
+            "front_lines_pool": front_lines.get("pool_size", 0),
+            "war_zone_pool": war_zone.get("pool_size", 0),
+            "output_total": safe_haven.get("count", 0) + front_lines.get("count", 0) + war_zone.get("count", 0),
+            "message": f"Scanned {total_scored} props to find these {safe_haven.get('count', 0) + front_lines.get('count', 0) + war_zone.get('count', 0)}"
         }
     }
