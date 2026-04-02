@@ -1,5 +1,15 @@
-# Ferrari+ 5-Phase Pick Selection Pipeline
+# Ferrari v4 Pipeline - FINAL ARCHITECTURAL LOCK
 ## Complete Technical Specification & Build Guide
+
+---
+
+## Version History
+| Version | Date | Changes |
+|---------|------|---------|
+| v4 | 2026-04-02 | Final lock: 5% absolute edge, Median Anchor, New tier windows |
+| v3 | 2026-04-01 | 5-Phase Pipeline with DVP/AI context |
+| v2 | 2026-04-01 | Tier isolation, sharp market integration |
+| v1 | 2026-03-31 | Initial implementation |
 
 ---
 
@@ -18,27 +28,26 @@
 
 ## System Overview
 
-The Ferrari+ Pipeline is a **multi-stage filtering and ranking system** designed to identify high-value NBA player props by combining:
+### Philosophy
+> "Math so tight you can copy-paste with 100% confidence."
 
-- **Sharp Market Analysis** (Bovada, DraftKings, FanDuel pricing)
-- **Statistical Consistency** (Hit rates, mode, median, mean)
-- **Contextual Intelligence** (DVP matchups, AI narrative scoring)
-- **Line Value Detection** (Delta between PrizePicks and standard lines)
+The Ferrari v4 Pipeline is the **final architectural lock** for pick selection. Every prop must pass two mathematical gates:
 
-### Core Philosophy
-> "If it's in the app, it must have proven Bovada separation."
+1. **5% Absolute Edge**: Sharp implied probability must differ from PrizePicks by at least 5 percentage points
+2. **Median Anchor**: PrizePicks line must be at or below the player's season median
 
-The system progressively filters ~2,600 raw props down to exactly **30 elite plays** (10 per tier) by applying increasingly strict quality gates.
-
+### Pipeline Flow
 ```
-RAW PROPS (2,600+)
-    ↓ Phase 2: Kill Switch (-60%)
-FILTERED (1,000+)
-    ↓ Phase 3: Tier Gates (-80%)
-QUALIFIED (200)
-    ↓ Phase 4: Sorting
-RANKED (200)
-    ↓ Phase 5: Deduplication
+RAW PROPS (2,006)
+    ↓ Kill Switch: Edge < 5% (-245)
+    ↓ Kill Switch: Line > Median (-806)
+    ↓ Kill Switch: No sharp data (-623)
+FILTERED (332)
+    ↓ Tier Classification
+QUALIFIED (331)
+    ↓ Sorting (Line Delta → L10 Rate)
+RANKED (331)
+    ↓ Deduplication (One per player)
 OUTPUT (30)
 ```
 
@@ -46,337 +55,168 @@ OUTPUT (30)
 
 ## Data Architecture
 
-### Collections Used
+### Collections
 
-| Collection | Purpose | Source |
-|------------|---------|--------|
-| `dg_cached_board` | Enriched player props with sharp market data | Sync Pipeline |
-| `dvp_rankings` | Defense vs Position rankings by team | BallDontLie |
-| `nba_master_hub_2026` | AI context scores per player | Gemini Analysis |
-| `dg_player_stats` | Game-by-game logs (last 68 games) | BallDontLie |
-| `ferrari_safe_haven` | Output: Safe Haven picks | Pipeline |
-| `ferrari_front_lines` | Output: Front Lines picks | Pipeline |
-| `ferrari_war_zone` | Output: War Zone picks | Pipeline |
-| `ferrari_discarded` | Debug: Props killed by Phase 2 | Pipeline |
-
-### Input Prop Structure
-```json
-{
-  "player_name": "Nikola Jokic",
-  "team": "DEN",
-  "opponent": "LAL",
-  "props": [
-    {
-      "stat_type": "PRA",
-      "line": 39.5,
-      "anchor_line": 49.5,
-      "price": -137,
-      "is_demon": false,
-      "is_goblin": true,
-      "sharp_market": {
-        "sharp_price": -640,
-        "sharp_source": "bovada",
-        "bovada_price": -640,
-        "draftkings_price": -550,
-        "fanduel_price": -520,
-        "dk_fd_average": -535,
-        "is_alternate": true
-      },
-      "hit_rates": {
-        "l10_rate": 80,
-        "l5_rate": 100,
-        "l10_hit_count": 8,
-        "l5_avg": 52.4,
-        "l10_avg": 51.9,
-        "season_avg": 51.5
-      }
-    }
-  ]
-}
-```
+| Collection | Purpose |
+|------------|---------|
+| `dg_cached_board` | Enriched props with sharp market data |
+| `dg_player_stats` | Game logs for median/mode/mean |
+| `ferrari_safe_haven` | Output: Safe Haven (10 picks) |
+| `ferrari_front_lines` | Output: Front Lines (10 picks) |
+| `ferrari_war_zone` | Output: War Zone (10 picks) |
+| `ferrari_discarded` | Debug: Killed props |
 
 ---
 
 ## Phase 1: Data Sourcing
 
-### 1.1 Sharp Market Data (The Odds API)
+### 1.1 Sharp Market Data
+- **Source**: The Odds API
+- **Books**: Bovada (alternates), DraftKings + FanDuel average (standard)
+- **Markets**: player_points, player_assists, player_rebounds + alternates
 
-**Purpose**: Establish the "true" market price for each prop by comparing PrizePicks to sharp bookmakers.
+### 1.2 Season Median (NEW in v4)
+- **Source**: BallDontLie game logs (full season)
+- **Calculation**: Median of all games played this season
+- **Purpose**: Anchor for line validation
 
-**Sources**:
-- **Bovada**: Primary reference for alternate lines (better alt coverage)
-- **DraftKings + FanDuel**: Primary reference for standard lines (averaged)
-
-**API Parameters**:
-```
-regions=us,eu
-bookmakers=prizepicks,bovada,draftkings,fanduel
-markets=player_points,player_assists,player_rebounds,
-        player_points_alternate,player_assists_alternate,
-        player_rebounds_alternate
-includeMultipliers=true
-```
-
-**Why Bovada for Alternates?**
-Bovada offers deeper alternate line coverage than other US books. Their prices on alternate lines reflect sharp market sentiment more accurately.
-
-**Why DK/FD Average for Standard?**
-DraftKings and FanDuel are high-volume books with tight spreads on standard lines. Averaging them reduces single-book variance.
-
-### 1.2 DVP Rankings
-
-**Purpose**: Identify weak defenses to target with player props.
-
-**Structure**:
-```json
-{
-  "type": "dvp_rankings",
-  "rankings": {
-    "PTS": {"BOS": 1, "ATL": 20, "WAS": 30},
-    "AST": {"BOS": 3, "ATL": 15, "WAS": 28},
-    "REB": {"BOS": 5, "ATL": 10, "WAS": 25}
-  }
-}
-```
-
-**Interpretation**:
-- Rank 1 = **Weakest** defense (allows most of that stat)
-- Rank 30 = **Strongest** defense
-
-**Why DVP Matters**:
-A player facing a Rank 1 defense in their stat type has a structural advantage. The defense historically allows high production at that position.
-
-### 1.3 AI Context Scores
-
-**Purpose**: Capture narrative factors that affect player performance.
-
-**Score Range**: 0-100
-
-**Factors Considered** (via Gemini analysis):
-- Revenge games
-- Rest days
-- Injury recovery arcs
-- Usage rate changes
-- Team context (trades, lineup changes)
-
-**Why AI Context**:
-Statistical models miss narrative edges. A player returning from injury might be usage-capped even if healthy. AI context captures these soft factors.
-
-### 1.4 Game Logs (Mode/Median/Mean)
-
-**Purpose**: Understand player consistency beyond simple averages.
-
-**Data Extracted**:
-- Last 10 games per player
-- Stats: PTS, AST, REB, 3PM, BLK, STL, PRA
-
-**Calculations**:
 ```python
-# Mode: Most frequent value (rounded to 0.5)
-# Only returned if a value appears 2+ times
-l10_mode = 25.0  # Player hit exactly 25 multiple times
+# Example: Kawhi Leonard PRA
+games = [35, 42, 28, 45, 38, 40, 33, ...]  # All season games
+season_median = median(games)  # 37.0
 
-# Median: Middle value when sorted
-l10_median = 24.5  # Half games above, half below
-
-# Mean: Simple average
-l10_mean = 24.8  # Sum / Count
+# PP Line: 29.5
+# 29.5 <= 37.0 ✓ PASSES MEDIAN ANCHOR
 ```
 
-**Why All Three?**
-- **Mode** reveals the player's "typical" game
-- **Median** is robust to outliers (one 50-point game doesn't skew it)
-- **Mean** is useful but can be inflated by outliers
+### 1.3 L10 Stats
+- Mode, Median, Mean from last 10 games
+- Used for additional context, not filtering
 
 ---
 
 ## Phase 2: Global Kill Switch
 
-### Purpose
-Eliminate props with insufficient market separation. If the sharp books and PrizePicks agree on probability, there's no edge.
-
-### Kill Conditions
-
-#### 2.1 Dead Zone
-```
-IF sharp_price BETWEEN -148 AND -137:
-    DISCARD (no real separation)
-```
-
-**Why -148 to -137?**
-This range represents near-identical implied probabilities:
-- -148 = 59.7% implied
-- -137 = 57.8% implied
-- Difference = ~2% (not actionable)
-
-#### 2.2 Separation Threshold
+### 2.1 Absolute Edge (5% Minimum)
 
 **Formula**:
 ```
-Separation = |Implied_Sharp - Implied_PP| / Implied_PP × 100
+Absolute Edge = |Sharp_Implied - PP_Implied|
 
-IF Separation < 15%:
-    DISCARD
+Where:
+  PP_Implied = 57.8% (standard -137 line)
+  Sharp_Implied = american_to_implied(sharp_price)
+
+IF Absolute Edge < 5%:
+    KILL
 ```
 
-**Implied Probability Conversion**:
+**Example**:
 ```
-IF odds < 0:
-    implied = |odds| / (|odds| + 100)
-ELSE:
-    implied = 100 / (odds + 100)
+Sharp: -250 → 71.4% implied
+PP: -137 → 57.8% implied
 
-Examples:
-  -137 → 137 / 237 = 0.578 (57.8%)
-  -250 → 250 / 350 = 0.714 (71.4%)
-  +200 → 100 / 300 = 0.333 (33.3%)
+Absolute Edge = |71.4% - 57.8%| = 13.6%
+13.6% >= 5% ✓ PASSES
 ```
 
-**Example Calculation**:
+**Why 5% Absolute?**
+- Relative percentages can be misleading
+- 5% absolute represents real, actionable edge
+- Accounts for juice/vig in pricing
+
+### 2.2 Median Anchor
+
+**Rule**:
 ```
-PP: -137 (57.8%)
-Sharp: -250 (71.4%)
-
-Separation = |0.714 - 0.578| / 0.578 × 100
-           = 0.136 / 0.578 × 100
-           = 23.5%
-
-23.5% > 15% → PASSES KILL SWITCH
+IF PP_Line > Season_Median:
+    KILL
 ```
 
-**Why 15%?**
-Below 15% separation, the edge is too small to overcome:
-- Vig/juice
-- Variance
-- Execution risk
+**Example**:
+```
+Player: Kawhi Leonard PRA
+Season Median: 37.0
+PP Line: 29.5
 
-15% provides meaningful edge while not being so strict that no props qualify.
+29.5 <= 37.0 ✓ PASSES
+
+# Counter-example:
+PP Line: 39.5
+39.5 > 37.0 ✗ KILLED
+```
+
+**Why Median Anchor?**
+- Median is robust to outliers
+- Ensures the line is at or below "typical" performance
+- Prevents betting on inflated lines
 
 ---
 
 ## Phase 3: Tier Classification
 
-### Overview
-Props that survive Phase 2 are classified into one of three tiers based on their characteristics.
+### NEW v4 Windows
 
-### 3.1 Safe Haven (Elite Goblins)
+| Tier | Sharp Price Window | Description |
+|------|-------------------|-------------|
+| **Safe Haven** | ≤ -250 | Ultra-high probability locks |
+| **Front Lines** | -245 to -115 | Strong favorites with edge |
+| **War Zone** | -114 to +500 | Value plays and longshots |
 
-**Target**: Ultra-high probability locks with massive market separation.
-
-**Gates**:
-```
-sharp_price <= -250
-AND
-l10_hit_rate >= 80%
-```
-
-**Why These Thresholds?**
-- **Sharp <= -250**: The sharp book implies 71%+ probability. This is a "heavy favorite" in betting terms.
-- **L10 >= 80%**: The player has hit this line 8+ times in last 10 games. Consistency is proven.
-
-**What This Captures**:
-Alternate lines where PrizePicks is offering a much easier line than standard, AND the player consistently produces above that line.
-
-### 3.2 Front Lines (Battleground)
-
-**Target**: High-value standard plays against weak defenses.
-
-**Gates**:
-```
-sharp_price BETWEEN -245 AND -149
-AND
-dvp_rank <= 10
-AND
-l10_hit_rate >= 70%
+### Classification Logic
+```python
+if sharp_price <= -250:
+    → SAFE HAVEN
+elif -245 <= sharp_price <= -115:
+    → FRONT LINES
+elif -114 <= sharp_price <= 500:
+    → WAR ZONE
+else:
+    → UNCLASSIFIED (outside all windows)
 ```
 
-**Why These Thresholds?**
-- **Sharp -245 to -149**: Moderate favorites. Not ultra-safe, but real edge exists.
-- **DVP <= 10**: Only target the bottom third of defenses. Structural advantage.
-- **L10 >= 70%**: Player is hitting 7/10 games. Reliable but not as locked as Safe Haven.
-
-**What This Captures**:
-Players with good consistency facing weak defenses. The DVP filter ensures we're not betting on players facing elite defenses.
-
-### 3.3 War Zone (Elite Demons)
-
-**Target**: High-payout longshots where the real odds are better than PrizePicks implies.
-
-**Gates**:
-```
-sharp_price >= +500
-AND
-ai_context_score > 40
-AND
-l10_hits >= 2
-```
-
-**Why These Thresholds?**
-- **Sharp >= +500**: The sharp book says this is a 5:1 or better proposition. PrizePicks at +100 (1:1) means huge value if it hits.
-- **AI Context > 40**: The narrative context is neutral-to-positive. We're not betting on injured or benched players.
-- **L10 Hits >= 2**: Safety net. The player HAS hit this line recently, even if infrequently.
-
-**What This Captures**:
-Demon lines (PrizePicks even odds) where the sharp market suggests the line is achievable 15-20% of the time, not the 50% PrizePicks implies.
+### Implied Probability Reference
+| Sharp Price | Implied | Tier |
+|------------|---------|------|
+| -500 | 83.3% | Safe Haven |
+| -250 | 71.4% | Safe Haven |
+| -245 | 71.0% | Front Lines |
+| -150 | 60.0% | Front Lines |
+| -115 | 53.5% | Front Lines |
+| -114 | 53.3% | War Zone |
+| +100 | 50.0% | War Zone |
+| +300 | 25.0% | War Zone |
+| +500 | 16.7% | War Zone |
 
 ---
 
 ## Phase 4: Sorting Algorithm
 
-### Primary Sort: Line Delta
-
-**Formula**:
+### Primary: Line Delta
 ```
-Line Delta = PP Line - Anchor Line (standard line)
-```
+Line Delta = PP_Line - Anchor_Line
 
-**Interpretation**:
-- **Negative Delta** = PP line is BELOW standard (easier prop)
-- **Positive Delta** = PP line is ABOVE standard (harder prop)
-
-**Example**:
-```
-Nikola Jokic PRA
-  PP Line: 39.5
-  Anchor (Standard): 49.5
-  Delta: 39.5 - 49.5 = -10.0
-
-Interpretation: The line is 10 points BELOW his standard line.
-               This is a significant edge.
+Bigger |Delta| = More edge
 ```
 
-**Why Sort by |Delta|?**
-Bigger delta = bigger edge vs the standard market. A -10 delta means you're getting a 10-point head start.
+### Secondary: L10 Hit Rate
+```
+Higher L10 Rate = More consistent
+```
 
-### Secondary Sorts (Tiebreakers)
-
-| Tier | Sort 1 | Sort 2 | Sort 3 |
-|------|--------|--------|--------|
-| Safe Haven | \|Line Delta\| ↓ | L10 Rate ↓ | - |
-| Front Lines | \|Line Delta\| ↓ | DVP Rank ↑ | L10 Rate ↓ |
-| War Zone | \|Line Delta\| ↓ | AI Context ↓ | L10 Rate ↓ |
-
-**Implementation**:
+### Implementation
 ```python
-# Safe Haven
 candidates.sort(key=lambda x: (
     -abs(x["line_delta"]),  # Biggest delta first
     -x["l10_rate"]          # Then highest hit rate
 ))
+```
 
-# Front Lines
-candidates.sort(key=lambda x: (
-    -abs(x["line_delta"]),  # Biggest delta first
-    x["dvp_rank"],          # Then weakest defense (lowest rank)
-    -x["l10_rate"]          # Then highest hit rate
-))
-
-# War Zone
-candidates.sort(key=lambda x: (
-    -abs(x["line_delta"]),  # Biggest delta first
-    -x["ai_context_score"], # Then best narrative
-    -x["l10_rate"]          # Then highest hit rate
-))
+### Example Sorting
+```
+Kawhi Leonard: Delta -8.0, L10 80%  → Rank 1
+Luka Doncic: Delta -8.0, L10 70%    → Rank 2
+Lamelo Ball: Delta -7.0, L10 90%    → Rank 3
 ```
 
 ---
@@ -385,53 +225,25 @@ candidates.sort(key=lambda x: (
 
 ### Rule: One Player Per Tier
 
-**Why?**
-- Diversification: Don't overexpose to a single player's variance
-- Correlation: Multiple props on the same player are correlated
-- User Experience: More variety in the picks shown
+**Priority**: Safe Haven > Front Lines > War Zone
 
-### Implementation
-
-**Priority Order**:
-1. Safe Haven (highest priority)
-2. Front Lines
-3. War Zone (lowest priority)
-
-**Logic**:
 ```python
 used_players = set()
 
-# Process Safe Haven first
+# Safe Haven first
 for pick in safe_haven_sorted:
     if pick.player_name not in used_players:
         used_players.add(pick.player_name)
-        safe_haven_output.append(pick)
-        if len(safe_haven_output) >= 10:
-            break
+        output.append(pick)
 
-# Process Front Lines (excluding Safe Haven players)
-for pick in front_lines_sorted:
-    if pick.player_name not in used_players:
-        used_players.add(pick.player_name)
-        front_lines_output.append(pick)
-        if len(front_lines_output) >= 10:
-            break
-
-# Process War Zone (excluding Safe Haven + Front Lines players)
-for pick in war_zone_sorted:
-    if pick.player_name not in used_players:
-        used_players.add(pick.player_name)
-        war_zone_output.append(pick)
-        if len(war_zone_output) >= 10:
-            break
+# Front Lines (excluding Safe Haven players)
+# War Zone (excluding Safe Haven + Front Lines players)
 ```
 
-**Example**:
-```
-LeBron James qualifies for both Safe Haven and War Zone.
-→ Assigned to Safe Haven (higher priority)
-→ War Zone slot goes to next qualifying player
-```
+### Output Cap: 30 Total Plays
+- 10 Safe Haven
+- 10 Front Lines
+- 10 War Zone
 
 ---
 
@@ -439,131 +251,77 @@ LeBron James qualifies for both Safe Haven and War Zone.
 
 ### Implied Probability
 ```
-American Odds → Implied Probability
+Negative odds: P = |odds| / (|odds| + 100)
+Positive odds: P = 100 / (odds + 100)
 
-Negative odds (favorite):
-  P = |odds| / (|odds| + 100)
-  
-Positive odds (underdog):
-  P = 100 / (odds + 100)
-
-Examples:
-  -200 → 200/300 = 66.7%
-  -137 → 137/237 = 57.8%
-  +150 → 100/250 = 40.0%
-  +500 → 100/600 = 16.7%
+-137 → 137/237 = 57.8%
+-250 → 250/350 = 71.4%
++200 → 100/300 = 33.3%
 ```
 
-### Separation Percentage
+### Absolute Edge
 ```
-Separation = |P_sharp - P_pp| / P_pp × 100
+Edge = |P_sharp - P_pp|
+Edge = |P_sharp - 0.578|
 
-Where:
-  P_sharp = Implied probability from sharp book
-  P_pp = Implied probability from PrizePicks
-
-Example:
-  PP: -137 → 57.8%
-  Sharp: -250 → 71.4%
-  
-  Separation = |0.714 - 0.578| / 0.578 × 100
-             = 23.5%
+Example: Sharp -250
+Edge = |0.714 - 0.578| = 0.136 = 13.6%
 ```
 
 ### Line Delta
 ```
-Delta = Line_PP - Line_Standard
+Delta = PP_Line - Anchor_Line
 
-Example:
-  PP Line: 19.5
-  Standard Line: 27.5
-  
-  Delta = 19.5 - 27.5 = -8.0
-  
-Interpretation: 8 points BELOW standard = significant edge
+Example: PP 29.5, Anchor 37.5
+Delta = 29.5 - 37.5 = -8.0
 ```
 
-### Hit Rate
-```
-L10 Rate = Games_Over / 10 × 100
-L5 Rate = Games_Over / 5 × 100
-
-Example:
-  Last 10 games: 25, 28, 22, 30, 19, 24, 26, 31, 27, 23
-  Line: 24.5
-  
-  Games Over: 7 (28, 30, 26, 31, 27, 25)
-  L10 Rate = 7/10 × 100 = 70%
-```
-
-### Mode Calculation
+### Season Median
 ```python
-def calculate_mode(values):
-    # Round to nearest 0.5 for grouping
-    rounded = [round(v * 2) / 2 for v in values]
-    
-    # Count occurrences
-    counts = Counter(rounded)
-    
-    # Get most common
-    mode_value, mode_count = counts.most_common(1)[0]
-    
-    # Only return if appears 2+ times
-    return mode_value if mode_count >= 2 else None
-```
-
-### Median Calculation
-```python
-def calculate_median(values):
+def median(values):
     sorted_vals = sorted(values)
     n = len(sorted_vals)
-    
     if n % 2 == 0:
-        # Even: average of two middle values
         return (sorted_vals[n//2 - 1] + sorted_vals[n//2]) / 2
-    else:
-        # Odd: middle value
-        return sorted_vals[n//2]
+    return sorted_vals[n//2]
 ```
 
 ---
 
 ## Why This Approach
 
-### Why Sharp Market Comparison?
-Sharp books (Bovada, DraftKings, FanDuel) have:
-- Higher limits attracting professional bettors
-- Tighter spreads due to competition
-- More accurate probability estimates
+### Why 5% Absolute Edge?
+- **Clarity**: Easy to understand (5 percentage points)
+- **Actionable**: Represents real value after juice
+- **Consistent**: Same threshold across all odds ranges
 
-If a sharp book prices something as -250 (71%) and PrizePicks prices it at -137 (58%), there's a **13%+ probability gap**. That's exploitable value.
+### Why Median Anchor?
+- **Robustness**: Median ignores outlier games
+- **Consistency**: Represents "typical" performance
+- **Safety**: Only bet on lines below typical output
 
-### Why Tiered Classification?
-Different prop types require different strategies:
-- **Safe Haven**: High-probability grinds. Small edge, high hit rate.
-- **Front Lines**: Value plays with context (DVP) validation.
-- **War Zone**: Longshots where the payout exceeds the true odds.
+### Why New Tier Windows?
+- **Safe Haven (≤ -250)**: 71%+ implied = high confidence
+- **Front Lines (-245 to -115)**: 53-71% = solid favorites
+- **War Zone (-114 to +500)**: Below 53% = value hunting
 
-A single filter can't capture all three edge types effectively.
+### Why Line Delta Sorting?
+- **Pure Value**: Bigger delta = bigger edge vs standard
+- **Mathematical**: Objective measure of line value
+- **Predictive**: Easier lines = higher hit probability
 
-### Why Line Delta as Primary Sort?
-The delta represents **how much easier your line is** compared to standard. A -10 delta means:
-- Standard line: 49.5
-- Your line: 39.5
-- You need 10 FEWER points/assists/rebounds to win
+---
 
-This is the purest measure of line value.
+## API Endpoints
 
-### Why 80/70/40 Thresholds?
-- **80% (Safe Haven)**: Ensures ultra-consistency. 8/10 is a pattern, not luck.
-- **70% (Front Lines)**: Still reliable, but allows more candidates for DVP filtering.
-- **40 AI (War Zone)**: Low bar because AI scores are sparse. Only filters out negative narratives.
-
-### Why One Player Per Tier?
-Correlation risk. If you have 3 LeBron props and LeBron sits out, you lose all 3. Spreading across players provides:
-- Natural hedging
-- Better user experience
-- Reduced variance
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/v3/ferrari/rebuild` | POST | Execute v4 Pipeline |
+| `/api/v3/ferrari/all` | GET | All 30 picks |
+| `/api/v3/ferrari/safe-haven` | GET | 10 Safe Haven picks |
+| `/api/v3/ferrari/front-lines` | GET | 10 Front Lines picks |
+| `/api/v3/ferrari/war-zone` | GET | 10 War Zone picks |
+| `/api/v3/ferrari/discarded` | GET | Killed props (debug) |
 
 ---
 
@@ -571,28 +329,11 @@ Correlation risk. If you have 3 LeBron props and LeBron sits out, you lose all 3
 
 | File | Purpose |
 |------|---------|
-| `/app/backend/services/ferrari_tier_service.py` | Core 5-Phase Pipeline logic |
-| `/app/backend/services/odds_api_service.py` | Sharp book data fetching |
-| `/app/backend/services/odds_sync_service.py` | Props enrichment with sharp data |
+| `/app/backend/services/ferrari_tier_service.py` | v4 Pipeline logic |
 | `/app/backend/routes/ferrari_tiers.py` | API endpoints |
-| `/app/frontend/src/hooks/useLiveOdds.js` | Frontend data fetching |
-| `/app/memory/FERRARI_METHODOLOGY.md` | This document |
+| `/app/memory/FERRARI_BUILD_GUIDE.md` | This document |
 
 ---
 
-## API Reference
-
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/api/v3/ferrari/rebuild` | POST | Execute 5-Phase Pipeline |
-| `/api/v3/ferrari/all` | GET | Get all 30 picks |
-| `/api/v3/ferrari/safe-haven` | GET | Get Safe Haven (10 picks) |
-| `/api/v3/ferrari/front-lines` | GET | Get Front Lines (10 picks) |
-| `/api/v3/ferrari/war-zone` | GET | Get War Zone (10 picks) |
-| `/api/v3/ferrari/discarded` | GET | Get Phase 2 kills (debug) |
-
----
-
-*Document Version: 1.0*
-*Last Updated: 2026-04-01*
-*Pipeline: Ferrari+ 5-Phase*
+*Pipeline: Ferrari v4 - FINAL ARCHITECTURAL LOCK*
+*Last Updated: 2026-04-02*
