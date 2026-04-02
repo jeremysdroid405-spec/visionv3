@@ -22,18 +22,20 @@ const GoldWhistleIcon = ({ className }) => (
 const IntelligenceModal = ({ 
   isOpen, 
   onClose, 
-  type, // 'hook_risk' | 'suspect_bait' | 'officiating_impact'
+  type, // 'hook_risk' | 'suspect_bait' | 'officiating_impact' | 'usage_vacuum'
   playerName,
   statType,
   line,
   sidecarData, // { median, mode, mode_frequency_pct, std_dev, hook_warning, bait_warning }
-  whistleData  // { crew_chief, ref_ou_pct, ref_ppg, whistle_class, lift_label, point_lift, foul_rate_diff }
+  whistleData,  // { crew_chief, ref_ou_pct, ref_ppg, whistle_class, lift_label, point_lift, foul_rate_diff }
+  vacuumData   // { injured_player, injured_team, injured_usage, beneficiary_rank, usage_bump, modifier, reason }
 }) => {
   if (!isOpen) return null;
 
   const isHookRisk = type === 'hook_risk';
   const isBait = type === 'suspect_bait';
   const isOfficiating = type === 'officiating_impact';
+  const isVacuum = type === 'usage_vacuum';
 
   // Educational content based on badge type
   const getContent = () => {
@@ -268,6 +270,101 @@ const IntelligenceModal = ({
       };
     }
 
+    // Usage Vacuum Modal Content
+    if (isVacuum && vacuumData) {
+      const isPrimary = vacuumData.beneficiary_rank === 'primary';
+      const modifier = vacuumData.modifier || (isPrimary ? 15 : 10);
+      const usageBump = vacuumData.usage_bump || (isPrimary ? 6.2 : 4.5);
+      
+      return {
+        icon: (
+          <svg className="w-6 h-6 text-orange-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <circle cx="12" cy="12" r="10" />
+            <path d="M12 6v6l4 2" />
+          </svg>
+        ),
+        title: "Usage Vacuum Active",
+        subtitle: isPrimary ? "Primary Beneficiary Boost" : "Secondary Beneficiary Boost",
+        color: "orange",
+        bgGradient: "from-orange-950/90 to-zinc-900",
+        borderColor: "border-orange-500/30",
+        explanation: (
+          <>
+            <p className="text-zinc-300 text-sm leading-relaxed mb-4">
+              When a <span className="text-orange-400 font-semibold">star player</span> (Usage Rate &gt; 25%) is ruled <span className="text-red-400 font-bold">OUT</span>, 
+              their touches, shots, and playmaking opportunities are redistributed to teammates. 
+              This creates a <span className="text-orange-400 font-semibold">"Usage Vacuum"</span> that benefits the next players in line.
+            </p>
+            <div className="bg-zinc-800/50 rounded-lg p-3 mb-4">
+              <div className="text-xs text-zinc-500 uppercase tracking-wide mb-2">How This Affects {playerName}</div>
+              <p className="text-zinc-400 text-sm">
+                With <span className="text-red-400 font-bold">{vacuumData.injured_player}</span> out, 
+                {playerName} is projected to see a <span className="text-green-400 font-bold">+{usageBump}%</span> increase in usage rate. 
+                This translates to more shot attempts, more touches in the paint, and more opportunities to fill the stat sheet.
+                {isPrimary ? (
+                  <span className="block mt-2 text-orange-300">As the primary beneficiary, {playerName} will likely absorb the bulk of the offensive workload.</span>
+                ) : (
+                  <span className="block mt-2 text-yellow-300">As the secondary beneficiary, {playerName} will see increased opportunities but shares the load with another teammate.</span>
+                )}
+              </p>
+            </div>
+          </>
+        ),
+        specificData: (
+          <div className="bg-orange-950/30 border border-orange-500/20 rounded-lg p-3">
+            <div className="text-xs text-orange-400/70 uppercase tracking-wide mb-2">Injury Impact Profile</div>
+            <div className="space-y-2 text-sm">
+              <div className="flex justify-between">
+                <span className="text-zinc-400">Injured Star</span>
+                <span className="text-red-400 font-bold">{vacuumData.injured_player}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-zinc-400">Team</span>
+                <span className="text-white font-medium">{vacuumData.injured_team || 'N/A'}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-zinc-400">Star's Usage Rate</span>
+                <span className="text-orange-400 font-bold">{vacuumData.injured_usage || '34.8'}%</span>
+              </div>
+              {vacuumData.reason && (
+                <div className="flex justify-between">
+                  <span className="text-zinc-400">Injury Reason</span>
+                  <span className="text-zinc-300">{vacuumData.reason}</span>
+                </div>
+              )}
+              <div className="pt-2 border-t border-orange-500/20">
+                <div className="flex justify-between">
+                  <span className="text-zinc-400">Beneficiary</span>
+                  <span className="text-white font-medium">{playerName}</span>
+                </div>
+                <div className="flex justify-between mt-1">
+                  <span className="text-zinc-400">Role</span>
+                  <span className={`font-bold ${isPrimary ? 'text-green-400' : 'text-yellow-400'}`}>
+                    {isPrimary ? '1st Option' : '2nd Option'}
+                  </span>
+                </div>
+                <div className="flex justify-between mt-1">
+                  <span className="text-zinc-400">Usage Boost</span>
+                  <span className="text-green-400 font-bold">+{usageBump}%</span>
+                </div>
+                <div className="flex justify-between mt-1">
+                  <span className="text-zinc-400">Score Modifier</span>
+                  <span className="text-orange-400 font-bold">+{modifier} Ferrari Points</span>
+                </div>
+              </div>
+              <div className="flex justify-between pt-2 border-t border-orange-500/20">
+                <span className="text-zinc-400">Prop</span>
+                <span className="text-white font-medium">{statType} @ {line}</span>
+              </div>
+            </div>
+          </div>
+        ),
+        recommendation: isPrimary 
+          ? `As the primary beneficiary of ${vacuumData.injured_player}'s absence, ${playerName} has a significant usage boost. This is a strong tailwind for all props, especially scoring and playmaking.`
+          : `${playerName} is the secondary beneficiary, meaning increased opportunities but shared workload. Good edge for high-floor props.`
+      };
+    }
+
     return null;
   };
 
@@ -356,6 +453,8 @@ const IntelligenceModal = ({
                 bg-gradient-to-r 
                 ${isHookRisk ? 'from-amber-600 to-amber-700 hover:from-amber-500 hover:to-amber-600' : ''}
                 ${isBait ? 'from-red-600 to-red-700 hover:from-red-500 hover:to-red-600' : ''}
+                ${isOfficiating ? 'from-zinc-600 to-zinc-700 hover:from-zinc-500 hover:to-zinc-600' : ''}
+                ${isVacuum ? 'from-orange-600 to-orange-700 hover:from-orange-500 hover:to-orange-600' : ''}
                 text-white
                 transition-all duration-200
                 shadow-lg

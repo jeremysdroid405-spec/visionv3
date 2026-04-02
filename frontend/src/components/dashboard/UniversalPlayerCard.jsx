@@ -505,7 +505,7 @@ const UniversalPlayerCard = memo(({
   // Intelligence Modal state
   const [intelligenceModal, setIntelligenceModal] = useState({
     isOpen: false,
-    type: null, // 'hook_risk' | 'suspect_bait' | 'officiating_impact'
+    type: null, // 'hook_risk' | 'suspect_bait' | 'officiating_impact' | 'usage_vacuum'
   });
   
   // Officiating Impact modal handler
@@ -514,6 +514,15 @@ const UniversalPlayerCard = memo(({
     setIntelligenceModal({
       isOpen: true,
       type: 'officiating_impact'
+    });
+  }, []);
+  
+  // Usage Vacuum modal handler
+  const handleVacuumClick = useCallback((e) => {
+    e.stopPropagation();
+    setIntelligenceModal({
+      isOpen: true,
+      type: 'usage_vacuum'
     });
   }, []);
   
@@ -803,15 +812,20 @@ const UniversalPlayerCard = memo(({
           </div>
         )}
         
-        {/* Usage Vacuum Alert Card */}
+        {/* Usage Vacuum Alert Card - Clickable for details */}
         {has_vacuum_modifier && vacuum_data && (
-          <div className="mt-1.5 rounded-lg overflow-hidden bg-gradient-to-r from-orange-500/10 to-red-500/5 border border-orange-500/30" data-testid="usage-vacuum-card">
+          <div 
+            className="mt-1.5 rounded-lg overflow-hidden bg-gradient-to-r from-orange-500/10 to-red-500/5 border border-orange-500/30 cursor-pointer hover:border-orange-500/50 transition-colors" 
+            data-testid="usage-vacuum-card"
+            onClick={handleVacuumClick}
+          >
             <div className="flex items-center gap-1.5 px-2 py-1 text-[9px] font-bold text-orange-400">
               <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <circle cx="12" cy="12" r="10" />
                 <path d="M12 6v6l4 2" />
               </svg>
               USAGE VACUUM
+              <Info className="w-2.5 h-2.5 ml-0.5 opacity-60" />
               <span className={`ml-auto text-[8px] font-bold px-1.5 py-0.5 rounded ${
                 vacuum_data.beneficiary_rank === 'primary' ? 'bg-green-500/30 text-green-400' : 'bg-yellow-500/30 text-yellow-400'
               }`}>
@@ -821,6 +835,7 @@ const UniversalPlayerCard = memo(({
             <div className="px-2 pb-1.5">
               <div className="text-[9px] text-zinc-300">
                 <span className="text-red-400 font-bold">{vacuum_data.injured_player}</span> OUT
+                {vacuum_data.reason && <span className="text-zinc-500 ml-1">({vacuum_data.reason})</span>}
               </div>
               <div className="flex items-center justify-between text-[9px] mt-0.5">
                 <span className="text-zinc-500">
@@ -862,6 +877,17 @@ const UniversalPlayerCard = memo(({
             point_lift,
             foul_rate_diff
           }}
+        />
+        
+        {/* Intelligence Modal for Usage Vacuum */}
+        <IntelligenceModal
+          isOpen={intelligenceModal.isOpen && intelligenceModal.type === 'usage_vacuum'}
+          onClose={() => setIntelligenceModal({ isOpen: false, type: null })}
+          type="usage_vacuum"
+          playerName={displayName}
+          statType={stat_type}
+          line={line}
+          vacuumData={vacuum_data}
         />
       </div>
     );

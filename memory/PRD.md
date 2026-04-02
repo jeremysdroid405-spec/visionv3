@@ -3,7 +3,37 @@
 ## Overview
 PropVision is a sports analytics platform for NBA player props, providing data-driven insights for betting decisions.
 
-## Latest Update (2026-04-02): Usage Vacuum Microservice
+## Latest Update (2026-04-02): Usage Vacuum Intel Suite Integration
+
+### Feature Description
+Enhanced the Usage Vacuum feature with an interactive Intel Suite modal. When a player card displays a Usage Vacuum badge (indicating they're benefiting from an injured star's absence), clicking the badge opens a detailed explanation modal showing:
+
+- **Who's injured** and their usage rate
+- **Why this matters** for the beneficiary
+- **How it affects** the player's projected performance
+- **Ferrari Score modifier** applied
+
+### UI Component: Usage Vacuum Modal
+The IntelligenceModal now supports `type="usage_vacuum"` with:
+- Injured star player name and team
+- Injury reason (if available)
+- Beneficiary rank (1st or 2nd option)
+- Usage boost percentage
+- Ferrari Score modifier (+15 primary, +10 secondary)
+- Educational explanation of usage redistribution
+
+### Files Modified (This Update)
+- `/app/frontend/src/components/dashboard/IntelligenceModal.jsx` - Added `usage_vacuum` modal type
+- `/app/frontend/src/components/dashboard/UniversalPlayerCard.jsx` - Made vacuum card clickable, added Info icon
+
+### Test Status
+- **Backend**: All 16 vacuum endpoint tests PASSED
+- **Frontend**: UI components verified, modal opens correctly
+- **Note**: Vacuum cards only display when beneficiary players have active props
+
+---
+
+## Previous Update (2026-04-02): Usage Vacuum Microservice
 
 ### Feature Description
 Implemented the InjuryVacuumService - an event-driven microservice that monitors NBA injury reports and calculates "Usage Vacuum" beneficiaries when star players are ruled OUT.
