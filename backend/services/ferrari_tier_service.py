@@ -537,6 +537,15 @@ class FerrariTierService:
                         else:
                             results["whistle_matrix"]["neutral"] += 1
                     
+                    # Calculate Point Lift translation
+                    point_lift_data = ref_service.calculate_point_lift(
+                        stat_type=stat_type,
+                        ref_ppg=ref_ppg or 115.5,
+                        whistle_class=whistle_class,
+                        player_usage_rate=None,  # TODO: Add usage rate when available
+                        team_usage_avg=None
+                    )
+                    
                     # FINAL POWER SCORE with Whistle Modifier
                     power_score = round(base_power_score + whistle_modifier, 2)
                     # Cap at 0-115 range (base max 100 + max modifier 15)
@@ -603,6 +612,11 @@ class FerrariTierService:
                         "ref_ppg": round(ref_ppg, 1) if ref_ppg else None,
                         "whistle_class": whistle_class,
                         "has_whistle_modifier": whistle_modifier != 0,
+                        # POINT LIFT TRANSLATION (Vegas Intel)
+                        "point_lift": point_lift_data.get("point_lift", 0),
+                        "lift_label": point_lift_data.get("lift_label", ""),
+                        "lift_type": point_lift_data.get("lift_type", "neutral"),
+                        "foul_rate_diff": point_lift_data.get("foul_rate_diff", 0),
                         # Metrics
                         "separation_pct": round(separation, 1),
                         "line_delta": round(line_delta, 1),

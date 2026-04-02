@@ -33,11 +33,22 @@ HIGH_WHISTLE_OU_PCT = 60.0
 LOW_WHISTLE_PPG = 113.0
 LOW_WHISTLE_OU_PCT = 45.0
 
+# League average PPG for Point Lift calculation
+LEAGUE_AVG_PPG = 115.5
+
 # Modifier values
 GREEN_LIGHT_MODIFIER = 15.0  # PTS, FTM
 RED_LIGHT_MODIFIER = -15.0   # PTS, FTM
 PARTIAL_GREEN_MODIFIER = 7.5  # PRA
 PARTIAL_RED_MODIFIER = -7.5   # PRA
+
+# Default Point Lift values (when usage rate unavailable)
+DEFAULT_PTS_LIFT = 3.5
+DEFAULT_FTM_LIFT = 1.5
+DEFAULT_PRA_LIFT = 2.5
+
+# League average shooting foul rate (for tooltip)
+LEAGUE_AVG_FOUL_RATE = 22.5  # fouls per game
 
 # Team abbreviation mapping (for matching)
 TEAM_CITY_TO_ABBREV = {
@@ -111,7 +122,6 @@ class RefereeScraperService:
         if not name:
             return ""
         # Remove jersey number in parentheses (e.g., "Ben Taylor (#46)" -> "Ben Taylor")
-        import re
         name = re.sub(r'\s*\(#?\d+\)\s*', '', name)
         # Remove extra spaces, lowercase
         normalized = " ".join(name.strip().split()).lower()
@@ -504,6 +514,91 @@ class RefereeScraperService:
                 return PARTIAL_RED_MODIFIER
         
         return 0.0
+    
+    def calculate_point_lift(
+        self, 
+        stat_type: str, 
+        ref_ppg: float, 
+        whistle_class: str,
+        player_usage_rate: Optional[float] = None,
+        team_usage_avg: Optional[float] = None
+    ) -> Dict[str, Any]:
+        """
+        Calculate the Point Lift translation for the Whistle Matrix.
+        
+        Formula: Point_Lift = (Ref_PPG_Avg - League_PPG_Avg) * (Player_Usage_Rate / Team_Usage_Avg)
+        
+        If usage unavailable, use flat defaults:
+        - PTS: ±3.5
+        - FTM: ±1.5
+        - PRA: ±2.5
+        
+        Returns:
+        - point_lift: The projected stat boost/ceiling
+        - lift_label: Human-readable label (e.g., "+3.5 Projected PTS Boost")
+        - lift_type: "boost" or "ceiling"
+        - foul_rate_diff: Percentage difference from league average
+        """
+        if whistle_class == "neutral":
+            return {
+                "point_lift": 0.0,
+                "lift_label": "Neutral Impact",
+                "lift_type": "neutral",
+                "foul_rate_diff": 0
+            }
+        
+        stat_upper = stat_type.upper() if stat_type else ""
+        
+        # Determine base lift value based on stat type
+        if stat_upper in ["PTS", "POINTS"]:
+            base_lift = DEFAULT_PTS_LIFT
+            stat_label = "PTS"
+        elif stat_upper in ["FTM", "FREE THROWS MADE"]:
+            base_lift = DEFAULT_FTM_LIFT
+            stat_label = "FTM"
+        elif stat_upper in ["PRA", "POINTS REBOUNDS ASSISTS", "PTS+REB+AST"]:
+            base_lift = DEFAULT_PRA_LIFT
+            stat_label = "PRA"
+        else:
+            # Non-scoring stat, no lift
+            return {
+                "point_lift": 0.0,
+                "lift_label": "No Scoring Impact",
+                "lift_type": "neutral",
+                "foul_rate_diff": 0
+            }
+        
+        # Calculate usage-adjusted lift if available
+        if player_usage_rate and team_usage_avg and team_usage_avg > 0:
+            ppg_diff = ref_ppg - LEAGUE_AVG_PPG if ref_ppg else 0
+            usage_factor = player_usage_rate / team_usage_avg
+            point_lift = ppg_diff * usage_factor * 0.15  # Scale factor
+            point_lift = max(-5.0, min(5.0, point_lift))  # Cap at ±5
+        else:
+            point_lift = base_lift
+        
+        # Calculate foul rate difference (for tooltip)
+        if ref_ppg:
+            foul_rate_diff = round(((ref_ppg - LEAGUE_AVG_PPG) / LEAGUE_AVG_PPG) * 100, 0)
+        else:
+            foul_rate_diff = 0
+        
+        # Determine lift type and label
+        if whistle_class == "high_whistle":
+            lift_type = "boost"
+            lift_label = f"+{abs(point_lift):.1f} Projected {stat_label} Boost"
+            point_lift = abs(point_lift)
+        else:  # low_whistle
+            lift_type = "ceiling"
+            lift_label = f"-{abs(point_lift):.1f} Projected {stat_label} Ceiling"
+            point_lift = -abs(point_lift)
+        
+        return {
+            "point_lift": round(point_lift, 1),
+            "lift_label": lift_label,
+            "lift_type": lift_type,
+            "foul_rate_diff": int(foul_rate_diff)
+        }
     
     async def sync_all(self) -> Dict[str, Any]:
         """

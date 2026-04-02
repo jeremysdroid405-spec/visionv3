@@ -10,12 +10,21 @@ import React, { useState, useCallback, useMemo, useRef, memo, useEffect } from '
 import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
 import { 
-  ArrowLeft, Target, Zap, Crosshair, Plus, Volume2
+  ArrowLeft, Target, Zap, Crosshair, Plus, Volume2, Snowflake, Scale
 } from 'lucide-react';
 import { DemonIcon, GoblinIcon } from './Icons';
 import { STAT_CATEGORIES, getCategoryKey, TEAM_LOGOS, BACKEND_URL } from './constants';
 import { BadgeRow, BADGE_REGISTRY, BadgeGridItem } from '../ui/BadgePill';
 import GameLogBarChart from './GameLogBarChart';
+
+// Gold Whistle Icon for High Whistle refs
+const GoldWhistleIcon = ({ className }) => (
+  <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <circle cx="12" cy="12" r="3" fill="#FFD700" stroke="#FFD700"/>
+    <path d="M12 9V4M12 4L9 7M12 4L15 7" stroke="#FFD700"/>
+    <ellipse cx="12" cy="15" rx="5" ry="3" stroke="#FFD700"/>
+  </svg>
+);
 
 // API URL for fetching player data
 const API = BACKEND_URL || process.env.REACT_APP_BACKEND_URL || '';
@@ -111,9 +120,16 @@ const PropRow = memo(({ prop, isHighlighted, highlightRef, onVisionClick, gameLo
   // Whistle Matrix data
   const crewChief = prop.crew_chief;
   const refOuPct = prop.ref_ou_pct;
+  const refPpg = prop.ref_ppg;
   const whistleClass = prop.whistle_class;
   const hasWhistleModifier = prop.has_whistle_modifier;
   const whistleModifier = prop.whistle_modifier;
+  
+  // Point Lift (Vegas Intel)
+  const pointLift = prop.point_lift;
+  const liftLabel = prop.lift_label;
+  const liftType = prop.lift_type;
+  const foulRateDiff = prop.foul_rate_diff;
   
   // Stats from baseline or hit_rates (different API formats)
   // Format 1: prop.l5_avg, prop.l10_avg, prop.season_avg
@@ -210,26 +226,21 @@ const PropRow = memo(({ prop, isHighlighted, highlightRef, onVisionClick, gameLo
             INTEL
           </span>
         )}
-        {/* Whistle Matrix Badge */}
-        {crewChief && (
-          <span className={`px-1.5 py-0.5 text-[8px] font-semibold rounded-full flex items-center gap-0.5 ${
+        {/* Vegas Intel - Officiating Impact Badge */}
+        {crewChief && hasWhistleModifier && (
+          <span className={`px-1.5 py-0.5 text-[8px] font-semibold rounded-full flex items-center gap-1 ${
             whistleClass === 'high_whistle' 
-              ? 'bg-green-500/20 text-green-400' 
+              ? 'bg-gradient-to-r from-amber-500/20 to-yellow-500/10 text-amber-400 border border-amber-500/30' 
               : whistleClass === 'low_whistle'
-                ? 'bg-red-500/20 text-red-400'
+                ? 'bg-gradient-to-r from-blue-500/20 to-cyan-500/10 text-blue-400 border border-blue-500/30'
                 : 'bg-zinc-700/50 text-zinc-400'
-          }`} data-testid="whistle-badge">
-            <Volume2 className="w-2.5 h-2.5" />
-            Ref: {crewChief.split(' ').pop()} {/* Last name only */}
-            {refOuPct != null && <span className="ml-0.5">({refOuPct}% Over)</span>}
-            {hasWhistleModifier && whistleModifier !== 0 && (
-              <>
-                <Volume2 className={`w-2.5 h-2.5 ml-1 ${whistleModifier > 0 ? 'text-green-300' : 'text-red-300'}`} />
-                <span className={`font-bold ${whistleModifier > 0 ? 'text-green-300' : 'text-red-300'}`}>
-                  {whistleModifier > 0 ? '+' : ''}{whistleModifier}
-                </span>
-              </>
+          }`} data-testid="vegas-intel-badge">
+            {whistleClass === 'high_whistle' ? (
+              <GoldWhistleIcon className="w-3 h-3" />
+            ) : (
+              <Snowflake className="w-3 h-3" />
             )}
+            <span>{liftLabel || `${pointLift > 0 ? '+' : ''}${pointLift} PTS`}</span>
           </span>
         )}
       </div>

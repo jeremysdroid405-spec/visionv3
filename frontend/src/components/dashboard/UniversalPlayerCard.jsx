@@ -35,11 +35,20 @@
 import React, { memo, useCallback, useState } from 'react';
 import { 
   Target, Shield, ChevronRight, Plus, ChevronDown,
-  Crosshair, TrendingUp, HeartPulse, Lock, Flame, TrendingDown, Info, Volume2
+  Crosshair, TrendingUp, HeartPulse, Lock, Flame, TrendingDown, Info, Volume2, Snowflake, Scale
 } from 'lucide-react';
 import { Badge } from '../ui/badge';
 import { DemonIcon, GoblinIcon } from './Icons';
 import IntelligenceModal from './IntelligenceModal';
+
+// Gold Whistle Icon for High Whistle refs
+const GoldWhistleIcon = ({ className }) => (
+  <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <circle cx="12" cy="12" r="3" fill="#FFD700" stroke="#FFD700"/>
+    <path d="M12 9V4M12 4L9 7M12 4L15 7" stroke="#FFD700"/>
+    <ellipse cx="12" cy="15" rx="5" ry="3" stroke="#FFD700"/>
+  </svg>
+);
 
 // ==================== TEAM LOGOS (FALLBACK) ====================
 const TEAM_LOGOS = {
@@ -546,10 +555,16 @@ const UniversalPlayerCard = memo(({
     // Whistle Matrix
     crew_chief,
     ref_ou_pct,
+    ref_ppg,
     whistle_class,
     has_whistle_modifier,
     whistle_modifier,
-    ferrari_power_score
+    ferrari_power_score,
+    // Point Lift (Vegas Intel)
+    point_lift,
+    lift_label,
+    lift_type,
+    foul_rate_diff
   } = player;
   
   const displayName = player_name || name;
@@ -717,40 +732,57 @@ const UniversalPlayerCard = memo(({
           </div>
         </div>
         
-        {/* Whistle Matrix - Show referee info if available */}
+        {/* Vegas Intel - Officiating Impact Section */}
         {crew_chief && (
-          <div className={`flex items-center justify-between mt-1 px-2 py-1 rounded text-[9px] ${
+          <div className={`mt-1.5 rounded-lg overflow-hidden ${
             whistle_class === 'high_whistle' 
-              ? 'bg-green-500/10 border border-green-500/30' 
+              ? 'bg-gradient-to-r from-amber-500/10 to-amber-600/5 border border-amber-500/30' 
               : whistle_class === 'low_whistle'
-                ? 'bg-red-500/10 border border-red-500/30'
-                : 'bg-zinc-800/50'
-          }`} data-testid="whistle-matrix-badge">
-            <div className="flex items-center gap-1.5">
-              <Volume2 className={`w-3 h-3 ${
-                whistle_class === 'high_whistle' ? 'text-green-400' : 
-                whistle_class === 'low_whistle' ? 'text-red-400' : 'text-zinc-500'
-              }`} />
-              <span className="text-zinc-400">
-                Ref: {crew_chief}
-              </span>
-              {ref_ou_pct != null && (
-                <span className={`font-medium ${
-                  whistle_class === 'high_whistle' ? 'text-green-400' : 
-                  whistle_class === 'low_whistle' ? 'text-red-400' : 'text-zinc-400'
-                }`}>
-                  ({ref_ou_pct}% Over)
-                </span>
+                ? 'bg-gradient-to-r from-blue-500/10 to-blue-600/5 border border-blue-500/30'
+                : 'bg-zinc-800/50 border border-zinc-700/50'
+          }`} data-testid="vegas-intel-section">
+            {/* Header */}
+            <div className={`flex items-center gap-1.5 px-2 py-1 text-[9px] font-bold ${
+              whistle_class === 'high_whistle' ? 'text-amber-400' :
+              whistle_class === 'low_whistle' ? 'text-blue-400' : 'text-zinc-500'
+            }`}>
+              <Scale className="w-3 h-3" />
+              OFFICIATING IMPACT
+              {/* Whistle Icon next to Ferrari Score indicator */}
+              {has_whistle_modifier && (
+                whistle_class === 'high_whistle' 
+                  ? <GoldWhistleIcon className="w-3 h-3 ml-auto" />
+                  : <Snowflake className="w-3 h-3 ml-auto text-blue-400" />
               )}
             </div>
-            {has_whistle_modifier && whistle_modifier !== 0 && (
-              <div className="flex items-center gap-1">
-                <Volume2 className={`w-3 h-3 ${whistle_modifier > 0 ? 'text-green-400' : 'text-red-400'}`} />
-                <span className={`font-bold ${whistle_modifier > 0 ? 'text-green-400' : 'text-red-400'}`}>
-                  {whistle_modifier > 0 ? '+' : ''}{whistle_modifier}
+            {/* Content */}
+            <div className="px-2 pb-1.5 space-y-0.5">
+              <div className="flex items-center justify-between text-[9px]">
+                <span className="text-zinc-400">Lead Official: <span className="text-zinc-300">{crew_chief}</span></span>
+              </div>
+              <div className="flex items-center justify-between text-[9px]">
+                <span className="text-zinc-500">
+                  Trend: <span className={whistle_class === 'high_whistle' ? 'text-amber-400' : whistle_class === 'low_whistle' ? 'text-blue-400' : 'text-zinc-400'}>
+                    {ref_ou_pct != null ? `${ref_ou_pct}% Over` : 'N/A'}
+                  </span>
+                  {ref_ppg != null && <span className="text-zinc-600"> | {ref_ppg} PPG</span>}
                 </span>
               </div>
-            )}
+              {lift_label && lift_type !== 'neutral' && (
+                <div className="flex items-center justify-between text-[9px] pt-0.5">
+                  <span className={`font-bold ${
+                    lift_type === 'boost' ? 'text-amber-400' : 'text-blue-400'
+                  }`}>
+                    Impact: {lift_label}
+                  </span>
+                  {foul_rate_diff !== 0 && (
+                    <span className="text-zinc-600 text-[8px]" title={`This official calls shooting fouls at a ${Math.abs(foul_rate_diff)}% ${foul_rate_diff > 0 ? 'higher' : 'lower'} rate than league average`}>
+                      {foul_rate_diff > 0 ? '+' : ''}{foul_rate_diff}% foul rate
+                    </span>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         )}
         

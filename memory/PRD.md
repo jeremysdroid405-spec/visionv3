@@ -3,7 +3,55 @@
 ## Overview
 PropVision is a sports analytics platform for NBA player props, providing data-driven insights for betting decisions.
 
-## Latest Update (2026-04-02): Feature 5 - Dynamic Whistle Matrix
+## Latest Update (2026-04-02): Point Lift Translation (Vegas Intel)
+
+### Feature Description
+Implemented "Point Lift" translation layer that converts the raw Whistle Matrix modifier (+15/-15) into human-readable projected stat boosts/ceilings.
+
+### Point Lift Formula
+```
+Point_Lift = (Ref_PPG_Avg - League_PPG_Avg) * (Player_Usage_Rate / Team_Usage_Avg)
+
+If usage unavailable, use flat defaults:
+- PTS: ±3.5 points
+- FTM: ±1.5 free throws
+- PRA: ±2.5 combined stats
+```
+
+### Vegas Intel UI Component
+**Header**: ⚖️ OFFICIATING IMPACT
+
+**Content**:
+- Lead Official: [Ref Name]
+- Trend: [O/U %] Over | [PPG] Avg
+- Impact: [+3.5 Projected PTS Boost] or [-3.5 Projected PTS Ceiling]
+
+**Visual Indicators**:
+- 🥇 Gold Whistle Icon: High whistle ref (PPG > 118 OR O/U > 60%)
+- ❄️ Blue Snowflake Icon: Low whistle ref (PPG < 113 OR O/U < 45%)
+
+### API Response Fields (Added)
+```json
+{
+  "point_lift": 3.5,
+  "lift_label": "+3.5 Projected PTS Boost",
+  "lift_type": "boost",
+  "foul_rate_diff": 3
+}
+```
+
+### Tooltip Context
+"This official calls shooting fouls at a [X]% higher/lower rate than league average, historically increasing/decreasing the scoring ceiling for high-usage players."
+
+### Files Modified
+- `/app/backend/services/referee_scraper_service.py` (Added `calculate_point_lift()` method)
+- `/app/backend/services/ferrari_tier_service.py` (Integrated Point Lift into scored props)
+- `/app/frontend/src/components/dashboard/UniversalPlayerCard.jsx` (Vegas Intel UI section)
+- `/app/frontend/src/components/dashboard/PlayerDetailPage.jsx` (Vegas Intel badge)
+
+---
+
+## Previous Update (2026-04-02): Feature 5 - Dynamic Whistle Matrix
 
 ### Feature Description
 Integrated daily NBA referee assignments and stats into the Ferrari Power Score calculation to account for referee-driven scoring variance.
