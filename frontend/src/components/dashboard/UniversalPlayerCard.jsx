@@ -35,7 +35,7 @@
 import React, { memo, useCallback, useState } from 'react';
 import { 
   Target, Shield, ChevronRight, Plus, ChevronDown,
-  Crosshair, TrendingUp, HeartPulse, Lock, Flame, TrendingDown, Info
+  Crosshair, TrendingUp, HeartPulse, Lock, Flame, TrendingDown, Info, Volume2
 } from 'lucide-react';
 import { Badge } from '../ui/badge';
 import { DemonIcon, GoblinIcon } from './Icons';
@@ -542,7 +542,14 @@ const UniversalPlayerCard = memo(({
     // Game status (for locking)
     is_locked,
     game_status,
-    minutes_since_start
+    minutes_since_start,
+    // Whistle Matrix
+    crew_chief,
+    ref_ou_pct,
+    whistle_class,
+    has_whistle_modifier,
+    whistle_modifier,
+    ferrari_power_score
   } = player;
   
   const displayName = player_name || name;
@@ -709,6 +716,40 @@ const UniversalPlayerCard = memo(({
             </div>
           </div>
         </div>
+        
+        {/* Whistle Matrix - Show referee info if available */}
+        {crew_chief && (
+          <div className={`flex items-center justify-between mt-1 px-2 py-1 rounded text-[9px] ${
+            whistle_class === 'high_whistle' 
+              ? 'bg-green-500/10 border border-green-500/30' 
+              : whistle_class === 'low_whistle'
+                ? 'bg-red-500/10 border border-red-500/30'
+                : 'bg-zinc-800/50'
+          }`} data-testid="whistle-matrix-badge">
+            <div className="flex items-center gap-1.5">
+              <Volume2 className={`w-3 h-3 ${
+                whistle_class === 'high_whistle' ? 'text-green-400' : 
+                whistle_class === 'low_whistle' ? 'text-red-400' : 'text-zinc-500'
+              }`} />
+              <span className="text-zinc-400">
+                {crew_chief}
+              </span>
+              {ref_ou_pct != null && (
+                <span className={`font-medium ${
+                  whistle_class === 'high_whistle' ? 'text-green-400' : 
+                  whistle_class === 'low_whistle' ? 'text-red-400' : 'text-zinc-400'
+                }`}>
+                  ({ref_ou_pct}% Over)
+                </span>
+              )}
+            </div>
+            {has_whistle_modifier && whistle_modifier !== 0 && (
+              <span className={`font-bold ${whistle_modifier > 0 ? 'text-green-400' : 'text-red-400'}`}>
+                {whistle_modifier > 0 ? '+' : ''}{whistle_modifier}
+              </span>
+            )}
+          </div>
+        )}
         
         {/* Quick Add Button */}
         {onQuickAdd && !is_locked && (

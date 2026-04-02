@@ -10,7 +10,7 @@ import React, { useState, useCallback, useMemo, useRef, memo, useEffect } from '
 import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
 import { 
-  ArrowLeft, Target, Zap, Crosshair, Plus
+  ArrowLeft, Target, Zap, Crosshair, Plus, Volume2
 } from 'lucide-react';
 import { DemonIcon, GoblinIcon } from './Icons';
 import { STAT_CATEGORIES, getCategoryKey, TEAM_LOGOS, BACKEND_URL } from './constants';
@@ -108,6 +108,13 @@ const PropRow = memo(({ prop, isHighlighted, highlightRef, onVisionClick, gameLo
   const direction = (prop.direction || 'over').toUpperCase();
   const statType = prop.stat_type || prop.market || '';
   
+  // Whistle Matrix data
+  const crewChief = prop.crew_chief;
+  const refOuPct = prop.ref_ou_pct;
+  const whistleClass = prop.whistle_class;
+  const hasWhistleModifier = prop.has_whistle_modifier;
+  const whistleModifier = prop.whistle_modifier;
+  
   // Stats from baseline or hit_rates (different API formats)
   // Format 1: prop.l5_avg, prop.l10_avg, prop.season_avg
   // Format 2: prop.hit_rates.l5.avg, prop.hit_rates.l10.avg, prop.hit_rates.season.avg
@@ -201,6 +208,25 @@ const PropRow = memo(({ prop, isHighlighted, highlightRef, onVisionClick, gameLo
           <span className="px-1.5 py-0.5 text-[8px] font-semibold bg-amber-500/20 text-amber-400 rounded-full flex items-center gap-0.5">
             <Zap className="w-2.5 h-2.5" />
             INTEL
+          </span>
+        )}
+        {/* Whistle Matrix Badge */}
+        {crewChief && (
+          <span className={`px-1.5 py-0.5 text-[8px] font-semibold rounded-full flex items-center gap-0.5 ${
+            whistleClass === 'high_whistle' 
+              ? 'bg-green-500/20 text-green-400' 
+              : whistleClass === 'low_whistle'
+                ? 'bg-red-500/20 text-red-400'
+                : 'bg-zinc-700/50 text-zinc-400'
+          }`} data-testid="whistle-badge">
+            <Volume2 className="w-2.5 h-2.5" />
+            {crewChief.split(' ').pop()} {/* Last name only */}
+            {refOuPct != null && <span className="ml-0.5">({refOuPct}%)</span>}
+            {hasWhistleModifier && whistleModifier !== 0 && (
+              <span className={`ml-1 font-bold ${whistleModifier > 0 ? 'text-green-300' : 'text-red-300'}`}>
+                {whistleModifier > 0 ? '+' : ''}{whistleModifier}
+              </span>
+            )}
           </span>
         )}
       </div>

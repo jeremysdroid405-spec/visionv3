@@ -9,7 +9,7 @@ UNIVERSAL SCAN REQUIREMENT:
 - Complete field analysis before selection
 
 POWER SCORE FORMULA (0-100 scale):
-  ferrari_power_score = (Edge × 0.4) + (Cushion × 0.3) + (Consistency × 0.3)
+  ferrari_power_score = (Edge × 0.4) + (Cushion × 0.3) + (Consistency × 0.3) + Whistle_Modifier
   
   Edge Weight (40%):
     = (Bovada_Implied_Prob - PrizePicks_Implied_Prob) × 4
@@ -19,6 +19,10 @@ POWER SCORE FORMULA (0-100 scale):
     
   Consistency Weight (30%):
     = L10_Hit_Rate (0-100 scale)
+    
+  WHISTLE MATRIX MODIFIER:
+    Green Light (+15 PTS/FTM, +7.5 PRA): High whistle crew (PPG > 118 OR O/U > 60%)
+    Red Light (-15 PTS/FTM, -7.5 PRA): Low whistle crew (PPG < 113 OR O/U < 45%)
 
 GLOBAL SORT:
   - Sort ALL survivors by ferrari_power_score DESC
@@ -185,11 +189,12 @@ def calculate_mean(values: List[float]) -> Optional[float]:
 
 class FerrariTierService:
     """
-    Ferrari v6 Pipeline - Global Power Ranking
+    Ferrari v6 Pipeline - Global Power Ranking + Whistle Matrix
     
     Features:
     - 100% Universal Scan (no early breaks)
     - Power Score ranking for ALL survivors
+    - Whistle Matrix modifier based on crew chief stats
     - Bulk write operations
     - Indexed ferrari_power_score for fast sorting
     - Market Intel verification footer
@@ -206,6 +211,27 @@ class FerrariTierService:
         self.ferrari_war_zone = db.ferrari_war_zone
         self.ferrari_discarded = db.ferrari_discarded
         self.ferrari_scored = db.ferrari_scored
+        
+        # Referee service for Whistle Matrix
+        self._referee_service = None
+    
+    def _get_referee_service(self):
+        """Lazy-load the referee scraper service."""
+        if self._referee_service is None:
+            from services.referee_scraper_service import get_referee_service
+            self._referee_service = get_referee_service(self.db)
+        return self._referee_service
+    
+    async def _sync_referee_data(self) -> Dict[str, Any]:
+        """Sync referee assignments and stats before pipeline run."""
+        try:
+            ref_service = self._get_referee_service()
+            result = await ref_service.sync_all()
+            logger.info(f"[v6] Referee sync: {result.get('stats_count', 0)} refs, {result.get('assignments_count', 0)} games")
+            return result
+        except Exception as e:
+            logger.warning(f"[v6] Referee sync failed (non-fatal): {e}")
+            return {"success": False, "error": str(e)}
     
     async def _ensure_indexes(self):
         """Create index on ferrari_power_score for fast sorting."""
@@ -304,23 +330,24 @@ class FerrariTierService:
     
     async def build_ferrari_tiers(self, sync_time: datetime) -> Dict[str, Any]:
         """
-        Execute Ferrari v6 Pipeline - Global Power Ranking
+        Execute Ferrari v6 Pipeline - Global Power Ranking + Whistle Matrix
         
-        1. Universal Scan (100% coverage)
-        2. Power Score calculation for ALL survivors
-        3. Bulk write to scored collection
-        4. Global sort by power_score
-        5. Deduplication with tier priority
-        6. Top-K selection
+        1. Sync referee data (Whistle Matrix)
+        2. Universal Scan (100% coverage)
+        3. Power Score calculation + Whistle Modifier for ALL survivors
+        4. Bulk write to scored collection
+        5. Global sort by power_score
+        6. Deduplication with tier priority
+        7. Top-K selection
         """
         logger.info("=" * 70)
-        logger.info("[FERRARI v6] GLOBAL POWER RANKING PIPELINE")
+        logger.info("[FERRARI v6] GLOBAL POWER RANKING + WHISTLE MATRIX")
         logger.info("=" * 70)
         
         results = {
             "success": True,
             "synced_at": sync_time.isoformat(),
-            "pipeline": "Ferrari v6",
+            "pipeline": "Ferrari v6 + Whistle Matrix",
             "universal_scan": {
                 "total_props_scanned": 0,
                 "players_processed": 0
@@ -336,6 +363,13 @@ class FerrariTierService:
                 "safe_haven_pool": 0,
                 "front_lines_pool": 0,
                 "war_zone_pool": 0
+            },
+            "whistle_matrix": {
+                "refs_synced": 0,
+                "games_with_refs": 0,
+                "green_light_applied": 0,
+                "red_light_applied": 0,
+                "neutral": 0
             },
             "output": {
                 "safe_haven": 0,
@@ -353,6 +387,15 @@ class FerrariTierService:
         try:
             # Ensure indexes exist
             await self._ensure_indexes()
+            
+            # =================================================================
+            # PHASE 0: WHISTLE MATRIX - Sync Referee Data
+            # =================================================================
+            logger.info("[PHASE 0] WHISTLE MATRIX - Syncing referee data...")
+            ref_service = self._get_referee_service()
+            ref_sync_result = await self._sync_referee_data()
+            results["whistle_matrix"]["refs_synced"] = ref_sync_result.get("stats_count", 0)
+            results["whistle_matrix"]["games_with_refs"] = ref_sync_result.get("assignments_count", 0)
             
             # =================================================================
             # PHASE 1: UNIVERSAL SCAN - Load ALL Data (No Limits)
@@ -458,12 +501,46 @@ class FerrariTierService:
                     
                     consistency_component = calculate_consistency_component(l10_rate)
                     
-                    # POWER SCORE
-                    power_score = calculate_power_score(
+                    # BASE POWER SCORE
+                    base_power_score = calculate_power_score(
                         edge_component,
                         cushion_component,
                         consistency_component
                     )
+                    
+                    # ---------------------------------------------------------
+                    # WHISTLE MATRIX MODIFIER
+                    # ---------------------------------------------------------
+                    team_abbrev = player.get("team", "")
+                    ref_info = ref_service.get_ref_for_team(team_abbrev)
+                    
+                    whistle_modifier = 0.0
+                    whistle_class = "neutral"
+                    crew_chief = None
+                    ref_ou_pct = None
+                    ref_ppg = None
+                    
+                    if ref_info:
+                        crew_chief = ref_info.get("crew_chief")
+                        ref_ou_pct = ref_info.get("ou_pct")
+                        ref_ppg = ref_info.get("ppg")
+                        whistle_class = ref_info.get("whistle_class", "neutral")
+                        
+                        # Calculate modifier based on stat type
+                        whistle_modifier = ref_service.calculate_whistle_modifier(stat_type, whistle_class)
+                        
+                        # Track modifier applications
+                        if whistle_class == "high_whistle" and whistle_modifier > 0:
+                            results["whistle_matrix"]["green_light_applied"] += 1
+                        elif whistle_class == "low_whistle" and whistle_modifier < 0:
+                            results["whistle_matrix"]["red_light_applied"] += 1
+                        else:
+                            results["whistle_matrix"]["neutral"] += 1
+                    
+                    # FINAL POWER SCORE with Whistle Modifier
+                    power_score = round(base_power_score + whistle_modifier, 2)
+                    # Cap at 0-115 range (base max 100 + max modifier 15)
+                    power_score = max(0, min(power_score, 115))
                     
                     # Determine tier
                     if effective_sharp <= SAFE_HAVEN_MAX:
@@ -517,7 +594,15 @@ class FerrariTierService:
                         "edge_component": round(edge_component, 2),
                         "cushion_component": round(cushion_component, 2),
                         "consistency_component": round(consistency_component, 2),
+                        "whistle_modifier": round(whistle_modifier, 1),
+                        "base_power_score": round(base_power_score, 2),
                         "ferrari_power_score": power_score,
+                        # WHISTLE MATRIX INFO
+                        "crew_chief": crew_chief,
+                        "ref_ou_pct": round(ref_ou_pct, 1) if ref_ou_pct else None,
+                        "ref_ppg": round(ref_ppg, 1) if ref_ppg else None,
+                        "whistle_class": whistle_class,
+                        "has_whistle_modifier": whistle_modifier != 0,
                         # Metrics
                         "separation_pct": round(separation, 1),
                         "line_delta": round(line_delta, 1),

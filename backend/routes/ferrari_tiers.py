@@ -5,12 +5,14 @@ API endpoints for the "Best of the Best" Ferrari-filtered picks.
 
 Uses Bovada separation as the primary sharp benchmark.
 Global 15% kill-switch ensures only elite plays are visible.
+Whistle Matrix applies referee-based modifiers to power scores.
 """
 from fastapi import APIRouter, HTTPException, Query, Response
 from typing import Dict, Any
 import logging
 
 from services.ferrari_tier_service import get_ferrari_tier_service
+from services.referee_scraper_service import get_referee_service
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["Ferrari Tiers"])
@@ -119,15 +121,94 @@ async def rebuild_ferrari_tiers():
     Manually trigger a rebuild of all Ferrari tiers.
     
     Reads from cached_board and applies:
-    1. Global 15% separation kill-switch
-    2. Tier-specific classification
-    3. Top 10 sorting per tier
+    1. Whistle Matrix sync (referee data)
+    2. Global 15% separation kill-switch
+    3. Power Score + Whistle Modifier calculation
+    4. Top 10 sorting per tier
     """
     from datetime import datetime, timezone
     
     service = get_service()
     result = await service.build_ferrari_tiers(datetime.now(timezone.utc))
     return result
+
+
+@router.post("/v3/ferrari/sync-refs")
+async def sync_referee_data():
+    """
+    Manually sync referee assignments and stats.
+    
+    Fetches:
+    - Daily assignments from official.nba.com
+    - Referee O/U and PPG stats from Covers.com
+    
+    Returns whistle classifications for today's crews.
+    """
+    if _db is None:
+        raise HTTPException(status_code=500, detail="Database not initialized")
+    
+    ref_service = get_referee_service(_db)
+    result = await ref_service.sync_all()
+    return result
+
+
+@router.get("/v3/ferrari/refs")
+async def get_todays_refs(response: Response):
+    """
+    Get today's referee assignments with whistle classifications.
+    """
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    
+    if _db is None:
+        raise HTTPException(status_code=500, detail="Database not initialized")
+    
+    ref_service = get_referee_service(_db)
+    
+    # Return cached assignments - convert dict_values to list explicitly
+    assignments = list(ref_service.daily_assignments_cache.values()) if ref_service.daily_assignments_cache else []
+    
+    # Dedupe (same game appears for both teams)
+    seen_games = set()
+    unique_assignments = []
+    for a in assignments:
+        # Ensure a is a dict
+        if not isinstance(a, dict):
+            continue
+        game = a.get("game", "")
+        if game not in seen_games:
+            seen_games.add(game)
+            # Enrich with stats
+            crew_chief = a.get("crew_chief", "")
+            normalized = ref_service._normalize_ref_name(crew_chief)
+            stats = ref_service.referee_stats_cache.get(normalized, {})
+            # Build a clean dict without any non-serializable objects
+            unique_assignments.append({
+                "game": a.get("game"),
+                "away_team": a.get("away_team"),
+                "home_team": a.get("home_team"),
+                "crew_chief": a.get("crew_chief"),
+                "referee": a.get("referee"),
+                "umpire": a.get("umpire"),
+                "date": a.get("date"),
+                "ppg": stats.get("ppg"),
+                "ou_pct": stats.get("ou_pct"),
+                "whistle_class": stats.get("whistle_class", "neutral")
+            })
+    
+    # Get date safely
+    date_str = None
+    if ref_service.last_assignments_fetch:
+        try:
+            date_str = ref_service.last_assignments_fetch.strftime("%Y-%m-%d")
+        except Exception:
+            date_str = None
+    
+    return {
+        "date": date_str,
+        "assignments": unique_assignments,
+        "total_refs_in_cache": len(ref_service.referee_stats_cache) if ref_service.referee_stats_cache else 0,
+        "total_games": len(unique_assignments)
+    }
 
 
 @router.get("/v3/ferrari/all")
