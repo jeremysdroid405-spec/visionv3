@@ -40,6 +40,7 @@ import {
 import { Badge } from '../ui/badge';
 import { DemonIcon, GoblinIcon } from './Icons';
 import IntelligenceModal from './IntelligenceModal';
+import { MomentumTrackerCompact } from './MomentumTracker';
 
 // Gold Whistle Icon for High Whistle refs
 const GoldWhistleIcon = ({ className }) => (
@@ -505,7 +506,7 @@ const UniversalPlayerCard = memo(({
   // Intelligence Modal state
   const [intelligenceModal, setIntelligenceModal] = useState({
     isOpen: false,
-    type: null, // 'hook_risk' | 'suspect_bait' | 'officiating_impact' | 'usage_vacuum'
+    type: null, // 'hook_risk' | 'suspect_bait' | 'officiating_impact' | 'usage_vacuum' | 'defensive_momentum'
   });
   
   // Officiating Impact modal handler
@@ -523,6 +524,15 @@ const UniversalPlayerCard = memo(({
     setIntelligenceModal({
       isOpen: true,
       type: 'usage_vacuum'
+    });
+  }, []);
+  
+  // Defensive Momentum modal handler
+  const handleMomentumClick = useCallback((e) => {
+    e?.stopPropagation();
+    setIntelligenceModal({
+      isOpen: true,
+      type: 'defensive_momentum'
     });
   }, []);
   
@@ -586,7 +596,13 @@ const UniversalPlayerCard = memo(({
     // Usage Vacuum
     has_vacuum_modifier,
     vacuum_modifier,
-    vacuum_data
+    vacuum_data,
+    // Defensive Momentum
+    has_momentum_modifier,
+    momentum_modifier,
+    momentum_data,
+    // Opponent
+    opponent_abbr
   } = player;
   
   const displayName = player_name || name;
@@ -849,6 +865,16 @@ const UniversalPlayerCard = memo(({
           </div>
         )}
         
+        {/* Defensive Momentum Tracker Card - Clickable for details */}
+        {momentum_data && (
+          <MomentumTrackerCompact
+            momentumData={momentum_data}
+            opponent={opponent || opponent_abbr}
+            statType={stat_type}
+            onClick={handleMomentumClick}
+          />
+        )}
+        
         {/* Quick Add Button */}
         {onQuickAdd && !is_locked && (
           <button
@@ -888,6 +914,17 @@ const UniversalPlayerCard = memo(({
           statType={stat_type}
           line={line}
           vacuumData={vacuum_data}
+        />
+        
+        {/* Intelligence Modal for Defensive Momentum */}
+        <IntelligenceModal
+          isOpen={intelligenceModal.isOpen && intelligenceModal.type === 'defensive_momentum'}
+          onClose={() => setIntelligenceModal({ isOpen: false, type: null })}
+          type="defensive_momentum"
+          playerName={displayName}
+          statType={stat_type}
+          line={line}
+          momentumData={momentum_data}
         />
       </div>
     );

@@ -22,13 +22,14 @@ const GoldWhistleIcon = ({ className }) => (
 const IntelligenceModal = ({ 
   isOpen, 
   onClose, 
-  type, // 'hook_risk' | 'suspect_bait' | 'officiating_impact' | 'usage_vacuum'
+  type, // 'hook_risk' | 'suspect_bait' | 'officiating_impact' | 'usage_vacuum' | 'defensive_momentum'
   playerName,
   statType,
   line,
   sidecarData, // { median, mode, mode_frequency_pct, std_dev, hook_warning, bait_warning }
   whistleData,  // { crew_chief, ref_ou_pct, ref_ppg, whistle_class, lift_label, point_lift, foul_rate_diff }
-  vacuumData   // { injured_player, injured_team, injured_usage, beneficiary_rank, usage_bump, modifier, reason }
+  vacuumData,   // { injured_player, injured_team, injured_usage, beneficiary_rank, usage_bump, modifier, reason }
+  momentumData  // { season_rank, l10_rank, l5_rank, composite_rank, momentum, trend_alert, is_elite, is_weak }
 }) => {
   if (!isOpen) return null;
 
@@ -36,6 +37,7 @@ const IntelligenceModal = ({
   const isBait = type === 'suspect_bait';
   const isOfficiating = type === 'officiating_impact';
   const isVacuum = type === 'usage_vacuum';
+  const isMomentum = type === 'defensive_momentum';
 
   // Educational content based on badge type
   const getContent = () => {
@@ -365,6 +367,115 @@ const IntelligenceModal = ({
       };
     }
 
+    // Defensive Momentum Modal Content
+    if (isMomentum && momentumData) {
+      const isElite = momentumData.is_elite;
+      const isWeak = momentumData.is_weak;
+      const modifier = momentumData.modifier || 0;
+      const momentum = momentumData.momentum || 'stable';
+      
+      const getRankColor = (rank) => {
+        if (rank <= 5) return 'text-red-400';
+        if (rank <= 10) return 'text-orange-400';
+        if (rank <= 20) return 'text-yellow-400';
+        return 'text-green-400';
+      };
+      
+      return {
+        icon: (
+          <svg className={`w-6 h-6 ${isElite ? 'text-red-400' : isWeak ? 'text-green-400' : 'text-cyan-400'}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+          </svg>
+        ),
+        title: "Defensive Momentum",
+        subtitle: isElite ? "Elite Defense - Difficult Matchup" : isWeak ? "Weak Defense - Favorable Matchup" : "Average Defense",
+        color: isElite ? "red" : isWeak ? "green" : "cyan",
+        bgGradient: isElite ? "from-red-950/90 to-zinc-900" : isWeak ? "from-green-950/90 to-zinc-900" : "from-cyan-950/90 to-zinc-900",
+        borderColor: isElite ? "border-red-500/30" : isWeak ? "border-green-500/30" : "border-cyan-500/30",
+        explanation: (
+          <>
+            <p className="text-zinc-300 text-sm leading-relaxed mb-4">
+              The <span className={isElite ? 'text-red-400' : isWeak ? 'text-green-400' : 'text-cyan-400'}>Defensive Momentum</span> system 
+              uses a <span className="text-white font-semibold">weighted composite</span> of season-long, last 10 games, and last 5 games 
+              defensive rankings to assess how a team's defense is <span className={momentum === 'improving' ? 'text-green-400' : momentum === 'regressing' ? 'text-red-400' : 'text-zinc-300'}>
+              {momentum === 'improving' ? 'improving' : momentum === 'regressing' ? 'regressing' : 'performing'}</span>.
+            </p>
+            <div className="bg-zinc-800/50 rounded-lg p-3 mb-4">
+              <div className="text-xs text-zinc-500 uppercase tracking-wide mb-2">The Formula</div>
+              <div className="text-cyan-400 font-mono text-sm">
+                Composite = (Season × 50%) + (L10 × 35%) + (L5 × 15%)
+              </div>
+              <p className="text-zinc-400 text-xs mt-2">
+                This weighting balances long-term defensive identity with recent form,
+                while giving extra emphasis to the most recent 5-game sample.
+              </p>
+            </div>
+          </>
+        ),
+        specificData: (
+          <div className={`${isElite ? 'bg-red-950/30 border-red-500/20' : isWeak ? 'bg-green-950/30 border-green-500/20' : 'bg-cyan-950/30 border-cyan-500/20'} border rounded-lg p-3`}>
+            <div className={`text-xs ${isElite ? 'text-red-400/70' : isWeak ? 'text-green-400/70' : 'text-cyan-400/70'} uppercase tracking-wide mb-2`}>Rank Breakdown</div>
+            <div className="space-y-2 text-sm">
+              <div className="flex justify-between items-center">
+                <span className="text-zinc-400">Season Rank</span>
+                <span className="flex items-center gap-2">
+                  <span className="text-zinc-500 text-xs">50%</span>
+                  <span className={`font-bold ${getRankColor(momentumData.season_rank)}`}>#{momentumData.season_rank}</span>
+                </span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-zinc-400">Last 10 Games</span>
+                <span className="flex items-center gap-2">
+                  <span className="text-zinc-500 text-xs">35%</span>
+                  <span className={`font-bold ${getRankColor(momentumData.l10_rank)}`}>#{momentumData.l10_rank}</span>
+                </span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-zinc-400">Last 5 Games</span>
+                <span className="flex items-center gap-2">
+                  <span className="text-zinc-500 text-xs">15%</span>
+                  <span className={`font-bold ${getRankColor(momentumData.l5_rank)}`}>#{momentumData.l5_rank}</span>
+                </span>
+              </div>
+              <div className="pt-2 border-t border-zinc-700/50">
+                <div className="flex justify-between items-center">
+                  <span className="text-white font-medium">Composite Rank</span>
+                  <span className={`text-lg font-bold ${getRankColor(Math.round(momentumData.composite_rank))}`}>
+                    #{Math.round(momentumData.composite_rank)}
+                  </span>
+                </div>
+              </div>
+              {modifier !== 0 && (
+                <div className="pt-2 border-t border-zinc-700/50">
+                  <div className="flex justify-between items-center">
+                    <span className="text-zinc-400">Ferrari Modifier</span>
+                    <span className={`font-bold ${modifier > 0 ? 'text-green-400' : 'text-red-400'}`}>
+                      {modifier > 0 ? '+' : ''}{modifier} pts
+                    </span>
+                  </div>
+                  <div className="text-[10px] text-zinc-500 mt-1">
+                    {modifier < 0 ? 'Penalty applied for elite defense (ranks 1-5)' : 'Boost applied for weak defense (ranks 25-30)'}
+                  </div>
+                </div>
+              )}
+              {momentumData.trend_alert && (
+                <div className={`mt-2 px-2 py-1.5 rounded ${momentum === 'improving' ? 'bg-green-500/10 border border-green-500/30' : 'bg-amber-500/10 border border-amber-500/30'}`}>
+                  <span className={`text-xs ${momentum === 'improving' ? 'text-green-300' : 'text-amber-300'}`}>
+                    {momentumData.trend_alert}
+                  </span>
+                </div>
+              )}
+            </div>
+          </div>
+        ),
+        recommendation: isElite 
+          ? `This is a difficult matchup against an elite defense (Composite #${Math.round(momentumData.composite_rank)}). The -15 penalty reflects the increased difficulty for Over props.`
+          : isWeak
+            ? `Favorable matchup against a weak defense (Composite #${Math.round(momentumData.composite_rank)}). The +15 boost reflects the easier path to hitting Over props.`
+            : `Neutral defensive matchup (Composite #${Math.round(momentumData.composite_rank)}). No significant adjustment needed for this opponent.`
+      };
+    }
+
     return null;
   };
 
@@ -455,6 +566,9 @@ const IntelligenceModal = ({
                 ${isBait ? 'from-red-600 to-red-700 hover:from-red-500 hover:to-red-600' : ''}
                 ${isOfficiating ? 'from-zinc-600 to-zinc-700 hover:from-zinc-500 hover:to-zinc-600' : ''}
                 ${isVacuum ? 'from-orange-600 to-orange-700 hover:from-orange-500 hover:to-orange-600' : ''}
+                ${isMomentum && momentumData?.is_elite ? 'from-red-600 to-red-700 hover:from-red-500 hover:to-red-600' : ''}
+                ${isMomentum && momentumData?.is_weak ? 'from-green-600 to-green-700 hover:from-green-500 hover:to-green-600' : ''}
+                ${isMomentum && !momentumData?.is_elite && !momentumData?.is_weak ? 'from-cyan-600 to-cyan-700 hover:from-cyan-500 hover:to-cyan-600' : ''}
                 text-white
                 transition-all duration-200
                 shadow-lg

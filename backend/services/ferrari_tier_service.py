@@ -375,6 +375,12 @@ class FerrariTierService:
                 "active_vacuums": 0,
                 "beneficiaries_boosted": 0
             },
+            "defensive_momentum": {
+                "teams_profiled": 0,
+                "elite_matchups": 0,
+                "weak_matchups": 0,
+                "trend_alerts": 0
+            },
             "output": {
                 "safe_haven": 0,
                 "front_lines": 0,
@@ -410,6 +416,16 @@ class FerrariTierService:
             await vacuum_service.sync_star_profiles()
             vacuum_check = await vacuum_service.check_injuries()
             results["usage_vacuum"]["active_vacuums"] = len(vacuum_check.get("vacuums_triggered", []))
+            
+            # =================================================================
+            # PHASE 0.6: DEFENSIVE MOMENTUM - Build Rankings
+            # =================================================================
+            logger.info("[PHASE 0.6] DEFENSIVE MOMENTUM - Building rankings...")
+            from services.defensive_momentum_service import get_momentum_service
+            momentum_service = get_momentum_service(self.db)
+            await momentum_service.ensure_cache()
+            momentum_status = await momentum_service.get_status()
+            results["defensive_momentum"]["teams_profiled"] = momentum_status.get("teams_cached", 0)
             
             # =================================================================
             # PHASE 1: UNIVERSAL SCAN - Load ALL Data (No Limits)
@@ -570,10 +586,31 @@ class FerrariTierService:
                     if vacuum_modifier > 0:
                         results["usage_vacuum"]["beneficiaries_boosted"] = results.get("usage_vacuum", {}).get("beneficiaries_boosted", 0) + 1
                     
-                    # FINAL POWER SCORE with Whistle Modifier + Vacuum Modifier
-                    power_score = round(base_power_score + whistle_modifier + vacuum_modifier, 2)
-                    # Cap at 0-130 range (base max 100 + whistle 15 + vacuum 15)
-                    power_score = max(0, min(power_score, 130))
+                    # ---------------------------------------------------------
+                    # DEFENSIVE MOMENTUM MODIFIER
+                    # ---------------------------------------------------------
+                    opponent = player.get("opponent") or player.get("opponent_abbr")
+                    momentum_modifier = 0.0
+                    momentum_data = None
+                    
+                    if opponent:
+                        momentum_modifier, momentum_data = momentum_service.calculate_momentum_modifier(
+                            opponent,
+                            stat_type
+                        )
+                        
+                        if momentum_data:
+                            if momentum_data.get("is_elite"):
+                                results["defensive_momentum"]["elite_matchups"] += 1
+                            elif momentum_data.get("is_weak"):
+                                results["defensive_momentum"]["weak_matchups"] += 1
+                            if momentum_data.get("trend_alert"):
+                                results["defensive_momentum"]["trend_alerts"] += 1
+                    
+                    # FINAL POWER SCORE with all modifiers
+                    power_score = round(base_power_score + whistle_modifier + vacuum_modifier + momentum_modifier, 2)
+                    # Cap at 0-145 range (base max 100 + whistle 15 + vacuum 15 + momentum 15)
+                    power_score = max(0, min(power_score, 145))
                     
                     # Determine tier
                     if effective_sharp <= SAFE_HAVEN_MAX:
@@ -645,6 +682,10 @@ class FerrariTierService:
                         "vacuum_modifier": round(vacuum_modifier, 1),
                         "has_vacuum_modifier": vacuum_modifier > 0,
                         "vacuum_data": vacuum_data,
+                        # DEFENSIVE MOMENTUM INFO
+                        "momentum_modifier": round(momentum_modifier, 1),
+                        "has_momentum_modifier": momentum_modifier != 0,
+                        "momentum_data": momentum_data,
                         # Metrics
                         "separation_pct": round(separation, 1),
                         "line_delta": round(line_delta, 1),
