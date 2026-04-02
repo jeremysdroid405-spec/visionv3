@@ -676,8 +676,18 @@ const UniversalPlayerCard = memo(({
           )}
         </div>
         
-        {/* DvP Matchup Badge - shows when opponent matchup is favorable or poor */}
-        {player.dvp_label && player.dvp_rank && (
+        {/* Defensive Momentum Tracker - replaces old DvP badge */}
+        {momentum_data && (
+          <MomentumTrackerCompact
+            momentumData={momentum_data}
+            opponent={opponent || opponent_abbr}
+            statType={stat_type}
+            onClick={handleMomentumClick}
+          />
+        )}
+        
+        {/* Legacy DvP fallback - only show if no momentum data */}
+        {!momentum_data && player.dvp_label && player.dvp_rank && (
           <div className="flex items-center gap-1.5 text-[9px] mt-1">
             <span className="text-zinc-500">vs {player.opponent}</span>
             <span className={`px-1.5 py-0.5 rounded ${
@@ -863,16 +873,6 @@ const UniversalPlayerCard = memo(({
               </div>
             </div>
           </div>
-        )}
-        
-        {/* Defensive Momentum Tracker Card - Clickable for details */}
-        {momentum_data && (
-          <MomentumTrackerCompact
-            momentumData={momentum_data}
-            opponent={opponent || opponent_abbr}
-            statType={stat_type}
-            onClick={handleMomentumClick}
-          />
         )}
         
         {/* Quick Add Button */}
