@@ -489,7 +489,8 @@ const UniversalPlayerCard = memo(({
   showStats = true,
   showProps = true,
   sectionColor = 'green',  // Section color for locked overlay
-  forceTheme = null        // Force a specific theme (e.g., 'FRONT_LINE' for yellow cards)
+  forceTheme = null,       // Force a specific theme (e.g., 'FRONT_LINE' for yellow cards)
+  isBoardPick = false      // Only true for the 30 props in War Zone, Safe Haven, Front Lines
 }) => {
   const [isExpanded, setIsExpanded] = useState(mode === 'full');
   
@@ -612,9 +613,8 @@ const UniversalPlayerCard = memo(({
     const isDemon = is_demon || tier_label === 'DEMON';
     const isGoblin = is_goblin || tier_label === 'GOBLIN' || tier_label === 'FRONT_LINE';
     
-    // Only board picks (with intel data) should be clickable to Vision Intel Suite
-    const hasIntelData = momentum_data || crew_chief || vacuum_data || has_whistle_modifier || has_vacuum_modifier || has_momentum_modifier;
-    const isClickable = hasIntelData && !is_locked;
+    // Only board picks (the 30 props in War Zone, Safe Haven, Front Lines) should be clickable
+    const isClickable = isBoardPick && !is_locked;
     
     return (
       <div 
@@ -722,8 +722,8 @@ const UniversalPlayerCard = memo(({
           </div>
         </div>
         
-        {/* Vision Intel Suite CTA - only show for board picks with intel data */}
-        {hasIntelData && (
+        {/* Vision Intel Suite CTA - only show for the 30 board picks */}
+        {isBoardPick && (
           <div className="mt-2 text-center">
             <span className="text-[10px] text-cyan-400 font-medium animate-pulse">
               Click for Vision Intel Suite

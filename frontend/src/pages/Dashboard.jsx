@@ -463,6 +463,7 @@ const WarZoneSection = memo(({ picks, onPickClick, onQuickAdd, isLoading }) => {
               showProps={false}
               mode="compact"
               sectionColor="red"
+              isBoardPick={true}
             />
           </div>
         ))}
@@ -520,6 +521,7 @@ const SafeHavenSection = memo(({ picks, onPickClick, onQuickAdd, isLoading }) =>
               showProps={false}
               mode="compact"
               sectionColor="green"
+              isBoardPick={true}
             />
           </div>
         ))}
@@ -578,6 +580,7 @@ const FrontLinesSection = memo(({ picks, onPickClick, onQuickAdd, isLoading }) =
               mode="compact"
               sectionColor="yellow"
               forceTheme="FRONT_LINE"
+              isBoardPick={true}
             />
           </div>
         ))}
@@ -1465,6 +1468,7 @@ const Dashboard = () => {
                             mode="compact"
                             sectionColor={sectionColor}
                             forceTheme={forceTheme}
+                            isBoardPick={true}
                           />
                         </div>
                       );
