@@ -559,27 +559,7 @@ async def resolve_context_badges(engine, player_name: str, player_data: dict) ->
         except Exception as e:
             logger.debug(f"Static milestone check failed for {player_name}: {e}")
         
-        # If no static milestone, try BDL badge service for performance badges
-        if not milestone:
-            try:
-                from services.bdl_player_badge_service import get_bdl_badge_service
-                badge_service = get_bdl_badge_service(db)
-                badge_result = await badge_service.get_player_badges(player_name=player_name)
-                if badge_result and badge_result.get("badges"):
-                    # Add performance badges from BDL
-                    for bdl_badge in badge_result.get("badges", [])[:3]:  # Limit to top 3
-                        badges.append({
-                            "badge_key": bdl_badge.get("badge_key"),
-                            "display": bdl_badge.get("display"),
-                            "icon": bdl_badge.get("icon"),
-                            "color": bdl_badge.get("color"),
-                            "description": bdl_badge.get("description"),
-                            "severity": 6,
-                            "stat_label": bdl_badge.get("stat_label")
-                        })
-            except Exception as e:
-                logger.debug(f"BDL badge check failed for {player_name}: {e}")
-        
+        # ===== 2. MILESTONE: Career milestone tracking (static data) =====
         if milestone:
             badges.append({
                 "badge_key": "milestone",
@@ -832,7 +812,8 @@ async def resolve_context_badges(engine, player_name: str, player_data: dict) ->
         except Exception as e:
             logger.debug(f"Distraction check failed for {player_name}: {e}")
         
-        # DEEP_WATER: Check injuries AND low minutes trend
+        # ===== 10. DEEP_WATER: Injuries ONLY (BDL SSOT) =====
+        # Only triggers from BDL injury data - no minutes-based logic
         bdl_injuries = db['bdl_injuries']
         injury = await bdl_injuries.find_one(
             {"player_name": {"$regex": f"^{player_name}$", "$options": "i"}},
@@ -859,59 +840,6 @@ async def resolve_context_badges(engine, player_name: str, player_data: dict) ->
                     "description": f"Status: {injury.get('status')}",
                     "severity": 6
                 })
-        
-        # Also check context_engine for deep_water flag (set by injury sync)
-        deep_water_flag = await context_engine.find_one(
-            {"player_name": {"$regex": f"^{player_name}$", "$options": "i"}, "deep_water": True},
-            {"_id": 0}
-        )
-        if deep_water_flag and "deep_water" not in [b["badge_key"] for b in badges]:
-            badges.append({
-                "badge_key": "deep_water",
-                "display": "Deep Water",
-                "icon": "HeartPulse",
-                "color": "#dc2626",
-                "description": deep_water_flag.get("deep_water_reason", "Health/injury concern"),
-                "severity": 10
-            })
-        
-        # DEEP_WATER: Also check for declining minutes (losing rotation spot)
-        if game_logs and len(game_logs) >= 5:
-            has_deep_water = "deep_water" in [b["badge_key"] for b in badges]
-            if not has_deep_water:
-                try:
-                    # Compare L5 minutes to season average minutes
-                    recent_mins = []
-                    for log in game_logs[:5]:
-                        mins = log.get("min", "0") or "0"
-                        if isinstance(mins, str) and ":" in mins:
-                            mins = int(mins.split(":")[0])
-                        else:
-                            try:
-                                mins = int(float(mins))
-                            except:
-                                mins = 0
-                        if mins > 0:  # Only count games they played
-                            recent_mins.append(mins)
-                    
-                    if len(recent_mins) >= 3:
-                        avg_recent = sum(recent_mins) / len(recent_mins)
-                        
-                        # Get season minutes from baseline_stats if available
-                        season_mins = baseline_stats.get("MIN", {}).get("season_avg") if baseline_stats else None
-                        
-                        # If L5 minutes < 20 AND season avg > 25, player is losing minutes
-                        if avg_recent < 20 and (season_mins is None or season_mins > 25):
-                            badges.append({
-                                "badge_key": "deep_water",
-                                "display": "Deep Water",
-                                "icon": "TrendingDown",
-                                "color": "#dc2626",
-                                "description": f"Minutes trending down (L5: {avg_recent:.0f} MPG)",
-                                "severity": 7
-                            })
-                except Exception as e:
-                    logger.debug(f"[BADGE] Deep water minutes check error: {e}")
         
         # Remove duplicate badges (keep first occurrence)
         seen = set()
