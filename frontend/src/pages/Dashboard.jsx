@@ -21,7 +21,7 @@ import { Badge } from '../components/ui/badge';
 import { Card } from '../components/ui/card';
 import { 
   Search, X, LogOut, Crown, User, Radio, AlertTriangle, Activity, 
-  ChevronRight, Eye, Zap, ChevronDown, Flame, ArrowLeft, Target,
+  ChevronRight, ChevronLeft, Eye, Zap, ChevronDown, Flame, ArrowLeft, Target,
   TrendingUp, Newspaper, Clock, Crosshair, Lock, Maximize2, Skull, ShieldAlert
 } from 'lucide-react';
 
@@ -685,10 +685,20 @@ const TrapCard = memo(({ pick, onClick }) => {
 });
 
 // The Minefield Section Component (formerly Trap Graveyard)
-const TrapGraveyardSection = memo(({ picks, boardStats, onPickClick, isLoading, totalTrapped }) => {
+const TrapGraveyardSection = memo(({ picks, boardStats, onPickClick, isLoading, totalTrapped, onBack }) => {
   if (isLoading) {
     return (
       <div className="mb-4">
+        <div className="flex items-center gap-3 mb-4">
+          <button
+            onClick={onBack}
+            className="flex items-center gap-1 px-3 py-1.5 text-sm text-zinc-400 hover:text-white bg-zinc-800 hover:bg-zinc-700 rounded-lg transition-colors"
+            data-testid="minefield-back-btn"
+          >
+            <ChevronLeft className="w-4 h-4" />
+            Back
+          </button>
+        </div>
         <SectionHeader 
           icon={<Skull className="w-4 h-4 text-red-400" />}
           title="THE MINEFIELD"
@@ -708,6 +718,16 @@ const TrapGraveyardSection = memo(({ picks, boardStats, onPickClick, isLoading, 
   if (!picks?.length) {
     return (
       <div className="mb-4">
+        <div className="flex items-center gap-3 mb-4">
+          <button
+            onClick={onBack}
+            className="flex items-center gap-1 px-3 py-1.5 text-sm text-zinc-400 hover:text-white bg-zinc-800 hover:bg-zinc-700 rounded-lg transition-colors"
+            data-testid="minefield-back-btn"
+          >
+            <ChevronLeft className="w-4 h-4" />
+            Back
+          </button>
+        </div>
         <SectionHeader 
           icon={<Skull className="w-4 h-4 text-red-400" />}
           title="THE MINEFIELD"
@@ -728,6 +748,16 @@ const TrapGraveyardSection = memo(({ picks, boardStats, onPickClick, isLoading, 
   
   return (
     <div className="mb-4" data-testid="minefield-section">
+      <div className="flex items-center gap-3 mb-4">
+        <button
+          onClick={onBack}
+          className="flex items-center gap-1 px-3 py-1.5 text-sm text-zinc-400 hover:text-white bg-zinc-800 hover:bg-zinc-700 rounded-lg transition-colors"
+          data-testid="minefield-back-btn"
+        >
+          <ChevronLeft className="w-4 h-4" />
+          Back
+        </button>
+      </div>
       <SectionHeader 
         icon={<Skull className="w-4 h-4 text-red-400" />}
         title="THE MINEFIELD"
@@ -1521,6 +1551,7 @@ const Dashboard = () => {
             onPickClick={handleTrapClick}
             isLoading={trapGraveyardLoading}
             totalTrapped={totalTrapped}
+            onBack={() => setActiveTab('main')}
           />
         )}
       </div>
