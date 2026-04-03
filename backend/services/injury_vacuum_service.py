@@ -10,12 +10,19 @@ Architecture:
 - MongoDB: injury_log collection for status history
 - Latency Goal: < 30 seconds from source update to Ferrari Score recalculation
 
+REACTIVE RE-SCANNING (v2.0):
+- When a player with usage > 20% is marked "OUT", triggers ReScanEvent
+- Redistributes minutes to next-man-up in rotation
+- Applies +15% to +25% usage multiplier to primary/secondary ball-handlers
+- Auto-promotes players to board if projected stat is >15% above line
+- Tags promoted players with "high_usage_advantage" badge
+
 Modifiers:
 - Primary Beneficiary: +15 points to Ferrari Score
 - Secondary Beneficiary: +10 points to Ferrari Score
 
 Author: PropVision AI
-Version: 1.0.0
+Version: 2.0.0
 """
 import asyncio
 import aiohttp
@@ -34,12 +41,23 @@ logger = logging.getLogger(__name__)
 # USAGE VACUUM CONSTANTS
 # =============================================================================
 
-# Star player threshold (Usage Rate > 25%)
-STAR_USAGE_THRESHOLD = 25.0
+# Star player threshold (Usage Rate > 20% for late scratch detection)
+STAR_USAGE_THRESHOLD = 20.0
+HIGH_USAGE_THRESHOLD = 25.0
 
 # Ferrari Score modifiers
 PRIMARY_BENEFICIARY_MODIFIER = 15.0
 SECONDARY_BENEFICIARY_MODIFIER = 10.0
+
+# Usage redistribution multipliers
+PRIMARY_USAGE_MULTIPLIER = 1.25  # +25% usage boost
+SECONDARY_USAGE_MULTIPLIER = 1.15  # +15% usage boost
+
+# Board promotion threshold (projected stat > 15% above line)
+BOARD_PROMOTION_THRESHOLD = 0.15
+
+# Late scratch window (120 minutes = 2 hours)
+LATE_SCRATCH_WINDOW_MINUTES = 120
 
 # Injury status triggers
 TRIGGER_STATUSES = ["OUT", "DOUBTFUL"]
@@ -105,28 +123,62 @@ STAR_USAGE_PROFILES = {
 }
 
 # Beneficiary mappings (who benefits when star is OUT)
-# Format: "injured_star": [("primary_beneficiary", usage_bump), ("secondary_beneficiary", usage_bump)]
+# Format: "injured_star": [("primary_beneficiary", usage_bump, minutes_bump), ("secondary_beneficiary", usage_bump, minutes_bump)]
+# Usage bump = percentage point increase, Minutes bump = additional minutes per game
 BENEFICIARY_MAPPINGS = {
-    "LeBron James": [("Anthony Davis", 5.2), ("Austin Reaves", 4.8)],
-    "Anthony Davis": [("LeBron James", 4.5), ("Austin Reaves", 3.8)],
-    "Kevin Durant": [("Devin Booker", 5.5), ("Bradley Beal", 4.2)],
-    "Devin Booker": [("Kevin Durant", 4.8), ("Bradley Beal", 3.5)],
-    "Joel Embiid": [("Tyrese Maxey", 6.2), ("Paul George", 4.5)],
-    "Tyrese Maxey": [("Joel Embiid", 3.8), ("Paul George", 3.2)],
-    "Giannis Antetokounmpo": [("Damian Lillard", 5.8), ("Khris Middleton", 4.2)],
-    "Damian Lillard": [("Giannis Antetokounmpo", 4.5), ("Khris Middleton", 3.5)],
-    "Jayson Tatum": [("Jaylen Brown", 5.5), ("Derrick White", 3.8)],
-    "Jaylen Brown": [("Jayson Tatum", 4.2), ("Derrick White", 3.5)],
-    "Shai Gilgeous-Alexander": [("Jalen Williams", 6.5), ("Chet Holmgren", 4.2)],
-    "Luka Doncic": [("Kyrie Irving", 6.8), ("PJ Washington", 3.5)],
-    "Stephen Curry": [("Andrew Wiggins", 5.2), ("Klay Thompson", 4.5)],
-    "Donovan Mitchell": [("Darius Garland", 5.8), ("Evan Mobley", 3.5)],
-    "Trae Young": [("Dejounte Murray", 5.5), ("Jalen Johnson", 4.2)],
-    "Ja Morant": [("Desmond Bane", 6.2), ("Jaren Jackson Jr.", 4.8)],
-    "Anthony Edwards": [("Karl-Anthony Towns", 4.5), ("Rudy Gobert", 2.8)],
-    "Jalen Brunson": [("Julius Randle", 5.2), ("RJ Barrett", 4.5)],
-    "Jimmy Butler": [("Bam Adebayo", 5.5), ("Tyler Herro", 4.8)],
-    "Kawhi Leonard": [("Paul George", 5.8), ("James Harden", 4.2)],
+    "LeBron James": [("Anthony Davis", 5.2, 4), ("Austin Reaves", 4.8, 6)],
+    "Anthony Davis": [("LeBron James", 4.5, 3), ("Austin Reaves", 3.8, 5)],
+    "Kevin Durant": [("Devin Booker", 5.5, 4), ("Bradley Beal", 4.2, 5)],
+    "Devin Booker": [("Kevin Durant", 4.8, 3), ("Bradley Beal", 3.5, 5)],
+    "Joel Embiid": [("Tyrese Maxey", 6.2, 4), ("Paul George", 4.5, 3)],
+    "Tyrese Maxey": [("Joel Embiid", 3.8, 2), ("Paul George", 3.2, 4)],
+    "Giannis Antetokounmpo": [("Damian Lillard", 5.8, 4), ("Khris Middleton", 4.2, 5)],
+    "Damian Lillard": [("Giannis Antetokounmpo", 4.5, 3), ("Khris Middleton", 3.5, 5)],
+    "Jayson Tatum": [("Jaylen Brown", 5.5, 4), ("Derrick White", 3.8, 5)],
+    "Jaylen Brown": [("Jayson Tatum", 4.2, 3), ("Derrick White", 3.5, 5)],
+    "Shai Gilgeous-Alexander": [("Jalen Williams", 6.5, 5), ("Chet Holmgren", 4.2, 4)],
+    "Luka Doncic": [("Kyrie Irving", 6.8, 4), ("PJ Washington", 3.5, 5)],
+    "Stephen Curry": [("Andrew Wiggins", 5.2, 4), ("Klay Thompson", 4.5, 3)],
+    "Donovan Mitchell": [("Darius Garland", 5.8, 4), ("Evan Mobley", 3.5, 4)],
+    "Trae Young": [("Dejounte Murray", 5.5, 4), ("Jalen Johnson", 4.2, 5)],
+    "Ja Morant": [("Desmond Bane", 6.2, 5), ("Jaren Jackson Jr.", 4.8, 3)],
+    "Anthony Edwards": [("Karl-Anthony Towns", 4.5, 3), ("Rudy Gobert", 2.8, 2)],
+    "Jalen Brunson": [("Julius Randle", 5.2, 3), ("RJ Barrett", 4.5, 5)],
+    "Jimmy Butler": [("Bam Adebayo", 5.5, 4), ("Tyler Herro", 4.8, 5)],
+    "Kawhi Leonard": [("Paul George", 5.8, 4), ("James Harden", 4.2, 3)],
+}
+
+# Player average stats for projection calculation (fallback data)
+PLAYER_AVG_STATS = {
+    "Anthony Davis": {"pts": 24.5, "ast": 3.2, "reb": 12.5, "pra": 40.2},
+    "Austin Reaves": {"pts": 15.8, "ast": 5.2, "reb": 4.3, "pra": 25.3},
+    "Devin Booker": {"pts": 27.2, "ast": 6.8, "reb": 4.5, "pra": 38.5},
+    "Bradley Beal": {"pts": 18.5, "ast": 5.2, "reb": 4.2, "pra": 27.9},
+    "Tyrese Maxey": {"pts": 25.5, "ast": 6.2, "reb": 3.8, "pra": 35.5},
+    "Paul George": {"pts": 22.8, "ast": 5.2, "reb": 5.8, "pra": 33.8},
+    "Damian Lillard": {"pts": 24.8, "ast": 7.2, "reb": 4.5, "pra": 36.5},
+    "Khris Middleton": {"pts": 15.2, "ast": 5.5, "reb": 4.8, "pra": 25.5},
+    "Jaylen Brown": {"pts": 23.5, "ast": 3.8, "reb": 5.5, "pra": 32.8},
+    "Derrick White": {"pts": 15.8, "ast": 5.2, "reb": 4.2, "pra": 25.2},
+    "Jalen Williams": {"pts": 20.2, "ast": 5.5, "reb": 5.8, "pra": 31.5},
+    "Chet Holmgren": {"pts": 16.5, "ast": 2.8, "reb": 8.2, "pra": 27.5},
+    "Kyrie Irving": {"pts": 25.5, "ast": 5.2, "reb": 5.0, "pra": 35.7},
+    "PJ Washington": {"pts": 12.5, "ast": 2.2, "reb": 7.2, "pra": 21.9},
+    "Andrew Wiggins": {"pts": 17.2, "ast": 2.8, "reb": 5.2, "pra": 25.2},
+    "Klay Thompson": {"pts": 17.8, "ast": 2.2, "reb": 3.8, "pra": 23.8},
+    "Darius Garland": {"pts": 21.5, "ast": 6.8, "reb": 2.8, "pra": 31.1},
+    "Evan Mobley": {"pts": 18.2, "ast": 3.2, "reb": 9.2, "pra": 30.6},
+    "Dejounte Murray": {"pts": 22.5, "ast": 6.5, "reb": 5.2, "pra": 34.2},
+    "Jalen Johnson": {"pts": 16.2, "ast": 3.8, "reb": 8.5, "pra": 28.5},
+    "Desmond Bane": {"pts": 23.2, "ast": 4.8, "reb": 4.5, "pra": 32.5},
+    "Jaren Jackson Jr.": {"pts": 22.5, "ast": 2.2, "reb": 5.8, "pra": 30.5},
+    "Karl-Anthony Towns": {"pts": 25.2, "ast": 3.2, "reb": 8.8, "pra": 37.2},
+    "Rudy Gobert": {"pts": 14.2, "ast": 1.5, "reb": 12.8, "pra": 28.5},
+    "Julius Randle": {"pts": 24.2, "ast": 5.2, "reb": 9.2, "pra": 38.6},
+    "RJ Barrett": {"pts": 19.5, "ast": 3.2, "reb": 5.5, "pra": 28.2},
+    "Bam Adebayo": {"pts": 19.8, "ast": 4.5, "reb": 10.2, "pra": 34.5},
+    "Tyler Herro": {"pts": 20.8, "ast": 4.8, "reb": 5.2, "pra": 30.8},
+    "James Harden": {"pts": 16.8, "ast": 8.5, "reb": 5.2, "pra": 30.5},
 }
 
 
@@ -212,7 +264,7 @@ class InjuryVacuumService:
     def _get_beneficiaries(self, injured_player: str) -> List[Dict]:
         """
         Get the top 2 beneficiaries for an injured star player.
-        Returns list of beneficiary dicts with name, usage_bump, and modifier.
+        Returns list of beneficiary dicts with name, usage_bump, minutes_bump, modifier, and projections.
         """
         normalized = self._normalize_player_name(injured_player)
         
@@ -220,17 +272,120 @@ class InjuryVacuumService:
         for star_name, beneficiaries in BENEFICIARY_MAPPINGS.items():
             if self._normalize_player_name(star_name) == normalized:
                 result = []
-                for i, (beneficiary_name, usage_bump) in enumerate(beneficiaries[:2]):
+                for i, beneficiary_data in enumerate(beneficiaries[:2]):
+                    beneficiary_name = beneficiary_data[0]
+                    usage_bump = beneficiary_data[1]
+                    minutes_bump = beneficiary_data[2] if len(beneficiary_data) > 2 else 4
+                    
                     modifier = PRIMARY_BENEFICIARY_MODIFIER if i == 0 else SECONDARY_BENEFICIARY_MODIFIER
+                    usage_multiplier = PRIMARY_USAGE_MULTIPLIER if i == 0 else SECONDARY_USAGE_MULTIPLIER
+                    
+                    # Calculate projected stats with usage boost
+                    projections = self._calculate_boosted_projections(beneficiary_name, usage_multiplier, minutes_bump)
+                    
                     result.append({
                         "name": beneficiary_name,
                         "usage_bump": usage_bump,
+                        "minutes_bump": minutes_bump,
                         "modifier": modifier,
-                        "rank": "primary" if i == 0 else "secondary"
+                        "rank": "primary" if i == 0 else "secondary",
+                        "usage_multiplier": usage_multiplier,
+                        "projections": projections,
+                        "high_usage_advantage": True,  # Badge flag
+                        "late_injury_boost": True
                     })
                 return result
         
         return []
+    
+    def _calculate_boosted_projections(self, player_name: str, usage_multiplier: float, minutes_bump: int) -> Dict[str, float]:
+        """
+        Calculate projected stats with usage boost applied.
+        
+        Uses the usage multiplier to increase projected stats:
+        - Primary beneficiary: +25% usage = ~15-20% stat increase
+        - Secondary beneficiary: +15% usage = ~10-12% stat increase
+        """
+        normalized = self._normalize_player_name(player_name)
+        
+        # Get base stats
+        base_stats = None
+        for name, stats in PLAYER_AVG_STATS.items():
+            if self._normalize_player_name(name) == normalized:
+                base_stats = stats
+                break
+        
+        if not base_stats:
+            # Fallback: use generic averages
+            base_stats = {"pts": 15.0, "ast": 3.5, "reb": 5.0, "pra": 23.5}
+        
+        # Calculate boost factor (usage multiplier affects stats proportionally but not 1:1)
+        # Typically 25% usage increase = ~15% stat increase
+        stat_boost_factor = 1 + ((usage_multiplier - 1) * 0.6)  # Dampen the boost slightly
+        
+        # Add minutes-based boost (more minutes = proportionally more stats)
+        # Assume average 32 mins/game, each additional minute adds ~3% stats
+        minutes_boost = 1 + (minutes_bump * 0.03)
+        
+        total_boost = stat_boost_factor * minutes_boost
+        
+        return {
+            "pts": round(base_stats.get("pts", 15) * total_boost, 1),
+            "ast": round(base_stats.get("ast", 3.5) * total_boost, 1),
+            "reb": round(base_stats.get("reb", 5) * total_boost, 1),
+            "pra": round(base_stats.get("pra", 23.5) * total_boost, 1),
+            "boost_percentage": round((total_boost - 1) * 100, 1)
+        }
+    
+    def check_board_promotion(self, beneficiary: Dict, current_lines: Dict[str, float] = None) -> Dict[str, Any]:
+        """
+        Check if a beneficiary should be promoted to the board.
+        
+        Promotion criteria: projected stat is >15% higher than current line.
+        
+        Args:
+            beneficiary: Beneficiary dict with projections
+            current_lines: Dict of current prop lines {stat_type: line_value}
+            
+        Returns:
+            Dict with promotion status and eligible props
+        """
+        projections = beneficiary.get("projections", {})
+        
+        if not current_lines:
+            # Default lines for testing (typical Vegas lines)
+            current_lines = {
+                "pts": projections.get("pts", 15) * 0.9,  # Assume line is ~90% of projection
+                "ast": projections.get("ast", 3.5) * 0.9,
+                "reb": projections.get("reb", 5) * 0.9,
+                "pra": projections.get("pra", 23.5) * 0.9
+            }
+        
+        eligible_props = []
+        
+        for stat_type, projected in projections.items():
+            if stat_type == "boost_percentage":
+                continue
+                
+            line = current_lines.get(stat_type, projected * 0.9)
+            
+            if line > 0:
+                edge = (projected - line) / line
+                
+                if edge >= BOARD_PROMOTION_THRESHOLD:
+                    eligible_props.append({
+                        "stat_type": stat_type.upper(),
+                        "projected": projected,
+                        "line": line,
+                        "edge_percentage": round(edge * 100, 1),
+                        "promote": True
+                    })
+        
+        return {
+            "should_promote": len(eligible_props) > 0,
+            "eligible_props": eligible_props,
+            "top_edge_stat": eligible_props[0] if eligible_props else None
+        }
     
     async def fetch_injury_report(self) -> List[Dict]:
         """
@@ -290,14 +445,20 @@ class InjuryVacuumService:
     
     async def check_injuries(self) -> Dict[str, Any]:
         """
-        Main injury check task.
-        Compares current status against cached state and triggers vacuum if needed.
+        Main injury check task with REACTIVE RE-SCANNING.
+        
+        When a player with usage > 20% is marked "OUT":
+        1. Triggers ReScanEvent for that team
+        2. Redistributes minutes and usage to beneficiaries
+        3. Calculates boosted projections
+        4. Checks for board promotion (projected > 15% above line)
+        5. Tags promoted players with "high_usage_advantage" badge
         
         Returns:
-            Dict with triggered vacuums and status changes.
+            Dict with triggered vacuums, board promotions, and status changes.
         """
         logger.info("=" * 60)
-        logger.info("[VACUUM SERVICE] CHECKING INJURIES")
+        logger.info("[VACUUM SERVICE] REACTIVE INJURY SCAN v2.0")
         logger.info("=" * 60)
         
         result = {
@@ -306,7 +467,9 @@ class InjuryVacuumService:
             "injuries_found": 0,
             "status_changes": [],
             "vacuums_triggered": [],
-            "beneficiaries": []
+            "beneficiaries": [],
+            "board_promotions": [],
+            "rescan_events": []
         }
         
         try:
@@ -318,6 +481,7 @@ class InjuryVacuumService:
             for injury in current_injuries:
                 player_name = injury.get("player_name", "")
                 current_status = injury.get("status", "").upper()
+                team = injury.get("team", "")
                 
                 # Get cached status
                 cached = self.injury_status_cache.get(player_name, {})
@@ -327,25 +491,55 @@ class InjuryVacuumService:
                 if current_status in TRIGGER_STATUSES and current_status != previous_status:
                     logger.info(f"[VacuumService] Status change: {player_name} -> {current_status}")
                     
-                    # Check if this is a star player
+                    # Check if this is a star player (usage > 20%)
                     is_star, star_profile = self._is_star_player(player_name)
                     
                     if is_star:
-                        logger.info(f"[VacuumService] STAR PLAYER OUT: {player_name} (Usage: {star_profile.get('usage_rate')}%)")
+                        usage_rate = star_profile.get("usage_rate", 0)
+                        logger.info(f"[VacuumService] *** LATE SCRATCH DETECTED ***")
+                        logger.info(f"[VacuumService] STAR PLAYER OUT: {player_name} (Usage: {usage_rate}%)")
                         
-                        # Get beneficiaries
+                        # TRIGGER RESCAN EVENT
+                        rescan_event = {
+                            "team": team,
+                            "triggered_by": player_name,
+                            "usage_rate": usage_rate,
+                            "triggered_at": datetime.now(timezone.utc).isoformat(),
+                            "event_type": "late_scratch_rescan"
+                        }
+                        result["rescan_events"].append(rescan_event)
+                        logger.info(f"[VacuumService] ReScanEvent triggered for team {team}")
+                        
+                        # Get beneficiaries with boosted projections
                         beneficiaries = self._get_beneficiaries(player_name)
                         
                         if beneficiaries:
+                            # Check for board promotions for each beneficiary
+                            for beneficiary in beneficiaries:
+                                promotion = self.check_board_promotion(beneficiary)
+                                
+                                if promotion.get("should_promote"):
+                                    beneficiary["board_promotion"] = promotion
+                                    result["board_promotions"].append({
+                                        "player_name": beneficiary.get("name"),
+                                        "injured_star": player_name,
+                                        "eligible_props": promotion.get("eligible_props", []),
+                                        "top_edge": promotion.get("top_edge_stat"),
+                                        "high_usage_advantage": True
+                                    })
+                                    logger.info(f"[VacuumService] BOARD PROMOTION: {beneficiary.get('name')} - {promotion.get('eligible_props')}")
+                            
                             vacuum_alert = {
                                 "injured_player": player_name,
-                                "team": injury.get("team"),
+                                "team": team,
                                 "status": current_status,
                                 "reason": injury.get("reason"),
-                                "usage_rate": star_profile.get("usage_rate"),
+                                "usage_rate": usage_rate,
                                 "beneficiaries": beneficiaries,
                                 "triggered_at": datetime.now(timezone.utc).isoformat(),
-                                "confirmed_at": datetime.now(timezone.utc).isoformat()
+                                "confirmed_at": datetime.now(timezone.utc).isoformat(),
+                                "is_late_scratch": True,
+                                "rescan_triggered": True
                             }
                             
                             # Store in active vacuums
@@ -362,7 +556,8 @@ class InjuryVacuumService:
                         "player": player_name,
                         "from": previous_status,
                         "to": current_status,
-                        "is_star": is_star
+                        "is_star": is_star,
+                        "team": team
                     })
                 
                 # Update cache
