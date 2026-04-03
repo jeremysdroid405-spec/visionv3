@@ -692,7 +692,7 @@ const TrapGraveyardSection = memo(({ picks, boardStats, onPickClick, isLoading, 
         <SectionHeader 
           icon={<Skull className="w-4 h-4 text-red-400" />}
           title="THE MINEFIELD"
-          subtitle="Loading flagged picks..."
+          subtitle="High risk lines flagged for deception"
           badgeText="LOADING..."
           badgeColor="red"
         />
@@ -711,7 +711,7 @@ const TrapGraveyardSection = memo(({ picks, boardStats, onPickClick, isLoading, 
         <SectionHeader 
           icon={<Skull className="w-4 h-4 text-red-400" />}
           title="THE MINEFIELD"
-          subtitle="All clear - no traps detected"
+          subtitle="High risk lines flagged for deception"
           badgeText="CLEAN"
           badgeColor="green"
         />
@@ -731,7 +731,7 @@ const TrapGraveyardSection = memo(({ picks, boardStats, onPickClick, isLoading, 
       <SectionHeader 
         icon={<Skull className="w-4 h-4 text-red-400" />}
         title="THE MINEFIELD"
-        subtitle="Picks we saved you from"
+        subtitle="High risk lines flagged for deception"
         badgeText={`${totalTrapped} TRAPS`}
         badgeColor="red"
       />
