@@ -3,7 +3,54 @@
 ## Overview
 PropVision is a sports analytics platform for NBA player props, providing data-driven insights for betting decisions.
 
-## Latest Update (2026-04-02): Optimized Sync Engine & Vision Intel Suite Consistency
+## Latest Update (2026-04-03): Defensive Momentum Calculation Fix (P0 Critical)
+
+### Issue Fixed
+**Problem**: Defensive Momentum rankings were mathematically inaccurate. OKC Thunder (best defense in NBA) was incorrectly ranked #3 instead of #1 because the service was using incorrect BDL API endpoints.
+
+**Root Cause**: The previous implementation queried `box_scores` endpoint and attempted manual point aggregation. The BDL API has a dedicated team defensive stats endpoint that wasn't being used.
+
+### Solution Implemented
+Updated `/app/backend/services/defensive_momentum_service.py` (v4.1) to use:
+
+1. **Season Rankings (50%)**: 
+   - Endpoint: `GET /team_season_averages/general?season=2025&season_type=regular&type=defense`
+   - Uses official `def_rating` and `def_rating_rank` fields
+
+2. **L10 Rankings (35%)**:
+   - Endpoint: `GET /games?team_ids[]={team_id}&per_page=15`
+   - Calculates avg points allowed from last 10 games
+
+3. **L5 Rankings (15%)**:
+   - Same endpoint, but avg of last 5 games only
+
+### Verified Results
+| Team | Season Rank | L10 Rank | L5 Rank | Composite | Is Elite |
+|------|-------------|----------|---------|-----------|----------|
+| OKC  | #1 (106.3)  | #1       | #1      | 1.0       | ✅ Yes   |
+| BOS  | #4 (111.8)  | #3       | #2      | 3.3       | ✅ Yes   |
+| DET  | #2 (108.8)  | #6       | #12     | 4.9       | ✅ Yes   |
+| HOU  | #6 (112.2)  | #4       | #3      | 4.9       | ✅ Yes   |
+
+### Formula Verified
+`Composite = (Season_Rank × 50%) + (L10_Rank × 35%) + (L5_Rank × 15%)`
+
+OKC: `(1 × 0.50) + (1 × 0.35) + (1 × 0.15) = 1.0` ✅
+
+### Ferrari Modifiers Working
+- **OKC (Elite #1)**: -15 penalty for Over props
+- **IND (Weak #25)**: +15 boost for Over props
+
+### Files Modified
+- `/app/backend/services/defensive_momentum_service.py` - Complete rewrite of data fetching logic
+
+### API Verified
+- `GET /api/v3/momentum/rankings/PTS` - Returns OKC as #1
+- `GET /api/v3/player-with-badges/{player}` - Returns correct momentum_data for players vs OKC
+
+---
+
+## Previous Update (2026-04-02): Optimized Sync Engine & Vision Intel Suite Consistency
 
 ### Feature Description
 Implemented a high-performance sync engine (`optimized_sync_engine.py`) that pre-caches ALL global data (standings, refs, momentum, vacuums) once at sync start, then enriches ALL 30 Elite picks with complete intel data in a single pass.

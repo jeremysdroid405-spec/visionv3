@@ -1,27 +1,25 @@
 """
-Defensive Momentum Service
-===========================
+Defensive Momentum Service v4.1
+================================
 Weighted Composite DvP scoring with momentum tracking.
 
 FORMULA: Composite_Rank = (Season_Rank * 0.50) + (L10_Rank * 0.35) + (L5_Rank * 0.15)
 
-MULTI-STAT PROXY LOGIC:
-- PTS/AST: Uses Points Allowed (offensive output correlates with scoring + assists)
-- REB: Uses Rebounds Allowed (missed shots = rebound opportunities)  
-- PRA/Combos: Uses Defensive Rating (overall defensive efficiency)
+Data Sources:
+- Season (50%): BDL /team_season_averages/general?type=defense → def_rating_rank
+- L10 (35%): Calculated from BDL /games endpoint → avg points allowed last 10 games
+- L5 (15%): Calculated from BDL /games endpoint → avg points allowed last 5 games
 
 Features:
-- Season, L10, L5 defensive rankings calculated from real game data
-- Weighted composite rank for more accurate matchup assessment
+- Accurate season defensive ratings from official BDL endpoint
+- L10, L5 rankings calculated from actual game scores (points allowed)
+- Weighted composite rank for accurate matchup assessment
 - Momentum tracking (improving vs regressing defenses)
 - Trend alerts when L5 significantly diverges from Season
 - Ferrari Score modifiers: Elite (1-5) = -15, Weak (25-30) = +15
-- Proxy transparency in UI tooltips
-
-Data Source: BallDontLie API box_scores endpoint
 
 Author: PropVision AI
-Version: 3.0.0
+Version: 4.1.0
 """
 import logging
 import os
@@ -56,13 +54,14 @@ COLLAPSE_THRESHOLD = 10  # L5 is 10+ ranks WORSE than Season = defense collapsin
 
 # API Config
 BDL_API_BASE = "https://api.balldontlie.io/nba/v1"
-BDL_BOX_SCORES = f"{BDL_API_BASE}/box_scores"
+BDL_TEAM_SEASON_AVERAGES = f"{BDL_API_BASE}/team_season_averages/general"
+BDL_GAMES = f"{BDL_API_BASE}/games"
 BDL_TIMEOUT = 30.0
 
 # Cache TTL
 MOMENTUM_CACHE_TTL_MINUTES = 60
 
-# Team ID mapping
+# Team ID mapping (BDL team IDs to abbreviations)
 BDL_TEAM_ID_MAP = {
     1: "ATL", 2: "BOS", 3: "BKN", 4: "CHA", 5: "CHI", 6: "CLE",
     7: "DAL", 8: "DEN", 9: "DET", 10: "GSW", 11: "HOU", 12: "IND",
@@ -71,46 +70,36 @@ BDL_TEAM_ID_MAP = {
     25: "POR", 26: "SAC", 27: "SAS", 28: "TOR", 29: "UTA", 30: "WAS"
 }
 
+# Reverse mapping: abbreviation -> team_id
+ABBREV_TO_ID = {v: k for k, v in BDL_TEAM_ID_MAP.items()}
+
 ALL_TEAMS = list(BDL_TEAM_ID_MAP.values())
 
 # =============================================================================
 # STAT TYPE TO PROXY MAPPING
 # =============================================================================
-# Determines which defensive metric to use for each stat type
 
 STAT_PROXY_MAP = {
-    # Scoring stats -> Points Allowed
-    "PTS": {"proxy": "PTS", "label": "Points Allowed", "description": "Opponent scoring output"},
-    "POINTS": {"proxy": "PTS", "label": "Points Allowed", "description": "Opponent scoring output"},
-    
-    # Assist stats -> Points Allowed (offensive flow correlates with assists)
-    "AST": {"proxy": "PTS", "label": "Points Allowed", "description": "Proxy: Using Points Allowed (offensive flow correlates with assists)"},
-    "ASSISTS": {"proxy": "PTS", "label": "Points Allowed", "description": "Proxy: Using Points Allowed (offensive flow correlates with assists)"},
-    
-    # Rebound stats -> Rebounds Allowed (missed shots = opportunities)
-    "REB": {"proxy": "REB", "label": "Rebound Opportunity", "description": "Rebounds allowed (more misses = more opportunities)"},
-    "REBOUNDS": {"proxy": "REB", "label": "Rebound Opportunity", "description": "Rebounds allowed (more misses = more opportunities)"},
-    
-    # Three-pointers -> Points Allowed (general offensive output)
-    "3PM": {"proxy": "PTS", "label": "Points Allowed", "description": "Proxy: Using Points Allowed for 3PM trend"},
-    "THREES": {"proxy": "PTS", "label": "Points Allowed", "description": "Proxy: Using Points Allowed for 3PM trend"},
-    
-    # Combo stats -> Defensive Rating (overall efficiency)
-    "PRA": {"proxy": "DRTG", "label": "Defensive Rating", "description": "Proxy: Using overall Defensive Rating for PRA trend"},
-    "P+R": {"proxy": "DRTG", "label": "Defensive Rating", "description": "Proxy: Using overall Defensive Rating for P+R trend"},
-    "P+A": {"proxy": "DRTG", "label": "Defensive Rating", "description": "Proxy: Using overall Defensive Rating for P+A trend"},
-    "R+A": {"proxy": "DRTG", "label": "Defensive Rating", "description": "Proxy: Using overall Defensive Rating for R+A trend"},
-    "PR": {"proxy": "DRTG", "label": "Defensive Rating", "description": "Proxy: Using overall Defensive Rating"},
-    "PA": {"proxy": "DRTG", "label": "Defensive Rating", "description": "Proxy: Using overall Defensive Rating"},
-    "RA": {"proxy": "DRTG", "label": "Defensive Rating", "description": "Proxy: Using overall Defensive Rating"},
-    
-    # Blocks/Steals -> Points Allowed (general defensive activity)
-    "BLK": {"proxy": "PTS", "label": "Points Allowed", "description": "Proxy: Using Points Allowed for defensive activity"},
-    "STL": {"proxy": "PTS", "label": "Points Allowed", "description": "Proxy: Using Points Allowed for defensive activity"},
+    "PTS": {"proxy": "DRTG", "label": "Defensive Rating", "description": "Team Defensive Rating (lower = better defense)"},
+    "POINTS": {"proxy": "DRTG", "label": "Defensive Rating", "description": "Team Defensive Rating (lower = better defense)"},
+    "AST": {"proxy": "DRTG", "label": "Defensive Rating", "description": "Proxy: Defensive Rating (offensive flow correlates with assists)"},
+    "ASSISTS": {"proxy": "DRTG", "label": "Defensive Rating", "description": "Proxy: Defensive Rating (offensive flow correlates with assists)"},
+    "REB": {"proxy": "DRTG", "label": "Defensive Rating", "description": "Proxy: Defensive Rating (overall defensive presence)"},
+    "REBOUNDS": {"proxy": "DRTG", "label": "Defensive Rating", "description": "Proxy: Defensive Rating (overall defensive presence)"},
+    "3PM": {"proxy": "DRTG", "label": "Defensive Rating", "description": "Proxy: Defensive Rating for 3PM trend"},
+    "THREES": {"proxy": "DRTG", "label": "Defensive Rating", "description": "Proxy: Defensive Rating for 3PM trend"},
+    "PRA": {"proxy": "DRTG", "label": "Defensive Rating", "description": "Proxy: Defensive Rating for PRA trend"},
+    "P+R": {"proxy": "DRTG", "label": "Defensive Rating", "description": "Proxy: Defensive Rating for P+R trend"},
+    "P+A": {"proxy": "DRTG", "label": "Defensive Rating", "description": "Proxy: Defensive Rating for P+A trend"},
+    "R+A": {"proxy": "DRTG", "label": "Defensive Rating", "description": "Proxy: Defensive Rating for R+A trend"},
+    "PR": {"proxy": "DRTG", "label": "Defensive Rating", "description": "Proxy: Defensive Rating"},
+    "PA": {"proxy": "DRTG", "label": "Defensive Rating", "description": "Proxy: Defensive Rating"},
+    "RA": {"proxy": "DRTG", "label": "Defensive Rating", "description": "Proxy: Defensive Rating"},
+    "BLK": {"proxy": "DRTG", "label": "Defensive Rating", "description": "Proxy: Defensive Rating for defensive activity"},
+    "STL": {"proxy": "DRTG", "label": "Defensive Rating", "description": "Proxy: Defensive Rating for defensive activity"},
 }
 
-# Default proxy for unknown stat types
-DEFAULT_PROXY = {"proxy": "PTS", "label": "Points Allowed", "description": "Default: Using Points Allowed"}
+DEFAULT_PROXY = {"proxy": "DRTG", "label": "Defensive Rating", "description": "Default: Using Defensive Rating"}
 
 
 # =============================================================================
@@ -118,7 +107,7 @@ DEFAULT_PROXY = {"proxy": "PTS", "label": "Points Allowed", "description": "Defa
 # =============================================================================
 
 class DefensiveMomentumProfile:
-    """Represents a team's defensive momentum profile for a specific stat."""
+    """Represents a team's defensive momentum profile."""
     
     def __init__(
         self,
@@ -128,14 +117,14 @@ class DefensiveMomentumProfile:
         l10_rank: int,
         l5_rank: int,
         composite_rank: float,
-        season_allowed: float,
-        l10_allowed: float,
-        l5_allowed: float,
-        momentum: str,  # "improving", "stable", "regressing"
+        season_def_rating: float,
+        l10_pts_allowed: float,
+        l5_pts_allowed: float,
+        momentum: str,
         trend_alert: Optional[str] = None,
-        proxy_type: Optional[str] = None,  # The proxy stat used (if different from stat_type)
-        proxy_label: Optional[str] = None,  # Human-readable proxy label
-        proxy_description: Optional[str] = None  # Explanation for tooltip
+        proxy_type: Optional[str] = None,
+        proxy_label: Optional[str] = None,
+        proxy_description: Optional[str] = None
     ):
         self.team = team
         self.stat_type = stat_type
@@ -143,9 +132,9 @@ class DefensiveMomentumProfile:
         self.l10_rank = l10_rank
         self.l5_rank = l5_rank
         self.composite_rank = composite_rank
-        self.season_allowed = season_allowed
-        self.l10_allowed = l10_allowed
-        self.l5_allowed = l5_allowed
+        self.season_def_rating = season_def_rating
+        self.l10_pts_allowed = l10_pts_allowed
+        self.l5_pts_allowed = l5_pts_allowed
         self.momentum = momentum
         self.trend_alert = trend_alert
         self.proxy_type = proxy_type
@@ -160,17 +149,20 @@ class DefensiveMomentumProfile:
             "l10_rank": self.l10_rank,
             "l5_rank": self.l5_rank,
             "composite_rank": round(self.composite_rank, 1),
-            "season_allowed": round(self.season_allowed, 1) if self.season_allowed else None,
-            "l10_allowed": round(self.l10_allowed, 1) if self.l10_allowed else None,
-            "l5_allowed": round(self.l5_allowed, 1) if self.l5_allowed else None,
+            "season_def_rating": round(self.season_def_rating, 1) if self.season_def_rating else None,
+            "l10_pts_allowed": round(self.l10_pts_allowed, 1) if self.l10_pts_allowed else None,
+            "l5_pts_allowed": round(self.l5_pts_allowed, 1) if self.l5_pts_allowed else None,
+            # Backward compatibility
+            "season_allowed": round(self.season_def_rating, 1) if self.season_def_rating else None,
+            "l10_allowed": round(self.l10_pts_allowed, 1) if self.l10_pts_allowed else None,
+            "l5_allowed": round(self.l5_pts_allowed, 1) if self.l5_pts_allowed else None,
             "momentum": self.momentum,
             "trend_alert": self.trend_alert,
             "is_elite": self.composite_rank <= ELITE_RANK_MAX,
             "is_weak": self.composite_rank >= WEAK_RANK_MIN
         }
         
-        # Add proxy info if using a different stat type
-        if self.proxy_type and self.proxy_type != self.stat_type:
+        if self.proxy_type:
             result["using_proxy"] = True
             result["proxy_type"] = self.proxy_type
             result["proxy_label"] = self.proxy_label
@@ -187,10 +179,12 @@ class DefensiveMomentumProfile:
 
 class DefensiveMomentumService:
     """
-    Service for calculating weighted composite DvP rankings with momentum tracking.
+    Service for calculating weighted composite defensive rankings with momentum tracking.
     
-    Uses BallDontLie box_scores API to get game-by-game results and calculate
-    how many points each team allows over different time windows (Season, L10, L5).
+    Data Sources:
+    - Season (50%): BDL /team_season_averages/general?type=defense → def_rating_rank
+    - L10 (35%): Calculated from /games endpoint → avg points allowed last 10 games
+    - L5 (15%): Calculated from /games endpoint → avg points allowed last 5 games
     """
     
     def __init__(self, db):
@@ -201,158 +195,152 @@ class DefensiveMomentumService:
         self._cache: Dict[str, Dict[str, DefensiveMomentumProfile]] = {}
         self._cache_updated_at: Optional[datetime] = None
         self._is_building = False
-        self._game_data: Dict[str, List[Dict]] = {}  # {team: [games]}
+        self._season_data: Dict[str, Dict] = {}
+        self._game_data: Dict[str, List[Dict]] = {}
     
     def _get_api_key(self) -> Optional[str]:
         """Get BallDontLie API key from environment."""
         return os.environ.get("BALLDONTLIE_API_KEY") or os.environ.get("BDL_API_KEY")
     
-    async def _fetch_box_scores(self, start_date: str, end_date: str) -> List[Dict]:
+    async def _fetch_season_defensive_ratings(self, season: int = 2025) -> Dict[str, Dict]:
         """
-        Fetch box scores from BallDontLie API for a date range.
+        Fetch official team defensive ratings from BDL team_season_averages endpoint.
         
-        Args:
-            start_date: YYYY-MM-DD format
-            end_date: YYYY-MM-DD format
-            
+        Endpoint: GET /team_season_averages/general?season=2025&season_type=regular&type=defense
+        
         Returns:
-            List of game data with scores
+            {team_abbrev: {def_rating: float, def_rating_rank: int, games_played: int}}
         """
         api_key = self._get_api_key()
         if not api_key:
             logger.warning("[Momentum] No BDL API key found")
-            return []
+            return {}
         
-        all_games = []
+        team_data = {}
         
         try:
-            # Parse dates
-            start = datetime.strptime(start_date, "%Y-%m-%d").date()
-            end = datetime.strptime(end_date, "%Y-%m-%d").date()
-            
             async with httpx.AsyncClient(timeout=BDL_TIMEOUT) as client:
                 headers = {"Authorization": api_key}
+                params = {
+                    "season": season,
+                    "season_type": "regular",
+                    "type": "defense"
+                }
                 
-                # Fetch in batches of 7 days
-                current = start
-                while current <= end:
-                    batch_end = min(current + timedelta(days=6), end)
+                response = await client.get(
+                    BDL_TEAM_SEASON_AVERAGES,
+                    params=params,
+                    headers=headers
+                )
+                
+                if response.status_code != 200:
+                    logger.error(f"[Momentum] BDL team_season_averages failed: {response.status_code}")
+                    logger.error(f"[Momentum] Response: {response.text[:500]}")
+                    return {}
+                
+                data = response.json()
+                teams = data.get("data", [])
+                
+                logger.info(f"[Momentum] Received {len(teams)} teams from season averages endpoint")
+                
+                for team_entry in teams:
+                    team_info = team_entry.get("team", {})
+                    abbrev = team_info.get("abbreviation")
+                    stats = team_entry.get("stats", {})
                     
-                    # Fetch each day in the batch
-                    for day_offset in range((batch_end - current).days + 1):
-                        fetch_date = current + timedelta(days=day_offset)
-                        date_str = fetch_date.strftime("%Y-%m-%d")
-                        
-                        cursor = None
-                        for page in range(10):  # Max 10 pages per day
-                            params = {"date": date_str, "per_page": 100}
-                            if cursor:
-                                params["cursor"] = cursor
-                            
-                            response = await client.get(
-                                BDL_BOX_SCORES,
-                                params=params,
-                                headers=headers
-                            )
-                            
-                            if response.status_code != 200:
-                                logger.debug(f"[Momentum] BDL API returned {response.status_code} for {date_str}")
-                                break
-                            
-                            data = response.json()
-                            games = data.get("data", [])
-                            all_games.extend(games)
-                            
-                            meta = data.get("meta", {})
-                            next_cursor = meta.get("next_cursor")
-                            
-                            if not next_cursor or len(games) == 0:
-                                break
-                            cursor = next_cursor
+                    if not abbrev:
+                        continue
                     
-                    current = batch_end + timedelta(days=1)
-                    
-                    # Rate limit between batches
-                    await asyncio.sleep(0.1)
-                    
-            logger.info(f"[Momentum] Fetched {len(all_games)} games from {start_date} to {end_date}")
-            return all_games
-            
+                    team_data[abbrev] = {
+                        "def_rating": stats.get("def_rating", 115.0),
+                        "def_rating_rank": stats.get("def_rating_rank", 15),
+                        "games_played": stats.get("gp", 0)
+                    }
+                
+                logger.info(f"[Momentum] Parsed season defensive ratings for {len(team_data)} teams")
+                
         except Exception as e:
-            logger.error(f"[Momentum] Error fetching box scores: {e}")
+            logger.error(f"[Momentum] Error fetching season defensive ratings: {e}")
             import traceback
             logger.error(traceback.format_exc())
+        
+        return team_data
+    
+    async def _fetch_team_games(self, team_id: int, per_page: int = 15) -> List[Dict]:
+        """
+        Fetch recent games for a specific team.
+        
+        Returns list of games sorted by date descending.
+        """
+        api_key = self._get_api_key()
+        if not api_key:
+            return []
+        
+        try:
+            async with httpx.AsyncClient(timeout=BDL_TIMEOUT) as client:
+                headers = {"Authorization": api_key}
+                params = {
+                    "seasons[]": 2025,
+                    "team_ids[]": team_id,
+                    "per_page": per_page
+                }
+                
+                response = await client.get(
+                    BDL_GAMES,
+                    params=params,
+                    headers=headers
+                )
+                
+                if response.status_code != 200:
+                    logger.warning(f"[Momentum] Games fetch failed for team {team_id}: {response.status_code}")
+                    return []
+                
+                data = response.json()
+                games = data.get("data", [])
+                
+                # Filter for final games and sort by date descending
+                final_games = [g for g in games if g.get("status") == "Final"]
+                final_games.sort(key=lambda x: x.get("date", ""), reverse=True)
+                
+                return final_games
+                
+        except Exception as e:
+            logger.error(f"[Momentum] Error fetching games for team {team_id}: {e}")
             return []
     
-    def _process_games_to_defensive_stats(self, games: List[Dict]) -> Dict[str, List[Dict]]:
+    def _calculate_pts_allowed_from_games(self, games: List[Dict], team_id: int, limit: int) -> float:
         """
-        Process box score games into per-team defensive stats.
+        Calculate average points allowed from a list of games.
         
-        For each game, each team's defense is measured by what the OPPONENT scored.
-        
-        Returns:
-            {team_abbrev: [{date, pts_allowed, ...}, ...]}
+        For each game:
+        - If team is home: pts_allowed = visitor_team_score
+        - If team is visitor: pts_allowed = home_team_score
         """
-        team_games = defaultdict(list)
+        if not games:
+            return 115.0  # League average default
         
-        for game in games:
-            if game.get("status") != "Final":
-                continue
-                
-            date = game.get("date")
-            home_team = game.get("home_team", {})
-            visitor_team = game.get("visitor_team", {})
-            
-            home_abbrev = home_team.get("abbreviation")
-            visitor_abbrev = visitor_team.get("abbreviation")
-            
+        pts_allowed_list = []
+        
+        for game in games[:limit]:
+            home_team_id = game.get("home_team", {}).get("id")
             home_score = game.get("home_team_score", 0)
             visitor_score = game.get("visitor_team_score", 0)
             
-            if not home_abbrev or not visitor_abbrev:
-                continue
-            
-            # Home team allowed visitor_score points (home team's defense)
-            team_games[home_abbrev].append({
-                "date": date,
-                "pts_allowed": visitor_score,
-                "opponent": visitor_abbrev
-            })
-            
-            # Visitor team allowed home_score points (visitor team's defense)
-            team_games[visitor_abbrev].append({
-                "date": date,
-                "pts_allowed": home_score,
-                "opponent": home_abbrev
-            })
+            if home_team_id == team_id:
+                # Team is home, allowed visitor score
+                pts_allowed_list.append(visitor_score)
+            else:
+                # Team is visitor, allowed home score
+                pts_allowed_list.append(home_score)
         
-        # Sort each team's games by date descending
-        for team in team_games:
-            team_games[team] = sorted(
-                team_games[team],
-                key=lambda g: g.get("date", ""),
-                reverse=True
-            )
-        
-        return dict(team_games)
-    
-    def _calculate_avg_allowed(self, games: List[Dict], limit: Optional[int] = None) -> float:
-        """Calculate average points allowed over N games."""
-        if not games:
-            return 115.0  # Default avg
-        
-        subset = games[:limit] if limit else games
-        values = [g.get("pts_allowed", 0) for g in subset]
-        
-        if not values:
+        if not pts_allowed_list:
             return 115.0
         
-        return sum(values) / len(values)
+        return sum(pts_allowed_list) / len(pts_allowed_list)
     
-    def _rank_teams_by_stat(self, team_values: Dict[str, float]) -> Dict[str, int]:
+    def _rank_teams_by_value(self, team_values: Dict[str, float]) -> Dict[str, int]:
         """
-        Rank teams by allowed points.
-        Lower allowed = better defense = rank 1.
+        Rank teams by value (lower = better = rank 1).
         """
         sorted_teams = sorted(team_values.items(), key=lambda x: x[1])
         return {team: rank + 1 for rank, (team, _) in enumerate(sorted_teams)}
@@ -366,23 +354,18 @@ class DefensiveMomentumService:
         """
         Calculate momentum direction and any trend alert.
         
-        Returns:
-            (momentum_direction, trend_alert)
+        Negative diff = L5 rank is LOWER (better) than Season
+        Positive diff = L5 rank is HIGHER (worse) than Season
         """
-        # Negative diff means L5 rank is LOWER (better) than Season
-        # Positive diff means L5 rank is HIGHER (worse) than Season
         diff = l5_rank - season_rank
-        
         trend_alert = None
         
         if diff <= -SURGE_THRESHOLD:
-            # L5 rank is at least 10 spots BETTER than season
             momentum = "improving"
-            trend_alert = f"SURGE ALERT: Defense improved {abs(diff)} spots in last 5 games."
+            trend_alert = f"SURGE: Defense improved {abs(diff)} spots in L5 vs Season"
         elif diff >= COLLAPSE_THRESHOLD:
-            # L5 rank is at least 10 spots WORSE than season
             momentum = "regressing"
-            trend_alert = f"TREND ALERT: Defense collapsed {diff} spots in last 5 games."
+            trend_alert = f"COLLAPSE: Defense dropped {diff} spots in L5 vs Season"
         else:
             # Check L10 vs L5 for micro-trends
             micro_diff = l5_rank - l10_rank
@@ -414,7 +397,11 @@ class DefensiveMomentumService:
     async def build_momentum_rankings(self) -> Dict[str, Any]:
         """
         Build complete momentum rankings for all teams.
-        Fetches game data from BDL API and calculates Season/L10/L5 rankings.
+        
+        1. Fetch season defensive ratings from BDL /team_season_averages/general?type=defense
+        2. For each team, fetch last 10 games via /games endpoint
+        3. Calculate L10 (35%) and L5 (15%) from actual points allowed
+        4. Apply weighted composite formula
         """
         if self._is_building:
             logger.warning("[Momentum] Build already in progress, skipping")
@@ -430,91 +417,123 @@ class DefensiveMomentumService:
         
         try:
             logger.info("=" * 60)
-            logger.info("[MOMENTUM SERVICE] BUILDING DEFENSIVE RANKINGS FROM BDL")
+            logger.info("[MOMENTUM SERVICE] BUILDING DEFENSIVE RANKINGS v4.1")
             logger.info("=" * 60)
             
-            # Fetch last 45 days of games (enough for L10/L5 + season context)
-            today = datetime.now(timezone.utc).date()
-            start_date = (today - timedelta(days=45)).strftime("%Y-%m-%d")
-            end_date = today.strftime("%Y-%m-%d")
+            # Step 1: Fetch official season defensive ratings
+            logger.info("[Momentum] Step 1: Fetching season defensive ratings...")
+            season_data = await self._fetch_season_defensive_ratings(season=2025)
             
-            # Fetch games
-            games = await self._fetch_box_scores(
-                start_date=start_date,
-                end_date=end_date
-            )
-            
-            if not games:
-                logger.warning("[Momentum] No games fetched from BDL API")
+            if not season_data:
+                logger.error("[Momentum] Failed to fetch season defensive ratings")
                 result["success"] = False
-                result["reason"] = "no_games_fetched"
+                result["reason"] = "no_season_data"
                 return result
             
-            result["games_fetched"] = len(games)
+            self._season_data = season_data
+            logger.info(f"[Momentum] Got season data for {len(season_data)} teams")
             
-            # Process games into per-team defensive stats
-            team_games = self._process_games_to_defensive_stats(games)
+            # Log top 5 season defenses
+            sorted_season = sorted(season_data.items(), key=lambda x: x[1]["def_rating_rank"])
+            logger.info("[Momentum] Top 5 Season Defenses (from BDL endpoint):")
+            for team, data in sorted_season[:5]:
+                logger.info(f"  #{data['def_rating_rank']} {team}: DRtg {data['def_rating']}")
             
-            if not team_games:
-                logger.warning("[Momentum] No team game data extracted")
-                result["success"] = False
-                result["reason"] = "no_team_data"
-                return result
+            # Step 2: Fetch recent games for each team to calculate L5/L10
+            logger.info("[Momentum] Step 2: Fetching L10 games for each team...")
             
-            # Calculate averages for each window
-            season_avgs = {}
-            l10_avgs = {}
             l5_avgs = {}
+            l10_avgs = {}
+            total_games = 0
             
-            for team, games_list in team_games.items():
-                season_avgs[team] = self._calculate_avg_allowed(games_list)
-                l10_avgs[team] = self._calculate_avg_allowed(games_list, limit=10)
-                l5_avgs[team] = self._calculate_avg_allowed(games_list, limit=5)
+            for abbrev in season_data.keys():
+                team_id = ABBREV_TO_ID.get(abbrev)
+                if not team_id:
+                    logger.warning(f"[Momentum] No team_id mapping for {abbrev}")
+                    continue
+                
+                games = await self._fetch_team_games(team_id, per_page=15)
+                total_games += len(games)
+                
+                if games:
+                    l5_avgs[abbrev] = self._calculate_pts_allowed_from_games(games, team_id, limit=5)
+                    l10_avgs[abbrev] = self._calculate_pts_allowed_from_games(games, team_id, limit=10)
+                else:
+                    # Fallback to league average
+                    l5_avgs[abbrev] = 115.0
+                    l10_avgs[abbrev] = 115.0
+                
+                # Small delay to respect rate limits
+                await asyncio.sleep(0.05)
             
-            # Calculate rankings for each window
-            season_ranks = self._rank_teams_by_stat(season_avgs)
-            l10_ranks = self._rank_teams_by_stat(l10_avgs)
-            l5_ranks = self._rank_teams_by_stat(l5_avgs)
+            result["games_fetched"] = total_games
+            logger.info(f"[Momentum] Fetched {total_games} total games for L5/L10 calculation")
             
-            # Clear old cache and build new profiles
-            self._cache = {"PTS": {}}
+            # Step 3: Calculate L5 and L10 rankings
+            logger.info("[Momentum] Step 3: Calculating L5/L10 rankings...")
+            l5_ranks = self._rank_teams_by_value(l5_avgs)
+            l10_ranks = self._rank_teams_by_value(l10_avgs)
             
-            for team in team_games.keys():
-                s_rank = season_ranks.get(team, 15)
+            # Log some L5 rankings
+            sorted_l5 = sorted(l5_avgs.items(), key=lambda x: x[1])
+            logger.info("[Momentum] Top 5 L5 Defenses (by pts allowed):")
+            for i, (team, avg) in enumerate(sorted_l5[:5], 1):
+                logger.info(f"  #{i} {team}: {avg:.1f} PPG allowed")
+            
+            # Step 4: Build profiles using 50/35/15 weighted composite
+            logger.info("[Momentum] Step 4: Building momentum profiles with 50/35/15 weights...")
+            self._cache = {"DRTG": {}}
+            
+            for team, data in season_data.items():
+                season_rank = data.get("def_rating_rank", 15)
+                season_def_rating = data.get("def_rating", 115.0)
+                
                 l10_rank = l10_ranks.get(team, 15)
                 l5_rank = l5_ranks.get(team, 15)
                 
-                composite = self._calculate_composite_rank(s_rank, l10_rank, l5_rank)
-                momentum, trend_alert = self._calculate_momentum(s_rank, l10_rank, l5_rank)
+                # Apply weighted composite formula
+                composite = self._calculate_composite_rank(season_rank, l10_rank, l5_rank)
+                momentum, trend_alert = self._calculate_momentum(season_rank, l10_rank, l5_rank)
                 
                 profile = DefensiveMomentumProfile(
                     team=team,
-                    stat_type="PTS",
-                    season_rank=s_rank,
+                    stat_type="DRTG",
+                    season_rank=season_rank,
                     l10_rank=l10_rank,
                     l5_rank=l5_rank,
                     composite_rank=composite,
-                    season_allowed=season_avgs.get(team),
-                    l10_allowed=l10_avgs.get(team),
-                    l5_allowed=l5_avgs.get(team),
+                    season_def_rating=season_def_rating,
+                    l10_pts_allowed=l10_avgs.get(team, 115.0),
+                    l5_pts_allowed=l5_avgs.get(team, 115.0),
                     momentum=momentum,
-                    trend_alert=trend_alert
+                    trend_alert=trend_alert,
+                    proxy_type="DRTG",
+                    proxy_label="Defensive Rating",
+                    proxy_description="Official BDL Defensive Rating"
                 )
                 
-                self._cache["PTS"][team] = profile
-                
-                # Log notable teams
-                if trend_alert:
-                    logger.info(f"[Momentum] {team}: Season #{s_rank}, L10 #{l10_rank}, L5 #{l5_rank} - {momentum.upper()}")
+                self._cache["DRTG"][team] = profile
             
-            result["teams_processed"] = len(team_games)
+            result["teams_processed"] = len(season_data)
             self._cache_updated_at = datetime.now(timezone.utc)
-            self._game_data = team_games
             
             # Persist to MongoDB
             await self._persist_cache()
             
-            logger.info(f"[Momentum] Built rankings for {result['teams_processed']} teams from {result['games_fetched']} games")
+            # Log final composite rankings
+            logger.info("=" * 50)
+            logger.info("[Momentum] FINAL COMPOSITE RANKINGS (50% Season + 35% L10 + 15% L5):")
+            sorted_profiles = sorted(
+                self._cache["DRTG"].values(),
+                key=lambda p: p.composite_rank
+            )
+            for i, p in enumerate(sorted_profiles[:10], 1):
+                marker = "ELITE" if p.composite_rank <= 5 else ""
+                logger.info(
+                    f"  #{i} {p.team}: Composite {p.composite_rank:.1f} "
+                    f"(Season #{p.season_rank}, L10 #{p.l10_rank}, L5 #{p.l5_rank}) {marker}"
+                )
+            logger.info("=" * 50)
             
         except Exception as e:
             logger.error(f"[Momentum] Build error: {e}")
@@ -552,27 +571,32 @@ class DefensiveMomentumService:
             
             self._cache = {}
             for doc in docs:
-                stat_type = doc.get("stat_type")
+                stat_type = doc.get("stat_type", "DRTG")
                 team = doc.get("team")
                 
-                if not stat_type or not team:
+                if not team:
                     continue
                 
-                if stat_type not in self._cache:
-                    self._cache[stat_type] = {}
+                cache_key = "DRTG"
                 
-                self._cache[stat_type][team] = DefensiveMomentumProfile(
+                if cache_key not in self._cache:
+                    self._cache[cache_key] = {}
+                
+                self._cache[cache_key][team] = DefensiveMomentumProfile(
                     team=team,
                     stat_type=stat_type,
                     season_rank=doc.get("season_rank", 15),
                     l10_rank=doc.get("l10_rank", 15),
                     l5_rank=doc.get("l5_rank", 15),
                     composite_rank=doc.get("composite_rank", 15.0),
-                    season_allowed=doc.get("season_allowed"),
-                    l10_allowed=doc.get("l10_allowed"),
-                    l5_allowed=doc.get("l5_allowed"),
+                    season_def_rating=doc.get("season_def_rating") or doc.get("season_allowed", 115.0),
+                    l10_pts_allowed=doc.get("l10_pts_allowed") or doc.get("l10_allowed", 115.0),
+                    l5_pts_allowed=doc.get("l5_pts_allowed") or doc.get("l5_allowed", 115.0),
                     momentum=doc.get("momentum", "stable"),
-                    trend_alert=doc.get("trend_alert")
+                    trend_alert=doc.get("trend_alert"),
+                    proxy_type=doc.get("proxy_type", "DRTG"),
+                    proxy_label=doc.get("proxy_label", "Defensive Rating"),
+                    proxy_description=doc.get("proxy_description")
                 )
             
             if docs:
@@ -586,7 +610,6 @@ class DefensiveMomentumService:
         if not self._cache or self._cache_updated_at is None:
             await self._load_cache()
         
-        # If still no cache, build from scratch
         if not self._cache:
             await self.build_momentum_rankings()
     
@@ -596,31 +619,14 @@ class DefensiveMomentumService:
         stat_type: str
     ) -> Optional[DefensiveMomentumProfile]:
         """
-        Get momentum profile for an opponent/stat combination with intelligent proxy logic.
+        Get momentum profile for an opponent/stat combination.
         
-        Proxy Assignment:
-        - PTS/AST: Uses Points Allowed (offensive flow correlates)
-        - REB: Uses Points Allowed (proxy for missed shots/opportunities)
-        - PRA/Combos: Uses Points Allowed (overall defensive efficiency)
-        
-        Args:
-            opponent_team: 3-letter team abbreviation
-            stat_type: Stat type (PTS, AST, REB, 3PM, PRA, etc.)
-        
-        Returns:
-            DefensiveMomentumProfile with proxy info attached, or None
+        All stat types use Defensive Rating as the base metric.
         """
         stat_upper = stat_type.upper().strip()
-        
-        # Get proxy config for this stat type
         proxy_config = STAT_PROXY_MAP.get(stat_upper, DEFAULT_PROXY)
-        proxy_type = proxy_config["proxy"]
-        proxy_label = proxy_config["label"]
-        proxy_description = proxy_config["description"]
         
-        # For now, all proxies resolve to PTS (points allowed) since we only cache PTS
-        # In future, could add REB and DRTG caches
-        cache_key = "PTS"  # All proxies currently use PTS data
+        cache_key = "DRTG"
         
         if cache_key not in self._cache:
             return None
@@ -629,23 +635,21 @@ class DefensiveMomentumService:
         if not base_profile:
             return None
         
-        # Create a new profile with proxy information attached
-        # The profile uses the base PTS data but labels it appropriately
         return DefensiveMomentumProfile(
             team=base_profile.team,
-            stat_type=stat_upper,  # Original stat type requested
+            stat_type=stat_upper,
             season_rank=base_profile.season_rank,
             l10_rank=base_profile.l10_rank,
             l5_rank=base_profile.l5_rank,
             composite_rank=base_profile.composite_rank,
-            season_allowed=base_profile.season_allowed,
-            l10_allowed=base_profile.l10_allowed,
-            l5_allowed=base_profile.l5_allowed,
+            season_def_rating=base_profile.season_def_rating,
+            l10_pts_allowed=base_profile.l10_pts_allowed,
+            l5_pts_allowed=base_profile.l5_pts_allowed,
             momentum=base_profile.momentum,
             trend_alert=base_profile.trend_alert,
-            proxy_type=proxy_type,
-            proxy_label=proxy_label,
-            proxy_description=proxy_description if stat_upper != "PTS" else None
+            proxy_type=proxy_config["proxy"],
+            proxy_label=proxy_config["label"],
+            proxy_description=proxy_config["description"]
         )
     
     def calculate_momentum_modifier(
@@ -663,15 +667,12 @@ class DefensiveMomentumService:
         - Elite Composite (Rank 1-5): -15 penalty to "Over" props
         - Weak Composite (Rank 25-30): +15 boost to "Over" props
         - Middle (6-24): 0 modifier
-        
-        The momentum_data dict includes proxy information for UI transparency.
         """
         profile = self.get_momentum_profile(opponent_team, stat_type)
         
         if not profile:
             return 0.0, None
         
-        # Calculate modifier based on composite rank
         composite = profile.composite_rank
         
         if composite <= ELITE_RANK_MAX:
@@ -688,40 +689,55 @@ class DefensiveMomentumService:
         return modifier, momentum_data
     
     def _generate_tooltip(self, profile: DefensiveMomentumProfile) -> str:
-        """Generate tooltip text showing the math and any proxy info."""
-        base_tooltip = (
-            f"{int(WEIGHT_SEASON * 100)}% Season (Rank {profile.season_rank}) | "
-            f"{int(WEIGHT_L10 * 100)}% L10 (Rank {profile.l10_rank}) | "
-            f"{int(WEIGHT_L5 * 100)}% L5 (Rank {profile.l5_rank})"
+        """Generate tooltip text showing the math."""
+        return (
+            f"{int(WEIGHT_SEASON * 100)}% Season (#{profile.season_rank}, DRtg: {profile.season_def_rating:.1f}) | "
+            f"{int(WEIGHT_L10 * 100)}% L10 (#{profile.l10_rank}, {profile.l10_pts_allowed:.1f} PPG) | "
+            f"{int(WEIGHT_L5 * 100)}% L5 (#{profile.l5_rank}, {profile.l5_pts_allowed:.1f} PPG)"
         )
-        
-        # Add proxy note if applicable
-        if profile.proxy_description and profile.stat_type != "PTS":
-            base_tooltip += f" | {profile.proxy_description}"
-        
-        return base_tooltip
     
-    def get_all_team_momentum(self, stat_type: str = "PTS") -> List[Dict[str, Any]]:
-        """Get momentum profiles for all teams for a given stat."""
-        if stat_type not in self._cache:
+    def get_all_team_momentum(self, stat_type: str = "DRTG") -> List[Dict[str, Any]]:
+        """Get momentum profiles for all teams, sorted by composite rank."""
+        cache_key = "DRTG"
+        
+        if cache_key not in self._cache:
             return []
         
         return [
             profile.to_dict()
             for profile in sorted(
-                self._cache[stat_type].values(),
+                self._cache[cache_key].values(),
                 key=lambda p: p.composite_rank
             )
         ]
     
     async def get_status(self) -> Dict[str, Any]:
         """Get service status."""
+        top_teams = []
+        if self._cache and "DRTG" in self._cache:
+            sorted_profiles = sorted(
+                self._cache["DRTG"].values(),
+                key=lambda p: p.composite_rank
+            )[:5]
+            top_teams = [
+                {
+                    "team": p.team,
+                    "composite": round(p.composite_rank, 1),
+                    "season_rank": p.season_rank,
+                    "l10_rank": p.l10_rank,
+                    "l5_rank": p.l5_rank
+                }
+                for p in sorted_profiles
+            ]
+        
         return {
             "cache_loaded": bool(self._cache),
-            "stat_types_cached": list(self._cache.keys()),
-            "teams_cached": len(self._cache.get("PTS", {})) if self._cache else 0,
+            "stat_types_cached": list(self._cache.keys()) if self._cache else [],
+            "teams_cached": len(self._cache.get("DRTG", {})) if self._cache else 0,
             "cache_updated_at": self._cache_updated_at.isoformat() if self._cache_updated_at else None,
             "is_building": self._is_building,
+            "top_5_defenses": top_teams,
+            "formula": "Composite = (Season * 50%) + (L10 * 35%) + (L5 * 15%)",
             "weights": {
                 "season": WEIGHT_SEASON,
                 "l10": WEIGHT_L10,
