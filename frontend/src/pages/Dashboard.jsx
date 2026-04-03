@@ -684,14 +684,14 @@ const TrapCard = memo(({ pick, onClick }) => {
   );
 });
 
-// Trap Graveyard Section Component
+// The Minefield Section Component (formerly Trap Graveyard)
 const TrapGraveyardSection = memo(({ picks, boardStats, onPickClick, isLoading, totalTrapped }) => {
   if (isLoading) {
     return (
       <div className="mb-4">
         <SectionHeader 
           icon={<Skull className="w-4 h-4 text-red-400" />}
-          title="TRAP GRAVEYARD"
+          title="THE MINEFIELD"
           subtitle="Loading flagged picks..."
           badgeText="LOADING..."
           badgeColor="red"
@@ -710,7 +710,7 @@ const TrapGraveyardSection = memo(({ picks, boardStats, onPickClick, isLoading, 
       <div className="mb-4">
         <SectionHeader 
           icon={<Skull className="w-4 h-4 text-red-400" />}
-          title="TRAP GRAVEYARD"
+          title="THE MINEFIELD"
           subtitle="All clear - no traps detected"
           badgeText="CLEAN"
           badgeColor="green"
@@ -727,10 +727,10 @@ const TrapGraveyardSection = memo(({ picks, boardStats, onPickClick, isLoading, 
   }
   
   return (
-    <div className="mb-4" data-testid="trap-graveyard-section">
+    <div className="mb-4" data-testid="minefield-section">
       <SectionHeader 
         icon={<Skull className="w-4 h-4 text-red-400" />}
-        title="TRAP GRAVEYARD"
+        title="THE MINEFIELD"
         subtitle="Picks we saved you from"
         badgeText={`${totalTrapped} TRAPS`}
         badgeColor="red"
@@ -1432,25 +1432,8 @@ const Dashboard = () => {
       
       {/* Main Content */}
       <div className="p-3 space-y-4">
-        {/* Tab Selector */}
+        {/* The Minefield Tab */}
         <div className="flex gap-2 p-1 bg-zinc-900/50 border border-zinc-800 rounded-lg" data-testid="main-tabs">
-          <button
-            onClick={() => setActiveTab('vip')}
-            className={`flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all ${
-              activeTab === 'vip'
-                ? 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30'
-                : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
-            }`}
-            data-testid="tab-vip-room"
-          >
-            <Crown className="w-4 h-4" />
-            <span>VIP Room</span>
-            {!safeHavenLoading && (
-              <span className="ml-1 text-xs opacity-70">
-                ({vaultPicks.length + frontLinesPicks.length + radarPicks.length})
-              </span>
-            )}
-          </button>
           <button
             onClick={() => setActiveTab('traps')}
             className={`flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all ${
@@ -1458,10 +1441,10 @@ const Dashboard = () => {
                 ? 'bg-red-500/20 text-red-400 border border-red-500/30'
                 : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
             }`}
-            data-testid="tab-trap-graveyard"
+            data-testid="tab-minefield"
           >
             <Skull className="w-4 h-4" />
-            <span>Trap Graveyard</span>
+            <span>The Minefield</span>
             {totalTrapped > 0 && (
               <span className={`ml-1 px-1.5 py-0.5 rounded text-xs ${
                 activeTab === 'traps' ? 'bg-red-500/30' : 'bg-zinc-700'
@@ -1472,60 +1455,58 @@ const Dashboard = () => {
           </button>
         </div>
         
-        {/* VIP Room Content (Clean Picks) */}
-        {activeTab === 'vip' && (
-          <>
-            {/* Most Popular Bets - FIRST */}
-            <MostPopularBetsSection 
-              bets={popularBets} 
-              status={popularBetsStatus} 
-              onBetClick={handlePopularBetClick}
-              allLocked={allPicksLocked}
-              nextReleaseTime={nextReleaseTime}
-            />
-            
-            {/* Safe Haven */}
-            <SafeHavenSection picks={vaultPicks} onPickClick={handleVaultClick} onQuickAdd={handleQuickAdd} isLoading={safeHavenLoading} />
-            
-            {/* Shield Parlays */}
-            <ParlaySection 
-              picks={vaultPicks} 
-              onParlayClick={handleParlayClick} 
-              sectionName="safe_haven"
-              title="THE SHIELD"
-              subtitle="Safe Haven parlay combinations"
-              badgeColor="green"
-            />
-            
-            {/* Front Lines */}
-            <FrontLinesSection picks={frontLinesPicks} onPickClick={handleRadarClick} onQuickAdd={handleQuickAdd} isLoading={frontLinesLoading} />
-            
-            {/* Strike Parlays */}
-            <ParlaySection 
-              picks={frontLinesPicks} 
-              onParlayClick={handleParlayClick} 
-              sectionName="front_lines"
-              title="THE STRIKE"
-              subtitle="Front Lines parlay combinations"
-              badgeColor="amber"
-            />
-            
-            {/* War Zone */}
-            <WarZoneSection picks={radarPicks} onPickClick={handleRadarClick} onQuickAdd={handleQuickAdd} isLoading={warZoneLoading} />
-            
-            {/* Gauntlet Parlays */}
-            <ParlaySection 
-              picks={radarPicks} 
-              onParlayClick={handleParlayClick} 
-              sectionName="war_zone"
-              title="THE GAUNTLET"
-              subtitle="War Zone parlay combinations"
-              badgeColor="red"
-            />
-          </>
-        )}
+        {/* Main Picks Content (Always shown) */}
+        <>
+          {/* Most Popular Bets - FIRST */}
+          <MostPopularBetsSection 
+            bets={popularBets} 
+            status={popularBetsStatus} 
+            onBetClick={handlePopularBetClick}
+            allLocked={allPicksLocked}
+            nextReleaseTime={nextReleaseTime}
+          />
+          
+          {/* Safe Haven */}
+          <SafeHavenSection picks={vaultPicks} onPickClick={handleVaultClick} onQuickAdd={handleQuickAdd} isLoading={safeHavenLoading} />
+          
+          {/* Shield Parlays */}
+          <ParlaySection 
+            picks={vaultPicks} 
+            onParlayClick={handleParlayClick} 
+            sectionName="safe_haven"
+            title="THE SHIELD"
+            subtitle="Safe Haven parlay combinations"
+            badgeColor="green"
+          />
+          
+          {/* Front Lines */}
+          <FrontLinesSection picks={frontLinesPicks} onPickClick={handleRadarClick} onQuickAdd={handleQuickAdd} isLoading={frontLinesLoading} />
+          
+          {/* Strike Parlays */}
+          <ParlaySection 
+            picks={frontLinesPicks} 
+            onParlayClick={handleParlayClick} 
+            sectionName="front_lines"
+            title="THE STRIKE"
+            subtitle="Front Lines parlay combinations"
+            badgeColor="amber"
+          />
+          
+          {/* War Zone */}
+          <WarZoneSection picks={radarPicks} onPickClick={handleRadarClick} onQuickAdd={handleQuickAdd} isLoading={warZoneLoading} />
+          
+          {/* Gauntlet Parlays */}
+          <ParlaySection 
+            picks={radarPicks} 
+            onParlayClick={handleParlayClick} 
+            sectionName="war_zone"
+            title="THE GAUNTLET"
+            subtitle="War Zone parlay combinations"
+            badgeColor="red"
+          />
+        </>
         
-        {/* Trap Graveyard Content (Flagged Picks) */}
+        {/* The Minefield Content (Flagged Picks) */}
         {activeTab === 'traps' && (
           <TrapGraveyardSection
             picks={trappedPicks}
