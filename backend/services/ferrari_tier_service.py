@@ -717,7 +717,78 @@ class FerrariTierService:
                         "tier": tier,
                         "tier_label": "MINEFIELD" if (prop.get("sidecar", {}).get("hook_risk", False) or prop.get("sidecar", {}).get("suspect_line_bait", False)) else tier.upper().replace("_", "_"),
                         "pipeline": "ferrari_v6",
-                        "synced_at": sync_time.isoformat()
+                        "synced_at": sync_time.isoformat(),
+                        # =====================================================
+                        # INTEL SUITE: Complete Vision Intelligence Package
+                        # =====================================================
+                        "intel_suite": {
+                            # Blowout Risk Analysis
+                            "blowout_risk": {
+                                "risk_level": player.get("blowout_risk", "UNKNOWN"),
+                                "player_team_record": player.get("team_record", ""),
+                                "opponent_team_record": player.get("opponent_record", ""),
+                                "warning": f"Blowout risk: {player.get('blowout_risk')}" if player.get("blowout_risk") in ["HIGH", "MEDIUM"] else None
+                            },
+                            # Matchup DvP Analysis (from momentum_data)
+                            "matchup_dvp": {
+                                "display": f"vs {opponent}" if opponent else "TBD",
+                                "opponent": opponent,
+                                "opponent_abbr": player.get("opponent_abbr"),
+                                "friction_level": "Low" if momentum_data and momentum_data.get("is_weak") else "High" if momentum_data and momentum_data.get("is_elite") else "Medium",
+                                "friction_label": f"Rank #{int(momentum_data.get('composite_rank', 15))}" if momentum_data and momentum_data.get("composite_rank") else "Unknown",
+                                "color": "green" if momentum_data and momentum_data.get("is_weak") else "red" if momentum_data and momentum_data.get("is_elite") else "yellow",
+                                "dvp_rank": momentum_data.get("composite_rank") if momentum_data else None,
+                                "stat_type": stat_type
+                            },
+                            # Pace Delta
+                            "pace_delta": {
+                                "display": "0.0",
+                                "possessions": 0,
+                                "tempo_label": "Neutral Pace",
+                                "expected_game_pace": "98.0"
+                            },
+                            # Stability Index from hit rates
+                            "stability_index": {
+                                "display": f"{int((l10_rate + l5_rate) / 2)}%",
+                                "score": int((l10_rate + l5_rate) / 2),
+                                "consistency": "Consistent" if (l10_rate + l5_rate) / 2 >= 70 else "Variable" if (l10_rate + l5_rate) / 2 >= 50 else "Volatile"
+                            },
+                            # Usage Ripple from vacuum_data
+                            "usage_ripple": {
+                                "display": "Elevated Usage" if vacuum_data else "Standard Volume",
+                                "reasoning": vacuum_data.get("reason", "Based on team role") if vacuum_data else "Based on team role and recent minutes",
+                                "bump_percent": int(vacuum_data.get("usage_bump", 0)) if vacuum_data else 0,
+                                "shift_label": f"+{int(vacuum_data.get('usage_bump', 0))}% Usage" if vacuum_data else "Normal",
+                                "injuries_affecting": [vacuum_data.get("injured_player")] if vacuum_data and vacuum_data.get("injured_player") else []
+                            },
+                            # Context Badges
+                            "context_badges": self._build_context_badges(
+                                player.get("blowout_risk"),
+                                prop.get("sidecar", {}).get("hook_risk", False),
+                                prop.get("sidecar", {}).get("suspect_line_bait", False),
+                                abs(line_delta) >= 1.5 if line_delta else False,
+                                momentum_data
+                            ),
+                            # Vision Insight placeholder
+                            "vision_insight": {
+                                "primary": f"{player_name} {stat_type} @ {pp_line}",
+                                "reasons": [],
+                                "confidence": "STANDARD"
+                            },
+                            # Raw enrichment data for advanced displays
+                            "momentum_data": momentum_data,
+                            "whistle_data": {
+                                "crew_chief": crew_chief,
+                                "ref_ou_pct": round(ref_ou_pct, 1) if ref_ou_pct else None,
+                                "ref_ppg": round(ref_ppg, 1) if ref_ppg else None,
+                                "whistle_class": whistle_class,
+                                "point_lift": point_lift_data.get("point_lift", 0),
+                                "lift_label": point_lift_data.get("lift_label", ""),
+                                "lift_type": point_lift_data.get("lift_type", "neutral")
+                            } if crew_chief else None,
+                            "vacuum_data": vacuum_data
+                        },
+                        "is_vision_enriched": True
                     }
                     
                     all_scored.append(scored_prop)
@@ -840,6 +911,26 @@ class FerrariTierService:
                     break
         return selected
     
+    def _build_context_badges(self, blowout_risk, hook_risk, suspect_bait, sharp_movement, momentum_data) -> List[str]:
+        """Build context badges based on prop analysis."""
+        badges = []
+        
+        if blowout_risk == "HIGH":
+            badges.append("blowout_risk")
+        if hook_risk or suspect_bait:
+            badges.append("trap_risk")
+        if sharp_movement:
+            badges.append("sharp_movement")
+        if momentum_data:
+            if momentum_data.get("is_weak"):
+                badges.append("soft_matchup")
+            elif momentum_data.get("is_elite"):
+                badges.append("tough_matchup")
+            if momentum_data.get("trend_alert"):
+                badges.append("trend_alert")
+        
+        return badges
+
     # =========================================================================
     # GETTER METHODS
     # =========================================================================

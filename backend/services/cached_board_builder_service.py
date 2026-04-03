@@ -1089,6 +1089,23 @@ class CachedBoardBuilderService:
         # Get blowout risk from prop if available
         blowout_level = prop.get("blowout_risk", "UNKNOWN")
         
+        # Get REAL DvP analysis from the dvp_service
+        from services.dvp_service import get_full_dvp_analysis, get_dvp_rank, get_dvp_rank_color
+        
+        dvp_rank = get_dvp_rank(opponent, stat_type) if opponent else 15
+        dvp_color = get_dvp_rank_color(dvp_rank)
+        
+        # Determine friction level based on rank
+        if dvp_rank <= 9:
+            friction_level = "High"  # Best defense = hard matchup
+            friction_label = f"Rank #{dvp_rank} (Tough)"
+        elif dvp_rank >= 25:
+            friction_level = "Low"  # Worst defense = easy matchup
+            friction_label = f"Rank #{dvp_rank} (Soft)"
+        else:
+            friction_level = "Medium"
+            friction_label = f"Rank #{dvp_rank}"
+        
         prop["intel_suite"] = {
             # Blowout Risk Analysis
             "blowout_risk": {
@@ -1097,14 +1114,15 @@ class CachedBoardBuilderService:
                 "opponent_team_record": prop.get("opponent_record", ""),
                 "warning": f"Blowout risk: {blowout_level}" if blowout_level in ["HIGH", "MEDIUM"] else None
             },
-            # Matchup DvP Analysis
+            # Matchup DvP Analysis - NOW WITH REAL DATA
             "matchup_dvp": {
                 "display": f"vs {opponent}" if opponent else "TBD",
                 "opponent": opponent,
                 "opponent_abbr": opponent,
-                "friction_level": "Medium",  # Will be enriched by board intel service
-                "friction_label": "Analysis Pending",
-                "color": "yellow",
+                "friction_level": friction_level,
+                "friction_label": friction_label,
+                "color": dvp_color,
+                "dvp_rank": dvp_rank,
                 "stat_type": stat_type
             },
             # Pace Delta

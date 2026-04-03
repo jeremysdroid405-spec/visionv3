@@ -347,22 +347,8 @@ class OddsSyncService:
                 await build_cached_board(props_list, sync_start)
                 
                 # Step 6b: Update static shell cache for hydrated board endpoint
-                if store_static_shell:
-                    try:
-                        # Get players with full data from cached board
-                        cached_board_docs = await self.db.dg_cached_board.find(
-                            {},
-                            {"_id": 0, "player_name": 1, "team": 1, "position": 1, 
-                             "photo_url": 1, "headshot_url": 1, "nba_id": 1, "bdl_id": 1,
-                             "season_avg": 1, "baseline_stats": 1, "props": 1}
-                        ).to_list(500)
-                        
-                        players_list = cached_board_docs if cached_board_docs else []
-                        trending = []  # Can be populated from most popular bets
-                        await store_static_shell(players_list, trending)
-                        logger.info(f"[SYNC_ODDS_TO_MONGO] Static shell updated with {len(players_list)} players")
-                    except Exception as shell_err:
-                        logger.error(f"[SYNC_ODDS_TO_MONGO] Static shell update failed: {shell_err}")
+                # NOTE: Static shell is built AFTER Ferrari tiers so it contains only
+                # the best picks with full intel_suite enrichment
                 
                 # Step 7: Build Ferrari tiers (Bovada separation filtering)
                 if build_ferrari_tiers:
@@ -380,6 +366,40 @@ class OddsSyncService:
                             f"WZ={results['ferrari_tiers']['war_zone']}, "
                             f"Discarded={results['ferrari_tiers']['discarded']}"
                         )
+                        
+                        # Step 7b: NOW build static shell from Ferrari-approved picks
+                        if store_static_shell:
+                            try:
+                                # Gather all Ferrari-approved picks
+                                ferrari_players = []
+                                for coll_name in ['ferrari_safe_haven', 'ferrari_front_lines', 'ferrari_war_zone']:
+                                    docs = await self.db[coll_name].find({}, {"_id": 0}).to_list(20)
+                                    ferrari_players.extend(docs)
+                                
+                                # Group by player for static shell
+                                players_dict = {}
+                                for pick in ferrari_players:
+                                    pname = pick.get("player_name")
+                                    if not pname:
+                                        continue
+                                    if pname not in players_dict:
+                                        players_dict[pname] = {
+                                            "player_name": pname,
+                                            "team": pick.get("team"),
+                                            "position": pick.get("position"),
+                                            "photo_url": pick.get("photo_url"),
+                                            "headshot_url": pick.get("headshot_url"),
+                                            "props": []
+                                        }
+                                    # Add the pick as a prop
+                                    players_dict[pname]["props"].append(pick)
+                                
+                                players_list = list(players_dict.values())
+                                await store_static_shell(players_list, [])
+                                logger.info(f"[SYNC_ODDS_TO_MONGO] Static shell updated with {len(players_list)} Ferrari-approved players, {len(ferrari_players)} picks")
+                            except Exception as shell_err:
+                                logger.error(f"[SYNC_ODDS_TO_MONGO] Static shell update failed: {shell_err}")
+                                
                     except Exception as fe:
                         logger.error(f"[FERRARI] Build failed: {fe}")
             
