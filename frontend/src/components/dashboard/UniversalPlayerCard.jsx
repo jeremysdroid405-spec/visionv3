@@ -35,21 +35,11 @@
 import React, { memo, useCallback, useState } from 'react';
 import { 
   Target, Shield, ChevronRight, Plus, ChevronDown,
-  Crosshair, TrendingUp, HeartPulse, Lock, Flame, TrendingDown, Info, Volume2, Snowflake, Scale
+  Crosshair, TrendingUp, HeartPulse, Lock, Flame, TrendingDown, Info
 } from 'lucide-react';
 import { Badge } from '../ui/badge';
 import { DemonIcon, GoblinIcon } from './Icons';
 import IntelligenceModal from './IntelligenceModal';
-import { MomentumTrackerCompact } from './MomentumTracker';
-
-// Gold Whistle Icon for High Whistle refs
-const GoldWhistleIcon = ({ className }) => (
-  <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-    <circle cx="12" cy="12" r="3" fill="#FFD700" stroke="#FFD700"/>
-    <path d="M12 9V4M12 4L9 7M12 4L15 7" stroke="#FFD700"/>
-    <ellipse cx="12" cy="15" rx="5" ry="3" stroke="#FFD700"/>
-  </svg>
-);
 
 // ==================== TEAM LOGOS (FALLBACK) ====================
 const TEAM_LOGOS = {
@@ -509,33 +499,6 @@ const UniversalPlayerCard = memo(({
     type: null, // 'hook_risk' | 'suspect_bait' | 'officiating_impact' | 'usage_vacuum' | 'defensive_momentum'
   });
   
-  // Officiating Impact modal handler
-  const handleOfficiatingClick = useCallback((e) => {
-    e.stopPropagation();
-    setIntelligenceModal({
-      isOpen: true,
-      type: 'officiating_impact'
-    });
-  }, []);
-  
-  // Usage Vacuum modal handler
-  const handleVacuumClick = useCallback((e) => {
-    e.stopPropagation();
-    setIntelligenceModal({
-      isOpen: true,
-      type: 'usage_vacuum'
-    });
-  }, []);
-  
-  // Defensive Momentum modal handler
-  const handleMomentumClick = useCallback((e) => {
-    e?.stopPropagation();
-    setIntelligenceModal({
-      isOpen: true,
-      type: 'defensive_momentum'
-    });
-  }, []);
-  
   // Check if locked (game in progress or completed)
   const isLocked = player?.is_locked;
   
@@ -676,31 +639,6 @@ const UniversalPlayerCard = memo(({
           )}
         </div>
         
-        {/* Defensive Momentum Tracker - replaces old DvP badge */}
-        {momentum_data && (
-          <MomentumTrackerCompact
-            momentumData={momentum_data}
-            opponent={opponent || opponent_abbr}
-            statType={stat_type}
-            onClick={handleMomentumClick}
-          />
-        )}
-        
-        {/* Legacy DvP fallback - only show if no momentum data */}
-        {!momentum_data && player.dvp_label && player.dvp_rank && (
-          <div className="flex items-center gap-1.5 text-[9px] mt-1">
-            <span className="text-zinc-500">vs {player.opponent}</span>
-            <span className={`px-1.5 py-0.5 rounded ${
-              player.dvp_rank >= 21 ? 'bg-green-500/20 text-green-400' : 
-              player.dvp_rank <= 10 ? 'bg-red-500/20 text-red-400' : 
-              'bg-zinc-700/50 text-zinc-400'
-            }`}>
-              {player.dvp_rank >= 26 ? '🔥' : player.dvp_rank >= 21 ? '✓' : player.dvp_rank <= 5 ? '⚠️' : ''} 
-              {player.dvp_label}
-            </span>
-          </div>
-        )}
-        
         {/* Sidecar Warning Flags - Hook Risk & Bait Detection (INTERACTIVE) */}
         {player.sidecar?.enabled && (player.sidecar.hook_risk || player.sidecar.suspect_line_bait) && (
           <div className="mt-1.5 space-y-1">
@@ -780,100 +718,12 @@ const UniversalPlayerCard = memo(({
           </div>
         </div>
         
-        {/* Vegas Intel - Officiating Impact Section (Clickable for details) */}
-        {crew_chief && (
-          <div 
-            className={`mt-1.5 rounded-lg overflow-hidden cursor-pointer hover:opacity-90 transition-opacity ${
-              whistle_class === 'high_whistle' 
-                ? 'bg-gradient-to-r from-amber-500/10 to-amber-600/5 border border-amber-500/30' 
-                : whistle_class === 'low_whistle'
-                  ? 'bg-gradient-to-r from-blue-500/10 to-blue-600/5 border border-blue-500/30'
-                  : 'bg-zinc-800/50 border border-zinc-700/50'
-            }`} 
-            data-testid="vegas-intel-section"
-            onClick={handleOfficiatingClick}
-          >
-            {/* Header */}
-            <div className={`flex items-center gap-1.5 px-2 py-1 text-[9px] font-bold ${
-              whistle_class === 'high_whistle' ? 'text-amber-400' :
-              whistle_class === 'low_whistle' ? 'text-blue-400' : 'text-zinc-500'
-            }`}>
-              <Scale className="w-3 h-3" />
-              OFFICIATING IMPACT
-              {/* Whistle Icon next to Power Score indicator */}
-              {has_whistle_modifier && (
-                whistle_class === 'high_whistle' 
-                  ? <GoldWhistleIcon className="w-3 h-3 ml-auto" />
-                  : <Snowflake className="w-3 h-3 ml-auto text-blue-400" />
-              )}
-            </div>
-            {/* Content */}
-            <div className="px-2 pb-1.5 space-y-0.5">
-              <div className="flex items-center justify-between text-[9px]">
-                <span className="text-zinc-400">Lead Official: <span className="text-zinc-300">{crew_chief}</span></span>
-              </div>
-              <div className="flex items-center justify-between text-[9px]">
-                <span className="text-zinc-500">
-                  Trend: <span className={whistle_class === 'high_whistle' ? 'text-amber-400' : whistle_class === 'low_whistle' ? 'text-blue-400' : 'text-zinc-400'}>
-                    {ref_ou_pct != null ? `${ref_ou_pct}% Over` : 'N/A'}
-                  </span>
-                  {ref_ppg != null && <span className="text-zinc-600"> | {ref_ppg} PPG</span>}
-                </span>
-              </div>
-              {lift_label && lift_type !== 'neutral' && (
-                <div className="flex items-center justify-between text-[9px] pt-0.5">
-                  <span className={`font-bold ${
-                    lift_type === 'boost' ? 'text-amber-400' : 'text-blue-400'
-                  }`}>
-                    Impact: {lift_label}
-                  </span>
-                  {foul_rate_diff !== 0 && (
-                    <span className="text-zinc-600 text-[8px]" title={`This official calls shooting fouls at a ${Math.abs(foul_rate_diff)}% ${foul_rate_diff > 0 ? 'higher' : 'lower'} rate than league average`}>
-                      {foul_rate_diff > 0 ? '+' : ''}{foul_rate_diff}% foul rate
-                    </span>
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-        
-        {/* Usage Vacuum Alert Card - Clickable for details */}
-        {has_vacuum_modifier && vacuum_data && (
-          <div 
-            className="mt-1.5 rounded-lg overflow-hidden bg-gradient-to-r from-orange-500/10 to-red-500/5 border border-orange-500/30 cursor-pointer hover:border-orange-500/50 transition-colors" 
-            data-testid="usage-vacuum-card"
-            onClick={handleVacuumClick}
-          >
-            <div className="flex items-center gap-1.5 px-2 py-1 text-[9px] font-bold text-orange-400">
-              <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <circle cx="12" cy="12" r="10" />
-                <path d="M12 6v6l4 2" />
-              </svg>
-              USAGE VACUUM
-              <Info className="w-2.5 h-2.5 ml-0.5 opacity-60" />
-              <span className={`ml-auto text-[8px] font-bold px-1.5 py-0.5 rounded ${
-                vacuum_data.beneficiary_rank === 'primary' ? 'bg-green-500/30 text-green-400' : 'bg-yellow-500/30 text-yellow-400'
-              }`}>
-                {vacuum_data.beneficiary_rank === 'primary' ? '1ST' : '2ND'}
-              </span>
-            </div>
-            <div className="px-2 pb-1.5">
-              <div className="text-[9px] text-zinc-300">
-                <span className="text-red-400 font-bold">{vacuum_data.injured_player}</span> OUT
-                {vacuum_data.reason && <span className="text-zinc-500 ml-1">({vacuum_data.reason})</span>}
-              </div>
-              <div className="flex items-center justify-between text-[9px] mt-0.5">
-                <span className="text-zinc-500">
-                  Usage: <span className="text-green-400 font-bold">+{vacuum_data.usage_bump}%</span>
-                </span>
-                <span className="text-orange-400 font-bold">
-                  +{vacuum_modifier} Boost
-                </span>
-              </div>
-            </div>
-          </div>
-        )}
+        {/* Vision Intel Suite CTA */}
+        <div className="mt-2 text-center">
+          <span className="text-[10px] text-cyan-400 font-medium animate-pulse">
+            Click for Vision Intel Suite
+          </span>
+        </div>
         
         {/* Quick Add Button */}
         {onQuickAdd && !is_locked && (
@@ -886,46 +736,6 @@ const UniversalPlayerCard = memo(({
           </button>
         )}
         
-        {/* Intelligence Modal for Officiating Impact */}
-        <IntelligenceModal
-          isOpen={intelligenceModal.isOpen && intelligenceModal.type === 'officiating_impact'}
-          onClose={() => setIntelligenceModal({ isOpen: false, type: null })}
-          type="officiating_impact"
-          playerName={displayName}
-          statType={stat_type}
-          line={line}
-          whistleData={{
-            crew_chief,
-            ref_ou_pct,
-            ref_ppg,
-            whistle_class,
-            lift_label,
-            point_lift,
-            foul_rate_diff
-          }}
-        />
-        
-        {/* Intelligence Modal for Usage Vacuum */}
-        <IntelligenceModal
-          isOpen={intelligenceModal.isOpen && intelligenceModal.type === 'usage_vacuum'}
-          onClose={() => setIntelligenceModal({ isOpen: false, type: null })}
-          type="usage_vacuum"
-          playerName={displayName}
-          statType={stat_type}
-          line={line}
-          vacuumData={vacuum_data}
-        />
-        
-        {/* Intelligence Modal for Defensive Momentum */}
-        <IntelligenceModal
-          isOpen={intelligenceModal.isOpen && intelligenceModal.type === 'defensive_momentum'}
-          onClose={() => setIntelligenceModal({ isOpen: false, type: null })}
-          type="defensive_momentum"
-          playerName={displayName}
-          statType={stat_type}
-          line={line}
-          momentumData={momentum_data}
-        />
       </div>
     );
   }
