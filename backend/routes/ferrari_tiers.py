@@ -264,3 +264,60 @@ async def get_all_ferrari_tiers(
             "message": f"Verified {active_props} active props to identify these {output_total} Elite opportunities."
         }
     }
+
+
+@router.get("/v3/ferrari/parlays")
+async def get_ferrari_parlays(
+    response: Response,
+    tier: str = Query(None, description="Filter by tier: safe_haven, front_lines, war_zone")
+):
+    """
+    Get PropVision v7 Diversified Parlays.
+    
+    Returns optimized, EV-positive parlays with diversification constraints:
+    - Max 2 appearances per player per tier
+    - Max 2 picks from same team per parlay  
+    - Max 3 picks from same stat type per parlay
+    """
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    
+    if _db is None:
+        raise HTTPException(status_code=500, detail="Database not initialized")
+    
+    query = {}
+    if tier:
+        if tier not in ["safe_haven", "front_lines", "war_zone"]:
+            raise HTTPException(status_code=400, detail="Invalid tier. Use: safe_haven, front_lines, war_zone")
+        query["tier"] = tier
+    
+    cursor = _db.ferrari_parlays.find(query, {"_id": 0})
+    parlays = await cursor.to_list(length=None)
+    
+    # Group by tier
+    by_tier = {
+        "safe_haven": [],
+        "front_lines": [],
+        "war_zone": []
+    }
+    
+    for p in parlays:
+        t = p.get("tier", "unknown")
+        if t in by_tier:
+            by_tier[t].append(p)
+    
+    return {
+        "total_parlays": len(parlays),
+        "parlays_by_tier": {
+            "safe_haven": len(by_tier["safe_haven"]),
+            "front_lines": len(by_tier["front_lines"]),
+            "war_zone": len(by_tier["war_zone"])
+        },
+        "safe_haven_parlays": by_tier["safe_haven"],
+        "front_lines_parlays": by_tier["front_lines"],
+        "war_zone_parlays": by_tier["war_zone"],
+        "diversification_rules": {
+            "max_player_appearances_per_tier": 2,
+            "max_team_per_parlay": 2,
+            "max_stat_type_per_parlay": 3
+        }
+    }

@@ -1,45 +1,58 @@
 """
-Ferrari v6 Pipeline - Global Power Ranking & Universal Scan
-============================================================
-"Verified [X] active props to identify these [30] Elite opportunities."
+PropVision v7 Pipeline - True Probability & Diversified Parlay Optimizer
+=========================================================================
+"Verified [X] active props to identify [30] Elite picks + [15] Optimized Parlays."
 
-UNIVERSAL SCAN REQUIREMENT:
-- 100% scan of ALL props from API
-- No early breaks or lazy loading
-- Complete field analysis before selection
+MISSION: Extract every possible 0.5% of edge through mathematical precision.
 
-POWER SCORE FORMULA (0-100 scale):
-  ferrari_power_score = (Edge × 0.4) + (Cushion × 0.3) + (Consistency × 0.3) + Whistle_Modifier
+TRUE PROBABILITY FORMULA (0-100%):
+  True_Prob = (Historical × 0.45) + (Sharp × 0.25) + (Floor × 0.15) + (Context × 0.15)
   
-  Edge Weight (40%):
-    = (Bovada_Implied_Prob - PrizePicks_Implied_Prob) × 4
+  HISTORICAL CONSISTENCY (45%):
+    = (L3 × 0.40) + (L5 × 0.35) + (L10 × 0.25)
     
-  Cushion Weight (30%):
-    = ((Season_Median - PrizePicks_Line) / PrizePicks_Line) × 100
+  SHARP MARKET SIGNAL (25%):
+    = Sharp_Implied × Separation_Confidence_Multiplier
     
-  Consistency Weight (30%):
-    = L10_Hit_Rate (0-100 scale)
+  STATISTICAL FLOOR (15%):
+    = Cushion + Mode_Proximity - Variance_Penalty
     
-  WHISTLE MATRIX MODIFIER:
-    Green Light (+15 PTS/FTM, +7.5 PRA): High whistle crew (PPG > 118 OR O/U > 60%)
-    Red Light (-15 PTS/FTM, -7.5 PRA): Low whistle crew (PPG < 113 OR O/U < 45%)
+  CONTEXTUAL MODIFIERS (15%):
+    = DvP(+/-8) + Whistle(+/-5) + Vacuum(+/-5) + Blowout(-10)
 
-GLOBAL SORT:
-  - Sort ALL survivors by ferrari_power_score DESC
-  - Deduplication Priority: Safe Haven > Front Lines > War Zone
-  - Top 10 per tier
+HARD KILLS:
+  - L3 < 33% (cold streak)
+  - L5 < 40% (confirmed cold)
+  - Sharp < 52% (no edge)
+  - Line > Season Median
+  - Blowout HIGH + PTS/PRA
 
-PERFORMANCE:
-  - Bulk write operations
-  - Index on ferrari_power_score
-  - Optimized for 5,000+ props
+TIER CLASSIFICATION (by True Probability):
+  - Safe Haven: >= 72% (Elite locks)
+  - Front Lines: 62-71% (Strong plays)
+  - War Zone: 52-61% (Value bets)
+
+PARLAY OPTIMIZER:
+  - 5 parlays per tier (2-leg through 6-leg)
+  - Max 2 appearances per player per tier
+  - Max 2 picks per team per parlay
+  - Max 3 picks per stat type per parlay
 """
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any, Optional, Tuple
 from datetime import datetime, timezone
 from collections import Counter
 import logging
+import math
 
 from services.standings_service import StandingsService
+from services.propvision_v7_engine import (
+    TrueProbabilityEngine,
+    DiversifiedParlayOptimizer,
+    calculate_granular_hit_rates,
+    calculate_median,
+    calculate_mode,
+    calculate_std_dev
+)
 
 logger = logging.getLogger(__name__)
 
@@ -55,40 +68,41 @@ TEAM_PACE_DEFAULTS = {
 DEFAULT_SEASON_PACE = 97.5
 
 # =============================================================================
-# FERRARI v6 CONSTANTS
+# PROPVISION v7 CONSTANTS
 # =============================================================================
-
-# KILL SWITCH: 5% Implied Probability Separation
-MIN_SEPARATION_PCT = 5.0
 
 # PRIZEPICKS IMPLIED PROBABILITY (-137)
 PP_IMPLIED = 0.578  # 57.8%
 
-# TIER WINDOWS
+# V7 TIER THRESHOLDS (True Probability %)
+TIER_SAFE_HAVEN_MIN = 72.0
+TIER_FRONT_LINES_MIN = 62.0
+TIER_WAR_ZONE_MIN = 52.0
+
+# HARD KILL THRESHOLDS
+HARD_KILL_L3_MIN = 33.0
+HARD_KILL_L5_MIN = 40.0
+HARD_KILL_SHARP_MIN = 52.0
+HARD_KILL_SEPARATION_MIN = 3.0
+
+# OUTPUT CAPS
+MAX_PICKS_PER_TIER = 10
+MAX_PARLAYS_PER_TIER = 5
+
+# Legacy constants (for backwards compatibility in tier classification)
 SAFE_HAVEN_MAX = -250
 FRONT_LINES_MIN = -245
 FRONT_LINES_MAX = -115
 WAR_ZONE_MIN = -114
 WAR_ZONE_MAX = 500
 
-# POWER SCORE WEIGHTS
-WEIGHT_EDGE = 0.40
-WEIGHT_CUSHION = 0.30
-WEIGHT_CONSISTENCY = 0.30
-
-# OUTPUT CAPS
-MAX_PICKS_PER_TIER = 10
-
 
 # =============================================================================
-# MATHEMATICAL FUNCTIONS
+# MATHEMATICAL FUNCTIONS (V7 uses propvision_v7_engine, these kept for compatibility)
 # =============================================================================
 
 def american_to_implied(odds: int) -> float:
-    """
-    Convert American odds to implied probability.
-    -200 → 0.667, +200 → 0.333, -137 → 0.578
-    """
+    """Convert American odds to implied probability (0-1)."""
     if odds is None:
         return 0.0
     if odds < 0:
@@ -96,97 +110,9 @@ def american_to_implied(odds: int) -> float:
     return 100 / (odds + 100)
 
 
-def calculate_edge_component(bovada_implied: float, pp_implied: float = PP_IMPLIED) -> float:
-    """
-    EDGE WEIGHT (40%):
-    = (Bovada_Implied_Prob - PrizePicks_Implied_Prob) × 4
-    
-    This produces values typically 0-50 for the edge component.
-    Multiplying by 4 scales the difference appropriately.
-    
-    Example:
-      Bovada: -400 → 80.0% implied
-      PP: -137 → 57.8% implied
-      Edge = (0.80 - 0.578) × 4 = 0.222 × 4 = 0.888 → 88.8 (capped at contribution)
-    """
-    if bovada_implied <= 0:
-        return 0.0
-    
-    edge = (bovada_implied - pp_implied) * 4
-    # Scale to 0-100 range (max edge is ~1.6 when Bovada is 99%, which × 4 = 6.4)
-    # Normalize: edge * 100 / 4 = edge * 25 to get 0-100 range
-    edge_normalized = edge * 25
-    return max(0, min(edge_normalized, 100))
-
-
-def calculate_cushion_component(season_median: float, pp_line: float) -> float:
-    """
-    CUSHION WEIGHT (30%):
-    = ((Season_Median - PrizePicks_Line) / PrizePicks_Line) × 100
-    
-    Example:
-      Season Median: 25.0
-      PP Line: 19.5
-      Cushion = ((25.0 - 19.5) / 19.5) × 100 = 28.2%
-    """
-    if pp_line is None or pp_line <= 0 or season_median is None:
-        return 0.0
-    
-    if season_median <= pp_line:
-        return 0.0  # Line is at or above median - no cushion
-    
-    cushion = ((season_median - pp_line) / pp_line) * 100
-    return max(0, min(cushion, 100))  # Cap at 100
-
-
-def calculate_consistency_component(l10_hit_rate: float) -> float:
-    """
-    CONSISTENCY WEIGHT (30%):
-    = L10_Hit_Rate (0-100 scale)
-    
-    Input should already be 0-100 (e.g., 80 for 80%)
-    """
-    return max(0, min(l10_hit_rate, 100))
-
-
-def calculate_power_score(edge: float, cushion: float, consistency: float) -> float:
-    """
-    FERRARI POWER SCORE (0-100):
-    = (Edge × 0.4) + (Cushion × 0.3) + (Consistency × 0.3)
-    """
-    score = (edge * WEIGHT_EDGE) + (cushion * WEIGHT_CUSHION) + (consistency * WEIGHT_CONSISTENCY)
-    return round(score, 2)
-
-
 def calculate_separation_pct(sharp_implied: float, pp_implied: float = PP_IMPLIED) -> float:
-    """
-    Calculate separation as percentage points difference.
-    Kill switch requires >= 5% separation.
-    """
+    """Calculate separation as percentage points difference."""
     return abs(sharp_implied - pp_implied) * 100
-
-
-def calculate_median(values: List[float]) -> Optional[float]:
-    """Calculate median from a list."""
-    if not values:
-        return None
-    sorted_vals = sorted(values)
-    n = len(sorted_vals)
-    if n % 2 == 0:
-        return (sorted_vals[n//2 - 1] + sorted_vals[n//2]) / 2
-    return sorted_vals[n//2]
-
-
-def calculate_mode(values: List[float]) -> Optional[float]:
-    """Calculate mode (rounded to 0.5)."""
-    if not values:
-        return None
-    rounded = [round(v * 2) / 2 for v in values]
-    counts = Counter(rounded)
-    if not counts:
-        return None
-    mode_val, mode_count = counts.most_common(1)[0]
-    return mode_val if mode_count >= 2 else None
 
 
 def calculate_mean(values: List[float]) -> Optional[float]:
@@ -306,7 +232,7 @@ class FerrariTierService:
         return medians
     
     async def _load_l10_stats(self) -> Dict[str, Dict[str, List[float]]]:
-        """Load L10 game stats."""
+        """Load L10 game stats (sorted newest first for L3/L5/L10 calculations)."""
         stats = {}
         
         try:
@@ -318,6 +244,7 @@ class FerrariTierService:
                 if not player_name or not games:
                     continue
                 
+                # Sort by date descending (newest first) for accurate L3/L5/L10
                 sorted_games = sorted(
                     games,
                     key=lambda g: g.get("game", {}).get("date", ""),
@@ -337,7 +264,9 @@ class FerrariTierService:
                     ]
                 }
         except Exception as e:
-            logger.error(f"[v6] L10 stats load error: {e}")
+            logger.error(f"[v7] L10 stats load error: {e}")
+        
+        return stats
         
         return stats
     
@@ -378,39 +307,44 @@ class FerrariTierService:
     
     async def build_ferrari_tiers(self, sync_time: datetime) -> Dict[str, Any]:
         """
-        Execute Ferrari v6 Pipeline - Global Power Ranking + Whistle Matrix
+        Execute PropVision v7 Pipeline - True Probability & Diversified Parlays
         
         1. Sync referee data (Whistle Matrix)
         2. Universal Scan (100% coverage)
-        3. Power Score calculation + Whistle Modifier for ALL survivors
-        4. Bulk write to scored collection
-        5. Global sort by power_score
-        6. Deduplication with tier priority
-        7. Top-K selection
+        3. TRUE PROBABILITY calculation using V7 engine
+        4. Hard/Soft Kill filtering
+        5. Tier classification by True Probability
+        6. Parlay generation with diversification constraints
+        7. Top-K selection + Top-5 parlays per tier
         """
         logger.info("=" * 70)
-        logger.info("[FERRARI v6] GLOBAL POWER RANKING + WHISTLE MATRIX")
+        logger.info("[PROPVISION v7] TRUE PROBABILITY & DIVERSIFIED PARLAYS")
         logger.info("=" * 70)
         
         results = {
             "success": True,
             "synced_at": sync_time.isoformat(),
-            "pipeline": "Ferrari v6 + Whistle Matrix",
+            "pipeline": "PropVision v7 - True Probability",
             "universal_scan": {
                 "total_props_scanned": 0,
                 "players_processed": 0
             },
-            "kill_switch": {
-                "separation_fail": 0,
-                "median_fail": 0,
-                "no_sharp_data": 0,
-                "total_killed": 0
+            "v7_kills": {
+                "hard_kills": 0,
+                "soft_penalties_applied": 0,
+                "l3_cold_streak": 0,
+                "l5_confirmed_cold": 0,
+                "no_sharp_edge": 0,
+                "line_above_median": 0,
+                "blowout_bench_risk": 0,
+                "no_sharp_data": 0
             },
             "scored": {
                 "total_survivors": 0,
                 "safe_haven_pool": 0,
                 "front_lines_pool": 0,
-                "war_zone_pool": 0
+                "war_zone_pool": 0,
+                "below_threshold": 0
             },
             "whistle_matrix": {
                 "refs_synced": 0,
@@ -433,14 +367,24 @@ class FerrariTierService:
                 "safe_haven": 0,
                 "front_lines": 0,
                 "war_zone": 0,
-                "total": 0
+                "total_picks": 0,
+                "total_parlays": 0
+            },
+            "parlays": {
+                "safe_haven": 0,
+                "front_lines": 0,
+                "war_zone": 0
             },
             "verification": {
                 "active_props_verified": 0,
                 "elite_opportunities": 0,
+                "optimized_parlays": 0,
                 "message": ""
             }
         }
+        
+        # Initialize V7 True Probability Engine
+        v7_engine = TrueProbabilityEngine()
         
         try:
             # Ensure indexes exist
@@ -496,9 +440,9 @@ class FerrariTierService:
             logger.info(f"  Context data: {len(player_context_data)} players")
             
             # =================================================================
-            # PHASE 2: POWER SCORE CALCULATION (Every Surviving Prop)
+            # PHASE 2: V7 TRUE PROBABILITY CALCULATION
             # =================================================================
-            logger.info("[PHASE 2] POWER SCORE - Scoring ALL surviving props...")
+            logger.info("[PHASE 2] V7 TRUE PROBABILITY - Calculating for ALL props...")
             
             all_scored = []
             discarded = []
@@ -530,76 +474,36 @@ class FerrariTierService:
                     effective_sharp = bovada_price if bovada_price else sharp_price
                     
                     if effective_sharp is None:
-                        results["kill_switch"]["no_sharp_data"] += 1
+                        results["v7_kills"]["no_sharp_data"] += 1
                         continue
                     
                     # Calculate implied probabilities
                     sharp_implied = american_to_implied(effective_sharp)
                     
-                    # ---------------------------------------------------------
-                    # KILL SWITCH: 5% Implied Probability Separation
-                    # ---------------------------------------------------------
-                    separation = calculate_separation_pct(sharp_implied)
-                    
-                    if separation < MIN_SEPARATION_PCT:
-                        discarded.append({
-                            "player_name": player_name,
-                            "reason": f"SEPARATION: {separation:.1f}% < 5%",
-                            "sharp_price": effective_sharp,
-                            "separation": round(separation, 1)
-                        })
-                        results["kill_switch"]["separation_fail"] += 1
-                        continue
-                    
-                    # ---------------------------------------------------------
-                    # MEDIAN ANCHOR CHECK
-                    # ---------------------------------------------------------
+                    # Get prop details
                     stat_type = prop.get("stat_type", "").upper()
                     pp_line = prop.get("line", 0)
                     season_median = player_medians.get(stat_type)
                     
-                    if season_median is not None and pp_line > season_median:
-                        discarded.append({
-                            "player_name": player_name,
-                            "reason": f"MEDIAN: Line {pp_line} > Median {season_median}",
-                            "sharp_price": effective_sharp
-                        })
-                        results["kill_switch"]["median_fail"] += 1
-                        continue
+                    # Get L10 values for this stat (sorted newest first)
+                    stat_values = player_l10.get(stat_type, [])
                     
                     # ---------------------------------------------------------
-                    # CALCULATE POWER SCORE COMPONENTS
+                    # V7: Calculate L3/L5/L10 hit rates from raw game values
                     # ---------------------------------------------------------
+                    granular_rates = calculate_granular_hit_rates(stat_values, pp_line)
+                    l3_rate = granular_rates["l3_rate"]
+                    l5_rate = granular_rates["l5_rate"]
+                    l10_rate = granular_rates["l10_rate"]
+                    l3_hits = granular_rates["l3_hits"]
+                    l5_hits = granular_rates["l5_hits"]
+                    l10_hits = granular_rates["l10_hits"]
                     
-                    # EDGE: (Bovada_Implied - PP_Implied) × 4, normalized
-                    edge_component = calculate_edge_component(sharp_implied)
-                    
-                    # CUSHION: ((Median - Line) / Line) × 100
-                    cushion_component = calculate_cushion_component(season_median, pp_line) if season_median else 0
-                    
-                    # CONSISTENCY: L10 Hit Rate (0-100)
-                    hit_rates = prop.get("hit_rates", {})
-                    if "l10_rate" in hit_rates:
-                        l10_rate = hit_rates.get("l10_rate") or 0
-                        l5_rate = hit_rates.get("l5_rate") or 0
-                        l10_hits = hit_rates.get("l10_hit_count") or 0
-                    else:
-                        l10_data = hit_rates.get("l10", {})
-                        l10_rate = (l10_data.get("hit_rate", 0) * 100) if isinstance(l10_data, dict) else 0
-                        l10_hits = l10_data.get("games_over", 0) if isinstance(l10_data, dict) else 0
-                        l5_rate = 0
-                    
-                    consistency_component = calculate_consistency_component(l10_rate)
-                    
-                    # BASE POWER SCORE
-                    base_power_score = calculate_power_score(
-                        edge_component,
-                        cushion_component,
-                        consistency_component
-                    )
+                    # Calculate separation percentage
+                    separation = calculate_separation_pct(sharp_implied)
                     
                     # ---------------------------------------------------------
-                    # WHISTLE MATRIX MODIFIER
+                    # WHISTLE MATRIX INFO (needed for V7 context)
                     # ---------------------------------------------------------
                     team_abbrev = player.get("team", "")
                     ref_info = ref_service.get_ref_for_team(team_abbrev)
@@ -615,11 +519,8 @@ class FerrariTierService:
                         ref_ou_pct = ref_info.get("ou_pct")
                         ref_ppg = ref_info.get("ppg")
                         whistle_class = ref_info.get("whistle_class", "neutral")
-                        
-                        # Calculate modifier based on stat type
                         whistle_modifier = ref_service.calculate_whistle_modifier(stat_type, whistle_class)
                         
-                        # Track modifier applications
                         if whistle_class == "high_whistle" and whistle_modifier > 0:
                             results["whistle_matrix"]["green_light_applied"] += 1
                         elif whistle_class == "low_whistle" and whistle_modifier < 0:
@@ -632,7 +533,7 @@ class FerrariTierService:
                         stat_type=stat_type,
                         ref_ppg=ref_ppg or 115.5,
                         whistle_class=whistle_class,
-                        player_usage_rate=None,  # TODO: Add usage rate when available
+                        player_usage_rate=None,
                         team_usage_avg=None
                     )
                     
@@ -644,9 +545,8 @@ class FerrariTierService:
                     vacuum_modifier, vacuum_data = vacuum_service.calculate_vacuum_modifier(player_name)
                     
                     if vacuum_modifier > 0:
-                        results["usage_vacuum"]["beneficiaries_boosted"] = results.get("usage_vacuum", {}).get("beneficiaries_boosted", 0) + 1
+                        results["usage_vacuum"]["beneficiaries_boosted"] += 1
                     
-                    # ---------------------------------------------------------
                     # ---------------------------------------------------------
                     # BLOWOUT RISK CALCULATION
                     # ---------------------------------------------------------
@@ -660,53 +560,125 @@ class FerrariTierService:
                                 player_team, opponent
                             )
                         except Exception as e:
-                            logger.warning(f"[v6] Blowout risk calculation failed for {player_team} vs {opponent}: {e}")
+                            logger.warning(f"[v7] Blowout risk failed for {player_team} vs {opponent}: {e}")
                             blowout_risk_data = {"risk_level": "UNKNOWN", "warning": None}
                     else:
                         blowout_risk_data = {"risk_level": "UNKNOWN", "warning": None}
                     
+                    blowout_risk = blowout_risk_data.get("risk_level", "UNKNOWN") if blowout_risk_data else "UNKNOWN"
+                    
                     # ---------------------------------------------------------
-                    # DEFENSIVE MOMENTUM MODIFIER
+                    # DEFENSIVE MOMENTUM
                     # ---------------------------------------------------------
                     momentum_modifier = 0.0
                     momentum_data = None
+                    dvp_rank = None
+                    is_elite_defense = False
+                    is_weak_defense = False
                     
                     if opponent:
                         momentum_modifier, momentum_data = momentum_service.calculate_momentum_modifier(
-                            opponent,
-                            stat_type
+                            opponent, stat_type
                         )
                         
                         if momentum_data:
-                            if momentum_data.get("is_elite"):
+                            dvp_rank = momentum_data.get("composite_rank")
+                            is_elite_defense = momentum_data.get("is_elite", False)
+                            is_weak_defense = momentum_data.get("is_weak", False)
+                            
+                            if is_elite_defense:
                                 results["defensive_momentum"]["elite_matchups"] += 1
-                            elif momentum_data.get("is_weak"):
+                            elif is_weak_defense:
                                 results["defensive_momentum"]["weak_matchups"] += 1
                             if momentum_data.get("trend_alert"):
                                 results["defensive_momentum"]["trend_alerts"] += 1
                     
-                    # FINAL POWER SCORE with all modifiers
-                    power_score = round(base_power_score + whistle_modifier + vacuum_modifier + momentum_modifier, 2)
-                    # Cap at 0-145 range (base max 100 + whistle 15 + vacuum 15 + momentum 15)
-                    power_score = max(0, min(power_score, 145))
+                    # ---------------------------------------------------------
+                    # V7 TRUE PROBABILITY CALCULATION
+                    # ---------------------------------------------------------
+                    trap_risk = prop.get("sidecar", {}).get("hook_risk", False) or prop.get("sidecar", {}).get("suspect_line_bait", False)
                     
-                    # Determine tier
-                    if effective_sharp <= SAFE_HAVEN_MAX:
-                        tier = "safe_haven"
+                    # Calculate L10 statistical metrics
+                    l10_median = calculate_median(stat_values) if stat_values else None
+                    l10_mode = calculate_mode(stat_values) if stat_values else None
+                    l10_std_dev = calculate_std_dev(stat_values) if stat_values else 0.0
+                    
+                    v7_result = v7_engine.calculate_true_probability(
+                        # Historical
+                        l3_rate=l3_rate,
+                        l5_rate=l5_rate,
+                        l10_rate=l10_rate,
+                        # Sharp
+                        sharp_implied=sharp_implied,
+                        separation_pct=separation,
+                        # Statistical
+                        line=pp_line,
+                        median=l10_median,
+                        mode=l10_mode,
+                        std_dev=l10_std_dev,
+                        season_median=season_median,
+                        # Context
+                        dvp_rank=dvp_rank,
+                        is_elite_defense=is_elite_defense,
+                        is_weak_defense=is_weak_defense,
+                        whistle_class=whistle_class,
+                        vacuum_modifier=vacuum_modifier,
+                        blowout_risk=blowout_risk,
+                        stat_type=stat_type,
+                        trap_risk=trap_risk
+                    )
+                    
+                    # Check if killed by V7 hard kills
+                    if v7_result["is_killed"]:
+                        kill_reason = v7_result["kill_reason"] or "Unknown"
+                        discarded.append({
+                            "player_name": player_name,
+                            "stat_type": stat_type,
+                            "line": pp_line,
+                            "reason": kill_reason
+                        })
+                        results["v7_kills"]["hard_kills"] += 1
+                        
+                        # Track specific kill reasons
+                        if "L3" in kill_reason:
+                            results["v7_kills"]["l3_cold_streak"] += 1
+                        elif "L5" in kill_reason:
+                            results["v7_kills"]["l5_confirmed_cold"] += 1
+                        elif "Sharp" in kill_reason:
+                            results["v7_kills"]["no_sharp_edge"] += 1
+                        elif "Median" in kill_reason:
+                            results["v7_kills"]["line_above_median"] += 1
+                        elif "blowout" in kill_reason.lower():
+                            results["v7_kills"]["blowout_bench_risk"] += 1
+                        
+                        continue
+                    
+                    # Track soft penalties
+                    if v7_result["soft_penalties"]:
+                        results["v7_kills"]["soft_penalties_applied"] += 1
+                    
+                    # Get V7 outputs
+                    true_probability = v7_result["true_probability"]
+                    v7_tier = v7_result["tier"]
+                    v7_confidence = v7_result["confidence"]
+                    v7_components = v7_result["components"]
+                    
+                    # Track tier pools
+                    if v7_tier == "safe_haven":
                         results["scored"]["safe_haven_pool"] += 1
-                    elif FRONT_LINES_MIN <= effective_sharp <= FRONT_LINES_MAX:
-                        tier = "front_lines"
+                    elif v7_tier == "front_lines":
                         results["scored"]["front_lines_pool"] += 1
-                    elif WAR_ZONE_MIN <= effective_sharp <= WAR_ZONE_MAX:
-                        tier = "war_zone"
+                    elif v7_tier == "war_zone":
                         results["scored"]["war_zone_pool"] += 1
                     else:
-                        tier = "unclassified"
+                        results["scored"]["below_threshold"] += 1
+                        # Skip picks below War Zone threshold
+                        continue
                     
                     # Additional stats
                     anchor_line = prop.get("anchor_line", pp_line)
                     line_delta = pp_line - anchor_line if anchor_line else 0
-                    stat_values = player_l10.get(stat_type, [])
+                    hit_rates = prop.get("hit_rates", {})
                     
                     # Build scored prop
                     scored_prop = {
@@ -729,15 +701,15 @@ class FerrariTierService:
                         "line": pp_line,
                         "anchor_line": anchor_line,
                         "price": prop.get("price"),
-                        # NEW: Sharp Movement Classification
+                        # Sharp Movement Classification
                         "sharp_movement": abs(line_delta) >= 1.5 if line_delta else False,
                         "movement_delta": round(line_delta, 2) if line_delta else 0,
                         "movement_direction": "over_value" if line_delta and line_delta > 0 else "under_value" if line_delta and line_delta < 0 else "neutral",
                         "movement_strength": "significant" if abs(line_delta or 0) >= 3.0 else "moderate" if abs(line_delta or 0) >= 1.5 else "minimal",
-                        "trap_risk": prop.get("sidecar", {}).get("hook_risk", False) or prop.get("sidecar", {}).get("suspect_line_bait", False),
+                        "trap_risk": trap_risk,
                         "hook_risk": prop.get("sidecar", {}).get("hook_risk", False),
                         "suspect_line_bait": prop.get("sidecar", {}).get("suspect_line_bait", False),
-                        # LEGACY: Backward compatibility flags (will be deprecated)
+                        # LEGACY: Backward compatibility flags
                         "is_demon": prop.get("is_demon", False),
                         "is_goblin": prop.get("is_goblin", False),
                         "is_alternate": sharp_market.get("is_alternate", False),
@@ -747,14 +719,26 @@ class FerrariTierService:
                         "sharp_implied": round(sharp_implied * 100, 1),
                         "draftkings_price": sharp_market.get("draftkings_price"),
                         "fanduel_price": sharp_market.get("fanduel_price"),
-                        # POWER SCORE BREAKDOWN
-                        "edge_component": round(edge_component, 2),
-                        "cushion_component": round(cushion_component, 2),
-                        "consistency_component": round(consistency_component, 2),
-                        "whistle_modifier": round(whistle_modifier, 1),
-                        "base_power_score": round(base_power_score, 2),
-                        "ferrari_power_score": power_score,
+                        # =====================================================
+                        # V7 TRUE PROBABILITY (NEW PRIMARY SCORING SYSTEM)
+                        # =====================================================
+                        "true_probability": true_probability,
+                        "v7_confidence": v7_confidence,
+                        "v7_components": v7_components,
+                        "v7_soft_penalties": v7_result.get("soft_penalties", []),
+                        # V7 uses true_probability for ranking, but keep ferrari_power_score for backwards compat
+                        "ferrari_power_score": true_probability,  # Map to same field for sorting
+                        # V7 HIT RATE BREAKDOWN (L3/L5/L10)
+                        "l3_rate": round(l3_rate, 1),
+                        "l3_hits": l3_hits,
+                        "l5_rate": round(l5_rate, 1),
+                        "l5_hits": l5_hits,
+                        "l10_rate": round(l10_rate, 1),
+                        "l10_hits": l10_hits,
+                        "h10_rate": round(l10_rate, 1),  # Legacy alias
+                        "h5_rate": round(l5_rate, 1),    # Legacy alias
                         # WHISTLE MATRIX INFO
+                        "whistle_modifier": round(whistle_modifier, 1),
                         "crew_chief": crew_chief,
                         "ref_ou_pct": round(ref_ou_pct, 1) if ref_ou_pct else None,
                         "ref_ppg": round(ref_ppg, 1) if ref_ppg else None,
@@ -777,24 +761,19 @@ class FerrariTierService:
                         "separation_pct": round(separation, 1),
                         "line_delta": round(line_delta, 1),
                         "season_median": round(season_median, 1) if season_median else None,
-                        # Hit Rates
-                        "l10_rate": round(l10_rate, 1),
-                        "l5_rate": round(l5_rate, 1),
-                        "h10_rate": round(l10_rate, 1),
-                        "h5_rate": round(l5_rate, 1),
-                        "l10_hits": l10_hits,
                         # Averages
                         "l5_avg": hit_rates.get("l5_avg"),
                         "l10_avg": hit_rates.get("l10_avg"),
                         "season_avg": hit_rates.get("season_avg"),
                         # L10 Stats
-                        "l10_mode": round(calculate_mode(stat_values), 1) if calculate_mode(stat_values) else None,
-                        "l10_median": round(calculate_median(stat_values), 1) if calculate_median(stat_values) else None,
+                        "l10_mode": round(l10_mode, 1) if l10_mode else None,
+                        "l10_median": round(l10_median, 1) if l10_median else None,
                         "l10_mean": round(calculate_mean(stat_values), 1) if calculate_mean(stat_values) else None,
-                        # Classification
-                        "tier": tier,
-                        "tier_label": "MINEFIELD" if (prop.get("sidecar", {}).get("hook_risk", False) or prop.get("sidecar", {}).get("suspect_line_bait", False)) else tier.upper().replace("_", "_"),
-                        "pipeline": "ferrari_v6",
+                        "l10_std_dev": round(l10_std_dev, 2) if l10_std_dev else None,
+                        # Classification (V7 tier based on True Probability)
+                        "tier": v7_tier,
+                        "tier_label": "MINEFIELD" if trap_risk else v7_tier.upper().replace("_", " "),
+                        "pipeline": "propvision_v7",
                         "synced_at": sync_time.isoformat(),
                         # ==============================================
                         # TOP-LEVEL ENRICHMENT (for frontend compatibility)
@@ -884,7 +863,7 @@ class FerrariTierService:
                             "target_lock_rationale": self._build_target_lock_rationale(
                                 player_name, stat_type, pp_line, prop.get("direction", "over"),
                                 l10_rate, l5_rate, momentum_data, blowout_risk_data,
-                                vacuum_data, line_delta, power_score
+                                vacuum_data, line_delta, true_probability
                             ),
                             # Vision Insight placeholder (AI summary - populated later)
                             "vision_insight": {
@@ -892,7 +871,7 @@ class FerrariTierService:
                                 "reasons": self._build_vision_reasons(
                                     l10_rate, l5_rate, momentum_data, vacuum_data, line_delta
                                 ),
-                                "confidence": "HIGH" if power_score >= 70 else "MEDIUM" if power_score >= 50 else "STANDARD"
+                                "confidence": v7_confidence
                             },
                             # Vision Summary (AI-generated - populated by VisionSummaryService)
                             "vision_summary": prop.get("vision_summary"),
@@ -913,15 +892,13 @@ class FerrariTierService:
                     
                     all_scored.append(scored_prop)
             
-            results["kill_switch"]["total_killed"] = (
-                results["kill_switch"]["separation_fail"] +
-                results["kill_switch"]["median_fail"] +
-                results["kill_switch"]["no_sharp_data"]
-            )
+            # Track V7 kill stats
+            total_hard_kills = results["v7_kills"]["hard_kills"]
             results["scored"]["total_survivors"] = len(all_scored)
             
             logger.info(f"  Total scanned: {results['universal_scan']['total_props_scanned']}")
-            logger.info(f"  Killed: {results['kill_switch']['total_killed']}")
+            logger.info(f"  V7 Hard Kills: {total_hard_kills}")
+            logger.info(f"  V7 Soft Penalties: {results['v7_kills']['soft_penalties_applied']}")
             logger.info(f"  Survivors scored: {len(all_scored)}")
             
             # =================================================================
@@ -939,13 +916,13 @@ class FerrariTierService:
                 await self.ferrari_discarded.insert_many(discarded[:500], ordered=False)
             
             # =================================================================
-            # PHASE 4: GLOBAL SORT & TOP-K SELECTION
+            # PHASE 4: GLOBAL SORT & TOP-K SELECTION (by True Probability)
             # =================================================================
-            logger.info("[PHASE 4] GLOBAL SORT - Ranking by ferrari_power_score...")
+            logger.info("[PHASE 4] GLOBAL SORT - Ranking by true_probability...")
             
             used_players = set()
             
-            # SAFE HAVEN: Global sort, then dedupe, then limit
+            # SAFE HAVEN: Global sort by true_probability (ferrari_power_score), then dedupe, then limit
             sh_cursor = self.ferrari_scored.find(
                 {"tier": "safe_haven"},
                 {"_id": 0}
@@ -970,9 +947,32 @@ class FerrariTierService:
             top_war_zone = self._dedupe_select(wz_all, used_players, MAX_PICKS_PER_TIER)
             
             # =================================================================
-            # PHASE 5: STORE FINAL SELECTIONS
+            # PHASE 5: DIVERSIFIED PARLAY GENERATION (V7 NEW)
             # =================================================================
-            logger.info("[PHASE 5] FINAL SELECTION - Storing Top-10 per tier...")
+            logger.info("[PHASE 5] PARLAY OPTIMIZER - Building diversified parlays...")
+            
+            # Combine all tier picks for parlay generation
+            all_tier_picks = top_safe_haven + top_front_lines + top_war_zone
+            logger.info(f"  Total picks for parlay generation: {len(all_tier_picks)}")
+            for tier_name, tier_picks in [("SH", top_safe_haven), ("FL", top_front_lines), ("WZ", top_war_zone)]:
+                logger.info(f"    {tier_name}: {len(tier_picks)} picks, tiers: {set(p.get('tier') for p in tier_picks)}")
+            
+            # Generate parlays per tier
+            parlay_optimizer = DiversifiedParlayOptimizer(all_tier_picks)
+            
+            safe_haven_parlays = parlay_optimizer.build_optimized_parlays("safe_haven", MAX_PARLAYS_PER_TIER)
+            front_lines_parlays = parlay_optimizer.build_optimized_parlays("front_lines", MAX_PARLAYS_PER_TIER)
+            war_zone_parlays = parlay_optimizer.build_optimized_parlays("war_zone", MAX_PARLAYS_PER_TIER)
+            
+            all_parlays = safe_haven_parlays + front_lines_parlays + war_zone_parlays
+            
+            logger.info(f"  Parlays generated: SH={len(safe_haven_parlays)}, FL={len(front_lines_parlays)}, WZ={len(war_zone_parlays)}")
+            logger.info(f"  Total parlays to store: {len(all_parlays)}")
+            
+            # =================================================================
+            # PHASE 6: STORE FINAL SELECTIONS + PARLAYS
+            # =================================================================
+            logger.info("[PHASE 6] FINAL SELECTION - Storing picks and parlays...")
             
             await self.ferrari_safe_haven.delete_many({})
             if top_safe_haven:
@@ -986,27 +986,44 @@ class FerrariTierService:
             if top_war_zone:
                 await self.ferrari_war_zone.insert_many(top_war_zone)
             
+            # Store parlays in a new collection
+            parlays_collection = self.db.ferrari_parlays
+            await parlays_collection.delete_many({})
+            if all_parlays:
+                logger.info(f"  Storing {len(all_parlays)} parlays to ferrari_parlays collection...")
+                try:
+                    insert_result = await parlays_collection.insert_many(all_parlays)
+                    logger.info(f"  Successfully inserted {len(insert_result.inserted_ids)} parlays")
+                except Exception as e:
+                    logger.error(f"  Parlay insert failed: {e}")
+            
             # Update results
             results["output"]["safe_haven"] = len(top_safe_haven)
             results["output"]["front_lines"] = len(top_front_lines)
             results["output"]["war_zone"] = len(top_war_zone)
-            results["output"]["total"] = len(top_safe_haven) + len(top_front_lines) + len(top_war_zone)
+            results["output"]["total_picks"] = len(top_safe_haven) + len(top_front_lines) + len(top_war_zone)
+            results["output"]["total_parlays"] = len(all_parlays)
+            
+            results["parlays"]["safe_haven"] = len(safe_haven_parlays)
+            results["parlays"]["front_lines"] = len(front_lines_parlays)
+            results["parlays"]["war_zone"] = len(war_zone_parlays)
             
             # VERIFICATION MESSAGE
             results["verification"]["active_props_verified"] = results["scored"]["total_survivors"]
-            results["verification"]["elite_opportunities"] = results["output"]["total"]
+            results["verification"]["elite_opportunities"] = results["output"]["total_picks"]
+            results["verification"]["optimized_parlays"] = results["output"]["total_parlays"]
             results["verification"]["message"] = (
-                f"Verified {results['scored']['total_survivors']} active props "
-                f"to identify these {results['output']['total']} Elite opportunities."
+                f"Verified {results['scored']['total_survivors']} active props → "
+                f"{results['output']['total_picks']} Elite picks + {results['output']['total_parlays']} Optimized parlays"
             )
             
             logger.info("=" * 70)
-            logger.info("[FERRARI v6] PIPELINE COMPLETE")
+            logger.info("[PROPVISION v7] PIPELINE COMPLETE")
             logger.info(f"  {results['verification']['message']}")
             logger.info("=" * 70)
             
         except Exception as e:
-            logger.error(f"[v6] Pipeline error: {e}")
+            logger.error(f"[v7] Pipeline error: {e}")
             import traceback
             logger.error(traceback.format_exc())
             results["success"] = False

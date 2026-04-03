@@ -1,0 +1,735 @@
+"""
+PropVision v7 Engine - True Probability & Diversified Parlay Optimizer
+=======================================================================
+
+MISSION: Extract every possible 0.5% of edge through mathematical precision.
+
+TRUE PROBABILITY FORMULA (0-100%):
+==================================
+True_Prob = (
+    Historical_Consistency × 0.45 +    # Recent form is king
+    Sharp_Market_Signal × 0.25 +       # Sharp money knows  
+    Statistical_Floor × 0.15 +          # Safety net analysis
+    Contextual_Modifiers × 0.15        # Game environment
+)
+
+HISTORICAL CONSISTENCY (45%):
+- L3 Hit Rate × 0.40 (most predictive - recency bias)
+- L5 Hit Rate × 0.35 (validates trend)
+- L10 Hit Rate × 0.25 (baseline stability)
+
+SHARP MARKET SIGNAL (25%):
+- Sharp Implied Probability (Bovada primary)
+- Separation confidence multiplier
+
+STATISTICAL FLOOR (15%):
+- Cushion = (Median - Line) / Line
+- Mode proximity bonus
+- Std deviation penalty
+
+CONTEXTUAL MODIFIERS (15%):
+- Defensive momentum (+/- 8%)
+- Whistle matrix (+/- 5%)
+- Usage vacuum (+/- 5%)
+- Blowout risk penalty (-10%)
+
+HARD KILLS (Auto-Disqualify):
+1. L3 < 33% (cold streak - 0/3 or 1/3)
+2. L5 < 40% (confirmed cold - 0-1/5)
+3. Sharp Implied < 52% (no edge)
+4. Line > Season Median (against the grain)
+5. Blowout HIGH + PTS/PRA (bench risk)
+
+SOFT KILLS (Penalties):
+1. Std Dev > 6.0 → -10%
+2. Trap Risk → -8%
+3. DvP 10-20 → -5%
+
+TIER CLASSIFICATION (by True Probability):
+- Safe Haven: ≥ 72% True Prob (Elite locks)
+- Front Lines: 62-71% True Prob (Strong plays)
+- War Zone: 52-61% True Prob (Value bets)
+
+PARLAY OPTIMIZER:
+- 5 parlays per tier (2-leg through 6-leg)
+- Max 2 appearances per player per tier
+- Max 2 picks per team per parlay
+- Max 3 picks per stat type per parlay
+"""
+
+from typing import Dict, List, Any, Optional, Tuple
+from datetime import datetime, timezone
+from collections import Counter, defaultdict
+from itertools import combinations
+import logging
+import math
+
+logger = logging.getLogger(__name__)
+
+# =============================================================================
+# V7 CONSTANTS
+# =============================================================================
+
+# HISTORICAL CONSISTENCY WEIGHTS (sum = 1.0)
+WEIGHT_L3 = 0.40  # Most recent = most predictive
+WEIGHT_L5 = 0.35  # Validates trend
+WEIGHT_L10 = 0.25  # Baseline stability
+
+# TRUE PROBABILITY COMPONENT WEIGHTS (sum = 1.0)
+WEIGHT_HISTORICAL = 0.45
+WEIGHT_SHARP = 0.25
+WEIGHT_FLOOR = 0.15
+WEIGHT_CONTEXT = 0.15
+
+# PRIZEPICKS IMPLIED PROBABILITY (-137)
+PP_IMPLIED = 0.578  # 57.8%
+
+# HARD KILL THRESHOLDS
+HARD_KILL_L3_MIN = 33.0  # Must hit at least 1/3
+HARD_KILL_L5_MIN = 40.0  # Must hit at least 2/5
+HARD_KILL_SHARP_MIN = 52.0  # Sharp must see edge
+HARD_KILL_SEPARATION_MIN = 3.0  # Min 3% separation
+
+# SOFT KILL PENALTIES
+PENALTY_HIGH_VARIANCE = -10.0  # Std dev > 6.0
+PENALTY_TRAP_RISK = -8.0  # Hook/bait detected
+PENALTY_NEUTRAL_DVP = -5.0  # DvP rank 10-20
+PENALTY_BLOWOUT_MEDIUM = -5.0  # Medium blowout risk
+PENALTY_BLOWOUT_HIGH = -10.0  # High blowout risk (non-bench stats only)
+
+# TIER THRESHOLDS (True Probability %)
+TIER_SAFE_HAVEN_MIN = 72.0
+TIER_FRONT_LINES_MIN = 62.0
+TIER_WAR_ZONE_MIN = 52.0
+
+# CONTEXTUAL MODIFIER CAPS
+MAX_DVP_BOOST = 8.0
+MAX_WHISTLE_BOOST = 5.0
+MAX_VACUUM_BOOST = 5.0
+
+# OUTPUT CAPS
+MAX_PICKS_PER_TIER = 10
+MAX_PARLAYS_PER_TIER = 5
+MAX_PLAYER_APPEARANCES_PER_TIER = 2
+MAX_TEAM_PER_PARLAY = 2
+MAX_STAT_TYPE_PER_PARLAY = 3
+
+# =============================================================================
+# UTILITY FUNCTIONS
+# =============================================================================
+
+def american_to_implied(odds: int) -> float:
+    """Convert American odds to implied probability (0-1)."""
+    if odds is None:
+        return 0.0
+    if odds < 0:
+        return abs(odds) / (abs(odds) + 100)
+    return 100 / (odds + 100)
+
+
+def calculate_hit_rate(values: List[float], line: float, count: int = None) -> float:
+    """Calculate hit rate for values above a line."""
+    if not values:
+        return 0.0
+    
+    check_values = values[:count] if count else values
+    if not check_values:
+        return 0.0
+    
+    hits = sum(1 for v in check_values if v >= line)
+    return (hits / len(check_values)) * 100
+
+
+def calculate_median(values: List[float]) -> Optional[float]:
+    """Calculate median from a list."""
+    if not values:
+        return None
+    sorted_vals = sorted(values)
+    n = len(sorted_vals)
+    if n % 2 == 0:
+        return (sorted_vals[n//2 - 1] + sorted_vals[n//2]) / 2
+    return sorted_vals[n//2]
+
+
+def calculate_mode(values: List[float]) -> Optional[float]:
+    """Calculate mode (rounded to 0.5)."""
+    if not values:
+        return None
+    rounded = [round(v * 2) / 2 for v in values]
+    counts = Counter(rounded)
+    if not counts:
+        return None
+    mode_val, mode_count = counts.most_common(1)[0]
+    return mode_val if mode_count >= 2 else None
+
+
+def calculate_std_dev(values: List[float]) -> float:
+    """Calculate standard deviation."""
+    if not values or len(values) < 2:
+        return 0.0
+    avg = sum(values) / len(values)
+    variance = sum((v - avg) ** 2 for v in values) / len(values)
+    return math.sqrt(variance)
+
+
+# =============================================================================
+# TRUE PROBABILITY ENGINE
+# =============================================================================
+
+class TrueProbabilityEngine:
+    """
+    Calculates True Probability for each pick using a multi-factor model
+    designed to extract maximum edge.
+    """
+    
+    def __init__(self):
+        self.kill_reasons = []
+    
+    def calculate_historical_consistency(
+        self,
+        l3_rate: float,
+        l5_rate: float,
+        l10_rate: float
+    ) -> float:
+        """
+        Historical Consistency (45% of True Prob)
+        Weighted recency: L3 most important, L10 for stability
+        
+        Returns: 0-100 score
+        """
+        weighted = (
+            (l3_rate * WEIGHT_L3) +
+            (l5_rate * WEIGHT_L5) +
+            (l10_rate * WEIGHT_L10)
+        )
+        return min(100, max(0, weighted))
+    
+    def calculate_sharp_signal(
+        self,
+        sharp_implied: float,
+        separation_pct: float
+    ) -> float:
+        """
+        Sharp Market Signal (25% of True Prob)
+        Sharp implied probability with separation confidence multiplier
+        
+        Returns: 0-100 score
+        """
+        if sharp_implied <= 0:
+            return 0.0
+        
+        # Base score = sharp implied as percentage
+        base = sharp_implied * 100
+        
+        # Separation confidence multiplier (0.9 to 1.1)
+        # Higher separation = more confidence in the edge
+        confidence = 1.0
+        if separation_pct >= 15:
+            confidence = 1.10  # Strong edge
+        elif separation_pct >= 10:
+            confidence = 1.05  # Good edge
+        elif separation_pct >= 5:
+            confidence = 1.0   # Acceptable
+        elif separation_pct < 3:
+            confidence = 0.90  # Weak edge
+        
+        return min(100, base * confidence)
+    
+    def calculate_statistical_floor(
+        self,
+        line: float,
+        median: Optional[float],
+        mode: Optional[float],
+        std_dev: float
+    ) -> float:
+        """
+        Statistical Floor Analysis (15% of True Prob)
+        Measures cushion below line and consistency
+        
+        Returns: 0-100 score
+        """
+        if not median or line <= 0:
+            return 50.0  # Default neutral
+        
+        score = 50.0  # Start neutral
+        
+        # Cushion bonus: How far below median is the line?
+        if median > line:
+            cushion_pct = ((median - line) / line) * 100
+            # Cap cushion contribution at 30 points
+            cushion_bonus = min(30, cushion_pct)
+            score += cushion_bonus
+        else:
+            # Line above median = penalty
+            deficit_pct = ((line - median) / line) * 100
+            score -= min(25, deficit_pct)
+        
+        # Mode proximity bonus
+        if mode and mode > line:
+            mode_cushion = ((mode - line) / line) * 100
+            score += min(10, mode_cushion * 0.5)
+        
+        # Variance penalty
+        if std_dev > 6.0:
+            score -= 10  # High variance = less reliable floor
+        elif std_dev > 4.0:
+            score -= 5
+        elif std_dev < 2.0:
+            score += 5  # Very consistent = reliable floor
+        
+        return max(0, min(100, score))
+    
+    def calculate_contextual_modifiers(
+        self,
+        dvp_rank: Optional[int],
+        is_elite_defense: bool,
+        is_weak_defense: bool,
+        whistle_class: str,
+        vacuum_modifier: float,
+        blowout_risk: str,
+        stat_type: str
+    ) -> float:
+        """
+        Contextual Modifiers (15% of True Prob)
+        Game environment factors that affect probability
+        
+        Returns: -15 to +15 modifier (added to base 50)
+        """
+        modifier = 0.0
+        
+        # Defensive Momentum (+/- 8%)
+        if is_weak_defense:
+            modifier += MAX_DVP_BOOST
+        elif is_elite_defense:
+            modifier -= MAX_DVP_BOOST
+        elif dvp_rank and 10 <= dvp_rank <= 20:
+            modifier -= 2.0  # Neutral matchup slight penalty
+        
+        # Whistle Matrix (+/- 5%)
+        if whistle_class == "high_whistle":
+            if stat_type.upper() in ["PTS", "FTM"]:
+                modifier += MAX_WHISTLE_BOOST
+            elif stat_type.upper() == "PRA":
+                modifier += MAX_WHISTLE_BOOST * 0.5
+        elif whistle_class == "low_whistle":
+            if stat_type.upper() in ["PTS", "FTM"]:
+                modifier -= MAX_WHISTLE_BOOST
+            elif stat_type.upper() == "PRA":
+                modifier -= MAX_WHISTLE_BOOST * 0.5
+        
+        # Usage Vacuum (+5% if beneficiary)
+        if vacuum_modifier > 0:
+            modifier += min(MAX_VACUUM_BOOST, vacuum_modifier * 0.3)
+        
+        # Blowout Risk (penalty for bench risk)
+        if blowout_risk == "HIGH":
+            # Only penalize scoring stats (benched in blowout)
+            if stat_type.upper() in ["PTS", "PRA", "AST"]:
+                modifier -= 8.0
+            else:
+                modifier -= 3.0  # Less impact on REB/3PM
+        elif blowout_risk == "MEDIUM":
+            if stat_type.upper() in ["PTS", "PRA"]:
+                modifier -= 4.0
+        
+        # Convert to 0-100 scale (base 50 +/- modifier)
+        return 50.0 + modifier
+    
+    def check_hard_kills(
+        self,
+        l3_rate: float,
+        l5_rate: float,
+        sharp_implied: float,
+        separation_pct: float,
+        line: float,
+        season_median: Optional[float],
+        blowout_risk: str,
+        stat_type: str
+    ) -> Tuple[bool, Optional[str]]:
+        """
+        Hard Kill Switch - Returns (is_killed, reason)
+        Any hard kill = prop is eliminated
+        """
+        # Kill 1: L3 < 33% (cold streak)
+        if l3_rate < HARD_KILL_L3_MIN:
+            return True, f"HARD_KILL: L3 rate {l3_rate:.0f}% < {HARD_KILL_L3_MIN:.0f}% (cold streak)"
+        
+        # Kill 2: L5 < 40% (confirmed cold)
+        if l5_rate < HARD_KILL_L5_MIN:
+            return True, f"HARD_KILL: L5 rate {l5_rate:.0f}% < {HARD_KILL_L5_MIN:.0f}% (confirmed cold)"
+        
+        # Kill 3: Sharp implied < 52% (no edge)
+        sharp_pct = sharp_implied * 100 if sharp_implied < 1 else sharp_implied
+        if sharp_pct < HARD_KILL_SHARP_MIN:
+            return True, f"HARD_KILL: Sharp implied {sharp_pct:.1f}% < {HARD_KILL_SHARP_MIN:.0f}% (no edge)"
+        
+        # Kill 4: Separation < 3% (too close to call)
+        if separation_pct < HARD_KILL_SEPARATION_MIN:
+            return True, f"HARD_KILL: Separation {separation_pct:.1f}% < {HARD_KILL_SEPARATION_MIN:.0f}%"
+        
+        # Kill 5: Line > Season Median (against the grain)
+        if season_median and line > season_median:
+            return True, f"HARD_KILL: Line {line} > Season Median {season_median:.1f}"
+        
+        # Kill 6: Blowout HIGH + scoring stat (bench risk)
+        if blowout_risk == "HIGH" and stat_type.upper() in ["PTS", "PRA"]:
+            return True, f"HARD_KILL: HIGH blowout risk for {stat_type} (bench minutes)"
+        
+        return False, None
+    
+    def apply_soft_kills(
+        self,
+        base_prob: float,
+        std_dev: float,
+        trap_risk: bool,
+        dvp_rank: Optional[int]
+    ) -> Tuple[float, List[str]]:
+        """
+        Soft Kill Penalties - Returns (adjusted_prob, penalty_reasons)
+        """
+        penalties = []
+        adjusted = base_prob
+        
+        # Penalty 1: High variance
+        if std_dev > 6.0:
+            adjusted += PENALTY_HIGH_VARIANCE
+            penalties.append(f"High variance (std_dev={std_dev:.1f})")
+        
+        # Penalty 2: Trap risk
+        if trap_risk:
+            adjusted += PENALTY_TRAP_RISK
+            penalties.append("Trap risk detected (hook/bait)")
+        
+        # Penalty 3: Neutral DvP
+        if dvp_rank and 10 <= dvp_rank <= 20:
+            adjusted += PENALTY_NEUTRAL_DVP
+            penalties.append(f"Neutral matchup (DvP #{dvp_rank})")
+        
+        return max(0, min(100, adjusted)), penalties
+    
+    def calculate_true_probability(
+        self,
+        # Historical data
+        l3_rate: float,
+        l5_rate: float,
+        l10_rate: float,
+        # Sharp data
+        sharp_implied: float,
+        separation_pct: float,
+        # Statistical data
+        line: float,
+        median: Optional[float],
+        mode: Optional[float],
+        std_dev: float,
+        season_median: Optional[float],
+        # Context data
+        dvp_rank: Optional[int],
+        is_elite_defense: bool,
+        is_weak_defense: bool,
+        whistle_class: str,
+        vacuum_modifier: float,
+        blowout_risk: str,
+        stat_type: str,
+        trap_risk: bool
+    ) -> Dict[str, Any]:
+        """
+        Master calculation - Returns full probability breakdown
+        """
+        result = {
+            "true_probability": 0.0,
+            "tier": "disqualified",
+            "is_killed": False,
+            "kill_reason": None,
+            "soft_penalties": [],
+            "components": {},
+            "confidence": "LOW"
+        }
+        
+        # Check hard kills first
+        is_killed, kill_reason = self.check_hard_kills(
+            l3_rate, l5_rate, sharp_implied, separation_pct,
+            line, season_median, blowout_risk, stat_type
+        )
+        
+        if is_killed:
+            result["is_killed"] = True
+            result["kill_reason"] = kill_reason
+            return result
+        
+        # Calculate components
+        historical = self.calculate_historical_consistency(l3_rate, l5_rate, l10_rate)
+        sharp = self.calculate_sharp_signal(sharp_implied, separation_pct)
+        floor = self.calculate_statistical_floor(line, median, mode, std_dev)
+        context = self.calculate_contextual_modifiers(
+            dvp_rank, is_elite_defense, is_weak_defense,
+            whistle_class, vacuum_modifier, blowout_risk, stat_type
+        )
+        
+        # Weight and combine
+        true_prob = (
+            (historical * WEIGHT_HISTORICAL) +
+            (sharp * WEIGHT_SHARP) +
+            (floor * WEIGHT_FLOOR) +
+            (context * WEIGHT_CONTEXT)
+        )
+        
+        # Apply soft kills
+        true_prob, penalties = self.apply_soft_kills(
+            true_prob, std_dev, trap_risk, dvp_rank
+        )
+        
+        # Store components
+        result["components"] = {
+            "historical_consistency": round(historical, 2),
+            "sharp_signal": round(sharp, 2),
+            "statistical_floor": round(floor, 2),
+            "contextual_modifiers": round(context, 2),
+            "weights": {
+                "historical": WEIGHT_HISTORICAL,
+                "sharp": WEIGHT_SHARP,
+                "floor": WEIGHT_FLOOR,
+                "context": WEIGHT_CONTEXT
+            }
+        }
+        
+        result["soft_penalties"] = penalties
+        result["true_probability"] = round(true_prob, 2)
+        
+        # Classify tier
+        if true_prob >= TIER_SAFE_HAVEN_MIN:
+            result["tier"] = "safe_haven"
+            result["confidence"] = "HIGH"
+        elif true_prob >= TIER_FRONT_LINES_MIN:
+            result["tier"] = "front_lines"
+            result["confidence"] = "MEDIUM"
+        elif true_prob >= TIER_WAR_ZONE_MIN:
+            result["tier"] = "war_zone"
+            result["confidence"] = "STANDARD"
+        else:
+            result["tier"] = "below_threshold"
+            result["confidence"] = "LOW"
+        
+        return result
+
+
+# =============================================================================
+# PARLAY OPTIMIZER
+# =============================================================================
+
+class DiversifiedParlayOptimizer:
+    """
+    Builds EV-positive parlays with diversification constraints:
+    - Max 2 appearances per player per tier
+    - Max 2 picks from same team per parlay
+    - Max 3 picks from same stat type per parlay
+    """
+    
+    def __init__(self, picks: List[Dict[str, Any]]):
+        self.picks = picks
+        self.player_appearances = defaultdict(int)
+    
+    def _is_valid_combination(self, combo: List[Dict]) -> bool:
+        """Check if parlay meets diversification rules."""
+        # Rule 1: Max 2 from same team
+        team_counts = Counter(p.get("team") for p in combo)
+        if any(count > MAX_TEAM_PER_PARLAY for count in team_counts.values()):
+            return False
+        
+        # Rule 2: Max 3 from same stat type
+        stat_counts = Counter(p.get("stat_type", "").upper() for p in combo)
+        if any(count > MAX_STAT_TYPE_PER_PARLAY for count in stat_counts.values()):
+            return False
+        
+        # Rule 3: No duplicate players in same parlay
+        players = [p.get("player_name") for p in combo]
+        if len(players) != len(set(players)):
+            return False
+        
+        return True
+    
+    def _calculate_parlay_ev(self, combo: List[Dict]) -> float:
+        """
+        Calculate Expected Value of parlay.
+        EV = (Combined_True_Prob * Payout) - (1 - Combined_True_Prob)
+        """
+        # Combined probability (multiply individual probs)
+        combined_prob = 1.0
+        for pick in combo:
+            prob = pick.get("true_probability", 50) / 100
+            combined_prob *= prob
+        
+        # Standard parlay payout multiplier (approximate)
+        legs = len(combo)
+        payout_multiplier = {
+            2: 2.6,   # 2-leg
+            3: 6.0,   # 3-leg
+            4: 10.0,  # 4-leg
+            5: 20.0,  # 5-leg
+            6: 40.0   # 6-leg
+        }.get(legs, 2.0)
+        
+        # EV = (prob * payout) - (1 - prob)
+        ev = (combined_prob * payout_multiplier) - (1 - combined_prob)
+        return ev
+    
+    def _would_exceed_appearances(self, combo: List[Dict]) -> bool:
+        """Check if any player would exceed max appearances."""
+        temp_counts = self.player_appearances.copy()
+        for pick in combo:
+            player = pick.get("player_name")
+            temp_counts[player] += 1
+            if temp_counts[player] > MAX_PLAYER_APPEARANCES_PER_TIER:
+                return True
+        return False
+    
+    def _record_appearances(self, combo: List[Dict]):
+        """Record player appearances after selecting a parlay."""
+        for pick in combo:
+            player = pick.get("player_name")
+            self.player_appearances[player] += 1
+    
+    def build_optimized_parlays(self, tier: str, count: int = 5) -> List[Dict[str, Any]]:
+        """
+        Build diversified, EV-positive parlays for a tier.
+        
+        Strategy:
+        1. Generate 2-leg through 6-leg combinations
+        2. Filter by diversification rules
+        3. Score by EV
+        4. Select top parlays while respecting appearance limits
+        """
+        tier_picks = [p for p in self.picks if p.get("tier") == tier]
+        
+        if len(tier_picks) < 2:
+            return []
+        
+        all_candidates = []
+        
+        # Generate combinations for each leg count
+        for legs in range(2, min(7, len(tier_picks) + 1)):
+            for combo in combinations(tier_picks, legs):
+                combo_list = list(combo)
+                
+                # Check diversification rules
+                if not self._is_valid_combination(combo_list):
+                    continue
+                
+                # Calculate EV
+                ev = self._calculate_parlay_ev(combo_list)
+                
+                # Only consider EV-positive parlays
+                if ev > 0:
+                    all_candidates.append({
+                        "picks": combo_list,
+                        "legs": legs,
+                        "ev": ev,
+                        "combined_prob": math.prod(
+                            p.get("true_probability", 50) / 100 for p in combo_list
+                        )
+                    })
+        
+        # Sort by EV descending
+        all_candidates.sort(key=lambda x: x["ev"], reverse=True)
+        
+        # Select top parlays while respecting appearance limits
+        selected_parlays = []
+        for candidate in all_candidates:
+            if len(selected_parlays) >= count:
+                break
+            
+            if not self._would_exceed_appearances(candidate["picks"]):
+                # Record and select
+                self._record_appearances(candidate["picks"])
+                
+                # Build parlay object
+                parlay = {
+                    "parlay_id": f"{tier}_{len(selected_parlays) + 1}",
+                    "tier": tier,
+                    "legs": candidate["legs"],
+                    "expected_value": round(candidate["ev"], 3),
+                    "combined_probability": round(candidate["combined_prob"] * 100, 2),
+                    "picks": [
+                        {
+                            "player_name": p.get("player_name"),
+                            "stat_type": p.get("stat_type"),
+                            "line": p.get("line"),
+                            "direction": "Over",
+                            "true_probability": p.get("true_probability"),
+                            "team": p.get("team")
+                        }
+                        for p in candidate["picks"]
+                    ],
+                    "diversification": {
+                        "unique_teams": len(set(p.get("team") for p in candidate["picks"])),
+                        "unique_stat_types": len(set(p.get("stat_type") for p in candidate["picks"]))
+                    }
+                }
+                selected_parlays.append(parlay)
+        
+        # Ensure variety in leg counts if possible
+        leg_counts = Counter(p["legs"] for p in selected_parlays)
+        
+        return selected_parlays
+
+
+# =============================================================================
+# HELPER: Calculate L3/L5/L10 from game values
+# =============================================================================
+
+def calculate_granular_hit_rates(
+    stat_values: List[float],
+    line: float
+) -> Dict[str, float]:
+    """
+    Calculate L3, L5, L10 hit rates from recent game values.
+    Values should be sorted newest first.
+    """
+    result = {
+        "l3_rate": 0.0,
+        "l5_rate": 0.0,
+        "l10_rate": 0.0,
+        "l3_hits": 0,
+        "l5_hits": 0,
+        "l10_hits": 0
+    }
+    
+    if not stat_values:
+        return result
+    
+    # L3
+    l3_values = stat_values[:3]
+    if l3_values:
+        l3_hits = sum(1 for v in l3_values if v >= line)
+        result["l3_hits"] = l3_hits
+        result["l3_rate"] = (l3_hits / len(l3_values)) * 100
+    
+    # L5
+    l5_values = stat_values[:5]
+    if l5_values:
+        l5_hits = sum(1 for v in l5_values if v >= line)
+        result["l5_hits"] = l5_hits
+        result["l5_rate"] = (l5_hits / len(l5_values)) * 100
+    
+    # L10
+    l10_values = stat_values[:10]
+    if l10_values:
+        l10_hits = sum(1 for v in l10_values if v >= line)
+        result["l10_hits"] = l10_hits
+        result["l10_rate"] = (l10_hits / len(l10_values)) * 100
+    
+    return result
+
+
+# =============================================================================
+# EXPORT
+# =============================================================================
+
+__all__ = [
+    "TrueProbabilityEngine",
+    "DiversifiedParlayOptimizer", 
+    "calculate_granular_hit_rates",
+    "american_to_implied",
+    "calculate_median",
+    "calculate_mode",
+    "calculate_std_dev"
+]
