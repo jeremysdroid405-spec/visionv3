@@ -254,3 +254,52 @@ async def get_dvp_analysis(opponent_team: str, stat_type: str, player_position: 
     except Exception as e:
         logger.error(f"DvP analysis error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ==================== TEMPORARY: CACHE FLUSH FOR PRODUCTION ====================
+
+@router.get("/flush-cache")
+async def flush_mutant_cache():
+    """
+    TEMPORARY ENDPOINT: Flush mutant is_goblin schema caches from production.
+    
+    Drops the following collections:
+    - dg_cached_board (main active board cache)
+    - safe_haven_static
+    - front_lines_static  
+    - war_zone_static
+    - minefield_static
+    - trap_graveyard_static
+    
+    This endpoint is UNAUTHENTICATED - remove after use!
+    """
+    if _db is None:
+        raise HTTPException(status_code=500, detail="Database not initialized")
+    
+    collections_to_drop = [
+        "dg_cached_board",
+        "safe_haven_static",
+        "front_lines_static",
+        "war_zone_static",
+        "minefield_static",
+        "trap_graveyard_static"
+    ]
+    
+    dropped = []
+    errors = []
+    
+    for collection_name in collections_to_drop:
+        try:
+            await _db[collection_name].drop()
+            dropped.append(collection_name)
+            logger.info(f"[FLUSH-CACHE] Dropped collection: {collection_name}")
+        except Exception as e:
+            errors.append({"collection": collection_name, "error": str(e)})
+            logger.error(f"[FLUSH-CACHE] Failed to drop {collection_name}: {e}")
+    
+    return {
+        "status": "success",
+        "message": "Mutant caches dropped successfully.",
+        "dropped_collections": dropped,
+        "errors": errors if errors else None
+    }
