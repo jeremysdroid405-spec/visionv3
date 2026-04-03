@@ -737,7 +737,8 @@ class DemonGoblinEngine:
             build_cached_board=self._build_cached_board,
             sync_master_roster=self.sync_master_roster,
             fetch_sharp_book_odds=self.fetch_sharp_book_odds,  # Phase 2
-            build_ferrari_tiers=self._build_ferrari_tiers  # Phase 3
+            build_ferrari_tiers=self._build_ferrari_tiers,  # Phase 3
+            store_static_shell=self.store_static_shell  # Static shell for hydrated board
         )
     
     async def _build_ferrari_tiers(self, sync_time: datetime) -> Dict[str, Any]:
@@ -1323,21 +1324,22 @@ class DemonGoblinEngine:
     async def store_static_shell(self, players: List[Dict], trending: List[Dict]):
         """
         Store STATIC SHELL data with 24h TTL
-        Strips out live betting lines, keeps only metadata and historical stats
+        Now stores full player data including props for complete hydrated board
         """
-        # Extract static data only (no live lines)
+        # Store full player data with props (since we already sync every time)
         static_players = []
         for p in players:
-            static_player = {
-                "player_name": p.get("player_name"),
-                "team": p.get("team"),
-                "position": p.get("position"),
-                "injury_info": p.get("injury_info"),
-                "popularity_order": p.get("popularity_order"),
-                # Historical stats only (these don't change intra-day)
-                "stats_summary": self._extract_stats_summary(p.get("props", []))
-            }
-            static_players.append(static_player)
+            # Clean _id if present
+            player_data = {k: v for k, v in p.items() if k != '_id'}
+            
+            # Also clean _id from props if present
+            if 'props' in player_data and player_data['props']:
+                player_data['props'] = [
+                    {k: v for k, v in prop.items() if k != '_id'}
+                    for prop in player_data['props']
+                ]
+            
+            static_players.append(player_data)
         
         # Clean trending data (remove any _id fields)
         clean_trending = []
@@ -1575,7 +1577,7 @@ class DemonGoblinEngine:
         """
         Get board with hybrid caching:
         1. First load static shell (instant)
-        2. Then hydrate with live lines (background)
+        2. Players already include props from last sync
         """
         # Get static shell first
         static = await self.get_static_shell()
@@ -1588,32 +1590,25 @@ class DemonGoblinEngine:
                 "trending": []
             }
         
-        # Get live lines
-        lines_data = await self.get_live_lines()
-        lines = lines_data.get("lines", {})
-        
-        # Hydrate static players with live lines
+        # Hydrate static players - props are already included in static shell
         hydrated_players = []
         for player in static.get("players", []):
-            player_name = player.get("player_name")
-            player_lines = lines.get(player_name, [])
+            player_props = player.get("props", [])
             
-            # Count demons and goblins from live lines
-            demons_count = sum(1 for line in player_lines if line.get("is_demon"))
-            goblins_count = sum(1 for line in player_lines if line.get("is_goblin"))
+            # Count demons and goblins from props
+            demons_count = sum(1 for prop in player_props if prop.get("is_demon"))
+            goblins_count = sum(1 for prop in player_props if prop.get("is_goblin"))
             
             hydrated_players.append({
                 **player,
-                "props": player_lines,
                 "demons_count": demons_count,
                 "goblins_count": goblins_count,
-                "lines_loaded": len(player_lines) > 0
+                "lines_loaded": len(player_props) > 0
             })
         
         return {
             "needs_sync": False,
             "static_cache_age": static.get("cache_age_seconds"),
-            "lines_cache_age": lines_data.get("cache_age_seconds"),
             "players": hydrated_players,
             "trending": static.get("trending", []),
             "sync_date": static.get("sync_date")

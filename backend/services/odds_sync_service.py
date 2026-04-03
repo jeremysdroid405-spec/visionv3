@@ -50,7 +50,8 @@ class OddsSyncService:
         build_cached_board: Callable,
         sync_master_roster: Callable,
         fetch_sharp_book_odds: Callable = None,  # Phase 2: Sharp books (DraftKings/FanDuel)
-        build_ferrari_tiers: Callable = None  # Phase 3: Ferrari tier filtering
+        build_ferrari_tiers: Callable = None,  # Phase 3: Ferrari tier filtering
+        store_static_shell: Callable = None  # Static shell cache update
     ) -> Dict[str, Any]:
         """
         THE ONLY API CALL - Single batch fetch to MongoDB.
@@ -344,6 +345,24 @@ class OddsSyncService:
             
                 # Step 6: Build cached board
                 await build_cached_board(props_list, sync_start)
+                
+                # Step 6b: Update static shell cache for hydrated board endpoint
+                if store_static_shell:
+                    try:
+                        # Get players with full data from cached board
+                        cached_board_docs = await self.db.dg_cached_board.find(
+                            {},
+                            {"_id": 0, "player_name": 1, "team": 1, "position": 1, 
+                             "photo_url": 1, "headshot_url": 1, "nba_id": 1, "bdl_id": 1,
+                             "season_avg": 1, "baseline_stats": 1, "props": 1}
+                        ).to_list(500)
+                        
+                        players_list = cached_board_docs if cached_board_docs else []
+                        trending = []  # Can be populated from most popular bets
+                        await store_static_shell(players_list, trending)
+                        logger.info(f"[SYNC_ODDS_TO_MONGO] Static shell updated with {len(players_list)} players")
+                    except Exception as shell_err:
+                        logger.error(f"[SYNC_ODDS_TO_MONGO] Static shell update failed: {shell_err}")
                 
                 # Step 7: Build Ferrari tiers (Bovada separation filtering)
                 if build_ferrari_tiers:
