@@ -1012,13 +1012,14 @@ async def get_cached_player(player_name: str):
                         enriched_by_stat[stat] = cp
             logger.info(f"[PLAYER_DETAIL] {pname}: Found {len(enriched_props_map)} pre-enriched props, stats={list(enriched_by_stat.keys())}")
         
-        # Deduplicate props by stat_type + line
+        # Deduplicate props by stat_type + line + direction (keep both Over and Under)
         seen_props = set()
         unique_props = []
         for prop in player.get("props", []):
             stat_type = prop.get("stat_type_extracted", "PTS")
             line = prop.get("line", 0)
-            dedupe_key = f"{stat_type}|{line}"
+            direction = (prop.get("direction") or "over").lower()
+            dedupe_key = f"{stat_type}|{line}|{direction}"
             if dedupe_key in seen_props:
                 continue
             seen_props.add(dedupe_key)

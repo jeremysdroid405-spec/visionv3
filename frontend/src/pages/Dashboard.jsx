@@ -463,6 +463,7 @@ const WarZoneSection = memo(({ picks, onPickClick, onQuickAdd, isLoading }) => {
               showProps={false}
               mode="compact"
               sectionColor="red"
+              forceTheme="DEMON"
               isBoardPick={true}
             />
           </div>
@@ -521,6 +522,7 @@ const SafeHavenSection = memo(({ picks, onPickClick, onQuickAdd, isLoading }) =>
               showProps={false}
               mode="compact"
               sectionColor="green"
+              forceTheme="GOBLIN"
               isBoardPick={true}
             />
           </div>

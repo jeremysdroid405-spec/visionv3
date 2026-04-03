@@ -725,7 +725,7 @@ class FerrariTierService:
                         # Prop
                         "stat_type": prop.get("stat_type"),
                         "market": prop.get("market"),
-                        "direction": prop.get("direction"),
+                        "direction": "Over",  # PrizePicks always uses Over
                         "line": pp_line,
                         "anchor_line": anchor_line,
                         "price": prop.get("price"),
