@@ -22,7 +22,7 @@ import { Card } from '../components/ui/card';
 import { 
   Search, X, LogOut, Crown, User, Radio, AlertTriangle, Activity, 
   ChevronRight, ChevronLeft, Eye, Zap, ChevronDown, Flame, ArrowLeft, Target,
-  TrendingUp, Newspaper, Clock, Crosshair, Lock, Maximize2, Skull, ShieldAlert
+  TrendingUp, Newspaper, Clock, Crosshair, Lock, Maximize2, Skull, ShieldAlert, Info
 } from 'lucide-react';
 
 // Dashboard Components
@@ -31,6 +31,7 @@ import UniversalPlayerCard from '../components/dashboard/UniversalPlayerCard';
 import { ParlayTicket } from '../components/dashboard/ParlayTicket';
 import { PlayerDetailPage } from '../components/dashboard/PlayerDetailPage';
 import CommandPost from '../components/dashboard/CommandPost';
+import IntelligenceModal from '../components/dashboard/IntelligenceModal';
 import { 
   TEAM_LOGOS, STAT_CATEGORIES, getCategoryKey 
 } from '../components/dashboard/constants';
@@ -589,6 +590,7 @@ const FrontLinesSection = memo(({ picks, onPickClick, onQuickAdd, isLoading }) =
 
 // Trap Card - Shows warning badges prominently
 const TrapCard = memo(({ pick, onClick }) => {
+  const [intelModal, setIntelModal] = useState({ isOpen: false, type: null });
   const sidecar = pick.sidecar || {};
   const isHook = sidecar.hook_risk;
   const isBait = sidecar.suspect_line_bait;
@@ -611,76 +613,108 @@ const TrapCard = memo(({ pick, onClick }) => {
       default: return 'bg-zinc-500/20 text-zinc-400 border-zinc-500/30';
     }
   };
+
+  const handleBadgeClick = (e, type) => {
+    e.stopPropagation(); // Prevent card onClick from firing
+    setIntelModal({ isOpen: true, type });
+  };
   
   return (
-    <Card 
-      className="p-3 cursor-pointer hover:scale-[1.02] transition-all bg-gradient-to-br from-red-950/40 to-zinc-900 border-red-500/30"
-      onClick={onClick}
-      data-testid={`trap-card-${pick.player_name?.replace(/\s/g, '-')}`}
-    >
-      {/* Header with player info */}
-      <div className="flex items-center gap-3 mb-2">
-        <div className="w-10 h-10 rounded-full bg-zinc-800 flex items-center justify-center overflow-hidden">
-          {pick.photo_url ? (
-            <img 
-              src={`${process.env.REACT_APP_BACKEND_URL}${pick.photo_url}`}
-              alt={pick.player_name}
-              className="w-full h-full object-cover"
-              onError={(e) => e.target.style.display='none'}
-            />
-          ) : (
-            <span className="text-zinc-500 text-xs font-bold">
-              {pick.player_name?.split(' ').map(n => n[0]).join('')}
-            </span>
+    <>
+      <Card 
+        className="p-3 cursor-pointer hover:scale-[1.02] transition-all bg-gradient-to-br from-red-950/40 to-zinc-900 border-red-500/30"
+        onClick={onClick}
+        data-testid={`trap-card-${pick.player_name?.replace(/\s/g, '-')}`}
+      >
+        {/* Header with player info */}
+        <div className="flex items-center gap-3 mb-2">
+          <div className="w-10 h-10 rounded-full bg-zinc-800 flex items-center justify-center overflow-hidden">
+            {pick.photo_url ? (
+              <img 
+                src={`${process.env.REACT_APP_BACKEND_URL}${pick.photo_url}`}
+                alt={pick.player_name}
+                className="w-full h-full object-cover"
+                onError={(e) => e.target.style.display='none'}
+              />
+            ) : (
+              <span className="text-zinc-500 text-xs font-bold">
+                {pick.player_name?.split(' ').map(n => n[0]).join('')}
+              </span>
+            )}
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="text-sm font-bold text-white truncate">{pick.player_name}</div>
+            <div className="flex items-center gap-2 text-xs">
+              <span className="text-zinc-500">{pick.team} vs {pick.opponent}</span>
+            </div>
+          </div>
+        </div>
+        
+        {/* Prop line */}
+        <div className="mb-2 px-2 py-1.5 bg-zinc-800/50 rounded text-center">
+          <span className="text-white font-bold text-sm">{pick.stat_type}</span>
+          <span className="text-zinc-400 mx-2">•</span>
+          <span className="text-white font-mono text-sm">{pick.line}</span>
+        </div>
+        
+        {/* Warning Badges - Clickable for explanations */}
+        <div className="space-y-1.5">
+          {isHook && (
+            <div 
+              className="flex items-center gap-2 px-2 py-1.5 bg-amber-500/20 border border-amber-500/30 rounded text-amber-400 text-xs cursor-pointer hover:bg-amber-500/30 transition-colors"
+              onClick={(e) => handleBadgeClick(e, 'hook_risk')}
+              role="button"
+              tabIndex={0}
+              data-testid="hook-risk-badge"
+            >
+              <ShieldAlert className="w-3.5 h-3.5 flex-shrink-0" />
+              <span className="font-medium">Hook Risk</span>
+              <Info className="w-3 h-3 ml-1 opacity-60" />
+              {sidecar.mode && (
+                <span className="ml-auto text-amber-300/70">Mode: {sidecar.mode}</span>
+              )}
+            </div>
+          )}
+          {isBait && (
+            <div 
+              className="flex items-center gap-2 px-2 py-1.5 bg-red-500/20 border border-red-500/30 rounded text-red-400 text-xs cursor-pointer hover:bg-red-500/30 transition-colors"
+              onClick={(e) => handleBadgeClick(e, 'suspect_bait')}
+              role="button"
+              tabIndex={0}
+              data-testid="vegas-bait-badge"
+            >
+              <Skull className="w-3.5 h-3.5 flex-shrink-0" />
+              <span className="font-medium">Vegas Bait</span>
+              <Info className="w-3 h-3 ml-1 opacity-60" />
+              {sidecar.median && (
+                <span className="ml-auto text-red-300/70">Med: {sidecar.median}</span>
+              )}
+            </div>
           )}
         </div>
-        <div className="flex-1 min-w-0">
-          <div className="text-sm font-bold text-white truncate">{pick.player_name}</div>
-          <div className="flex items-center gap-2 text-xs">
-            <span className="text-zinc-500">{pick.team} vs {pick.opponent}</span>
-          </div>
-        </div>
-      </div>
-      
-      {/* Prop line */}
-      <div className="mb-2 px-2 py-1.5 bg-zinc-800/50 rounded text-center">
-        <span className="text-white font-bold text-sm">{pick.stat_type}</span>
-        <span className="text-zinc-400 mx-2">•</span>
-        <span className="text-white font-mono text-sm">{pick.line}</span>
-      </div>
-      
-      {/* Warning Badges */}
-      <div className="space-y-1.5">
-        {isHook && (
-          <div className="flex items-center gap-2 px-2 py-1.5 bg-amber-500/20 border border-amber-500/30 rounded text-amber-400 text-xs">
-            <ShieldAlert className="w-3.5 h-3.5 flex-shrink-0" />
-            <span className="font-medium">Hook Risk</span>
-            {sidecar.mode && (
-              <span className="ml-auto text-amber-300/70">Mode: {sidecar.mode}</span>
-            )}
-          </div>
-        )}
-        {isBait && (
-          <div className="flex items-center gap-2 px-2 py-1.5 bg-red-500/20 border border-red-500/30 rounded text-red-400 text-xs">
-            <Skull className="w-3.5 h-3.5 flex-shrink-0" />
-            <span className="font-medium">Vegas Bait</span>
-            {sidecar.median && (
-              <span className="ml-auto text-red-300/70">Med: {sidecar.median}</span>
-            )}
-          </div>
-        )}
-      </div>
-      
-      {/* Source board badge */}
-      <div className="mt-2 flex items-center justify-between">
-        <Badge className={`text-[10px] border ${getBoardColor(sourceBoard)}`}>
-          Filtered from {getBoardLabel(sourceBoard)}
-        </Badge>
-        <div className="text-[10px] text-zinc-500">
-          L10: {pick.h10_rate || 0}%
+        
+        {/* Source board badge */}
+        <div className="mt-2 flex items-center justify-between">
+          <Badge className={`text-[10px] border ${getBoardColor(sourceBoard)}`}>
+            Filtered from {getBoardLabel(sourceBoard)}
+          </Badge>
+          <div className="text-[10px] text-zinc-500">
+            L10: {pick.h10_rate || 0}%
         </div>
       </div>
     </Card>
+    
+    {/* Intelligence Modal for Hook Risk / Vegas Bait explanations */}
+    <IntelligenceModal
+      isOpen={intelModal.isOpen}
+      onClose={() => setIntelModal({ isOpen: false, type: null })}
+      type={intelModal.type}
+      playerName={pick.player_name}
+      statType={pick.stat_type}
+      line={pick.line}
+      sidecarData={sidecar}
+    />
+  </>
   );
 });
 
