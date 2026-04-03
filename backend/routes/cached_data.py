@@ -1154,6 +1154,14 @@ async def get_cached_player(player_name: str):
                 # Start with calculated intel (has vision_insight, matchup_dvp, etc.)
                 merged_intel = {**calculated_intel}
                 
+                # MERGE CONTEXT BADGES: Combine pre-cached (Ferrari) badges with player badges
+                # Ferrari badges: blowout_risk, trap_risk, soft_matchup, trend_alert, etc.
+                # Player badges: pay_day, locked_in, gassed, home_cookin, deep_water, etc.
+                ferrari_badges = pre_cached_intel.get("context_badges", [])
+                merged_badges = list(set(ferrari_badges + badge_keys))
+                merged_intel["context_badges"] = merged_badges
+                prop["active_badges"] = merged_badges
+                
                 # Add pre-cached fields (momentum, whistle, vacuum, board, ferrari_score)
                 if pre_cached_intel.get("momentum_data"):
                     merged_intel["momentum_data"] = pre_cached_intel["momentum_data"]

@@ -330,6 +330,41 @@ class FerrariTierService:
         
         return stats
     
+    async def _load_player_context_data(self) -> Dict[str, Dict[str, Any]]:
+        """
+        Load player context data from master_hub for badge resolution.
+        Returns: {player_name: {"game_logs": [...], "baseline_stats": {...}}}
+        """
+        context_data = {}
+        
+        try:
+            master_hub = self.db.nba_master_hub_2026
+            cursor = master_hub.find(
+                {},
+                {"_id": 0, "display_name": 1, "bdl_game_logs": 1, "game_logs": 1, "baseline_stats": 1}
+            )
+            
+            async for doc in cursor:
+                player_name = doc.get("display_name")
+                if not player_name:
+                    continue
+                
+                # Prefer bdl_game_logs, fallback to game_logs
+                game_logs = doc.get("bdl_game_logs") or doc.get("game_logs") or []
+                baseline_stats = doc.get("baseline_stats", {})
+                
+                context_data[player_name] = {
+                    "game_logs": game_logs,
+                    "baseline_stats": baseline_stats
+                }
+            
+            logger.info(f"[v6] Loaded context data for {len(context_data)} players")
+            
+        except Exception as e:
+            logger.error(f"[v6] Player context data load error: {e}")
+        
+        return context_data
+    
     async def build_ferrari_tiers(self, sync_time: datetime) -> Dict[str, Any]:
         """
         Execute Ferrari v6 Pipeline - Global Power Ranking + Whistle Matrix
@@ -436,6 +471,7 @@ class FerrariTierService:
             
             season_medians = await self._load_season_medians()
             l10_stats = await self._load_l10_stats()
+            player_context_data = await self._load_player_context_data()
             
             # Get ALL players - NO LIMIT
             cursor = self.cached_board.find({}, {"_id": 0})
@@ -446,6 +482,7 @@ class FerrariTierService:
             logger.info(f"  Players loaded: {len(players)}")
             logger.info(f"  Season medians: {len(season_medians)} players")
             logger.info(f"  L10 stats: {len(l10_stats)} players")
+            logger.info(f"  Context data: {len(player_context_data)} players")
             
             # =================================================================
             # PHASE 2: POWER SCORE CALCULATION (Every Surviving Prop)
@@ -459,6 +496,16 @@ class FerrariTierService:
                 player_name = player.get("player_name", "")
                 player_medians = season_medians.get(player_name, {})
                 player_l10 = l10_stats.get(player_name, {})
+                
+                # Get context data for badge resolution
+                ctx_data = player_context_data.get(player_name, {})
+                player_game_logs = ctx_data.get("game_logs", [])
+                player_baseline_stats = ctx_data.get("baseline_stats", {})
+                
+                # Resolve player-level context badges ONCE per player (not per prop)
+                player_context_badges = await self._resolve_player_context_badges(
+                    player_name, player_game_logs, player_baseline_stats
+                )
                 
                 for prop in player.get("props", []):
                     results["universal_scan"]["total_props_scanned"] += 1
@@ -738,6 +785,16 @@ class FerrariTierService:
                         "tier_label": "MINEFIELD" if (prop.get("sidecar", {}).get("hook_risk", False) or prop.get("sidecar", {}).get("suspect_line_bait", False)) else tier.upper().replace("_", "_"),
                         "pipeline": "ferrari_v6",
                         "synced_at": sync_time.isoformat(),
+                        # Active badges (merged prop + player badges)
+                        "active_badges": list(set(
+                            self._build_prop_badges(
+                                blowout_risk_data.get("risk_level") if blowout_risk_data else None,
+                                prop.get("sidecar", {}).get("hook_risk", False),
+                                prop.get("sidecar", {}).get("suspect_line_bait", False),
+                                abs(line_delta) >= 1.5 if line_delta else False,
+                                momentum_data
+                            ) + player_context_badges
+                        )),
                         # =====================================================
                         # INTEL SUITE: Complete Vision Intelligence Package
                         # =====================================================
@@ -783,14 +840,16 @@ class FerrariTierService:
                                 "shift_label": f"+{int(vacuum_data.get('usage_bump', 0))}% Usage" if vacuum_data else "Normal",
                                 "injuries_affecting": [vacuum_data.get("injured_player")] if vacuum_data and vacuum_data.get("injured_player") else []
                             },
-                            # Context Badges
-                            "context_badges": self._build_context_badges(
-                                blowout_risk_data.get("risk_level") if blowout_risk_data else None,
-                                prop.get("sidecar", {}).get("hook_risk", False),
-                                prop.get("sidecar", {}).get("suspect_line_bait", False),
-                                abs(line_delta) >= 1.5 if line_delta else False,
-                                momentum_data
-                            ),
+                            # Context Badges - MERGED: Prop badges + Player badges
+                            "context_badges": list(set(
+                                self._build_prop_badges(
+                                    blowout_risk_data.get("risk_level") if blowout_risk_data else None,
+                                    prop.get("sidecar", {}).get("hook_risk", False),
+                                    prop.get("sidecar", {}).get("suspect_line_bait", False),
+                                    abs(line_delta) >= 1.5 if line_delta else False,
+                                    momentum_data
+                                ) + player_context_badges
+                            )),
                             # Vision Insight placeholder
                             "vision_insight": {
                                 "primary": f"{player_name} {stat_type} @ {pp_line}",
@@ -933,8 +992,8 @@ class FerrariTierService:
                     break
         return selected
     
-    def _build_context_badges(self, blowout_risk, hook_risk, suspect_bait, sharp_movement, momentum_data) -> List[str]:
-        """Build context badges based on prop analysis."""
+    def _build_prop_badges(self, blowout_risk, hook_risk, suspect_bait, sharp_movement, momentum_data) -> List[str]:
+        """Build prop-specific badges based on game/matchup analysis."""
         badges = []
         
         if blowout_risk == "HIGH":
@@ -950,6 +1009,181 @@ class FerrariTierService:
                 badges.append("tough_matchup")
             if momentum_data.get("trend_alert"):
                 badges.append("trend_alert")
+        
+        return badges
+    
+    async def _resolve_player_context_badges(self, player_name: str, game_logs: List[Dict], baseline_stats: Dict) -> List[str]:
+        """
+        Resolve player-level context badges using BDL data as SSOT.
+        
+        Badges:
+        1. locked_in: L5 PPG > Season PPG + 5
+        2. gassed: Back-to-back game OR 38+ minutes last game
+        3. home_cookin: Home PPG 15%+ higher than Away (from game logs)
+        4. deep_water: BDL injuries only
+        5. pay_day: Contract year (from Spotrac/static)
+        6-10: Other context badges from context_engine/static data
+        """
+        badges = []
+        
+        try:
+            # ===== 1. LOCKED_IN: L5 PPG > Season PPG + 5 =====
+            pts_stats = baseline_stats.get("PTS", {})
+            season_ppg = pts_stats.get("season_avg", 0) if isinstance(pts_stats, dict) else 0
+            
+            if season_ppg and game_logs and len(game_logs) >= 5:
+                l5_pts = [g.get("pts", 0) or 0 for g in game_logs[:5]]
+                l5_ppg = sum(l5_pts) / len(l5_pts) if l5_pts else 0
+                
+                if l5_ppg > season_ppg + 5:
+                    badges.append("locked_in")
+            
+            # ===== 2. GASSED: Back-to-back OR heavy minutes =====
+            if game_logs and len(game_logs) >= 2:
+                from datetime import datetime as dt
+                try:
+                    log1 = game_logs[0]
+                    log2 = game_logs[1]
+                    
+                    date1_str = log1.get("game", {}).get("date") or log1.get("game_date")
+                    date2_str = log2.get("game", {}).get("date") or log2.get("game_date")
+                    
+                    if date1_str and date2_str:
+                        for fmt in ["%Y-%m-%d", "%b %d, %Y"]:
+                            try:
+                                date1 = dt.strptime(str(date1_str)[:10], fmt)
+                                date2 = dt.strptime(str(date2_str)[:10], fmt)
+                                break
+                            except (ValueError, TypeError):
+                                continue
+                        else:
+                            date1, date2 = None, None
+                        
+                        if date1 and date2 and abs((date1 - date2).days) == 1:
+                            badges.append("gassed")
+                except Exception as e:
+                    logger.debug(f"[BADGE] Gassed B2B check error: {e}")
+            
+            # Heavy minutes check (38+ in last game)
+            if game_logs and "gassed" not in badges:
+                try:
+                    last_game = game_logs[0]
+                    minutes = last_game.get("min") or last_game.get("minutes", "0")
+                    if isinstance(minutes, str) and ":" in minutes:
+                        minutes = int(minutes.split(":")[0])
+                    else:
+                        minutes = int(float(minutes)) if minutes else 0
+                    
+                    if minutes >= 38:
+                        badges.append("gassed")
+                except Exception as e:
+                    logger.debug(f"[BADGE] Heavy minutes check error: {e}")
+            
+            # ===== 3. HOME_COOKIN: Home PPG 15%+ higher than Away =====
+            if game_logs and len(game_logs) >= 10:
+                try:
+                    home_pts = []
+                    away_pts = []
+                    
+                    for log in game_logs[:20]:
+                        pts = log.get("pts", 0) or 0
+                        game_data = log.get("game", {})
+                        team_data = log.get("team", {})
+                        team_id = team_data.get("id")
+                        home_team_id = game_data.get("home_team_id")
+                        
+                        matchup = log.get("matchup", "")
+                        is_home = None
+                        
+                        if team_id and home_team_id:
+                            is_home = team_id == home_team_id
+                        elif "vs." in matchup:
+                            is_home = True
+                        elif "@" in matchup:
+                            is_home = False
+                        
+                        if is_home is True:
+                            home_pts.append(pts)
+                        elif is_home is False:
+                            away_pts.append(pts)
+                    
+                    if home_pts and away_pts:
+                        home_avg = sum(home_pts) / len(home_pts)
+                        away_avg = sum(away_pts) / len(away_pts)
+                        
+                        if away_avg > 0 and home_avg > away_avg * 1.15:
+                            badges.append("home_cookin")
+                except Exception as e:
+                    logger.debug(f"[BADGE] Home cookin check error: {e}")
+            
+            # ===== 4. DEEP_WATER: BDL Injuries ONLY =====
+            try:
+                bdl_injuries = self.db.bdl_injuries
+                injury = await bdl_injuries.find_one(
+                    {"player_name": {"$regex": f"^{player_name}$", "$options": "i"}},
+                    {"_id": 0}
+                )
+                
+                if injury:
+                    severity = injury.get("severity", "unknown")
+                    if severity in ["out", "doubtful", "season_ending", "questionable", "probable"]:
+                        badges.append("deep_water")
+            except Exception as e:
+                logger.debug(f"[BADGE] Deep water check error: {e}")
+            
+            # ===== 5. PAY_DAY: Contract year =====
+            try:
+                from services.spotrac_contract_service import get_contract_year_info
+                pay_day = await get_contract_year_info(player_name, self.db)
+                if pay_day:
+                    badges.append("pay_day")
+            except Exception as e:
+                logger.debug(f"[BADGE] Pay day check error: {e}")
+            
+            # ===== 6-10: Context engine flags (jet_lag, legal_noise, distraction, revenge, milestone) =====
+            try:
+                context_engine = self.db['nba_context_engine']
+                context_query = {"active": True, "player_name": {"$regex": f"^{player_name}$", "$options": "i"}}
+                
+                async for flag in context_engine.find(context_query, {"_id": 0, "flag_type": 1, "travel_miles": 1}):
+                    flag_type = flag.get("flag_type", "")
+                    
+                    if flag_type == "travel" and flag.get("travel_miles", 0) >= 1000:
+                        if "jet_lag" not in badges:
+                            badges.append("jet_lag")
+                    elif "legal" in flag_type.lower():
+                        if "legal_noise" not in badges:
+                            badges.append("legal_noise")
+                    elif flag_type in ["distraction", "trade_rumors", "drama"]:
+                        if "distraction" not in badges:
+                            badges.append("distraction")
+                    elif flag_type == "revenge":
+                        if "revenge" not in badges:
+                            badges.append("revenge")
+            except Exception as e:
+                logger.debug(f"[BADGE] Context engine check error: {e}")
+            
+            # Check static distraction data
+            if "distraction" not in badges:
+                try:
+                    from data.context_data import get_distraction_info
+                    distraction = get_distraction_info(player_name)
+                    if distraction:
+                        badges.append("distraction")
+                except Exception:
+                    pass
+            
+            # Check static milestone data
+            try:
+                from data.career_milestones import get_best_milestone
+                milestone = get_best_milestone(player_name)
+                if milestone:
+                    badges.append("milestone")
+            except Exception:
+                pass
+            
+        except Exception as e:
+            logger.error(f"[BADGE] Error resolving badges for {player_name}: {e}")
         
         return badges
 
