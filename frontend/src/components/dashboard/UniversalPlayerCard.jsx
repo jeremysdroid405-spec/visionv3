@@ -612,10 +612,14 @@ const UniversalPlayerCard = memo(({
     const isDemon = is_demon || tier_label === 'DEMON';
     const isGoblin = is_goblin || tier_label === 'GOBLIN' || tier_label === 'FRONT_LINE';
     
+    // Only board picks (with intel data) should be clickable to Vision Intel Suite
+    const hasIntelData = momentum_data || crew_chief || vacuum_data || has_whistle_modifier || has_vacuum_modifier || has_momentum_modifier;
+    const isClickable = hasIntelData && !is_locked;
+    
     return (
       <div 
-        className={`relative p-3 rounded-lg border ${theme.border} bg-gradient-to-br ${theme.bg} ${is_locked ? 'cursor-not-allowed' : 'cursor-pointer hover:scale-[1.02]'} transition-all w-full ${is_locked ? 'opacity-80' : ''}`}
-        onClick={handleCardClick}
+        className={`relative p-3 rounded-lg border ${theme.border} bg-gradient-to-br ${theme.bg} ${isClickable ? 'cursor-pointer hover:scale-[1.02]' : ''} ${is_locked ? 'cursor-not-allowed opacity-80' : ''} transition-all w-full`}
+        onClick={isClickable ? handleCardClick : undefined}
         data-testid={`player-compact-${playerSlug}`}
       >
         {/* Locked Overlay */}
@@ -718,12 +722,14 @@ const UniversalPlayerCard = memo(({
           </div>
         </div>
         
-        {/* Vision Intel Suite CTA */}
-        <div className="mt-2 text-center">
-          <span className="text-[10px] text-cyan-400 font-medium animate-pulse">
-            Click for Vision Intel Suite
-          </span>
-        </div>
+        {/* Vision Intel Suite CTA - only show for board picks with intel data */}
+        {hasIntelData && (
+          <div className="mt-2 text-center">
+            <span className="text-[10px] text-cyan-400 font-medium animate-pulse">
+              Click for Vision Intel Suite
+            </span>
+          </div>
+        )}
         
         {/* Quick Add Button */}
         {onQuickAdd && !is_locked && (
