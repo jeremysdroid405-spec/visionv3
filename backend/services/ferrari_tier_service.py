@@ -43,6 +43,17 @@ from services.standings_service import StandingsService
 
 logger = logging.getLogger(__name__)
 
+# ========== TEAM PACE DEFAULTS (possessions per game) ==========
+TEAM_PACE_DEFAULTS = {
+    "IND": 103.5, "ATL": 102.8, "MIL": 101.2, "SAC": 100.9, "MIN": 100.5,
+    "DEN": 99.8, "LAL": 99.5, "BOS": 99.2, "PHX": 99.0, "DAL": 98.8,
+    "NOP": 98.5, "GSW": 98.2, "CHI": 98.0, "CHA": 97.8, "POR": 97.5,
+    "BKN": 97.2, "HOU": 97.0, "TOR": 96.8, "ORL": 96.5, "WAS": 96.2,
+    "DET": 96.0, "PHI": 95.8, "OKC": 95.5, "SAS": 95.2, "CLE": 95.0,
+    "MIA": 94.8, "NYK": 94.5, "LAC": 94.2, "MEM": 93.8, "UTA": 93.5
+}
+DEFAULT_SEASON_PACE = 97.5
+
 # =============================================================================
 # FERRARI v6 CONSTANTS
 # =============================================================================
@@ -785,6 +796,10 @@ class FerrariTierService:
                         "tier_label": "MINEFIELD" if (prop.get("sidecar", {}).get("hook_risk", False) or prop.get("sidecar", {}).get("suspect_line_bait", False)) else tier.upper().replace("_", "_"),
                         "pipeline": "ferrari_v6",
                         "synced_at": sync_time.isoformat(),
+                        # ==============================================
+                        # TOP-LEVEL ENRICHMENT (for frontend compatibility)
+                        # ==============================================
+                        # NOTE: momentum_data is already at prop level (line 775)
                         # Active badges (merged prop + player badges)
                         "active_badges": list(set(
                             self._build_prop_badges(
@@ -808,7 +823,7 @@ class FerrariTierService:
                                 "risk_reason": blowout_risk_data.get("risk_reason") if blowout_risk_data else None,
                                 "warning": blowout_risk_data.get("warning") if blowout_risk_data else None
                             },
-                            # Matchup DvP Analysis (from momentum_data)
+                            # Matchup DvP Analysis (Defensive Momentum)
                             "matchup_dvp": {
                                 "display": f"vs {opponent}" if opponent else "TBD",
                                 "opponent": opponent,
@@ -819,18 +834,32 @@ class FerrariTierService:
                                 "dvp_rank": momentum_data.get("composite_rank") if momentum_data else None,
                                 "stat_type": stat_type
                             },
-                            # Pace Delta
-                            "pace_delta": {
-                                "display": "0.0",
-                                "possessions": 0,
-                                "tempo_label": "Neutral Pace",
-                                "expected_game_pace": "98.0"
-                            },
+                            # ===== DEFENSIVE MOMENTUM (replaces old DVP) =====
+                            "defensive_momentum": {
+                                "composite_rank": momentum_data.get("composite_rank") if momentum_data else None,
+                                "season_rank": momentum_data.get("season_rank") if momentum_data else None,
+                                "l10_rank": momentum_data.get("l10_rank") if momentum_data else None,
+                                "l5_rank": momentum_data.get("l5_rank") if momentum_data else None,
+                                "momentum_trend": momentum_data.get("momentum", "stable") if momentum_data else "stable",
+                                "is_elite": momentum_data.get("is_elite", False) if momentum_data else False,
+                                "is_weak": momentum_data.get("is_weak", False) if momentum_data else False,
+                                "trend_alert": momentum_data.get("trend_alert") if momentum_data else None,
+                                "tooltip": momentum_data.get("tooltip") if momentum_data else None,
+                                "display": f"#{int(momentum_data.get('composite_rank', 15))} Defense" if momentum_data and momentum_data.get("composite_rank") else "Unknown"
+                            } if momentum_data else None,
+                            # ===== TEMPO (Pace Delta) =====
+                            "tempo": self._calculate_tempo(player.get("team"), opponent),
+                            # Pace Delta (legacy - keep for compatibility)
+                            "pace_delta": self._calculate_tempo(player.get("team"), opponent),
+                            # ===== VARIANCE (Stability Index) =====
+                            "variance": self._calculate_variance(stat_values, l10_rate, l5_rate),
                             # Stability Index from hit rates
                             "stability_index": {
                                 "display": f"{int((l10_rate + l5_rate) / 2)}%",
                                 "score": int((l10_rate + l5_rate) / 2),
-                                "consistency": "Consistent" if (l10_rate + l5_rate) / 2 >= 70 else "Variable" if (l10_rate + l5_rate) / 2 >= 50 else "Volatile"
+                                "consistency": "Consistent" if (l10_rate + l5_rate) / 2 >= 70 else "Variable" if (l10_rate + l5_rate) / 2 >= 50 else "Volatile",
+                                "std_dev": self._calculate_std_dev(stat_values),
+                                "variance_level": "Low" if (l10_rate + l5_rate) / 2 >= 70 else "Medium" if (l10_rate + l5_rate) / 2 >= 45 else "High"
                             },
                             # Usage Ripple from vacuum_data
                             "usage_ripple": {
@@ -850,14 +879,23 @@ class FerrariTierService:
                                     momentum_data
                                 ) + player_context_badges
                             )),
-                            # Vision Insight placeholder
+                            # ===== TARGET LOCK RATIONALE =====
+                            "target_lock_rationale": self._build_target_lock_rationale(
+                                player_name, stat_type, pp_line, prop.get("direction", "over"),
+                                l10_rate, l5_rate, momentum_data, blowout_risk_data,
+                                vacuum_data, line_delta, power_score
+                            ),
+                            # Vision Insight placeholder (AI summary - populated later)
                             "vision_insight": {
                                 "primary": f"{player_name} {stat_type} @ {pp_line}",
-                                "reasons": [],
-                                "confidence": "STANDARD"
+                                "reasons": self._build_vision_reasons(
+                                    l10_rate, l5_rate, momentum_data, vacuum_data, line_delta
+                                ),
+                                "confidence": "HIGH" if power_score >= 70 else "MEDIUM" if power_score >= 50 else "STANDARD"
                             },
-                            # Raw enrichment data for advanced displays
-                            "momentum_data": momentum_data,
+                            # Vision Summary (AI-generated - populated by VisionSummaryService)
+                            "vision_summary": prop.get("vision_summary"),
+                            # Raw enrichment data for advanced displays (keep in intel_suite for backwards compatibility)
                             "whistle_data": {
                                 "crew_chief": crew_chief,
                                 "ref_ou_pct": round(ref_ou_pct, 1) if ref_ou_pct else None,
@@ -1011,6 +1049,180 @@ class FerrariTierService:
                 badges.append("trend_alert")
         
         return badges
+    
+    def _calculate_tempo(self, team: Optional[str], opponent: Optional[str]) -> Dict[str, Any]:
+        """Calculate tempo/pace delta for a matchup."""
+        team_pace = TEAM_PACE_DEFAULTS.get(team, DEFAULT_SEASON_PACE) if team else DEFAULT_SEASON_PACE
+        opp_pace = TEAM_PACE_DEFAULTS.get(opponent, DEFAULT_SEASON_PACE) if opponent else DEFAULT_SEASON_PACE
+        
+        expected_game_pace = (team_pace + opp_pace) / 2
+        possession_delta = expected_game_pace - DEFAULT_SEASON_PACE
+        
+        if possession_delta >= 4:
+            tempo_label = "High Tempo"
+        elif possession_delta >= 2:
+            tempo_label = "Above Average"
+        elif possession_delta >= -2:
+            tempo_label = "Standard"
+        elif possession_delta >= -4:
+            tempo_label = "Below Average"
+        else:
+            tempo_label = "Slow Tempo"
+        
+        return {
+            "possessions": round(possession_delta, 1),
+            "display": f"{'+' if possession_delta >= 0 else ''}{possession_delta:.1f}",
+            "tempo_label": tempo_label,
+            "team_pace": round(team_pace, 1),
+            "opponent_pace": round(opp_pace, 1),
+            "expected_game_pace": round(expected_game_pace, 1)
+        }
+    
+    def _calculate_std_dev(self, values: List[float]) -> Optional[float]:
+        """Calculate standard deviation of values."""
+        if not values or len(values) < 2:
+            return None
+        avg = sum(values) / len(values)
+        variance = sum((v - avg) ** 2 for v in values) / len(values)
+        return round(variance ** 0.5, 2)
+    
+    def _calculate_variance(self, stat_values: List[float], l10_rate: float, l5_rate: float) -> Dict[str, Any]:
+        """Calculate variance/stability metrics."""
+        std_dev = self._calculate_std_dev(stat_values) if stat_values else None
+        stability_score = int((l10_rate + l5_rate) / 2)
+        
+        if std_dev is None:
+            std_dev = 3.0  # Default
+        
+        if std_dev <= 1.5:
+            variance_label = "Very Low"
+            consistency = "Extremely Consistent"
+        elif std_dev <= 2.5:
+            variance_label = "Low"
+            consistency = "Very Consistent"
+        elif std_dev <= 3.5:
+            variance_label = "Medium"
+            consistency = "Average Consistency"
+        elif std_dev <= 5.0:
+            variance_label = "High"
+            consistency = "Below Average"
+        else:
+            variance_label = "Very High"
+            consistency = "Volatile"
+        
+        return {
+            "std_dev": std_dev,
+            "variance_label": variance_label,
+            "consistency": consistency,
+            "stability_score": stability_score,
+            "variance_level": "Low" if stability_score >= 70 else "Medium" if stability_score >= 45 else "High"
+        }
+    
+    def _build_vision_reasons(
+        self, l10_rate: float, l5_rate: float, 
+        momentum_data: Optional[Dict], vacuum_data: Optional[Dict],
+        line_delta: Optional[float]
+    ) -> List[str]:
+        """Build vision insight reasons."""
+        reasons = []
+        
+        avg_rate = (l10_rate + l5_rate) / 2
+        if avg_rate >= 80:
+            reasons.append(f"Exceptional hit rate ({avg_rate:.0f}% L5-L10 avg)")
+        elif avg_rate >= 70:
+            reasons.append(f"Strong consistency ({avg_rate:.0f}% hit rate)")
+        
+        if momentum_data:
+            if momentum_data.get("is_weak"):
+                reasons.append("Favorable defensive matchup")
+            if momentum_data.get("trend_alert"):
+                reasons.append(f"Momentum alert: {momentum_data.get('momentum', 'shifting')}")
+        
+        if vacuum_data:
+            reasons.append(f"Usage boost: {vacuum_data.get('reason', 'teammate out')}")
+        
+        if line_delta and abs(line_delta) >= 1.5:
+            direction = "Under" if line_delta > 0 else "Over"
+            reasons.append(f"Sharp line movement ({direction} value)")
+        
+        return reasons
+    
+    def _build_target_lock_rationale(
+        self, player_name: str, stat_type: str, line: float, direction: str,
+        l10_rate: float, l5_rate: float, momentum_data: Optional[Dict],
+        blowout_risk_data: Optional[Dict], vacuum_data: Optional[Dict],
+        line_delta: Optional[float], power_score: float
+    ) -> Dict[str, Any]:
+        """Build comprehensive target lock rationale for the pick."""
+        # Build primary reasoning
+        reasons = []
+        warnings = []
+        confidence_factors = []
+        
+        # Hit rate analysis
+        avg_rate = (l10_rate + l5_rate) / 2
+        if avg_rate >= 80:
+            reasons.append(f"Elite {avg_rate:.0f}% L5-L10 hit rate")
+            confidence_factors.append("hit_rate_elite")
+        elif avg_rate >= 70:
+            reasons.append(f"Strong {avg_rate:.0f}% consistency")
+            confidence_factors.append("hit_rate_strong")
+        elif avg_rate >= 60:
+            reasons.append(f"Solid {avg_rate:.0f}% baseline")
+        
+        # Momentum/Matchup analysis
+        if momentum_data:
+            if momentum_data.get("is_weak"):
+                rank = momentum_data.get("composite_rank", 0)
+                reasons.append(f"Soft matchup (#{int(rank)} defense)")
+                confidence_factors.append("soft_matchup")
+            elif momentum_data.get("is_elite"):
+                rank = momentum_data.get("composite_rank", 0)
+                warnings.append(f"Tough matchup (#{int(rank)} defense)")
+            
+            if momentum_data.get("trend_alert"):
+                reasons.append("Defensive momentum shifting")
+        
+        # Usage boost
+        if vacuum_data:
+            bump = vacuum_data.get("usage_bump", 0)
+            if bump >= 10:
+                reasons.append(f"+{bump}% usage boost (injury)")
+                confidence_factors.append("usage_boost")
+        
+        # Line movement
+        if line_delta and abs(line_delta) >= 1.5:
+            if line_delta > 0:
+                reasons.append(f"Under value ({line_delta:+.1f} from sharp)")
+            else:
+                reasons.append(f"Over value ({line_delta:+.1f} from sharp)")
+            confidence_factors.append("line_value")
+        
+        # Blowout risk warning
+        if blowout_risk_data and blowout_risk_data.get("risk_level") == "HIGH":
+            warnings.append(blowout_risk_data.get("warning", "Blowout risk"))
+        
+        # Determine confidence level
+        if len(confidence_factors) >= 3:
+            confidence = "HIGH"
+        elif len(confidence_factors) >= 2:
+            confidence = "MEDIUM"
+        else:
+            confidence = "STANDARD"
+        
+        # Build summary
+        summary = f"{player_name} {direction.upper()} {line} {stat_type}"
+        if reasons:
+            summary += f" - {reasons[0]}"
+        
+        return {
+            "summary": summary,
+            "reasons": reasons,
+            "warnings": warnings,
+            "confidence": confidence,
+            "confidence_factors": confidence_factors,
+            "power_score": power_score
+        }
     
     async def _resolve_player_context_badges(self, player_name: str, game_logs: List[Dict], baseline_stats: Dict) -> List[str]:
         """

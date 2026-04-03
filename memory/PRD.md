@@ -4,31 +4,35 @@
 PropVision is a sports analytics platform for NBA player props, providing data-driven insights for betting decisions.
 
 
-## Latest Update (2026-04-03): P0 Fixes - Blowout Risk & Security
+## Latest Update (2026-04-03): Vision Intel Suite Standardization
 
-### Issues Fixed
+### Complete Intel Suite Structure (ALL picks now identical)
 
-**Issue 1: Blowout Risk Shows "UNKNOWN"**
-- **Problem**: The Vision Intel Suite was showing `blowout_risk: "UNKNOWN"` for all picks because the Ferrari pipeline never calculated it.
-- **Root Cause**: `ferrari_tier_service.py` was using `player.get("blowout_risk")` which was never populated.
-- **Solution**: Integrated `StandingsService.calculate_blowout_risk()` directly into the Ferrari pipeline scoring phase.
-- **Result**: Blowout risk now shows real values (HIGH/MEDIUM/LOW/NONE) with team records and warnings.
+Every pick now contains the following standardized fields:
 
-**Issue 2: Temporary Endpoint Removal**
-- **Problem**: Unauthenticated `/api/v3/admin/flush-cache` endpoint existed in production.
-- **Solution**: Deleted the endpoint from `/app/backend/routes/admin.py`.
-- **Result**: Endpoint now returns 404 Not Found.
+| Field | Description |
+|-------|-------------|
+| `blowout_risk` | Team record analysis with risk_level, records, win_pct_diff |
+| `context_badges` | Merged prop + player badges array |
+| `defensive_momentum` | Full momentum data: composite_rank, season/L10/L5 ranks, trend |
+| `matchup_dvp` | Opponent friction analysis with display, color, rank |
+| `tempo` / `pace_delta` | Game pace projections with team/opponent pace values |
+| `stability_index` | Hit rate consistency with std_dev and variance_level |
+| `variance` | Full variance analysis: std_dev, label, consistency |
+| `target_lock_rationale` | Summary, reasons, warnings, confidence factors |
+| `usage_ripple` | Usage boost from injuries with bump_percent |
+| `vision_insight` | Primary insight with reasons array |
+| `vision_summary` | AI-generated summary (populated by VisionSummaryService) |
+| `whistle_data` | Referee analysis: crew_chief, ref_ppg, whistle_class |
 
 ### Files Modified
-- `/app/backend/services/ferrari_tier_service.py` - Added StandingsService import and blowout_risk calculation
-- `/app/backend/routes/admin.py` - Removed /flush-cache endpoint (lines 259-305)
-
-### Test Results
-```
-ATL vs BKN: risk_level="HIGH", records="44-33 vs 18-58", win_pct_diff=0.335
-ORL vs DAL: risk_level="MEDIUM", records="40-36 vs 24-52"
-PHI vs MIN: risk_level="NONE", records="42-34 vs 46-30"
-```
+- `/app/backend/services/ferrari_tier_service.py`
+  - Added `TEAM_PACE_DEFAULTS` dictionary
+  - Added `_calculate_tempo()` for pace calculations
+  - Added `_calculate_variance()` and `_calculate_std_dev()` 
+  - Added `_build_vision_reasons()` for insight generation
+  - Added `_build_target_lock_rationale()` for comprehensive reasoning
+  - Standardized intel_suite structure across all picks
 
 ---
 
