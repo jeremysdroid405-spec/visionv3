@@ -701,24 +701,16 @@ export const PlayerDetailPage = ({ playerName, playerData = null, onBack, highli
             <div className="p-6 space-y-6">
               {/* Vision Pick Summary */}
               <div className="bg-gradient-to-r from-amber-950/50 to-zinc-900 border border-amber-500/30 rounded-lg p-4">
-                <div className="flex items-center justify-between mb-4">
-                  <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 rounded-full bg-amber-500/20 flex items-center justify-center">
-                      <Crosshair className="w-6 h-6 text-amber-400" />
-                    </div>
-                    <div>
-                      <div className="text-2xl font-black text-amber-300">
-                        {(selectedVisionProp.direction || 'OVER').toUpperCase()} {selectedVisionProp.line}
-                      </div>
-                      <div className="text-sm text-amber-400/70">
-                        {getPropLabel(selectedVisionProp.stat_type_extracted || selectedVisionProp.stat_type)}
-                      </div>
-                    </div>
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="w-12 h-12 rounded-full bg-amber-500/20 flex items-center justify-center">
+                    <Crosshair className="w-6 h-6 text-amber-400" />
                   </div>
-                  <div className="text-right">
-                    <div className="text-xs text-amber-400/50">ODDS</div>
-                    <div className="text-lg font-bold text-amber-300">
-                      {selectedVisionProp.price > 0 ? '+' : ''}{selectedVisionProp.price || '-110'}
+                  <div>
+                    <div className="text-2xl font-black text-amber-300">
+                      {(selectedVisionProp.direction || 'OVER').toUpperCase()} {selectedVisionProp.line}
+                    </div>
+                    <div className="text-sm text-amber-400/70">
+                      {getPropLabel(selectedVisionProp.stat_type_extracted || selectedVisionProp.stat_type)}
                     </div>
                   </div>
                 </div>
@@ -752,7 +744,7 @@ export const PlayerDetailPage = ({ playerName, playerData = null, onBack, highli
                     });
                     setShowIntelSuite(false);
                   }}
-                  className="w-full py-3 px-4 bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-400 hover:to-blue-400 text-white font-bold rounded-lg flex items-center justify-center gap-2 transition-all shadow-lg shadow-cyan-500/25 hover:shadow-cyan-500/40"
+                  className="w-full py-3 px-4 rounded-lg bg-cyan-500/20 border border-cyan-500/40 text-cyan-400 hover:bg-cyan-500/30 transition-all flex items-center justify-center gap-2 font-semibold"
                   data-testid="add-to-command-center-btn"
                 >
                   <Plus className="w-5 h-5" />
