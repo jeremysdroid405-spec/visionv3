@@ -39,6 +39,8 @@ from datetime import datetime, timezone
 from collections import Counter
 import logging
 
+from services.standings_service import StandingsService
+
 logger = logging.getLogger(__name__)
 
 # =============================================================================
@@ -587,9 +589,27 @@ class FerrariTierService:
                         results["usage_vacuum"]["beneficiaries_boosted"] = results.get("usage_vacuum", {}).get("beneficiaries_boosted", 0) + 1
                     
                     # ---------------------------------------------------------
-                    # DEFENSIVE MOMENTUM MODIFIER
+                    # ---------------------------------------------------------
+                    # BLOWOUT RISK CALCULATION
                     # ---------------------------------------------------------
                     opponent = player.get("opponent") or player.get("opponent_abbr")
+                    player_team = player.get("team", "")
+                    blowout_risk_data = None
+                    
+                    if opponent and player_team:
+                        try:
+                            blowout_risk_data = await StandingsService.calculate_blowout_risk(
+                                player_team, opponent
+                            )
+                        except Exception as e:
+                            logger.warning(f"[v6] Blowout risk calculation failed for {player_team} vs {opponent}: {e}")
+                            blowout_risk_data = {"risk_level": "UNKNOWN", "warning": None}
+                    else:
+                        blowout_risk_data = {"risk_level": "UNKNOWN", "warning": None}
+                    
+                    # ---------------------------------------------------------
+                    # DEFENSIVE MOMENTUM MODIFIER
+                    # ---------------------------------------------------------
                     momentum_modifier = 0.0
                     momentum_data = None
                     
@@ -722,12 +742,14 @@ class FerrariTierService:
                         # INTEL SUITE: Complete Vision Intelligence Package
                         # =====================================================
                         "intel_suite": {
-                            # Blowout Risk Analysis
+                            # Blowout Risk Analysis (calculated from StandingsService)
                             "blowout_risk": {
-                                "risk_level": player.get("blowout_risk", "UNKNOWN"),
-                                "player_team_record": player.get("team_record", ""),
-                                "opponent_team_record": player.get("opponent_record", ""),
-                                "warning": f"Blowout risk: {player.get('blowout_risk')}" if player.get("blowout_risk") in ["HIGH", "MEDIUM"] else None
+                                "risk_level": blowout_risk_data.get("risk_level", "UNKNOWN") if blowout_risk_data else "UNKNOWN",
+                                "player_team_record": blowout_risk_data.get("player_team_record", "") if blowout_risk_data else "",
+                                "opponent_team_record": blowout_risk_data.get("opponent_team_record", "") if blowout_risk_data else "",
+                                "win_pct_diff": blowout_risk_data.get("win_pct_diff") if blowout_risk_data else None,
+                                "risk_reason": blowout_risk_data.get("risk_reason") if blowout_risk_data else None,
+                                "warning": blowout_risk_data.get("warning") if blowout_risk_data else None
                             },
                             # Matchup DvP Analysis (from momentum_data)
                             "matchup_dvp": {
@@ -763,7 +785,7 @@ class FerrariTierService:
                             },
                             # Context Badges
                             "context_badges": self._build_context_badges(
-                                player.get("blowout_risk"),
+                                blowout_risk_data.get("risk_level") if blowout_risk_data else None,
                                 prop.get("sidecar", {}).get("hook_risk", False),
                                 prop.get("sidecar", {}).get("suspect_line_bait", False),
                                 abs(line_delta) >= 1.5 if line_delta else False,

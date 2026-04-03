@@ -3,6 +3,35 @@
 ## Overview
 PropVision is a sports analytics platform for NBA player props, providing data-driven insights for betting decisions.
 
+
+## Latest Update (2026-04-03): P0 Fixes - Blowout Risk & Security
+
+### Issues Fixed
+
+**Issue 1: Blowout Risk Shows "UNKNOWN"**
+- **Problem**: The Vision Intel Suite was showing `blowout_risk: "UNKNOWN"` for all picks because the Ferrari pipeline never calculated it.
+- **Root Cause**: `ferrari_tier_service.py` was using `player.get("blowout_risk")` which was never populated.
+- **Solution**: Integrated `StandingsService.calculate_blowout_risk()` directly into the Ferrari pipeline scoring phase.
+- **Result**: Blowout risk now shows real values (HIGH/MEDIUM/LOW/NONE) with team records and warnings.
+
+**Issue 2: Temporary Endpoint Removal**
+- **Problem**: Unauthenticated `/api/v3/admin/flush-cache` endpoint existed in production.
+- **Solution**: Deleted the endpoint from `/app/backend/routes/admin.py`.
+- **Result**: Endpoint now returns 404 Not Found.
+
+### Files Modified
+- `/app/backend/services/ferrari_tier_service.py` - Added StandingsService import and blowout_risk calculation
+- `/app/backend/routes/admin.py` - Removed /flush-cache endpoint (lines 259-305)
+
+### Test Results
+```
+ATL vs BKN: risk_level="HIGH", records="44-33 vs 18-58", win_pct_diff=0.335
+ORL vs DAL: risk_level="MEDIUM", records="40-36 vs 24-52"
+PHI vs MIN: risk_level="NONE", records="42-34 vs 46-30"
+```
+
+---
+
 ## Latest Update (2026-04-03): Badge Engine Migration to BDL Advanced Stats
 
 ### Issue Fixed
