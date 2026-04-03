@@ -3,7 +3,51 @@
 ## Overview
 PropVision is a sports analytics platform for NBA player props, providing data-driven insights for betting decisions.
 
-## Latest Update (2026-04-03): Defensive Momentum Calculation Fix (P0 Critical)
+## Latest Update (2026-04-03): Legacy Categorization Purge - Sharp Movement Model
+
+### Issue Fixed
+**Problem**: The legacy "PrizePicks Demon/Goblin" categorization system was still present throughout the UI and codebase, conflicting with the new Sharp Movement data model.
+
+**Root Cause**: Previous agent updated backend models but missed user-facing text in the landing page (Auth.js) and Dashboard sections.
+
+### Solution Implemented
+1. **Landing Page (Auth.js)**:
+   - Replaced "DEMON TARGETS DETECTED" → "SHARP EDGES DETECTED"
+   - Replaced "GOBLIN LOCKS FOUND" → "TRAP LINES FLAGGED"
+   - Updated feature specs "War Zone" and "Goblin Recon" → "Sharp Edges" and "Trap Detection"
+   - Replaced DemonIcon/GoblinIcon with TrendingUp/AlertTriangle icons
+   - Fixed TerminalLine component to use explicit Tailwind color classes
+
+2. **Dashboard.jsx**:
+   - Updated section headers: "demon plays" → "sharp edge plays"
+   - Updated badges: "Demons" → "Sharp", "Goblins" → "Safe"
+   - Updated empty states: "No Demon Picks" → "No Sharp Picks"
+
+3. **UniversalPlayerCard.jsx**:
+   - Fixed critical bug: `props` variable reference error → `propsProp`
+   - This was causing "props is not defined" React crash
+
+### Files Modified
+- `/app/frontend/src/pages/Auth.js` - Landing page terminology
+- `/app/frontend/src/pages/Dashboard.jsx` - Section headers and badges
+- `/app/frontend/src/components/dashboard/UniversalPlayerCard.jsx` - Variable reference fix
+
+### New Data Model (Sharp Movement)
+| Field | Type | Description |
+|-------|------|-------------|
+| `sharp_movement` | bool | Favorable DFS vs Sharp line delta detected |
+| `trap_risk` | bool | Line flagged as potential trap |
+| `movement_delta` | float | Numeric delta between lines |
+| `tier_label` | string | SAFE_HAVEN, WAR_ZONE, FRONT_LINE, MINEFIELD |
+
+### Test Status
+- **Landing Page**: PASSED (New terminology displays correctly)
+- **Dashboard**: PASSED (Player cards render without React errors)
+- **Console**: No JavaScript errors (only NBA CDN image loading issues)
+
+---
+
+## Previous Update (2026-04-03): Defensive Momentum Calculation Fix (P0 Critical)
 
 ### Issue Fixed
 **Problem**: Defensive Momentum rankings were mathematically inaccurate. OKC Thunder (best defense in NBA) was incorrectly ranked #3 instead of #1 because the service was using incorrect BDL API endpoints.

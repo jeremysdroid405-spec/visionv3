@@ -6,10 +6,10 @@ import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { 
   Eye, Zap, Target, Shield, ChevronDown, 
-  Play, Lock, Crosshair, Radio, Cpu, Newspaper
+  Play, Lock, Crosshair, Radio, Cpu, Newspaper,
+  TrendingUp, AlertTriangle
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { DemonIcon, GoblinIcon } from '../components/dashboard/Icons';
 
 // ==================== CUSTOM TACTICAL ICONS ====================
 const BrainCircuitIcon = ({ className }) => (
@@ -90,10 +90,20 @@ const TerminalLine = ({ label, status, statusColor = 'emerald', delay = 0 }) => 
   
   if (!visible) return <div className="h-5" />;
   
+  // Map color names to explicit Tailwind classes for proper compilation
+  const colorClasses = {
+    emerald: 'text-emerald-400',
+    red: 'text-red-400',
+    blue: 'text-blue-400',
+    orange: 'text-orange-400',
+    green: 'text-green-400',
+    yellow: 'text-yellow-400',
+  };
+  
   return (
     <div className="flex items-center justify-between font-mono text-xs animate-fade-in">
       <span className="text-zinc-500">[{label}]</span>
-      <span className={`text-${statusColor}-400 font-bold`}>{status}</span>
+      <span className={`${colorClasses[statusColor] || colorClasses.emerald} font-bold`}>{status}</span>
     </div>
   );
 };
@@ -136,8 +146,8 @@ export const Auth = () => {
   const [countdownMessage, setCountdownMessage] = useState('');
   
   // Simulated live stats
-  const [demonCount, setDemonCount] = useState(14);
-  const [goblinCount, setGoblinCount] = useState(8);
+  const [sharpEdges, setSharpEdges] = useState(14);
+  const [trapAlerts, setTrapAlerts] = useState(8);
   
   // Form states
   const [formData, setFormData] = useState({
@@ -168,8 +178,8 @@ export const Auth = () => {
   // Simulate live target updates
   useEffect(() => {
     const interval = setInterval(() => {
-      setDemonCount(prev => prev + Math.floor(Math.random() * 3) - 1);
-      setGoblinCount(prev => prev + Math.floor(Math.random() * 2));
+      setSharpEdges(prev => prev + Math.floor(Math.random() * 3) - 1);
+      setTrapAlerts(prev => prev + Math.floor(Math.random() * 2));
     }, 5000);
     return () => clearInterval(interval);
   }, []);
@@ -321,8 +331,8 @@ export const Auth = () => {
           0%, 50% { opacity: 1; }
           51%, 100% { opacity: 0; }
         }
-        .demon-glow { animation: glow-pulse 2s ease-in-out infinite; color: #FF0000; }
-        .goblin-glow { animation: glow-pulse 2s ease-in-out infinite; color: #00FF7F; }
+        .sharp-glow { animation: glow-pulse 2s ease-in-out infinite; color: #3B82F6; }
+        .trap-glow { animation: glow-pulse 2s ease-in-out infinite; color: #F97316; }
         .animate-fade-in { animation: fade-in 0.5s ease-out forwards; }
         .flash-silver { animation: flash 0.3s ease-out; }
         @keyframes flash {
@@ -395,14 +405,14 @@ export const Auth = () => {
                 <span className="text-emerald-400">ENCRYPTED</span>
               </div>
               <div className="flex items-center gap-2 text-[10px] sm:text-xs font-mono">
-                <DemonIcon size={14} />
-                <span className="text-zinc-600">[DEMON TARGETS DETECTED...]</span>
-                <span className="text-red-400 font-bold">{demonCount}</span>
+                <TrendingUp className="w-3 h-3 text-blue-500" />
+                <span className="text-zinc-600">[SHARP EDGES DETECTED...]</span>
+                <span className="text-blue-400 font-bold">{sharpEdges}</span>
               </div>
               <div className="flex items-center gap-2 text-[10px] sm:text-xs font-mono">
-                <GoblinIcon size={14} />
-                <span className="text-zinc-600">[GOBLIN LOCKS FOUND...]</span>
-                <span className="text-emerald-400 font-bold">{goblinCount}</span>
+                <AlertTriangle className="w-3 h-3 text-orange-500" />
+                <span className="text-zinc-600">[TRAP LINES FLAGGED...]</span>
+                <span className="text-orange-400 font-bold">{trapAlerts}</span>
               </div>
             </div>
             
@@ -473,15 +483,15 @@ export const Auth = () => {
             />
             <SpecRow 
               spec="TARGETING"
-              title="War Zone"
-              edge={<>High-alpha, high-variance exploits. This is for the strategist looking to turn a single session into a season-defining win.</>}
-              icon={<DemonIcon size={24} />}
+              title="Sharp Edges"
+              edge={<>High-alpha exploits where line movement favors you. Sharp vs. DFS delta analysis identifies when the books have mispriced a line.</>}
+              icon={<TrendingUp className="w-6 h-6 sm:w-7 sm:h-7 text-blue-400" />}
             />
             <SpecRow 
               spec="SAFETY"
-              title="Goblin Recon"
-              edge={<>Surgical bankroll stabilization. Recon replaces luck with Statistical Certainty. High-probability infiltration data for consistent, low-friction resource accumulation.</>}
-              icon={<GoblinIcon size={24} />}
+              title="Trap Detection"
+              edge={<>Avoid the minefield. Our trap risk algorithm identifies lines that look too good—because they often are. Statistical certainty over false confidence.</>}
+              icon={<AlertTriangle className="w-6 h-6 sm:w-7 sm:h-7 text-orange-400" />}
             />
           </div>
         </div>
@@ -502,8 +512,8 @@ export const Auth = () => {
           <div className="bg-zinc-950 rounded-lg border border-zinc-800/50 p-3 sm:p-4 mb-4 sm:mb-6 font-mono text-[10px] sm:text-xs">
             <TerminalLine label="SCANNING BALL IS LIFE FEEDS..." status="STABLE" delay={0} />
             <TerminalLine label="LLM HANDSHAKE..." status="ENCRYPTED" delay={300} />
-            <TerminalLine label="DEMON TARGETS DETECTED..." status={demonCount.toString()} statusColor="red" delay={600} />
-            <TerminalLine label="GOBLIN LOCKS FOUND..." status={goblinCount.toString()} delay={900} />
+            <TerminalLine label="SHARP EDGES DETECTED..." status={sharpEdges.toString()} statusColor="blue" delay={600} />
+            <TerminalLine label="TRAP LINES FLAGGED..." status={trapAlerts.toString()} statusColor="orange" delay={900} />
           </div>
 
           {/* Auth Form */}

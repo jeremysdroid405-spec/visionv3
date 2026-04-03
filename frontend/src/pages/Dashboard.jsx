@@ -130,10 +130,10 @@ const PlayerRow = memo(({ player, onClick, linesLoaded }) => (
     </div>
     <div className="flex items-center gap-2">
       {player.demons_count > 0 && (
-        <Badge className="bg-red-500/20 text-red-400 border-none text-xs">{player.demons_count} Demons</Badge>
+        <Badge className="bg-red-500/20 text-red-400 border-none text-xs">{player.demons_count} Sharp</Badge>
       )}
       {player.goblins_count > 0 && (
-        <Badge className="bg-green-500/20 text-green-400 border-none text-xs">{player.goblins_count} Goblins</Badge>
+        <Badge className="bg-green-500/20 text-green-400 border-none text-xs">{player.goblins_count} Safe</Badge>
       )}
     </div>
   </div>
@@ -420,7 +420,7 @@ const WarZoneSection = memo(({ picks, onPickClick, onQuickAdd, isLoading }) => {
     return <SectionLoadingSkeleton 
       icon={null} 
       title="WAR ZONE" 
-      subtitle="Loading demon plays..." 
+      subtitle="Loading sharp edge plays..." 
     />;
   }
   
@@ -430,13 +430,13 @@ const WarZoneSection = memo(({ picks, onPickClick, onQuickAdd, isLoading }) => {
         <SectionHeader 
           icon={null}
           title="WAR ZONE"
-          subtitle="High-risk, high-reward demon plays"
+          subtitle="High-risk, high-reward sharp edges"
           badgeText="NO GAMES"
           badgeColor="zinc"
         />
         <EmptyStateMessage 
           icon={<AlertTriangle className="w-5 h-5 text-zinc-500" />}
-          title="No Demon Picks Available"
+          title="No Sharp Picks Available"
           message="No games today or data still syncing"
         />
       </div>
@@ -448,8 +448,8 @@ const WarZoneSection = memo(({ picks, onPickClick, onQuickAdd, isLoading }) => {
       <SectionHeader 
         icon={null}
         title="WAR ZONE"
-        subtitle="High-risk, high-reward demon plays"
-        badgeText={`TOP ${Math.min(10, picks.length)} DEMONS`}
+        subtitle="High-risk, high-reward sharp edges"
+        badgeText={`TOP ${Math.min(10, picks.length)} SHARP`}
         badgeColor="red"
       />
       <SwipeContainer>
@@ -494,7 +494,7 @@ const SafeHavenSection = memo(({ picks, onPickClick, onQuickAdd, isLoading }) =>
         />
         <EmptyStateMessage 
           icon={<Activity className="w-5 h-5 text-zinc-500" />}
-          title="No Goblin Picks Available"
+          title="No Safe Picks Available"
           message="No games today or data still syncing"
         />
       </div>

@@ -646,8 +646,8 @@ const UniversalPlayerCard = memo(({
   // ==================== COMPACT MODE (Board Cards - matches Top Picks style) ====================
   if (mode === 'compact') {
     // NEW: Use sharp_movement and trap_risk classification
-    const hasSharpMovement = player.sharp_movement || props?.some(p => p.sharp_movement);
-    const hasTrapRisk = player.trap_risk || props?.some(p => p.trap_risk);
+    const hasSharpMovement = player.sharp_movement || propsProp?.some(p => p.sharp_movement);
+    const hasTrapRisk = player.trap_risk || propsProp?.some(p => p.trap_risk);
     
     // LEGACY FALLBACK for backward compatibility
     const isDemon = is_demon || tier_label === 'DEMON' || tier_label === 'WAR_ZONE';
