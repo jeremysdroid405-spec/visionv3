@@ -1460,58 +1460,60 @@ const Dashboard = () => {
           </button>
         </div>
         
-        {/* Main Picks Content (Always shown) */}
-        <>
-          {/* Most Popular Bets - FIRST */}
-          <MostPopularBetsSection 
-            bets={popularBets} 
-            status={popularBetsStatus} 
-            onBetClick={handlePopularBetClick}
-            allLocked={allPicksLocked}
-            nextReleaseTime={nextReleaseTime}
-          />
-          
-          {/* Safe Haven */}
-          <SafeHavenSection picks={vaultPicks} onPickClick={handleVaultClick} onQuickAdd={handleQuickAdd} isLoading={safeHavenLoading} />
-          
-          {/* Shield Parlays */}
-          <ParlaySection 
-            picks={vaultPicks} 
-            onParlayClick={handleParlayClick} 
-            sectionName="safe_haven"
-            title="THE SHIELD"
-            subtitle="Safe Haven parlay combinations"
-            badgeColor="green"
-          />
-          
-          {/* Front Lines */}
-          <FrontLinesSection picks={frontLinesPicks} onPickClick={handleRadarClick} onQuickAdd={handleQuickAdd} isLoading={frontLinesLoading} />
-          
-          {/* Strike Parlays */}
-          <ParlaySection 
-            picks={frontLinesPicks} 
-            onParlayClick={handleParlayClick} 
-            sectionName="front_lines"
-            title="THE STRIKE"
-            subtitle="Front Lines parlay combinations"
-            badgeColor="amber"
-          />
-          
-          {/* War Zone */}
-          <WarZoneSection picks={radarPicks} onPickClick={handleRadarClick} onQuickAdd={handleQuickAdd} isLoading={warZoneLoading} />
-          
-          {/* Gauntlet Parlays */}
-          <ParlaySection 
-            picks={radarPicks} 
-            onParlayClick={handleParlayClick} 
-            sectionName="war_zone"
-            title="THE GAUNTLET"
-            subtitle="War Zone parlay combinations"
-            badgeColor="red"
-          />
-        </>
+        {/* Main Picks Content (shown when NOT viewing Minefield) */}
+        {activeTab !== 'traps' && (
+          <>
+            {/* Most Popular Bets - FIRST */}
+            <MostPopularBetsSection 
+              bets={popularBets} 
+              status={popularBetsStatus} 
+              onBetClick={handlePopularBetClick}
+              allLocked={allPicksLocked}
+              nextReleaseTime={nextReleaseTime}
+            />
+            
+            {/* Safe Haven */}
+            <SafeHavenSection picks={vaultPicks} onPickClick={handleVaultClick} onQuickAdd={handleQuickAdd} isLoading={safeHavenLoading} />
+            
+            {/* Shield Parlays */}
+            <ParlaySection 
+              picks={vaultPicks} 
+              onParlayClick={handleParlayClick} 
+              sectionName="safe_haven"
+              title="THE SHIELD"
+              subtitle="Safe Haven parlay combinations"
+              badgeColor="green"
+            />
+            
+            {/* Front Lines */}
+            <FrontLinesSection picks={frontLinesPicks} onPickClick={handleRadarClick} onQuickAdd={handleQuickAdd} isLoading={frontLinesLoading} />
+            
+            {/* Strike Parlays */}
+            <ParlaySection 
+              picks={frontLinesPicks} 
+              onParlayClick={handleParlayClick} 
+              sectionName="front_lines"
+              title="THE STRIKE"
+              subtitle="Front Lines parlay combinations"
+              badgeColor="amber"
+            />
+            
+            {/* War Zone */}
+            <WarZoneSection picks={radarPicks} onPickClick={handleRadarClick} onQuickAdd={handleQuickAdd} isLoading={warZoneLoading} />
+            
+            {/* Gauntlet Parlays */}
+            <ParlaySection 
+              picks={radarPicks} 
+              onParlayClick={handleParlayClick} 
+              sectionName="war_zone"
+              title="THE GAUNTLET"
+              subtitle="War Zone parlay combinations"
+              badgeColor="red"
+            />
+          </>
+        )}
         
-        {/* The Minefield Content (Flagged Picks) */}
+        {/* The Minefield Content (shown ONLY when button clicked) */}
         {activeTab === 'traps' && (
           <TrapGraveyardSection
             picks={trappedPicks}
