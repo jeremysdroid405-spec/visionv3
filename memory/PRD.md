@@ -3,7 +3,58 @@
 ## Overview
 PropVision is a sports analytics platform for NBA player props, providing data-driven insights for betting decisions.
 
-## Latest Update (2026-04-03): Legacy Categorization Purge - Sharp Movement Model
+## Latest Update (2026-04-03): Badge Engine Migration to BDL Advanced Stats
+
+### Issue Fixed
+**Problem**: The `nba_career_service.py` was failing with JSON decode errors (char 0) due to aggressive bot protection on stats.nba.com. This caused Player Badges to be missing in the frontend UI.
+
+**Solution**: Created a completely new badge service (`bdl_player_badge_service.py`) that uses BallDontLie's Advanced Season Averages API instead of stats.nba.com.
+
+### BDL Endpoints Used
+| Category | Endpoint | Type | Stats Retrieved |
+|----------|----------|------|-----------------|
+| General | `/season_averages/general` | `advanced` | Usage%, PIE, True Shooting%, Net Rating |
+| Tracking | `/season_averages/tracking` | `drives` | Drives per game, Drive FG% |
+| Tracking | `/season_averages/tracking` | `passing` | Potential assists, Passes made |
+| Tracking | `/season_averages/tracking` | `catchshoot` | Catch & shoot 3PT% |
+| Hustle | `/season_averages/hustle` | N/A | Deflections, Contested shots |
+| Playtype | `/season_averages/playtype` | `prballhandler` | P&R PPP |
+| Playtype | `/season_averages/playtype` | `isolation` | ISO PPP |
+| Playtype | `/season_averages/playtype` | `postup` | Post-up PPP |
+
+### Badge Types Generated
+| Badge | Threshold | Description |
+|-------|-----------|-------------|
+| Volume Scorer | USG% ≥ 25% | High usage rate player |
+| Efficient | TS% ≥ 60% or PIE ≥ 15% | Elite shooting efficiency |
+| Playmaker | AST% ≥ 25% or Pot. AST ≥ 8 | Creates opportunities |
+| Floor General | AST/TO ≥ 2.5 | Elite ball handler |
+| 3PT Assassin | C&S 3P% ≥ 40% (≥3 attempts) | Deadly from three |
+| Motor | DEF ≥ 2 or CONT ≥ 8 | High effort player |
+| Paint Beast | Post PPP ≥ 1.0 or P&R PPP ≥ 1.1 | Dominates in paint |
+| Shot Creator | ISO PPP ≥ 1.0 (≥2 poss) | Creates own shot |
+| Two-Way | DEF RTG ≤ 110, OFF RTG ≥ 110 | Impact on both ends |
+
+### Files Created/Modified
+- **NEW**: `/app/backend/services/bdl_player_badge_service.py` - Complete badge service using BDL
+- **MODIFIED**: `/app/backend/routes/master_hub.py` - Updated endpoints to use new service
+- **MODIFIED**: `/app/backend/routes/cached_data.py` - Integrated BDL badges into cache
+
+### API Changes
+| Endpoint | Before | After |
+|----------|--------|-------|
+| `POST /sync-career-stats` | stats.nba.com career totals | BDL advanced stats badges |
+| `GET /career-stats/{player}` | Career points/rebounds/etc | Performance badges array |
+
+### Test Results
+```
+LeBron James: ["Volume Scorer", "Playmaker"]
+SGA: ["Volume Scorer", "Efficient", "Playmaker", "Floor General", "Motor", "Paint Beast"]
+```
+
+---
+
+## Previous Update (2026-04-03): Legacy Categorization Purge - Sharp Movement Model
 
 ### Issue Fixed
 **Problem**: The legacy "PrizePicks Demon/Goblin" categorization system was still present throughout the UI and codebase, conflicting with the new Sharp Movement data model.

@@ -559,13 +559,26 @@ async def resolve_context_badges(engine, player_name: str, player_data: dict) ->
         except Exception as e:
             logger.debug(f"Static milestone check failed for {player_name}: {e}")
         
-        # If no static milestone, try NBA API
+        # If no static milestone, try BDL badge service for performance badges
         if not milestone:
             try:
-                from services.nba_career_service import get_milestone_for_player
-                milestone = await get_milestone_for_player(db, player_name)
+                from services.bdl_player_badge_service import get_bdl_badge_service
+                badge_service = get_bdl_badge_service(db)
+                badge_result = await badge_service.get_player_badges(player_name=player_name)
+                if badge_result and badge_result.get("badges"):
+                    # Add performance badges from BDL
+                    for bdl_badge in badge_result.get("badges", [])[:3]:  # Limit to top 3
+                        badges.append({
+                            "badge_key": bdl_badge.get("badge_key"),
+                            "display": bdl_badge.get("display"),
+                            "icon": bdl_badge.get("icon"),
+                            "color": bdl_badge.get("color"),
+                            "description": bdl_badge.get("description"),
+                            "severity": 6,
+                            "stat_label": bdl_badge.get("stat_label")
+                        })
             except Exception as e:
-                logger.debug(f"NBA API milestone check failed for {player_name}: {e}")
+                logger.debug(f"BDL badge check failed for {player_name}: {e}")
         
         if milestone:
             badges.append({

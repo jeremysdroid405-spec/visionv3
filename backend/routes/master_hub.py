@@ -286,63 +286,66 @@ async def enrich_all_players_nba_stats(limit: int = 100):
 @router.post("/sync-career-stats")
 async def sync_career_stats():
     """
-    Sync career stats from NBA.com for all tracked players.
+    Sync player badges from BDL Advanced Stats API.
     
-    Uses the nba_api library to fetch real career totals:
-    - Points, Rebounds, Assists, Steals, Blocks, 3PM
-    - Games played, Minutes
+    MIGRATED: Now uses BallDontLie API instead of stats.nba.com (which was
+    failing due to bot protection / JSON decode errors).
     
-    Data is cached for 24 hours to avoid rate limiting.
+    Uses BDL endpoints:
+    - /season_averages/general?type=advanced -> Usage%, PIE, TS%
+    - /season_averages/tracking -> Drives, Passing, Catch & Shoot
+    - /season_averages/hustle -> Deflections, Contested Shots
+    - /season_averages/playtype -> P&R, ISO, Post-Up efficiency
+    
+    Data is cached for 12 hours.
     """
     if _db is None:
         raise HTTPException(status_code=500, detail="Database not initialized")
     
-    from services.nba_career_service import sync_career_stats_for_players, TRACKED_PLAYERS
+    from services.bdl_player_badge_service import get_bdl_badge_service
     
-    result = await sync_career_stats_for_players(_db, TRACKED_PLAYERS)
+    badge_service = get_bdl_badge_service(_db)
+    result = await badge_service.sync_badges_for_players()
+    
     return {
         "success": True,
         "synced": result["synced"],
         "failed": result["failed"],
-        "message": f"Synced career stats for {result['synced']} players"
+        "total_badges": result["total_badges"],
+        "message": f"Synced badges for {result['synced']} players ({result['total_badges']} badges generated)",
+        "source": "bdl_advanced"
     }
 
 
 @router.get("/career-stats/{player_name}")
 async def get_player_career_stats(player_name: str):
     """
-    Get career stats for a specific player.
+    Get player badges from BDL Advanced Stats.
     
-    Returns cached stats if available (< 24h old), otherwise fetches fresh data.
+    MIGRATED: Now returns performance badges based on BDL advanced stats
+    instead of career totals from stats.nba.com.
+    
+    Returns badges like: Volume Scorer, Efficient, Playmaker, Motor, etc.
     """
     if _db is None:
         raise HTTPException(status_code=500, detail="Database not initialized")
     
-    from services.nba_career_service import get_career_stats, get_milestone_for_player
+    from services.bdl_player_badge_service import get_bdl_badge_service
     
-    stats = await get_career_stats(_db, player_name)
-    if not stats:
-        raise HTTPException(status_code=404, detail=f"Career stats not found for: {player_name}")
+    badge_service = get_bdl_badge_service(_db)
+    result = await badge_service.get_player_badges(player_name=player_name)
     
-    milestone = await get_milestone_for_player(_db, player_name)
+    if result.get("error"):
+        raise HTTPException(status_code=404, detail=result["error"])
     
     return {
-        "player_name": stats.get("player_name"),
-        "career_stats": {
-            "points": stats.get("career_pts", 0),
-            "rebounds": stats.get("career_reb", 0),
-            "assists": stats.get("career_ast", 0),
-            "steals": stats.get("career_stl", 0),
-            "blocks": stats.get("career_blk", 0),
-            "three_pointers": stats.get("career_3pm", 0),
-            "games_played": stats.get("games_played", 0),
-        },
-        "milestone": milestone,
-        "fetched_at": stats.get("fetched_at"),
-        "is_active": stats.get("is_active", False)
+        "player_name": result.get("player_name"),
+        "badges": result.get("badges", []),
+        "badge_count": result.get("badge_count", 0),
+        "stats": result.get("stats", {}),
+        "fetched_at": result.get("fetched_at"),
+        "source": "bdl_advanced"
     }
-
-
 
 
 @router.post("/sync-bdl-player/{player_name}")
