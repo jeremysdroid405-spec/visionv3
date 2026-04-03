@@ -3,9 +3,14 @@ PropVision v7 Pipeline - True Probability & Diversified Parlay Optimizer
 =========================================================================
 "Verified [X] active props to identify [30] Elite picks + [15] Optimized Parlays."
 
-MISSION: Extract every possible 0.5% of edge through mathematical precision.
+HYBRID APPROACH (Sharp Lines for Tiers, True Probability for Ranking):
+======================================================================
+TIER CLASSIFICATION: By SHARP LINE (preserves payout diversity)
+  - Safe Haven: Sharp <= -250 (heavy favorites, grind small wins)
+  - Front Lines: Sharp -245 to -115 (balanced risk/reward)
+  - War Zone: Sharp -114 to +500 (higher multipliers, calculated risk)
 
-TRUE PROBABILITY FORMULA (0-100%):
+RANKING WITHIN TIER: By TRUE PROBABILITY (edge quality)
   True_Prob = (Historical × 0.45) + (Sharp × 0.25) + (Floor × 0.15) + (Context × 0.15)
   
   HISTORICAL CONSISTENCY (45%):
@@ -20,17 +25,10 @@ TRUE PROBABILITY FORMULA (0-100%):
   CONTEXTUAL MODIFIERS (15%):
     = DvP(+/-8) + Whistle(+/-5) + Vacuum(+/-5) + Blowout(-10)
 
-HARD KILLS:
-  - L3 < 33% (cold streak)
-  - L5 < 40% (confirmed cold)
-  - Sharp < 52% (no edge)
+HARD KILLS (Minimal - tier windows handle most filtering):
+  - L5 < 20% (absolute ice cold)
   - Line > Season Median
   - Blowout HIGH + PTS/PRA
-
-TIER CLASSIFICATION (by True Probability):
-  - Safe Haven: >= 72% (Elite locks)
-  - Front Lines: 62-71% (Strong plays)
-  - War Zone: 52-61% (Value bets)
 
 PARLAY OPTIMIZER:
   - 5 parlays per tier (2-leg through 6-leg)
@@ -659,20 +657,25 @@ class FerrariTierService:
                     
                     # Get V7 outputs
                     true_probability = v7_result["true_probability"]
-                    v7_tier = v7_result["tier"]
                     v7_confidence = v7_result["confidence"]
                     v7_components = v7_result["components"]
                     
-                    # Track tier pools
-                    if v7_tier == "safe_haven":
+                    # ==========================================================
+                    # TIER CLASSIFICATION: By SHARP LINE (preserves payout diversity)
+                    # True Probability is used for RANKING within tier, not tier assignment
+                    # ==========================================================
+                    if effective_sharp <= SAFE_HAVEN_MAX:  # <= -250
+                        tier = "safe_haven"
                         results["scored"]["safe_haven_pool"] += 1
-                    elif v7_tier == "front_lines":
+                    elif FRONT_LINES_MIN <= effective_sharp <= FRONT_LINES_MAX:  # -245 to -115
+                        tier = "front_lines"
                         results["scored"]["front_lines_pool"] += 1
-                    elif v7_tier == "war_zone":
+                    elif WAR_ZONE_MIN <= effective_sharp <= WAR_ZONE_MAX:  # -114 to +500
+                        tier = "war_zone"
                         results["scored"]["war_zone_pool"] += 1
                     else:
+                        # Outside all windows - skip
                         results["scored"]["below_threshold"] += 1
-                        # Skip picks below War Zone threshold
                         continue
                     
                     # Additional stats
@@ -770,9 +773,9 @@ class FerrariTierService:
                         "l10_median": round(l10_median, 1) if l10_median else None,
                         "l10_mean": round(calculate_mean(stat_values), 1) if calculate_mean(stat_values) else None,
                         "l10_std_dev": round(l10_std_dev, 2) if l10_std_dev else None,
-                        # Classification (V7 tier based on True Probability)
-                        "tier": v7_tier,
-                        "tier_label": "MINEFIELD" if trap_risk else v7_tier.upper().replace("_", " "),
+                        # Classification: Sharp Line determines TIER, True Probability determines RANK
+                        "tier": tier,  # From sharp line windows (-250, -115, +500)
+                        "tier_label": "MINEFIELD" if trap_risk else tier.upper().replace("_", " "),
                         "pipeline": "propvision_v7",
                         "synced_at": sync_time.isoformat(),
                         # ==============================================

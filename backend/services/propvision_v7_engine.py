@@ -84,11 +84,12 @@ WEIGHT_CONTEXT = 0.15
 # PRIZEPICKS IMPLIED PROBABILITY (-137)
 PP_IMPLIED = 0.578  # 57.8%
 
-# HARD KILL THRESHOLDS
-HARD_KILL_L3_MIN = 33.0  # Must hit at least 1/3
-HARD_KILL_L5_MIN = 40.0  # Must hit at least 2/5
-HARD_KILL_SHARP_MIN = 52.0  # Sharp must see edge
-HARD_KILL_SEPARATION_MIN = 3.0  # Min 3% separation
+# HARD KILL THRESHOLDS (Applied BEFORE tier assignment)
+# These are absolute disqualifiers regardless of payout potential
+HARD_KILL_L3_MIN = 0.0  # Disabled - let True Prob handle cold streaks via weighted average
+HARD_KILL_L5_MIN = 20.0  # Must hit at least 1/5 - absolute floor
+HARD_KILL_SHARP_MIN = 0.0  # Disabled - Sharp line determines tier, not kill
+HARD_KILL_SEPARATION_MIN = 0.0  # Disabled - handled by tier windows
 
 # SOFT KILL PENALTIES
 PENALTY_HIGH_VARIANCE = -10.0  # Std dev > 6.0
@@ -348,30 +349,20 @@ class TrueProbabilityEngine:
     ) -> Tuple[bool, Optional[str]]:
         """
         Hard Kill Switch - Returns (is_killed, reason)
-        Any hard kill = prop is eliminated
+        
+        NOTE: With Sharp Line tier classification, we've relaxed most hard kills.
+        The tier windows already filter by implied probability.
+        We only kill absolute disasters.
         """
-        # Kill 1: L3 < 33% (cold streak)
-        if l3_rate < HARD_KILL_L3_MIN:
-            return True, f"HARD_KILL: L3 rate {l3_rate:.0f}% < {HARD_KILL_L3_MIN:.0f}% (cold streak)"
+        # Kill 1: L5 < 20% (absolute floor - 0/5 or 1/5)
+        if HARD_KILL_L5_MIN > 0 and l5_rate < HARD_KILL_L5_MIN:
+            return True, f"HARD_KILL: L5 rate {l5_rate:.0f}% < {HARD_KILL_L5_MIN:.0f}% (ice cold)"
         
-        # Kill 2: L5 < 40% (confirmed cold)
-        if l5_rate < HARD_KILL_L5_MIN:
-            return True, f"HARD_KILL: L5 rate {l5_rate:.0f}% < {HARD_KILL_L5_MIN:.0f}% (confirmed cold)"
-        
-        # Kill 3: Sharp implied < 52% (no edge)
-        sharp_pct = sharp_implied * 100 if sharp_implied < 1 else sharp_implied
-        if sharp_pct < HARD_KILL_SHARP_MIN:
-            return True, f"HARD_KILL: Sharp implied {sharp_pct:.1f}% < {HARD_KILL_SHARP_MIN:.0f}% (no edge)"
-        
-        # Kill 4: Separation < 3% (too close to call)
-        if separation_pct < HARD_KILL_SEPARATION_MIN:
-            return True, f"HARD_KILL: Separation {separation_pct:.1f}% < {HARD_KILL_SEPARATION_MIN:.0f}%"
-        
-        # Kill 5: Line > Season Median (against the grain)
+        # Kill 2: Line > Season Median (against the grain)
         if season_median and line > season_median:
             return True, f"HARD_KILL: Line {line} > Season Median {season_median:.1f}"
         
-        # Kill 6: Blowout HIGH + scoring stat (bench risk)
+        # Kill 3: Blowout HIGH + scoring stat (bench risk) - keep this one
         if blowout_risk == "HIGH" and stat_type.upper() in ["PTS", "PRA"]:
             return True, f"HARD_KILL: HIGH blowout risk for {stat_type} (bench minutes)"
         
