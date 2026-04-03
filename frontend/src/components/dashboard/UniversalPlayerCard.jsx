@@ -220,17 +220,36 @@ LockedOverlay.displayName = 'LockedOverlay';
 
 /**
  * Determine the highest tier from all props
- * Priority: DEMON > GOBLIN > STANDARD
+ * Priority: MINEFIELD (trap) > SAFE_HAVEN > WAR_ZONE > FRONT_LINE > STANDARD
  * Used for card theme coloring
- * Note: Front Lines board overrides this to use FRONT_LINE theme (yellow)
+ * 
+ * NEW DATA MODEL (Sharp Movement):
+ * - sharp_movement: True = favorable line delta detected
+ * - trap_risk: True = routes to MINEFIELD
+ * - tier_label: SAFE_HAVEN, FRONT_LINE, WAR_ZONE, or MINEFIELD
+ * 
+ * LEGACY COMPATIBILITY:
+ * - is_demon: Mapped to WAR_ZONE
+ * - is_goblin: Mapped to SAFE_HAVEN
  */
 const getHighestTier = (props, forceTheme = null) => {
   // Allow parent to force a specific theme (e.g., FRONT_LINE for Front Lines board)
   if (forceTheme) return forceTheme;
   
   if (!props || props.length === 0) return 'STANDARD';
-  if (props.some(p => p.is_demon || p.tier_label === 'DEMON')) return 'DEMON';
-  if (props.some(p => p.is_goblin || p.tier_label === 'GOBLIN')) return 'GOBLIN';
+  
+  // NEW: Check for trap_risk first (routes to MINEFIELD)
+  if (props.some(p => p.trap_risk || p.tier_label === 'MINEFIELD')) return 'MINEFIELD';
+  
+  // NEW: Check for sharp_movement (routes to appropriate tier)
+  if (props.some(p => p.sharp_movement && p.tier_label === 'SAFE_HAVEN')) return 'SAFE_HAVEN';
+  if (props.some(p => p.sharp_movement && p.tier_label === 'WAR_ZONE')) return 'WAR_ZONE';
+  if (props.some(p => p.sharp_movement)) return 'FRONT_LINE';
+  
+  // LEGACY FALLBACK: Keep backward compatibility
+  if (props.some(p => p.is_demon || p.tier_label === 'DEMON')) return 'WAR_ZONE';
+  if (props.some(p => p.is_goblin || p.tier_label === 'GOBLIN')) return 'SAFE_HAVEN';
+  
   return 'STANDARD';
 };
 
@@ -395,28 +414,37 @@ VaultStatsRow.displayName = 'VaultStatsRow';
 
 /**
  * Single Prop Row - from Odds Funnel
- * Card BG: FRONT_LINE = Yellow, DEMON = Red, GOBLIN = Green
- * Icons: DEMON = Red Demon, GOBLIN = Green Goblin (regardless of card theme)
+ * NEW MODEL: Uses sharp_movement and trap_risk instead of demon/goblin
+ * Card BG: SAFE_HAVEN = Green, FRONT_LINE = Yellow, WAR_ZONE = Red, MINEFIELD = Orange
  */
 const PropRow = memo(({ prop, theme, onClick, onQuickAdd }) => {
-  const isDemon = prop.is_demon || prop.tier_label === 'DEMON';
-  const isGoblin = prop.is_goblin || prop.tier_label === 'GOBLIN';
-  const isFrontLine = prop.tier_label === 'FRONT_LINE' || prop.front_line_qualified;
+  // NEW: Sharp movement classification
+  const hasSharpMovement = prop.sharp_movement;
+  const hasTrapRisk = prop.trap_risk;
+  const tierLabel = prop.tier_label || 'STANDARD';
   
-  // Icon color is ALWAYS based on actual pick type (red demon / green goblin)
-  const iconColor = isDemon ? 'text-red-400' : 'text-green-400';
+  // LEGACY FALLBACK for backward compatibility
+  const isDemon = prop.is_demon || tierLabel === 'DEMON' || tierLabel === 'WAR_ZONE';
+  const isGoblin = prop.is_goblin || tierLabel === 'GOBLIN' || tierLabel === 'SAFE_HAVEN';
+  const isFrontLine = tierLabel === 'FRONT_LINE' || prop.front_line_qualified;
+  const isMinefield = hasTrapRisk || tierLabel === 'MINEFIELD';
   
-  // Card background is yellow for Front Lines, otherwise red/green/zinc
-  const tierBg = isFrontLine ? 'bg-yellow-950/40 border-yellow-500/30' 
+  // Determine card styling based on tier
+  const tierBg = isMinefield ? 'bg-orange-950/40 border-orange-500/30'
+    : isFrontLine ? 'bg-yellow-950/40 border-yellow-500/30' 
     : isDemon ? 'bg-red-950/40 border-red-500/30' 
     : isGoblin ? 'bg-green-950/40 border-green-500/30' 
     : 'bg-zinc-800/40 border-zinc-700/30';
   
   // Line value color matches card theme
-  const lineColor = isFrontLine ? 'text-yellow-400' 
+  const lineColor = isMinefield ? 'text-orange-400'
+    : isFrontLine ? 'text-yellow-400' 
     : isDemon ? 'text-red-400' 
     : isGoblin ? 'text-green-400' 
     : 'text-zinc-400';
+  
+  // Icon based on classification
+  const iconColor = isDemon ? 'text-red-400' : 'text-green-400';
   
   return (
     <div 
@@ -425,8 +453,13 @@ const PropRow = memo(({ prop, theme, onClick, onQuickAdd }) => {
       data-testid={`prop-row-${prop.stat_type}-${prop.line}`}
     >
       <div className="flex items-center gap-2">
-        {isDemon && <DemonIcon size={14} className={iconColor} />}
-        {(isGoblin || isFrontLine) && !isDemon && <GoblinIcon size={14} className={iconColor} />}
+        {/* Show trap indicator for minefield */}
+        {isMinefield && (
+          <span className="text-orange-400 text-xs">⚠️</span>
+        )}
+        {/* Legacy icons for backward compatibility */}
+        {!isMinefield && isDemon && <DemonIcon size={14} className={iconColor} />}
+        {!isMinefield && (isGoblin || isFrontLine) && !isDemon && <GoblinIcon size={14} className={iconColor} />}
         <div>
           <span className="text-sm font-medium text-white">
             {formatStatType(prop.stat_type)} <span className={lineColor}>{prop.line}</span>
@@ -612,8 +645,13 @@ const UniversalPlayerCard = memo(({
   
   // ==================== COMPACT MODE (Board Cards - matches Top Picks style) ====================
   if (mode === 'compact') {
-    const isDemon = is_demon || tier_label === 'DEMON';
-    const isGoblin = is_goblin || tier_label === 'GOBLIN' || tier_label === 'FRONT_LINE';
+    // NEW: Use sharp_movement and trap_risk classification
+    const hasSharpMovement = player.sharp_movement || props?.some(p => p.sharp_movement);
+    const hasTrapRisk = player.trap_risk || props?.some(p => p.trap_risk);
+    
+    // LEGACY FALLBACK for backward compatibility
+    const isDemon = is_demon || tier_label === 'DEMON' || tier_label === 'WAR_ZONE';
+    const isGoblin = is_goblin || tier_label === 'GOBLIN' || tier_label === 'SAFE_HAVEN' || tier_label === 'FRONT_LINE';
     
     // Only board picks (the 30 props in War Zone, Safe Haven, Front Lines) should be clickable
     const isClickable = isBoardPick && !is_locked;
@@ -631,9 +669,15 @@ const UniversalPlayerCard = memo(({
         <div className="flex items-center gap-2 mb-2">
           <div className="relative flex-shrink-0">
             <PlayerHeadshot photoUrl={displayPhoto} playerName={displayName} team={team} size="sm" />
-            {/* Tier icon on photo - same as Top Picks */}
+            {/* Tier icon on photo */}
             <div className="absolute -top-1 -right-1">
-              {isDemon ? <DemonIcon size={14} /> : isGoblin ? <GoblinIcon size={14} /> : null}
+              {hasTrapRisk ? (
+                <span className="text-orange-400 text-sm">⚠️</span>
+              ) : isDemon ? (
+                <DemonIcon size={14} />
+              ) : isGoblin ? (
+                <GoblinIcon size={14} />
+              ) : null}
             </div>
           </div>
           <div className="flex-1 min-w-0 overflow-hidden">

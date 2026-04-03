@@ -651,6 +651,15 @@ class FerrariTierService:
                         "line": pp_line,
                         "anchor_line": anchor_line,
                         "price": prop.get("price"),
+                        # NEW: Sharp Movement Classification
+                        "sharp_movement": abs(line_delta) >= 1.5 if line_delta else False,
+                        "movement_delta": round(line_delta, 2) if line_delta else 0,
+                        "movement_direction": "over_value" if line_delta and line_delta > 0 else "under_value" if line_delta and line_delta < 0 else "neutral",
+                        "movement_strength": "significant" if abs(line_delta or 0) >= 3.0 else "moderate" if abs(line_delta or 0) >= 1.5 else "minimal",
+                        "trap_risk": prop.get("sidecar", {}).get("hook_risk", False) or prop.get("sidecar", {}).get("suspect_line_bait", False),
+                        "hook_risk": prop.get("sidecar", {}).get("hook_risk", False),
+                        "suspect_line_bait": prop.get("sidecar", {}).get("suspect_line_bait", False),
+                        # LEGACY: Backward compatibility flags (will be deprecated)
                         "is_demon": prop.get("is_demon", False),
                         "is_goblin": prop.get("is_goblin", False),
                         "is_alternate": sharp_market.get("is_alternate", False),
@@ -706,6 +715,7 @@ class FerrariTierService:
                         "l10_mean": round(calculate_mean(stat_values), 1) if calculate_mean(stat_values) else None,
                         # Classification
                         "tier": tier,
+                        "tier_label": "MINEFIELD" if (prop.get("sidecar", {}).get("hook_risk", False) or prop.get("sidecar", {}).get("suspect_line_bait", False)) else tier.upper().replace("_", "_"),
                         "pipeline": "ferrari_v6",
                         "synced_at": sync_time.isoformat()
                     }

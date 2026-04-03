@@ -112,8 +112,16 @@ const SkeletonPlayerDetail = () => (
 
 // ==================== SINGLE PROP ROW ====================
 const PropRow = memo(({ prop, isHighlighted, highlightRef, onVisionClick, gameLogs = [] }) => {
-  const isDemon = prop.is_demon;
-  const isGoblin = prop.is_goblin;
+  // NEW: Sharp movement classification
+  const hasSharpMovement = prop.sharp_movement;
+  const hasTrapRisk = prop.trap_risk;
+  const tierLabel = prop.tier_label || 'STANDARD';
+  
+  // LEGACY FALLBACK for backward compatibility
+  const isDemon = prop.is_demon || tierLabel === 'DEMON' || tierLabel === 'WAR_ZONE';
+  const isGoblin = prop.is_goblin || tierLabel === 'GOBLIN' || tierLabel === 'SAFE_HAVEN';
+  const isMinefield = hasTrapRisk || tierLabel === 'MINEFIELD';
+  
   const line = prop.line || 0;
   const direction = (prop.direction || 'over').toUpperCase();
   const statType = prop.stat_type || prop.market || '';
