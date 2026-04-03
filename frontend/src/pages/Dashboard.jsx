@@ -1443,10 +1443,15 @@ const Dashboard = () => {
             }`}
             data-testid="tab-minefield"
           >
-            <Skull className="w-4 h-4" />
-            <span>The Minefield</span>
+            <div className="flex items-center gap-2">
+              <Skull className="w-4 h-4" />
+              <div className="flex flex-col items-start">
+                <span className="font-medium">The Minefield</span>
+                <span className="text-[10px] opacity-70">High risk lines flagged for deception</span>
+              </div>
+            </div>
             {totalTrapped > 0 && (
-              <span className={`ml-1 px-1.5 py-0.5 rounded text-xs ${
+              <span className={`ml-2 px-1.5 py-0.5 rounded text-xs ${
                 activeTab === 'traps' ? 'bg-red-500/30' : 'bg-zinc-700'
               }`}>
                 {totalTrapped}
