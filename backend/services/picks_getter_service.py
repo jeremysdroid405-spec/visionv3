@@ -22,6 +22,7 @@ from typing import Dict, List, Any, Optional
 from datetime import datetime, timezone, timedelta
 import logging
 import re
+from bson import ObjectId
 
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
@@ -32,6 +33,39 @@ from utils.player_lookup import get_player_by_id, get_player_by_name as shared_g
 from services.probability_score_service import ProbabilityScoreService
 
 logger = logging.getLogger(__name__)
+
+
+# ==================== OBJECTID SANITIZATION ====================
+def _sanitize_objectid(doc: Dict) -> Dict:
+    """
+    Recursively sanitize ObjectId fields to strings to prevent Pydantic serialization errors.
+    """
+    if doc is None:
+        return None
+    
+    sanitized = {}
+    for key, value in doc.items():
+        if key == "_id":
+            continue  # Drop _id entirely
+        elif isinstance(value, ObjectId):
+            sanitized[key] = str(value)
+        elif isinstance(value, dict):
+            sanitized[key] = _sanitize_objectid(value)
+        elif isinstance(value, list):
+            sanitized[key] = [
+                _sanitize_objectid(item) if isinstance(item, dict) 
+                else str(item) if isinstance(item, ObjectId) 
+                else item 
+                for item in value
+            ]
+        else:
+            sanitized[key] = value
+    return sanitized
+
+
+def _sanitize_picks_list(picks: List[Dict]) -> List[Dict]:
+    """Sanitize a list of picks to remove/convert ObjectId fields."""
+    return [_sanitize_objectid(pick) for pick in picks if pick]
 
 
 # ==================== GAME STATUS HELPER ====================
@@ -2640,14 +2674,17 @@ class PicksGetterService:
             
             logger.info(f"[TOP_PICKS] Returning {len(trending_picks)} picks | Line Movement Status: {line_movement_status} | Locked: {locked_count}/{len(trending_picks)}")
             
+            # CRITICAL: Sanitize all picks to prevent ObjectId serialization errors
+            sanitized_picks = _sanitize_picks_list(trending_picks)
+            
             return {
                 "status": "live" if not all_locked else "all_locked",
-                "bets": trending_picks,
+                "bets": sanitized_picks,
                 "source": "line_movements" if line_movement_status == "live" else "section_fallback",
                 "line_movement_status": line_movement_status,
                 "all_locked": all_locked,
                 "locked_count": locked_count,
-                "total_count": len(trending_picks),
+                "total_count": len(sanitized_picks),
                 "next_release_time": next_release_time,
                 "timestamp": now.isoformat()
             }
