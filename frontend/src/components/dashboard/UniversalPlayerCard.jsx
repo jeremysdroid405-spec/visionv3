@@ -505,8 +505,10 @@ const UniversalPlayerCard = memo(({
   
   const handleCardClick = useCallback(() => {
     if (isLocked) return; // Don't allow clicks when locked
+    // In compact mode, only board picks should trigger click
+    if (mode === 'compact' && !isBoardPick) return;
     if (player) onClick?.(player);
-  }, [onClick, player, isLocked]);
+  }, [onClick, player, isLocked, mode, isBoardPick]);
   
   const handlePropClick = useCallback((prop) => {
     if (isLocked) return; // Don't allow clicks when locked

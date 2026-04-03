@@ -175,34 +175,28 @@ const PropRow = memo(({ prop, isHighlighted, highlightRef, onVisionClick, gameLo
     return 'text-red-400';
   };
   
-  // Handle click for Vision Pick
+  // Handle click for Vision Pick - ONLY highlighted prop should be clickable
   const handleClick = () => {
-    // Allow clicking on highlighted props OR props with intel_suite
-    if ((isHighlighted || prop.intel_suite) && onVisionClick) {
+    if (isHighlighted && onVisionClick) {
       onVisionClick(prop);
     }
   };
   
-  // Determine if this prop is clickable (has vision data)
-  const isVisionProp = isHighlighted || prop.intel_suite;
-  
   return (
     <div 
       ref={isHighlighted ? highlightRef : null}
-      onClick={handleClick}
+      onClick={isHighlighted ? handleClick : undefined}
       className={`flex flex-col p-4 rounded-lg transition-all ${
         isHighlighted
           ? 'bg-gradient-to-r from-amber-950/50 via-yellow-900/30 to-amber-950/50 border-2 border-amber-400 ring-2 ring-amber-400/50 cursor-pointer hover:ring-amber-300/70' 
-          : isVisionProp
-            ? 'bg-gradient-to-r from-amber-950/30 to-zinc-900 border border-amber-500/40 cursor-pointer hover:border-amber-400 hover:shadow-[0_0_15px_rgba(251,191,36,0.2)]'
-            : isDemon 
-              ? 'bg-gradient-to-r from-red-950/40 to-zinc-900 border border-red-500/30' 
-              : isGoblin 
-                ? 'bg-gradient-to-r from-green-950/40 to-zinc-900 border border-green-500/30'
-                : 'bg-zinc-800/30 border border-zinc-700/30'
+          : isDemon 
+            ? 'bg-gradient-to-r from-red-950/40 to-zinc-900 border border-red-500/30' 
+            : isGoblin 
+              ? 'bg-gradient-to-r from-green-950/40 to-zinc-900 border border-green-500/30'
+              : 'bg-zinc-800/30 border border-zinc-700/30'
       }`}
       style={isHighlighted ? { boxShadow: '0 0 25px rgba(251, 191, 36, 0.5), 0 0 50px rgba(251, 191, 36, 0.3), inset 0 0 20px rgba(251, 191, 36, 0.1)' } : {}}
-      data-testid={`prop-row-${prop.stat_type}-${line}${isHighlighted ? '-vision' : isVisionProp ? '-clickable' : ''}`}
+      data-testid={`prop-row-${prop.stat_type}-${line}${isHighlighted ? '-vision' : ''}`}
     >
       {/* TOP ROW: Icon + Line + Badges */}
       <div className="flex items-center gap-2 mb-3">
@@ -221,16 +215,15 @@ const PropRow = memo(({ prop, isHighlighted, highlightRef, onVisionClick, gameLo
           {direction} {line}
         </span>
         {isHighlighted && (
-          <span className="px-1.5 py-0.5 text-[8px] font-black bg-gradient-to-r from-amber-500 to-yellow-400 text-black rounded-full flex items-center gap-0.5 animate-pulse">
-            <Crosshair className="w-2.5 h-2.5" />
-            VISION
-          </span>
-        )}
-        {!isHighlighted && isVisionProp && (
-          <span className="px-1.5 py-0.5 text-[8px] font-semibold bg-amber-500/20 text-amber-400 rounded-full flex items-center gap-0.5">
-            <Zap className="w-2.5 h-2.5" />
-            INTEL
-          </span>
+          <>
+            <span className="px-1.5 py-0.5 text-[8px] font-black bg-gradient-to-r from-amber-500 to-yellow-400 text-black rounded-full flex items-center gap-0.5 animate-pulse">
+              <Crosshair className="w-2.5 h-2.5" />
+              VISION
+            </span>
+            <span className="text-[9px] text-cyan-400 font-medium animate-pulse ml-auto">
+              Click for Intel Suite
+            </span>
+          </>
         )}
         {/* Vegas Intel - Officiating Impact Badge */}
         {crewChief && hasWhistleModifier && (

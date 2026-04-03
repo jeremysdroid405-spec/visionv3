@@ -1474,12 +1474,11 @@ const Dashboard = () => {
                       );
                     }
                     
-                    // Regular player row (no Vision Intel)
+                    // Regular player row (no Vision Intel) - NOT clickable
                     return (
                       <div 
                         key={player.id || player.player_name}
-                        className="flex items-center gap-3 p-3 hover:bg-zinc-800/50 cursor-pointer border border-zinc-800/50 rounded-lg"
-                        onClick={() => handlePlayerClick(player.player_name)}
+                        className="flex items-center gap-3 p-3 border border-zinc-800/50 rounded-lg"
                         data-testid={`player-row-${player.player_name?.replace(/\s/g, '-')}`}
                       >
                         <PlayerHeadshot playerName={player.player_name} team={player.team} photoUrl={player.photo_url || player.headshot_url} size="md" />
@@ -1487,7 +1486,6 @@ const Dashboard = () => {
                           <div className="font-medium text-white truncate">{player.player_name}</div>
                           <div className="text-xs text-zinc-500">{player.team_name || player.team} • {player.position}</div>
                         </div>
-                        <ChevronRight className="w-4 h-4 text-zinc-500" />
                       </div>
                     );
                   })}
