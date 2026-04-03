@@ -537,7 +537,85 @@ async def _persist_enriched_picks(db, picks: List[Dict], cache: GlobalSyncCache)
                     props_update[f"props.{idx}.vacuum_modifier"] = pick.get("vacuum_modifier", 0)
                     props_update[f"props.{idx}.has_vacuum_modifier"] = pick.get("has_vacuum_modifier", False)
                 
-                # Build intel_suite for each prop
+                # Build comprehensive intel_suite for each prop
+                # This includes all fields the frontend Vision Intel Suite expects
+                opponent = pick.get("opponent") or pick.get("opponent_abbr")
+                team = pick.get("team")
+                stat_type = pick.get("stat_type", "PTS")
+                
+                # Get blowout risk data
+                blowout_level = pick.get("blowout_risk", "UNKNOWN")
+                blowout_data = {
+                    "risk_level": blowout_level,
+                    "player_team_record": pick.get("team_record", ""),
+                    "opponent_team_record": pick.get("opponent_record", ""),
+                    "warning": f"Blowout risk {blowout_level}" if blowout_level in ["HIGH", "MEDIUM"] else None
+                }
+                
+                # Build matchup_dvp from momentum_data if available
+                momentum = pick.get("momentum_data", {})
+                dvp_rank = momentum.get("composite_rank", 15) if momentum else 15
+                friction_level = "Low" if dvp_rank <= 10 else "Medium" if dvp_rank <= 20 else "High"
+                friction_color = "green" if dvp_rank <= 10 else "yellow" if dvp_rank <= 20 else "red"
+                
+                matchup_dvp = {
+                    "display": f"vs {opponent}",
+                    "opponent": opponent,
+                    "opponent_abbr": opponent,
+                    "friction_level": friction_level,
+                    "friction_label": f"Rank #{int(dvp_rank)}" if dvp_rank else "Unknown",
+                    "color": friction_color,
+                    "dvp_rank": dvp_rank,
+                    "stat_type": stat_type
+                }
+                
+                # Build pace_delta 
+                pace_delta_val = 0
+                pace_delta = {
+                    "display": f"+{abs(pace_delta_val):.1f}" if pace_delta_val > 0 else f"{pace_delta_val:.1f}",
+                    "possessions": pace_delta_val,
+                    "tempo_label": "Neutral Pace",
+                    "expected_game_pace": "98.0",
+                    "team_pace": 98.0,
+                    "opp_pace": 98.0,
+                    "league_avg": 98.0
+                }
+                
+                # Build stability_index from hit rates
+                l10_rate = pick.get("l10_rate", 0) or 0
+                l5_rate = pick.get("l5_rate", 0) or 0
+                stability_score = int((l10_rate + l5_rate) / 2) if (l10_rate or l5_rate) else 50
+                
+                stability_index = {
+                    "display": f"{stability_score}%",
+                    "score": stability_score,
+                    "consistency": "Consistent" if stability_score >= 70 else "Variable" if stability_score >= 50 else "Volatile",
+                    "std_dev": None
+                }
+                
+                # Build usage_ripple from vacuum_data
+                vacuum = pick.get("vacuum_data")
+                usage_ripple = {
+                    "display": "Elevated Usage" if vacuum else "Standard Volume",
+                    "reasoning": vacuum.get("reason", "Based on team role") if vacuum else "Based on team role and recent minutes",
+                    "bump_percent": int(vacuum.get("usage_bump", 0)) if vacuum else 0,
+                    "shift_label": f"+{int(vacuum.get('usage_bump', 0))}% Usage" if vacuum else "Normal",
+                    "injuries_affecting": [vacuum.get("injured_player")] if vacuum and vacuum.get("injured_player") else []
+                }
+                
+                # Build context_badges from available data
+                context_badges = []
+                if blowout_level == "HIGH":
+                    context_badges.append("blowout_risk")
+                if pick.get("trap_risk"):
+                    context_badges.append("trap_risk")
+                if pick.get("sharp_movement"):
+                    context_badges.append("sharp_movement")
+                if vacuum:
+                    context_badges.append("usage_boost")
+                if momentum and momentum.get("is_weak"):
+                    context_badges.append("soft_matchup")
+                
                 intel_suite = {
                     "momentum_data": pick.get("momentum_data"),
                     "whistle_data": {
@@ -551,7 +629,19 @@ async def _persist_enriched_picks(db, picks: List[Dict], cache: GlobalSyncCache)
                     } if pick.get("crew_chief") else None,
                     "vacuum_data": pick.get("vacuum_data"),
                     "board": pick.get("board"),
-                    "ferrari_power_score": pick.get("ferrari_power_score")
+                    "ferrari_power_score": pick.get("ferrari_power_score"),
+                    # NEW: Full Vision Intel Suite fields
+                    "blowout_risk": blowout_data,
+                    "matchup_dvp": matchup_dvp,
+                    "pace_delta": pace_delta,
+                    "stability_index": stability_index,
+                    "usage_ripple": usage_ripple,
+                    "context_badges": context_badges,
+                    "vision_insight": {
+                        "primary": f"Analyzing {pick.get('player_name', 'player')} {stat_type} @ {pick.get('line', 0)}",
+                        "reasons": [],
+                        "confidence": "STANDARD"
+                    }
                 }
                 props_update[f"props.{idx}.intel_suite"] = intel_suite
                 props_update[f"props.{idx}.is_vision_enriched"] = True

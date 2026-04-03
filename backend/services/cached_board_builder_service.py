@@ -365,14 +365,23 @@ class CachedBoardBuilderService:
                     # Execute in batches
                     for i in range(0, len(bulk_ops), batch_size):
                         batch = bulk_ops[i:i+batch_size]
-                        await self.cached_board.bulk_write(batch)
+                        result = await self.cached_board.bulk_write(batch)
+                        logger.info(f"[CACHED_BOARD] Batch {i//batch_size + 1}: matched={result.matched_count}, upserted={result.upserted_count}")
+                    
+                    # Verify write
+                    count_after = await self.cached_board.count_documents({})
+                    logger.info(f"[CACHED_BOARD] Post-write count: {count_after}")
                     
                     # Remove stale players
                     current_player_names = {p["player_name"] for p in sorted_players}
-                    await self.cached_board.delete_many({
+                    delete_result = await self.cached_board.delete_many({
                         "player_name": {"$nin": list(current_player_names)},
                         "synced_at": {"$lt": sync_time.isoformat()}
                     })
+                    logger.info(f"[CACHED_BOARD] Deleted {delete_result.deleted_count} stale players")
+                    
+                    count_final = await self.cached_board.count_documents({})
+                    logger.info(f"[CACHED_BOARD] Final count after cleanup: {count_final}")
                     
                     logger.info(f"[CACHED_BOARD] Bulk upsert completed - {len(sorted_players)} players")
                     
@@ -1065,6 +1074,88 @@ class CachedBoardBuilderService:
         prop["season_avg"] = hit_rates["season_avg"]
         prop["l10_hit_count"] = hit_rates["l10_hit_count"]
         prop["l5_hit_count"] = hit_rates["l5_hit_count"]
+        
+        # =====================================================================
+        # INTEL SUITE: Build Vision Intelligence data for frontend
+        # =====================================================================
+        # This provides the complete data needed for the Vision Intel Suite UI
+        opponent = prop.get("away_team") if prop.get("away_team") != player.get("team") else prop.get("home_team")
+        
+        # Calculate stability from hit rates
+        l5_rate = hit_rates["l5_rate"] or 0
+        l10_rate = hit_rates["l10_rate"] or 0
+        stability_score = int((l5_rate + l10_rate) / 2) if (l5_rate or l10_rate) else 50
+        
+        # Get blowout risk from prop if available
+        blowout_level = prop.get("blowout_risk", "UNKNOWN")
+        
+        prop["intel_suite"] = {
+            # Blowout Risk Analysis
+            "blowout_risk": {
+                "risk_level": blowout_level,
+                "player_team_record": player.get("team_record", ""),
+                "opponent_team_record": prop.get("opponent_record", ""),
+                "warning": f"Blowout risk: {blowout_level}" if blowout_level in ["HIGH", "MEDIUM"] else None
+            },
+            # Matchup DvP Analysis
+            "matchup_dvp": {
+                "display": f"vs {opponent}" if opponent else "TBD",
+                "opponent": opponent,
+                "opponent_abbr": opponent,
+                "friction_level": "Medium",  # Will be enriched by board intel service
+                "friction_label": "Analysis Pending",
+                "color": "yellow",
+                "stat_type": stat_type
+            },
+            # Pace Delta
+            "pace_delta": {
+                "display": "0.0",
+                "possessions": 0,
+                "tempo_label": "Neutral Pace",
+                "expected_game_pace": "98.0"
+            },
+            # Stability Index from hit rates
+            "stability_index": {
+                "display": f"{stability_score}%",
+                "score": stability_score,
+                "consistency": "Consistent" if stability_score >= 70 else "Variable" if stability_score >= 50 else "Volatile"
+            },
+            # Usage Ripple (from vacuum data if available)
+            "usage_ripple": {
+                "display": "Standard Volume",
+                "reasoning": "Based on team role and recent minutes",
+                "bump_percent": 0,
+                "shift_label": "Normal",
+                "injuries_affecting": []
+            },
+            # Context Badges
+            "context_badges": [],
+            # Vision Insight (placeholder for AI)
+            "vision_insight": {
+                "primary": f"Analyzing {player.get('player_name', 'player')} {stat_type} @ {line}",
+                "reasons": [],
+                "confidence": "STANDARD"
+            },
+            # Preserve existing enrichment data
+            "momentum_data": prop.get("momentum_data"),
+            "vacuum_data": prop.get("vacuum_data"),
+            "whistle_data": prop.get("whistle_data")
+        }
+        
+        # Add context badges based on prop flags
+        badges = []
+        if prop.get("trap_risk"):
+            badges.append("trap_risk")
+        if prop.get("sharp_movement"):
+            badges.append("sharp_movement")
+        if stability_score >= 80:
+            badges.append("consistent")
+        if blowout_level == "HIGH":
+            badges.append("blowout_risk")
+        prop["intel_suite"]["context_badges"] = badges
+        
+        # Mark as vision-enriched so frontend knows to display the intel_suite
+        prop["is_vision_enriched"] = True
         
         # =====================================================================
         # ANOMALY DETECTION: Flag oddsmaker errors
