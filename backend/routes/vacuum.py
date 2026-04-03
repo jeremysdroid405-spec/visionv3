@@ -167,3 +167,71 @@ async def sync_star_profiles():
     """
     service = get_service()
     return await service.sync_star_profiles()
+
+
+@router.get("/v3/vacuum/live-alerts")
+async def get_live_vacuum_alerts(response: Response):
+    """
+    Get live usage vacuum alerts for frontend display.
+    
+    Returns formatted alerts showing which players are benefiting from
+    late-breaking injury news (within last 120 minutes).
+    
+    Returns:
+        List of formatted alerts for the "Live Injury Advantage" section.
+    """
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    
+    service = get_service()
+    vacuums = service.get_active_vacuums()
+    
+    # Format alerts for frontend display
+    alerts = []
+    for vacuum in vacuums:
+        injured_player = vacuum.get("injured_player", "Unknown")
+        injured_team = vacuum.get("team", "")
+        reason = vacuum.get("reason", "")
+        usage_rate = vacuum.get("usage_rate", 0)
+        triggered_at = vacuum.get("triggered_at", "")
+        
+        # Calculate time since triggered
+        time_ago = "recently"
+        if triggered_at:
+            try:
+                triggered_dt = datetime.fromisoformat(triggered_at.replace("Z", "+00:00"))
+                delta = datetime.now(timezone.utc) - triggered_dt
+                mins = int(delta.total_seconds() / 60)
+                if mins < 60:
+                    time_ago = f"{mins} mins ago"
+                elif mins < 120:
+                    time_ago = f"{mins // 60} hour ago"
+                else:
+                    time_ago = f"{mins // 60} hours ago"
+            except:
+                pass
+        
+        for beneficiary in vacuum.get("beneficiaries", []):
+            alerts.append({
+                "id": f"{injured_player}-{beneficiary.get('name', '')}".replace(" ", "-").lower(),
+                "beneficiary_name": beneficiary.get("name", "Unknown"),
+                "beneficiary_rank": beneficiary.get("rank", "primary"),
+                "usage_bump": beneficiary.get("usage_bump", 0),
+                "modifier": beneficiary.get("modifier", 0),
+                "injured_player": injured_player,
+                "injured_team": injured_team,
+                "injury_reason": reason,
+                "injured_usage_rate": usage_rate,
+                "triggered_at": triggered_at,
+                "time_ago": time_ago,
+                # Formatted display string
+                "display_text": f"{beneficiary.get('name', 'Unknown')} — {injured_player} ruled OUT {time_ago}. +{beneficiary.get('usage_bump', 0)}% usage rate increase.",
+                "late_injury_boost": True
+            })
+    
+    return {
+        "has_alerts": len(alerts) > 0,
+        "alert_count": len(alerts),
+        "alerts": alerts,
+        "last_check": service.last_injury_check.isoformat() if service.last_injury_check else None,
+        "timestamp": datetime.now(timezone.utc).isoformat()
+    }

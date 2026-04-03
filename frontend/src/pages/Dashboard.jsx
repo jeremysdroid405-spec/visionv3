@@ -47,8 +47,8 @@ import {
   useSafeHaven,
   useFrontLines,
   useLiveOdds,
-  useMostPopularBets,
-  useTrapGraveyard
+  useTrapGraveyard,
+  useLiveVacuumAlerts
 } from '../hooks/useLiveOdds';
 import { useMasterStats } from '../hooks/useMasterStats';
 
@@ -1015,74 +1015,91 @@ const PopularBetCard = memo(({ bet, onClick }) => {
   );
 });
 
-const MostPopularBetsSection = memo(({ bets, status, onBetClick, allLocked, nextReleaseTime }) => {
-  const [countdown, setCountdown] = useState('');
-  
-  // Countdown timer effect
-  useEffect(() => {
-    if (!allLocked || !nextReleaseTime) return;
-    
-    const updateCountdown = () => {
-      const now = new Date();
-      const release = new Date(nextReleaseTime);
-      const diff = release - now;
-      
-      if (diff <= 0) {
-        setCountdown('New picks arriving soon...');
-        return;
-      }
-      
-      const hours = Math.floor(diff / (1000 * 60 * 60));
-      const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-      const seconds = Math.floor((diff % (1000 * 60)) / 1000);
-      
-      setCountdown(`${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`);
-    };
-    
-    updateCountdown();
-    const interval = setInterval(updateCountdown, 1000);
-    return () => clearInterval(interval);
-  }, [allLocked, nextReleaseTime]);
-  
-  if (status === 'awaiting_action' || !bets?.length) {
+// ==================== LIVE INJURY ADVANTAGE SECTION (USAGE VACUUM) ====================
+
+const LiveInjuryAdvantageSection = memo(({ alerts, isLoading }) => {
+  if (isLoading) {
     return (
-      <div className="mb-4 p-4 bg-zinc-900/50 border border-zinc-800 rounded-xl text-center">
-        <Activity className="w-6 h-6 text-zinc-500 mx-auto mb-2" />
-        <p className="text-sm text-zinc-500">Awaiting live action...</p>
-        <p className="text-xs text-zinc-600">Top picks will appear when games tip off</p>
+      <div className="mb-4 p-4 bg-zinc-900/50 border border-zinc-800 rounded-xl">
+        <div className="flex items-center gap-2 mb-3">
+          <div className="w-4 h-4 bg-orange-500/30 rounded animate-pulse" />
+          <div className="h-4 w-48 bg-zinc-700 rounded animate-pulse" />
+        </div>
+        <div className="h-16 bg-zinc-800/50 rounded animate-pulse" />
       </div>
     );
   }
-  
+
+  // No active alerts - show monitoring state
+  if (!alerts || alerts.length === 0) {
+    return (
+      <div className="mb-4 p-4 bg-zinc-900/50 border border-zinc-800 rounded-xl">
+        <div className="flex items-center gap-2 mb-2">
+          <Activity className="w-4 h-4 text-zinc-500 animate-pulse" />
+          <span className="text-sm font-bold text-zinc-400">LIVE INJURY ADVANTAGE</span>
+          <span className="text-[10px] px-2 py-0.5 rounded bg-zinc-700 text-zinc-400">MONITORING</span>
+        </div>
+        <p className="text-xs text-zinc-500">
+          Monitoring for late-breaking injury scratches... No active usage spikes detected.
+        </p>
+      </div>
+    );
+  }
+
   return (
-    <div className="mb-4 relative">
+    <div className="mb-4">
       <SectionHeader 
-        icon={<Flame className="w-4 h-4 text-red-400" />}
-        title="TOP PICKS"
-        subtitle="Lines moving since last sync"
+        icon={<ShieldAlert className="w-4 h-4 text-orange-400" />}
+        title="LIVE INJURY ADVANTAGE"
+        subtitle="Players boosted by late-breaking injury news"
+        badgeText={`${alerts.length} ACTIVE`}
+        badgeColor="orange"
       />
       
-      {/* Blur overlay when all locked */}
-      {allLocked && (
-        <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-black/60 backdrop-blur-sm rounded-xl mt-10">
-          <div className="flex items-center gap-2 mb-2">
-            <Lock className="w-5 h-5 text-yellow-400" />
-            <span className="text-yellow-400 font-bold text-sm">ALL PICKS LOCKED</span>
+      <div className="space-y-2">
+        {alerts.map((alert) => (
+          <div
+            key={alert.id}
+            className="p-3 rounded-lg bg-gradient-to-r from-orange-950/40 to-zinc-900 border border-orange-500/30"
+          >
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-full bg-orange-500/20 flex items-center justify-center">
+                  <TrendingUp className="w-4 h-4 text-orange-400" />
+                </div>
+                <div>
+                  <div className="text-sm font-bold text-white">{alert.beneficiary_name}</div>
+                  <div className="text-[10px] text-zinc-500">
+                    {alert.beneficiary_rank === 'primary' ? '1st' : '2nd'} Beneficiary
+                  </div>
+                </div>
+              </div>
+              <div className="text-right">
+                <div className="text-lg font-bold text-orange-400">+{alert.usage_bump}%</div>
+                <div className="text-[10px] text-zinc-500">Usage Boost</div>
+              </div>
+            </div>
+            
+            <div className="text-xs text-zinc-300 bg-zinc-800/50 rounded p-2">
+              <span className="text-red-400 font-semibold">{alert.injured_player}</span>
+              <span className="text-zinc-500"> ruled </span>
+              <span className="text-red-400 font-semibold">OUT</span>
+              <span className="text-zinc-500"> {alert.time_ago}</span>
+              {alert.injury_reason && (
+                <span className="text-zinc-600"> ({alert.injury_reason})</span>
+              )}
+            </div>
+            
+            <div className="mt-2 flex items-center justify-between text-[10px]">
+              <span className="text-zinc-500">
+                {alert.injured_player}'s {alert.injured_usage_rate}% usage now redistributed
+              </span>
+              <span className="px-1.5 py-0.5 rounded bg-green-500/20 text-green-400 font-bold">
+                +{alert.modifier} Power Score
+              </span>
+            </div>
           </div>
-          <p className="text-zinc-400 text-xs mb-3">New picks release at 4:00 AM EST</p>
-          <div className="bg-zinc-900/80 border border-yellow-500/30 rounded-lg px-4 py-2">
-            <div className="text-[10px] text-zinc-500 uppercase tracking-wider mb-1">Next Release In</div>
-            <div className="text-2xl font-mono font-bold text-yellow-400">{countdown}</div>
-          </div>
-        </div>
-      )}
-      
-      <div className={`overflow-x-auto pb-2 -mx-3 px-3 ${allLocked ? 'blur-sm pointer-events-none' : ''}`}>
-        <div className="flex gap-3" style={{ minWidth: 'max-content' }}>
-          {bets.map((bet, idx) => (
-            <PopularBetCard key={`top-pick-${bet.player_name}-${bet.stat_type}-${idx}`} bet={bet} onClick={() => onBetClick(bet)} />
-          ))}
-        </div>
+        ))}
       </div>
     </div>
   );
@@ -1100,8 +1117,8 @@ const Dashboard = () => {
   const { data: safeHavenData, isLoading: safeHavenLoading, refetch: refetchSafeHaven } = useSafeHaven();
   const { data: frontLinesData, isLoading: frontLinesLoading, refetch: refetchFrontLines } = useFrontLines();
   const { data: liveOddsData, isLoading: boardLoading, refetch: refetchBoard } = useLiveOdds();
-  const { data: mostPopularData, isLoading: popularLoading } = useMostPopularBets();
   const { data: trapGraveyardData, isLoading: trapGraveyardLoading } = useTrapGraveyard();
+  const { data: vacuumAlertsData, isLoading: vacuumAlertsLoading } = useLiveVacuumAlerts();
   
   // Active tab state: 'vip' (clean picks) or 'traps' (flagged picks)
   const [activeTab, setActiveTab] = useState('vip');
@@ -1117,12 +1134,8 @@ const Dashboard = () => {
   const trapBoardStats = useMemo(() => trapGraveyardData?.board_stats || {}, [trapGraveyardData]);
   const totalTrapped = trapGraveyardData?.total_trapped || 0;
   
-  // Top Picks - Best of all sections (4 from each board)
-  const trending = useMemo(() => players.slice(0, 8), [players]);
-  const popularBets = useMemo(() => mostPopularData?.bets || [], [mostPopularData]);
-  const popularBetsStatus = mostPopularData?.status || (popularLoading ? 'loading' : 'awaiting_action');
-  const allPicksLocked = mostPopularData?.all_locked || false;
-  const nextReleaseTime = mostPopularData?.next_release_time || null;
+  // Live Vacuum Alerts (Usage Vacuum)
+  const vacuumAlerts = useMemo(() => vacuumAlertsData?.alerts || [], [vacuumAlertsData]);
   
   // Status flags derived from query state
   const linesLoaded = !boardLoading && players.length > 0;
@@ -1530,13 +1543,10 @@ const Dashboard = () => {
         {/* Main Picks Content (shown when NOT viewing Minefield) */}
         {activeTab !== 'traps' && (
           <>
-            {/* Most Popular Bets - FIRST */}
-            <MostPopularBetsSection 
-              bets={popularBets} 
-              status={popularBetsStatus} 
-              onBetClick={handlePopularBetClick}
-              allLocked={allPicksLocked}
-              nextReleaseTime={nextReleaseTime}
+            {/* Live Injury Advantage (Usage Vacuum) - FIRST */}
+            <LiveInjuryAdvantageSection 
+              alerts={vacuumAlerts} 
+              isLoading={vacuumAlertsLoading} 
             />
             
             {/* Safe Haven */}

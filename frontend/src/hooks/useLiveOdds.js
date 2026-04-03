@@ -385,4 +385,29 @@ export const useSimulationQuery = (legs) => {
   });
 };
 
+/**
+ * Fetch Live Vacuum Alerts (Usage Vacuum)
+ * Returns players benefiting from late-breaking injury news
+ */
+const fetchLiveVacuumAlerts = async () => {
+  const response = await fetch(`${API}/api/v3/vacuum/live-alerts`);
+  if (!response.ok) throw new Error('Vacuum alerts fetch failed');
+  return response.json();
+};
+
+/**
+ * useLiveVacuumAlerts - Live Injury Advantage alerts
+ * Polls every 60 seconds for late-breaking injury news
+ */
+export const useLiveVacuumAlerts = () => {
+  return useQuery({
+    queryKey: ['live-vacuum-alerts'],
+    queryFn: fetchLiveVacuumAlerts,
+    staleTime: 30 * 1000,  // 30 seconds
+    refetchInterval: 60 * 1000,  // Poll every 60 seconds
+    refetchOnWindowFocus: true,
+    retry: 2
+  });
+};
+
 export default useLiveOdds;
