@@ -800,7 +800,7 @@ const UniversalPlayerCard = memo(({
             }`}>
               <Scale className="w-3 h-3" />
               OFFICIATING IMPACT
-              {/* Whistle Icon next to Ferrari Score indicator */}
+              {/* Whistle Icon next to Power Score indicator */}
               {has_whistle_modifier && (
                 whistle_class === 'high_whistle' 
                   ? <GoldWhistleIcon className="w-3 h-3 ml-auto" />

@@ -271,13 +271,13 @@ const MomentumTrackerFull = memo(({
           )}
         </div>
         
-        {/* Ferrari Modifier */}
+        {/* Power Score Modifier */}
         {modifier !== 0 && (
           <div className={`mt-2 px-2 py-1.5 rounded-lg text-center ${
             modifier < 0 ? 'bg-red-500/20 border border-red-500/30' : 'bg-green-500/20 border border-green-500/30'
           }`}>
             <span className={`text-sm font-bold ${modifier < 0 ? 'text-red-400' : 'text-green-400'}`}>
-              {modifier > 0 ? '+' : ''}{modifier} Ferrari Score
+              {modifier > 0 ? '+' : ''}{modifier} Power Score
             </span>
             <div className="text-[9px] text-zinc-400 mt-0.5">
               {modifier < 0 ? 'Penalty (Elite Defense)' : 'Boost (Weak Defense)'}

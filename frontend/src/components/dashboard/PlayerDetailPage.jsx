@@ -1092,7 +1092,7 @@ export const PlayerDetailPage = ({ playerName, playerData = null, onBack, highli
                           Team: {selectedVisionProp.vacuum_data.injured_team}
                         </div>
                         <div className="text-sm font-bold text-orange-400">
-                          +{selectedVisionProp.vacuum_modifier} Ferrari Boost
+                          +{selectedVisionProp.vacuum_modifier} Power Boost
                         </div>
                       </div>
                     </div>

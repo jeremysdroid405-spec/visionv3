@@ -351,7 +351,7 @@ const IntelligenceModal = ({
                 </div>
                 <div className="flex justify-between mt-1">
                   <span className="text-zinc-400">Score Modifier</span>
-                  <span className="text-orange-400 font-bold">+{modifier} Ferrari Points</span>
+                  <span className="text-orange-400 font-bold">+{modifier} Power Points</span>
                 </div>
               </div>
               <div className="flex justify-between pt-2 border-t border-orange-500/20">
@@ -448,7 +448,7 @@ const IntelligenceModal = ({
               {modifier !== 0 && (
                 <div className="pt-2 border-t border-zinc-700/50">
                   <div className="flex justify-between items-center">
-                    <span className="text-zinc-400">Ferrari Modifier</span>
+                    <span className="text-zinc-400">Score Modifier</span>
                     <span className={`font-bold ${modifier > 0 ? 'text-green-400' : 'text-red-400'}`}>
                       {modifier > 0 ? '+' : ''}{modifier} pts
                     </span>
