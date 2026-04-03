@@ -63,8 +63,8 @@ const RankBar = memo(({ label, rank, isActive = false }) => {
   
   return (
     <div className="flex flex-col items-center gap-1">
-      <div className="text-[8px] text-zinc-500 uppercase">{label}</div>
-      <div className="w-3 h-12 bg-zinc-800 rounded-full overflow-hidden relative">
+      <div className="text-[9px] text-white font-medium uppercase">{label}</div>
+      <div className="w-4 h-12 bg-zinc-800 rounded-full overflow-hidden relative">
         <div 
           className={`absolute bottom-0 w-full ${color} rounded-full transition-all duration-500`}
           style={{ height }}
@@ -221,7 +221,7 @@ const MomentumTrackerFull = memo(({
       {/* Content */}
       <div className="p-3">
         {/* Rank Bars */}
-        <div className="flex items-end justify-center gap-4 mb-3">
+        <div className="flex items-end justify-center gap-6 mb-3">
           <RankBar label="SZN" rank={season_rank} />
           <RankBar label="L10" rank={l10_rank} />
           <RankBar label="L5" rank={l5_rank} />
@@ -270,20 +270,6 @@ const MomentumTrackerFull = memo(({
             </div>
           )}
         </div>
-        
-        {/* Power Score Modifier */}
-        {modifier !== 0 && (
-          <div className={`mt-2 px-2 py-1.5 rounded-lg text-center ${
-            modifier < 0 ? 'bg-red-500/20 border border-red-500/30' : 'bg-green-500/20 border border-green-500/30'
-          }`}>
-            <span className={`text-sm font-bold ${modifier < 0 ? 'text-red-400' : 'text-green-400'}`}>
-              {modifier > 0 ? '+' : ''}{modifier} Power Score
-            </span>
-            <div className="text-[9px] text-zinc-400 mt-0.5">
-              {modifier < 0 ? 'Penalty (Elite Defense)' : 'Boost (Weak Defense)'}
-            </div>
-          </div>
-        )}
         
         {/* Trend Alert */}
         {trend_alert && (
