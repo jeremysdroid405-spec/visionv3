@@ -342,7 +342,7 @@ const CategoryHeader = memo(({ category, count, hasDemon, hasGoblin }) => {
 
 // ==================== MAIN COMPONENT ====================
 // SSOT: Uses useMasterStats hook for player data (PIPE 1)
-export const PlayerDetailPage = ({ playerName, playerData = null, onBack, highlightProp = null, highlightType = 'demon' }) => {
+export const PlayerDetailPage = ({ playerName, playerData = null, onBack, highlightProp = null, highlightType = 'demon', onQuickAdd = null }) => {
   // Direct state-based fetch
   const [player, setPlayer] = useState(playerData);
   const [loading, setLoading] = useState(!playerData);
@@ -739,6 +739,26 @@ export const PlayerDetailPage = ({ playerName, playerData = null, onBack, highli
                   </div>
                 </div>
               </div>
+              
+              {/* Add Pick to Command Center Button */}
+              {onQuickAdd && (
+                <button
+                  onClick={() => {
+                    onQuickAdd({
+                      ...player,
+                      ...selectedVisionProp,
+                      player_name: playerName,
+                      selectedProp: selectedVisionProp
+                    });
+                    setShowIntelSuite(false);
+                  }}
+                  className="w-full py-3 px-4 bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-400 hover:to-blue-400 text-white font-bold rounded-lg flex items-center justify-center gap-2 transition-all shadow-lg shadow-cyan-500/25 hover:shadow-cyan-500/40"
+                  data-testid="add-to-command-center-btn"
+                >
+                  <Plus className="w-5 h-5" />
+                  Add Pick to Command Center
+                </button>
+              )}
               
               {/* ===== CONTEXT BADGES - 10 Situational Indicators ===== */}
               <div className="bg-gradient-to-r from-zinc-900 to-zinc-800/50 border border-zinc-700 rounded-lg p-4">

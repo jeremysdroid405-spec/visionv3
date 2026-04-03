@@ -1315,6 +1315,7 @@ const Dashboard = () => {
         onBack={handleBackFromPlayer}
         highlightProp={highlightProp}
         highlightType={highlightType}
+        onQuickAdd={handleQuickAdd}
       />
     );
   }
