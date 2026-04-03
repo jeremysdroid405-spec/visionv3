@@ -840,13 +840,14 @@ class FerrariTierService:
                                 "season_rank": momentum_data.get("season_rank") if momentum_data else None,
                                 "l10_rank": momentum_data.get("l10_rank") if momentum_data else None,
                                 "l5_rank": momentum_data.get("l5_rank") if momentum_data else None,
-                                "momentum_trend": momentum_data.get("momentum", "stable") if momentum_data else "stable",
+                                "momentum_trend": momentum_data.get("momentum", "stable") if momentum_data else "unknown",
                                 "is_elite": momentum_data.get("is_elite", False) if momentum_data else False,
                                 "is_weak": momentum_data.get("is_weak", False) if momentum_data else False,
                                 "trend_alert": momentum_data.get("trend_alert") if momentum_data else None,
-                                "tooltip": momentum_data.get("tooltip") if momentum_data else None,
-                                "display": f"#{int(momentum_data.get('composite_rank', 15))} Defense" if momentum_data and momentum_data.get("composite_rank") else "Unknown"
-                            } if momentum_data else None,
+                                "tooltip": momentum_data.get("tooltip") if momentum_data else f"Defensive data pending for {opponent}",
+                                "display": f"#{int(momentum_data.get('composite_rank', 15))} Defense" if momentum_data and momentum_data.get("composite_rank") else f"vs {opponent}" if opponent else "Unknown",
+                                "data_available": momentum_data is not None
+                            },
                             # ===== TEMPO (Pace Delta) =====
                             "tempo": self._calculate_tempo(player.get("team"), opponent),
                             # Pace Delta (legacy - keep for compatibility)

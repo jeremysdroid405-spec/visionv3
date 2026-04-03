@@ -847,6 +847,7 @@ export const PlayerDetailPage = ({ playerName, playerData = null, onBack, highli
                   </div>
                   
                   {/* Defensive Momentum (replaces old Matchup DvP / Defensive Friction) */}
+                  {/* Momentum Tracker - Primary display for defensive analysis */}
                   {selectedVisionProp.momentum_data && (
                     <MomentumTrackerFull
                       momentumData={selectedVisionProp.momentum_data}
@@ -855,12 +856,46 @@ export const PlayerDetailPage = ({ playerName, playerData = null, onBack, highli
                     />
                   )}
                   
-                  {/* Legacy Matchup DvP fallback - only if no momentum data */}
-                  {!selectedVisionProp.momentum_data && selectedVisionProp.intel_suite.matchup_dvp && (
+                  {/* Defensive Momentum from intel_suite - fallback when no momentum_data */}
+                  {!selectedVisionProp.momentum_data && selectedVisionProp.intel_suite?.defensive_momentum && (
                     <div className="bg-gradient-to-r from-cyan-950/40 to-zinc-900 border border-cyan-500/30 rounded-lg p-4">
                       <h3 className="text-sm font-bold text-white mb-2 flex items-center gap-2">
                         <Target className="w-4 h-4 text-cyan-400" />
-                        DEFENSIVE FRICTION
+                        DEFENSIVE MOMENTUM
+                      </h3>
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <div className="text-2xl font-bold text-cyan-300">
+                            {selectedVisionProp.intel_suite.defensive_momentum?.display || 'N/A'}
+                          </div>
+                          <div className="text-xs text-zinc-400 mt-1">
+                            vs {selectedVisionProp.intel_suite?.matchup_dvp?.opponent || selectedVisionProp.opponent || 'Opponent'}
+                          </div>
+                        </div>
+                        <div className={`px-3 py-1 rounded-full text-xs font-bold ${
+                          selectedVisionProp.intel_suite.defensive_momentum?.is_weak 
+                            ? 'bg-green-500 text-white' 
+                            : selectedVisionProp.intel_suite.defensive_momentum?.is_elite
+                              ? 'bg-red-500 text-white'
+                              : 'bg-yellow-500 text-black'
+                        }`}>
+                          {selectedVisionProp.intel_suite.defensive_momentum?.is_weak ? 'Soft' : selectedVisionProp.intel_suite.defensive_momentum?.is_elite ? 'Elite' : 'Average'}
+                        </div>
+                      </div>
+                      {selectedVisionProp.intel_suite.defensive_momentum?.tooltip && (
+                        <div className="text-xs text-cyan-400/70 mt-2">
+                          {selectedVisionProp.intel_suite.defensive_momentum.tooltip}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  
+                  {/* Final fallback: matchup_dvp when no momentum data available */}
+                  {!selectedVisionProp.momentum_data && !selectedVisionProp.intel_suite?.defensive_momentum && selectedVisionProp.intel_suite?.matchup_dvp && (
+                    <div className="bg-gradient-to-r from-cyan-950/40 to-zinc-900 border border-cyan-500/30 rounded-lg p-4">
+                      <h3 className="text-sm font-bold text-white mb-2 flex items-center gap-2">
+                        <Target className="w-4 h-4 text-cyan-400" />
+                        MATCHUP ANALYSIS
                       </h3>
                       <div className="flex items-center justify-between">
                         <div>
@@ -878,11 +913,11 @@ export const PlayerDetailPage = ({ playerName, playerData = null, onBack, highli
                               ? 'bg-red-500 text-white'
                               : 'bg-yellow-500 text-black'
                         }`}>
-                          {selectedVisionProp.intel_suite.matchup_dvp?.friction_level} Friction
+                          {selectedVisionProp.intel_suite.matchup_dvp?.friction_level || 'Unknown'}
                         </div>
                       </div>
                       <div className="text-xs text-cyan-400/70 mt-2">
-                        {selectedVisionProp.intel_suite.matchup_dvp?.friction_label}
+                        {selectedVisionProp.intel_suite.matchup_dvp?.friction_label || 'Data pending'}
                       </div>
                     </div>
                   )}

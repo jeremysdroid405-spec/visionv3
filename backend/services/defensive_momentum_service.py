@@ -446,11 +446,29 @@ class DefensiveMomentumService:
             l10_avgs = {}
             total_games = 0
             
-            for abbrev in season_data.keys():
+            # IMPORTANT: Process ALL 30 teams, not just those in season_data
+            # BDL API sometimes doesn't return all teams from team_season_averages
+            all_teams_to_process = set(ALL_TEAMS)  # All 30 NBA teams
+            
+            # Add any teams from season_data that might have different abbreviations
+            all_teams_to_process.update(season_data.keys())
+            
+            logger.info(f"[Momentum] Processing {len(all_teams_to_process)} teams...")
+            
+            for abbrev in all_teams_to_process:
                 team_id = ABBREV_TO_ID.get(abbrev)
                 if not team_id:
                     logger.warning(f"[Momentum] No team_id mapping for {abbrev}")
                     continue
+                
+                # If team is missing from season_data, add a default entry
+                if abbrev not in season_data:
+                    logger.info(f"[Momentum] Adding missing team: {abbrev} (ID: {team_id})")
+                    season_data[abbrev] = {
+                        "def_rating": 115.0,  # League average default
+                        "def_rating_rank": 15,  # Middle rank default
+                        "games_played": 0
+                    }
                 
                 games = await self._fetch_team_games(team_id, per_page=15)
                 total_games += len(games)
@@ -458,6 +476,12 @@ class DefensiveMomentumService:
                 if games:
                     l5_avgs[abbrev] = self._calculate_pts_allowed_from_games(games, team_id, limit=5)
                     l10_avgs[abbrev] = self._calculate_pts_allowed_from_games(games, team_id, limit=10)
+                    
+                    # Update season_data def_rating if we have game data
+                    if abbrev in season_data and season_data[abbrev].get("games_played", 0) == 0:
+                        # Calculate approximate def_rating from L10 avg
+                        season_data[abbrev]["def_rating"] = l10_avgs[abbrev]
+                        season_data[abbrev]["games_played"] = len(games)
                 else:
                     # Fallback to league average
                     l5_avgs[abbrev] = 115.0
@@ -473,6 +497,18 @@ class DefensiveMomentumService:
             logger.info("[Momentum] Step 3: Calculating L5/L10 rankings...")
             l5_ranks = self._rank_teams_by_value(l5_avgs)
             l10_ranks = self._rank_teams_by_value(l10_avgs)
+            
+            # Also recalculate season rankings based on L10 for teams that were missing
+            # This ensures all 30 teams have consistent rankings
+            season_ratings = {team: data.get("def_rating", 115.0) for team, data in season_data.items()}
+            season_ranks = self._rank_teams_by_value(season_ratings)
+            
+            # Update season_data with recalculated ranks
+            for team in season_data:
+                if team in season_ranks:
+                    season_data[team]["def_rating_rank"] = season_ranks[team]
+            
+            logger.info(f"[Momentum] Calculated rankings for {len(l5_ranks)} teams")
             
             # Log some L5 rankings
             sorted_l5 = sorted(l5_avgs.items(), key=lambda x: x[1])
