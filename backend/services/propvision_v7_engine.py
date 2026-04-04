@@ -356,15 +356,19 @@ class TrueProbabilityEngine:
         Hard Kill Switch - Returns (is_killed, reason)
         Any hard kill = prop is eliminated
         """
+        # Kill 0: NO HISTORICAL DATA (can't trust props without hit rate history)
+        if l5_rate is None or l3_rate is None:
+            return True, f"HARD_KILL: No historical hit rate data available"
+        
         # Kill 1: L3 < 33% (cold streak)
         if l3_rate < HARD_KILL_L3_MIN:
             return True, f"HARD_KILL: L3 rate {l3_rate:.0f}% < {HARD_KILL_L3_MIN:.0f}% (cold streak)"
         
-        # Kill 2: L5 < 40% (confirmed cold)
-        if l5_rate < HARD_KILL_L5_MIN:
-            return True, f"HARD_KILL: L5 rate {l5_rate:.0f}% < {HARD_KILL_L5_MIN:.0f}% (confirmed cold)"
+        # Kill 2: L5 <= 40% (confirmed cold)
+        if l5_rate <= HARD_KILL_L5_MIN:
+            return True, f"HARD_KILL: L5 rate {l5_rate:.0f}% <= {HARD_KILL_L5_MIN:.0f}% (confirmed cold)"
         
-        # Kill 3: Sharp implied < 52% (no edge)
+        # Kill 3: Sharp implied < 47% (no edge)
         sharp_pct = sharp_implied * 100 if sharp_implied < 1 else sharp_implied
         if sharp_pct < HARD_KILL_SHARP_MIN:
             return True, f"HARD_KILL: Sharp implied {sharp_pct:.1f}% < {HARD_KILL_SHARP_MIN:.0f}% (no edge)"
