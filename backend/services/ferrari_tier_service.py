@@ -1091,47 +1091,29 @@ class FerrariTierService:
         """
         Deduplicate and select top N by power score.
         
-        PRIORITY ORDER:
-        1. Non-trap picks first (no hook_risk, no suspect_line_bait)
-        2. Trap picks only if we don't have enough clean alternatives
+        STRICT CLEAN PICKS ONLY:
+        - Only select picks without hook_risk or suspect_line_bait
+        - If we don't have enough clean picks, show fewer (not traps)
         """
-        # Separate clean picks from trap picks
-        clean_picks = []
-        trap_picks = []
-        
-        for pick in candidates:
-            name = pick.get("player_name")
-            if name and name not in used_players:
-                is_trap = pick.get("trap_risk") or pick.get("hook_risk") or pick.get("suspect_line_bait")
-                if is_trap:
-                    trap_picks.append(pick)
-                else:
-                    clean_picks.append(pick)
-        
-        # Select clean picks first
         selected = []
         selected_names = set()
         
-        for pick in clean_picks:
+        for pick in candidates:
             name = pick.get("player_name")
-            if name not in selected_names:
+            if name and name not in used_players and name not in selected_names:
+                # Skip trap picks entirely
+                is_trap = pick.get("trap_risk") or pick.get("hook_risk") or pick.get("suspect_line_bait")
+                if is_trap:
+                    continue
+                
                 used_players.add(name)
                 selected_names.add(name)
                 selected.append(pick)
                 if len(selected) >= limit:
                     break
         
-        # If we need more, fill with trap picks (sorted by probability)
         if len(selected) < limit:
-            logger.info(f"  [TRAP FILTER] Only {len(selected)} clean picks, adding {limit - len(selected)} trap picks")
-            for pick in trap_picks:
-                name = pick.get("player_name")
-                if name not in selected_names:
-                    used_players.add(name)
-                    selected_names.add(name)
-                    selected.append(pick)
-                    if len(selected) >= limit:
-                        break
+            logger.info(f"  [CLEAN ONLY] Selected {len(selected)} clean picks (target was {limit})")
         
         return selected
     
@@ -1141,8 +1123,7 @@ class FerrariTierService:
         
         if blowout_risk == "HIGH":
             badges.append("blowout_risk")
-        if hook_risk or suspect_bait:
-            badges.append("trap_risk")
+        # Note: trap_risk picks are now filtered out entirely, so no need for badge
         if sharp_movement:
             badges.append("sharp_movement")
         if momentum_data:
