@@ -87,7 +87,7 @@ PP_IMPLIED = 0.578  # 57.8%
 # HARD KILL THRESHOLDS
 HARD_KILL_L3_MIN = 33.0  # Must hit at least 1/3
 HARD_KILL_L5_MIN = 40.0  # Must hit at least 2/5
-HARD_KILL_SHARP_MIN = 52.0  # Sharp must see edge
+HARD_KILL_SHARP_MIN = 47.0  # Sharp must see edge (lowered for War Zone demons)
 HARD_KILL_SEPARATION_MIN = 3.0  # Min 3% separation
 
 # SOFT KILL PENALTIES

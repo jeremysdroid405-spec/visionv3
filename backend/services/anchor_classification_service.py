@@ -227,10 +227,13 @@ def classify_props_by_movement(props: List[Dict], player_stats: Dict[str, Dict] 
             prop["tier_label"] = "STANDARD"
             neutral_count += 1
         
-        # BACKWARD COMPATIBILITY: Map to legacy fields
-        # These are read-only for any legacy code still referencing them
-        prop["is_demon"] = False  # Deprecated
-        prop["is_goblin"] = False  # Deprecated
+        # PRESERVE PRIZEPICKS CLASSIFICATION
+        # is_demon (price = +100) and is_goblin (price != +100 on alternate markets)
+        # These come from the odds API and are used for tier routing:
+        # - Safe Haven: GOBLINS only (high probability favorites)
+        # - Front Lines: BOTH demons and goblins
+        # - War Zone: DEMONS only (higher variance with multipliers)
+        # DO NOT overwrite these values!
         
         classified_props.append(prop)
     

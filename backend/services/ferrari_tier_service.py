@@ -708,20 +708,39 @@ class FerrariTierService:
                     v7_components = v7_result["components"]
                     
                     # ==========================================================
-                    # WAR ZONE = DEMONS ONLY (Must have multiplier for the risk)
+                    # TIER PROP TYPE ENFORCEMENT:
+                    # - SAFE HAVEN = Goblins only (high probability, no multiplier)
+                    # - FRONT LINES = Both demons + goblins
+                    # - WAR ZONE = Demons only (must have multiplier for the risk)
                     # ==========================================================
-                    # If tier is war_zone but pick is NOT a demon, demote it
-                    # This ensures War Zone picks have multiplier reward for risk
                     is_demon = prop.get("is_demon", False)
+                    is_goblin = prop.get("is_goblin", False)
                     
-                    if v7_tier == "war_zone" and not is_demon:
-                        # Non-demon war zone picks get demoted - all risk, no reward
+                    # Skip standard lines entirely - only demons and goblins qualify
+                    if not is_demon and not is_goblin:
                         results["scored"]["below_threshold"] += 1
                         discarded.append({
                             "player_name": player_name,
                             "stat_type": stat_type,
                             "line": pp_line,
-                            "reason": "WAR_ZONE_NON_DEMON: No multiplier for war zone risk"
+                            "reason": "STANDARD_LINE: Only demons/goblins qualify for tiers"
+                        })
+                        continue
+                    
+                    # Safe Haven = Goblins only
+                    if v7_tier == "safe_haven" and not is_goblin:
+                        # Demons don't belong in Safe Haven - demote to Front Lines or below
+                        if is_demon:
+                            v7_tier = "front_lines"  # Demons can go to Front Lines
+                    
+                    # War Zone = Demons only (at 47%+ threshold)
+                    if v7_tier == "war_zone" and not is_demon:
+                        results["scored"]["below_threshold"] += 1
+                        discarded.append({
+                            "player_name": player_name,
+                            "stat_type": stat_type,
+                            "line": pp_line,
+                            "reason": "WAR_ZONE_NON_DEMON: Only demons qualify for War Zone"
                         })
                         continue
                     
