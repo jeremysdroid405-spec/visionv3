@@ -97,7 +97,13 @@ PENALTY_NEUTRAL_DVP = -5.0  # DvP rank 10-20
 PENALTY_BLOWOUT_MEDIUM = -5.0  # Medium blowout risk
 PENALTY_BLOWOUT_HIGH = -10.0  # High blowout risk (non-bench stats only)
 
-# TIER THRESHOLDS (True Probability %)
+# TIER THRESHOLDS - SHARP IMPLIED (Primary classifier)
+# These match traditional sharp book tier windows
+TIER_SAFE_HAVEN_SHARP_MIN = 70.0   # -233 or stronger (70%+ implied)
+TIER_FRONT_LINES_SHARP_MIN = 58.0  # -138 to -232 (58-69% implied)
+TIER_WAR_ZONE_SHARP_MIN = 52.0     # -108 to -137 (52-57% implied)
+
+# TRUE PROBABILITY (Secondary - used for ranking within tiers)
 TIER_SAFE_HAVEN_MIN = 72.0
 TIER_FRONT_LINES_MIN = 62.0
 TIER_WAR_ZONE_MIN = 52.0
@@ -495,14 +501,17 @@ class TrueProbabilityEngine:
         result["soft_penalties"] = penalties
         result["true_probability"] = round(true_prob, 2)
         
-        # Classify tier
-        if true_prob >= TIER_SAFE_HAVEN_MIN:
+        # Classify tier by SHARP IMPLIED (primary) - this is what the sharps see
+        # True Probability is used for ranking WITHIN tiers
+        sharp_pct = sharp_implied * 100 if sharp_implied < 1 else sharp_implied
+        
+        if sharp_pct >= TIER_SAFE_HAVEN_SHARP_MIN:
             result["tier"] = "safe_haven"
             result["confidence"] = "HIGH"
-        elif true_prob >= TIER_FRONT_LINES_MIN:
+        elif sharp_pct >= TIER_FRONT_LINES_SHARP_MIN:
             result["tier"] = "front_lines"
             result["confidence"] = "MEDIUM"
-        elif true_prob >= TIER_WAR_ZONE_MIN:
+        elif sharp_pct >= TIER_WAR_ZONE_SHARP_MIN:
             result["tier"] = "war_zone"
             result["confidence"] = "STANDARD"
         else:
