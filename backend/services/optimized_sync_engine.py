@@ -372,26 +372,34 @@ async def run_optimized_sync(db) -> Dict[str, Any]:
     Returns complete payload with all picks enriched.
     """
     start = datetime.now(timezone.utc)
+    timings = {}  # Track timing for each phase
     
     logger.info("[OPTIMIZED_SYNC] Starting unified pipeline...")
     
     # Step 1: Fetch global cache ONCE (parallel fetch)
+    t1 = datetime.now(timezone.utc)
     cache = await fetch_global_cache(db)
+    timings["1_global_cache"] = (datetime.now(timezone.utc) - t1).total_seconds()
+    logger.info(f"[OPTIMIZED_SYNC] Step 1 (Global Cache): {timings['1_global_cache']:.2f}s")
     
     # Step 2: Run Ferrari pipeline (builds ferrari_scored, ferrari_safe_haven, etc.)
+    t2 = datetime.now(timezone.utc)
     from services.ferrari_tier_service import get_ferrari_tier_service
     ferrari_service = get_ferrari_tier_service(db)
     
     # Pass the pre-fetched cache to Ferrari for use during scoring
     ferrari_result = await ferrari_service.build_ferrari_tiers(start)
+    timings["2_ferrari_pipeline"] = (datetime.now(timezone.utc) - t2).total_seconds()
+    logger.info(f"[OPTIMIZED_SYNC] Step 2 (Ferrari Pipeline): {timings['2_ferrari_pipeline']:.2f}s")
     
     if not ferrari_result.get("success"):
         logger.error(f"[OPTIMIZED_SYNC] Ferrari pipeline failed: {ferrari_result.get('error')}")
         return {"success": False, "error": "Ferrari pipeline failed", "details": ferrari_result}
     
-    logger.info(f"[OPTIMIZED_SYNC] Ferrari complete: {ferrari_result.get('output', {}).get('total', 0)} picks")
+    logger.info(f"[OPTIMIZED_SYNC] Ferrari complete: {ferrari_result.get('output', {}).get('total_picks', 0)} picks")
     
     # Step 3: Collect all picks from Ferrari collections and enrich with cache
+    t3 = datetime.now(timezone.utc)
     all_picks = []
     boards = {}
     
@@ -417,20 +425,35 @@ async def run_optimized_sync(db) -> Dict[str, Any]:
             "picks": picks,
             "count": len(picks)
         }
+    timings["3_collect_enrich"] = (datetime.now(timezone.utc) - t3).total_seconds()
+    logger.info(f"[OPTIMIZED_SYNC] Step 3 (Collect & Enrich): {timings['3_collect_enrich']:.2f}s")
     
     logger.info(f"[OPTIMIZED_SYNC] Collected {len(all_picks)} picks for AI summary generation")
     
     # Step 4: Generate AI summaries in batch (with rate limiting)
+    t4 = datetime.now(timezone.utc)
     await _batch_generate_summaries(all_picks, db)
+    timings["4_ai_summaries"] = (datetime.now(timezone.utc) - t4).total_seconds()
+    logger.info(f"[OPTIMIZED_SYNC] Step 4 (AI Summaries): {timings['4_ai_summaries']:.2f}s")
     
     # Step 5: Update dg_cached_board with enriched data
+    t5 = datetime.now(timezone.utc)
     await _persist_enriched_picks(db, all_picks, cache)
+    timings["5_persist_enriched"] = (datetime.now(timezone.utc) - t5).total_seconds()
+    logger.info(f"[OPTIMIZED_SYNC] Step 5 (Persist Enriched): {timings['5_persist_enriched']:.2f}s")
     
     # Step 6: Update Ferrari tier collections with vision summaries
+    t6 = datetime.now(timezone.utc)
     await _update_tier_collections_with_summaries(db, all_picks)
+    timings["6_update_tiers"] = (datetime.now(timezone.utc) - t6).total_seconds()
+    logger.info(f"[OPTIMIZED_SYNC] Step 6 (Update Tiers): {timings['6_update_tiers']:.2f}s")
     
     duration = (datetime.now(timezone.utc) - start).total_seconds()
     
+    # Log timing breakdown
+    logger.info(f"[OPTIMIZED_SYNC] === TIMING BREAKDOWN ===")
+    for step, seconds in timings.items():
+        logger.info(f"[OPTIMIZED_SYNC]   {step}: {seconds:.2f}s")
     logger.info(f"[OPTIMIZED_SYNC] Pipeline complete in {duration:.2f}s")
     
     return {
@@ -440,6 +463,7 @@ async def run_optimized_sync(db) -> Dict[str, Any]:
         "war_zone": boards.get("war_zone", {}),
         "total_picks": len(all_picks),
         "sync_duration": round(duration, 2),
+        "timings": {k: round(v, 2) for k, v in timings.items()},
         "ferrari_stats": ferrari_result.get("output", {}),
         "cache_stats": {
             "standings": len(cache.standings),
