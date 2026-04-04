@@ -1041,7 +1041,10 @@ class FerrariTierService:
             
             await self.ferrari_discarded.delete_many({})
             if discarded:
-                await self.ferrari_discarded.insert_many(discarded[:500], ordered=False)
+                # Save all discards (was limited to 500)
+                await self.ferrari_discarded.insert_many(discarded, ordered=False)
+            
+            logger.info(f"  Total discarded: {len(discarded)}")
             
             # =================================================================
             # PHASE 4: GLOBAL SORT - Prefer Clean Picks Over Trap Picks

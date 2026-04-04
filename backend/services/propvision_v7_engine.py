@@ -505,7 +505,8 @@ class TrueProbabilityEngine:
         }
         
         # HARD FILTER: Trap risk (filtered out entirely, not penalized)
-        if trap_risk:
+        # SKIP for demons - demons are high-risk plays, trap risk is expected
+        if trap_risk and not is_demon:
             result["is_killed"] = True
             result["kill_reason"] = "Trap risk detected (filtered)"
             return result
