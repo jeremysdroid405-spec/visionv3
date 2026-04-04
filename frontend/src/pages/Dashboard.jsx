@@ -800,114 +800,104 @@ const LiveInjuryAdvantageSection = memo(({ alerts, isLoading }) => {
     );
   }
 
+  // Group alerts by injured player
+  const groupedByInjuredPlayer = alerts.reduce((acc, alert) => {
+    const key = alert.injured_player;
+    if (!acc[key]) {
+      acc[key] = {
+        injured_player: alert.injured_player,
+        injured_team: alert.injured_team,
+        injury_reason: alert.injury_reason,
+        injured_usage_rate: alert.injured_usage_rate,
+        time_ago: alert.time_ago,
+        is_late_scratch: alert.is_late_scratch,
+        beneficiaries: []
+      };
+    }
+    acc[key].beneficiaries.push(alert);
+    return acc;
+  }, {});
+
+  const injuredPlayers = Object.values(groupedByInjuredPlayer);
+
   return (
     <div className="mb-4">
       <SectionHeader 
         icon={<ShieldAlert className="w-4 h-4 text-orange-400" />}
         title="LIVE INJURY ADVANTAGE"
-        subtitle="Players boosted by late-breaking injury news"
-        badgeText={`${alerts.length} ACTIVE`}
-        badgeColor="orange"
+        subtitle="Late-breaking injury news creating usage opportunities"
+        badgeText={`${injuredPlayers.length} OUT`}
+        badgeColor="red"
       />
       
-      <div className="space-y-2">
-        {alerts.map((alert) => (
+      {/* Horizontal scrollable container */}
+      <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-thin scrollbar-thumb-zinc-700 scrollbar-track-transparent">
+        {injuredPlayers.map((injury) => (
           <div
-            key={alert.id}
-            className={`p-3 rounded-lg border ${
-              alert.should_promote 
-                ? 'bg-gradient-to-r from-amber-950/50 via-orange-950/40 to-zinc-900 border-amber-500/50 ring-1 ring-amber-500/30' 
-                : 'bg-gradient-to-r from-orange-950/40 to-zinc-900 border-orange-500/30'
-            }`}
+            key={injury.injured_player}
+            className="flex-shrink-0 w-72 p-3 rounded-xl border bg-gradient-to-br from-red-950/40 via-zinc-900 to-zinc-900 border-red-500/30"
           >
-            {/* Header with badge */}
-            <div className="flex items-center justify-between mb-2">
-              <div className="flex items-center gap-2">
-                <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
-                  alert.should_promote ? 'bg-amber-500/30' : 'bg-orange-500/20'
-                }`}>
-                  <TrendingUp className={`w-4 h-4 ${alert.should_promote ? 'text-amber-400' : 'text-orange-400'}`} />
+            {/* Injured Player - THE FOCUS */}
+            <div className="flex items-center gap-3 mb-3">
+              <div className="w-10 h-10 rounded-full bg-red-500/20 flex items-center justify-center ring-2 ring-red-500/50">
+                <AlertTriangle className="w-5 h-5 text-red-400" />
+              </div>
+              <div className="flex-1">
+                <div className="flex items-center gap-2">
+                  <span className="text-base font-bold text-white">{injury.injured_player}</span>
+                  <span className="px-1.5 py-0.5 text-[9px] font-black bg-red-500 text-white rounded">OUT</span>
                 </div>
-                <div>
+                <div className="text-[10px] text-zinc-400">
+                  {injury.injured_usage_rate}% usage • {injury.time_ago}
+                </div>
+              </div>
+            </div>
+
+            {/* Injury Reason Headline */}
+            {injury.injury_reason && (
+              <div className="text-xs text-zinc-300 bg-zinc-800/60 rounded-lg p-2 mb-3 line-clamp-2">
+                {injury.injury_reason}
+              </div>
+            )}
+
+            {/* Usage Spike Indicator */}
+            <div className="flex items-center gap-1 mb-2 text-[10px] text-orange-400 font-semibold">
+              <TrendingUp className="w-3 h-3" />
+              <span>USAGE SPIKE DETECTED</span>
+            </div>
+
+            {/* Beneficiaries - smaller cards */}
+            <div className="space-y-1.5">
+              {injury.beneficiaries.map((ben, idx) => (
+                <div
+                  key={ben.id}
+                  className="flex items-center justify-between p-2 rounded-lg bg-zinc-800/50 hover:bg-zinc-800/70 transition-colors"
+                >
                   <div className="flex items-center gap-2">
-                    <span className="text-sm font-bold text-white">{alert.beneficiary_name}</span>
-                    {alert.high_usage_advantage && (
-                      <span className="px-1.5 py-0.5 text-[8px] font-black bg-gradient-to-r from-amber-500 to-orange-500 text-black rounded animate-pulse">
-                        HIGH USAGE ADVANTAGE
-                      </span>
-                    )}
+                    <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold ${
+                      idx === 0 ? 'bg-orange-500/30 text-orange-400' : 'bg-zinc-700 text-zinc-400'
+                    }`}>
+                      {idx + 1}
+                    </div>
+                    <div>
+                      <div className="text-xs font-semibold text-white">{ben.beneficiary_name}</div>
+                      <div className="text-[9px] text-zinc-500">+{ben.minutes_bump || 0} mins projected</div>
+                    </div>
                   </div>
-                  <div className="text-[10px] text-zinc-500">
-                    {alert.beneficiary_rank === 'primary' ? '1st' : '2nd'} Beneficiary • +{alert.minutes_bump || 0} mins
+                  <div className="text-right">
+                    <div className={`text-sm font-bold ${idx === 0 ? 'text-orange-400' : 'text-orange-400/70'}`}>
+                      +{ben.usage_bump}%
+                    </div>
+                    <div className="text-[8px] text-zinc-500">usage</div>
                   </div>
                 </div>
-              </div>
-              <div className="text-right">
-                <div className="text-lg font-bold text-orange-400">+{alert.usage_bump}%</div>
-                <div className="text-[10px] text-zinc-500">Usage Boost</div>
-              </div>
+              ))}
             </div>
-            
-            {/* Injury info */}
-            <div className="text-xs text-zinc-300 bg-zinc-800/50 rounded p-2">
-              <span className="text-red-400 font-semibold">{alert.injured_player}</span>
-              <span className="text-zinc-500"> ruled </span>
-              <span className="text-red-400 font-semibold">OUT</span>
-              <span className="text-zinc-500"> {alert.time_ago}</span>
-              {alert.injury_reason && (
-                <span className="text-zinc-600"> ({alert.injury_reason})</span>
-              )}
-            </div>
-            
-            {/* Projected stats with boost */}
-            {alert.projections && alert.boost_percentage > 0 && (
-              <div className="mt-2 grid grid-cols-4 gap-2 text-center">
-                <div className="bg-zinc-800/30 rounded p-1.5">
-                  <div className="text-[9px] text-zinc-500">PTS</div>
-                  <div className="text-xs font-bold text-white">{alert.projections.pts}</div>
-                </div>
-                <div className="bg-zinc-800/30 rounded p-1.5">
-                  <div className="text-[9px] text-zinc-500">AST</div>
-                  <div className="text-xs font-bold text-white">{alert.projections.ast}</div>
-                </div>
-                <div className="bg-zinc-800/30 rounded p-1.5">
-                  <div className="text-[9px] text-zinc-500">REB</div>
-                  <div className="text-xs font-bold text-white">{alert.projections.reb}</div>
-                </div>
-                <div className="bg-zinc-800/30 rounded p-1.5">
-                  <div className="text-[9px] text-zinc-500">PRA</div>
-                  <div className="text-xs font-bold text-white">{alert.projections.pra}</div>
-                </div>
-              </div>
-            )}
-            
-            {/* Board promotion indicator */}
-            {alert.should_promote && alert.eligible_props?.length > 0 && (
-              <div className="mt-2 p-2 bg-amber-500/10 border border-amber-500/30 rounded">
-                <div className="flex items-center gap-1 text-[10px] text-amber-400 font-bold mb-1">
-                  <Flame className="w-3 h-3" />
-                  BOARD PROMOTED
-                </div>
-                <div className="text-[10px] text-zinc-300">
-                  {alert.eligible_props.map((prop, idx) => (
-                    <span key={idx}>
-                      {idx > 0 && ' • '}
-                      <span className="text-amber-300 font-semibold">{prop.stat_type}</span>
-                      <span className="text-zinc-500"> proj {prop.projected} </span>
-                      <span className="text-green-400">(+{prop.edge_percentage}% edge)</span>
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
-            
-            {/* Footer */}
-            <div className="mt-2 flex items-center justify-between text-[10px]">
-              <span className="text-zinc-500">
-                {alert.injured_player}'s {alert.injured_usage_rate}% usage redistributed
-              </span>
-              <span className="px-1.5 py-0.5 rounded bg-green-500/20 text-green-400 font-bold">
-                +{alert.modifier} Power Score
+
+            {/* Power Score Badge */}
+            <div className="mt-2 flex justify-end">
+              <span className="px-2 py-0.5 rounded text-[9px] font-bold bg-green-500/20 text-green-400">
+                +{injury.beneficiaries[0]?.modifier || 0} Power Score
               </span>
             </div>
           </div>
