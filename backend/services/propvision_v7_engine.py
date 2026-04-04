@@ -55,8 +55,9 @@ logger = logging.getLogger(__name__)
 # V7.1 CONSTANTS - EDGE-FIRST FORMULA
 # =============================================================================
 
-# PRIZEPICKS IMPLIED PROBABILITY (-137 standard odds)
-PP_IMPLIED = 57.8  # 57.8%
+# PRIZEPICKS IMPLIED PROBABILITY
+PP_IMPLIED_STANDARD = 57.8  # -137 odds = 57.8% (for Goblins/Standard)
+PP_IMPLIED_DEMON = 50.0     # +100 odds = 50% (for Demons - even money)
 
 # HARD KILL THRESHOLDS
 HARD_KILL_L3_MIN = 33.0  # Must hit at least 1/3
@@ -527,33 +528,40 @@ class TrueProbabilityEngine:
         # Board_Score = Sharp_Implied + PP_Edge + Hit_Rate_Avg - Penalties
         # =================================================================
         
-        # Component 1: Sharp Implied (what smart money says)
+        # Component 1: Hit Rate Average (L5 + L10) / 2 - calculated first for demon edge
+        l5_safe = l5_rate if l5_rate is not None else 0
+        l10_safe = l10_rate if l10_rate is not None else 0
+        hit_rate_avg = (l5_safe + l10_safe) / 2
+        
+        # Component 2: Sharp Implied (what smart money says)
         # For demons without sharp data, use hit rate as proxy
         if sharp_implied and sharp_implied > 0:
             sharp_pct = sharp_implied if sharp_implied > 1 else sharp_implied * 100
         else:
             # No sharp data - for demons, estimate from hit rate
-            # This is a fallback for War Zone demons
-            l5_safe = l5_rate if l5_rate is not None else 0
-            l10_safe = l10_rate if l10_rate is not None else 0
-            sharp_pct = (l5_safe + l10_safe) / 2  # Use hit rate avg as proxy
+            sharp_pct = hit_rate_avg  # Use hit rate avg as proxy
         
-        # Component 2: PP Edge (positive = PP giving better value than sharps)
+        # Component 3: PP Edge
+        # For GOBLINS/STANDARD: PP Edge = Sharp - PP (positive = sharps see higher probability)
+        # For DEMONS: PP Edge = Hit Rate - PP Break Even (positive = we beat the +100 odds)
         pp_edge = 0.0
-        if pp_price is not None:
-            if pp_price < 0:
-                pp_implied = abs(pp_price) / (abs(pp_price) + 100) * 100
-            else:
-                pp_implied = 100 / (pp_price + 100) * 100
-            pp_edge = sharp_pct - pp_implied  # Positive = we're getting value
-        else:
-            pp_implied = PP_IMPLIED  # Default -137 = 57.8%
-            pp_edge = sharp_pct - pp_implied
         
-        # Component 3: Hit Rate Average (L5 + L10) / 2
-        l5_safe = l5_rate if l5_rate is not None else 0
-        l10_safe = l10_rate if l10_rate is not None else 0
-        hit_rate_avg = (l5_safe + l10_safe) / 2
+        if is_demon:
+            # DEMON EDGE: How much we beat the +100 break-even (50%)
+            # This is the TRUE edge for demons - actual performance vs break-even
+            pp_implied = PP_IMPLIED_DEMON  # 50% for +100 odds
+            pp_edge = hit_rate_avg - pp_implied  # Positive = we hit more than 50%
+        else:
+            # GOBLIN/STANDARD EDGE: Sharp vs PP spread
+            if pp_price is not None:
+                if pp_price < 0:
+                    pp_implied = abs(pp_price) / (abs(pp_price) + 100) * 100
+                else:
+                    pp_implied = 100 / (pp_price + 100) * 100
+                pp_edge = sharp_pct - pp_implied
+            else:
+                pp_implied = PP_IMPLIED_STANDARD  # 57.8% for -137
+                pp_edge = sharp_pct - pp_implied
         
         # Calculate Board Score (before penalties)
         board_score_raw = sharp_pct + pp_edge + hit_rate_avg
