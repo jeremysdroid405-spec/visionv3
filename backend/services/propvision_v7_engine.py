@@ -351,26 +351,30 @@ class TrueProbabilityEngine:
         """
         Hard Kill Switch - Returns (is_killed, reason)
         Any hard kill = prop is eliminated
+        
+        DEMONS get relaxed checks:
+        - Skip L3 check (demons are high risk, recent cold is expected)
+        - Skip Line > Median check (demon lines are intentionally high)
         """
         # Kill 0: NO L5 DATA (minimum required for evaluation)
         if l5_rate is None:
             return True, f"HARD_KILL: No L5 hit rate data available"
         
-        # Kill 1: L3 < 33% (cold streak) - only check if L3 exists
-        if l3_rate is not None and l3_rate < HARD_KILL_L3_MIN:
+        # Kill 1: L3 < 33% (cold streak) - SKIP for demons (high risk plays)
+        if not is_demon and l3_rate is not None and l3_rate < HARD_KILL_L3_MIN:
             return True, f"HARD_KILL: L3 rate {l3_rate:.0f}% < {HARD_KILL_L3_MIN:.0f}% (cold streak)"
         
         # Kill 2: L5 <= 40% (confirmed cold)
         if l5_rate <= HARD_KILL_L5_MIN:
             return True, f"HARD_KILL: L5 rate {l5_rate:.0f}% <= {HARD_KILL_L5_MIN:.0f}% (confirmed cold)"
         
-        # Kill 3: Sharp implied < 39% (no edge)
-        sharp_pct = sharp_implied * 100 if sharp_implied < 1 else sharp_implied
-        if sharp_pct < HARD_KILL_SHARP_MIN:
+        # Kill 3: Sharp implied < 38% (no edge) - SKIP if no sharp data for demons
+        sharp_pct = sharp_implied * 100 if sharp_implied and sharp_implied < 1 else (sharp_implied or 0)
+        if sharp_pct > 0 and sharp_pct < HARD_KILL_SHARP_MIN:
             return True, f"HARD_KILL: Sharp implied {sharp_pct:.1f}% < {HARD_KILL_SHARP_MIN:.0f}% (no edge)"
         
-        # Kill 4: Separation < 3% (too close to call)
-        if separation_pct < HARD_KILL_SEPARATION_MIN:
+        # Kill 4: Separation < 3% (too close to call) - only if we have separation data
+        if separation_pct and separation_pct < HARD_KILL_SEPARATION_MIN:
             return True, f"HARD_KILL: Separation {separation_pct:.1f}% < {HARD_KILL_SEPARATION_MIN:.0f}%"
         
         # Kill 5: Line > Season Median (against the grain)
@@ -523,7 +527,15 @@ class TrueProbabilityEngine:
         # =================================================================
         
         # Component 1: Sharp Implied (what smart money says)
-        sharp_pct = sharp_implied if sharp_implied > 1 else sharp_implied * 100
+        # For demons without sharp data, use hit rate as proxy
+        if sharp_implied and sharp_implied > 0:
+            sharp_pct = sharp_implied if sharp_implied > 1 else sharp_implied * 100
+        else:
+            # No sharp data - for demons, estimate from hit rate
+            # This is a fallback for War Zone demons
+            l5_safe = l5_rate if l5_rate is not None else 0
+            l10_safe = l10_rate if l10_rate is not None else 0
+            sharp_pct = (l5_safe + l10_safe) / 2  # Use hit rate avg as proxy
         
         # Component 2: PP Edge (positive = PP giving better value than sharps)
         pp_edge = 0.0
@@ -564,37 +576,46 @@ class TrueProbabilityEngine:
         result["true_probability"] = round(board_score, 2)  # Alias for compatibility
         result["pp_edge"] = round(pp_edge, 2)
         
-        # Classify tier by SHARP IMPLIED (primary classifier)
-        if sharp_pct >= TIER_SAFE_HAVEN_SHARP_MIN:
+        # Classify tier
+        # For demons without sharp data, use hit rates for tier qualification
+        has_sharp_data = sharp_implied and sharp_implied > 0
+        
+        if has_sharp_data and sharp_pct >= TIER_SAFE_HAVEN_SHARP_MIN:
             result["tier"] = "safe_haven"
             result["confidence"] = "HIGH"
-        elif sharp_pct >= TIER_FRONT_LINES_SHARP_MIN:
+        elif has_sharp_data and sharp_pct >= TIER_FRONT_LINES_SHARP_MIN:
             result["tier"] = "front_lines"
             result["confidence"] = "MEDIUM"
-        elif sharp_pct >= TIER_WAR_ZONE_SHARP_MIN:
-            # WAR ZONE has special criteria for demons:
-            # 1. Must be a demon
-            # 2. Sharp implied >= 38%
-            # 3. L10 >= 50%
-            # 4. L5 > 40%
-            # 5. PP edge > 0 (PrizePicks giving better odds than sharps)
+        elif is_demon:
+            # WAR ZONE CRITERIA FOR DEMONS:
+            # 1. Must be a demon ✓
+            # 2. L10 >= 50%
+            # 3. L5 > 40%
+            # 4. If sharp data exists: PP edge > 0
+            # 5. If no sharp data: hit rate avg >= 50% qualifies
             l10_pct = l10_rate if l10_rate is not None else 0
             l5_pct = l5_rate if l5_rate is not None else 0
+            hit_avg = (l5_pct + l10_pct) / 2
             
-            if is_demon and l10_pct >= WAR_ZONE_L10_MIN and l5_pct > 40 and pp_edge > WAR_ZONE_PP_EDGE_MIN:
+            meets_hit_rate = l10_pct >= WAR_ZONE_L10_MIN and l5_pct > 40
+            meets_edge = pp_edge > WAR_ZONE_PP_EDGE_MIN if has_sharp_data else hit_avg >= 50
+            
+            if meets_hit_rate and meets_edge:
                 result["tier"] = "war_zone"
                 result["confidence"] = "STANDARD"
             else:
-                # Doesn't meet War Zone demon criteria
                 result["tier"] = "below_threshold"
                 result["confidence"] = "LOW"
-                if is_demon:
-                    if l10_pct < WAR_ZONE_L10_MIN:
-                        result["disqualify_reason"] = f"L10 {l10_pct}% < {WAR_ZONE_L10_MIN}% required"
-                    elif l5_pct <= 40:
-                        result["disqualify_reason"] = f"L5 {l5_pct}% <= 40% required"
-                    elif pp_edge <= WAR_ZONE_PP_EDGE_MIN:
-                        result["disqualify_reason"] = f"No PP edge ({pp_edge:.1f}%)"
+                if l10_pct < WAR_ZONE_L10_MIN:
+                    result["disqualify_reason"] = f"L10 {l10_pct}% < {WAR_ZONE_L10_MIN}% required"
+                elif l5_pct <= 40:
+                    result["disqualify_reason"] = f"L5 {l5_pct}% <= 40% required"
+                elif has_sharp_data and pp_edge <= WAR_ZONE_PP_EDGE_MIN:
+                    result["disqualify_reason"] = f"No PP edge ({pp_edge:.1f}%)"
+        elif has_sharp_data and sharp_pct >= TIER_WAR_ZONE_SHARP_MIN:
+            # Non-demon with low sharp implied - below threshold
+            result["tier"] = "below_threshold"
+            result["confidence"] = "LOW"
         else:
             result["tier"] = "below_threshold"
             result["confidence"] = "LOW"

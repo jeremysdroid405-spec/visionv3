@@ -473,12 +473,18 @@ class FerrariTierService:
                     # Use Bovada if available, otherwise sharp_price
                     effective_sharp = bovada_price if bovada_price else sharp_price
                     
-                    if effective_sharp is None:
+                    # Get prop type first to check if we should skip
+                    is_demon = prop.get("is_demon", False)
+                    is_goblin = prop.get("is_goblin", False)
+                    
+                    # For non-demons without sharp data, skip
+                    # Demons can proceed without sharp data (use hit rates instead)
+                    if effective_sharp is None and not is_demon:
                         results["v7_kills"]["no_sharp_data"] += 1
                         continue
                     
-                    # Calculate implied probabilities
-                    sharp_implied = american_to_implied(effective_sharp)
+                    # Calculate implied probabilities (0 if no sharp data for demons)
+                    sharp_implied = american_to_implied(effective_sharp) if effective_sharp else 0
                     
                     # Get prop details
                     stat_type = prop.get("stat_type", "").upper()
@@ -502,13 +508,31 @@ class FerrariTierService:
                         l10_hits = granular_rates["l10_hits"]
                     else:
                         # Use cached hit_rates from prop (already calculated during sync)
+                        # Can be either flat structure: {l5_rate: 80, l10_rate: 70}
+                        # Or nested structure: {l5: {hit_rate: 0.8}, l10: {hit_rate: 0.7}}
                         cached_hr = prop.get("hit_rates", {})
-                        l3_rate = cached_hr.get("l3_rate")
-                        l5_rate = cached_hr.get("l5_rate")
-                        l10_rate = cached_hr.get("l10_rate")
-                        l3_hits = cached_hr.get("l3_hits", 0)
-                        l5_hits = cached_hr.get("l5_hits", 0)
-                        l10_hits = cached_hr.get("l10_hits", 0)
+                        
+                        # Check for flat structure first (l5_rate, l10_rate keys)
+                        if "l5_rate" in cached_hr:
+                            # Flat structure
+                            l3_rate = cached_hr.get("l3_rate")
+                            l5_rate = cached_hr.get("l5_rate", 0) or 0
+                            l10_rate = cached_hr.get("l10_rate", 0) or 0
+                            l3_hits = cached_hr.get("l3_hits", 0) or 0
+                            l5_hits = cached_hr.get("l5_hit_count", 0) or cached_hr.get("l5_hits", 0) or 0
+                            l10_hits = cached_hr.get("l10_hit_count", 0) or cached_hr.get("l10_hits", 0) or 0
+                        else:
+                            # Nested structure: {l5: {hit_rate: 0.8}, l10: {hit_rate: 0.7}}
+                            l5_data = cached_hr.get("l5", {})
+                            l10_data = cached_hr.get("l10", {})
+                            l3_data = cached_hr.get("l3", {})
+                            
+                            l3_rate = (l3_data.get("hit_rate", 0) or 0) * 100 if l3_data else None
+                            l5_rate = (l5_data.get("hit_rate", 0) or 0) * 100 if l5_data else 0
+                            l10_rate = (l10_data.get("hit_rate", 0) or 0) * 100 if l10_data else 0
+                            l3_hits = l3_data.get("games_over", 0) if l3_data else 0
+                            l5_hits = l5_data.get("games_over", 0) if l5_data else 0
+                            l10_hits = l10_data.get("games_over", 0) if l10_data else 0
                     
                     # Calculate separation percentage
                     separation = calculate_separation_pct(sharp_implied)
@@ -658,8 +682,7 @@ class FerrariTierService:
                     
                     trap_risk = hook_risk or suspect_bait
                     
-                    # Get demon status and PP price for War Zone criteria
-                    is_demon = prop.get("is_demon", False)
+                    # Get PP price for War Zone criteria (is_demon already set above)
                     pp_price = prop.get("price")
                     
                     v7_result = v7_engine.calculate_true_probability(
