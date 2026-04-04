@@ -66,11 +66,18 @@ HARD_KILL_SEPARATION_MIN = 3.0  # Min 3% separation
 
 # SOFT KILL PENALTIES (applied to Board Score)
 PENALTY_HIGH_VARIANCE = -10.0  # Std dev > 6.0
-PENALTY_NEUTRAL_DVP = -5.0  # DvP rank 10-20
 PENALTY_BLOWOUT_MEDIUM = -5.0  # Medium blowout risk
-PENALTY_BLOWOUT_HIGH = -10.0  # High blowout risk (non-bench stats only)
+PENALTY_BLOWOUT_HIGH = -10.0   # High blowout risk (non-bench stats only)
 
-# NOTE: TRAP RISK is a HARD FILTER, not a penalty (removed PENALTY_TRAP_RISK)
+# TIERED DVP PENALTIES (30 teams in league)
+# Contextual: offensive stats vs defense rank, defensive stats vs offense rank
+PENALTY_DVP_TIER_1 = -5.0   # Rank 1-5 (elite)
+PENALTY_DVP_TIER_2 = -3.5   # Rank 6-10 (strong)
+PENALTY_DVP_TIER_3 = -2.0   # Rank 11-15 (above average)
+# Rank 16-30: No penalty (neutral to weak)
+
+# NOTE: TRAP RISK is a HARD FILTER, not a penalty
+# NOTE: NEUTRAL DVP (rank 16-30) is NOT penalized
 
 # LEGACY CONSTANTS (kept for backward compatibility with helper functions)
 WEIGHT_L3 = 0.40  # Most recent = most predictive
@@ -398,10 +405,38 @@ class TrueProbabilityEngine:
             adjusted += PENALTY_HIGH_VARIANCE
             penalties.append(f"High variance (std_dev={std_dev:.1f})")
         
-        # Penalty 2: Neutral DvP (neither favorable nor unfavorable)
-        if dvp_rank and 10 <= dvp_rank <= 20:
-            adjusted += PENALTY_NEUTRAL_DVP
-            penalties.append(f"Neutral matchup (DvP #{dvp_rank:.1f})")
+        # Penalty 2: TIERED MATCHUP PENALTIES
+        # - Offensive props (PTS, AST, PRA, PA, 3PM): penalized by opponent DEFENSE rank
+        # - Defensive props (REB, BLK, STL): penalized by opponent OFFENSE rank
+        # DVP rank is already contextual to the stat type
+        if dvp_rank:
+            offensive_stats = ["PTS", "AST", "PA", "PRA", "3PM"]
+            defensive_stats = ["REB", "BLK", "STL"]
+            
+            if stat_type in offensive_stats:
+                # Offensive prop vs opponent defense
+                if dvp_rank <= 5:
+                    adjusted += PENALTY_DVP_TIER_1
+                    penalties.append(f"Elite defense (#{dvp_rank:.0f})")
+                elif dvp_rank <= 10:
+                    adjusted += PENALTY_DVP_TIER_2
+                    penalties.append(f"Strong defense (#{dvp_rank:.0f})")
+                elif dvp_rank <= 15:
+                    adjusted += PENALTY_DVP_TIER_3
+                    penalties.append(f"Above avg defense (#{dvp_rank:.0f})")
+                    
+            elif stat_type in defensive_stats:
+                # Defensive prop vs opponent offense
+                if dvp_rank <= 5:
+                    adjusted += PENALTY_DVP_TIER_1
+                    penalties.append(f"Elite offense (#{dvp_rank:.0f})")
+                elif dvp_rank <= 10:
+                    adjusted += PENALTY_DVP_TIER_2
+                    penalties.append(f"Strong offense (#{dvp_rank:.0f})")
+                elif dvp_rank <= 15:
+                    adjusted += PENALTY_DVP_TIER_3
+                    penalties.append(f"Above avg offense (#{dvp_rank:.0f})")
+            # Rank 16-30: No penalty (neutral to weak matchup)
         
         # Penalty 3: Medium blowout risk
         if blowout_risk == "MEDIUM":
