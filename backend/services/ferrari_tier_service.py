@@ -1051,19 +1051,23 @@ class FerrariTierService:
             # =================================================================
             logger.info("[PHASE 4] GLOBAL SORT - Ranking by true_probability (clean picks first)...")
             
-            used_players = set()
+            # Track used players separately for Goblins vs Demons
+            # Players CAN appear in both Safe Haven (Goblin) AND War Zone (Demon)
+            used_goblin_players = set()
+            used_demon_players = set()
             
             # SAFE HAVEN: Global sort by true_probability (ferrari_power_score), then dedupe, then limit
+            # Only Goblins allowed
             sh_cursor = self.ferrari_scored.find(
-                {"tier": "safe_haven"},
+                {"tier": "safe_haven", "is_goblin": True},
                 {"_id": 0}
             ).sort("ferrari_power_score", -1)
             sh_all = await sh_cursor.to_list(length=None)
             sh_clean = sum(1 for p in sh_all if not (p.get("trap_risk") or p.get("hook_risk")))
             logger.info(f"  Safe Haven pool: {len(sh_all)} total, {sh_clean} clean, {len(sh_all) - sh_clean} trap")
-            top_safe_haven = self._dedupe_select(sh_all, used_players, MAX_PICKS_PER_TIER)
+            top_safe_haven = self._dedupe_select(sh_all, used_goblin_players, MAX_PICKS_PER_TIER)
             
-            # FRONT LINES: Exclude Safe Haven players
+            # FRONT LINES: Exclude Safe Haven players (Goblins only)
             fl_cursor = self.ferrari_scored.find(
                 {"tier": "front_lines"},
                 {"_id": 0}
@@ -1071,17 +1075,18 @@ class FerrariTierService:
             fl_all = await fl_cursor.to_list(length=None)
             fl_clean = sum(1 for p in fl_all if not (p.get("trap_risk") or p.get("hook_risk")))
             logger.info(f"  Front Lines pool: {len(fl_all)} total, {fl_clean} clean, {len(fl_all) - fl_clean} trap")
-            top_front_lines = self._dedupe_select(fl_all, used_players, MAX_PICKS_PER_TIER)
+            top_front_lines = self._dedupe_select(fl_all, used_goblin_players, MAX_PICKS_PER_TIER)
             
-            # WAR ZONE: Exclude Safe Haven + Front Lines players
+            # WAR ZONE: Separate player tracking (Demons only)
+            # Players CAN be in both Safe Haven (Goblin) AND War Zone (Demon)
             wz_cursor = self.ferrari_scored.find(
-                {"tier": "war_zone"},
+                {"tier": "war_zone", "is_demon": True},
                 {"_id": 0}
             ).sort("ferrari_power_score", -1)
             wz_all = await wz_cursor.to_list(length=None)
             wz_clean = sum(1 for p in wz_all if not (p.get("trap_risk") or p.get("hook_risk")))
             logger.info(f"  War Zone pool: {len(wz_all)} total, {wz_clean} clean, {len(wz_all) - wz_clean} trap")
-            top_war_zone = self._dedupe_select(wz_all, used_players, MAX_PICKS_PER_TIER)
+            top_war_zone = self._dedupe_select(wz_all, used_demon_players, MAX_PICKS_PER_TIER)
             
             # =================================================================
             # PHASE 5: DIVERSIFIED PARLAY GENERATION (V7 NEW)
