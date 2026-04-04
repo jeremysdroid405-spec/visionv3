@@ -35,6 +35,7 @@ from .headshots import router as headshots_router, set_headshot_db
 from .ferrari_tiers import router as ferrari_router, set_ferrari_db
 from .vacuum import router as vacuum_router, set_vacuum_db
 from .momentum import router as momentum_router, set_momentum_db
+from .unified_sync import router as unified_sync_router, init_sync_routes
 
 
 def register_all_routes(app, engine, game_lock_engine=None, db=None, 
@@ -175,3 +176,11 @@ def register_all_routes(app, engine, game_lock_engine=None, db=None,
     if db is not None:
         set_momentum_db(db)
     app.include_router(momentum_router, prefix="/api")
+    
+    # Unified Sync V4 - Single Source of Truth Architecture
+    # BDL = SSOT for NBA data, Odds API = SSOT for props, ESPN = injuries/news
+    from services.unified_sync_service import get_unified_sync_service
+    if db is not None:
+        sync_service = get_unified_sync_service(db)
+        init_sync_routes(sync_service)
+    app.include_router(unified_sync_router, prefix="/api")

@@ -1,238 +1,132 @@
-# PropVision - Product Requirements Document
+# PickVision - PRD (Product Requirements Document)
 
 ## Overview
-PropVision is a sports analytics platform for NBA player props, providing data-driven insights for betting decisions.
+PickVision is an NBA player prop betting intelligence platform using AI-driven analysis to identify high-value picks.
 
----
+## Version History
+- **v4.0 (2026-04-04)**: SSOT Architecture Rebuild
+  - BDL = Single Source of Truth for all NBA data
+  - Odds API = Single Source of Truth for all props
+  - ESPN = Source for injuries & news only
+  - Removed 440K docs of redundant/stale data
+  - Added failsafe retry logic (3x with exponential backoff)
+  - Hit rates now calculated FRESH from game logs every time
 
-## Latest Update (2026-04-04): PropVision v7.1 - Edge-First Board Score Formula
-
-### VERIFIED WORKING (Testing Agent - iteration_35)
-- ✅ All 3 tiers populate exactly 10 picks each
-- ✅ War Zone contains ONLY Demons (`is_demon=True`)
-- ✅ Safe Haven contains ONLY Goblins (`is_goblin=True`)
-- ✅ L5/L10 hit rates populated on all 30 picks
-- ✅ `board_score` and `pp_edge` calculated correctly
-- ✅ Frontend displays L5/L10 percentages with color coding
-- ✅ Demon/Goblin icons display correctly on cards
-- ✅ Game logs sync integrated into optimized_sync_engine.py
-
-### v7.1 Board Score Formula
-```
-Board_Score = Sharp_Implied + PP_Edge + Hit_Rate_Avg - Penalties
-
-Where:
-- Sharp_Implied = American odds converted to implied probability (0-100%)
-- PP_Edge = Sharp_Implied - PrizePicks break-even
-  - Goblins: Sharp_Implied - 57.8% (vs -137 odds)
-  - Demons: Hit_Rate_Avg - 50% (vs +100 odds)
-- Hit_Rate_Avg = (L5_Rate + L10_Rate) / 2
-- Penalties = DvP penalty (-3.5 for strong defense) + Variance penalty
-```
-
-### Demon vs Goblin Edge Calculation
-| Type | Break-even | Edge Formula |
-|------|------------|--------------|
-| Goblin (-137) | 57.8% | Sharp_Implied - 57.8% |
-| Demon (+100) | 50% | Hit_Rate_Avg - 50% |
-
-### Key Fixes in v7.1
-1. **Stale Data Fix**: `run_bdl_game_logs_sync_batched` now runs in Phase 0 of optimized sync
-2. **Hit Rate Source**: Uses `dg_cached_board.hit_rates` (fresh from sync) instead of calculating from stale `dg_player_stats`
-3. **Demon Exemptions**: Demons are exempt from L3 < 33%, Season Median, and Trap Risk hard kills
-4. **Deduplication**: A player can appear in BOTH Safe Haven (Goblin) AND War Zone (Demon)
-
----
-
-## Previous Update (2026-04-03): PropVision v7 - True Probability Engine
-
-### MAJOR ARCHITECTURE OVERHAUL
-
-The system has been upgraded from ranking picks by "Sharp Line Edge" to calculating a **True Probability** score that blends multiple factors for maximum edge extraction.
-
-### True Probability Formula (0-100%)
-
-```
-True_Prob = (
-    Historical_Consistency × 0.45 +    # Recent form is king
-    Sharp_Market_Signal × 0.25 +       # Sharp money knows  
-    Statistical_Floor × 0.15 +          # Safety net analysis
-    Contextual_Modifiers × 0.15        # Game environment
-)
-```
-
-**Component Breakdown:**
-
-| Component | Weight | Formula |
-|-----------|--------|---------|
-| Historical Consistency | 45% | (L3 × 0.40) + (L5 × 0.35) + (L10 × 0.25) |
-| Sharp Market Signal | 25% | Sharp_Implied × Separation_Confidence |
-| Statistical Floor | 15% | Cushion + Mode_Proximity - Variance_Penalty |
-| Contextual Modifiers | 15% | DvP(+/-8) + Whistle(+/-5) + Vacuum(+/-5) + Blowout(-10) |
-
-### Hard Kill Switches (Auto-Disqualify)
-
-| Kill | Threshold | Reason |
-|------|-----------|--------|
-| L3 Cold | < 33% | Player is ice cold (0/3 or 1/3 recent) |
-| L5 Cold | < 40% | Confirmed cold streak |
-| No Sharp Edge | < 52% implied | Vegas doesn't see value |
-| Line > Median | Line above season median | Against the statistical grain |
-| Blowout + PTS/PRA | HIGH risk + scoring stat | Bench minutes risk |
-
-### Tier Classification (by True Probability)
-
-| Tier | True Probability | Description |
-|------|------------------|-------------|
-| Safe Haven | ≥ 72% | Elite locks - highest confidence |
-| Front Lines | 62-71% | Strong plays - good value |
-| War Zone | 52-61% | Value bets - edge exists but risk |
-| Below Threshold | < 52% | Eliminated from consideration |
-
-### Diversified Parlay Optimizer (NEW)
-
-**Output per tier:**
-- 5 optimized parlays (2-leg through 6-leg)
-- Total: 15 parlays across all tiers
-
-**Diversification Constraints:**
-| Rule | Limit | Purpose |
-|------|-------|---------|
-| Max Player Appearances | 2 per tier | Avoid correlated loss |
-| Max Team per Parlay | 2 | Diversify game risk |
-| Max Stat Type per Parlay | 3 | Spread across categories |
-
-**Parlay Selection:**
-1. Generate all valid combinations (2-6 legs)
-2. Filter by diversification rules
-3. Calculate EV: `(Combined_Prob × Payout) - (1 - Combined_Prob)`
-4. Select top EV-positive parlays respecting appearance limits
-
-### New API Endpoints
-
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/api/v3/ferrari/parlays` | GET | Get all optimized parlays |
-| `/api/v3/ferrari/parlays?tier=safe_haven` | GET | Filter parlays by tier |
-
-### Files Modified
-
-- **MAJOR REWRITE**: `/app/backend/services/ferrari_tier_service.py`
-  - Replaced Power Score formula with True Probability engine
-  - Added L3/L5/L10 granular hit rate calculation
-  - Integrated `TrueProbabilityEngine` from v7 module
-  - Added `DiversifiedParlayOptimizer` for parlay generation
-  - Added parlay storage to `ferrari_parlays` collection
-
-- **NEW**: `/app/backend/services/propvision_v7_engine.py`
-  - `TrueProbabilityEngine` class - calculates true probability
-  - `DiversifiedParlayOptimizer` class - builds EV-positive parlays
-  - Helper functions for L3/L5/L10 hit rates, median, mode, std_dev
-
-- **MODIFIED**: `/app/backend/routes/ferrari_tiers.py`
-  - Added `/v3/ferrari/parlays` endpoint
-
-### Database Changes
-
-| Collection | Description |
-|------------|-------------|
-| `ferrari_parlays` | NEW - Stores optimized parlays with EV and picks |
-
-### Example API Response
-
-```json
-{
-  "total_parlays": 13,
-  "parlays_by_tier": {
-    "safe_haven": 5,
-    "front_lines": 4,
-    "war_zone": 4
-  },
-  "safe_haven_parlays": [
-    {
-      "parlay_id": "safe_haven_1",
-      "legs": 6,
-      "expected_value": 9.634,
-      "combined_probability": 25.94,
-      "picks": [
-        {"player_name": "Player A", "stat_type": "REB", "line": 2.5, "true_probability": 82.07}
-      ]
-    }
-  ]
-}
-```
-
----
-
-## Previous Updates
-
-### Vision Intel Suite Standardization (2026-04-03)
-
-Every pick now contains standardized fields:
-- `blowout_risk`, `context_badges`, `defensive_momentum`
-- `matchup_dvp`, `tempo/pace_delta`, `stability_index`
-- `variance`, `target_lock_rationale`, `usage_ripple`
-- `vision_insight`, `vision_summary`, `whistle_data`
-
-### Badge Engine Migration to BDL (2026-04-03)
-
-Migrated from stats.nba.com to BallDontLie Advanced Stats API for reliable badge generation.
-
----
-
-## Core Architecture
-
-### Backend Stack
-- **FastAPI** - REST API framework
-- **MongoDB** - Primary database (pick_vision)
-- **Motor** - Async MongoDB driver
-
-### Frontend Stack  
-- **React** - UI framework
-- **Tailwind CSS** - Styling
-- **Shadcn/UI** - Component library
+## Architecture (SSOT Model)
 
 ### Data Sources
-- **BallDontLie API** - Player stats, game logs, advanced stats
-- **PrizePicks API** - Props and lines
-- **Odds API** - Sharp market prices
-- **ESPN/NBA.com** - Referee assignments
+1. **BDL (BallDontLie)** - SSOT for NBA data
+   - Player profiles → `nba_master_hub_2026`
+   - Game logs → embedded in player docs as `bdl_game_logs`
+   - Team stats → `dvp_rankings`
+   - Hit rates → calculated fresh from `bdl_game_logs`
 
----
+2. **Odds API** - SSOT for props
+   - All betting lines → `odds_api_props`
+   - Line movements (future)
 
-## Key Collections
+3. **ESPN** - Injuries & News only
+   - Injury reports → `espn_injuries`
+   - Breaking news → `espn_news`
 
-| Collection | Purpose |
-|------------|---------|
-| `dg_cached_board` | Cached player props board |
-| `ferrari_safe_haven` | Top 10 Safe Haven picks |
-| `ferrari_front_lines` | Top 10 Front Lines picks |
-| `ferrari_war_zone` | Top 10 War Zone picks |
-| `ferrari_scored` | All scored props before tier selection |
-| `ferrari_parlays` | Optimized parlay combinations |
+### Collections (Clean)
+```
+nba_master_hub_2026    - Players with embedded game_logs
+bdl_player_mapping     - Name matching
+dvp_rankings           - Team defense rankings
+odds_api_props         - Current betting lines
+odds_api_mapping_master - Odds API player name mapping
+espn_injuries          - Injury reports
+espn_news              - Breaking news
+ferrari_safe_haven     - Tier 1 picks (Goblins)
+ferrari_front_lines    - Tier 2 picks
+ferrari_war_zone       - Tier 3 picks (Demons)
+ferrari_parlays        - Generated parlays
+ticker_cache           - Live scores
+player_photos          - Headshots
+nba_career_stats       - Career statistics
+nba_context_engine     - AI context
+```
 
----
+### Collections REMOVED (was causing stale data)
+- dg_cached_board (duplicate)
+- dg_player_stats (stale)
+- dg_live_props (duplicate)
+- line_history (390K docs)
+- line_movements (41K docs)
+- dg_* caches (all)
+
+## API Endpoints (V4 - Unified Sync)
+
+### Sync Endpoints
+- `POST /api/v4/sync/full` - Full sync with failsafe retry
+- `POST /api/v4/sync/bdl` - Sync BDL data only
+- `POST /api/v4/sync/odds` - Sync Odds API only
+- `POST /api/v4/sync/espn` - Sync ESPN only
+- `GET /api/v4/sync/status` - Get sync status
+
+### Data Endpoints
+- `GET /api/v4/hit-rates/{player}/{stat}/{line}` - Fresh hit rate calculation
+- `GET /api/v4/player/{name}` - Complete player data
+- `GET /api/v4/props/today` - All current props
+
+## Tier Classification
+
+### Safe Haven (Goblins) - Green
+- L10 Hit Rate ≥ 80%
+- L5 Hit Rate ≥ 80%
+- Variance < 20 points
+- No DNP in L10
+- Max 10 picks
+
+### Front Lines - Yellow
+- L10 Hit Rate ≥ 70%
+- L5 Hit Rate ≥ 70%
+- Max 10 picks
+
+### War Zone (Demons) - Red
+- Higher risk/reward
+- Edge calculation: Hit Rate - 50% (vs +100 odds)
+- Max 10 picks
+
+## Red Flags (Auto-Reject)
+
+1. **Low Hit Rate**: L10 < 60% → REJECT
+2. **High Variance**: Max-Min spread > 30 pts → TRAP FLAG
+3. **DNP Games**: Any 0-minute games in L10 → FLAG
+4. **Tough Matchup**: DvP rank ≤ 10 → PENALTY
+5. **Line Movement**: >15% drop from open → TRAP FLAG
+
+## Failsafe Retry Logic
+
+Every sync operation:
+1. Attempts up to 3 times
+2. Exponential backoff (2s, 4s, 8s)
+3. Validates data was written before success
+4. Logs all failures with error details
 
 ## Backlog
 
-### P0 - Critical (COMPLETED)
-- [x] PropVision v7 True Probability Engine
-- [x] Diversified Parlay Optimizer
-- [x] v7.1 Edge-First Board Score Formula
-- [x] Stale Game Logs Fix (BDL sync integrated)
-- [x] L5/L10 Hit Rate Display on Frontend
+### P0 - Critical (DONE)
+- [x] SSOT Architecture rebuild
+- [x] Unified sync service with failsafe
+- [x] Fresh hit rate calculation from BDL
+- [x] Database cleanup (removed 440K stale docs)
+- [x] Odds API integration (player props via alternate markets)
+- [x] Ferrari tier builder V2 with variance/DNP detection
+- [x] BDL ID on all player docs in master hub
 
 ### P1 - High Priority
-- [ ] AI Vision Summary Fix (Gemini returning null for some picks)
-- [ ] Frontend parlay display component
-- [ ] Parlay builder UI with manual selection
+- [ ] Update frontend to use V4 API endpoints
+- [ ] Add variance badge to pick cards ("HIGH VARIANCE" warning)
+- [ ] Real-time line movement tracking from Odds API
 
 ### P2 - Medium Priority
-- [ ] Google OAuth integration (Emergent-managed)
-- [ ] Stripe payments integration (test keys in pod)
+- [ ] Google OAuth
+- [ ] Stripe payments
+- [ ] Mobile optimization
 
 ### P3 - Future
-- [ ] Mobile responsive optimization
-- [ ] Push notifications for picks
+- [ ] Push notifications
 - [ ] Historical performance tracking
-- [ ] Rebuild endpoint timeout optimization (currently ~120s)
+- [ ] Backtest engine
