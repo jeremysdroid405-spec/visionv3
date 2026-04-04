@@ -5,7 +5,46 @@ PropVision is a sports analytics platform for NBA player props, providing data-d
 
 ---
 
-## Latest Update (2026-04-03): PropVision v7 - True Probability Engine
+## Latest Update (2026-04-04): PropVision v7.1 - Edge-First Board Score Formula
+
+### VERIFIED WORKING (Testing Agent - iteration_35)
+- ✅ All 3 tiers populate exactly 10 picks each
+- ✅ War Zone contains ONLY Demons (`is_demon=True`)
+- ✅ Safe Haven contains ONLY Goblins (`is_goblin=True`)
+- ✅ L5/L10 hit rates populated on all 30 picks
+- ✅ `board_score` and `pp_edge` calculated correctly
+- ✅ Frontend displays L5/L10 percentages with color coding
+- ✅ Demon/Goblin icons display correctly on cards
+- ✅ Game logs sync integrated into optimized_sync_engine.py
+
+### v7.1 Board Score Formula
+```
+Board_Score = Sharp_Implied + PP_Edge + Hit_Rate_Avg - Penalties
+
+Where:
+- Sharp_Implied = American odds converted to implied probability (0-100%)
+- PP_Edge = Sharp_Implied - PrizePicks break-even
+  - Goblins: Sharp_Implied - 57.8% (vs -137 odds)
+  - Demons: Hit_Rate_Avg - 50% (vs +100 odds)
+- Hit_Rate_Avg = (L5_Rate + L10_Rate) / 2
+- Penalties = DvP penalty (-3.5 for strong defense) + Variance penalty
+```
+
+### Demon vs Goblin Edge Calculation
+| Type | Break-even | Edge Formula |
+|------|------------|--------------|
+| Goblin (-137) | 57.8% | Sharp_Implied - 57.8% |
+| Demon (+100) | 50% | Hit_Rate_Avg - 50% |
+
+### Key Fixes in v7.1
+1. **Stale Data Fix**: `run_bdl_game_logs_sync_batched` now runs in Phase 0 of optimized sync
+2. **Hit Rate Source**: Uses `dg_cached_board.hit_rates` (fresh from sync) instead of calculating from stale `dg_player_stats`
+3. **Demon Exemptions**: Demons are exempt from L3 < 33%, Season Median, and Trap Risk hard kills
+4. **Deduplication**: A player can appear in BOTH Safe Haven (Goblin) AND War Zone (Demon)
+
+---
+
+## Previous Update (2026-04-03): PropVision v7 - True Probability Engine
 
 ### MAJOR ARCHITECTURE OVERHAUL
 
@@ -176,20 +215,24 @@ Migrated from stats.nba.com to BallDontLie Advanced Stats API for reliable badge
 
 ## Backlog
 
-### P0 - Critical
+### P0 - Critical (COMPLETED)
 - [x] PropVision v7 True Probability Engine
 - [x] Diversified Parlay Optimizer
-- [ ] AI Vision Summary Fix (Gemini returning null)
+- [x] v7.1 Edge-First Board Score Formula
+- [x] Stale Game Logs Fix (BDL sync integrated)
+- [x] L5/L10 Hit Rate Display on Frontend
 
 ### P1 - High Priority
+- [ ] AI Vision Summary Fix (Gemini returning null for some picks)
 - [ ] Frontend parlay display component
 - [ ] Parlay builder UI with manual selection
 
 ### P2 - Medium Priority
-- [ ] Google OAuth integration
-- [ ] Stripe payments integration
+- [ ] Google OAuth integration (Emergent-managed)
+- [ ] Stripe payments integration (test keys in pod)
 
 ### P3 - Future
 - [ ] Mobile responsive optimization
 - [ ] Push notifications for picks
 - [ ] Historical performance tracking
+- [ ] Rebuild endpoint timeout optimization (currently ~120s)
