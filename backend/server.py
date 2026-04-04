@@ -802,26 +802,53 @@ async def scheduled_bdl_game_logs_sync():
 
 async def scheduled_hourly_full_sync():
     """
-    HOURLY ODDS & PROPS SYNC (The Engine)
+    HOURLY ODDS & PROPS SYNC (The Engine) - V4 SSOT
     
     Runs every 60 minutes to keep props fresh during game days.
-    This is the main data refresh that powers all pick recommendations.
+    Uses V4 Unified Sync Service with failsafe retry:
+    - BDL for game logs and hit rates
+    - Odds API for multi-book props
+    - Then rebuilds tiers with fresh data
     """
     logger.info("=" * 70)
-    logger.info("[SCHEDULER] HOURLY FULL SYNC (INTERVAL)")
+    logger.info("[SCHEDULER] HOURLY FULL SYNC (V4 SSOT)")
     logger.info(f"[SCHEDULER] Time: {datetime.now(timezone.utc).isoformat()}")
     logger.info("=" * 70)
     
-    if demon_goblin_engine:
-        try:
-            result = await demon_goblin_engine.run_full_sync()
-            logger.info(f"[SCHEDULER] Hourly sync complete: {result.get('unique_players', 0)} players")
-            logger.info(f"[SCHEDULER] Standard: {result.get('standard_count', 0)}, Demons: {result.get('demons_count', 0)}, Goblins: {result.get('goblins_count', 0)}")
+    try:
+        # V4 SSOT Sync
+        from services.unified_sync_service import get_unified_sync_service
+        from services.ferrari_tier_builder_v2 import get_tier_builder
+        
+        sync_service = get_unified_sync_service(db)
+        
+        if sync_service:
+            # Run full sync (BDL + Odds API + ESPN)
+            sync_result = await sync_service.run_full_sync()
+            logger.info(f"[SCHEDULER] V4 Sync: {sync_result}")
+            
+            # Rebuild tiers with fresh data
+            tier_builder = get_tier_builder(db)
+            tier_result = await tier_builder.build_tiers()
+            logger.info(f"[SCHEDULER] V4 Tier rebuild: {tier_result}")
+            
             logger.info("=" * 70)
-        except Exception as e:
-            logger.error(f"[SCHEDULER] Hourly full sync failed: {e}")
-    else:
-        logger.error("[SCHEDULER] Demon & Goblin Engine not initialized")
+        else:
+            logger.error("[SCHEDULER] V4 Sync service not initialized, falling back to legacy")
+            # Fallback to legacy sync
+            if demon_goblin_engine:
+                result = await demon_goblin_engine.run_full_sync()
+                logger.info(f"[SCHEDULER] Legacy sync complete: {result.get('unique_players', 0)} players")
+                
+    except Exception as e:
+        logger.error(f"[SCHEDULER] Hourly full sync failed: {e}")
+        # Try legacy as backup
+        try:
+            if demon_goblin_engine:
+                await demon_goblin_engine.run_full_sync()
+                logger.info("[SCHEDULER] Fell back to legacy sync successfully")
+        except Exception as e2:
+            logger.error(f"[SCHEDULER] Legacy fallback also failed: {e2}")
 
 
 async def scheduled_hourly_badge_sync():

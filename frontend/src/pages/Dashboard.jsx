@@ -51,6 +51,16 @@ import {
 } from '../hooks/useLiveOdds';
 import { useMasterStats } from '../hooks/useMasterStats';
 
+// V4 SSOT Hooks - Fresh hit rates from BDL, multi-book edge from Odds API
+import { 
+  useAllTiers, 
+  useSyncStatus,
+  useTriggerSync,
+  useTriggerTierRebuild,
+  getVarianceBadgeColor,
+  getEdgeBadgeColor 
+} from '../hooks/useV4Data';
+
 // ==================== HELPER COMPONENTS ====================
 
 // Player Headshot - Uses photo_url from nba_master_hub_2026 (no external API calls on render)
@@ -921,10 +931,31 @@ const Dashboard = () => {
   const { data: liveOddsData, isLoading: boardLoading, refetch: refetchBoard } = useLiveOdds();
   const { data: vacuumAlertsData, isLoading: vacuumAlertsLoading } = useLiveVacuumAlerts();
   
-  // Extract picks from TanStack Query data
-  const radarPicks = useMemo(() => warZoneData?.picks || [], [warZoneData]);
-  const vaultPicks = useMemo(() => safeHavenData?.picks || [], [safeHavenData]);
-  const frontLinesPicks = useMemo(() => frontLinesData?.picks || [], [frontLinesData]);
+  // V4 SSOT: Fresh data from BDL (hit rates) + Odds API (multi-book edge)
+  const { data: v4TiersData, isLoading: v4TiersLoading, refetch: refetchV4Tiers } = useAllTiers();
+  const { data: v4SyncStatus } = useSyncStatus();
+  const triggerV4Sync = useTriggerSync();
+  const triggerV4Rebuild = useTriggerTierRebuild();
+  
+  // Use V4 data if available (falls back to legacy data)
+  const useV4 = v4TiersData && (v4TiersData.safeHaven?.length > 0 || v4TiersData.frontLines?.length > 0 || v4TiersData.warZone?.length > 0);
+  
+  // Extract picks - prefer V4 SSOT data when available
+  const radarPicks = useMemo(() => {
+    if (useV4 && v4TiersData?.warZone?.length > 0) return v4TiersData.warZone;
+    return warZoneData?.picks || [];
+  }, [useV4, v4TiersData, warZoneData]);
+  
+  const vaultPicks = useMemo(() => {
+    if (useV4 && v4TiersData?.safeHaven?.length > 0) return v4TiersData.safeHaven;
+    return safeHavenData?.picks || [];
+  }, [useV4, v4TiersData, safeHavenData]);
+  
+  const frontLinesPicks = useMemo(() => {
+    if (useV4 && v4TiersData?.frontLines?.length > 0) return v4TiersData.frontLines;
+    return frontLinesData?.picks || [];
+  }, [useV4, v4TiersData, frontLinesData]);
+  
   const players = useMemo(() => liveOddsData?.players || [], [liveOddsData]);
   
   // Live Vacuum Alerts (Usage Vacuum)
@@ -957,12 +988,30 @@ const Dashboard = () => {
   
   // Refetch all data (replaces old triggerSync)
   const triggerSync = useCallback(() => {
+    // Legacy sync
     refetchWarZone();
     refetchSafeHaven();
     refetchFrontLines();
     refetchBoard();
+    
+    // V4 SSOT sync
+    if (refetchV4Tiers) refetchV4Tiers();
+    
     toast.success('Data refreshed');
-  }, [refetchWarZone, refetchSafeHaven, refetchFrontLines, refetchBoard]);
+  }, [refetchWarZone, refetchSafeHaven, refetchFrontLines, refetchBoard, refetchV4Tiers]);
+  
+  // Full V4 rebuild (syncs data sources + rebuilds tiers)
+  const handleFullRebuild = useCallback(async () => {
+    toast.loading('Syncing data sources...', { id: 'rebuild' });
+    try {
+      await triggerV4Sync.mutateAsync();
+      toast.loading('Rebuilding tiers...', { id: 'rebuild' });
+      await triggerV4Rebuild.mutateAsync();
+      toast.success('Tiers rebuilt with fresh SSOT data!', { id: 'rebuild' });
+    } catch (error) {
+      toast.error('Rebuild failed: ' + error.message, { id: 'rebuild' });
+    }
+  }, [triggerV4Sync, triggerV4Rebuild]);
   
   // Local UI state
   const [searchTerm, setSearchTerm] = useState('');
@@ -1130,10 +1179,19 @@ const Dashboard = () => {
               <div className="hidden sm:flex items-center gap-2 text-[10px] text-zinc-500 -mt-0.5">
                 <span>AI-POWERED PROP INTEL</span>
                 <span className="text-zinc-700">•</span>
-                <Radio className={`w-2.5 h-2.5 ${syncStatus.has_stale_intel ? 'text-amber-400' : 'text-emerald-400 animate-pulse'}`} />
-                <span className="font-mono">
-                  {boardIntelStatus.time_since_sync_display || 'syncing...'}
-                </span>
+                {useV4 ? (
+                  <span className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-green-500/20 text-green-400 border border-green-500/30">
+                    <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse"></span>
+                    V4 SSOT
+                  </span>
+                ) : (
+                  <>
+                    <Radio className={`w-2.5 h-2.5 ${syncStatus.has_stale_intel ? 'text-amber-400' : 'text-emerald-400 animate-pulse'}`} />
+                    <span className="font-mono">
+                      {boardIntelStatus.time_since_sync_display || 'syncing...'}
+                    </span>
+                  </>
+                )}
               </div>
             </div>
           </div>

@@ -768,6 +768,65 @@ const UniversalPlayerCard = memo(({
           </div>
         </div>
         
+        {/* V4 SSOT Badges: Variance Warning + Multi-Book Edge */}
+        {(player.variance_l10 != null || player.books_count != null || player.sharp_edge != null) && (
+          <div className="flex flex-wrap gap-1 mt-1.5">
+            {/* Variance Warning Badge */}
+            {player.variance_l10 != null && player.variance_l10 > 20 && (
+              <span 
+                className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${
+                  player.variance_l10 > 30 
+                    ? 'bg-red-500/30 text-red-400 border border-red-500/40' 
+                    : 'bg-orange-500/30 text-orange-400 border border-orange-500/40'
+                }`}
+                title={`Point spread in last 10 games: ${player.variance_l10}`}
+              >
+                {player.variance_l10 > 30 ? '⚠️ HIGH VAR' : '⚡ MED VAR'}
+              </span>
+            )}
+            
+            {/* DNP Warning Badge */}
+            {player.dnp_count_l10 > 0 && (
+              <span 
+                className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-500/30 text-amber-400 border border-amber-500/40"
+                title={`${player.dnp_count_l10} Did Not Play game(s) in last 10`}
+              >
+                ⚠️ {player.dnp_count_l10} DNP
+              </span>
+            )}
+            
+            {/* Multi-Book Edge Badge */}
+            {player.books_count >= 3 && player.sharp_edge != null && (
+              <span 
+                className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${
+                  player.sharp_edge > 10 
+                    ? 'bg-green-500/30 text-green-400 border border-green-500/40' 
+                    : player.sharp_edge > 0 
+                      ? 'bg-lime-500/30 text-lime-400 border border-lime-500/40'
+                      : 'bg-zinc-500/30 text-zinc-400 border border-zinc-500/40'
+                }`}
+                title={`Sharp edge vs implied odds from ${player.books_count} books`}
+              >
+                {player.sharp_edge > 0 ? '+' : ''}{player.sharp_edge?.toFixed?.(1) || player.sharp_edge}% edge • {player.books_count} books
+              </span>
+            )}
+            
+            {/* Line Spread Badge */}
+            {player.line_spread != null && player.line_spread > 1 && (
+              <span 
+                className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${
+                  player.line_spread >= 2 
+                    ? 'bg-purple-500/30 text-purple-400 border border-purple-500/40' 
+                    : 'bg-zinc-500/30 text-zinc-400 border border-zinc-500/40'
+                }`}
+                title={`Line spread across books: ${player.line_spread}`}
+              >
+                📊 {player.line_spread >= 2 ? 'Wide' : 'Normal'} spread
+              </span>
+            )}
+          </div>
+        )}
+        
         {/* Vision Intel Suite CTA - only show for the 30 board picks */}
         {isBoardPick && (
           <div className="mt-2 text-center">
