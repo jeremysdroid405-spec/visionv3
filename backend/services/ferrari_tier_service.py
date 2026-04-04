@@ -490,14 +490,25 @@ class FerrariTierService:
                     
                     # ---------------------------------------------------------
                     # V7: Calculate L3/L5/L10 hit rates from raw game values
+                    # FALLBACK: Use prop's cached hit_rates if no raw game data
                     # ---------------------------------------------------------
-                    granular_rates = calculate_granular_hit_rates(stat_values, pp_line)
-                    l3_rate = granular_rates["l3_rate"]
-                    l5_rate = granular_rates["l5_rate"]
-                    l10_rate = granular_rates["l10_rate"]
-                    l3_hits = granular_rates["l3_hits"]
-                    l5_hits = granular_rates["l5_hits"]
-                    l10_hits = granular_rates["l10_hits"]
+                    if stat_values:
+                        granular_rates = calculate_granular_hit_rates(stat_values, pp_line)
+                        l3_rate = granular_rates["l3_rate"]
+                        l5_rate = granular_rates["l5_rate"]
+                        l10_rate = granular_rates["l10_rate"]
+                        l3_hits = granular_rates["l3_hits"]
+                        l5_hits = granular_rates["l5_hits"]
+                        l10_hits = granular_rates["l10_hits"]
+                    else:
+                        # Use cached hit_rates from prop (already calculated during sync)
+                        cached_hr = prop.get("hit_rates", {})
+                        l3_rate = cached_hr.get("l3_rate")
+                        l5_rate = cached_hr.get("l5_rate")
+                        l10_rate = cached_hr.get("l10_rate")
+                        l3_hits = cached_hr.get("l3_hits", 0)
+                        l5_hits = cached_hr.get("l5_hits", 0)
+                        l10_hits = cached_hr.get("l10_hits", 0)
                     
                     # Calculate separation percentage
                     separation = calculate_separation_pct(sharp_implied)
@@ -647,6 +658,10 @@ class FerrariTierService:
                     
                     trap_risk = hook_risk or suspect_bait
                     
+                    # Get demon status and PP price for War Zone criteria
+                    is_demon = prop.get("is_demon", False)
+                    pp_price = prop.get("price")
+                    
                     v7_result = v7_engine.calculate_true_probability(
                         # Historical
                         l3_rate=l3_rate,
@@ -669,7 +684,10 @@ class FerrariTierService:
                         vacuum_modifier=vacuum_modifier,
                         blowout_risk=blowout_risk,
                         stat_type=stat_type,
-                        trap_risk=trap_risk
+                        trap_risk=trap_risk,
+                        # War Zone criteria
+                        is_demon=is_demon,
+                        pp_price=pp_price
                     )
                     
                     # Check if killed by V7 hard kills

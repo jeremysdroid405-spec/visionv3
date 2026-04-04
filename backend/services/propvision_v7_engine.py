@@ -87,7 +87,7 @@ PP_IMPLIED = 0.578  # 57.8%
 # HARD KILL THRESHOLDS
 HARD_KILL_L3_MIN = 33.0  # Must hit at least 1/3
 HARD_KILL_L5_MIN = 40.0  # Must hit at least 2/5
-HARD_KILL_SHARP_MIN = 47.0  # Sharp must see edge (lowered for War Zone demons)
+HARD_KILL_SHARP_MIN = 38.0  # Sharp must see edge (lowered for War Zone demons at 38%+)
 HARD_KILL_SEPARATION_MIN = 3.0  # Min 3% separation
 
 # SOFT KILL PENALTIES
@@ -101,12 +101,16 @@ PENALTY_BLOWOUT_HIGH = -10.0  # High blowout risk (non-bench stats only)
 # These match traditional sharp book tier windows
 TIER_SAFE_HAVEN_SHARP_MIN = 70.0   # -233 or stronger (70%+ implied)
 TIER_FRONT_LINES_SHARP_MIN = 58.0  # -138 to -232 (58-69% implied)
-TIER_WAR_ZONE_SHARP_MIN = 47.0     # War Zone = Demons only at 47%+ (lowered to capture multiplier plays)
+TIER_WAR_ZONE_SHARP_MIN = 38.0     # War Zone = Demons at 38%+ with L10 >= 50% and PP edge
+
+# WAR ZONE SPECIAL CRITERIA (for demons only)
+WAR_ZONE_L10_MIN = 50.0            # Must have 50%+ L10 hit rate
+WAR_ZONE_PP_EDGE_MIN = 0.0         # PrizePicks implied must be > sharp implied
 
 # TRUE PROBABILITY (Secondary - used for ranking within tiers)
 TIER_SAFE_HAVEN_MIN = 72.0
 TIER_FRONT_LINES_MIN = 62.0
-TIER_WAR_ZONE_MIN = 47.0
+TIER_WAR_ZONE_MIN = 39.0
 
 # CONTEXTUAL MODIFIER CAPS
 MAX_DVP_BOOST = 8.0
@@ -350,25 +354,26 @@ class TrueProbabilityEngine:
         line: float,
         season_median: Optional[float],
         blowout_risk: str,
-        stat_type: str
+        stat_type: str,
+        is_demon: bool = False
     ) -> Tuple[bool, Optional[str]]:
         """
         Hard Kill Switch - Returns (is_killed, reason)
         Any hard kill = prop is eliminated
         """
-        # Kill 0: NO HISTORICAL DATA (can't trust props without hit rate history)
-        if l5_rate is None or l3_rate is None:
-            return True, f"HARD_KILL: No historical hit rate data available"
+        # Kill 0: NO L5 DATA (minimum required for evaluation)
+        if l5_rate is None:
+            return True, f"HARD_KILL: No L5 hit rate data available"
         
-        # Kill 1: L3 < 33% (cold streak)
-        if l3_rate < HARD_KILL_L3_MIN:
+        # Kill 1: L3 < 33% (cold streak) - only check if L3 exists
+        if l3_rate is not None and l3_rate < HARD_KILL_L3_MIN:
             return True, f"HARD_KILL: L3 rate {l3_rate:.0f}% < {HARD_KILL_L3_MIN:.0f}% (cold streak)"
         
         # Kill 2: L5 <= 40% (confirmed cold)
         if l5_rate <= HARD_KILL_L5_MIN:
             return True, f"HARD_KILL: L5 rate {l5_rate:.0f}% <= {HARD_KILL_L5_MIN:.0f}% (confirmed cold)"
         
-        # Kill 3: Sharp implied < 47% (no edge)
+        # Kill 3: Sharp implied < 39% (no edge)
         sharp_pct = sharp_implied * 100 if sharp_implied < 1 else sharp_implied
         if sharp_pct < HARD_KILL_SHARP_MIN:
             return True, f"HARD_KILL: Sharp implied {sharp_pct:.1f}% < {HARD_KILL_SHARP_MIN:.0f}% (no edge)"
@@ -378,7 +383,8 @@ class TrueProbabilityEngine:
             return True, f"HARD_KILL: Separation {separation_pct:.1f}% < {HARD_KILL_SEPARATION_MIN:.0f}%"
         
         # Kill 5: Line > Season Median (against the grain)
-        if season_median and line > season_median:
+        # SKIP this check for demons - demon lines are intentionally above the main line
+        if not is_demon and season_median and line > season_median:
             return True, f"HARD_KILL: Line {line} > Season Median {season_median:.1f}"
         
         # Kill 6: Blowout HIGH + scoring stat (bench risk)
@@ -440,7 +446,10 @@ class TrueProbabilityEngine:
         vacuum_modifier: float,
         blowout_risk: str,
         stat_type: str,
-        trap_risk: bool
+        trap_risk: bool,
+        # War Zone criteria
+        is_demon: bool = False,
+        pp_price: Optional[float] = None
     ) -> Dict[str, Any]:
         """
         Master calculation - Returns full probability breakdown
@@ -458,7 +467,7 @@ class TrueProbabilityEngine:
         # Check hard kills first
         is_killed, kill_reason = self.check_hard_kills(
             l3_rate, l5_rate, sharp_implied, separation_pct,
-            line, season_median, blowout_risk, stat_type
+            line, season_median, blowout_risk, stat_type, is_demon
         )
         
         if is_killed:
@@ -509,6 +518,16 @@ class TrueProbabilityEngine:
         # True Probability is used for ranking WITHIN tiers
         sharp_pct = sharp_implied * 100 if sharp_implied < 1 else sharp_implied
         
+        # Calculate PP edge for War Zone demons
+        pp_edge = 0.0
+        if pp_price is not None:
+            # Convert PP price to implied probability
+            if pp_price < 0:
+                pp_implied = abs(pp_price) / (abs(pp_price) + 100) * 100
+            else:
+                pp_implied = 100 / (pp_price + 100) * 100
+            pp_edge = pp_implied - sharp_pct
+        
         if sharp_pct >= TIER_SAFE_HAVEN_SHARP_MIN:
             result["tier"] = "safe_haven"
             result["confidence"] = "HIGH"
@@ -516,8 +535,26 @@ class TrueProbabilityEngine:
             result["tier"] = "front_lines"
             result["confidence"] = "MEDIUM"
         elif sharp_pct >= TIER_WAR_ZONE_SHARP_MIN:
-            result["tier"] = "war_zone"
-            result["confidence"] = "STANDARD"
+            # WAR ZONE has special criteria for demons:
+            # 1. Must be a demon (checked in ferrari_tier_service)
+            # 2. Sharp implied >= 39%
+            # 3. L10 >= 50%
+            # 4. PP edge > 0 (PrizePicks giving better odds than sharps)
+            l10_pct = l10_rate if l10_rate is not None else 0
+            
+            if is_demon and l10_pct >= WAR_ZONE_L10_MIN and pp_edge > WAR_ZONE_PP_EDGE_MIN:
+                result["tier"] = "war_zone"
+                result["confidence"] = "STANDARD"
+                result["pp_edge"] = round(pp_edge, 1)
+            else:
+                # Doesn't meet War Zone demon criteria
+                result["tier"] = "below_threshold"
+                result["confidence"] = "LOW"
+                if is_demon:
+                    if l10_pct < WAR_ZONE_L10_MIN:
+                        result["disqualify_reason"] = f"L10 {l10_pct}% < {WAR_ZONE_L10_MIN}% required"
+                    elif pp_edge <= WAR_ZONE_PP_EDGE_MIN:
+                        result["disqualify_reason"] = f"No PP edge ({pp_edge:.1f}%)"
         else:
             result["tier"] = "below_threshold"
             result["confidence"] = "LOW"
