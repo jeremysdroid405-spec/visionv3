@@ -707,6 +707,24 @@ class FerrariTierService:
                     v7_confidence = v7_result["confidence"]
                     v7_components = v7_result["components"]
                     
+                    # ==========================================================
+                    # WAR ZONE = DEMONS ONLY (Must have multiplier for the risk)
+                    # ==========================================================
+                    # If tier is war_zone but pick is NOT a demon, demote it
+                    # This ensures War Zone picks have multiplier reward for risk
+                    is_demon = prop.get("is_demon", False)
+                    
+                    if v7_tier == "war_zone" and not is_demon:
+                        # Non-demon war zone picks get demoted - all risk, no reward
+                        results["scored"]["below_threshold"] += 1
+                        discarded.append({
+                            "player_name": player_name,
+                            "stat_type": stat_type,
+                            "line": pp_line,
+                            "reason": "WAR_ZONE_NON_DEMON: No multiplier for war zone risk"
+                        })
+                        continue
+                    
                     # Track tier pools
                     if v7_tier == "safe_haven":
                         results["scored"]["safe_haven_pool"] += 1
