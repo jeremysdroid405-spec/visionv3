@@ -83,7 +83,7 @@ async def check_injuries():
 @router.get("/v3/vacuum/active")
 async def get_active_vacuums(response: Response):
     """
-    Get all currently active usage vacuums.
+    Get all currently active usage vacuums for TODAY's games only.
     
     Returns:
         List of active vacuums with injured players and beneficiaries.
@@ -91,7 +91,7 @@ async def get_active_vacuums(response: Response):
     response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
     
     service = get_service()
-    vacuums = service.get_active_vacuums()
+    vacuums = await service.get_active_vacuums_for_today()
     
     return {
         "count": len(vacuums),
@@ -209,7 +209,8 @@ async def get_live_vacuum_alerts(response: Response, refresh: bool = False):
         except Exception as e:
             logger.warning(f"[VacuumAlerts] Refresh failed: {e}")
     
-    vacuums = service.get_active_vacuums()
+    # Get vacuums filtered to today's teams only
+    vacuums = await service.get_active_vacuums_for_today()
     
     # Format alerts for frontend display
     alerts = []

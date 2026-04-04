@@ -390,12 +390,66 @@ class InjuryVacuumService:
             "top_edge_stat": eligible_props[0] if eligible_props else None
         }
     
+    async def _get_todays_teams(self) -> set:
+        """
+        Get teams playing today from BDL live box scores.
+        Returns set of team abbreviations (e.g., {'MIA', 'WAS', 'DEN', 'SAS', 'PHI', 'DET'})
+        """
+        teams = set()
+        
+        try:
+            # Try BDL live endpoint first
+            import httpx
+            import os
+            
+            api_key = os.environ.get("BDL_API_KEY") or os.environ.get("BALLDONTLIE_API_KEY")
+            if api_key:
+                async with httpx.AsyncClient(timeout=10.0) as client:
+                    response = await client.get(
+                        "https://api.balldontlie.io/v1/box_scores/live",
+                        headers={"Authorization": api_key}
+                    )
+                    if response.status_code == 200:
+                        data = response.json()
+                        for game in data.get("data", []):
+                            home = game.get("home_team", {}).get("abbreviation")
+                            away = game.get("visitor_team", {}).get("abbreviation")
+                            if home:
+                                teams.add(home)
+                            if away:
+                                teams.add(away)
+            
+            # Fallback: check ticker_cache in DB
+            if not teams and hasattr(self, 'db') and self.db is not None:
+                try:
+                    cached = await self.db.ticker_cache.find_one({"type": "games"})
+                    if cached and cached.get("games"):
+                        for game in cached.get("games", []):
+                            if game.get("home_team"):
+                                teams.add(game.get("home_team"))
+                            if game.get("away_team"):
+                                teams.add(game.get("away_team"))
+                except Exception as e:
+                    logger.warning(f"[VacuumService] Failed to get games from ticker_cache: {e}")
+            
+            logger.info(f"[VacuumService] Today's teams: {teams}")
+            
+        except Exception as e:
+            logger.warning(f"[VacuumService] Failed to get today's teams: {e}")
+        
+        return teams
+    
     async def fetch_injury_report(self) -> List[Dict]:
         """
         Fetch the latest NBA injury report from dg_injuries collection (ESPN sourced).
+        ONLY returns injuries for teams playing TODAY.
         Falls back to bdl_injuries if dg_injuries is empty.
         """
         logger.info("[VacuumService] Fetching injury data from database...")
+        
+        # Get today's teams first
+        todays_teams = await self._get_todays_teams()
+        logger.info(f"[VacuumService] Filtering injuries for today's teams: {todays_teams}")
         
         injuries = []
         
@@ -403,9 +457,12 @@ class InjuryVacuumService:
             # Primary source: dg_injuries (ESPN data, more complete with team info)
             if hasattr(self, 'db') and self.db is not None:
                 try:
-                    dg_cursor = self.db.dg_injuries.find({
-                        "status": {"$in": ["Out", "OUT", "Doubtful", "DOUBTFUL", "Day-To-Day"]}
-                    })
+                    # Build query - filter by today's teams if we have them
+                    query = {"status": {"$in": ["Out", "OUT", "Doubtful", "DOUBTFUL", "Day-To-Day"]}}
+                    if todays_teams:
+                        query["team"] = {"$in": list(todays_teams)}
+                    
+                    dg_cursor = self.db.dg_injuries.find(query)
                     dg_injuries = await dg_cursor.to_list(length=200)
                 except Exception as db_err:
                     logger.warning(f"[VacuumService] dg_injuries query failed: {db_err}")
@@ -426,25 +483,35 @@ class InjuryVacuumService:
                         "updated_at": inj.get("synced_at", datetime.now(timezone.utc).isoformat())
                     })
                 
-                logger.info(f"[VacuumService] Found {len(injuries)} injuries from dg_injuries")
+                logger.info(f"[VacuumService] Found {len(injuries)} injuries from dg_injuries (filtered for today's games)")
                 
                 # If dg_injuries is empty, try bdl_injuries
                 if len(injuries) == 0:
                     logger.info("[VacuumService] dg_injuries empty, checking bdl_injuries...")
-                    bdl_cursor = self.db.bdl_injuries.find({
-                        "status": {"$in": ["Out", "OUT", "Out For Season", "Doubtful", "DOUBTFUL"]}
-                    })
+                    
+                    # Build query for bdl_injuries
+                    bdl_query = {"status": {"$in": ["Out", "OUT", "Out For Season", "Doubtful", "DOUBTFUL"]}}
+                    if todays_teams:
+                        bdl_query["team"] = {"$in": list(todays_teams)}
+                    
+                    bdl_cursor = self.db.bdl_injuries.find(bdl_query)
                     bdl_injuries = await bdl_cursor.to_list(length=200)
                     
                     for inj in bdl_injuries:
                         player_name = inj.get("player_name", "")
+                        team = inj.get("team", "UNK") or "UNK"
+                        
+                        # Skip if team is not in today's games
+                        if todays_teams and team not in todays_teams:
+                            continue
+                        
                         status = inj.get("status", "").upper()
                         if "SEASON" in status:
                             status = "OUT"  # Normalize "Out For Season" to "OUT"
                         
                         injuries.append({
                             "player_name": player_name,
-                            "team": inj.get("team", "UNK") or "UNK",
+                            "team": team,
                             "team_name": "",
                             "status": status,
                             "reason": inj.get("injury_type", ""),
@@ -458,8 +525,12 @@ class InjuryVacuumService:
         if len(injuries) > 0:
             return injuries
         
+        # Fallback - also filter by today's teams
         logger.warning("[VacuumService] Could not fetch injury data from database, using fallback")
-        return self._get_fallback_injuries()
+        fallback = self._get_fallback_injuries()
+        if todays_teams:
+            fallback = [inj for inj in fallback if inj.get("team") in todays_teams]
+        return fallback
     
     def _get_fallback_injuries(self) -> List[Dict]:
         """Return fallback injury data for testing - includes current known injuries."""
@@ -590,19 +661,22 @@ class InjuryVacuumService:
                     
                     if is_star:
                         usage_rate = star_profile.get("usage_rate", 0)
+                        # Use the correct team from star profile, not injury data
+                        correct_team = star_profile.get("team", team)
+                        
                         logger.info(f"[VacuumService] *** LATE SCRATCH DETECTED ***")
-                        logger.info(f"[VacuumService] STAR PLAYER OUT: {player_name} (Usage: {usage_rate}%)")
+                        logger.info(f"[VacuumService] STAR PLAYER OUT: {player_name} (Team: {correct_team}, Usage: {usage_rate}%)")
                         
                         # TRIGGER RESCAN EVENT
                         rescan_event = {
-                            "team": team,
+                            "team": correct_team,  # Use correct team
                             "triggered_by": player_name,
                             "usage_rate": usage_rate,
                             "triggered_at": datetime.now(timezone.utc).isoformat(),
                             "event_type": "late_scratch_rescan"
                         }
                         result["rescan_events"].append(rescan_event)
-                        logger.info(f"[VacuumService] ReScanEvent triggered for team {team}")
+                        logger.info(f"[VacuumService] ReScanEvent triggered for team {correct_team}")
                         
                         # Get beneficiaries with boosted projections
                         beneficiaries = self._get_beneficiaries(player_name)
@@ -625,7 +699,7 @@ class InjuryVacuumService:
                             
                             vacuum_alert = {
                                 "injured_player": player_name,
-                                "team": team,
+                                "team": correct_team,  # Use correct team from star profile
                                 "status": current_status,
                                 "reason": injury.get("reason"),
                                 "usage_rate": usage_rate,
@@ -694,9 +768,25 @@ class InjuryVacuumService:
         except Exception as e:
             logger.error(f"[VacuumService] Error logging injury change: {e}")
     
-    def get_active_vacuums(self) -> List[Dict]:
-        """Get all currently active usage vacuums."""
-        return list(self.active_vacuums.values())
+    def get_active_vacuums(self, todays_teams: set = None) -> List[Dict]:
+        """
+        Get all currently active usage vacuums.
+        If todays_teams is provided, filters to only return vacuums for those teams.
+        """
+        vacuums = list(self.active_vacuums.values())
+        
+        # Filter by today's teams if provided
+        if todays_teams:
+            vacuums = [v for v in vacuums if v.get("team") in todays_teams]
+        
+        return vacuums
+    
+    async def get_active_vacuums_for_today(self) -> List[Dict]:
+        """
+        Get active vacuums filtered to only teams playing today.
+        """
+        todays_teams = await self._get_todays_teams()
+        return self.get_active_vacuums(todays_teams)
     
     def get_vacuum_for_player(self, player_name: str) -> Optional[Dict]:
         """Check if a player is a beneficiary of any active vacuum."""
