@@ -337,7 +337,8 @@ class FerrariTierService:
                 "no_sharp_edge": 0,
                 "line_above_median": 0,
                 "blowout_bench_risk": 0,
-                "no_sharp_data": 0
+                "no_sharp_data": 0,
+                "no_hit_rate_data": 0
             },
             "scored": {
                 "total_survivors": 0,
@@ -495,23 +496,13 @@ class FerrariTierService:
                     stat_values = player_l10.get(stat_type, [])
                     
                     # ---------------------------------------------------------
-                    # V7: Calculate L3/L5/L10 hit rates from raw game values
-                    # FALLBACK: Use prop's cached hit_rates if no raw game data
+                    # V7: Use prop's cached hit_rates as PRIMARY source (from fresh sync)
+                    # FALLBACK: Calculate from dg_player_stats if cached not available
                     # ---------------------------------------------------------
-                    if stat_values:
-                        granular_rates = calculate_granular_hit_rates(stat_values, pp_line)
-                        l3_rate = granular_rates["l3_rate"]
-                        l5_rate = granular_rates["l5_rate"]
-                        l10_rate = granular_rates["l10_rate"]
-                        l3_hits = granular_rates["l3_hits"]
-                        l5_hits = granular_rates["l5_hits"]
-                        l10_hits = granular_rates["l10_hits"]
-                    else:
-                        # Use cached hit_rates from prop (already calculated during sync)
-                        # Can be either flat structure: {l5_rate: 80, l10_rate: 70}
-                        # Or nested structure: {l5: {hit_rate: 0.8}, l10: {hit_rate: 0.7}}
-                        cached_hr = prop.get("hit_rates", {})
-                        
+                    cached_hr = prop.get("hit_rates", {})
+                    
+                    # PRIMARY: Use cached hit_rates from prop (fresher data from sync)
+                    if cached_hr and ("l5_rate" in cached_hr or "l5" in cached_hr):
                         # Check for flat structure first (l5_rate, l10_rate keys)
                         if "l5_rate" in cached_hr:
                             # Flat structure
@@ -533,6 +524,19 @@ class FerrariTierService:
                             l3_hits = l3_data.get("games_over", 0) if l3_data else 0
                             l5_hits = l5_data.get("games_over", 0) if l5_data else 0
                             l10_hits = l10_data.get("games_over", 0) if l10_data else 0
+                    elif stat_values:
+                        # FALLBACK: Calculate from dg_player_stats (may be stale)
+                        granular_rates = calculate_granular_hit_rates(stat_values, pp_line)
+                        l3_rate = granular_rates["l3_rate"]
+                        l5_rate = granular_rates["l5_rate"]
+                        l10_rate = granular_rates["l10_rate"]
+                        l3_hits = granular_rates["l3_hits"]
+                        l5_hits = granular_rates["l5_hits"]
+                        l10_hits = granular_rates["l10_hits"]
+                    else:
+                        # No data available - skip this prop
+                        results["v7_kills"]["no_hit_rate_data"] += 1
+                        continue
                     
                     # Calculate separation percentage
                     separation = calculate_separation_pct(sharp_implied)
@@ -857,14 +861,14 @@ class FerrariTierService:
                         # Board score is the primary sort field
                         "ferrari_power_score": board_score,
                         # V7 HIT RATE BREAKDOWN (L3/L5/L10)
-                        "l3_rate": round(l3_rate, 1),
+                        "l3_rate": round(l3_rate, 1) if l3_rate is not None else None,
                         "l3_hits": l3_hits,
-                        "l5_rate": round(l5_rate, 1),
+                        "l5_rate": round(l5_rate, 1) if l5_rate is not None else 0,
                         "l5_hits": l5_hits,
-                        "l10_rate": round(l10_rate, 1),
+                        "l10_rate": round(l10_rate, 1) if l10_rate is not None else 0,
                         "l10_hits": l10_hits,
-                        "h10_rate": round(l10_rate, 1),  # Legacy alias
-                        "h5_rate": round(l5_rate, 1),    # Legacy alias
+                        "h10_rate": round(l10_rate, 1) if l10_rate is not None else 0,  # Legacy alias
+                        "h5_rate": round(l5_rate, 1) if l5_rate is not None else 0,    # Legacy alias
                         # WHISTLE MATRIX INFO
                         "whistle_modifier": round(whistle_modifier, 1),
                         "crew_chief": crew_chief,

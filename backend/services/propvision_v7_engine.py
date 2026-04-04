@@ -564,6 +564,11 @@ class TrueProbabilityEngine:
                 pp_edge = sharp_pct - pp_implied
         
         # Calculate Board Score (before penalties)
+        # Ensure all components are numbers (not None)
+        sharp_pct = sharp_pct or 0
+        pp_edge = pp_edge or 0
+        hit_rate_avg = hit_rate_avg or 0
+        
         board_score_raw = sharp_pct + pp_edge + hit_rate_avg
         
         # Apply soft penalties
