@@ -817,7 +817,7 @@ class FerrariTierService:
                         "l10_std_dev": round(l10_std_dev, 2) if l10_std_dev else None,
                         # Classification (V7 tier based on True Probability)
                         "tier": v7_tier,
-                        "tier_label": "MINEFIELD" if trap_risk else v7_tier.upper().replace("_", " "),
+                        "tier_label": v7_tier.upper().replace("_", " "),
                         "pipeline": "propvision_v7",
                         "synced_at": sync_time.isoformat(),
                         # ==============================================

@@ -216,7 +216,7 @@ def classify_props_by_movement(props: List[Dict], player_stats: Dict[str, Dict] 
         
         # Determine tier routing
         if trap["trap_risk"]:
-            prop["tier_label"] = "MINEFIELD"
+            prop["tier_label"] = prop["tier"].upper().replace("_", " ")
             trap_count += 1
         elif movement["sharp_movement"]:
             # Let Ferrari scoring determine Safe Haven vs Front Lines vs War Zone

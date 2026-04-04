@@ -22,7 +22,7 @@ import { Card } from '../components/ui/card';
 import { 
   Search, X, LogOut, Crown, User, Radio, AlertTriangle, Activity, 
   ChevronRight, ChevronLeft, Eye, Zap, ChevronDown, Flame, ArrowLeft, Target,
-  TrendingUp, Newspaper, Clock, Crosshair, Lock, Maximize2, Skull, ShieldAlert, Info
+  TrendingUp, Newspaper, Clock, Crosshair, Lock, Maximize2, ShieldAlert, Info
 } from 'lucide-react';
 
 // Dashboard Components
@@ -47,7 +47,6 @@ import {
   useSafeHaven,
   useFrontLines,
   useLiveOdds,
-  useTrapGraveyard,
   useLiveVacuumAlerts
 } from '../hooks/useLiveOdds';
 import { useMasterStats } from '../hooks/useMasterStats';
@@ -594,254 +593,7 @@ const FrontLinesSection = memo(({ picks, onPickClick, onQuickAdd, isLoading }) =
 // ==================== TRAP GRAVEYARD SECTION ====================
 
 // Trap Card - Shows warning badges prominently
-const TrapCard = memo(({ pick, onClick }) => {
-  const [intelModal, setIntelModal] = useState({ isOpen: false, type: null });
-  const sidecar = pick.sidecar || {};
-  const isHook = sidecar.hook_risk;
-  const isBait = sidecar.suspect_line_bait;
-  const sourceBoard = pick.source_board || pick.board;
-  
-  const getBoardLabel = (board) => {
-    switch(board) {
-      case 'safe_haven': return 'Safe Haven';
-      case 'war_zone': return 'War Zone';
-      case 'front_lines': return 'Front Lines';
-      default: return 'Unknown';
-    }
-  };
-  
-  const getBoardColor = (board) => {
-    switch(board) {
-      case 'safe_haven': return 'bg-green-500/20 text-green-400 border-green-500/30';
-      case 'war_zone': return 'bg-red-500/20 text-red-400 border-red-500/30';
-      case 'front_lines': return 'bg-amber-500/20 text-amber-400 border-amber-500/30';
-      default: return 'bg-zinc-500/20 text-zinc-400 border-zinc-500/30';
-    }
-  };
 
-  const handleBadgeClick = (e, type) => {
-    e.stopPropagation(); // Prevent card onClick from firing
-    setIntelModal({ isOpen: true, type });
-  };
-  
-  return (
-    <>
-      <Card 
-        className="p-3 cursor-pointer hover:scale-[1.02] transition-all bg-gradient-to-br from-red-950/40 to-zinc-900 border-red-500/30"
-        onClick={onClick}
-        data-testid={`trap-card-${pick.player_name?.replace(/\s/g, '-')}`}
-      >
-        {/* Header with player info */}
-        <div className="flex items-center gap-3 mb-2">
-          <div className="w-10 h-10 rounded-full bg-zinc-800 flex items-center justify-center overflow-hidden">
-            {pick.photo_url ? (
-              <img 
-                src={`${process.env.REACT_APP_BACKEND_URL}${pick.photo_url}`}
-                alt={pick.player_name}
-                className="w-full h-full object-cover"
-                onError={(e) => e.target.style.display='none'}
-              />
-            ) : (
-              <span className="text-zinc-500 text-xs font-bold">
-                {pick.player_name?.split(' ').map(n => n[0]).join('')}
-              </span>
-            )}
-          </div>
-          <div className="flex-1 min-w-0">
-            <div className="text-sm font-bold text-white truncate">{pick.player_name}</div>
-            <div className="flex items-center gap-2 text-xs">
-              <span className="text-zinc-500">{pick.team} vs {pick.opponent}</span>
-            </div>
-          </div>
-        </div>
-        
-        {/* Prop line */}
-        <div className="mb-2 px-2 py-1.5 bg-zinc-800/50 rounded text-center">
-          <span className="text-white font-bold text-sm">{pick.stat_type}</span>
-          <span className="text-zinc-400 mx-2">•</span>
-          <span className="text-white font-mono text-sm">{pick.line}</span>
-        </div>
-        
-        {/* Warning Badges - Clickable for explanations */}
-        <div className="space-y-1.5">
-          {isHook && (
-            <div 
-              className="flex items-center gap-2 px-2 py-1.5 bg-amber-500/20 border border-amber-500/30 rounded text-amber-400 text-xs cursor-pointer hover:bg-amber-500/30 transition-colors"
-              onClick={(e) => handleBadgeClick(e, 'hook_risk')}
-              role="button"
-              tabIndex={0}
-              data-testid="hook-risk-badge"
-            >
-              <ShieldAlert className="w-3.5 h-3.5 flex-shrink-0" />
-              <span className="font-medium">Hook Risk</span>
-              <Info className="w-3 h-3 ml-1 opacity-60" />
-              {sidecar.mode && (
-                <span className="ml-auto text-amber-300/70">Mode: {sidecar.mode}</span>
-              )}
-            </div>
-          )}
-          {isBait && (
-            <div 
-              className="flex items-center gap-2 px-2 py-1.5 bg-red-500/20 border border-red-500/30 rounded text-red-400 text-xs cursor-pointer hover:bg-red-500/30 transition-colors"
-              onClick={(e) => handleBadgeClick(e, 'suspect_bait')}
-              role="button"
-              tabIndex={0}
-              data-testid="vegas-bait-badge"
-            >
-              <Skull className="w-3.5 h-3.5 flex-shrink-0" />
-              <span className="font-medium">Vegas Bait</span>
-              <Info className="w-3 h-3 ml-1 opacity-60" />
-              {sidecar.median && (
-                <span className="ml-auto text-red-300/70">Med: {sidecar.median}</span>
-              )}
-            </div>
-          )}
-        </div>
-        
-        {/* Source board badge */}
-        <div className="mt-2 flex items-center justify-between">
-          <Badge className={`text-[10px] border ${getBoardColor(sourceBoard)}`}>
-            Filtered from {getBoardLabel(sourceBoard)}
-          </Badge>
-          <div className="text-[10px] text-zinc-500">
-            L10: {pick.h10_rate || 0}%
-        </div>
-      </div>
-    </Card>
-    
-    {/* Intelligence Modal for Hook Risk / Vegas Bait explanations */}
-    <IntelligenceModal
-      isOpen={intelModal.isOpen}
-      onClose={() => setIntelModal({ isOpen: false, type: null })}
-      type={intelModal.type}
-      playerName={pick.player_name}
-      statType={pick.stat_type}
-      line={pick.line}
-      sidecarData={sidecar}
-    />
-  </>
-  );
-});
-
-// The Minefield Section Component (formerly Trap Graveyard)
-const TrapGraveyardSection = memo(({ picks, boardStats, onPickClick, isLoading, totalTrapped, onBack }) => {
-  if (isLoading) {
-    return (
-      <div className="mb-4">
-        <div className="flex items-center gap-3 mb-4">
-          <button
-            onClick={onBack}
-            className="flex items-center gap-1 px-3 py-1.5 text-sm text-zinc-400 hover:text-white bg-zinc-800 hover:bg-zinc-700 rounded-lg transition-colors"
-            data-testid="minefield-back-btn"
-          >
-            <ChevronLeft className="w-4 h-4" />
-            Back
-          </button>
-        </div>
-        <SectionHeader 
-          icon={<Skull className="w-4 h-4 text-red-400" />}
-          title="THE MINEFIELD"
-          subtitle="High risk lines flagged for deception"
-          badgeText="LOADING..."
-          badgeColor="red"
-        />
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-          {[1, 2, 3].map(i => (
-            <div key={i} className="h-40 bg-zinc-900/50 border border-zinc-800 rounded-lg animate-pulse" />
-          ))}
-        </div>
-      </div>
-    );
-  }
-  
-  if (!picks?.length) {
-    return (
-      <div className="mb-4">
-        <div className="flex items-center gap-3 mb-4">
-          <button
-            onClick={onBack}
-            className="flex items-center gap-1 px-3 py-1.5 text-sm text-zinc-400 hover:text-white bg-zinc-800 hover:bg-zinc-700 rounded-lg transition-colors"
-            data-testid="minefield-back-btn"
-          >
-            <ChevronLeft className="w-4 h-4" />
-            Back
-          </button>
-        </div>
-        <SectionHeader 
-          icon={<Skull className="w-4 h-4 text-red-400" />}
-          title="THE MINEFIELD"
-          subtitle="High risk lines flagged for deception"
-          badgeText="CLEAN"
-          badgeColor="green"
-        />
-        <div className="p-6 bg-green-950/20 border border-green-500/30 rounded-lg text-center">
-          <div className="w-12 h-12 mx-auto mb-3 rounded-full bg-green-500/20 flex items-center justify-center">
-            <Activity className="w-6 h-6 text-green-400" />
-          </div>
-          <p className="text-green-400 font-medium">All picks are clean!</p>
-          <p className="text-zinc-500 text-xs mt-1">No Hook Risk or Vegas Bait detected today</p>
-        </div>
-      </div>
-    );
-  }
-  
-  return (
-    <div className="mb-4" data-testid="minefield-section">
-      <div className="flex items-center gap-3 mb-4">
-        <button
-          onClick={onBack}
-          className="flex items-center gap-1 px-3 py-1.5 text-sm text-zinc-400 hover:text-white bg-zinc-800 hover:bg-zinc-700 rounded-lg transition-colors"
-          data-testid="minefield-back-btn"
-        >
-          <ChevronLeft className="w-4 h-4" />
-          Back
-        </button>
-      </div>
-      <SectionHeader 
-        icon={<Skull className="w-4 h-4 text-red-400" />}
-        title="THE MINEFIELD"
-        subtitle="High risk lines flagged for deception"
-        badgeText={`${totalTrapped} TRAPS`}
-        badgeColor="red"
-      />
-      
-      {/* Board Stats Summary */}
-      {boardStats && (
-        <div className="flex gap-2 mb-3 overflow-x-auto pb-1">
-          {boardStats.safe_haven?.trapped > 0 && (
-            <div className="flex-shrink-0 px-2 py-1 bg-green-500/10 border border-green-500/30 rounded text-[10px]">
-              <span className="text-green-400 font-medium">Safe Haven:</span>
-              <span className="text-white ml-1">{boardStats.safe_haven.trapped}/{boardStats.safe_haven.total}</span>
-            </div>
-          )}
-          {boardStats.war_zone?.trapped > 0 && (
-            <div className="flex-shrink-0 px-2 py-1 bg-red-500/10 border border-red-500/30 rounded text-[10px]">
-              <span className="text-red-400 font-medium">War Zone:</span>
-              <span className="text-white ml-1">{boardStats.war_zone.trapped}/{boardStats.war_zone.total}</span>
-            </div>
-          )}
-          {boardStats.front_lines?.trapped > 0 && (
-            <div className="flex-shrink-0 px-2 py-1 bg-amber-500/10 border border-amber-500/30 rounded text-[10px]">
-              <span className="text-amber-400 font-medium">Front Lines:</span>
-              <span className="text-white ml-1">{boardStats.front_lines.trapped}/{boardStats.front_lines.total}</span>
-            </div>
-          )}
-        </div>
-      )}
-      
-      {/* Trap Cards Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-        {picks.map((pick, idx) => (
-          <TrapCard 
-            key={`trap-${pick.player_name}-${pick.stat_type}-${idx}`}
-            pick={pick}
-            onClick={() => onPickClick(pick)}
-          />
-        ))}
-      </div>
-    </div>
-  );
-});
 
 // Parlay Section Builder
 const ParlaySection = memo(({ picks, onParlayClick, sectionName, title, subtitle, icon, badgeColor }) => {
@@ -1177,22 +929,13 @@ const Dashboard = () => {
   const { data: safeHavenData, isLoading: safeHavenLoading, refetch: refetchSafeHaven } = useSafeHaven();
   const { data: frontLinesData, isLoading: frontLinesLoading, refetch: refetchFrontLines } = useFrontLines();
   const { data: liveOddsData, isLoading: boardLoading, refetch: refetchBoard } = useLiveOdds();
-  const { data: trapGraveyardData, isLoading: trapGraveyardLoading } = useTrapGraveyard();
   const { data: vacuumAlertsData, isLoading: vacuumAlertsLoading } = useLiveVacuumAlerts();
-  
-  // Active tab state: 'vip' (clean picks) or 'traps' (flagged picks)
-  const [activeTab, setActiveTab] = useState('vip');
   
   // Extract picks from TanStack Query data
   const radarPicks = useMemo(() => warZoneData?.picks || [], [warZoneData]);
   const vaultPicks = useMemo(() => safeHavenData?.picks || [], [safeHavenData]);
   const frontLinesPicks = useMemo(() => frontLinesData?.picks || [], [frontLinesData]);
   const players = useMemo(() => liveOddsData?.players || [], [liveOddsData]);
-  
-  // Trap Graveyard data
-  const trappedPicks = useMemo(() => trapGraveyardData?.picks || [], [trapGraveyardData]);
-  const trapBoardStats = useMemo(() => trapGraveyardData?.board_stats || {}, [trapGraveyardData]);
-  const totalTrapped = trapGraveyardData?.total_trapped || 0;
   
   // Live Vacuum Alerts (Usage Vacuum)
   const vacuumAlerts = useMemo(() => vacuumAlertsData?.alerts || [], [vacuumAlertsData]);
@@ -1330,14 +1073,6 @@ const Dashboard = () => {
   const handlePopularBetClick = useCallback((bet) => {
     const type = bet.is_demon ? 'demon' : bet.is_goblin ? 'goblin' : 'demon';
     handlePlayerClick(bet.player_name, null, type);
-  }, [handlePlayerClick]);
-  
-  // Handler for trap graveyard picks
-  const handleTrapClick = useCallback((pick) => {
-    const lineValue = pick.line;
-    const highlightKey = `${pick.stat_type}|${lineValue}|${pick.direction || 'Over'}`;
-    const type = pick.is_goblin ? 'goblin' : 'demon';
-    handlePlayerClick(pick.player_name, highlightKey, type);
   }, [handlePlayerClick]);
   
   const handleLogout = async () => {
@@ -1572,42 +1307,13 @@ const Dashboard = () => {
       
       {/* Main Content */}
       <div className="p-3 space-y-4">
-        {/* The Minefield Tab */}
-        <div className="flex gap-2 p-1 bg-zinc-900/50 border border-zinc-800 rounded-lg" data-testid="main-tabs">
-          <button
-            onClick={() => setActiveTab('traps')}
-            className={`flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all ${
-              activeTab === 'traps'
-                ? 'bg-red-500/20 text-red-400 border border-red-500/30'
-                : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
-            }`}
-            data-testid="tab-minefield"
-          >
-            <div className="flex items-center gap-2">
-              <Skull className="w-4 h-4" />
-              <div className="flex flex-col items-start">
-                <span className="font-medium">The Minefield</span>
-                <span className="text-[10px] opacity-70">High risk lines flagged for deception</span>
-              </div>
-            </div>
-            {totalTrapped > 0 && (
-              <span className={`ml-2 px-1.5 py-0.5 rounded text-xs ${
-                activeTab === 'traps' ? 'bg-red-500/30' : 'bg-zinc-700'
-              }`}>
-                {totalTrapped}
-              </span>
-            )}
-          </button>
-        </div>
-        
-        {/* Main Picks Content (shown when NOT viewing Minefield) */}
-        {activeTab !== 'traps' && (
-          <>
-            {/* Live Injury Advantage (Usage Vacuum) - FIRST */}
-            <LiveInjuryAdvantageSection 
-              alerts={vacuumAlerts} 
-              isLoading={vacuumAlertsLoading} 
-            />
+        {/* Main Picks Content */}
+        <>
+          {/* Live Injury Advantage (Usage Vacuum) - FIRST */}
+          <LiveInjuryAdvantageSection 
+            alerts={vacuumAlerts} 
+            isLoading={vacuumAlertsLoading} 
+          />
             
             {/* Safe Haven */}
             <SafeHavenSection picks={vaultPicks} onPickClick={handleVaultClick} onQuickAdd={handleQuickAdd} isLoading={safeHavenLoading} />
@@ -1648,19 +1354,6 @@ const Dashboard = () => {
               badgeColor="red"
             />
           </>
-        )}
-        
-        {/* The Minefield Content (shown ONLY when button clicked) */}
-        {activeTab === 'traps' && (
-          <TrapGraveyardSection
-            picks={trappedPicks}
-            boardStats={trapBoardStats}
-            onPickClick={handleTrapClick}
-            isLoading={trapGraveyardLoading}
-            totalTrapped={totalTrapped}
-            onBack={() => setActiveTab('main')}
-          />
-        )}
       </div>
       
       {/* Expanded Parlay Modal */}
