@@ -596,12 +596,56 @@ class FerrariTierService:
                     # ---------------------------------------------------------
                     # V7 TRUE PROBABILITY CALCULATION
                     # ---------------------------------------------------------
-                    trap_risk = prop.get("sidecar", {}).get("hook_risk", False) or prop.get("sidecar", {}).get("suspect_line_bait", False)
-                    
-                    # Calculate L10 statistical metrics
+                    # Calculate L10 statistical metrics FIRST (needed for trap detection)
                     l10_median = calculate_median(stat_values) if stat_values else None
                     l10_mode = calculate_mode(stat_values) if stat_values else None
                     l10_std_dev = calculate_std_dev(stat_values) if stat_values else 0.0
+                    
+                    # Run refined Hook/Bait detection (Mode-based, not just .5 lines)
+                    sidecar = prop.get("sidecar", {})
+                    
+                    # Check if we have refined sidecar data with Mode analysis
+                    has_refined_sidecar = sidecar.get("mode") is not None or sidecar.get("mode_frequency_pct") is not None
+                    
+                    if has_refined_sidecar:
+                        # Use existing refined analysis
+                        hook_risk = sidecar.get("hook_risk", False)
+                        suspect_bait = sidecar.get("suspect_line_bait", False)
+                    else:
+                        # Run refined detection inline using HookBaitDetector logic
+                        # Calculate mode with frequency from L10 stats
+                        if stat_values and len(stat_values) >= 5:
+                            from collections import Counter
+                            rounded_vals = [round(v * 2) / 2 for v in stat_values[:20]]
+                            freq = Counter(rounded_vals)
+                            if freq:
+                                mode_val, mode_count = freq.most_common(1)[0]
+                                sample_size = len(rounded_vals)
+                                mode_freq_pct = mode_count / sample_size
+                                
+                                # Hook Risk: Mode >= 25% frequency AND line within ±0.5 of Mode
+                                hook_risk = (mode_freq_pct >= 0.25 and abs(pp_line - mode_val) <= 0.5)
+                                
+                                # Suspect Bait: Line significantly below median
+                                if l10_median and l10_median >= 10:
+                                    # High volume: 1.5 SD below median
+                                    suspect_bait = (l10_std_dev and pp_line <= (l10_median - 1.5 * l10_std_dev) and (l10_median - pp_line) >= 3)
+                                elif l10_median and l10_median >= 4:
+                                    # Mid volume: 1.5 pts below median
+                                    suspect_bait = (l10_median - pp_line) >= 1.5
+                                elif l10_median:
+                                    # Micro volume: 1.0 pts below median
+                                    suspect_bait = (l10_median - pp_line) >= 1.0
+                                else:
+                                    suspect_bait = False
+                            else:
+                                hook_risk = False
+                                suspect_bait = False
+                        else:
+                            hook_risk = False
+                            suspect_bait = False
+                    
+                    trap_risk = hook_risk or suspect_bait
                     
                     v7_result = v7_engine.calculate_true_probability(
                         # Historical
@@ -706,9 +750,10 @@ class FerrariTierService:
                         "movement_delta": round(line_delta, 2) if line_delta else 0,
                         "movement_direction": "over_value" if line_delta and line_delta > 0 else "under_value" if line_delta and line_delta < 0 else "neutral",
                         "movement_strength": "significant" if abs(line_delta or 0) >= 3.0 else "moderate" if abs(line_delta or 0) >= 1.5 else "minimal",
+                        # REFINED TRAP RISK (Mode-based, not just .5 lines)
                         "trap_risk": trap_risk,
-                        "hook_risk": prop.get("sidecar", {}).get("hook_risk", False),
-                        "suspect_line_bait": prop.get("sidecar", {}).get("suspect_line_bait", False),
+                        "hook_risk": hook_risk,
+                        "suspect_line_bait": suspect_bait,
                         # LEGACY: Backward compatibility flags
                         "is_demon": prop.get("is_demon", False),
                         "is_goblin": prop.get("is_goblin", False),
@@ -916,9 +961,9 @@ class FerrariTierService:
                 await self.ferrari_discarded.insert_many(discarded[:500], ordered=False)
             
             # =================================================================
-            # PHASE 4: GLOBAL SORT & TOP-K SELECTION (by True Probability)
+            # PHASE 4: GLOBAL SORT - Prefer Clean Picks Over Trap Picks
             # =================================================================
-            logger.info("[PHASE 4] GLOBAL SORT - Ranking by true_probability...")
+            logger.info("[PHASE 4] GLOBAL SORT - Ranking by true_probability (clean picks first)...")
             
             used_players = set()
             
@@ -928,6 +973,8 @@ class FerrariTierService:
                 {"_id": 0}
             ).sort("ferrari_power_score", -1)
             sh_all = await sh_cursor.to_list(length=None)
+            sh_clean = sum(1 for p in sh_all if not (p.get("trap_risk") or p.get("hook_risk")))
+            logger.info(f"  Safe Haven pool: {len(sh_all)} total, {sh_clean} clean, {len(sh_all) - sh_clean} trap")
             top_safe_haven = self._dedupe_select(sh_all, used_players, MAX_PICKS_PER_TIER)
             
             # FRONT LINES: Exclude Safe Haven players
@@ -936,6 +983,8 @@ class FerrariTierService:
                 {"_id": 0}
             ).sort("ferrari_power_score", -1)
             fl_all = await fl_cursor.to_list(length=None)
+            fl_clean = sum(1 for p in fl_all if not (p.get("trap_risk") or p.get("hook_risk")))
+            logger.info(f"  Front Lines pool: {len(fl_all)} total, {fl_clean} clean, {len(fl_all) - fl_clean} trap")
             top_front_lines = self._dedupe_select(fl_all, used_players, MAX_PICKS_PER_TIER)
             
             # WAR ZONE: Exclude Safe Haven + Front Lines players
@@ -944,6 +993,8 @@ class FerrariTierService:
                 {"_id": 0}
             ).sort("ferrari_power_score", -1)
             wz_all = await wz_cursor.to_list(length=None)
+            wz_clean = sum(1 for p in wz_all if not (p.get("trap_risk") or p.get("hook_risk")))
+            logger.info(f"  War Zone pool: {len(wz_all)} total, {wz_clean} clean, {len(wz_all) - wz_clean} trap")
             top_war_zone = self._dedupe_select(wz_all, used_players, MAX_PICKS_PER_TIER)
             
             # =================================================================
@@ -1037,15 +1088,51 @@ class FerrariTierService:
         used_players: set,
         limit: int
     ) -> List[Dict]:
-        """Deduplicate and select top N by power score."""
-        selected = []
+        """
+        Deduplicate and select top N by power score.
+        
+        PRIORITY ORDER:
+        1. Non-trap picks first (no hook_risk, no suspect_line_bait)
+        2. Trap picks only if we don't have enough clean alternatives
+        """
+        # Separate clean picks from trap picks
+        clean_picks = []
+        trap_picks = []
+        
         for pick in candidates:
             name = pick.get("player_name")
             if name and name not in used_players:
+                is_trap = pick.get("trap_risk") or pick.get("hook_risk") or pick.get("suspect_line_bait")
+                if is_trap:
+                    trap_picks.append(pick)
+                else:
+                    clean_picks.append(pick)
+        
+        # Select clean picks first
+        selected = []
+        selected_names = set()
+        
+        for pick in clean_picks:
+            name = pick.get("player_name")
+            if name not in selected_names:
                 used_players.add(name)
+                selected_names.add(name)
                 selected.append(pick)
                 if len(selected) >= limit:
                     break
+        
+        # If we need more, fill with trap picks (sorted by probability)
+        if len(selected) < limit:
+            logger.info(f"  [TRAP FILTER] Only {len(selected)} clean picks, adding {limit - len(selected)} trap picks")
+            for pick in trap_picks:
+                name = pick.get("player_name")
+                if name not in selected_names:
+                    used_players.add(name)
+                    selected_names.add(name)
+                    selected.append(pick)
+                    if len(selected) >= limit:
+                        break
+        
         return selected
     
     def _build_prop_badges(self, blowout_risk, hook_risk, suspect_bait, sharp_movement, momentum_data) -> List[str]:

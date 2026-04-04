@@ -36,7 +36,11 @@ SHARP_MOVEMENT_THRESHOLD = 1.5  # Minimum delta for sharp movement
 SIGNIFICANT_MOVEMENT_THRESHOLD = 3.0  # Major sharp movement
 
 # Trap Risk Thresholds
-HOOK_RISK_DECIMALS = [0.5]  # Lines ending in .5 are hooks
+# Hook risk only triggers when hit rate is borderline (50-70%)
+# Lines ending in .5 are common on PrizePicks, so we need context
+HOOK_RISK_DECIMALS = [0.5]  # Lines ending in .5 are potential hooks
+HOOK_RISK_HIT_RATE_MAX = 70  # Only flag hook if hit rate is below this
+HOOK_RISK_HIT_RATE_MIN = 40  # Don't flag if hit rate is very low (already suspect)
 BAIT_ODDS_THRESHOLD = 150  # Odds above +150 with low hit rate = bait
 
 
@@ -127,23 +131,32 @@ def detect_trap_risk(prop: Dict) -> Dict[str, Any]:
     price = prop.get("price", 0)
     l10_hit_rate = prop.get("l10_hit_rate", 50)
     
-    # Get existing sidecar flags
+    # Get existing sidecar flags from HookBaitDetector (Mode-based detection)
     sidecar = prop.get("sidecar", {})
     existing_hook_risk = sidecar.get("hook_risk", False)
     existing_bait = sidecar.get("suspect_line_bait", False)
     
     trap_reasons = []
     
-    # Hook Risk: Line ends in .5
-    decimal_part = line - int(line) if line else 0
-    hook_risk = existing_hook_risk or (round(decimal_part, 1) in HOOK_RISK_DECIMALS)
-    if hook_risk:
+    # Hook Risk: Use refined Mode-based detection from sidecar
+    # Only flag as hook if HookBaitDetector detected it (Mode frequency >= 25%, line ±0.5 from Mode)
+    hook_risk = existing_hook_risk
+    hook_warning = sidecar.get("hook_warning")
+    if hook_risk and hook_warning:
+        trap_reasons.append(f"Hook Risk: {hook_warning}")
+    elif hook_risk:
         trap_reasons.append(f"Hook line at {line}")
     
-    # Suspect Line Bait: High odds with low hit rate
-    suspect_line_bait = existing_bait or (price >= BAIT_ODDS_THRESHOLD and l10_hit_rate < 40)
-    if suspect_line_bait:
+    # Suspect Line Bait: Use refined detection from sidecar OR fallback to high odds + low hit rate
+    bait_warning = sidecar.get("bait_warning")
+    suspect_line_bait = existing_bait
+    
+    # Fallback for props without proper sidecar analysis
+    if not suspect_line_bait and price >= BAIT_ODDS_THRESHOLD and l10_hit_rate < 40:
+        suspect_line_bait = True
         trap_reasons.append(f"High odds (+{price}) with {l10_hit_rate}% L10 hit rate")
+    elif suspect_line_bait and bait_warning:
+        trap_reasons.append(f"Bait Risk: {bait_warning}")
     
     # Combined trap risk
     trap_risk = hook_risk or suspect_line_bait
