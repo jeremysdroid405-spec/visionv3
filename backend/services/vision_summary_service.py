@@ -32,6 +32,43 @@ class VisionSummaryService:
         if not self.api_key:
             logger.warning("[VISION] No GOOGLE_API_KEY found - summaries will be disabled")
     
+    def _get_badge_headline(self, badge_key: str) -> str:
+        """Get a descriptive headline for a badge key."""
+        badge_headlines = {
+            # Performance badges
+            "pay_day": "Performing well recently - on a hot streak",
+            "consistent": "Very consistent numbers - reliable performer",
+            "streak_hot": "Red hot streak - crushing the over",
+            "streak_cold": "Cold streak - struggling recently",
+            "bounce_back": "Bounce back candidate after poor game",
+            "regression": "Due for regression to the mean",
+            
+            # Context badges
+            "deep_water": "Key teammate out - elevated role expected",
+            "vacuum": "Star player injured - usage spike likely",
+            "revenge": "Revenge game against former team",
+            "division_rival": "Division rivalry - extra motivation",
+            "national_tv": "National TV game - spotlight performance",
+            "rest_advantage": "Well-rested compared to opponent",
+            "b2b": "Playing on back-to-back - fatigue factor",
+            "jet_lag": "Recent travel - time zone adjustment",
+            "home_cooking": "Strong home performer",
+            "road_warrior": "Plays well on the road",
+            
+            # Warning badges
+            "trap_risk": "Suspicious line movement - possible trap",
+            "hook_risk": "Line sitting at key number - beware the hook",
+            "blowout_risk": "Blowout potential - minutes concern",
+            "pace_down": "Pace down matchup - slower game expected",
+            "elite_defense": "Facing elite defense at this stat",
+            
+            # Matchup badges
+            "soft_matchup": "Favorable defensive matchup",
+            "neutral_matchup": "Neutral matchup - no edge",
+            "tough_matchup": "Difficult defensive matchup"
+        }
+        return badge_headlines.get(badge_key, f"Active factor: {badge_key.replace('_', ' ')}")
+    
     async def generate_pick_summary(
         self,
         player_name: str,
@@ -75,7 +112,7 @@ class VisionSummaryService:
         # Circuit breaker: Skip API calls if recently failed
         if VisionSummaryService._circuit_breaker_open:
             if VisionSummaryService._circuit_breaker_until and now < VisionSummaryService._circuit_breaker_until:
-                logger.debug(f"[VISION] Circuit breaker OPEN - skipping API call")
+                logger.debug("[VISION] Circuit breaker OPEN - skipping API call")
                 return None
             else:
                 # Reset circuit breaker
@@ -100,9 +137,16 @@ class VisionSummaryService:
             badge_descriptions = []
             if badges:
                 for badge in badges[:4]:  # Limit to 4 most relevant badges
-                    badge_key = badge.get("badge_key", "")
-                    headline = badge.get("headline", "")
-                    if badge_key and headline:
+                    # Handle both dict and string badge formats
+                    if isinstance(badge, dict):
+                        badge_key = badge.get("badge_key") or badge.get("key", "")
+                        headline = badge.get("headline", "")
+                    else:
+                        # Badge is just a string key
+                        badge_key = str(badge)
+                        headline = self._get_badge_headline(badge_key)
+                    
+                    if badge_key:
                         badge_descriptions.append(f"- {badge_key.upper()}: {headline}")
             
             badge_context = "\n".join(badge_descriptions) if badge_descriptions else "No special situational factors"
@@ -359,14 +403,22 @@ async def generate_vision_summary(pick: dict) -> Optional[str]:
     if not badges:
         return None
     
+    # Get DvP data from intel_suite if available
+    intel = pick.get("intel_suite", {})
+    dvp_data = intel.get("matchup_dvp", {})
+    momentum_data = intel.get("defensive_momentum", {})
+    
     return await service.generate_pick_summary(
         player_name=pick.get("player_name", ""),
         stat_type=pick.get("stat_type", ""),
         line=pick.get("line", 0),
-        season_avg=pick.get("season_avg", 0),
-        h10_rate=pick.get("h10_rate") or pick.get("l10_hit_rate", 0),
-        badges=[b.get("key") if isinstance(b, dict) else b for b in badges],
-        opponent=pick.get("opponent"),
+        season_avg=pick.get("season_avg") or pick.get("l10_avg", 0),
+        h10_rate=pick.get("h10_rate") or pick.get("l10_rate") or pick.get("l10_hit_rate", 0),
+        badges=badges,  # Pass as-is, the service handles both formats
+        opponent=pick.get("opponent") or pick.get("opponent_abbr"),
         is_demon=pick.get("is_demon", False),
-        is_goblin=pick.get("is_goblin", False)
+        is_goblin=pick.get("is_goblin", False),
+        dvp_rank=dvp_data.get("rank") or momentum_data.get("composite_rank"),
+        dvp_friction=dvp_data.get("friction") or momentum_data.get("friction_label"),
+        player_team=pick.get("team")
     )

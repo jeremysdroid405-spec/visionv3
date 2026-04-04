@@ -426,6 +426,9 @@ async def run_optimized_sync(db) -> Dict[str, Any]:
     # Step 5: Update dg_cached_board with enriched data
     await _persist_enriched_picks(db, all_picks, cache)
     
+    # Step 6: Update Ferrari tier collections with vision summaries
+    await _update_tier_collections_with_summaries(db, all_picks)
+    
     duration = (datetime.now(timezone.utc) - start).total_seconds()
     
     logger.info(f"[OPTIMIZED_SYNC] Pipeline complete in {duration:.2f}s")
@@ -445,6 +448,57 @@ async def run_optimized_sync(db) -> Dict[str, Any]:
             "vacuums": len(cache.vacuum_alerts)
         }
     }
+
+
+async def _update_tier_collections_with_summaries(db, picks: List[Dict]) -> None:
+    """
+    Update Ferrari tier collections (ferrari_safe_haven, ferrari_front_lines, ferrari_war_zone)
+    with the AI-generated vision_summary field.
+    """
+    if not picks:
+        return
+    
+    # Group picks by tier/board
+    tier_map = {
+        "safe_haven": [],
+        "front_lines": [],
+        "war_zone": []
+    }
+    
+    for pick in picks:
+        board = pick.get("board") or pick.get("tier", "")
+        if board in tier_map:
+            tier_map[board].append(pick)
+    
+    # Update each tier collection
+    updated_count = 0
+    for tier_name, tier_picks in tier_map.items():
+        collection_name = f"ferrari_{tier_name}"
+        collection = db[collection_name]
+        
+        for pick in tier_picks:
+            vision_summary = pick.get("vision_summary")
+            if not vision_summary:
+                continue
+            
+            # Update the pick in the collection
+            result = await collection.update_one(
+                {
+                    "player_name": pick.get("player_name"),
+                    "stat_type": pick.get("stat_type"),
+                    "line": pick.get("line")
+                },
+                {
+                    "$set": {
+                        "vision_summary": vision_summary,
+                        "intel_suite.vision_summary": vision_summary
+                    }
+                }
+            )
+            if result.modified_count > 0:
+                updated_count += 1
+    
+    logger.info(f"[OPTIMIZED_SYNC] Updated {updated_count} picks in tier collections with AI summaries")
 
 
 async def _persist_enriched_picks(db, picks: List[Dict], cache: GlobalSyncCache) -> None:
