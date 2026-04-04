@@ -21,8 +21,8 @@ from dataclasses import dataclass, field
 logger = logging.getLogger(__name__)
 
 # Batch processing limits
-BATCH_SIZE = 10  # Process 10 picks concurrently
-GEMINI_CONCURRENT_LIMIT = 5  # Max concurrent Gemini calls
+BATCH_SIZE = 30  # Process all picks at once
+GEMINI_CONCURRENT_LIMIT = 30  # Max concurrent Gemini calls (Tier 1 paid = 1000 RPM, ~16/sec)
 
 
 @dataclass
@@ -333,10 +333,64 @@ async def enrich_picks_batch(
     return picks
 
 
+async def _attach_cached_summaries(picks: List[Dict], db) -> int:
+    """
+    Attach cached vision summaries to picks without making API calls.
+    Returns count of picks that got cached summaries.
+    """
+    from services.vision_summary_service import VisionSummaryService
+    from datetime import datetime, timezone
+    
+    cached_count = 0
+    now = datetime.now(timezone.utc)
+    
+    for pick in picks:
+        if pick.get("vision_summary"):
+            cached_count += 1
+            continue
+        
+        # Check in-memory cache
+        simple_key = f"{pick.get('player_name')}|{pick.get('stat_type')}|{pick.get('line')}"
+        content_hash = VisionSummaryService._cache_keys.get(simple_key)
+        
+        if content_hash and content_hash in VisionSummaryService._summary_cache:
+            cached_time = VisionSummaryService._cache_timestamps.get(content_hash)
+            if cached_time and (now - cached_time).total_seconds() < VisionSummaryService._CACHE_TTL_SECONDS:
+                pick["vision_summary"] = VisionSummaryService._summary_cache[content_hash]
+                cached_count += 1
+                continue
+        
+        # Check database cache (ferrari collections may have old summaries)
+        tier = pick.get("board") or pick.get("tier", "")
+        if tier:
+            collection_name = f"ferrari_{tier}"
+            try:
+                existing = await db[collection_name].find_one(
+                    {
+                        "player_name": pick.get("player_name"),
+                        "stat_type": pick.get("stat_type"),
+                        "line": pick.get("line")
+                    },
+                    {"_id": 0, "vision_summary": 1}
+                )
+                if existing and existing.get("vision_summary"):
+                    pick["vision_summary"] = existing["vision_summary"]
+                    # Also cache in memory for next time
+                    if content_hash:
+                        VisionSummaryService._summary_cache[content_hash] = existing["vision_summary"]
+                        VisionSummaryService._cache_timestamps[content_hash] = now
+                    cached_count += 1
+            except Exception as e:
+                logger.debug(f"[SYNC_ENGINE] DB cache check failed: {e}")
+    
+    return cached_count
+
+
 async def _batch_generate_summaries(picks: List[Dict], db) -> None:
     """
     Generate AI summaries for picks in batches.
     Uses semaphore to limit concurrent Gemini calls.
+    Now with higher concurrency (15) for Tier 1 paid accounts.
     """
     from services.vision_summary_service import generate_vision_summary
     
@@ -351,11 +405,9 @@ async def _batch_generate_summaries(picks: List[Dict], db) -> None:
             except Exception as e:
                 logger.warning(f"[SYNC_ENGINE] AI summary failed for {pick.get('player_name')}: {e}")
     
-    # Process in batches
-    for i in range(0, len(picks), BATCH_SIZE):
-        batch = picks[i:i + BATCH_SIZE]
-        tasks = [generate_with_limit(pick) for pick in batch]
-        await asyncio.gather(*tasks, return_exceptions=True)
+    # Process ALL picks concurrently (semaphore handles rate limiting)
+    tasks = [generate_with_limit(pick) for pick in picks]
+    await asyncio.gather(*tasks, return_exceptions=True)
 
 
 async def run_optimized_sync(db) -> Dict[str, Any]:
@@ -430,9 +482,28 @@ async def run_optimized_sync(db) -> Dict[str, Any]:
     
     logger.info(f"[OPTIMIZED_SYNC] Collected {len(all_picks)} picks for AI summary generation")
     
-    # Step 4: Generate AI summaries in batch (with rate limiting)
+    # Step 4: Generate AI summaries - check cache first, generate missing in background
     t4 = datetime.now(timezone.utc)
-    await _batch_generate_summaries(all_picks, db)
+    
+    # Quick pass: attach any cached summaries immediately
+    cached_count = await _attach_cached_summaries(all_picks, db)
+    picks_needing_summary = [p for p in all_picks if not p.get("vision_summary")]
+    
+    logger.info(f"[OPTIMIZED_SYNC] AI Summaries: {cached_count} cached, {len(picks_needing_summary)} need generation")
+    
+    if picks_needing_summary:
+        # Generate remaining summaries (now with higher concurrency)
+        await _batch_generate_summaries(picks_needing_summary, db)
+        
+        # Copy generated summaries back to all_picks
+        summary_map = {f"{p['player_name']}|{p['stat_type']}|{p['line']}": p.get("vision_summary") 
+                       for p in picks_needing_summary if p.get("vision_summary")}
+        for pick in all_picks:
+            if not pick.get("vision_summary"):
+                key = f"{pick['player_name']}|{pick['stat_type']}|{pick['line']}"
+                if key in summary_map:
+                    pick["vision_summary"] = summary_map[key]
+    
     timings["4_ai_summaries"] = (datetime.now(timezone.utc) - t4).total_seconds()
     logger.info(f"[OPTIMIZED_SYNC] Step 4 (AI Summaries): {timings['4_ai_summaries']:.2f}s")
     

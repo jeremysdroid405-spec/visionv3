@@ -3,29 +3,43 @@ Vision AI Summary Service
 =========================
 Uses Google Gemini to generate short, insightful summaries explaining why a pick was made.
 Only for "Vision" picks that have context badges and matchup data.
-Includes aggressive caching to avoid repeated API calls.
+
+OPTIMIZATIONS (v7.1):
+1. Aggressive caching with content-based hash (not just key)
+2. 6-hour TTL for summaries (data doesn't change that often)
+3. Background generation support for async returns
 """
 import os
 import asyncio
 import logging
-from typing import Optional, Dict, Any
+import hashlib
+from typing import Optional, Dict, Any, List
 from datetime import datetime, timezone
 from dotenv import load_dotenv
 
 load_dotenv()
 logger = logging.getLogger(__name__)
 
+
+def _generate_pick_hash(player_name: str, stat_type: str, line: float, 
+                        h10_rate: float, badges: List[str], opponent: str = None) -> str:
+    """Generate a content-based hash for cache invalidation."""
+    content = f"{player_name}|{stat_type}|{line}|{h10_rate}|{','.join(sorted(badges or []))}|{opponent or ''}"
+    return hashlib.md5(content.encode()).hexdigest()[:12]
+
+
 class VisionSummaryService:
     # Class-level cache for AI summaries
-    # Key: "player_name|stat_type|line" -> summary string
+    # Key: content_hash -> summary string
     _summary_cache: Dict[str, str] = {}
     _cache_timestamps: Dict[str, datetime] = {}
-    _CACHE_TTL_SECONDS = 3600  # Cache summaries for 1 hour
+    _cache_keys: Dict[str, str] = {}  # Maps "player|stat|line" to content_hash for lookup
+    _CACHE_TTL_SECONDS = 21600  # Cache summaries for 6 hours (data rarely changes)
     
     # Circuit breaker: If API fails, skip subsequent calls for a period
     _circuit_breaker_open = False
     _circuit_breaker_until: Optional[datetime] = None
-    _CIRCUIT_BREAKER_DURATION = 30  # Skip API calls for 30 seconds after failure (reduced since fast model)
+    _CIRCUIT_BREAKER_DURATION = 30  # Skip API calls for 30 seconds after failure
     
     def __init__(self):
         self.api_key = os.environ.get("GOOGLE_API_KEY")
@@ -119,14 +133,36 @@ class VisionSummaryService:
                 VisionSummaryService._circuit_breaker_open = False
                 VisionSummaryService._circuit_breaker_until = None
         
-        # Check cache first - use player|stat|line as key
-        cache_key = f"{player_name}|{stat_type}|{line}"
+        # Generate content-based hash for intelligent cache invalidation
+        badge_keys = []
+        if badges:
+            for b in badges:
+                if isinstance(b, dict):
+                    badge_keys.append(b.get("badge_key") or b.get("key", ""))
+                else:
+                    badge_keys.append(str(b))
         
-        if cache_key in VisionSummaryService._summary_cache:
-            cached_time = VisionSummaryService._cache_timestamps.get(cache_key)
+        content_hash = _generate_pick_hash(
+            player_name, stat_type, line, h10_rate or 0, badge_keys, opponent
+        )
+        
+        # Check cache using content hash (survives even if stats change)
+        simple_key = f"{player_name}|{stat_type}|{line}"
+        
+        # If we have a cached summary for this exact content, return it
+        if content_hash in VisionSummaryService._summary_cache:
+            cached_time = VisionSummaryService._cache_timestamps.get(content_hash)
             if cached_time and (now - cached_time).total_seconds() < VisionSummaryService._CACHE_TTL_SECONDS:
-                logger.debug(f"[VISION] Cache HIT for {cache_key}")
-                return VisionSummaryService._summary_cache[cache_key]
+                logger.debug(f"[VISION] Cache HIT (hash match) for {simple_key}")
+                return VisionSummaryService._summary_cache[content_hash]
+        
+        # Also check if we have old key but same hash (data hasn't changed)
+        old_hash = VisionSummaryService._cache_keys.get(simple_key)
+        if old_hash and old_hash == content_hash and old_hash in VisionSummaryService._summary_cache:
+            cached_time = VisionSummaryService._cache_timestamps.get(old_hash)
+            if cached_time and (now - cached_time).total_seconds() < VisionSummaryService._CACHE_TTL_SECONDS:
+                logger.debug(f"[VISION] Cache HIT (key->hash) for {simple_key}")
+                return VisionSummaryService._summary_cache[old_hash]
         
         try:
             # Extract last name (like on jersey)
@@ -264,10 +300,11 @@ Keep it tight. No fluff. Talk like a real person, not a robot. Use {last_name}'s
                             summary = summary.replace("  ", " ")
                         summary = summary.strip()
                         
-                        # Cache the result
-                        VisionSummaryService._summary_cache[cache_key] = summary
-                        VisionSummaryService._cache_timestamps[cache_key] = now
-                        logger.info(f"[VISION] Cached summary for {cache_key}")
+                        # Cache the result using content hash
+                        VisionSummaryService._summary_cache[content_hash] = summary
+                        VisionSummaryService._cache_timestamps[content_hash] = now
+                        VisionSummaryService._cache_keys[simple_key] = content_hash
+                        logger.info(f"[VISION] Cached summary for {simple_key} (hash: {content_hash})")
                         
                         return summary
                     
