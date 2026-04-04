@@ -4,51 +4,36 @@ PropVision v7 Engine - True Probability & Diversified Parlay Optimizer
 
 MISSION: Extract every possible 0.5% of edge through mathematical precision.
 
-TRUE PROBABILITY FORMULA (0-100%):
-==================================
-True_Prob = (
-    Historical_Consistency × 0.45 +    # Recent form is king
-    Sharp_Market_Signal × 0.25 +       # Sharp money knows  
-    Statistical_Floor × 0.15 +          # Safety net analysis
-    Contextual_Modifiers × 0.15        # Game environment
-)
+BOARD SCORE FORMULA (v7.1 - Edge-First):
+=========================================
+Props In → Filter Trap Risk → Score → Apply Penalties → Board Picks
 
-HISTORICAL CONSISTENCY (45%):
-- L3 Hit Rate × 0.40 (most predictive - recency bias)
-- L5 Hit Rate × 0.35 (validates trend)
-- L10 Hit Rate × 0.25 (baseline stability)
+Board_Score = Sharp_Implied + PP_Edge + Hit_Rate_Avg - Penalties
 
-SHARP MARKET SIGNAL (25%):
-- Sharp Implied Probability (Bovada primary)
-- Separation confidence multiplier
-
-STATISTICAL FLOOR (15%):
-- Cushion = (Median - Line) / Line
-- Mode proximity bonus
-- Std deviation penalty
-
-CONTEXTUAL MODIFIERS (15%):
-- Defensive momentum (+/- 8%)
-- Whistle matrix (+/- 5%)
-- Usage vacuum (+/- 5%)
-- Blowout risk penalty (-10%)
+COMPONENTS:
+- Sharp_Implied: What sharp books say (smart money) - 38%+ minimum
+- PP_Edge: Sharp_Implied - PP_Implied (positive = PP giving better value)
+- Hit_Rate_Avg: (L5 + L10) / 2 (historical consistency)
 
 HARD KILLS (Auto-Disqualify):
-1. L3 < 33% (cold streak - 0/3 or 1/3)
-2. L5 < 40% (confirmed cold - 0-1/5)
-3. Sharp Implied < 52% (no edge)
-4. Line > Season Median (against the grain)
-5. Blowout HIGH + PTS/PRA (bench risk)
+1. Trap Risk / Hook Risk / Suspect Bait (filtered out entirely)
+2. L3 < 33% (cold streak - 0/3 or 1/3)  
+3. L5 < 40% (confirmed cold - 0-1/5)
+4. Sharp Implied < 38% (no sharp edge)
+5. Line > Season Median (against the grain) - except Demons
+6. Blowout HIGH + PTS/PRA (bench risk)
 
-SOFT KILLS (Penalties):
-1. Std Dev > 6.0 → -10%
-2. Trap Risk → -8%
-3. DvP 10-20 → -5%
+SOFT KILLS (Penalties applied to Board_Score):
+1. Std Dev > 6.0 → -10 points
+2. DvP 10-20 (neutral matchup) → -5 points
+3. Medium Blowout Risk → -5 points
 
-TIER CLASSIFICATION (by True Probability):
-- Safe Haven: ≥ 72% True Prob (Elite locks)
-- Front Lines: 62-71% True Prob (Strong plays)
-- War Zone: 52-61% True Prob (Value bets)
+NOTE: Trap Risk is a HARD FILTER, not a penalty.
+
+TIER CLASSIFICATION:
+- Safe Haven: Goblins only (alternate lines with edge)
+- Front Lines: Both Goblins and standard props
+- War Zone: Demons only (high-risk alternate lines)
 
 PARLAY OPTIMIZER:
 - 5 parlays per tier (2-leg through 6-leg)
@@ -67,35 +52,34 @@ import math
 logger = logging.getLogger(__name__)
 
 # =============================================================================
-# V7 CONSTANTS
+# V7.1 CONSTANTS - EDGE-FIRST FORMULA
 # =============================================================================
 
-# HISTORICAL CONSISTENCY WEIGHTS (sum = 1.0)
-WEIGHT_L3 = 0.40  # Most recent = most predictive
-WEIGHT_L5 = 0.35  # Validates trend
-WEIGHT_L10 = 0.25  # Baseline stability
-
-# TRUE PROBABILITY COMPONENT WEIGHTS (sum = 1.0)
-WEIGHT_HISTORICAL = 0.45
-WEIGHT_SHARP = 0.25
-WEIGHT_FLOOR = 0.15
-WEIGHT_CONTEXT = 0.15
-
-# PRIZEPICKS IMPLIED PROBABILITY (-137)
-PP_IMPLIED = 0.578  # 57.8%
+# PRIZEPICKS IMPLIED PROBABILITY (-137 standard odds)
+PP_IMPLIED = 57.8  # 57.8%
 
 # HARD KILL THRESHOLDS
 HARD_KILL_L3_MIN = 33.0  # Must hit at least 1/3
 HARD_KILL_L5_MIN = 40.0  # Must hit at least 2/5
-HARD_KILL_SHARP_MIN = 38.0  # Sharp must see edge (lowered for War Zone demons at 38%+)
+HARD_KILL_SHARP_MIN = 38.0  # Sharp must see edge
 HARD_KILL_SEPARATION_MIN = 3.0  # Min 3% separation
 
-# SOFT KILL PENALTIES
+# SOFT KILL PENALTIES (applied to Board Score)
 PENALTY_HIGH_VARIANCE = -10.0  # Std dev > 6.0
-PENALTY_TRAP_RISK = -8.0  # Hook/bait detected
 PENALTY_NEUTRAL_DVP = -5.0  # DvP rank 10-20
 PENALTY_BLOWOUT_MEDIUM = -5.0  # Medium blowout risk
 PENALTY_BLOWOUT_HIGH = -10.0  # High blowout risk (non-bench stats only)
+
+# NOTE: TRAP RISK is a HARD FILTER, not a penalty (removed PENALTY_TRAP_RISK)
+
+# LEGACY CONSTANTS (kept for backward compatibility with helper functions)
+WEIGHT_L3 = 0.40  # Most recent = most predictive
+WEIGHT_L5 = 0.35  # Validates trend
+WEIGHT_L10 = 0.25  # Baseline stability
+WEIGHT_HISTORICAL = 0.45  # Legacy - not used in new formula
+WEIGHT_SHARP = 0.25  # Legacy - not used in new formula
+WEIGHT_FLOOR = 0.15  # Legacy - not used in new formula
+WEIGHT_CONTEXT = 0.15  # Legacy - not used in new formula
 
 # TIER THRESHOLDS - SHARP IMPLIED (Primary classifier)
 # These match traditional sharp book tier windows
@@ -395,33 +379,41 @@ class TrueProbabilityEngine:
     
     def apply_soft_kills(
         self,
-        base_prob: float,
+        base_score: float,
         std_dev: float,
-        trap_risk: bool,
-        dvp_rank: Optional[int]
+        dvp_rank: Optional[float],
+        blowout_risk: str = "NONE",
+        stat_type: str = ""
     ) -> Tuple[float, List[str]]:
         """
-        Soft Kill Penalties - Returns (adjusted_prob, penalty_reasons)
+        Soft Kill Penalties - Applied to Board Score
+        NOTE: Trap risk is a HARD FILTER (filtered out entirely), not a penalty
+        Returns (adjusted_score, penalty_reasons)
         """
         penalties = []
-        adjusted = base_prob
+        adjusted = base_score
         
         # Penalty 1: High variance
-        if std_dev > 6.0:
+        if std_dev and std_dev > 6.0:
             adjusted += PENALTY_HIGH_VARIANCE
             penalties.append(f"High variance (std_dev={std_dev:.1f})")
         
-        # Penalty 2: Trap risk
-        if trap_risk:
-            adjusted += PENALTY_TRAP_RISK
-            penalties.append("Trap risk detected (hook/bait)")
-        
-        # Penalty 3: Neutral DvP
+        # Penalty 2: Neutral DvP (neither favorable nor unfavorable)
         if dvp_rank and 10 <= dvp_rank <= 20:
             adjusted += PENALTY_NEUTRAL_DVP
-            penalties.append(f"Neutral matchup (DvP #{dvp_rank})")
+            penalties.append(f"Neutral matchup (DvP #{dvp_rank:.1f})")
         
-        return max(0, min(100, adjusted)), penalties
+        # Penalty 3: Medium blowout risk
+        if blowout_risk == "MEDIUM":
+            adjusted += PENALTY_BLOWOUT_MEDIUM
+            penalties.append("Medium blowout risk")
+        
+        # Penalty 4: High blowout risk (only for scoring stats)
+        if blowout_risk == "HIGH" and stat_type in ["PTS", "PRA", "PA"]:
+            adjusted += PENALTY_BLOWOUT_HIGH
+            penalties.append("High blowout risk (scoring stat)")
+        
+        return adjusted, penalties
     
     def calculate_true_probability(
         self,
@@ -439,7 +431,7 @@ class TrueProbabilityEngine:
         std_dev: float,
         season_median: Optional[float],
         # Context data
-        dvp_rank: Optional[int],
+        dvp_rank: Optional[float],
         is_elite_defense: bool,
         is_weak_defense: bool,
         whistle_class: str,
@@ -452,19 +444,34 @@ class TrueProbabilityEngine:
         pp_price: Optional[float] = None
     ) -> Dict[str, Any]:
         """
-        Master calculation - Returns full probability breakdown
+        V7.1 EDGE-FIRST FORMULA
+        =======================
+        Board_Score = Sharp_Implied + PP_Edge + Hit_Rate_Avg - Penalties
+        
+        - Sharp_Implied: What smart money says (38%+ minimum)
+        - PP_Edge: Sharp_Implied - PP_Implied (positive = value)
+        - Hit_Rate_Avg: (L5 + L10) / 2 (historical consistency)
+        - Trap Risk: HARD FILTER (not a penalty)
         """
         result = {
             "true_probability": 0.0,
+            "board_score": 0.0,
             "tier": "disqualified",
             "is_killed": False,
             "kill_reason": None,
             "soft_penalties": [],
             "components": {},
-            "confidence": "LOW"
+            "confidence": "LOW",
+            "pp_edge": 0.0
         }
         
-        # Check hard kills first
+        # HARD FILTER: Trap risk (filtered out entirely, not penalized)
+        if trap_risk:
+            result["is_killed"] = True
+            result["kill_reason"] = "Trap risk detected (filtered)"
+            return result
+        
+        # Check other hard kills
         is_killed, kill_reason = self.check_hard_kills(
             l3_rate, l5_rate, sharp_implied, separation_pct,
             line, season_median, blowout_risk, stat_type, is_demon
@@ -475,59 +482,54 @@ class TrueProbabilityEngine:
             result["kill_reason"] = kill_reason
             return result
         
-        # Calculate components
-        historical = self.calculate_historical_consistency(l3_rate, l5_rate, l10_rate)
-        sharp = self.calculate_sharp_signal(sharp_implied, separation_pct)
-        floor = self.calculate_statistical_floor(line, median, mode, std_dev)
-        context = self.calculate_contextual_modifiers(
-            dvp_rank, is_elite_defense, is_weak_defense,
-            whistle_class, vacuum_modifier, blowout_risk, stat_type
-        )
+        # =================================================================
+        # V7.1 EDGE-FIRST FORMULA
+        # Board_Score = Sharp_Implied + PP_Edge + Hit_Rate_Avg - Penalties
+        # =================================================================
         
-        # Weight and combine
-        true_prob = (
-            (historical * WEIGHT_HISTORICAL) +
-            (sharp * WEIGHT_SHARP) +
-            (floor * WEIGHT_FLOOR) +
-            (context * WEIGHT_CONTEXT)
-        )
+        # Component 1: Sharp Implied (what smart money says)
+        sharp_pct = sharp_implied if sharp_implied > 1 else sharp_implied * 100
         
-        # Apply soft kills
-        true_prob, penalties = self.apply_soft_kills(
-            true_prob, std_dev, trap_risk, dvp_rank
-        )
-        
-        # Store components
-        result["components"] = {
-            "historical_consistency": round(historical, 2),
-            "sharp_signal": round(sharp, 2),
-            "statistical_floor": round(floor, 2),
-            "contextual_modifiers": round(context, 2),
-            "weights": {
-                "historical": WEIGHT_HISTORICAL,
-                "sharp": WEIGHT_SHARP,
-                "floor": WEIGHT_FLOOR,
-                "context": WEIGHT_CONTEXT
-            }
-        }
-        
-        result["soft_penalties"] = penalties
-        result["true_probability"] = round(true_prob, 2)
-        
-        # Classify tier by SHARP IMPLIED (primary) - this is what the sharps see
-        # True Probability is used for ranking WITHIN tiers
-        sharp_pct = sharp_implied * 100 if sharp_implied < 1 else sharp_implied
-        
-        # Calculate PP edge for War Zone demons
+        # Component 2: PP Edge (positive = PP giving better value than sharps)
         pp_edge = 0.0
         if pp_price is not None:
-            # Convert PP price to implied probability
             if pp_price < 0:
                 pp_implied = abs(pp_price) / (abs(pp_price) + 100) * 100
             else:
                 pp_implied = 100 / (pp_price + 100) * 100
-            pp_edge = pp_implied - sharp_pct
+            pp_edge = sharp_pct - pp_implied  # Positive = we're getting value
+        else:
+            pp_implied = PP_IMPLIED  # Default -137 = 57.8%
+            pp_edge = sharp_pct - pp_implied
         
+        # Component 3: Hit Rate Average (L5 + L10) / 2
+        l5_safe = l5_rate if l5_rate is not None else 0
+        l10_safe = l10_rate if l10_rate is not None else 0
+        hit_rate_avg = (l5_safe + l10_safe) / 2
+        
+        # Calculate Board Score (before penalties)
+        board_score_raw = sharp_pct + pp_edge + hit_rate_avg
+        
+        # Apply soft penalties
+        board_score, penalties = self.apply_soft_kills(
+            board_score_raw, std_dev, dvp_rank, blowout_risk, stat_type
+        )
+        
+        # Store components for transparency
+        result["components"] = {
+            "sharp_implied": round(sharp_pct, 2),
+            "pp_edge": round(pp_edge, 2),
+            "hit_rate_avg": round(hit_rate_avg, 2),
+            "raw_score": round(board_score_raw, 2),
+            "penalties_applied": penalties
+        }
+        
+        result["soft_penalties"] = penalties
+        result["board_score"] = round(board_score, 2)
+        result["true_probability"] = round(board_score, 2)  # Alias for compatibility
+        result["pp_edge"] = round(pp_edge, 2)
+        
+        # Classify tier by SHARP IMPLIED (primary classifier)
         if sharp_pct >= TIER_SAFE_HAVEN_SHARP_MIN:
             result["tier"] = "safe_haven"
             result["confidence"] = "HIGH"
@@ -536,16 +538,17 @@ class TrueProbabilityEngine:
             result["confidence"] = "MEDIUM"
         elif sharp_pct >= TIER_WAR_ZONE_SHARP_MIN:
             # WAR ZONE has special criteria for demons:
-            # 1. Must be a demon (checked in ferrari_tier_service)
-            # 2. Sharp implied >= 39%
+            # 1. Must be a demon
+            # 2. Sharp implied >= 38%
             # 3. L10 >= 50%
-            # 4. PP edge > 0 (PrizePicks giving better odds than sharps)
+            # 4. L5 > 40%
+            # 5. PP edge > 0 (PrizePicks giving better odds than sharps)
             l10_pct = l10_rate if l10_rate is not None else 0
+            l5_pct = l5_rate if l5_rate is not None else 0
             
-            if is_demon and l10_pct >= WAR_ZONE_L10_MIN and pp_edge > WAR_ZONE_PP_EDGE_MIN:
+            if is_demon and l10_pct >= WAR_ZONE_L10_MIN and l5_pct > 40 and pp_edge > WAR_ZONE_PP_EDGE_MIN:
                 result["tier"] = "war_zone"
                 result["confidence"] = "STANDARD"
-                result["pp_edge"] = round(pp_edge, 1)
             else:
                 # Doesn't meet War Zone demon criteria
                 result["tier"] = "below_threshold"
@@ -553,6 +556,8 @@ class TrueProbabilityEngine:
                 if is_demon:
                     if l10_pct < WAR_ZONE_L10_MIN:
                         result["disqualify_reason"] = f"L10 {l10_pct}% < {WAR_ZONE_L10_MIN}% required"
+                    elif l5_pct <= 40:
+                        result["disqualify_reason"] = f"L5 {l5_pct}% <= 40% required"
                     elif pp_edge <= WAR_ZONE_PP_EDGE_MIN:
                         result["disqualify_reason"] = f"No PP edge ({pp_edge:.1f}%)"
         else:

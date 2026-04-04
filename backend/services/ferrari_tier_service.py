@@ -721,6 +721,8 @@ class FerrariTierService:
                     
                     # Get V7 outputs
                     true_probability = v7_result["true_probability"]
+                    board_score = v7_result.get("board_score", true_probability)
+                    pp_edge = v7_result.get("pp_edge", 0)
                     v7_tier = v7_result["tier"]
                     v7_confidence = v7_result["confidence"]
                     v7_components = v7_result["components"]
@@ -820,14 +822,17 @@ class FerrariTierService:
                         "draftkings_price": sharp_market.get("draftkings_price"),
                         "fanduel_price": sharp_market.get("fanduel_price"),
                         # =====================================================
-                        # V7 TRUE PROBABILITY (NEW PRIMARY SCORING SYSTEM)
+                        # V7.1 BOARD SCORE (EDGE-FIRST FORMULA)
+                        # Board_Score = Sharp_Implied + PP_Edge + Hit_Rate_Avg - Penalties
                         # =====================================================
                         "true_probability": true_probability,
+                        "board_score": board_score,
+                        "pp_edge": pp_edge,
                         "v7_confidence": v7_confidence,
                         "v7_components": v7_components,
                         "v7_soft_penalties": v7_result.get("soft_penalties", []),
-                        # V7 uses true_probability for ranking, but keep ferrari_power_score for backwards compat
-                        "ferrari_power_score": true_probability,  # Map to same field for sorting
+                        # Board score is the primary sort field
+                        "ferrari_power_score": board_score,
                         # V7 HIT RATE BREAKDOWN (L3/L5/L10)
                         "l3_rate": round(l3_rate, 1),
                         "l3_hits": l3_hits,
