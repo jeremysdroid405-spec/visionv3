@@ -15,7 +15,7 @@ Key principles:
 import asyncio
 import logging
 from datetime import datetime, timezone
-from typing import Dict, List, Any, Optional, Tuple
+from typing import Dict, List, Any, Optional, Tuple, Tuple
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
 logger = logging.getLogger(__name__)
@@ -182,14 +182,17 @@ class FerrariTierBuilderV2:
         else:
             return 0.0
     
-    def calculate_board_score(self, hit_rates: Dict, dvp_penalty: float, is_demon: bool = False) -> float:
+    def calculate_board_score(self, hit_rates: Dict, prop: Dict, dvp_penalty: float, is_demon: bool = False) -> Tuple[float, Dict]:
         """
-        Calculate board score for ranking.
+        Calculate board score for ranking using multi-book sharp data.
         
-        Formula: Sharp Implied + PP Edge + Hit Rate Avg - Penalties
+        Formula: 
+        Score = Hit_Rate_Avg + Sharp_Edge + Book_Consensus_Bonus - Penalties
         
-        For simplicity (without sharp odds), we use:
-        Score = (L5 + L10) / 2 + (L10_avg - line) - dvp_penalty - variance_penalty
+        Sharp Edge = How much the hit rate exceeds the implied probability from odds
+        Book Consensus = Bonus if multiple books agree (lower spread)
+        
+        Returns: (score, edge_details)
         """
         l5 = hit_rates.get("l5_rate", 0)
         l10 = hit_rates.get("l10_rate", 0)
@@ -197,11 +200,40 @@ class FerrariTierBuilderV2:
         line = hit_rates.get("line", 0)
         variance = hit_rates.get("variance_l10", 0)
         
+        # Get multi-book data
+        sharp_line = prop.get("sharp_line", line)
+        consensus_line = prop.get("consensus_line", line)
+        avg_line = prop.get("avg_line", line)
+        books_count = prop.get("books_count", 1)
+        line_spread = prop.get("line_spread", 0)
+        odds = prop.get("odds", -110)
+        
+        # Calculate implied probability from odds
+        if odds < 0:
+            implied_prob = abs(odds) / (abs(odds) + 100) * 100
+        else:
+            implied_prob = 100 / (odds + 100) * 100
+        
         # Base score from hit rates
         hit_rate_avg = (l5 + l10) / 2
         
-        # Edge: how much the average exceeds the line
-        edge = ((l10_avg - line) / line * 100) if line > 0 else 0
+        # Sharp Edge: How much our hit rate beats the implied probability
+        sharp_edge = hit_rate_avg - implied_prob
+        
+        # Line Value Edge: How much average exceeds the sharp line
+        line_value = ((l10_avg - sharp_line) / sharp_line * 100) if sharp_line > 0 else 0
+        
+        # Book Consensus Bonus: More books = more reliable line
+        # Low spread between books = sharper/more accurate line
+        consensus_bonus = 0
+        if books_count >= 3:
+            consensus_bonus += 2
+        if books_count >= 5:
+            consensus_bonus += 3
+        if line_spread <= 1:
+            consensus_bonus += 3  # Books strongly agree
+        elif line_spread <= 2:
+            consensus_bonus += 1
         
         # Variance penalty (high variance = risky)
         variance_penalty = 0
@@ -211,9 +243,21 @@ class FerrariTierBuilderV2:
             variance_penalty = (variance - 20) * 0.3
         
         # Calculate final score
-        score = hit_rate_avg + edge + dvp_penalty - variance_penalty
+        score = hit_rate_avg + sharp_edge + line_value + consensus_bonus + dvp_penalty - variance_penalty
         
-        return round(score, 2)
+        edge_details = {
+            "hit_rate_avg": round(hit_rate_avg, 1),
+            "implied_prob": round(implied_prob, 1),
+            "sharp_edge": round(sharp_edge, 1),
+            "line_value": round(line_value, 1),
+            "consensus_bonus": consensus_bonus,
+            "variance_penalty": round(variance_penalty, 1),
+            "dvp_penalty": dvp_penalty,
+            "books_count": books_count,
+            "line_spread": line_spread
+        }
+        
+        return round(score, 2), edge_details
     
     def classify_tier(self, hit_rates: Dict, is_demon: bool = False) -> Optional[str]:
         """
@@ -302,8 +346,8 @@ class FerrariTierBuilderV2:
                 opponent = self._extract_opponent(prop, hit_rates.get("team", ""))
                 dvp_penalty = await self.get_dvp_penalty(opponent, stat_type)
                 
-                # Calculate board score
-                board_score = self.calculate_board_score(hit_rates, dvp_penalty)
+                # Calculate board score with multi-book data
+                board_score, edge_details = self.calculate_board_score(hit_rates, prop, dvp_penalty)
                 
                 # Classify tier
                 tier = self.classify_tier(hit_rates)
@@ -315,6 +359,9 @@ class FerrariTierBuilderV2:
                     "team": hit_rates.get("team"),
                     "stat_type": stat_type,
                     "line": line,
+                    "sharp_line": prop.get("sharp_line", line),
+                    "consensus_line": prop.get("consensus_line", line),
+                    "line_spread": prop.get("line_spread", 0),
                     "l5_rate": hit_rates.get("l5_rate"),
                     "l10_rate": hit_rates.get("l10_rate"),
                     "l5_avg": hit_rates.get("l5_avg"),
@@ -324,6 +371,10 @@ class FerrariTierBuilderV2:
                     "dvp_penalty": dvp_penalty,
                     "opponent": opponent,
                     "board_score": board_score,
+                    "edge_details": edge_details,
+                    "implied_prob": edge_details.get("implied_prob"),
+                    "sharp_edge": edge_details.get("sharp_edge"),
+                    "books_count": prop.get("books_count", 1),
                     "odds": prop.get("odds"),
                     "book": prop.get("book"),
                     "game_id": prop.get("game_id"),

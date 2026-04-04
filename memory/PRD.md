@@ -113,13 +113,18 @@ Every sync operation:
 - [x] Fresh hit rate calculation from BDL
 - [x] Database cleanup (removed 440K stale docs)
 - [x] Odds API integration (player props via alternate markets)
+- [x] Multi-book aggregation (7 books: FanDuel, DraftKings, BetMGM, BetRivers, BetOnline, WilliamHill, Fanatics)
+- [x] Sharp line calculation (lowest line from sharp books)
+- [x] Consensus line calculation (median across all books)
+- [x] Line spread tracking (gap between highest/lowest)
+- [x] Sharp edge formula (hit rate - implied probability)
 - [x] Ferrari tier builder V2 with variance/DNP detection
 - [x] BDL ID on all player docs in master hub
 
 ### P1 - High Priority
 - [ ] Update frontend to use V4 API endpoints
 - [ ] Add variance badge to pick cards ("HIGH VARIANCE" warning)
-- [ ] Real-time line movement tracking from Odds API
+- [ ] Add multi-book edge visualization to pick cards
 
 ### P2 - Medium Priority
 - [ ] Google OAuth

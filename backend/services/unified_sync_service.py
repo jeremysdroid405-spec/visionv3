@@ -530,22 +530,86 @@ class UnifiedSyncService:
             
             logger.info(f"[ODDS] Fetched {len(all_props)} raw props")
             
-            # Deduplicate - keep lowest line for each player/stat combo
-            deduped = {}
+            # Group by player/stat to get multi-book data
+            grouped = {}
             for prop in all_props:
                 key = f"{prop['player_name']}_{prop['stat_type']}"
-                if key not in deduped or prop['line'] < deduped[key]['line']:
-                    deduped[key] = prop
+                if key not in grouped:
+                    grouped[key] = {
+                        "player_name": prop["player_name"],
+                        "stat_type": prop["stat_type"],
+                        "home_team": prop["home_team"],
+                        "away_team": prop["away_team"],
+                        "game_id": prop["game_id"],
+                        "commence_time": prop["commence_time"],
+                        "books": {},
+                        "synced_at": datetime.now(timezone.utc)
+                    }
+                
+                book = prop["book"]
+                line = prop["line"]
+                odds = prop["odds"]
+                
+                # Store each book's line
+                if book not in grouped[key]["books"]:
+                    grouped[key]["books"][book] = {"line": line, "odds": odds}
+                elif line < grouped[key]["books"][book]["line"]:
+                    # Keep the lowest line for this book
+                    grouped[key]["books"][book] = {"line": line, "odds": odds}
             
-            all_props = list(deduped.values())
-            logger.info(f"[ODDS] After dedup: {len(all_props)} props")
+            # Calculate consensus/sharp line for each prop
+            final_props = []
+            for key, data in grouped.items():
+                books = data["books"]
+                
+                # Get all lines from all books
+                all_lines = [b["line"] for b in books.values()]
+                
+                # Sharp line = lowest line (books set lower lines to protect themselves)
+                sharp_line = min(all_lines)
+                
+                # Consensus line = median of all books
+                sorted_lines = sorted(all_lines)
+                mid = len(sorted_lines) // 2
+                consensus_line = sorted_lines[mid] if len(sorted_lines) % 2 == 1 else (sorted_lines[mid-1] + sorted_lines[mid]) / 2
+                
+                # Average line
+                avg_line = sum(all_lines) / len(all_lines)
+                
+                # Get sharp book's odds (typically FanDuel/DraftKings are sharpest)
+                sharp_books = ["fanduel", "draftkings", "betmgm", "caesars"]
+                sharp_odds = -110  # default
+                for sb in sharp_books:
+                    if sb in books:
+                        sharp_odds = books[sb]["odds"]
+                        break
+                
+                final_props.append({
+                    "player_name": data["player_name"],
+                    "stat_type": data["stat_type"],
+                    "line": sharp_line,  # Use sharp (lowest) line
+                    "sharp_line": sharp_line,
+                    "consensus_line": round(consensus_line, 1),
+                    "avg_line": round(avg_line, 1),
+                    "odds": sharp_odds,
+                    "books_count": len(books),
+                    "books": books,  # Store all book data
+                    "line_spread": round(max(all_lines) - min(all_lines), 1),  # Spread between books
+                    "home_team": data["home_team"],
+                    "away_team": data["away_team"],
+                    "game_id": data["game_id"],
+                    "commence_time": data["commence_time"],
+                    "synced_at": data["synced_at"]
+                })
+            
+            logger.info(f"[ODDS] After multi-book aggregation: {len(final_props)} unique props from {len(all_props)} raw lines")
             
             # Clear old props and insert new ones
             await self.db.odds_api_props.delete_many({})
             
-            if all_props:
-                await self.db.odds_api_props.insert_many(all_props)
-                props_synced = len(all_props)
+            if final_props:
+                await self.db.odds_api_props.insert_many(final_props)
+                props_synced = len(final_props)
             
             # Validate
             count = await self.db.odds_api_props.count_documents({})
