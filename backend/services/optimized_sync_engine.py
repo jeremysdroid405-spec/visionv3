@@ -428,6 +428,18 @@ async def run_optimized_sync(db) -> Dict[str, Any]:
     
     logger.info("[OPTIMIZED_SYNC] Starting unified pipeline...")
     
+    # Step 0: Sync BDL Game Logs (ensures fresh hit rate data)
+    # This updates nba_master_hub_2026.bdl_game_logs which cached_board uses
+    t0 = datetime.now(timezone.utc)
+    try:
+        from services.bdl_game_logs_sync_batched import run_bdl_game_logs_sync_batched
+        logs_result = await run_bdl_game_logs_sync_batched(db)
+        timings["0_game_logs_sync"] = (datetime.now(timezone.utc) - t0).total_seconds()
+        logger.info(f"[OPTIMIZED_SYNC] Step 0 (Game Logs): {timings['0_game_logs_sync']:.2f}s - synced {logs_result.get('players_synced', 0)} players")
+    except Exception as e:
+        logger.warning(f"[OPTIMIZED_SYNC] Game logs sync failed (non-fatal): {e}")
+        timings["0_game_logs_sync"] = (datetime.now(timezone.utc) - t0).total_seconds()
+    
     # Step 1: Fetch global cache ONCE (parallel fetch)
     t1 = datetime.now(timezone.utc)
     cache = await fetch_global_cache(db)
