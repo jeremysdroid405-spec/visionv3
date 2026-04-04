@@ -77,7 +77,7 @@ PP_IMPLIED = 0.578  # 57.8%
 # V7 TIER THRESHOLDS (True Probability %)
 TIER_SAFE_HAVEN_MIN = 72.0
 TIER_FRONT_LINES_MIN = 62.0
-TIER_WAR_ZONE_MIN = 52.0
+TIER_WAR_ZONE_MIN = 47.0  # Lowered for Demons only (must have multiplier)
 
 # HARD KILL THRESHOLDS
 HARD_KILL_L3_MIN = 33.0
