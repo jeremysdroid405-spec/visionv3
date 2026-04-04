@@ -170,9 +170,11 @@ async def sync_star_profiles():
 
 
 @router.get("/v3/vacuum/live-alerts")
-async def get_live_vacuum_alerts(response: Response):
+async def get_live_vacuum_alerts(response: Response, refresh: bool = False):
     """
     Get live usage vacuum alerts for frontend display.
+    
+    If refresh=True, fetches fresh injury data from database first.
     
     Returns formatted alerts showing which players are benefiting from
     late-breaking injury news (within last 120 minutes).
@@ -191,6 +193,22 @@ async def get_live_vacuum_alerts(response: Response):
     response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
     
     service = get_service()
+    
+    # If refresh requested or no recent check, fetch fresh injuries
+    should_refresh = refresh
+    if service.last_injury_check:
+        mins_since_check = (datetime.now(timezone.utc) - service.last_injury_check).total_seconds() / 60
+        if mins_since_check > 5:  # Auto-refresh if last check > 5 mins ago
+            should_refresh = True
+    else:
+        should_refresh = True
+    
+    if should_refresh:
+        try:
+            await service.check_injuries()
+        except Exception as e:
+            logger.warning(f"[VacuumAlerts] Refresh failed: {e}")
+    
     vacuums = service.get_active_vacuums()
     
     # Format alerts for frontend display

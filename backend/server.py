@@ -884,6 +884,8 @@ async def scheduled_hourly_injury_sync():
     
     Runs every 60 minutes to catch injury report updates.
     Critical for Usage Ripple calculations and player availability.
+    
+    Also triggers Vacuum Service to detect usage vacuums from injured stars.
     """
     logger.info("=" * 70)
     logger.info("[SCHEDULER] HOURLY INJURY SYNC (INTERVAL)")
@@ -894,6 +896,13 @@ async def scheduled_hourly_injury_sync():
         try:
             result = await injury_service.sync_injuries()
             logger.info(f"[SCHEDULER] Hourly injury sync: {result.get('injuries_synced', 0)} injuries, {result.get('usage_ripple_updates', 0)} ripple updates")
+            
+            # ALSO trigger Vacuum Service to detect usage vacuums
+            from services.injury_vacuum_service import get_vacuum_service
+            vacuum_service = get_vacuum_service(db)
+            vacuum_result = await vacuum_service.check_injuries()
+            logger.info(f"[SCHEDULER] Vacuum check: {vacuum_result.get('vacuums_triggered', [])} vacuums triggered")
+            
             logger.info("=" * 70)
         except Exception as e:
             logger.error(f"[SCHEDULER] Hourly injury sync failed: {e}")
@@ -922,6 +931,38 @@ async def scheduled_half_hourly_social_sync():
             logger.error(f"[SCHEDULER] Half-hourly social sync failed: {e}")
     else:
         logger.error("[SCHEDULER] Social signal engine not initialized")
+
+
+async def scheduled_live_injury_check():
+    """
+    LIVE INJURY CHECK (Every 5 minutes)
+    
+    Runs every 5 minutes to catch late-breaking injury news.
+    This powers the "Live Injury Advantage" section on the dashboard.
+    
+    - Syncs fresh injury data from ESPN/BDL
+    - Triggers vacuum service to detect usage vacuums
+    - Updates beneficiary calculations
+    """
+    logger.info("[SCHEDULER] LIVE INJURY CHECK (5 min interval)")
+    
+    try:
+        # Sync injuries from ESPN
+        if injury_service:
+            result = await injury_service.sync_injuries()
+            logger.info(f"[SCHEDULER] Injury sync: {result.get('injuries_synced', 0)} injuries")
+        
+        # Trigger vacuum service
+        from services.injury_vacuum_service import get_vacuum_service
+        vacuum_service = get_vacuum_service(db)
+        vacuum_result = await vacuum_service.check_injuries()
+        
+        vacuums_triggered = vacuum_result.get('vacuums_triggered', [])
+        if vacuums_triggered:
+            logger.info(f"[SCHEDULER] Vacuums triggered: {[v.get('injured_player') for v in vacuums_triggered]}")
+        
+    except Exception as e:
+        logger.error(f"[SCHEDULER] Live injury check failed: {e}")
 
 
 @app.on_event("startup")
@@ -1168,6 +1209,16 @@ async def startup_event():
         replace_existing=True
     )
     
+    # 5. LIVE INJURY CHECK (Every 5 minutes)
+    # Powers the "Live Injury Advantage" section - needs frequent updates
+    scheduler.add_job(
+        scheduled_live_injury_check,
+        IntervalTrigger(minutes=5, timezone=SCHEDULER_TIMEZONE),
+        id='live_injury_check',
+        name='Live Injury Check (5 min interval)',
+        replace_existing=True
+    )
+    
     # NOTE: Vision Intel enrichment now runs at the END of every sync cycle
     # in adaptive_sync_engine.py - no separate scheduled job needed
     
@@ -1278,6 +1329,7 @@ async def startup_event():
     logger.info(f"[SCHEDULER] Hourly Full Sync: Every 60 min (id: hourly_full_sync)")
     logger.info(f"[SCHEDULER] Hourly Badge Sync: Every 60 min (id: hourly_badge_sync)")
     logger.info(f"[SCHEDULER] Hourly Injury Sync: Every 60 min (id: hourly_injury_sync)")
+    logger.info(f"[SCHEDULER] Live Injury Check: Every 5 min (id: live_injury_check)")
     logger.info(f"[SCHEDULER] Half-Hourly Social: Every 30 min (id: half_hourly_social_sync)")
     logger.info(f"[SCHEDULER] === DAILY CRON JOBS ===")
     logger.info(f"[SCHEDULER] Daily Hard Refresh: 04:00 AM EST (id: daily_hard_refresh)")

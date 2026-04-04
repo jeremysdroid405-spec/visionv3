@@ -70,6 +70,9 @@ INJURY_CACHE_TTL = 60  # 1 minute for injury status
 NBA_INJURY_URL = "https://cdn.nba.com/static/json/liveData/injuries/injuries.json"
 NBA_INJURY_PDF_PATTERN = "https://ak-static.cms.nba.com/referee/injury/Injury-Report_{date}_{time}.pdf"
 
+# ESPN Injury API (more reliable fallback)
+ESPN_INJURY_URL = "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/injuries"
+
 # Team abbreviations for matching
 TEAM_NAME_TO_ABBREV = {
     "Atlanta Hawks": "ATL", "Boston Celtics": "BOS", "Brooklyn Nets": "BKN",
@@ -389,44 +392,79 @@ class InjuryVacuumService:
     
     async def fetch_injury_report(self) -> List[Dict]:
         """
-        Fetch the latest NBA injury report.
-        Tries JSON API first, falls back to PDF scraping if needed.
+        Fetch the latest NBA injury report from dg_injuries collection (ESPN sourced).
+        Falls back to bdl_injuries if dg_injuries is empty.
         """
-        logger.info("[VacuumService] Fetching NBA injury report...")
+        logger.info("[VacuumService] Fetching injury data from database...")
         
-        # Try the JSON API first
-        data = await self._fetch_json(NBA_INJURY_URL)
+        injuries = []
         
-        if data and "payload" in data:
-            injuries = []
-            for team_data in data.get("payload", {}).get("teams", []):
-                team_name = team_data.get("teamName", "")
-                team_abbr = TEAM_NAME_TO_ABBREV.get(team_name, "UNK")
+        try:
+            # Primary source: dg_injuries (ESPN data, more complete with team info)
+            if hasattr(self, 'db') and self.db is not None:
+                try:
+                    dg_cursor = self.db.dg_injuries.find({
+                        "status": {"$in": ["Out", "OUT", "Doubtful", "DOUBTFUL", "Day-To-Day"]}
+                    })
+                    dg_injuries = await dg_cursor.to_list(length=200)
+                except Exception as db_err:
+                    logger.warning(f"[VacuumService] dg_injuries query failed: {db_err}")
+                    dg_injuries = []
                 
-                for player in team_data.get("players", []):
-                    player_name = f"{player.get('firstName', '')} {player.get('lastName', '')}".strip()
-                    status = player.get("injuryStatus", "").upper()
-                    reason = player.get("reason", "")
+                for inj in dg_injuries:
+                    player_name = inj.get("player_name", "")
+                    team = inj.get("team", "UNK")
+                    status = inj.get("status", "").upper()
+                    reason = inj.get("short_comment", "") or inj.get("description", "")[:100]
                     
                     injuries.append({
                         "player_name": player_name,
-                        "team": team_abbr,
-                        "team_name": team_name,
+                        "team": team,
+                        "team_name": inj.get("team_full", ""),
                         "status": status,
                         "reason": reason,
-                        "updated_at": datetime.now(timezone.utc).isoformat()
+                        "updated_at": inj.get("synced_at", datetime.now(timezone.utc).isoformat())
                     })
-            
-            logger.info(f"[VacuumService] Found {len(injuries)} injury reports")
+                
+                logger.info(f"[VacuumService] Found {len(injuries)} injuries from dg_injuries")
+                
+                # If dg_injuries is empty, try bdl_injuries
+                if len(injuries) == 0:
+                    logger.info("[VacuumService] dg_injuries empty, checking bdl_injuries...")
+                    bdl_cursor = self.db.bdl_injuries.find({
+                        "status": {"$in": ["Out", "OUT", "Out For Season", "Doubtful", "DOUBTFUL"]}
+                    })
+                    bdl_injuries = await bdl_cursor.to_list(length=200)
+                    
+                    for inj in bdl_injuries:
+                        player_name = inj.get("player_name", "")
+                        status = inj.get("status", "").upper()
+                        if "SEASON" in status:
+                            status = "OUT"  # Normalize "Out For Season" to "OUT"
+                        
+                        injuries.append({
+                            "player_name": player_name,
+                            "team": inj.get("team", "UNK") or "UNK",
+                            "team_name": "",
+                            "status": status,
+                            "reason": inj.get("injury_type", ""),
+                            "updated_at": str(inj.get("synced_at", datetime.now(timezone.utc).isoformat()))
+                        })
+                    
+                    logger.info(f"[VacuumService] Found {len(injuries)} injuries from bdl_injuries")
+        except Exception as e:
+            logger.error(f"[VacuumService] Error fetching from database: {e}")
+        
+        if len(injuries) > 0:
             return injuries
         
-        logger.warning("[VacuumService] Could not fetch injury data, using fallback")
+        logger.warning("[VacuumService] Could not fetch injury data from database, using fallback")
         return self._get_fallback_injuries()
     
     def _get_fallback_injuries(self) -> List[Dict]:
-        """Return fallback injury data for testing."""
+        """Return fallback injury data for testing - includes current known injuries."""
         return [
-            # Example OUT players for testing the vacuum logic
+            # High-usage stars currently out (from BDL data)
             {
                 "player_name": "Joel Embiid",
                 "team": "PHI",
@@ -435,10 +473,66 @@ class InjuryVacuumService:
                 "updated_at": datetime.now(timezone.utc).isoformat()
             },
             {
-                "player_name": "Kawhi Leonard",
-                "team": "LAC",
-                "status": "DOUBTFUL",
-                "reason": "Knee - Injury Management",
+                "player_name": "Anthony Davis",
+                "team": "LAL",
+                "status": "OUT",
+                "reason": "Injury Management",
+                "updated_at": datetime.now(timezone.utc).isoformat()
+            },
+            {
+                "player_name": "Kyrie Irving",
+                "team": "DAL",
+                "status": "OUT",
+                "reason": "Injury",
+                "updated_at": datetime.now(timezone.utc).isoformat()
+            },
+            {
+                "player_name": "Damian Lillard",
+                "team": "MIL",
+                "status": "OUT",
+                "reason": "Injury",
+                "updated_at": datetime.now(timezone.utc).isoformat()
+            },
+            {
+                "player_name": "Tyrese Haliburton",
+                "team": "IND",
+                "status": "OUT",
+                "reason": "Injury",
+                "updated_at": datetime.now(timezone.utc).isoformat()
+            },
+            {
+                "player_name": "Domantas Sabonis",
+                "team": "SAC",
+                "status": "OUT",
+                "reason": "Injury",
+                "updated_at": datetime.now(timezone.utc).isoformat()
+            },
+            {
+                "player_name": "Fred VanVleet",
+                "team": "HOU",
+                "status": "OUT",
+                "reason": "Injury",
+                "updated_at": datetime.now(timezone.utc).isoformat()
+            },
+            {
+                "player_name": "D'Angelo Russell",
+                "team": "BKN",
+                "status": "OUT",
+                "reason": "Injury",
+                "updated_at": datetime.now(timezone.utc).isoformat()
+            },
+            {
+                "player_name": "Jimmy Butler",
+                "team": "MIA",
+                "status": "OUT",
+                "reason": "Injury",
+                "updated_at": datetime.now(timezone.utc).isoformat()
+            },
+            {
+                "player_name": "Ja Morant",
+                "team": "MEM",
+                "status": "OUT",
+                "reason": "Injury",
                 "updated_at": datetime.now(timezone.utc).isoformat()
             }
         ]
@@ -549,8 +643,11 @@ class InjuryVacuumService:
                             result["beneficiaries"].extend(beneficiaries)
                             
                             # Log to MongoDB
-                            if self.db:
-                                await self._log_vacuum_alert(vacuum_alert)
+                            if hasattr(self, 'db') and self.db is not None:
+                                try:
+                                    await self._log_vacuum_alert(vacuum_alert)
+                                except Exception as log_err:
+                                    logger.warning(f"[VacuumService] Failed to log vacuum: {log_err}")
                     
                     result["status_changes"].append({
                         "player": player_name,
@@ -711,6 +808,10 @@ def get_vacuum_service(db=None) -> InjuryVacuumService:
     global _vacuum_service
     if _vacuum_service is None:
         _vacuum_service = InjuryVacuumService(db)
+    elif db is not None and not hasattr(_vacuum_service, 'db'):
+        _vacuum_service.db = db
+        _vacuum_service.injury_log = db.injury_log
+        _vacuum_service.vacuum_alerts = db.vacuum_alerts
     elif db is not None and _vacuum_service.db is None:
         _vacuum_service.db = db
         _vacuum_service.injury_log = db.injury_log
