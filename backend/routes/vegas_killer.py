@@ -295,3 +295,182 @@ async def get_backtest_results():
             "success": False,
             "error": "No backtest results found. Run the backtest first."
         }
+
+
+
+# =============================================================================
+# BOARD ENRICHMENT - Add Vegas Killer predictions to all props
+# =============================================================================
+
+@router.get("/enrich-board")
+async def enrich_board_with_predictions():
+    """
+    Get all current props from the board and enrich with Vegas Killer predictions.
+    
+    This is the forward-looking integration - what should we bet TODAY.
+    """
+    model = get_model()
+    
+    # Get current props from the cached board
+    board = db['dg_cached_board']
+    players = list(board.find({}, {"_id": 0}).limit(200))
+    
+    if not players:
+        return {
+            "success": False,
+            "error": "No props found in board. Run sync first."
+        }
+    
+    enriched = []
+    stat_map = {
+        'points': 'PTS',
+        'rebounds': 'REB',
+        'assists': 'AST',
+        'threes': '3PM',
+        'pts+reb+ast': 'PRA',
+        'pra': 'PRA',
+        'three_pointers_made': '3PM',
+    }
+    
+    for player in players:
+        player_name = player.get('player_name')
+        team = player.get('team')
+        opponent = player.get('opponent')
+        
+        # Get props array
+        props = player.get('props', [])
+        
+        for prop in props:
+            stat_type_raw = prop.get('stat_type', '').lower()
+            line = prop.get('line')
+            
+            if not line:
+                continue
+            
+            # Map stat type
+            stat_type = stat_map.get(stat_type_raw)
+            if not stat_type:
+                continue
+            
+            # Get prediction
+            try:
+                result = model.predict(
+                    player_name=player_name,
+                    stat_type=stat_type,
+                    line=float(line),
+                    opponent_team=opponent,
+                )
+                
+                if 'error' not in result and result.get('predicted') is not None:
+                    # Result is flat, not nested in 'prediction'
+                    enriched_prop = {
+                        "player_name": player_name,
+                        "team": team,
+                        "opponent": opponent,
+                        "stat_type": stat_type,
+                        "line": line,
+                        "board_tier": prop.get('tier'),
+                        "board_direction": prop.get('direction'),
+                        "board_score": prop.get('board_score'),
+                        # Vegas Killer predictions
+                        "vk_predicted": float(result.get('predicted')),
+                        "vk_edge": float(result.get('edge', 0)),
+                        "vk_prob_over": float(result.get('prob_over', 50)),
+                        "vk_prob_under": float(result.get('prob_under', 50)),
+                        "vk_recommendation": result.get('recommendation'),
+                        "vk_data_source": result.get('data_source'),
+                        # Key features
+                        "l5_avg": result.get('features', {}).get('l5_avg'),
+                        "usage_rate": result.get('v2_advanced_stats', {}).get('usage_rate'),
+                    }
+                    
+                    # Flag disagreements (traps)
+                    board_dir = prop.get('direction', '').upper()
+                    prob_over = result.get('prob_over', 50)
+                    prob_under = result.get('prob_under', 50)
+                    vk_dir = 'OVER' if prob_over > 55 else 'UNDER' if prob_under > 55 else 'NEUTRAL'
+                    
+                    if board_dir and vk_dir != 'NEUTRAL' and board_dir != vk_dir:
+                        enriched_prop['trap_alert'] = True
+                        enriched_prop['trap_reason'] = f"Board says {board_dir} but VK predicts {result.get('predicted')} ({vk_dir} {prob_over if vk_dir == 'OVER' else prob_under}%)"
+                    else:
+                        enriched_prop['trap_alert'] = False
+                    
+                    enriched.append(enriched_prop)
+                    
+            except Exception as e:
+                logger.error(f"Error predicting {player_name} {stat_type}: {e}")
+                continue
+    
+    # Sort by confidence
+    enriched.sort(key=lambda x: max(x.get('vk_prob_over', 50), x.get('vk_prob_under', 50)), reverse=True)
+    
+    # Summary
+    strong_overs = [p for p in enriched if p.get('vk_prob_over', 0) >= 65]
+    strong_unders = [p for p in enriched if p.get('vk_prob_under', 0) >= 65]
+    traps = [p for p in enriched if p.get('trap_alert')]
+    
+    return {
+        "success": True,
+        "total_props": len(enriched),
+        "summary": {
+            "strong_overs": len(strong_overs),
+            "strong_unders": len(strong_unders),
+            "traps_detected": len(traps),
+        },
+        "top_plays": enriched[:20],
+        "traps": traps[:10],
+        "all_predictions": enriched,
+    }
+
+
+@router.post("/predict-slate")
+async def predict_full_slate(player_lines: List[dict]):
+    """
+    Predict a full slate of player props.
+    
+    Input: [{"player_name": "LeBron James", "stat_type": "PTS", "line": 25.5}, ...]
+    """
+    model = get_model()
+    
+    results = []
+    
+    for item in player_lines:
+        player_name = item.get('player_name')
+        stat_type = item.get('stat_type')
+        line = item.get('line')
+        
+        if not all([player_name, stat_type, line]):
+            continue
+        
+        try:
+            result = model.predict(
+                player_name=player_name,
+                stat_type=stat_type,
+                line=float(line),
+            )
+            
+            if 'error' not in result:
+                pred = result.get('prediction', {})
+                results.append({
+                    "player_name": player_name,
+                    "stat_type": stat_type,
+                    "line": line,
+                    "predicted": pred.get('predicted'),
+                    "edge": pred.get('edge'),
+                    "prob_over": pred.get('prob_over'),
+                    "prob_under": pred.get('prob_under'),
+                    "recommendation": pred.get('recommendation'),
+                })
+        except:
+            continue
+    
+    # Sort by edge
+    results.sort(key=lambda x: abs(x.get('edge', 0)), reverse=True)
+    
+    return {
+        "success": True,
+        "predictions": results,
+        "best_overs": [r for r in results if r.get('prob_over', 0) >= 60][:5],
+        "best_unders": [r for r in results if r.get('prob_under', 0) >= 60][:5],
+    }

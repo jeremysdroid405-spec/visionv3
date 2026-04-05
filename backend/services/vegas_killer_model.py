@@ -1362,12 +1362,15 @@ class VegasKillerModel:
         if not features:
             return {"error": "Feature extraction failed"}
         
-        # Build feature vector
-        X = pd.DataFrame([features])[feature_cols].fillna(0).replace([np.inf, -np.inf], 0)
+        # Build feature vector - ensure all required features exist
+        feature_dict = {col: features.get(col, 0) for col in feature_cols}
+        X = pd.DataFrame([feature_dict])
+        X = X.fillna(0).replace([np.inf, -np.inf], 0)
         X_scaled = scaler.transform(X)
         
         # Predict
-        prediction = model.predict(X_scaled)[0]
+        raw_prediction = model.predict(X_scaled)[0]
+        prediction = float(raw_prediction)  # Convert numpy to Python float
         
         result = {
             "player_name": player_name,
