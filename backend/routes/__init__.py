@@ -35,6 +35,7 @@ from .headshots import router as headshots_router, set_headshot_db
 from .ferrari_tiers import router as ferrari_router, set_ferrari_db
 from .vacuum import router as vacuum_router, set_vacuum_db
 from .momentum import router as momentum_router, set_momentum_db
+from .regression import router as regression_router
 
 
 def register_all_routes(app, engine, game_lock_engine=None, db=None, 
@@ -175,3 +176,6 @@ def register_all_routes(app, engine, game_lock_engine=None, db=None,
     if db is not None:
         set_momentum_db(db)
     app.include_router(momentum_router, prefix="/api")
+    
+    # Vegas Regression Model - Alternative prediction system
+    app.include_router(regression_router)

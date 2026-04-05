@@ -5,7 +5,43 @@ PropVision is a sports analytics platform for NBA player props, providing data-d
 
 ---
 
-## Latest Update (2026-04-05): PropVision v7.2 - Mode Edge Board Score Formula
+## Latest Update (2026-04-05): Vegas Regression Model - Alternative Prediction System
+
+### NEW: Multiple Linear Regression Model
+Built a parallel prediction system to reverse-engineer Vegas line-setting methodology.
+
+**Key Insight**: The existing Board Score approach is backward-looking ("how often did he hit this line?"). The Regression approach is forward-looking ("what will he score tonight?").
+
+### Regression Model Formula
+```
+Predicted_Stat = (L5_Avg × 0.50) + (L10_Avg × 0.30) + (Season_Avg × 0.20)
+               + Matchup_Adjustment
+               + Minutes_Adjustment
+               + Trend_Adjustment
+               + Home/Away_Adjustment
+               + Rest_Day_Adjustment
+```
+
+### Comparison Results (Current Board)
+- Safe Haven: 100% agreement (Regression confirms all picks)
+- Front Lines: 80% agreement
+- War Zone: 33% agreement (expected - high risk plays)
+
+### New API Endpoints
+| Endpoint | Purpose |
+|----------|---------|
+| `POST /api/v3/regression/predict` | Single player prediction |
+| `GET /api/v3/regression/compare/{tier}` | Compare Board Score vs Regression |
+| `GET /api/v3/regression/compare/all` | All tiers comparison |
+| `GET /api/v3/regression/flags` | Find potential traps (disagreements) |
+
+### Files Added
+- `/app/backend/services/vegas_regression_model.py` (Core regression logic)
+- `/app/backend/routes/regression.py` (API endpoints)
+
+---
+
+## Previous Update (2026-04-05): PropVision v7.2 - Mode Edge Board Score Formula
 
 ### VERIFIED WORKING (Manual Testing)
 - ✅ All 3 tiers populate (Safe Haven: 10, Front Lines: 10, War Zone: 5)
