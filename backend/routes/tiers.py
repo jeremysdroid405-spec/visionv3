@@ -165,6 +165,103 @@ async def _get_board_pick_keys(engine, board_name: str, sidecar) -> Set[str]:
         return set()
 
 
+# Vegas Killer Model Integration
+_vegas_killer_model = None
+_sync_db = None
+
+
+def get_vegas_killer():
+    """Get or initialize Vegas Killer model instance using sync PyMongo."""
+    global _vegas_killer_model, _sync_db
+    if _vegas_killer_model is None:
+        try:
+            from services.vegas_killer_model import VegasKillerModel
+            from pymongo import MongoClient
+            import os
+            
+            # Create sync MongoDB connection for VK model
+            if _sync_db is None:
+                mongo_url = os.environ.get("MONGO_URL", "mongodb://localhost:27017")
+                db_name = os.environ.get("DB_NAME", "pick_vision")
+                client = MongoClient(mongo_url)
+                _sync_db = client[db_name]
+            
+            _vegas_killer_model = VegasKillerModel(_sync_db)
+            _vegas_killer_model.load_models()
+            logger.info("[VK] Vegas Killer model loaded for tier enrichment")
+        except Exception as e:
+            logger.warning(f"[VK] Failed to load Vegas Killer model: {e}")
+            import traceback
+            logger.warning(f"[VK] Traceback: {traceback.format_exc()}")
+    return _vegas_killer_model
+
+
+def enrich_picks_with_vk(picks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """
+    Enrich picks with Vegas Killer ML predictions.
+    Adds vk_predicted, vk_edge, vk_prob_over, vk_prob_under, vk_recommendation to each pick.
+    """
+    vk_model = get_vegas_killer()
+    if not vk_model:
+        return picks
+    
+    enriched = []
+    for pick in picks:
+        try:
+            player_name = pick.get("player_name", "")
+            stat_type = pick.get("stat_type", "")
+            line = pick.get("line")
+            opponent = pick.get("opponent") or pick.get("opponent_abbr")
+            
+            if not player_name or not stat_type or line is None:
+                enriched.append(pick)
+                continue
+            
+            # Get VK prediction (note: uses opponent_team kwarg, not opponent)
+            result = vk_model.predict(
+                player_name=player_name,
+                stat_type=stat_type,
+                line=float(line),
+                opponent_team=opponent
+            )
+            
+            # Check if we got a valid prediction (not an error)
+            if result and not result.get("error") and result.get("predicted") is not None:
+                predicted = result.get("predicted")
+                edge = result.get("edge")
+                prob_over = result.get("prob_over", 50)
+                prob_under = result.get("prob_under", 50)
+                
+                # Recommendation logic
+                if prob_over >= 70:
+                    recommendation = "STRONG_OVER"
+                elif prob_over >= 55:
+                    recommendation = "LEAN_OVER"
+                elif prob_under >= 70:
+                    recommendation = "STRONG_UNDER"
+                elif prob_under >= 55:
+                    recommendation = "LEAN_UNDER"
+                else:
+                    recommendation = "NEUTRAL"
+                
+                # Add VK data to pick
+                pick["vk_predicted"] = float(predicted) if predicted else None
+                pick["vk_edge"] = float(edge) if edge else None
+                pick["vk_prob_over"] = float(prob_over)
+                pick["vk_prob_under"] = float(prob_under)
+                pick["vk_recommendation"] = recommendation
+                pick["vk_data_source"] = result.get("data_source", "PROXY")
+                pick["vk_l5_avg"] = result.get("features", {}).get("l5_avg")
+                pick["vk_usage_rate"] = result.get("features", {}).get("usage_rate")
+            
+            enriched.append(pick)
+        except Exception as e:
+            logger.warning(f"[VK] Failed to enrich {pick.get('player_name')}: {e}")
+            enriched.append(pick)
+    
+    return enriched
+
+
 @router.get("/v3/war-zone")
 async def get_war_zone(
     response: Response,
@@ -218,6 +315,11 @@ async def get_war_zone(
         if result:
             result["sidecar_enabled"] = False
     
+    # Add Vegas Killer ML predictions
+    if result and result.get("picks"):
+        result["picks"] = enrich_picks_with_vk(result["picks"])
+        result["vk_enriched"] = True
+    
     return result
 
 
@@ -263,6 +365,11 @@ async def get_goblin_vault(
     else:
         if result:
             result["sidecar_enabled"] = False
+    
+    # Add Vegas Killer ML predictions
+    if result and result.get("picks"):
+        result["picks"] = enrich_picks_with_vk(result["picks"])
+        result["vk_enriched"] = True
     
     return result
 
@@ -330,6 +437,11 @@ async def get_front_lines(
     else:
         if result:
             result["sidecar_enabled"] = False
+    
+    # Add Vegas Killer ML predictions
+    if result and result.get("picks"):
+        result["picks"] = enrich_picks_with_vk(result["picks"])
+        result["vk_enriched"] = True
     
     return result
 

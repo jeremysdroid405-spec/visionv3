@@ -8,8 +8,9 @@ Global 15% kill-switch ensures only elite plays are visible.
 Whistle Matrix applies referee-based modifiers to power scores.
 """
 from fastapi import APIRouter, HTTPException, Query, Response
-from typing import Dict, Any
+from typing import Dict, Any, List
 import logging
+import os
 
 from services.ferrari_tier_service import get_ferrari_tier_service
 from services.referee_scraper_service import get_referee_service
@@ -19,6 +20,8 @@ router = APIRouter(tags=["Ferrari Tiers"])
 
 # Engine reference for DB access
 _db = None
+_vegas_killer_model = None
+_sync_db = None
 
 
 def set_ferrari_db(db):
@@ -32,6 +35,82 @@ def get_service():
     if _db is None:
         raise HTTPException(status_code=500, detail="Ferrari service not initialized")
     return get_ferrari_tier_service(_db)
+
+
+def get_vegas_killer():
+    """Get or initialize Vegas Killer model instance using sync PyMongo."""
+    global _vegas_killer_model, _sync_db
+    if _vegas_killer_model is None:
+        try:
+            from services.vegas_killer_model import VegasKillerModel
+            from pymongo import MongoClient
+            
+            # Create sync MongoDB connection for VK model
+            if _sync_db is None:
+                mongo_url = os.environ.get("MONGO_URL", "mongodb://localhost:27017")
+                db_name = os.environ.get("DB_NAME", "pick_vision")
+                client = MongoClient(mongo_url)
+                _sync_db = client[db_name]
+            
+            _vegas_killer_model = VegasKillerModel(_sync_db)
+            _vegas_killer_model.load_models()
+            logger.info("[VK-Ferrari] Vegas Killer model loaded for Ferrari tier enrichment")
+        except Exception as e:
+            logger.warning(f"[VK-Ferrari] Failed to load Vegas Killer model: {e}")
+    return _vegas_killer_model
+
+
+def enrich_picks_with_vk(picks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Enrich picks with Vegas Killer ML predictions."""
+    vk_model = get_vegas_killer()
+    if not vk_model:
+        return picks
+    
+    for pick in picks:
+        try:
+            player_name = pick.get("player_name", "")
+            stat_type = pick.get("stat_type", "")
+            line = pick.get("line")
+            opponent = pick.get("opponent") or pick.get("opponent_abbr")
+            
+            if not player_name or not stat_type or line is None:
+                continue
+            
+            result = vk_model.predict(
+                player_name=player_name,
+                stat_type=stat_type,
+                line=float(line),
+                opponent_team=opponent
+            )
+            
+            if result and not result.get("error") and result.get("predicted") is not None:
+                predicted = result.get("predicted")
+                edge = result.get("edge")
+                prob_over = result.get("prob_over", 50)
+                prob_under = result.get("prob_under", 50)
+                
+                # Recommendation logic
+                if prob_over >= 70:
+                    recommendation = "STRONG_OVER"
+                elif prob_over >= 55:
+                    recommendation = "LEAN_OVER"
+                elif prob_under >= 70:
+                    recommendation = "STRONG_UNDER"
+                elif prob_under >= 55:
+                    recommendation = "LEAN_UNDER"
+                else:
+                    recommendation = "NEUTRAL"
+                
+                pick["vk_predicted"] = float(predicted) if predicted else None
+                pick["vk_edge"] = float(edge) if edge else None
+                pick["vk_prob_over"] = float(prob_over)
+                pick["vk_prob_under"] = float(prob_under)
+                pick["vk_recommendation"] = recommendation
+                pick["vk_data_source"] = result.get("data_source", "PROXY")
+        except Exception as e:
+            logger.warning(f"[VK-Ferrari] Failed to enrich {pick.get('player_name')}: {e}")
+    
+    return picks
 
 
 @router.get("/v3/ferrari/safe-haven")
@@ -52,7 +131,14 @@ async def get_ferrari_safe_haven(
     response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
     
     service = get_service()
-    return await service.get_safe_haven(limit)
+    result = await service.get_safe_haven(limit)
+    
+    # Enrich with Vegas Killer predictions
+    if result and result.get("picks"):
+        result["picks"] = enrich_picks_with_vk(result["picks"])
+        result["vk_enriched"] = True
+    
+    return result
 
 
 @router.get("/v3/ferrari/front-lines")
@@ -73,7 +159,14 @@ async def get_ferrari_front_lines(
     response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
     
     service = get_service()
-    return await service.get_front_lines(limit)
+    result = await service.get_front_lines(limit)
+    
+    # Enrich with Vegas Killer predictions
+    if result and result.get("picks"):
+        result["picks"] = enrich_picks_with_vk(result["picks"])
+        result["vk_enriched"] = True
+    
+    return result
 
 
 @router.get("/v3/ferrari/war-zone")
@@ -95,7 +188,14 @@ async def get_ferrari_war_zone(
     response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
     
     service = get_service()
-    return await service.get_war_zone(limit)
+    result = await service.get_war_zone(limit)
+    
+    # Enrich with Vegas Killer predictions
+    if result and result.get("picks"):
+        result["picks"] = enrich_picks_with_vk(result["picks"])
+        result["vk_enriched"] = True
+    
+    return result
 
 
 @router.get("/v3/ferrari/discarded")

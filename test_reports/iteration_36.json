@@ -1,0 +1,92 @@
+{
+  "summary": "Vegas Killer ML Model Integration Testing Complete - All features verified. VK badges appear on Safe Haven and Front Lines sections with purple styling showing predicted points, edge percentage, and recommendations (STRONG OVER/UNDER, Lean Over/Under, Neutral). API endpoints return vk_enriched: true. Intelligence Modal opens on card click showing game-by-game performance data.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {
+        "screen": "Dashboard",
+        "issues": ["HTTP2 protocol errors for player headshot images (cdn.nba.com) - non-blocking, fallback to team logos works"]
+      }
+    ]
+  },
+  "features_tested": {
+    "vk_badges_safe_haven": {
+      "status": "PASSED",
+      "description": "VK badges visible on Safe Haven player cards with purple background",
+      "details": {
+        "vk_predicted": "Shows projected points (e.g., 15.8)",
+        "vk_edge": "Shows edge percentage (e.g., +6.3%)",
+        "vk_recommendation": "Shows STRONG OVER/UNDER, Lean Over/Under, Neutral"
+      }
+    },
+    "vk_badges_front_lines": {
+      "status": "PASSED",
+      "description": "VK badges visible on Front Lines player cards",
+      "sample_data": [
+        "Carlton Carrington: vk_predicted=19.85, vk_edge=5.35, vk_recommendation=STRONG_OVER",
+        "Bennedict Mathurin: vk_predicted=25.83, vk_edge=6.33, vk_recommendation=STRONG_OVER",
+        "Cameron Johnson: vk_predicted=11.89, vk_edge=2.39, vk_recommendation=LEAN_OVER"
+      ]
+    },
+    "api_vk_enriched_flag": {
+      "status": "PASSED",
+      "description": "API endpoints return vk_enriched: true",
+      "endpoints_tested": [
+        "/api/v3/ferrari/safe-haven",
+        "/api/v3/ferrari/front-lines"
+      ]
+    },
+    "intelligence_modal": {
+      "status": "PASSED",
+      "description": "Clicking player cards opens Intelligence Modal with game-by-game performance data",
+      "details": {
+        "shows_player_info": true,
+        "shows_season_stats": true,
+        "shows_game_log_bars": true,
+        "shows_hit_rates": true
+      }
+    },
+    "demo_mode_auth": {
+      "status": "PASSED",
+      "description": "Demo Mode authentication flow works (CLAIM YOUR EDGE -> Demo Mode -> Dashboard)"
+    }
+  },
+  "test_report_links": [
+    "/app/test_reports/iteration_36.json"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "VK badge implementation in UniversalPlayerCard.jsx (lines 805-835) correctly displays vk_predicted, vk_edge, and vk_recommendation",
+    "Ferrari tier routes (ferrari_tiers.py) correctly enrich picks with VK predictions via enrich_picks_with_vk()",
+    "VegasKillerBadge.jsx provides both compact (VKBadgeCompact) and full (VKBadgeFull) badge components",
+    "IntelligenceModal.jsx supports 'vegas_killer' type for detailed VK prediction display"
+  ],
+  "updated_files": [],
+  "success_rate": {
+    "backend": "100% (API endpoints return vk_enriched: true with VK data)",
+    "frontend": "100% (VK badges visible, modal works, recommendations displayed)"
+  },
+  "test_credentials": "DEMO MODE - Click 'CLAIM YOUR EDGE' then 'Demo Mode' button (no credentials needed)",
+  "seed_data_creation": "N/A - uses live data from Ferrari pipeline with VK enrichment",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Vegas Killer ML model integration is complete and working. VK badges show on Safe Haven and Front Lines cards with purple styling. API returns vk_enriched: true. Intelligence Modal shows game-by-game data. HTTP2 errors for NBA CDN images are non-blocking (fallback to team logos works).",
+  "mocked_apis": {
+    "has_mocked_apis": false,
+    "mocked_apis_list": []
+  },
+  "verification_data": {
+    "vk_enriched_safe_haven": true,
+    "vk_enriched_front_lines": true,
+    "vk_badge_styling": "purple background (bg-purple-950/40)",
+    "vk_data_fields": ["vk_predicted", "vk_edge", "vk_prob_over", "vk_prob_under", "vk_recommendation"],
+    "recommendations_supported": ["STRONG_OVER", "STRONG_UNDER", "LEAN_OVER", "LEAN_UNDER", "NEUTRAL"],
+    "demo_mode_works": true,
+    "intelligence_modal_works": true
+  }
+}

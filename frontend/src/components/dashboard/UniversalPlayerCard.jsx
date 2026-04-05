@@ -802,6 +802,38 @@ const UniversalPlayerCard = memo(({
           </div>
         )}
         
+        {/* Vegas Killer ML Prediction Badge - Show for board picks with VK data */}
+        {isBoardPick && player.vk_predicted != null && (
+          <div className="mt-1.5 px-2 py-1 bg-purple-950/40 border border-purple-500/30 rounded text-[10px]">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-1">
+                <span className="text-purple-400 font-bold">🎯 VK Model:</span>
+                <span className="text-white font-bold">{player.vk_predicted?.toFixed?.(1)}</span>
+                <span className="text-zinc-400">proj</span>
+              </div>
+              <div className={`font-bold ${
+                player.vk_recommendation === 'STRONG_OVER' ? 'text-green-400' :
+                player.vk_recommendation === 'STRONG_UNDER' ? 'text-red-400' :
+                player.vk_recommendation === 'LEAN_OVER' ? 'text-green-300' :
+                player.vk_recommendation === 'LEAN_UNDER' ? 'text-red-300' :
+                'text-zinc-400'
+              }`}>
+                {player.vk_recommendation === 'STRONG_OVER' ? '⬆ STRONG OVER' :
+                 player.vk_recommendation === 'STRONG_UNDER' ? '⬇ STRONG UNDER' :
+                 player.vk_recommendation === 'LEAN_OVER' ? '↑ Lean Over' :
+                 player.vk_recommendation === 'LEAN_UNDER' ? '↓ Lean Under' :
+                 '→ Neutral'}
+              </div>
+            </div>
+            {player.vk_edge != null && (
+              <div className="flex items-center justify-between mt-0.5 text-[9px]">
+                <span className="text-zinc-500">Edge: <span className={player.vk_edge > 0 ? 'text-green-400' : 'text-red-400'}>{player.vk_edge > 0 ? '+' : ''}{player.vk_edge?.toFixed?.(1)}%</span></span>
+                <span className="text-zinc-500">Over: {player.vk_prob_over?.toFixed?.(0)}% | Under: {player.vk_prob_under?.toFixed?.(0)}%</span>
+              </div>
+            )}
+          </div>
+        )}
+        
         {/* Quick Add Button */}
         {onQuickAdd && !is_locked && (
           <button
