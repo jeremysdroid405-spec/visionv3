@@ -1329,11 +1329,13 @@ class FerrariTierService:
         }
     
     def _calculate_std_dev(self, values: List[float]) -> Optional[float]:
-        """Calculate standard deviation of values."""
+        """Calculate sample standard deviation of values (Bessel's correction: n-1)."""
         if not values or len(values) < 2:
             return None
-        avg = sum(values) / len(values)
-        variance = sum((v - avg) ** 2 for v in values) / len(values)
+        n = len(values)
+        avg = sum(values) / n
+        # Sample variance uses (n-1) denominator (Bessel's correction)
+        variance = sum((v - avg) ** 2 for v in values) / (n - 1)
         return round(variance ** 0.5, 2)
     
     def _calculate_variance(self, stat_values: List[float], l10_rate: float, l5_rate: float) -> Dict[str, Any]:

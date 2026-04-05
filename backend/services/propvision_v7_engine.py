@@ -166,11 +166,13 @@ def calculate_mode(values: List[float]) -> Optional[float]:
 
 
 def calculate_std_dev(values: List[float]) -> float:
-    """Calculate standard deviation."""
+    """Calculate sample standard deviation (Bessel's correction: n-1)."""
     if not values or len(values) < 2:
         return 0.0
-    avg = sum(values) / len(values)
-    variance = sum((v - avg) ** 2 for v in values) / len(values)
+    n = len(values)
+    avg = sum(values) / n
+    # Sample variance uses (n-1) denominator
+    variance = sum((v - avg) ** 2 for v in values) / (n - 1)
     return math.sqrt(variance)
 
 
