@@ -5,7 +5,55 @@ PropVision is a sports analytics platform for NBA player props, providing data-d
 
 ---
 
-## Latest Update (2026-04-05): Vegas Regression Model - Alternative Prediction System
+## Latest Update (2026-04-05): Vegas Pro Model - ML Regression Stack
+
+### THE PRO STACK
+| Tool | Purpose |
+|------|---------|
+| BallDontLie API | Data extraction (game logs, stats) |
+| statsmodels | Feature significance analysis (P-values) |
+| scikit-learn | Ridge regression model training |
+| pandas + numpy | Data transformation |
+
+### MODEL PERFORMANCE
+| Stat | MAE | R² | Features |
+|------|-----|-----|----------|
+| PTS | 4.77 pts | 0.52 | 11 |
+| REB | 1.92 | 0.42 | 8 |
+| AST | 1.39 | 0.49 | 9 |
+| 3PM | 0.94 | 0.31 | 7 |
+| PRA | 6.18 | 0.57 | 14 |
+
+### KEY FINDINGS FROM STATSMODELS
+**Significant Features (P < 0.05):**
+- `l3_avg` - Most recent form matters most
+- `minutes_l5` - Playing time is crucial
+- `rest_days` - B2B games hurt performance
+- `cv_l10` - Volatility coefficient
+
+**NOT Significant (drop these):**
+- `is_home` - Home court doesn't predict scoring
+- `mode`, `median` - Distribution shape less predictive than averages
+- `opp_def_rank` - Needs better data quality
+
+### API ENDPOINTS
+| Endpoint | Purpose |
+|----------|---------|
+| `GET /api/v3/pro-model/status` | Check trained models |
+| `POST /api/v3/pro-model/train` | Train/retrain models |
+| `POST /api/v3/pro-model/predict` | Single prediction |
+| `GET /api/v3/pro-model/predict-tier/{tier}` | Predict entire tier |
+| `GET /api/v3/pro-model/compare-approaches` | Board Score vs ML |
+| `POST /api/v3/pro-model/analyze-features/{stat}` | P-value analysis |
+
+### FILES ADDED
+- `/app/backend/services/vegas_pro_model.py` (ML pipeline)
+- `/app/backend/routes/pro_model.py` (API endpoints)
+- `/app/backend/models/` (saved model pickles)
+
+---
+
+## Previous Update (2026-04-05): Vegas Regression Model - Alternative Prediction System
 
 ### NEW: Multiple Linear Regression Model
 Built a parallel prediction system to reverse-engineer Vegas line-setting methodology.

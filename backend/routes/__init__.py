@@ -36,6 +36,7 @@ from .ferrari_tiers import router as ferrari_router, set_ferrari_db
 from .vacuum import router as vacuum_router, set_vacuum_db
 from .momentum import router as momentum_router, set_momentum_db
 from .regression import router as regression_router
+from .pro_model import router as pro_model_router
 
 
 def register_all_routes(app, engine, game_lock_engine=None, db=None, 
@@ -179,3 +180,6 @@ def register_all_routes(app, engine, game_lock_engine=None, db=None,
     
     # Vegas Regression Model - Alternative prediction system
     app.include_router(regression_router)
+    
+    # Vegas Pro Model - ML-based prediction (scikit-learn)
+    app.include_router(pro_model_router)
