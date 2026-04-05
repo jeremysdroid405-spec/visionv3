@@ -5,7 +5,53 @@ PropVision is a sports analytics platform for NBA player props, providing data-d
 
 ---
 
-## Latest Update (2026-04-05): Vegas Pro Model - ML Regression Stack
+## Latest Update (2026-04-05): Vegas Killer Model - Process-Based Prediction
+
+### THE PARADIGM SHIFT
+**OLD WAY**: "Did he hit 8/10 times?" (Box Score thinking)
+**VEGAS WAY**: "What conditions allow scoring?" (Process thinking)
+
+### FEATURE CATEGORIES (38 Total Features)
+| Category | Features | Purpose |
+|----------|----------|---------|
+| **Opportunity** | USG%, Minutes, FGA, FTr | Volume - how many shots? |
+| **Efficiency** | eFG%, TS%, 3PT Rate | Quality - how well does he shoot? |
+| **Matchup** | Opp DRtg, Pace, Pts Allowed | Friction - who is he playing? |
+| **Environment** | Rest, Home/Away, B2B | Fatigue - is he tired? |
+| **Baseline** | L3/L5/L10/Season Avg | Historical performance |
+| **Market** | Line, Team Total | What Vegas thinks |
+
+### MODEL PERFORMANCE (Ensemble: Ridge + GBM)
+| Stat | MAE | R² | Features |
+|------|-----|-----|----------|
+| PTS | 4.77 | 0.52 | 36 |
+| REB | 1.91 | 0.42 | 36 |
+| AST | 1.40 | 0.49 | 36 |
+| 3PM | 0.93 | 0.31 | 36 |
+| PRA | 6.19 | 0.57 | 36 |
+
+### API ENDPOINTS
+| Endpoint | Purpose |
+|----------|---------|
+| `GET /api/v3/vegas-killer/status` | Model status |
+| `POST /api/v3/vegas-killer/train` | Train models |
+| `POST /api/v3/vegas-killer/predict` | Single prediction |
+| `GET /api/v3/vegas-killer/predict-tier/{tier}` | Tier predictions |
+| `GET /api/v3/vegas-killer/feature-breakdown` | Feature documentation |
+| `GET /api/v3/vegas-killer/compare-all` | Full comparison |
+
+### CURRENT RESULTS
+- Safe Haven: 100% Strong Over (model confirms all picks)
+- War Zone Trap: Miles Bridges PRA @ 24.5 → 32.2% P(Over) = STRONG UNDER
+
+### FILES
+- `/app/backend/services/vegas_killer_model.py` (38-feature model)
+- `/app/backend/routes/vegas_killer.py` (API)
+- `/app/backend/models/vegas_killer_*.pkl` (saved models)
+
+---
+
+## Previous: Vegas Pro Model - ML Regression Stack
 
 ### THE PRO STACK
 | Tool | Purpose |

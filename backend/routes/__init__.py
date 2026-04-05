@@ -37,6 +37,7 @@ from .vacuum import router as vacuum_router, set_vacuum_db
 from .momentum import router as momentum_router, set_momentum_db
 from .regression import router as regression_router
 from .pro_model import router as pro_model_router
+from .vegas_killer import router as vegas_killer_router
 
 
 def register_all_routes(app, engine, game_lock_engine=None, db=None, 
@@ -183,3 +184,6 @@ def register_all_routes(app, engine, game_lock_engine=None, db=None,
     
     # Vegas Pro Model - ML-based prediction (scikit-learn)
     app.include_router(pro_model_router)
+    
+    # Vegas Killer Model - Process-based features (Ultimate model)
+    app.include_router(vegas_killer_router)
