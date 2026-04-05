@@ -5,6 +5,50 @@ PropVision is a sports analytics platform for NBA player props, providing data-d
 
 ---
 
+## Latest Update (2026-04-05): Vegas Killer Frontend Integration - COMPLETE!
+
+### MAJOR MILESTONE: ML Predictions Live on Dashboard!
+
+The Vegas Killer XGBoost model predictions are now displayed directly on the frontend dashboard cards!
+
+#### What's New
+- **VK Badges on Safe Haven Cards** - Purple badges showing ML predictions
+- **VK Badges on Front Lines Cards** - Same styling with predictions
+- **VK Badges on War Zone Cards** - Full coverage across all tiers
+
+#### VK Badge Display Elements
+| Element | Description |
+|---------|-------------|
+| 🎯 VK Model | Projected points (e.g., 15.8 proj) |
+| Edge | Percentage edge vs line (e.g., +6.3%) |
+| Recommendation | STRONG OVER, STRONG UNDER, Lean Over, Lean Under, Neutral |
+| Probabilities | Over/Under probability split (e.g., Over: 94% \| Under: 6%) |
+
+#### Recommendation Logic
+| Probability | Recommendation |
+|-------------|----------------|
+| prob_over >= 70% | STRONG_OVER |
+| prob_over >= 55% | LEAN_OVER |
+| prob_under >= 70% | STRONG_UNDER |
+| prob_under >= 55% | LEAN_UNDER |
+| else | NEUTRAL |
+
+#### API Response Enhancement
+All Ferrari tier endpoints now return `vk_enriched: true` with VK fields:
+- `vk_predicted` - Projected stat value
+- `vk_edge` - Percentage edge vs line
+- `vk_prob_over` - Probability of going over
+- `vk_prob_under` - Probability of going under
+- `vk_recommendation` - Action recommendation
+- `vk_data_source` - Data source (V2_ADVANCED or PROXY)
+
+#### Files Modified
+- `/app/backend/routes/ferrari_tiers.py` - Added VK enrichment to Ferrari endpoints
+- `/app/backend/routes/tiers.py` - Added VK enrichment to regular tier endpoints
+- `/app/frontend/src/components/dashboard/UniversalPlayerCard.jsx` - Added VK badge UI in compact mode
+
+---
+
 ## Latest Update (2026-04-05): Backtest Results - BEATING VEGAS!
 
 ### MAJOR MILESTONE: Model Validated as Profitable!
@@ -533,11 +577,15 @@ Migrated from stats.nba.com to BallDontLie Advanced Stats API for reliable badge
 - [x] v7.1 Edge-First Board Score Formula
 - [x] Stale Game Logs Fix (BDL sync integrated)
 - [x] L5/L10 Hit Rate Display on Frontend
+- [x] Vegas Killer ML Model with XGBoost + EWMA
+- [x] Vegas Killer Frontend Integration (VK badges on cards)
 
 ### P1 - High Priority
 - [ ] AI Vision Summary Fix (Gemini returning null for some picks)
 - [ ] Frontend parlay display component
 - [ ] Parlay builder UI with manual selection
+- [ ] Fix upstream prop duplication in `dg_cached_board`
+- [ ] Forward-testing infrastructure (daily prop capture)
 
 ### P2 - Medium Priority
 - [ ] Google OAuth integration (Emergent-managed)
@@ -548,3 +596,4 @@ Migrated from stats.nba.com to BallDontLie Advanced Stats API for reliable badge
 - [ ] Push notifications for picks
 - [ ] Historical performance tracking
 - [ ] Rebuild endpoint timeout optimization (currently ~120s)
+- [ ] Refactor `vegas_killer_model.py` (1400+ lines) into separate modules
