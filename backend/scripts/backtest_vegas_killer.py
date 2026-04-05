@@ -170,6 +170,7 @@ class VegasKillerBacktester:
                     continue
                 
                 # Calculate line from prior average (simulating market)
+                # Use half-point lines like real sportsbooks to eliminate pushes
                 prior_values = [
                     self._get_stat_value(g, stat_type) 
                     for g in prior_games[:5] 
@@ -179,7 +180,11 @@ class VegasKillerBacktester:
                     continue
                     
                 prior_avg = np.mean(prior_values)
-                line = round(prior_avg, 1)
+                # Round to nearest 0.5 to simulate real sportsbook lines
+                line = round(prior_avg * 2) / 2
+                # Ensure it's a half-point (.5) to guarantee no pushes
+                if line == int(line):
+                    line += 0.5
                 
                 # Extract features directly
                 features = self.feature_engineer.extract_features(
@@ -229,9 +234,8 @@ class VegasKillerBacktester:
                         bet_direction = 'UNDER'
                         bet_prob = prob_under
                     
-                    # Check outcome
+                    # Check outcome - no pushes with half-point lines
                     actual_direction = 'OVER' if actual > line else 'UNDER'
-                    push = abs(actual - line) < 0.5  # Half point push
                     
                     result = {
                         'player_name': player_name,
@@ -246,8 +250,7 @@ class VegasKillerBacktester:
                         'bet_direction': bet_direction,
                         'bet_prob': round(bet_prob, 1) if bet_prob else None,
                         'actual_direction': actual_direction,
-                        'push': push,
-                        'win': bet_direction == actual_direction if bet_direction and not push else None,
+                        'win': bet_direction == actual_direction if bet_direction else None,
                         'has_v2_data': features.get('has_v2_advanced', 0) == 1,
                     }
                     
@@ -271,19 +274,18 @@ class VegasKillerBacktester:
         
         logger.info(f"Bets meeting {confidence_threshold}% threshold: {len(bets)}")
         
-        # Calculate win rate
+        # Calculate win rate - no pushes
         if len(bets) > 0:
             wins = bets['win'].sum()
-            pushes = bets['push'].sum()
-            losses = len(bets) - wins - pushes
-            win_rate = wins / (wins + losses) if (wins + losses) > 0 else 0
+            losses = len(bets) - wins
+            win_rate = wins / len(bets) if len(bets) > 0 else 0
             
             # ROI calculation (assuming -110 odds)
             # Win pays 0.91, loss costs 1.0
             profit = wins * 0.91 - losses * 1.0
             roi = profit / len(bets) * 100 if len(bets) > 0 else 0
         else:
-            wins = losses = pushes = 0
+            wins = losses = 0
             win_rate = 0
             roi = 0
         
@@ -312,7 +314,6 @@ class VegasKillerBacktester:
             "total_bets": len(bets),
             "wins": int(wins),
             "losses": int(losses),
-            "pushes": int(pushes),
             "win_rate": round(win_rate * 100, 2),
             "break_even": self.BREAK_EVEN_RATE * 100,
             "edge_vs_break_even": round((win_rate - self.BREAK_EVEN_RATE) * 100, 2),
