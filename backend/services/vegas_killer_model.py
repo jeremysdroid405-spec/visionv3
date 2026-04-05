@@ -1491,9 +1491,33 @@ class VegasKillerModel:
         if df.empty or len(df) < 100:
             return {"error": f"Insufficient data: {len(df)} samples"}
         
-        # Get feature columns
+        # =====================================================================
+        # RECENCY WEIGHTING - 2024-2025 data weighted 2-3x more than 2020-2021
+        # =====================================================================
+        # Exponential decay: weight = base^(season - 2020)
+        # 2020: 1.0, 2021: 1.5, 2022: 2.25, 2023: 3.38, 2024: 5.06, 2025: 7.59
+        recency_base = 1.5  # Each year is 1.5x more important than previous
+        
+        if 'season' in df.columns:
+            min_season = df['season'].min()
+            df['sample_weight'] = df['season'].apply(
+                lambda s: recency_base ** (s - min_season) if pd.notna(s) else 1.0
+            )
+            logger.info(f"[{stat_type}] Recency weights applied:")
+            for season in sorted(df['season'].unique()):
+                weight = recency_base ** (season - min_season)
+                count = len(df[df['season'] == season])
+                logger.info(f"  Season {int(season)}: {count:,} samples × {weight:.2f} weight")
+        else:
+            df['sample_weight'] = 1.0
+            logger.info(f"[{stat_type}] No season data - using uniform weights")
+        
+        sample_weights = df['sample_weight'].values
+        
+        # Get feature columns (exclude non-feature columns)
+        exclude_cols = ['target', 'season', 'sample_weight', 'player_name', 'game_date']
         numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
-        feature_cols = [c for c in numeric_cols if c not in ['target']]
+        feature_cols = [c for c in numeric_cols if c not in exclude_cols]
         
         X = df[feature_cols].fillna(0).replace([np.inf, -np.inf], 0)
         y = df['target']
@@ -1531,9 +1555,9 @@ class VegasKillerModel:
             except Exception as e:
                 logger.warning(f"Feature selection failed: {e}, using all features")
         
-        # Train/test split
-        X_train, X_test, y_train, y_test = train_test_split(
-            X, y, test_size=0.2, random_state=42
+        # Train/test split WITH sample weights
+        X_train, X_test, y_train, y_test, w_train, w_test = train_test_split(
+            X, y, sample_weights, test_size=0.2, random_state=42
         )
         
         # Scale features
@@ -1542,11 +1566,11 @@ class VegasKillerModel:
         X_test_scaled = scaler.transform(X_test)
         
         # =====================================================================
-        # MODEL TRAINING
+        # MODEL TRAINING (with sample weights for recency bias)
         # =====================================================================
         if model_type == 'ridge':
             model = Ridge(alpha=1.0)
-            model.fit(X_train_scaled, y_train)
+            model.fit(X_train_scaled, y_train, sample_weight=w_train)
         
         elif model_type == 'gbm':
             model = GradientBoostingRegressor(
@@ -1556,7 +1580,7 @@ class VegasKillerModel:
                 subsample=0.8,
                 random_state=42
             )
-            model.fit(X_train_scaled, y_train)
+            model.fit(X_train_scaled, y_train, sample_weight=w_train)
         
         elif model_type == 'xgboost' and HAS_XGBOOST:
             # XGBoost - handles complex IF/AND logic better
@@ -1573,12 +1597,13 @@ class VegasKillerModel:
                 random_state=42,
                 verbosity=0
             )
-            model.fit(X_train_scaled, y_train)
-            logger.info(f"[{stat_type}] Using XGBoost model")
+            # XGBoost uses sample_weight parameter
+            model.fit(X_train_scaled, y_train, sample_weight=w_train)
+            logger.info(f"[{stat_type}] Using XGBoost model with recency weighting")
         
         else:  # ensemble
             ridge = Ridge(alpha=1.0)
-            ridge.fit(X_train_scaled, y_train)
+            ridge.fit(X_train_scaled, y_train, sample_weight=w_train)
             
             if HAS_XGBOOST:
                 xgb_model = xgb.XGBRegressor(
@@ -1589,7 +1614,7 @@ class VegasKillerModel:
                     random_state=42,
                     verbosity=0
                 )
-                xgb_model.fit(X_train_scaled, y_train)
+                xgb_model.fit(X_train_scaled, y_train, sample_weight=w_train)
                 model = EnsembleModel([ridge, xgb_model], weights=[0.3, 0.7])
             else:
                 gbm = GradientBoostingRegressor(
@@ -1598,7 +1623,7 @@ class VegasKillerModel:
                     learning_rate=0.1,
                     random_state=42
                 )
-                gbm.fit(X_train_scaled, y_train)
+                gbm.fit(X_train_scaled, y_train, sample_weight=w_train)
                 model = EnsembleModel([ridge, gbm], weights=[0.4, 0.6])
         
         # Predictions
