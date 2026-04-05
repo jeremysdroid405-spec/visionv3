@@ -69,7 +69,7 @@ def main():
             metrics = model.train(
                 stat_type, 
                 model_type='xgboost',
-                use_feature_selection=True,
+                use_feature_selection=False,  # USE ALL FEATURES
                 p_value_threshold=0.10
             )
             

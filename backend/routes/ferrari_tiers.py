@@ -107,6 +107,12 @@ def enrich_picks_with_vk(picks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
                 pick["vk_prob_under"] = float(prob_under)
                 pick["vk_recommendation"] = recommendation
                 pick["vk_data_source"] = result.get("data_source", "PROXY")
+                
+                # Include FULL feature breakdown for deep intel
+                if result.get("full_features"):
+                    pick["vk_full_features"] = result["full_features"]
+                if result.get("v2_advanced_stats"):
+                    pick["vk_v2_stats"] = result["v2_advanced_stats"]
         except Exception as e:
             logger.warning(f"[VK-Ferrari] Failed to enrich {pick.get('player_name')}: {e}")
     

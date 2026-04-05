@@ -1136,14 +1136,18 @@ class VegasKillerModel:
         self,
         stat_type: str,
         model_type: str = 'xgboost',  # 'ridge', 'gbm', 'xgboost', 'ensemble'
-        use_feature_selection: bool = True,  # Drop insignificant features
-        p_value_threshold: float = 0.10,  # Features with p > 0.10 are dropped
+        use_feature_selection: bool = False,  # DISABLED: Use ALL features (user preference)
+        p_value_threshold: float = 0.10,  # Features with p > 0.10 would be dropped if enabled
     ) -> Dict[str, Any]:
         """
         Train Vegas Killer V2 model with:
         - XGBoost (handles IF/AND logic)
-        - Feature selection via P-values (noise killer)
+        - Feature selection via P-values (DISABLED by default - use all features)
         - Enhanced features (EWMA, Friction, Pace-adjusted)
+        
+        NOTE: Feature selection is disabled by default because more data = better predictions
+        even if some features aren't statistically significant individually. XGBoost handles
+        feature interactions well, so we let it use everything.
         """
         logger.info(f"[{stat_type}] Training Vegas Killer V2 model...")
         logger.info(f"  Model type: {model_type}")
@@ -1389,6 +1393,84 @@ class VegasKillerModel:
             "rest_days": features.get('rest_days', 1),
         }
         
+        # =====================================================================
+        # FULL FEATURE BREAKDOWN (All 8 Categories)
+        # =====================================================================
+        
+        result["full_features"] = {
+            # BASELINE FEATURES (Rolling Averages)
+            "baseline": {
+                "season_avg": round(features.get('season_avg', 0), 2),
+                "l3_avg": round(features.get('l3_avg', 0), 2),
+                "l5_avg": round(features.get('l5_avg', 0), 2),
+                "l10_avg": round(features.get('l10_avg', 0), 2),
+                "std_dev_l10": round(features.get('std_dev_l10', 0), 2),
+                "floor_l10": round(features.get('floor_l10', 0), 2),
+                "ceiling_l10": round(features.get('ceiling_l10', 0), 2),
+                "mode_l10": round(features.get('mode_l10', 0), 2),
+                "median_l10": round(features.get('median_l10', 0), 2),
+            },
+            # OPPORTUNITY FEATURES (Volume)
+            "opportunity": {
+                "usg_rate_l5": round(features.get('usg_rate_l5', 0), 2),
+                "minutes_l5": round(features.get('minutes_l5', 0), 2),
+                "minutes_trend": round(features.get('minutes_trend', 0), 2),
+                "fga_l5": round(features.get('fga_l5', 0), 2),
+                "fga_l10": round(features.get('fga_l10', 0), 2),
+                "ftr_l5": round(features.get('ftr_l5', 0), 2),
+                "touches_proxy": round(features.get('touches_proxy', 0), 2),
+            },
+            # EFFICIENCY FEATURES (Quality)
+            "efficiency": {
+                "efg_l5": round(features.get('efg_l5', 0), 2),
+                "efg_l10": round(features.get('efg_l10', 0), 2),
+                "ts_l5": round(features.get('ts_l5', 0), 2),
+                "ts_l10": round(features.get('ts_l10', 0), 2),
+                "fg3_rate": round(features.get('fg3_rate', 0), 2),
+                "fg3_pct_l5": round(features.get('fg3_pct_l5', 0), 2),
+                "ft_pct_l5": round(features.get('ft_pct_l5', 0), 2),
+                "scoring_efficiency_trend": round(features.get('scoring_efficiency_trend', 0), 2),
+            },
+            # MATCHUP FEATURES (Friction)
+            "matchup": {
+                "opp_def_rating": round(features.get('opp_def_rating', 0), 2),
+                "opp_pace": round(features.get('opp_pace', 0), 2),
+                "opp_pts_allowed": round(features.get('opp_pts_allowed', 0), 2),
+                "opp_def_rank": round(features.get('opp_def_rank', 0), 2),
+                "pace_delta": round(features.get('pace_delta', 0), 2),
+            },
+            # ENVIRONMENT FEATURES (Fatigue)
+            "environment": {
+                "rest_days": features.get('rest_days', 1),
+                "is_b2b": features.get('is_b2b', 0),
+                "is_home": features.get('is_home', 0),
+                "games_in_7_days": features.get('games_in_7_days', 0),
+                "season_game_num": features.get('season_game_num', 0),
+            },
+            # RECENCY/EWMA FEATURES (Heat Factor)
+            "recency": {
+                "ewma_l5": round(features.get('ewma_l5', 0), 2),
+                "ewma_l10": round(features.get('ewma_l10', 0), 2),
+                "ewma_trend": round(features.get('ewma_trend', 0), 2),
+                "heat_index": round(features.get('heat_index', 0), 2),
+            },
+            # PACE-ADJUSTED FEATURES (per 100 poss)
+            "pace_adjusted": {
+                "pts_per_100": round(features.get('pts_per_100', 0), 2),
+                "reb_per_100": round(features.get('reb_per_100', 0), 2),
+                "ast_per_100": round(features.get('ast_per_100', 0), 2),
+                "pace_factor": round(features.get('pace_factor', 0), 2),
+            },
+            # FRICTION FEATURES (Game Difficulty)
+            "friction": {
+                "b2b_penalty": features.get('b2b_penalty', 0),
+                "opp_interior_def": round(features.get('opp_interior_def', 0), 2),
+                "opp_perimeter_def": round(features.get('opp_perimeter_def', 0), 2),
+                "matchup_difficulty": round(features.get('matchup_difficulty', 0), 2),
+                "travel_factor": round(features.get('travel_factor', 0), 2),
+            },
+        }
+        
         # Add V2 Advanced Stats if available
         if features.get('has_v2_advanced') == 1:
             result["v2_advanced_stats"] = {
@@ -1401,6 +1483,54 @@ class VegasKillerModel:
                 "assist_pct": features.get('v2_assist_pct_l5'),
                 "reb_pct": features.get('v2_reb_pct_l5'),
                 "matchup_fg_pct": features.get('v2_matchup_fg_pct_l5'),
+            }
+            # Add FULL V2 stats for deep intel
+            result["full_features"]["v2_advanced"] = {
+                # Core efficiency
+                "v2_usg_rate_l5": features.get('v2_usg_rate_l5'),
+                "v2_usg_rate_l10": features.get('v2_usg_rate_l10'),
+                "v2_ts_pct_l5": features.get('v2_ts_pct_l5'),
+                "v2_ts_pct_l10": features.get('v2_ts_pct_l10'),
+                "v2_efg_l5": features.get('v2_efg_l5'),
+                "v2_efg_l10": features.get('v2_efg_l10'),
+                # Tempo
+                "v2_pace_l5": features.get('v2_pace_l5'),
+                "v2_pace_l10": features.get('v2_pace_l10'),
+                "v2_off_rating_l5": features.get('v2_off_rating_l5'),
+                "v2_def_rating_l5": features.get('v2_def_rating_l5'),
+                "v2_net_rating_l5": features.get('v2_net_rating_l5'),
+                # Matchup (GOLD!)
+                "v2_matchup_fg_pct_l5": features.get('v2_matchup_fg_pct_l5'),
+                "v2_matchup_pts_allowed_l5": features.get('v2_matchup_pts_allowed_l5'),
+                "v2_matchup_3pt_pct_l5": features.get('v2_matchup_3pt_pct_l5'),
+                # Tracking
+                "v2_touches_l5": features.get('v2_touches_l5'),
+                "v2_passes_l5": features.get('v2_passes_l5'),
+                "v2_speed_l5": features.get('v2_speed_l5'),
+                "v2_distance_l5": features.get('v2_distance_l5'),
+                # Shot quality
+                "v2_contested_fg_pct_l5": features.get('v2_contested_fg_pct_l5'),
+                "v2_uncontested_fg_pct_l5": features.get('v2_uncontested_fg_pct_l5'),
+                # Playmaking
+                "v2_assist_pct_l5": features.get('v2_assist_pct_l5'),
+                "v2_assist_ratio_l5": features.get('v2_assist_ratio_l5'),
+                "v2_ast_to_tov_l5": features.get('v2_ast_to_tov_l5'),
+                # Rebounding
+                "v2_reb_pct_l5": features.get('v2_reb_pct_l5'),
+                "v2_oreb_pct_l5": features.get('v2_oreb_pct_l5'),
+                "v2_dreb_pct_l5": features.get('v2_dreb_pct_l5'),
+                # Hustle
+                "v2_deflections_l5": features.get('v2_deflections_l5'),
+                "v2_contested_shots_l5": features.get('v2_contested_shots_l5'),
+                "v2_loose_balls_l5": features.get('v2_loose_balls_l5'),
+                # Impact
+                "v2_pie_l5": features.get('v2_pie_l5'),
+                "v2_pie_l10": features.get('v2_pie_l10'),
+                # Scoring distribution
+                "v2_pct_pts_paint_l5": features.get('v2_pct_pts_paint_l5'),
+                "v2_pct_pts_3pt_l5": features.get('v2_pct_pts_3pt_l5'),
+                "v2_pct_pts_ft_l5": features.get('v2_pct_pts_ft_l5'),
+                "v2_pct_pts_fastbreak_l5": features.get('v2_pct_pts_fastbreak_l5'),
             }
             result["data_source"] = "V2_ADVANCED"
         else:
