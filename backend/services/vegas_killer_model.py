@@ -107,18 +107,25 @@ for category in FEATURE_CATEGORIES.values():
 class VegasFeatureEngineer:
     """
     Calculates Vegas-style "process" features from game logs.
+    
+    NOW WITH V2 ADVANCED STATS from BDL API!
+    Uses real USG%, TS%, Pace, Matchup data instead of proxies.
     """
     
     def __init__(self, db):
         self.db = db
         self._team_pace_cache = {}
         self._def_rating_cache = {}
+        self._advanced_stats_cache = {}  # Cache V2 advanced stats
         self._load_team_stats()
         
         # Import team stats service
         from services.team_stats_service import TeamStatsService, TEAM_PACE_2026
         self.team_stats_service = TeamStatsService(db)
         self._team_pace_cache = TEAM_PACE_2026.copy()
+        
+        # V2 Advanced Stats collection
+        self.advanced_stats = db['bdl_advanced_stats']
     
     def _load_team_stats(self):
         """Load team pace and defensive ratings."""
@@ -138,6 +145,156 @@ class VegasFeatureEngineer:
             logger.info(f"Loaded {len(self._def_rating_cache)} team defensive ratings")
         except Exception as e:
             logger.error(f"Failed to load team stats: {e}")
+    
+    def get_v2_advanced_stats(self, player_id: int, limit: int = 20) -> List[Dict]:
+        """
+        Get V2 Advanced Stats for a player from bdl_advanced_stats collection.
+        
+        Returns most recent games with real process stats:
+        - usage_percentage (USG%)
+        - true_shooting_percentage (TS%)
+        - effective_field_goal_percentage (eFG%)
+        - pace, pace_per_40
+        - matchup data (matchup_fg_pct, matchup_player_points, etc.)
+        - tracking data (touches, speed, distance)
+        """
+        # Check cache first
+        cache_key = f"{player_id}_{limit}"
+        if cache_key in self._advanced_stats_cache:
+            return self._advanced_stats_cache[cache_key]
+        
+        try:
+            stats = list(self.advanced_stats.find(
+                {"player_id": player_id},
+                {"_id": 0}
+            ).sort("game_date", -1).limit(limit))
+            
+            self._advanced_stats_cache[cache_key] = stats
+            return stats
+        except Exception as e:
+            logger.error(f"Failed to get V2 advanced stats for player {player_id}: {e}")
+            return []
+    
+    def get_v2_features(self, player_id: int, window: int = 5) -> Dict[str, float]:
+        """
+        Extract V2 Advanced Stats features for a player.
+        
+        These are the REAL process stats Vegas uses, not proxies!
+        """
+        stats = self.get_v2_advanced_stats(player_id, limit=20)
+        
+        if not stats:
+            return {}
+        
+        features = {}
+        
+        # Get L5 and L10 windows
+        l5 = stats[:5]
+        l10 = stats[:10]
+        
+        # Helper function to safely average non-null values
+        def safe_avg(data: List[Dict], field: str) -> Optional[float]:
+            vals = [d.get(field) for d in data if d.get(field) is not None]
+            if not vals:
+                return None
+            return sum(vals) / len(vals)
+        
+        # =================================================================
+        # CORE V2 ADVANCED STATS
+        # =================================================================
+        
+        # Usage Rate (THE key stat for opportunity)
+        features['v2_usg_rate_l5'] = safe_avg(l5, 'usage_percentage')
+        features['v2_usg_rate_l10'] = safe_avg(l10, 'usage_percentage')
+        
+        # True Shooting % (Efficiency)
+        features['v2_ts_pct_l5'] = safe_avg(l5, 'true_shooting_percentage')
+        features['v2_ts_pct_l10'] = safe_avg(l10, 'true_shooting_percentage')
+        
+        # Effective FG% (Shooting quality)
+        features['v2_efg_l5'] = safe_avg(l5, 'effective_field_goal_percentage')
+        features['v2_efg_l10'] = safe_avg(l10, 'effective_field_goal_percentage')
+        
+        # Pace (Game tempo)
+        features['v2_pace_l5'] = safe_avg(l5, 'pace')
+        features['v2_pace_l10'] = safe_avg(l10, 'pace')
+        
+        # Offensive/Defensive Rating
+        features['v2_off_rating_l5'] = safe_avg(l5, 'offensive_rating')
+        features['v2_def_rating_l5'] = safe_avg(l5, 'defensive_rating')
+        features['v2_net_rating_l5'] = safe_avg(l5, 'net_rating')
+        
+        # =================================================================
+        # MATCHUP DATA (The gold for player prop betting!)
+        # =================================================================
+        
+        # How well opposing players shoot against this player
+        features['v2_matchup_fg_pct_l5'] = safe_avg(l5, 'matchup_fg_pct')
+        features['v2_matchup_pts_allowed_l5'] = safe_avg(l5, 'matchup_player_points')
+        features['v2_matchup_3pt_pct_l5'] = safe_avg(l5, 'matchup_3pt_pct')
+        
+        # =================================================================
+        # TRACKING DATA (Physical activity)
+        # =================================================================
+        
+        features['v2_touches_l5'] = safe_avg(l5, 'touches')
+        features['v2_passes_l5'] = safe_avg(l5, 'passes')
+        features['v2_speed_l5'] = safe_avg(l5, 'speed')
+        features['v2_distance_l5'] = safe_avg(l5, 'distance')
+        
+        # =================================================================
+        # SHOT QUALITY (Contested vs Uncontested)
+        # =================================================================
+        
+        features['v2_contested_fg_pct_l5'] = safe_avg(l5, 'contested_fg_pct')
+        features['v2_uncontested_fg_pct_l5'] = safe_avg(l5, 'uncontested_fg_pct')
+        
+        # =================================================================
+        # ASSIST/PLAYMAKING
+        # =================================================================
+        
+        features['v2_assist_pct_l5'] = safe_avg(l5, 'assist_percentage')
+        features['v2_assist_ratio_l5'] = safe_avg(l5, 'assist_ratio')
+        features['v2_ast_to_tov_l5'] = safe_avg(l5, 'assist_to_turnover')
+        
+        # =================================================================
+        # REBOUNDING
+        # =================================================================
+        
+        features['v2_reb_pct_l5'] = safe_avg(l5, 'rebound_percentage')
+        features['v2_oreb_pct_l5'] = safe_avg(l5, 'offensive_rebound_percentage')
+        features['v2_dreb_pct_l5'] = safe_avg(l5, 'defensive_rebound_percentage')
+        
+        # =================================================================
+        # HUSTLE STATS
+        # =================================================================
+        
+        features['v2_deflections_l5'] = safe_avg(l5, 'deflections')
+        features['v2_contested_shots_l5'] = safe_avg(l5, 'contested_shots')
+        features['v2_loose_balls_l5'] = safe_avg(l5, 'loose_balls_recovered_total')
+        
+        # =================================================================
+        # PIE (Player Impact Estimate)
+        # =================================================================
+        
+        features['v2_pie_l5'] = safe_avg(l5, 'pie')
+        features['v2_pie_l10'] = safe_avg(l10, 'pie')
+        
+        # =================================================================
+        # SCORING DISTRIBUTION
+        # =================================================================
+        
+        features['v2_pct_pts_paint_l5'] = safe_avg(l5, 'pct_pts_paint')
+        features['v2_pct_pts_3pt_l5'] = safe_avg(l5, 'pct_pts_3pt')
+        features['v2_pct_pts_ft_l5'] = safe_avg(l5, 'pct_pts_free_throw')
+        features['v2_pct_pts_fastbreak_l5'] = safe_avg(l5, 'pct_pts_fast_break')
+        
+        # Round all values
+        for key, val in features.items():
+            if val is not None:
+                features[key] = round(val, 3)
+        
+        return features
     
     def _parse_minutes(self, mins) -> float:
         """Parse minutes from various formats."""
@@ -253,9 +410,12 @@ class VegasFeatureEngineer:
         opponent_team: str = None,
         line: float = None,
         team_total: float = None,
+        bdl_player_id: int = None,  # NEW: For V2 Advanced Stats
     ) -> Dict[str, float]:
         """
         Extract all Vegas-style features from game logs.
+        
+        NOW WITH V2 ADVANCED STATS when bdl_player_id is provided!
         
         Args:
             prior_games: Games BEFORE the target game (for training)
@@ -264,6 +424,7 @@ class VegasFeatureEngineer:
             opponent_team: Opponent team abbreviation
             line: The prop line (for market features)
             team_total: Projected team total
+            bdl_player_id: BDL player ID for V2 Advanced Stats lookup
         
         Returns:
             Feature dictionary ready for ML model
@@ -451,6 +612,44 @@ class VegasFeatureEngineer:
         
         # Sharp implied would come from odds data
         features['sharp_implied'] = 50  # Default to neutral
+        
+        # =====================================================================
+        # V2 ADVANCED STATS FEATURES (The Real Process Stats!)
+        # =====================================================================
+        # These replace the proxy calculations with REAL data from BDL V2 API
+        if bdl_player_id:
+            v2_features = self.get_v2_features(bdl_player_id)
+            
+            if v2_features:
+                # Merge V2 features into main feature dict
+                features.update(v2_features)
+                
+                # OVERRIDE proxy calculations with real V2 data where available
+                if v2_features.get('v2_usg_rate_l5') is not None:
+                    # Convert decimal to percentage (BDL returns as decimal)
+                    features['usg_rate_l5'] = v2_features['v2_usg_rate_l5'] * 100
+                
+                if v2_features.get('v2_ts_pct_l5') is not None:
+                    features['ts_l5'] = v2_features['v2_ts_pct_l5'] * 100
+                
+                if v2_features.get('v2_ts_pct_l10') is not None:
+                    features['ts_l10'] = v2_features['v2_ts_pct_l10'] * 100
+                
+                if v2_features.get('v2_efg_l5') is not None:
+                    features['efg_l5'] = v2_features['v2_efg_l5'] * 100
+                
+                if v2_features.get('v2_efg_l10') is not None:
+                    features['efg_l10'] = v2_features['v2_efg_l10'] * 100
+                
+                if v2_features.get('v2_pace_l5') is not None:
+                    features['player_pace_l5'] = v2_features['v2_pace_l5']
+                
+                # Add flag indicating V2 data was used
+                features['has_v2_advanced'] = 1
+            else:
+                features['has_v2_advanced'] = 0
+        else:
+            features['has_v2_advanced'] = 0
         
         return features
     
@@ -722,6 +921,8 @@ class VegasKillerModel:
     ) -> Dict[str, Any]:
         """
         Predict player's stat output using Vegas Killer model.
+        
+        NOW WITH V2 ADVANCED STATS when available!
         """
         if stat_type not in self.models:
             return {"error": f"No model for {stat_type}"}
@@ -746,7 +947,10 @@ class VegasKillerModel:
         if len(logs) < 5:
             return {"error": "Insufficient history"}
         
-        # Extract features
+        # Get BDL player ID for V2 Advanced Stats
+        bdl_player_id = player.get('bdl_id')
+        
+        # Extract features (with V2 Advanced Stats if available)
         features = self.feature_engineer.extract_features(
             prior_games=logs[:20],
             stat_type=stat_type,
@@ -754,6 +958,7 @@ class VegasKillerModel:
             opponent_team=opponent_team,
             line=line,
             team_total=team_total,
+            bdl_player_id=bdl_player_id,  # NEW: Pass BDL ID for V2 stats
         )
         
         if not features:
@@ -782,6 +987,23 @@ class VegasKillerModel:
             "minutes": round(features.get('minutes_l5', 0), 1),
             "rest_days": features.get('rest_days', 1),
         }
+        
+        # Add V2 Advanced Stats if available
+        if features.get('has_v2_advanced') == 1:
+            result["v2_advanced_stats"] = {
+                "usage_rate": features.get('v2_usg_rate_l5'),
+                "true_shooting": features.get('v2_ts_pct_l5'),
+                "efg": features.get('v2_efg_l5'),
+                "pace": features.get('v2_pace_l5'),
+                "touches": features.get('v2_touches_l5'),
+                "pie": features.get('v2_pie_l5'),
+                "assist_pct": features.get('v2_assist_pct_l5'),
+                "reb_pct": features.get('v2_reb_pct_l5'),
+                "matchup_fg_pct": features.get('v2_matchup_fg_pct_l5'),
+            }
+            result["data_source"] = "V2_ADVANCED"
+        else:
+            result["data_source"] = "PROXY_CALCULATIONS"
         
         # Edge calculation
         if line is not None:

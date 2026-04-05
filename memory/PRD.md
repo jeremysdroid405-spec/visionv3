@@ -5,7 +5,59 @@ PropVision is a sports analytics platform for NBA player props, providing data-d
 
 ---
 
-## Latest Update (2026-04-05): Vegas Killer V2 - Process Stats with Real Data
+## Latest Update (2026-04-05): V2 Advanced Stats Integration
+
+### MAJOR MILESTONE: Real Process Stats from BDL V2 API
+
+The Vegas Killer model now uses **REAL PROCESS STATS** from the BallDontLie V2 Advanced Stats API instead of proxy calculations!
+
+#### What Changed
+- Created `bdl_advanced_stats_fetcher.py` to pull V2 stats from BDL API (GOAT tier access)
+- Created `/api/v3/bdl-advanced/*` routes for fetching and managing advanced stats
+- Integrated V2 stats into `vegas_killer_model.py` via `get_v2_features()` method
+- Predictions now show `"data_source": "V2_ADVANCED"` when using real data
+
+#### V2 Stats Available (100+ metrics)
+| Category | Key Metrics |
+|----------|-------------|
+| **Efficiency** | usage_percentage, true_shooting_percentage, effective_field_goal_percentage |
+| **Pace** | pace, pace_per_40, possessions |
+| **Matchup** | matchup_fg_pct, matchup_player_points, matchup_3pt_pct, matchup_minutes |
+| **Tracking** | touches, passes, speed, distance |
+| **Shot Quality** | contested_fg_pct, uncontested_fg_pct, contested_shots |
+| **Hustle** | deflections, loose_balls_recovered_total, charges_drawn |
+| **Playmaking** | assist_percentage, assist_ratio, assist_to_turnover |
+| **Impact** | pie (Player Impact Estimate), offensive_rating, defensive_rating, net_rating |
+
+#### API Endpoints Added
+| Endpoint | Purpose |
+|----------|---------|
+| `GET /api/v3/bdl-advanced/status` | Check stored stats status |
+| `POST /api/v3/bdl-advanced/fetch-season/{season}` | Fetch season V2 stats |
+| `POST /api/v3/bdl-advanced/fetch-multiple` | Fetch multiple seasons |
+| `GET /api/v3/bdl-advanced/player/{player_id}` | Get player stats by ID |
+| `GET /api/v3/bdl-advanced/player-by-name/{name}` | Get stats by name |
+| `GET /api/v3/bdl-advanced/features/{name}/{stat}` | Extract features for prediction |
+
+#### Example Prediction Response
+```json
+{
+  "player_name": "LeBron James",
+  "predicted": 17.99,
+  "v2_advanced_stats": {
+    "usage_rate": 0.241,
+    "true_shooting": 0.513,
+    "pace": 101.93,
+    "touches": 78.8,
+    "matchup_fg_pct": 0.447
+  },
+  "data_source": "V2_ADVANCED"
+}
+```
+
+---
+
+## Previous Update (2026-04-05): Vegas Killer V2 - Process Stats with Real Data
 
 ### NEW FEATURES ADDED
 1. **Real Pace Data** - All 30 NBA teams with actual pace (possessions/48)
