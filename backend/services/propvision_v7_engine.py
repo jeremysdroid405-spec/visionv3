@@ -587,17 +587,35 @@ class TrueProbabilityEngine:
         
         result["soft_penalties"] = penalties
         result["board_score"] = round(board_score, 2)
-        result["true_probability"] = round(board_score, 2)  # Alias for compatibility
+        
+        # Calculate TRUE PROBABILITY for tier classification
+        # True_Prob = (Historical × 0.45) + (Sharp × 0.25) + (Floor × 0.15) + (Context × 0.15)
+        # Historical = (L3 × 0.40) + (L5 × 0.35) + (L10 × 0.25)
+        l3_pct = l3_rate if l3_rate is not None else l5_rate
+        l5_pct = l5_rate if l5_rate is not None else 0
+        l10_pct = l10_rate if l10_rate is not None else 0
+        
+        historical = (l3_pct * 0.40) + (l5_pct * 0.35) + (l10_pct * 0.25)
+        floor_pct = min(l3_pct, l5_pct, l10_pct) if all([l3_pct, l5_pct, l10_pct]) else min(l5_pct, l10_pct)
+        context_score = 50  # Neutral context for now
+        
+        true_probability = (historical * 0.45) + (sharp_pct * 0.25) + (floor_pct * 0.15) + (context_score * 0.15)
+        
+        result["true_probability"] = round(true_probability, 2)
         result["pp_edge"] = round(pp_edge, 2)
         
-        # Classify tier
-        # For demons without sharp data, use hit rates for tier qualification
+        # Classify tier based on TRUE PROBABILITY (not just sharp implied)
+        # Safe Haven: >= 72% True Prob
+        # Front Lines: 62-71% True Prob
+        # Below Threshold: < 62%
         has_sharp_data = sharp_implied and sharp_implied > 0
         
-        if has_sharp_data and sharp_pct >= TIER_SAFE_HAVEN_SHARP_MIN:
+        if true_probability >= TIER_SAFE_HAVEN_MIN:
+            # TRUE PROBABILITY qualifies for Safe Haven
             result["tier"] = "safe_haven"
             result["confidence"] = "HIGH"
-        elif has_sharp_data and sharp_pct >= TIER_FRONT_LINES_SHARP_MIN:
+        elif true_probability >= TIER_FRONT_LINES_MIN:
+            # TRUE PROBABILITY qualifies for Front Lines
             result["tier"] = "front_lines"
             result["confidence"] = "MEDIUM"
         elif is_demon:
