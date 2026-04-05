@@ -22,14 +22,15 @@ const GoldWhistleIcon = ({ className }) => (
 const IntelligenceModal = ({ 
   isOpen, 
   onClose, 
-  type, // 'hook_risk' | 'suspect_bait' | 'officiating_impact' | 'usage_vacuum' | 'defensive_momentum'
+  type, // 'hook_risk' | 'suspect_bait' | 'officiating_impact' | 'usage_vacuum' | 'defensive_momentum' | 'vegas_killer'
   playerName,
   statType,
   line,
   sidecarData, // { median, mode, mode_frequency_pct, std_dev, hook_warning, bait_warning }
   whistleData,  // { crew_chief, ref_ou_pct, ref_ppg, whistle_class, lift_label, point_lift, foul_rate_diff }
   vacuumData,   // { injured_player, injured_team, injured_usage, beneficiary_rank, usage_bump, modifier, reason }
-  momentumData  // { season_rank, l10_rank, l5_rank, composite_rank, momentum, trend_alert, is_elite, is_weak }
+  momentumData,  // { season_rank, l10_rank, l5_rank, composite_rank, momentum, trend_alert, is_elite, is_weak }
+  vegasKillerData // { predicted, edge, prob_over, prob_under, recommendation, features, v2_advanced_stats, data_source }
 }) => {
   if (!isOpen) return null;
 
@@ -38,6 +39,7 @@ const IntelligenceModal = ({
   const isOfficiating = type === 'officiating_impact';
   const isVacuum = type === 'usage_vacuum';
   const isMomentum = type === 'defensive_momentum';
+  const isVegasKiller = type === 'vegas_killer';
 
   // Educational content based on badge type
   const getContent = () => {
@@ -473,6 +475,141 @@ const IntelligenceModal = ({
           : isWeak
             ? `Favorable matchup against a weak defense (Composite #${Math.round(momentumData.composite_rank)}). The +15 boost reflects the easier path to hitting Over props.`
             : `Neutral defensive matchup (Composite #${Math.round(momentumData.composite_rank)}). No significant adjustment needed for this opponent.`
+      };
+    }
+
+    // Vegas Killer ML Prediction Modal Content
+    if (isVegasKiller && vegasKillerData) {
+      const { predicted, edge, prob_over, prob_under, recommendation, features, v2_advanced_stats, data_source } = vegasKillerData;
+      const isOver = recommendation?.includes('OVER');
+      const isStrong = recommendation?.includes('STRONG');
+      const confidence = Math.max(prob_over || 50, prob_under || 50);
+      const edgePct = line ? ((predicted - line) / line * 100) : 0;
+      
+      const getEdgeColor = (e) => {
+        if (Math.abs(e) >= 20) return e > 0 ? 'text-green-400' : 'text-red-400';
+        if (Math.abs(e) >= 10) return e > 0 ? 'text-green-300' : 'text-red-300';
+        return 'text-zinc-400';
+      };
+      
+      return {
+        icon: (
+          <svg className={`w-6 h-6 ${isOver ? 'text-green-400' : 'text-red-400'}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2Z" />
+            <path d="M12 6v6l4 2" />
+            <circle cx="12" cy="12" r="3" fill="currentColor" />
+          </svg>
+        ),
+        title: "Vegas Killer Prediction",
+        subtitle: `ML Model: ${isStrong ? 'High' : 'Medium'} Confidence ${isOver ? 'Over' : 'Under'}`,
+        color: isOver ? "green" : "red",
+        bgGradient: isOver ? "from-green-950/90 to-zinc-900" : "from-red-950/90 to-zinc-900",
+        borderColor: isOver ? "border-green-500/30" : "border-red-500/30",
+        explanation: (
+          <>
+            <p className="text-zinc-300 text-sm leading-relaxed mb-4">
+              The <span className="text-cyan-400 font-semibold">Vegas Killer</span> model uses 
+              <span className="text-cyan-400 font-semibold"> XGBoost machine learning</span> with 
+              V2 Advanced Stats (USG%, TS%, Pace, Matchup data) to project actual player output — 
+              not just hit rates.
+            </p>
+            <div className="bg-zinc-800/50 rounded-lg p-3 mb-4">
+              <div className="text-xs text-zinc-500 uppercase tracking-wide mb-2">How It Works</div>
+              <p className="text-zinc-400 text-sm">
+                Unlike backward-looking hit rates, Vegas Killer projects <span className="text-white font-medium">forward</span>: 
+                "This player will score approximately X points based on their usage, efficiency, pace, and matchup difficulty."
+                The model was validated on <span className="text-green-400">21,584 real Vegas lines</span> with 
+                a <span className="text-green-400">58.7% win rate</span>.
+              </p>
+            </div>
+          </>
+        ),
+        specificData: (
+          <div className={`${isOver ? 'bg-green-950/30 border-green-500/20' : 'bg-red-950/30 border-red-500/20'} border rounded-lg p-3`}>
+            <div className={`text-xs ${isOver ? 'text-green-400/70' : 'text-red-400/70'} uppercase tracking-wide mb-2`}>Prediction Details</div>
+            <div className="space-y-2 text-sm">
+              <div className="flex justify-between">
+                <span className="text-zinc-400">Player</span>
+                <span className="text-white font-medium">{playerName}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-zinc-400">Prop</span>
+                <span className="text-white font-medium">{statType} @ {line}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-zinc-400">ML Projection</span>
+                <span className={`text-2xl font-bold ${isOver ? 'text-green-400' : 'text-red-400'}`}>{predicted?.toFixed(1)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-zinc-400">Edge</span>
+                <span className={`font-bold ${getEdgeColor(edge)}`}>
+                  {edge > 0 ? '+' : ''}{edge?.toFixed(1)} pts ({edgePct > 0 ? '+' : ''}{edgePct.toFixed(0)}%)
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-zinc-400">Confidence</span>
+                <span className={`font-bold ${isOver ? 'text-green-400' : 'text-red-400'}`}>{confidence?.toFixed(0)}%</span>
+              </div>
+              
+              {/* V2 Stats */}
+              {data_source === 'V2_ADVANCED' && v2_advanced_stats && (
+                <div className="pt-2 border-t border-zinc-700/50">
+                  <div className="text-[10px] text-cyan-400 uppercase mb-1">V2 Process Stats</div>
+                  <div className="grid grid-cols-2 gap-1 text-xs">
+                    {v2_advanced_stats.usage_rate && (
+                      <div className="flex justify-between">
+                        <span className="text-zinc-500">USG%</span>
+                        <span className="text-cyan-400">{(v2_advanced_stats.usage_rate * 100).toFixed(0)}%</span>
+                      </div>
+                    )}
+                    {v2_advanced_stats.true_shooting && (
+                      <div className="flex justify-between">
+                        <span className="text-zinc-500">TS%</span>
+                        <span className="text-cyan-400">{(v2_advanced_stats.true_shooting * 100).toFixed(0)}%</span>
+                      </div>
+                    )}
+                    {v2_advanced_stats.pace && (
+                      <div className="flex justify-between">
+                        <span className="text-zinc-500">Pace</span>
+                        <span className="text-cyan-400">{v2_advanced_stats.pace?.toFixed(0)}</span>
+                      </div>
+                    )}
+                    {v2_advanced_stats.touches && (
+                      <div className="flex justify-between">
+                        <span className="text-zinc-500">Touches</span>
+                        <span className="text-cyan-400">{v2_advanced_stats.touches?.toFixed(0)}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+              
+              {/* Key Features */}
+              {features && (
+                <div className="pt-2 border-t border-zinc-700/50">
+                  <div className="text-[10px] text-zinc-500 uppercase mb-1">Baseline Stats</div>
+                  <div className="grid grid-cols-3 gap-1 text-xs">
+                    <div className="flex flex-col">
+                      <span className="text-zinc-500">L5</span>
+                      <span className="text-white">{features.l5_avg}</span>
+                    </div>
+                    <div className="flex flex-col">
+                      <span className="text-zinc-500">L10</span>
+                      <span className="text-white">{features.l10_avg}</span>
+                    </div>
+                    <div className="flex flex-col">
+                      <span className="text-zinc-500">Min</span>
+                      <span className="text-white">{features.minutes}</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        ),
+        recommendation: isStrong 
+          ? `Vegas Killer shows a ${isOver ? 'STRONG OVER' : 'STRONG UNDER'} with ${confidence?.toFixed(0)}% confidence. The model projects ${predicted?.toFixed(1)} vs the line of ${line}.`
+          : `Vegas Killer leans ${isOver ? 'OVER' : 'UNDER'} with ${confidence?.toFixed(0)}% confidence. Consider this a moderate edge play.`
       };
     }
 

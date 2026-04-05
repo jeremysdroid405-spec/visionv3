@@ -35,11 +35,12 @@
 import React, { memo, useCallback, useState } from 'react';
 import { 
   Target, Shield, ChevronRight, Plus, ChevronDown,
-  Crosshair, TrendingUp, HeartPulse, Lock, Flame, TrendingDown, Info
+  Crosshair, TrendingUp, HeartPulse, Lock, Flame, TrendingDown, Info, Brain
 } from 'lucide-react';
 import { Badge } from '../ui/badge';
 import { DemonIcon, GoblinIcon } from './Icons';
 import IntelligenceModal from './IntelligenceModal';
+import { VKBadgeCompact } from './VegasKillerBadge';
 
 // ==================== TEAM LOGOS (FALLBACK) ====================
 const TEAM_LOGOS = {
@@ -416,8 +417,9 @@ VaultStatsRow.displayName = 'VaultStatsRow';
  * Single Prop Row - from Odds Funnel
  * NEW MODEL: Uses sharp_movement and trap_risk instead of demon/goblin
  * Card BG: SAFE_HAVEN = Green, FRONT_LINE = Yellow, WAR_ZONE = Red, MINEFIELD = Orange
+ * NOW WITH: Vegas Killer ML predictions
  */
-const PropRow = memo(({ prop, theme, onClick, onQuickAdd }) => {
+const PropRow = memo(({ prop, theme, onClick, onQuickAdd, onVKClick }) => {
   // NEW: Sharp movement classification
   const hasSharpMovement = prop.sharp_movement;
   const hasTrapRisk = prop.trap_risk;
@@ -428,6 +430,14 @@ const PropRow = memo(({ prop, theme, onClick, onQuickAdd }) => {
   const isGoblin = prop.is_goblin || tierLabel === 'GOBLIN' || tierLabel === 'SAFE_HAVEN';
   const isFrontLine = tierLabel === 'FRONT_LINE' || prop.front_line_qualified;
   const isMinefield = hasTrapRisk || tierLabel === 'MINEFIELD';
+  
+  // Vegas Killer prediction data
+  const vkPredicted = prop.vk_predicted;
+  const vkEdge = prop.vk_edge;
+  const vkProbOver = prop.vk_prob_over;
+  const vkProbUnder = prop.vk_prob_under;
+  const vkRecommendation = prop.vk_recommendation;
+  const hasVK = vkPredicted != null;
   
   // Determine card styling based on tier
   const tierBg = isMinefield ? 'bg-orange-950/40 border-orange-500/30'
@@ -467,7 +477,22 @@ const PropRow = memo(({ prop, theme, onClick, onQuickAdd }) => {
         </div>
       </div>
       
-      <div className="flex items-center gap-3 text-xs">
+      <div className="flex items-center gap-2 text-xs">
+        {/* Vegas Killer Prediction Badge */}
+        {hasVK && (
+          <VKBadgeCompact
+            predicted={vkPredicted}
+            edge={vkEdge}
+            recommendation={vkRecommendation}
+            probOver={vkProbOver}
+            probUnder={vkProbUnder}
+            onClick={(e) => {
+              e.stopPropagation();
+              onVKClick?.(prop);
+            }}
+          />
+        )}
+        
         {/* Hit Rates */}
         {prop.h10_rate != null && (
           <span className={`font-medium ${getHitRateColor(prop.h10_rate)}`}>
