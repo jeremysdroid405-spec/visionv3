@@ -566,6 +566,7 @@ class FerrariTierService:
                         l5_hits = bdl_hr.get("l5_hits", 0)
                         l10_hits = bdl_hr.get("l10_hits", 0)
                         stat_values = bdl_hr.get("values", [])
+                        season_avg = bdl_hr.get("avg", 0)  # Player's season average for this stat
                     else:
                         # No BDL data available - skip this prop
                         results["v7_kills"]["no_hit_rate_data"] += 1
@@ -736,6 +737,7 @@ class FerrariTierService:
                         mode=l10_mode,
                         std_dev=l10_std_dev,
                         season_median=season_median,
+                        season_avg=season_avg,  # For line below avg bonus
                         # Context
                         dvp_rank=dvp_rank,
                         is_elite_defense=is_elite_defense,
@@ -890,6 +892,7 @@ class FerrariTierService:
                         "pp_edge": pp_edge,
                         "v7_confidence": v7_confidence,
                         "v7_components": v7_components,
+                        "components": v7_components,  # Also store as 'components' for easier access
                         "v7_soft_penalties": v7_result.get("soft_penalties", []),
                         # Board score is the primary sort field
                         "ferrari_power_score": board_score,
@@ -929,7 +932,7 @@ class FerrariTierService:
                         # Averages
                         "l5_avg": hit_rates.get("l5_avg"),
                         "l10_avg": hit_rates.get("l10_avg"),
-                        "season_avg": hit_rates.get("season_avg"),
+                        "season_avg": season_avg,  # From BDL game logs
                         # L10 Stats
                         "l10_mode": round(l10_mode, 1) if l10_mode else None,
                         "l10_median": round(l10_median, 1) if l10_median else None,
@@ -1061,10 +1064,21 @@ class FerrariTierService:
             total_hard_kills = results["v7_kills"]["hard_kills"]
             results["scored"]["total_survivors"] = len(all_scored)
             
+            # Remove duplicates from all_scored (same player + stat + line)
+            seen = set()
+            unique_scored = []
+            for prop in all_scored:
+                key = (prop.get("player_name"), prop.get("stat_type"), prop.get("line"))
+                if key not in seen:
+                    seen.add(key)
+                    unique_scored.append(prop)
+            
+            all_scored = unique_scored
+            
             logger.info(f"  Total scanned: {results['universal_scan']['total_props_scanned']}")
             logger.info(f"  V7 Hard Kills: {total_hard_kills}")
             logger.info(f"  V7 Soft Penalties: {results['v7_kills']['soft_penalties_applied']}")
-            logger.info(f"  Survivors scored: {len(all_scored)}")
+            logger.info(f"  Survivors scored: {len(all_scored)} (after dedupe)")
             
             # =================================================================
             # PHASE 3: BULK WRITE (Performance Optimized)

@@ -470,6 +470,7 @@ class TrueProbabilityEngine:
         mode: Optional[float],
         std_dev: float,
         season_median: Optional[float],
+        season_avg: Optional[float],  # Player's season average for this stat
         # Context data
         dvp_rank: Optional[float],
         is_elite_defense: bool,
@@ -484,14 +485,24 @@ class TrueProbabilityEngine:
         pp_price: Optional[float] = None
     ) -> Dict[str, Any]:
         """
-        V7.1 EDGE-FIRST FORMULA
-        =======================
-        Board_Score = Sharp_Implied + PP_Edge + Hit_Rate_Avg - Penalties
+        V7.2 COMPREHENSIVE BOARD SCORE FORMULA
+        ======================================
+        Board_Score = True_Probability + Sharp_Implied + PP_Edge 
+                    + L5_Rate + L10_Rate + Line_Below_Avg_Bonus - Penalties
         
+        Components:
+        - True_Probability: Weighted (Historical 45% + Sharp 25% + Floor 15% + Context 15%)
         - Sharp_Implied: What smart money says (38%+ minimum)
-        - PP_Edge: Sharp_Implied - PP_Implied (positive = value)
-        - Hit_Rate_Avg: (L5 + L10) / 2 (historical consistency)
-        - Trap Risk: HARD FILTER (not a penalty)
+        - PP_Edge: Edge over PrizePicks break-even (positive = value)
+        - L5_Rate: Last 5 games hit rate
+        - L10_Rate: Last 10 games hit rate
+        - Line_Below_Avg_Bonus: Up to +15 for lines below player's average
+        - Penalties: Variance, defense matchup, blowout risk
+        
+        Tier Classification: Based on True Probability
+        - Safe Haven: >= 72%
+        - Front Lines: 62-71%
+        - War Zone: Demons with extreme volatility
         """
         result = {
             "true_probability": 0.0,
@@ -601,10 +612,56 @@ class TrueProbabilityEngine:
         
         true_probability = (historical * 0.45) + (sharp_pct * 0.25) + (floor_pct * 0.15) + (context_score * 0.15)
         
+        # =====================================================================
+        # NEW BOARD SCORE FORMULA (v7.2)
+        # =====================================================================
+        # Board_Score = True_Probability + Sharp_Implied + PP_Edge + L5_Rate + L10_Rate 
+        #             + Line_Below_Avg_Bonus - Penalties
+        # =====================================================================
+        
+        # Line Below Average Bonus
+        # If the line is below the player's season average, they have more cushion to hit
+        # Bonus = (Season_Avg - Line) - actual points of cushion
+        # Example: Avg 17.1, Line 9.5 → Bonus = 7.6 points
+        line_below_avg_bonus = 0
+        if season_avg is not None and season_avg > 0 and line is not None:
+            avg_diff = season_avg - line  # Positive = line is below avg (good)
+            if avg_diff > 0:
+                line_below_avg_bonus = round(avg_diff, 1)  # Raw difference, no cap
+        
+        # Calculate new Board Score
+        board_score_raw = (
+            true_probability +      # Weighted historical + sharp + floor + context
+            sharp_pct +             # Sharp implied probability
+            pp_edge +               # Edge over PrizePicks break-even
+            l5_pct +                # Last 5 games hit rate
+            l10_pct +               # Last 10 games hit rate
+            line_below_avg_bonus    # Bonus for lines below player's average
+        )
+        
+        # Apply soft penalties
+        board_score, penalties = self.apply_soft_kills(
+            board_score_raw, std_dev, dvp_rank, blowout_risk, stat_type
+        )
+        
+        # Store components for transparency
+        result["components"] = {
+            "true_probability": round(true_probability, 2),
+            "sharp_implied": round(sharp_pct, 2),
+            "pp_edge": round(pp_edge, 2),
+            "l5_rate": round(l5_pct, 2),
+            "l10_rate": round(l10_pct, 2),
+            "line_below_avg_bonus": round(line_below_avg_bonus, 2),
+            "raw_score": round(board_score_raw, 2),
+            "penalties_applied": penalties
+        }
+        
+        result["soft_penalties"] = penalties
+        result["board_score"] = round(board_score, 2)
         result["true_probability"] = round(true_probability, 2)
         result["pp_edge"] = round(pp_edge, 2)
         
-        # Classify tier based on TRUE PROBABILITY (not just sharp implied)
+        # Classify tier based on TRUE PROBABILITY
         # Safe Haven: >= 72% True Prob
         # Front Lines: 62-71% True Prob
         # Below Threshold: < 62%
