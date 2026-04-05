@@ -252,3 +252,46 @@ async def compare_all():
         results["tiers"][tier] = tier_data
     
     return results
+
+
+
+# =============================================================================
+# BACKTESTING ENDPOINT
+# =============================================================================
+
+@router.get("/backtest/results")
+async def get_backtest_results():
+    """Get the latest backtest results."""
+    import json
+    
+    try:
+        with open('/app/backend/backtest_results.json', 'r') as f:
+            results = json.load(f)
+        
+        # Calculate overall summary
+        total_bets = sum(r.get('total_bets', 0) for r in results.values())
+        total_wins = sum(r.get('wins', 0) for r in results.values())
+        total_losses = sum(r.get('losses', 0) for r in results.values())
+        
+        overall_win_rate = total_wins / (total_wins + total_losses) * 100 if (total_wins + total_losses) > 0 else 0
+        overall_roi = sum(r.get('roi_percent', 0) * r.get('total_bets', 0) for r in results.values()) / total_bets if total_bets > 0 else 0
+        
+        return {
+            "success": True,
+            "summary": {
+                "total_bets": total_bets,
+                "total_wins": total_wins,
+                "total_losses": total_losses,
+                "overall_win_rate": round(overall_win_rate, 2),
+                "overall_roi": round(overall_roi, 2),
+                "break_even": 52.4,
+                "edge_vs_break_even": round(overall_win_rate - 52.4, 2),
+                "all_profitable": all(r.get('profitable', False) for r in results.values())
+            },
+            "by_stat": results
+        }
+    except FileNotFoundError:
+        return {
+            "success": False,
+            "error": "No backtest results found. Run the backtest first."
+        }
