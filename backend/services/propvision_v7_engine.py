@@ -473,6 +473,7 @@ class TrueProbabilityEngine:
         std_dev: float,
         season_median: Optional[float],
         season_avg: Optional[float],  # Player's season average for this stat
+        mode: Optional[float],  # Most frequent outcome (for Mode Edge calculation)
         # Context data
         dvp_rank: Optional[float],
         is_elite_defense: bool,
@@ -487,10 +488,10 @@ class TrueProbabilityEngine:
         pp_price: Optional[float] = None
     ) -> Dict[str, Any]:
         """
-        V7.2 COMPREHENSIVE BOARD SCORE FORMULA
+        V7.3 COMPREHENSIVE BOARD SCORE FORMULA
         ======================================
         Board_Score = True_Probability + Sharp_Implied + PP_Edge 
-                    + L5_Rate + L10_Rate + Line_Below_Avg_Bonus - Penalties
+                    + L5_Rate + L10_Rate + Line_Below_Avg_Bonus + Mode_Edge - Penalties
         
         Components:
         - True_Probability: Weighted (Historical 45% + Sharp 25% + Floor 15% + Context 15%)
@@ -498,7 +499,8 @@ class TrueProbabilityEngine:
         - PP_Edge: Edge over PrizePicks break-even (positive = value)
         - L5_Rate: Last 5 games hit rate
         - L10_Rate: Last 10 games hit rate
-        - Line_Below_Avg_Bonus: Up to +15 for lines below player's average
+        - Line_Below_Avg_Bonus: Actual points of cushion (Season_Avg - Line)
+        - Mode_Edge: How far the most frequent outcome beats the line (Mode - Line)
         - Penalties: Variance, defense matchup, blowout risk
         
         Tier Classification: Based on True Probability
@@ -631,6 +633,16 @@ class TrueProbabilityEngine:
             if avg_diff > 0:
                 line_below_avg_bonus = round(avg_diff, 1)  # Raw difference, no cap
         
+        # Mode Edge: How far the most frequent outcome beats the line
+        # Mode = most common score in L10
+        # Mode Edge = Mode - Line
+        # Positive = mode beats line (player usually clears)
+        # Negative = mode misses line (player usually falls short)
+        # Example: Mode 22, Line 19.5 → Mode Edge = +2.5 (usually clears by 2.5)
+        mode_edge = 0
+        if mode is not None and line is not None:
+            mode_edge = round(mode - line, 1)
+        
         # Calculate new Board Score
         board_score_raw = (
             true_probability +      # Weighted historical + sharp + floor + context
@@ -638,7 +650,8 @@ class TrueProbabilityEngine:
             pp_edge +               # Edge over PrizePicks break-even
             l5_pct +                # Last 5 games hit rate
             l10_pct +               # Last 10 games hit rate
-            line_below_avg_bonus    # Bonus for lines below player's average
+            line_below_avg_bonus +  # Bonus for lines below player's average
+            mode_edge               # How far mode beats the line
         )
         
         # Apply soft penalties
@@ -654,6 +667,8 @@ class TrueProbabilityEngine:
             "l5_rate": round(l5_pct, 2),
             "l10_rate": round(l10_pct, 2),
             "line_below_avg_bonus": round(line_below_avg_bonus, 2),
+            "mode_edge": round(mode_edge, 2),
+            "mode": round(mode, 1) if mode else None,
             "raw_score": round(board_score_raw, 2),
             "penalties_applied": penalties
         }
