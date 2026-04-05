@@ -5,7 +5,51 @@ PropVision is a sports analytics platform for NBA player props, providing data-d
 
 ---
 
-## Latest Update (2026-04-05): Vegas Killer Model - Process-Based Prediction
+## Latest Update (2026-04-05): Vegas Killer V2 - Process Stats with Real Data
+
+### NEW FEATURES ADDED
+1. **Real Pace Data** - All 30 NBA teams with actual pace (possessions/48)
+   - IND fastest (102.8), MIA slowest (95.8)
+   - Pace delta and pace multiplier calculated per matchup
+   
+2. **Enhanced Matchup Features**
+   - `opp_l10_pts_allowed` - Recent defensive trend
+   - `opp_l5_pts_allowed` - Very recent trend
+   - `pace_multiplier` - Scoring opportunity adjustment
+
+3. **Market Features**
+   - `line_cushion` - How far average beats the line
+   - `line_cushion_pct` - Percentage cushion
+   - `team_total_share` - Player's expected % of team scoring
+
+### FEATURE COUNT: 47 Features
+| Category | Count | Key Features |
+|----------|-------|--------------|
+| Opportunity | 7 | USG%, Minutes, FGA, FTr |
+| Efficiency | 8 | eFG%, TS%, 3PT Rate |
+| Matchup | 8 | Def Rating, Pace, Pts Allowed |
+| Environment | 5 | Rest, B2B, Home/Away |
+| Baseline | 9 | L3/L5/L10/Season Avg |
+| Market | 6 | Line, Team Total, Cushion |
+
+### STATSMODELS FINDINGS
+**Significant Predictors (P < 0.05):**
+1. `season_avg` (coef=0.508) - True talent
+2. `touches_proxy` (coef=0.344) - Opportunity
+3. `minutes_l5` (coef=0.208) - Playing time
+4. `l3_avg` (coef=0.096) - Hot streak
+5. `rest_days` (coef=-0.059) - Fatigue
+
+**Not Significant:** Efficiency (eFG%, TS%), Matchup (pace, def rating)
+- This tells us: Raw opportunity matters more than efficiency for predicting OUTPUT
+
+### FILES ADDED/UPDATED
+- `/app/backend/services/team_stats_service.py` (Team pace data)
+- `/app/backend/services/vegas_killer_model.py` (Enhanced features)
+
+---
+
+## Previous: Vegas Killer Model - Process-Based Prediction
 
 ### THE PARADIGM SHIFT
 **OLD WAY**: "Did he hit 8/10 times?" (Box Score thinking)

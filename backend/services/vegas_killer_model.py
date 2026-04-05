@@ -114,6 +114,11 @@ class VegasFeatureEngineer:
         self._team_pace_cache = {}
         self._def_rating_cache = {}
         self._load_team_stats()
+        
+        # Import team stats service
+        from services.team_stats_service import TeamStatsService, TEAM_PACE_2026
+        self.team_stats_service = TeamStatsService(db)
+        self._team_pace_cache = TEAM_PACE_2026.copy()
     
     def _load_team_stats(self):
         """Load team pace and defensive ratings."""
@@ -126,11 +131,9 @@ class VegasFeatureEngineer:
                         'def_rating': doc.get('season_def_rating', 110),
                         'def_rank': doc.get('composite_rank', 15),
                         'pts_allowed': doc.get('pts_allowed_avg', 110),
+                        'l10_pts_allowed': doc.get('l10_pts_allowed', 110),
+                        'l5_pts_allowed': doc.get('l5_pts_allowed', 110),
                     }
-            
-            # Default pace values (would need pace data source)
-            # Using league average as baseline
-            self._team_pace_cache = defaultdict(lambda: 100.0)  # League avg pace
             
             logger.info(f"Loaded {len(self._def_rating_cache)} team defensive ratings")
         except Exception as e:
@@ -360,20 +363,35 @@ class VegasFeatureEngineer:
         features['scoring_efficiency_trend'] = features['ts_l5'] - features['ts_l10']
         
         # =====================================================================
-        # MATCHUP FEATURES (Friction)
+        # MATCHUP FEATURES (Friction) - Now with real pace data
         # =====================================================================
         if opponent_team:
             def_data = self._def_rating_cache.get(opponent_team, {})
             features['opp_def_rating'] = def_data.get('def_rating', 110)
             features['opp_def_rank'] = def_data.get('def_rank', 15)
             features['opp_pts_allowed'] = def_data.get('pts_allowed', 110)
+            features['opp_l10_pts_allowed'] = def_data.get('l10_pts_allowed', 110)
+            features['opp_l5_pts_allowed'] = def_data.get('l5_pts_allowed', 110)
+            
+            # Real pace data from team_stats_service
+            opp_pace = self._team_pace_cache.get(opponent_team, 99.0)
+            features['opp_pace'] = opp_pace
+            
+            # Pace delta from league average (99.0)
+            features['pace_delta'] = opp_pace - 99.0
+            
+            # Pace impact on scoring (higher pace = more possessions = more stats)
+            # Each extra possession is ~1% more opportunity
+            features['pace_multiplier'] = opp_pace / 99.0
         else:
-            features['opp_def_rating'] = 110  # League average
+            features['opp_def_rating'] = 110
             features['opp_def_rank'] = 15
             features['opp_pts_allowed'] = 110
-        
-        features['opp_pace'] = self._team_pace_cache.get(opponent_team, 100.0)
-        features['pace_delta'] = 0  # Would need player's team pace
+            features['opp_l10_pts_allowed'] = 110
+            features['opp_l5_pts_allowed'] = 110
+            features['opp_pace'] = 99.0
+            features['pace_delta'] = 0
+            features['pace_multiplier'] = 1.0
         
         # =====================================================================
         # ENVIRONMENT FEATURES (Fatigue)
@@ -409,9 +427,27 @@ class VegasFeatureEngineer:
             # Calculate how line compares to averages
             features['line_vs_l5'] = features['l5_avg'] - line
             features['line_vs_l10'] = features['l10_avg'] - line
+            features['line_vs_season'] = features['season_avg'] - line
+            
+            # Line cushion (how much room above/below)
+            features['line_cushion'] = features['l5_avg'] - line
+            features['line_cushion_pct'] = (features['l5_avg'] - line) / max(line, 1) * 100
+        else:
+            features['line'] = features['l5_avg']  # Use L5 as proxy
+            features['line_vs_l5'] = 0
+            features['line_vs_l10'] = 0
+            features['line_vs_season'] = 0
+            features['line_cushion'] = 0
+            features['line_cushion_pct'] = 0
         
         if team_total is not None:
             features['team_total'] = team_total
+            # Player's expected share of team total
+            # Estimate based on their scoring average vs team scoring
+            features['team_total_share'] = features['l5_avg'] / max(team_total, 1) * 100
+        else:
+            features['team_total'] = 115  # League average team total
+            features['team_total_share'] = features['l5_avg'] / 115 * 100
         
         # Sharp implied would come from odds data
         features['sharp_implied'] = 50  # Default to neutral
