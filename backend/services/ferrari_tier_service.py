@@ -1104,18 +1104,40 @@ class FerrariTierService:
             logger.info(f"  Safe Haven pool: {len(sh_all)} total, {sh_clean} clean, {len(sh_all) - sh_clean} trap")
             top_safe_haven = self._dedupe_select(sh_all, used_goblin_players, MAX_PICKS_PER_TIER)
             
-            # FRONT LINES: Exclude Safe Haven players (Goblins only)
+            # FRONT LINES: Middle tier - includes BOTH Goblins AND "Safe" Demons
+            # Goblins: Use used_goblin_players to exclude Safe Haven players
+            # Demons: Use used_demon_players to track (separate from War Zone)
             fl_cursor = self.ferrari_scored.find(
                 {"tier": "front_lines"},
                 {"_id": 0}
             ).sort("ferrari_power_score", -1)
             fl_all = await fl_cursor.to_list(length=None)
-            fl_clean = sum(1 for p in fl_all if not (p.get("trap_risk") or p.get("hook_risk")))
-            logger.info(f"  Front Lines pool: {len(fl_all)} total, {fl_clean} clean, {len(fl_all) - fl_clean} trap")
-            top_front_lines = self._dedupe_select(fl_all, used_goblin_players, MAX_PICKS_PER_TIER)
             
-            # WAR ZONE: Separate player tracking (Demons only)
-            # Players CAN be in both Safe Haven (Goblin) AND War Zone (Demon)
+            # Separate goblins and demons for proper deduplication
+            fl_goblins = [p for p in fl_all if p.get("is_goblin") and not p.get("is_demon")]
+            fl_demons = [p for p in fl_all if p.get("is_demon")]
+            
+            fl_clean = sum(1 for p in fl_all if not (p.get("trap_risk") or p.get("hook_risk")))
+            logger.info(f"  Front Lines pool: {len(fl_all)} total ({len(fl_goblins)} goblins, {len(fl_demons)} demons), {fl_clean} clean")
+            
+            # Dedupe goblins (exclude Safe Haven players)
+            fl_goblin_picks = self._dedupe_select(fl_goblins, used_goblin_players, MAX_PICKS_PER_TIER)
+            
+            # Dedupe demons separately (Front Lines demons are separate from War Zone demons)
+            used_fl_demon_players = set()
+            fl_demon_picks = self._dedupe_select(fl_demons, used_fl_demon_players, MAX_PICKS_PER_TIER)
+            
+            # Track Front Lines demons so they don't appear in War Zone
+            for p in fl_demon_picks:
+                used_demon_players.add(p.get("player_name"))
+            
+            # Merge and sort by board score, take top 10
+            fl_merged = fl_goblin_picks + fl_demon_picks
+            fl_merged.sort(key=lambda x: x.get("ferrari_power_score", 0), reverse=True)
+            top_front_lines = fl_merged[:MAX_PICKS_PER_TIER]
+            
+            # WAR ZONE: Highest risk Demons ONLY (extreme plays)
+            # Exclude demons already used in Front Lines
             wz_cursor = self.ferrari_scored.find(
                 {"tier": "war_zone", "is_demon": True},
                 {"_id": 0}

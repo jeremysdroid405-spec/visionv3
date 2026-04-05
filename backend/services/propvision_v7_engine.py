@@ -601,23 +601,22 @@ class TrueProbabilityEngine:
             result["tier"] = "front_lines"
             result["confidence"] = "MEDIUM"
         elif is_demon:
-            # WAR ZONE CRITERIA FOR DEMONS:
-            # 1. Must be a demon ✓
-            # 2. L10 >= 50%
-            # 3. L5 > 40%
-            # 4. If sharp data exists: PP edge > 0
-            # 5. If no sharp data: hit rate avg >= 50% qualifies
+            # =====================================================================
+            # DEMON TIER CLASSIFICATION (Updated Logic)
+            # =====================================================================
+            # Front Lines: "Safe" demons with good hit rates (middle ground)
+            # War Zone: Highest risk demons (extreme plays, biggest payout)
+            # =====================================================================
             l10_pct = l10_rate if l10_rate is not None else 0
             l5_pct = l5_rate if l5_rate is not None else 0
             hit_avg = (l5_pct + l10_pct) / 2
             
-            meets_hit_rate = l10_pct >= WAR_ZONE_L10_MIN and l5_pct > 40
+            # Basic qualification for any tier
+            meets_basic = l10_pct >= WAR_ZONE_L10_MIN and l5_pct > 40
             meets_edge = pp_edge > WAR_ZONE_PP_EDGE_MIN if has_sharp_data else hit_avg >= 50
             
-            if meets_hit_rate and meets_edge:
-                result["tier"] = "war_zone"
-                result["confidence"] = "STANDARD"
-            else:
+            if not meets_basic or not meets_edge:
+                # Doesn't qualify for any tier
                 result["tier"] = "below_threshold"
                 result["confidence"] = "LOW"
                 if l10_pct < WAR_ZONE_L10_MIN:
@@ -626,6 +625,32 @@ class TrueProbabilityEngine:
                     result["disqualify_reason"] = f"L5 {l5_pct}% <= 40% required"
                 elif has_sharp_data and pp_edge <= WAR_ZONE_PP_EDGE_MIN:
                     result["disqualify_reason"] = f"No PP edge ({pp_edge:.1f}%)"
+            else:
+                # Qualified demon - now classify Front Lines vs War Zone
+                # FRONT LINES: "Safer" demons with strong hit rates
+                #   - PP Edge >= 15% OR Hit Rate Avg >= 65%
+                #   - These are high-probability demons
+                # WAR ZONE: Highest risk demons (extreme volatility)
+                #   - PP Edge < 15% AND Hit Rate Avg < 65%
+                #   - L10 <= 60% (more volatile)
+                #   - These are the "swing for the fences" plays
+                
+                is_safe_demon = pp_edge >= 15 or hit_avg >= 65
+                is_extreme_demon = pp_edge < 10 and l10_pct <= 60
+                
+                if is_safe_demon:
+                    result["tier"] = "front_lines"
+                    result["confidence"] = "MEDIUM"
+                    result["demon_class"] = "safe_demon"
+                elif is_extreme_demon:
+                    result["tier"] = "war_zone"
+                    result["confidence"] = "STANDARD"
+                    result["demon_class"] = "extreme_demon"
+                else:
+                    # Middle ground demons - default to Front Lines
+                    result["tier"] = "front_lines"
+                    result["confidence"] = "MEDIUM"
+                    result["demon_class"] = "moderate_demon"
         elif has_sharp_data and sharp_pct >= TIER_WAR_ZONE_SHARP_MIN:
             # Non-demon with low sharp implied - below threshold
             result["tier"] = "below_threshold"
