@@ -469,11 +469,10 @@ class TrueProbabilityEngine:
         # Statistical data
         line: float,
         median: Optional[float],
-        mode: Optional[float],
+        mode: Optional[float],  # Most frequent outcome (for Mode Edge calculation)
         std_dev: float,
         season_median: Optional[float],
         season_avg: Optional[float],  # Player's season average for this stat
-        mode: Optional[float],  # Most frequent outcome (for Mode Edge calculation)
         # Context data
         dvp_rank: Optional[float],
         is_elite_defense: bool,

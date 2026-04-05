@@ -5,29 +5,50 @@ PropVision is a sports analytics platform for NBA player props, providing data-d
 
 ---
 
-## Latest Update (2026-04-04): PropVision v7.1 - Edge-First Board Score Formula
+## Latest Update (2026-04-05): PropVision v7.2 - Mode Edge Board Score Formula
 
-### VERIFIED WORKING (Testing Agent - iteration_35)
-- ✅ All 3 tiers populate exactly 10 picks each
+### VERIFIED WORKING (Manual Testing)
+- ✅ All 3 tiers populate (Safe Haven: 10, Front Lines: 10, War Zone: 5)
 - ✅ War Zone contains ONLY Demons (`is_demon=True`)
 - ✅ Safe Haven contains ONLY Goblins (`is_goblin=True`)
-- ✅ L5/L10 hit rates populated on all 30 picks
-- ✅ `board_score` and `pp_edge` calculated correctly
-- ✅ Frontend displays L5/L10 percentages with color coding
-- ✅ Demon/Goblin icons display correctly on cards
-- ✅ Game logs sync integrated into optimized_sync_engine.py
+- ✅ `mode_edge` correctly calculated as `Mode - Line`
+- ✅ `line_below_avg_bonus` uses actual cushion points (Season_Avg - Line)
+- ✅ Sample Standard Deviation uses (N-1) denominator (Bessel's correction)
+- ✅ BallDontLie is SSOT for all stats (no `dg_player_stats` fallbacks)
+- ✅ Moderate Demons allowed in Front Lines (PP Edge >= 15% OR Hit Rate >= 65%)
 
-### v7.1 Board Score Formula
+### v7.2 Board Score Formula (ADDITIVE)
+```
+Board_Score = True_Probability + Sharp_Implied + PP_Edge + L5_Rate + L10_Rate 
+            + Line_Below_Avg_Bonus + Mode_Edge - Penalties
+
+Components:
+- True_Probability: Weighted (Historical 45% + Sharp 25% + Floor 15% + Context 15%)
+- Sharp_Implied: What smart money says (38%+ minimum)
+- PP_Edge: Edge over PrizePicks break-even (positive = value)
+- L5_Rate: Last 5 games hit rate (0-100%)
+- L10_Rate: Last 10 games hit rate (0-100%)
+- Line_Below_Avg_Bonus: Actual points of cushion (Season_Avg - Line)
+  - Example: Avg 17.1, Line 9.5 → Bonus = 7.6 points
+- Mode_Edge: How far the most frequent outcome beats the line (Mode - Line)
+  - Example: Mode 22, Line 19.5 → Mode Edge = +2.5
+- Penalties: Variance (-10 if std_dev > 6.0), DvP tiers, Blowout risk
+```
+
+### Tier Rules
+| Tier | Who Goes Here |
+|------|---------------|
+| Safe Haven | Top Goblins only (alternate lines with edge) |
+| Front Lines | Mid Goblins + "Safe" Demons (PP Edge >= 15% OR Hit Rate >= 65%) |
+| War Zone | High Risk Demons only (PP Edge < 10% AND L10 <= 60%) |
+
+---
+
+## Previous Update (2026-04-04): PropVision v7.1 - Edge-First Board Score Formula
+
+### v7.1 Board Score Formula (DEPRECATED)
 ```
 Board_Score = Sharp_Implied + PP_Edge + Hit_Rate_Avg - Penalties
-
-Where:
-- Sharp_Implied = American odds converted to implied probability (0-100%)
-- PP_Edge = Sharp_Implied - PrizePicks break-even
-  - Goblins: Sharp_Implied - 57.8% (vs -137 odds)
-  - Demons: Hit_Rate_Avg - 50% (vs +100 odds)
-- Hit_Rate_Avg = (L5_Rate + L10_Rate) / 2
-- Penalties = DvP penalty (-3.5 for strong defense) + Variance penalty
 ```
 
 ### Demon vs Goblin Edge Calculation
