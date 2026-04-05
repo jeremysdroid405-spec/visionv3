@@ -38,7 +38,8 @@ class RealLinesBacktester:
     """
     Backtests Vegas Killer model against REAL historical lines.
     
-    Uses actual lines from The Odds API historical data.
+    Uses actual lines from The Odds API historical data
+    matched with actual game outcomes from BDL.
     """
     
     BREAK_EVEN_RATE = 0.524  # -110 odds break-even
@@ -47,6 +48,7 @@ class RealLinesBacktester:
         self.db = db
         self.hub = db['nba_master_hub_2026']
         self.historical_odds = db['historical_odds']
+        self.backtest_games = db['backtest_game_logs']  # NEW: Use fetched historical stats
         self.advanced_stats = db['bdl_advanced_stats']
         
         # Import model
@@ -138,9 +140,7 @@ class RealLinesBacktester:
         confidence_threshold: float = 55.0,
     ) -> Dict[str, Any]:
         """
-        Run backtest using REAL historical lines.
-        
-        Only tests games where we have actual Vegas lines.
+        Run backtest using REAL historical lines matched with REAL game outcomes.
         """
         logger.info(f"Running REAL lines backtest for {stat_type}...")
         logger.info(f"  Confidence threshold: {confidence_threshold}%")
@@ -156,81 +156,90 @@ class RealLinesBacktester:
         scaler = self.model.scalers[stat_type]
         feature_cols = self.model.feature_cols[stat_type]
         
-        # Get unique games from historical odds
-        unique_games = self.historical_odds.distinct("event_id", {"stat_type": stat_type})
-        logger.info(f"Found {len(unique_games)} games with {stat_type} lines")
-        
-        # Get all historical lines for this stat type
-        lines_cursor = self.historical_odds.find({
+        # Get all historical lines for this stat type (Over lines only)
+        lines = list(self.historical_odds.find({
             "stat_type": stat_type,
             "direction": "Over",
-            "bookmaker": "draftkings",  # Use DraftKings as primary
-        })
-        
-        lines_by_player_date = {}
-        for doc in lines_cursor:
-            player = doc.get('player_name')
-            game_date = doc.get('game_date')
-            key = f"{player}_{game_date.date()}"
-            
-            if key not in lines_by_player_date:
-                lines_by_player_date[key] = {
-                    "line": doc.get('line'),
-                    "odds": doc.get('odds_american'),
-                    "game_date": game_date,
-                    "player_name": player,
-                }
-        
-        logger.info(f"Found {len(lines_by_player_date)} unique player-game lines")
-        
-        # Get all players
-        players = list(self.hub.find({
-            'bdl_game_logs': {'$exists': True},
         }))
         
-        for player in players:
-            player_name = player.get('display_name') or player.get('player_name')
-            bdl_id = player.get('bdl_id')
-            logs = player.get('bdl_game_logs', [])
-            
-            if len(logs) < 10:
-                continue
-            
-            # Check each game for matching historical line
-            for i, game in enumerate(logs[:30]):  # Recent 30 games
-                game_date_str = game.get('date')
-                if not game_date_str:
+        logger.info(f"Found {len(lines)} historical lines for {stat_type}")
+        
+        # Group by player name
+        from collections import defaultdict
+        lines_by_player = defaultdict(list)
+        for line in lines:
+            player_name = line.get('player_name')
+            lines_by_player[player_name].append(line)
+        
+        logger.info(f"Lines for {len(lines_by_player)} unique players")
+        
+        matched = 0
+        
+        for player_name, player_lines in lines_by_player.items():
+            # Find matching game stats for this player
+            for line_doc in player_lines:
+                game_date = line_doc.get('game_date')
+                real_line = line_doc.get('line')
+                real_odds = line_doc.get('odds_american')
+                
+                if not game_date or not real_line:
                     continue
                 
-                try:
-                    game_date = datetime.fromisoformat(game_date_str.replace('Z', '+00:00'))
-                except:
+                # Find the actual game outcome
+                date_str = game_date.strftime('%Y-%m-%d')
+                
+                game_stat = self.backtest_games.find_one({
+                    "player_name": player_name,
+                    "game_date": date_str,
+                })
+                
+                if not game_stat:
+                    # Try partial match
+                    game_stat = self.backtest_games.find_one({
+                        "player_name": {"$regex": f"^{player_name.split()[0]}", "$options": "i"},
+                        "game_date": date_str,
+                    })
+                
+                if not game_stat:
                     continue
-                
-                # Look for historical line
-                key = f"{player_name}_{game_date.date()}"
-                line_data = lines_by_player_date.get(key)
-                
-                if not line_data:
-                    # Try without timezone
-                    for k, v in lines_by_player_date.items():
-                        if player_name in k and str(game_date.date()) in k:
-                            line_data = v
-                            break
-                
-                if not line_data:
-                    continue  # No line available for this game
-                
-                real_line = line_data['line']
-                real_odds = line_data['odds']
                 
                 # Get actual outcome
-                actual = self._get_stat_value(game, stat_type)
+                actual = None
+                if stat_type == 'PTS':
+                    actual = game_stat.get('pts')
+                elif stat_type == 'REB':
+                    actual = game_stat.get('reb')
+                elif stat_type == 'AST':
+                    actual = game_stat.get('ast')
+                elif stat_type == '3PM':
+                    actual = game_stat.get('fg3m')
+                elif stat_type == 'PRA':
+                    pts = game_stat.get('pts') or 0
+                    reb = game_stat.get('reb') or 0
+                    ast = game_stat.get('ast') or 0
+                    actual = pts + reb + ast
+                
                 if actual is None:
                     continue
                 
-                # Get prior games for features
-                prior_games = logs[i+1:i+1+15]
+                matched += 1
+                
+                # Get player's historical games for features
+                # Find this player in our main hub
+                hub_player = self.hub.find_one({
+                    "$or": [
+                        {"display_name": player_name},
+                        {"player_name": player_name},
+                        {"display_name": {"$regex": player_name.split()[0], "$options": "i"}},
+                    ]
+                })
+                
+                if not hub_player:
+                    continue
+                
+                bdl_id = hub_player.get('bdl_id')
+                prior_games = hub_player.get('bdl_game_logs', [])[:15]
+                
                 if len(prior_games) < 5:
                     continue
                 
@@ -238,7 +247,6 @@ class RealLinesBacktester:
                 features = self.feature_engineer.extract_features(
                     prior_games=prior_games,
                     stat_type=stat_type,
-                    target_game=game,
                     line=real_line,
                     bdl_player_id=bdl_id,
                 )
@@ -284,7 +292,7 @@ class RealLinesBacktester:
                     
                     result = {
                         'player_name': player_name,
-                        'game_date': game_date.isoformat(),
+                        'game_date': date_str,
                         'stat_type': stat_type,
                         'real_line': real_line,
                         'real_odds': real_odds,
@@ -304,6 +312,8 @@ class RealLinesBacktester:
                 except Exception as e:
                     continue
         
+        logger.info(f"Matched {matched} lines to game outcomes")
+        
         # Calculate stats
         df = pd.DataFrame(results)
         
@@ -311,7 +321,7 @@ class RealLinesBacktester:
             return {
                 "error": "No valid predictions with real lines",
                 "stat_type": stat_type,
-                "message": "Need to fetch more historical odds data"
+                "matched_games": matched,
             }
         
         logger.info(f"Generated {len(df)} predictions with REAL lines")
@@ -325,6 +335,7 @@ class RealLinesBacktester:
                 "stat_type": stat_type,
                 "total_predictions": len(df),
                 "total_bets": 0,
+                "matched_games": matched,
                 "message": "No bets met confidence threshold"
             }
         
@@ -348,6 +359,7 @@ class RealLinesBacktester:
             "stat_type": stat_type,
             "confidence_threshold": confidence_threshold,
             "data_source": "REAL_VEGAS_LINES",
+            "matched_games": matched,
             "total_predictions": len(df),
             "total_bets": len(bets),
             "wins": int(wins),

@@ -1,22 +1,66 @@
 {
   "PTS": {
-    "error": "No valid predictions with real lines",
     "stat_type": "PTS",
-    "message": "Need to fetch more historical odds data"
+    "confidence_threshold": 55.0,
+    "data_source": "REAL_VEGAS_LINES",
+    "matched_games": 7561,
+    "total_predictions": 7298,
+    "total_bets": 6770,
+    "wins": 3910,
+    "losses": 2860,
+    "win_rate": 57.75,
+    "break_even": 52.400000000000006,
+    "edge_vs_break_even": 5.35,
+    "roi_percent": 10.31,
+    "direction_accuracy": 57.04,
+    "profitable": true
   },
   "REB": {
-    "error": "No valid predictions with real lines",
     "stat_type": "REB",
-    "message": "Need to fetch more historical odds data"
+    "confidence_threshold": 55.0,
+    "data_source": "REAL_VEGAS_LINES",
+    "matched_games": 6264,
+    "total_predictions": 6053,
+    "total_bets": 5474,
+    "wins": 3109,
+    "losses": 2365,
+    "win_rate": 56.8,
+    "break_even": 52.400000000000006,
+    "edge_vs_break_even": 4.4,
+    "roi_percent": 8.48,
+    "direction_accuracy": 56.04,
+    "profitable": true
   },
   "AST": {
-    "error": "No valid predictions with real lines",
     "stat_type": "AST",
-    "message": "Need to fetch more historical odds data"
+    "confidence_threshold": 55.0,
+    "data_source": "REAL_VEGAS_LINES",
+    "matched_games": 4889,
+    "total_predictions": 4668,
+    "total_bets": 4346,
+    "wins": 2773,
+    "losses": 1573,
+    "win_rate": 63.81,
+    "break_even": 52.400000000000006,
+    "edge_vs_break_even": 11.41,
+    "roi_percent": 21.87,
+    "direction_accuracy": 63.0,
+    "profitable": true
   },
   "3PM": {
-    "error": "No valid predictions with real lines",
     "stat_type": "3PM",
-    "message": "Need to fetch more historical odds data"
+    "confidence_threshold": 55.0,
+    "data_source": "REAL_VEGAS_LINES",
+    "matched_games": 5688,
+    "total_predictions": 5453,
+    "total_bets": 4994,
+    "wins": 2880,
+    "losses": 2114,
+    "win_rate": 57.67,
+    "break_even": 52.400000000000006,
+    "edge_vs_break_even": 5.27,
+    "roi_percent": 10.15,
+    "direction_accuracy": 56.56,
+    "profitable": true
   }
 }

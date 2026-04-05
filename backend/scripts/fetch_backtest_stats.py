@@ -33,7 +33,7 @@ backtest_games = db['backtest_game_logs']
 
 def fetch_stats_for_date(date_str: str) -> int:
     """Fetch all player stats for a specific date."""
-    base_url = "https://api.balldontlie.io/nba/v2/stats"
+    base_url = "https://api.balldontlie.io/nba/v1/stats"  # Use v1 for historical
     headers = {"Authorization": BDL_API_KEY}
     
     params = {
