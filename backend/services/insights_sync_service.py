@@ -23,6 +23,7 @@ logger = logging.getLogger(__name__)
 class InsightsSyncService:
     """
     Service for syncing and calculating player insights.
+    BDL (nba_master_hub_2026) is the ONLY source for player stats.
     
     Requires engine reference to be set via set_engine() after initialization.
     """
@@ -30,7 +31,7 @@ class InsightsSyncService:
     def __init__(self, db: AsyncIOMotorDatabase):
         self.db = db
         self.cached_board = db.dg_cached_board
-        self.player_stats = db.dg_player_stats
+        self.master_hub = db.nba_master_hub_2026  # BDL SSOT
         self.daily_insights = db.dg_daily_insights
         self._engine = None
     
@@ -41,14 +42,14 @@ class InsightsSyncService:
     async def sync_daily_insights(self) -> Dict[str, Any]:
         """
         Sync daily insights for all players with active props.
-        Calculates advanced analytics and stores in MongoDB.
+        Calculates advanced analytics using BDL data from nba_master_hub_2026.
         Should be run daily at 8:00 AM EST.
         """
         if not self._engine:
             raise RuntimeError("Engine not set. Call set_engine() first.")
         
         sync_start = datetime.now(timezone.utc)
-        logger.info("[INSIGHTS SYNC] Starting daily insights calculation...")
+        logger.info("[INSIGHTS SYNC] Starting daily insights calculation using BDL SSOT...")
         
         insights_calculated = 0
         errors = []
@@ -73,10 +74,10 @@ class InsightsSyncService:
                         first_prop = player["props"][0]
                         opponent = first_prop.get("opponent", first_prop.get("away_team", ""))
                     
-                    # Get cached stats
-                    stats_doc = await self.player_stats.find_one(
-                        {"normalized_name": self._engine.sanitize_player_name(player_name)},
-                        {"_id": 0}
+                    # Get stats from BDL master hub
+                    stats_doc = await self.master_hub.find_one(
+                        {"display_name": player_name},
+                        {"_id": 0, "bdl_game_logs": 1, "baseline_stats": 1}
                     )
                     
                     game_stats = []

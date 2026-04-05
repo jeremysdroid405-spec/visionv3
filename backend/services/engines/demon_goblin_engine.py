@@ -434,7 +434,7 @@ class DemonGoblinEngine:
         self.cached_board = db.dg_cached_board  # Full cached board for frontend
         self.master_roster = db.dg_master_roster  # SOURCE OF TRUTH: Player-to-team mapping
         self.flagged_players = db.dg_flagged_players  # Players not in master roster (manual review)
-        self.player_stats = db.dg_player_stats  # CACHED PLAYER GAME LOGS (synced daily)
+        self.master_hub = db.nba_master_hub_2026  # BDL SSOT for all player stats
         
         # Legacy caching collections
         self.static_shell_cache = db.dg_static_shell

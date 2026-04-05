@@ -142,7 +142,8 @@ class FerrariTierService:
     def __init__(self, db):
         self.db = db
         self.cached_board = db.dg_cached_board
-        self.player_stats = db.dg_player_stats
+        # BDL is the SSOT for all player stats and game logs
+        self.master_hub = db.nba_master_hub_2026
         
         # Output collections
         self.ferrari_safe_haven = db.ferrari_safe_haven
@@ -153,6 +154,94 @@ class FerrariTierService:
         
         # Referee service for Whistle Matrix
         self._referee_service = None
+        
+        # BDL player context cache (loaded once per pipeline run)
+        self._bdl_player_cache = {}
+    
+    def _calculate_hit_rates_from_bdl(self, game_logs: List[Dict], stat_type: str, line: float) -> Dict[str, Any]:
+        """
+        Calculate hit rates from BDL game logs - THE SINGLE SOURCE OF TRUTH.
+        
+        Args:
+            game_logs: List of BDL game log entries (sorted newest first)
+            stat_type: The stat type (PTS, REB, AST, PRA, etc.)
+            line: The prop line to check against
+            
+        Returns:
+            Dict with l3_rate, l5_rate, l10_rate, l3_hits, l5_hits, l10_hits, avg, values
+        """
+        if not game_logs:
+            return None
+        
+        # Map stat types to BDL field names
+        stat_field_map = {
+            "PTS": "pts",
+            "REB": "reb",
+            "AST": "ast",
+            "STL": "stl",
+            "BLK": "blk",
+            "TO": "turnover",
+            "3PM": "fg3m",
+            "PRA": ["pts", "reb", "ast"],  # Combined
+            "PR": ["pts", "reb"],
+            "PA": ["pts", "ast"],
+            "RA": ["reb", "ast"],
+            "BLST": ["blk", "stl"],
+            "FG": "fgm",
+            "FGA": "fga",
+            "FTM": "ftm",
+            "FTA": "fta",
+            "MIN": "min"
+        }
+        
+        field = stat_field_map.get(stat_type.upper())
+        if not field:
+            return None
+        
+        # Extract stat values from game logs
+        values = []
+        for game in game_logs[:10]:  # Only look at last 10 games
+            if isinstance(field, list):
+                # Combined stat (PRA, PR, PA, RA, BLST)
+                total = sum(game.get(f, 0) or 0 for f in field)
+                values.append(total)
+            else:
+                val = game.get(field, 0)
+                if val is not None:
+                    values.append(val)
+        
+        if not values:
+            return None
+        
+        # Calculate hits for L3, L5, L10
+        l3_values = values[:3]
+        l5_values = values[:5]
+        l10_values = values[:10]
+        
+        l3_hits = sum(1 for v in l3_values if v > line)
+        l5_hits = sum(1 for v in l5_values if v > line)
+        l10_hits = sum(1 for v in l10_values if v > line)
+        
+        l3_rate = (l3_hits / len(l3_values) * 100) if l3_values else 0
+        l5_rate = (l5_hits / len(l5_values) * 100) if l5_values else 0
+        l10_rate = (l10_hits / len(l10_values) * 100) if l10_values else 0
+        
+        avg = sum(values) / len(values) if values else 0
+        
+        return {
+            "l3_rate": round(l3_rate, 1),
+            "l5_rate": round(l5_rate, 1),
+            "l10_rate": round(l10_rate, 1),
+            "l3_hits": l3_hits,
+            "l5_hits": l5_hits,
+            "l10_hits": l10_hits,
+            "l3_total": len(l3_values),
+            "l5_total": len(l5_values),
+            "l10_total": len(l10_values),
+            "avg": round(avg, 1),
+            "values": values,
+            "source": "bdl_game_logs"
+        }
     
     def _get_referee_service(self):
         """Lazy-load the referee scraper service."""
@@ -188,14 +277,18 @@ class FerrariTierService:
             logger.warning(f"[v6] Index creation warning: {e}")
     
     async def _load_season_medians(self) -> Dict[str, Dict[str, float]]:
-        """Load season median for each player/stat."""
+        """Load season median for each player/stat from BDL game logs."""
         medians = {}
         
         try:
-            cursor = self.player_stats.find({}, {"_id": 0, "player_name": 1, "games": 1})
+            # Use BDL master hub for season medians
+            cursor = self.master_hub.find(
+                {},
+                {"_id": 0, "display_name": 1, "bdl_game_logs": 1}
+            )
             async for doc in cursor:
-                player_name = doc.get("player_name")
-                games = doc.get("games", [])
+                player_name = doc.get("display_name")
+                games = doc.get("bdl_game_logs", [])
                 
                 if not player_name or not games:
                     continue
@@ -227,48 +320,9 @@ class FerrariTierService:
                 medians[player_name] = player_medians
                 
         except Exception as e:
-            logger.error(f"[v6] Season median load error: {e}")
+            logger.error(f"[BDL-SSOT] Season median load error: {e}")
         
         return medians
-    
-    async def _load_l10_stats(self) -> Dict[str, Dict[str, List[float]]]:
-        """Load L10 game stats (sorted newest first for L3/L5/L10 calculations)."""
-        stats = {}
-        
-        try:
-            cursor = self.player_stats.find({}, {"_id": 0, "player_name": 1, "games": 1})
-            async for doc in cursor:
-                player_name = doc.get("player_name")
-                games = doc.get("games", [])
-                
-                if not player_name or not games:
-                    continue
-                
-                # Sort by date descending (newest first) for accurate L3/L5/L10
-                sorted_games = sorted(
-                    games,
-                    key=lambda g: g.get("game", {}).get("date", ""),
-                    reverse=True
-                )[:10]
-                
-                stats[player_name] = {
-                    "PTS": [g["pts"] for g in sorted_games if g.get("pts") is not None],
-                    "AST": [g["ast"] for g in sorted_games if g.get("ast") is not None],
-                    "REB": [g["reb"] for g in sorted_games if g.get("reb") is not None],
-                    "3PM": [g["fg3m"] for g in sorted_games if g.get("fg3m") is not None],
-                    "BLK": [g["blk"] for g in sorted_games if g.get("blk") is not None],
-                    "STL": [g["stl"] for g in sorted_games if g.get("stl") is not None],
-                    "PRA": [
-                        (g.get("pts", 0) or 0) + (g.get("reb", 0) or 0) + (g.get("ast", 0) or 0)
-                        for g in sorted_games
-                    ]
-                }
-        except Exception as e:
-            logger.error(f"[v7] L10 stats load error: {e}")
-        
-        return stats
-        
-        return stats
     
     async def _load_player_context_data(self) -> Dict[str, Dict[str, Any]]:
         """
@@ -289,8 +343,8 @@ class FerrariTierService:
                 if not player_name:
                     continue
                 
-                # Prefer bdl_game_logs, fallback to game_logs
-                game_logs = doc.get("bdl_game_logs") or doc.get("game_logs") or []
+                # BDL game logs are the ONLY source
+                game_logs = doc.get("bdl_game_logs") or []
                 baseline_stats = doc.get("baseline_stats", {})
                 
                 context_data[player_name] = {
@@ -298,7 +352,7 @@ class FerrariTierService:
                     "baseline_stats": baseline_stats
                 }
             
-            logger.info(f"[v6] Loaded context data for {len(context_data)} players")
+            logger.info(f"[BDL-SSOT] Loaded context data for {len(context_data)} players from nba_master_hub_2026")
             
         except Exception as e:
             logger.error(f"[v6] Player context data load error: {e}")
@@ -421,13 +475,16 @@ class FerrariTierService:
             results["defensive_momentum"]["teams_profiled"] = momentum_status.get("teams_cached", 0)
             
             # =================================================================
-            # PHASE 1: UNIVERSAL SCAN - Load ALL Data (No Limits)
+            # PHASE 1: BDL SSOT - Load ALL Data from BallDontLie
             # =================================================================
-            logger.info("[PHASE 1] UNIVERSAL SCAN - Loading complete dataset...")
+            logger.info("[PHASE 1] BDL SSOT - Loading complete dataset from BallDontLie...")
             
             season_medians = await self._load_season_medians()
-            l10_stats = await self._load_l10_stats()
+            
+            # Load BDL player context (game logs, stats) - THE SINGLE SOURCE OF TRUTH
             player_context_data = await self._load_player_context_data()
+            self._bdl_player_cache = player_context_data  # Cache for hit rate calculations
+            logger.info(f"[BDL-SSOT] Loaded {len(self._bdl_player_cache)} players from BDL")
             
             # Get ALL players - NO LIMIT
             cursor = self.cached_board.find({}, {"_id": 0})
@@ -437,8 +494,7 @@ class FerrariTierService:
             
             logger.info(f"  Players loaded: {len(players)}")
             logger.info(f"  Season medians: {len(season_medians)} players")
-            logger.info(f"  L10 stats: {len(l10_stats)} players")
-            logger.info(f"  Context data: {len(player_context_data)} players")
+            logger.info(f"  BDL context data: {len(player_context_data)} players")
             
             # =================================================================
             # PHASE 2: V7 TRUE PROBABILITY CALCULATION
@@ -451,9 +507,8 @@ class FerrariTierService:
             for player in players:
                 player_name = player.get("player_name", "")
                 player_medians = season_medians.get(player_name, {})
-                player_l10 = l10_stats.get(player_name, {})
                 
-                # Get context data for badge resolution
+                # Get BDL context data for badge resolution and hit rates
                 ctx_data = player_context_data.get(player_name, {})
                 player_game_logs = ctx_data.get("game_logs", [])
                 player_baseline_stats = ctx_data.get("baseline_stats", {})
@@ -492,49 +547,27 @@ class FerrariTierService:
                     pp_line = prop.get("line", 0)
                     season_median = player_medians.get(stat_type)
                     
-                    # Get L10 values for this stat (sorted newest first)
-                    stat_values = player_l10.get(stat_type, [])
-                    
                     # ---------------------------------------------------------
-                    # V7: Use prop's cached hit_rates as PRIMARY source (from fresh sync)
-                    # FALLBACK: Calculate from dg_player_stats if cached not available
+                    # BDL SSOT: Calculate hit rates from BDL game logs ONLY
+                    # No fallbacks - BDL is the single source of truth
                     # ---------------------------------------------------------
-                    cached_hr = prop.get("hit_rates", {})
+                    player_name_lookup = player.get("player_name", "") or player.get("name", "")
+                    bdl_context = self._bdl_player_cache.get(player_name_lookup, {})
+                    bdl_game_logs = bdl_context.get("game_logs", [])
                     
-                    # PRIMARY: Use cached hit_rates from prop (fresher data from sync)
-                    if cached_hr and ("l5_rate" in cached_hr or "l5" in cached_hr):
-                        # Check for flat structure first (l5_rate, l10_rate keys)
-                        if "l5_rate" in cached_hr:
-                            # Flat structure
-                            l3_rate = cached_hr.get("l3_rate")
-                            l5_rate = cached_hr.get("l5_rate", 0) or 0
-                            l10_rate = cached_hr.get("l10_rate", 0) or 0
-                            l3_hits = cached_hr.get("l3_hits", 0) or 0
-                            l5_hits = cached_hr.get("l5_hit_count", 0) or cached_hr.get("l5_hits", 0) or 0
-                            l10_hits = cached_hr.get("l10_hit_count", 0) or cached_hr.get("l10_hits", 0) or 0
-                        else:
-                            # Nested structure: {l5: {hit_rate: 0.8}, l10: {hit_rate: 0.7}}
-                            l5_data = cached_hr.get("l5", {})
-                            l10_data = cached_hr.get("l10", {})
-                            l3_data = cached_hr.get("l3", {})
-                            
-                            l3_rate = (l3_data.get("hit_rate", 0) or 0) * 100 if l3_data else None
-                            l5_rate = (l5_data.get("hit_rate", 0) or 0) * 100 if l5_data else 0
-                            l10_rate = (l10_data.get("hit_rate", 0) or 0) * 100 if l10_data else 0
-                            l3_hits = l3_data.get("games_over", 0) if l3_data else 0
-                            l5_hits = l5_data.get("games_over", 0) if l5_data else 0
-                            l10_hits = l10_data.get("games_over", 0) if l10_data else 0
-                    elif stat_values:
-                        # FALLBACK: Calculate from dg_player_stats (may be stale)
-                        granular_rates = calculate_granular_hit_rates(stat_values, pp_line)
-                        l3_rate = granular_rates["l3_rate"]
-                        l5_rate = granular_rates["l5_rate"]
-                        l10_rate = granular_rates["l10_rate"]
-                        l3_hits = granular_rates["l3_hits"]
-                        l5_hits = granular_rates["l5_hits"]
-                        l10_hits = granular_rates["l10_hits"]
+                    # Calculate hit rates from BDL game logs
+                    bdl_hr = self._calculate_hit_rates_from_bdl(bdl_game_logs, stat_type, pp_line)
+                    
+                    if bdl_hr:
+                        l3_rate = bdl_hr.get("l3_rate")
+                        l5_rate = bdl_hr.get("l5_rate", 0)
+                        l10_rate = bdl_hr.get("l10_rate", 0)
+                        l3_hits = bdl_hr.get("l3_hits", 0)
+                        l5_hits = bdl_hr.get("l5_hits", 0)
+                        l10_hits = bdl_hr.get("l10_hits", 0)
+                        stat_values = bdl_hr.get("values", [])
                     else:
-                        # No data available - skip this prop
+                        # No BDL data available - skip this prop
                         results["v7_kills"]["no_hit_rate_data"] += 1
                         continue
                     

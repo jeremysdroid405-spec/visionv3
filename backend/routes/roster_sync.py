@@ -203,7 +203,7 @@ async def sync_player_stats():
     1. BallDontLie API (primary)
     2. NBA.com API (fallback for missing players)
     
-    Stores in dg_player_stats collection for fast hit rate calculations.
+    [DEPRECATED] Use BDL game logs from nba_master_hub_2026 instead.
     Should be run daily before sync-to-mongo.
     """
     engine = get_engine()

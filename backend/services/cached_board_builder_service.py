@@ -43,7 +43,6 @@ class CachedBoardBuilderService:
         self.cached_board = db.dg_cached_board
         self.cached_board_temp = db.dg_cached_board_temp  # Shadow table
         self.sync_log = db.dg_sync_log
-        self.player_stats = db.dg_player_stats
         self.master_roster = db.dg_master_roster
         self.flagged_players = db.dg_flagged_players
         

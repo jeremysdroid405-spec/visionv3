@@ -67,9 +67,9 @@ class RosterService:
         self._team_cache: Dict[str, str] = {}
         self._roster_loaded = False
         
-        # Legacy direct collection access (gradual migration)
+        # BDL is the ONLY source for player data
         self.master_roster = db.dg_master_roster
-        self.player_stats = db.dg_player_stats
+        self.master_hub = db.nba_master_hub_2026  # BDL SSOT
         self.flagged_players = db.dg_flagged_players
     
     def set_api_keys(self, bdl_key: str = None):

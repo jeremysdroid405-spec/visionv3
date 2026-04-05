@@ -66,11 +66,12 @@ FRONT_LINES_WEIGHTS = {
 
 
 class PropsService:
-    """Service for building and scoring props"""
+    """Service for building and scoring props - BDL is SSOT for all NBA data"""
     
     def __init__(self, db):
         self.db = db
-        self.player_stats = db.dg_player_stats
+        # BDL is the ONLY source for player stats
+        self.master_hub = db.nba_master_hub_2026
         self.daily_insights = db.dg_daily_insights
     
     # ==================== STAT TYPE EXTRACTION ====================
@@ -115,7 +116,7 @@ class PropsService:
         else:
             return False, True, "goblin"
     
-    # ==================== HIT RATE CALCULATIONS ====================
+    # ==================== HIT RATE CALCULATIONS (BDL SSOT) ====================
     
     async def calculate_prop_hit_rates(
         self, 
@@ -124,22 +125,81 @@ class PropsService:
         line: float
     ) -> Dict[str, Any]:
         """
-        Calculate hit rates for a prop using cached player stats.
+        Calculate hit rates for a prop using BDL game logs from nba_master_hub_2026.
+        BDL is the ONLY source of truth.
         
         Returns hit rates for L5, L10, and season.
         """
         normalized = sanitize_player_name(player_name)
         
-        # Get cached stats
-        stats_doc = await self.player_stats.find_one(
-            {"normalized_name": normalized},
-            {"_id": 0, "games": 1}
+        # Get player data from BDL master hub
+        player_doc = await self.master_hub.find_one(
+            {"$or": [
+                {"display_name": player_name},
+                {"display_name": {"$regex": f"^{normalized}$", "$options": "i"}}
+            ]},
+            {"_id": 0, "bdl_game_logs": 1, "baseline_stats": 1}
         )
         
-        if not stats_doc or not stats_doc.get("games"):
+        if not player_doc or not player_doc.get("bdl_game_logs"):
             return {}
         
-        return calculate_hit_rates(stats_doc, stat_type, line)
+        game_logs = player_doc.get("bdl_game_logs", [])
+        return self._calculate_hit_rates_from_bdl(game_logs, stat_type, line)
+    
+    def _calculate_hit_rates_from_bdl(self, game_logs: list, stat_type: str, line: float) -> Dict[str, Any]:
+        """Calculate hit rates from BDL game logs."""
+        if not game_logs:
+            return {}
+        
+        # Map stat types to BDL field names
+        stat_field_map = {
+            "PTS": "pts", "REB": "reb", "AST": "ast", "STL": "stl", 
+            "BLK": "blk", "TO": "turnover", "3PM": "fg3m", "THREES": "fg3m",
+            "PRA": ["pts", "reb", "ast"], "PR": ["pts", "reb"], 
+            "PA": ["pts", "ast"], "RA": ["reb", "ast"]
+        }
+        
+        field = stat_field_map.get(stat_type.upper())
+        if not field:
+            return {}
+        
+        # Extract values
+        values = []
+        for game in game_logs[:10]:
+            if isinstance(field, list):
+                total = sum(game.get(f, 0) or 0 for f in field)
+                values.append(total)
+            else:
+                val = game.get(field, 0)
+                if val is not None:
+                    values.append(val)
+        
+        if not values:
+            return {}
+        
+        l5_values = values[:5]
+        l10_values = values[:10]
+        
+        l5_over = sum(1 for v in l5_values if v > line)
+        l10_over = sum(1 for v in l10_values if v > line)
+        
+        return {
+            "l5": {
+                "hit_rate": l5_over / len(l5_values) if l5_values else 0,
+                "games_over": l5_over,
+                "total_games": len(l5_values)
+            },
+            "l10": {
+                "hit_rate": l10_over / len(l10_values) if l10_values else 0,
+                "games_over": l10_over,
+                "total_games": len(l10_values)
+            },
+            "season": {
+                "avg": sum(values) / len(values) if values else 0
+            },
+            "source": "bdl_game_logs"
+        }
     
     # ==================== WAR ZONE PICK SCORING ====================
     

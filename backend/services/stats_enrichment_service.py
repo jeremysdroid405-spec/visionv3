@@ -48,15 +48,14 @@ class StatsEnrichmentService:
     Service for fetching and enriching player stats from multiple sources.
     
     Data Flow:
-    1. Check MongoDB cache first
-    2. Try BallDontLie API (primary)
-    3. Try BDL API (secondary)
-    4. Try NBA.com API (tertiary)
+    1. Check nba_master_hub_2026 (BDL SSOT) first
+    2. BDL is the ONLY source - no fallbacks
     """
     
     def __init__(self, db: AsyncIOMotorDatabase):
         self.db = db
-        self.player_stats = db.dg_player_stats
+        # BDL is the ONLY source for player stats
+        self.master_hub = db.nba_master_hub_2026
         
         # In-memory cache for player ID mapping
         self._player_name_map: Dict[str, Dict] = {}
@@ -69,64 +68,31 @@ class StatsEnrichmentService:
         calculate_hit_rates_func
     ) -> List[Dict]:
         """
-        Enrich props with hit rates from CACHED player stats in MongoDB.
-        
-        Reads from dg_player_stats collection (populated by sync_player_stats).
-        Falls back to live API calls only if cache is empty.
+        Enrich props with hit rates from BDL game logs in nba_master_hub_2026.
+        BDL is the ONLY source of truth for all NBA data.
         """
-        logger.info(f"[STATS ENRICHMENT] Starting enrichment for {len(player_names)} players from cache...")
+        logger.info(f"[STATS ENRICHMENT] Loading stats for {len(player_names)} players from BDL (nba_master_hub_2026)...")
         
         player_stats_cache = {}
-        cache_hits = 0
-        api_fallbacks = 0
         
-        # Batch load from MongoDB
-        normalized_names = [sanitize_player_name(name) for name in player_names]
-        cached_docs = await self.player_stats.find(
-            {"normalized_name": {"$in": normalized_names}},
-            {"_id": 0}
-        ).to_list(None)
+        # Batch load from BDL master hub
+        cursor = self.master_hub.find(
+            {"display_name": {"$in": player_names}},
+            {"_id": 0, "display_name": 1, "bdl_game_logs": 1, "baseline_stats": 1}
+        )
         
-        # Build cache from MongoDB results
-        for doc in cached_docs:
-            player_stats_cache[doc.get("player_name")] = doc
-            cache_hits += 1
+        async for doc in cursor:
+            player_name = doc.get("display_name")
+            if player_name and doc.get("bdl_game_logs"):
+                # Convert BDL format to expected stats format
+                player_stats_cache[player_name] = {
+                    "player_name": player_name,
+                    "games": doc.get("bdl_game_logs", []),
+                    "baseline_stats": doc.get("baseline_stats", {}),
+                    "source": "bdl_game_logs"
+                }
         
-        logger.info(f"[STATS ENRICHMENT] Loaded {cache_hits} players from MongoDB cache")
-        
-        # For players not in cache, try live API (fallback)
-        missing_players = [name for name in player_names if name not in player_stats_cache]
-        if missing_players:
-            logger.info(f"[STATS ENRICHMENT] {len(missing_players)} players not in cache, fetching from API...")
-            
-            for player_name in missing_players[:20]:  # Limit API calls
-                try:
-                    stats = await self.fetch_player_season_stats(player_name)
-                    if stats and stats.get("games"):
-                        player_stats_cache[player_name] = stats
-                        api_fallbacks += 1
-                        
-                        # Also save to cache for next time
-                        doc = {
-                            "player_name": player_name,
-                            "normalized_name": sanitize_player_name(player_name),
-                            "games": stats.get("games", []),
-                            "total_games": len(stats.get("games", [])),
-                            "source": stats.get("source", "api_fallback"),
-                            "synced_at": datetime.now(timezone.utc).isoformat()
-                        }
-                        await self.player_stats.update_one(
-                            {"normalized_name": doc["normalized_name"]},
-                            {"$set": doc},
-                            upsert=True
-                        )
-                except Exception as e:
-                    logger.debug(f"[STATS] Error fetching stats for {player_name}: {e}")
-                
-                await asyncio.sleep(0.1)
-        
-        enriched_count = len(player_stats_cache)
-        logger.info(f"[STATS ENRICHMENT] Total stats: {enriched_count} (cache: {cache_hits}, API: {api_fallbacks})")
+        logger.info(f"[STATS ENRICHMENT] Loaded {len(player_stats_cache)} players from BDL")
         
         # Enrich props with hit rates
         for prop in props:
