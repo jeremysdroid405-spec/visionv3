@@ -656,10 +656,13 @@ class VegasFeatureEngineer:
     def build_training_dataset(
         self,
         stat_type: str,
-        min_games: int = 15
+        min_games: int = 15,
+        use_v2_stats: bool = True  # NEW: Include V2 Advanced Stats
     ) -> pd.DataFrame:
         """
         Build comprehensive training dataset with all Vegas features.
+        
+        Now includes V2 Advanced Stats when available!
         """
         hub = self.db['nba_master_hub_2026']
         all_rows = []
@@ -670,10 +673,13 @@ class VegasFeatureEngineer:
         })
         
         player_count = 0
+        v2_enriched = 0
+        
         for player in players:
             player_name = player.get('display_name') or player.get('player_name')
             team = player.get('team')
             logs = player.get('bdl_game_logs', [])
+            bdl_id = player.get('bdl_id')  # Get BDL ID for V2 stats
             
             if len(logs) < min_games:
                 continue
@@ -696,12 +702,13 @@ class VegasFeatureEngineer:
                 # Get opponent team (would need ID -> abbreviation mapping)
                 opp_team_id = target_game.get('opponent_team_id')
                 
-                # Extract features
+                # Extract features WITH V2 stats if available
                 features = self.extract_features(
                     prior_games=prior_games,
                     stat_type=stat_type,
                     target_game=target_game,
                     opponent_team=None,  # Would need team ID mapping
+                    bdl_player_id=bdl_id if use_v2_stats else None,  # V2 stats
                 )
                 
                 if features:
@@ -709,9 +716,13 @@ class VegasFeatureEngineer:
                     features['player_name'] = player_name
                     features['game_date'] = target_game.get('date')
                     all_rows.append(features)
+                    
+                    if features.get('has_v2_advanced') == 1:
+                        v2_enriched += 1
         
         df = pd.DataFrame(all_rows)
         logger.info(f"[{stat_type}] Built training dataset: {len(df)} samples from {player_count} players")
+        logger.info(f"[{stat_type}] V2 Advanced Stats: {v2_enriched}/{len(df)} samples ({v2_enriched/max(len(df),1)*100:.1f}%)")
         
         return df
 

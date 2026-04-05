@@ -5,7 +5,42 @@ PropVision is a sports analytics platform for NBA player props, providing data-d
 
 ---
 
-## Latest Update (2026-04-05): V2 Advanced Stats Integration
+## Latest Update (2026-04-05): Vegas Killer Model Retrained with V2 Stats
+
+### MAJOR MILESTONE: 84-Feature Model with Real Process Stats
+
+The Vegas Killer model has been **RETRAINED** with V2 Advanced Stats from the BDL API!
+
+#### Training Data
+- **108,178 V2 Advanced Stats records** across 4 seasons (2020, 2021, 2022, 2024)
+- **15,587 training samples** from 450 players
+- **88.6% of samples enriched** with V2 Advanced Stats
+
+#### Model Performance (After Retraining)
+| Stat | Features | Test MAE | Test R² |
+|------|----------|----------|---------|
+| PTS | 84 | 4.76 | 0.518 |
+| REB | 84 | 1.91 | 0.426 |
+| AST | 84 | 1.40 | 0.488 |
+| 3PM | 84 | 0.93 | 0.316 |
+| PRA | 84 | 6.18 | 0.567 |
+
+#### New V2 Features Added to Model
+- `v2_usg_rate_l5/l10` - Usage Rate
+- `v2_ts_pct_l5/l10` - True Shooting %
+- `v2_efg_l5/l10` - Effective FG%
+- `v2_pace_l5/l10` - Game Tempo
+- `v2_off_rating_l5` - Offensive Rating
+- `v2_matchup_fg_pct_l5` - Matchup Defense
+- `v2_touches_l5` - Ball Touches (Tracking)
+- `v2_pie_l5/l10` - Player Impact Estimate
+- `v2_assist_pct_l5` - Assist %
+- `v2_reb_pct_l5` - Rebound %
+- And 20+ more advanced metrics
+
+---
+
+## Previous Update: V2 Advanced Stats Integration
 
 ### MAJOR MILESTONE: Real Process Stats from BDL V2 API
 
