@@ -442,6 +442,181 @@ class VegasFeatureEngineer:
         
         return features
     
+    def calculate_interaction_multipliers(
+        self,
+        features: Dict[str, float],
+        stat_type: str,
+        opponent_team: str = None,
+    ) -> Dict[str, float]:
+        """
+        Calculate Gemini's "Baddest Ass" Interaction Multipliers.
+        
+        These capture basketball-specific synergies:
+        1. Green Light Multiplier - 3PT shooting opportunity
+        2. Vacuum Multiplier - Usage redistribution  
+        3. Track Meet Multiplier - Pace adjustment
+        4. Rim Pressure Multiplier - Paint attack opportunity
+        5. Freshness Multiplier - Fatigue adjustment
+        """
+        multipliers = {}
+        
+        # Helper to safely get float values
+        def safe_get(key, default=0.0):
+            val = features.get(key)
+            if val is None:
+                return default
+            try:
+                return float(val)
+            except (TypeError, ValueError):
+                return default
+        
+        # =================================================================
+        # 1. GREEN LIGHT MULTIPLIER (3PT Shooting Opportunity)
+        # Formula: 3PA_Rate × (1 - Opp_Contest%) × Opp_3P%_Allowed
+        # =================================================================
+        # 3PA Rate: 3-point attempt rate (3PA / FGA)
+        fg3_rate = safe_get('fg3_rate', 0.35)  # Default league avg ~35%
+        
+        # Opp Contest%: How often opponent contests shots (use inverse for "openness")
+        # From V2 stats: v2_contested_shots_l5 gives us contest rate
+        opp_contest_rate = safe_get('v2_contested_fg_pct_l5', 0.45) if safe_get('has_v2_advanced', 0) else 0.45
+        openness_factor = 1 - min(opp_contest_rate, 0.8)  # Cap at 80% contest rate
+        
+        # Opp 3P% Allowed: How well/poorly opponent defends the 3
+        opp_3p_allowed = 0.36  # League average
+        if opponent_team and opponent_team in self._def_rating_cache:
+            opp_def = self._def_rating_cache[opponent_team]
+            # Worse defense = higher allowed %
+            opp_3p_allowed = 0.30 + (opp_def.get('def_rank', 15) / 30.0) * 0.12  # Scale 30-42%
+        
+        multipliers['green_light_multiplier'] = fg3_rate * openness_factor * (opp_3p_allowed / 0.36)
+        
+        # =================================================================
+        # 2. VACUUM MULTIPLIER (Usage Redistribution when stars out)
+        # Formula: Base_USG + (Missing_USG × Teammate_Correlation_Factor)
+        # =================================================================
+        # Base usage rate
+        base_usg = safe_get('usg_rate_l5', 20) / 100  # Convert to decimal
+        
+        # For now, use a proxy based on team total share and recent usage trend
+        # Higher team share + increasing usage = potential vacuum benefit
+        team_share = safe_get('team_total_share', 15) / 100
+        usg_trend = safe_get('ewma_trend', 0)
+        
+        # Correlation factor: players with higher usage tend to absorb more
+        correlation_factor = 0.3 if base_usg > 0.25 else 0.2 if base_usg > 0.20 else 0.15
+        
+        # Estimated missing usage (if a star is out, ~30% USG is up for grabs)
+        missing_usg_proxy = max(0, (team_share - base_usg)) * 0.5  # Estimated absorption
+        
+        multipliers['vacuum_multiplier'] = base_usg + (missing_usg_proxy * correlation_factor)
+        # Boost if player shows upward trend (hot hand / role expansion)
+        if usg_trend > 0:
+            multipliers['vacuum_multiplier'] *= (1 + usg_trend * 0.1)
+        
+        # =================================================================
+        # 3. TRACK MEET MULTIPLIER (Pace & Volume)
+        # Formula: (Team_A_Pace + Team_B_Pace) / (2 × League_Avg_Pace)
+        # =================================================================
+        league_avg_pace = 100.0  # NBA average possessions per game
+        
+        # Get player's team pace from V2 stats
+        player_pace = safe_get('v2_pace_l5', safe_get('player_pace_l5', 100))
+        
+        # Get opponent pace
+        opp_pace = 100.0  # Default
+        if opponent_team and opponent_team in self._def_rating_cache:
+            opp_def = self._def_rating_cache[opponent_team]
+            # Defensive rating correlates inversely with pace
+            opp_pace = 105 - (opp_def.get('def_rank', 15) - 15) * 0.5  # Rough estimate
+        
+        combined_pace = (player_pace + opp_pace) / 2
+        multipliers['track_meet_multiplier'] = combined_pace / league_avg_pace
+        
+        # =================================================================
+        # 4. RIM PRESSURE MULTIPLIER (Paint Attack Opportunity)
+        # Formula: Rim_Freq × (1 - Opp_BLK_Rate) × Opp_Rim_FG%_Allowed
+        # =================================================================
+        # Rim frequency: How often player attacks the paint
+        # Proxy: Use % of points from paint if available
+        rim_freq = safe_get('v2_pct_pts_paint_l5', 0.30) if safe_get('has_v2_advanced', 0) else 0.30
+        
+        # Opponent block rate and rim protection
+        opp_blk_rate = 0.05  # League average ~5%
+        opp_rim_fg_allowed = 0.62  # League average ~62% at rim
+        
+        if opponent_team and opponent_team in self._def_rating_cache:
+            opp_def = self._def_rating_cache[opponent_team]
+            # Better defense = lower rim FG allowed, higher block rate
+            def_quality = opp_def.get('def_rank', 15) / 30.0  # 0 = best, 1 = worst
+            opp_blk_rate = 0.08 - (def_quality * 0.04)  # 4-8% range
+            opp_rim_fg_allowed = 0.58 + (def_quality * 0.08)  # 58-66% range
+        
+        multipliers['rim_pressure_multiplier'] = rim_freq * (1 - opp_blk_rate) * (opp_rim_fg_allowed / 0.62)
+        
+        # =================================================================
+        # 5. FRESHNESS MULTIPLIER (Fatigue Adjustment)
+        # Formula: β_rest - (B2B × 0.05) - (Miles × 0.0001)
+        # =================================================================
+        b2b_status = safe_get('is_b2b', 0)
+        rest_days = safe_get('rest_days', 2)
+        
+        # Base freshness (fully rested = 1.0)
+        base_freshness = 1.0
+        
+        # B2B penalty: -5% per back-to-back
+        b2b_penalty = b2b_status * 0.05
+        
+        # Rest bonus: +2% per extra rest day (up to 3 days)
+        rest_bonus = min(rest_days, 3) * 0.02
+        
+        # Games in 7 days penalty (schedule density)
+        games_7d = safe_get('games_in_7_days', 3)
+        density_penalty = max(0, (games_7d - 3)) * 0.015  # -1.5% per extra game
+        
+        # Travel proxy: Away games = ~500 miles average
+        is_home = safe_get('is_home', 1)
+        travel_penalty = 0.0 if is_home else 0.025  # -2.5% for road games
+        
+        multipliers['freshness_multiplier'] = base_freshness - b2b_penalty + rest_bonus - density_penalty - travel_penalty
+        
+        # =================================================================
+        # COMPOSITE MULTIPLIERS (Stat-Type Specific)
+        # =================================================================
+        
+        # Scoring multiplier (for PTS)
+        multipliers['scoring_opportunity_multiplier'] = (
+            multipliers['green_light_multiplier'] * 0.3 +
+            multipliers['rim_pressure_multiplier'] * 0.3 +
+            multipliers['track_meet_multiplier'] * 0.25 +
+            multipliers['freshness_multiplier'] * 0.15
+        )
+        
+        # Volume multiplier (for all stats)
+        multipliers['volume_opportunity_multiplier'] = (
+            multipliers['track_meet_multiplier'] * 0.4 +
+            multipliers['vacuum_multiplier'] * 0.35 +
+            multipliers['freshness_multiplier'] * 0.25
+        )
+        
+        # Apply stat-type specific multiplier to base projection
+        base_avg = safe_get('l5_avg', 10)
+        
+        if stat_type in ['pts', 'PTS']:
+            multipliers['adjusted_projection'] = base_avg * multipliers['scoring_opportunity_multiplier']
+        elif stat_type in ['3pm', '3PM']:
+            multipliers['adjusted_projection'] = base_avg * multipliers['green_light_multiplier'] * multipliers['freshness_multiplier']
+        elif stat_type in ['reb', 'REB']:
+            # Rebounds: pace and physicality matter
+            multipliers['adjusted_projection'] = base_avg * multipliers['track_meet_multiplier'] * multipliers['freshness_multiplier']
+        elif stat_type in ['ast', 'AST']:
+            # Assists: pace and usage matter
+            multipliers['adjusted_projection'] = base_avg * multipliers['volume_opportunity_multiplier']
+        else:  # PRA, etc.
+            multipliers['adjusted_projection'] = base_avg * multipliers['volume_opportunity_multiplier']
+        
+        return multipliers
+    
     def get_v2_advanced_stats(self, player_id: int, limit: int = 20) -> List[Dict]:
         """
         Get V2 Advanced Stats for a player from bdl_advanced_stats collection.
@@ -964,6 +1139,13 @@ class VegasFeatureEngineer:
         # =====================================================================
         friction_features = self.calculate_friction_features(prior_games, opponent_team)
         features.update(friction_features)
+        
+        # =====================================================================
+        # INTERACTION MULTIPLIERS (Gemini's "Baddest Ass" Features)
+        # These capture basketball-specific synergies and non-linear relationships
+        # =====================================================================
+        multiplier_features = self.calculate_interaction_multipliers(features, stat_type, opponent_team)
+        features.update(multiplier_features)
         
         return features
     
