@@ -60,13 +60,18 @@ def main():
     
     for stat_type in stat_types:
         logger.info(f"\n{'='*50}")
-        logger.info(f"TRAINING {stat_type} MODEL")
+        logger.info(f"TRAINING {stat_type} MODEL (XGBoost + Feature Selection)")
         logger.info(f"{'='*50}")
         
         start_time = time.time()
         
         try:
-            metrics = model.train(stat_type, model_type='ensemble')
+            metrics = model.train(
+                stat_type, 
+                model_type='xgboost',
+                use_feature_selection=True,
+                p_value_threshold=0.10
+            )
             
             elapsed = time.time() - start_time
             

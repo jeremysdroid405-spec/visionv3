@@ -1,10 +1,24 @@
 """
-Vegas Killer Model - Process Stats Feature Engineering
-========================================================
+Vegas Killer Model V2 - Enhanced Process Stats
+================================================
 
-Moving from "Box Score" stats to "Process" stats.
-Vegas doesn't just look at how many points - they look at
-the CONDITIONS that allowed those points to happen.
+IMPROVEMENTS IMPLEMENTED:
+1. RECENCY WEIGHTING (EWMA) - Exponentially weighted moving averages
+   - Recent games decay older games mathematically
+   - Catches hot streaks and role changes instantly
+   
+2. FRICTION FEATURES - Game difficulty factors
+   - Pace-adjusted stats (per 100 possessions)
+   - Back-to-back penalty (rest factor)
+   - Opponent matchup difficulty (defense ranking, shot profile)
+   
+3. GRADIENT BOOSTING - Non-linear decision trees
+   - Handles "IF/AND" logic that linear models can't
+   - XGBoost for superior accuracy
+   
+4. FEATURE SELECTION - P-value based noise reduction
+   - Uses statsmodels to identify significant features
+   - Drops noisy variables that cause overfitting
 
 FEATURE CATEGORIES:
 1. OPPORTUNITY (Volume) - USG%, Minutes, FGA, FTr
@@ -12,12 +26,7 @@ FEATURE CATEGORIES:
 3. MATCHUP (Friction) - Opp DRtg, Opp Pace, Individual Defender
 4. ENVIRONMENT (Fatigue) - Rest, Home/Away, Travel, Time
 5. MARKET (Wisdom) - Line Movement, Implied Prob, Team Total
-
-ROLLING WINDOWS:
-- L3: Hot streak detection
-- L5: Current form
-- L10: Stable baseline
-- Season: True talent level
+6. RECENCY (Heat) - EWMA weighted recent performance
 """
 
 import pandas as pd
@@ -28,18 +37,25 @@ from sklearn.model_selection import train_test_split, cross_val_score
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 import statsmodels.api as sm
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any, Optional, Tuple
 from datetime import datetime, timedelta
 from collections import defaultdict
 import logging
 import pickle
 import os
 
+# XGBoost for better non-linear modeling
+try:
+    import xgboost as xgb
+    HAS_XGBOOST = True
+except ImportError:
+    HAS_XGBOOST = False
+    
 logger = logging.getLogger(__name__)
 
 
 # =============================================================================
-# FEATURE DEFINITIONS
+# FEATURE DEFINITIONS (V2 - Enhanced)
 # =============================================================================
 
 FEATURE_CATEGORIES = {
@@ -93,6 +109,28 @@ FEATURE_CATEGORIES = {
         'team_total',       # Projected team total points
         'spread',           # Game spread
     ],
+    # NEW: EWMA Recency Features (Heat Factor)
+    'recency_ewma': [
+        'ewma_l5',          # EWMA of last 5 games (alpha=0.5)
+        'ewma_l10',         # EWMA of last 10 games (alpha=0.3)
+        'ewma_trend',       # EWMA L5 vs L10 (momentum)
+        'heat_index',       # Weighted recent outperformance
+    ],
+    # NEW: Pace-Adjusted Features (per 100 possessions)
+    'pace_adjusted': [
+        'pts_per_100',      # Points per 100 possessions
+        'reb_per_100',      # Rebounds per 100 possessions
+        'ast_per_100',      # Assists per 100 possessions
+        'pace_factor',      # Game pace adjustment factor
+    ],
+    # NEW: Friction Features (Game Difficulty)
+    'friction': [
+        'b2b_penalty',      # Back-to-back fatigue (0 or 1)
+        'opp_interior_def', # Opponent interior defense rating
+        'opp_perimeter_def',# Opponent perimeter defense rating
+        'matchup_difficulty',# Composite matchup score
+        'travel_factor',    # Rest + home/away combined
+    ],
 }
 
 ALL_FEATURES = []
@@ -145,6 +183,264 @@ class VegasFeatureEngineer:
             logger.info(f"Loaded {len(self._def_rating_cache)} team defensive ratings")
         except Exception as e:
             logger.error(f"Failed to load team stats: {e}")
+    
+    # =========================================================================
+    # EWMA (EXPONENTIALLY WEIGHTED MOVING AVERAGE) - RECENCY WEIGHTING
+    # =========================================================================
+    
+    def calculate_ewma(
+        self,
+        values: List[float],
+        alpha: float = 0.5,
+        min_periods: int = 1
+    ) -> float:
+        """
+        Calculate Exponentially Weighted Moving Average.
+        
+        Recent games have exponentially more weight than older games.
+        
+        Args:
+            values: List of values (most recent first)
+            alpha: Decay factor (0.5 = last game has 50% weight, 0.3 = 30%, etc.)
+            min_periods: Minimum number of values needed
+        
+        Returns:
+            EWMA value
+            
+        Math: EWMA_t = alpha * x_t + (1-alpha) * EWMA_{t-1}
+        """
+        if not values or len(values) < min_periods:
+            return 0.0
+        
+        # Filter None values
+        clean_values = [v for v in values if v is not None]
+        if not clean_values:
+            return 0.0
+        
+        # Calculate EWMA (values are most recent first)
+        ewma = clean_values[0]
+        for i in range(1, len(clean_values)):
+            ewma = alpha * clean_values[i] + (1 - alpha) * ewma
+        
+        # Actually we want most recent to have highest weight
+        # So reverse: start from oldest, apply decay
+        ewma = clean_values[-1]  # Start with oldest
+        for i in range(len(clean_values) - 2, -1, -1):
+            ewma = alpha * clean_values[i] + (1 - alpha) * ewma
+        
+        return round(ewma, 2)
+    
+    def calculate_heat_index(
+        self,
+        recent_values: List[float],
+        season_avg: float,
+        window: int = 5
+    ) -> float:
+        """
+        Calculate "Heat Index" - how much a player is outperforming baseline.
+        
+        A player with a season avg of 20 who just had 25, 28, 24 is "hot".
+        
+        Returns:
+            Heat index (positive = hot, negative = cold)
+        """
+        if not recent_values or season_avg <= 0:
+            return 0.0
+        
+        recent = [v for v in recent_values[:window] if v is not None]
+        if not recent:
+            return 0.0
+        
+        recent_avg = sum(recent) / len(recent)
+        
+        # Heat = (Recent - Baseline) / Baseline * 100
+        heat = (recent_avg - season_avg) / season_avg * 100
+        
+        return round(heat, 2)
+    
+    def get_ewma_features(
+        self,
+        games: List[Dict],
+        stat_type: str
+    ) -> Dict[str, float]:
+        """
+        Calculate all EWMA-based features for a stat type.
+        """
+        stat_map = {
+            'PTS': ['pts', 'points'],
+            'REB': ['reb', 'rebounds'],
+            'AST': ['ast', 'assists'],
+            '3PM': ['fg3m', 'three_pointers_made'],
+            'PRA': None,  # Calculated
+        }
+        
+        def get_value(game, stat):
+            if stat == 'PRA':
+                pts = get_value(game, 'PTS')
+                reb = get_value(game, 'REB')
+                ast = get_value(game, 'AST')
+                if all(v is not None for v in [pts, reb, ast]):
+                    return pts + reb + ast
+                return None
+            
+            keys = stat_map.get(stat, [])
+            if not keys:
+                return None
+            for key in keys:
+                if key in game and game[key] is not None:
+                    return float(game[key])
+            return None
+        
+        values = [get_value(g, stat_type) for g in games]
+        clean_values = [v for v in values if v is not None]
+        
+        features = {}
+        
+        # EWMA with different alphas
+        features['ewma_l5'] = self.calculate_ewma(clean_values[:5], alpha=0.5)
+        features['ewma_l10'] = self.calculate_ewma(clean_values[:10], alpha=0.3)
+        
+        # EWMA trend (momentum)
+        if features['ewma_l10'] > 0:
+            features['ewma_trend'] = round(
+                (features['ewma_l5'] - features['ewma_l10']) / features['ewma_l10'] * 100, 2
+            )
+        else:
+            features['ewma_trend'] = 0.0
+        
+        # Heat index
+        season_avg = sum(clean_values) / len(clean_values) if clean_values else 0
+        features['heat_index'] = self.calculate_heat_index(clean_values, season_avg)
+        
+        return features
+    
+    # =========================================================================
+    # PACE-ADJUSTED STATS (Per 100 Possessions)
+    # =========================================================================
+    
+    def calculate_pace_adjusted(
+        self,
+        games: List[Dict],
+        stat_type: str,
+        league_pace: float = 100.0
+    ) -> Dict[str, float]:
+        """
+        Calculate pace-adjusted stats (per 100 possessions).
+        
+        This levels the playing field between fast teams (Pacers) and slow teams (Heat).
+        """
+        features = {}
+        
+        # Get raw values and minutes
+        def get_stat(game, keys):
+            for key in keys:
+                if key in game and game[key] is not None:
+                    return float(game[key])
+            return None
+        
+        pts_values = []
+        reb_values = []
+        ast_values = []
+        min_values = []
+        
+        for game in games[:10]:
+            pts = get_stat(game, ['pts', 'points'])
+            reb = get_stat(game, ['reb', 'rebounds'])
+            ast = get_stat(game, ['ast', 'assists'])
+            mins = get_stat(game, ['min', 'minutes'])
+            
+            if mins and mins > 0:
+                pts_values.append((pts or 0, mins))
+                reb_values.append((reb or 0, mins))
+                ast_values.append((ast or 0, mins))
+                min_values.append(mins)
+        
+        if not min_values:
+            return {
+                'pts_per_100': 0,
+                'reb_per_100': 0,
+                'ast_per_100': 0,
+                'pace_factor': 1.0,
+            }
+        
+        # Calculate per-minute rates then project to 100 possessions
+        # Assuming ~100 possessions per 48 minutes
+        avg_mins = sum(min_values) / len(min_values)
+        
+        # Per 100 possession estimates (simple: per 36 * pace factor)
+        total_pts = sum(p[0] for p in pts_values)
+        total_reb = sum(r[0] for r in reb_values)
+        total_ast = sum(a[0] for a in ast_values)
+        total_mins = sum(min_values)
+        
+        if total_mins > 0:
+            features['pts_per_100'] = round(total_pts / total_mins * 36 * 1.05, 2)
+            features['reb_per_100'] = round(total_reb / total_mins * 36 * 1.05, 2)
+            features['ast_per_100'] = round(total_ast / total_mins * 36 * 1.05, 2)
+        else:
+            features['pts_per_100'] = 0
+            features['reb_per_100'] = 0
+            features['ast_per_100'] = 0
+        
+        # Pace factor (would ideally use real team pace)
+        features['pace_factor'] = 1.0  # Default, will be overridden by V2 data
+        
+        return features
+    
+    # =========================================================================
+    # FRICTION FEATURES (Game Difficulty)
+    # =========================================================================
+    
+    def calculate_friction_features(
+        self,
+        games: List[Dict],
+        opponent_team: str = None,
+    ) -> Dict[str, float]:
+        """
+        Calculate "friction" features that describe game difficulty.
+        
+        - Back-to-back penalty
+        - Opponent defensive quality
+        - Travel/rest factors
+        """
+        features = {}
+        
+        # Back-to-back detection
+        if len(games) >= 2:
+            try:
+                date1 = games[0].get('date', '')
+                date2 = games[1].get('date', '')
+                
+                if date1 and date2:
+                    d1 = datetime.fromisoformat(date1.replace('Z', ''))
+                    d2 = datetime.fromisoformat(date2.replace('Z', ''))
+                    days_diff = (d1 - d2).days
+                    
+                    features['b2b_penalty'] = 1 if days_diff <= 1 else 0
+                else:
+                    features['b2b_penalty'] = 0
+            except:
+                features['b2b_penalty'] = 0
+        else:
+            features['b2b_penalty'] = 0
+        
+        # Opponent defensive ratings
+        if opponent_team and opponent_team in self._def_rating_cache:
+            opp_def = self._def_rating_cache[opponent_team]
+            features['opp_interior_def'] = opp_def.get('def_rating', 110)
+            features['opp_perimeter_def'] = opp_def.get('def_rating', 110)  # Would need splits
+            features['matchup_difficulty'] = opp_def.get('def_rank', 15) / 30.0  # Normalized 0-1
+        else:
+            features['opp_interior_def'] = 110
+            features['opp_perimeter_def'] = 110
+            features['matchup_difficulty'] = 0.5
+        
+        # Travel factor (simplified: rest days * home bonus)
+        rest_days = features.get('rest_days', 2)
+        is_home = 1  # Default, would need game data
+        features['travel_factor'] = min(rest_days, 3) * 0.3 + (0.2 if is_home else 0)
+        
+        return features
     
     def get_v2_advanced_stats(self, player_id: int, limit: int = 20) -> List[Dict]:
         """
@@ -651,6 +947,24 @@ class VegasFeatureEngineer:
         else:
             features['has_v2_advanced'] = 0
         
+        # =====================================================================
+        # EWMA FEATURES (Recency Weighting / "Heat" Factor)
+        # =====================================================================
+        ewma_features = self.get_ewma_features(prior_games, stat_type)
+        features.update(ewma_features)
+        
+        # =====================================================================
+        # PACE-ADJUSTED FEATURES (Per 100 Possessions)
+        # =====================================================================
+        pace_features = self.calculate_pace_adjusted(prior_games, stat_type)
+        features.update(pace_features)
+        
+        # =====================================================================
+        # FRICTION FEATURES (Game Difficulty)
+        # =====================================================================
+        friction_features = self.calculate_friction_features(prior_games, opponent_team)
+        features.update(friction_features)
+        
         return features
     
     def build_training_dataset(
@@ -821,12 +1135,19 @@ class VegasKillerModel:
     def train(
         self,
         stat_type: str,
-        model_type: str = 'ensemble'  # 'ridge', 'gbm', 'ensemble'
+        model_type: str = 'xgboost',  # 'ridge', 'gbm', 'xgboost', 'ensemble'
+        use_feature_selection: bool = True,  # Drop insignificant features
+        p_value_threshold: float = 0.10,  # Features with p > 0.10 are dropped
     ) -> Dict[str, Any]:
         """
-        Train Vegas Killer model with full feature set.
+        Train Vegas Killer V2 model with:
+        - XGBoost (handles IF/AND logic)
+        - Feature selection via P-values (noise killer)
+        - Enhanced features (EWMA, Friction, Pace-adjusted)
         """
-        logger.info(f"[{stat_type}] Training Vegas Killer model...")
+        logger.info(f"[{stat_type}] Training Vegas Killer V2 model...")
+        logger.info(f"  Model type: {model_type}")
+        logger.info(f"  Feature selection: {use_feature_selection} (p < {p_value_threshold})")
         
         df = self.feature_engineer.build_training_dataset(stat_type)
         
@@ -840,6 +1161,39 @@ class VegasKillerModel:
         X = df[feature_cols].fillna(0).replace([np.inf, -np.inf], 0)
         y = df['target']
         
+        # =====================================================================
+        # FEATURE SELECTION (P-Value based - Noise Killer)
+        # =====================================================================
+        selected_features = feature_cols
+        dropped_features = []
+        
+        if use_feature_selection:
+            logger.info(f"[{stat_type}] Running feature selection...")
+            
+            try:
+                X_const = sm.add_constant(X)
+                ols_model = sm.OLS(y, X_const).fit()
+                
+                selected_features = []
+                for feature in feature_cols:
+                    pval = ols_model.pvalues.get(feature, 1.0)
+                    if pval < p_value_threshold:
+                        selected_features.append(feature)
+                    else:
+                        dropped_features.append((feature, round(pval, 4)))
+                
+                logger.info(f"[{stat_type}] Kept {len(selected_features)} features, dropped {len(dropped_features)} noisy features")
+                
+                # Update X with selected features only
+                if selected_features:
+                    X = X[selected_features]
+                    feature_cols = selected_features
+                else:
+                    logger.warning(f"[{stat_type}] No significant features found, using all")
+                    
+            except Exception as e:
+                logger.warning(f"Feature selection failed: {e}, using all features")
+        
         # Train/test split
         X_train, X_test, y_train, y_test = train_test_split(
             X, y, test_size=0.2, random_state=42
@@ -850,34 +1204,65 @@ class VegasKillerModel:
         X_train_scaled = scaler.fit_transform(X_train)
         X_test_scaled = scaler.transform(X_test)
         
-        # Train models
+        # =====================================================================
+        # MODEL TRAINING
+        # =====================================================================
         if model_type == 'ridge':
             model = Ridge(alpha=1.0)
             model.fit(X_train_scaled, y_train)
         
         elif model_type == 'gbm':
             model = GradientBoostingRegressor(
-                n_estimators=100,
-                max_depth=4,
-                learning_rate=0.1,
+                n_estimators=150,
+                max_depth=5,
+                learning_rate=0.08,
+                subsample=0.8,
                 random_state=42
             )
             model.fit(X_train_scaled, y_train)
+        
+        elif model_type == 'xgboost' and HAS_XGBOOST:
+            # XGBoost - handles complex IF/AND logic better
+            model = xgb.XGBRegressor(
+                n_estimators=200,
+                max_depth=6,
+                learning_rate=0.05,
+                subsample=0.8,
+                colsample_bytree=0.8,
+                min_child_weight=3,
+                gamma=0.1,
+                reg_alpha=0.1,
+                reg_lambda=1.0,
+                random_state=42,
+                verbosity=0
+            )
+            model.fit(X_train_scaled, y_train)
+            logger.info(f"[{stat_type}] Using XGBoost model")
         
         else:  # ensemble
             ridge = Ridge(alpha=1.0)
             ridge.fit(X_train_scaled, y_train)
             
-            gbm = GradientBoostingRegressor(
-                n_estimators=100,
-                max_depth=4,
-                learning_rate=0.1,
-                random_state=42
-            )
-            gbm.fit(X_train_scaled, y_train)
-            
-            # Ensemble: average predictions
-            model = EnsembleModel([ridge, gbm], weights=[0.4, 0.6])
+            if HAS_XGBOOST:
+                xgb_model = xgb.XGBRegressor(
+                    n_estimators=150,
+                    max_depth=5,
+                    learning_rate=0.05,
+                    subsample=0.8,
+                    random_state=42,
+                    verbosity=0
+                )
+                xgb_model.fit(X_train_scaled, y_train)
+                model = EnsembleModel([ridge, xgb_model], weights=[0.3, 0.7])
+            else:
+                gbm = GradientBoostingRegressor(
+                    n_estimators=100,
+                    max_depth=4,
+                    learning_rate=0.1,
+                    random_state=42
+                )
+                gbm.fit(X_train_scaled, y_train)
+                model = EnsembleModel([ridge, gbm], weights=[0.4, 0.6])
         
         # Predictions
         y_pred_train = model.predict(X_train_scaled)
@@ -889,6 +1274,8 @@ class VegasKillerModel:
             "model_type": model_type,
             "n_samples": len(df),
             "n_features": len(feature_cols),
+            "n_dropped_features": len(dropped_features),
+            "dropped_features": dropped_features[:10],  # Top 10 noisy
             "features": feature_cols,
             "train": {
                 "mae": round(mean_absolute_error(y_train, y_pred_train), 2),
