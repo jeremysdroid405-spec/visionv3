@@ -1,0 +1,22 @@
+{
+  "PTS": {
+    "error": "No valid predictions with real lines",
+    "stat_type": "PTS",
+    "message": "Need to fetch more historical odds data"
+  },
+  "REB": {
+    "error": "No valid predictions with real lines",
+    "stat_type": "REB",
+    "message": "Need to fetch more historical odds data"
+  },
+  "AST": {
+    "error": "No valid predictions with real lines",
+    "stat_type": "AST",
+    "message": "Need to fetch more historical odds data"
+  },
+  "3PM": {
+    "error": "No valid predictions with real lines",
+    "stat_type": "3PM",
+    "message": "Need to fetch more historical odds data"
+  }
+}
