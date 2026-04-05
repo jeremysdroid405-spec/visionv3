@@ -1,0 +1,166 @@
+{
+  "PTS": {
+    "stat_type": "PTS",
+    "total_bets": 2111,
+    "wins": 1157,
+    "win_rate": 54.81,
+    "roi_percent": 4.6,
+    "profitable": "True",
+    "tier_counts": {
+      "safe_haven": 397,
+      "front_lines": 1322,
+      "war_zone": 600,
+      "disqualified": 6292
+    },
+    "tier_results": {
+      "safe_haven": {
+        "bets": 397,
+        "wins": 193,
+        "win_rate": 48.61,
+        "roi": -7.22,
+        "profitable": "False"
+      },
+      "front_lines": {
+        "bets": 1274,
+        "wins": 650,
+        "win_rate": 51.02,
+        "roi": -2.63,
+        "profitable": "False"
+      },
+      "war_zone": {
+        "bets": 440,
+        "wins": 314,
+        "win_rate": 71.36,
+        "roi": 36.19,
+        "profitable": "True"
+      }
+    },
+    "disqualify_reasons": {
+      "HARD_KILL": 4907,
+      "Below threshold": 1385
+    }
+  },
+  "REB": {
+    "stat_type": "REB",
+    "total_bets": 1306,
+    "wins": 698,
+    "win_rate": 53.45,
+    "roi_percent": 2.0,
+    "profitable": "True",
+    "tier_counts": {
+      "safe_haven": 212,
+      "front_lines": 843,
+      "war_zone": 490,
+      "disqualified": 5622
+    },
+    "tier_results": {
+      "safe_haven": {
+        "bets": 212,
+        "wins": 152,
+        "win_rate": 71.7,
+        "roi": 36.83,
+        "profitable": "True"
+      },
+      "front_lines": {
+        "bets": 718,
+        "wins": 354,
+        "win_rate": 49.3,
+        "roi": -5.91,
+        "profitable": "False"
+      },
+      "war_zone": {
+        "bets": 376,
+        "wins": 192,
+        "win_rate": 51.06,
+        "roi": -2.55,
+        "profitable": "False"
+      }
+    },
+    "disqualify_reasons": {
+      "HARD_KILL": 4176,
+      "Below threshold": 1446
+    }
+  },
+  "AST": {
+    "stat_type": "AST",
+    "total_bets": 1083,
+    "wins": 521,
+    "win_rate": 48.11,
+    "roi_percent": -8.19,
+    "profitable": "False",
+    "tier_counts": {
+      "safe_haven": 248,
+      "front_lines": 713,
+      "war_zone": 246,
+      "disqualified": 4388
+    },
+    "tier_results": {
+      "safe_haven": {
+        "bets": 248,
+        "wins": 130,
+        "win_rate": 52.42,
+        "roi": 0.04,
+        "profitable": "True"
+      },
+      "front_lines": {
+        "bets": 615,
+        "wins": 305,
+        "win_rate": 49.59,
+        "roi": -5.36,
+        "profitable": "False"
+      },
+      "war_zone": {
+        "bets": 220,
+        "wins": 86,
+        "win_rate": 39.09,
+        "roi": -25.4,
+        "profitable": "False"
+      }
+    },
+    "disqualify_reasons": {
+      "HARD_KILL": 3422,
+      "Below threshold": 966
+    }
+  },
+  "3PM": {
+    "stat_type": "3PM",
+    "total_bets": 988,
+    "wins": 558,
+    "win_rate": 56.48,
+    "roi_percent": 7.78,
+    "profitable": "True",
+    "tier_counts": {
+      "safe_haven": 242,
+      "front_lines": 596,
+      "war_zone": 230,
+      "disqualified": 5364
+    },
+    "tier_results": {
+      "safe_haven": {
+        "bets": 242,
+        "wins": 92,
+        "win_rate": 38.02,
+        "roi": -27.45,
+        "profitable": "False"
+      },
+      "front_lines": {
+        "bets": 582,
+        "wins": 348,
+        "win_rate": 59.79,
+        "roi": 14.11,
+        "profitable": "True"
+      },
+      "war_zone": {
+        "bets": 164,
+        "wins": 118,
+        "win_rate": 71.95,
+        "roi": 37.31,
+        "profitable": "True"
+      }
+    },
+    "disqualify_reasons": {
+      "HARD_KILL": 4056,
+      "Below threshold": 1308
+    }
+  }
+}
