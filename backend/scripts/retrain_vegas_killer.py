@@ -1,11 +1,15 @@
 """
-Retrain Vegas Killer Model with V2 Advanced Stats
-===================================================
+Retrain Vegas Killer Model with V2 Advanced Stats + Historical Data
+====================================================================
 This script retrains all Vegas Killer models (PTS, REB, AST, 3PM, PRA)
-using the new V2 Advanced Stats features.
+using V2 Advanced Stats AND historical data from 2020-2025.
 
 Usage:
     python scripts/retrain_vegas_killer.py
+    
+Options (via env vars):
+    USE_HISTORICAL=1   Include 2020-2024 data (default: 1)
+    MIN_GAMES=15       Min games required per player (default: 15)
 """
 
 import os
@@ -33,20 +37,30 @@ DB_NAME = os.environ.get("DB_NAME", "pick_vision")
 
 def main():
     logger.info("=" * 70)
-    logger.info("VEGAS KILLER MODEL RETRAINING WITH V2 ADVANCED STATS")
+    logger.info("VEGAS KILLER MODEL RETRAINING")
+    logger.info("V2 Advanced Stats + Historical Data (2020-2025)")
     logger.info("=" * 70)
     
     # Connect to MongoDB
     client = MongoClient(MONGO_URL)
     db = client[DB_NAME]
     
-    # Check V2 stats availability
+    # Check data availability
     v2_count = db['bdl_advanced_stats'].count_documents({})
-    logger.info(f"V2 Advanced Stats available: {v2_count} records")
+    historical_logs = db['bdl_historical_game_logs'].count_documents({})
+    hub_count = db['nba_master_hub_2026'].count_documents({})
     
-    if v2_count == 0:
-        logger.error("No V2 Advanced Stats found! Run fetch_historical_v2_stats.py first.")
-        return
+    logger.info(f"Data Sources:")
+    logger.info(f"  - V2 Advanced Stats: {v2_count:,} records")
+    logger.info(f"  - Historical Game Logs (2020-2024): {historical_logs:,} records")
+    logger.info(f"  - Current Season Hub: {hub_count:,} players")
+    
+    use_historical = os.environ.get('USE_HISTORICAL', '1') == '1' and historical_logs > 0
+    
+    if use_historical:
+        logger.info("\n✅ Including historical data (2020-2024) in training")
+    else:
+        logger.info("\n⚠️  Training with current season only")
     
     # Import model
     from services.vegas_killer_model import VegasKillerModel
@@ -60,12 +74,14 @@ def main():
     
     for stat_type in stat_types:
         logger.info(f"\n{'='*50}")
-        logger.info(f"TRAINING {stat_type} MODEL (XGBoost + Feature Selection)")
+        logger.info(f"TRAINING {stat_type} MODEL")
         logger.info(f"{'='*50}")
         
         start_time = time.time()
         
         try:
+            # Train with all features (no feature selection)
+            # The train() method internally calls feature_engineer.build_training_dataset()
             metrics = model.train(
                 stat_type, 
                 model_type='xgboost',
@@ -90,6 +106,8 @@ def main():
             
         except Exception as e:
             logger.error(f"Failed to train {stat_type}: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
             results[stat_type] = {'error': str(e)}
     
     # Save models
@@ -106,13 +124,13 @@ def main():
     
     for stat_type, data in results.items():
         if 'error' in data:
-            print(f"| {stat_type} | ERROR | - | - | - | - |")
+            print(f"| {stat_type} | ERROR: {data['error'][:30]} | - | - | - | - |")
         else:
-            print(f"| {stat_type} | {data['samples']} | {data['features']} | {data['test_mae']} | {data['test_r2']} | {data['time_seconds']}s |")
+            print(f"| {stat_type} | {data['samples']:,} | {data['features']} | {data['test_mae']:.2f} | {data['test_r2']:.3f} | {data['time_seconds']}s |")
     
     # Feature importance analysis
     logger.info("\n" + "=" * 70)
-    logger.info("TOP FEATURES BY MODEL")
+    logger.info("TOP 10 FEATURES BY MODEL")
     logger.info("=" * 70)
     
     for stat_type, data in results.items():

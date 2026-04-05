@@ -288,7 +288,13 @@ class VegasFeatureEngineer:
                 return None
             for key in keys:
                 if key in game and game[key] is not None:
-                    return float(game[key])
+                    val = game[key]
+                    if val == '' or val == 'None':
+                        continue
+                    try:
+                        return float(val)
+                    except (ValueError, TypeError):
+                        continue
             return None
         
         values = [get_value(g, stat_type) for g in games]
@@ -335,7 +341,14 @@ class VegasFeatureEngineer:
         def get_stat(game, keys):
             for key in keys:
                 if key in game and game[key] is not None:
-                    return float(game[key])
+                    val = game[key]
+                    # Handle empty strings and other invalid values
+                    if val == '' or val == 'None':
+                        continue
+                    try:
+                        return float(val)
+                    except (ValueError, TypeError):
+                        continue
             return None
         
         pts_values = []
@@ -1153,36 +1166,43 @@ class VegasFeatureEngineer:
         self,
         stat_type: str,
         min_games: int = 15,
-        use_v2_stats: bool = True  # NEW: Include V2 Advanced Stats
+        use_v2_stats: bool = True,  # Include V2 Advanced Stats
+        use_historical: bool = True,  # NEW: Include 2020-2025 historical data
+        seasons: list = None  # Specific seasons to include (default: all)
     ) -> pd.DataFrame:
         """
         Build comprehensive training dataset with all Vegas features.
         
-        Now includes V2 Advanced Stats when available!
+        Now includes:
+        - V2 Advanced Stats when available
+        - Historical data from 2020-2025 seasons
         """
-        hub = self.db['nba_master_hub_2026']
         all_rows = []
+        player_count = 0
+        v2_enriched = 0
+        
+        # =====================================================================
+        # SOURCE 1: Current Season (nba_master_hub_2026)
+        # =====================================================================
+        hub = self.db['nba_master_hub_2026']
         
         players = hub.find({
             'bdl_game_logs': {'$exists': True},
             f'bdl_game_logs.{min_games}': {'$exists': True}
         })
         
-        player_count = 0
-        v2_enriched = 0
+        logger.info(f"[{stat_type}] Building training dataset...")
         
         for player in players:
             player_name = player.get('display_name') or player.get('player_name')
-            team = player.get('team')
             logs = player.get('bdl_game_logs', [])
-            bdl_id = player.get('bdl_id')  # Get BDL ID for V2 stats
+            bdl_id = player.get('bdl_id')
             
             if len(logs) < min_games:
                 continue
             
             player_count += 1
             
-            # For each game after min_games, build features from prior games
             for i in range(min_games - 1, len(logs)):
                 target_game = logs[i]
                 prior_games = logs[i+1:i+1+20]
@@ -1190,37 +1210,168 @@ class VegasFeatureEngineer:
                 if len(prior_games) < 5:
                     continue
                 
-                # Get target value
                 target_value = self._get_stat_value(target_game, stat_type)
                 if target_value is None:
                     continue
                 
-                # Get opponent team (would need ID -> abbreviation mapping)
-                opp_team_id = target_game.get('opponent_team_id')
-                
-                # Extract features WITH V2 stats if available
                 features = self.extract_features(
                     prior_games=prior_games,
                     stat_type=stat_type,
                     target_game=target_game,
-                    opponent_team=None,  # Would need team ID mapping
-                    bdl_player_id=bdl_id if use_v2_stats else None,  # V2 stats
+                    opponent_team=None,
+                    bdl_player_id=bdl_id if use_v2_stats else None,
                 )
                 
                 if features:
                     features['target'] = target_value
                     features['player_name'] = player_name
                     features['game_date'] = target_game.get('date')
+                    features['season'] = 2025
                     all_rows.append(features)
                     
                     if features.get('has_v2_advanced') == 1:
                         v2_enriched += 1
         
+        logger.info(f"[{stat_type}] Current season: {len(all_rows)} samples from {player_count} players")
+        
+        # =====================================================================
+        # SOURCE 2: Historical Data (2020-2024)
+        # =====================================================================
+        if use_historical:
+            historical_collection = self.db.get_collection('bdl_historical_game_logs')
+            historical_count = historical_collection.count_documents({})
+            
+            if historical_count > 0:
+                logger.info(f"[{stat_type}] Found {historical_count:,} historical game logs")
+                
+                # Get list of seasons to process
+                target_seasons = seasons or [2020, 2021, 2022, 2023, 2024]
+                
+                for season in target_seasons:
+                    season_rows = 0
+                    
+                    # Get unique players for this season
+                    player_ids = historical_collection.distinct('player_id', {'season': season})
+                    
+                    for player_id in player_ids:
+                        # Get all games for this player in this season, sorted by date
+                        games = list(historical_collection.find(
+                            {'player_id': player_id, 'season': season}
+                        ).sort('date', -1))
+                        
+                        if len(games) < min_games:
+                            continue
+                        
+                        player_name = games[0].get('player_name', f'Player_{player_id}')
+                        
+                        for i in range(min_games - 1, len(games)):
+                            target_game = games[i]
+                            prior_games = games[i+1:i+1+20]
+                            
+                            if len(prior_games) < 5:
+                                continue
+                            
+                            target_value = self._get_stat_value(target_game, stat_type)
+                            if target_value is None:
+                                continue
+                            
+                            # Extract features (V2 stats from historical advanced collection)
+                            features = self.extract_features_historical(
+                                prior_games=prior_games,
+                                stat_type=stat_type,
+                                target_game=target_game,
+                                player_id=player_id,
+                                season=season
+                            )
+                            
+                            if features:
+                                features['target'] = target_value
+                                features['player_name'] = player_name
+                                features['game_date'] = target_game.get('date')
+                                features['season'] = season
+                                all_rows.append(features)
+                                season_rows += 1
+                                
+                                if features.get('has_v2_advanced') == 1:
+                                    v2_enriched += 1
+                    
+                    if season_rows > 0:
+                        logger.info(f"[{stat_type}] Season {season}: {season_rows:,} samples added")
+            else:
+                logger.info(f"[{stat_type}] No historical data found - run fetch_historical_data.py first")
+        
         df = pd.DataFrame(all_rows)
-        logger.info(f"[{stat_type}] Built training dataset: {len(df)} samples from {player_count} players")
-        logger.info(f"[{stat_type}] V2 Advanced Stats: {v2_enriched}/{len(df)} samples ({v2_enriched/max(len(df),1)*100:.1f}%)")
+        logger.info(f"[{stat_type}] TOTAL: {len(df):,} training samples")
+        logger.info(f"[{stat_type}] V2 Advanced Stats: {v2_enriched:,}/{len(df):,} samples ({v2_enriched/max(len(df),1)*100:.1f}%)")
         
         return df
+    
+    def extract_features_historical(
+        self,
+        prior_games: List[Dict],
+        stat_type: str,
+        target_game: Dict,
+        player_id: int,
+        season: int
+    ) -> Dict[str, float]:
+        """
+        Extract features from historical game logs.
+        Uses historical advanced stats when available.
+        """
+        # Use the base extract_features logic
+        features = self.extract_features(
+            prior_games=prior_games,
+            stat_type=stat_type,
+            target_game=target_game,
+            opponent_team=None,
+            bdl_player_id=None  # Don't use live V2 API
+        )
+        
+        if not features:
+            return None
+        
+        # Try to enrich with historical V2 advanced stats
+        try:
+            advanced_collection = self.db.get_collection('bdl_advanced_stats')
+            
+            # Get recent advanced stats for this player/season
+            recent_advanced = list(advanced_collection.find(
+                {'player_id': player_id, 'season': season}
+            ).sort('game_date', -1).limit(10))
+            
+            if recent_advanced:
+                # Calculate averages from recent advanced stats
+                def avg_stat(key):
+                    vals = [g.get(key) for g in recent_advanced if g.get(key) is not None]
+                    return sum(vals) / len(vals) if vals else None
+                
+                features['v2_usg_rate_l5'] = avg_stat('usage_percentage')
+                features['v2_ts_pct_l5'] = avg_stat('true_shooting_percentage')
+                features['v2_efg_l5'] = avg_stat('effective_field_goal_percentage')
+                features['v2_pace_l5'] = avg_stat('pace')
+                features['v2_off_rating_l5'] = avg_stat('offensive_rating')
+                features['v2_def_rating_l5'] = avg_stat('defensive_rating')
+                features['v2_net_rating_l5'] = avg_stat('net_rating')
+                features['v2_assist_pct_l5'] = avg_stat('assist_percentage')
+                features['v2_reb_pct_l5'] = avg_stat('rebound_percentage')
+                features['v2_pie_l5'] = avg_stat('pie')
+                
+                # Override proxy calculations
+                if features.get('v2_usg_rate_l5'):
+                    features['usg_rate_l5'] = features['v2_usg_rate_l5'] * 100
+                if features.get('v2_ts_pct_l5'):
+                    features['ts_l5'] = features['v2_ts_pct_l5'] * 100
+                if features.get('v2_efg_l5'):
+                    features['efg_l5'] = features['v2_efg_l5'] * 100
+                
+                features['has_v2_advanced'] = 1
+            else:
+                features['has_v2_advanced'] = 0
+                
+        except Exception as e:
+            features['has_v2_advanced'] = 0
+        
+        return features
 
 
 class EnsembleModel:
