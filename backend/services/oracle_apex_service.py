@@ -286,16 +286,20 @@ class OracleApexService:
                     continue
                 
                 oracle_pred = result.get('predicted', 0)
-                vk_prob = result.get('prob_over', 0)
-                if vk_prob <= 1:
-                    vk_prob = vk_prob * 100
+                vk_prob_over = result.get('prob_over', 0)
+                vk_prob_under = result.get('prob_under', 0)
+                if vk_prob_over <= 1:
+                    vk_prob_over = vk_prob_over * 100
+                if vk_prob_under <= 1:
+                    vk_prob_under = vk_prob_under * 100
+                vk_recommendation = result.get('recommendation', '')
             except Exception:
                 skipped['no_vk'] += 1
                 continue
             
             # Check Oracle Apex qualification
             qualifies, reason = self.qualifies_for_oracle_apex(
-                stat_type, line, l20_values, cv, oracle_pred, vk_prob
+                stat_type, line, l20_values, cv, oracle_pred, vk_prob_over
             )
             
             if not qualifies:
@@ -315,22 +319,50 @@ class OracleApexService:
             
             gate_stats[stat_type]['passed'] += 1
             
-            # Build apex pick
-            l20_mean = np.mean(l20_values)
+            # Build apex pick with all required fields
+            l5_values = all_values[:5]
+            l5_avg = round(np.mean(l5_values), 1) if len(l5_values) >= 5 else None
+            l10_avg = round(np.mean(l10_values), 1) if len(l10_values) >= 10 else None
+            l20_avg = round(np.mean(l20_values), 1)
+            season_avg = round(np.mean(all_values), 1) if all_values else None
+            
             l20_hits = sum(1 for v in l20_values if v >= line)
+            l10_hits = sum(1 for v in l10_values if v >= line)
+            l5_hits = sum(1 for v in l5_values if v >= line)
+            
             edge = oracle_pred - line
             
             apex_picks.append({
                 'player_name': player_name,
                 'stat_type': stat_type,
                 'line': line,
+                # L5/L10/L20 averages for frontend
+                'l5_avg': l5_avg,
+                'l10_avg': l10_avg,
+                'l20_avg': l20_avg,
+                'season_avg': season_avg,
+                # Hit rates
+                'l5_hits': l5_hits,
+                'l10_hits': l10_hits,
                 'l20_hits': l20_hits,
-                'l20_mean': round(l20_mean, 2),
+                'l5_hit_rate': round((l5_hits / 5) * 100, 1) if len(l5_values) >= 5 else None,
+                'l10_hit_rate': round((l10_hits / 10) * 100, 1) if len(l10_values) >= 10 else None,
+                'l20_hit_rate': round((l20_hits / 20) * 100, 1),
+                # CV
                 'cv': round(cv, 3),
+                # Vegas Killer predictions - frontend field names
+                'vk_predicted': round(oracle_pred, 1),
+                'vk_edge': round(edge, 1),
+                'vk_prob_over': round(vk_prob_over, 1),
+                'vk_prob_under': round(vk_prob_under, 1),
+                'vk_recommendation': vk_recommendation,
+                # Legacy field names for backward compat
                 'oracle_pred': round(oracle_pred, 1),
                 'edge': round(edge, 1),
-                'vk_prob': round(vk_prob, 1),
+                'vk_prob': round(vk_prob_over, 1),
+                # Minutes
                 'avg_mins': round(avg_mins, 1),
+                # Prop metadata
                 'is_goblin': prop.get('is_goblin', False),
                 'is_demon': prop.get('is_demon', False),
                 'team': player_data.get('team') or prop.get('home_team') or prop.get('away_team'),
@@ -338,6 +370,7 @@ class OracleApexService:
                 'game_time': prop.get('commence_time'),
                 'headshot_url': player_data.get('headshot_url'),
                 'photo_url': player_data.get('photo_url') or player_data.get('headshot_url'),
+                # Tier
                 'tier': 'safe_haven',
                 'tier_label': 'Oracle Apex',
                 'synced_at': datetime.now(timezone.utc).isoformat(),
