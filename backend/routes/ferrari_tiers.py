@@ -119,32 +119,151 @@ def enrich_picks_with_vk(picks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     return picks
 
 
-@router.get("/v3/ferrari/safe-haven")
-async def get_ferrari_safe_haven(
+@router.get("/v3/ferrari/oracle-apex")
+async def get_oracle_apex_picks(
     response: Response,
     limit: int = Query(10, ge=1, le=50)
 ):
     """
-    FERRARI SAFE HAVEN - Elite Goblins with massive market separation.
+    ORACLE APEX - ML-powered Safe Haven picks.
     
-    Criteria:
-    - Sharp price <= -250 (heavy favorite on Bovada/DK/FD)
-    - OR PP line 1.5+ pts below Bovada standard
-    - L10 hit rate >= 70%
+    NEW TIER LOGIC using Vegas Killer predictions with stat-specific gates:
     
-    Sorted by: Most negative sharp_price (strongest locks first)
+    | Stat | Max CV | Hit Rate | Min Edge |
+    |------|--------|----------|----------|
+    | PTS  | 0.22   | 18/20    | 2.0      |
+    | REB  | 0.35   | 16/20*   | 1.5      |
+    | AST  | 0.35   | 15/20    | 2.0      |
+    | PRA  | 0.20   | 18/20    | 2.0      |
+    
+    *REB: 14/20 OK if L20 Mean >= Line + 2.5
+    
+    Additional filters:
+    - Minutes >= 22
+    - Dedupe: Lowest line per player+stat (best goblin)
     """
     response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
     
-    service = get_service()
-    result = await service.get_safe_haven(limit)
+    if _db is None:
+        raise HTTPException(status_code=500, detail="Database not initialized")
     
-    # Enrich with Vegas Killer predictions
-    if result and result.get("picks"):
-        result["picks"] = enrich_picks_with_vk(result["picks"])
-        result["vk_enriched"] = True
+    try:
+        from services.oracle_apex_service import get_oracle_apex_service
+        
+        vk_model = get_vegas_killer()
+        if not vk_model:
+            raise HTTPException(status_code=500, detail="Vegas Killer model not available")
+        
+        oracle_apex = get_oracle_apex_service(_db, vk_model)
+        result = await oracle_apex.scan_all_props()
+        
+        if not result.get('success'):
+            raise HTTPException(status_code=500, detail=result.get('error', 'Unknown error'))
+        
+        picks = result.get('apex_picks', [])[:limit]
+        
+        return {
+            "tier": "oracle_apex",
+            "tier_label": "Oracle Apex (Safe Haven)",
+            "description": "ML-powered mathematically-proven safe plays",
+            "picks": picks,
+            "count": len(picks),
+            "total_scanned": result.get('total_scanned', 0),
+            "gate_stats": result.get('gate_stats', {}),
+            "config": {
+                "PTS": {"max_cv": 0.22, "hit_rate": "18/20", "min_edge": 2.0},
+                "REB": {"max_cv": 0.35, "hit_rate": "16/20 (14/20 w/ buffer)", "min_edge": 1.5},
+                "AST": {"max_cv": 0.35, "hit_rate": "15/20", "min_edge": 2.0},
+                "PRA": {"max_cv": 0.20, "hit_rate": "18/20", "min_edge": 2.0},
+            }
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[ORACLE_APEX] Endpoint error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/v3/ferrari/safe-haven")
+async def get_ferrari_safe_haven(
+    response: Response,
+    limit: int = Query(10, ge=1, le=50),
+    legacy: bool = Query(False, description="Use legacy Safe Haven logic instead of Oracle Apex")
+):
+    """
+    FERRARI SAFE HAVEN - Now powered by Oracle Apex ML logic.
     
-    return result
+    NEW CRITERIA (Oracle Apex):
+    - Stat-specific CV limits (PTS: 0.22, REB: 0.35, AST: 0.35, PRA: 0.20)
+    - Stat-specific hit rates (PTS/PRA: 18/20, REB: 16/20, AST: 15/20)
+    - Stat-specific edge (REB: 1.5, others: 2.0)
+    - VK Prob >= 75%
+    - Minutes >= 22
+    
+    Use ?legacy=true for old behavior.
+    """
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    
+    if legacy:
+        # Legacy behavior
+        service = get_service()
+        result = await service.get_safe_haven(limit)
+        if result and result.get("picks"):
+            result["picks"] = enrich_picks_with_vk(result["picks"])
+            result["vk_enriched"] = True
+            result["logic"] = "legacy"
+        return result
+    
+    # New Oracle Apex logic
+    if _db is None:
+        raise HTTPException(status_code=500, detail="Database not initialized")
+    
+    try:
+        from services.oracle_apex_service import get_oracle_apex_service
+        
+        vk_model = get_vegas_killer()
+        if not vk_model:
+            # Fallback to legacy if VK model not available
+            logger.warning("[SAFE_HAVEN] VK model not available, falling back to legacy")
+            service = get_service()
+            result = await service.get_safe_haven(limit)
+            if result and result.get("picks"):
+                result["picks"] = enrich_picks_with_vk(result["picks"])
+                result["logic"] = "legacy_fallback"
+            return result
+        
+        oracle_apex = get_oracle_apex_service(_db, vk_model)
+        result = await oracle_apex.scan_all_props()
+        
+        if not result.get('success'):
+            # Fallback to legacy on error
+            logger.warning(f"[SAFE_HAVEN] Oracle Apex failed: {result.get('error')}, falling back to legacy")
+            service = get_service()
+            legacy_result = await service.get_safe_haven(limit)
+            if legacy_result and legacy_result.get("picks"):
+                legacy_result["picks"] = enrich_picks_with_vk(legacy_result["picks"])
+                legacy_result["logic"] = "legacy_fallback"
+            return legacy_result
+        
+        picks = result.get('apex_picks', [])[:limit]
+        
+        return {
+            "tier": "safe_haven",
+            "tier_label": "Safe Haven (Oracle Apex)",
+            "logic": "oracle_apex",
+            "picks": picks,
+            "count": len(picks),
+            "total_scanned": result.get('total_scanned', 0),
+            "gate_stats": result.get('gate_stats', {}),
+        }
+    except Exception as e:
+        logger.error(f"[SAFE_HAVEN] Error: {e}, falling back to legacy")
+        service = get_service()
+        result = await service.get_safe_haven(limit)
+        if result and result.get("picks"):
+            result["picks"] = enrich_picks_with_vk(result["picks"])
+            result["logic"] = "legacy_fallback"
+        return result
 
 
 @router.get("/v3/ferrari/front-lines")

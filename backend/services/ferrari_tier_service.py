@@ -53,6 +53,7 @@ from services.propvision_v7_engine import (
     calculate_mode,
     calculate_std_dev
 )
+from services.oracle_apex_service import get_oracle_apex_service, ORACLE_APEX_CONFIG
 
 logger = logging.getLogger(__name__)
 
@@ -1107,16 +1108,54 @@ class FerrariTierService:
             used_goblin_players = set()
             used_demon_players = set()
             
-            # SAFE HAVEN: Global sort by true_probability (ferrari_power_score), then dedupe, then limit
-            # Only Goblins allowed
-            sh_cursor = self.ferrari_scored.find(
-                {"tier": "safe_haven", "is_goblin": True},
-                {"_id": 0}
-            ).sort("ferrari_power_score", -1)
-            sh_all = await sh_cursor.to_list(length=None)
-            sh_clean = sum(1 for p in sh_all if not (p.get("trap_risk") or p.get("hook_risk")))
-            logger.info(f"  Safe Haven pool: {len(sh_all)} total, {sh_clean} clean, {len(sh_all) - sh_clean} trap")
-            top_safe_haven = self._dedupe_select(sh_all, used_goblin_players, MAX_PICKS_PER_TIER)
+            # =================================================================
+            # SAFE HAVEN: NEW ORACLE APEX LOGIC
+            # =================================================================
+            # Uses Vegas Killer ML predictions with stat-specific gates:
+            # - PTS: CV <= 0.22, 18/20 hits, Edge >= 2.0
+            # - REB: CV <= 0.35, 16/20 hits (or 14/20 w/ +2.5 buffer), Edge >= 1.5
+            # - AST: CV <= 0.35, 15/20 hits, Edge >= 2.0
+            # - PRA: CV <= 0.20, 18/20 hits, Edge >= 2.0
+            # =================================================================
+            logger.info("[PHASE 4.1] ORACLE APEX - Building Safe Haven with new ML logic...")
+            
+            try:
+                from services.vegas_killer_model import VegasKillerModel
+                vk_model = VegasKillerModel(self.db)
+                vk_model.load_models()
+                
+                oracle_apex = get_oracle_apex_service(self.db, vk_model)
+                apex_result = await oracle_apex.scan_all_props()
+                
+                if apex_result.get('success'):
+                    top_safe_haven = apex_result.get('apex_picks', [])[:MAX_PICKS_PER_TIER]
+                    
+                    # Track used goblin players
+                    for pick in top_safe_haven:
+                        used_goblin_players.add(pick.get('player_name'))
+                    
+                    logger.info(f"  Oracle Apex Safe Haven: {len(top_safe_haven)} picks")
+                    logger.info(f"  Gate stats: {apex_result.get('gate_stats')}")
+                else:
+                    logger.warning(f"[ORACLE_APEX] Failed: {apex_result.get('error')} - falling back to legacy")
+                    # Fallback to legacy Safe Haven
+                    sh_cursor = self.ferrari_scored.find(
+                        {"tier": "safe_haven", "is_goblin": True},
+                        {"_id": 0}
+                    ).sort("ferrari_power_score", -1)
+                    sh_all = await sh_cursor.to_list(length=None)
+                    top_safe_haven = self._dedupe_select(sh_all, used_goblin_players, MAX_PICKS_PER_TIER)
+            except Exception as e:
+                logger.error(f"[ORACLE_APEX] Error: {e} - falling back to legacy Safe Haven")
+                # Fallback to legacy Safe Haven
+                sh_cursor = self.ferrari_scored.find(
+                    {"tier": "safe_haven", "is_goblin": True},
+                    {"_id": 0}
+                ).sort("ferrari_power_score", -1)
+                sh_all = await sh_cursor.to_list(length=None)
+                sh_clean = sum(1 for p in sh_all if not (p.get("trap_risk") or p.get("hook_risk")))
+                logger.info(f"  Safe Haven pool (legacy): {len(sh_all)} total, {sh_clean} clean")
+                top_safe_haven = self._dedupe_select(sh_all, used_goblin_players, MAX_PICKS_PER_TIER)
             
             # FRONT LINES: Middle tier - includes BOTH Goblins AND "Safe" Demons
             # Goblins: Use used_goblin_players to exclude Safe Haven players
