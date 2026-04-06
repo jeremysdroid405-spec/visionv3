@@ -69,8 +69,8 @@ async def get_player(player_name: str) -> Dict[str, Any]:
         raise HTTPException(status_code=500, detail="Engine not initialized")
     
     try:
-        result = await engine.get_player(player_name)
-        return result
+        result = await engine.get_player_detail(player_name)
+        return {"success": True, "player": result}
     except Exception as e:
         logger.error(f"Error getting player: {e}")
         return {"success": False, "error": str(e), "player": None}
