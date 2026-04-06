@@ -330,7 +330,13 @@ class OracleApexService:
             l10_hits = sum(1 for v in l10_values if v >= line)
             l5_hits = sum(1 for v in l5_values if v >= line)
             
+            # Calculate hit rates as percentages (frontend expects h5_rate, h10_rate)
+            h5_rate = round((l5_hits / 5) * 100, 1) if len(l5_values) >= 5 else None
+            h10_rate = round((l10_hits / 10) * 100, 1) if len(l10_values) >= 10 else None
+            h20_rate = round((l20_hits / 20) * 100, 1)
+            
             edge = oracle_pred - line
+            diff_from_avg = round(season_avg - line, 1) if season_avg else None
             
             apex_picks.append({
                 'player_name': player_name,
@@ -341,13 +347,17 @@ class OracleApexService:
                 'l10_avg': l10_avg,
                 'l20_avg': l20_avg,
                 'season_avg': season_avg,
-                # Hit rates
+                'diff_from_avg': diff_from_avg,
+                # Hit rates - frontend field names (h5_rate, h10_rate)
+                'h5_rate': h5_rate,
+                'h10_rate': h10_rate,
+                'h20_rate': h20_rate,
                 'l5_hits': l5_hits,
                 'l10_hits': l10_hits,
                 'l20_hits': l20_hits,
-                'l5_hit_rate': round((l5_hits / 5) * 100, 1) if len(l5_values) >= 5 else None,
-                'l10_hit_rate': round((l10_hits / 10) * 100, 1) if len(l10_values) >= 10 else None,
-                'l20_hit_rate': round((l20_hits / 20) * 100, 1),
+                'l5_hit_rate': h5_rate,
+                'l10_hit_rate': h10_rate,
+                'l20_hit_rate': h20_rate,
                 # CV
                 'cv': round(cv, 3),
                 # Vegas Killer predictions - frontend field names
