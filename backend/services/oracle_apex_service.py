@@ -288,10 +288,14 @@ class OracleApexService:
                 oracle_pred = result.get('predicted', 0)
                 vk_prob_over = result.get('prob_over', 0)
                 vk_prob_under = result.get('prob_under', 0)
-                if vk_prob_over <= 1:
+                
+                # The VK model returns percentages (0-100), not decimals (0-1)
+                # So we don't need to multiply by 100
+                # Only convert if values are in decimal format (0-1 range)
+                if vk_prob_over > 0 and vk_prob_over <= 1:
                     vk_prob_over = vk_prob_over * 100
-                if vk_prob_under <= 1:
-                    vk_prob_under = vk_prob_under * 100
+                    vk_prob_under = 100 - vk_prob_over  # Recalculate to ensure they sum to 100
+                
                 vk_recommendation = result.get('recommendation', '')
             except Exception:
                 skipped['no_vk'] += 1
