@@ -851,28 +851,47 @@ class FerrariTierService:
                     
                     is_demon = prop.get("is_demon", False)
                     is_goblin = prop.get("is_goblin", False)
+                    is_standard = not is_demon and not is_goblin
                     
-                    # Skip standard lines entirely - only demons and goblins qualify
-                    if not is_demon and not is_goblin:
-                        results["scored"]["below_threshold"] += 1
-                        discarded.append({
-                            "player_name": player_name,
-                            "stat_type": stat_type,
-                            "line": pp_line,
-                            "reason": "STANDARD_LINE: Only demons/goblins qualify for tiers"
-                        })
-                        continue
+                    # ==========================================================
+                    # DK ODDS-BASED TIER RULES:
+                    # - Safe Haven (DK <= -250): Goblins only
+                    # - Front Lines (DK -249 to +199): Demons, Goblins, OR Standards
+                    # - War Zone (DK >= +200): Demons only
+                    # ==========================================================
                     
-                    # Track tier pools
+                    # Safe Haven = Goblins only (heavily juiced lines)
                     if v7_tier == "safe_haven":
+                        if not is_goblin:
+                            results["scored"]["below_threshold"] += 1
+                            discarded.append({
+                                "player_name": player_name,
+                                "stat_type": stat_type,
+                                "line": pp_line,
+                                "reason": "SAFE_HAVEN_NON_GOBLIN: Only goblins qualify for Safe Haven"
+                            })
+                            continue
                         results["scored"]["safe_haven_pool"] += 1
+                    
+                    # Front Lines = Demons, Goblins, OR Standards (all prop types allowed)
                     elif v7_tier == "front_lines":
                         results["scored"]["front_lines_pool"] += 1
+                    
+                    # War Zone = Demons only (longshot value plays)
                     elif v7_tier == "war_zone":
+                        if not is_demon:
+                            results["scored"]["below_threshold"] += 1
+                            discarded.append({
+                                "player_name": player_name,
+                                "stat_type": stat_type,
+                                "line": pp_line,
+                                "reason": "WAR_ZONE_NON_DEMON: Only demons qualify for War Zone"
+                            })
+                            continue
                         results["scored"]["war_zone_pool"] += 1
+                    
                     else:
                         results["scored"]["below_threshold"] += 1
-                        # Skip picks below War Zone threshold
                         continue
                     
                     # Additional stats
