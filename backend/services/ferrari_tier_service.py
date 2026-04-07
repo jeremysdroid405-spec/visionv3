@@ -1459,9 +1459,53 @@ class FerrariTierService:
             war_zone_pool.sort(key=sort_key, reverse=True)
             
             # =================================================================
+            # STEP 6: VISION INTEL LAYER (Gemini 3.1 Pro Analysis)
+            # Analyzes gate-qualified props BEFORE Top 10 selection
+            # =================================================================
+            try:
+                from services.vision_intel_service import get_vision_intel_service
+                vision_intel = get_vision_intel_service()
+                
+                if vision_intel.enabled:
+                    logger.info("[VISION INTEL] Analyzing gate-qualified props with Gemini 3.1 Pro...")
+                    
+                    # Analyze each pool (limit to top 15 per pool to save API costs)
+                    if safe_haven_pool:
+                        safe_haven_pool = await vision_intel.analyze_tier_props(
+                            safe_haven_pool[:15], "Safe Haven", max_concurrent=3
+                        )
+                        logger.info(f"  Safe Haven: {len(safe_haven_pool)} props analyzed")
+                    
+                    if front_lines_pool:
+                        front_lines_pool = await vision_intel.analyze_tier_props(
+                            front_lines_pool[:15], "Front Lines", max_concurrent=3
+                        )
+                        logger.info(f"  Front Lines: {len(front_lines_pool)} props analyzed")
+                    
+                    if war_zone_pool:
+                        war_zone_pool = await vision_intel.analyze_tier_props(
+                            war_zone_pool[:15], "War Zone", max_concurrent=3
+                        )
+                        logger.info(f"  War Zone: {len(war_zone_pool)} props analyzed")
+                    
+                    logger.info("[VISION INTEL] Analysis complete - props now sorted by composite score")
+                else:
+                    logger.info("[VISION INTEL] Service disabled - using VK probability sorting")
+            except Exception as e:
+                logger.warning(f"[VISION INTEL] Failed to load service: {e} - continuing with VK sorting")
+            
+            # =================================================================
             # DEDUPE: One pick per player per stat type per tier
+            # Sort by composite_score if available (from Vision Intel), else by VK metrics
             # =================================================================
             def dedupe_pool(pool, max_picks, pool_name=""):
+                # Re-sort by composite_score if available (Vision Intel enriched)
+                pool.sort(key=lambda x: (
+                    x.get('composite_score', 0),  # Vision Intel composite score
+                    x.get('vk_edge', 0),           # Fallback to VK edge
+                    x.get('h20_rate', 0)           # Then hit rate
+                ), reverse=True)
+                
                 seen = set()
                 deduped = []
                 duplicates = []
