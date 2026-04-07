@@ -796,7 +796,7 @@ const UniversalPlayerCard = memo(({
         {/* Vision Intel Suite CTA - only show for the 30 board picks */}
         {isBoardPick && (
           <div className="mt-2 text-center">
-            <span className="text-[10px] text-cyan-400 font-medium animate-pulse">
+            <span className="text-[10px] text-white font-medium animate-pulse drop-shadow-[0_0_8px_rgba(255,255,255,0.8)]">
               Click for Vision Intel Suite
             </span>
           </div>
@@ -804,7 +804,7 @@ const UniversalPlayerCard = memo(({
         
         {/* Vision Model ML Prediction Badge - Show for board picks with VK data */}
         {isBoardPick && player.vk_predicted != null && (
-          <div className={`mt-1.5 px-2 py-1 rounded text-[10px] ${theme.bg.replace('from-', 'bg-').split(' ')[0]}/40 border ${theme.border}`}>
+          <div className={`mt-1.5 px-2 py-1 rounded text-[10px] ${theme.bg.replace('from-', 'bg-').split(' ')[0]}/40 border ${theme.border} shadow-[0_0_12px_rgba(255,255,255,0.15)]`}>
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-1">
                 <span className={`${theme.text} font-bold`}>🎯 Vision Model:</span>

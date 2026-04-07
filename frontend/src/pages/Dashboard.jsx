@@ -274,11 +274,12 @@ const BreakingNewsTicker = memo(() => {
   const news = data?.headlines || [];
   
   // Default headlines if API not available
-  const displayNews = news.length > 0 ? news : [
-    { text: "NBA injury reports updated hourly", type: "info" },
-    { text: "Line movements tracked in real-time", type: "info" },
-    { text: "AI insights refresh with each game", type: "info" }
-  ];
+  const displayNews = news.length > 0 
+    ? news.filter(item => item.type !== 'injury')  // Filter out injury items
+    : [
+      { text: "Line movements tracked in real-time", type: "info" },
+      { text: "AI insights refresh with each game", type: "info" }
+    ];
   
   return (
     <div className="bg-red-950/30 border-b border-red-900/30 py-2 overflow-hidden" data-testid="news-ticker">
@@ -669,7 +670,7 @@ const ExpandedParlayView = memo(({ parlay, sectionType, onClose, onPickClick }) 
           <div className="flex items-center justify-between text-sm">
             <div>
               <span className="text-zinc-500">Combined Prob:</span>
-              <span className="ml-2 text-white font-bold">{parlay.combined_probability?.toFixed(1)}%</span>
+              <span className="ml-2 text-white font-bold">{Math.min(parlay.combined_probability || 0, 99).toFixed(1)}%</span>
             </div>
           </div>
         </div>

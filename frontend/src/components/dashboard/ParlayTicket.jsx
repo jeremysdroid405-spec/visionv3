@@ -64,8 +64,9 @@ export const ParlayTicket = memo(({ ticket, onClick, sectionType = 'war_zone' })
   
   if (size < 2) return null;
   
-  const combinedProb = ticket.combined_probability || 
+  const rawProb = ticket.combined_probability || 
     (picks.reduce((acc, p) => acc * ((p.h10_rate || 50) / 100), 1) * 100);
+  const combinedProb = Math.min(rawProb, 99); // Cap at 99%
   
   return (
     <Card 
