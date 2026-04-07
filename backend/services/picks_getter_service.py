@@ -2463,68 +2463,38 @@ class PicksGetterService:
             norm_map = {"P+R": "PR", "P+A": "PA", "R+A": "RA"}
             stat_key = norm_map.get(stat_type, stat_type)
             
-            # PRIORITY: Use baseline_stats from NBA.com (has reliable L5/L10)
-            # Fallback to game_logs calculation only if baseline_stats missing
-            stat_data = baseline_stats.get(stat_key, {})
-            
-            # Check if baseline_stats has NBA.com L5/L10 data
-            has_nba_l5 = stat_data.get("l5_avg") is not None
-            has_nba_l10 = stat_data.get("l10_avg") is not None
-            
-            if has_nba_l5 or has_nba_l10:
-                # Use NBA.com baseline_stats (preferred - more reliable)
-                prop["l5_avg"] = stat_data.get("l5_avg")
-                prop["l10_avg"] = stat_data.get("l10_avg")
-                prop["season_avg"] = stat_data.get("season_avg")
-                
-                # Calculate hit rates from baseline l10_values if available
-                l10_values = stat_data.get("l10_values", [])
-                if l10_values and line_value > 0:
-                    hits = sum(1 for v in l10_values if v is not None and v >= line_value)
-                    prop["l10_hit_rate"] = round((hits / len(l10_values)) * 100, 1) if l10_values else 0
-                    prop["l10_games_over"] = hits
-                    prop["l10_total_games"] = len(l10_values)
-                    # L5 from first 5 values
-                    l5_values = l10_values[:5]
-                    if l5_values:
-                        l5_hits = sum(1 for v in l5_values if v is not None and v >= line_value)
-                        prop["l5_hit_rate"] = round((l5_hits / len(l5_values)) * 100, 1)
-                        prop["l5_games_over"] = l5_hits
-                        prop["l5_total_games"] = len(l5_values)
-                
-                prop["stats_coupled"] = False
-                prop["stats_source"] = "nba_baseline"
-            elif game_logs and line_value > 0:
-                # Fallback: Calculate from BDL game_logs (may be DNPs)
+            # SSOT: ALWAYS calculate stats from bdl_game_logs (BDL is the source of truth)
+            # Do NOT use baseline_stats - they may be stale
+            if game_logs and line_value > 0:
+                # Calculate from BDL game_logs (SSOT)
                 coupled = calculate_coupled_stats(game_logs, stat_type, line_value)
                 
-                # Only use coupled if it has actual data
-                if coupled["l5"]["total_games"] > 0:
-                    prop["l5_avg"] = coupled["l5"]["avg"]
-                    prop["l10_avg"] = coupled["l10"]["avg"]
-                    prop["l5_hit_rate"] = coupled["l5"]["hit_rate"]
-                    prop["l10_hit_rate"] = coupled["l10"]["hit_rate"]
-                    prop["l5_games_over"] = coupled["l5"]["games_over"]
-                    prop["l10_games_over"] = coupled["l10"]["games_over"]
-                    prop["l5_total_games"] = coupled["l5"]["total_games"]
-                    prop["l10_total_games"] = coupled["l10"]["total_games"]
-                    prop["season_avg"] = coupled["season"]["avg"] or stat_data.get("season_avg")
-                    prop["season_hit_rate"] = coupled["season"]["hit_rate"]
+                if coupled:
+                    prop["l5_avg"] = coupled.get("l5_avg")
+                    prop["l10_avg"] = coupled.get("l10_avg")
+                    prop["season_avg"] = coupled.get("season_avg")
+                    prop["l10_hit_rate"] = coupled.get("l10_hit_rate")
+                    prop["l5_hit_rate"] = coupled.get("l5_hit_rate")
+                    prop["l10_games_over"] = coupled.get("l10_games_over")
+                    prop["l10_total_games"] = coupled.get("l10_total_games")
+                    prop["l5_games_over"] = coupled.get("l5_games_over")
+                    prop["l5_total_games"] = coupled.get("l5_total_games")
                     prop["stats_coupled"] = True
                     prop["stats_source"] = "bdl_game_logs"
-                else:
-                    # Game logs are all DNPs, use whatever we have in baseline
-                    prop["l5_avg"] = stat_data.get("l5_avg")
-                    prop["l10_avg"] = stat_data.get("l10_avg")
-                    prop["season_avg"] = stat_data.get("season_avg")
-                    prop["stats_source"] = "baseline_fallback"
-            else:
-                # No game logs at all, use baseline_stats
+                    
+                    # Also set h5_rate/h10_rate for frontend consistency
+                    if prop.get("l5_hit_rate") is not None:
+                        prop["h5_rate"] = prop["l5_hit_rate"]
+                    if prop.get("l10_hit_rate") is not None:
+                        prop["h10_rate"] = prop["l10_hit_rate"]
+            elif baseline_stats.get(stat_key):
+                # Fallback to baseline_stats only if no game_logs
+                stat_data = baseline_stats.get(stat_key, {})
                 prop["l5_avg"] = stat_data.get("l5_avg")
                 prop["l10_avg"] = stat_data.get("l10_avg")
                 prop["season_avg"] = stat_data.get("season_avg")
                 prop["stats_coupled"] = False
-                prop["stats_source"] = "ssot_baseline"
+                prop["stats_source"] = "baseline_fallback"
             
             # If this is a radar pick (demon or goblin) OR a board pick, add full intel_suite
             is_radar = prop.get("is_demon") or prop.get("is_goblin") or prop.get("is_radar_pick")
