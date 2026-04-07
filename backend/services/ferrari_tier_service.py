@@ -1399,20 +1399,11 @@ class FerrariTierService:
                 if dk_odds is not None:
                     if dk_odds <= DK_TIER_SAFE_HAVEN_MAX:  # <= -250
                         # Safe Haven: MUST be oracle_apex_qualified + Goblins
+                        # If it doesn't pass Safe Haven gates, it doesn't qualify for any tier
                         if is_oracle_qualified and is_goblin:
                             prop["tier"] = "safe_haven"
                             safe_haven_pool.append(prop)
-                        elif is_goblin:
-                            # Goblin with heavy juice but didn't pass Safe Haven gates
-                            # Check if it passes Front Lines gates
-                            fl_qualified, fl_reason = self._check_front_lines_gates(
-                                stat_type, line, l20_values, l5_values, cv, vk_predicted, vk_prob,
-                                l20_hits=l20_hits, l5_avg=l5_avg, l20_avg=l20_avg
-                            )
-                            if fl_qualified:
-                                prop["tier"] = "front_lines"
-                                prop["front_lines_qualified"] = True
-                                front_lines_pool.append(prop)
+                        # No fallthrough - strict gates mean no tier placement
                     elif dk_odds >= DK_TIER_WAR_ZONE_MIN:  # >= +200
                         # War Zone: Demons only - MUST pass War Zone gates
                         if is_demon:
