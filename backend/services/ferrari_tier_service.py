@@ -1233,18 +1233,29 @@ class FerrariTierService:
                 
                 is_demon = prop.get("is_demon", False)
                 is_goblin = prop.get("is_goblin", False)
+                is_oracle_qualified = prop.get("oracle_apex_qualified", False)
                 
                 # Add DK tier info to prop
                 prop["dk_odds"] = dk_odds
                 prop["dk_tier"] = classify_tier_by_dk_odds(dk_odds)
                 
+                # ==========================================================
+                # DK ODDS = TIER SEPARATION ONLY
+                # Oracle Apex qualification = Primary filter for Safe Haven
+                # ==========================================================
+                
                 # Classify by DK odds with prop type restrictions
                 if dk_odds is not None:
                     if dk_odds <= DK_TIER_SAFE_HAVEN_MAX:  # <= -250
-                        # Safe Haven: Goblins only
-                        if is_goblin:
+                        # Safe Haven: MUST be oracle_apex_qualified + Goblins
+                        if is_oracle_qualified and is_goblin:
                             prop["tier"] = "safe_haven"
                             safe_haven_pool.append(prop)
+                        elif is_goblin:
+                            # Goblin with heavy juice but didn't pass 3 gates
+                            # Falls to Front Lines
+                            prop["tier"] = "front_lines"
+                            front_lines_pool.append(prop)
                     elif dk_odds >= DK_TIER_WAR_ZONE_MIN:  # >= +200
                         # War Zone: Demons only
                         if is_demon:
