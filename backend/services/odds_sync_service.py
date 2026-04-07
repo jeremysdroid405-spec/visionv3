@@ -146,13 +146,15 @@ class OddsSyncService:
                         for prop in props:
                             seen_players_raw.add(prop.get("player_name"))
                 
-                # Phase 2: Fetch Sharp Book odds (Bovada, DraftKings, FanDuel) in parallel
-                # - Bovada: Primary sharp reference for ALTERNATE lines
-                # - DraftKings/FanDuel: Sharp reference for STANDARD lines
-                sharp_prices = {}  # {(player, market, line, direction): {bovada, draftkings, fanduel}}
+                # Phase 2: Fetch Sharp Book odds (DraftKings, FanDuel, BetOnline) in parallel
+                # - DraftKings: Primary reference (72% coverage)
+                # - FanDuel: Secondary reference (45% coverage)
+                # - BetOnline: Tertiary reference (38% coverage, best for alternates)
+                # - Combined: 90% coverage of all PrizePicks lines
+                sharp_prices = {}  # {(player, market, line, direction): {draftkings, fanduel, betonline}}
                 
                 if fetch_sharp_book_odds:
-                    logger.info(f"[SYNC_ODDS_TO_MONGO] Fetching Sharp Book odds (Bovada/DraftKings/FanDuel)...")
+                    logger.info(f"[SYNC_ODDS_TO_MONGO] Fetching Sharp Book odds (DraftKings/FanDuel/BetOnline)...")
                     
                     async def fetch_sharp_odds(event_id: str, event_info: dict):
                         try:
@@ -176,7 +178,7 @@ class OddsSyncService:
                         
                         for bm in sharp_data.get("bookmakers", []):
                             bm_key = bm.get("key", "")
-                            if bm_key not in ["bovada", "draftkings", "fanduel"]:
+                            if bm_key not in ["draftkings", "fanduel", "betonlineag"]:
                                 continue
                             
                             for market in bm.get("markets", []):
@@ -190,17 +192,17 @@ class OddsSyncService:
                                     lookup_key = (player_name, market_key, line, direction)
                                     if lookup_key not in sharp_prices:
                                         sharp_prices[lookup_key] = {
-                                            "bovada_price": None,
                                             "draftkings_price": None,
-                                            "fanduel_price": None
+                                            "fanduel_price": None,
+                                            "betonline_price": None
                                         }
                                     
-                                    if bm_key == "bovada":
-                                        sharp_prices[lookup_key]["bovada_price"] = price
-                                    elif bm_key == "draftkings":
+                                    if bm_key == "draftkings":
                                         sharp_prices[lookup_key]["draftkings_price"] = price
                                     elif bm_key == "fanduel":
                                         sharp_prices[lookup_key]["fanduel_price"] = price
+                                    elif bm_key == "betonlineag":
+                                        sharp_prices[lookup_key]["betonline_price"] = price
                     
                     logger.info(f"[SYNC_ODDS_TO_MONGO] Built sharp price lookup: {len(sharp_prices)} unique props")
                 
@@ -215,46 +217,40 @@ class OddsSyncService:
                     lookup_key = (player_name, market_key, line, direction)
                     sharp_data = sharp_prices.get(lookup_key, {})
                     
-                    bovada_price = sharp_data.get("bovada_price")
                     draftkings_price = sharp_data.get("draftkings_price")
                     fanduel_price = sharp_data.get("fanduel_price")
+                    betonline_price = sharp_data.get("betonline_price")
                     
-                    # Calculate DK/FD average for standard lines
-                    dk_fd_avg = None
-                    if draftkings_price is not None and fanduel_price is not None:
-                        dk_fd_avg = round((draftkings_price + fanduel_price) / 2)
-                    elif draftkings_price is not None:
-                        dk_fd_avg = draftkings_price
+                    # Calculate sort_price: Use first available from DK > FD > BOL
+                    # This provides variable odds for sorting (vs PrizePicks flat -137)
+                    sort_price = None
+                    sort_source = None
+                    if draftkings_price is not None:
+                        sort_price = draftkings_price
+                        sort_source = "draftkings"
                     elif fanduel_price is not None:
-                        dk_fd_avg = fanduel_price
-                    
-                    # Determine sharp_price based on line type
-                    # ALTERNATE lines: Bovada is primary
-                    # STANDARD lines: DraftKings/FanDuel average
-                    if is_alternate:
-                        sharp_price = bovada_price if bovada_price is not None else dk_fd_avg
-                        sharp_source = "bovada" if bovada_price is not None else ("dk_fd_avg" if dk_fd_avg is not None else None)
-                    else:
-                        sharp_price = dk_fd_avg if dk_fd_avg is not None else bovada_price
-                        sharp_source = "dk_fd_avg" if dk_fd_avg is not None else ("bovada" if bovada_price is not None else None)
+                        sort_price = fanduel_price
+                        sort_source = "fanduel"
+                    elif betonline_price is not None:
+                        sort_price = betonline_price
+                        sort_source = "betonline"
                     
                     # Build nested sharp_market object
                     prop["sharp_market"] = {
-                        "bovada_price": bovada_price,
                         "draftkings_price": draftkings_price,
                         "fanduel_price": fanduel_price,
-                        "dk_fd_average": dk_fd_avg,
-                        "sharp_price": sharp_price,
-                        "sharp_source": sharp_source,
+                        "betonline_price": betonline_price,
+                        "sort_price": sort_price,
+                        "sort_source": sort_source,
                         "is_alternate": is_alternate
                     }
                     
                     # Also keep flat fields for backwards compatibility
-                    prop["bovada_price"] = bovada_price
                     prop["draftkings_price"] = draftkings_price
                     prop["fanduel_price"] = fanduel_price
-                    prop["sharp_price"] = sharp_price
-                    prop["sharp_source"] = sharp_source
+                    prop["betonline_price"] = betonline_price
+                    prop["sort_price"] = sort_price
+                    prop["sort_source"] = sort_source
             
             # Step 3: Normalize all props
             logger.info(f"[NORMALIZATION] Processing {len(all_props)} props...")

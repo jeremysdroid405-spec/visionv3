@@ -265,17 +265,20 @@ class OddsApiService:
         cache_ttl_minutes: int = 10
     ) -> Dict[str, Any]:
         """
-        Fetch Sharp Book odds (Bovada + DraftKings + FanDuel) for arbitrage detection.
+        Fetch Sharp Book odds (DraftKings + FanDuel + BetOnline) for sorting & arbitrage.
         
-        These lines are used by the Sharp Edge Calculator to find +EV opportunities
-        where Vegas smart money disagrees with PrizePicks pricing.
+        These lines are used for:
+        1. SORTING: Variable odds for ranking picks (vs PrizePicks flat -137)
+        2. Sharp Edge Calculator: Find +EV opportunities
         
         Strategy:
-        - Bovada: Primary sharp reference for ALTERNATE lines
-        - DraftKings/FanDuel: Sharp reference for STANDARD lines
+        - DraftKings: Primary reference (72% coverage)
+        - FanDuel: Secondary reference (45% coverage)  
+        - BetOnline: Tertiary reference (38% coverage, best for alternates)
+        - Combined: 90% coverage of all PrizePicks lines
         
         Returns:
-            Combined odds data from Bovada, DraftKings, and FanDuel
+            Combined odds data from DraftKings, FanDuel, and BetOnline
         """
         try:
             # CHECK CACHE FIRST
@@ -297,7 +300,7 @@ class OddsApiService:
                         return cached
             
             # FETCH FROM API - Include BOTH standard AND alternate markets
-            # Bovada for alternates, DK/FD for standard
+            # DraftKings + FanDuel + BetOnline for 90% coverage
             url = f"{ODDS_API_BASE}/sports/basketball_nba/events/{event_id}/odds"
             
             # Combine standard + alternate markets for sharp books
@@ -305,9 +308,9 @@ class OddsApiService:
             
             params = {
                 "apiKey": ODDS_API_KEY,
-                "regions": "us,eu",  # Expanded regions for Bovada coverage
+                "regions": "us,us2",  # US regions for DK/FD/BetOnline
                 "markets": ",".join(sharp_markets),
-                "bookmakers": "bovada,draftkings,fanduel",
+                "bookmakers": "draftkings,fanduel,betonlineag",
                 "oddsFormat": "american",
                 "includeMultipliers": "true"
             }
@@ -322,26 +325,26 @@ class OddsApiService:
                 odds_data["source"] = "sharp_books"
                 
                 # Count props by bookmaker
-                bovada_count = 0
                 draftkings_count = 0
                 fanduel_count = 0
+                betonline_count = 0
                 
                 for bm in odds_data.get("bookmakers", []):
                     bm_key = bm.get("key", "")
                     for market in bm.get("markets", []):
                         outcome_count = len(market.get("outcomes", []))
-                        if bm_key == "bovada":
-                            bovada_count += outcome_count
-                        elif bm_key == "draftkings":
+                        if bm_key == "draftkings":
                             draftkings_count += outcome_count
                         elif bm_key == "fanduel":
                             fanduel_count += outcome_count
+                        elif bm_key == "betonlineag":
+                            betonline_count += outcome_count
                 
-                if bovada_count > 0 or draftkings_count > 0 or fanduel_count > 0:
+                if draftkings_count > 0 or fanduel_count > 0 or betonline_count > 0:
                     logger.info(
                         f"  [SHARP_BOOKS] {event_info.get('away_team', '')} @ "
                         f"{event_info.get('home_team', '')}: "
-                        f"Bovada={bovada_count}, DraftKings={draftkings_count}, FanDuel={fanduel_count}"
+                        f"DK={draftkings_count}, FD={fanduel_count}, BOL={betonline_count}"
                     )
                     
                     # Store in cache
