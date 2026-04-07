@@ -49,6 +49,15 @@ Analyze each prop in the batch and return insights. You'll receive props that ha
 2. Identify any red flags or hidden value
 3. Generate a sharp, concise analysis
 
+## IMPORTANT: Defense Field Explanation
+The "defense" field shows the OPPONENT's defensive ranking vs that stat type (DvP = Defense vs Position):
+- Rank #1-5 = OPPONENT is ELITE at defending this stat → TOUGH matchup for player
+- Rank #6-15 = OPPONENT is solid defensively → Challenging matchup
+- Rank #16-25 = OPPONENT is below average defensively → Favorable matchup
+- Rank #26-30 = OPPONENT is TERRIBLE at defending this stat → SMASH spot for player
+
+Example: "PHX POOR D vs PTS (#28 - SMASH spot)" means Phoenix ranks 28th in defending points = they give up lots of points = GOOD for the player's Over.
+
 ## Output Format
 Return a JSON array with one object per prop. Each object MUST have:
 ```json
@@ -71,7 +80,7 @@ Return a JSON array with one object per prop. Each object MUST have:
 ## Style Guide
 - Be conversational, like a sharp bettor texting picks
 - Lead with the numbers (hit rate, average vs line)
-- Call out defensive matchups explicitly
+- Call out defensive matchups explicitly - use the DvP ranking correctly!
 - Flag any blowout risk or injury concerns
 - Keep each summary to 2-3 punchy sentences
 
@@ -131,22 +140,26 @@ class VisionIntelService:
             is_goblin = prop.get('is_goblin', False)
             pick_type = "Demon (Over ceiling)" if is_demon else "Goblin (Safe floor)" if is_goblin else "Standard"
             
-            # Matchup
+            # Matchup - OPPONENT's defense against this stat type
             opponent = prop.get('opponent', 'TBD')
-            dvp_rank = prop.get('dvp_rank')
+            dvp_rank = prop.get('dvp_rank')  # Defense vs Position - how opponent defends this stat
             
-            # Build matchup context
+            # Build OPPONENT defensive context (DvP = how well opponent defends this stat)
+            # Rank 1-5 = opponent is ELITE at stopping this stat (bad for player)
+            # Rank 26-30 = opponent is TERRIBLE at stopping this stat (good for player)
             if dvp_rank:
                 if dvp_rank <= 5:
-                    dvp_text = f"ELITE D (#{dvp_rank})"
+                    dvp_text = f"{opponent} ELITE D vs {stat_type} (#{dvp_rank} - TOUGH matchup)"
                 elif dvp_rank <= 10:
-                    dvp_text = f"Strong D (#{dvp_rank})"
+                    dvp_text = f"{opponent} Strong D vs {stat_type} (#{dvp_rank} - difficult)"
                 elif dvp_rank <= 20:
-                    dvp_text = f"Average D (#{dvp_rank})"
+                    dvp_text = f"{opponent} Average D vs {stat_type} (#{dvp_rank} - neutral)"
+                elif dvp_rank <= 25:
+                    dvp_text = f"{opponent} Weak D vs {stat_type} (#{dvp_rank} - favorable)"
                 else:
-                    dvp_text = f"Weak D (#{dvp_rank})"
+                    dvp_text = f"{opponent} POOR D vs {stat_type} (#{dvp_rank} - SMASH spot)"
             else:
-                dvp_text = "Unknown"
+                dvp_text = f"vs {opponent} (no DvP data)"
             
             # Badges/situational factors
             badges = prop.get('active_badges', [])
