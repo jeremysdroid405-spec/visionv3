@@ -1424,6 +1424,9 @@ class FerrariTierService:
                                 prop["tier"] = "war_zone"
                                 prop["war_zone_qualified"] = True
                                 war_zone_pool.append(prop)
+                                logger.debug(f"    WZ_ADD: {player_name} - {stat_type} @ {line} | DK: {dk_odds} | Reason: {wz_reason}")
+                            else:
+                                logger.debug(f"    WZ_REJECT: {player_name} - {stat_type} @ {line} | DK: {dk_odds} | Reason: {wz_reason}")
                     else:  # -249 to +199
                         # Front Lines: Demons, Goblins, OR Standards - MUST pass Front Lines gates
                         fl_qualified, fl_reason = self._check_front_lines_gates(
@@ -1467,9 +1470,10 @@ class FerrariTierService:
             # =================================================================
             # DEDUPE: One pick per player per stat type per tier
             # =================================================================
-            def dedupe_pool(pool, max_picks):
+            def dedupe_pool(pool, max_picks, pool_name=""):
                 seen = set()
                 deduped = []
+                duplicates = []
                 for prop in pool:
                     key = (prop.get("player_name"), prop.get("stat_type"))
                     if key not in seen:
@@ -1477,11 +1481,23 @@ class FerrariTierService:
                         deduped.append(prop)
                         if len(deduped) >= max_picks:
                             break
+                    else:
+                        duplicates.append(key)
+                
+                if pool_name:
+                    logger.info(f"    [{pool_name}] Pool size: {len(pool)}, Unique combos: {len(seen)}, Duplicates skipped: {len(duplicates)}")
+                    if duplicates and len(duplicates) <= 10:
+                        logger.info(f"    [{pool_name}] Duplicate keys: {duplicates}")
                 return deduped
             
-            top_safe_haven = dedupe_pool(safe_haven_pool, MAX_PICKS_PER_TIER)
-            top_front_lines = dedupe_pool(front_lines_pool, MAX_PICKS_PER_TIER)
-            top_war_zone = dedupe_pool(war_zone_pool, MAX_PICKS_PER_TIER)
+            # Log War Zone pool before dedupe for debugging
+            logger.info(f"  WAR ZONE DEBUG - Pool before dedupe:")
+            for i, prop in enumerate(war_zone_pool[:15]):  # Log first 15
+                logger.info(f"    {i+1}. {prop.get('player_name')} - {prop.get('stat_type')} | DK: {prop.get('dk_odds')} | Edge: {prop.get('vk_edge', 0):.1f} | Prob: {prop.get('vk_prob_over', 0):.0f}%")
+            
+            top_safe_haven = dedupe_pool(safe_haven_pool, MAX_PICKS_PER_TIER, "SAFE_HAVEN")
+            top_front_lines = dedupe_pool(front_lines_pool, MAX_PICKS_PER_TIER, "FRONT_LINES")
+            top_war_zone = dedupe_pool(war_zone_pool, MAX_PICKS_PER_TIER, "WAR_ZONE")
             
             logger.info(f"  After dedupe:")
             logger.info(f"    Safe Haven: {len(top_safe_haven)} picks")
