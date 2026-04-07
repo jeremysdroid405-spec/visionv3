@@ -90,7 +90,19 @@ HARD_KILL_SEPARATION_MIN = 3.0
 MAX_PICKS_PER_TIER = 10
 MAX_PARLAYS_PER_TIER = 5
 
-# Legacy constants (for backwards compatibility in tier classification)
+# =============================================================================
+# DK ODDS-BASED TIER CLASSIFICATION (Primary - Simple & Clear)
+# =============================================================================
+# If DK_Odds <= -250        → Safe Haven (heavily juiced, very likely)
+# If -249 <= DK_Odds <= +199 → Front Lines (moderate odds range)
+# If DK_Odds >= +200         → War Zone (longshots, value plays)
+# =============================================================================
+DK_TIER_SAFE_HAVEN_MAX = -250      # DK odds <= -250 = Safe Haven
+DK_TIER_FRONT_LINES_MIN = -249     # DK odds >= -249
+DK_TIER_FRONT_LINES_MAX = 199      # DK odds <= +199 = Front Lines
+DK_TIER_WAR_ZONE_MIN = 200         # DK odds >= +200 = War Zone
+
+# Legacy constants (kept for backwards compatibility)
 SAFE_HAVEN_MAX = -250
 FRONT_LINES_MIN = -245
 FRONT_LINES_MAX = -115
@@ -109,6 +121,33 @@ def american_to_implied(odds: int) -> float:
     if odds < 0:
         return abs(odds) / (abs(odds) + 100)
     return 100 / (odds + 100)
+
+
+def classify_tier_by_dk_odds(dk_odds: Optional[int]) -> str:
+    """
+    Classify tier based on DraftKings odds.
+    
+    Rules:
+    - DK_Odds <= -250        → Safe Haven (heavily juiced, very likely)
+    - -249 <= DK_Odds <= +199 → Front Lines (moderate odds range)  
+    - DK_Odds >= +200         → War Zone (longshots, value plays)
+    - No DK odds available    → Use fallback (front_lines by default)
+    
+    Args:
+        dk_odds: DraftKings American odds (e.g., -300, -150, +180, +250)
+        
+    Returns:
+        Tier name: "safe_haven", "front_lines", or "war_zone"
+    """
+    if dk_odds is None:
+        return "front_lines"  # Default to Front Lines if no DK data
+    
+    if dk_odds <= DK_TIER_SAFE_HAVEN_MAX:  # <= -250
+        return "safe_haven"
+    elif dk_odds >= DK_TIER_WAR_ZONE_MIN:  # >= +200
+        return "war_zone"
+    else:  # -249 to +199
+        return "front_lines"
 
 
 def calculate_separation_pct(sharp_implied: float, pp_implied: float = PP_IMPLIED) -> float:
@@ -786,16 +825,30 @@ class FerrariTierService:
                     true_probability = v7_result["true_probability"]
                     board_score = v7_result.get("board_score", true_probability)
                     pp_edge = v7_result.get("pp_edge", 0)
-                    v7_tier = v7_result["tier"]
                     v7_confidence = v7_result["confidence"]
                     v7_components = v7_result["components"]
                     
                     # ==========================================================
-                    # TIER PROP TYPE ENFORCEMENT:
-                    # - SAFE HAVEN = Goblins only (high probability, no multiplier)
-                    # - FRONT LINES = Both demons + goblins
-                    # - WAR ZONE = Demons only (must have multiplier for the risk)
+                    # DK ODDS-BASED TIER CLASSIFICATION (Primary)
+                    # If DK_Odds <= -250        → Safe Haven
+                    # If -249 <= DK_Odds <= +199 → Front Lines
+                    # If DK_Odds >= +200         → War Zone
                     # ==========================================================
+                    
+                    # Get DK odds from sharp_market or flat field
+                    sharp_market = prop.get("sharp_market", {})
+                    dk_odds = sharp_market.get("draftkings_price") or prop.get("draftkings_price")
+                    
+                    # Also try sort_price if DK not available (fallback to FD or BOL)
+                    if dk_odds is None:
+                        dk_odds = sharp_market.get("sort_price") or prop.get("sort_price")
+                    
+                    # Classify tier by DK odds
+                    dk_tier = classify_tier_by_dk_odds(dk_odds)
+                    
+                    # Use DK-based tier as primary classification
+                    v7_tier = dk_tier
+                    
                     is_demon = prop.get("is_demon", False)
                     is_goblin = prop.get("is_goblin", False)
                     
@@ -807,23 +860,6 @@ class FerrariTierService:
                             "stat_type": stat_type,
                             "line": pp_line,
                             "reason": "STANDARD_LINE: Only demons/goblins qualify for tiers"
-                        })
-                        continue
-                    
-                    # Safe Haven = Goblins only
-                    if v7_tier == "safe_haven" and not is_goblin:
-                        # Demons don't belong in Safe Haven - demote to Front Lines or below
-                        if is_demon:
-                            v7_tier = "front_lines"  # Demons can go to Front Lines
-                    
-                    # War Zone = Demons only (at 47%+ threshold)
-                    if v7_tier == "war_zone" and not is_demon:
-                        results["scored"]["below_threshold"] += 1
-                        discarded.append({
-                            "player_name": player_name,
-                            "stat_type": stat_type,
-                            "line": pp_line,
-                            "reason": "WAR_ZONE_NON_DEMON: Only demons qualify for War Zone"
                         })
                         continue
                     
@@ -884,6 +920,12 @@ class FerrariTierService:
                         "sharp_implied": round(sharp_implied * 100, 1),
                         "draftkings_price": sharp_market.get("draftkings_price"),
                         "fanduel_price": sharp_market.get("fanduel_price"),
+                        "betonline_price": sharp_market.get("betonline_price"),
+                        # DK-BASED TIER CLASSIFICATION
+                        "dk_odds": dk_odds,
+                        "dk_tier": dk_tier,
+                        "sort_price": sharp_market.get("sort_price") or dk_odds,
+                        "sort_source": sharp_market.get("sort_source"),
                         # =====================================================
                         # V7.1 BOARD SCORE (EDGE-FIRST FORMULA)
                         # Board_Score = Sharp_Implied + PP_Edge + Hit_Rate_Avg - Penalties
