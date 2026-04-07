@@ -1109,42 +1109,73 @@ class FerrariTierService:
             used_demon_players = set()
             
             # =================================================================
-            # SAFE HAVEN: NEW ORACLE APEX LOGIC
+            # SAFE HAVEN: ORACLE APEX (from pre-scanned data)
             # =================================================================
-            # Uses Vegas Killer ML predictions with stat-specific gates:
-            # - PTS: CV <= 0.22, 18/20 hits, Edge >= 2.0
-            # - REB: CV <= 0.35, 16/20 hits (or 14/20 w/ +2.5 buffer), Edge >= 1.5
-            # - AST: CV <= 0.35, 15/20 hits, Edge >= 2.0
-            # - PRA: CV <= 0.20, 18/20 hits, Edge >= 2.0
+            # Uses pre-scanned data from oracle_apex_analyzed collection
+            # which was populated during sync_odds_to_mongo (Step 5.5)
             # =================================================================
-            logger.info("[PHASE 4.1] ORACLE APEX - Building Safe Haven with new ML logic...")
+            logger.info("[PHASE 4.1] ORACLE APEX - Building Safe Haven from pre-scanned data...")
             
             try:
-                from services.vegas_killer_model import VegasKillerModel
-                vk_model = VegasKillerModel(self.db)
-                vk_model.load_models()
+                # Get pre-analyzed props from oracle_apex_analyzed collection
+                oracle_analyzed = self.db.oracle_apex_analyzed
+                apex_cursor = oracle_analyzed.find(
+                    {"oracle_apex_qualified": True},
+                    {"_id": 0}
+                ).sort([("vk_edge", -1), ("h20_rate", -1)])
+                apex_qualified = await apex_cursor.to_list(length=None)
                 
-                oracle_apex = get_oracle_apex_service(self.db, vk_model)
-                apex_result = await oracle_apex.scan_all_props()
-                
-                if apex_result.get('success'):
-                    top_safe_haven = apex_result.get('apex_picks', [])[:MAX_PICKS_PER_TIER]
+                if apex_qualified:
+                    logger.info(f"  Found {len(apex_qualified)} Oracle Apex qualified props in pre-scan")
+                    
+                    # Dedupe: best line per player+stat (lowest line for goblin logic)
+                    seen_player_stats = {}
+                    for prop in apex_qualified:
+                        key = (prop.get('player_name'), prop.get('stat_type'))
+                        if key not in seen_player_stats:
+                            seen_player_stats[key] = prop
+                        elif prop.get('line', 999) < seen_player_stats[key].get('line', 999):
+                            seen_player_stats[key] = prop
+                    
+                    deduped_apex = list(seen_player_stats.values())
+                    deduped_apex.sort(key=lambda x: (x.get('vk_edge') or 0, x.get('h20_rate') or 0), reverse=True)
+                    
+                    # Enrich with Vision Intel Suite data
+                    from services.oracle_apex_service import get_oracle_apex_service
+                    vk_model = get_vegas_killer()
+                    if vk_model:
+                        oracle_service = get_oracle_apex_service(self.db, vk_model)
+                        enriched_picks = await oracle_service.enrich_apex_picks(deduped_apex)
+                        top_safe_haven = enriched_picks[:MAX_PICKS_PER_TIER]
+                    else:
+                        top_safe_haven = deduped_apex[:MAX_PICKS_PER_TIER]
                     
                     # Track used goblin players
                     for pick in top_safe_haven:
                         used_goblin_players.add(pick.get('player_name'))
                     
                     logger.info(f"  Oracle Apex Safe Haven: {len(top_safe_haven)} picks")
-                    logger.info(f"  Gate stats: {apex_result.get('gate_stats')}")
                 else:
-                    logger.warning(f"[ORACLE_APEX] Failed: {apex_result.get('error')} - falling back to legacy")
-                    # Fallback to legacy Safe Haven
-                    sh_cursor = self.ferrari_scored.find(
-                        {"tier": "safe_haven", "is_goblin": True},
-                        {"_id": 0}
-                    ).sort("ferrari_power_score", -1)
-                    sh_all = await sh_cursor.to_list(length=None)
-                    top_safe_haven = self._dedupe_select(sh_all, used_goblin_players, MAX_PICKS_PER_TIER)
+                    # Fallback: run Oracle Apex scan fresh
+                    logger.warning("[ORACLE_APEX] No pre-scanned data found, running fresh scan...")
+                    from services.oracle_apex_service import get_oracle_apex_service
+                    from services.vegas_killer_model import VegasKillerModel
+                    
+                    vk_model = VegasKillerModel(self.db)
+                    vk_model.load_models()
+                    
+                    oracle_apex = get_oracle_apex_service(self.db, vk_model)
+                    apex_result = await oracle_apex.scan_all_props()
+                    
+                    if apex_result.get('success'):
+                        top_safe_haven = apex_result.get('apex_picks', [])[:MAX_PICKS_PER_TIER]
+                        for pick in top_safe_haven:
+                            used_goblin_players.add(pick.get('player_name'))
+                        logger.info(f"  Oracle Apex Safe Haven (fresh): {len(top_safe_haven)} picks")
+                    else:
+                        top_safe_haven = []
+                        logger.warning(f"[ORACLE_APEX] Fresh scan failed: {apex_result.get('error')}")
+                        
             except Exception as e:
                 logger.error(f"[ORACLE_APEX] Error: {e} - falling back to legacy Safe Haven")
                 # Fallback to legacy Safe Haven
@@ -1157,21 +1188,39 @@ class FerrariTierService:
                 logger.info(f"  Safe Haven pool (legacy): {len(sh_all)} total, {sh_clean} clean")
                 top_safe_haven = self._dedupe_select(sh_all, used_goblin_players, MAX_PICKS_PER_TIER)
             
+            # =================================================================
+            # CASCADING TIER DISTRIBUTION:
+            # 1. Safe Haven gets first pick (Oracle Apex - already done above)
+            # 2. Remove Safe Haven picks from the pool
+            # 3. Front Lines picks from remaining pool
+            # 4. Remove Front Lines picks from the pool  
+            # 5. War Zone picks from what's left
+            # =================================================================
+            
+            # Build exclusion set from Safe Haven (player_name + stat_type)
+            safe_haven_keys = set()
+            for pick in top_safe_haven:
+                key = (pick.get('player_name'), pick.get('stat_type'))
+                safe_haven_keys.add(key)
+            logger.info(f"  Safe Haven exclusion keys: {len(safe_haven_keys)}")
+            
             # FRONT LINES: Middle tier - includes BOTH Goblins AND "Safe" Demons
-            # Goblins: Use used_goblin_players to exclude Safe Haven players
-            # Demons: Use used_demon_players to track (separate from War Zone)
+            # EXCLUDE any prop already in Safe Haven
             fl_cursor = self.ferrari_scored.find(
                 {"tier": "front_lines"},
                 {"_id": 0}
             ).sort("ferrari_power_score", -1)
             fl_all = await fl_cursor.to_list(length=None)
             
+            # Remove props that are already in Safe Haven
+            fl_all = [p for p in fl_all if (p.get('player_name'), p.get('stat_type')) not in safe_haven_keys]
+            
             # Separate goblins and demons for proper deduplication
             fl_goblins = [p for p in fl_all if p.get("is_goblin") and not p.get("is_demon")]
             fl_demons = [p for p in fl_all if p.get("is_demon")]
             
             fl_clean = sum(1 for p in fl_all if not (p.get("trap_risk") or p.get("hook_risk")))
-            logger.info(f"  Front Lines pool: {len(fl_all)} total ({len(fl_goblins)} goblins, {len(fl_demons)} demons), {fl_clean} clean")
+            logger.info(f"  Front Lines pool (after SH exclusion): {len(fl_all)} total ({len(fl_goblins)} goblins, {len(fl_demons)} demons), {fl_clean} clean")
             
             # Dedupe goblins (exclude Safe Haven players)
             fl_goblin_picks = self._dedupe_select(fl_goblins, used_goblin_players, MAX_PICKS_PER_TIER)
@@ -1189,15 +1238,29 @@ class FerrariTierService:
             fl_merged.sort(key=lambda x: x.get("ferrari_power_score", 0), reverse=True)
             top_front_lines = fl_merged[:MAX_PICKS_PER_TIER]
             
+            # Build exclusion set for Front Lines (player_name + stat_type)
+            front_lines_keys = set()
+            for pick in top_front_lines:
+                key = (pick.get('player_name'), pick.get('stat_type'))
+                front_lines_keys.add(key)
+            
+            # Combined exclusion: Safe Haven + Front Lines
+            all_used_keys = safe_haven_keys | front_lines_keys
+            logger.info(f"  Combined exclusion keys (SH + FL): {len(all_used_keys)}")
+            
             # WAR ZONE: Highest risk Demons ONLY (extreme plays)
-            # Exclude demons already used in Front Lines
+            # EXCLUDE props already in Safe Haven or Front Lines
             wz_cursor = self.ferrari_scored.find(
                 {"tier": "war_zone", "is_demon": True},
                 {"_id": 0}
             ).sort("ferrari_power_score", -1)
             wz_all = await wz_cursor.to_list(length=None)
+            
+            # Remove props that are already in Safe Haven or Front Lines
+            wz_all = [p for p in wz_all if (p.get('player_name'), p.get('stat_type')) not in all_used_keys]
+            
             wz_clean = sum(1 for p in wz_all if not (p.get("trap_risk") or p.get("hook_risk")))
-            logger.info(f"  War Zone pool: {len(wz_all)} total, {wz_clean} clean, {len(wz_all) - wz_clean} trap")
+            logger.info(f"  War Zone pool (after SH+FL exclusion): {len(wz_all)} total, {wz_clean} clean, {len(wz_all) - wz_clean} trap")
             top_war_zone = self._dedupe_select(wz_all, used_demon_players, MAX_PICKS_PER_TIER)
             
             # =================================================================

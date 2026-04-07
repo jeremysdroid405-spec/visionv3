@@ -198,6 +198,58 @@ class CachedBoardBuilderService:
         
         logger.info(f"[CACHED_BOARD] Loaded {len(player_stats_for_anchor)} player/stat combos for L5 fallback")
         
+        # =================================================================
+        # STEP 0.5: MERGE ORACLE APEX ANALYSIS DATA
+        # =================================================================
+        # The Oracle Apex scan ran BEFORE this, storing analyzed props in
+        # oracle_apex_analyzed collection. Merge that VK data into our props.
+        # =================================================================
+        oracle_apex_map = {}
+        try:
+            oracle_analyzed = self.db.oracle_apex_analyzed
+            apex_count = await oracle_analyzed.count_documents({})
+            if apex_count > 0:
+                async for apex_prop in oracle_analyzed.find({}, {"_id": 0}):
+                    # Key: player_name|stat_type|line
+                    key = f"{apex_prop.get('player_name')}|{apex_prop.get('stat_type')}|{apex_prop.get('line')}"
+                    oracle_apex_map[key] = apex_prop
+                logger.info(f"[CACHED_BOARD] Loaded {len(oracle_apex_map)} Oracle Apex analyzed props")
+        except Exception as apex_err:
+            logger.warning(f"[CACHED_BOARD] Could not load Oracle Apex data: {apex_err}")
+        
+        # Merge Oracle Apex data into props
+        if oracle_apex_map:
+            for prop in props:
+                player_name = prop.get("player_name", "")
+                stat_type = prop.get("stat_type_extracted") or prop.get("market", "").replace("player_", "").upper()
+                line = prop.get("line", 0)
+                key = f"{player_name}|{stat_type}|{line}"
+                
+                apex_data = oracle_apex_map.get(key)
+                if apex_data:
+                    # Merge VK predictions and Oracle Apex qualification
+                    prop["oracle_apex_qualified"] = apex_data.get("oracle_apex_qualified", False)
+                    prop["apex_reason"] = apex_data.get("apex_reason")
+                    prop["vk_predicted"] = apex_data.get("vk_predicted")
+                    prop["vk_edge"] = apex_data.get("vk_edge")
+                    prop["vk_prob_over"] = apex_data.get("vk_prob_over")
+                    prop["vk_prob_under"] = apex_data.get("vk_prob_under")
+                    prop["vk_recommendation"] = apex_data.get("vk_recommendation")
+                    prop["cv"] = apex_data.get("cv")
+                    prop["h5_rate"] = apex_data.get("h5_rate")
+                    prop["h10_rate"] = apex_data.get("h10_rate")
+                    prop["h20_rate"] = apex_data.get("h20_rate")
+                    prop["l5_hits"] = apex_data.get("l5_hits")
+                    prop["l10_hits"] = apex_data.get("l10_hits")
+                    prop["l20_hits"] = apex_data.get("l20_hits")
+                    prop["l5_avg"] = apex_data.get("l5_avg")
+                    prop["l10_avg"] = apex_data.get("l10_avg")
+                    prop["l20_avg"] = apex_data.get("l20_avg")
+            
+            merged_count = sum(1 for p in props if p.get("vk_predicted") is not None)
+            apex_qualified_count = sum(1 for p in props if p.get("oracle_apex_qualified"))
+            logger.info(f"[CACHED_BOARD] Merged VK data into {merged_count} props, {apex_qualified_count} Oracle Apex qualified")
+        
         # STEP 1: APPLY ANCHOR-BASED CLASSIFICATION (with L5 fallback)
         # This overrides Odds API is_demon/is_goblin flags with our own logic:
         # - Alternate ABOVE standard line = DEMON

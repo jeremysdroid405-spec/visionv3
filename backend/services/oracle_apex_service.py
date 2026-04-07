@@ -532,6 +532,206 @@ class OracleApexService:
             'skipped': skipped,
         }
     
+    async def scan_all_props_for_distribution(self) -> Dict[str, Any]:
+        """
+        Scan ALL props and return them with Oracle Apex analysis data.
+        
+        Unlike scan_all_props() which filters for Safe Haven only, this method:
+        1. Analyzes EVERY prop with VK model
+        2. Calculates Oracle Apex metrics (CV, hit rates, edge)
+        3. Returns ALL props with their qualification status
+        
+        The tier distribution logic then uses this to cascade:
+        - Safe Haven: Oracle Apex qualified props
+        - Front Lines: Remaining props meeting FL criteria
+        - War Zone: Remaining props meeting WZ criteria
+        
+        Returns:
+            Dict with all_props list and analysis stats
+        """
+        if not self.vegas_killer_model:
+            logger.error("[ORACLE_APEX] Vegas Killer model not set!")
+            return {"success": False, "error": "Vegas Killer model not initialized"}
+        
+        logger.info("[ORACLE_APEX] Starting FULL prop scan for tier distribution...")
+        
+        # Load all data
+        all_props = await self.live_props.find({}, {"_id": 0}).to_list(length=None)
+        cached_players = {p['player_name']: p async for p in self.cached_board.find({}, {"_id": 0})}
+        hub_players = {p['display_name']: p async for p in self.master_hub.find({}, {"_id": 0})}
+        
+        logger.info(f"[ORACLE_APEX] Loaded {len(all_props)} props, {len(cached_players)} cached, {len(hub_players)} hub")
+        
+        # Normalize stat types
+        stat_map = {
+            'player_points': 'PTS',
+            'player_rebounds': 'REB',
+            'player_assists': 'AST',
+            'player_points_rebounds_assists': 'PRA',
+            'PTS': 'PTS', 'REB': 'REB', 'AST': 'AST', 'PRA': 'PRA'
+        }
+        
+        analyzed_props = []
+        stats = {
+            'total': 0, 
+            'safe_haven_qualified': 0,
+            'has_vk_data': 0,
+            'skipped_no_data': 0,
+            'skipped_insufficient_games': 0,
+            'skipped_no_vk': 0,
+        }
+        
+        seen = set()
+        
+        for prop in all_props:
+            player_name = prop.get('player_name', '')
+            raw_stat = prop.get('stat_type_extracted', prop.get('market', ''))
+            stat_type = stat_map.get(raw_stat, raw_stat)
+            line = prop.get('line', 0)
+            
+            # Dedupe
+            key = f"{player_name}|{stat_type}|{line}"
+            if key in seen:
+                continue
+            seen.add(key)
+            
+            stats['total'] += 1
+            
+            # Get player data
+            player_data = cached_players.get(player_name) or hub_players.get(player_name)
+            if not player_data:
+                stats['skipped_no_data'] += 1
+                continue
+            
+            game_logs = player_data.get('bdl_game_logs', [])
+            played_games = [g for g in game_logs if self._did_play(g)]
+            
+            # Calculate values
+            all_values = self._get_stat_values(game_logs, stat_type) if stat_type in ORACLE_APEX_CONFIG or stat_type in ['STL', 'BLK', '3PM', 'PR', 'PA', 'RA'] else []
+            
+            if len(played_games) < 5:
+                stats['skipped_insufficient_games'] += 1
+                continue
+            
+            # Calculate L values
+            l20_values = all_values[:20] if len(all_values) >= 20 else all_values
+            l10_values = all_values[:10] if len(all_values) >= 10 else all_values
+            l5_values = all_values[:5] if len(all_values) >= 5 else all_values
+            
+            # Calculate CV from L10
+            l10_mean = np.mean(l10_values) if l10_values else 0
+            l10_std = np.std(l10_values) if l10_values else 0
+            cv = l10_std / l10_mean if l10_mean > 0 else 999
+            
+            # Get VK prediction
+            oracle_pred = None
+            vk_prob_over = 0
+            vk_prob_under = 0
+            vk_recommendation = ''
+            edge = 0
+            
+            try:
+                opponent = prop.get('away_team') or prop.get('home_team', '')
+                result = self.vegas_killer_model.predict(player_name, stat_type, line, opponent_team=opponent)
+                
+                if result and not result.get('error'):
+                    oracle_pred = result.get('predicted', 0)
+                    vk_prob_over = result.get('prob_over', 0)
+                    vk_prob_under = result.get('prob_under', 0)
+                    
+                    # Handle decimal vs percentage format
+                    if vk_prob_over > 0 and vk_prob_over <= 1:
+                        vk_prob_over = vk_prob_over * 100
+                        vk_prob_under = 100 - vk_prob_over
+                    
+                    vk_recommendation = result.get('recommendation', '')
+                    edge = oracle_pred - line if oracle_pred else 0
+                    stats['has_vk_data'] += 1
+            except Exception:
+                pass
+            
+            # Check Oracle Apex qualification
+            oracle_apex_qualified = False
+            apex_reason = "NOT_ANALYZED"
+            
+            if stat_type in ORACLE_APEX_CONFIG and len(l20_values) >= 20 and oracle_pred is not None:
+                oracle_apex_qualified, apex_reason = self.qualifies_for_oracle_apex(
+                    stat_type, line, l20_values, cv, oracle_pred, vk_prob_over
+                )
+                
+                # Also check minutes
+                avg_mins = self._get_avg_minutes(game_logs)
+                if oracle_apex_qualified and avg_mins < MIN_MINUTES:
+                    oracle_apex_qualified = False
+                    apex_reason = "LOW_MINUTES"
+            
+            if oracle_apex_qualified:
+                stats['safe_haven_qualified'] += 1
+            
+            # Calculate hit rates and averages
+            l5_avg = round(np.mean(l5_values), 1) if l5_values else None
+            l10_avg = round(np.mean(l10_values), 1) if l10_values else None
+            l20_avg = round(np.mean(l20_values), 1) if l20_values else None
+            season_avg = round(np.mean(all_values), 1) if all_values else None
+            
+            l20_hits = sum(1 for v in l20_values if v >= line) if l20_values else 0
+            l10_hits = sum(1 for v in l10_values if v >= line) if l10_values else 0
+            l5_hits = sum(1 for v in l5_values if v >= line) if l5_values else 0
+            
+            h5_rate = round((l5_hits / len(l5_values)) * 100, 1) if l5_values else None
+            h10_rate = round((l10_hits / len(l10_values)) * 100, 1) if l10_values else None
+            h20_rate = round((l20_hits / len(l20_values)) * 100, 1) if l20_values else None
+            
+            avg_mins = self._get_avg_minutes(game_logs)
+            
+            analyzed_props.append({
+                'player_name': player_name,
+                'stat_type': stat_type,
+                'line': line,
+                # Oracle Apex qualification
+                'oracle_apex_qualified': oracle_apex_qualified,
+                'apex_reason': apex_reason,
+                # L averages
+                'l5_avg': l5_avg,
+                'l10_avg': l10_avg,
+                'l20_avg': l20_avg,
+                'season_avg': season_avg,
+                # Hit rates
+                'h5_rate': h5_rate,
+                'h10_rate': h10_rate,
+                'h20_rate': h20_rate,
+                'l5_hits': l5_hits,
+                'l10_hits': l10_hits,
+                'l20_hits': l20_hits,
+                # CV
+                'cv': round(cv, 3),
+                # VK predictions
+                'vk_predicted': round(oracle_pred, 1) if oracle_pred else None,
+                'vk_edge': round(edge, 1) if edge else None,
+                'vk_prob_over': round(vk_prob_over, 1),
+                'vk_prob_under': round(vk_prob_under, 1),
+                'vk_recommendation': vk_recommendation,
+                # Minutes
+                'avg_mins': round(avg_mins, 1),
+                # Prop metadata
+                'is_goblin': prop.get('is_goblin', False),
+                'is_demon': prop.get('is_demon', False),
+                'team': player_data.get('team') or prop.get('home_team') or prop.get('away_team'),
+                'opponent': prop.get('away_team') or prop.get('home_team'),
+                'game_time': prop.get('commence_time'),
+                'headshot_url': player_data.get('headshot_url'),
+                'photo_url': player_data.get('photo_url') or player_data.get('headshot_url'),
+                'synced_at': datetime.now(timezone.utc).isoformat(),
+            })
+        
+        logger.info(f"[ORACLE_APEX] Distribution scan complete: {stats}")
+        
+        return {
+            'success': True,
+            'all_props': analyzed_props,
+            'stats': stats,
+        }
+    
     async def build_safe_haven_tier(self) -> List[Dict]:
         """
         Build the Safe Haven tier using Oracle Apex logic.

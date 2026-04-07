@@ -342,6 +342,46 @@ class OddsSyncService:
                 
                 logger.info(f"[SYNC_ODDS_TO_MONGO] Stored {len(props_list)} clean, deduplicated props")
                 logger.info(f"[SYNC_ODDS_TO_MONGO] Duplicates prevented: {results['duplicates_prevented']}")
+                
+                # =================================================================
+                # STEP 5.5: ORACLE APEX SCAN (BEFORE cached board)
+                # =================================================================
+                # Scan ALL props with Vegas Killer model to get predictions,
+                # hit rates, CV, and Oracle Apex qualification BEFORE filtering
+                # This ensures tier distribution has full analysis data
+                # =================================================================
+                logger.info("[ORACLE_APEX] Running VK scan on ALL props before cached board...")
+                try:
+                    from services.oracle_apex_service import get_oracle_apex_service
+                    from services.vegas_killer_model import VegasKillerModel
+                    
+                    # Load VK model
+                    vk_model = VegasKillerModel(self.db)
+                    vk_model.load_models()
+                    
+                    oracle_service = get_oracle_apex_service(self.db, vk_model)
+                    apex_scan_result = await oracle_service.scan_all_props_for_distribution()
+                    
+                    if apex_scan_result.get('success'):
+                        analyzed_props = apex_scan_result.get('all_props', [])
+                        apex_stats = apex_scan_result.get('stats', {})
+                        
+                        # Store to oracle_apex_analyzed collection for tier building
+                        oracle_analyzed_coll = self.db.oracle_apex_analyzed
+                        await oracle_analyzed_coll.delete_many({})
+                        if analyzed_props:
+                            await oracle_analyzed_coll.insert_many(analyzed_props)
+                        
+                        results["oracle_apex_scan"] = {
+                            "total": apex_stats.get('total', 0),
+                            "safe_haven_qualified": apex_stats.get('safe_haven_qualified', 0),
+                            "has_vk_data": apex_stats.get('has_vk_data', 0),
+                        }
+                        logger.info(f"[ORACLE_APEX] Scan complete: {apex_stats}")
+                    else:
+                        logger.warning(f"[ORACLE_APEX] Scan failed: {apex_scan_result.get('error')}")
+                except Exception as apex_err:
+                    logger.error(f"[ORACLE_APEX] Error during scan: {apex_err}")
             
                 # Step 6: Build cached board
                 await build_cached_board(props_list, sync_start)
