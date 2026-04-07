@@ -5,11 +5,48 @@ PropVision is a sports analytics platform for NBA player props, providing data-d
 
 ---
 
-## Latest Update (2026-04-05): Vegas Killer Frontend Integration - COMPLETE!
+## Latest Update (2026-04-07): Oracle Apex Safe Haven - COMPLETE!
 
-### MAJOR MILESTONE: ML Predictions Live on Dashboard!
+### MAJOR MILESTONE: New ML-Powered Safe Haven Tier Logic!
 
-The Vegas Killer XGBoost model predictions are now displayed directly on the frontend dashboard cards!
+The Safe Haven tier now uses the "Oracle Apex" logic - a mathematically-proven filtering system that combines Vegas Killer ML predictions with stat-specific gates.
+
+#### Oracle Apex Configuration (LOCKED IN)
+| Stat | Max CV | Hit Rate | Min Edge | Notes |
+|------|--------|----------|----------|-------|
+| PTS  | 0.22   | 18/20 (90%) | 2.0 | Points are stable, keep strict |
+| REB  | 0.35   | 16/20 (80%)* | 1.5 | *14/20 OK if L20 Mean >= Line + 2.5 |
+| AST  | 0.35   | 15/20 (75%) | 2.0 | Higher variance accepted |
+| PRA  | 0.20   | 18/20 (90%) | 2.0 | Combos self-correct |
+
+#### Gate Logic
+1. **Gate 1 (Sensitivity)**: Hit rate meets stat-specific threshold
+   - REB has special "buffer rule": 14/20 OK if L20 Mean >= Line + 2.5
+2. **Gate 2 (Volatility)**: CV <= stat-specific limit
+3. **Gate 3 (Prediction)**: Edge >= stat-specific AND VK Prob >= 75%
+
+#### Post-Filters
+- Minutes >= 22 (volume check)
+- Dedupe: Keep lowest line per player+stat (best goblin)
+
+#### Key Files
+- `/app/backend/services/oracle_apex_service.py` - New Oracle Apex service
+- `/app/backend/routes/ferrari_tiers.py` - Updated Safe Haven endpoint
+- `/app/backend/services/ferrari_tier_service.py` - Integrated Oracle Apex
+
+#### API Endpoints
+- `GET /api/v3/ferrari/oracle-apex` - Direct Oracle Apex picks
+- `GET /api/v3/ferrari/safe-haven` - Now uses Oracle Apex (add ?legacy=true for old logic)
+
+#### Enrichment
+Oracle Apex picks are now enriched with full intel_suite data from dg_cached_board:
+- `intel_suite` - blowout_risk, matchup_dvp, stability_index, etc.
+- `active_badges` - Context badges
+- `momentum_data`, `vacuum_data` - Situational modifiers
+
+---
+
+## Previous Update (2026-04-05): Vegas Killer Frontend Integration - COMPLETE!
 
 #### What's New
 - **VK Badges on Safe Haven Cards** - Purple badges showing ML predictions

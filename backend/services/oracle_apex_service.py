@@ -402,13 +402,101 @@ class OracleApexService:
                 dedupe_map[key] = pick
         
         final_picks = list(dedupe_map.values())
-        final_picks.sort(key=lambda x: x['edge'], reverse=True)
         
-        logger.info(f"[ORACLE_APEX] Final picks after dedupe: {len(final_picks)}")
+        # =================================================================
+        # ENRICHMENT: Merge with dg_cached_board to get full context data
+        # This ensures intel_suite, active_badges, context data are included
+        # =================================================================
+        enriched_picks = []
+        
+        for pick in final_picks:
+            player_name = pick['player_name']
+            stat_type = pick['stat_type']
+            line = pick['line']
+            
+            # Look up player in cached_board
+            player_doc = await self.cached_board.find_one(
+                {"player_name": player_name},
+                {"_id": 0}
+            )
+            
+            enriched_prop = None
+            if player_doc and player_doc.get('props'):
+                # Remove any _id fields that MongoDB adds
+                if '_id' in player_doc:
+                    del player_doc['_id']
+                    
+                # Find the matching prop by stat_type and line
+                for prop in player_doc['props']:
+                    # Remove _id from prop if present
+                    if '_id' in prop:
+                        del prop['_id']
+                    if prop.get('stat_type') == stat_type and prop.get('line') == line:
+                        enriched_prop = prop
+                        break
+                
+                # If exact line not found, try to find closest line with same stat_type
+                if not enriched_prop:
+                    same_stat_props = [p for p in player_doc['props'] if p.get('stat_type') == stat_type]
+                    if same_stat_props:
+                        # Use the one with closest line
+                        same_stat_props.sort(key=lambda x: abs(x.get('line', 0) - line))
+                        enriched_prop = same_stat_props[0]
+                        logger.info(f"[ORACLE_APEX] Using closest line {enriched_prop.get('line')} instead of {line} for {player_name} {stat_type}")
+            
+            if enriched_prop:
+                # Merge Oracle Apex fields into enriched data
+                merged = {**enriched_prop}
+                merged.update({
+                    'player_name': player_name,
+                    'line': line,  # Keep the Oracle Apex line (goblin)
+                    'tier': 'safe_haven',
+                    'tier_label': 'Oracle Apex',
+                    'oracle_apex_qualified': True,
+                    # Oracle Apex specific metrics
+                    'vk_predicted': pick['vk_predicted'],
+                    'vk_edge': pick['vk_edge'],
+                    'vk_prob_over': pick['vk_prob_over'],
+                    'vk_prob_under': pick['vk_prob_under'],
+                    'vk_recommendation': pick['vk_recommendation'],
+                    'cv': pick['cv'],
+                    'l5_avg': pick['l5_avg'],
+                    'l10_avg': pick['l10_avg'],
+                    'l20_avg': pick['l20_avg'],
+                    'season_avg': pick['season_avg'],
+                    'h5_rate': pick['h5_rate'],
+                    'h10_rate': pick['h10_rate'],
+                    'h20_rate': pick['h20_rate'],
+                    'l20_hits': pick['l20_hits'],
+                    'avg_mins': pick['avg_mins'],
+                    # Use enriched data for intel_suite and badges
+                    'intel_suite': enriched_prop.get('intel_suite', {}),
+                    'active_badges': enriched_prop.get('active_badges', []),
+                    'momentum_data': enriched_prop.get('momentum_data'),
+                    'vacuum_data': enriched_prop.get('vacuum_data'),
+                    'whistle_data': enriched_prop.get('whistle_data'),
+                    # Photo URLs from player doc
+                    'photo_url': player_doc.get('photo_url') or player_doc.get('headshot_url'),
+                    'headshot_url': player_doc.get('headshot_url'),
+                    'team': player_doc.get('team'),
+                })
+                enriched_picks.append(merged)
+                logger.info(f"[ORACLE_APEX] Enriched: {player_name} {stat_type} {line} with intel_suite={bool(merged.get('intel_suite'))}")
+            else:
+                # Fallback: use the basic Oracle Apex data
+                pick['oracle_apex_qualified'] = True
+                pick['intel_suite'] = {}
+                pick['active_badges'] = []
+                enriched_picks.append(pick)
+                logger.warning(f"[ORACLE_APEX] No enriched data for: {player_name} {stat_type} {line}")
+        
+        enriched_picks.sort(key=lambda x: x.get('vk_edge', x.get('edge', 0)), reverse=True)
+        
+        logger.info(f"[ORACLE_APEX] Final enriched picks: {len(enriched_picks)}")
         
         return {
             'success': True,
-            'apex_picks': final_picks,
+            'apex_picks': enriched_picks,
             'total_scanned': len(seen),
             'gate_stats': gate_stats,
             'skipped': skipped,
