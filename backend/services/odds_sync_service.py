@@ -354,11 +354,18 @@ class OddsSyncService:
                 try:
                     from services.oracle_apex_service import get_oracle_apex_service
                     from services.vegas_killer_model import VegasKillerModel
+                    from pymongo import MongoClient
+                    import os
                     
-                    # Load VK model
-                    vk_model = VegasKillerModel(self.db)
+                    # VK model needs sync pymongo, not async Motor
+                    sync_client = MongoClient(os.environ.get('MONGO_URL'))
+                    sync_db = sync_client[os.environ.get('DB_NAME', 'pick_vision')]
+                    
+                    # Load VK model with sync db
+                    vk_model = VegasKillerModel(sync_db)
                     vk_model.load_models()
                     
+                    # But Oracle Apex service needs async Motor db for queries
                     oracle_service = get_oracle_apex_service(self.db, vk_model)
                     apex_scan_result = await oracle_service.scan_all_props_for_distribution()
                     

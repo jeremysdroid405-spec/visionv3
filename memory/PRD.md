@@ -5,34 +5,44 @@ PropVision is a sports analytics platform for NBA player props, providing data-d
 
 ---
 
-## Latest Update (2026-04-07): Hourly Referee Scraper - COMPLETE!
+## Latest Update (2026-04-07): Oracle Apex Enrichment for ALL Tiers - COMPLETE!
 
-### Referee Sync Now Runs Hourly
-The Vision Intel Suite previously had missing officiating data (ref_ppg, crew_chief, whistle_class) for newly added picks because the referee scraper only ran once daily. Now it runs every 60 minutes!
+### All Picks Now Have Full Oracle Apex Data
+- **VK Predictions**: Vegas Killer ML model predictions for all picks
+- **Hit Rates**: H5, H10, H20 calculated for all props
+- **CV (Coefficient of Variation)**: Consistency metric for all props
+- **VK Recommendations**: STRONG_OVER, LEAN_OVER, NEUTRAL, LEAN_UNDER, STRONG_UNDER
 
-#### Changes Made
-1. **Added Hourly Scheduler Job** in `/app/backend/server.py`:
-   - New function: `scheduled_hourly_referee_sync()`
-   - Registered with APScheduler: `id='hourly_referee_sync'`
-   - Interval: Every 60 minutes
-   
-2. **Improved Enrichment Fallback** in `/app/backend/services/oracle_apex_service.py`:
-   - When looking up referee data in `ferrari_scored`, now falls back to any player entry (not just matching stat_type)
-   - Referee data is per-game, not per-stat-type, so this ensures all picks get officiating info
+### Implementation Details
 
-#### Scheduler Jobs (Weekend-Ready Mode)
-| Job | Interval | Purpose |
-|-----|----------|---------|
-| hourly_full_sync | 60 min | Main props refresh |
-| hourly_badge_sync | 60 min | Context badges |
-| hourly_injury_sync | 60 min | Injury reports |
-| **hourly_referee_sync** | 60 min | **Referee assignments & stats (NEW!)** |
-| live_injury_check | 5 min | Late scratch detection |
-| half_hourly_social_sync | 30 min | News & social signals |
+#### 1. Oracle Apex Scan for ALL Props
+- Added `scan_all_props_for_distribution()` in `/app/backend/services/oracle_apex_service.py`
+- Runs during sync BEFORE any tier filtering
+- Stores results in `oracle_apex_analyzed` collection
+- Fixed sync db issue - VK model needs sync pymongo, not async Motor
+
+#### 2. Cascading Tier Distribution
+```
+Odds API → dg_live_props (ALL props) 
+    → Oracle Apex scans ALL props (1335+)
+    → Cached Board (ALL props with VK data)
+    → Ferrari Tier Building (cascade):
+        1. Safe Haven (Oracle Apex qualified) 
+        2. Front Lines (from remaining pool)
+        3. War Zone (from remaining pool)
+```
+
+#### 3. Oracle Apex Enrichment in Tier Building
+- `ferrari_tier_service.py` now loads from `oracle_apex_analyzed` collection
+- All tiers (SH, FL, WZ) get enriched with: vk_predicted, vk_edge, h20_rate, cv, vk_recommendation
+
+### Scheduler Updates
+- **Hourly Referee Sync** (`hourly_referee_sync`) - Now runs every 60 minutes
+- Vision Intel Suite data refreshes more frequently
 
 ---
 
-## Previous Update (2026-04-07): Oracle Apex Safe Haven - COMPLETE!
+## Previous Update: Hourly Referee Scraper - COMPLETE!
 
 ### MAJOR MILESTONE: New ML-Powered Safe Haven Tier Logic!
 

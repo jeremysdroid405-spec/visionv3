@@ -1142,6 +1142,7 @@ class FerrariTierService:
                     
                     # Enrich with Vision Intel Suite data
                     from services.oracle_apex_service import get_oracle_apex_service
+                    from routes.ferrari_tiers import get_vegas_killer
                     vk_model = get_vegas_killer()
                     if vk_model:
                         oracle_service = get_oracle_apex_service(self.db, vk_model)
@@ -1204,6 +1205,50 @@ class FerrariTierService:
                 safe_haven_keys.add(key)
             logger.info(f"  Safe Haven exclusion keys: {len(safe_haven_keys)}")
             
+            # =================================================================
+            # LOAD ORACLE APEX DATA FOR ALL PICKS ENRICHMENT
+            # =================================================================
+            # Key by player_name|stat_type (not line) because lines can change
+            oracle_apex_map = {}
+            try:
+                oracle_analyzed = self.db.oracle_apex_analyzed
+                async for apex_prop in oracle_analyzed.find({}, {"_id": 0}):
+                    # Use player|stat as key (lines may differ between collections)
+                    key = f"{apex_prop.get('player_name')}|{apex_prop.get('stat_type')}"
+                    # Keep the one with the closest line if multiple
+                    if key not in oracle_apex_map:
+                        oracle_apex_map[key] = apex_prop
+                logger.info(f"  Loaded {len(oracle_apex_map)} Oracle Apex analyzed props for enrichment")
+            except Exception as e:
+                logger.warning(f"  Could not load Oracle Apex data: {e}")
+            
+            def enrich_with_oracle_apex(picks: list) -> list:
+                """Enrich picks with Oracle Apex VK data (h20_rate, cv, vk_predicted, etc.)"""
+                enriched_count = 0
+                for pick in picks:
+                    key = f"{pick.get('player_name')}|{pick.get('stat_type')}"
+                    apex_data = oracle_apex_map.get(key)
+                    if apex_data:
+                        pick['vk_predicted'] = apex_data.get('vk_predicted')
+                        pick['vk_edge'] = apex_data.get('vk_edge')
+                        pick['vk_prob_over'] = apex_data.get('vk_prob_over')
+                        pick['vk_prob_under'] = apex_data.get('vk_prob_under')
+                        pick['vk_recommendation'] = apex_data.get('vk_recommendation')
+                        pick['cv'] = apex_data.get('cv')
+                        pick['h5_rate'] = apex_data.get('h5_rate')
+                        pick['h10_rate'] = apex_data.get('h10_rate')
+                        pick['h20_rate'] = apex_data.get('h20_rate')
+                        pick['l5_hits'] = apex_data.get('l5_hits')
+                        pick['l10_hits'] = apex_data.get('l10_hits')
+                        pick['l20_hits'] = apex_data.get('l20_hits')
+                        pick['l5_avg'] = apex_data.get('l5_avg')
+                        pick['l10_avg'] = apex_data.get('l10_avg')
+                        pick['l20_avg'] = apex_data.get('l20_avg')
+                        pick['oracle_apex_qualified'] = apex_data.get('oracle_apex_qualified', False)
+                        enriched_count += 1
+                logger.info(f"    Enriched {enriched_count}/{len(picks)} picks with Oracle Apex data")
+                return picks
+            
             # FRONT LINES: Middle tier - includes BOTH Goblins AND "Safe" Demons
             # EXCLUDE any prop already in Safe Haven
             fl_cursor = self.ferrari_scored.find(
@@ -1238,6 +1283,10 @@ class FerrariTierService:
             fl_merged.sort(key=lambda x: x.get("ferrari_power_score", 0), reverse=True)
             top_front_lines = fl_merged[:MAX_PICKS_PER_TIER]
             
+            # ENRICH Front Lines with Oracle Apex data
+            top_front_lines = enrich_with_oracle_apex(top_front_lines)
+            logger.info(f"  Front Lines enriched: {sum(1 for p in top_front_lines if p.get('h20_rate'))} with H20 data")
+            
             # Build exclusion set for Front Lines (player_name + stat_type)
             front_lines_keys = set()
             for pick in top_front_lines:
@@ -1262,6 +1311,10 @@ class FerrariTierService:
             wz_clean = sum(1 for p in wz_all if not (p.get("trap_risk") or p.get("hook_risk")))
             logger.info(f"  War Zone pool (after SH+FL exclusion): {len(wz_all)} total, {wz_clean} clean, {len(wz_all) - wz_clean} trap")
             top_war_zone = self._dedupe_select(wz_all, used_demon_players, MAX_PICKS_PER_TIER)
+            
+            # ENRICH War Zone with Oracle Apex data
+            top_war_zone = enrich_with_oracle_apex(top_war_zone)
+            logger.info(f"  War Zone enriched: {sum(1 for p in top_war_zone if p.get('h20_rate'))} with H20 data")
             
             # =================================================================
             # PHASE 5: DIVERSIFIED PARLAY GENERATION (V7 NEW)

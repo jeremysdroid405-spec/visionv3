@@ -109,6 +109,9 @@ class OracleApexService:
             "AST": "ast",
             "STL": "stl",
             "BLK": "blk",
+            "3PM": "fg3m",
+            "THREES": "fg3m",
+            "TO": "turnover",
         }
         
         played_games = [g for g in game_logs if self._did_play(g)]
@@ -125,6 +128,7 @@ class OracleApexService:
             field = stat_field_map[stat_type]
             return [g.get(field, 0) for g in played_games]
         else:
+            # Unknown stat type - return empty
             return []
     
     def _get_avg_minutes(self, game_logs: List[Dict], sample_size: int = 10) -> float:
@@ -606,8 +610,8 @@ class OracleApexService:
             game_logs = player_data.get('bdl_game_logs', [])
             played_games = [g for g in game_logs if self._did_play(g)]
             
-            # Calculate values
-            all_values = self._get_stat_values(game_logs, stat_type) if stat_type in ORACLE_APEX_CONFIG or stat_type in ['STL', 'BLK', '3PM', 'PR', 'PA', 'RA'] else []
+            # Calculate values for ALL stat types (not just Oracle Apex tracked ones)
+            all_values = self._get_stat_values(game_logs, stat_type)
             
             if len(played_games) < 5:
                 stats['skipped_insufficient_games'] += 1
@@ -647,8 +651,12 @@ class OracleApexService:
                     vk_recommendation = result.get('recommendation', '')
                     edge = oracle_pred - line if oracle_pred else 0
                     stats['has_vk_data'] += 1
-            except Exception:
-                pass
+                else:
+                    stats['skipped_no_vk'] += 1
+            except Exception as vk_err:
+                if stats['total'] < 5:  # Log first few errors
+                    logger.warning(f"[ORACLE_APEX] VK predict error for {player_name} {stat_type}: {vk_err}")
+                stats['skipped_no_vk'] += 1
             
             # Check Oracle Apex qualification
             oracle_apex_qualified = False
