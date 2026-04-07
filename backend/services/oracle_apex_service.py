@@ -111,32 +111,32 @@ FRONT_LINES_CONFIG = {
 WAR_ZONE_CONFIG = {
     'PTS': {
         'max_cv': 0.45,           # High variance REQUIRED to hit demon ceilings
-        'min_hit_rate': 6,
+        'min_hit_rate': 7,        # 7/20 hit rate minimum
         'sample_size': 20,
         'min_edge': -999,         # No edge requirement for demons (removed)
         'min_prob': 40.0,         # Higher prob threshold for quality
-        # Buffer rule: 4/20 OK if L5 Mean > Line + 3.0
-        'relaxed_hit_rate': 4,
+        # Buffer rule: 5/20 OK if L5 Mean > Line + 3.0
+        'relaxed_hit_rate': 5,
         'relaxed_mean_buffer': 3.0,
         'relaxed_sample_size': 5,
     },
     'REB': {
         'max_cv': 0.50,           # Massive spikes allowed
-        'min_hit_rate': 6,
+        'min_hit_rate': 7,        # 7/20 hit rate minimum
         'sample_size': 20,
         'min_edge': -999,         # No edge requirement for demons (removed)
         'min_prob': 40.0,         # Higher prob threshold for quality
     },
     'AST': {
         'max_cv': 0.50,           # Massive spikes allowed
-        'min_hit_rate': 6,
+        'min_hit_rate': 7,        # 7/20 hit rate minimum
         'sample_size': 20,
         'min_edge': -999,         # No edge requirement for demons (removed)
         'min_prob': 40.0,         # Higher prob threshold for quality
     },
     'PRA': {
         'max_cv': 0.40,           # Allows for outlier ceiling games
-        'min_hit_rate': 6,
+        'min_hit_rate': 7,        # 7/20 hit rate minimum
         'sample_size': 20,
         'min_edge': -999,         # No edge requirement for demons (removed)
         'min_prob': 40.0,         # Higher prob threshold for quality
