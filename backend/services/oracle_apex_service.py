@@ -113,7 +113,7 @@ WAR_ZONE_CONFIG = {
         'max_cv': 0.45,           # High variance REQUIRED to hit demon ceilings
         'min_hit_rate': 6,
         'sample_size': 20,
-        'min_edge': 3.5,
+        'min_edge': 0,            # No edge requirement for demons
         'min_prob': 35.0,
         # Buffer rule: 4/20 OK if L5 Mean > Line + 3.0
         'relaxed_hit_rate': 4,
@@ -124,21 +124,21 @@ WAR_ZONE_CONFIG = {
         'max_cv': 0.50,           # Massive spikes allowed
         'min_hit_rate': 6,
         'sample_size': 20,
-        'min_edge': 3.5,
+        'min_edge': 0,            # No edge requirement for demons
         'min_prob': 35.0,
     },
     'AST': {
         'max_cv': 0.50,           # Massive spikes allowed
         'min_hit_rate': 6,
         'sample_size': 20,
-        'min_edge': 3.5,
+        'min_edge': 0,            # No edge requirement for demons
         'min_prob': 35.0,
     },
     'PRA': {
         'max_cv': 0.40,           # Allows for outlier ceiling games
         'min_hit_rate': 6,
         'sample_size': 20,
-        'min_edge': 3.5,
+        'min_edge': 0,            # No edge requirement for demons
         'min_prob': 35.0,
     },
 }
