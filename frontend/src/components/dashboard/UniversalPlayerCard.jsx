@@ -804,7 +804,7 @@ const UniversalPlayerCard = memo(({
         
         {/* Vision Model ML Prediction Badge - Show for board picks with VK data */}
         {isBoardPick && player.vk_predicted != null && (
-          <div className={`mt-1.5 px-2 py-1 rounded text-[10px] ${theme.bg.replace('from-', 'bg-').split(' ')[0]}/40 border ${theme.border} shadow-[0_0_12px_rgba(255,255,255,0.15)]`}>
+          <div className={`mt-1.5 px-2 py-1 rounded text-[10px] ${theme.bg.replace('from-', 'bg-').split(' ')[0]}/40 border ${theme.border} ${theme.glow.replace('25px', '12px')}`}>
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-1">
                 <span className={`${theme.text} font-bold`}>🎯 Vision Model:</span>
