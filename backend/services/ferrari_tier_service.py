@@ -290,6 +290,75 @@ class FerrariTierService:
             self._referee_service = get_referee_service(self.db)
         return self._referee_service
     
+    def _check_front_lines_gates(
+        self,
+        stat_type: str,
+        line: float,
+        l20_values: List[float],
+        l5_values: List[float],
+        cv: float,
+        vk_predicted: float,
+        vk_prob: float,
+        l20_hits: int = None,
+        l5_avg: float = None,
+        l20_avg: float = None
+    ) -> tuple:
+        """
+        Check if a prop passes Front Lines 3-gate qualification.
+        
+        Front Lines Gates (Relaxed compared to Safe Haven):
+        - GATE 1: Hit Rate - PTS 14/20, REB 12/20, AST 12/20, PRA 14/20
+        - GATE 2: CV - PTS 0.28, REB 0.40, AST 0.40, PRA 0.25
+        - GATE 3: VK Edge >= 1.5, VK Prob >= 55%
+        
+        Returns:
+            (qualifies: bool, reason: str)
+        """
+        from services.oracle_apex_service import FRONT_LINES_CONFIG
+        import numpy as np
+        
+        if stat_type not in FRONT_LINES_CONFIG:
+            return False, f"UNSUPPORTED_STAT: {stat_type}"
+        
+        cfg = FRONT_LINES_CONFIG[stat_type]
+        
+        # Calculate L20 hits - prefer passed value, then calculate from values
+        if l20_hits is None:
+            l20_hits = sum(1 for v in l20_values if v >= line) if l20_values else 0
+        
+        # Calculate means
+        if l20_avg is None:
+            l20_avg = np.mean(l20_values) if l20_values else 0
+        if l5_avg is None:
+            l5_avg = np.mean(l5_values) if l5_values else 0
+        
+        # GATE 1: HIT RATE
+        passes_gate1 = l20_hits >= cfg['min_hit_rate']
+        
+        # REB buffer rule: 10/20 OK if L5 Mean >= Line + 1.5
+        if not passes_gate1 and 'relaxed_hit_rate' in cfg:
+            if l20_hits >= cfg['relaxed_hit_rate']:
+                buffer_mean = l5_avg if cfg.get('relaxed_sample_size') == 5 else l20_avg
+                if buffer_mean >= (line + cfg['relaxed_mean_buffer']):
+                    passes_gate1 = True
+        
+        if not passes_gate1:
+            return False, f"FL_GATE1: {l20_hits}/20 < {cfg['min_hit_rate']}/20"
+        
+        # GATE 2: CV
+        if cv and cv > cfg['max_cv']:
+            return False, f"FL_GATE2: CV {cv:.2f} > {cfg['max_cv']}"
+        
+        # GATE 3: EDGE + PROB
+        edge = (vk_predicted - line) if vk_predicted else 0
+        if edge < cfg['min_edge']:
+            return False, f"FL_GATE3: Edge {edge:.1f} < {cfg['min_edge']}"
+        
+        if vk_prob and vk_prob < cfg['min_prob']:
+            return False, f"FL_GATE3: Prob {vk_prob:.0f}% < {cfg['min_prob']}%"
+        
+        return True, "FRONT_LINES_QUALIFIED"
+    
     async def _sync_referee_data(self) -> Dict[str, Any]:
         """Sync referee assignments and stats before pipeline run."""
         try:
@@ -1239,12 +1308,24 @@ class FerrariTierService:
                 prop["dk_odds"] = dk_odds
                 prop["dk_tier"] = classify_tier_by_dk_odds(dk_odds)
                 
+                # Get L5/L20 values for gate checks
+                l5_values = prop.get("l5_values", [])
+                l20_values = prop.get("l20_values", [])
+                cv = prop.get("cv", 0)
+                vk_predicted = prop.get("vk_predicted", 0)
+                vk_prob = prop.get("vk_prob_over", 0)
+                
+                # Also get pre-calculated values from oracle scan
+                l20_hits = prop.get("l20_hits")
+                l5_avg = prop.get("l5_avg")
+                l20_avg = prop.get("l20_avg")
+                
                 # ==========================================================
                 # DK ODDS = TIER SEPARATION ONLY
-                # Oracle Apex qualification = Primary filter for Safe Haven
+                # Gates = Primary qualification filter for each tier
                 # ==========================================================
                 
-                # Classify by DK odds with prop type restrictions
+                # Classify by DK odds with prop type restrictions AND gates
                 if dk_odds is not None:
                     if dk_odds <= DK_TIER_SAFE_HAVEN_MAX:  # <= -250
                         # Safe Haven: MUST be oracle_apex_qualified + Goblins
@@ -1252,25 +1333,43 @@ class FerrariTierService:
                             prop["tier"] = "safe_haven"
                             safe_haven_pool.append(prop)
                         elif is_goblin:
-                            # Goblin with heavy juice but didn't pass 3 gates
-                            # Falls to Front Lines
-                            prop["tier"] = "front_lines"
-                            front_lines_pool.append(prop)
+                            # Goblin with heavy juice but didn't pass Safe Haven gates
+                            # Check if it passes Front Lines gates
+                            fl_qualified, fl_reason = self._check_front_lines_gates(
+                                stat_type, line, l20_values, l5_values, cv, vk_predicted, vk_prob,
+                                l20_hits=l20_hits, l5_avg=l5_avg, l20_avg=l20_avg
+                            )
+                            if fl_qualified:
+                                prop["tier"] = "front_lines"
+                                prop["front_lines_qualified"] = True
+                                front_lines_pool.append(prop)
                     elif dk_odds >= DK_TIER_WAR_ZONE_MIN:  # >= +200
-                        # War Zone: Demons only
+                        # War Zone: Demons only (no gate requirement for now)
                         if is_demon:
                             prop["tier"] = "war_zone"
                             war_zone_pool.append(prop)
                     else:  # -249 to +199
-                        # Front Lines: Demons, Goblins, OR Standards
-                        prop["tier"] = "front_lines"
-                        front_lines_pool.append(prop)
+                        # Front Lines: Demons, Goblins, OR Standards - MUST pass Front Lines gates
+                        fl_qualified, fl_reason = self._check_front_lines_gates(
+                            stat_type, line, l20_values, l5_values, cv, vk_predicted, vk_prob,
+                            l20_hits=l20_hits, l5_avg=l5_avg, l20_avg=l20_avg
+                        )
+                        if fl_qualified:
+                            prop["tier"] = "front_lines"
+                            prop["front_lines_qualified"] = True
+                            front_lines_pool.append(prop)
                 else:
-                    # No DK odds - default to Front Lines if goblin/demon
+                    # No DK odds - check Front Lines gates for goblins/demons
                     if is_demon or is_goblin:
-                        prop["tier"] = "front_lines"
-                        prop["dk_tier"] = "front_lines"
-                        front_lines_pool.append(prop)
+                        fl_qualified, fl_reason = self._check_front_lines_gates(
+                            stat_type, line, l20_values, l5_values, cv, vk_predicted, vk_prob,
+                            l20_hits=l20_hits, l5_avg=l5_avg, l20_avg=l20_avg
+                        )
+                        if fl_qualified:
+                            prop["tier"] = "front_lines"
+                            prop["dk_tier"] = "front_lines"
+                            prop["front_lines_qualified"] = True
+                            front_lines_pool.append(prop)
             
             logger.info(f"  DK-based classification:")
             logger.info(f"    Safe Haven pool: {len(safe_haven_pool)} goblins (DK <= -250)")

@@ -28,7 +28,7 @@ import numpy as np
 logger = logging.getLogger(__name__)
 
 # =============================================================================
-# ORACLE APEX CONFIGURATION
+# ORACLE APEX CONFIGURATION - SAFE HAVEN (Strictest)
 # =============================================================================
 
 ORACLE_APEX_CONFIG = {
@@ -43,7 +43,7 @@ ORACLE_APEX_CONFIG = {
         'max_cv': 0.35,
         'min_hit_rate': 16,
         'sample_size': 20,
-        'min_edge': 1.5,  # Lower edge for REB
+        'min_edge': 1.5,
         'min_prob': 75.0,
         # Buffer rule: 14/20 OK if L20 Mean >= Line + 2.5
         'relaxed_hit_rate': 14,
@@ -62,6 +62,45 @@ ORACLE_APEX_CONFIG = {
         'sample_size': 20,
         'min_edge': 2.0,
         'min_prob': 75.0,
+    },
+}
+
+# =============================================================================
+# FRONT LINES CONFIGURATION (Moderate)
+# =============================================================================
+
+FRONT_LINES_CONFIG = {
+    'PTS': {
+        'max_cv': 0.28,           # Accommodates standard nightly variance
+        'min_hit_rate': 14,
+        'sample_size': 20,
+        'min_edge': 1.5,
+        'min_prob': 55.0,
+    },
+    'REB': {
+        'max_cv': 0.40,           # Normal for players getting 25-30 mins
+        'min_hit_rate': 12,
+        'sample_size': 20,
+        'min_edge': 1.5,
+        'min_prob': 55.0,
+        # Buffer rule: 10/20 OK if L5 Mean >= Line + 1.5
+        'relaxed_hit_rate': 10,
+        'relaxed_mean_buffer': 1.5,
+        'relaxed_sample_size': 5,  # Uses L5 mean for buffer
+    },
+    'AST': {
+        'max_cv': 0.40,           # Normal for secondary ball handlers
+        'min_hit_rate': 12,
+        'sample_size': 20,
+        'min_edge': 1.5,
+        'min_prob': 55.0,
+    },
+    'PRA': {
+        'max_cv': 0.25,           # Baseline combo variance
+        'min_hit_rate': 14,
+        'sample_size': 20,
+        'min_edge': 1.5,
+        'min_prob': 55.0,
     },
 }
 
@@ -198,6 +237,65 @@ class OracleApexService:
             return False, f"GATE3_PROB: {vk_prob:.1f}% < {cfg['min_prob']}%"
         
         return True, "ORACLE_APEX_QUALIFIED"
+    
+    def qualifies_for_front_lines(
+        self,
+        stat_type: str,
+        line: float,
+        l20_values: List[float],
+        l5_values: List[float],
+        cv: float,
+        oracle_pred: float,
+        vk_prob: float
+    ) -> tuple[bool, str]:
+        """
+        Check if a prop qualifies for Front Lines tier.
+        
+        Front Lines has relaxed gates compared to Safe Haven:
+        - Lower hit rate requirements (14/20 PTS, 12/20 REB/AST)
+        - Higher CV tolerance (0.28-0.40)
+        - Lower edge/prob requirements (1.5 edge, 55% prob)
+        
+        Returns:
+            (qualifies: bool, reason: str)
+        """
+        if stat_type not in FRONT_LINES_CONFIG:
+            return False, f"UNSUPPORTED_STAT: {stat_type}"
+        
+        cfg = FRONT_LINES_CONFIG[stat_type]
+        
+        # Calculate L20 stats
+        l20_hits = sum(1 for v in l20_values if v >= line)
+        l20_mean = np.mean(l20_values) if l20_values else 0
+        l5_mean = np.mean(l5_values) if l5_values else 0
+        
+        # GATE 1: HIT RATE (stat-specific)
+        passes_gate1 = l20_hits >= cfg['min_hit_rate']
+        
+        # REB buffer rule: 10/20 OK if L5 Mean >= Line + 1.5
+        if not passes_gate1 and 'relaxed_hit_rate' in cfg:
+            if l20_hits >= cfg['relaxed_hit_rate']:
+                # Use L5 mean for Front Lines buffer (more recent form)
+                buffer_mean = l5_mean if cfg.get('relaxed_sample_size') == 5 else l20_mean
+                if buffer_mean >= (line + cfg['relaxed_mean_buffer']):
+                    passes_gate1 = True
+        
+        if not passes_gate1:
+            return False, f"FL_GATE1_HIT_RATE: {l20_hits}/20 < {cfg['min_hit_rate']}/20"
+        
+        # GATE 2: CV (Coefficient of Variation)
+        if cv > cfg['max_cv']:
+            return False, f"FL_GATE2_CV: {cv:.3f} > {cfg['max_cv']}"
+        
+        # GATE 3: EDGE + PROB
+        edge = oracle_pred - line
+        if edge < cfg['min_edge']:
+            return False, f"FL_GATE3_EDGE: {edge:.1f} < {cfg['min_edge']}"
+        
+        if vk_prob < cfg['min_prob']:
+            return False, f"FL_GATE3_PROB: {vk_prob:.1f}% < {cfg['min_prob']}%"
+        
+        return True, "FRONT_LINES_QUALIFIED"
     
     async def scan_all_props(self) -> Dict[str, Any]:
         """
