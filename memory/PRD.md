@@ -5,7 +5,34 @@ PropVision is a sports analytics platform for NBA player props, providing data-d
 
 ---
 
-## Latest Update (2026-04-07): Oracle Apex Safe Haven - COMPLETE!
+## Latest Update (2026-04-07): Hourly Referee Scraper - COMPLETE!
+
+### Referee Sync Now Runs Hourly
+The Vision Intel Suite previously had missing officiating data (ref_ppg, crew_chief, whistle_class) for newly added picks because the referee scraper only ran once daily. Now it runs every 60 minutes!
+
+#### Changes Made
+1. **Added Hourly Scheduler Job** in `/app/backend/server.py`:
+   - New function: `scheduled_hourly_referee_sync()`
+   - Registered with APScheduler: `id='hourly_referee_sync'`
+   - Interval: Every 60 minutes
+   
+2. **Improved Enrichment Fallback** in `/app/backend/services/oracle_apex_service.py`:
+   - When looking up referee data in `ferrari_scored`, now falls back to any player entry (not just matching stat_type)
+   - Referee data is per-game, not per-stat-type, so this ensures all picks get officiating info
+
+#### Scheduler Jobs (Weekend-Ready Mode)
+| Job | Interval | Purpose |
+|-----|----------|---------|
+| hourly_full_sync | 60 min | Main props refresh |
+| hourly_badge_sync | 60 min | Context badges |
+| hourly_injury_sync | 60 min | Injury reports |
+| **hourly_referee_sync** | 60 min | **Referee assignments & stats (NEW!)** |
+| live_injury_check | 5 min | Late scratch detection |
+| half_hourly_social_sync | 30 min | News & social signals |
+
+---
+
+## Previous Update (2026-04-07): Oracle Apex Safe Haven - COMPLETE!
 
 ### MAJOR MILESTONE: New ML-Powered Safe Haven Tier Logic!
 

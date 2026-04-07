@@ -422,11 +422,24 @@ class OracleApexService:
             )
             
             # Also look up ferrari_scored for officiating data
+            # First try to match exact stat_type, then fallback to any entry for this player
+            # (Referee data is per-game, not per-stat-type)
             ferrari_doc = await ferrari_scored.find_one(
                 {"player_name": player_name, "stat_type": stat_type},
                 {"_id": 0, "ref_ppg": 1, "ref_ou_pct": 1, "whistle_class": 1, 
                  "whistle_modifier": 1, "crew_chief": 1, "opponent": 1, "game_time": 1}
             )
+            
+            # Fallback: if no exact stat_type match, get referee data from any entry for this player
+            if not ferrari_doc or not ferrari_doc.get('ref_ppg'):
+                ferrari_doc_fallback = await ferrari_scored.find_one(
+                    {"player_name": player_name, "ref_ppg": {"$exists": True, "$ne": None}},
+                    {"_id": 0, "ref_ppg": 1, "ref_ou_pct": 1, "whistle_class": 1, 
+                     "whistle_modifier": 1, "crew_chief": 1, "opponent": 1, "game_time": 1}
+                )
+                if ferrari_doc_fallback:
+                    ferrari_doc = ferrari_doc_fallback
+                    logger.debug(f"[ORACLE_APEX] Using fallback ref data for {player_name} {stat_type}")
             
             enriched_prop = None
             if player_doc and player_doc.get('props'):

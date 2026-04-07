@@ -87,6 +87,7 @@ from middleware import (
     TracingFormatter,
     RequestIdFilter,
 )
+from services.referee_scraper_service import get_referee_service
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -965,6 +966,31 @@ async def scheduled_live_injury_check():
         logger.error(f"[SCHEDULER] Live injury check failed: {e}")
 
 
+async def scheduled_hourly_referee_sync():
+    """
+    HOURLY REFEREE SCRAPER (The Whistle Matrix)
+    
+    Runs every 60 minutes to ensure referee assignments and stats are fresh.
+    Critical for Vision Intel Suite data (ref_ppg, crew_chief, whistle_class).
+    
+    Without hourly scraping, new picks may have missing officiating data.
+    """
+    logger.info("=" * 70)
+    logger.info("[SCHEDULER] HOURLY REFEREE SYNC (INTERVAL)")
+    logger.info(f"[SCHEDULER] Time: {datetime.now(timezone.utc).isoformat()}")
+    logger.info("=" * 70)
+    
+    try:
+        referee_service = get_referee_service(db)
+        result = await referee_service.sync_all()
+        
+        logger.info(f"[SCHEDULER] Referee sync complete: {result.get('stats_count', 0)} ref stats, {result.get('assignments_count', 0)} game assignments")
+        logger.info("=" * 70)
+        
+    except Exception as e:
+        logger.error(f"[SCHEDULER] Hourly referee sync failed: {e}")
+
+
 @app.on_event("startup")
 async def startup_event():
     global stats_manager, demon_tracker, demon_goblin_engine, vision_ai_service, injury_service, raw_stat_fetcher, social_signal_engine, adaptive_sync, intel_briefing_engine, live_scores_engine, game_lock_engine, scheduler
@@ -1232,6 +1258,17 @@ async def startup_event():
         replace_existing=True
     )
     
+    # 7. HOURLY REFEREE SYNC (The Whistle Matrix) - Every 60 minutes
+    # Scrapes referee assignments and stats for Vision Intel Suite
+    # Critical for new picks to have officiating data (ref_ppg, crew_chief, whistle_class)
+    scheduler.add_job(
+        scheduled_hourly_referee_sync,
+        IntervalTrigger(minutes=60, timezone=SCHEDULER_TIMEZONE),
+        id='hourly_referee_sync',
+        name='Hourly Referee Sync (60 min interval)',
+        replace_existing=True
+    )
+    
     # ==========================================================================
     # DAILY ENRICHMENT JOBS (Keep existing for comprehensive data refresh)
     # ==========================================================================
@@ -1329,6 +1366,7 @@ async def startup_event():
     logger.info(f"[SCHEDULER] Hourly Full Sync: Every 60 min (id: hourly_full_sync)")
     logger.info(f"[SCHEDULER] Hourly Badge Sync: Every 60 min (id: hourly_badge_sync)")
     logger.info(f"[SCHEDULER] Hourly Injury Sync: Every 60 min (id: hourly_injury_sync)")
+    logger.info(f"[SCHEDULER] Hourly Referee Sync: Every 60 min (id: hourly_referee_sync)")
     logger.info(f"[SCHEDULER] Live Injury Check: Every 5 min (id: live_injury_check)")
     logger.info(f"[SCHEDULER] Half-Hourly Social: Every 30 min (id: half_hourly_social_sync)")
     logger.info(f"[SCHEDULER] === DAILY CRON JOBS ===")
