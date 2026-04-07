@@ -104,6 +104,45 @@ FRONT_LINES_CONFIG = {
     },
 }
 
+# =============================================================================
+# WAR ZONE CONFIGURATION (Riskiest - Demon Ceiling Plays)
+# =============================================================================
+
+WAR_ZONE_CONFIG = {
+    'PTS': {
+        'max_cv': 0.45,           # High variance REQUIRED to hit demon ceilings
+        'min_hit_rate': 6,
+        'sample_size': 20,
+        'min_edge': 3.5,
+        'min_prob': 35.0,
+        # Buffer rule: 4/20 OK if L5 Mean > Line + 3.0
+        'relaxed_hit_rate': 4,
+        'relaxed_mean_buffer': 3.0,
+        'relaxed_sample_size': 5,
+    },
+    'REB': {
+        'max_cv': 0.50,           # Massive spikes allowed
+        'min_hit_rate': 6,
+        'sample_size': 20,
+        'min_edge': 3.5,
+        'min_prob': 35.0,
+    },
+    'AST': {
+        'max_cv': 0.50,           # Massive spikes allowed
+        'min_hit_rate': 6,
+        'sample_size': 20,
+        'min_edge': 3.5,
+        'min_prob': 35.0,
+    },
+    'PRA': {
+        'max_cv': 0.40,           # Allows for outlier ceiling games
+        'min_hit_rate': 6,
+        'sample_size': 20,
+        'min_edge': 3.5,
+        'min_prob': 35.0,
+    },
+}
+
 # Minimum minutes for volume check
 MIN_MINUTES = 22
 

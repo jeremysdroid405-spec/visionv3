@@ -359,6 +359,76 @@ class FerrariTierService:
         
         return True, "FRONT_LINES_QUALIFIED"
     
+    def _check_war_zone_gates(
+        self,
+        stat_type: str,
+        line: float,
+        l20_values: List[float],
+        l5_values: List[float],
+        cv: float,
+        vk_predicted: float,
+        vk_prob: float,
+        l20_hits: int = None,
+        l5_avg: float = None,
+        l20_avg: float = None
+    ) -> tuple:
+        """
+        Check if a prop passes War Zone 3-gate qualification.
+        
+        War Zone Gates (Demon Ceiling Plays):
+        - GATE 1: Hit Rate - 6/20 for all stats (PTS: 4/20 OK if L5 Mean > Line + 3.0)
+        - GATE 2: CV - Higher variance REQUIRED (0.40-0.50)
+        - GATE 3: VK Edge >= 3.5, VK Prob >= 35%
+        
+        Returns:
+            (qualifies: bool, reason: str)
+        """
+        from services.oracle_apex_service import WAR_ZONE_CONFIG
+        import numpy as np
+        
+        if stat_type not in WAR_ZONE_CONFIG:
+            return False, f"UNSUPPORTED_STAT: {stat_type}"
+        
+        cfg = WAR_ZONE_CONFIG[stat_type]
+        
+        # Calculate L20 hits - prefer passed value, then calculate from values
+        if l20_hits is None:
+            l20_hits = sum(1 for v in l20_values if v >= line) if l20_values else 0
+        
+        # Calculate means
+        if l20_avg is None:
+            l20_avg = np.mean(l20_values) if l20_values else 0
+        if l5_avg is None:
+            l5_avg = np.mean(l5_values) if l5_values else 0
+        
+        # GATE 1: HIT RATE (lower threshold for demons)
+        passes_gate1 = l20_hits >= cfg['min_hit_rate']
+        
+        # PTS buffer rule: 4/20 OK if L5 Mean > Line + 3.0
+        if not passes_gate1 and 'relaxed_hit_rate' in cfg:
+            if l20_hits >= cfg['relaxed_hit_rate']:
+                buffer_mean = l5_avg if cfg.get('relaxed_sample_size') == 5 else l20_avg
+                if buffer_mean > (line + cfg['relaxed_mean_buffer']):
+                    passes_gate1 = True
+        
+        if not passes_gate1:
+            return False, f"WZ_GATE1: {l20_hits}/20 < {cfg['min_hit_rate']}/20"
+        
+        # GATE 2: CV (higher variance REQUIRED for demon ceiling plays)
+        # Note: For War Zone, we want HIGHER CV - but still cap it
+        if cv and cv > cfg['max_cv']:
+            return False, f"WZ_GATE2: CV {cv:.2f} > {cfg['max_cv']}"
+        
+        # GATE 3: EDGE + PROB (higher edge required for demon plays)
+        edge = (vk_predicted - line) if vk_predicted else 0
+        if edge < cfg['min_edge']:
+            return False, f"WZ_GATE3: Edge {edge:.1f} < {cfg['min_edge']}"
+        
+        if vk_prob and vk_prob < cfg['min_prob']:
+            return False, f"WZ_GATE3: Prob {vk_prob:.0f}% < {cfg['min_prob']}%"
+        
+        return True, "WAR_ZONE_QUALIFIED"
+    
     async def _sync_referee_data(self) -> Dict[str, Any]:
         """Sync referee assignments and stats before pipeline run."""
         try:
@@ -1344,10 +1414,16 @@ class FerrariTierService:
                                 prop["front_lines_qualified"] = True
                                 front_lines_pool.append(prop)
                     elif dk_odds >= DK_TIER_WAR_ZONE_MIN:  # >= +200
-                        # War Zone: Demons only (no gate requirement for now)
+                        # War Zone: Demons only - MUST pass War Zone gates
                         if is_demon:
-                            prop["tier"] = "war_zone"
-                            war_zone_pool.append(prop)
+                            wz_qualified, wz_reason = self._check_war_zone_gates(
+                                stat_type, line, l20_values, l5_values, cv, vk_predicted, vk_prob,
+                                l20_hits=l20_hits, l5_avg=l5_avg, l20_avg=l20_avg
+                            )
+                            if wz_qualified:
+                                prop["tier"] = "war_zone"
+                                prop["war_zone_qualified"] = True
+                                war_zone_pool.append(prop)
                     else:  # -249 to +199
                         # Front Lines: Demons, Goblins, OR Standards - MUST pass Front Lines gates
                         fl_qualified, fl_reason = self._check_front_lines_gates(
