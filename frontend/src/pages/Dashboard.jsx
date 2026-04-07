@@ -854,9 +854,9 @@ const LiveInjuryAdvantageSection = memo(({ alerts, isLoading }) => {
               </div>
             </div>
 
-            {/* Injury Reason Headline */}
+            {/* Injury Reason Headline - larger textbox */}
             {injury.injury_reason && (
-              <div className="text-xs text-zinc-300 bg-zinc-800/60 rounded-lg p-2 mb-3 line-clamp-2">
+              <div className="text-sm text-zinc-200 bg-zinc-800/60 rounded-lg p-3 mb-3">
                 {injury.injury_reason}
               </div>
             )}
@@ -893,13 +893,6 @@ const LiveInjuryAdvantageSection = memo(({ alerts, isLoading }) => {
                   </div>
                 </div>
               ))}
-            </div>
-
-            {/* Power Score Badge */}
-            <div className="mt-2 flex justify-end">
-              <span className="px-2 py-0.5 rounded text-[9px] font-bold bg-green-500/20 text-green-400">
-                +{injury.beneficiaries[0]?.modifier || 0} Power Score
-              </span>
             </div>
           </div>
         ))}
