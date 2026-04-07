@@ -247,6 +247,10 @@ async def get_ferrari_safe_haven(
         
         picks = result.get('apex_picks', [])[:limit]
         
+        # SSOT: Recalculate hit rates from BDL (same as player detail page)
+        service = get_service()
+        picks = await service._enrich_picks_with_bdl_hit_rates(picks)
+        
         return {
             "tier": "safe_haven",
             "tier_label": "Safe Haven (Oracle Apex)",

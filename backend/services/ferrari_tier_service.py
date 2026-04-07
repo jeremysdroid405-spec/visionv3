@@ -1824,9 +1824,92 @@ class FerrariTierService:
             "war_zone_pool": wz
         }
     
+    async def _enrich_picks_with_bdl_hit_rates(self, picks: list) -> list:
+        """
+        SSOT: Recalculate hit rates from BDL game logs for each pick.
+        This ensures pick cards show SAME data as player detail pages.
+        """
+        if not picks:
+            return picks
+            
+        # Load master hub data for all players in picks
+        player_names = list(set(p.get('player_name') for p in picks if p.get('player_name')))
+        
+        hub_data = {}
+        async for player in self.db.nba_master_hub_2026.find(
+            {"display_name": {"$in": player_names}},
+            {"_id": 0, "display_name": 1, "bdl_game_logs": 1}
+        ):
+            hub_data[player.get('display_name')] = player.get('bdl_game_logs', [])
+        
+        # Stat type to log field mapping
+        stat_map = {
+            "PTS": "pts", "REB": "reb", "AST": "ast",
+            "STL": "stl", "BLK": "blk", "3PM": "fg3m",
+        }
+        
+        for pick in picks:
+            player_name = pick.get('player_name')
+            stat_type = pick.get('stat_type')
+            line = pick.get('line', 0)
+            
+            game_logs = hub_data.get(player_name, [])
+            if not game_logs or line <= 0:
+                continue
+            
+            # Filter for games actually played
+            played_games = [g for g in game_logs if g.get('min') and str(g.get('min', '0')).replace(':', '').isdigit()]
+            
+            # Get stat values
+            if stat_type == 'PRA':
+                values = [g.get('pts', 0) + g.get('reb', 0) + g.get('ast', 0) for g in played_games]
+            elif stat_type == 'PR':
+                values = [g.get('pts', 0) + g.get('reb', 0) for g in played_games]
+            elif stat_type == 'PA':
+                values = [g.get('pts', 0) + g.get('ast', 0) for g in played_games]
+            elif stat_type == 'RA':
+                values = [g.get('reb', 0) + g.get('ast', 0) for g in played_games]
+            elif stat_type in stat_map:
+                field = stat_map[stat_type]
+                values = [g.get(field, 0) for g in played_games]
+            else:
+                continue
+            
+            if not values:
+                continue
+            
+            # Calculate hit rates for THIS line (SSOT)
+            l5_vals = values[:5]
+            l10_vals = values[:10]
+            l20_vals = values[:20]
+            
+            if l5_vals:
+                l5_hits = sum(1 for v in l5_vals if v >= line)
+                pick['h5_rate'] = round((l5_hits / len(l5_vals)) * 100, 1)
+                pick['l5_avg'] = round(sum(l5_vals) / len(l5_vals), 1)
+            
+            if l10_vals:
+                l10_hits = sum(1 for v in l10_vals if v >= line)
+                pick['h10_rate'] = round((l10_hits / len(l10_vals)) * 100, 1)
+                pick['l10_avg'] = round(sum(l10_vals) / len(l10_vals), 1)
+            
+            if l20_vals:
+                l20_hits = sum(1 for v in l20_vals if v >= line)
+                pick['h20_rate'] = round((l20_hits / len(l20_vals)) * 100, 1)
+                pick['l20_avg'] = round(sum(l20_vals) / len(l20_vals), 1)
+            
+            if values:
+                pick['season_avg'] = round(sum(values) / len(values), 1)
+        
+        return picks
+    
     async def get_safe_haven(self, limit: int = 10) -> Dict[str, Any]:
         cursor = self.ferrari_safe_haven.find({}, {"_id": 0}).limit(limit)
         picks = await cursor.to_list(length=limit)
+        
+        # SSOT: Recalculate hit rates from BDL (same as player detail page)
+        picks = await self._enrich_picks_with_bdl_hit_rates(picks)
+        
         stats = await self._get_verification_stats()
         
         return {
@@ -1841,6 +1924,10 @@ class FerrariTierService:
     async def get_front_lines(self, limit: int = 10) -> Dict[str, Any]:
         cursor = self.ferrari_front_lines.find({}, {"_id": 0}).limit(limit)
         picks = await cursor.to_list(length=limit)
+        
+        # SSOT: Recalculate hit rates from BDL (same as player detail page)
+        picks = await self._enrich_picks_with_bdl_hit_rates(picks)
+        
         stats = await self._get_verification_stats()
         
         return {
@@ -1855,6 +1942,10 @@ class FerrariTierService:
     async def get_war_zone(self, limit: int = 10) -> Dict[str, Any]:
         cursor = self.ferrari_war_zone.find({}, {"_id": 0}).limit(limit)
         picks = await cursor.to_list(length=limit)
+        
+        # SSOT: Recalculate hit rates from BDL (same as player detail page)
+        picks = await self._enrich_picks_with_bdl_hit_rates(picks)
+        
         stats = await self._get_verification_stats()
         
         return {
@@ -1869,6 +1960,10 @@ class FerrariTierService:
     async def get_discarded(self, limit: int = 50) -> Dict[str, Any]:
         cursor = self.ferrari_discarded.find({}, {"_id": 0}).limit(limit)
         discarded = await cursor.to_list(length=limit)
+        
+        # SSOT: Recalculate hit rates from BDL (same as player detail page)
+        discarded = await self._enrich_picks_with_bdl_hit_rates(discarded)
+        
         total = await self.ferrari_discarded.count_documents({})
         
         return {
