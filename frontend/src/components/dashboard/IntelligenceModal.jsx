@@ -507,16 +507,16 @@ const IntelligenceModal = ({
         borderColor: isOver ? "border-green-500/30" : "border-red-500/30",
         explanation: (
           <>
-            <p className="text-zinc-300 text-sm leading-relaxed mb-4">
-              The <span className="text-cyan-400 font-semibold">Vegas Killer</span> model uses 
-              <span className="text-cyan-400 font-semibold"> XGBoost machine learning</span> with 
+            <p className="text-white/80 text-sm leading-relaxed mb-4">
+              The <span className="text-white font-semibold">Vision Model</span> uses 
+              <span className="text-white font-semibold"> XGBoost machine learning</span> with 
               V2 Advanced Stats (USG%, TS%, Pace, Matchup data) to project actual player output — 
               not just hit rates.
             </p>
             <div className="bg-zinc-800/50 rounded-lg p-3 mb-4">
-              <div className="text-xs text-zinc-500 uppercase tracking-wide mb-2">How It Works</div>
-              <p className="text-zinc-400 text-sm">
-                Unlike backward-looking hit rates, Vegas Killer projects <span className="text-white font-medium">forward</span>: 
+              <div className="text-xs text-white/60 uppercase tracking-wide mb-2">How It Works</div>
+              <p className="text-white/70 text-sm">
+                Unlike backward-looking hit rates, Vision Model projects <span className="text-white font-medium">forward</span>: 
                 "This player will score approximately X points based on their usage, efficiency, pace, and matchup difficulty."
                 The model was validated on <span className="text-green-400">21,584 real Vegas lines</span> with 
                 a <span className="text-green-400">58.7% win rate</span>.
@@ -526,58 +526,58 @@ const IntelligenceModal = ({
         ),
         specificData: (
           <div className={`${isOver ? 'bg-green-950/30 border-green-500/20' : 'bg-red-950/30 border-red-500/20'} border rounded-lg p-3`}>
-            <div className={`text-xs ${isOver ? 'text-green-400/70' : 'text-red-400/70'} uppercase tracking-wide mb-2`}>Prediction Details</div>
+            <div className={`text-xs text-white/60 uppercase tracking-wide mb-2`}>Prediction Details</div>
             <div className="space-y-2 text-sm">
               <div className="flex justify-between">
-                <span className="text-zinc-400">Player</span>
+                <span className="text-white/60">Player</span>
                 <span className="text-white font-medium">{playerName}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-zinc-400">Prop</span>
+                <span className="text-white/60">Prop</span>
                 <span className="text-white font-medium">{statType} @ {line}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-zinc-400">ML Projection</span>
-                <span className={`text-2xl font-bold ${isOver ? 'text-green-400' : 'text-red-400'}`}>{predicted?.toFixed(1)}</span>
+                <span className="text-white/60">ML Projection</span>
+                <span className={`text-2xl font-bold text-white`}>{predicted?.toFixed(1)}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-zinc-400">Edge</span>
-                <span className={`font-bold ${getEdgeColor(edge)}`}>
+                <span className="text-white/60">Edge</span>
+                <span className={`font-bold text-white`}>
                   {edge > 0 ? '+' : ''}{edge?.toFixed(1)} pts ({edgePct > 0 ? '+' : ''}{edgePct.toFixed(0)}%)
                 </span>
               </div>
               <div className="flex justify-between">
-                <span className="text-zinc-400">Confidence</span>
-                <span className={`font-bold ${isOver ? 'text-green-400' : 'text-red-400'}`}>{confidence?.toFixed(0)}%</span>
+                <span className="text-white/60">Confidence</span>
+                <span className={`font-bold text-white`}>{confidence?.toFixed(0)}%</span>
               </div>
               
               {/* V2 Stats */}
               {data_source === 'V2_ADVANCED' && v2_advanced_stats && (
                 <div className="pt-2 border-t border-zinc-700/50">
-                  <div className="text-[10px] text-cyan-400 uppercase mb-1">V2 Process Stats</div>
+                  <div className="text-[10px] text-white/60 uppercase mb-1">V2 Process Stats</div>
                   <div className="grid grid-cols-2 gap-1 text-xs">
                     {v2_advanced_stats.usage_rate && (
                       <div className="flex justify-between">
-                        <span className="text-zinc-500">USG%</span>
-                        <span className="text-cyan-400">{(v2_advanced_stats.usage_rate * 100).toFixed(0)}%</span>
+                        <span className="text-white/50">USG%</span>
+                        <span className="text-white">{(v2_advanced_stats.usage_rate * 100).toFixed(0)}%</span>
                       </div>
                     )}
                     {v2_advanced_stats.true_shooting && (
                       <div className="flex justify-between">
-                        <span className="text-zinc-500">TS%</span>
-                        <span className="text-cyan-400">{(v2_advanced_stats.true_shooting * 100).toFixed(0)}%</span>
+                        <span className="text-white/50">TS%</span>
+                        <span className="text-white">{(v2_advanced_stats.true_shooting * 100).toFixed(0)}%</span>
                       </div>
                     )}
                     {v2_advanced_stats.pace && (
                       <div className="flex justify-between">
-                        <span className="text-zinc-500">Pace</span>
-                        <span className="text-cyan-400">{v2_advanced_stats.pace?.toFixed(0)}</span>
+                        <span className="text-white/50">Pace</span>
+                        <span className="text-white">{v2_advanced_stats.pace?.toFixed(0)}</span>
                       </div>
                     )}
                     {v2_advanced_stats.touches && (
                       <div className="flex justify-between">
-                        <span className="text-zinc-500">Touches</span>
-                        <span className="text-cyan-400">{v2_advanced_stats.touches?.toFixed(0)}</span>
+                        <span className="text-white/50">Touches</span>
+                        <span className="text-white">{v2_advanced_stats.touches?.toFixed(0)}</span>
                       </div>
                     )}
                   </div>
@@ -587,18 +587,18 @@ const IntelligenceModal = ({
               {/* Key Features */}
               {features && (
                 <div className="pt-2 border-t border-zinc-700/50">
-                  <div className="text-[10px] text-zinc-500 uppercase mb-1">Baseline Stats</div>
+                  <div className="text-[10px] text-white/50 uppercase mb-1">Baseline Stats</div>
                   <div className="grid grid-cols-3 gap-1 text-xs">
                     <div className="flex flex-col">
-                      <span className="text-zinc-500">L5</span>
+                      <span className="text-white/50">L5</span>
                       <span className="text-white">{features.l5_avg}</span>
                     </div>
                     <div className="flex flex-col">
-                      <span className="text-zinc-500">L10</span>
+                      <span className="text-white/50">L10</span>
                       <span className="text-white">{features.l10_avg}</span>
                     </div>
                     <div className="flex flex-col">
-                      <span className="text-zinc-500">Min</span>
+                      <span className="text-white/50">Min</span>
                       <span className="text-white">{features.minutes}</span>
                     </div>
                   </div>
@@ -608,8 +608,8 @@ const IntelligenceModal = ({
           </div>
         ),
         recommendation: isStrong 
-          ? `Vegas Killer shows a ${isOver ? 'STRONG OVER' : 'STRONG UNDER'} with ${confidence?.toFixed(0)}% confidence. The model projects ${predicted?.toFixed(1)} vs the line of ${line}.`
-          : `Vegas Killer leans ${isOver ? 'OVER' : 'UNDER'} with ${confidence?.toFixed(0)}% confidence. Consider this a moderate edge play.`
+          ? `Vision Model shows a ${isOver ? 'STRONG OVER' : 'STRONG UNDER'} with ${confidence?.toFixed(0)}% confidence. The model projects ${predicted?.toFixed(1)} vs the line of ${line}.`
+          : `Vision Model leans ${isOver ? 'OVER' : 'UNDER'} with ${confidence?.toFixed(0)}% confidence. Consider this a moderate edge play.`
       };
     }
 

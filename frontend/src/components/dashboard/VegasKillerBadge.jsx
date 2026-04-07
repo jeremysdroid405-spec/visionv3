@@ -1,7 +1,7 @@
 /**
  * VegasKillerBadge.jsx
  * ====================
- * Displays Vegas Killer ML prediction as an intel badge.
+ * Displays Vision Model ML prediction as an intel badge.
  * Shows predicted value, edge %, and confidence direction.
  */
 
@@ -60,23 +60,27 @@ const getRecommendationStyle = (rec) => {
 };
 
 /**
- * Compact VK badge for prop rows
+ * Compact Vision badge for prop rows
  */
-export const VKBadgeCompact = ({ predicted, edge, recommendation, probOver, probUnder, onClick }) => {
+export const VKBadgeCompact = ({ predicted, edge, recommendation, probOver, probUnder, onClick, tierColor }) => {
   const style = getRecommendationStyle(recommendation);
   const Icon = style.icon;
   const confidence = Math.max(probOver, probUnder);
   const isStrong = recommendation?.includes('STRONG');
+  
+  // Use tier color if provided, otherwise use recommendation style
+  const bgClass = tierColor ? `${tierColor}/20` : style.bg;
+  const borderClass = tierColor ? `border-${tierColor.replace('bg-', '')}/50` : style.border;
   
   return (
     <button
       onClick={onClick}
       className={`
         flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium
-        ${style.bg} border ${style.border} ${style.text}
+        ${style.bg} border ${style.border} text-white
         hover:scale-105 transition-transform cursor-pointer
       `}
-      title={`VK: ${predicted?.toFixed(1)} (${edge > 0 ? '+' : ''}${edge?.toFixed(1)} edge)`}
+      title={`Vision: ${predicted?.toFixed(1)} (${edge > 0 ? '+' : ''}${edge?.toFixed(1)} edge)`}
     >
       <Brain className="w-3 h-3" />
       <span>{predicted?.toFixed(1)}</span>
@@ -87,7 +91,7 @@ export const VKBadgeCompact = ({ predicted, edge, recommendation, probOver, prob
 };
 
 /**
- * Full VK badge with details
+ * Full Vision badge with details
  */
 export const VKBadgeFull = ({ 
   predicted, 
@@ -115,14 +119,14 @@ export const VKBadgeFull = ({
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-2">
           <Brain className={`w-4 h-4 ${style.text}`} />
-          <span className="text-xs font-bold text-white">Vegas Killer</span>
+          <span className="text-xs font-bold text-white">Vision Model</span>
           {dataSource === 'V2_ADVANCED' && (
             <span className="text-[8px] px-1.5 py-0.5 rounded bg-cyan-500/20 text-cyan-400 border border-cyan-500/30">
               V2
             </span>
           )}
         </div>
-        <div className={`flex items-center gap-1 ${style.text} font-bold`}>
+        <div className={`flex items-center gap-1 text-white font-bold`}>
           <Icon className="w-4 h-4" />
           <span className="text-sm">{style.label}</span>
         </div>
@@ -131,14 +135,14 @@ export const VKBadgeFull = ({
       {/* Prediction */}
       <div className="flex items-baseline gap-2 mb-2">
         <span className="text-2xl font-bold text-white">{predicted?.toFixed(1)}</span>
-        <span className={`text-sm font-medium ${getEdgeColor(edge)}`}>
+        <span className={`text-sm font-medium text-white`}>
           {edge > 0 ? '+' : ''}{edge?.toFixed(1)} ({edgePct > 0 ? '+' : ''}{edgePct?.toFixed(0)}%)
         </span>
       </div>
       
       {/* Confidence bar */}
       <div className="mb-2">
-        <div className="flex justify-between text-[10px] text-zinc-500 mb-1">
+        <div className="flex justify-between text-[10px] text-white/70 mb-1">
           <span>Under {probUnder?.toFixed(0)}%</span>
           <span>Over {probOver?.toFixed(0)}%</span>
         </div>
@@ -155,10 +159,10 @@ export const VKBadgeFull = ({
       </div>
       
       {/* Stats */}
-      <div className="flex justify-between text-[10px] text-zinc-400">
+      <div className="flex justify-between text-[10px] text-white/70">
         {l5Avg && <span>L5 Avg: <span className="text-white">{l5Avg}</span></span>}
-        {usageRate && <span>USG: <span className="text-cyan-400">{(usageRate * 100).toFixed(0)}%</span></span>}
-        <span>Conf: <span className={style.text}>{confidence.toFixed(0)}%</span></span>
+        {usageRate && <span>USG: <span className="text-white">{(usageRate * 100).toFixed(0)}%</span></span>}
+        <span>Conf: <span className="text-white">{confidence.toFixed(0)}%</span></span>
       </div>
       
       {/* Trap Alert */}
@@ -176,7 +180,7 @@ export const VKBadgeFull = ({
 };
 
 /**
- * VK Intel Modal Content
+ * Vision Intel Modal Content
  */
 export const VKIntelContent = ({ 
   playerName, 
@@ -209,35 +213,35 @@ export const VKIntelContent = ({
           <Brain className="w-6 h-6 text-cyan-400" />
         </div>
         <div>
-          <h3 className="text-white font-bold">Vegas Killer Prediction</h3>
-          <p className="text-zinc-500 text-xs">ML-powered projection using V2 process stats</p>
+          <h3 className="text-white font-bold">Vision Model Prediction</h3>
+          <p className="text-white/60 text-xs">ML-powered projection using V2 process stats</p>
         </div>
       </div>
       
       {/* Main prediction */}
       <div className={`rounded-lg p-4 ${style.bg} border ${style.border}`}>
         <div className="flex items-center justify-between mb-3">
-          <span className="text-zinc-400 text-sm">{playerName} • {statType}</span>
-          <span className="text-zinc-500 text-sm">Line: {line}</span>
+          <span className="text-white/70 text-sm">{playerName} • {statType}</span>
+          <span className="text-white/60 text-sm">Line: {line}</span>
         </div>
         
         <div className="flex items-baseline gap-3 mb-3">
           <span className="text-4xl font-bold text-white">{predicted?.toFixed(1)}</span>
           <div className="flex flex-col">
-            <span className={`text-lg font-medium ${getEdgeColor(edge)}`}>
+            <span className="text-lg font-medium text-white">
               {edge > 0 ? '+' : ''}{edge?.toFixed(1)} pts
             </span>
-            <span className={`text-xs ${getEdgeColor(edgePct)}`}>
+            <span className="text-xs text-white/80">
               {edgePct > 0 ? '+' : ''}{edgePct.toFixed(1)}% edge
             </span>
           </div>
         </div>
         
         {/* Direction */}
-        <div className={`flex items-center gap-2 ${style.text} text-lg font-bold`}>
+        <div className={`flex items-center gap-2 text-white text-lg font-bold`}>
           {React.createElement(style.icon, { className: 'w-5 h-5' })}
           <span>{recommendation?.replace('_', ' ')}</span>
-          <span className="text-sm font-normal">
+          <span className="text-sm font-normal text-white/80">
             ({Math.max(prob_over, prob_under)?.toFixed(0)}% confidence)
           </span>
         </div>
@@ -246,18 +250,18 @@ export const VKIntelContent = ({
       {/* Features used */}
       {features && (
         <div className="bg-zinc-800/50 rounded-lg p-3">
-          <div className="text-xs text-zinc-500 uppercase tracking-wide mb-2">Key Inputs</div>
+          <div className="text-xs text-white/60 uppercase tracking-wide mb-2">Key Inputs</div>
           <div className="grid grid-cols-3 gap-2 text-sm">
             <div>
-              <span className="text-zinc-500">L5 Avg</span>
+              <span className="text-white/60">L5 Avg</span>
               <div className="text-white font-medium">{features.l5_avg}</div>
             </div>
             <div>
-              <span className="text-zinc-500">L10 Avg</span>
+              <span className="text-white/60">L10 Avg</span>
               <div className="text-white font-medium">{features.l10_avg}</div>
             </div>
             <div>
-              <span className="text-zinc-500">Minutes</span>
+              <span className="text-white/60">Minutes</span>
               <div className="text-white font-medium">{features.minutes}</div>
             </div>
           </div>
@@ -267,39 +271,39 @@ export const VKIntelContent = ({
       {/* V2 Advanced Stats */}
       {v2_advanced_stats && data_source === 'V2_ADVANCED' && (
         <div className="bg-cyan-950/30 border border-cyan-500/20 rounded-lg p-3">
-          <div className="flex items-center gap-2 text-xs text-cyan-400 uppercase tracking-wide mb-2">
+          <div className="flex items-center gap-2 text-xs text-white uppercase tracking-wide mb-2">
             <span>V2 Advanced Stats</span>
             <span className="px-1.5 py-0.5 rounded bg-cyan-500/20 text-[10px]">REAL DATA</span>
           </div>
           <div className="grid grid-cols-3 gap-2 text-sm">
             {v2_advanced_stats.usage_rate && (
               <div>
-                <span className="text-zinc-500">USG%</span>
-                <div className="text-cyan-400 font-medium">
+                <span className="text-white/60">USG%</span>
+                <div className="text-white font-medium">
                   {(v2_advanced_stats.usage_rate * 100).toFixed(1)}%
                 </div>
               </div>
             )}
             {v2_advanced_stats.true_shooting && (
               <div>
-                <span className="text-zinc-500">TS%</span>
-                <div className="text-cyan-400 font-medium">
+                <span className="text-white/60">TS%</span>
+                <div className="text-white font-medium">
                   {(v2_advanced_stats.true_shooting * 100).toFixed(1)}%
                 </div>
               </div>
             )}
             {v2_advanced_stats.pace && (
               <div>
-                <span className="text-zinc-500">Pace</span>
-                <div className="text-cyan-400 font-medium">
+                <span className="text-white/60">Pace</span>
+                <div className="text-white font-medium">
                   {v2_advanced_stats.pace?.toFixed(1)}
                 </div>
               </div>
             )}
             {v2_advanced_stats.touches && (
               <div>
-                <span className="text-zinc-500">Touches</span>
-                <div className="text-cyan-400 font-medium">
+                <span className="text-white/60">Touches</span>
+                <div className="text-white font-medium">
                   {v2_advanced_stats.touches?.toFixed(0)}
                 </div>
               </div>
@@ -310,7 +314,7 @@ export const VKIntelContent = ({
       
       {/* Backtest info */}
       <div className="bg-zinc-800/30 rounded-lg p-3 border border-zinc-700/30">
-        <div className="flex items-center gap-2 text-xs text-zinc-500">
+        <div className="flex items-center gap-2 text-xs text-white/60">
           <span>Model validated on 21,584 real Vegas lines</span>
           <span>•</span>
           <span className="text-green-400">58.7% win rate</span>
