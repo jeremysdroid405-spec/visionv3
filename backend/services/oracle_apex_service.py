@@ -601,26 +601,35 @@ class OracleApexService:
             
             stats['total'] += 1
             
-            # Get player data
-            player_data = cached_players.get(player_name) or hub_players.get(player_name)
+            # Get player data - prefer cached_board for bdl_game_logs (SSOT for all stats)
+            cached_player = cached_players.get(player_name)
+            hub_player = hub_players.get(player_name)
+            player_data = cached_player or hub_player
             if not player_data:
                 stats['skipped_no_data'] += 1
                 continue
             
+            # SSOT: All stats come from BDL game logs
             game_logs = player_data.get('bdl_game_logs', [])
             played_games = [g for g in game_logs if self._did_play(g)]
             
-            # Calculate values for ALL stat types (not just Oracle Apex tracked ones)
+            # Calculate values from BDL game logs (SSOT)
             all_values = self._get_stat_values(game_logs, stat_type)
             
             if len(played_games) < 5:
                 stats['skipped_insufficient_games'] += 1
                 continue
             
-            # Calculate L values
+            # Calculate L values from BDL game logs (SSOT for all averages)
             l20_values = all_values[:20] if len(all_values) >= 20 else all_values
             l10_values = all_values[:10] if len(all_values) >= 10 else all_values
             l5_values = all_values[:5] if len(all_values) >= 5 else all_values
+            
+            # SSOT: All averages calculated from BDL game logs
+            l5_avg = round(np.mean(l5_values), 1) if l5_values else None
+            l10_avg = round(np.mean(l10_values), 1) if l10_values else None
+            l20_avg = round(np.mean(l20_values), 1) if l20_values else None
+            season_avg = round(np.mean(all_values), 1) if all_values else None
             
             # Calculate CV from L10
             l10_mean = np.mean(l10_values) if l10_values else 0
@@ -676,12 +685,7 @@ class OracleApexService:
             if oracle_apex_qualified:
                 stats['safe_haven_qualified'] += 1
             
-            # Calculate hit rates and averages
-            l5_avg = round(np.mean(l5_values), 1) if l5_values else None
-            l10_avg = round(np.mean(l10_values), 1) if l10_values else None
-            l20_avg = round(np.mean(l20_values), 1) if l20_values else None
-            season_avg = round(np.mean(all_values), 1) if all_values else None
-            
+            # Calculate hit rates (always use game log values for hit rate accuracy)
             l20_hits = sum(1 for v in l20_values if v >= line) if l20_values else 0
             l10_hits = sum(1 for v in l10_values if v >= line) if l10_values else 0
             l5_hits = sum(1 for v in l5_values if v >= line) if l5_values else 0

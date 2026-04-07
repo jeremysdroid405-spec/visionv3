@@ -35,36 +35,147 @@ async def get_player_intel(player_id: str):
         player_id: Player's bdl_id (integer) - STRICTLY NUMBER BASED
         
     Returns:
-        Complete player object with all fields
+        Complete player object with FRESH baseline_stats calculated from bdl_game_logs (SSOT)
     """
     if _hub_functions is None:
         raise HTTPException(status_code=500, detail="Master Hub not initialized")
     
     # Try as bdl_id first (number)
+    player = None
     try:
         bdl_id = int(player_id)
         player = await _hub_functions["fetchPlayerIntel"](bdl_id)
-        if player:
-            return player
     except (ValueError, TypeError):
         pass
     
     # Fall back to name lookup
-    player = await _hub_functions["fetchPlayerIntelByName"](player_id)
+    if not player:
+        player = await _hub_functions["fetchPlayerIntelByName"](player_id)
+    
     if not player:
         raise HTTPException(status_code=404, detail=f"Player not found: {player_id}")
+    
+    # SSOT: Recalculate baseline_stats from bdl_game_logs
+    game_logs = player.get("bdl_game_logs", [])
+    if game_logs:
+        # Filter for games actually played (minutes > 0)
+        played_games = [g for g in game_logs if g.get("min") and str(g.get("min", "0")).replace(":", "").isdigit() and int(str(g.get("min", "0")).split(":")[0]) > 0]
+        
+        # Stat mapping
+        stat_map = {
+            "PTS": "pts", "REB": "reb", "AST": "ast", 
+            "STL": "stl", "BLK": "blk", "3PM": "fg3m",
+            "FGM": "fgm", "FTM": "ftm", "TO": "turnover"
+        }
+        
+        baseline_stats = player.get("baseline_stats", {})
+        
+        for stat_key, log_key in stat_map.items():
+            values = [g.get(log_key, 0) for g in played_games]
+            if values:
+                l5_values = values[:5]
+                l10_values = values[:10]
+                l20_values = values[:20]
+                
+                if stat_key not in baseline_stats:
+                    baseline_stats[stat_key] = {}
+                
+                baseline_stats[stat_key]["l5_avg"] = round(sum(l5_values) / len(l5_values), 1) if l5_values else None
+                baseline_stats[stat_key]["l10_avg"] = round(sum(l10_values) / len(l10_values), 1) if l10_values else None
+                baseline_stats[stat_key]["l20_avg"] = round(sum(l20_values) / len(l20_values), 1) if l20_values else None
+                baseline_stats[stat_key]["season_avg"] = round(sum(values) / len(values), 1) if values else None
+                baseline_stats[stat_key]["l10_values"] = l10_values
+        
+        # Combo stats (PRA, PR, PA, RA)
+        pts_vals = [g.get("pts", 0) for g in played_games]
+        reb_vals = [g.get("reb", 0) for g in played_games]
+        ast_vals = [g.get("ast", 0) for g in played_games]
+        
+        if pts_vals and reb_vals and ast_vals:
+            for combo, calc in [
+                ("PRA", lambda i: pts_vals[i] + reb_vals[i] + ast_vals[i]),
+                ("PR", lambda i: pts_vals[i] + reb_vals[i]),
+                ("PA", lambda i: pts_vals[i] + ast_vals[i]),
+                ("RA", lambda i: reb_vals[i] + ast_vals[i]),
+            ]:
+                combo_vals = [calc(i) for i in range(min(len(pts_vals), len(reb_vals), len(ast_vals)))]
+                if combo_vals:
+                    l5 = combo_vals[:5]
+                    l10 = combo_vals[:10]
+                    l20 = combo_vals[:20]
+                    baseline_stats[combo] = {
+                        "l5_avg": round(sum(l5) / len(l5), 1) if l5 else None,
+                        "l10_avg": round(sum(l10) / len(l10), 1) if l10 else None,
+                        "l20_avg": round(sum(l20) / len(l20), 1) if l20 else None,
+                        "season_avg": round(sum(combo_vals) / len(combo_vals), 1) if combo_vals else None,
+                        "l10_values": l10,
+                    }
+        
+        player["baseline_stats"] = baseline_stats
+    
     return player
 
 
 @router.get("/player/name/{display_name:path}")
 async def get_player_by_name(display_name: str):
-    """Fetch player by display name."""
+    """Fetch player by display name with FRESH baseline_stats from bdl_game_logs (SSOT)."""
     if _hub_functions is None:
         raise HTTPException(status_code=500, detail="Master Hub not initialized")
     
     player = await _hub_functions["fetchPlayerIntelByName"](display_name)
     if not player:
         raise HTTPException(status_code=404, detail=f"Player not found: {display_name}")
+    
+    # SSOT: Recalculate baseline_stats from bdl_game_logs (same logic as /player/{player_id})
+    game_logs = player.get("bdl_game_logs", [])
+    if game_logs:
+        played_games = [g for g in game_logs if g.get("min") and str(g.get("min", "0")).replace(":", "").isdigit() and int(str(g.get("min", "0")).split(":")[0]) > 0]
+        
+        stat_map = {
+            "PTS": "pts", "REB": "reb", "AST": "ast", 
+            "STL": "stl", "BLK": "blk", "3PM": "fg3m",
+            "FGM": "fgm", "FTM": "ftm", "TO": "turnover"
+        }
+        
+        baseline_stats = player.get("baseline_stats", {})
+        
+        for stat_key, log_key in stat_map.items():
+            values = [g.get(log_key, 0) for g in played_games]
+            if values:
+                l5, l10, l20 = values[:5], values[:10], values[:20]
+                if stat_key not in baseline_stats:
+                    baseline_stats[stat_key] = {}
+                baseline_stats[stat_key]["l5_avg"] = round(sum(l5) / len(l5), 1) if l5 else None
+                baseline_stats[stat_key]["l10_avg"] = round(sum(l10) / len(l10), 1) if l10 else None
+                baseline_stats[stat_key]["l20_avg"] = round(sum(l20) / len(l20), 1) if l20 else None
+                baseline_stats[stat_key]["season_avg"] = round(sum(values) / len(values), 1) if values else None
+                baseline_stats[stat_key]["l10_values"] = l10
+        
+        # Combo stats
+        pts_vals = [g.get("pts", 0) for g in played_games]
+        reb_vals = [g.get("reb", 0) for g in played_games]
+        ast_vals = [g.get("ast", 0) for g in played_games]
+        
+        if pts_vals and reb_vals and ast_vals:
+            for combo, calc in [
+                ("PRA", lambda i: pts_vals[i] + reb_vals[i] + ast_vals[i]),
+                ("PR", lambda i: pts_vals[i] + reb_vals[i]),
+                ("PA", lambda i: pts_vals[i] + ast_vals[i]),
+                ("RA", lambda i: reb_vals[i] + ast_vals[i]),
+            ]:
+                combo_vals = [calc(i) for i in range(min(len(pts_vals), len(reb_vals), len(ast_vals)))]
+                if combo_vals:
+                    l5, l10, l20 = combo_vals[:5], combo_vals[:10], combo_vals[:20]
+                    baseline_stats[combo] = {
+                        "l5_avg": round(sum(l5) / len(l5), 1) if l5 else None,
+                        "l10_avg": round(sum(l10) / len(l10), 1) if l10 else None,
+                        "l20_avg": round(sum(l20) / len(l20), 1) if l20 else None,
+                        "season_avg": round(sum(combo_vals) / len(combo_vals), 1) if combo_vals else None,
+                        "l10_values": l10,
+                    }
+        
+        player["baseline_stats"] = baseline_stats
+    
     return player
 
 
