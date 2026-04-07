@@ -408,6 +408,7 @@ class OracleApexService:
         # This ensures intel_suite, active_badges, context data are included
         # =================================================================
         enriched_picks = []
+        ferrari_scored = self.db.ferrari_scored
         
         for pick in final_picks:
             player_name = pick['player_name']
@@ -418,6 +419,13 @@ class OracleApexService:
             player_doc = await self.cached_board.find_one(
                 {"player_name": player_name},
                 {"_id": 0}
+            )
+            
+            # Also look up ferrari_scored for officiating data
+            ferrari_doc = await ferrari_scored.find_one(
+                {"player_name": player_name, "stat_type": stat_type},
+                {"_id": 0, "ref_ppg": 1, "ref_ou_pct": 1, "whistle_class": 1, 
+                 "whistle_modifier": 1, "crew_chief": 1, "opponent": 1, "game_time": 1}
             )
             
             enriched_prop = None
@@ -475,10 +483,19 @@ class OracleApexService:
                     'momentum_data': enriched_prop.get('momentum_data'),
                     'vacuum_data': enriched_prop.get('vacuum_data'),
                     'whistle_data': enriched_prop.get('whistle_data'),
+                    # Officiating data from ferrari_scored (primary) or player doc/prop
+                    'ref_ppg': (ferrari_doc or {}).get('ref_ppg') or player_doc.get('ref_ppg') or enriched_prop.get('ref_ppg'),
+                    'ref_ou_pct': (ferrari_doc or {}).get('ref_ou_pct') or player_doc.get('ref_ou_pct') or enriched_prop.get('ref_ou_pct'),
+                    'whistle_class': (ferrari_doc or {}).get('whistle_class') or player_doc.get('whistle_class') or enriched_prop.get('whistle_class'),
+                    'whistle_modifier': (ferrari_doc or {}).get('whistle_modifier') or player_doc.get('whistle_modifier') or enriched_prop.get('whistle_modifier'),
+                    'crew_chief': (ferrari_doc or {}).get('crew_chief') or player_doc.get('crew_chief') or enriched_prop.get('crew_chief'),
                     # Photo URLs from player doc
                     'photo_url': player_doc.get('photo_url') or player_doc.get('headshot_url'),
                     'headshot_url': player_doc.get('headshot_url'),
                     'team': player_doc.get('team'),
+                    # Game context
+                    'opponent': (ferrari_doc or {}).get('opponent') or player_doc.get('opponent') or enriched_prop.get('opponent'),
+                    'game_time': (ferrari_doc or {}).get('game_time') or player_doc.get('game_time') or enriched_prop.get('game_time'),
                 })
                 enriched_picks.append(merged)
                 logger.info(f"[ORACLE_APEX] Enriched: {player_name} {stat_type} {line} with intel_suite={bool(merged.get('intel_suite'))}")
