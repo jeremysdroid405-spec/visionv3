@@ -57,6 +57,8 @@ Build a local-first betting intelligence app restructuring React/FastAPI to inte
 - [x] Low intel_score (≤3) or low confidence (<45%) triggers automatic kill
 - [x] Updated prompt to user's exact specification for PropVision Intelligence Engine
 - [x] Gate logs show kills: "KILLED: Karl-Anthony Towns REB - TRAP verdict"
+- [x] Fixed API endpoints to return Vision Intel data from stored collections
+- [x] Added Vision Intel display to UniversalPlayerCard (CHALK/VALUE/TRAP badges, intel summary)
 
 ### Session 2 - Route Cleanup (April 9, 2026)
 - [x] Fixed 502 error from orphaned route imports in __init__.py

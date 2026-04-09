@@ -834,6 +834,49 @@ const UniversalPlayerCard = memo(({
           </div>
         )}
         
+        {/* VISION INTEL - Gemini Analysis (TRAP/VALUE/CHALK verdict) */}
+        {isBoardPick && player.intel_verdict && (
+          <div className={`mt-2 px-2.5 py-1.5 rounded-lg border ${
+            player.intel_verdict === 'TRAP' ? 'border-red-500/40 bg-red-500/10' :
+            player.intel_verdict === 'CHALK' ? 'border-green-500/40 bg-green-500/10' :
+            'border-yellow-500/40 bg-yellow-500/10'
+          }`}>
+            <div className="flex items-center justify-between mb-1">
+              <div className="flex items-center gap-1.5">
+                <Brain className={`w-3.5 h-3.5 ${
+                  player.intel_verdict === 'TRAP' ? 'text-red-400' :
+                  player.intel_verdict === 'CHALK' ? 'text-green-400' :
+                  'text-yellow-400'
+                }`} />
+                <span className={`text-[10px] font-bold uppercase tracking-wider ${
+                  player.intel_verdict === 'TRAP' ? 'text-red-400' :
+                  player.intel_verdict === 'CHALK' ? 'text-green-400' :
+                  'text-yellow-400'
+                }`}>
+                  {player.intel_verdict}
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                {player.intel_score && (
+                  <span className="text-[9px] text-white/60">
+                    Intel: <span className="text-white font-medium">{player.intel_score}/10</span>
+                  </span>
+                )}
+                {player.adjusted_confidence && (
+                  <span className="text-[9px] text-white/60">
+                    Conf: <span className="text-white font-medium">{(player.adjusted_confidence * 100).toFixed(0)}%</span>
+                  </span>
+                )}
+              </div>
+            </div>
+            {player.vision_intel && (
+              <p className="text-[10px] text-white/80 leading-tight">
+                {player.vision_intel}
+              </p>
+            )}
+          </div>
+        )}
+        
         {/* Quick Add Button */}
         {onQuickAdd && !is_locked && (
           <button
@@ -902,6 +945,34 @@ const UniversalPlayerCard = memo(({
                 <span className={`text-sm font-bold ${theme.text}`}>{formatStatType(stat_type)} {line}</span>
                 {h10_rate != null && <span className={`text-xs ${getHitRateColor(h10_rate)}`}>L10: {h10_rate}%</span>}
                 {season_avg != null && <span className="text-xs text-zinc-400">Avg: {season_avg?.toFixed?.(1)}</span>}
+              </div>
+            )}
+            
+            {/* VISION INTEL - Gemini Analysis */}
+            {player.intel_verdict && (
+              <div className={`mt-2 px-2 py-1.5 rounded-lg text-[10px] border ${
+                player.intel_verdict === 'TRAP' ? 'border-red-500/30 bg-red-500/10' :
+                player.intel_verdict === 'CHALK' ? 'border-green-500/30 bg-green-500/10' :
+                'border-yellow-500/30 bg-yellow-500/10'
+              }`}>
+                <div className="flex items-center gap-2 mb-1">
+                  <Brain className={`w-3.5 h-3.5 ${
+                    player.intel_verdict === 'TRAP' ? 'text-red-400' :
+                    player.intel_verdict === 'CHALK' ? 'text-green-400' :
+                    'text-yellow-400'
+                  }`} />
+                  <span className={`font-bold uppercase ${
+                    player.intel_verdict === 'TRAP' ? 'text-red-400' :
+                    player.intel_verdict === 'CHALK' ? 'text-green-400' :
+                    'text-yellow-400'
+                  }`}>{player.intel_verdict}</span>
+                  {player.intel_score && (
+                    <span className="text-white/50 ml-auto">Score: {player.intel_score}/10</span>
+                  )}
+                </div>
+                {player.vision_intel && (
+                  <p className="text-white/70 leading-snug">{player.vision_intel}</p>
+                )}
               </div>
             )}
           </div>

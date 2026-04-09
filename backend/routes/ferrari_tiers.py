@@ -188,86 +188,59 @@ async def get_oracle_apex_picks(
 async def get_ferrari_safe_haven(
     response: Response,
     limit: int = Query(10, ge=1, le=50),
-    legacy: bool = Query(False, description="Use legacy Safe Haven logic instead of Oracle Apex")
+    legacy: bool = Query(False, description="Use legacy Safe Haven logic instead of stored data")
 ):
     """
-    FERRARI SAFE HAVEN - Now powered by Oracle Apex ML logic.
+    FERRARI SAFE HAVEN - Returns stored picks with Vision Intel data.
     
-    NEW CRITERIA (Oracle Apex):
-    - Stat-specific CV limits (PTS: 0.22, REB: 0.35, AST: 0.35, PRA: 0.20)
-    - Stat-specific hit rates (PTS/PRA: 18/20, REB: 16/20, AST: 15/20)
-    - Stat-specific edge (REB: 1.5, others: 2.0)
-    - VK Prob >= 75%
-    - Minutes >= 22
+    Picks are populated by the rebuild endpoint which runs:
+    1. Oracle Apex 3-Gate qualification
+    2. Vision Intel (Gemini) analysis and gating
+    3. Composite scoring and final selection
     
-    Use ?legacy=true for old behavior.
+    Use ?legacy=true to bypass stored data and run live Oracle Apex scan.
     """
     response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
     
-    if legacy:
-        # Legacy behavior
-        service = get_service()
-        result = await service.get_safe_haven(limit)
-        if result and result.get("picks"):
-            result["picks"] = enrich_picks_with_vk(result["picks"])
-            result["vk_enriched"] = True
-            result["logic"] = "legacy"
-        return result
-    
-    # New Oracle Apex logic
     if _db is None:
         raise HTTPException(status_code=500, detail="Database not initialized")
     
-    try:
-        from services.oracle_apex_service import get_oracle_apex_service
-        
-        vk_model = get_vegas_killer()
-        if not vk_model:
-            # Fallback to legacy if VK model not available
-            logger.warning("[SAFE_HAVEN] VK model not available, falling back to legacy")
-            service = get_service()
-            result = await service.get_safe_haven(limit)
-            if result and result.get("picks"):
-                result["picks"] = enrich_picks_with_vk(result["picks"])
-                result["logic"] = "legacy_fallback"
-            return result
-        
-        oracle_apex = get_oracle_apex_service(_db, vk_model)
-        result = await oracle_apex.scan_all_props()
-        
-        if not result.get('success'):
-            # Fallback to legacy on error
-            logger.warning(f"[SAFE_HAVEN] Oracle Apex failed: {result.get('error')}, falling back to legacy")
-            service = get_service()
-            legacy_result = await service.get_safe_haven(limit)
-            if legacy_result and legacy_result.get("picks"):
-                legacy_result["picks"] = enrich_picks_with_vk(legacy_result["picks"])
-                legacy_result["logic"] = "legacy_fallback"
-            return legacy_result
-        
-        picks = result.get('apex_picks', [])[:limit]
-        
-        # SSOT: Recalculate hit rates from BDL (same as player detail page)
-        service = get_service()
-        picks = await service._enrich_picks_with_bdl_hit_rates(picks)
-        
-        return {
-            "tier": "safe_haven",
-            "tier_label": "Safe Haven (Oracle Apex)",
-            "logic": "oracle_apex",
-            "picks": picks,
-            "count": len(picks),
-            "total_scanned": result.get('total_scanned', 0),
-            "gate_stats": result.get('gate_stats', {}),
-        }
-    except Exception as e:
-        logger.error(f"[SAFE_HAVEN] Error: {e}, falling back to legacy")
-        service = get_service()
-        result = await service.get_safe_haven(limit)
-        if result and result.get("picks"):
-            result["picks"] = enrich_picks_with_vk(result["picks"])
-            result["logic"] = "legacy_fallback"
-        return result
+    if legacy:
+        # Legacy behavior - run live Oracle Apex scan (no Vision Intel)
+        try:
+            from services.oracle_apex_service import get_oracle_apex_service
+            vk_model = get_vegas_killer()
+            if not vk_model:
+                raise HTTPException(status_code=500, detail="Vegas Killer model not available")
+            
+            oracle_apex = get_oracle_apex_service(_db, vk_model)
+            result = await oracle_apex.scan_all_props()
+            
+            if not result.get('success'):
+                raise HTTPException(status_code=500, detail=result.get('error', 'Unknown error'))
+            
+            picks = result.get('apex_picks', [])[:limit]
+            return {
+                "tier": "safe_haven",
+                "tier_label": "Safe Haven (Live Scan)",
+                "logic": "oracle_apex_live",
+                "picks": picks,
+                "count": len(picks),
+                "note": "Live scan - Vision Intel not applied. Use rebuild for full analysis."
+            }
+        except Exception as e:
+            logger.error(f"[SAFE_HAVEN] Legacy scan error: {e}")
+            raise HTTPException(status_code=500, detail=str(e))
+    
+    # DEFAULT: Read from stored collection (includes Vision Intel data)
+    service = get_service()
+    result = await service.get_safe_haven(limit)
+    
+    # Add tier metadata
+    result["tier_label"] = "Safe Haven (Oracle Apex + Vision Intel)"
+    result["logic"] = "stored_with_vision_intel"
+    
+    return result
 
 
 @router.get("/v3/ferrari/front-lines")
@@ -276,24 +249,20 @@ async def get_ferrari_front_lines(
     limit: int = Query(10, ge=1, le=50)
 ):
     """
-    FERRARI FRONT LINES - Battleground picks with real market edges.
+    FERRARI FRONT LINES - Returns stored picks with Vision Intel data.
     
-    Criteria:
-    - Sharp price between -149 and +110
-    - 40-cent price gap from PP -137
-    - L5 hit rate >= 60% (momentum check)
-    
-    Sorted by: Highest L10 hit rate
+    Picks include:
+    - Vision Intel analysis (intel_score, intel_verdict, vision_intel summary)
+    - Composite scoring based on VK + Gemini confidence
+    - All props that passed the Gemini gate (TRAP verdicts removed)
     """
     response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
     
     service = get_service()
     result = await service.get_front_lines(limit)
     
-    # Enrich with Vegas Killer predictions
-    if result and result.get("picks"):
-        result["picks"] = enrich_picks_with_vk(result["picks"])
-        result["vk_enriched"] = True
+    result["tier_label"] = "Front Lines (Vision Intel)"
+    result["logic"] = "stored_with_vision_intel"
     
     return result
 
@@ -304,25 +273,20 @@ async def get_ferrari_war_zone(
     limit: int = Query(10, ge=1, le=50)
 ):
     """
-    FERRARI WAR ZONE - Elite Demons with huge payout edges.
+    FERRARI WAR ZONE - Returns stored high-risk/high-reward picks with Vision Intel.
     
-    Criteria:
-    - Must be a demon (PP even odds)
-    - Sharp price >= +500
-    - Bovada 200+ pts shorter than PP implied
-    - Hit at least 2 times in L10
-    
-    Sorted by: Highest sharp_price (biggest payout edge)
+    Picks include:
+    - Vision Intel analysis (intel_score, intel_verdict, vision_intel summary)
+    - Composite scoring based on VK + Gemini confidence
+    - All props that passed the Gemini gate (TRAP verdicts removed)
     """
     response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
     
     service = get_service()
     result = await service.get_war_zone(limit)
     
-    # Enrich with Vegas Killer predictions
-    if result and result.get("picks"):
-        result["picks"] = enrich_picks_with_vk(result["picks"])
-        result["vk_enriched"] = True
+    result["tier_label"] = "War Zone (Vision Intel)"
+    result["logic"] = "stored_with_vision_intel"
     
     return result
 
