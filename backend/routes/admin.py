@@ -256,3 +256,33 @@ async def get_dvp_analysis(opponent_team: str, stat_type: str, player_position: 
         raise HTTPException(status_code=500, detail=str(e))
 
 
+
+# File download endpoints
+from fastapi.responses import FileResponse
+
+@router.get("/download/api-traffic-csv")
+async def download_api_traffic_csv():
+    """Download API traffic report as CSV"""
+    return FileResponse(
+        path="/app/frontend/public/api_traffic_report.csv",
+        filename="propvision_api_traffic.csv",
+        media_type="text/csv"
+    )
+
+@router.get("/download/unused-endpoints-csv")
+async def download_unused_endpoints_csv():
+    """Download unused endpoints as CSV"""
+    return FileResponse(
+        path="/app/frontend/public/unused_endpoints.csv",
+        filename="propvision_unused_endpoints.csv",
+        media_type="text/csv"
+    )
+
+@router.get("/download/backend-code-json")
+async def download_backend_code_json():
+    """Download backend code export as JSON"""
+    return FileResponse(
+        path="/app/frontend/public/backend_code_export.json",
+        filename="propvision_backend_code.json",
+        media_type="application/json"
+    )
