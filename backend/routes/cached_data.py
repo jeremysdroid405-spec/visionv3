@@ -1103,8 +1103,6 @@ async def get_cached_player(player_name: str):
             is_featured = bool(prop_board and prop_board != "NONE") or bool(cache_board)
             featured_board = prop_board or cache_board
             
-            logger.info(f"[PROP_CHECK] {stat_type}@{line}: board={prop_board}, is_featured={is_featured}")
-            
             # Build hit_rates object for frontend compatibility (use actual values from data)
             prop["hit_rates"] = {
                 "l10": {
@@ -1207,6 +1205,18 @@ async def get_cached_player(player_name: str):
                     merged_intel["ferrari_power_score"] = pre_cached_intel["ferrari_power_score"]
                 
                 prop["intel_suite"] = merged_intel
+                
+                # Add Gemini Vision Intel to intel_suite (from Ferrari tier lookup above)
+                if ferrari_prop:
+                    prop["intel_suite"]["gemini_intel"] = {
+                        "vision_intel": ferrari_prop.get("vision_intel"),
+                        "intel_verdict": ferrari_prop.get("intel_verdict"),
+                        "intel_score": ferrari_prop.get("intel_score"),
+                        "intel_risk": ferrari_prop.get("intel_risk"),
+                        "adjusted_confidence": ferrari_prop.get("adjusted_confidence"),
+                        "composite_score": ferrari_prop.get("composite_score")
+                    }
+                
                 prop["vision_summary"] = enriched_prop.get("vision_summary")
                 prop["vision_score"] = enriched_prop.get("vision_score")
                 
@@ -1400,6 +1410,17 @@ async def get_cached_player(player_name: str):
                     "confidence": "HIGH" if len(reasons) >= 3 else "MEDIUM" if len(reasons) >= 2 else "STANDARD"
                 }
             }
+            
+            # Add Gemini Vision Intel to intel_suite (from Ferrari tier lookup)
+            if ferrari_prop:
+                prop["intel_suite"]["gemini_intel"] = {
+                    "vision_intel": ferrari_prop.get("vision_intel"),
+                    "intel_verdict": ferrari_prop.get("intel_verdict"),
+                    "intel_score": ferrari_prop.get("intel_score"),
+                    "intel_risk": ferrari_prop.get("intel_risk"),
+                    "adjusted_confidence": ferrari_prop.get("adjusted_confidence"),
+                    "composite_score": ferrari_prop.get("composite_score")
+                }
             
             # Calculate blowout risk and add to intel_suite
             try:

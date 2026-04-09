@@ -2313,15 +2313,20 @@ class PicksGetterService:
                 "player": None
             }
         
-        # Extract props from the nested structure and filter for upcoming games
+        # Extract props from the nested structure
+        # Include games in progress (started within last 3 hours) - don't filter out active games
         raw_props = player_doc.get("props", [])
         
-        # Filter for upcoming props only
-        upcoming_props = []
+        from datetime import timedelta
+        three_hours_ago = (now - timedelta(hours=3)).isoformat().replace('+00:00', 'Z')
+        
+        # Include props for upcoming games AND games currently in progress
+        active_props = []
         for prop in raw_props:
             commence_time = prop.get("commence_time", "")
-            if commence_time and commence_time > now_iso:
-                upcoming_props.append(prop)
+            # Include if: upcoming OR started within last 3 hours (game in progress)
+            if commence_time and commence_time > three_hours_ago:
+                active_props.append(prop)
         
         # Build player object from the player document
         player = {
@@ -2349,8 +2354,8 @@ class PicksGetterService:
             "props": []
         }
         
-        # Add all upcoming props to the player object with correct field mapping
-        for prop in upcoming_props:
+        # Add all active props to the player object with correct field mapping
+        for prop in active_props:
             # Get hit rates from nested object or flattened fields
             hit_rates = prop.get("hit_rates", {})
             h10_rate = prop.get("h10_rate") or prop.get("h10_hit_rate") or hit_rates.get("l10_rate")

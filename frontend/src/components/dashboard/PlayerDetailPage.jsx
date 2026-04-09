@@ -1151,58 +1151,69 @@ export const PlayerDetailPage = ({ playerName, playerData = null, onBack, highli
                       TARGET-LOCK RATIONALE
                     </h3>
                     
-                    {/* GEMINI INTELLIGENCE - Primary Vision Intel from Gemini 3.1 Pro */}
-                    {(selectedVisionProp.vision_intel || selectedVisionProp.vision_summary || selectedVisionProp.intel_suite?.vision_insight?.ai_summary) && (
-                      <div className={`border rounded-lg p-3 mb-4 ${
-                        selectedVisionProp.intel_verdict === 'TRAP' 
-                          ? 'bg-red-500/10 border-red-500/30' 
-                          : selectedVisionProp.intel_verdict === 'CHALK'
-                            ? 'bg-green-500/10 border-green-500/30'
-                            : 'bg-amber-500/10 border-amber-500/30'
-                      }`}>
-                        <div className="flex items-center justify-between mb-2">
-                          <div className="flex items-center gap-2">
-                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${
-                              selectedVisionProp.intel_verdict === 'TRAP'
-                                ? 'text-red-400 bg-red-500/20'
-                                : selectedVisionProp.intel_verdict === 'CHALK'
-                                  ? 'text-green-400 bg-green-500/20'
-                                  : 'text-amber-400 bg-amber-500/20'
-                            }`}>
-                              {selectedVisionProp.intel_verdict || 'AI VISION'}
-                            </span>
-                            {selectedVisionProp.intel_score && (
-                              <span className="text-[10px] text-zinc-400">
-                                Intel Score: <span className="text-white font-medium">{selectedVisionProp.intel_score}/10</span>
+                    {/* GEMINI INTELLIGENCE - Primary Vision Intel */}
+                    {(() => {
+                      const gemini = selectedVisionProp.intel_suite?.gemini_intel || {};
+                      const visionIntel = selectedVisionProp.vision_intel || gemini.vision_intel || selectedVisionProp.vision_summary || selectedVisionProp.intel_suite?.vision_insight?.ai_summary;
+                      const intelVerdict = selectedVisionProp.intel_verdict || gemini.intel_verdict;
+                      const intelScore = selectedVisionProp.intel_score || gemini.intel_score;
+                      const intelRisk = selectedVisionProp.intel_risk || gemini.intel_risk;
+                      const adjustedConfidence = selectedVisionProp.adjusted_confidence || gemini.adjusted_confidence;
+                      
+                      if (!visionIntel && !intelVerdict) return null;
+                      
+                      return (
+                        <div className={`border rounded-lg p-3 mb-4 ${
+                          intelVerdict === 'TRAP' 
+                            ? 'bg-red-500/10 border-red-500/30' 
+                            : intelVerdict === 'CHALK'
+                              ? 'bg-green-500/10 border-green-500/30'
+                              : 'bg-amber-500/10 border-amber-500/30'
+                        }`}>
+                          <div className="flex items-center justify-between mb-2">
+                            <div className="flex items-center gap-2">
+                              <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${
+                                intelVerdict === 'TRAP'
+                                  ? 'text-red-400 bg-red-500/20'
+                                  : intelVerdict === 'CHALK'
+                                    ? 'text-green-400 bg-green-500/20'
+                                    : 'text-amber-400 bg-amber-500/20'
+                              }`}>
+                                {intelVerdict || 'AI VISION'}
+                              </span>
+                              {intelScore && (
+                                <span className="text-[10px] text-zinc-400">
+                                  Intel Score: <span className="text-white font-medium">{intelScore}/10</span>
+                                </span>
+                              )}
+                            </div>
+                            {adjustedConfidence && (
+                              <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${
+                                adjustedConfidence >= 0.8
+                                  ? 'bg-green-500/20 text-green-400'
+                                  : adjustedConfidence >= 0.6
+                                    ? 'bg-yellow-500/20 text-yellow-400'
+                                    : 'bg-zinc-600/50 text-zinc-300'
+                              }`}>
+                                {(adjustedConfidence * 100).toFixed(0)}% Confidence
                               </span>
                             )}
                           </div>
-                          {selectedVisionProp.adjusted_confidence && (
-                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${
-                              selectedVisionProp.adjusted_confidence >= 0.8
-                                ? 'bg-green-500/20 text-green-400'
-                                : selectedVisionProp.adjusted_confidence >= 0.6
-                                  ? 'bg-yellow-500/20 text-yellow-400'
-                                  : 'bg-zinc-600/50 text-zinc-300'
-                            }`}>
-                              {(selectedVisionProp.adjusted_confidence * 100).toFixed(0)}% Confidence
-                            </span>
+                          <p className="text-sm text-white leading-relaxed">
+                            {visionIntel}
+                          </p>
+                          {intelRisk && (
+                            <div className="mt-2 text-[10px] text-zinc-400">
+                              Risk Level: <span className={`font-medium ${
+                                intelRisk === 'High' ? 'text-red-400' :
+                                intelRisk === 'Low' ? 'text-green-400' :
+                                'text-yellow-400'
+                              }`}>{intelRisk}</span>
+                            </div>
                           )}
                         </div>
-                        <p className="text-sm text-white leading-relaxed">
-                          {selectedVisionProp.vision_intel || selectedVisionProp.vision_summary || selectedVisionProp.intel_suite?.vision_insight?.ai_summary}
-                        </p>
-                        {selectedVisionProp.intel_risk && (
-                          <div className="mt-2 text-[10px] text-zinc-400">
-                            Risk Level: <span className={`font-medium ${
-                              selectedVisionProp.intel_risk === 'High' ? 'text-red-400' :
-                              selectedVisionProp.intel_risk === 'Low' ? 'text-green-400' :
-                              'text-yellow-400'
-                            }`}>{selectedVisionProp.intel_risk}</span>
-                          </div>
-                        )}
-                      </div>
-                    )}
+                      );
+                    })()}
                     
                     <div className="text-sm text-white mb-3">
                       {selectedVisionProp.intel_suite.vision_insight?.primary}
@@ -1230,68 +1241,6 @@ export const PlayerDetailPage = ({ playerName, playerData = null, onBack, highli
                         {selectedVisionProp.intel_suite.vision_insight?.confidence} Confidence
                       </div>
                     </div>
-                  </div>
-                </div>
-              )}
-              
-              {/* GEMINI VISION INTEL - Always show if available (outside intel_suite block) */}
-              {(selectedVisionProp.vision_intel || selectedVisionProp.intel_verdict) && (
-                <div className="bg-gradient-to-r from-amber-950/50 to-zinc-900 border border-amber-500/30 rounded-lg p-4">
-                  <h3 className="text-sm font-bold text-amber-300 mb-3 flex items-center gap-2">
-                    <Crosshair className="w-4 h-4 text-amber-400" />
-                    TARGET-LOCK RATIONALE
-                  </h3>
-                  
-                  <div className={`border rounded-lg p-3 ${
-                    selectedVisionProp.intel_verdict === 'TRAP' 
-                      ? 'bg-red-500/10 border-red-500/30' 
-                      : selectedVisionProp.intel_verdict === 'CHALK'
-                        ? 'bg-green-500/10 border-green-500/30'
-                        : 'bg-amber-500/10 border-amber-500/30'
-                  }`}>
-                    <div className="flex items-center justify-between mb-2">
-                      <div className="flex items-center gap-2">
-                        <span className={`text-xs font-bold px-2 py-1 rounded ${
-                          selectedVisionProp.intel_verdict === 'TRAP'
-                            ? 'text-red-400 bg-red-500/20'
-                            : selectedVisionProp.intel_verdict === 'CHALK'
-                              ? 'text-green-400 bg-green-500/20'
-                              : 'text-yellow-400 bg-yellow-500/20'
-                        }`}>
-                          {selectedVisionProp.intel_verdict || 'VALUE'}
-                        </span>
-                        {selectedVisionProp.intel_score && (
-                          <span className="text-xs text-zinc-400">
-                            Intel: <span className="text-white font-medium">{selectedVisionProp.intel_score}/10</span>
-                          </span>
-                        )}
-                      </div>
-                      {selectedVisionProp.adjusted_confidence && (
-                        <span className={`text-xs font-bold px-2 py-1 rounded ${
-                          selectedVisionProp.adjusted_confidence >= 0.8
-                            ? 'bg-green-500/20 text-green-400'
-                            : selectedVisionProp.adjusted_confidence >= 0.6
-                              ? 'bg-yellow-500/20 text-yellow-400'
-                              : 'bg-zinc-600/50 text-zinc-300'
-                        }`}>
-                          {(selectedVisionProp.adjusted_confidence * 100).toFixed(0)}% Confidence
-                        </span>
-                      )}
-                    </div>
-                    {selectedVisionProp.vision_intel && (
-                      <p className="text-sm text-white leading-relaxed">
-                        {selectedVisionProp.vision_intel}
-                      </p>
-                    )}
-                    {selectedVisionProp.intel_risk && (
-                      <div className="mt-2 text-xs text-zinc-400">
-                        Risk: <span className={`font-medium ${
-                          selectedVisionProp.intel_risk === 'High' ? 'text-red-400' :
-                          selectedVisionProp.intel_risk === 'Low' ? 'text-green-400' :
-                          'text-yellow-400'
-                        }`}>{selectedVisionProp.intel_risk}</span>
-                      </div>
-                    )}
                   </div>
                 </div>
               )}
