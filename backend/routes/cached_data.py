@@ -1103,6 +1103,8 @@ async def get_cached_player(player_name: str):
             is_featured = bool(prop_board and prop_board != "NONE") or bool(cache_board)
             featured_board = prop_board or cache_board
             
+            logger.info(f"[PROP_CHECK] {stat_type}@{line}: board={prop_board}, is_featured={is_featured}")
+            
             # Build hit_rates object for frontend compatibility (use actual values from data)
             prop["hit_rates"] = {
                 "l10": {
@@ -1134,6 +1136,35 @@ async def get_cached_player(player_name: str):
             
             # This IS the featured prop - add badges and intel suite
             prop["active_badges"] = badge_keys
+            
+            # ========== CHECK FOR GEMINI VISION INTEL FROM FERRARI TIERS ==========
+            # The Vision Intel (Gemini) data is stored in ferrari_safe_haven/front_lines/war_zone
+            # Query by stat_type only (lines change daily but analysis is for the stat)
+            ferrari_prop = None
+            for tier_collection in ['ferrari_safe_haven', 'ferrari_front_lines', 'ferrari_war_zone']:
+                try:
+                    ferrari_prop = await db[tier_collection].find_one(
+                        {
+                            "player_name": {"$regex": f"^{pname}$", "$options": "i"},
+                            "stat_type": stat_type
+                        },
+                        {"_id": 0, "vision_intel": 1, "intel_verdict": 1, "intel_score": 1, 
+                         "intel_risk": 1, "adjusted_confidence": 1, "composite_score": 1}
+                    )
+                    if ferrari_prop and ferrari_prop.get("vision_intel"):
+                        break
+                except Exception as e:
+                    logger.error(f"[PLAYER_DETAIL] Error querying {tier_collection}: {e}")
+            
+            # Add Gemini data to prop if found
+            if ferrari_prop:
+                prop["vision_intel"] = ferrari_prop.get("vision_intel")
+                prop["intel_verdict"] = ferrari_prop.get("intel_verdict")
+                prop["intel_score"] = ferrari_prop.get("intel_score")
+                prop["intel_risk"] = ferrari_prop.get("intel_risk")
+                prop["adjusted_confidence"] = ferrari_prop.get("adjusted_confidence")
+                prop["composite_score"] = ferrari_prop.get("composite_score")
+                logger.info(f"[PLAYER_DETAIL] {pname} {stat_type}: Loaded Gemini intel - {ferrari_prop.get('intel_verdict')}")
             
             # ========== CHECK FOR PRE-CACHED INTEL SUITE ==========
             # If this prop was enriched by the Board Intelligence Service, USE THAT DATA
@@ -1178,6 +1209,14 @@ async def get_cached_player(player_name: str):
                 prop["intel_suite"] = merged_intel
                 prop["vision_summary"] = enriched_prop.get("vision_summary")
                 prop["vision_score"] = enriched_prop.get("vision_score")
+                
+                # Gemini Vision Intel fields
+                prop["vision_intel"] = enriched_prop.get("vision_intel")
+                prop["intel_verdict"] = enriched_prop.get("intel_verdict")
+                prop["intel_score"] = enriched_prop.get("intel_score")
+                prop["intel_risk"] = enriched_prop.get("intel_risk")
+                prop["adjusted_confidence"] = enriched_prop.get("adjusted_confidence")
+                prop["composite_score"] = enriched_prop.get("composite_score")
                 prop["is_vision_enriched"] = True
                 prop["board"] = enriched_prop.get("board")
                 
