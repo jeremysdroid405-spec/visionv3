@@ -1,0 +1,1948 @@
+{
+  "generated_at": "2025-12-07",
+  "description": "PropVision API Routes Documentation",
+  "base_url": "https://best-bet-finder-1.preview.emergentagent.com/api",
+  "routes": [
+    {
+      "method": "GET",
+      "path": "/api/",
+      "function": "root",
+      "description": "API root endpoint - returns basic API info.",
+      "file": "legacy.py"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/api/v3/bdl-advanced/clear",
+      "function": "clear_advanced_stats",
+      "description": "Clear all stored advanced stats (use with caution).",
+      "file": "bdl_advanced.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/api/v3/bdl-advanced/features/{player_name}/{stat_type}",
+      "function": "unknown",
+      "description": "",
+      "file": "bdl_advanced.py"
+    },
+    {
+      "method": "POST",
+      "path": "/api/api/v3/bdl-advanced/fetch-multiple",
+      "function": "fetch_multiple_seasons",
+      "description": "Fetch V2 Advanced Stats for multiple seasons.\n    \n    Default: 2020-2025 (6 seasons for ML training)",
+      "file": "bdl_advanced.py"
+    },
+    {
+      "method": "POST",
+      "path": "/api/api/v3/bdl-advanced/fetch-season/{season}",
+      "function": "unknown",
+      "description": "",
+      "file": "bdl_advanced.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/api/v3/bdl-advanced/player-by-name/{player_name}",
+      "function": "get_player_stats_by_name",
+      "description": "Get advanced stats by player name (searches master hub first).",
+      "file": "bdl_advanced.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/api/v3/bdl-advanced/player/{player_id}",
+      "function": "unknown",
+      "description": "",
+      "file": "bdl_advanced.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/api/v3/bdl-advanced/sample",
+      "function": "get_sample_stats",
+      "description": "Get a sample of stored advanced stats for inspection.",
+      "file": "bdl_advanced.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/api/v3/bdl-advanced/status",
+      "function": "advanced_stats_status",
+      "description": "Get status of stored advanced stats.",
+      "file": "bdl_advanced.py"
+    },
+    {
+      "method": "POST",
+      "path": "/api/api/v3/historical-odds/fetch-date",
+      "function": "unknown",
+      "description": "",
+      "file": "historical_odds.py"
+    },
+    {
+      "method": "POST",
+      "path": "/api/api/v3/historical-odds/fetch-range",
+      "function": "fetch_date_range",
+      "description": "Fetch historical player props for a date range.\n    \n    Runs in background due to potentially long runtime.",
+      "file": "historical_odds.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/api/v3/historical-odds/player/{player_name}",
+      "function": "unknown",
+      "description": "",
+      "file": "historical_odds.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/api/v3/historical-odds/sample",
+      "function": "get_sample_odds",
+      "description": "Get sample of stored historical odds.",
+      "file": "historical_odds.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/api/v3/historical-odds/status",
+      "function": "get_status",
+      "description": "Get status of stored historical odds.",
+      "file": "historical_odds.py"
+    },
+    {
+      "method": "POST",
+      "path": "/api/api/v3/pro-model/analyze-features/{stat_type}",
+      "function": "analyze_features",
+      "description": "Analyze feature significance for a stat type using statsmodels.\n    \n    Returns P-values for each feature. Features with P > 0.05 \n    are not statistically significant predictors.",
+      "file": "pro_model.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/api/v3/pro-model/backtest/{stat_type}",
+      "function": "run_backtest",
+      "description": "Backtest model against historical games.\n    \n    Simulates predictions on past games where we know the outcome.",
+      "file": "pro_model.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/api/v3/pro-model/compare-approaches",
+      "function": "compare_approaches",
+      "description": "Compare Board Score vs ML Model predictions across all tiers.\n    \n    Shows where approaches agree (high confidence) and \n    where they disagree (potential opportunities or traps).",
+      "file": "pro_model.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/api/v3/pro-model/feature-importance/{stat_type}",
+      "function": "get_feature_importance",
+      "description": "Get feature importance (coefficients) for a trained model.",
+      "file": "pro_model.py"
+    },
+    {
+      "method": "POST",
+      "path": "/api/api/v3/pro-model/predict",
+      "function": "predict_single",
+      "description": "Get ML prediction for a single player prop.\n    \n    Uses trained scikit-learn model for the stat type.",
+      "file": "pro_model.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/api/v3/pro-model/predict-tier/{tier}",
+      "function": "predict_tier",
+      "description": "Run predictions for all picks in a tier.\n    \n    Compares ML predictions with the existing Board Score approach.",
+      "file": "pro_model.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/api/v3/pro-model/status",
+      "function": "model_status",
+      "description": "Check which models are trained and their metrics.",
+      "file": "pro_model.py"
+    },
+    {
+      "method": "POST",
+      "path": "/api/api/v3/pro-model/train",
+      "function": "train_models",
+      "description": "Train regression models for specified stat types.\n    \n    This analyzes feature significance using statsmodels,\n    then trains scikit-learn models for prediction.",
+      "file": "pro_model.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/api/v3/regression/compare/all",
+      "function": "compare_all_tiers",
+      "description": "Compare all tiers at once.\n    Returns summary of agreements/disagreements across all picks.",
+      "file": "regression.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/api/v3/regression/compare/{tier}",
+      "function": "compare_tier",
+      "description": "",
+      "file": "regression.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/api/v3/regression/flags",
+      "function": "get_regression_flags",
+      "description": "Get picks where Board Score and Regression strongly disagree.\n    \n    These are potential TRAPS (high Board Score but low P(Over))\n    or OPPORTUNITIES (low Board Score but high P(Over)).",
+      "file": "regression.py"
+    },
+    {
+      "method": "POST",
+      "path": "/api/api/v3/regression/predict",
+      "function": "predict_single",
+      "description": "Get regression prediction for a single player prop.\n    \n    Returns predicted stat value, edge vs line, and probability.",
+      "file": "regression.py"
+    },
+    {
+      "method": "POST",
+      "path": "/api/api/v3/vegas-killer/analyze-features/{stat_type}",
+      "function": "analyze_features",
+      "description": "Analyze feature significance for a stat type.",
+      "file": "vegas_killer.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/api/v3/vegas-killer/backtest/results",
+      "function": "get_backtest_results",
+      "description": "Get the latest backtest results.",
+      "file": "vegas_killer.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/api/v3/vegas-killer/compare-all",
+      "function": "compare_all",
+      "description": "Compare Vegas Killer predictions across all tiers.",
+      "file": "vegas_killer.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/api/v3/vegas-killer/enrich-board",
+      "function": "enrich_board_with_predictions",
+      "description": "Get all current props from the board and enrich with Vegas Killer predictions.\n    \n    This is the forward-looking integration - what should we bet TODAY.",
+      "file": "vegas_killer.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/api/v3/vegas-killer/feature-breakdown",
+      "function": "feature_breakdown",
+      "description": "Show all feature categories used in Vegas Killer model.",
+      "file": "vegas_killer.py"
+    },
+    {
+      "method": "POST",
+      "path": "/api/api/v3/vegas-killer/predict",
+      "function": "predict_single",
+      "description": "Get Vegas Killer prediction for a player prop.",
+      "file": "vegas_killer.py"
+    },
+    {
+      "method": "POST",
+      "path": "/api/api/v3/vegas-killer/predict-slate",
+      "function": "predict_full_slate",
+      "description": "",
+      "file": "vegas_killer.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/api/v3/vegas-killer/predict-tier/{tier}",
+      "function": "predict_tier",
+      "description": "Run Vegas Killer predictions for all picks in a tier.",
+      "file": "vegas_killer.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/api/v3/vegas-killer/status",
+      "function": "model_status",
+      "description": "Check Vegas Killer model status.",
+      "file": "vegas_killer.py"
+    },
+    {
+      "method": "POST",
+      "path": "/api/api/v3/vegas-killer/train",
+      "function": "train_models",
+      "description": "Train Vegas Killer models with process-based features.",
+      "file": "vegas_killer.py"
+    },
+    {
+      "method": "POST",
+      "path": "/api/auth/login",
+      "function": "login",
+      "description": "Login with email and password. Supports master admin (JWT) and regular users (Supabase).",
+      "file": "auth.py"
+    },
+    {
+      "method": "POST",
+      "path": "/api/auth/signup",
+      "function": "signup",
+      "description": "Register a new user via Supabase.",
+      "file": "auth.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/cache-status",
+      "function": "get_cache_status",
+      "description": "Get cache statistics",
+      "file": "admin.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/calculate-hit-rate",
+      "function": "unknown",
+      "description": "",
+      "file": "legacy.py"
+    },
+    {
+      "method": "POST",
+      "path": "/api/clear-all-cache",
+      "function": "clear_all_cache",
+      "description": "Clear ALL cache (use when changing seasons)",
+      "file": "admin.py"
+    },
+    {
+      "method": "POST",
+      "path": "/api/clear-expired-cache",
+      "function": "clear_expired_cache",
+      "description": "Clear expired cache entries",
+      "file": "admin.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/command/grades",
+      "function": "get_grade_definitions",
+      "description": "Get infiltration grade definitions.\n    \n    Returns grade thresholds and descriptions.",
+      "file": "command.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/command/profile/{player_name}",
+      "function": "unknown",
+      "description": "",
+      "file": "command.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/command/search",
+      "function": "unknown",
+      "description": "",
+      "file": "command.py"
+    },
+    {
+      "method": "POST",
+      "path": "/api/command/simulate",
+      "function": "simulate_configuration",
+      "description": "",
+      "file": "command.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/demon-tracker/board",
+      "function": "get_full_demon_board",
+      "description": "Get the full Demon Board with color-coded cards\n    Green: High hit rate (>=50%)\n    Yellow: Injury/news warning\n    Red: Low hit rate (<30%) or injured OUT",
+      "file": "demon_tracker.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/demon-tracker/cards/green",
+      "function": "get_green_cards",
+      "description": "Get all GREEN demon cards (high hit rate >= 50%)",
+      "file": "demon_tracker.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/demon-tracker/cards/red",
+      "function": "get_red_cards",
+      "description": "Get all RED demon cards (low hit rate < 30% or injured)",
+      "file": "demon_tracker.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/demon-tracker/cards/yellow",
+      "function": "get_yellow_cards",
+      "description": "Get all YELLOW demon cards (injury/news warnings)",
+      "file": "demon_tracker.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/demon-tracker/demons",
+      "function": "get_demon_lines",
+      "description": "Get all qualified Demon lines (L10 hit rate >= 40%)",
+      "file": "demon_tracker.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/demon-tracker/event/{event_id}/odds",
+      "function": "get_event_odds",
+      "description": "Get all odds for a specific event including player props",
+      "file": "demon_tracker.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/demon-tracker/events",
+      "function": "get_todays_events",
+      "description": "Get today's NBA events from The Odds API",
+      "file": "demon_tracker.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/demon-tracker/player/{player_name}",
+      "function": "unknown",
+      "description": "",
+      "file": "demon_tracker.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/demon-tracker/props",
+      "function": "unknown",
+      "description": "",
+      "file": "demon_tracker.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/demon-tracker/search",
+      "function": "unknown",
+      "description": "",
+      "file": "demon_tracker.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/demon-tracker/status",
+      "function": "get_demon_tracker_status",
+      "description": "Get current Demon Tracker sync status",
+      "file": "demon_tracker.py"
+    },
+    {
+      "method": "POST",
+      "path": "/api/demon-tracker/sync",
+      "function": "trigger_demon_tracker_sync",
+      "description": "Manually trigger deep ingestion sync",
+      "file": "demon_tracker.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/dvp-analysis/{opponent_team}/{stat_type}",
+      "function": "get_dvp_analysis",
+      "description": "",
+      "file": "admin.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/dvp-rankings",
+      "function": "get_dvp_rankings",
+      "description": "Get current DvP rankings data.\n    \n    Returns the full defensive rankings for all teams and stat categories.",
+      "file": "admin.py"
+    },
+    {
+      "method": "POST",
+      "path": "/api/dvp-refresh",
+      "function": "trigger_dvp_refresh",
+      "description": "Manually trigger a DvP data refresh.\n    \n    This forces a fresh fetch from the BallDontLie API and updates\n    both the in-memory cache and MongoDB storage.",
+      "file": "admin.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/dvp-status",
+      "function": "get_dvp_status",
+      "description": "Get DvP (Defense vs Position) service status.\n    \n    Returns current data source, cache age, and configuration.",
+      "file": "admin.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/full-board",
+      "function": "get_full_board",
+      "description": "\u26a0\ufe0f DEPRECATED: Use /api/v3/board instead.\n    \n    LEGACY: Get full board with mock data for testing.",
+      "file": "legacy.py"
+    },
+    {
+      "method": "POST",
+      "path": "/api/headshots/bulk-download",
+      "function": "unknown",
+      "description": "",
+      "file": "headshots.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/headshots/check/{nba_id}",
+      "function": "check_headshot_exists",
+      "description": "Check if a headshot exists locally.",
+      "file": "headshots.py"
+    },
+    {
+      "method": "POST",
+      "path": "/api/headshots/download/{nba_id}",
+      "function": "unknown",
+      "description": "",
+      "file": "headshots.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/headshots/image/{nba_id}",
+      "function": "serve_headshot",
+      "description": "Serve a player headshot image.\n    \n    Returns the local image file if it exists, or a placeholder.",
+      "file": "headshots.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/headshots/stats",
+      "function": "get_headshot_stats",
+      "description": "Get statistics about local headshot storage.",
+      "file": "headshots.py"
+    },
+    {
+      "method": "POST",
+      "path": "/api/headshots/update-urls",
+      "function": "update_player_photo_urls",
+      "description": "Update photo_url fields in player collections to use local URLs.\n    \n    This updates nba_master_hub_2026 to point to local headshot files.\n    Run this after bulk-download to switch to local images.",
+      "file": "headshots.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/live/news",
+      "function": "get_breaking_news",
+      "description": "Get breaking NBA news from cached data.\n    \n    Returns headlines synced at 4 AM daily.",
+      "file": "live.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/live/scores",
+      "function": "get_live_scores",
+      "description": "Get today's NBA games with live scores.\n    \n    Uses BDL live box scores endpoint for real-time updates.",
+      "file": "live.py"
+    },
+    {
+      "method": "POST",
+      "path": "/api/live/sync-ticker",
+      "function": "manual_sync_ticker",
+      "description": "Manually trigger ticker data sync.\n    Syncs both games and news headlines.",
+      "file": "live.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/proxy/nba-headshot/{player_id}",
+      "function": "unknown",
+      "description": "",
+      "file": "image_proxy.py"
+    },
+    {
+      "method": "POST",
+      "path": "/api/qa/inject-line-move",
+      "function": "inject_line_move",
+      "description": "QA TEST: Inject a fake line move to test UI reactivity.\n    \n    Within 30 seconds, the UI should auto-update without refresh.\n    \n    Args:\n        player_name: Player to modify (default: Luka Donci",
+      "file": "qa_testing.py"
+    },
+    {
+      "method": "POST",
+      "path": "/api/qa/revert-line-move",
+      "function": "revert_line_move",
+      "description": "Revert all QA line injections back to original values.",
+      "file": "qa_testing.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/rate-limit-status",
+      "function": "get_rate_limit_status",
+      "description": "Get current API rate limit status.\n    \n    Returns:\n    - active_buckets: Number of active rate limit buckets\n    - tiers: Configuration for each rate limit tier\n    - enabled: Whether rate limiting ",
+      "file": "admin.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/roster-status",
+      "function": "get_roster_status",
+      "description": "Get roster sync status and statistics",
+      "file": "admin.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/roster/full-active",
+      "function": "unknown",
+      "description": "",
+      "file": "roster.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/roster/live-today",
+      "function": "unknown",
+      "description": "",
+      "file": "roster.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/roster/mapped",
+      "function": "unknown",
+      "description": "",
+      "file": "roster.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/roster/players",
+      "function": "unknown",
+      "description": "",
+      "file": "roster.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/roster/status",
+      "function": "get_roster_status",
+      "description": "ROSTER STATUS SUMMARY\n    =====================\n    Returns counts and health metrics for all three roster types.\n    \n    Useful for:\n    - Dashboard overview\n    - System health monitoring\n    - Cov",
+      "file": "roster.py"
+    },
+    {
+      "method": "POST",
+      "path": "/api/sync-lakers-test",
+      "function": "sync_lakers_test",
+      "description": "Test Lakers roster sync for season 2025 using BallDontLie",
+      "file": "admin.py"
+    },
+    {
+      "method": "POST",
+      "path": "/api/sync-rosters",
+      "function": "sync_rosters",
+      "description": "Sync NBA rosters for all 30 teams\n    This creates a global player database for fast lookups",
+      "file": "admin.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/todays-games",
+      "function": "get_todays_games",
+      "description": "Get today's NBA games from BallDontLie",
+      "file": "admin.py"
+    },
+    {
+      "method": "POST",
+      "path": "/api/trigger-daily-sync",
+      "function": "trigger_daily_sync",
+      "description": "Manually trigger the autonomous daily sync",
+      "file": "admin.py"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/adaptive-sync/start",
+      "function": "start_adaptive_sync",
+      "description": "Start the adaptive sync engine (if stopped).",
+      "file": "adaptive_sync.py"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/adaptive-sync/stop",
+      "function": "stop_adaptive_sync",
+      "description": "Stop the adaptive sync engine.",
+      "file": "adaptive_sync.py"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/ai-context/evaluate/{player_name}",
+      "function": "evaluate_player_context",
+      "description": "Evaluate and update context for a single player.",
+      "file": "ai_context.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/ai-context/player/{player_name}",
+      "function": "get_player_context",
+      "description": "Get AI context data for a specific player.",
+      "file": "ai_context.py"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/ai-context/run",
+      "function": "unknown",
+      "description": "",
+      "file": "ai_context.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/ai-context/status",
+      "function": "get_ai_context_status",
+      "description": "Get status of AI context scores in the master hub.",
+      "file": "ai_context.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/board",
+      "function": "unknown",
+      "description": "",
+      "file": "core_v3.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/board",
+      "function": "get_board",
+      "description": "Get full board data (alias for cached-props)",
+      "file": "board.py"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/board-intel/delta-refresh",
+      "function": "run_delta_refresh",
+      "description": "DELTA REFRESH (Manual Trigger)\n    \n    Updates line and price values for existing players.\n    - New Entry: Triggers one-time Vision AI for new players\n    - Removal: Removes players whose lines are ",
+      "file": "board_intel_v2.py"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/board-intel/delta-sync",
+      "function": "trigger_delta_sync",
+      "description": "Trigger delta sync (only changed data)",
+      "file": "board_intel.py"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/board-intel/early-bird",
+      "function": "run_early_bird_scan",
+      "description": "",
+      "file": "board_intel_v2.py"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/board-intel/primary-sync",
+      "function": "run_primary_sync",
+      "description": "PRIMARY SYNC (Manual Trigger)\n    \n    Runs a full global fetch with Vision AI for all Goblins and Demons.\n    Normally scheduled for 10:30 AM ET.",
+      "file": "board_intel_v2.py"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/board-intel/primary-sync",
+      "function": "trigger_primary_sync",
+      "description": "Trigger full primary sync (Odds API \u2192 MongoDB \u2192 Scoring)",
+      "file": "board_intel.py"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/board-intel/priority-refresh",
+      "function": "trigger_priority_refresh",
+      "description": "Refresh priority picks only",
+      "file": "board_intel.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/board-intel/schedule-intel-check",
+      "function": "get_schedule_intel_check",
+      "description": "Check scheduler status and next sync time",
+      "file": "board_intel.py"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/board-intel/start-scheduler",
+      "function": "start_board_intel_scheduler",
+      "description": "START AUTOMATED SCHEDULER\n    \n    Starts background tasks for:\n    - Primary Sync at 10:30 AM ET\n    - Delta Refreshes at 1:45 PM, 4:00 PM, 5:45 PM, 7:00 PM ET\n    - Live Ticker handover every 60 sec",
+      "file": "board_intel_v2.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/board-intel/status",
+      "function": "get_board_intel_status",
+      "description": "",
+      "file": "board_intel_v2.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/board-intel/status",
+      "function": "get_board_intel_status",
+      "description": "Get board intel sync status",
+      "file": "board_intel.py"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/board-intel/stop-scheduler",
+      "function": "stop_board_intel_scheduler",
+      "description": "Stop the automated scheduler.",
+      "file": "board_intel_v2.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/breaking-news",
+      "function": "get_breaking_news",
+      "description": "Get breaking news alerts from Live Scores Engine.\n    \n    Returns recent injury reports, lineup changes, and game updates\n    that may affect player props.\n    \n    Args:\n    - limit: Maximum number ",
+      "file": "scheduler.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/breaking-news",
+      "function": "get_breaking_news",
+      "description": "Get breaking news affecting player props",
+      "file": "intel.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/cached-player/{player_name}",
+      "function": "get_cached_player",
+      "description": "Get cached data for a specific player",
+      "file": "board.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/cached-props",
+      "function": "get_cached_props",
+      "description": "Get cached player board with all props",
+      "file": "board.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/cached-props",
+      "function": "get_cached_props",
+      "description": "THE PRIMARY ENDPOINT - Reads ONLY from MongoDB.\n    NO Odds API calls. Zero credit usage.\n    \n    Returns the full cached board with:\n    - All players grouped by props (with locked status marked)\n  ",
+      "file": "cached_data.py"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/calculate-payout",
+      "function": "calculate_payout",
+      "description": "",
+      "file": "payouts.py"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/check-locks",
+      "function": "manual_check_locks",
+      "description": "MANUAL LOCK CHECK - Trigger immediate lock check.\n    \n    Forces an immediate check for games that should be locked.\n    Normally runs automatically every 60 seconds.",
+      "file": "game_lock.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/demons",
+      "function": "unknown",
+      "description": "",
+      "file": "core_v3.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/demons",
+      "function": "get_demons",
+      "description": "Get all demon picks (deprecated - use war-zone)",
+      "file": "picks.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/enrichment-status",
+      "function": "get_enrichment_status",
+      "description": "Check the status of board intelligence enrichment cache.\n    \n    Returns:\n        - Total enriched players count\n        - Last enrichment timestamp\n        - Players per board (Safe Haven, Front Lin",
+      "file": "cached_data.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/ferrari/all",
+      "function": "unknown",
+      "description": "",
+      "file": "ferrari_tiers.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/ferrari/discarded",
+      "function": "unknown",
+      "description": "",
+      "file": "ferrari_tiers.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/ferrari/front-lines",
+      "function": "unknown",
+      "description": "",
+      "file": "ferrari_tiers.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/ferrari/oracle-apex",
+      "function": "unknown",
+      "description": "",
+      "file": "ferrari_tiers.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/ferrari/parlays",
+      "function": "unknown",
+      "description": "",
+      "file": "ferrari_tiers.py"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/ferrari/rebuild",
+      "function": "rebuild_ferrari_tiers",
+      "description": "",
+      "file": "ferrari_tiers.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/ferrari/refs",
+      "function": "get_todays_refs",
+      "description": "Get today's referee assignments with whistle classifications.",
+      "file": "ferrari_tiers.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/ferrari/safe-haven",
+      "function": "unknown",
+      "description": "",
+      "file": "ferrari_tiers.py"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/ferrari/sync-refs",
+      "function": "sync_referee_data",
+      "description": "Manually sync referee assignments and stats.\n    \n    Fetches:\n    - Daily assignments from official.nba.com\n    - Referee O/U and PPG stats from Covers.com\n    \n    Returns whistle classifications fo",
+      "file": "ferrari_tiers.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/ferrari/war-zone",
+      "function": "unknown",
+      "description": "",
+      "file": "ferrari_tiers.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/front-lines",
+      "function": "unknown",
+      "description": "",
+      "file": "tiers.py"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/generate-intel-briefings",
+      "function": "generate_intel_briefings",
+      "description": "",
+      "file": "intel_sync.py"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/generate-intel-briefings",
+      "function": "generate_intel_briefings",
+      "description": "Generate AI briefings for all players",
+      "file": "intel.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/goblin-recon",
+      "function": "get_goblin_recon",
+      "description": "GOBLIN RECON - Scouted parlay combinations\n    \n    Returns pre-built parlay suggestions based on:\n    - High-correlation player pairs\n    - Optimal risk/reward ratios\n    - Team stacking opportunitie",
+      "file": "tiers.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/goblin-recon",
+      "function": "get_goblin_recon",
+      "description": "Get pre-built parlay tickets for Safe Haven",
+      "file": "parlays.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/goblin-vault",
+      "function": "unknown",
+      "description": "",
+      "file": "tiers.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/goblin-vault-live",
+      "function": "unknown",
+      "description": "",
+      "file": "tiers.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/goblins",
+      "function": "unknown",
+      "description": "",
+      "file": "core_v3.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/goblins",
+      "function": "get_goblins",
+      "description": "Get all goblin picks (deprecated - use goblin-vault)",
+      "file": "picks.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/hydrated-board",
+      "function": "get_hydrated_board",
+      "description": "Get hydrated board with all data merged",
+      "file": "board.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/hydrated-board",
+      "function": "get_hydrated_board",
+      "description": "DEPRECATED - Use /api/v3/cached-props instead.\n    Redirects to cached board for backward compatibility.",
+      "file": "cached_data.py"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/init-database",
+      "function": "init_database",
+      "description": "Initialize the database with all required data.\n    \n    This should be called after deploying to a new environment.\n    It will:\n    1. Sync master roster from BallDontLie\n    2. Sync game logs for h",
+      "file": "scheduler.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/injuries",
+      "function": "get_injuries",
+      "description": "Get current NBA injury reports.\n    \n    Returns list of injured players with status and severity.",
+      "file": "scheduler.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/injuries",
+      "function": "get_all_injuries",
+      "description": "Get all current NBA injuries grouped by severity.\n    \n    Returns:\n    - high_risk: Out, Doubtful players\n    - medium_risk: Questionable, Day-To-Day, GTD players\n    - low_risk: Probable players",
+      "file": "injuries.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/injuries/alerts",
+      "function": "get_injury_alerts",
+      "description": "Get injury alerts formatted for the dashboard board.\n    Returns a dict mapping player_name -> injury_info for quick lookup.\n    Used by frontend to display injury badges on player cards.",
+      "file": "injuries.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/injuries/alerts",
+      "function": "get_injury_alerts",
+      "description": "Get injury alerts",
+      "file": "intel.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/injuries/player/{player_name}",
+      "function": "get_player_injury",
+      "description": "Get injury status for a specific player.",
+      "file": "injuries.py"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/injuries/sync",
+      "function": "sync_injuries",
+      "description": "INJURY SYNC - Fetch latest injury data from ESPN.\n    \n    Updates:\n    - dg_injuries collection with current injury statuses\n    - Usage ripple calculations for teammates of injured stars\n    - Break",
+      "file": "injuries.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/injuries/team/{team_abbr}",
+      "function": "get_team_injuries",
+      "description": "Get all injuries for a specific team.",
+      "file": "injuries.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/intel-briefing/{player_name}",
+      "function": "unknown",
+      "description": "",
+      "file": "intel_sync.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/intel-briefing/{player_name}",
+      "function": "get_intel_briefing",
+      "description": "Get AI briefing for a specific player",
+      "file": "intel.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/intel-freshness",
+      "function": "get_intel_with_freshness",
+      "description": "",
+      "file": "adaptive_sync.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/live-lines",
+      "function": "get_live_lines",
+      "description": "Get DYNAMIC PULSE data (60s TTL)\n    Contains ONLY: Live betting lines (price, point, demon/goblin tags)\n    \n    Use this to hydrate cards with live data after initial render\n    Lightweight endpoint",
+      "file": "cached_data.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/live-scores",
+      "function": "get_live_scores",
+      "description": "Get live NBA scores from The Odds API.\n    \n    Args:\n        refresh: Force refresh from API (otherwise uses cache)\n    \n    Returns:\n        - games: List of games with scores and status\n        - l",
+      "file": "live_scores.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/live-scores",
+      "function": "get_live_scores",
+      "description": "Get live game scores",
+      "file": "intel.py"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/live-scores/refresh",
+      "function": "refresh_live_scores",
+      "description": "Force refresh live scores from The Odds API.",
+      "file": "live_scores.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/live-ticker",
+      "function": "get_live_ticker",
+      "description": "LIVE TICKER - Games that have started\n    \n    Returns games that have been moved from the betting board to the live ticker.\n    Updated every 60 seconds when games start.",
+      "file": "board_intel_v2.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/lock-status",
+      "function": "get_lock_status",
+      "description": "GAME LOCK STATUS - Dashboard overview of active/locked games.\n    \n    Returns:\n    - active_games: Number of games still open for betting\n    - locked_games: Number of games that have started (remove",
+      "file": "game_lock.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/locked-games",
+      "function": "get_locked_games",
+      "description": "LOCKED GAMES - Games that have started and are in progress.\n    \n    Use for Live Score Ticker integration - these games have been\n    removed from the betting board but can be shown in real-time.",
+      "file": "game_lock.py"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/master-hub/add-badge/{player_name}",
+      "function": "add_manual_badge",
+      "description": "Manually add a badge to a player.\n    \n    Useful for news-based badges like 'distraction', 'milestone', 'legal_noise'.\n    \n    Args:\n        player_name: Player's display name\n        badge_key: Bad",
+      "file": "master_hub.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/master-hub/bdl-sample/{player_name}",
+      "function": "get_bdl_sample",
+      "description": "Get sample BDL data for a player (for verification).\n    \n    Returns the complete baseline_stats object as stored in nba_master_hub_2026.\n    Shows exactly what BDL API fields are available.",
+      "file": "master_hub.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/master-hub/career-stats/{player_name}",
+      "function": "get_player_career_stats",
+      "description": "Get player badges from BDL Advanced Stats.\n    \n    MIGRATED: Now returns performance badges based on BDL advanced stats\n    instead of career totals from stats.nba.com.\n    \n    Returns badges like: ",
+      "file": "master_hub.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/master-hub/contract-year-players",
+      "function": "get_contract_year_players",
+      "description": "Get list of all players in contract years.\n    \n    Returns players who are UFAs, RFAs, or have player options expiring.",
+      "file": "master_hub.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/master-hub/contract/{player_name}",
+      "function": "get_player_contract",
+      "description": "Get contract info for a specific player.\n    \n    Returns contract year status and details if player is in a contract year.",
+      "file": "master_hub.py"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/master-hub/enrich-all-nba-stats",
+      "function": "enrich_all_players_nba_stats",
+      "description": "Batch enrich players with NBA.com L5/L10 stats.\n    \n    Finds players that have nba_id but missing l5_avg in baseline_stats,\n    fetches their L5/L10 from NBA.com, and updates their records.\n    \n   ",
+      "file": "master_hub.py"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/master-hub/enrich-game-values",
+      "function": "enrich_game_values",
+      "description": "Batch enrich players with l10_values from BDL game logs.\n    \n    This is CRITICAL for hit rate calculations. Without l10_values,\n    hit rates cannot be calculated per betting line.\n    \n    Args:\n  ",
+      "file": "master_hub.py"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/master-hub/enrich-nba-stats/{bdl_id}",
+      "function": "enrich_player_nba_stats",
+      "description": "Enrich a single player with official NBA.com L5/L10 stats.\n    \n    Uses the player's nba_id (stored in master hub) to fetch pre-calculated\n    last N games averages from NBA.com's playerdashboardbyla",
+      "file": "master_hub.py"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/master-hub/enrich-player-game-values/{bdl_id}",
+      "function": "enrich_single_player_game_values",
+      "description": "Enrich a single player with l10_values from BDL game logs.\n    \n    Args:\n        bdl_id: BallDontLie player ID",
+      "file": "master_hub.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/master-hub/nba-stats/{bdl_id}",
+      "function": "get_nba_last_n_stats",
+      "description": "Fetch L5/L10/L15/L20 stats from NBA.com for a player.\n    \n    Does NOT update the database - just fetches and returns the stats.\n    Use /enrich-nba-stats/{bdl_id} to persist the data.\n    \n    Args:",
+      "file": "master_hub.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/master-hub/player/name/{display_name:path}",
+      "function": "get_player_by_name",
+      "description": "Fetch player by display name with FRESH baseline_stats from bdl_game_logs (SSOT).",
+      "file": "master_hub.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/master-hub/player/{player_id}",
+      "function": "get_player_intel",
+      "description": "Fetch player intel from Master Hub by bdl_id.\n    \n    Args:\n        player_id: Player's bdl_id (integer) - STRICTLY NUMBER BASED\n        \n    Returns:\n        Complete player object with FRESH baseli",
+      "file": "master_hub.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/master-hub/search",
+      "function": "search_hub_players",
+      "description": "Search players in Master Hub.",
+      "file": "master_hub.py"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/master-hub/start-scheduler",
+      "function": "start_hub_scheduler",
+      "description": "Start the 4:00 AM ET daily sync scheduler.",
+      "file": "master_hub.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/master-hub/stats",
+      "function": "get_hub_statistics",
+      "description": "Get Master Hub statistics.",
+      "file": "master_hub.py"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/master-hub/sync",
+      "function": "trigger_hub_sync",
+      "description": "Manually trigger Master Hub daily sync using BDL.\n    Normally runs at 4:00 AM ET automatically.",
+      "file": "master_hub.py"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/master-hub/sync-badges",
+      "function": "sync_context_badges",
+      "description": "Sync context badges for all players with active props.\n    \n    Computes badges based on:\n    - Home/Away game (home_cookin)\n    - Travel distance (jet_lag)\n    - Former team matchups (revenge)\n    - ",
+      "file": "master_hub.py"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/master-hub/sync-bdl-all",
+      "function": "trigger_bdl_full_sync",
+      "description": "",
+      "file": "master_hub.py"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/master-hub/sync-bdl-player/{player_name}",
+      "function": "sync_single_player_bdl",
+      "description": "Sync BDL data for a single player by name.\n    \n    Searches BDL for the player and syncs all available data.\n    Uses normalized name matching (Jr, Sr, III suffixes handled).",
+      "file": "master_hub.py"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/master-hub/sync-bdl-prizepicks",
+      "function": "trigger_bdl_prizepicks_sync",
+      "description": "DEPRECATED - Use /sync-bdl-all instead.\n    \n    This endpoint is kept for backwards compatibility but now calls\n    sync_all_active_players() which syncs ALL active NBA players.",
+      "file": "master_hub.py"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/master-hub/sync-career-stats",
+      "function": "sync_career_stats",
+      "description": "",
+      "file": "master_hub.py"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/master-hub/sync-contracts",
+      "function": "sync_contract_data_endpoint",
+      "description": "Sync contract data from Spotrac.\n    \n    Scrapes Spotrac.com for contract year players (UFAs, RFAs, player options).\n    Results are cached in MongoDB with 24h TTL.\n    \n    Used to populate the pay_",
+      "file": "master_hub.py"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/master-hub/sync-player-logs/{player_name}",
+      "function": "sync_player_game_logs",
+      "description": "Sync game logs for a single player using BDL API.",
+      "file": "master_hub.py"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/master-hub/sync-roster",
+      "function": "sync_roster_from_board",
+      "description": "ROSTER SYNC: Update team and season stats for all active players.\n    \n    This endpoint:\n    1. Gets all unique players from the cached board\n    2. Fetches their current team and season stats from B",
+      "file": "master_hub.py"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/master-hub/sync-roster-player/{player_name}",
+      "function": "sync_roster_single_player",
+      "description": "",
+      "file": "master_hub.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/master-roster-status",
+      "function": "get_master_roster_status",
+      "description": "Get the status of the master roster collection.\n    \n    Returns:\n    - total_players: Total players in the database\n    - active_players: Players marked as active\n    - players_with_photos: Players w",
+      "file": "roster_sync.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/momentum/modifier/{opponent}/{stat_type}",
+      "function": "unknown",
+      "description": "",
+      "file": "momentum.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/momentum/rankings/{stat_type}",
+      "function": "unknown",
+      "description": "",
+      "file": "momentum.py"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/momentum/rebuild",
+      "function": "rebuild_momentum",
+      "description": "Trigger rebuild of momentum rankings.\n    \n    This recalculates Season, L10, L5 rankings for all teams\n    based on opponent game logs.",
+      "file": "momentum.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/momentum/status",
+      "function": "get_momentum_status",
+      "description": "Get Defensive Momentum service status.\n    \n    Returns cache state, weights, and modifier thresholds.",
+      "file": "momentum.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/momentum/test-detroit",
+      "function": "test_detroit_momentum",
+      "description": "Test endpoint to verify Detroit Pistons momentum calculation.",
+      "file": "momentum.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/momentum/{team}/{stat_type}",
+      "function": "unknown",
+      "description": "",
+      "file": "momentum.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/most-popular-bets",
+      "function": "get_v3_most_popular_bets",
+      "description": "Get the most popular bets across all players.\n    Used for the live ticker on the dashboard.",
+      "file": "core_v3.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/most-popular-bets",
+      "function": "get_most_popular_bets",
+      "description": "Get Most Popular Bets - Live ticker",
+      "file": "picks.py"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/odds-mapper/lookup-batch",
+      "function": "batch_lookup_by_odds_names",
+      "description": "Batch lookup multiple players by their Odds API names.\n    \n    Args:\n        odds_api_names: List of player names from Odds API\n    \n    Returns:\n        Dict mapping each odds_api_name to player_dat",
+      "file": "odds_mapper.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/odds-mapper/lookup/{odds_api_name}",
+      "function": "lookup_player_by_odds_name",
+      "description": "",
+      "file": "odds_mapper.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/odds-mapper/player-id/{player_id}",
+      "function": "get_odds_name_from_player_id",
+      "description": "Reverse lookup - get Odds API name from player_id.\n    \n    Args:\n        player_id: The player_id from nba_master_hub_2026\n    \n    Returns:\n        The odds_api_name string for this player",
+      "file": "odds_mapper.py"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/odds-mapper/rebuild",
+      "function": "rebuild_odds_mapper",
+      "description": "REBUILD the Odds API Mapper from nba_master_hub_2026.\n    \n    This regenerates the odds_api_mapping_master collection by:\n    1. Reading all players from nba_master_hub_2026\n    2. Extracting odds_ap",
+      "file": "odds_mapper.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/odds-mapper/stats",
+      "function": "get_odds_mapper_stats",
+      "description": "Get Odds API Mapper statistics.\n    \n    Returns:\n    - total_mappings: Number of players in mapping\n    - in_memory_count: Mappings loaded in memory\n    - is_loaded: Whether mapper is ready\n    - by_",
+      "file": "odds_mapper.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/parlay-builder",
+      "function": "get_parlay_builder_data",
+      "description": "Get all data needed for the parlay builder interface.\n    \n    Returns:\n    - All available players with props\n    - Demon and goblin tags\n    - Correlation data for same-game parlays\n    - DFS compli",
+      "file": "tiers.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/parlay-builder",
+      "function": "get_parlay_builder",
+      "description": "Get pre-built parlay tickets for War Zone",
+      "file": "parlays.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/payout-estimate",
+      "function": "unknown",
+      "description": "",
+      "file": "payouts.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/payout-table",
+      "function": "get_payout_table",
+      "description": "Get the full payout reference table.\n    \n    Shows base multipliers and example payouts for different compositions.",
+      "file": "payouts.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/photo-stats",
+      "function": "get_photo_stats",
+      "description": "Get statistics about cached photos.",
+      "file": "board.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/player-insights/{player_name}",
+      "function": "get_player_insights",
+      "description": "Get advanced analytics insights for a specific player.\n    \n    Returns:\n    - schedule_density_factor\n    - pace_adjustment_factor\n    - usage_bump_percent\n    - volatility_score\n    - insight_summar",
+      "file": "roster_sync.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/player-with-badges/{player_name}",
+      "function": "get_cached_player",
+      "description": "Get cached data for a single player.\n    No API calls - reads from MongoDB cached_board.\n    \n    Returns:\n    - Player metadata\n    - All props with lines\n    - Hit rates\n    - AI Vision summary\n    ",
+      "file": "cached_data.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/player/{player_name}",
+      "function": "get_v3_player",
+      "description": "Get detailed data for a single player.\n    Includes all props, hit rates, and AI insights.",
+      "file": "core_v3.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/player/{player_name}",
+      "function": "get_player",
+      "description": "Get detailed data for a specific player",
+      "file": "board.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/player/{player_name}/photo",
+      "function": "get_player_photo",
+      "description": "Get a specific player's headshot URL.",
+      "file": "roster_sync.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/players",
+      "function": "unknown",
+      "description": "",
+      "file": "core_v3.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/players",
+      "function": "get_players",
+      "description": "Get all players with props",
+      "file": "board.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/popular-bets",
+      "function": "get_popular_bets",
+      "description": "Alias for most-popular-bets",
+      "file": "picks.py"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/priority-refresh",
+      "function": "trigger_priority_refresh",
+      "description": "",
+      "file": "adaptive_sync.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/raw-player-games/{player_name}",
+      "function": "get_raw_player_games",
+      "description": "Get raw game logs for a player - FULL DETAIL.\n    \n    This returns the complete raw API response for deep inspection.\n    Use this to debug data issues.",
+      "file": "validation.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/raw-validation-table",
+      "function": "get_raw_validation_table",
+      "description": "Get the full validation table for the UI.\n    \n    Returns all players that have been fetched for validation,\n    with their RAW stats for manual ESPN comparison.",
+      "file": "validation.py"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/raw-validation/batch",
+      "function": "batch_raw_validation",
+      "description": "",
+      "file": "validation.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/raw-validation/{player_name}",
+      "function": "get_raw_validation_for_player",
+      "description": "",
+      "file": "validation.py"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/refresh-all-photos",
+      "function": "refresh_all_photos",
+      "description": "MASTER PHOTO REFRESH - Updates photo URLs across ALL collections.\n    \n    Refreshes photos in:\n    - cached_board (main player board)\n    - goblin_recon (parlay picks)\n    - demon_radar (demon picks)",
+      "file": "roster_sync.py"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/refresh-board-photos",
+      "function": "refresh_board_photos",
+      "description": "Refresh photo URLs in cached_board from master_roster with fuzzy matching.\n    \n    Use this after sync-active-players to fix any name mismatches between\n    Odds API player names and BDL roster names",
+      "file": "roster_sync.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/roster/players",
+      "function": "get_all_players_roster",
+      "description": "DEPRECATED: Use /api/roster/full-active instead.\n    \n    This endpoint returns from dg_master_roster.\n    For the canonical full NBA roster, use /api/roster/full-active which\n    queries from nba_mas",
+      "file": "roster_sync.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/safe-haven",
+      "function": "unknown",
+      "description": "",
+      "file": "tiers.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/scheduler-status",
+      "function": "get_scheduler_status",
+      "description": "Get the current status of all scheduled jobs.\n    \n    Returns:\n    - running: Whether scheduler is active\n    - jobs: List of all scheduled jobs with next run times\n    - timezone: Scheduler timezone",
+      "file": "scheduler.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/scouting-projections",
+      "function": "get_scouting_projections",
+      "description": "",
+      "file": "board_intel_v2.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/scouting-projections",
+      "function": "get_scouting_projections",
+      "description": "Get scouting projections (early bird mode)",
+      "file": "intel.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/search",
+      "function": "unknown",
+      "description": "",
+      "file": "core_v3.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/search",
+      "function": "unknown",
+      "description": "",
+      "file": "board.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/sidecar/analyze/{player_name}",
+      "function": "unknown",
+      "description": "",
+      "file": "cached_data.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/sidecar/status",
+      "function": "get_sidecar_status",
+      "description": "Get the current status of sidecar modules (Hook Protector & Bait Detector).",
+      "file": "cached_data.py"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/sidecar/toggle",
+      "function": "unknown",
+      "description": "",
+      "file": "cached_data.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/social-signal/{player_name}",
+      "function": "get_player_social_signal",
+      "description": "Get social signals for a specific player.\n    \n    Returns all active signals including:\n    - Revenge games\n    - Milestone chasing\n    - Recent news sentiment\n    - Hot/cold streak indicators",
+      "file": "social.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/social-signals",
+      "function": "get_social_signals",
+      "description": "",
+      "file": "social.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/social-signals",
+      "function": "get_social_signals",
+      "description": "Get social signals for all players",
+      "file": "intel.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/stale-intel-check",
+      "function": "check_for_stale_intel",
+      "description": "",
+      "file": "adaptive_sync.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/static-shell",
+      "function": "get_static_shell",
+      "description": "Get static shell data (roster without live lines)",
+      "file": "board.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/static-shell",
+      "function": "get_static_shell",
+      "description": "Get STATIC SHELL data (24h TTL)\n    Contains: Player metadata, teams, positions, historical stats\n    Does NOT contain: Live betting lines\n    \n    Use this for initial page load - instant render of p",
+      "file": "cached_data.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/status",
+      "function": "get_v3_status",
+      "description": "Get current system status including last sync time and counts.",
+      "file": "core_v3.py"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/sync",
+      "function": "trigger_v3_sync",
+      "description": "Manually trigger a data sync from Odds API.\n    Updates cached_board with fresh lines.",
+      "file": "core_v3.py"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/sync-active-players",
+      "function": "sync_active_players",
+      "description": "ACTIVE PLAYER SYNC - Fetches ONLY current NBA players from BDL with headshots.\n    \n    This is the recommended way to populate the player database:\n    - Gets ~530 active NBA players (not 5000+ histo",
+      "file": "roster_sync.py"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/sync-advanced-stats",
+      "function": "sync_advanced_stats",
+      "description": "Manually trigger advanced stats sync from BDL.\n    \n    Fetches for all players in master hub:\n    - PIE (Player Impact Estimate)\n    - Net Rating\n    - Offensive/Defensive Ratings\n    \n    These metr",
+      "file": "scheduler.py"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/sync-baseline-stats",
+      "function": "sync_baseline_stats",
+      "description": "Manually trigger Master Hub baseline stats sync.\n    \n    Updates nba_master_hub_2026 with L5, L10, and season averages\n    for all prop categories (PTS, REB, AST, 3PM, PRA, etc.)\n    \n    This ensure",
+      "file": "scheduler.py"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/sync-bdl",
+      "function": "sync_bdl_comprehensive",
+      "description": "Manually trigger BDL (BallDontLie) comprehensive sync.\n    \n    This syncs:\n    - Player profiles (height, weight, position, draft info)\n    - Season averages (pts, reb, ast, etc.) - OFFICIAL from BDL",
+      "file": "scheduler.py"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/sync-bdl-mapping",
+      "function": "sync_bdl_player_mapping",
+      "description": "Sync all active NBA players from BDL to build complete name-to-ID mapping.\n    \n    This creates/updates the bdl_player_mapping collection which enables\n    efficient ID-based lookups instead of name-",
+      "file": "scheduler.py"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/sync-daily-insights",
+      "function": "sync_daily_insights",
+      "description": "ADVANCED ANALYTICS - Calculate and cache daily insights for all players.\n    \n    Calculates:\n    - Schedule Density Factor (B2B, 3-in-4 fatigue)\n    - Pace Adjustment Factor (matchup tempo)\n    - Usa",
+      "file": "roster_sync.py"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/sync-dvp",
+      "function": "sync_dvp_rankings",
+      "description": "",
+      "file": "scheduler.py"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/sync-full-daily",
+      "function": "sync_full_daily",
+      "description": "Manually trigger the FULL daily sync (same as 4:00 AM scheduled job).\n    \n    This is a comprehensive sync that includes:\n    1. ALL active NBA players from BDL (season averages)\n    2. NBA.com L5/L1",
+      "file": "scheduler.py"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/sync-injuries",
+      "function": "sync_injuries",
+      "description": "Manually trigger injury reports sync from BDL.\n    \n    This fetches current NBA injury reports and:\n    - Stores in bdl_injuries collection\n    - Updates context badges (deep_water) for injured playe",
+      "file": "scheduler.py"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/sync-master-roster",
+      "function": "sync_master_roster",
+      "description": "WEEKLY ROSTER SYNC - Source of Truth for player-to-team mapping.\n    \n    Fetches ALL NBA players from BallDontLie API and stores them in \n    the player_master_roster collection. Should run weekly (S",
+      "file": "roster_sync.py"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/sync-nba-l5l10",
+      "function": "sync_nba_l5l10",
+      "description": "Manually trigger NBA.com L5/L10 batch enrichment.\n    \n    Uses playerdashboardbylastngames endpoint to fetch official\n    pre-calculated L5/L10/L15/L20 stats from NBA.com.\n    \n    This runs automati",
+      "file": "scheduler.py"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/sync-photos",
+      "function": "sync_photos",
+      "description": "Download and store all active player photos as base64 in MongoDB.\n    This is a one-time operation to cache all photos locally.",
+      "file": "board.py"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/sync-player-photos",
+      "function": "sync_player_photos",
+      "description": "PHOTO PIPELINE - Sync headshots for all active players.\n    \n    Sources:\n    1. NBA CDN (official high-res headshots)\n    2. Team logo fallback for missing headshots\n    \n    Updates cached_board and",
+      "file": "roster_sync.py"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/sync-player-stats",
+      "function": "sync_player_stats",
+      "description": "STATS CACHE - Sync player game logs to MongoDB.\n    \n    Fetches stats from:\n    1. BallDontLie API (primary)\n    2. NBA.com API (fallback for missing players)\n    \n    [DEPRECATED] Use BDL game logs ",
+      "file": "roster_sync.py"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/sync-social-signals",
+      "function": "sync_social_signals",
+      "description": "SOCIAL SIGNAL SYNC - Fetch news and sentiment for all players.\n    \n    Analyzes:\n    - Recent news headlines\n    - Revenge game narratives\n    - Contract/extension situations\n    - Milestone chasing ",
+      "file": "social.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/sync-status",
+      "function": "get_adaptive_sync_status",
+      "description": "",
+      "file": "adaptive_sync.py"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/sync-to-mongo",
+      "function": "sync_to_mongo",
+      "description": "",
+      "file": "intel_sync.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/t-minus-games",
+      "function": "get_t_minus_games",
+      "description": "",
+      "file": "game_lock.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/team/{team_abbrev}/roster",
+      "function": "get_team_roster",
+      "description": "Get all players on a specific team with their headshots.",
+      "file": "roster_sync.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/test-badges/{player_name}",
+      "function": "test_badges",
+      "description": "Test endpoint to check badge resolution.",
+      "file": "cached_data.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/trap-graveyard",
+      "function": "unknown",
+      "description": "",
+      "file": "tiers.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/trending",
+      "function": "unknown",
+      "description": "",
+      "file": "core_v3.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/trending",
+      "function": "get_trending",
+      "description": "Get trending players",
+      "file": "board.py"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/trigger-board-enrichment",
+      "function": "unknown",
+      "description": "",
+      "file": "cached_data.py"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/trigger-scheduled-sync",
+      "function": "trigger_scheduled_sync",
+      "description": "",
+      "file": "scheduler.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/vacuum/active",
+      "function": "get_active_vacuums",
+      "description": "Get all currently active usage vacuums for TODAY's games only.\n    \n    Returns:\n        List of active vacuums with injured players and beneficiaries.",
+      "file": "vacuum.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/vacuum/beneficiary/{player_name}",
+      "function": "unknown",
+      "description": "",
+      "file": "vacuum.py"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/vacuum/check",
+      "function": "check_injuries",
+      "description": "Manually trigger an injury check.\n    \n    This fetches the latest NBA injury report and:\n    1. Compares status against cached state\n    2. Triggers vacuum if star (Usage > 25%) is OUT/DOUBTFUL\n    3",
+      "file": "vacuum.py"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/vacuum/clear/{injured_player}",
+      "function": "unknown",
+      "description": "",
+      "file": "vacuum.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/vacuum/live-alerts",
+      "function": "get_live_vacuum_alerts",
+      "description": "",
+      "file": "vacuum.py"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/vacuum/sync-profiles",
+      "function": "sync_star_profiles",
+      "description": "Sync star player usage profiles.\n    \n    This loads/refreshes the star player database with usage rates.\n    Stars are defined as players with Usage > 25%.\n    \n    Returns:\n        Sync result with ",
+      "file": "vacuum.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/vacuum/updates",
+      "function": "get_vacuum_updates",
+      "description": "Get current vacuum state for the Ferrari Engine.\n    \n    This endpoint is polled by the Ferrari Engine to get:\n    - Active usage vacuums (injured star players)\n    - Beneficiary list with modifiers\n",
+      "file": "vacuum.py"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/validate-parlay",
+      "function": "validate_parlay",
+      "description": "",
+      "file": "game_lock.py"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/validate-parlay",
+      "function": "validate_parlay",
+      "description": "Validate a custom parlay against DFS rules",
+      "file": "parlays.py"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/vision/generate-insight",
+      "function": "generate_vision_insight",
+      "description": "",
+      "file": "vision.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/vision/status",
+      "function": "get_vision_status",
+      "description": "Get Vision AI service status and configuration.",
+      "file": "vision.py"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/vision/trigger-batch",
+      "function": "trigger_vision_batch",
+      "description": "VISION AI BATCH - Generate insights for all eligible players.\n    \n    Filters for cost efficiency:\n    - Only Demons (high payout potential)\n    - Only Goblins (high safety picks)  \n    - Only High V",
+      "file": "vision.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/war-zone",
+      "function": "unknown",
+      "description": "",
+      "file": "tiers.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/validate-demon",
+      "function": "unknown",
+      "description": "",
+      "file": "legacy.py"
+    }
+  ],
+  "summary": {
+    "total_routes": 270,
+    "by_method": {
+      "GET": 170,
+      "DELETE": 1,
+      "POST": 99
+    },
+    "by_file": {
+      "legacy.py": 4,
+      "bdl_advanced.py": 8,
+      "historical_odds.py": 5,
+      "pro_model.py": 8,
+      "regression.py": 4,
+      "vegas_killer.py": 10,
+      "auth.py": 2,
+      "admin.py": 13,
+      "command.py": 4,
+      "demon_tracker.py": 12,
+      "headshots.py": 6,
+      "live.py": 3,
+      "image_proxy.py": 1,
+      "qa_testing.py": 2,
+      "roster.py": 5,
+      "adaptive_sync.py": 6,
+      "ai_context.py": 4,
+      "core_v3.py": 10,
+      "board.py": 11,
+      "board_intel_v2.py": 8,
+      "board_intel.py": 5,
+      "scheduler.py": 13,
+      "intel.py": 7,
+      "cached_data.py": 11,
+      "payouts.py": 3,
+      "game_lock.py": 5,
+      "picks.py": 4,
+      "ferrari_tiers.py": 10,
+      "tiers.py": 8,
+      "intel_sync.py": 3,
+      "parlays.py": 3,
+      "injuries.py": 5,
+      "live_scores.py": 2,
+      "master_hub.py": 25,
+      "roster_sync.py": 12,
+      "momentum.py": 6,
+      "odds_mapper.py": 5,
+      "validation.py": 4,
+      "social.py": 3,
+      "vacuum.py": 7,
+      "vision.py": 3
+    }
+  }
+}
