@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>API Traffic Report</title>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0a0a0a;
+            color: #fff;
+            margin: 0;
+            padding: 20px;
+        }
+        .container { max-width: 1400px; margin: 0 auto; }
+        h1 { margin-bottom: 10px; }
+        .subtitle { color: #888; margin-bottom: 30px; }
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+            margin-bottom: 30px;
+        }
+        .stat {
+            padding: 20px;
+            background: #1a1a1a;
+            border-radius: 12px;
+            text-align: center;
+        }
+        .stat-value { font-size: 28px; font-weight: bold; }
+        .stat-label { font-size: 12px; color: #666; margin-top: 5px; }
+        .high { color: #22c55e; }
+        .medium { color: #eab308; }
+        .low { color: #f97316; }
+        .unused { color: #ef4444; }
+        .buttons {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 30px;
+            flex-wrap: wrap;
+        }
+        .btn {
+            padding: 14px 28px;
+            border-radius: 8px;
+            font-weight: bold;
+            font-size: 16px;
+            cursor: pointer;
+            border: none;
+            color: white;
+        }
+        .btn-blue { background: linear-gradient(135deg, #3b82f6, #2563eb); }
+        .btn-green { background: linear-gradient(135deg, #22c55e, #16a34a); }
+        .btn-red { background: linear-gradient(135deg, #ef4444, #dc2626); }
+        .btn:hover { opacity: 0.9; transform: translateY(-1px); }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background: #1a1a1a;
+            border-radius: 12px;
+            overflow: hidden;
+        }
+        th, td {
+            padding: 12px 16px;
+            text-align: left;
+            border-bottom: 1px solid #333;
+        }
+        th { background: #222; color: #888; font-size: 12px; text-transform: uppercase; }
+        tr:hover { background: #222; }
+        .method {
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: bold;
+        }
+        .method-get { background: #22c55e20; color: #22c55e; }
+        .method-post { background: #3b82f620; color: #3b82f6; }
+        .method-delete { background: #ef444420; color: #ef4444; }
+        .status-badge {
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: bold;
+        }
+        .status-high { background: #22c55e20; color: #22c55e; }
+        .status-medium { background: #eab30820; color: #eab308; }
+        .status-low { background: #f9731620; color: #f97316; }
+        .status-unused { background: #ef444420; color: #ef4444; }
+        .rec-keep { color: #22c55e; }
+        .rec-review { color: #eab308; }
+        .rec-delete { color: #ef4444; }
+        .filter-row {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+        .filter-btn {
+            padding: 8px 16px;
+            border-radius: 6px;
+            border: 1px solid #333;
+            background: #1a1a1a;
+            color: #fff;
+            cursor: pointer;
+            font-size: 13px;
+        }
+        .filter-btn.active { background: #3b82f6; border-color: #3b82f6; }
+        .calls { font-family: monospace; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>PropVision API Traffic Report</h1>
+        <p class="subtitle">Last 24 hours • Generated <span id="generated"></span></p>
+        
+        <div class="stats">
+            <div class="stat">
+                <div class="stat-value" id="total">-</div>
+                <div class="stat-label">Total Endpoints</div>
+            </div>
+            <div class="stat">
+                <div class="stat-value high" id="high">-</div>
+                <div class="stat-label">High Traffic (>1000)</div>
+            </div>
+            <div class="stat">
+                <div class="stat-value medium" id="medium">-</div>
+                <div class="stat-label">Medium (100-999)</div>
+            </div>
+            <div class="stat">
+                <div class="stat-value low" id="low">-</div>
+                <div class="stat-label">Low (1-99)</div>
+            </div>
+            <div class="stat">
+                <div class="stat-value unused" id="unused">-</div>
+                <div class="stat-label">UNUSED (0 calls)</div>
+            </div>
+            <div class="stat">
+                <div class="stat-value" id="totalCalls">-</div>
+                <div class="stat-label">Total API Calls</div>
+            </div>
+        </div>
+        
+        <div class="buttons">
+            <button class="btn btn-blue" onclick="downloadJSON()">Download JSON</button>
+            <button class="btn btn-green" onclick="downloadCSV()">Download CSV</button>
+            <button class="btn btn-red" onclick="downloadUnused()">Download UNUSED Only</button>
+        </div>
+        
+        <div class="filter-row">
+            <button class="filter-btn active" onclick="filterTable('all')">All</button>
+            <button class="filter-btn" onclick="filterTable('HIGH')">High Traffic</button>
+            <button class="filter-btn" onclick="filterTable('MEDIUM')">Medium</button>
+            <button class="filter-btn" onclick="filterTable('LOW')">Low</button>
+            <button class="filter-btn" onclick="filterTable('UNUSED')">Unused</button>
+        </div>
+        
+        <table id="endpoints-table">
+            <thead>
+                <tr>
+                    <th>Method</th>
+                    <th>Path</th>
+                    <th>File</th>
+                    <th>Calls (24h)</th>
+                    <th>Status</th>
+                    <th>Recommendation</th>
+                </tr>
+            </thead>
+            <tbody id="table-body"></tbody>
+        </table>
+    </div>
+    
+    <script>
+        let reportData = null;
+        
+        async function loadData() {
+            const response = await fetch('/api_traffic_report.json');
+            reportData = await response.json();
+            
+            document.getElementById('generated').textContent = new Date(reportData.generated_at).toLocaleString();
+            document.getElementById('total').textContent = reportData.summary.total_endpoints;
+            document.getElementById('high').textContent = reportData.summary.high_traffic;
+            document.getElementById('medium').textContent = reportData.summary.medium_traffic;
+            document.getElementById('low').textContent = reportData.summary.low_traffic;
+            document.getElementById('unused').textContent = reportData.summary.zero_traffic;
+            document.getElementById('totalCalls').textContent = reportData.summary.total_api_calls.toLocaleString();
+            
+            renderTable(reportData.endpoints);
+        }
+        
+        function renderTable(endpoints) {
+            const tbody = document.getElementById('table-body');
+            tbody.innerHTML = endpoints.map(e => `
+                <tr data-status="${e.status}">
+                    <td><span class="method method-${e.method.toLowerCase()}">${e.method}</span></td>
+                    <td><code>${e.path}</code></td>
+                    <td style="color:#888">${e.file}</td>
+                    <td class="calls">${e.calls_24h.toLocaleString()}</td>
+                    <td><span class="status-badge status-${e.status.toLowerCase()}">${e.status}</span></td>
+                    <td class="rec-${e.recommendation.toLowerCase()}">${e.recommendation}</td>
+                </tr>
+            `).join('');
+        }
+        
+        function filterTable(status) {
+            document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+            event.target.classList.add('active');
+            
+            if (status === 'all') {
+                renderTable(reportData.endpoints);
+            } else {
+                renderTable(reportData.endpoints.filter(e => e.status === status));
+            }
+        }
+        
+        async function downloadJSON() {
+            const blob = new Blob([JSON.stringify(reportData, null, 2)], { type: 'application/json' });
+            downloadBlob(blob, 'propvision_api_traffic.json');
+        }
+        
+        async function downloadCSV() {
+            let csv = 'Method,Path,File,Calls_24h,Status,Recommendation\n';
+            for (const e of reportData.endpoints) {
+                csv += `${e.method},"${e.path}","${e.file}",${e.calls_24h},${e.status},${e.recommendation}\n`;
+            }
+            const blob = new Blob([csv], { type: 'text/csv' });
+            downloadBlob(blob, 'propvision_api_traffic.csv');
+        }
+        
+        async function downloadUnused() {
+            const unused = reportData.endpoints.filter(e => e.status === 'UNUSED');
+            let csv = 'Method,Path,File,Recommendation\n';
+            for (const e of unused) {
+                csv += `${e.method},"${e.path}","${e.file}",DELETE\n`;
+            }
+            const blob = new Blob([csv], { type: 'text/csv' });
+            downloadBlob(blob, 'propvision_unused_endpoints.csv');
+        }
+        
+        function downloadBlob(blob, filename) {
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            a.remove();
+        }
+        
+        loadData();
+    </script>
+</body>
+</html>

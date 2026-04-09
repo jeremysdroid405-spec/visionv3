@@ -1,0 +1,2174 @@
+{
+  "generated_at": "2026-04-09T21:50:07.959757",
+  "description": "PropVision API Traffic Report - Last 24 Hours",
+  "summary": {
+    "total_endpoints": 270,
+    "high_traffic": 32,
+    "medium_traffic": 13,
+    "low_traffic": 127,
+    "zero_traffic": 98,
+    "total_api_calls": 218718
+  },
+  "endpoints": [
+    {
+      "method": "GET",
+      "path": "/api/",
+      "file": "legacy.py",
+      "calls_24h": 105748,
+      "status": "HIGH",
+      "recommendation": "KEEP"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/cached-props",
+      "file": "board.py",
+      "calls_24h": 14069,
+      "status": "HIGH",
+      "recommendation": "KEEP"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/cached-props",
+      "file": "cached_data.py",
+      "calls_24h": 14069,
+      "status": "HIGH",
+      "recommendation": "KEEP"
+    },
+    {
+      "method": "GET",
+      "path": "/api/live/scores",
+      "file": "live.py",
+      "calls_24h": 10132,
+      "status": "HIGH",
+      "recommendation": "KEEP"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/goblin-vault",
+      "file": "tiers.py",
+      "calls_24h": 9199,
+      "status": "HIGH",
+      "recommendation": "KEEP"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/most-popular-bets",
+      "file": "core_v3.py",
+      "calls_24h": 9068,
+      "status": "HIGH",
+      "recommendation": "KEEP"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/most-popular-bets",
+      "file": "picks.py",
+      "calls_24h": 9068,
+      "status": "HIGH",
+      "recommendation": "KEEP"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/war-zone",
+      "file": "tiers.py",
+      "calls_24h": 8450,
+      "status": "HIGH",
+      "recommendation": "KEEP"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/front-lines",
+      "file": "tiers.py",
+      "calls_24h": 8005,
+      "status": "HIGH",
+      "recommendation": "KEEP"
+    },
+    {
+      "method": "GET",
+      "path": "/api/live/news",
+      "file": "live.py",
+      "calls_24h": 5622,
+      "status": "HIGH",
+      "recommendation": "KEEP"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/ferrari/war-zone",
+      "file": "ferrari_tiers.py",
+      "calls_24h": 5180,
+      "status": "HIGH",
+      "recommendation": "KEEP"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/ferrari/front-lines",
+      "file": "ferrari_tiers.py",
+      "calls_24h": 5179,
+      "status": "HIGH",
+      "recommendation": "KEEP"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/ferrari/safe-haven",
+      "file": "ferrari_tiers.py",
+      "calls_24h": 5060,
+      "status": "HIGH",
+      "recommendation": "KEEP"
+    },
+    {
+      "method": "GET",
+      "path": "/api/calculate-hit-rate",
+      "file": "legacy.py",
+      "calls_24h": 3574,
+      "status": "HIGH",
+      "recommendation": "KEEP"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/vacuum/live-alerts",
+      "file": "vacuum.py",
+      "calls_24h": 2325,
+      "status": "HIGH",
+      "recommendation": "KEEP"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/status",
+      "file": "core_v3.py",
+      "calls_24h": 1996,
+      "status": "HIGH",
+      "recommendation": "KEEP"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/trap-graveyard",
+      "file": "tiers.py",
+      "calls_24h": 1979,
+      "status": "HIGH",
+      "recommendation": "KEEP"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/popular-bets",
+      "file": "picks.py",
+      "calls_24h": 1750,
+      "status": "HIGH",
+      "recommendation": "KEEP"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/parlay-builder",
+      "file": "tiers.py",
+      "calls_24h": 1541,
+      "status": "HIGH",
+      "recommendation": "KEEP"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/parlay-builder",
+      "file": "parlays.py",
+      "calls_24h": 1541,
+      "status": "HIGH",
+      "recommendation": "KEEP"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/breaking-news",
+      "file": "scheduler.py",
+      "calls_24h": 1487,
+      "status": "HIGH",
+      "recommendation": "KEEP"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/breaking-news",
+      "file": "intel.py",
+      "calls_24h": 1487,
+      "status": "HIGH",
+      "recommendation": "KEEP"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/injuries",
+      "file": "scheduler.py",
+      "calls_24h": 1410,
+      "status": "HIGH",
+      "recommendation": "KEEP"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/injuries",
+      "file": "injuries.py",
+      "calls_24h": 1410,
+      "status": "HIGH",
+      "recommendation": "KEEP"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/injuries/alerts",
+      "file": "injuries.py",
+      "calls_24h": 1410,
+      "status": "HIGH",
+      "recommendation": "KEEP"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/injuries/alerts",
+      "file": "intel.py",
+      "calls_24h": 1410,
+      "status": "HIGH",
+      "recommendation": "KEEP"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/live-scores",
+      "file": "live_scores.py",
+      "calls_24h": 1260,
+      "status": "HIGH",
+      "recommendation": "KEEP"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/live-scores",
+      "file": "intel.py",
+      "calls_24h": 1260,
+      "status": "HIGH",
+      "recommendation": "KEEP"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/social-signals",
+      "file": "social.py",
+      "calls_24h": 1121,
+      "status": "HIGH",
+      "recommendation": "KEEP"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/social-signals",
+      "file": "intel.py",
+      "calls_24h": 1121,
+      "status": "HIGH",
+      "recommendation": "KEEP"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/sync",
+      "file": "core_v3.py",
+      "calls_24h": 1019,
+      "status": "HIGH",
+      "recommendation": "KEEP"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/sync-status",
+      "file": "adaptive_sync.py",
+      "calls_24h": 1019,
+      "status": "HIGH",
+      "recommendation": "KEEP"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/goblin-recon",
+      "file": "tiers.py",
+      "calls_24h": 999,
+      "status": "MEDIUM",
+      "recommendation": "KEEP"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/goblin-recon",
+      "file": "parlays.py",
+      "calls_24h": 999,
+      "status": "MEDIUM",
+      "recommendation": "KEEP"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/t-minus-games",
+      "file": "game_lock.py",
+      "calls_24h": 841,
+      "status": "MEDIUM",
+      "recommendation": "KEEP"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/board-intel/status",
+      "file": "board_intel_v2.py",
+      "calls_24h": 809,
+      "status": "MEDIUM",
+      "recommendation": "KEEP"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/board",
+      "file": "core_v3.py",
+      "calls_24h": 809,
+      "status": "MEDIUM",
+      "recommendation": "KEEP"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/board-intel/status",
+      "file": "board_intel.py",
+      "calls_24h": 809,
+      "status": "MEDIUM",
+      "recommendation": "KEEP"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/board",
+      "file": "board.py",
+      "calls_24h": 809,
+      "status": "MEDIUM",
+      "recommendation": "KEEP"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/scouting-projections",
+      "file": "board_intel_v2.py",
+      "calls_24h": 722,
+      "status": "MEDIUM",
+      "recommendation": "KEEP"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/scouting-projections",
+      "file": "intel.py",
+      "calls_24h": 722,
+      "status": "MEDIUM",
+      "recommendation": "KEEP"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/lock-status",
+      "file": "game_lock.py",
+      "calls_24h": 514,
+      "status": "MEDIUM",
+      "recommendation": "KEEP"
+    },
+    {
+      "method": "GET",
+      "path": "/api/command/search",
+      "file": "command.py",
+      "calls_24h": 463,
+      "status": "MEDIUM",
+      "recommendation": "KEEP"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/live-lines",
+      "file": "cached_data.py",
+      "calls_24h": 310,
+      "status": "MEDIUM",
+      "recommendation": "KEEP"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/ferrari/rebuild",
+      "file": "ferrari_tiers.py",
+      "calls_24h": 157,
+      "status": "MEDIUM",
+      "recommendation": "KEEP"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/static-shell",
+      "file": "board.py",
+      "calls_24h": 86,
+      "status": "LOW",
+      "recommendation": "REVIEW"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/static-shell",
+      "file": "cached_data.py",
+      "calls_24h": 86,
+      "status": "LOW",
+      "recommendation": "REVIEW"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/ferrari/all",
+      "file": "ferrari_tiers.py",
+      "calls_24h": 76,
+      "status": "LOW",
+      "recommendation": "REVIEW"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/safe-haven",
+      "file": "tiers.py",
+      "calls_24h": 70,
+      "status": "LOW",
+      "recommendation": "REVIEW"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/trending",
+      "file": "core_v3.py",
+      "calls_24h": 63,
+      "status": "LOW",
+      "recommendation": "REVIEW"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/trending",
+      "file": "board.py",
+      "calls_24h": 63,
+      "status": "LOW",
+      "recommendation": "REVIEW"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/players",
+      "file": "core_v3.py",
+      "calls_24h": 50,
+      "status": "LOW",
+      "recommendation": "REVIEW"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/players",
+      "file": "board.py",
+      "calls_24h": 50,
+      "status": "LOW",
+      "recommendation": "REVIEW"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/sync-to-mongo",
+      "file": "intel_sync.py",
+      "calls_24h": 47,
+      "status": "LOW",
+      "recommendation": "REVIEW"
+    },
+    {
+      "method": "GET",
+      "path": "/api/demon-tracker/board",
+      "file": "demon_tracker.py",
+      "calls_24h": 46,
+      "status": "LOW",
+      "recommendation": "REVIEW"
+    },
+    {
+      "method": "GET",
+      "path": "/api/full-board",
+      "file": "legacy.py",
+      "calls_24h": 43,
+      "status": "LOW",
+      "recommendation": "REVIEW"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/trigger-board-enrichment",
+      "file": "cached_data.py",
+      "calls_24h": 39,
+      "status": "LOW",
+      "recommendation": "REVIEW"
+    },
+    {
+      "method": "GET",
+      "path": "/api/demon-tracker/status",
+      "file": "demon_tracker.py",
+      "calls_24h": 37,
+      "status": "LOW",
+      "recommendation": "REVIEW"
+    },
+    {
+      "method": "GET",
+      "path": "/api/cache-status",
+      "file": "admin.py",
+      "calls_24h": 27,
+      "status": "LOW",
+      "recommendation": "REVIEW"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/scheduler-status",
+      "file": "scheduler.py",
+      "calls_24h": 26,
+      "status": "LOW",
+      "recommendation": "REVIEW"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/vacuum/check",
+      "file": "vacuum.py",
+      "calls_24h": 26,
+      "status": "LOW",
+      "recommendation": "REVIEW"
+    },
+    {
+      "method": "GET",
+      "path": "/api/todays-games",
+      "file": "admin.py",
+      "calls_24h": 26,
+      "status": "LOW",
+      "recommendation": "REVIEW"
+    },
+    {
+      "method": "GET",
+      "path": "/api/demon-tracker/demons",
+      "file": "demon_tracker.py",
+      "calls_24h": 19,
+      "status": "LOW",
+      "recommendation": "REVIEW"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/master-hub/stats",
+      "file": "master_hub.py",
+      "calls_24h": 19,
+      "status": "LOW",
+      "recommendation": "REVIEW"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/calculate-payout",
+      "file": "payouts.py",
+      "calls_24h": 17,
+      "status": "LOW",
+      "recommendation": "REVIEW"
+    },
+    {
+      "method": "GET",
+      "path": "/api/roster/live-today",
+      "file": "roster.py",
+      "calls_24h": 17,
+      "status": "LOW",
+      "recommendation": "REVIEW"
+    },
+    {
+      "method": "GET",
+      "path": "/api/validate-demon",
+      "file": "legacy.py",
+      "calls_24h": 16,
+      "status": "LOW",
+      "recommendation": "REVIEW"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/ferrari/sync-refs",
+      "file": "ferrari_tiers.py",
+      "calls_24h": 14,
+      "status": "LOW",
+      "recommendation": "REVIEW"
+    },
+    {
+      "method": "POST",
+      "path": "/api/auth/signup",
+      "file": "auth.py",
+      "calls_24h": 14,
+      "status": "LOW",
+      "recommendation": "REVIEW"
+    },
+    {
+      "method": "POST",
+      "path": "/api/auth/login",
+      "file": "auth.py",
+      "calls_24h": 14,
+      "status": "LOW",
+      "recommendation": "REVIEW"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/trigger-scheduled-sync",
+      "file": "scheduler.py",
+      "calls_24h": 12,
+      "status": "LOW",
+      "recommendation": "REVIEW"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/ferrari/refs",
+      "file": "ferrari_tiers.py",
+      "calls_24h": 12,
+      "status": "LOW",
+      "recommendation": "REVIEW"
+    },
+    {
+      "method": "GET",
+      "path": "/api/roster-status",
+      "file": "admin.py",
+      "calls_24h": 12,
+      "status": "LOW",
+      "recommendation": "REVIEW"
+    },
+    {
+      "method": "POST",
+      "path": "/api/dvp-refresh",
+      "file": "admin.py",
+      "calls_24h": 12,
+      "status": "LOW",
+      "recommendation": "REVIEW"
+    },
+    {
+      "method": "POST",
+      "path": "/api/command/simulate",
+      "file": "command.py",
+      "calls_24h": 11,
+      "status": "LOW",
+      "recommendation": "REVIEW"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/board-intel/primary-sync",
+      "file": "board_intel_v2.py",
+      "calls_24h": 10,
+      "status": "LOW",
+      "recommendation": "REVIEW"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/board-intel/primary-sync",
+      "file": "board_intel.py",
+      "calls_24h": 10,
+      "status": "LOW",
+      "recommendation": "REVIEW"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/odds-mapper/stats",
+      "file": "odds_mapper.py",
+      "calls_24h": 9,
+      "status": "LOW",
+      "recommendation": "REVIEW"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/hydrated-board",
+      "file": "board.py",
+      "calls_24h": 9,
+      "status": "LOW",
+      "recommendation": "REVIEW"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/priority-refresh",
+      "file": "adaptive_sync.py",
+      "calls_24h": 9,
+      "status": "LOW",
+      "recommendation": "REVIEW"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/master-hub/sync",
+      "file": "master_hub.py",
+      "calls_24h": 9,
+      "status": "LOW",
+      "recommendation": "REVIEW"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/hydrated-board",
+      "file": "cached_data.py",
+      "calls_24h": 9,
+      "status": "LOW",
+      "recommendation": "REVIEW"
+    },
+    {
+      "method": "GET",
+      "path": "/api/dvp-rankings",
+      "file": "admin.py",
+      "calls_24h": 9,
+      "status": "LOW",
+      "recommendation": "REVIEW"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/demons",
+      "file": "core_v3.py",
+      "calls_24h": 8,
+      "status": "LOW",
+      "recommendation": "REVIEW"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/odds-mapper/rebuild",
+      "file": "odds_mapper.py",
+      "calls_24h": 8,
+      "status": "LOW",
+      "recommendation": "REVIEW"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/demons",
+      "file": "picks.py",
+      "calls_24h": 8,
+      "status": "LOW",
+      "recommendation": "REVIEW"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/master-hub/search",
+      "file": "master_hub.py",
+      "calls_24h": 8,
+      "status": "LOW",
+      "recommendation": "REVIEW"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/master-hub/sync-bdl-prizepicks",
+      "file": "master_hub.py",
+      "calls_24h": 8,
+      "status": "LOW",
+      "recommendation": "REVIEW"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/enrichment-status",
+      "file": "cached_data.py",
+      "calls_24h": 8,
+      "status": "LOW",
+      "recommendation": "REVIEW"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/raw-validation/batch",
+      "file": "validation.py",
+      "calls_24h": 7,
+      "status": "LOW",
+      "recommendation": "REVIEW"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/sync-daily-insights",
+      "file": "roster_sync.py",
+      "calls_24h": 7,
+      "status": "LOW",
+      "recommendation": "REVIEW"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/ai-context/status",
+      "file": "ai_context.py",
+      "calls_24h": 7,
+      "status": "LOW",
+      "recommendation": "REVIEW"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/momentum/status",
+      "file": "momentum.py",
+      "calls_24h": 7,
+      "status": "LOW",
+      "recommendation": "REVIEW"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/goblins",
+      "file": "core_v3.py",
+      "calls_24h": 7,
+      "status": "LOW",
+      "recommendation": "REVIEW"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/goblins",
+      "file": "picks.py",
+      "calls_24h": 7,
+      "status": "LOW",
+      "recommendation": "REVIEW"
+    },
+    {
+      "method": "GET",
+      "path": "/api/demon-tracker/events",
+      "file": "demon_tracker.py",
+      "calls_24h": 7,
+      "status": "LOW",
+      "recommendation": "REVIEW"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/vision/status",
+      "file": "vision.py",
+      "calls_24h": 7,
+      "status": "LOW",
+      "recommendation": "REVIEW"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/momentum/rebuild",
+      "file": "momentum.py",
+      "calls_24h": 6,
+      "status": "LOW",
+      "recommendation": "REVIEW"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/vacuum/active",
+      "file": "vacuum.py",
+      "calls_24h": 6,
+      "status": "LOW",
+      "recommendation": "REVIEW"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/sync-player-photos",
+      "file": "roster_sync.py",
+      "calls_24h": 5,
+      "status": "LOW",
+      "recommendation": "REVIEW"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/sync-active-players",
+      "file": "roster_sync.py",
+      "calls_24h": 5,
+      "status": "LOW",
+      "recommendation": "REVIEW"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/refresh-board-photos",
+      "file": "roster_sync.py",
+      "calls_24h": 5,
+      "status": "LOW",
+      "recommendation": "REVIEW"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/vacuum/updates",
+      "file": "vacuum.py",
+      "calls_24h": 5,
+      "status": "LOW",
+      "recommendation": "REVIEW"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/vision/trigger-batch",
+      "file": "vision.py",
+      "calls_24h": 5,
+      "status": "LOW",
+      "recommendation": "REVIEW"
+    },
+    {
+      "method": "POST",
+      "path": "/api/sync-rosters",
+      "file": "admin.py",
+      "calls_24h": 5,
+      "status": "LOW",
+      "recommendation": "REVIEW"
+    },
+    {
+      "method": "GET",
+      "path": "/api/dvp-status",
+      "file": "admin.py",
+      "calls_24h": 5,
+      "status": "LOW",
+      "recommendation": "REVIEW"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/sync-dvp",
+      "file": "scheduler.py",
+      "calls_24h": 4,
+      "status": "LOW",
+      "recommendation": "REVIEW"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/refresh-all-photos",
+      "file": "roster_sync.py",
+      "calls_24h": 4,
+      "status": "LOW",
+      "recommendation": "REVIEW"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/generate-intel-briefings",
+      "file": "intel_sync.py",
+      "calls_24h": 4,
+      "status": "LOW",
+      "recommendation": "REVIEW"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/ferrari/discarded",
+      "file": "ferrari_tiers.py",
+      "calls_24h": 4,
+      "status": "LOW",
+      "recommendation": "REVIEW"
+    },
+    {
+      "method": "GET",
+      "path": "/api/demon-tracker/props",
+      "file": "demon_tracker.py",
+      "calls_24h": 4,
+      "status": "LOW",
+      "recommendation": "REVIEW"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/vision/generate-insight",
+      "file": "vision.py",
+      "calls_24h": 4,
+      "status": "LOW",
+      "recommendation": "REVIEW"
+    },
+    {
+      "method": "GET",
+      "path": "/api/roster/full-active",
+      "file": "roster.py",
+      "calls_24h": 4,
+      "status": "LOW",
+      "recommendation": "REVIEW"
+    },
+    {
+      "method": "POST",
+      "path": "/api/qa/inject-line-move",
+      "file": "qa_testing.py",
+      "calls_24h": 4,
+      "status": "LOW",
+      "recommendation": "REVIEW"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/intel-freshness",
+      "file": "adaptive_sync.py",
+      "calls_24h": 4,
+      "status": "LOW",
+      "recommendation": "REVIEW"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/generate-intel-briefings",
+      "file": "intel.py",
+      "calls_24h": 4,
+      "status": "LOW",
+      "recommendation": "REVIEW"
+    },
+    {
+      "method": "POST",
+      "path": "/api/clear-all-cache",
+      "file": "admin.py",
+      "calls_24h": 4,
+      "status": "LOW",
+      "recommendation": "REVIEW"
+    },
+    {
+      "method": "GET",
+      "path": "/api/rate-limit-status",
+      "file": "admin.py",
+      "calls_24h": 4,
+      "status": "LOW",
+      "recommendation": "REVIEW"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/sync-master-roster",
+      "file": "roster_sync.py",
+      "calls_24h": 3,
+      "status": "LOW",
+      "recommendation": "REVIEW"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/master-roster-status",
+      "file": "roster_sync.py",
+      "calls_24h": 3,
+      "status": "LOW",
+      "recommendation": "REVIEW"
+    },
+    {
+      "method": "GET",
+      "path": "/api/headshots/stats",
+      "file": "headshots.py",
+      "calls_24h": 3,
+      "status": "LOW",
+      "recommendation": "REVIEW"
+    },
+    {
+      "method": "POST",
+      "path": "/api/headshots/bulk-download",
+      "file": "headshots.py",
+      "calls_24h": 3,
+      "status": "LOW",
+      "recommendation": "REVIEW"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/ferrari/oracle-apex",
+      "file": "ferrari_tiers.py",
+      "calls_24h": 3,
+      "status": "LOW",
+      "recommendation": "REVIEW"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/search",
+      "file": "core_v3.py",
+      "calls_24h": 3,
+      "status": "LOW",
+      "recommendation": "REVIEW"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/search",
+      "file": "board.py",
+      "calls_24h": 3,
+      "status": "LOW",
+      "recommendation": "REVIEW"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/vacuum/sync-profiles",
+      "file": "vacuum.py",
+      "calls_24h": 3,
+      "status": "LOW",
+      "recommendation": "REVIEW"
+    },
+    {
+      "method": "GET",
+      "path": "/api/demon-tracker/search",
+      "file": "demon_tracker.py",
+      "calls_24h": 3,
+      "status": "LOW",
+      "recommendation": "REVIEW"
+    },
+    {
+      "method": "GET",
+      "path": "/api/roster/status",
+      "file": "roster.py",
+      "calls_24h": 3,
+      "status": "LOW",
+      "recommendation": "REVIEW"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/adaptive-sync/start",
+      "file": "adaptive_sync.py",
+      "calls_24h": 3,
+      "status": "LOW",
+      "recommendation": "REVIEW"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/master-hub/sync-bdl-all",
+      "file": "master_hub.py",
+      "calls_24h": 3,
+      "status": "LOW",
+      "recommendation": "REVIEW"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/sidecar/status",
+      "file": "cached_data.py",
+      "calls_24h": 3,
+      "status": "LOW",
+      "recommendation": "REVIEW"
+    },
+    {
+      "method": "GET",
+      "path": "/api/command/grades",
+      "file": "command.py",
+      "calls_24h": 2,
+      "status": "LOW",
+      "recommendation": "REVIEW"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/sync-bdl",
+      "file": "scheduler.py",
+      "calls_24h": 2,
+      "status": "LOW",
+      "recommendation": "REVIEW"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/sync-bdl-mapping",
+      "file": "scheduler.py",
+      "calls_24h": 2,
+      "status": "LOW",
+      "recommendation": "REVIEW"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/ai-context/run",
+      "file": "ai_context.py",
+      "calls_24h": 2,
+      "status": "LOW",
+      "recommendation": "REVIEW"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/board-intel/delta-refresh",
+      "file": "board_intel_v2.py",
+      "calls_24h": 2,
+      "status": "LOW",
+      "recommendation": "REVIEW"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/live-scores/refresh",
+      "file": "live_scores.py",
+      "calls_24h": 2,
+      "status": "LOW",
+      "recommendation": "REVIEW"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/ferrari/parlays",
+      "file": "ferrari_tiers.py",
+      "calls_24h": 2,
+      "status": "LOW",
+      "recommendation": "REVIEW"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/payout-estimate",
+      "file": "payouts.py",
+      "calls_24h": 2,
+      "status": "LOW",
+      "recommendation": "REVIEW"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/payout-table",
+      "file": "payouts.py",
+      "calls_24h": 2,
+      "status": "LOW",
+      "recommendation": "REVIEW"
+    },
+    {
+      "method": "POST",
+      "path": "/api/live/sync-ticker",
+      "file": "live.py",
+      "calls_24h": 2,
+      "status": "LOW",
+      "recommendation": "REVIEW"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/injuries/sync",
+      "file": "injuries.py",
+      "calls_24h": 2,
+      "status": "LOW",
+      "recommendation": "REVIEW"
+    },
+    {
+      "method": "POST",
+      "path": "/api/demon-tracker/sync",
+      "file": "demon_tracker.py",
+      "calls_24h": 2,
+      "status": "LOW",
+      "recommendation": "REVIEW"
+    },
+    {
+      "method": "GET",
+      "path": "/api/roster/mapped",
+      "file": "roster.py",
+      "calls_24h": 2,
+      "status": "LOW",
+      "recommendation": "REVIEW"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/master-hub/sync-roster",
+      "file": "master_hub.py",
+      "calls_24h": 2,
+      "status": "LOW",
+      "recommendation": "REVIEW"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/master-hub/sync-badges",
+      "file": "master_hub.py",
+      "calls_24h": 2,
+      "status": "LOW",
+      "recommendation": "REVIEW"
+    },
+    {
+      "method": "POST",
+      "path": "/api/trigger-daily-sync",
+      "file": "admin.py",
+      "calls_24h": 2,
+      "status": "LOW",
+      "recommendation": "REVIEW"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/goblin-vault-live",
+      "file": "tiers.py",
+      "calls_24h": 1,
+      "status": "LOW",
+      "recommendation": "REVIEW"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/sync-baseline-stats",
+      "file": "scheduler.py",
+      "calls_24h": 1,
+      "status": "LOW",
+      "recommendation": "REVIEW"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/sync-nba-l5l10",
+      "file": "scheduler.py",
+      "calls_24h": 1,
+      "status": "LOW",
+      "recommendation": "REVIEW"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/sync-injuries",
+      "file": "scheduler.py",
+      "calls_24h": 1,
+      "status": "LOW",
+      "recommendation": "REVIEW"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/sync-advanced-stats",
+      "file": "scheduler.py",
+      "calls_24h": 1,
+      "status": "LOW",
+      "recommendation": "REVIEW"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/sync-full-daily",
+      "file": "scheduler.py",
+      "calls_24h": 1,
+      "status": "LOW",
+      "recommendation": "REVIEW"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/sync-player-stats",
+      "file": "roster_sync.py",
+      "calls_24h": 1,
+      "status": "LOW",
+      "recommendation": "REVIEW"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/live-ticker",
+      "file": "board_intel_v2.py",
+      "calls_24h": 1,
+      "status": "LOW",
+      "recommendation": "REVIEW"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/board-intel/early-bird",
+      "file": "board_intel_v2.py",
+      "calls_24h": 1,
+      "status": "LOW",
+      "recommendation": "REVIEW"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/locked-games",
+      "file": "game_lock.py",
+      "calls_24h": 1,
+      "status": "LOW",
+      "recommendation": "REVIEW"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/validate-parlay",
+      "file": "game_lock.py",
+      "calls_24h": 1,
+      "status": "LOW",
+      "recommendation": "REVIEW"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/check-locks",
+      "file": "game_lock.py",
+      "calls_24h": 1,
+      "status": "LOW",
+      "recommendation": "REVIEW"
+    },
+    {
+      "method": "POST",
+      "path": "/api/headshots/update-urls",
+      "file": "headshots.py",
+      "calls_24h": 1,
+      "status": "LOW",
+      "recommendation": "REVIEW"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/momentum/test-detroit",
+      "file": "momentum.py",
+      "calls_24h": 1,
+      "status": "LOW",
+      "recommendation": "REVIEW"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/odds-mapper/lookup-batch",
+      "file": "odds_mapper.py",
+      "calls_24h": 1,
+      "status": "LOW",
+      "recommendation": "REVIEW"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/photo-stats",
+      "file": "board.py",
+      "calls_24h": 1,
+      "status": "LOW",
+      "recommendation": "REVIEW"
+    },
+    {
+      "method": "GET",
+      "path": "/api/demon-tracker/cards/green",
+      "file": "demon_tracker.py",
+      "calls_24h": 1,
+      "status": "LOW",
+      "recommendation": "REVIEW"
+    },
+    {
+      "method": "GET",
+      "path": "/api/demon-tracker/cards/red",
+      "file": "demon_tracker.py",
+      "calls_24h": 1,
+      "status": "LOW",
+      "recommendation": "REVIEW"
+    },
+    {
+      "method": "POST",
+      "path": "/api/qa/revert-line-move",
+      "file": "qa_testing.py",
+      "calls_24h": 1,
+      "status": "LOW",
+      "recommendation": "REVIEW"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/master-hub/sync-career-stats",
+      "file": "master_hub.py",
+      "calls_24h": 1,
+      "status": "LOW",
+      "recommendation": "REVIEW"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/master-hub/sync-contracts",
+      "file": "master_hub.py",
+      "calls_24h": 1,
+      "status": "LOW",
+      "recommendation": "REVIEW"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/master-hub/enrich-game-values",
+      "file": "master_hub.py",
+      "calls_24h": 1,
+      "status": "LOW",
+      "recommendation": "REVIEW"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/validate-parlay",
+      "file": "parlays.py",
+      "calls_24h": 1,
+      "status": "LOW",
+      "recommendation": "REVIEW"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/sidecar/toggle",
+      "file": "cached_data.py",
+      "calls_24h": 1,
+      "status": "LOW",
+      "recommendation": "REVIEW"
+    },
+    {
+      "method": "POST",
+      "path": "/api/sync-lakers-test",
+      "file": "admin.py",
+      "calls_24h": 1,
+      "status": "LOW",
+      "recommendation": "REVIEW"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/sync-social-signals",
+      "file": "social.py",
+      "calls_24h": 0,
+      "status": "UNUSED",
+      "recommendation": "DELETE"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/social-signal/{player_name}",
+      "file": "social.py",
+      "calls_24h": 0,
+      "status": "UNUSED",
+      "recommendation": "DELETE"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/raw-validation/{player_name}",
+      "file": "validation.py",
+      "calls_24h": 0,
+      "status": "UNUSED",
+      "recommendation": "DELETE"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/raw-validation-table",
+      "file": "validation.py",
+      "calls_24h": 0,
+      "status": "UNUSED",
+      "recommendation": "DELETE"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/raw-player-games/{player_name}",
+      "file": "validation.py",
+      "calls_24h": 0,
+      "status": "UNUSED",
+      "recommendation": "DELETE"
+    },
+    {
+      "method": "GET",
+      "path": "/api/command/profile/{player_name}",
+      "file": "command.py",
+      "calls_24h": 0,
+      "status": "UNUSED",
+      "recommendation": "DELETE"
+    },
+    {
+      "method": "POST",
+      "path": "/api/api/v3/regression/predict",
+      "file": "regression.py",
+      "calls_24h": 0,
+      "status": "UNUSED",
+      "recommendation": "DELETE"
+    },
+    {
+      "method": "GET",
+      "path": "/api/api/v3/regression/compare/all",
+      "file": "regression.py",
+      "calls_24h": 0,
+      "status": "UNUSED",
+      "recommendation": "DELETE"
+    },
+    {
+      "method": "GET",
+      "path": "/api/api/v3/regression/compare/{tier}",
+      "file": "regression.py",
+      "calls_24h": 0,
+      "status": "UNUSED",
+      "recommendation": "DELETE"
+    },
+    {
+      "method": "GET",
+      "path": "/api/api/v3/regression/flags",
+      "file": "regression.py",
+      "calls_24h": 0,
+      "status": "UNUSED",
+      "recommendation": "DELETE"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/init-database",
+      "file": "scheduler.py",
+      "calls_24h": 0,
+      "status": "UNUSED",
+      "recommendation": "DELETE"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/roster/players",
+      "file": "roster_sync.py",
+      "calls_24h": 0,
+      "status": "UNUSED",
+      "recommendation": "DELETE"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/player/{player_name}/photo",
+      "file": "roster_sync.py",
+      "calls_24h": 0,
+      "status": "UNUSED",
+      "recommendation": "DELETE"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/team/{team_abbrev}/roster",
+      "file": "roster_sync.py",
+      "calls_24h": 0,
+      "status": "UNUSED",
+      "recommendation": "DELETE"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/player-insights/{player_name}",
+      "file": "roster_sync.py",
+      "calls_24h": 0,
+      "status": "UNUSED",
+      "recommendation": "DELETE"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/ai-context/evaluate/{player_name}",
+      "file": "ai_context.py",
+      "calls_24h": 0,
+      "status": "UNUSED",
+      "recommendation": "DELETE"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/ai-context/player/{player_name}",
+      "file": "ai_context.py",
+      "calls_24h": 0,
+      "status": "UNUSED",
+      "recommendation": "DELETE"
+    },
+    {
+      "method": "GET",
+      "path": "/api/api/v3/historical-odds/status",
+      "file": "historical_odds.py",
+      "calls_24h": 0,
+      "status": "UNUSED",
+      "recommendation": "DELETE"
+    },
+    {
+      "method": "POST",
+      "path": "/api/api/v3/historical-odds/fetch-date",
+      "file": "historical_odds.py",
+      "calls_24h": 0,
+      "status": "UNUSED",
+      "recommendation": "DELETE"
+    },
+    {
+      "method": "POST",
+      "path": "/api/api/v3/historical-odds/fetch-range",
+      "file": "historical_odds.py",
+      "calls_24h": 0,
+      "status": "UNUSED",
+      "recommendation": "DELETE"
+    },
+    {
+      "method": "GET",
+      "path": "/api/api/v3/historical-odds/player/{player_name}",
+      "file": "historical_odds.py",
+      "calls_24h": 0,
+      "status": "UNUSED",
+      "recommendation": "DELETE"
+    },
+    {
+      "method": "GET",
+      "path": "/api/api/v3/historical-odds/sample",
+      "file": "historical_odds.py",
+      "calls_24h": 0,
+      "status": "UNUSED",
+      "recommendation": "DELETE"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/board-intel/start-scheduler",
+      "file": "board_intel_v2.py",
+      "calls_24h": 0,
+      "status": "UNUSED",
+      "recommendation": "DELETE"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/board-intel/stop-scheduler",
+      "file": "board_intel_v2.py",
+      "calls_24h": 0,
+      "status": "UNUSED",
+      "recommendation": "DELETE"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/intel-briefing/{player_name}",
+      "file": "intel_sync.py",
+      "calls_24h": 0,
+      "status": "UNUSED",
+      "recommendation": "DELETE"
+    },
+    {
+      "method": "GET",
+      "path": "/api/proxy/nba-headshot/{player_id}",
+      "file": "image_proxy.py",
+      "calls_24h": 0,
+      "status": "UNUSED",
+      "recommendation": "DELETE"
+    },
+    {
+      "method": "GET",
+      "path": "/api/headshots/check/{nba_id}",
+      "file": "headshots.py",
+      "calls_24h": 0,
+      "status": "UNUSED",
+      "recommendation": "DELETE"
+    },
+    {
+      "method": "GET",
+      "path": "/api/headshots/image/{nba_id}",
+      "file": "headshots.py",
+      "calls_24h": 0,
+      "status": "UNUSED",
+      "recommendation": "DELETE"
+    },
+    {
+      "method": "POST",
+      "path": "/api/headshots/download/{nba_id}",
+      "file": "headshots.py",
+      "calls_24h": 0,
+      "status": "UNUSED",
+      "recommendation": "DELETE"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/momentum/rankings/{stat_type}",
+      "file": "momentum.py",
+      "calls_24h": 0,
+      "status": "UNUSED",
+      "recommendation": "DELETE"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/momentum/modifier/{opponent}/{stat_type}",
+      "file": "momentum.py",
+      "calls_24h": 0,
+      "status": "UNUSED",
+      "recommendation": "DELETE"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/momentum/{team}/{stat_type}",
+      "file": "momentum.py",
+      "calls_24h": 0,
+      "status": "UNUSED",
+      "recommendation": "DELETE"
+    },
+    {
+      "method": "GET",
+      "path": "/api/api/v3/pro-model/status",
+      "file": "pro_model.py",
+      "calls_24h": 0,
+      "status": "UNUSED",
+      "recommendation": "DELETE"
+    },
+    {
+      "method": "POST",
+      "path": "/api/api/v3/pro-model/train",
+      "file": "pro_model.py",
+      "calls_24h": 0,
+      "status": "UNUSED",
+      "recommendation": "DELETE"
+    },
+    {
+      "method": "POST",
+      "path": "/api/api/v3/pro-model/analyze-features/{stat_type}",
+      "file": "pro_model.py",
+      "calls_24h": 0,
+      "status": "UNUSED",
+      "recommendation": "DELETE"
+    },
+    {
+      "method": "POST",
+      "path": "/api/api/v3/pro-model/predict",
+      "file": "pro_model.py",
+      "calls_24h": 0,
+      "status": "UNUSED",
+      "recommendation": "DELETE"
+    },
+    {
+      "method": "GET",
+      "path": "/api/api/v3/pro-model/predict-tier/{tier}",
+      "file": "pro_model.py",
+      "calls_24h": 0,
+      "status": "UNUSED",
+      "recommendation": "DELETE"
+    },
+    {
+      "method": "GET",
+      "path": "/api/api/v3/pro-model/backtest/{stat_type}",
+      "file": "pro_model.py",
+      "calls_24h": 0,
+      "status": "UNUSED",
+      "recommendation": "DELETE"
+    },
+    {
+      "method": "GET",
+      "path": "/api/api/v3/pro-model/feature-importance/{stat_type}",
+      "file": "pro_model.py",
+      "calls_24h": 0,
+      "status": "UNUSED",
+      "recommendation": "DELETE"
+    },
+    {
+      "method": "GET",
+      "path": "/api/api/v3/pro-model/compare-approaches",
+      "file": "pro_model.py",
+      "calls_24h": 0,
+      "status": "UNUSED",
+      "recommendation": "DELETE"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/player/{player_name}",
+      "file": "core_v3.py",
+      "calls_24h": 0,
+      "status": "UNUSED",
+      "recommendation": "DELETE"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/board-intel/delta-sync",
+      "file": "board_intel.py",
+      "calls_24h": 0,
+      "status": "UNUSED",
+      "recommendation": "DELETE"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/board-intel/priority-refresh",
+      "file": "board_intel.py",
+      "calls_24h": 0,
+      "status": "UNUSED",
+      "recommendation": "DELETE"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/board-intel/schedule-intel-check",
+      "file": "board_intel.py",
+      "calls_24h": 0,
+      "status": "UNUSED",
+      "recommendation": "DELETE"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/odds-mapper/lookup/{odds_api_name}",
+      "file": "odds_mapper.py",
+      "calls_24h": 0,
+      "status": "UNUSED",
+      "recommendation": "DELETE"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/odds-mapper/player-id/{player_id}",
+      "file": "odds_mapper.py",
+      "calls_24h": 0,
+      "status": "UNUSED",
+      "recommendation": "DELETE"
+    },
+    {
+      "method": "GET",
+      "path": "/api/api/v3/bdl-advanced/status",
+      "file": "bdl_advanced.py",
+      "calls_24h": 0,
+      "status": "UNUSED",
+      "recommendation": "DELETE"
+    },
+    {
+      "method": "POST",
+      "path": "/api/api/v3/bdl-advanced/fetch-season/{season}",
+      "file": "bdl_advanced.py",
+      "calls_24h": 0,
+      "status": "UNUSED",
+      "recommendation": "DELETE"
+    },
+    {
+      "method": "POST",
+      "path": "/api/api/v3/bdl-advanced/fetch-multiple",
+      "file": "bdl_advanced.py",
+      "calls_24h": 0,
+      "status": "UNUSED",
+      "recommendation": "DELETE"
+    },
+    {
+      "method": "GET",
+      "path": "/api/api/v3/bdl-advanced/player/{player_id}",
+      "file": "bdl_advanced.py",
+      "calls_24h": 0,
+      "status": "UNUSED",
+      "recommendation": "DELETE"
+    },
+    {
+      "method": "GET",
+      "path": "/api/api/v3/bdl-advanced/player-by-name/{player_name}",
+      "file": "bdl_advanced.py",
+      "calls_24h": 0,
+      "status": "UNUSED",
+      "recommendation": "DELETE"
+    },
+    {
+      "method": "GET",
+      "path": "/api/api/v3/bdl-advanced/sample",
+      "file": "bdl_advanced.py",
+      "calls_24h": 0,
+      "status": "UNUSED",
+      "recommendation": "DELETE"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/api/v3/bdl-advanced/clear",
+      "file": "bdl_advanced.py",
+      "calls_24h": 0,
+      "status": "UNUSED",
+      "recommendation": "DELETE"
+    },
+    {
+      "method": "GET",
+      "path": "/api/api/v3/bdl-advanced/features/{player_name}/{stat_type}",
+      "file": "bdl_advanced.py",
+      "calls_24h": 0,
+      "status": "UNUSED",
+      "recommendation": "DELETE"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/cached-player/{player_name}",
+      "file": "board.py",
+      "calls_24h": 0,
+      "status": "UNUSED",
+      "recommendation": "DELETE"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/player/{player_name}",
+      "file": "board.py",
+      "calls_24h": 0,
+      "status": "UNUSED",
+      "recommendation": "DELETE"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/sync-photos",
+      "file": "board.py",
+      "calls_24h": 0,
+      "status": "UNUSED",
+      "recommendation": "DELETE"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/vacuum/beneficiary/{player_name}",
+      "file": "vacuum.py",
+      "calls_24h": 0,
+      "status": "UNUSED",
+      "recommendation": "DELETE"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/vacuum/clear/{injured_player}",
+      "file": "vacuum.py",
+      "calls_24h": 0,
+      "status": "UNUSED",
+      "recommendation": "DELETE"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/injuries/player/{player_name}",
+      "file": "injuries.py",
+      "calls_24h": 0,
+      "status": "UNUSED",
+      "recommendation": "DELETE"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/injuries/team/{team_abbr}",
+      "file": "injuries.py",
+      "calls_24h": 0,
+      "status": "UNUSED",
+      "recommendation": "DELETE"
+    },
+    {
+      "method": "GET",
+      "path": "/api/demon-tracker/event/{event_id}/odds",
+      "file": "demon_tracker.py",
+      "calls_24h": 0,
+      "status": "UNUSED",
+      "recommendation": "DELETE"
+    },
+    {
+      "method": "GET",
+      "path": "/api/demon-tracker/cards/yellow",
+      "file": "demon_tracker.py",
+      "calls_24h": 0,
+      "status": "UNUSED",
+      "recommendation": "DELETE"
+    },
+    {
+      "method": "GET",
+      "path": "/api/demon-tracker/player/{player_name}",
+      "file": "demon_tracker.py",
+      "calls_24h": 0,
+      "status": "UNUSED",
+      "recommendation": "DELETE"
+    },
+    {
+      "method": "GET",
+      "path": "/api/api/v3/vegas-killer/status",
+      "file": "vegas_killer.py",
+      "calls_24h": 0,
+      "status": "UNUSED",
+      "recommendation": "DELETE"
+    },
+    {
+      "method": "POST",
+      "path": "/api/api/v3/vegas-killer/train",
+      "file": "vegas_killer.py",
+      "calls_24h": 0,
+      "status": "UNUSED",
+      "recommendation": "DELETE"
+    },
+    {
+      "method": "POST",
+      "path": "/api/api/v3/vegas-killer/analyze-features/{stat_type}",
+      "file": "vegas_killer.py",
+      "calls_24h": 0,
+      "status": "UNUSED",
+      "recommendation": "DELETE"
+    },
+    {
+      "method": "POST",
+      "path": "/api/api/v3/vegas-killer/predict",
+      "file": "vegas_killer.py",
+      "calls_24h": 0,
+      "status": "UNUSED",
+      "recommendation": "DELETE"
+    },
+    {
+      "method": "GET",
+      "path": "/api/api/v3/vegas-killer/predict-tier/{tier}",
+      "file": "vegas_killer.py",
+      "calls_24h": 0,
+      "status": "UNUSED",
+      "recommendation": "DELETE"
+    },
+    {
+      "method": "GET",
+      "path": "/api/api/v3/vegas-killer/feature-breakdown",
+      "file": "vegas_killer.py",
+      "calls_24h": 0,
+      "status": "UNUSED",
+      "recommendation": "DELETE"
+    },
+    {
+      "method": "GET",
+      "path": "/api/api/v3/vegas-killer/compare-all",
+      "file": "vegas_killer.py",
+      "calls_24h": 0,
+      "status": "UNUSED",
+      "recommendation": "DELETE"
+    },
+    {
+      "method": "GET",
+      "path": "/api/api/v3/vegas-killer/backtest/results",
+      "file": "vegas_killer.py",
+      "calls_24h": 0,
+      "status": "UNUSED",
+      "recommendation": "DELETE"
+    },
+    {
+      "method": "GET",
+      "path": "/api/api/v3/vegas-killer/enrich-board",
+      "file": "vegas_killer.py",
+      "calls_24h": 0,
+      "status": "UNUSED",
+      "recommendation": "DELETE"
+    },
+    {
+      "method": "POST",
+      "path": "/api/api/v3/vegas-killer/predict-slate",
+      "file": "vegas_killer.py",
+      "calls_24h": 0,
+      "status": "UNUSED",
+      "recommendation": "DELETE"
+    },
+    {
+      "method": "GET",
+      "path": "/api/roster/players",
+      "file": "roster.py",
+      "calls_24h": 0,
+      "status": "UNUSED",
+      "recommendation": "DELETE"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/stale-intel-check",
+      "file": "adaptive_sync.py",
+      "calls_24h": 0,
+      "status": "UNUSED",
+      "recommendation": "DELETE"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/adaptive-sync/stop",
+      "file": "adaptive_sync.py",
+      "calls_24h": 0,
+      "status": "UNUSED",
+      "recommendation": "DELETE"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/master-hub/player/{player_id}",
+      "file": "master_hub.py",
+      "calls_24h": 0,
+      "status": "UNUSED",
+      "recommendation": "DELETE"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/master-hub/player/name/{display_name:path}",
+      "file": "master_hub.py",
+      "calls_24h": 0,
+      "status": "UNUSED",
+      "recommendation": "DELETE"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/master-hub/start-scheduler",
+      "file": "master_hub.py",
+      "calls_24h": 0,
+      "status": "UNUSED",
+      "recommendation": "DELETE"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/master-hub/enrich-nba-stats/{bdl_id}",
+      "file": "master_hub.py",
+      "calls_24h": 0,
+      "status": "UNUSED",
+      "recommendation": "DELETE"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/master-hub/nba-stats/{bdl_id}",
+      "file": "master_hub.py",
+      "calls_24h": 0,
+      "status": "UNUSED",
+      "recommendation": "DELETE"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/master-hub/enrich-all-nba-stats",
+      "file": "master_hub.py",
+      "calls_24h": 0,
+      "status": "UNUSED",
+      "recommendation": "DELETE"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/master-hub/career-stats/{player_name}",
+      "file": "master_hub.py",
+      "calls_24h": 0,
+      "status": "UNUSED",
+      "recommendation": "DELETE"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/master-hub/sync-bdl-player/{player_name}",
+      "file": "master_hub.py",
+      "calls_24h": 0,
+      "status": "UNUSED",
+      "recommendation": "DELETE"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/master-hub/sync-player-logs/{player_name}",
+      "file": "master_hub.py",
+      "calls_24h": 0,
+      "status": "UNUSED",
+      "recommendation": "DELETE"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/master-hub/bdl-sample/{player_name}",
+      "file": "master_hub.py",
+      "calls_24h": 0,
+      "status": "UNUSED",
+      "recommendation": "DELETE"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/master-hub/sync-roster-player/{player_name}",
+      "file": "master_hub.py",
+      "calls_24h": 0,
+      "status": "UNUSED",
+      "recommendation": "DELETE"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/master-hub/contract-year-players",
+      "file": "master_hub.py",
+      "calls_24h": 0,
+      "status": "UNUSED",
+      "recommendation": "DELETE"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/master-hub/contract/{player_name}",
+      "file": "master_hub.py",
+      "calls_24h": 0,
+      "status": "UNUSED",
+      "recommendation": "DELETE"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/master-hub/enrich-player-game-values/{bdl_id}",
+      "file": "master_hub.py",
+      "calls_24h": 0,
+      "status": "UNUSED",
+      "recommendation": "DELETE"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/master-hub/add-badge/{player_name}",
+      "file": "master_hub.py",
+      "calls_24h": 0,
+      "status": "UNUSED",
+      "recommendation": "DELETE"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/intel-briefing/{player_name}",
+      "file": "intel.py",
+      "calls_24h": 0,
+      "status": "UNUSED",
+      "recommendation": "DELETE"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/sidecar/analyze/{player_name}",
+      "file": "cached_data.py",
+      "calls_24h": 0,
+      "status": "UNUSED",
+      "recommendation": "DELETE"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/test-badges/{player_name}",
+      "file": "cached_data.py",
+      "calls_24h": 0,
+      "status": "UNUSED",
+      "recommendation": "DELETE"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/player-with-badges/{player_name}",
+      "file": "cached_data.py",
+      "calls_24h": 0,
+      "status": "UNUSED",
+      "recommendation": "DELETE"
+    },
+    {
+      "method": "POST",
+      "path": "/api/clear-expired-cache",
+      "file": "admin.py",
+      "calls_24h": 0,
+      "status": "UNUSED",
+      "recommendation": "DELETE"
+    },
+    {
+      "method": "GET",
+      "path": "/api/dvp-analysis/{opponent_team}/{stat_type}",
+      "file": "admin.py",
+      "calls_24h": 0,
+      "status": "UNUSED",
+      "recommendation": "DELETE"
+    }
+  ]
+}
