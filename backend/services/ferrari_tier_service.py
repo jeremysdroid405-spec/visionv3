@@ -1489,6 +1489,39 @@ class FerrariTierService:
                         logger.info(f"  War Zone: {len(war_zone_pool)} props analyzed")
                     
                     logger.info("[VISION INTEL] Analysis complete - props now sorted by composite score")
+                    
+                    # =================================================================
+                    # STEP 6B: GEMINI INTELLIGENCE GATE - Remove TRAP/Low-Score props
+                    # Props marked as gemini_killed=True are filtered OUT
+                    # =================================================================
+                    def apply_gemini_gate(pool, tier_name):
+                        """Remove props that Gemini flagged as TRAP or low confidence."""
+                        passed = []
+                        killed = []
+                        for prop in pool:
+                            if prop.get('gemini_killed', False):
+                                killed.append({
+                                    'player': prop.get('player_name'),
+                                    'stat': prop.get('stat_type'),
+                                    'reason': prop.get('gemini_kill_reason', 'Unknown')
+                                })
+                            else:
+                                passed.append(prop)
+                        
+                        if killed:
+                            logger.info(f"  [{tier_name}] GEMINI GATE: {len(killed)} props KILLED:")
+                            for k in killed[:5]:  # Log first 5
+                                logger.info(f"    - {k['player']} {k['stat']}: {k['reason']}")
+                            if len(killed) > 5:
+                                logger.info(f"    ... and {len(killed) - 5} more")
+                        
+                        logger.info(f"  [{tier_name}] GEMINI GATE: {len(passed)} props PASSED (from {len(pool)})")
+                        return passed
+                    
+                    safe_haven_pool = apply_gemini_gate(safe_haven_pool, "Safe Haven")
+                    front_lines_pool = apply_gemini_gate(front_lines_pool, "Front Lines")
+                    war_zone_pool = apply_gemini_gate(war_zone_pool, "War Zone")
+                    
                 else:
                     logger.info("[VISION INTEL] Service disabled - using VK probability sorting")
             except Exception as e:

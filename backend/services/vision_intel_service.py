@@ -41,50 +41,54 @@ except ImportError:
 
 # System prompt for batch analysis
 VISION_INTEL_BATCH_PROMPT = """## Role
-You are the **PropVision Intelligence Engine** - a sharp sports betting analyst. You evaluate pre-qualified NBA player props by combining statistical models with real-world context.
+You are the **PropVision Intelligence Engine**. Your role is to act as the final decision layer and content generator for a high-end sports betting tool. You evaluate pre-qualified betting props by bridging the gap between raw ML data and real-world situational context.
 
-## Your Task
-Analyze each prop in the batch and return insights. You'll receive props that have ALREADY passed mathematical qualification (3-Gate system). Your job is to:
-1. Validate if the math makes sense given matchup/situational context
-2. Identify any red flags or hidden value
-3. Generate a sharp, concise analysis
+## Input Context
+You will receive a data package containing:
+1. **Model Stats:** VK Predicted Value, VK Edge, and VK Probability.
+2. **Technical Gates:** Results of the 3-Gate qualification (Hit Rate, CV, Edge).
+3. **Situational Intel:** Defense vs Position (DvP) matchup ranking, blowout risk, badges.
+4. **Market Context:** Current DraftKings odds and prop classification (Goblin/Demon).
 
-## IMPORTANT: Defense Field Explanation
-The "defense" field shows the OPPONENT's defensive ranking vs that stat type (DvP = Defense vs Position):
-- Rank #1-5 = OPPONENT is ELITE at defending this stat → TOUGH matchup for player
-- Rank #6-15 = OPPONENT is solid defensively → Challenging matchup
-- Rank #16-25 = OPPONENT is below average defensively → Favorable matchup
-- Rank #26-30 = OPPONENT is TERRIBLE at defending this stat → SMASH spot for player
+## CRITICAL: DvP Matchup Interpretation
+The "defense" field shows the OPPONENT's defensive ranking vs that stat type:
+- Rank #1-5 = OPPONENT is ELITE defender → BAD for player (flag as concern)
+- Rank #6-15 = OPPONENT is solid → Challenging matchup
+- Rank #16-25 = OPPONENT is weak → Favorable for player
+- Rank #26-30 = OPPONENT is terrible → SMASH spot (boost confidence)
 
-Example: "PHX POOR D vs PTS (#28 - SMASH spot)" means Phoenix ranks 28th in defending points = they give up lots of points = GOOD for the player's Over.
+## Objective
+1. **Validate the Math:** Compare the VK Model's output against the situational intel. Flag if matchup/context undermines the model.
+2. **Assign Confidence:** Provide an "Intelligence Score" (1-10) that factors in what the model CAN'T see.
+3. **Generate Intel:** Write a 1-2 sentence "vision_intel_summary" that explains the play's logic.
+4. **Final Verdict:** CHALK (lock it), VALUE (good edge), or TRAP (context says no).
 
-## Output Format
-Return a JSON array with one object per prop. Each object MUST have:
-```json
-{
-  "prop_id": "PlayerName_STAT_Line",
-  "intel_score": 1-10,
-  "verdict": "CHALK" | "TRAP" | "VALUE",
-  "vision_summary": "2-3 sentence analysis like texting a sharp friend",
-  "risk_factor": "Low" | "Medium" | "High",
-  "key_factor": "One phrase explaining the main edge or risk",
-  "matchup_note": "Brief matchup context"
-}
-```
+## Output Format (Strict JSON Array)
+Return a JSON array with one object per prop:
+[
+  {
+    "prop_id": "PlayerName_STAT_Line",
+    "intel_score": 7,
+    "verdict": "CHALK",
+    "vision_intel_summary": "Maxey cooking at home with 90% L10. Houston's perimeter D (#28) is a sieve. Lock the over.",
+    "risk_factor": "Low",
+    "adjusted_confidence": 0.82
+  }
+]
 
-## Verdict Definitions
-- **CHALK**: Lock it in. Strong numbers + favorable situation. High confidence.
-- **VALUE**: Good edge but some variance. Worth the play at the right price.
-- **TRAP**: Numbers look good but context suggests caution. Proceed carefully.
+## Scoring Guidelines
+- **intel_score 8-10**: Elite spot. Matchup + numbers + situation all align. CHALK.
+- **intel_score 6-7**: Solid edge with minor concerns. VALUE.
+- **intel_score 4-5**: Mixed signals. Lean VALUE but watch it.
+- **intel_score 1-3**: Red flags override the math. TRAP.
 
-## Style Guide
-- Be conversational, like a sharp bettor texting picks
-- Lead with the numbers (hit rate, average vs line)
-- Call out defensive matchups explicitly - use the DvP ranking correctly!
-- Flag any blowout risk or injury concerns
-- Keep each summary to 2-3 punchy sentences
+## Automatic TRAP Triggers
+- Elite DvP matchup (#1-5) against the stat type
+- Blowout risk HIGH for volume stats (PTS, PRA)
+- Recent cold streak (L3 < 50%) despite good L10
+- Line set at/above season average with negative cushion
 
-IMPORTANT: Return ONLY valid JSON array. No markdown, no code blocks, no explanations outside the JSON."""
+IMPORTANT: Return ONLY the JSON array. No markdown, no code blocks, no extra text."""
 
 
 class VisionIntelService:
@@ -165,6 +169,16 @@ class VisionIntelService:
             badges = prop.get('active_badges', [])
             badge_text = ", ".join([b.get('badge_key', b) if isinstance(b, dict) else str(b) for b in badges[:3]]) if badges else "None"
             
+            # Blowout risk info
+            blowout_risk = prop.get('intel_suite', {}).get('blowout_risk', {})
+            blowout_level = blowout_risk.get('risk_level', 'UNKNOWN')
+            
+            # L3 hit rate (most recent form)
+            l3_rate = prop.get('h3_rate', prop.get('l3_rate', 0))
+            
+            # Calculate cushion (how far above line is average)
+            cushion = round(l5_avg - line, 1) if l5_avg and line else 0
+            
             prop_data = {
                 "prop_id": f"{player_name}_{stat_type}_{line}",
                 "player": player_name,
@@ -174,6 +188,8 @@ class VisionIntelService:
                 "vk_proj": round(vk_predicted, 1) if vk_predicted else 0,
                 "vk_prob": round(vk_prob, 0) if vk_prob else 50,
                 "vk_edge": round(vk_edge, 1) if vk_edge else 0,
+                "cushion": cushion,  # How far L5 avg is above/below line
+                "l3_rate": round(l3_rate, 0) if l3_rate else 0,  # Most recent form
                 "h20_rate": round(h20_rate, 0) if h20_rate else 0,
                 "h10_rate": round(h10_rate, 0) if h10_rate else 0,
                 "l5_avg": round(l5_avg, 1) if l5_avg else 0,
@@ -182,18 +198,19 @@ class VisionIntelService:
                 "opponent": opponent,
                 "defense": dvp_text,
                 "dk_odds": dk_odds,
+                "blowout_risk": blowout_level,
                 "badges": badge_text
             }
             props_data.append(prop_data)
         
         prompt = f"""## {tier_name.upper()} TIER - {len(props)} Props to Analyze
 
-Analyze these {tier_name} picks. All have passed the 3-Gate qualification system.
+These props have passed the mathematical 3-Gate system. Validate each against context.
 
 PROPS DATA:
 {json.dumps(props_data, indent=2)}
 
-Return your analysis as a JSON array with one object per prop. Include all required fields."""
+Return your analysis as a JSON array. One object per prop with all required fields."""
         
         return prompt
     
@@ -283,10 +300,9 @@ Return your analysis as a JSON array with one object per prop. Include all requi
                     intel_map[prop_id] = {
                         'intel_score': max(1, min(10, int(item.get('intel_score', 5)))),
                         'intel_verdict': item.get('verdict', 'VALUE'),
-                        'vision_intel': item.get('vision_summary', ''),
+                        'vision_intel': item.get('vision_intel_summary', ''),
                         'intel_risk': item.get('risk_factor', 'Medium'),
-                        'key_factor': item.get('key_factor', ''),
-                        'matchup_note': item.get('matchup_note', '')
+                        'adjusted_confidence': float(item.get('adjusted_confidence', 0.5))
                     }
             
             logger.info(f"[VISION INTEL] Parsed {len(intel_map)} intel responses")
@@ -306,8 +322,7 @@ Return your analysis as a JSON array with one object per prop. Include all requi
             enriched['intel_score'] = intel.get('intel_score', 5)
             enriched['intel_verdict'] = intel.get('intel_verdict', 'VALUE')
             enriched['intel_risk'] = intel.get('intel_risk', 'Medium')
-            enriched['key_factor'] = intel.get('key_factor', '')
-            enriched['matchup_note'] = intel.get('matchup_note', '')
+            enriched['adjusted_confidence'] = intel.get('adjusted_confidence', 0.5)
             
             # Also set vision_summary for backward compatibility
             enriched['vision_summary'] = intel.get('vision_intel', '')
@@ -318,12 +333,49 @@ Return your analysis as a JSON array with one object per prop. Include all requi
             enriched['intel_score'] = fallback['intel_score']
             enriched['intel_verdict'] = fallback['intel_verdict']
             enriched['intel_risk'] = fallback['intel_risk']
+            enriched['adjusted_confidence'] = fallback['adjusted_confidence']
             enriched['vision_summary'] = fallback['vision_intel']
         
-        # Calculate composite score
-        vk_prob = prop.get('vk_prob_over', 50) / 100
-        intel_score = enriched.get('intel_score', 5) / 10
-        enriched['composite_score'] = round((vk_prob * 0.7 + intel_score * 0.3) * 100, 1)
+        # =================================================================
+        # INTELLIGENCE GATING: Gemini verdicts affect prop qualification
+        # =================================================================
+        intel_score = enriched.get('intel_score', 5)
+        intel_verdict = enriched.get('intel_verdict', 'VALUE')
+        adjusted_confidence = enriched.get('adjusted_confidence', 0.5)
+        
+        # TRAP verdict = KILL the prop (mark for removal)
+        if intel_verdict == 'TRAP':
+            enriched['gemini_killed'] = True
+            enriched['gemini_kill_reason'] = f"TRAP verdict (intel_score: {intel_score}/10, confidence: {adjusted_confidence:.0%})"
+            enriched['composite_score'] = 0  # Zero out to sort to bottom
+            logger.info(f"[VISION INTEL] KILLED: {prop.get('player_name')} {prop.get('stat_type')} - TRAP verdict")
+        
+        # Low intel score = KILL (Gemini sees red flags)
+        elif intel_score <= 3:
+            enriched['gemini_killed'] = True
+            enriched['gemini_kill_reason'] = f"Low intel score ({intel_score}/10) - context undermines math"
+            enriched['composite_score'] = 0
+            logger.info(f"[VISION INTEL] KILLED: {prop.get('player_name')} {prop.get('stat_type')} - intel score {intel_score}/10")
+        
+        # Low adjusted confidence = KILL
+        elif adjusted_confidence < 0.45:
+            enriched['gemini_killed'] = True
+            enriched['gemini_kill_reason'] = f"Low adjusted confidence ({adjusted_confidence:.0%})"
+            enriched['composite_score'] = 0
+            logger.info(f"[VISION INTEL] KILLED: {prop.get('player_name')} {prop.get('stat_type')} - confidence {adjusted_confidence:.0%}")
+        
+        else:
+            # PASSED Gemini gate - use adjusted_confidence as composite score
+            enriched['gemini_killed'] = False
+            
+            # Composite Score = Gemini's adjusted_confidence (already factors in VK + context)
+            # Scale to 0-100 and apply CHALK boost
+            verdict_multiplier = 1.05 if intel_verdict == 'CHALK' else 1.0
+            enriched['composite_score'] = round(adjusted_confidence * 100 * verdict_multiplier, 1)
+            
+            # Cap at 99
+            if enriched['composite_score'] > 99:
+                enriched['composite_score'] = 99.0
         
         return enriched
     
@@ -352,6 +404,9 @@ Return your analysis as a JSON array with one object per prop. Include all requi
         if prop.get('cv', 1) <= 0.25: score += 1
         score = max(1, min(10, score))
         
+        # Calculate adjusted confidence (0-1)
+        adjusted_confidence = (vk_prob / 100 * 0.6) + (score / 10 * 0.4)
+        
         # Determine verdict
         if vk_prob >= 75 and h20_rate >= 80:
             verdict = "CHALK"
@@ -361,6 +416,7 @@ Return your analysis as a JSON array with one object per prop. Include all requi
             verdict = "TRAP"
             risk = "High"
             summary = f"Caution on {player} {stat} @ {line}. Numbers look marginal - consider passing."
+            adjusted_confidence = 0.35  # Force low confidence for traps
         else:
             verdict = "VALUE"
             risk = "Medium"
@@ -371,8 +427,7 @@ Return your analysis as a JSON array with one object per prop. Include all requi
             'intel_score': score,
             'intel_verdict': verdict,
             'intel_risk': risk,
-            'key_factor': f"{h20_rate:.0f}% L20 hit rate",
-            'matchup_note': prop.get('opponent', 'TBD')
+            'adjusted_confidence': round(adjusted_confidence, 2)
         }
     
     # Legacy method for backward compatibility

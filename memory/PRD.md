@@ -50,6 +50,20 @@ Build a local-first betting intelligence app restructuring React/FastAPI to inte
 
 ## Completed Work (April 2026)
 
+### Session 3 - Gemini Intelligence Gate (April 9, 2026)
+- [x] Implemented Gemini 3.1 Pro as true intelligence gatekeeper (not just summary generator)
+- [x] Added `adjusted_confidence` scoring (0-1) combining VK probability + contextual factors
+- [x] TRAP verdicts now KILL props (removed from selection, not just labeled)
+- [x] Low intel_score (≤3) or low confidence (<45%) triggers automatic kill
+- [x] Updated prompt to user's exact specification for PropVision Intelligence Engine
+- [x] Gate logs show kills: "KILLED: Karl-Anthony Towns REB - TRAP verdict"
+
+### Session 2 - Route Cleanup (April 9, 2026)
+- [x] Fixed 502 error from orphaned route imports in __init__.py
+- [x] Archived 9 unused route files to routes_archive/
+- [x] Stripped 98 dead endpoints
+- [x] Scrubbed 24 duplicate API routes
+
 ### Session 1 - Core Features
 - [x] War Zone tier deduplication bug fixed (Demon probabilities: HR>=7, No Edge Req, Prob>=40%)
 - [x] UI "VK Model" renamed to "Vision Model" with tier-specific glow colors
