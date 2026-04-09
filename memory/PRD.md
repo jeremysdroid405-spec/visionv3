@@ -1,673 +1,93 @@
-# PropVision - Product Requirements Document
+# PropVision AI - Product Requirements Document
 
-## Overview
-PropVision is a sports analytics platform for NBA player props, providing data-driven insights for betting decisions.
-
----
-
-## Latest Update (2026-04-07): Oracle Apex Enrichment for ALL Tiers - COMPLETE!
-
-### All Picks Now Have Full Oracle Apex Data
-- **VK Predictions**: Vegas Killer ML model predictions for all picks
-- **Hit Rates**: H5, H10, H20 calculated for all props
-- **CV (Coefficient of Variation)**: Consistency metric for all props
-- **VK Recommendations**: STRONG_OVER, LEAN_OVER, NEUTRAL, LEAN_UNDER, STRONG_UNDER
-
-### Implementation Details
-
-#### 1. Oracle Apex Scan for ALL Props
-- Added `scan_all_props_for_distribution()` in `/app/backend/services/oracle_apex_service.py`
-- Runs during sync BEFORE any tier filtering
-- Stores results in `oracle_apex_analyzed` collection
-- Fixed sync db issue - VK model needs sync pymongo, not async Motor
-
-#### 2. Cascading Tier Distribution
-```
-Odds API → dg_live_props (ALL props) 
-    → Oracle Apex scans ALL props (1335+)
-    → Cached Board (ALL props with VK data)
-    → Ferrari Tier Building (cascade):
-        1. Safe Haven (Oracle Apex qualified) 
-        2. Front Lines (from remaining pool)
-        3. War Zone (from remaining pool)
-```
-
-#### 3. Oracle Apex Enrichment in Tier Building
-- `ferrari_tier_service.py` now loads from `oracle_apex_analyzed` collection
-- All tiers (SH, FL, WZ) get enriched with: vk_predicted, vk_edge, h20_rate, cv, vk_recommendation
-
-### Scheduler Updates
-- **Hourly Referee Sync** (`hourly_referee_sync`) - Now runs every 60 minutes
-- Vision Intel Suite data refreshes more frequently
-
----
-
-## Previous Update: Hourly Referee Scraper - COMPLETE!
-
-### MAJOR MILESTONE: New ML-Powered Safe Haven Tier Logic!
-
-The Safe Haven tier now uses the "Oracle Apex" logic - a mathematically-proven filtering system that combines Vegas Killer ML predictions with stat-specific gates.
-
-#### Oracle Apex Configuration (LOCKED IN)
-| Stat | Max CV | Hit Rate | Min Edge | Notes |
-|------|--------|----------|----------|-------|
-| PTS  | 0.22   | 18/20 (90%) | 2.0 | Points are stable, keep strict |
-| REB  | 0.35   | 16/20 (80%)* | 1.5 | *14/20 OK if L20 Mean >= Line + 2.5 |
-| AST  | 0.35   | 15/20 (75%) | 2.0 | Higher variance accepted |
-| PRA  | 0.20   | 18/20 (90%) | 2.0 | Combos self-correct |
-
-#### Gate Logic
-1. **Gate 1 (Sensitivity)**: Hit rate meets stat-specific threshold
-   - REB has special "buffer rule": 14/20 OK if L20 Mean >= Line + 2.5
-2. **Gate 2 (Volatility)**: CV <= stat-specific limit
-3. **Gate 3 (Prediction)**: Edge >= stat-specific AND VK Prob >= 75%
-
-#### Post-Filters
-- Minutes >= 22 (volume check)
-- Dedupe: Keep lowest line per player+stat (best goblin)
-
-#### Key Files
-- `/app/backend/services/oracle_apex_service.py` - New Oracle Apex service
-- `/app/backend/routes/ferrari_tiers.py` - Updated Safe Haven endpoint
-- `/app/backend/services/ferrari_tier_service.py` - Integrated Oracle Apex
-
-#### API Endpoints
-- `GET /api/v3/ferrari/oracle-apex` - Direct Oracle Apex picks
-- `GET /api/v3/ferrari/safe-haven` - Now uses Oracle Apex (add ?legacy=true for old logic)
-
-#### Enrichment
-Oracle Apex picks are now enriched with full intel_suite data from dg_cached_board:
-- `intel_suite` - blowout_risk, matchup_dvp, stability_index, etc.
-- `active_badges` - Context badges
-- `momentum_data`, `vacuum_data` - Situational modifiers
-
----
-
-## Previous Update (2026-04-05): Vegas Killer Frontend Integration - COMPLETE!
-
-#### What's New
-- **VK Badges on Safe Haven Cards** - Purple badges showing ML predictions
-- **VK Badges on Front Lines Cards** - Same styling with predictions
-- **VK Badges on War Zone Cards** - Full coverage across all tiers
-
-#### VK Badge Display Elements
-| Element | Description |
-|---------|-------------|
-| 🎯 VK Model | Projected points (e.g., 15.8 proj) |
-| Edge | Percentage edge vs line (e.g., +6.3%) |
-| Recommendation | STRONG OVER, STRONG UNDER, Lean Over, Lean Under, Neutral |
-| Probabilities | Over/Under probability split (e.g., Over: 94% \| Under: 6%) |
-
-#### Recommendation Logic
-| Probability | Recommendation |
-|-------------|----------------|
-| prob_over >= 70% | STRONG_OVER |
-| prob_over >= 55% | LEAN_OVER |
-| prob_under >= 70% | STRONG_UNDER |
-| prob_under >= 55% | LEAN_UNDER |
-| else | NEUTRAL |
-
-#### API Response Enhancement
-All Ferrari tier endpoints now return `vk_enriched: true` with VK fields:
-- `vk_predicted` - Projected stat value
-- `vk_edge` - Percentage edge vs line
-- `vk_prob_over` - Probability of going over
-- `vk_prob_under` - Probability of going under
-- `vk_recommendation` - Action recommendation
-- `vk_data_source` - Data source (V2_ADVANCED or PROXY)
-
-#### Files Modified
-- `/app/backend/routes/ferrari_tiers.py` - Added VK enrichment to Ferrari endpoints
-- `/app/backend/routes/tiers.py` - Added VK enrichment to regular tier endpoints
-- `/app/frontend/src/components/dashboard/UniversalPlayerCard.jsx` - Added VK badge UI in compact mode
-
----
-
-## Latest Update (2026-04-05): Backtest Results - BEATING VEGAS!
-
-### MAJOR MILESTONE: Model Validated as Profitable!
-
-The Vegas Killer model has been backtested against 8,137 historical bets and shows **consistent profitability** across all stat types.
-
-#### Backtest Summary
-| Metric | Value |
-|--------|-------|
-| Total Bets | 8,137 |
-| Total Wins | 4,078 |
-| **Overall Win Rate** | **61.91%** |
-| **Edge vs 52.4% Break-Even** | **+9.51%** |
-| **Overall ROI** | **+14.77%** |
-| All Stats Profitable | ✅ YES |
-
-#### Performance by Stat Type
-| Stat | Bets | Win Rate | Edge | ROI |
-|------|------|----------|------|-----|
-| 3PM | 1,600 | **66.26%** | +13.86% | +16.18% |
-| AST | 1,624 | **64.62%** | +12.22% | +17.41% |
-| REB | 1,654 | **61.26%** | +8.86% | +13.84% |
-| PTS | 1,647 | **61.22%** | +8.82% | +15.85% |
-| PRA | 1,612 | **58.23%** | +5.83% | +10.57% |
-
-#### API Endpoint
-`GET /api/v3/vegas-killer/backtest/results` - Returns full backtest results
-
----
-
-## Previous Update: Vegas Killer Model Retrained with V2 Stats
-
-### MAJOR MILESTONE: 84-Feature Model with Real Process Stats
-
-The Vegas Killer model has been **RETRAINED** with V2 Advanced Stats from the BDL API!
-
-#### Training Data
-- **108,178 V2 Advanced Stats records** across 4 seasons (2020, 2021, 2022, 2024)
-- **15,587 training samples** from 450 players
-- **88.6% of samples enriched** with V2 Advanced Stats
-
-#### Model Performance (After Retraining)
-| Stat | Features | Test MAE | Test R² |
-|------|----------|----------|---------|
-| PTS | 84 | 4.76 | 0.518 |
-| REB | 84 | 1.91 | 0.426 |
-| AST | 84 | 1.40 | 0.488 |
-| 3PM | 84 | 0.93 | 0.316 |
-| PRA | 84 | 6.18 | 0.567 |
-
-#### New V2 Features Added to Model
-- `v2_usg_rate_l5/l10` - Usage Rate
-- `v2_ts_pct_l5/l10` - True Shooting %
-- `v2_efg_l5/l10` - Effective FG%
-- `v2_pace_l5/l10` - Game Tempo
-- `v2_off_rating_l5` - Offensive Rating
-- `v2_matchup_fg_pct_l5` - Matchup Defense
-- `v2_touches_l5` - Ball Touches (Tracking)
-- `v2_pie_l5/l10` - Player Impact Estimate
-- `v2_assist_pct_l5` - Assist %
-- `v2_reb_pct_l5` - Rebound %
-- And 20+ more advanced metrics
-
----
-
-## Previous Update: V2 Advanced Stats Integration
-
-### MAJOR MILESTONE: Real Process Stats from BDL V2 API
-
-The Vegas Killer model now uses **REAL PROCESS STATS** from the BallDontLie V2 Advanced Stats API instead of proxy calculations!
-
-#### What Changed
-- Created `bdl_advanced_stats_fetcher.py` to pull V2 stats from BDL API (GOAT tier access)
-- Created `/api/v3/bdl-advanced/*` routes for fetching and managing advanced stats
-- Integrated V2 stats into `vegas_killer_model.py` via `get_v2_features()` method
-- Predictions now show `"data_source": "V2_ADVANCED"` when using real data
-
-#### V2 Stats Available (100+ metrics)
-| Category | Key Metrics |
-|----------|-------------|
-| **Efficiency** | usage_percentage, true_shooting_percentage, effective_field_goal_percentage |
-| **Pace** | pace, pace_per_40, possessions |
-| **Matchup** | matchup_fg_pct, matchup_player_points, matchup_3pt_pct, matchup_minutes |
-| **Tracking** | touches, passes, speed, distance |
-| **Shot Quality** | contested_fg_pct, uncontested_fg_pct, contested_shots |
-| **Hustle** | deflections, loose_balls_recovered_total, charges_drawn |
-| **Playmaking** | assist_percentage, assist_ratio, assist_to_turnover |
-| **Impact** | pie (Player Impact Estimate), offensive_rating, defensive_rating, net_rating |
-
-#### API Endpoints Added
-| Endpoint | Purpose |
-|----------|---------|
-| `GET /api/v3/bdl-advanced/status` | Check stored stats status |
-| `POST /api/v3/bdl-advanced/fetch-season/{season}` | Fetch season V2 stats |
-| `POST /api/v3/bdl-advanced/fetch-multiple` | Fetch multiple seasons |
-| `GET /api/v3/bdl-advanced/player/{player_id}` | Get player stats by ID |
-| `GET /api/v3/bdl-advanced/player-by-name/{name}` | Get stats by name |
-| `GET /api/v3/bdl-advanced/features/{name}/{stat}` | Extract features for prediction |
-
-#### Example Prediction Response
-```json
-{
-  "player_name": "LeBron James",
-  "predicted": 17.99,
-  "v2_advanced_stats": {
-    "usage_rate": 0.241,
-    "true_shooting": 0.513,
-    "pace": 101.93,
-    "touches": 78.8,
-    "matchup_fg_pct": 0.447
-  },
-  "data_source": "V2_ADVANCED"
-}
-```
-
----
-
-## Previous Update (2026-04-05): Vegas Killer V2 - Process Stats with Real Data
-
-### NEW FEATURES ADDED
-1. **Real Pace Data** - All 30 NBA teams with actual pace (possessions/48)
-   - IND fastest (102.8), MIA slowest (95.8)
-   - Pace delta and pace multiplier calculated per matchup
-   
-2. **Enhanced Matchup Features**
-   - `opp_l10_pts_allowed` - Recent defensive trend
-   - `opp_l5_pts_allowed` - Very recent trend
-   - `pace_multiplier` - Scoring opportunity adjustment
-
-3. **Market Features**
-   - `line_cushion` - How far average beats the line
-   - `line_cushion_pct` - Percentage cushion
-   - `team_total_share` - Player's expected % of team scoring
-
-### FEATURE COUNT: 47 Features
-| Category | Count | Key Features |
-|----------|-------|--------------|
-| Opportunity | 7 | USG%, Minutes, FGA, FTr |
-| Efficiency | 8 | eFG%, TS%, 3PT Rate |
-| Matchup | 8 | Def Rating, Pace, Pts Allowed |
-| Environment | 5 | Rest, B2B, Home/Away |
-| Baseline | 9 | L3/L5/L10/Season Avg |
-| Market | 6 | Line, Team Total, Cushion |
-
-### STATSMODELS FINDINGS
-**Significant Predictors (P < 0.05):**
-1. `season_avg` (coef=0.508) - True talent
-2. `touches_proxy` (coef=0.344) - Opportunity
-3. `minutes_l5` (coef=0.208) - Playing time
-4. `l3_avg` (coef=0.096) - Hot streak
-5. `rest_days` (coef=-0.059) - Fatigue
-
-**Not Significant:** Efficiency (eFG%, TS%), Matchup (pace, def rating)
-- This tells us: Raw opportunity matters more than efficiency for predicting OUTPUT
-
-### FILES ADDED/UPDATED
-- `/app/backend/services/team_stats_service.py` (Team pace data)
-- `/app/backend/services/vegas_killer_model.py` (Enhanced features)
-
----
-
-## Previous: Vegas Killer Model - Process-Based Prediction
-
-### THE PARADIGM SHIFT
-**OLD WAY**: "Did he hit 8/10 times?" (Box Score thinking)
-**VEGAS WAY**: "What conditions allow scoring?" (Process thinking)
-
-### FEATURE CATEGORIES (38 Total Features)
-| Category | Features | Purpose |
-|----------|----------|---------|
-| **Opportunity** | USG%, Minutes, FGA, FTr | Volume - how many shots? |
-| **Efficiency** | eFG%, TS%, 3PT Rate | Quality - how well does he shoot? |
-| **Matchup** | Opp DRtg, Pace, Pts Allowed | Friction - who is he playing? |
-| **Environment** | Rest, Home/Away, B2B | Fatigue - is he tired? |
-| **Baseline** | L3/L5/L10/Season Avg | Historical performance |
-| **Market** | Line, Team Total | What Vegas thinks |
-
-### MODEL PERFORMANCE (Ensemble: Ridge + GBM)
-| Stat | MAE | R² | Features |
-|------|-----|-----|----------|
-| PTS | 4.77 | 0.52 | 36 |
-| REB | 1.91 | 0.42 | 36 |
-| AST | 1.40 | 0.49 | 36 |
-| 3PM | 0.93 | 0.31 | 36 |
-| PRA | 6.19 | 0.57 | 36 |
-
-### API ENDPOINTS
-| Endpoint | Purpose |
-|----------|---------|
-| `GET /api/v3/vegas-killer/status` | Model status |
-| `POST /api/v3/vegas-killer/train` | Train models |
-| `POST /api/v3/vegas-killer/predict` | Single prediction |
-| `GET /api/v3/vegas-killer/predict-tier/{tier}` | Tier predictions |
-| `GET /api/v3/vegas-killer/feature-breakdown` | Feature documentation |
-| `GET /api/v3/vegas-killer/compare-all` | Full comparison |
-
-### CURRENT RESULTS
-- Safe Haven: 100% Strong Over (model confirms all picks)
-- War Zone Trap: Miles Bridges PRA @ 24.5 → 32.2% P(Over) = STRONG UNDER
-
-### FILES
-- `/app/backend/services/vegas_killer_model.py` (38-feature model)
-- `/app/backend/routes/vegas_killer.py` (API)
-- `/app/backend/models/vegas_killer_*.pkl` (saved models)
-
----
-
-## Previous: Vegas Pro Model - ML Regression Stack
-
-### THE PRO STACK
-| Tool | Purpose |
-|------|---------|
-| BallDontLie API | Data extraction (game logs, stats) |
-| statsmodels | Feature significance analysis (P-values) |
-| scikit-learn | Ridge regression model training |
-| pandas + numpy | Data transformation |
-
-### MODEL PERFORMANCE
-| Stat | MAE | R² | Features |
-|------|-----|-----|----------|
-| PTS | 4.77 pts | 0.52 | 11 |
-| REB | 1.92 | 0.42 | 8 |
-| AST | 1.39 | 0.49 | 9 |
-| 3PM | 0.94 | 0.31 | 7 |
-| PRA | 6.18 | 0.57 | 14 |
-
-### KEY FINDINGS FROM STATSMODELS
-**Significant Features (P < 0.05):**
-- `l3_avg` - Most recent form matters most
-- `minutes_l5` - Playing time is crucial
-- `rest_days` - B2B games hurt performance
-- `cv_l10` - Volatility coefficient
-
-**NOT Significant (drop these):**
-- `is_home` - Home court doesn't predict scoring
-- `mode`, `median` - Distribution shape less predictive than averages
-- `opp_def_rank` - Needs better data quality
-
-### API ENDPOINTS
-| Endpoint | Purpose |
-|----------|---------|
-| `GET /api/v3/pro-model/status` | Check trained models |
-| `POST /api/v3/pro-model/train` | Train/retrain models |
-| `POST /api/v3/pro-model/predict` | Single prediction |
-| `GET /api/v3/pro-model/predict-tier/{tier}` | Predict entire tier |
-| `GET /api/v3/pro-model/compare-approaches` | Board Score vs ML |
-| `POST /api/v3/pro-model/analyze-features/{stat}` | P-value analysis |
-
-### FILES ADDED
-- `/app/backend/services/vegas_pro_model.py` (ML pipeline)
-- `/app/backend/routes/pro_model.py` (API endpoints)
-- `/app/backend/models/` (saved model pickles)
-
----
-
-## Previous Update (2026-04-05): Vegas Regression Model - Alternative Prediction System
-
-### NEW: Multiple Linear Regression Model
-Built a parallel prediction system to reverse-engineer Vegas line-setting methodology.
-
-**Key Insight**: The existing Board Score approach is backward-looking ("how often did he hit this line?"). The Regression approach is forward-looking ("what will he score tonight?").
-
-### Regression Model Formula
-```
-Predicted_Stat = (L5_Avg × 0.50) + (L10_Avg × 0.30) + (Season_Avg × 0.20)
-               + Matchup_Adjustment
-               + Minutes_Adjustment
-               + Trend_Adjustment
-               + Home/Away_Adjustment
-               + Rest_Day_Adjustment
-```
-
-### Comparison Results (Current Board)
-- Safe Haven: 100% agreement (Regression confirms all picks)
-- Front Lines: 80% agreement
-- War Zone: 33% agreement (expected - high risk plays)
-
-### New API Endpoints
-| Endpoint | Purpose |
-|----------|---------|
-| `POST /api/v3/regression/predict` | Single player prediction |
-| `GET /api/v3/regression/compare/{tier}` | Compare Board Score vs Regression |
-| `GET /api/v3/regression/compare/all` | All tiers comparison |
-| `GET /api/v3/regression/flags` | Find potential traps (disagreements) |
-
-### Files Added
-- `/app/backend/services/vegas_regression_model.py` (Core regression logic)
-- `/app/backend/routes/regression.py` (API endpoints)
-
----
-
-## Previous Update (2026-04-05): PropVision v7.2 - Mode Edge Board Score Formula
-
-### VERIFIED WORKING (Manual Testing)
-- ✅ All 3 tiers populate (Safe Haven: 10, Front Lines: 10, War Zone: 5)
-- ✅ War Zone contains ONLY Demons (`is_demon=True`)
-- ✅ Safe Haven contains ONLY Goblins (`is_goblin=True`)
-- ✅ `mode_edge` correctly calculated as `Mode - Line`
-- ✅ `line_below_avg_bonus` uses actual cushion points (Season_Avg - Line)
-- ✅ Sample Standard Deviation uses (N-1) denominator (Bessel's correction)
-- ✅ BallDontLie is SSOT for all stats (no `dg_player_stats` fallbacks)
-- ✅ Moderate Demons allowed in Front Lines (PP Edge >= 15% OR Hit Rate >= 65%)
-
-### v7.2 Board Score Formula (ADDITIVE)
-```
-Board_Score = True_Probability + Sharp_Implied + PP_Edge + L5_Rate + L10_Rate 
-            + Line_Below_Avg_Bonus + Mode_Edge - Penalties
-
-Components:
-- True_Probability: Weighted (Historical 45% + Sharp 25% + Floor 15% + Context 15%)
-- Sharp_Implied: What smart money says (38%+ minimum)
-- PP_Edge: Edge over PrizePicks break-even (positive = value)
-- L5_Rate: Last 5 games hit rate (0-100%)
-- L10_Rate: Last 10 games hit rate (0-100%)
-- Line_Below_Avg_Bonus: Actual points of cushion (Season_Avg - Line)
-  - Example: Avg 17.1, Line 9.5 → Bonus = 7.6 points
-- Mode_Edge: How far the most frequent outcome beats the line (Mode - Line)
-  - Example: Mode 22, Line 19.5 → Mode Edge = +2.5
-- Penalties: Variance (-10 if std_dev > 6.0), DvP tiers, Blowout risk
-```
-
-### Tier Rules
-| Tier | Who Goes Here |
-|------|---------------|
-| Safe Haven | Top Goblins only (alternate lines with edge) |
-| Front Lines | Mid Goblins + "Safe" Demons (PP Edge >= 15% OR Hit Rate >= 65%) |
-| War Zone | High Risk Demons only (PP Edge < 10% AND L10 <= 60%) |
-
----
-
-## Previous Update (2026-04-04): PropVision v7.1 - Edge-First Board Score Formula
-
-### v7.1 Board Score Formula (DEPRECATED)
-```
-Board_Score = Sharp_Implied + PP_Edge + Hit_Rate_Avg - Penalties
-```
-
-### Demon vs Goblin Edge Calculation
-| Type | Break-even | Edge Formula |
-|------|------------|--------------|
-| Goblin (-137) | 57.8% | Sharp_Implied - 57.8% |
-| Demon (+100) | 50% | Hit_Rate_Avg - 50% |
-
-### Key Fixes in v7.1
-1. **Stale Data Fix**: `run_bdl_game_logs_sync_batched` now runs in Phase 0 of optimized sync
-2. **Hit Rate Source**: Uses `dg_cached_board.hit_rates` (fresh from sync) instead of calculating from stale `dg_player_stats`
-3. **Demon Exemptions**: Demons are exempt from L3 < 33%, Season Median, and Trap Risk hard kills
-4. **Deduplication**: A player can appear in BOTH Safe Haven (Goblin) AND War Zone (Demon)
-
----
-
-## Previous Update (2026-04-03): PropVision v7 - True Probability Engine
-
-### MAJOR ARCHITECTURE OVERHAUL
-
-The system has been upgraded from ranking picks by "Sharp Line Edge" to calculating a **True Probability** score that blends multiple factors for maximum edge extraction.
-
-### True Probability Formula (0-100%)
-
-```
-True_Prob = (
-    Historical_Consistency × 0.45 +    # Recent form is king
-    Sharp_Market_Signal × 0.25 +       # Sharp money knows  
-    Statistical_Floor × 0.15 +          # Safety net analysis
-    Contextual_Modifiers × 0.15        # Game environment
-)
-```
-
-**Component Breakdown:**
-
-| Component | Weight | Formula |
-|-----------|--------|---------|
-| Historical Consistency | 45% | (L3 × 0.40) + (L5 × 0.35) + (L10 × 0.25) |
-| Sharp Market Signal | 25% | Sharp_Implied × Separation_Confidence |
-| Statistical Floor | 15% | Cushion + Mode_Proximity - Variance_Penalty |
-| Contextual Modifiers | 15% | DvP(+/-8) + Whistle(+/-5) + Vacuum(+/-5) + Blowout(-10) |
-
-### Hard Kill Switches (Auto-Disqualify)
-
-| Kill | Threshold | Reason |
-|------|-----------|--------|
-| L3 Cold | < 33% | Player is ice cold (0/3 or 1/3 recent) |
-| L5 Cold | < 40% | Confirmed cold streak |
-| No Sharp Edge | < 52% implied | Vegas doesn't see value |
-| Line > Median | Line above season median | Against the statistical grain |
-| Blowout + PTS/PRA | HIGH risk + scoring stat | Bench minutes risk |
-
-### Tier Classification (by True Probability)
-
-| Tier | True Probability | Description |
-|------|------------------|-------------|
-| Safe Haven | ≥ 72% | Elite locks - highest confidence |
-| Front Lines | 62-71% | Strong plays - good value |
-| War Zone | 52-61% | Value bets - edge exists but risk |
-| Below Threshold | < 52% | Eliminated from consideration |
-
-### Diversified Parlay Optimizer (NEW)
-
-**Output per tier:**
-- 5 optimized parlays (2-leg through 6-leg)
-- Total: 15 parlays across all tiers
-
-**Diversification Constraints:**
-| Rule | Limit | Purpose |
-|------|-------|---------|
-| Max Player Appearances | 2 per tier | Avoid correlated loss |
-| Max Team per Parlay | 2 | Diversify game risk |
-| Max Stat Type per Parlay | 3 | Spread across categories |
-
-**Parlay Selection:**
-1. Generate all valid combinations (2-6 legs)
-2. Filter by diversification rules
-3. Calculate EV: `(Combined_Prob × Payout) - (1 - Combined_Prob)`
-4. Select top EV-positive parlays respecting appearance limits
-
-### New API Endpoints
-
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/api/v3/ferrari/parlays` | GET | Get all optimized parlays |
-| `/api/v3/ferrari/parlays?tier=safe_haven` | GET | Filter parlays by tier |
-
-### Files Modified
-
-- **MAJOR REWRITE**: `/app/backend/services/ferrari_tier_service.py`
-  - Replaced Power Score formula with True Probability engine
-  - Added L3/L5/L10 granular hit rate calculation
-  - Integrated `TrueProbabilityEngine` from v7 module
-  - Added `DiversifiedParlayOptimizer` for parlay generation
-  - Added parlay storage to `ferrari_parlays` collection
-
-- **NEW**: `/app/backend/services/propvision_v7_engine.py`
-  - `TrueProbabilityEngine` class - calculates true probability
-  - `DiversifiedParlayOptimizer` class - builds EV-positive parlays
-  - Helper functions for L3/L5/L10 hit rates, median, mode, std_dev
-
-- **MODIFIED**: `/app/backend/routes/ferrari_tiers.py`
-  - Added `/v3/ferrari/parlays` endpoint
-
-### Database Changes
-
-| Collection | Description |
-|------------|-------------|
-| `ferrari_parlays` | NEW - Stores optimized parlays with EV and picks |
-
-### Example API Response
-
-```json
-{
-  "total_parlays": 13,
-  "parlays_by_tier": {
-    "safe_haven": 5,
-    "front_lines": 4,
-    "war_zone": 4
-  },
-  "safe_haven_parlays": [
-    {
-      "parlay_id": "safe_haven_1",
-      "legs": 6,
-      "expected_value": 9.634,
-      "combined_probability": 25.94,
-      "picks": [
-        {"player_name": "Player A", "stat_type": "REB", "line": 2.5, "true_probability": 82.07}
-      ]
-    }
-  ]
-}
-```
-
----
-
-## Previous Updates
-
-### Vision Intel Suite Standardization (2026-04-03)
-
-Every pick now contains standardized fields:
-- `blowout_risk`, `context_badges`, `defensive_momentum`
-- `matchup_dvp`, `tempo/pace_delta`, `stability_index`
-- `variance`, `target_lock_rationale`, `usage_ripple`
-- `vision_insight`, `vision_summary`, `whistle_data`
-
-### Badge Engine Migration to BDL (2026-04-03)
-
-Migrated from stats.nba.com to BallDontLie Advanced Stats API for reliable badge generation.
-
----
+## Original Problem Statement
+Build a local-first betting intelligence app restructuring React/FastAPI to integrate Vegas Killer ML models into the Prop Board. Establish cascading tier distribution (Safe Haven, Front Lines, War Zone) strictly gated by Hit Rate, CV, and ML Edge/Probability, using DraftKings odds as the separator. Integrate Gemini 3.1 Pro as "Vision Intel Layer" for composite scoring.
 
 ## Core Architecture
+```
+/app
+├── backend/
+│   ├── routes_archive/              # 9 archived legacy route files
+│   ├── routes/                      # Active route files (cleaned)
+│   │   ├── core_v3.py, board.py, tiers.py, scheduler.py
+│   │   ├── ferrari_tiers.py, vacuum.py, vision.py
+│   │   └── __init__.py              # Route registration (cleaned)
+│   ├── services/
+│   │   ├── vision_intel_service.py  # Batched Gemini intel processing
+│   │   ├── oracle_apex_service.py   # 3-Gate Qualification checks
+│   │   ├── ferrari_tier_service.py  # Tier routing + Vision Intel
+│   │   ├── odds_api_service.py, odds_sync_service.py
+├── frontend/src/
+│   ├── pages/Dashboard.jsx
+│   ├── hooks/useLiveOdds.js
+│   ├── components/dashboard/
+```
 
-### Backend Stack
-- **FastAPI** - REST API framework
-- **MongoDB** - Primary database (pick_vision)
-- **Motor** - Async MongoDB driver
+## Key Technical Concepts
+- **3-Gate System:** HR >= 80%, CV <= 0.35, VK Edge/Prob thresholds per tier
+- **DK Classification:** Safe Haven (DK <= -250), Front Lines (-249 to +199), War Zone (>= +200)
+- **Vision Intel:** Batched Gemini 3.1 Pro API calls for composite scoring
+- **No Fall-Throughs:** Props failing tier gates are discarded, not cascaded
 
-### Frontend Stack  
-- **React** - UI framework
-- **Tailwind CSS** - Styling
-- **Shadcn/UI** - Component library
+## Key DB Collections
+- `oracle_apex_analyzed`: Vegas Killer model outputs
+- `dg_cached_board`: Enriched props joined with Oracle data
+- `ferrari_safe_haven` / `ferrari_front_lines` / `ferrari_war_zone`: Final tier collections
 
-### Data Sources
-- **BallDontLie API** - Player stats, game logs, advanced stats
-- **PrizePicks API** - Props and lines
-- **Odds API** - Sharp market prices
-- **ESPN/NBA.com** - Referee assignments
+## API Endpoints
+- `GET /api/v3/ferrari/safe-haven`
+- `GET /api/v3/ferrari/front-lines`
+- `GET /api/v3/ferrari/war-zone`
+- `GET /api/v3/ferrari/rebuild`
+- `GET /api/v3/player-with-badges/{name}`
+
+## 3rd Party Integrations
+- Gemini AI (google-genai, Model: gemini-3.1-pro-preview) - User API Key
+- BallDontLie (BDL) API - User API Key
+- The Odds API - User API Key
 
 ---
 
-## Key Collections
+## Completed Work (April 2026)
 
-| Collection | Purpose |
-|------------|---------|
-| `dg_cached_board` | Cached player props board |
-| `ferrari_safe_haven` | Top 10 Safe Haven picks |
-| `ferrari_front_lines` | Top 10 Front Lines picks |
-| `ferrari_war_zone` | Top 10 War Zone picks |
-| `ferrari_scored` | All scored props before tier selection |
-| `ferrari_parlays` | Optimized parlay combinations |
+### Session 1 - Core Features
+- [x] War Zone tier deduplication bug fixed (Demon probabilities: HR>=7, No Edge Req, Prob>=40%)
+- [x] UI "VK Model" renamed to "Vision Model" with tier-specific glow colors
+- [x] Filtered injuries from breaking news ticker
+- [x] Capped parlay probabilities at 99%
+- [x] Removed gate fall-through logic (strict tier assignment)
+- [x] Vision Intel Service (vision_intel_service.py) with Gemini batched calls
+- [x] Consolidated Gemini integrations to prevent overlapping API calls
+- [x] Generated API route analytics exports
+
+### Session 2 - Route Cleanup
+- [x] Archived 9 unused route files to routes_archive/
+- [x] Stripped 98 dead endpoints
+- [x] Scrubbed 24 duplicate API routes
+- [x] Fixed 502 error from orphaned route imports in __init__.py (April 9, 2026)
 
 ---
 
-## Backlog
+## Priority Backlog
 
-### P0 - Critical (COMPLETED)
-- [x] PropVision v7 True Probability Engine
-- [x] Diversified Parlay Optimizer
-- [x] v7.1 Edge-First Board Score Formula
-- [x] Stale Game Logs Fix (BDL sync integrated)
-- [x] L5/L10 Hit Rate Display on Frontend
-- [x] Vegas Killer ML Model with XGBoost + EWMA
-- [x] Vegas Killer Frontend Integration (VK badges on cards)
+### P1 - Critical
+- [ ] **Upstream Prop Duplication**: Investigate `odds_sync_service.py` for duplicate prop insertion into `dg_cached_board`
 
-### P1 - High Priority
-- [ ] AI Vision Summary Fix (Gemini returning null for some picks)
-- [ ] Frontend parlay display component
-- [ ] Parlay builder UI with manual selection
-- [ ] Fix upstream prop duplication in `dg_cached_board`
-- [ ] Forward-testing infrastructure (daily prop capture)
+### P2 - Important
+- [ ] Establish automated daily prop capture (Forward-Testing Infrastructure)
+- [ ] Integrate Google/Apple OAuth (Emergent-managed)
+- [ ] Implement Stripe for payments
 
-### P2 - Medium Priority
-- [ ] Google OAuth integration (Emergent-managed)
-- [ ] Stripe payments integration (test keys in pod)
+### P3 - Nice to Have
+- [ ] Refactor `vegas_killer_model.py` (~2000 lines)
+- [ ] Further API controller optimization
 
-### P3 - Future
-- [ ] Mobile responsive optimization
-- [ ] Push notifications for picks
-- [ ] Historical performance tracking
-- [ ] Rebuild endpoint timeout optimization (currently ~120s)
-- [ ] Refactor `vegas_killer_model.py` (1400+ lines) into separate modules
+---
+
+## Testing Credentials
+Use "Demo Mode" button on frontend login page.
+
+## Critical Notes for Agents
+1. **Vision Intel**: Use BATCHED API calls only (one per tier) - single prop calls cause timeouts
+2. **Google API Key**: Use user's `GOOGLE_API_KEY`, NOT Emergent LLM key
+3. **DvP Context**: Low DvP rank (#1-5) = BAD matchup, High (#26-30) = GOOD matchup

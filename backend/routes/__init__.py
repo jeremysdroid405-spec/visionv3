@@ -56,8 +56,6 @@ def register_all_routes(app, engine, game_lock_engine=None, db=None,
     set_picks_engine(engine)
     set_parlays_engine(engine)
     set_board_engine(engine)
-    set_intel_engine(engine)
-    set_board_intel_engine(engine)
     set_roster_engine(engine)
     set_cached_data_engine(engine)
     set_core_v3_engine(engine)
@@ -100,8 +98,6 @@ def register_all_routes(app, engine, game_lock_engine=None, db=None,
     app.include_router(picks_router, prefix="/api")
     app.include_router(parlays_router, prefix="/api")
     app.include_router(board_router, prefix="/api")
-    app.include_router(intel_router, prefix="/api")
-    app.include_router(board_intel_router, prefix="/api")
     
     # Auth routes
     app.include_router(auth_router, prefix="/api")
