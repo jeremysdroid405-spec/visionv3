@@ -1,4 +1,4 @@
-"""Routes module initialization"""
+"""Routes module initialization - CLEANED VERSION"""
 from .picks import router as picks_router, set_engine as set_picks_engine
 from .parlays import router as parlays_router, set_engine as set_parlays_engine
 from .board import router as board_router, set_engine as set_board_engine, set_photo_service
@@ -14,10 +14,8 @@ from .master_hub import router as master_hub_router, set_master_hub_deps
 from .odds_mapper import router as odds_mapper_router, set_odds_mapper_deps
 from .demon_tracker import router as demon_tracker_router, set_demon_tracker
 from .payouts import router as payouts_router
-from .validation import router as validation_router, set_raw_stat_fetcher
 from .social import router as social_router, set_social_signal_engine
 from .roster_sync import router as roster_sync_router, set_demon_goblin_engine as set_roster_engine
-from .roster import router as roster_router, set_roster_db
 from .game_lock import router as game_lock_router
 from .adaptive_sync import router as adaptive_sync_router
 from .admin import router as admin_router, set_admin_deps
@@ -31,15 +29,19 @@ from .command import router as command_router, set_db as set_command_db
 from .live import router as live_router, set_db as set_live_db
 from .qa_testing import router as qa_router, set_qa_db
 from .image_proxy import router as image_proxy_router
-from .headshots import router as headshots_router, set_headshot_db
 from .ferrari_tiers import router as ferrari_router, set_ferrari_db
 from .vacuum import router as vacuum_router, set_vacuum_db
-from .momentum import router as momentum_router, set_momentum_db
-from .regression import router as regression_router
-from .pro_model import router as pro_model_router
-from .vegas_killer import router as vegas_killer_router
-from .bdl_advanced import router as bdl_advanced_router
-from .historical_odds import router as historical_odds_router
+
+# ARCHIVED ROUTES (moved to routes_archive/):
+# - validation.py
+# - headshots.py
+# - momentum.py  
+# - roster.py
+# - regression.py
+# - pro_model.py
+# - vegas_killer.py
+# - bdl_advanced.py
+# - historical_odds.py
 
 
 def register_all_routes(app, engine, game_lock_engine=None, db=None, 
@@ -83,8 +85,6 @@ def register_all_routes(app, engine, game_lock_engine=None, db=None,
         set_odds_mapper_deps(db, get_odds_mapper_func)
     if demon_tracker is not None:
         set_demon_tracker(demon_tracker)
-    if raw_stat_fetcher is not None:
-        set_raw_stat_fetcher(raw_stat_fetcher)
     if social_signal_engine is not None:
         set_social_signal_engine(social_signal_engine)
     if db is not None and demon_goblin_engine_class is not None:
@@ -94,7 +94,9 @@ def register_all_routes(app, engine, game_lock_engine=None, db=None,
     if engine is not None and live_scores_engine is not None:
         set_scheduler_deps(engine, live_scores_engine, scheduler, db)
     
-    # Include routers with /api prefix to match frontend expectations
+    # ==========================================
+    # CORE ROUTES (High Traffic)
+    # ==========================================
     app.include_router(picks_router, prefix="/api")
     app.include_router(parlays_router, prefix="/api")
     app.include_router(board_router, prefix="/api")
@@ -119,16 +121,10 @@ def register_all_routes(app, engine, game_lock_engine=None, db=None,
     app.include_router(odds_mapper_router, prefix="/api")
     app.include_router(demon_tracker_router, prefix="/api")
     
-    # Phase 14-17 extraction
+    # Social/Roster routes
     app.include_router(payouts_router, prefix="/api")
-    app.include_router(validation_router, prefix="/api")
     app.include_router(social_router, prefix="/api")
     app.include_router(roster_sync_router, prefix="/api")
-    
-    # Semantic Roster Endpoints (P0 - Roster API Separation)
-    if db is not None:
-        set_roster_db(db)
-    app.include_router(roster_router, prefix="/api")
     
     app.include_router(board_intel_v2_router, prefix="/api")
     app.include_router(game_lock_router, prefix="/api")
@@ -137,61 +133,36 @@ def register_all_routes(app, engine, game_lock_engine=None, db=None,
     app.include_router(cached_data_router, prefix="/api")
     app.include_router(scheduler_router, prefix="/api")
     
-    # Phase 18 extraction - Core V3 routes
+    # Core V3 routes
     app.include_router(core_v3_router, prefix="/api")
     app.include_router(tiers_router, prefix="/api")
     app.include_router(intel_sync_router, prefix="/api")
     app.include_router(legacy_router, prefix="/api")
     
-    # Command Post - Risk Assessment Hub
+    # Command Post
     if db is not None:
         set_command_db(db)
     app.include_router(command_router, prefix="/api")
     
-    # Live Data - Scores and News tickers
+    # Live Data
     if db is not None:
         set_live_db(db)
     app.include_router(live_router, prefix="/api")
     
-    # QA Testing routes
+    # QA Testing
     if db is not None:
         set_qa_db(db)
     app.include_router(qa_router, prefix="/api")
     
-    # Image proxy route (for NBA CDN CORS bypass)
+    # Image proxy
     app.include_router(image_proxy_router, prefix="/api")
     
-    # Headshot management routes
-    if db is not None:
-        set_headshot_db(db)
-    app.include_router(headshots_router, prefix="/api")
-    
-    # Ferrari Tiers - Best of Best Bovada-filtered picks
+    # Ferrari Tiers
     if db is not None:
         set_ferrari_db(db)
     app.include_router(ferrari_router, prefix="/api")
     
-    # Usage Vacuum - Injury-based usage redistribution
+    # Usage Vacuum
     if db is not None:
         set_vacuum_db(db)
     app.include_router(vacuum_router, prefix="/api")
-    
-    # Defensive Momentum - Weighted composite DvP rankings
-    if db is not None:
-        set_momentum_db(db)
-    app.include_router(momentum_router, prefix="/api")
-    
-    # Vegas Regression Model - Alternative prediction system
-    app.include_router(regression_router)
-    
-    # Vegas Pro Model - ML-based prediction (scikit-learn)
-    app.include_router(pro_model_router)
-    
-    # Vegas Killer Model - Process-based features (Ultimate model)
-    app.include_router(vegas_killer_router)
-    
-    # BDL Advanced Stats - V2 Process Stats for Vegas Killer
-    app.include_router(bdl_advanced_router)
-    
-    # Historical Odds - The Odds API historical player props
-    app.include_router(historical_odds_router)
