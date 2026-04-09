@@ -118,31 +118,12 @@ async def get_trending() -> Dict[str, Any]:
         return {"success": False, "error": str(e), "trending": []}
 
 
-@router.get("/static-shell")
-async def get_static_shell() -> Dict[str, Any]:
-    """Get static shell data (roster without live lines)"""
-    if not engine:
-        raise HTTPException(status_code=500, detail="Engine not initialized")
-    
-    try:
-        result = await engine.get_static_shell()
-        return result
-    except Exception as e:
-        logger.error(f"Error getting static shell: {e}")
-        return {"success": False, "error": str(e)}
-
-
-@router.get("/hydrated-board")
-async def get_hydrated_board() -> Dict[str, Any]:
-    """Get hydrated board with all data merged"""
-    if not engine:
-        raise HTTPException(status_code=500, detail="Engine not initialized")
-    
-    try:
-        result = await engine.get_hydrated_board()
-        return result
-    except Exception as e:
-        logger.error(f"Error getting hydrated board: {e}")
+# =============================================================================
+# DUPLICATE ROUTES REMOVED - These are now served by cached_data.py:
+# - /static-shell -> cached_data.py
+# - /hydrated-board -> cached_data.py  
+# - /cached-props -> cached_data.py (note: board.py has /cached-props, cached_data.py has /v3/cached-props)
+# =============================================================================
         return {"success": False, "error": str(e)}
 
 

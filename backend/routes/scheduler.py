@@ -472,30 +472,9 @@ async def sync_advanced_stats():
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/v3/injuries")
-async def get_injuries():
-    """
-    Get current NBA injury reports.
-    
-    Returns list of injured players with status and severity.
-    """
-    try:
-        db = get_db()
-        
-        # Query directly from the collection
-        injuries = await db.bdl_injuries.find(
-            {},
-            {"_id": 0}
-        ).to_list(100)
-        
-        return {
-            "success": True,
-            "count": len(injuries),
-            "injuries": injuries
-        }
-    except Exception as e:
-        logger.error(f"[INJURIES] Failed to get injuries: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+# =============================================================================
+# DUPLICATE ROUTE REMOVED - /v3/injuries is now served by injuries.py
+# =============================================================================
 
 
 @router.post("/v3/sync-dvp")

@@ -539,35 +539,11 @@ async def get_trap_graveyard(
     }
 
 
-@router.get("/v3/parlay-builder")
-async def get_parlay_builder_data():
-    """
-    Get all data needed for the parlay builder interface.
-    
-    Returns:
-    - All available players with props
-    - Demon and goblin tags
-    - Correlation data for same-game parlays
-    - DFS compliance info
-    """
-    engine = get_engine()
-    result = await engine.picks_getter_service.get_parlay_builder()
-    return result
-
-
-@router.get("/v3/goblin-recon")
-async def get_goblin_recon():
-    """
-    GOBLIN RECON - Scouted parlay combinations
-    
-    Returns pre-built parlay suggestions based on:
-    - High-correlation player pairs
-    - Optimal risk/reward ratios
-    - Team stacking opportunities
-    """
-    engine = get_engine()
-    result = await engine.picks_getter_service.get_goblin_recon()
-    return result
+# =============================================================================
+# DUPLICATE ROUTES REMOVED - These are now served by parlays.py:
+# - /v3/parlay-builder -> parlays.py
+# - /v3/goblin-recon -> parlays.py
+# =============================================================================
 
 
 @router.get("/v3/goblin-vault-live")

@@ -2,8 +2,6 @@
 from .picks import router as picks_router, set_engine as set_picks_engine
 from .parlays import router as parlays_router, set_engine as set_parlays_engine
 from .board import router as board_router, set_engine as set_board_engine, set_photo_service
-from .intel import router as intel_router, set_engine as set_intel_engine
-from .board_intel import router as board_intel_router, set_engine as set_board_intel_engine
 from .board_intel_v2 import router as board_intel_v2_router, set_board_intel_deps
 from .auth import router as auth_router, profile_router
 from .injuries import router as injuries_router, set_injury_service
@@ -33,6 +31,8 @@ from .ferrari_tiers import router as ferrari_router, set_ferrari_db
 from .vacuum import router as vacuum_router, set_vacuum_db
 
 # ARCHIVED ROUTES (moved to routes_archive/):
+# - intel.py (duplicates of injuries.py, intel_sync.py, live_scores.py)
+# - board_intel.py (replaced by board_intel_v2.py)
 # - validation.py
 # - headshots.py
 # - momentum.py  

@@ -72,26 +72,9 @@ async def get_locked_games():
     result = await engine.get_locked_games()
     return {"games": result, "count": len(result)}
 
-
-@router.post("/v3/validate-parlay")
-async def validate_parlay(request: ParlayValidationRequest):
-    """
-    PARLAY VALIDATION - Pre-lock-in safety check.
-    
-    Validates that no games in the parlay have started in the last 60 seconds.
-    Call this before a user "Locks In" their parlay.
-    
-    Request:
-    - player_names: List of player names in the parlay
-    
-    Returns:
-    - valid: Boolean - whether all picks are valid
-    - invalid_picks: List of picks with games that have started
-    - message: Human-readable status
-    """
-    engine = get_engine()
-    result = await engine.validate_parlay(request.player_names)
-    return result
+# =============================================================================
+# DUPLICATE ROUTE REMOVED - /v3/validate-parlay is now served by parlays.py
+# =============================================================================
 
 
 @router.post("/v3/check-locks")
