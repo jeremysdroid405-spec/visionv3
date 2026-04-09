@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Download Backend Code</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0a0a0a;
+            color: #fff;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+        }
+        .container {
+            text-align: center;
+            padding: 40px;
+            background: #1a1a1a;
+            border-radius: 16px;
+            border: 1px solid #333;
+        }
+        h1 { margin-bottom: 20px; }
+        .btn {
+            display: inline-block;
+            padding: 16px 32px;
+            background: linear-gradient(135deg, #22c55e, #16a34a);
+            color: white;
+            text-decoration: none;
+            border-radius: 8px;
+            font-weight: bold;
+            font-size: 18px;
+            cursor: pointer;
+            border: none;
+        }
+        .btn:hover {
+            background: linear-gradient(135deg, #16a34a, #15803d);
+        }
+        .info {
+            margin-top: 20px;
+            color: #888;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>PropVision Backend Code Export</h1>
+        <p>132 Python files • 2.3 MB</p>
+        <button class="btn" onclick="downloadCode()">Download JSON File</button>
+        <p class="info">Click to download backend_code_export.json</p>
+    </div>
+    <script>
+        async function downloadCode() {
+            try {
+                const response = await fetch('/backend_code_export.json');
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'propvision_backend_code.json';
+                document.body.appendChild(a);
+                a.click();
+                window.URL.revokeObjectURL(url);
+                a.remove();
+            } catch (error) {
+                alert('Download failed: ' + error.message);
+            }
+        }
+    </script>
+</body>
+</html>
