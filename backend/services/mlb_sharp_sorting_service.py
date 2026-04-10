@@ -399,6 +399,11 @@ class MLBSharpSortingService:
                 prop["sharp_tier"] = tier
                 prop["classified_at"] = datetime.now(timezone.utc).isoformat()
                 
+                # Add boolean flags for frontend
+                prop["is_goblin"] = (tier == "GOBLIN")
+                prop["is_demon"] = (tier == "DEMON")
+                prop["tier_label"] = tier
+                
                 # Add to appropriate list
                 if tier == "GOBLIN":
                     results["goblins"].append(prop)
