@@ -687,9 +687,15 @@ export const PlayerDetailPage = ({ playerName, playerData = null, onBack, highli
                 const hasDemon = categoryProps.some(p => p.is_demon);
                 const hasGoblin = categoryProps.some(p => p.is_goblin);
                 
-                // Sort: DEMON first (by line desc), then STANDARD, then GOBLIN (by line desc)
+                // MLB: Sort purely by line (ascending - smallest first, largest at bottom)
+                // NBA: Sort by tier priority, then by line within tier
                 const sortedProps = [...categoryProps].sort((a, b) => {
-                  // Tier priority: DEMON (0) > STANDARD (1) > GOBLIN (2)
+                  if (currentSport === 'mlb') {
+                    // MLB: Pure numerical sort by line (ascending)
+                    return (a.line || 0) - (b.line || 0);
+                  }
+                  
+                  // NBA: Tier priority: DEMON (0) > STANDARD (1) > GOBLIN (2)
                   const getTierPriority = (p) => {
                     if (p.is_demon) return 0;
                     if (p.is_goblin) return 2;
