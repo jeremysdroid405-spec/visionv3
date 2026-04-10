@@ -207,13 +207,16 @@ Build a local-first betting intelligence app restructuring React/FastAPI to inte
   - Root Cause: `universal_odds_sync.py` was pulling from multiple bookmakers with limited markets
   - Solution: Added sport-specific bookmaker config (`"bookmakers": ["prizepicks"]`) for MLB
   - Solution: Expanded MLB markets to include ALL available PrizePicks props
-- [x] **MLB Markets Now Include**:
-  - Batter: home_runs, hits, total_bases, rbis, runs, stolen_bases, walks, strikeouts, singles, doubles, triples
-  - Pitcher: strikeouts, hits_allowed, walks, earned_runs, outs, record_a_win
-  - Combos: hits_runs_rbis
-  - All alternate lines (_alternate suffix) for DEMON/GOBLIN classification
-- [x] **Updated endpoint**: `/api/v3/odds/sync` now uses sport-specific defaults (MLB = PrizePicks only, NBA = multi-book)
-- [x] **Results**: 4,170 PrizePicks props synced, including 226 Home Runs props
+- [x] **Verified via direct API testing** which markets PrizePicks actually offers:
+  - PrizePicks primarily offers alternate lines, not standard lines for most markets
+  - Added missing alternate markets: `batter_singles_alternate`, `batter_doubles_alternate`, `batter_triples_alternate`
+- [x] **MLB Markets Now Include** (38 total market keys):
+  - Batter Standard: home_runs, hits, total_bases, rbis, runs, stolen_bases, walks, strikeouts, singles, doubles, triples, hits_runs_rbis, first_home_run
+  - Batter Alternate: home_runs_alternate, hits_alternate, total_bases_alternate, rbis_alternate, runs_scored_alternate, stolen_bases_alternate, walks_alternate, strikeouts_alternate, singles_alternate, doubles_alternate, triples_alternate
+  - Pitcher Standard: strikeouts, hits_allowed, walks, earned_runs, outs, record_a_win
+  - Pitcher Alternate: strikeouts_alternate, hits_allowed_alternate, walks_alternate, earned_runs_alternate, outs_alternate
+- [x] **Cleaned old multi-book data**: Deleted 2,026 non-PrizePicks props from mlb_live_props
+- [x] **Results**: 5,445 PrizePicks props synced (up from 4,170), 18 stat types in cached board
 
 ### P1 - Critical
 - [ ] **Complete MLB Headshot Sync** - ~700 players remaining (60 done)

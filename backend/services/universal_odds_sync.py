@@ -150,7 +150,7 @@ SPORT_API_CONFIG = {
     "mlb": {
         "sport_key": "baseball_mlb",
         "display_name": "MLB",
-        # MLB Markets - ALL available markets from PrizePicks
+        # MLB Markets - ALL available markets from PrizePicks (verified via API)
         "markets": [
             # Batter props - Standard
             "batter_home_runs",
@@ -164,7 +164,10 @@ SPORT_API_CONFIG = {
             "batter_singles",
             "batter_doubles",
             "batter_triples",
-            # Batter props - Alternate lines
+            # Batter combo props
+            "batter_hits_runs_rbis",
+            "batter_first_home_run",
+            # Batter props - Alternate lines (PrizePicks verified)
             "batter_home_runs_alternate",
             "batter_hits_alternate",
             "batter_total_bases_alternate",
@@ -173,8 +176,9 @@ SPORT_API_CONFIG = {
             "batter_stolen_bases_alternate",
             "batter_walks_alternate",
             "batter_strikeouts_alternate",
-            # Batter combo props
-            "batter_hits_runs_rbis",
+            "batter_singles_alternate",
+            "batter_doubles_alternate",
+            "batter_triples_alternate",
             # Pitcher props - Standard
             "pitcher_strikeouts",
             "pitcher_hits_allowed",
@@ -182,7 +186,7 @@ SPORT_API_CONFIG = {
             "pitcher_earned_runs",
             "pitcher_outs",
             "pitcher_record_a_win",
-            # Pitcher props - Alternate lines
+            # Pitcher props - Alternate lines (PrizePicks verified)
             "pitcher_strikeouts_alternate",
             "pitcher_hits_allowed_alternate",
             "pitcher_walks_alternate",
