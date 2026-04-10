@@ -31,8 +31,12 @@ from config.db_config import get_collection_name
 
 logger = logging.getLogger(__name__)
 
-# MLB Safe Haven DK Odds threshold
+# MLB DK Odds threshold for Safe Haven
 MLB_DK_SAFE_HAVEN_MAX = -240
+
+# MLB DK Odds range for Front Lines
+MLB_DK_FRONT_LINES_MIN = -240  # Exclusive (must be > -240)
+MLB_DK_FRONT_LINES_MAX = -145  # Inclusive (must be <= -145)
 
 # MLB Oracle Apex Gate Configuration
 MLB_SAFE_HAVEN_GATES = {
@@ -70,6 +74,64 @@ MLB_SAFE_HAVEN_GATES = {
         'sample_size': 20,
         'min_edge': 18.0,
         'min_prob': 70.0,
+    },
+}
+
+# MLB Front Lines Gate Configuration (The Consistency Pivot)
+MLB_FRONT_LINES_GATES = {
+    'Hits': {
+        'max_cv': 0.85,           # Higher variance allowed for streak hitters
+        'min_hit_rate': 13,       # 65% of L20
+        'pivot_min_hit_rate': 11, # Pivot rule: 11/20 OK if 8/10 L10
+        'pivot_l10_threshold': 8, # Must hit 8/10 L10 for pivot
+        'sample_size': 20,
+        'min_edge': 10.0,
+        'min_prob': 62.0,
+    },
+    'Total Bases': {
+        'max_cv': 0.95,           # Highest variance - XBH streaks
+        'min_hit_rate': 12,       # 60% of L20
+        'pivot_min_hit_rate': 10,
+        'pivot_l10_threshold': 7,
+        'sample_size': 20,
+        'min_edge': 15.0,
+        'min_prob': 62.0,
+    },
+    'Pitcher Strikeouts': {
+        'max_cv': 0.60,
+        'min_hit_rate': 13,       # 65% of L20
+        'pivot_min_hit_rate': 11,
+        'pivot_l10_threshold': 8,
+        'sample_size': 20,
+        'min_edge': 10.0,
+        'min_prob': 65.0,
+    },
+    'Pitching Outs': {
+        'max_cv': 0.50,           # Stricter for outs
+        'min_hit_rate': 14,       # 70% of L20
+        'pivot_min_hit_rate': 12,
+        'pivot_l10_threshold': 8,
+        'sample_size': 20,
+        'min_edge': 6.0,
+        'min_prob': 70.0,
+    },
+    'Hits+Runs+RBIs': {
+        'max_cv': 0.75,
+        'min_hit_rate': 13,       # 65% of L20
+        'pivot_min_hit_rate': 11,
+        'pivot_l10_threshold': 8,
+        'sample_size': 20,
+        'min_edge': 12.0,
+        'min_prob': 62.0,
+    },
+    'DEFAULT': {
+        'max_cv': 0.85,
+        'min_hit_rate': 12,
+        'pivot_min_hit_rate': 10,
+        'pivot_l10_threshold': 7,
+        'sample_size': 20,
+        'min_edge': 10.0,
+        'min_prob': 60.0,
     },
 }
 
@@ -358,6 +420,102 @@ class MLBSharpSortingService:
                 tp_prob = abs(dk_odds) / (abs(dk_odds) + 100) * 100
             else:
                 tp_prob = 50.0  # Default fallback
+        else:
+            tp_prob = sharp_fair_value * 100
+        
+        gate_results["gate3_edge"]["value"] = {"edge": edge_pct, "tp_prob": round(tp_prob, 1)}
+        
+        passes_edge = edge_pct >= gate_config['min_edge']
+        passes_prob = tp_prob >= gate_config['min_prob']
+        
+        gate_results["gate3_edge"]["passed"] = passes_edge and passes_prob
+        
+        if not passes_edge:
+            return False, f"GATE3_FAIL: Edge {edge_pct}% < {gate_config['min_edge']}% required", gate_results
+        if not passes_prob:
+            return False, f"GATE3_FAIL: TP {tp_prob:.1f}% < {gate_config['min_prob']}% required", gate_results
+        
+        return True, "ALL_GATES_PASSED", gate_results
+    
+    def check_front_lines_gates(
+        self, 
+        prop: Dict, 
+        hit_rates: Dict,
+        cv: Optional[float]
+    ) -> Tuple[bool, str, Dict]:
+        """
+        Check if a prop passes MLB Front Lines 3-Gate qualification.
+        
+        Front Lines captures high-value mid-juice props (-240 < odds <= -145).
+        
+        Gates (The Consistency Pivot):
+        1. Hit Rate (L20) with Pivot Rule: 11/20 OK if 8/10 in L10
+        2. CV (Stability): Higher variance allowed for streak hitters
+        3. VK Edge + TP: Edge > 10%, TP >= 62%
+        
+        Returns:
+            Tuple of (passes, reason, gate_results)
+        """
+        stat_type = prop.get("stat_type", "")
+        
+        # Get gate config for this stat type
+        gate_config = MLB_FRONT_LINES_GATES.get(stat_type, MLB_FRONT_LINES_GATES.get('DEFAULT'))
+        
+        gate_results = {
+            "gate1_hit_rate": {"passed": False, "value": None, "threshold": gate_config['min_hit_rate'], "pivot_used": False},
+            "gate2_cv": {"passed": False, "value": None, "threshold": gate_config['max_cv']},
+            "gate3_edge": {"passed": False, "value": None, "threshold": gate_config['min_edge']},
+        }
+        
+        # GATE 1: Hit Rate Check with Pivot Rule
+        h10_rate = hit_rates.get("h10_rate")
+        
+        if h10_rate is not None:
+            # Scale L10 to approximate L20
+            approx_l20_hits = (h10_rate / 100) * 20
+            gate_results["gate1_hit_rate"]["value"] = round(approx_l20_hits, 1)
+            
+            # Check standard threshold
+            if approx_l20_hits >= gate_config['min_hit_rate']:
+                gate_results["gate1_hit_rate"]["passed"] = True
+            else:
+                # Check Pivot Rule: Lower L20 OK if high L10 recency
+                # 11/20 acceptable IF 8/10 in L10
+                l10_hits = round((h10_rate / 100) * 10)
+                pivot_l10_threshold = gate_config.get('pivot_l10_threshold', 8)
+                pivot_min_hr = gate_config.get('pivot_min_hit_rate', 11)
+                
+                if approx_l20_hits >= pivot_min_hr and l10_hits >= pivot_l10_threshold:
+                    gate_results["gate1_hit_rate"]["passed"] = True
+                    gate_results["gate1_hit_rate"]["pivot_used"] = True
+                    gate_results["gate1_hit_rate"]["pivot_detail"] = f"Pivot: {approx_l20_hits}/20 with {l10_hits}/10 L10"
+        
+        if not gate_results["gate1_hit_rate"]["passed"]:
+            return False, f"GATE1_FAIL: Hit rate {gate_results['gate1_hit_rate']['value']}/20 < {gate_config['min_hit_rate']}/20 (pivot requires {gate_config.get('pivot_l10_threshold', 8)}/10 L10)", gate_results
+        
+        # GATE 2: CV (Stability) Check - Higher variance allowed for streak hitters
+        if cv is not None:
+            gate_results["gate2_cv"]["value"] = cv
+            gate_results["gate2_cv"]["passed"] = cv <= gate_config['max_cv']
+        else:
+            # No CV data - more lenient fallback for Front Lines
+            gate_results["gate2_cv"]["passed"] = h10_rate and h10_rate >= 60
+            gate_results["gate2_cv"]["value"] = "N/A (HR fallback)"
+        
+        if not gate_results["gate2_cv"]["passed"]:
+            return False, f"GATE2_FAIL: CV {cv} > {gate_config['max_cv']} max allowed", gate_results
+        
+        # GATE 3: VK Edge + True Probability (TP Buffer)
+        edge_pct = prop.get("edge_pct") or 0
+        
+        # Calculate True Probability - prefer Pinnacle, fallback to DK odds
+        sharp_fair_value = prop.get("sharp_fair_value")
+        if sharp_fair_value is None or sharp_fair_value == 0.5:
+            dk_odds = prop.get("all_odds", {}).get("draftkings")
+            if dk_odds and dk_odds < 0:
+                tp_prob = abs(dk_odds) / (abs(dk_odds) + 100) * 100
+            else:
+                tp_prob = 50.0
         else:
             tp_prob = sharp_fair_value * 100
         
@@ -786,14 +944,14 @@ class MLBSharpSortingService:
                 
                 # Add to appropriate list
                 if tier == "GOBLIN":
-                    # Calculate CV for Safe Haven gate check
+                    # Calculate CV for gate checks
                     cv = self.calculate_cv(prop.get("player_name"), prop.get("stat_type"))
                     prop["cv"] = cv
                     
-                    # Check Safe Haven 3-Gate qualification
                     dk_odds = all_odds.get("draftkings")
+                    
+                    # Check Safe Haven 3-Gate qualification (DK <= -240)
                     if dk_odds is not None and dk_odds <= MLB_DK_SAFE_HAVEN_MAX:
-                        # DK odds qualify - check gates
                         passes_gates, gate_reason, gate_results = self.check_safe_haven_gates(
                             prop, hit_rates, cv
                         )
@@ -802,8 +960,10 @@ class MLBSharpSortingService:
                         prop["safe_haven_reason"] = gate_reason
                         
                         if passes_gates:
-                            # Calculate Board Score for ranking
+                            # Calculate Board Score for Safe Haven ranking
                             tp_prob = (prop.get("sharp_fair_value") or 0.5) * 100
+                            if tp_prob == 50.0 and dk_odds and dk_odds < 0:
+                                tp_prob = abs(dk_odds) / (abs(dk_odds) + 100) * 100
                             vk_edge = prop.get("edge_pct") or 0
                             hit_rate_score = (prop.get("h10_rate") or 0) * 10
                             weather_penalty = 0  # TODO: Add weather check
@@ -815,11 +975,49 @@ class MLBSharpSortingService:
                                 results["safe_haven"] = []
                             results["safe_haven"].append(prop)
                     
+                    # Check Front Lines 3-Gate qualification (-240 < DK <= -145)
+                    elif dk_odds is not None and dk_odds > MLB_DK_FRONT_LINES_MIN and dk_odds <= MLB_DK_FRONT_LINES_MAX:
+                        passes_gates, gate_reason, gate_results = self.check_front_lines_gates(
+                            prop, hit_rates, cv
+                        )
+                        prop["front_lines_gate_results"] = gate_results
+                        prop["front_lines_qualified"] = passes_gates
+                        prop["front_lines_reason"] = gate_reason
+                        
+                        if passes_gates:
+                            # Front Lines sorted by Edge % (descending)
+                            if "front_lines" not in results:
+                                results["front_lines"] = []
+                            results["front_lines"].append(prop)
+                    
                     results["goblins"].append(prop)
-                elif tier == "DEMON":
-                    results["demons"].append(prop)
+                    
                 elif tier == "STANDARD":
+                    # Standard props with elite hit rates can also qualify for Front Lines
+                    cv = self.calculate_cv(prop.get("player_name"), prop.get("stat_type"))
+                    prop["cv"] = cv
+                    
+                    dk_odds = all_odds.get("draftkings")
+                    
+                    # Check if Standard prop qualifies for Front Lines
+                    if dk_odds is not None and dk_odds > MLB_DK_FRONT_LINES_MIN and dk_odds <= MLB_DK_FRONT_LINES_MAX:
+                        passes_gates, gate_reason, gate_results = self.check_front_lines_gates(
+                            prop, hit_rates, cv
+                        )
+                        prop["front_lines_gate_results"] = gate_results
+                        prop["front_lines_qualified"] = passes_gates
+                        prop["front_lines_reason"] = gate_reason
+                        
+                        if passes_gates:
+                            if "front_lines" not in results:
+                                results["front_lines"] = []
+                            results["front_lines"].append(prop)
+                    
                     results["standard"].append(prop)
+                    
+                elif tier == "DEMON":
+                    # Demons restricted to War Zone only
+                    results["demons"].append(prop)
                 else:
                     results["unclassified"] += 1
             
@@ -845,6 +1043,19 @@ class MLBSharpSortingService:
                         deduped_safe_haven.append(prop)
                 results["safe_haven"] = deduped_safe_haven[:10]  # Top 10
             
+            # Sort Front Lines by Edge % (descending) - Top 20
+            if "front_lines" in results and results["front_lines"]:
+                results["front_lines"].sort(key=lambda x: x.get("edge_pct") or 0, reverse=True)
+                # Dedupe: keep best prop per player
+                seen_players = set()
+                deduped_front_lines = []
+                for prop in results["front_lines"]:
+                    player = prop.get("player_name")
+                    if player not in seen_players:
+                        seen_players.add(player)
+                        deduped_front_lines.append(prop)
+                results["front_lines"] = deduped_front_lines[:20]  # Top 20
+            
             # Save to collections
             if save_to_db:
                 await self._save_to_collections(results)
@@ -858,6 +1069,7 @@ class MLBSharpSortingService:
             logger.info(f"  • Hit Rates Calculated: {hit_rates_calculated}")
             logger.info(f"  • Sharp Goblins: {len(results['goblins'])}")
             logger.info(f"  • Safe Haven: {len(results.get('safe_haven', []))}")
+            logger.info(f"  • Front Lines: {len(results.get('front_lines', []))}")
             logger.info(f"  • Demons: {len(results['demons'])}")
             logger.info(f"  • Standard: {len(results['standard'])}")
             logger.info(f"  • Unclassified: {results['unclassified']}")
@@ -906,6 +1118,14 @@ class MLBSharpSortingService:
             clean_safe_haven = [{k: v for k, v in p.items() if k != "_id"} for p in results["safe_haven"]]
             await safe_haven_coll.insert_many(clean_safe_haven)
             logger.info(f"[SHARP_SORT] Saved {len(clean_safe_haven)} Safe Haven picks")
+        
+        # Front Lines (Top 20 Mid-Juice Goblins/Standards that pass 3-Gate)
+        if results.get("front_lines"):
+            front_lines_coll = self.db["mlb_ferrari_front_lines"]
+            await front_lines_coll.delete_many({})
+            clean_front_lines = [{k: v for k, v in p.items() if k != "_id"} for p in results["front_lines"]]
+            await front_lines_coll.insert_many(clean_front_lines)
+            logger.info(f"[SHARP_SORT] Saved {len(clean_front_lines)} Front Lines picks")
 
 
 # Singleton
