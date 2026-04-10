@@ -1178,33 +1178,47 @@ async def get_mlb_player_props(
                 "opponent": game.get("opponent_abbr"),
                 "pts": game.get("hits", 0),  # For chart compatibility
                 "hits": game.get("hits", 0),
-                "rbi": game.get("rbis", 0),  # Note: historical uses 'rbis'
+                "rbi": game.get("rbis", 0),  # Frontend uses 'rbi'
+                "rbis": game.get("rbis", 0),  # Also include 'rbis' for consistency
                 "runs": game.get("runs", 0),
                 "total_bases": game.get("total_bases", 0),
                 "stolen_bases": game.get("stolen_bases", 0),
                 "home_runs": game.get("home_runs", 0),
                 "walks": game.get("walks", 0),
                 "strikeouts": game.get("strikeouts", 0),
+                # Pitcher stats
+                "innings_pitched": game.get("innings_pitched"),
+                "pitcher_strikeouts": game.get("pitcher_strikeouts"),
+                "pitcher_walks": game.get("pitcher_walks"),
+                "hits_allowed": game.get("hits_allowed"),
+                "earned_runs": game.get("earned_runs"),
             }
             game_logs.append(game_log)
     
     player["game_logs"] = game_logs
     
     # MLB stat type to game log field mapping
+    # Note: historical logs use 'rbis' (plural from BDL API)
     STAT_FIELD_MAP = {
         "Hits": "hits",
         "Total Bases": "total_bases",
-        "RBIs": "rbi",
+        "RBIs": "rbis",
         "Runs": "runs",
         "Stolen Bases": "stolen_bases",
         "Home Runs": "home_runs",
         "Walks": "walks",
         "Strikeouts": "strikeouts",
         "Hits+Runs+RBIs": None,  # Combo stat
+        # Pitcher stats
+        "Pitcher Strikeouts": "pitcher_strikeouts",
+        "Pitching Outs": "innings_pitched",  # Will multiply by 3
+        "Earned Runs Allowed": "earned_runs",
+        "Hits Allowed": "hits_allowed",
+        "Walks Allowed": "pitcher_walks",
     }
     
     def calculate_hit_rate(games, stat_field, line, is_combo=False):
-        """Calculate hit rate for L5 and L10"""
+        """Calculate hit rate for L5 and L10 - how often player goes OVER the line"""
         if not games:
             return 0
         
@@ -1212,11 +1226,16 @@ async def get_mlb_player_props(
         for game in games:
             if is_combo:
                 # Hits + Runs + RBIs combo
-                value = (game.get("hits", 0) or 0) + (game.get("runs", 0) or 0) + (game.get("rbi", 0) or 0)
+                value = (game.get("hits", 0) or 0) + (game.get("runs", 0) or 0) + (game.get("rbis", 0) or 0)
+            elif stat_field == "innings_pitched":
+                # Convert IP to outs (IP * 3)
+                ip = game.get(stat_field, 0) or 0
+                value = ip * 3 if ip else 0
             else:
                 value = game.get(stat_field, 0) or 0
             
-            if value > line:
+            # For "Over" props, player needs to EXCEED the line (>= for .5 lines means > line)
+            if value >= line:
                 hits += 1
         
         return round((hits / len(games)) * 100) if games else 0
@@ -1229,7 +1248,11 @@ async def get_mlb_player_props(
         total = 0
         for game in games:
             if is_combo:
-                value = (game.get("hits", 0) or 0) + (game.get("runs", 0) or 0) + (game.get("rbi", 0) or 0)
+                value = (game.get("hits", 0) or 0) + (game.get("runs", 0) or 0) + (game.get("rbis", 0) or 0)
+            elif stat_field == "innings_pitched":
+                # Convert IP to outs
+                ip = game.get(stat_field, 0) or 0
+                value = ip * 3 if ip else 0
             else:
                 value = game.get(stat_field, 0) or 0
             total += value
