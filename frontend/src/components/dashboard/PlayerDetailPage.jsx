@@ -430,28 +430,57 @@ export const PlayerDetailPage = ({ playerName, playerData = null, onBack, highli
               const clickedProp = playerData.props[0];
               mergedPlayer.props = mergedPlayer.props?.map(prop => {
                 // Check if this prop matches the clicked one
-                if (prop.stat_type === clickedProp.stat_type && 
-                    Math.abs((prop.line || 0) - (clickedProp.line || 0)) < 0.01) {
+                // Use flexible matching: stat_type or normalized versions
+                const propStatType = (prop.stat_type || '').toLowerCase().replace(/[^a-z]/g, '');
+                const clickedStatType = (clickedProp.stat_type || '').toLowerCase().replace(/[^a-z]/g, '');
+                const statMatch = propStatType === clickedStatType || 
+                                  prop.stat_type === clickedProp.stat_type;
+                
+                if (statMatch && Math.abs((prop.line || 0) - (clickedProp.line || 0)) < 0.01) {
                   return {
                     ...prop,
+                    // Core tier fields
                     is_goblin: clickedProp.is_goblin || prop.is_goblin,
                     is_demon: clickedProp.is_demon || prop.is_demon,
+                    tier: clickedProp.tier || prop.tier,
                     tier_label: clickedProp.tier_label || prop.tier_label,
-                    edge_pct: clickedProp.edge_pct || prop.edge_pct,
-                    projected_value: clickedProp.projected_value || prop.projected_value,
-                    hit_rate_l10: clickedProp.hit_rate_l10 || prop.hit_rate_l10,
-                    l10_avg: clickedProp.l10_avg || prop.l10_avg,
-                    // MLB Ferrari Pipeline fields
-                    h5_rate: clickedProp.h5_rate || prop.h5_rate,
-                    h10_rate: clickedProp.h10_rate || prop.h10_rate,
-                    l5_avg: clickedProp.l5_avg || prop.l5_avg,
-                    season_avg: clickedProp.season_avg || prop.season_avg,
-                    oracle_summary: clickedProp.oracle_summary || prop.oracle_summary,
-                    scout_badges: clickedProp.scout_badges || prop.scout_badges,
-                    cv: clickedProp.cv || prop.cv,
-                    board_score: clickedProp.board_score || prop.board_score,
+                    dk_tier: clickedProp.dk_tier || prop.dk_tier,
                     ferrari_tier: clickedProp.ferrari_tier || prop.ferrari_tier,
-                    tp_odds: clickedProp.tp_odds || prop.tp_odds,
+                    // Hit rate fields
+                    h5_rate: clickedProp.h5_rate ?? prop.h5_rate,
+                    h10_rate: clickedProp.h10_rate ?? prop.h10_rate,
+                    h20_rate: clickedProp.h20_rate ?? prop.h20_rate,
+                    hit_rate_l10: clickedProp.hit_rate_l10 ?? prop.hit_rate_l10,
+                    hit_rate_l5: clickedProp.hit_rate_l5 ?? prop.hit_rate_l5,
+                    // Average fields
+                    l5_avg: clickedProp.l5_avg ?? prop.l5_avg,
+                    l10_avg: clickedProp.l10_avg ?? prop.l10_avg,
+                    l20_avg: clickedProp.l20_avg ?? prop.l20_avg,
+                    season_avg: clickedProp.season_avg ?? prop.season_avg,
+                    // Vision Intel fields (NBA-style)
+                    vision_intel: clickedProp.vision_intel || prop.vision_intel,
+                    vision_summary: clickedProp.vision_summary || prop.vision_summary,
+                    intel_score: clickedProp.intel_score ?? prop.intel_score,
+                    intel_verdict: clickedProp.intel_verdict || prop.intel_verdict,
+                    intel_risk: clickedProp.intel_risk || prop.intel_risk,
+                    adjusted_confidence: clickedProp.adjusted_confidence ?? prop.adjusted_confidence,
+                    // Oracle summary (MLB)
+                    oracle_summary: clickedProp.oracle_summary || prop.oracle_summary,
+                    // Scout badges
+                    scout_badges: clickedProp.scout_badges || prop.scout_badges,
+                    // Edge and probability fields
+                    edge: clickedProp.edge ?? prop.edge,
+                    edge_pct: clickedProp.edge_pct ?? prop.edge_pct,
+                    cv: clickedProp.cv ?? prop.cv,
+                    tp_odds: clickedProp.tp_odds ?? prop.tp_odds,
+                    board_score: clickedProp.board_score ?? prop.board_score,
+                    // VK prediction fields
+                    vk_predicted: clickedProp.vk_predicted ?? prop.vk_predicted,
+                    vk_edge: clickedProp.vk_edge ?? prop.vk_edge,
+                    vk_prob_over: clickedProp.vk_prob_over ?? prop.vk_prob_over,
+                    vk_prob_under: clickedProp.vk_prob_under ?? prop.vk_prob_under,
+                    vk_recommendation: clickedProp.vk_recommendation || prop.vk_recommendation,
+                    projected_value: clickedProp.projected_value ?? prop.projected_value,
                   };
                 }
                 return prop;
@@ -740,7 +769,7 @@ export const PlayerDetailPage = ({ playerName, playerData = null, onBack, highli
                           isHighlighted={isHighlightedProp(prop)}
                           highlightRef={highlightRef}
                           onVisionClick={handleVisionClick}
-                          gameLogs={player?.game_logs || []}
+                          gameLogs={prop.game_logs || player?.game_logs || []}
                         />
                       ))}
                     </div>
@@ -1479,7 +1508,7 @@ export const PlayerDetailPage = ({ playerName, playerData = null, onBack, highli
                 <div className="bg-gradient-to-r from-purple-950/50 to-zinc-900 border border-purple-500/30 rounded-lg p-4">
                   <h3 className="text-sm font-bold text-purple-300 mb-2 flex items-center gap-2">
                     <Target className="w-4 h-4 text-purple-400" />
-                    PROPVISION ORACLE
+                    TARGET-LOCK RATIONALE
                   </h3>
                   <p className="text-sm text-white leading-relaxed italic">
                     "{selectedVisionProp.oracle_summary}"

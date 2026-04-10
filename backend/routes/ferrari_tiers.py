@@ -1232,6 +1232,7 @@ async def get_mlb_player_props(
         "Home Runs": "home_runs",
         "Walks": "walks",
         "Strikeouts": "strikeouts",
+        "Batter Strikeouts": "strikeouts",  # PrizePicks variant
         "Doubles": "doubles",
         "Singles": "singles",
         "Triples": "triples",
@@ -1348,6 +1349,8 @@ async def get_mlb_player_props(
                 prop["h10_rate"] = calculate_hit_rate(l10_games, stat_field, line, is_combo)
                 prop["l5_avg"] = calculate_avg(l5_games, stat_field, is_combo)
                 prop["l10_avg"] = calculate_avg(l10_games, stat_field, is_combo)
+                # Season average = L10 average (or use full game_logs if more available)
+                prop["season_avg"] = prop["l10_avg"]
                 
                 # Add game_logs to prop for bar chart
                 prop["game_logs"] = game_logs

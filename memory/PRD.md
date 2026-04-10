@@ -82,3 +82,6 @@ WAR_ZONE_GATES = {
 - **2026-04-10**: **Implemented full MLB PropVision Ferrari Pipeline with Gemini Oracle**
 - **2026-04-10**: **Integrated Oracle summaries + Hit Rate Analysis into Vision Intel Suite frontend**
 - **2026-04-10**: **Normalized MLB data structure to match NBA fields (vision_intel, intel_score, intel_verdict, etc.)**
+- **2026-04-10**: **Fixed PlayerDetailPage prop merge to include ALL Vision Intel fields for MLB**
+- **2026-04-10**: **Added "Batter Strikeouts" to STAT_FIELD_MAP - enabled L5/L10 averages and game log charts**
+- **2026-04-10**: **MLB Vision Intel Suite now exactly matches NBA structure (L5 AVG, L10 AVG, SEASON AVG, game charts, TARGET-LOCK RATIONALE)**
