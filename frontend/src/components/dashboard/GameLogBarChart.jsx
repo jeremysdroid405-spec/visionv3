@@ -24,6 +24,7 @@ const TEAM_ID_TO_ABBR = {
 
 // Map stat types to game log fields
 const STAT_FIELD_MAP = {
+  // NBA Stats
   'PTS': 'pts',
   'REB': 'reb',
   'AST': 'ast',
@@ -39,10 +40,41 @@ const STAT_FIELD_MAP = {
   'BLST': ['blk', 'stl'],
   'FTM': 'ftm',
   'MIN': 'min',
+  // MLB Stats
+  'Hits': 'hits',
+  'HITS': 'hits',
+  'Total Bases': 'total_bases',
+  'TOTAL BASES': 'total_bases',
+  'TB': 'total_bases',
+  'RBIs': 'rbi',
+  'RBIS': 'rbi',
+  'Runs': 'runs',
+  'RUNS': 'runs',
+  'Stolen Bases': 'stolen_bases',
+  'STOLEN BASES': 'stolen_bases',
+  'SB': 'stolen_bases',
+  'Home Runs': 'home_runs',
+  'HOME RUNS': 'home_runs',
+  'HR': 'home_runs',
+  'Walks': 'walks',
+  'WALKS': 'walks',
+  'BB': 'walks',
+  'Strikeouts': 'strikeouts',
+  'STRIKEOUTS': 'strikeouts',
+  'K': 'strikeouts',
+  'Hits Allowed': 'hits_allowed',
+  'Earned Runs': 'earned_runs',
+  'Pitcher Strikeouts': 'pitcher_strikeouts',
+  // MLB Combo Stats
+  'Hits+Runs+RBIs': ['hits', 'runs', 'rbi'],
+  'HITS+RUNS+RBIS': ['hits', 'runs', 'rbi'],
+  'HRR': ['hits', 'runs', 'rbi'],
+  'batter_hits_runs_rbis': ['hits', 'runs', 'rbi'],
 };
 
 const getStatValue = (game, statType) => {
-  const field = STAT_FIELD_MAP[statType?.toUpperCase()];
+  // Try exact match first, then uppercase
+  let field = STAT_FIELD_MAP[statType] || STAT_FIELD_MAP[statType?.toUpperCase()];
   if (!field) return null;
   
   if (Array.isArray(field)) {

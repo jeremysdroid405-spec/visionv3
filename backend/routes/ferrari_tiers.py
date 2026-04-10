@@ -1057,9 +1057,9 @@ async def get_mlb_player_props(
     Get a specific MLB player's enriched props from the cached board.
     
     Returns:
-    - Player info
+    - Player info with game_logs
     - All props with enrichment data (CV, hit rates, averages)
-    - Last 10 game logs
+    - L5/L10 stats calculated per stat type
     """
     from config.db_config import get_collection_name
     
@@ -1087,43 +1087,150 @@ async def get_mlb_player_props(
     if not player:
         raise HTTPException(status_code=404, detail=f"Player '{player_name}' not found in MLB board")
     
-    # Add stat_type_extracted to each prop for frontend compatibility
-    # Also check if prop is in goblins/demons collections
+    # Fetch game logs from mlb_historical_logs
+    historical_logs = _db["mlb_historical_logs"]
+    player_logs = await historical_logs.find_one(
+        {"player_name": {"$regex": f"^{player_name}$", "$options": "i"}},
+        {"_id": 0, "game_logs": 1}
+    )
+    
+    game_logs = []
+    if player_logs and player_logs.get("game_logs"):
+        # Sort by date descending (most recent first) and take last 10
+        raw_logs = player_logs["game_logs"]
+        sorted_logs = sorted(raw_logs, key=lambda x: x.get("date", ""), reverse=True)
+        
+        # Format game logs for frontend (take most recent 10)
+        for game in sorted_logs[:10]:
+            game_log = {
+                "date": game.get("date"),
+                "opponent": game.get("opponent_abbr"),
+                "pts": game.get("hits", 0),  # For chart compatibility
+                "hits": game.get("hits", 0),
+                "rbi": game.get("rbis", 0),  # Note: historical uses 'rbis'
+                "runs": game.get("runs", 0),
+                "total_bases": game.get("total_bases", 0),
+                "stolen_bases": game.get("stolen_bases", 0),
+                "home_runs": game.get("home_runs", 0),
+                "walks": game.get("walks", 0),
+                "strikeouts": game.get("strikeouts", 0),
+            }
+            game_logs.append(game_log)
+    
+    player["game_logs"] = game_logs
+    
+    # Get goblins/demons for this player
     goblins_coll = _db["mlb_goblins"]
     demons_coll = _db["mlb_demons"]
     
-    # Get all goblins and demons for this player
     player_goblins = await goblins_coll.find(
         {"player_name": {"$regex": f"^{player_name}$", "$options": "i"}},
-        {"_id": 0, "stat_type": 1, "line": 1}
+        {"_id": 0}
     ).to_list(length=100)
     
     player_demons = await demons_coll.find(
         {"player_name": {"$regex": f"^{player_name}$", "$options": "i"}},
-        {"_id": 0, "stat_type": 1, "line": 1}
+        {"_id": 0}
     ).to_list(length=100)
     
-    # Create lookup sets
-    goblin_keys = {f"{g['stat_type']}|{g['line']}" for g in player_goblins}
-    demon_keys = {f"{d['stat_type']}|{d['line']}" for d in player_demons}
+    # Create lookup maps with full data
+    goblin_map = {f"{g['stat_type']}|{g['line']}": g for g in player_goblins}
+    demon_map = {f"{d['stat_type']}|{d['line']}": d for d in player_demons}
+    
+    # MLB stat type to game log field mapping
+    STAT_FIELD_MAP = {
+        "Hits": "hits",
+        "Total Bases": "total_bases",
+        "RBIs": "rbi",
+        "Runs": "runs",
+        "Stolen Bases": "stolen_bases",
+        "Home Runs": "home_runs",
+        "Walks": "walks",
+        "Strikeouts": "strikeouts",
+        "Hits+Runs+RBIs": None,  # Combo stat
+    }
+    
+    def calculate_hit_rate(games, stat_field, line, is_combo=False):
+        """Calculate hit rate for L5 and L10"""
+        if not games:
+            return 0
+        
+        hits = 0
+        for game in games:
+            if is_combo:
+                # Hits + Runs + RBIs combo
+                value = (game.get("hits", 0) or 0) + (game.get("runs", 0) or 0) + (game.get("rbi", 0) or 0)
+            else:
+                value = game.get(stat_field, 0) or 0
+            
+            if value > line:
+                hits += 1
+        
+        return round((hits / len(games)) * 100) if games else 0
+    
+    def calculate_avg(games, stat_field, is_combo=False):
+        """Calculate average for L5 and L10"""
+        if not games:
+            return None
+        
+        total = 0
+        for game in games:
+            if is_combo:
+                value = (game.get("hits", 0) or 0) + (game.get("runs", 0) or 0) + (game.get("rbi", 0) or 0)
+            else:
+                value = game.get(stat_field, 0) or 0
+            total += value
+        
+        return round(total / len(games), 1) if games else None
     
     if player.get("props"):
         for prop in player["props"]:
-            # Add stat_type_extracted (copy of stat_type for frontend compatibility)
-            prop["stat_type_extracted"] = prop.get("stat_type")
+            stat_type = prop.get("stat_type", "")
+            line = prop.get("line", 0)
+            prop_key = f"{stat_type}|{line}"
             
-            # Add direction field (copy of recommendation)
+            # Add stat_type_extracted for frontend
+            prop["stat_type_extracted"] = stat_type
+            
+            # Add direction field
             if not prop.get("direction"):
                 prop["direction"] = prop.get("recommendation", "Over")
             
             # Add market field
             if not prop.get("market"):
-                prop["market"] = prop.get("market_key") or prop.get("stat_type")
+                prop["market"] = prop.get("market_key") or stat_type
             
-            # Check if this prop is a goblin or demon
-            prop_key = f"{prop.get('stat_type')}|{prop.get('line')}"
-            prop["is_goblin"] = prop_key in goblin_keys
-            prop["is_demon"] = prop_key in demon_keys
+            # Check if goblin/demon and merge data
+            prop["is_goblin"] = prop_key in goblin_map
+            prop["is_demon"] = prop_key in demon_map
+            
+            # Merge enrichment data from goblins/demons
+            if prop_key in goblin_map:
+                goblin_data = goblin_map[prop_key]
+                prop["edge_pct"] = goblin_data.get("edge_pct")
+                prop["projected_value"] = goblin_data.get("projected_value")
+                prop["hit_rate_l10"] = goblin_data.get("hit_rate_l10")
+            elif prop_key in demon_map:
+                demon_data = demon_map[prop_key]
+                prop["edge_pct"] = demon_data.get("edge_pct")
+                prop["projected_value"] = demon_data.get("projected_value")
+                prop["hit_rate_l10"] = demon_data.get("hit_rate_l10")
+            
+            # Calculate L5/L10 hit rates and averages from game logs
+            stat_field = STAT_FIELD_MAP.get(stat_type)
+            is_combo = stat_type in ["Hits+Runs+RBIs", "batter_hits_runs_rbis"]
+            
+            if game_logs and (stat_field or is_combo):
+                l5_games = game_logs[:5]
+                l10_games = game_logs[:10]
+                
+                prop["h5_rate"] = calculate_hit_rate(l5_games, stat_field, line, is_combo)
+                prop["h10_rate"] = calculate_hit_rate(l10_games, stat_field, line, is_combo)
+                prop["l5_avg"] = calculate_avg(l5_games, stat_field, is_combo)
+                prop["l10_avg"] = calculate_avg(l10_games, stat_field, is_combo)
+                
+                # Add game_logs to prop for bar chart
+                prop["game_logs"] = game_logs
     
     return {
         "success": True,
