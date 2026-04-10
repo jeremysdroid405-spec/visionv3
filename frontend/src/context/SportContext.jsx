@@ -30,7 +30,7 @@ export const SPORTS_CONFIG = {
     bgGradient: 'from-red-500/20 to-red-600/10',
     borderColor: 'border-red-500/30',
     textColor: 'text-red-400',
-    enabled: false  // Coming soon
+    enabled: true  // Unlocked - Sport-Exclusive backend ready
   }
 };
 
