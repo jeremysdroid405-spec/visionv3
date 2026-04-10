@@ -620,3 +620,94 @@ async def get_ferrari_parlays(
             "max_stat_type_per_parlay": 3
         }
     }
+
+
+
+@router.post("/v3/odds/sync")
+async def sync_odds_universal(
+    sport: str = Query("nba", description="Sport to sync (nba or mlb)")
+):
+    """
+    Universal Odds Sync - Fetch live PrizePicks props for any sport.
+    
+    **NBA** (basketball_nba):
+    - Markets: player_points, player_rebounds, player_assists, player_points_rebounds_assists
+    - Saves to: dg_live_props
+    
+    **MLB** (baseball_mlb):
+    - Markets: pitcher_strikeouts, pitcher_walks, pitcher_hits_allowed,
+               batter_hits, batter_total_bases, batter_rbis, batter_runs_scored, batter_stolen_bases
+    - Saves to: mlb_live_props
+    
+    Returns sync summary with event count, prop count, and stat types.
+    """
+    from config.db_config import validate_sport
+    from services.universal_odds_sync import get_universal_odds_service
+    
+    if _db is None:
+        raise HTTPException(status_code=500, detail="Database not initialized")
+    
+    # Validate sport parameter
+    try:
+        sport = validate_sport(sport)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    
+    # Run the sync
+    service = get_universal_odds_service(_db)
+    result = await service.sync_sport_props(sport)
+    
+    return result
+
+
+@router.get("/v3/odds/props")
+async def get_live_props(
+    response: Response,
+    sport: str = Query("nba", description="Sport to query (nba or mlb)"),
+    limit: int = Query(100, ge=1, le=500),
+    stat_type: str = Query(None, description="Filter by stat type (e.g., PTS, Strikeouts)")
+):
+    """
+    Get live props from the sport-specific collection.
+    
+    **NBA**: Returns props from dg_live_props
+    **MLB**: Returns props from mlb_live_props
+    
+    Optional filtering by stat_type.
+    """
+    from config.db_config import get_collection_name, validate_sport
+    
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    
+    if _db is None:
+        raise HTTPException(status_code=500, detail="Database not initialized")
+    
+    # Validate sport parameter
+    try:
+        sport = validate_sport(sport)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    
+    # Get sport-specific collection
+    collection_name = get_collection_name("live_props", sport)
+    collection = _db[collection_name]
+    
+    # Build query
+    query = {}
+    if stat_type:
+        query["stat_type"] = stat_type
+    
+    # Fetch props
+    cursor = collection.find(query, {"_id": 0}).limit(limit)
+    props = await cursor.to_list(length=limit)
+    
+    # Get unique stat types for reference
+    stat_types = await collection.distinct("stat_type")
+    
+    return {
+        "sport": sport,
+        "collection": collection_name,
+        "props": props,
+        "count": len(props),
+        "available_stat_types": stat_types
+    }

@@ -61,16 +61,18 @@ Build a local-first betting intelligence app restructuring React/FastAPI to inte
 
 ## Completed Work (April 2026)
 
-### Session 5 - Multi-Sport Database Schema (April 10, 2026)
+### Session 5 - Multi-Sport Database Schema & Universal Odds (April 10, 2026)
 - [x] Created `/app/backend/config/db_config.py` with collection prefixes for each sport
 - [x] Implemented `get_collection_name(base_name, sport)` helper function
 - [x] Implemented `get_collection(db, base_name, sport)` for direct collection access
 - [x] Implemented `validate_sport(sport)` for input validation
-- [x] Implemented `is_collection_for_sport()` for sport isolation validation
-- [x] Updated `/api/v3/ferrari/safe-haven`, `/front-lines`, `/war-zone`, `/discarded` to use `?sport=` parameter
-- [x] Tier endpoints now return `sport` and `collection` in response
-- [x] NBA uses legacy collection names (backwards compatible)
-- [x] MLB uses `mlb_` prefixed collection names
+- [x] Updated `/api/v3/ferrari/*` endpoints to use `?sport=` parameter
+- [x] Created `/app/backend/services/universal_odds_sync.py` for multi-sport odds fetching
+- [x] **NBA Markets**: PTS, REB, AST, PRA → Saves to `dg_live_props`
+- [x] **MLB Markets**: Strikeouts, Walks, Hits Allowed, Hits, Total Bases, RBIs, Runs, Stolen Bases → Saves to `mlb_live_props`
+- [x] Added `POST /api/v3/odds/sync?sport=nba|mlb` endpoint
+- [x] Added `GET /api/v3/odds/props?sport=nba|mlb` endpoint
+- [x] Tested: NBA sync (9 events, 655 props), MLB sync (18 events, 1972 props)
 
 ### Session 4 - Sport-Exclusive Architecture (April 10, 2026)
 - [x] Implemented Sport-Exclusive sync engine with `target_sport` argument
