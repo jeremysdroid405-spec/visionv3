@@ -1,0 +1,98 @@
+{
+  "summary": "MLB Vegas Killer Historical Backfill Testing Complete - All 17 tests passed. P0 blocker fix verified: MLB BDL stats now correctly populate game dates and opponent_abbr from game cache. Stat field mappings (rbi->rbis, k->strikeouts, hr->home_runs, bb->walks) working correctly. VK backfill endpoint and baselines endpoint both functional.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "features_tested": {
+    "mlb_bdl_sync_dates": {
+      "status": "PASSED",
+      "description": "MLB BDL sync correctly populates game dates from game cache",
+      "details": "Game logs have proper ISO dates like '2026-04-08T20:07:00.000Z'"
+    },
+    "mlb_bdl_sync_opponent_abbr": {
+      "status": "PASSED",
+      "description": "MLB BDL sync correctly populates opponent_abbr from game cache",
+      "details": "Game logs have opponent abbreviations like 'ATL', 'SEA', 'TOR'"
+    },
+    "mlb_stat_field_mappings": {
+      "status": "PASSED",
+      "description": "MLB stat fields correctly mapped (BDL uses short names)",
+      "mappings": {
+        "rbi": "rbis",
+        "k": "strikeouts",
+        "hr": "home_runs",
+        "bb": "walks",
+        "ip": "innings_pitched",
+        "p_k": "pitcher_strikeouts",
+        "p_bb": "pitcher_walks",
+        "p_hits": "hits_allowed",
+        "er": "earned_runs"
+      }
+    },
+    "vk_backfill_endpoint": {
+      "status": "PASSED",
+      "description": "POST /api/v3/mlb/vk-backfill endpoint works",
+      "details": "Endpoint accepts POST requests and validates season parameters"
+    },
+    "vk_baselines_endpoint": {
+      "status": "PASSED",
+      "description": "GET /api/v3/mlb/vk-baselines/{player_name} returns player baselines",
+      "sample_response": {
+        "player_name": "Mike Trout",
+        "baselines": {
+          "hits": {"weighted_baseline": 0.643, "l10_average": 0.7, "baseline_vs_l10": 8.89},
+          "total_bases": {"weighted_baseline": 1.0, "l10_average": 1.1, "baseline_vs_l10": 10.0}
+        },
+        "total_games": 14
+      }
+    },
+    "data_integrity": {
+      "status": "PASSED",
+      "description": "90%+ of players have dates and opponent_abbr populated",
+      "details": "VK baselines populated for multiple players after backfill"
+    }
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_mlb_vk_backfill.py",
+    "/app/test_reports/pytest/pytest_mlb_vk_backfill.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "bdl_universal_sync.py: _transform_stat_to_game_log() correctly handles MLB flat structure vs NBA nested structure",
+    "bdl_universal_sync.py: _build_mlb_game_cache() fetches games separately to get dates for game_id mapping",
+    "bdl_universal_sync.py: _get_mlb_game_date() and _get_mlb_opponent() correctly look up from cache",
+    "mlb_vk_historical_backfill.py: calculate_weighted_baseline() correctly applies time-decaying weights (2026=1.0, 2021=0.5)",
+    "ferrari_tiers.py: VK backfill and baselines endpoints properly integrated with routes"
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_mlb_vk_backfill.py"
+  ],
+  "success_rate": {
+    "backend": "100% (17/17 tests passed)",
+    "frontend": "N/A (backend only testing requested)"
+  },
+  "test_credentials": "N/A - no auth required for these endpoints",
+  "seed_data_creation": "N/A - uses live data from BDL API and existing VK backfill",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "MLB VK Historical Backfill is complete and working. P0 blocker fixed: MLB BDL API returns flat structure (game_id at root, team_name at root) vs NBA (nested game and team objects). Game cache is built to look up dates. Stat field mappings work correctly. VK backfill ran for 2026 season - 774 players have baselines calculated.",
+  "mocked_apis": {
+    "has_mocked_apis": false,
+    "mocked_apis_list": []
+  },
+  "verification_data": {
+    "p0_blocker_fixed": true,
+    "dates_populated": true,
+    "opponent_abbr_populated": true,
+    "stat_mappings_correct": true,
+    "vk_backfill_endpoint_works": true,
+    "vk_baselines_endpoint_works": true,
+    "sample_players_verified": ["Mike Trout", "Shohei Ohtani", "Ryan Thompson (pitcher)", "Gabriel Moreno"]
+  }
+}

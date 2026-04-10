@@ -58,11 +58,18 @@ class BDLUniversalSyncService:
     Universal BallDontLie sync service for multiple sports.
     
     Uses the v1 API endpoints with strict cursor-based pagination.
+    
+    MLB API STRUCTURE NOTES:
+    - Stats endpoint returns flat structure with game_id (no nested game object)
+    - Stats use short field names: rbi, k, hr, bb (not rbis, strikeouts, home_runs, walks)
+    - team_name is at root level (no nested team object)
+    - Must fetch games separately to get dates for game_id mapping
     """
     
     def __init__(self, db: AsyncIOMotorDatabase):
         self.db = db
         self._client: Optional[httpx.AsyncClient] = None
+        self._mlb_game_cache: Dict[int, Dict] = {}  # Cache game_id -> game data (date, teams)
     
     async def _get_client(self) -> httpx.AsyncClient:
         """Get or create HTTP client with auth headers."""
@@ -90,6 +97,57 @@ class BDLUniversalSyncService:
     def _get_season(self, sport: str) -> int:
         """Get current season for sport."""
         return SEASONS.get(sport, 2025)
+    
+    # =========================================================================
+    # MLB GAME DATE CACHE (Required because MLB stats don't include game dates)
+    # =========================================================================
+    
+    async def _build_mlb_game_cache(self, season: int) -> None:
+        """
+        Fetch MLB games for a season and cache game_id -> {date, home_team, away_team}.
+        
+        Required because MLB /stats endpoint only returns game_id, not game details.
+        """
+        logger.info(f"[BDL_MLB] Building game date cache for season {season}...")
+        
+        params = {
+            "seasons[]": season,
+            "per_page": 100
+        }
+        
+        games = await self._fetch_with_cursor("/games", "mlb", params, max_pages=50)
+        
+        for game in games:
+            game_id = game.get("id")
+            if game_id:
+                self._mlb_game_cache[game_id] = {
+                    "date": game.get("date"),
+                    "season": game.get("season"),
+                    "home_team": game.get("home_team", {}),
+                    "away_team": game.get("away_team", {}),
+                    "home_team_name": game.get("home_team_name"),
+                    "away_team_name": game.get("away_team_name"),
+                    "venue": game.get("venue")
+                }
+        
+        logger.info(f"[BDL_MLB] Cached {len(self._mlb_game_cache)} games for season {season}")
+    
+    def _get_mlb_game_date(self, game_id: int) -> Optional[str]:
+        """Get game date from cache."""
+        game_data = self._mlb_game_cache.get(game_id)
+        return game_data.get("date") if game_data else None
+    
+    def _get_mlb_opponent(self, game_id: int, player_team_name: str) -> Optional[str]:
+        """Get opponent team abbreviation from cache."""
+        game_data = self._mlb_game_cache.get(game_id)
+        if not game_data:
+            return None
+        
+        # Determine opponent based on player's team
+        if player_team_name == game_data.get("home_team_name"):
+            return game_data.get("away_team", {}).get("abbreviation")
+        else:
+            return game_data.get("home_team", {}).get("abbreviation")
     
     # =========================================================================
     # CURSOR-BASED PAGINATION
@@ -267,6 +325,10 @@ class BDLUniversalSyncService:
         }
         
         try:
+            # MLB SPECIAL: Build game date cache first (MLB stats don't include dates)
+            if sport == "mlb":
+                await self._build_mlb_game_cache(season)
+            
             # Get player IDs if not provided
             if player_ids is None:
                 master_hub_collection = get_collection_name("master_hub", sport)
@@ -420,27 +482,81 @@ class BDLUniversalSyncService:
         """
         Transform BDL stat object to game_log format.
         
-        Handles sport-specific stat fields.
+        Handles sport-specific stat fields and API structure differences.
+        
+        MLB API STRUCTURE:
+        - game_id at root level (no nested game object)
+        - team_name at root level (no nested team object)
+        - Uses short field names: rbi, k, hr, bb, etc.
+        - Requires game cache lookup for dates
+        
+        NBA API STRUCTURE:
+        - Nested game object with id, date
+        - Nested team object with abbreviation
         """
-        game = stat.get("game", {})
         player = stat.get("player", {})
-        team = stat.get("team", {})
         
-        # Common fields
-        log = {
-            "game_id": game.get("id"),
-            "date": game.get("date"),
-            "season": game.get("season"),
-            "bdl_player_id": player.get("id"),
-            "player_name": f"{player.get('first_name', '')} {player.get('last_name', '')}".strip(),
-            "team_id": team.get("id"),
-            "team_abbr": team.get("abbreviation"),
-            "sport": sport
-        }
-        
-        if sport == "nba":
-            # NBA-specific stats
-            log.update({
+        if sport == "mlb":
+            # MLB: Flat structure with game_id at root
+            game_id = stat.get("game_id")
+            team_name = stat.get("team_name", "")
+            
+            # Get date from game cache
+            game_date = self._get_mlb_game_date(game_id)
+            opponent_abbr = self._get_mlb_opponent(game_id, team_name)
+            
+            log = {
+                "game_id": game_id,
+                "date": game_date,  # From cache lookup
+                "season": 2026,  # MLB stats don't include season
+                "bdl_player_id": player.get("id"),
+                "player_name": player.get("full_name") or f"{player.get('first_name', '')} {player.get('last_name', '')}".strip(),
+                "team_name": team_name,
+                "opponent_abbr": opponent_abbr,
+                "sport": sport,
+                # MLB Batter stats (using actual BDL field names)
+                "at_bats": stat.get("at_bats", 0),
+                "hits": stat.get("hits", 0),
+                "runs": stat.get("runs", 0),
+                "rbis": stat.get("rbi", 0),  # BDL uses 'rbi' not 'rbis'
+                "home_runs": stat.get("hr", 0),  # BDL uses 'hr' not 'home_runs'
+                "stolen_bases": stat.get("stolen_bases", 0),
+                "walks": stat.get("bb", 0),  # BDL uses 'bb' not 'walks'
+                "strikeouts": stat.get("k", 0),  # BDL uses 'k' not 'strikeouts'
+                "batting_avg": stat.get("avg", 0),
+                "obp": stat.get("obp", 0),
+                "slg": stat.get("slg", 0),
+                "total_bases": stat.get("total_bases", 0),
+                "doubles": stat.get("doubles", 0),
+                "triples": stat.get("triples", 0),
+                "plate_appearances": stat.get("plate_appearances", 0),
+                # MLB Pitcher stats (BDL prefixes pitcher stats with p_)
+                "innings_pitched": stat.get("ip"),  # ip = innings pitched
+                "pitcher_strikeouts": stat.get("p_k"),  # p_k = pitcher strikeouts
+                "pitcher_walks": stat.get("p_bb"),  # p_bb = pitcher walks
+                "hits_allowed": stat.get("p_hits"),  # p_hits = hits allowed
+                "earned_runs": stat.get("er"),  # er = earned runs
+                "era": stat.get("era"),
+                "pitch_count": stat.get("pitch_count"),
+                "wins": stat.get("wins"),
+                "losses": stat.get("losses"),
+                "saves": stat.get("saves"),
+            }
+        else:
+            # NBA: Nested structure with game and team objects
+            game = stat.get("game", {})
+            team = stat.get("team", {})
+            
+            log = {
+                "game_id": game.get("id"),
+                "date": game.get("date"),
+                "season": game.get("season"),
+                "bdl_player_id": player.get("id"),
+                "player_name": f"{player.get('first_name', '')} {player.get('last_name', '')}".strip(),
+                "team_id": team.get("id"),
+                "team_abbr": team.get("abbreviation"),
+                "sport": sport,
+                # NBA stats
                 "pts": stat.get("pts", 0),
                 "reb": stat.get("reb", 0),
                 "ast": stat.get("ast", 0),
@@ -461,32 +577,7 @@ class BDLUniversalSyncService:
                 "dreb": stat.get("dreb", 0),
                 "pf": stat.get("pf", 0),
                 "plus_minus": stat.get("plus_minus", 0),
-            })
-        elif sport == "mlb":
-            # MLB-specific stats (pitcher and batter)
-            # Batter stats
-            log.update({
-                "at_bats": stat.get("at_bats", 0),
-                "hits": stat.get("hits", 0),
-                "runs": stat.get("runs", 0),
-                "rbis": stat.get("rbis", 0),
-                "home_runs": stat.get("home_runs", 0),
-                "stolen_bases": stat.get("stolen_bases", 0),
-                "walks": stat.get("walks", 0),
-                "strikeouts": stat.get("strikeouts", 0),
-                "batting_avg": stat.get("batting_avg", 0),
-                "obp": stat.get("obp", 0),
-                "slg": stat.get("slg", 0),
-                "total_bases": stat.get("total_bases", 0),
-                # Pitcher stats
-                "innings_pitched": stat.get("innings_pitched", 0),
-                "pitcher_strikeouts": stat.get("pitcher_strikeouts", 0),
-                "pitcher_walks": stat.get("pitcher_walks", 0),
-                "hits_allowed": stat.get("hits_allowed", 0),
-                "earned_runs": stat.get("earned_runs", 0),
-                "era": stat.get("era", 0),
-                "whip": stat.get("whip", 0),
-            })
+            }
         
         return log
     

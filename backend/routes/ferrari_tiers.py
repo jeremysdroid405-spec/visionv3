@@ -1073,6 +1073,104 @@ async def get_mlb_player_props(
     }
 
 
+# =============================================================================
+# MLB VEGAS KILLER HISTORICAL BACKFILL
+# =============================================================================
+
+@router.post("/v3/mlb/vk-backfill")
+async def run_mlb_vk_historical_backfill(
+    seasons: str = Query("2021,2022,2023,2024,2025,2026", description="Comma-separated seasons to fetch"),
+    save_to_db: bool = Query(True, description="Save results to database")
+):
+    """
+    MLB Vegas Killer 5-Season Historical Backfill.
+    
+    Fetches historical stats (2021-2026) and calculates weighted baselines
+    for the ML regression model.
+    
+    **Process:**
+    1. Data Retrieval: Fetch BDL /mlb/v1/stats for each season
+    2. Game Cache: Build game date caches for accurate timestamps
+    3. Weighted Regression: Apply time-decaying weights
+       - 2026: w=1.0 (most recent)
+       - 2021: w=0.5 (oldest)
+    4. Output: 5-Year Weighted Baseline vs L10 Average
+    
+    **Collections Updated:**
+    - mlb_historical_logs: Raw game logs by player
+    - mlb_master_hub_2026: Player baselines (vk_baselines field)
+    
+    **Warning:** This is a long-running operation (5-15 minutes).
+    """
+    from services.mlb_vk_historical_backfill import run_mlb_historical_backfill
+    
+    if _db is None:
+        raise HTTPException(status_code=500, detail="Database not initialized")
+    
+    # Parse seasons
+    try:
+        season_list = [int(s.strip()) for s in seasons.split(",")]
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid seasons format. Use comma-separated years.")
+    
+    # Validate seasons
+    valid_seasons = [s for s in season_list if 2020 <= s <= 2026]
+    if not valid_seasons:
+        raise HTTPException(status_code=400, detail="No valid seasons provided (2020-2026)")
+    
+    result = await run_mlb_historical_backfill(_db, seasons=valid_seasons)
+    return result
+
+
+@router.get("/v3/mlb/vk-baselines/{player_name}")
+async def get_mlb_vk_baselines(
+    player_name: str,
+    response: Response
+):
+    """
+    Get a player's VK weighted baselines.
+    
+    Returns the 5-year weighted baselines calculated during historical backfill:
+    - weighted_baseline: Time-weighted average
+    - l10_average: Recent 10-game average
+    - baseline_vs_l10: Deviation percentage
+    - weighted_cv: Consistency score
+    """
+    from config.db_config import get_collection_name
+    
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    
+    if _db is None:
+        raise HTTPException(status_code=500, detail="Database not initialized")
+    
+    collection = _db[get_collection_name("master_hub", "mlb")]
+    
+    # Find player
+    player = await collection.find_one(
+        {"display_name": {"$regex": f"^{player_name}$", "$options": "i"}},
+        {"_id": 0, "display_name": 1, "vk_baselines": 1, "vk_baseline_games": 1, "vk_baseline_updated": 1}
+    )
+    
+    if not player:
+        player = await collection.find_one(
+            {"display_name": {"$regex": player_name, "$options": "i"}},
+            {"_id": 0, "display_name": 1, "vk_baselines": 1, "vk_baseline_games": 1, "vk_baseline_updated": 1}
+        )
+    
+    if not player:
+        raise HTTPException(status_code=404, detail=f"Player '{player_name}' not found")
+    
+    if not player.get("vk_baselines"):
+        raise HTTPException(status_code=404, detail=f"No VK baselines found for '{player_name}'. Run historical backfill first.")
+    
+    return {
+        "success": True,
+        "player_name": player.get("display_name"),
+        "baselines": player.get("vk_baselines"),
+        "total_games": player.get("vk_baseline_games"),
+        "updated_at": player.get("vk_baseline_updated")
+    }
+
 
 # =============================================================================
 # MLB HEADSHOT SYNC ENDPOINTS
