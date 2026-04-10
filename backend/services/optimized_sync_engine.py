@@ -1,21 +1,24 @@
 """
-Optimized Sync Engine
-=====================
+Optimized Sync Engine (Sport-Exclusive Architecture)
+=====================================================
 High-performance sync engine that:
 1. Pre-caches ALL global data (standings, referees, momentum) ONCE at sync start
 2. Uses async batching with asyncio.gather() for concurrent processing
 3. Enriches ALL picks with complete data in a single pass
 4. Returns unified JSON payload with all intel data
+5. **Sport-Exclusive Mode**: Isolates data pipelines per sport (NBA/MLB)
+   - Collection prefixes: nba_ vs mlb_
+   - Locked State: Prevents cross-sport data corruption
 
 Target: Complete sync in under 5 seconds
 
 Author: PropVision AI
-Version: 1.0.0
+Version: 2.0.0 (Sport-Exclusive)
 """
 import asyncio
 import logging
 from datetime import datetime, timezone
-from typing import Dict, List, Any, Optional, Tuple
+from typing import Dict, List, Any, Optional, Tuple, Literal
 from dataclasses import dataclass, field
 
 logger = logging.getLogger(__name__)
@@ -24,6 +27,86 @@ logger = logging.getLogger(__name__)
 BATCH_SIZE = 30  # Process all picks at once
 GEMINI_CONCURRENT_LIMIT = 30  # Max concurrent Gemini calls (Tier 1 paid = 1000 RPM, ~16/sec)
 
+# Supported sports for Sport-Exclusive architecture
+SUPPORTED_SPORTS = ["nba", "mlb"]
+DEFAULT_SPORT = "nba"
+
+# Sport-specific collection mappings
+# Each sport has its own isolated set of collections
+SPORT_COLLECTION_MAP = {
+    "nba": {
+        "master_hub": "nba_master_hub_2026",
+        "cached_board": "dg_cached_board",  # Legacy NBA naming (no prefix for backwards compat)
+        "live_props": "dg_live_props",
+        "safe_haven": "ferrari_safe_haven",
+        "front_lines": "ferrari_front_lines",
+        "war_zone": "ferrari_war_zone",
+        "oracle_analyzed": "oracle_apex_analyzed",
+    },
+    "mlb": {
+        "master_hub": "mlb_master_hub_2026",
+        "cached_board": "mlb_cached_board",
+        "live_props": "mlb_live_props",
+        "safe_haven": "mlb_ferrari_safe_haven",
+        "front_lines": "mlb_ferrari_front_lines",
+        "war_zone": "mlb_ferrari_war_zone",
+        "oracle_analyzed": "mlb_oracle_apex_analyzed",
+    }
+}
+
+
+def get_collection_name(sport: str, collection_key: str) -> str:
+    """
+    Get the sport-specific collection name.
+    
+    Args:
+        sport: Target sport ('nba' or 'mlb')
+        collection_key: Logical collection key (e.g., 'cached_board', 'safe_haven')
+    
+    Returns:
+        Actual MongoDB collection name with sport prefix
+    """
+    sport = sport.lower() if sport else DEFAULT_SPORT
+    if sport not in SPORT_COLLECTION_MAP:
+        logger.warning(f"[SPORT_EXCLUSIVE] Unknown sport '{sport}', defaulting to {DEFAULT_SPORT}")
+        sport = DEFAULT_SPORT
+    
+    collection_map = SPORT_COLLECTION_MAP[sport]
+    if collection_key not in collection_map:
+        raise ValueError(f"Unknown collection key '{collection_key}' for sport '{sport}'")
+    
+    return collection_map[collection_key]
+
+
+def validate_sport_isolation(target_sport: str, collection_name: str) -> bool:
+    """
+    Validate that a collection belongs to the target sport.
+    Prevents cross-sport data corruption.
+    
+    Args:
+        target_sport: The sport currently being synced
+        collection_name: The collection about to be modified
+    
+    Returns:
+        True if collection is valid for target sport, False otherwise
+    """
+    target_sport = target_sport.lower() if target_sport else DEFAULT_SPORT
+    
+    # Get all collections for the target sport
+    valid_collections = set(SPORT_COLLECTION_MAP.get(target_sport, {}).values())
+    
+    # Check if collection is in the valid set
+    if collection_name in valid_collections:
+        return True
+    
+    # Additional check: collection should not belong to a DIFFERENT sport
+    for other_sport, other_map in SPORT_COLLECTION_MAP.items():
+        if other_sport != target_sport and collection_name in other_map.values():
+            logger.error(f"[LOCKED_STATE] BLOCKED: Attempted write to {other_sport.upper()} collection '{collection_name}' during {target_sport.upper()} sync")
+            return False
+    
+    return True  # Unknown collection, allow (might be a shared utility collection)
+
 
 @dataclass
 class GlobalSyncCache:
@@ -31,6 +114,9 @@ class GlobalSyncCache:
     Holds ALL global data fetched once at sync start.
     Passed down to all enrichment functions to avoid redundant API calls.
     """
+    # Sport context
+    target_sport: str = DEFAULT_SPORT
+    
     # Standings data
     standings: Dict[str, Dict] = field(default_factory=dict)
     
@@ -51,57 +137,75 @@ class GlobalSyncCache:
     def is_valid(self) -> bool:
         """Check if cache is populated."""
         return self.fetched_at is not None
+    
+    def get_collection(self, key: str) -> str:
+        """Get sport-specific collection name."""
+        return get_collection_name(self.target_sport, key)
 
 
-async def fetch_global_cache(db) -> GlobalSyncCache:
+async def fetch_global_cache(db, target_sport: str = DEFAULT_SPORT) -> GlobalSyncCache:
     """
     Fetch ALL global data in parallel at sync start.
     This is called ONCE and the cache is passed to all subsequent functions.
+    
+    Args:
+        db: MongoDB database connection
+        target_sport: Sport to sync ('nba' or 'mlb')
     """
-    cache = GlobalSyncCache()
+    cache = GlobalSyncCache(target_sport=target_sport)
     start = datetime.now(timezone.utc)
     
-    logger.info("[SYNC_CACHE] Fetching all global data...")
+    logger.info(f"[SYNC_CACHE] Fetching all global data for {target_sport.upper()}...")
     
     try:
-        # Fetch all global data concurrently
-        standings_task = _fetch_standings_cached(db)
-        refs_task = _fetch_referee_assignments_cached(db)
-        momentum_task = _fetch_momentum_cached(db)
-        vacuum_task = _fetch_vacuum_cached(db)
-        
-        results = await asyncio.gather(
-            standings_task,
-            refs_task,
-            momentum_task,
-            vacuum_task,
-            return_exceptions=True
-        )
-        
-        # Unpack results
-        if not isinstance(results[0], Exception):
-            cache.standings = results[0]
-        
-        if not isinstance(results[1], Exception):
-            cache.referee_assignments, cache.referee_by_teams = results[1]
-        
-        if not isinstance(results[2], Exception):
-            cache.momentum_cache = results[2]
-        
-        if not isinstance(results[3], Exception):
-            cache.vacuum_alerts, cache.vacuum_beneficiaries = results[3]
+        # For NBA, fetch all standard services
+        # For MLB, some services may not be available yet
+        if target_sport.lower() == "nba":
+            standings_task = _fetch_standings_cached(db)
+            refs_task = _fetch_referee_assignments_cached(db)
+            momentum_task = _fetch_momentum_cached(db)
+            vacuum_task = _fetch_vacuum_cached(db)
+            
+            results = await asyncio.gather(
+                standings_task,
+                refs_task,
+                momentum_task,
+                vacuum_task,
+                return_exceptions=True
+            )
+            
+            if not isinstance(results[0], Exception):
+                cache.standings = results[0]
+            
+            if not isinstance(results[1], Exception):
+                cache.referee_assignments, cache.referee_by_teams = results[1]
+            
+            if not isinstance(results[2], Exception):
+                cache.momentum_cache = results[2]
+            
+            if not isinstance(results[3], Exception):
+                cache.vacuum_alerts, cache.vacuum_beneficiaries = results[3]
+        else:
+            # MLB - services not yet implemented, use empty cache
+            logger.info(f"[SYNC_CACHE] {target_sport.upper()} services not yet implemented, using empty cache")
+            cache.standings = {}
+            cache.referee_assignments = {}
+            cache.referee_by_teams = {}
+            cache.momentum_cache = {}
+            cache.vacuum_alerts = []
+            cache.vacuum_beneficiaries = {}
         
         cache.fetched_at = datetime.now(timezone.utc)
         
         duration = (datetime.now(timezone.utc) - start).total_seconds()
-        logger.info(f"[SYNC_CACHE] Global cache populated in {duration:.2f}s")
+        logger.info(f"[SYNC_CACHE] Global cache populated for {target_sport.upper()} in {duration:.2f}s")
         logger.info(f"  - Standings: {len(cache.standings)} teams")
         logger.info(f"  - Referees: {len(cache.referee_by_teams)} games")
         logger.info(f"  - Momentum: {len(cache.momentum_cache)} teams")
         logger.info(f"  - Vacuums: {len(cache.vacuum_alerts)} active")
         
     except Exception as e:
-        logger.error(f"[SYNC_CACHE] Error fetching global cache: {e}")
+        logger.error(f"[SYNC_CACHE] Error fetching global cache for {target_sport.upper()}: {e}")
         import traceback
         logger.error(traceback.format_exc())
     
@@ -333,10 +437,15 @@ async def enrich_picks_batch(
     return picks
 
 
-async def _attach_cached_summaries(picks: List[Dict], db) -> int:
+async def _attach_cached_summaries(picks: List[Dict], db, target_sport: str = DEFAULT_SPORT) -> int:
     """
     Attach cached vision summaries to picks without making API calls.
     Returns count of picks that got cached summaries.
+    
+    Args:
+        picks: List of pick dictionaries
+        db: MongoDB database connection
+        target_sport: Sport context for collection lookup
     """
     from services.vision_summary_service import VisionSummaryService
     from datetime import datetime, timezone
@@ -363,7 +472,8 @@ async def _attach_cached_summaries(picks: List[Dict], db) -> int:
         # Check database cache (ferrari collections may have old summaries)
         tier = pick.get("board") or pick.get("tier", "")
         if tier:
-            collection_name = f"ferrari_{tier}"
+            # Use sport-specific collection name
+            collection_name = get_collection_name(target_sport, tier.replace("ferrari_", ""))
             try:
                 existing = await db[collection_name].find_one(
                     {
@@ -404,9 +514,12 @@ async def _batch_generate_summaries(picks: List[Dict], db) -> None:
     pass
 
 
-async def run_optimized_sync(db) -> Dict[str, Any]:
+async def run_optimized_sync(db, target_sport: str = DEFAULT_SPORT) -> Dict[str, Any]:
     """
-    Run the full optimized sync pipeline.
+    Run the full optimized sync pipeline for a SPECIFIC sport.
+    
+    **SPORT-EXCLUSIVE MODE**: This sync is isolated to `target_sport` only.
+    Collections for other sports are LOCKED and cannot be modified.
     
     Pipeline:
     1. Fetch ALL global data (standings, refs, momentum, vacuums) in parallel
@@ -415,28 +528,52 @@ async def run_optimized_sync(db) -> Dict[str, Any]:
     4. Generate AI summaries in batches (rate-limited)
     5. Update dg_cached_board with enriched intel_suite data
     
-    Returns complete payload with all picks enriched.
+    Args:
+        db: MongoDB database connection
+        target_sport: Sport to sync ('nba' or 'mlb')
+    
+    Returns:
+        Complete payload with all picks enriched.
     """
+    # Normalize and validate sport
+    target_sport = (target_sport or DEFAULT_SPORT).lower()
+    if target_sport not in SUPPORTED_SPORTS:
+        logger.warning(f"[OPTIMIZED_SYNC] Unknown sport '{target_sport}', defaulting to {DEFAULT_SPORT}")
+        target_sport = DEFAULT_SPORT
+    
     start = datetime.now(timezone.utc)
     timings = {}  # Track timing for each phase
     
-    logger.info("[OPTIMIZED_SYNC] Starting unified pipeline...")
+    # ============================================================
+    # SPORT-EXCLUSIVE LOCK ANNOUNCEMENT
+    # ============================================================
+    logger.info("=" * 60)
+    logger.info(f"[OPTIMIZED_SYNC] 🔒 SPORT-EXCLUSIVE MODE: {target_sport.upper()}")
+    if target_sport == "mlb":
+        logger.info("[OPTIMIZED_SYNC] 🛡️ Syncing MLB... NBA Data Protected.")
+    else:
+        logger.info("[OPTIMIZED_SYNC] 🛡️ Syncing NBA... MLB Data Protected.")
+    logger.info(f"[OPTIMIZED_SYNC] Collections in scope: {list(SPORT_COLLECTION_MAP[target_sport].values())}")
+    logger.info("=" * 60)
     
-    # Step 0: Sync BDL Game Logs (ensures fresh hit rate data)
-    # This updates nba_master_hub_2026.bdl_game_logs which cached_board uses
+    # Step 0: Sync BDL Game Logs (ensures fresh hit rate data) - NBA ONLY for now
     t0 = datetime.now(timezone.utc)
-    try:
-        from services.bdl_game_logs_sync_batched import run_bdl_game_logs_sync_batched
-        logs_result = await run_bdl_game_logs_sync_batched(db)
-        timings["0_game_logs_sync"] = (datetime.now(timezone.utc) - t0).total_seconds()
-        logger.info(f"[OPTIMIZED_SYNC] Step 0 (Game Logs): {timings['0_game_logs_sync']:.2f}s - synced {logs_result.get('players_synced', 0)} players")
-    except Exception as e:
-        logger.warning(f"[OPTIMIZED_SYNC] Game logs sync failed (non-fatal): {e}")
-        timings["0_game_logs_sync"] = (datetime.now(timezone.utc) - t0).total_seconds()
+    if target_sport == "nba":
+        try:
+            from services.bdl_game_logs_sync_batched import run_bdl_game_logs_sync_batched
+            logs_result = await run_bdl_game_logs_sync_batched(db)
+            timings["0_game_logs_sync"] = (datetime.now(timezone.utc) - t0).total_seconds()
+            logger.info(f"[OPTIMIZED_SYNC] Step 0 (Game Logs): {timings['0_game_logs_sync']:.2f}s - synced {logs_result.get('players_synced', 0)} players")
+        except Exception as e:
+            logger.warning(f"[OPTIMIZED_SYNC] Game logs sync failed (non-fatal): {e}")
+            timings["0_game_logs_sync"] = (datetime.now(timezone.utc) - t0).total_seconds()
+    else:
+        logger.info(f"[OPTIMIZED_SYNC] Step 0 (Game Logs): SKIPPED - {target_sport.upper()} uses different stat source")
+        timings["0_game_logs_sync"] = 0
     
     # Step 1: Fetch global cache ONCE (parallel fetch)
     t1 = datetime.now(timezone.utc)
-    cache = await fetch_global_cache(db)
+    cache = await fetch_global_cache(db, target_sport)
     timings["1_global_cache"] = (datetime.now(timezone.utc) - t1).total_seconds()
     logger.info(f"[OPTIMIZED_SYNC] Step 1 (Global Cache): {timings['1_global_cache']:.2f}s")
     
@@ -445,8 +582,8 @@ async def run_optimized_sync(db) -> Dict[str, Any]:
     from services.ferrari_tier_service import get_ferrari_tier_service
     ferrari_service = get_ferrari_tier_service(db)
     
-    # Pass the pre-fetched cache to Ferrari for use during scoring
-    ferrari_result = await ferrari_service.build_ferrari_tiers(start)
+    # Pass the pre-fetched cache and target_sport to Ferrari for use during scoring
+    ferrari_result = await ferrari_service.build_ferrari_tiers(start, target_sport=target_sport)
     timings["2_ferrari_pipeline"] = (datetime.now(timezone.utc) - t2).total_seconds()
     logger.info(f"[OPTIMIZED_SYNC] Step 2 (Ferrari Pipeline): {timings['2_ferrari_pipeline']:.2f}s")
     
@@ -475,6 +612,7 @@ async def run_optimized_sync(db) -> Dict[str, Any]:
         # Enrich each pick with cached data (momentum, vacuum, whistle already in Ferrari)
         for pick in picks:
             pick["board"] = board_name
+            pick["sport"] = target_sport  # Tag sport on each pick
             # Add any missing cache data
             enrich_pick_with_cache(pick, cache)
         
@@ -486,13 +624,13 @@ async def run_optimized_sync(db) -> Dict[str, Any]:
     timings["3_collect_enrich"] = (datetime.now(timezone.utc) - t3).total_seconds()
     logger.info(f"[OPTIMIZED_SYNC] Step 3 (Collect & Enrich): {timings['3_collect_enrich']:.2f}s")
     
-    logger.info(f"[OPTIMIZED_SYNC] Collected {len(all_picks)} picks for AI summary generation")
+    logger.info(f"[OPTIMIZED_SYNC] Collected {len(all_picks)} {target_sport.upper()} picks for AI summary generation")
     
     # Step 4: Generate AI summaries - check cache first, generate missing in background
     t4 = datetime.now(timezone.utc)
     
     # Quick pass: attach any cached summaries immediately
-    cached_count = await _attach_cached_summaries(all_picks, db)
+    cached_count = await _attach_cached_summaries(all_picks, db, target_sport)
     picks_needing_summary = [p for p in all_picks if not p.get("vision_summary")]
     
     logger.info(f"[OPTIMIZED_SYNC] AI Summaries: {cached_count} cached, {len(picks_needing_summary)} need generation")
@@ -513,28 +651,29 @@ async def run_optimized_sync(db) -> Dict[str, Any]:
     timings["4_ai_summaries"] = (datetime.now(timezone.utc) - t4).total_seconds()
     logger.info(f"[OPTIMIZED_SYNC] Step 4 (AI Summaries): {timings['4_ai_summaries']:.2f}s")
     
-    # Step 5: Update dg_cached_board with enriched data
+    # Step 5: Update cached_board with enriched data (sport-specific collection)
     t5 = datetime.now(timezone.utc)
-    await _persist_enriched_picks(db, all_picks, cache)
+    await _persist_enriched_picks(db, all_picks, cache, target_sport)
     timings["5_persist_enriched"] = (datetime.now(timezone.utc) - t5).total_seconds()
     logger.info(f"[OPTIMIZED_SYNC] Step 5 (Persist Enriched): {timings['5_persist_enriched']:.2f}s")
     
-    # Step 6: Update Ferrari tier collections with vision summaries
+    # Step 6: Update Ferrari tier collections with vision summaries (sport-specific)
     t6 = datetime.now(timezone.utc)
-    await _update_tier_collections_with_summaries(db, all_picks)
+    await _update_tier_collections_with_summaries(db, all_picks, target_sport)
     timings["6_update_tiers"] = (datetime.now(timezone.utc) - t6).total_seconds()
     logger.info(f"[OPTIMIZED_SYNC] Step 6 (Update Tiers): {timings['6_update_tiers']:.2f}s")
     
     duration = (datetime.now(timezone.utc) - start).total_seconds()
     
     # Log timing breakdown
-    logger.info(f"[OPTIMIZED_SYNC] === TIMING BREAKDOWN ===")
+    logger.info(f"[OPTIMIZED_SYNC] === {target_sport.upper()} TIMING BREAKDOWN ===")
     for step, seconds in timings.items():
         logger.info(f"[OPTIMIZED_SYNC]   {step}: {seconds:.2f}s")
-    logger.info(f"[OPTIMIZED_SYNC] Pipeline complete in {duration:.2f}s")
+    logger.info(f"[OPTIMIZED_SYNC] 🏁 {target_sport.upper()} Pipeline complete in {duration:.2f}s")
     
     return {
         "success": True,
+        "sport": target_sport,
         "safe_haven": boards.get("safe_haven", {}),
         "front_lines": boards.get("front_lines", {}),
         "war_zone": boards.get("war_zone", {}),
@@ -551,13 +690,23 @@ async def run_optimized_sync(db) -> Dict[str, Any]:
     }
 
 
-async def _update_tier_collections_with_summaries(db, picks: List[Dict]) -> None:
+async def _update_tier_collections_with_summaries(db, picks: List[Dict], target_sport: str = DEFAULT_SPORT) -> None:
     """
     Update Ferrari tier collections (ferrari_safe_haven, ferrari_front_lines, ferrari_war_zone)
     with the AI-generated vision_summary field.
+    
+    **SPORT-EXCLUSIVE**: Only updates collections for the target_sport.
+    
+    Args:
+        db: MongoDB database connection
+        picks: List of pick dictionaries with vision summaries
+        target_sport: Sport context for collection lookup
     """
     if not picks:
         return
+    
+    # Validate sport isolation
+    logger.info(f"[SYNC_ENGINE] Updating tier collections for {target_sport.upper()}")
     
     # Group picks by tier/board
     tier_map = {
@@ -571,10 +720,17 @@ async def _update_tier_collections_with_summaries(db, picks: List[Dict]) -> None
         if board in tier_map:
             tier_map[board].append(pick)
     
-    # Update each tier collection
+    # Update each tier collection (sport-specific)
     updated_count = 0
     for tier_name, tier_picks in tier_map.items():
-        collection_name = f"ferrari_{tier_name}"
+        # Get sport-specific collection name
+        collection_name = get_collection_name(target_sport, tier_name)
+        
+        # Validate we're not touching other sport's collections
+        if not validate_sport_isolation(target_sport, collection_name):
+            logger.error(f"[LOCKED_STATE] BLOCKED write to {collection_name} - not in {target_sport.upper()} scope")
+            continue
+        
         collection = db[collection_name]
         
         for pick in tier_picks:
@@ -592,29 +748,46 @@ async def _update_tier_collections_with_summaries(db, picks: List[Dict]) -> None
                 {
                     "$set": {
                         "vision_summary": vision_summary,
-                        "intel_suite.vision_summary": vision_summary
+                        "intel_suite.vision_summary": vision_summary,
+                        "sport": target_sport  # Tag sport on the document
                     }
                 }
             )
             if result.modified_count > 0:
                 updated_count += 1
     
-    logger.info(f"[OPTIMIZED_SYNC] Updated {updated_count} picks in tier collections with AI summaries")
+    logger.info(f"[OPTIMIZED_SYNC] Updated {updated_count} {target_sport.upper()} picks in tier collections with AI summaries")
 
 
-async def _persist_enriched_picks(db, picks: List[Dict], cache: GlobalSyncCache) -> None:
+async def _persist_enriched_picks(db, picks: List[Dict], cache: GlobalSyncCache, target_sport: str = DEFAULT_SPORT) -> None:
     """
-    Persist enriched pick data back to dg_cached_board.
+    Persist enriched pick data back to the cached_board collection.
+    
+    **SPORT-EXCLUSIVE**: Uses sport-specific collection name.
     
     Strategy: Update ALL props for each player with their game-level enrichment data
     (momentum, whistle, vacuum). This ensures consistent data across all prop lines.
     
     Also updates player-level fields for fast access.
+    
+    Args:
+        db: MongoDB database connection
+        picks: List of enriched pick dictionaries
+        cache: GlobalSyncCache instance
+        target_sport: Sport context for collection lookup
     """
     if not picks:
         return
     
-    logger.info(f"[OPTIMIZED_SYNC] Persisting enrichment data for {len(picks)} picks")
+    # Get sport-specific collection name
+    cached_board_collection = get_collection_name(target_sport, "cached_board")
+    
+    # Validate sport isolation
+    if not validate_sport_isolation(target_sport, cached_board_collection):
+        logger.error(f"[LOCKED_STATE] BLOCKED write to {cached_board_collection}")
+        return
+    
+    logger.info(f"[OPTIMIZED_SYNC] Persisting enrichment data for {len(picks)} {target_sport.upper()} picks to {cached_board_collection}")
     
     # Group picks by player to avoid duplicate updates
     players_processed = set()
@@ -628,20 +801,21 @@ async def _persist_enriched_picks(db, picks: List[Dict], cache: GlobalSyncCache)
         players_processed.add(player_name)
         
         try:
-            # Get the player document
-            player_doc = await db.dg_cached_board.find_one(
+            # Get the player document from sport-specific collection
+            player_doc = await db[cached_board_collection].find_one(
                 {"player_name": player_name},
                 {"_id": 0, "props": 1}
             )
             
             if not player_doc or not player_doc.get("props"):
-                logger.debug(f"[PERSIST] Player {player_name} not in dg_cached_board, skipping")
+                logger.debug(f"[PERSIST] Player {player_name} not in {cached_board_collection}, skipping")
                 continue
             
             # Build player-level update with shared enrichment data
             player_update = {
                 "enriched_at": datetime.now(timezone.utc).isoformat(),
                 "board_member": pick.get("board"),
+                "sport": target_sport,  # Tag sport on player document
             }
             
             # Add momentum data at player level
@@ -695,7 +869,6 @@ async def _persist_enriched_picks(db, picks: List[Dict], cache: GlobalSyncCache)
                 # Build comprehensive intel_suite for each prop
                 # This includes all fields the frontend Vision Intel Suite expects
                 opponent = pick.get("opponent") or pick.get("opponent_abbr")
-                team = pick.get("team")
                 stat_type = pick.get("stat_type", "PTS")
                 
                 # Get blowout risk data
@@ -796,16 +969,18 @@ async def _persist_enriched_picks(db, picks: List[Dict], cache: GlobalSyncCache)
                         "primary": f"Analyzing {pick.get('player_name', 'player')} {stat_type} @ {pick.get('line', 0)}",
                         "reasons": [],
                         "confidence": "STANDARD"
-                    }
+                    },
+                    "sport": target_sport  # Tag sport in intel_suite
                 }
                 props_update[f"props.{idx}.intel_suite"] = intel_suite
                 props_update[f"props.{idx}.is_vision_enriched"] = True
                 props_update[f"props.{idx}.board"] = pick.get("board")  # Set board at prop level too
+                props_update[f"props.{idx}.sport"] = target_sport  # Tag sport on prop
             
             # Combine all updates
             full_update = {**player_update, **props_update}
             
-            result = await db.dg_cached_board.update_one(
+            result = await db[cached_board_collection].update_one(
                 {"player_name": player_name},
                 {"$set": full_update}
             )
@@ -816,4 +991,4 @@ async def _persist_enriched_picks(db, picks: List[Dict], cache: GlobalSyncCache)
         except Exception as e:
             logger.warning(f"[PERSIST] Error updating {player_name}: {e}")
     
-    logger.info(f"[OPTIMIZED_SYNC] Persisted enrichment for {persisted_count} players")
+    logger.info(f"[OPTIMIZED_SYNC] Persisted enrichment for {persisted_count} {target_sport.upper()} players")

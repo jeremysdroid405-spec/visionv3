@@ -1,7 +1,7 @@
 # PropVision AI - Product Requirements Document
 
 ## Original Problem Statement
-Build a local-first betting intelligence app restructuring React/FastAPI to integrate Vegas Killer ML models into the Prop Board. Establish cascading tier distribution (Safe Haven, Front Lines, War Zone) strictly gated by Hit Rate, CV, and ML Edge/Probability, using DraftKings odds as the separator. Integrate Gemini 3.1 Pro as "Vision Intel Layer" for composite scoring.
+Build a local-first betting intelligence app restructuring React/FastAPI to integrate Vegas Killer ML models into the Prop Board. Establish cascading tier distribution (Safe Haven, Front Lines, War Zone) strictly gated by Hit Rate, CV, and ML Edge/Probability, using DraftKings odds as the separator. Integrate Gemini 3.1 Pro as "Vision Intel Layer" for composite scoring. Support multi-sport expansion (NBA + MLB).
 
 ## Core Architecture
 ```
@@ -15,30 +15,41 @@ Build a local-first betting intelligence app restructuring React/FastAPI to inte
 │   ├── services/
 │   │   ├── vision_intel_service.py  # Batched Gemini intel processing
 │   │   ├── oracle_apex_service.py   # 3-Gate Qualification checks
-│   │   ├── ferrari_tier_service.py  # Tier routing + Vision Intel
+│   │   ├── ferrari_tier_service.py  # Tier routing + Vision Intel (Sport-Aware)
+│   │   ├── optimized_sync_engine.py # Sport-Exclusive Sync Engine
 │   │   ├── odds_api_service.py, odds_sync_service.py
 ├── frontend/src/
+│   ├── context/SportContext.jsx     # Global sport state manager
+│   ├── components/dashboard/SportSwitcher.jsx # NBA/MLB dropdown
 │   ├── pages/Dashboard.jsx
 │   ├── hooks/useLiveOdds.js
 │   ├── components/dashboard/
 ```
 
 ## Key Technical Concepts
+- **Sport-Exclusive Architecture**: Isolated data pipelines per sport with collection prefixes (nba_ vs mlb_)
+- **Locked State**: Prevents cross-sport data corruption during sync operations
 - **3-Gate System:** HR >= 80%, CV <= 0.35, VK Edge/Prob thresholds per tier
 - **DK Classification:** Safe Haven (DK <= -250), Front Lines (-249 to +199), War Zone (>= +200)
 - **Vision Intel:** Batched Gemini 3.1 Pro API calls for composite scoring
 - **No Fall-Throughs:** Props failing tier gates are discarded, not cascaded
 
-## Key DB Collections
-- `oracle_apex_analyzed`: Vegas Killer model outputs
-- `dg_cached_board`: Enriched props joined with Oracle data
-- `ferrari_safe_haven` / `ferrari_front_lines` / `ferrari_war_zone`: Final tier collections
+## Sport-Specific Collections
+### NBA Collections
+- `nba_master_hub_2026`: BDL player stats
+- `dg_cached_board`: Enriched props with intel
+- `ferrari_safe_haven`, `ferrari_front_lines`, `ferrari_war_zone`: Tier collections
+
+### MLB Collections (Prefixed)
+- `mlb_master_hub_2026`: MLB player stats
+- `mlb_cached_board`: MLB enriched props
+- `mlb_ferrari_safe_haven`, `mlb_ferrari_front_lines`, `mlb_ferrari_war_zone`: MLB tier collections
 
 ## API Endpoints
-- `GET /api/v3/ferrari/safe-haven`
-- `GET /api/v3/ferrari/front-lines`
-- `GET /api/v3/ferrari/war-zone`
-- `GET /api/v3/ferrari/rebuild`
+- `GET /api/v3/ferrari/safe-haven?sport=nba|mlb`
+- `GET /api/v3/ferrari/front-lines?sport=nba|mlb`
+- `GET /api/v3/ferrari/war-zone?sport=nba|mlb`
+- `POST /api/v3/ferrari/rebuild?sport=nba|mlb` (Sport-Exclusive sync)
 - `GET /api/v3/player-with-badges/{name}`
 
 ## 3rd Party Integrations
@@ -50,44 +61,38 @@ Build a local-first betting intelligence app restructuring React/FastAPI to inte
 
 ## Completed Work (April 2026)
 
+### Session 4 - Sport-Exclusive Architecture (April 10, 2026)
+- [x] Implemented Sport-Exclusive sync engine with `target_sport` argument
+- [x] Added collection prefixing for MLB (`mlb_` prefix for all MLB collections)
+- [x] Implemented "Locked State" protection preventing cross-sport data corruption
+- [x] Updated `optimized_sync_engine.py` with SPORT_COLLECTION_MAP and validation
+- [x] Modified `ferrari_tier_service.py` to accept sport context
+- [x] Updated `/v3/ferrari/rebuild` endpoint to accept `?sport=` parameter
+- [x] Console logging: "Syncing MLB... NBA Data Protected." (and vice versa)
+- [x] Verified isolation: MLB sync skips BDL NBA game logs, uses empty cache
+
 ### Session 3 - Gemini Intelligence Gate (April 9, 2026)
-- [x] Implemented Gemini 3.1 Pro as true intelligence gatekeeper (not just summary generator)
+- [x] Implemented Gemini 3.1 Pro as true intelligence gatekeeper
 - [x] Added `adjusted_confidence` scoring (0-1) combining VK probability + contextual factors
 - [x] TRAP verdicts now KILL props (removed from selection, not just labeled)
-- [x] Low intel_score (≤3) or low confidence (<45%) triggers automatic kill
-- [x] Updated prompt to user's exact specification for PropVision Intelligence Engine
-- [x] Gate logs show kills: "KILLED: Karl-Anthony Towns REB - TRAP verdict"
-- [x] Fixed API endpoints to return Vision Intel data from stored collections
-- [x] Added Vision Intel display to UniversalPlayerCard (CHALK/VALUE/TRAP badges, intel summary)
+- [x] Fixed Vision Intel display in UniversalPlayerCard
 
 ### Session 2 - Route Cleanup (April 9, 2026)
-- [x] Fixed 502 error from orphaned route imports in __init__.py
+- [x] Fixed 502 error from orphaned route imports
 - [x] Archived 9 unused route files to routes_archive/
-- [x] Stripped 98 dead endpoints
-- [x] Scrubbed 24 duplicate API routes
 
-### Session 1 - Core Features
-- [x] War Zone tier deduplication bug fixed (Demon probabilities: HR>=7, No Edge Req, Prob>=40%)
-- [x] UI "VK Model" renamed to "Vision Model" with tier-specific glow colors
-- [x] Filtered injuries from breaking news ticker
-- [x] Capped parlay probabilities at 99%
-- [x] Removed gate fall-through logic (strict tier assignment)
-- [x] Vision Intel Service (vision_intel_service.py) with Gemini batched calls
-- [x] Consolidated Gemini integrations to prevent overlapping API calls
-- [x] Generated API route analytics exports
-
-### Session 2 - Route Cleanup
-- [x] Archived 9 unused route files to routes_archive/
-- [x] Stripped 98 dead endpoints
-- [x] Scrubbed 24 duplicate API routes
-- [x] Fixed 502 error from orphaned route imports in __init__.py (April 9, 2026)
+### Session 1 - BDL Patches + Sport Switcher
+- [x] Emergency patches: cursor pagination, circuit breakers for BDL sync
+- [x] Global Sport Switcher (NBA/MLB dropdown) in React header
+- [x] Frontend hooks append `?sport=${currentSport}` to all API calls
 
 ---
 
 ## Priority Backlog
 
 ### P1 - Critical
-- [ ] **Upstream Prop Duplication**: Investigate `odds_sync_service.py` for duplicate prop insertion into `dg_cached_board`
+- [ ] **Upstream Prop Duplication**: Investigate `odds_sync_service.py` for duplicate prop insertion
+- [ ] Build MLB-specific sync services (Odds API, BDL equivalent for MLB stats)
 
 ### P2 - Important
 - [ ] Establish automated daily prop capture (Forward-Testing Infrastructure)
@@ -104,6 +109,8 @@ Build a local-first betting intelligence app restructuring React/FastAPI to inte
 Use "Demo Mode" button on frontend login page.
 
 ## Critical Notes for Agents
-1. **Vision Intel**: Use BATCHED API calls only (one per tier) - single prop calls cause timeouts
-2. **Google API Key**: Use user's `GOOGLE_API_KEY`, NOT Emergent LLM key
-3. **DvP Context**: Low DvP rank (#1-5) = BAD matchup, High (#26-30) = GOOD matchup
+1. **Sport-Exclusive Sync**: Always pass `target_sport` to `run_optimized_sync()` and `build_ferrari_tiers()`
+2. **Locked State**: Cross-sport collection access is BLOCKED - logs show "[LOCKED_STATE] BLOCKED"
+3. **BallDontLie Syncing**: Never use page-based pagination for BDL; use `next_cursor` from meta
+4. **Gemini Vision Intel**: Use BATCHED API calls only (one per tier)
+5. **Google API Key**: Use user's `GOOGLE_API_KEY`, NOT Emergent LLM key

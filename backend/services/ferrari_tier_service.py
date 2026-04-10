@@ -538,9 +538,11 @@ class FerrariTierService:
         
         return context_data
     
-    async def build_ferrari_tiers(self, sync_time: datetime) -> Dict[str, Any]:
+    async def build_ferrari_tiers(self, sync_time: datetime, target_sport: str = "nba") -> Dict[str, Any]:
         """
         Execute PropVision v7 Pipeline - True Probability & Diversified Parlays
+        
+        **SPORT-EXCLUSIVE**: Operates only on collections for target_sport.
         
         1. Sync referee data (Whistle Matrix)
         2. Universal Scan (100% coverage)
@@ -549,15 +551,23 @@ class FerrariTierService:
         5. Tier classification by True Probability
         6. Parlay generation with diversification constraints
         7. Top-K selection + Top-5 parlays per tier
+        
+        Args:
+            sync_time: Timestamp of sync start
+            target_sport: Sport to process ('nba' or 'mlb')
         """
+        # Normalize sport
+        target_sport = (target_sport or "nba").lower()
+        
         logger.info("=" * 70)
-        logger.info("[PROPVISION v7] TRUE PROBABILITY & DIVERSIFIED PARLAYS")
+        logger.info(f"[PROPVISION v7] TRUE PROBABILITY & DIVERSIFIED PARLAYS - {target_sport.upper()}")
         logger.info("=" * 70)
         
         results = {
             "success": True,
             "synced_at": sync_time.isoformat(),
-            "pipeline": "PropVision v7 - True Probability",
+            "sport": target_sport,
+            "pipeline": f"PropVision v7 - True Probability ({target_sport.upper()})",
             "universal_scan": {
                 "total_props_scanned": 0,
                 "players_processed": 0

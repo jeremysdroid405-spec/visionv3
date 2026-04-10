@@ -309,33 +309,47 @@ async def get_ferrari_discarded(
 
 
 @router.post("/v3/ferrari/rebuild")
-async def rebuild_ferrari_tiers(use_optimized: bool = True):
+async def rebuild_ferrari_tiers(
+    use_optimized: bool = True,
+    sport: str = Query("nba", description="Target sport to sync (nba or mlb)")
+):
     """
     Manually trigger a rebuild of all Ferrari tiers.
+    
+    **SPORT-EXCLUSIVE**: Syncs only the specified sport's data.
+    - sport=nba: Syncs NBA collections (dg_cached_board, ferrari_* tiers)
+    - sport=mlb: Syncs MLB collections (mlb_cached_board, mlb_ferrari_* tiers)
     
     With use_optimized=True (default):
     1. Fetches ALL global data in parallel (standings, refs, momentum, vacuums)
     2. Runs Ferrari pipeline with power score calculation
     3. Enriches all picks with cached data
     4. Generates AI summaries in batches (rate-limited)
-    5. Persists enriched data to dg_cached_board
+    5. Persists enriched data to sport-specific cached_board
     
     Target: Complete sync in under 5 seconds (excluding AI summaries)
     
     With use_optimized=False:
-    - Falls back to legacy sequential pipeline
+    - Falls back to legacy sequential pipeline (NBA only)
     """
     from datetime import datetime, timezone
     
+    # Normalize sport parameter
+    target_sport = (sport or "nba").lower()
+    if target_sport not in ["nba", "mlb"]:
+        raise HTTPException(status_code=400, detail=f"Invalid sport '{sport}'. Must be 'nba' or 'mlb'.")
+    
     if use_optimized:
-        # Use the new optimized sync engine
+        # Use the new optimized sync engine with sport isolation
         from services.optimized_sync_engine import run_optimized_sync
-        result = await run_optimized_sync(_db)
+        result = await run_optimized_sync(_db, target_sport=target_sport)
         return result
     else:
-        # Legacy path
+        # Legacy path (NBA only for backwards compatibility)
+        if target_sport != "nba":
+            raise HTTPException(status_code=400, detail="Legacy sync only supports NBA. Use use_optimized=true for MLB.")
         service = get_service()
-        result = await service.build_ferrari_tiers(datetime.now(timezone.utc))
+        result = await service.build_ferrari_tiers(datetime.now(timezone.utc), target_sport=target_sport)
         return result
 
 
