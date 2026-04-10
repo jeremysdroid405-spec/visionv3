@@ -233,7 +233,8 @@ class MLBVKRegressionModel:
         player_id: int,
         stat_type: str,
         opponent_abbr: str = None,
-        venue_team: str = None
+        venue_team: str = None,
+        opponent_pitcher_hand: str = None  # "L" or "R" for pitcher handedness
     ) -> Dict[str, Any]:
         """
         Calculate projection for a specific player and stat.
@@ -242,21 +243,26 @@ class MLBVKRegressionModel:
         - Game recency weights (more recent = higher weight)
         - Opponent strength adjustment
         - Park factor adjustment
+        - vL/vR splits adjustment (vs Left/Right handed pitchers)
+        - Days of Rest weighting
         
         Args:
             player_id: BDL player ID
             stat_type: Prop stat type (e.g., "Total Bases", "Strikeouts")
             opponent_abbr: Opponent team abbreviation for adjustment
             venue_team: Home team abbreviation for park factor
+            opponent_pitcher_hand: "L" or "R" for opponent pitcher handedness
             
         Returns:
             Projection data including projected_value, r_squared, adjustments
         """
-        # Get player from master hub
+        # Get player from master hub with advanced stats
         master_hub = self._get_collection("master_hub")
         player = await master_hub.find_one(
             {"bdl_id": player_id},
-            {"_id": 0, "display_name": 1, "bdl_game_logs": 1, "vk_baselines": 1}
+            {"_id": 0, "display_name": 1, "bdl_game_logs": 1, "vk_baselines": 1,
+             "vs_left": 1, "vs_right": 1, "home_splits": 1, "away_splits": 1,
+             "war": 1, "ops": 1, "whip": 1, "k_per_9": 1, "advanced_stats": 1}
         )
         
         if not player:
@@ -298,7 +304,16 @@ class MLBVKRegressionModel:
             # Recency weight within season (more recent games weighted higher)
             recency_weight = (i + 1) / len(sorted_logs)  # 0.1 to 1.0
             
-            combined_weight = season_weight * (0.5 + 0.5 * recency_weight)
+            # Days of rest weight (well-rested = slight boost)
+            rest_weight = 1.0
+            days_rest = log.get("days_rest")
+            if days_rest is not None:
+                if days_rest >= 3:
+                    rest_weight = 1.1  # Well rested
+                elif days_rest == 0:
+                    rest_weight = 0.9  # Back-to-back
+            
+            combined_weight = season_weight * (0.5 + 0.5 * recency_weight) * rest_weight
             
             x_values.append(i + 1)
             y_values.append(value)
@@ -329,8 +344,36 @@ class MLBVKRegressionModel:
             opponent_adjustment = 1.0 + (opp_rank - 15) * 0.005
             projected_value *= opponent_adjustment
         
+        # Apply vL/vR split adjustment
+        handedness_adjustment = 1.0
+        handedness_data = None
+        if opponent_pitcher_hand:
+            if opponent_pitcher_hand.upper() == "L" and player.get("vs_left"):
+                handedness_data = player.get("vs_left")
+            elif opponent_pitcher_hand.upper() == "R" and player.get("vs_right"):
+                handedness_data = player.get("vs_right")
+            
+            # Adjust based on split performance vs overall
+            if handedness_data and handedness_data.get("ops"):
+                split_ops = handedness_data.get("ops", 0) or 0
+                overall_ops = player.get("ops", 0.750) or 0.750
+                if overall_ops > 0:
+                    # If player performs better vs this handedness, boost projection
+                    handedness_adjustment = 0.85 + (split_ops / overall_ops) * 0.15
+                    handedness_adjustment = max(0.8, min(1.2, handedness_adjustment))
+                    projected_value *= handedness_adjustment
+        
         # Calculate L10 hit rate (for tier qualification)
         l10_values = y_values[-10:] if len(y_values) >= 10 else y_values
+        
+        # Get advanced stats for context
+        advanced_stats_summary = {
+            "war": player.get("war"),
+            "ops": player.get("ops"),
+            "whip": player.get("whip"),
+            "k_per_9": player.get("k_per_9"),
+            "has_splits": bool(player.get("vs_left") or player.get("vs_right"))
+        }
         
         return {
             "valid": True,
@@ -350,9 +393,13 @@ class MLBVKRegressionModel:
             "adjustments": {
                 "park_factor": park_factor,
                 "opponent_adjustment": opponent_adjustment,
+                "handedness_adjustment": handedness_adjustment,
                 "venue_team": venue_team,
-                "opponent_abbr": opponent_abbr
-            }
+                "opponent_abbr": opponent_abbr,
+                "opponent_pitcher_hand": opponent_pitcher_hand
+            },
+            "advanced_stats": advanced_stats_summary,
+            "handedness_data": handedness_data
         }
     
     # =========================================================================
@@ -628,10 +675,15 @@ class MLBVKRegressionModel:
                         "l10_avg": projection["l10_avg"],
                         "sample_size": projection["sample_size"],
                         "tier": tier,
-                        "adjustments": projection["adjustments"],
+                        "adjustments": {
+                            "park_factor": projection["adjustments"].get("park_factor"),
+                            "opponent_adjustment": projection["adjustments"].get("opponent_adjustment"),
+                            "handedness_adjustment": projection["adjustments"].get("handedness_adjustment"),
+                        },
+                        "advanced_stats": projection.get("advanced_stats"),
                         "prop_data": {
                             "bookmaker": prop.get("bookmaker"),
-                            "event_id": prop.get("event_id"),
+                            "event_id": str(prop.get("event_id")) if prop.get("event_id") else None,
                             "home_team": prop.get("home_team"),
                             "away_team": prop.get("away_team"),
                             "commence_time": prop.get("commence_time"),

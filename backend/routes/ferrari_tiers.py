@@ -1122,6 +1122,124 @@ async def run_mlb_vk_historical_backfill(
     return result
 
 
+@router.post("/v3/mlb/advanced-stats-sync")
+async def run_mlb_advanced_stats_sync_endpoint(
+    seasons: str = Query("2024,2025,2026", description="Comma-separated seasons to fetch"),
+    include_splits: bool = Query(True, description="Fetch vL/vR, home/away splits"),
+    include_season_stats: bool = Query(True, description="Fetch WAR, OPS, WHIP, etc."),
+    player_limit: int = Query(None, description="Limit players for testing (None = all)")
+):
+    """
+    MLB Advanced Stats Sync.
+    
+    Fetches advanced stats from BDL for the VK Regression Model:
+    
+    **Splits Data (vL/vR, Park, Opponent):**
+    - vs_left: Stats vs left-handed pitchers
+    - vs_right: Stats vs right-handed pitchers
+    - home/away: Home and away splits
+    - day/night: Day and night game splits
+    - by_park: Park-specific performance
+    - by_opponent: Opponent-specific performance
+    
+    **Season Stats (Advanced Metrics):**
+    - WAR: Wins Above Replacement
+    - OPS: On-Base Plus Slugging
+    - WHIP: Walks + Hits per Inning Pitched
+    - K/9: Strikeouts per 9 innings
+    - ERA: Earned Run Average
+    - FIP: Fielding Independent Pitching
+    
+    **Derived Metrics:**
+    - days_rest: Calculated from game log dates
+    
+    **Warning:** This is a long-running operation (5-30 minutes depending on player count).
+    """
+    from services.mlb_advanced_stats_sync import run_mlb_advanced_stats_sync
+    
+    if _db is None:
+        raise HTTPException(status_code=500, detail="Database not initialized")
+    
+    # Parse seasons
+    try:
+        season_list = [int(s.strip()) for s in seasons.split(",")]
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid seasons format")
+    
+    valid_seasons = [s for s in season_list if 2020 <= s <= 2026]
+    if not valid_seasons:
+        raise HTTPException(status_code=400, detail="No valid seasons provided (2020-2026)")
+    
+    result = await run_mlb_advanced_stats_sync(
+        _db,
+        seasons=valid_seasons,
+        include_splits=include_splits,
+        include_season_stats=include_season_stats,
+        player_limit=player_limit
+    )
+    return result
+
+
+@router.get("/v3/mlb/advanced-stats/{player_name}")
+async def get_mlb_player_advanced_stats(
+    player_name: str,
+    response: Response
+):
+    """
+    Get a player's advanced stats.
+    
+    Returns:
+    - vL/vR splits (batting stats vs left/right-handed pitchers)
+    - Home/Away splits
+    - Season stats (WAR, OPS, WHIP, K/9, ERA)
+    - Days of rest data from game logs
+    """
+    from config.db_config import get_collection_name
+    
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    
+    if _db is None:
+        raise HTTPException(status_code=500, detail="Database not initialized")
+    
+    collection = _db[get_collection_name("master_hub", "mlb")]
+    
+    # Find player
+    player = await collection.find_one(
+        {"display_name": {"$regex": f"^{player_name}$", "$options": "i"}},
+        {"_id": 0, "display_name": 1, "vs_left": 1, "vs_right": 1, "home_splits": 1, 
+         "away_splits": 1, "war": 1, "ops": 1, "whip": 1, "k_per_9": 1, "era": 1,
+         "advanced_stats": 1}
+    )
+    
+    if not player:
+        player = await collection.find_one(
+            {"display_name": {"$regex": player_name, "$options": "i"}},
+            {"_id": 0, "display_name": 1, "vs_left": 1, "vs_right": 1, "home_splits": 1,
+             "away_splits": 1, "war": 1, "ops": 1, "whip": 1, "k_per_9": 1, "era": 1,
+             "advanced_stats": 1}
+        )
+    
+    if not player:
+        raise HTTPException(status_code=404, detail=f"Player '{player_name}' not found")
+    
+    return {
+        "success": True,
+        "player_name": player.get("display_name"),
+        "quick_stats": {
+            "war": player.get("war"),
+            "ops": player.get("ops"),
+            "whip": player.get("whip"),
+            "k_per_9": player.get("k_per_9"),
+            "era": player.get("era")
+        },
+        "vs_left": player.get("vs_left"),
+        "vs_right": player.get("vs_right"),
+        "home_splits": player.get("home_splits"),
+        "away_splits": player.get("away_splits"),
+        "advanced_stats": player.get("advanced_stats")
+    }
+
+
 @router.get("/v3/mlb/vk-baselines/{player_name}")
 async def get_mlb_vk_baselines(
     player_name: str,
