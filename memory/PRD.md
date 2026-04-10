@@ -78,13 +78,22 @@ Build a local-first betting intelligence app restructuring React/FastAPI to inte
 - [x] Circuit breaker to prevent DB wipes on low results
 - [x] Tested: NBA players (537), MLB players (777)
 
-**MLB Cached Board Builder (`/app/backend/services/mlb_cached_board_builder.py`):**
-- [x] Merges `mlb_live_props` with `mlb_master_hub_2026`
-- [x] Matches by player_name and team
-- [x] Enriches with: Last 10 game logs, Season average, CV (Coefficient of Variation), Hit rates
-- [x] Saves to `mlb_cached_board`
-- [x] **CIRCUIT BREAKER**: If 0 props, preserves existing board with warning log
-- [x] Tested: 2015 props enriched, 254 players in board
+**MLB Headshot Sync (`/app/backend/services/mlb_headshot_sync.py`):**
+- [x] **Phase 1: ID Discovery** - MLB Search API (`https://statsapi.mlb.com/api/v1/people/search`)
+- [x] **Phase 2: Headshot Fetch** - MLB CDN + ESPN fallback
+- [x] Local storage: `/app/frontend/public/images/mlb_headshots/{id}.png`
+- [x] Mapping errors logged to `mlb_mapping_errors.log`
+- [x] Tested: 60 players mapped, 50 headshots downloaded
+
+**Frontend Wiring (UniversalPlayerCard.jsx):**
+- [x] PlayerHeadshot supports `sport` and `mlbId` props
+- [x] Priority: Local .png → ESPN fallback → BDL headshot_url → Team logo → Initials
+- [x] MLB team logos added for fallback display
+
+**New Endpoints:**
+- `POST /api/v3/mlb/headshots/sync?phase=ids|headshots|full` - Sync headshots
+- `GET /api/v3/mlb/headshots/status` - Get sync coverage status
+- `GET /api/v3/mlb/headshots/errors` - Get unmapped players
 
 **New Endpoints:**
 - `POST /api/v3/odds/sync?sport=` - Fetch live props from Odds API

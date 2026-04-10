@@ -251,6 +251,45 @@ async def get_ferrari_safe_haven(
     cursor = collection.find({}, {"_id": 0}).limit(limit)
     picks = await cursor.to_list(length=limit)
     
+    # MLB Fallback: If no picks in tier collection, get from cached_board
+    if not picks and sport == "mlb":
+        cached_board_name = get_collection_name("cached_board", sport)
+        cached_board = _db[cached_board_name]
+        
+        # Get top players from cached board with best hit rates
+        players = await cached_board.find({}, {"_id": 0}).to_list(length=50)
+        
+        # Flatten props and sort by CV (lower = more consistent = safe haven)
+        all_props = []
+        for player in players:
+            for prop in player.get("props", []):
+                prop["player_name"] = player.get("player_name")
+                prop["team"] = player.get("team")
+                prop["position"] = player.get("position")
+                all_props.append(prop)
+        
+        # Filter for safe haven criteria: high hit rate + low CV
+        safe_picks = [
+            p for p in all_props
+            if p.get("hit_rate_l10") and p.get("hit_rate_l10") >= 60
+            and (p.get("cv") is None or p.get("cv") <= 50)
+        ]
+        
+        # Sort by hit rate descending
+        safe_picks.sort(key=lambda x: x.get("hit_rate_l10", 0), reverse=True)
+        picks = safe_picks[:limit]
+        
+        return {
+            "tier": "safe_haven",
+            "tier_label": f"Safe Haven ({sport.upper()})",
+            "logic": "mlb_cached_board_fallback",
+            "sport": sport,
+            "collection": cached_board_name,
+            "picks": picks,
+            "count": len(picks),
+            "note": "MLB picks from cached board (tier routing pending)"
+        }
+    
     return {
         "tier": "safe_haven",
         "tier_label": f"Safe Haven ({sport.upper()})",
@@ -298,6 +337,41 @@ async def get_ferrari_front_lines(
     cursor = collection.find({}, {"_id": 0}).limit(limit)
     picks = await cursor.to_list(length=limit)
     
+    # MLB Fallback: If no picks in tier collection, get from cached_board
+    if not picks and sport == "mlb":
+        cached_board_name = get_collection_name("cached_board", sport)
+        cached_board = _db[cached_board_name]
+        
+        players = await cached_board.find({}, {"_id": 0}).to_list(length=50)
+        
+        all_props = []
+        for player in players:
+            for prop in player.get("props", []):
+                prop["player_name"] = player.get("player_name")
+                prop["team"] = player.get("team")
+                prop["position"] = player.get("position")
+                all_props.append(prop)
+        
+        # Front lines: moderate hit rate + moderate CV
+        front_picks = [
+            p for p in all_props
+            if p.get("hit_rate_l10") and 40 <= p.get("hit_rate_l10", 0) < 60
+        ]
+        
+        front_picks.sort(key=lambda x: x.get("hit_rate_l10", 0), reverse=True)
+        picks = front_picks[:limit]
+        
+        return {
+            "tier": "front_lines",
+            "tier_label": f"Front Lines ({sport.upper()})",
+            "logic": "mlb_cached_board_fallback",
+            "sport": sport,
+            "collection": cached_board_name,
+            "picks": picks,
+            "count": len(picks),
+            "note": "MLB picks from cached board (tier routing pending)"
+        }
+    
     return {
         "tier": "front_lines",
         "tier_label": f"Front Lines ({sport.upper()})",
@@ -344,6 +418,42 @@ async def get_ferrari_war_zone(
     
     cursor = collection.find({}, {"_id": 0}).limit(limit)
     picks = await cursor.to_list(length=limit)
+    
+    # MLB Fallback: If no picks in tier collection, get from cached_board
+    if not picks and sport == "mlb":
+        cached_board_name = get_collection_name("cached_board", sport)
+        cached_board = _db[cached_board_name]
+        
+        players = await cached_board.find({}, {"_id": 0}).to_list(length=50)
+        
+        all_props = []
+        for player in players:
+            for prop in player.get("props", []):
+                prop["player_name"] = player.get("player_name")
+                prop["team"] = player.get("team")
+                prop["position"] = player.get("position")
+                all_props.append(prop)
+        
+        # War zone: lower hit rate OR high CV (risky plays)
+        war_picks = [
+            p for p in all_props
+            if p.get("hit_rate_l10") and p.get("hit_rate_l10", 0) < 40
+            or (p.get("cv") and p.get("cv") > 50)
+        ]
+        
+        war_picks.sort(key=lambda x: x.get("edge", 0) or 0, reverse=True)
+        picks = war_picks[:limit]
+        
+        return {
+            "tier": "war_zone",
+            "tier_label": f"War Zone ({sport.upper()})",
+            "logic": "mlb_cached_board_fallback",
+            "sport": sport,
+            "collection": cached_board_name,
+            "picks": picks,
+            "count": len(picks),
+            "note": "MLB picks from cached board (tier routing pending)"
+        }
     
     return {
         "tier": "war_zone",
@@ -960,4 +1070,107 @@ async def get_mlb_player_props(
     return {
         "success": True,
         "player": player
+    }
+
+
+
+# =============================================================================
+# MLB HEADSHOT SYNC ENDPOINTS
+# =============================================================================
+
+@router.post("/v3/mlb/headshots/sync")
+async def sync_mlb_headshots(
+    limit: int = Query(None, description="Optional limit on players to process"),
+    phase: str = Query("full", description="Phase to run: 'ids', 'headshots', or 'full'")
+):
+    """
+    MLB Headshot Sync - Multi-step process.
+    
+    **Phase 1: ID Discovery**
+    - Searches MLB API (https://statsapi.mlb.com/api/v1/people/search)
+    - Extracts official 6-digit MLB ID
+    - Saves to official_mlb_id field
+    
+    **Phase 2: Headshot Fetch**
+    - Downloads from MLB CDN using official_mlb_id
+    - Falls back to ESPN CDN if MLB CDN fails
+    - Saves to /app/frontend/public/images/mlb_headshots/{id}.png
+    
+    **Options:**
+    - phase='ids' - Only run ID discovery
+    - phase='headshots' - Only fetch headshots (requires IDs)
+    - phase='full' - Run both phases (default)
+    """
+    from services.mlb_headshot_sync import get_mlb_headshot_service
+    
+    if _db is None:
+        raise HTTPException(status_code=500, detail="Database not initialized")
+    
+    service = get_mlb_headshot_service(_db)
+    
+    if phase == "ids":
+        result = await service.discover_mlb_ids(limit)
+    elif phase == "headshots":
+        result = await service.fetch_headshots(limit)
+    else:  # full
+        result = await service.run_full_sync(limit)
+    
+    return result
+
+
+@router.get("/v3/mlb/headshots/status")
+async def get_mlb_headshot_status(response: Response):
+    """
+    Get MLB headshot sync status.
+    
+    Returns counts of:
+    - Total players
+    - Players with official_mlb_id
+    - Players with headshot path
+    - Local headshot files
+    - Coverage percentage
+    """
+    from services.mlb_headshot_sync import get_mlb_headshot_service
+    
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    
+    if _db is None:
+        raise HTTPException(status_code=500, detail="Database not initialized")
+    
+    service = get_mlb_headshot_service(_db)
+    status = await service.get_sync_status()
+    
+    return status
+
+
+@router.get("/v3/mlb/headshots/errors")
+async def get_mlb_mapping_errors(response: Response):
+    """
+    Get list of players that couldn't be mapped to MLB IDs.
+    
+    These players don't have official headshots available.
+    """
+    from pathlib import Path
+    
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    
+    error_log = Path("/app/backend/logs/mlb_mapping_errors.log")
+    
+    if not error_log.exists():
+        return {"errors": [], "message": "No mapping errors logged yet"}
+    
+    with open(error_log, "r") as f:
+        content = f.read()
+    
+    # Parse player names (skip comment lines)
+    players = [
+        line.strip()
+        for line in content.split("\n")
+        if line.strip() and not line.startswith("#")
+    ]
+    
+    return {
+        "unmapped_players": players,
+        "count": len(players),
+        "log_path": str(error_log)
     }

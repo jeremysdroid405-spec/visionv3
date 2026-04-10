@@ -3,12 +3,14 @@
  * ==============================================
  * 
  * Set USE_MOCK_DATA = true to test MLB sport switching.
- * - NBA: Uses REAL data from the backend API
- * - MLB: Uses MOCK data below (Strikeouts, Total Bases props)
+ * NBA uses real data from the backend API.
+ * MLB uses real data from the backend API (headshots synced).
+ * 
+ * NOTE: Mock data disabled - real MLB data pipeline is now active.
  */
 
-// ⚠️ SET TO TRUE TO ENABLE MLB MOCK DATA MODE
-export const USE_MOCK_DATA = true;
+// ⚠️ SET TO FALSE - MLB pipeline is now live
+export const USE_MOCK_DATA = false;
 
 // MLB Mock Props (Strikeouts, Total Bases)
 export const MLB_MOCK_DATA = {
