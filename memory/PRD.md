@@ -61,6 +61,36 @@ Build a local-first betting intelligence app restructuring React/FastAPI to inte
 
 ## Completed Work (April 2026)
 
+### Session 6 - MLB VK Historical Backfill & BDL Date Fix (April 10, 2026)
+- [x] **FIXED P0 BLOCKER**: MLB BDL stats returning `None` for dates
+  - Root Cause: MLB BDL API returns flat structure (game_id at root) vs NBA (nested game object with date)
+  - Solution: Added `_build_mlb_game_cache()` to fetch games separately and create date lookup
+  - Solution: Added `_get_mlb_game_date()` and `_get_mlb_opponent()` cache lookup methods
+- [x] **Fixed MLB stat field mappings** in `_transform_stat_to_game_log()`:
+  - `rbi` → `rbis` (BDL uses short names)
+  - `k` → `strikeouts`
+  - `hr` → `home_runs`
+  - `bb` → `walks`
+  - `ip` → `innings_pitched`
+  - `p_k` → `pitcher_strikeouts`
+  - `p_bb` → `pitcher_walks`
+  - `p_hits` → `hits_allowed`
+  - `er` → `earned_runs`
+- [x] **Built MLB VK Historical Backfill Service** (`/app/backend/services/mlb_vk_historical_backfill.py`):
+  - Fetches 5 seasons (2021-2026) of historical data from BDL
+  - Applies time-decaying weights (2026=1.0, 2021=0.5)
+  - Calculates weighted baselines for all MLB stats
+  - Stores in `mlb_historical_logs` and updates `mlb_master_hub_2026.vk_baselines`
+- [x] **New VK Endpoints**:
+  - `POST /api/v3/mlb/vk-backfill?seasons=2021,2022,2023,2024,2025,2026` - Run historical backfill
+  - `GET /api/v3/mlb/vk-baselines/{player_name}` - Get player's weighted baselines
+- [x] **Tested**: VK backfill for 2026 season completed successfully:
+  - 2,884 games cached
+  - 20,000 stats fetched
+  - 3,252 player logs collected
+  - 774 players with VK baselines calculated
+- [x] All 17 backend tests passed (iteration_37.json)
+
 ### Session 5 - Multi-Sport Database Schema & Universal APIs (April 10, 2026)
 - [x] Created `/app/backend/config/db_config.py` with collection prefixes for each sport
 - [x] Implemented `get_collection_name(base_name, sport)` helper function
@@ -134,11 +164,17 @@ Build a local-first betting intelligence app restructuring React/FastAPI to inte
 
 ## Priority Backlog
 
+### P0 - Completed ✅
+- [x] **MLB BDL Date Mapping Issue** - Fixed in Session 6
+- [x] **5-Season Historical Backfill for MLB VK Model** - Implemented in Session 6
+
 ### P1 - Critical
-- [ ] **Upstream Prop Duplication**: Investigate `odds_sync_service.py` for duplicate prop insertion
-- [ ] Build MLB-specific sync services (Odds API, BDL equivalent for MLB stats)
+- [ ] **Complete MLB Headshot Sync** - ~700 players remaining (60 done)
+- [ ] **MLB Tier Qualification Logic** - Build 3-Gate system for MLB stats
+- [ ] **Upstream Prop Duplication** - Investigate `odds_sync_service.py` for duplicate prop insertion
 
 ### P2 - Important
+- [ ] **MLB Vision Intel** - Gemini TRAP filtering adapted for MLB stat rules
 - [ ] Establish automated daily prop capture (Forward-Testing Infrastructure)
 - [ ] Integrate Google/Apple OAuth (Emergent-managed)
 - [ ] Implement Stripe for payments
@@ -146,6 +182,7 @@ Build a local-first betting intelligence app restructuring React/FastAPI to inte
 ### P3 - Nice to Have
 - [ ] Refactor `vegas_killer_model.py` (~2000 lines)
 - [ ] Further API controller optimization
+- [ ] Archive legacy NBA-only scripts (`bdl_comprehensive_sync.py`, `odds_sync_service.py`)
 
 ---
 
@@ -156,5 +193,13 @@ Use "Demo Mode" button on frontend login page.
 1. **Sport-Exclusive Sync**: Always pass `target_sport` to `run_optimized_sync()` and `build_ferrari_tiers()`
 2. **Locked State**: Cross-sport collection access is BLOCKED - logs show "[LOCKED_STATE] BLOCKED"
 3. **BallDontLie Syncing**: Never use page-based pagination for BDL; use `next_cursor` from meta
-4. **Gemini Vision Intel**: Use BATCHED API calls only (one per tier)
-5. **Google API Key**: Use user's `GOOGLE_API_KEY`, NOT Emergent LLM key
+4. **MLB BDL API Structure**: MLB uses flat structure (game_id at root, team_name at root) vs NBA (nested game/team objects). Always build game cache first for MLB to get dates.
+5. **MLB Stat Field Names**: BDL MLB uses short names (`rbi`, `k`, `hr`, `bb`) - must map to internal names (`rbis`, `strikeouts`, etc.)
+6. **Gemini Vision Intel**: Use BATCHED API calls only (one per tier)
+7. **Google API Key**: Use user's `GOOGLE_API_KEY`, NOT Emergent LLM key
+
+## Key Files Reference
+- `/app/backend/services/bdl_universal_sync.py` - BDL sync with MLB game cache fix
+- `/app/backend/services/mlb_vk_historical_backfill.py` - 5-Season VK backfill service
+- `/app/backend/services/mlb_cached_board_builder.py` - MLB prop enrichment
+- `/app/backend/config/db_config.py` - Sport-specific collection routing
