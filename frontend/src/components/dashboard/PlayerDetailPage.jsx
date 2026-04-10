@@ -1249,8 +1249,42 @@ export const PlayerDetailPage = ({ playerName, playerData = null, onBack, highli
                       TARGET-LOCK RATIONALE
                     </h3>
                     
-                    {/* GEMINI INTELLIGENCE - Primary Vision Intel */}
-                    {(() => {
+                    {/* PROPVISION ORACLE - Gemini 3.1 Pro Summary (Primary) */}
+                    {selectedVisionProp.oracle_summary && (
+                      <div className="bg-gradient-to-r from-purple-900/30 to-zinc-900 border border-purple-500/40 rounded-lg p-4 mb-4">
+                        <div className="flex items-center justify-between mb-3">
+                          <div className="flex items-center gap-2">
+                            <div className="w-2 h-2 rounded-full bg-purple-400 animate-pulse"></div>
+                            <span className="text-xs font-bold text-purple-300 uppercase tracking-wider">PropVision Oracle</span>
+                          </div>
+                          {selectedVisionProp.ferrari_tier && (
+                            <span className={`text-[10px] font-bold px-2 py-1 rounded ${
+                              selectedVisionProp.ferrari_tier === 'safe_haven'
+                                ? 'bg-green-500/20 text-green-400 border border-green-500/30'
+                                : selectedVisionProp.ferrari_tier === 'front_lines'
+                                  ? 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30'
+                                  : 'bg-red-500/20 text-red-400 border border-red-500/30'
+                            }`}>
+                              {selectedVisionProp.tier_label || selectedVisionProp.ferrari_tier?.replace('_', ' ').toUpperCase()}
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-sm text-white leading-relaxed">
+                          {selectedVisionProp.oracle_summary}
+                        </p>
+                        <div className="mt-3 pt-2 border-t border-purple-500/20 flex items-center justify-between">
+                          <span className="text-[10px] text-purple-400/70">Powered by Gemini 3.1 Pro</span>
+                          {selectedVisionProp.board_score && (
+                            <span className="text-[10px] text-zinc-400">
+                              Board Score: <span className="text-white font-bold">{selectedVisionProp.board_score}</span>
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                    
+                    {/* Fallback: Legacy Vision Intel */}
+                    {!selectedVisionProp.oracle_summary && (() => {
                       const gemini = selectedVisionProp.intel_suite?.gemini_intel || {};
                       const visionIntel = selectedVisionProp.vision_intel || gemini.vision_intel || selectedVisionProp.vision_summary || selectedVisionProp.intel_suite?.vision_insight?.ai_summary;
                       const intelVerdict = selectedVisionProp.intel_verdict || gemini.intel_verdict;
@@ -1352,28 +1386,99 @@ export const PlayerDetailPage = ({ playerName, playerData = null, onBack, highli
                 <div className="grid grid-cols-2 gap-4">
                   <div className="bg-zinc-900/50 rounded-lg p-3">
                     <div className="text-xs text-zinc-500">LAST 10 GAMES</div>
-                    <div className="text-2xl font-bold text-green-400">
-                      {selectedVisionProp.hit_rates?.l10?.hit_rate != null 
-                        ? `${Math.round(selectedVisionProp.hit_rates.l10.hit_rate)}%`
-                        : '-'}
+                    <div className={`text-2xl font-bold ${
+                      (selectedVisionProp.h10_rate ?? selectedVisionProp.hit_rates?.l10?.hit_rate) >= 70 
+                        ? 'text-green-400' 
+                        : (selectedVisionProp.h10_rate ?? selectedVisionProp.hit_rates?.l10?.hit_rate) >= 50 
+                          ? 'text-yellow-400' 
+                          : 'text-red-400'
+                    }`}>
+                      {selectedVisionProp.h10_rate != null 
+                        ? `${Math.round(selectedVisionProp.h10_rate)}%`
+                        : selectedVisionProp.hit_rates?.l10?.hit_rate != null
+                          ? `${Math.round(selectedVisionProp.hit_rates.l10.hit_rate)}%`
+                          : '-'}
                     </div>
                     <div className="text-xs text-zinc-500 mt-1">
-                      {selectedVisionProp.hit_rates?.l10?.games_over || 0}/{selectedVisionProp.hit_rates?.l10?.total_games || 0} games over
+                      {selectedVisionProp.l10_avg != null 
+                        ? `Avg: ${selectedVisionProp.l10_avg}`
+                        : selectedVisionProp.hit_rates?.l10 
+                          ? `${selectedVisionProp.hit_rates.l10.games_over || 0}/${selectedVisionProp.hit_rates.l10.total_games || 0} games over`
+                          : ''}
                     </div>
                   </div>
                   <div className="bg-zinc-900/50 rounded-lg p-3">
                     <div className="text-xs text-zinc-500">LAST 5 GAMES</div>
-                    <div className="text-2xl font-bold text-green-400">
-                      {selectedVisionProp.hit_rates?.l5?.hit_rate != null 
-                        ? `${Math.round(selectedVisionProp.hit_rates.l5.hit_rate)}%`
-                        : '-'}
+                    <div className={`text-2xl font-bold ${
+                      (selectedVisionProp.h5_rate ?? selectedVisionProp.hit_rates?.l5?.hit_rate) >= 70 
+                        ? 'text-green-400' 
+                        : (selectedVisionProp.h5_rate ?? selectedVisionProp.hit_rates?.l5?.hit_rate) >= 50 
+                          ? 'text-yellow-400' 
+                          : 'text-red-400'
+                    }`}>
+                      {selectedVisionProp.h5_rate != null 
+                        ? `${Math.round(selectedVisionProp.h5_rate)}%`
+                        : selectedVisionProp.hit_rates?.l5?.hit_rate != null
+                          ? `${Math.round(selectedVisionProp.hit_rates.l5.hit_rate)}%`
+                          : '-'}
                     </div>
                     <div className="text-xs text-zinc-500 mt-1">
-                      {selectedVisionProp.hit_rates?.l5?.games_over || 0}/{selectedVisionProp.hit_rates?.l5?.total_games || 0} games over
+                      {selectedVisionProp.l5_avg != null 
+                        ? `Avg: ${selectedVisionProp.l5_avg}`
+                        : selectedVisionProp.hit_rates?.l5 
+                          ? `${selectedVisionProp.hit_rates.l5.games_over || 0}/${selectedVisionProp.hit_rates.l5.total_games || 0} games over`
+                          : ''}
                     </div>
                   </div>
                 </div>
+                
+                {/* Additional MLB Stats Row */}
+                {(selectedVisionProp.cv != null || selectedVisionProp.edge_pct != null || selectedVisionProp.tp_odds != null) && (
+                  <div className="grid grid-cols-3 gap-2 mt-3 pt-3 border-t border-zinc-700">
+                    {selectedVisionProp.cv != null && (
+                      <div className="text-center">
+                        <div className="text-[10px] text-zinc-500 uppercase">CV</div>
+                        <div className={`text-sm font-bold ${selectedVisionProp.cv < 0.6 ? 'text-green-400' : selectedVisionProp.cv < 1.0 ? 'text-yellow-400' : 'text-red-400'}`}>
+                          {typeof selectedVisionProp.cv === 'number' ? selectedVisionProp.cv.toFixed(2) : selectedVisionProp.cv}
+                        </div>
+                      </div>
+                    )}
+                    {selectedVisionProp.edge_pct != null && (
+                      <div className="text-center">
+                        <div className="text-[10px] text-zinc-500 uppercase">Edge</div>
+                        <div className={`text-sm font-bold ${selectedVisionProp.edge_pct > 15 ? 'text-green-400' : selectedVisionProp.edge_pct > 5 ? 'text-yellow-400' : 'text-zinc-400'}`}>
+                          {selectedVisionProp.edge_pct > 0 ? '+' : ''}{typeof selectedVisionProp.edge_pct === 'number' ? selectedVisionProp.edge_pct.toFixed(1) : selectedVisionProp.edge_pct}%
+                        </div>
+                      </div>
+                    )}
+                    {selectedVisionProp.tp_odds != null && (
+                      <div className="text-center">
+                        <div className="text-[10px] text-zinc-500 uppercase">True Prob</div>
+                        <div className={`text-sm font-bold ${selectedVisionProp.tp_odds > 70 ? 'text-green-400' : selectedVisionProp.tp_odds > 55 ? 'text-yellow-400' : 'text-zinc-400'}`}>
+                          {typeof selectedVisionProp.tp_odds === 'number' ? selectedVisionProp.tp_odds.toFixed(1) : selectedVisionProp.tp_odds}%
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
+              
+              {/* Oracle Summary - Gemini Rationale */}
+              {selectedVisionProp.oracle_summary && (
+                <div className="bg-gradient-to-r from-purple-950/50 to-zinc-900 border border-purple-500/30 rounded-lg p-4">
+                  <h3 className="text-sm font-bold text-purple-300 mb-2 flex items-center gap-2">
+                    <Target className="w-4 h-4 text-purple-400" />
+                    PROPVISION ORACLE
+                  </h3>
+                  <p className="text-sm text-white leading-relaxed italic">
+                    "{selectedVisionProp.oracle_summary}"
+                  </p>
+                  <div className="mt-2 text-[10px] text-purple-400/60 flex items-center gap-1">
+                    <span className="inline-block w-1.5 h-1.5 rounded-full bg-purple-400 animate-pulse"></span>
+                    Powered by Gemini 3.1 Pro
+                  </div>
+                </div>
+              )}
               
               {/* AI Analysis (if available) */}
               {player?.ai_vision && (

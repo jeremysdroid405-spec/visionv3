@@ -542,6 +542,18 @@ class MLBTierSorter:
                 hit_rate = prop.get("hit_rate_l10") or prop.get("h10_rate")
                 avg = prop.get("season_average")
             
+            # Calculate L5 and L10 hit rates for frontend display
+            h5_rate, l5_avg = self._calculate_hit_rate(player_name, stat_type, line, 5)
+            h10_rate, l10_avg = self._calculate_hit_rate(player_name, stat_type, line, 10)
+            
+            # Fallback to prop data if calculated values are None
+            if h5_rate is None:
+                h5_rate = prop.get("h5_rate") or prop.get("hit_rate_l5")
+                l5_avg = prop.get("l5_avg")
+            if h10_rate is None:
+                h10_rate = prop.get("h10_rate") or prop.get("hit_rate_l10")
+                l10_avg = prop.get("l10_avg")
+            
             ceiling_rate = self._calculate_ceiling_hit_rate(player_name, stat_type, line)
             
             # Get VK projection - try multiple sources
@@ -553,9 +565,13 @@ class MLBTierSorter:
             # The tier rules are based on DK odds, so use those for TP
             tp_odds = self._calculate_tp_odds(dk_odds or sharp_odds)
             
-            # Enrich prop
+            # Enrich prop with all hit rate data
             prop["cv"] = cv
+            prop["h5_rate"] = h5_rate
+            prop["h10_rate"] = h10_rate
             prop["h20_rate"] = hit_rate
+            prop["l5_avg"] = l5_avg
+            prop["l10_avg"] = l10_avg
             prop["l20_avg"] = avg
             prop["ceiling_rate"] = ceiling_rate
             prop["vk_predicted"] = vk_predicted
