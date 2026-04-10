@@ -1405,18 +1405,28 @@ async def run_mlb_vk_historical_backfill(
     if _db is None:
         raise HTTPException(status_code=500, detail="Database not initialized")
     
-    # Parse seasons
-    try:
-        season_list = [int(s.strip()) for s in seasons.split(",")]
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid seasons format. Use comma-separated years.")
+    # Parse seasons - support both year integers and 'current'
+    season_list = []
+    for s in seasons.split(","):
+        s = s.strip()
+        if s.lower() == 'current':
+            season_list.append('current')
+        else:
+            try:
+                year = int(s)
+                if 2020 <= year <= 2026:
+                    season_list.append(year)
+            except ValueError:
+                continue
     
-    # Validate seasons
-    valid_seasons = [s for s in season_list if 2020 <= s <= 2026]
-    if not valid_seasons:
-        raise HTTPException(status_code=400, detail="No valid seasons provided (2020-2026)")
+    if not season_list:
+        raise HTTPException(status_code=400, detail="No valid seasons provided (2020-2026 or 'current')")
     
-    result = await run_mlb_historical_backfill(_db, seasons=valid_seasons)
+    # Add 'current' to get live 2026 data if 2026 is requested
+    if 2026 in season_list and 'current' not in season_list:
+        season_list.append('current')
+    
+    result = await run_mlb_historical_backfill(_db, seasons=season_list)
     return result
 
 

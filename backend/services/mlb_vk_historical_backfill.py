@@ -43,8 +43,8 @@ logger = logging.getLogger(__name__)
 BDL_API_KEY = os.environ.get("BDL_API_KEY")
 BDL_MLB_BASE_URL = "https://api.balldontlie.io/mlb/v1"
 
-# Historical seasons to fetch (use 'current' for live season data)
-HISTORICAL_SEASONS = ['current']  # Will also get historical from 'current'
+# Historical seasons to fetch - Full 5-year backfill for weighted regression
+HISTORICAL_SEASONS = [2021, 2022, 2023, 2024, 2025, 'current']
 
 # Time-decaying weights (most recent = highest weight)
 SEASON_WEIGHTS = {
@@ -103,27 +103,40 @@ class MLBVKHistoricalBackfill:
     # GAME CACHE (For dates and opponent info)
     # =========================================================================
     
-    async def _build_season_game_cache(self, season: int) -> int:
+    async def _build_season_game_cache(self, season) -> int:
         """
         Build game cache for a season.
         
+        Args:
+            season: Integer year (e.g., 2024) or 'current' for live season
+        
         Returns number of games cached.
         """
-        if season in self._game_cache:
-            return len(self._game_cache[season])
+        # Use consistent cache key
+        cache_key = season if isinstance(season, int) else 2026  # 'current' maps to 2026
+        
+        if cache_key in self._game_cache:
+            return len(self._game_cache[cache_key])
         
         logger.info(f"[MLB_VK] Building game cache for season {season}...")
         
         client = await self._get_client()
-        self._game_cache[season] = {}
+        self._game_cache[cache_key] = {}
         cursor = None
         page_count = 0
         
         while page_count < 50:  # Max pages safety
-            params = {
-                "seasons[]": season,
-                "per_page": 100
-            }
+            # Build params based on season type
+            if season == 'current':
+                params = {
+                    "season": "current",
+                    "per_page": 100
+                }
+            else:
+                params = {
+                    "seasons[]": season,
+                    "per_page": 100
+                }
             if cursor:
                 params["cursor"] = cursor
             
@@ -137,7 +150,7 @@ class MLBVKHistoricalBackfill:
                     for game in games:
                         game_id = game.get("id")
                         if game_id:
-                            self._game_cache[season][game_id] = {
+                            self._game_cache[cache_key][game_id] = {
                                 "date": game.get("date"),
                                 "home_team": game.get("home_team", {}),
                                 "away_team": game.get("away_team", {}),
@@ -166,8 +179,8 @@ class MLBVKHistoricalBackfill:
                 logger.error(f"[MLB_VK] Games fetch error: {e}")
                 break
         
-        logger.info(f"[MLB_VK] Cached {len(self._game_cache[season])} games for season {season}")
-        return len(self._game_cache[season])
+        logger.info(f"[MLB_VK] Cached {len(self._game_cache[cache_key])} games for season {season}")
+        return len(self._game_cache[cache_key])
     
     def _get_game_date(self, season: int, game_id: int) -> Optional[str]:
         """Get game date from cache."""

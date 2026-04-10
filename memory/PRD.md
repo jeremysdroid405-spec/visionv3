@@ -1,259 +1,75 @@
-# PropVision AI - Product Requirements Document
+# Best Bet Finder - Product Requirements Document
 
 ## Original Problem Statement
-Build a local-first betting intelligence app restructuring React/FastAPI to integrate Vegas Killer ML models into the Prop Board. Establish cascading tier distribution (Safe Haven, Front Lines, War Zone) strictly gated by Hit Rate, CV, and ML Edge/Probability, using DraftKings odds as the separator. Integrate Gemini 3.1 Pro as "Vision Intel Layer" for composite scoring. Support multi-sport expansion (NBA + MLB).
+Restructure the React/FastAPI betting app to a 100% Local-First Database Model, integrating multi-sport support (NBA/MLB) and an MLB 4-Gate evaluation system. Mirror NBA pick card features for MLB: accurately calculating L5/L10 hit rates, properly rendering MLB-specific Vision Intel Scout Badges, numerically sorting props in the UI, and ensuring MLB charts and calculations pull correct, up-to-date 2026 current season game logs from the BallDontLie (BDL) API.
 
-## Core Architecture
+## Core Features
+
+### Completed Features
+- [x] Single Source of Truth (SSOT) for hit rates via `mlb_master_hub_2026.bdl_game_logs`
+- [x] L5/L10 hit rate sync between Pick Cards and Player Detail pages
+- [x] MLB Safe Haven logic (DK <= -240, 3-Gate System for consistency)
+- [x] MLB Front Lines logic (Mid-Juice, 3-Gate Pivot Rule)
+- [x] MLB War Zone logic (Demons/Alt Lines, Ceiling Protocol with CV > 1.0)
+- [x] MLB Ferrari tier fetching hooks (`useMLBSafeHaven`, `useMLBFrontLines`)
+- [x] Vision Intel badges (`whiff_wizard`, `volatility_extreme`, `hitters_haven`)
+- [x] Park factors and volatility index
+- [x] VK Vision Model projections on MLB pick cards
+- [x] **5-Season Historical Backfill (2021-2026)** - 140,000 stats, 6,516 players with weighted baselines
+
+### In Progress
+- [ ] Vision Intel ObjectId serialization fix
+- [ ] Real Statcast data integration for MLB badges (currently mocked)
+- [ ] MLB headshot sync (~700 players remaining)
+
+### Upcoming/Backlog
+- [ ] Gemini-powered Vision Intel (matchup splits, weather, umpire impact)
+- [ ] Automated daily prop capture (Forward-Testing Infrastructure)
+- [ ] Google/Apple OAuth (Emergent-managed Google Auth)
+- [ ] Stripe payment integration
+
+## Technical Architecture
+
+### Backend Services
+- `/app/backend/services/mlb_vk_regression.py` - Vegas Killer weighted linear regression
+- `/app/backend/services/mlb_vk_historical_backfill.py` - 5-season historical data backfill
+- `/app/backend/services/mlb_sharp_sorting_service.py` - Core gating logic for MLB tiers
+- `/app/backend/services/mlb_badge_system.py` - Badge evaluation (badges partially mocked)
+
+### Key API Endpoints
+- `GET /api/v3/ferrari/safe-haven?sport=mlb`
+- `GET /api/v3/ferrari/front-lines?sport=mlb`
+- `GET /api/v3/mlb/player/{player_name}`
+- `POST /api/v3/mlb/vk-regression` (use `?vision_intel=false` until ObjectId fix)
+- `POST /api/v3/mlb/vk-backfill` - Trigger historical backfill
+
+### Database Collections (MongoDB - pick_vision)
+- `mlb_master_hub_2026`: 777 docs with `vk_baselines` field
+- `mlb_historical_logs`: 6,645 docs (raw game logs by player)
+- `mlb_live_props`: 8,854 docs
+- `mlb_ferrari_safe_haven`, `mlb_ferrari_front_lines`, `mlb_ferrari_war_zone`: Ferrari tier picks
+- `mlb_demons`, `mlb_goblins`: Demon/Goblin tier picks
+
+### Season Weights for VK Model
+```python
+SEASON_WEIGHTS = {
+    2026: 1.0,
+    2025: 0.85,
+    2024: 0.7,
+    2023: 0.55,
+    2022: 0.4,
+    2021: 0.25,
+}
 ```
-/app
-├── backend/
-│   ├── routes_archive/              # 9 archived legacy route files
-│   ├── routes/                      # Active route files (cleaned)
-│   │   ├── core_v3.py, board.py, tiers.py, scheduler.py
-│   │   ├── ferrari_tiers.py, vacuum.py, vision.py
-│   │   └── __init__.py              # Route registration (cleaned)
-│   ├── services/
-│   │   ├── vision_intel_service.py  # Batched Gemini intel processing
-│   │   ├── oracle_apex_service.py   # 3-Gate Qualification checks
-│   │   ├── ferrari_tier_service.py  # Tier routing + Vision Intel (Sport-Aware)
-│   │   ├── optimized_sync_engine.py # Sport-Exclusive Sync Engine
-│   │   ├── odds_api_service.py, odds_sync_service.py
-├── frontend/src/
-│   ├── context/SportContext.jsx     # Global sport state manager
-│   ├── components/dashboard/SportSwitcher.jsx # NBA/MLB dropdown
-│   ├── pages/Dashboard.jsx
-│   ├── hooks/useLiveOdds.js
-│   ├── components/dashboard/
-```
 
-## Key Technical Concepts
-- **Sport-Exclusive Architecture**: Isolated data pipelines per sport with collection prefixes (nba_ vs mlb_)
-- **Locked State**: Prevents cross-sport data corruption during sync operations
-- **3-Gate System:** HR >= 80%, CV <= 0.35, VK Edge/Prob thresholds per tier
-- **DK Classification:** Safe Haven (DK <= -250), Front Lines (-249 to +199), War Zone (>= +200)
-- **Vision Intel:** Batched Gemini 3.1 Pro API calls for composite scoring
-- **No Fall-Throughs:** Props failing tier gates are discarded, not cascaded
-
-## Sport-Specific Collections
-### NBA Collections
-- `nba_master_hub_2026`: BDL player stats
-- `dg_cached_board`: Enriched props with intel
-- `ferrari_safe_haven`, `ferrari_front_lines`, `ferrari_war_zone`: Tier collections
-
-### MLB Collections (Prefixed)
-- `mlb_master_hub_2026`: MLB player stats
-- `mlb_cached_board`: MLB enriched props
-- `mlb_ferrari_safe_haven`, `mlb_ferrari_front_lines`, `mlb_ferrari_war_zone`: MLB tier collections
-
-## API Endpoints
-- `GET /api/v3/ferrari/safe-haven?sport=nba|mlb`
-- `GET /api/v3/ferrari/front-lines?sport=nba|mlb`
-- `GET /api/v3/ferrari/war-zone?sport=nba|mlb`
-- `POST /api/v3/ferrari/rebuild?sport=nba|mlb` (Sport-Exclusive sync)
-- `GET /api/v3/player-with-badges/{name}`
+## Known Issues
+1. **Vision Intel serialization bug** - ObjectId not JSON serializable (use `vision_intel=false`)
+2. **Mocked Statcast data** - Badges like `whiff_wizard` use placeholder logic
 
 ## 3rd Party Integrations
-- Gemini AI (google-genai, Model: gemini-3.1-pro-preview) - User API Key
-- BallDontLie (BDL) API - User API Key
-- The Odds API - User API Key
+- BallDontLie (BDL) API - MLB stats and game logs
+- Gemini AI (`gemini-3.1-pro-preview`) - Vision Intel (requires user API key)
 
----
-
-## Completed Work (April 2026)
-
-### Session 6 - MLB VK Historical Backfill & BDL Date Fix (April 10, 2026)
-- [x] **FIXED P0 BLOCKER**: MLB BDL stats returning `None` for dates
-  - Root Cause: MLB BDL API returns flat structure (game_id at root) vs NBA (nested game object with date)
-  - Solution: Added `_build_mlb_game_cache()` to fetch games separately and create date lookup
-  - Solution: Added `_get_mlb_game_date()` and `_get_mlb_opponent()` cache lookup methods
-- [x] **Fixed MLB stat field mappings** in `_transform_stat_to_game_log()`:
-  - `rbi` → `rbis` (BDL uses short names)
-  - `k` → `strikeouts`
-  - `hr` → `home_runs`
-  - `bb` → `walks`
-  - `ip` → `innings_pitched`
-  - `p_k` → `pitcher_strikeouts`
-  - `p_bb` → `pitcher_walks`
-  - `p_hits` → `hits_allowed`
-  - `er` → `earned_runs`
-- [x] **Built MLB VK Historical Backfill Service** (`/app/backend/services/mlb_vk_historical_backfill.py`):
-  - Fetches 5 seasons (2021-2026) of historical data from BDL
-  - Applies time-decaying weights (2026=1.0, 2021=0.5)
-  - Calculates weighted baselines for all MLB stats
-  - Stores in `mlb_historical_logs` and updates `mlb_master_hub_2026.vk_baselines`
-- [x] **Built MLB VK Regression Model** (`/app/backend/services/mlb_vk_regression.py`):
-  - Weighted Linear Regression (y = mx + b) with recency weighting
-  - Edge Formula: (Projected - Line) / Line
-  - Tier Classification:
-    - **Safe Haven**: Edge > 20% + R² > 0.75 + L10 Hit Rate > 70%
-    - **Front Lines**: Edge > 15% + R² > 0.60
-    - **War Zone**: Edge > 25% + R² < 0.40 (High risk/reward)
-  - Park Factor adjustments for all 30 MLB stadiums
-  - Opponent strength modifiers
-- [x] **Built MLB Vision Intel Service** (`/app/backend/services/mlb_vision_intel_service.py`):
-  - Gemini 3.1 Pro integration for Safe Haven final context check
-  - Weather, pitcher/batter splits, hot/cold streaks analysis
-  - TRAP verdict kills picks from Safe Haven
-- [x] **New VK Endpoints**:
-  - `POST /api/v3/mlb/vk-backfill?seasons=2021,2022,2023,2024,2025,2026` - Run historical backfill
-  - `GET /api/v3/mlb/vk-baselines/{player_name}` - Get player's weighted baselines
-  - `POST /api/v3/mlb/vk-regression` - Run slate analysis with tier distribution
-  - `GET /api/v3/mlb/vk-projection/{player_name}` - Get individual player projection
-  - `GET /api/v3/mlb/ferrari/safe-haven` - MLB Safe Haven picks
-  - `GET /api/v3/mlb/ferrari/front-lines` - MLB Front Lines picks
-  - `GET /api/v3/mlb/ferrari/war-zone` - MLB War Zone picks
-- [x] **Tested**: VK Regression on live slate:
-  - 1,931 live props processed | 250 unique players
-  - **Safe Haven: 10 picks** | Front Lines: 16 picks | War Zone: 1,457 picks
-  - Top Safe Haven: Dustin May UNDER 6.5 Ks (Edge: -30.32%, R²: 0.75, L10 HR: 100%)
-- [x] All 17 backend tests passed (iteration_37.json)
-
-### Session 5 - Multi-Sport Database Schema & Universal APIs (April 10, 2026)
-- [x] Created `/app/backend/config/db_config.py` with collection prefixes for each sport
-- [x] Implemented `get_collection_name(base_name, sport)` helper function
-- [x] Updated `/api/v3/ferrari/*` endpoints to use `?sport=` parameter
-
-**Universal Odds Sync (`/app/backend/services/universal_odds_sync.py`):**
-- [x] NBA: `basketball_nba` → PTS, REB, AST, PRA → `dg_live_props`
-- [x] MLB: `baseball_mlb` → Strikeouts, Walks, Hits Allowed, Hits, Total Bases, RBIs, Runs, Stolen Bases → `mlb_live_props`
-- [x] Tested: NBA (9 events, 655 props), MLB (18 events, 1972 props)
-
-**BDL Universal Sync (`/app/backend/services/bdl_universal_sync.py`):**
-- [x] NBA: `https://api.balldontlie.io/nba/v1/stats` → `nba_master_hub_2026`
-- [x] MLB: `https://api.balldontlie.io/mlb/v1/stats` → `mlb_master_hub_2026`
-- [x] **STRICT cursor-based pagination** using `next_cursor` from meta object
-- [x] Circuit breaker to prevent DB wipes on low results
-- [x] Tested: NBA players (537), MLB players (777)
-
-**MLB Headshot Sync (`/app/backend/services/mlb_headshot_sync.py`):**
-- [x] **Phase 1: ID Discovery** - MLB Search API (`https://statsapi.mlb.com/api/v1/people/search`)
-- [x] **Phase 2: Headshot Fetch** - MLB CDN + ESPN fallback
-- [x] Local storage: `/app/frontend/public/images/mlb_headshots/{id}.png`
-- [x] Mapping errors logged to `mlb_mapping_errors.log`
-- [x] Tested: 60 players mapped, 50 headshots downloaded
-
-**Frontend Wiring (UniversalPlayerCard.jsx):**
-- [x] PlayerHeadshot supports `sport` and `mlbId` props
-- [x] Priority: Local .png → ESPN fallback → BDL headshot_url → Team logo → Initials
-- [x] MLB team logos added for fallback display
-
-**New Endpoints:**
-- `POST /api/v3/mlb/headshots/sync?phase=ids|headshots|full` - Sync headshots
-- `GET /api/v3/mlb/headshots/status` - Get sync coverage status
-- `GET /api/v3/mlb/headshots/errors` - Get unmapped players
-
-**New Endpoints:**
-- `POST /api/v3/odds/sync?sport=` - Fetch live props from Odds API
-- `GET /api/v3/odds/props?sport=` - Query saved live props
-- `POST /api/v3/bdl/sync?sport=` - Fetch stats from BDL v1 API
-- `GET /api/v3/bdl/players?sport=` - Query player roster
-- `GET /api/v3/bdl/stats/{player_name}?sport=` - Get player game logs
-- `POST /api/v3/mlb/build-board` - Build MLB cached board with enrichment
-- `GET /api/v3/mlb/cached-board` - Get MLB cached board
-- `GET /api/v3/mlb/player/{name}` - Get MLB player's enriched props
-
-### Session 4 - Sport-Exclusive Architecture (April 10, 2026)
-- [x] Implemented Sport-Exclusive sync engine with `target_sport` argument
-- [x] Added collection prefixing for MLB (`mlb_` prefix for all MLB collections)
-- [x] Implemented "Locked State" protection preventing cross-sport data corruption
-- [x] Updated `optimized_sync_engine.py` with SPORT_COLLECTION_MAP and validation
-- [x] Modified `ferrari_tier_service.py` to accept sport context
-- [x] Updated `/v3/ferrari/rebuild` endpoint to accept `?sport=` parameter
-- [x] Console logging: "Syncing MLB... NBA Data Protected." (and vice versa)
-- [x] Verified isolation: MLB sync skips BDL NBA game logs, uses empty cache
-
-### Session 7 - MLB Sharp Sorting & Tier Distribution (April 10, 2026)
-- [x] Built `mlb_sharp_sorting_service.py` with Pinnacle De-Vig calculations
-- [x] Implemented `classify_prop()` with adjusted thresholds (≤-150 for Goblins)
-- [x] Added Goblins, Demons, Standard tier classification logic
-- [x] Created endpoints: `/api/v3/mlb/sharp-sort`, `/api/v3/mlb/sharp/goblins`, `/api/v3/mlb/sharp/demons`, `/api/v3/mlb/sharp/standard`
-- [x] Fixed VK lookup key matching to use both `direction` and `recommendation` fields
-- [x] Fixed ObjectId serialization errors in VK regression response
-- [x] Added frontend hooks: `useMLBGoblins`, `useMLBDemons`, `useMLBHRRPicks`
-- [x] Created frontend sections: `MLBGoblinsSection`, `MLBDemonsSection`, `MLBHRRSection`
-- [x] Integrated MLB-specific sections into Dashboard (render when `currentSport === 'mlb'`)
-- [x] Testing: 21/21 backend tests passed, frontend displays correctly
-
-### Session 3 - Gemini Intelligence Gate (April 9, 2026)
-- [x] Implemented Gemini 3.1 Pro as true intelligence gatekeeper
-- [x] Added `adjusted_confidence` scoring (0-1) combining VK probability + contextual factors
-- [x] TRAP verdicts now KILL props (removed from selection, not just labeled)
-- [x] Fixed Vision Intel display in UniversalPlayerCard
-
-### Session 2 - Route Cleanup (April 9, 2026)
-- [x] Fixed 502 error from orphaned route imports
-- [x] Archived 9 unused route files to routes_archive/
-
-### Session 1 - BDL Patches + Sport Switcher
-- [x] Emergency patches: cursor pagination, circuit breakers for BDL sync
-- [x] Global Sport Switcher (NBA/MLB dropdown) in React header
-- [x] Frontend hooks append `?sport=${currentSport}` to all API calls
-
----
-
-## Priority Backlog
-
-### P0 - Completed ✅
-- [x] **MLB BDL Date Mapping Issue** - Fixed in Session 6
-- [x] **5-Season Historical Backfill for MLB VK Model** - Implemented in Session 6
-- [x] **MLB Sharp Sorting & Tier Distribution** - Implemented in Session 7 (April 10, 2026)
-  - Pinnacle De-Vig layer for fair value calculation
-  - DK/PP line discrepancy detection
-  - Goblins, Demons, Standard tier classification
-  - Frontend integration with new hooks and sections
-
-### Session 11 - MLB PrizePicks-Only Sync & Full Markets (April 10, 2026)
-- [x] **FIXED P0 BLOCKER**: Missing MLB Prop Markets (Home Runs, etc.)
-  - Root Cause: `universal_odds_sync.py` was pulling from multiple bookmakers with limited markets
-  - Solution: Added sport-specific bookmaker config (`"bookmakers": ["prizepicks"]`) for MLB
-  - Solution: Expanded MLB markets to include ALL available PrizePicks props
-- [x] **Verified via direct API testing** which markets PrizePicks actually offers:
-  - PrizePicks primarily offers alternate lines, not standard lines for most markets
-  - Added missing alternate markets: `batter_singles_alternate`, `batter_doubles_alternate`, `batter_triples_alternate`
-- [x] **MLB Markets Now Include** (38 total market keys):
-  - Batter Standard: home_runs, hits, total_bases, rbis, runs, stolen_bases, walks, strikeouts, singles, doubles, triples, hits_runs_rbis, first_home_run
-  - Batter Alternate: home_runs_alternate, hits_alternate, total_bases_alternate, rbis_alternate, runs_scored_alternate, stolen_bases_alternate, walks_alternate, strikeouts_alternate, singles_alternate, doubles_alternate, triples_alternate
-  - Pitcher Standard: strikeouts, hits_allowed, walks, earned_runs, outs, record_a_win
-  - Pitcher Alternate: strikeouts_alternate, hits_allowed_alternate, walks_alternate, earned_runs_alternate, outs_alternate
-- [x] **Cleaned old multi-book data**: Deleted 2,026 non-PrizePicks props from mlb_live_props
-- [x] **Results**: 5,445 PrizePicks props synced (up from 4,170), 18 stat types in cached board
-
-### P1 - Critical
-- [ ] **Complete MLB Headshot Sync** - ~700 players remaining (60 done)
-
-### P2 - Important
-- [ ] **MLB Vision Intel** - Gemini TRAP filtering adapted for MLB stat rules
-- [ ] Establish automated daily prop capture (Forward-Testing Infrastructure)
-- [ ] Integrate Google/Apple OAuth (Emergent-managed)
-- [ ] Implement Stripe for payments
-
-### P3 - Nice to Have
-- [ ] Refactor `vegas_killer_model.py` (~2000 lines)
-- [ ] Further API controller optimization
-- [ ] Archive legacy NBA-only scripts (`bdl_comprehensive_sync.py`, `odds_sync_service.py`)
-
----
-
-## Testing Credentials
-Use "Demo Mode" button on frontend login page.
-
-## Critical Notes for Agents
-1. **Sport-Exclusive Sync**: Always pass `target_sport` to `run_optimized_sync()` and `build_ferrari_tiers()`
-2. **Locked State**: Cross-sport collection access is BLOCKED - logs show "[LOCKED_STATE] BLOCKED"
-3. **BallDontLie Syncing**: Never use page-based pagination for BDL; use `next_cursor` from meta
-4. **MLB BDL API Structure**: MLB uses flat structure (game_id at root, team_name at root) vs NBA (nested game/team objects). Always build game cache first for MLB to get dates.
-5. **MLB Stat Field Names**: BDL MLB uses short names (`rbi`, `k`, `hr`, `bb`) - must map to internal names (`rbis`, `strikeouts`, etc.)
-6. **Gemini Vision Intel**: Use BATCHED API calls only (one per tier)
-7. **Google API Key**: Use user's `GOOGLE_API_KEY`, NOT Emergent LLM key
-8. **MLB Sharp Sorting Thresholds**: Pinnacle ≤ -150 for Goblins (adjusted from -240 due to real data range -214 max)
-9. **VK Lookup Key Matching**: Use flexible matching with both `direction` and `recommendation` fields
-
-## Key Files Reference
-- `/app/backend/services/bdl_universal_sync.py` - BDL sync with MLB game cache fix
-- `/app/backend/services/mlb_vk_historical_backfill.py` - 5-Season VK backfill service
-- `/app/backend/services/mlb_vk_regression.py` - MLB VK regression model
-- `/app/backend/services/mlb_sharp_sorting_service.py` - Sharp Sorting & Tier Distribution
-- `/app/backend/services/mlb_cached_board_builder.py` - MLB prop enrichment
-- `/app/backend/config/db_config.py` - Sport-specific collection routing
-- `/app/frontend/src/hooks/useLiveOdds.js` - useMLBGoblins, useMLBDemons, useMLBHRRPicks hooks
-- `/app/frontend/src/pages/Dashboard.jsx` - MLBGoblinsSection, MLBDemonsSection, MLBHRRSection components
+## Changelog
+- **2026-04-10**: Completed 5-season MLB VK historical backfill (140k stats, 6.5k players)
+- **2026-04-10**: Fixed VK regression endpoint (works with vision_intel=false)
