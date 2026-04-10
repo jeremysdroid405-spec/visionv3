@@ -1191,6 +1191,7 @@ const Dashboard = () => {
   const [highlightProp, setHighlightProp] = useState(null);
   const [highlightType, setHighlightType] = useState('demon');
   const [selectedPlayer, setSelectedPlayer] = useState(null);
+  const [selectedPlayerData, setSelectedPlayerData] = useState(null); // Store full pick data
   const [showCommandPost, setShowCommandPost] = useState(false);
   const [savedScrollPosition, setSavedScrollPosition] = useState(null);
   
@@ -1222,17 +1223,19 @@ const Dashboard = () => {
   }, []);
   
   // Navigation handlers
-  const handlePlayerClick = useCallback((playerName, highlight = null, type = 'demon') => {
+  const handlePlayerClick = useCallback((playerName, highlight = null, type = 'demon', pickData = null) => {
     setSavedScrollPosition(window.scrollY);
     setHighlightProp(highlight);
     setHighlightType(type);
     setSelectedPlayer(playerName);
+    setSelectedPlayerData(pickData); // Store the full pick data
     // Push state so browser back button works
     window.history.pushState({ view: 'player', player: playerName }, '');
   }, []);
   
   const handleBackFromPlayer = useCallback(() => {
     setSelectedPlayer(null);
+    setSelectedPlayerData(null);
     setHighlightProp(null);
     // Restore scroll position after render
     setTimeout(() => {
@@ -1248,6 +1251,7 @@ const Dashboard = () => {
       // If we have a selected player or expanded parlay, close it
       if (selectedPlayer) {
         setSelectedPlayer(null);
+        setSelectedPlayerData(null);
         setHighlightProp(null);
         if (savedScrollPosition !== null) {
           setTimeout(() => window.scrollTo(0, savedScrollPosition), 0);
@@ -1263,14 +1267,44 @@ const Dashboard = () => {
   
   const handleRadarClick = useCallback((pick) => {
     const lineValue = pick.demon_line || pick.line;
-    const highlightKey = `${pick.stat_type}|${lineValue}|${pick.direction || 'Over'}`;
-    handlePlayerClick(pick.player_name, highlightKey, 'demon');
+    const highlightKey = `${pick.stat_type}|${lineValue}|${pick.direction || pick.recommendation || 'Over'}`;
+    
+    // Transform pick into player format expected by PlayerDetailPage
+    const playerData = {
+      name: pick.player_name,
+      player_name: pick.player_name,
+      team: pick.team || pick.away_team || pick.home_team,
+      photo_url: pick.photo_url || pick.headshot_url,
+      props: [{
+        ...pick,
+        stat_type_extracted: pick.stat_type,
+        direction: pick.direction || pick.recommendation || 'Over',
+        market: pick.market_key || pick.stat_type,
+      }]
+    };
+    
+    handlePlayerClick(pick.player_name, highlightKey, 'demon', playerData);
   }, [handlePlayerClick]);
   
   const handleVaultClick = useCallback((pick) => {
     const lineValue = pick.goblin_line || pick.line;
-    const highlightKey = `${pick.stat_type}|${lineValue}|${pick.direction || 'Over'}`;
-    handlePlayerClick(pick.player_name, highlightKey, 'goblin');
+    const highlightKey = `${pick.stat_type}|${lineValue}|${pick.direction || pick.recommendation || 'Over'}`;
+    
+    // Transform pick into player format expected by PlayerDetailPage
+    const playerData = {
+      name: pick.player_name,
+      player_name: pick.player_name,
+      team: pick.team || pick.away_team || pick.home_team,
+      photo_url: pick.photo_url || pick.headshot_url,
+      props: [{
+        ...pick,
+        stat_type_extracted: pick.stat_type,
+        direction: pick.direction || pick.recommendation || 'Over',
+        market: pick.market_key || pick.stat_type,
+      }]
+    };
+    
+    handlePlayerClick(pick.player_name, highlightKey, 'goblin', playerData);
   }, [handlePlayerClick]);
   
   const handleParlayClick = useCallback((parlay, sectionType) => {
@@ -1330,6 +1364,7 @@ const Dashboard = () => {
     return (
       <PlayerDetailPage 
         playerName={selectedPlayer}
+        playerData={selectedPlayerData}
         onBack={handleBackFromPlayer}
         highlightProp={highlightProp}
         highlightType={highlightType}
