@@ -409,10 +409,15 @@ async def get_hydrated_board():
 
 
 @router.get("/v3/cached-props")
-async def get_cached_props(include_locked: bool = True):
+async def get_cached_props(
+    include_locked: bool = True,
+    sport: str = Query("nba", description="Sport to query (nba or mlb)")
+):
     """
     THE PRIMARY ENDPOINT - Reads ONLY from MongoDB.
     NO Odds API calls. Zero credit usage.
+    
+    Sport-aware: Pass ?sport=mlb for MLB data, ?sport=nba for NBA data.
     
     Returns the full cached board with:
     - All players grouped by props (with locked status marked)
@@ -423,8 +428,46 @@ async def get_cached_props(include_locked: bool = True):
     
     Filter with include_locked=false to hide locked games from frontend.
     """
+    print(f"[DEBUG] get_cached_props called with sport={sport}")
+    from config.db_config import get_collection_name, validate_sport
+    
+    # Validate sport parameter
+    try:
+        sport = validate_sport(sport)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    
     engine = get_engine()
-    result = await engine.get_cached_board(include_locked=include_locked)
+    
+    # Get sport-specific collection
+    collection_name = get_collection_name("cached_board", sport)
+    collection = engine.db[collection_name]
+    
+    # For NBA, use the existing engine method
+    # For MLB, return from the sport-specific collection directly
+    if sport == "nba":
+        result = await engine.get_cached_board()
+        # Ensure mutable copy and add sport context
+        if isinstance(result, dict):
+            result = dict(result)
+        result["sport"] = sport
+        result["collection"] = collection_name
+        logger.info(f"[CACHED_PROPS] NBA response - sport={result.get('sport')}, collection={result.get('collection')}")
+    else:
+        # MLB - read directly from mlb_cached_board
+        cursor = collection.find({}, {"_id": 0})
+        players = await cursor.to_list(length=None)
+        result = {
+            "success": True,
+            "players": players,
+            "players_count": len(players),
+            "total_props": sum(len(p.get("props", [])) for p in players),
+            "sport": sport,
+            "collection": collection_name,
+            "trending": []
+        }
+        logger.info(f"[CACHED_PROPS] MLB response - sport={result.get('sport')}, collection={result.get('collection')}")
+    
     return result
 
 

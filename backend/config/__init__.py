@@ -6,3 +6,18 @@ from .settings import (
     MAX_RETRIES, RETRY_DELAY, API_RATE_LIMIT,
     COLLECTIONS, SCORING_WEIGHTS, TEAM_ABBREV_MAP, STAT_TYPE_MAP, DVP_RANKINGS
 )
+
+# Multi-sport database configuration
+from .db_config import (
+    get_collection_name,
+    get_collection,
+    get_all_collection_names,
+    validate_sport,
+    is_collection_for_sport,
+    get_sport_config,
+    SUPPORTED_SPORTS,
+    DEFAULT_SPORT,
+    SPORT_PREFIXES,
+    BASE_COLLECTIONS,
+    SPORT_CONFIG
+)

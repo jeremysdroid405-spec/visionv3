@@ -188,10 +188,13 @@ async def get_oracle_apex_picks(
 async def get_ferrari_safe_haven(
     response: Response,
     limit: int = Query(10, ge=1, le=50),
+    sport: str = Query("nba", description="Sport to query (nba or mlb)"),
     legacy: bool = Query(False, description="Use legacy Safe Haven logic instead of stored data")
 ):
     """
     FERRARI SAFE HAVEN - Returns stored picks with Vision Intel data.
+    
+    Sport-aware: Pass ?sport=mlb for MLB data, ?sport=nba for NBA data.
     
     Picks are populated by the rebuild endpoint which runs:
     1. Oracle Apex 3-Gate qualification
@@ -200,10 +203,18 @@ async def get_ferrari_safe_haven(
     
     Use ?legacy=true to bypass stored data and run live Oracle Apex scan.
     """
+    from config.db_config import get_collection_name, validate_sport
+    
     response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
     
     if _db is None:
         raise HTTPException(status_code=500, detail="Database not initialized")
+    
+    # Validate sport parameter
+    try:
+        sport = validate_sport(sport)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     
     if legacy:
         # Legacy behavior - run live Oracle Apex scan (no Vision Intel)
@@ -224,6 +235,7 @@ async def get_ferrari_safe_haven(
                 "tier": "safe_haven",
                 "tier_label": "Safe Haven (Live Scan)",
                 "logic": "oracle_apex_live",
+                "sport": sport,
                 "picks": picks,
                 "count": len(picks),
                 "note": "Live scan - Vision Intel not applied. Use rebuild for full analysis."
@@ -232,80 +244,160 @@ async def get_ferrari_safe_haven(
             logger.error(f"[SAFE_HAVEN] Legacy scan error: {e}")
             raise HTTPException(status_code=500, detail=str(e))
     
-    # DEFAULT: Read from stored collection (includes Vision Intel data)
-    service = get_service()
-    result = await service.get_safe_haven(limit)
+    # DEFAULT: Read from sport-specific stored collection
+    collection_name = get_collection_name("safe_haven", sport)
+    collection = _db[collection_name]
     
-    # Add tier metadata
-    result["tier_label"] = "Safe Haven (Oracle Apex + Vision Intel)"
-    result["logic"] = "stored_with_vision_intel"
+    cursor = collection.find({}, {"_id": 0}).limit(limit)
+    picks = await cursor.to_list(length=limit)
     
-    return result
+    return {
+        "tier": "safe_haven",
+        "tier_label": f"Safe Haven ({sport.upper()})",
+        "logic": "stored_with_vision_intel",
+        "sport": sport,
+        "collection": collection_name,
+        "picks": picks,
+        "count": len(picks)
+    }
 
 
 @router.get("/v3/ferrari/front-lines")
 async def get_ferrari_front_lines(
     response: Response,
-    limit: int = Query(10, ge=1, le=50)
+    limit: int = Query(10, ge=1, le=50),
+    sport: str = Query("nba", description="Sport to query (nba or mlb)")
 ):
     """
     FERRARI FRONT LINES - Returns stored picks with Vision Intel data.
+    
+    Sport-aware: Pass ?sport=mlb for MLB data, ?sport=nba for NBA data.
     
     Picks include:
     - Vision Intel analysis (intel_score, intel_verdict, vision_intel summary)
     - Composite scoring based on VK + Gemini confidence
     - All props that passed the Gemini gate (TRAP verdicts removed)
     """
+    from config.db_config import get_collection_name, validate_sport
+    
     response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
     
-    service = get_service()
-    result = await service.get_front_lines(limit)
+    if _db is None:
+        raise HTTPException(status_code=500, detail="Database not initialized")
     
-    result["tier_label"] = "Front Lines (Vision Intel)"
-    result["logic"] = "stored_with_vision_intel"
+    # Validate sport parameter
+    try:
+        sport = validate_sport(sport)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     
-    return result
+    # Read from sport-specific collection
+    collection_name = get_collection_name("front_lines", sport)
+    collection = _db[collection_name]
+    
+    cursor = collection.find({}, {"_id": 0}).limit(limit)
+    picks = await cursor.to_list(length=limit)
+    
+    return {
+        "tier": "front_lines",
+        "tier_label": f"Front Lines ({sport.upper()})",
+        "logic": "stored_with_vision_intel",
+        "sport": sport,
+        "collection": collection_name,
+        "picks": picks,
+        "count": len(picks)
+    }
 
 
 @router.get("/v3/ferrari/war-zone")
 async def get_ferrari_war_zone(
     response: Response,
-    limit: int = Query(10, ge=1, le=50)
+    limit: int = Query(10, ge=1, le=50),
+    sport: str = Query("nba", description="Sport to query (nba or mlb)")
 ):
     """
     FERRARI WAR ZONE - Returns stored high-risk/high-reward picks with Vision Intel.
+    
+    Sport-aware: Pass ?sport=mlb for MLB data, ?sport=nba for NBA data.
     
     Picks include:
     - Vision Intel analysis (intel_score, intel_verdict, vision_intel summary)
     - Composite scoring based on VK + Gemini confidence
     - All props that passed the Gemini gate (TRAP verdicts removed)
     """
+    from config.db_config import get_collection_name, validate_sport
+    
     response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
     
-    service = get_service()
-    result = await service.get_war_zone(limit)
+    if _db is None:
+        raise HTTPException(status_code=500, detail="Database not initialized")
     
-    result["tier_label"] = "War Zone (Vision Intel)"
-    result["logic"] = "stored_with_vision_intel"
+    # Validate sport parameter
+    try:
+        sport = validate_sport(sport)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     
-    return result
+    # Read from sport-specific collection
+    collection_name = get_collection_name("war_zone", sport)
+    collection = _db[collection_name]
+    
+    cursor = collection.find({}, {"_id": 0}).limit(limit)
+    picks = await cursor.to_list(length=limit)
+    
+    return {
+        "tier": "war_zone",
+        "tier_label": f"War Zone ({sport.upper()})",
+        "logic": "stored_with_vision_intel",
+        "sport": sport,
+        "collection": collection_name,
+        "picks": picks,
+        "count": len(picks)
+    }
 
 
 @router.get("/v3/ferrari/discarded")
 async def get_ferrari_discarded(
     response: Response,
-    limit: int = Query(50, ge=1, le=100)
+    limit: int = Query(50, ge=1, le=100),
+    sport: str = Query("nba", description="Sport to query (nba or mlb)")
 ):
     """
     FERRARI DISCARDED - Props killed by the 15% separation filter.
     
+    Sport-aware: Pass ?sport=mlb for MLB data, ?sport=nba for NBA data.
+    
     Shows what was filtered out for being "mid" plays.
     Useful for debugging and transparency.
     """
+    from config.db_config import get_collection_name, validate_sport
+    
     response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
     
-    service = get_service()
-    return await service.get_discarded(limit)
+    if _db is None:
+        raise HTTPException(status_code=500, detail="Database not initialized")
+    
+    # Validate sport parameter
+    try:
+        sport = validate_sport(sport)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    
+    # Read from sport-specific collection
+    collection_name = get_collection_name("discarded", sport)
+    collection = _db[collection_name]
+    
+    cursor = collection.find({}, {"_id": 0}).limit(limit)
+    picks = await cursor.to_list(length=limit)
+    
+    return {
+        "tier": "discarded",
+        "tier_label": f"Discarded ({sport.upper()})",
+        "sport": sport,
+        "collection": collection_name,
+        "picks": picks,
+        "count": len(picks)
+    }
 
 
 @router.post("/v3/ferrari/rebuild")
