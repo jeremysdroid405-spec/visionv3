@@ -1087,6 +1087,44 @@ async def get_mlb_player_props(
     if not player:
         raise HTTPException(status_code=404, detail=f"Player '{player_name}' not found in MLB board")
     
+    # Add stat_type_extracted to each prop for frontend compatibility
+    # Also check if prop is in goblins/demons collections
+    goblins_coll = _db["mlb_goblins"]
+    demons_coll = _db["mlb_demons"]
+    
+    # Get all goblins and demons for this player
+    player_goblins = await goblins_coll.find(
+        {"player_name": {"$regex": f"^{player_name}$", "$options": "i"}},
+        {"_id": 0, "stat_type": 1, "line": 1}
+    ).to_list(length=100)
+    
+    player_demons = await demons_coll.find(
+        {"player_name": {"$regex": f"^{player_name}$", "$options": "i"}},
+        {"_id": 0, "stat_type": 1, "line": 1}
+    ).to_list(length=100)
+    
+    # Create lookup sets
+    goblin_keys = {f"{g['stat_type']}|{g['line']}" for g in player_goblins}
+    demon_keys = {f"{d['stat_type']}|{d['line']}" for d in player_demons}
+    
+    if player.get("props"):
+        for prop in player["props"]:
+            # Add stat_type_extracted (copy of stat_type for frontend compatibility)
+            prop["stat_type_extracted"] = prop.get("stat_type")
+            
+            # Add direction field (copy of recommendation)
+            if not prop.get("direction"):
+                prop["direction"] = prop.get("recommendation", "Over")
+            
+            # Add market field
+            if not prop.get("market"):
+                prop["market"] = prop.get("market_key") or prop.get("stat_type")
+            
+            # Check if this prop is a goblin or demon
+            prop_key = f"{prop.get('stat_type')}|{prop.get('line')}"
+            prop["is_goblin"] = prop_key in goblin_keys
+            prop["is_demon"] = prop_key in demon_keys
+    
     return {
         "success": True,
         "player": player

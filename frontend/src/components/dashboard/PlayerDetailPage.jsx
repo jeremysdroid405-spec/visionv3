@@ -32,9 +32,11 @@ const API = BACKEND_URL || process.env.REACT_APP_BACKEND_URL || '';
 
 // SSOT Global State Hooks
 import { useMasterStats } from '../../hooks/useMasterStats';
+import { useSport } from '../../context/SportContext';
 
 // ==================== PROP CATEGORY CONFIG ====================
 const PROP_LABELS = {
+  // NBA Stats
   'PTS': 'PTS',
   'REB': 'REB',
   'AST': 'AST',
@@ -55,9 +57,30 @@ const PROP_LABELS = {
   'MIN': 'MIN',
   'DD': 'DD',
   'TD': 'TD',
+  // MLB Stats
+  'Hits': 'HITS',
+  'Total Bases': 'TB',
+  'RBIs': 'RBIs',
+  'Runs': 'RUNS',
+  'Stolen Bases': 'SB',
+  'Home Runs': 'HR',
+  'Walks': 'BB',
+  'Strikeouts': 'K',
+  'Hits Allowed': 'HA',
+  'Earned Runs': 'ER',
+  'Pitcher Strikeouts': 'SO',
+  'Pitcher Walks': 'BB',
+  'Hits+Runs+RBIs': 'HRR',
+  'batter_hits_runs_rbis': 'HRR',
 };
 
-const CATEGORY_ORDER = ['PTS', 'REB', 'AST', 'PRA', 'PR', 'PA', 'RA', '3PM', 'STL', 'BLK', 'BLST', 'TO', 'FGM', 'FTM', 'MIN'];
+const CATEGORY_ORDER = [
+  // NBA
+  'PTS', 'REB', 'AST', 'PRA', 'PR', 'PA', 'RA', '3PM', 'STL', 'BLK', 'BLST', 'TO', 'FGM', 'FTM', 'MIN',
+  // MLB
+  'Hits', 'Total Bases', 'RBIs', 'Runs', 'Stolen Bases', 'Home Runs', 'Walks', 'Strikeouts',
+  'Hits Allowed', 'Earned Runs', 'Pitcher Strikeouts', 'Hits+Runs+RBIs'
+];
 
 const normalizeStatType = (statType) => {
   const normMap = { 'P+R': 'PR', 'P+A': 'PA', 'R+A': 'RA' };
@@ -349,6 +372,9 @@ const CategoryHeader = memo(({ category, count, hasDemon, hasGoblin }) => {
 // ==================== MAIN COMPONENT ====================
 // SSOT: Uses useMasterStats hook for player data (PIPE 1)
 export const PlayerDetailPage = ({ playerName, playerData = null, onBack, highlightProp = null, highlightType = 'demon', onQuickAdd = null }) => {
+  // Get current sport from context
+  const { currentSport } = useSport();
+  
   // Direct state-based fetch
   const [player, setPlayer] = useState(playerData);
   const [loading, setLoading] = useState(!playerData);
@@ -356,7 +382,10 @@ export const PlayerDetailPage = ({ playerName, playerData = null, onBack, highli
   const fetchIdRef = useRef(0);
   
   useEffect(() => {
-    if (playerData) {
+    // If we have partial playerData (single prop), still fetch all props
+    const hasOnlyOneProp = playerData?.props?.length === 1;
+    
+    if (playerData && !hasOnlyOneProp) {
       setPlayer(playerData);
       setLoading(false);
       return;
@@ -367,7 +396,10 @@ export const PlayerDetailPage = ({ playerName, playerData = null, onBack, highli
     // Increment fetch ID to track current request
     const currentFetchId = ++fetchIdRef.current;
     
-    const fetchUrl = `${API}/api/v3/player-with-badges/${encodeURIComponent(playerName)}`;
+    // Use sport-specific endpoint for MLB, generic for NBA
+    const fetchUrl = currentSport === 'mlb' 
+      ? `${API}/api/v3/mlb/player/${encodeURIComponent(playerName)}`
+      : `${API}/api/v3/player-with-badges/${encodeURIComponent(playerName)}`;
     
     setLoading(true);
     setError(null);
@@ -386,7 +418,36 @@ export const PlayerDetailPage = ({ playerName, playerData = null, onBack, highli
           const data = JSON.parse(xhr.responseText);
           
           if (data.success && data.player) {
-            setPlayer(data.player);
+            // Merge with any passed playerData (to preserve goblin/demon flags)
+            const mergedPlayer = {
+              ...data.player,
+              name: data.player.name || playerName,
+              player_name: playerName,
+            };
+            
+            // If we had partial playerData with flags, merge those flags into matching props
+            if (hasOnlyOneProp && playerData?.props?.[0]) {
+              const clickedProp = playerData.props[0];
+              mergedPlayer.props = mergedPlayer.props?.map(prop => {
+                // Check if this prop matches the clicked one
+                if (prop.stat_type === clickedProp.stat_type && 
+                    Math.abs((prop.line || 0) - (clickedProp.line || 0)) < 0.01) {
+                  return {
+                    ...prop,
+                    is_goblin: clickedProp.is_goblin || prop.is_goblin,
+                    is_demon: clickedProp.is_demon || prop.is_demon,
+                    tier_label: clickedProp.tier_label || prop.tier_label,
+                    edge_pct: clickedProp.edge_pct || prop.edge_pct,
+                    projected_value: clickedProp.projected_value || prop.projected_value,
+                    hit_rate_l10: clickedProp.hit_rate_l10 || prop.hit_rate_l10,
+                    l10_avg: clickedProp.l10_avg || prop.l10_avg,
+                  };
+                }
+                return prop;
+              }) || [];
+            }
+            
+            setPlayer(mergedPlayer);
           } else {
             setError('No available Bets today');
           }
@@ -406,7 +467,7 @@ export const PlayerDetailPage = ({ playerName, playerData = null, onBack, highli
     };
     
     xhr.send();
-  }, [playerName, playerData]);
+  }, [playerName, playerData, currentSport]);
   
   const [showIntelSuite, setShowIntelSuite] = useState(false);
   const [selectedVisionProp, setSelectedVisionProp] = useState(null);
