@@ -2293,3 +2293,107 @@ async def get_venue_weather(team: str):
         "hr_factor": park.get("hr_factor"),
         "weather": weather
     }
+
+
+
+@router.get("/v3/mlb/badges")
+async def get_mlb_badges():
+    """
+    Get all MLB badge definitions.
+    
+    **MLB Scout Insight Badges:**
+    - 🟢 Pure Contact: Whiff Rate < 15% + xBA > .290
+    - 🔴 High-Heat Trap: Facing pitcher with velo +1.5mph
+    - 🔵 Workhorse: Pitcher Outs 17.5+ with 80% L10 6th inning
+    - 🔥 Barrel Master: Barrel % > 15% over last 25 PA
+    
+    **Situational Badges:**
+    - 💨 Wind Boost: Wind blowing out (+10% to Over TB/HR)
+    - ❄️ Cold Zone: Pitcher-friendly umpire
+    - ⚔️ BvP Dominator: Strong vs today's pitcher
+    - 📊 Split Advantage: Favorable handedness matchup
+    """
+    from services.mlb_badge_system import MLBBadge, FRONTEND_BADGE_ICONS
+    
+    badges = MLBBadge.get_all_badges()
+    
+    # Add frontend icon config to each badge
+    for badge in badges:
+        badge["frontend"] = FRONTEND_BADGE_ICONS.get(badge["id"], {})
+    
+    return {
+        "success": True,
+        "count": len(badges),
+        "badges": badges
+    }
+
+
+@router.get("/v3/mlb/badges/player/{player_name}")
+async def get_player_badges(
+    player_name: str,
+    stat_type: str = Query(None, description="Optional stat type filter"),
+    opponent_pitcher: str = Query(None, description="Optional opponent pitcher for BvP")
+):
+    """
+    Get badges earned by a specific player.
+    
+    Evaluates player against all badge criteria and returns earned badges.
+    """
+    from services.mlb_badge_system import get_mlb_badge_service
+    from urllib.parse import unquote
+    
+    if _db is None:
+        raise HTTPException(status_code=500, detail="Database not initialized")
+    
+    player_name = unquote(player_name)
+    
+    badge_service = get_mlb_badge_service(_db)
+    
+    # Build a minimal prop for evaluation
+    prop = {"player_name": player_name, "line": 1.5}
+    
+    badges = await badge_service.evaluate_all_badges(
+        player_name=player_name,
+        stat_type=stat_type or "Total Bases",
+        prop=prop,
+        opponent_pitcher=unquote(opponent_pitcher) if opponent_pitcher else None
+    )
+    
+    return {
+        "success": True,
+        "player_name": player_name,
+        "badges_earned": len(badges),
+        "badges": badges
+    }
+
+
+@router.get("/v3/mlb/oracle-weights")
+async def get_oracle_weights():
+    """
+    Get MLB Oracle decision weights.
+    
+    **Priority Order:**
+    1. BvP (Batter vs Pitcher) - if sample > 15 PA
+    2. Split Dominance (handedness) - if no BvP
+    3. VK Projection + Market Signal
+    
+    **Weight Distribution:**
+    - BvP: 35% (when available)
+    - Split: 20% (55% when no BvP)
+    - VK: 20%
+    - Market: 15%
+    - Badges: 10%
+    """
+    from services.mlb_badge_system import MLBOracleWeighting
+    
+    return {
+        "success": True,
+        "weights": MLBOracleWeighting.WEIGHTS,
+        "priority_rules": [
+            {"priority": 1, "source": "BvP", "condition": "Sample > 15 PA", "weight": "35%"},
+            {"priority": 2, "source": "Split Dominance", "condition": "No BvP available", "weight": "55%"},
+            {"priority": 3, "source": "VK Projection", "condition": "Always", "weight": "20%"},
+            {"priority": 4, "source": "Market Signal", "condition": "Always", "weight": "15%"},
+            {"priority": 5, "source": "Badge Boost", "condition": "Multiplier", "weight": "varies"}
+        ]
+    }

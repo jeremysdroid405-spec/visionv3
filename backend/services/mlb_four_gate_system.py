@@ -545,19 +545,22 @@ class MLBFourGateSystem:
         return verdict
     
     # =========================================================================
-    # MAIN PIPELINE: RUN ALL 4 GATES
+    # MAIN PIPELINE: RUN ALL 4 GATES + BADGES
     # =========================================================================
     
     async def analyze_prop(self, prop: Dict) -> Dict[str, Any]:
         """
-        Run a prop through all 4 gates.
+        Run a prop through all 4 gates with MLB badge evaluation.
         
         Returns:
-            Complete analysis with gate results and final verdict
+            Complete analysis with gate results, badges, and final verdict
         """
+        from services.mlb_badge_system import get_mlb_badge_service, MLBOracleWeighting
+        
         player_name = prop.get("player_name")
         stat_type = prop.get("stat_type")
         home_team = prop.get("home_team") or prop.get("team")
+        opponent_pitcher = prop.get("opponent_pitcher")
         
         result = {
             "player_name": player_name,
@@ -567,8 +570,11 @@ class MLBFourGateSystem:
             "gates": {},
             "gates_passed": 0,
             "total_gates": 4,
+            "badges": [],
+            "badge_boost": 1.0,
             "final_verdict": "PENDING",
             "traps_detected": [],
+            "oracle_priority": "Standard",
             "analyzed_at": datetime.now(timezone.utc).isoformat()
         }
         
@@ -582,30 +588,101 @@ class MLBFourGateSystem:
         if result["gates"]["market"].get("pass"):
             result["gates_passed"] += 1
         
-        # GATE 3: THE SCOUT
+        # GATE 3: THE SCOUT (with weather)
+        park = self.get_park_factor(home_team or "NYY")
+        weather = None
+        if park.get("type") == "outdoor":
+            weather = await self.get_weather(home_team or "NYY")
+        
         result["gates"]["scout"] = await self.run_scout_gate(
             prop, home_team or "NYY", player_name, stat_type
         )
         if result["gates"]["scout"].get("pass"):
             result["gates_passed"] += 1
         
-        # Collect traps
+        # Collect traps from scout gate
         result["traps_detected"] = result["gates"]["scout"].get("traps", [])
         
-        # GATE 4: THE BRAIN
+        # =====================================================================
+        # MLB BADGE EVALUATION
+        # =====================================================================
+        badge_service = get_mlb_badge_service(self.db)
+        
+        badges = await badge_service.evaluate_all_badges(
+            player_name=player_name,
+            stat_type=stat_type,
+            prop=prop,
+            weather=weather,
+            park=park,
+            opponent_pitcher=opponent_pitcher,
+            umpire_data=None  # Would need umpire API integration
+        )
+        
+        result["badges"] = badges
+        
+        # Calculate badge boost (multiply all badge boosts)
+        badge_boost = 1.0
+        for badge in badges:
+            badge_boost *= badge.get("boost", 1.0)
+        result["badge_boost"] = round(badge_boost, 3)
+        
+        # Check for trap badges (High-Heat, Cold Zone)
+        for badge in badges:
+            if badge.get("boost", 1.0) < 1.0:
+                result["traps_detected"].append({
+                    "type": f"BADGE_{badge.get('id', 'unknown').upper()}",
+                    "reason": badge.get("description"),
+                    "severity": "HIGH" if badge.get("boost", 1.0) < 0.90 else "MEDIUM"
+                })
+        
+        # =====================================================================
+        # GATE 4: THE BRAIN (with Oracle Weighting)
+        # =====================================================================
+        # Check for BvP dominance
+        bvp_badge = next((b for b in badges if b.get("id") == "bvp_dominator"), None)
+        split_badge = next((b for b in badges if b.get("id") == "split_advantage"), None)
+        
+        has_bvp = bvp_badge is not None
+        result["oracle_priority"] = "BvP" if has_bvp else ("Split Dominance" if split_badge else "Standard")
+        
         result["gates"]["brain"] = await self.get_oracle_verdict(prop)
-        if result["gates"]["brain"].get("pass"):
+        
+        # Apply weighted scoring if badges present
+        if badges:
+            # base_score used in weighted calculation
+            bvp_score = 8 if bvp_badge else None
+            split_score = 7 if split_badge else 5
+            vk_score = 7 if result["gates"]["math"].get("pass") else 4
+            market_score = 7 if result["gates"]["market"].get("pass") else 4
+            
+            weighted = MLBOracleWeighting.calculate_weighted_score(
+                bvp_score=bvp_score,
+                split_score=split_score,
+                vk_score=vk_score,
+                market_score=market_score,
+                badge_boost=badge_boost,
+                has_bvp=has_bvp
+            )
+            
+            result["gates"]["brain"]["weighted_score"] = weighted
+            result["gates"]["brain"]["oracle_score"] = weighted["final_score"]
+        
+        if result["gates"]["brain"].get("oracle_score", 0) >= 7:
             result["gates_passed"] += 1
         
+        # =====================================================================
         # FINAL VERDICT
-        if result["gates_passed"] == 4:
+        # =====================================================================
+        high_severity_traps = [t for t in result["traps_detected"] if t.get("severity") == "HIGH"]
+        
+        if result["gates_passed"] == 4 and len(high_severity_traps) == 0:
             result["final_verdict"] = "ELITE_PLAY"
-        elif result["gates_passed"] >= 3:
+        elif result["gates_passed"] >= 3 and len(high_severity_traps) == 0:
             result["final_verdict"] = "SOLID_PLAY"
+        elif len(high_severity_traps) > 0:
+            result["final_verdict"] = "TRAP"
         elif result["gates_passed"] >= 2:
             result["final_verdict"] = "LEAN"
-        elif len(result["traps_detected"]) > 0:
-            result["final_verdict"] = "TRAP"
         else:
             result["final_verdict"] = "AVOID"
         

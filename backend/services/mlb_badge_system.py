@@ -1,0 +1,738 @@
+"""
+MLB Badge System & Vision Intel Suite
+======================================
+MLB-specific archetypes and scout insights for prop analysis.
+
+BADGE SCHEMA:
+🟢 PURE_CONTACT: Whiff Rate < 15% + xBA > .290 (Hits/TB target)
+🔴 HIGH_HEAT_TRAP: Facing pitcher with 4-seam velo +1.5mph in 2026
+🔵 WORKHORSE: Pitcher Outs 17.5+ with 80% L10 reaching 6th inning
+🔥 BARREL_MASTER: Barrel % > 15% over last 25 PA
+
+SITUATIONAL INTEL:
+- Wind Blowing Out: +10% boost to Over TB/HRR
+- Umpire Cold Zone: Strike Zone Ratio > 1.05 = pitcher friendly
+
+ORACLE WEIGHTING:
+- Priority 1: BvP (if sample > 15 PA)
+- Priority 2: Split Dominance (LHB vs RHP, etc.)
+"""
+
+import logging
+from typing import Dict, List, Any, Optional
+from datetime import datetime, timezone
+from motor.motor_asyncio import AsyncIOMotorDatabase
+
+logger = logging.getLogger(__name__)
+
+# =============================================================================
+# MLB BADGE DEFINITIONS
+# =============================================================================
+
+class MLBBadge:
+    """MLB Badge types with metadata."""
+    
+    # Badge definitions
+    PURE_CONTACT = {
+        "id": "pure_contact",
+        "name": "Pure Contact",
+        "icon": "🟢",
+        "frontend_icon": "target",  # Lucide icon
+        "color": "green",
+        "description": "Elite contact hitter - Whiff Rate < 15% + xBA > .290",
+        "target_props": ["Hits", "Total Bases"],
+        "boost": 1.10  # 10% confidence boost
+    }
+    
+    HIGH_HEAT_TRAP = {
+        "id": "high_heat_trap",
+        "name": "High-Heat Trap",
+        "icon": "🔴",
+        "frontend_icon": "flame",
+        "color": "red",
+        "description": "Facing pitcher with velocity spike +1.5mph in 2026",
+        "target_props": ["Hits", "Total Bases", "Home Runs"],
+        "boost": 0.85  # 15% confidence penalty (trap)
+    }
+    
+    WORKHORSE = {
+        "id": "workhorse",
+        "name": "Workhorse",
+        "icon": "🔵",
+        "frontend_icon": "shield",
+        "color": "blue",
+        "description": "Reliable pitcher - 80% L10 reaching 6th inning",
+        "target_props": ["Pitcher Strikeouts", "Pitcher Outs"],
+        "boost": 1.15  # 15% confidence boost
+    }
+    
+    BARREL_MASTER = {
+        "id": "barrel_master",
+        "name": "Barrel Master",
+        "icon": "🔥",
+        "frontend_icon": "zap",  # Lightning bolt for power
+        "color": "orange",
+        "description": "Elite power - Barrel % > 15% over last 25 PA",
+        "target_props": ["Home Runs", "Total Bases", "RBIs"],
+        "boost": 1.12  # 12% confidence boost
+    }
+    
+    # Situational badges
+    WIND_BOOST = {
+        "id": "wind_boost",
+        "name": "Wind Blowing Out",
+        "icon": "💨",
+        "frontend_icon": "wind",
+        "color": "cyan",
+        "description": "Wind blowing out - +10% boost to Over TB/HRR",
+        "target_props": ["Total Bases", "Home Runs", "Hits+Runs+RBIs"],
+        "boost": 1.10
+    }
+    
+    COLD_ZONE = {
+        "id": "cold_zone",
+        "name": "Cold Zone",
+        "icon": "❄️",
+        "frontend_icon": "thermometer-snowflake",
+        "color": "blue",
+        "description": "Pitcher-friendly umpire - Strike Zone Ratio > 1.05",
+        "target_props": ["Hits", "Total Bases", "Home Runs", "RBIs"],
+        "boost": 0.90  # 10% penalty
+    }
+    
+    BVP_DOMINATOR = {
+        "id": "bvp_dominator",
+        "name": "BvP Dominator",
+        "icon": "⚔️",
+        "frontend_icon": "swords",
+        "color": "purple",
+        "description": "Strong historical performance vs today's pitcher (15+ PA)",
+        "target_props": ["Hits", "Total Bases", "Home Runs", "RBIs"],
+        "boost": 1.15
+    }
+    
+    SPLIT_ADVANTAGE = {
+        "id": "split_advantage",
+        "name": "Split Advantage",
+        "icon": "📊",
+        "frontend_icon": "bar-chart",
+        "color": "teal",
+        "description": "Favorable handedness matchup (e.g., LHB vs RHP)",
+        "target_props": ["Hits", "Total Bases"],
+        "boost": 1.08
+    }
+    
+    @classmethod
+    def get_all_badges(cls) -> List[Dict]:
+        """Get all badge definitions."""
+        return [
+            cls.PURE_CONTACT,
+            cls.HIGH_HEAT_TRAP,
+            cls.WORKHORSE,
+            cls.BARREL_MASTER,
+            cls.WIND_BOOST,
+            cls.COLD_ZONE,
+            cls.BVP_DOMINATOR,
+            cls.SPLIT_ADVANTAGE
+        ]
+
+
+# =============================================================================
+# BADGE THRESHOLDS
+# =============================================================================
+
+BADGE_THRESHOLDS = {
+    # Pure Contact thresholds
+    "pure_contact_whiff_max": 0.15,      # Whiff Rate < 15%
+    "pure_contact_xba_min": 0.290,       # xBA > .290
+    
+    # High-Heat Trap thresholds
+    "high_heat_velo_increase": 1.5,      # Velocity increase > 1.5mph
+    
+    # Workhorse thresholds
+    "workhorse_outs_min": 17.5,          # Outs line 17.5+
+    "workhorse_6th_inning_pct": 0.80,    # 80% reaching 6th inning L10
+    
+    # Barrel Master thresholds
+    "barrel_master_pct_min": 15.0,       # Barrel % > 15%
+    "barrel_master_pa_min": 25,          # Over last 25 PA
+    
+    # Wind thresholds
+    "wind_out_speed_min": 8,             # Wind speed > 8mph
+    "wind_out_direction_range": (225, 315),  # SW to NW (blowing out)
+    
+    # Umpire thresholds
+    "umpire_cold_zone_ratio": 1.05,      # Strike Zone Ratio > 1.05
+    
+    # BvP thresholds
+    "bvp_min_pa": 15,                    # Minimum 15 PA for BvP
+    "bvp_good_avg": 0.300,               # Good BvP average
+    "bvp_bad_avg": 0.200,                # Bad BvP average
+}
+
+
+# =============================================================================
+# MLB VISION INTEL BADGE SERVICE
+# =============================================================================
+
+class MLBBadgeService:
+    """
+    MLB Badge evaluation service.
+    
+    Evaluates players against badge criteria and returns earned badges.
+    """
+    
+    def __init__(self, db: AsyncIOMotorDatabase):
+        self.db = db
+        self.master_hub = db.mlb_master_hub_2026
+        self.historical_logs = db.mlb_historical_logs
+    
+    async def evaluate_pure_contact(self, player_name: str) -> Optional[Dict]:
+        """
+        Evaluate Pure Contact badge.
+        
+        Criteria: Whiff Rate < 15% + xBA > .290
+        """
+        player = await self.master_hub.find_one(
+            {"display_name": {"$regex": f"^{player_name}$", "$options": "i"}},
+            {"_id": 0}
+        )
+        
+        if not player:
+            return None
+        
+        # Get advanced stats
+        advanced = player.get("advanced_stats", {})
+        season_stats = advanced.get("season_stats", {}).get("2026", {})
+        batting = season_stats.get("batting", {})
+        
+        # Calculate whiff rate proxy from K rate
+        # Whiff Rate ≈ K% * 0.4 (rough estimate)
+        # games = batting.get("games_played", 0) or 0  # For future use
+        strikeouts = batting.get("strikeouts", 0) or 0
+        at_bats = batting.get("at_bats", 0) or 0
+        avg = batting.get("avg", 0) or 0
+        
+        if at_bats < 20:  # Need minimum sample
+            return None
+        
+        k_rate = strikeouts / at_bats if at_bats > 0 else 0
+        estimated_whiff = k_rate * 0.4
+        
+        # xBA estimate from AVG + BABIP adjustment
+        # This is a proxy - real xBA comes from Statcast
+        estimated_xba = avg + 0.015 if avg else 0  # Slight boost as xBA proxy
+        
+        if estimated_whiff < BADGE_THRESHOLDS["pure_contact_whiff_max"] and estimated_xba > BADGE_THRESHOLDS["pure_contact_xba_min"]:
+            return {
+                **MLBBadge.PURE_CONTACT,
+                "earned": True,
+                "metrics": {
+                    "estimated_whiff_rate": round(estimated_whiff, 3),
+                    "estimated_xba": round(estimated_xba, 3),
+                    "avg": avg,
+                    "k_rate": round(k_rate, 3)
+                }
+            }
+        
+        return None
+    
+    async def evaluate_high_heat_trap(
+        self, 
+        batter_name: str, 
+        pitcher_name: str
+    ) -> Optional[Dict]:
+        """
+        Evaluate High-Heat Trap badge.
+        
+        Criteria: Facing pitcher with 4-seam velocity +1.5mph in 2026
+        """
+        pitcher = await self.master_hub.find_one(
+            {"display_name": {"$regex": f"^{pitcher_name}$", "$options": "i"}, "is_pitcher": True},
+            {"_id": 0}
+        )
+        
+        if not pitcher:
+            return None
+        
+        # Check pitcher's 2025 vs 2026 velocity
+        advanced = pitcher.get("advanced_stats", {})
+        season_stats = advanced.get("season_stats", {})
+        
+        stats_2025 = season_stats.get("2025", {}).get("pitching", {})
+        stats_2026 = season_stats.get("2026", {}).get("pitching", {})
+        
+        # Use K/9 as velocity proxy (higher velo = more Ks typically)
+        k9_2025 = stats_2025.get("k_per_9", 0) or 0
+        k9_2026 = stats_2026.get("k_per_9", 0) or 0
+        
+        # Significant K/9 increase suggests velocity increase
+        # 1.5 K/9 increase ≈ 1.5mph velo increase (rough proxy)
+        k9_increase = k9_2026 - k9_2025
+        
+        if k9_increase > 1.5:
+            return {
+                **MLBBadge.HIGH_HEAT_TRAP,
+                "earned": True,
+                "metrics": {
+                    "pitcher": pitcher_name,
+                    "k9_2025": round(k9_2025, 2),
+                    "k9_2026": round(k9_2026, 2),
+                    "k9_increase": round(k9_increase, 2),
+                    "estimated_velo_increase": f"+{round(k9_increase, 1)}mph"
+                }
+            }
+        
+        return None
+    
+    async def evaluate_workhorse(self, pitcher_name: str, outs_line: float = 17.5) -> Optional[Dict]:
+        """
+        Evaluate Workhorse badge for pitchers.
+        
+        Criteria: Outs line 17.5+ with 80% L10 reaching 6th inning
+        """
+        pitcher = await self.master_hub.find_one(
+            {"display_name": {"$regex": f"^{pitcher_name}$", "$options": "i"}, "is_pitcher": True},
+            {"_id": 0}
+        )
+        
+        if not pitcher:
+            return None
+        
+        game_logs = pitcher.get("bdl_game_logs", [])[:10]  # L10 starts
+        
+        if len(game_logs) < 5:  # Need minimum sample
+            return None
+        
+        # Count games reaching 6th inning (5+ IP = 15+ outs)
+        games_6th_inning = sum(1 for g in game_logs if (g.get("innings_pitched") or 0) >= 5)
+        pct_6th_inning = games_6th_inning / len(game_logs)
+        
+        avg_ip = sum(g.get("innings_pitched", 0) or 0 for g in game_logs) / len(game_logs)
+        avg_outs = avg_ip * 3  # Outs = IP * 3
+        
+        if outs_line >= BADGE_THRESHOLDS["workhorse_outs_min"] and pct_6th_inning >= BADGE_THRESHOLDS["workhorse_6th_inning_pct"]:
+            return {
+                **MLBBadge.WORKHORSE,
+                "earned": True,
+                "metrics": {
+                    "outs_line": outs_line,
+                    "avg_ip_l10": round(avg_ip, 1),
+                    "avg_outs_l10": round(avg_outs, 1),
+                    "pct_6th_inning": round(pct_6th_inning * 100, 1),
+                    "games_analyzed": len(game_logs)
+                }
+            }
+        
+        return None
+    
+    async def evaluate_barrel_master(self, player_name: str) -> Optional[Dict]:
+        """
+        Evaluate Barrel Master badge.
+        
+        Criteria: Barrel % > 15% over last 25 PA
+        """
+        player = await self.master_hub.find_one(
+            {"display_name": {"$regex": f"^{player_name}$", "$options": "i"}, "is_batter": True},
+            {"_id": 0}
+        )
+        
+        if not player:
+            return None
+        
+        game_logs = player.get("bdl_game_logs", [])
+        
+        # Accumulate last 25 PA worth of games
+        total_pa = 0
+        total_xbh = 0  # Extra base hits as barrel proxy
+        total_hrs = 0
+        games_used = 0
+        
+        for game in game_logs:
+            abs = game.get("at_bats", 0) or 0
+            walks = game.get("walks", 0) or 0
+            pa = abs + walks
+            
+            if pa == 0:
+                continue
+            
+            total_pa += pa
+            games_used += 1
+            
+            # XBH as barrel proxy
+            hits = game.get("hits", 0) or 0
+            singles = hits - ((game.get("doubles", 0) or 0) + (game.get("triples", 0) or 0) + (game.get("home_runs", 0) or 0))
+            xbh = hits - singles
+            total_xbh += xbh
+            total_hrs += game.get("home_runs", 0) or 0
+            
+            if total_pa >= 25:
+                break
+        
+        if total_pa < 20:  # Need minimum sample
+            return None
+        
+        # Estimate barrel % from XBH rate
+        # Elite barrel % > 15% ≈ XBH rate > 10%
+        xbh_rate = total_xbh / total_pa if total_pa > 0 else 0
+        estimated_barrel_pct = xbh_rate * 150  # Scale to barrel %
+        
+        if estimated_barrel_pct > BADGE_THRESHOLDS["barrel_master_pct_min"]:
+            return {
+                **MLBBadge.BARREL_MASTER,
+                "earned": True,
+                "metrics": {
+                    "plate_appearances": total_pa,
+                    "xbh": total_xbh,
+                    "home_runs": total_hrs,
+                    "xbh_rate": round(xbh_rate, 3),
+                    "estimated_barrel_pct": round(estimated_barrel_pct, 1),
+                    "games_analyzed": games_used
+                }
+            }
+        
+        return None
+    
+    def evaluate_wind_boost(self, weather: Dict, park: Dict) -> Optional[Dict]:
+        """
+        Evaluate Wind Blowing Out badge.
+        
+        Criteria: Wind > 8mph blowing out (SW to NW)
+        """
+        if not weather or park.get("type") != "outdoor":
+            return None
+        
+        wind_speed = weather.get("windspeed", 0)
+        wind_dir = weather.get("winddirection", 0)
+        
+        # Wind direction 225-315 = SW to NW (blowing out in most parks)
+        dir_min, dir_max = BADGE_THRESHOLDS["wind_out_direction_range"]
+        
+        if wind_speed >= BADGE_THRESHOLDS["wind_out_speed_min"] and dir_min <= wind_dir <= dir_max:
+            return {
+                **MLBBadge.WIND_BOOST,
+                "earned": True,
+                "metrics": {
+                    "wind_speed": wind_speed,
+                    "wind_direction": wind_dir,
+                    "direction_desc": "Blowing Out",
+                    "park": park.get("name")
+                }
+            }
+        
+        return None
+    
+    def evaluate_cold_zone(self, umpire_data: Optional[Dict]) -> Optional[Dict]:
+        """
+        Evaluate Cold Zone badge based on umpire.
+        
+        Criteria: Home plate umpire Strike Zone Ratio > 1.05
+        """
+        if not umpire_data:
+            return None
+        
+        sz_ratio = umpire_data.get("strike_zone_ratio", 1.0)
+        
+        if sz_ratio > BADGE_THRESHOLDS["umpire_cold_zone_ratio"]:
+            return {
+                **MLBBadge.COLD_ZONE,
+                "earned": True,
+                "metrics": {
+                    "umpire": umpire_data.get("name", "Unknown"),
+                    "strike_zone_ratio": sz_ratio,
+                    "tendency": "Pitcher Friendly"
+                }
+            }
+        
+        return None
+    
+    async def evaluate_bvp_dominator(
+        self, 
+        batter_name: str, 
+        pitcher_name: str
+    ) -> Optional[Dict]:
+        """
+        Evaluate BvP Dominator badge.
+        
+        Criteria: Strong historical performance vs pitcher (15+ PA, AVG > .300)
+        """
+        # Check BvP collection if available
+        bvp_collection = self.db.get_collection("mlb_bvp_splits")
+        
+        bvp_data = await bvp_collection.find_one(
+            {
+                "batter_name": {"$regex": f"^{batter_name}$", "$options": "i"},
+                "pitcher_name": {"$regex": f"^{pitcher_name}$", "$options": "i"}
+            },
+            {"_id": 0}
+        ) if bvp_collection else None
+        
+        if bvp_data:
+            pa = bvp_data.get("plate_appearances", 0)
+            avg = bvp_data.get("avg", 0)
+            
+            if pa >= BADGE_THRESHOLDS["bvp_min_pa"] and avg >= BADGE_THRESHOLDS["bvp_good_avg"]:
+                return {
+                    **MLBBadge.BVP_DOMINATOR,
+                    "earned": True,
+                    "metrics": {
+                        "vs_pitcher": pitcher_name,
+                        "plate_appearances": pa,
+                        "avg": avg,
+                        "hits": bvp_data.get("hits", 0),
+                        "home_runs": bvp_data.get("home_runs", 0)
+                    }
+                }
+        
+        return None
+    
+    async def evaluate_split_advantage(
+        self, 
+        batter_name: str, 
+        pitcher_throws: str
+    ) -> Optional[Dict]:
+        """
+        Evaluate Split Advantage badge.
+        
+        Criteria: Favorable handedness matchup
+        """
+        batter = await self.master_hub.find_one(
+            {"display_name": {"$regex": f"^{batter_name}$", "$options": "i"}},
+            {"_id": 0}
+        )
+        
+        if not batter:
+            return None
+        
+        batter_bats = batter.get("bats", "R")  # Default right
+        
+        # Check platoon advantage
+        # LHB vs RHP or RHB vs LHP = advantage
+        has_advantage = (
+            (batter_bats == "L" and pitcher_throws == "R") or
+            (batter_bats == "R" and pitcher_throws == "L")
+        )
+        
+        if has_advantage:
+            return {
+                **MLBBadge.SPLIT_ADVANTAGE,
+                "earned": True,
+                "metrics": {
+                    "batter_bats": batter_bats,
+                    "pitcher_throws": pitcher_throws,
+                    "matchup": f"{batter_bats}HB vs {pitcher_throws}HP"
+                }
+            }
+        
+        return None
+    
+    async def evaluate_all_badges(
+        self,
+        player_name: str,
+        stat_type: str,
+        prop: Dict,
+        weather: Optional[Dict] = None,
+        park: Optional[Dict] = None,
+        opponent_pitcher: Optional[str] = None,
+        umpire_data: Optional[Dict] = None
+    ) -> List[Dict]:
+        """
+        Evaluate all applicable badges for a prop.
+        
+        Returns list of earned badges.
+        """
+        badges = []
+        is_pitcher_prop = "pitcher" in stat_type.lower() or "strikeout" in stat_type.lower() and "batter" not in stat_type.lower()
+        
+        if is_pitcher_prop:
+            # Pitcher badges
+            workhorse = await self.evaluate_workhorse(player_name, prop.get("line", 0))
+            if workhorse:
+                badges.append(workhorse)
+        else:
+            # Batter badges
+            pure_contact = await self.evaluate_pure_contact(player_name)
+            if pure_contact:
+                badges.append(pure_contact)
+            
+            barrel_master = await self.evaluate_barrel_master(player_name)
+            if barrel_master:
+                badges.append(barrel_master)
+            
+            # Opponent-based badges
+            if opponent_pitcher:
+                high_heat = await self.evaluate_high_heat_trap(player_name, opponent_pitcher)
+                if high_heat:
+                    badges.append(high_heat)
+                
+                bvp = await self.evaluate_bvp_dominator(player_name, opponent_pitcher)
+                if bvp:
+                    badges.append(bvp)
+        
+        # Situational badges (apply to all)
+        if weather and park:
+            wind_boost = self.evaluate_wind_boost(weather, park)
+            if wind_boost:
+                badges.append(wind_boost)
+        
+        if umpire_data:
+            cold_zone = self.evaluate_cold_zone(umpire_data)
+            if cold_zone:
+                badges.append(cold_zone)
+        
+        return badges
+
+
+# =============================================================================
+# ORACLE DECISION WEIGHTING
+# =============================================================================
+
+class MLBOracleWeighting:
+    """
+    MLB-specific Oracle decision weighting.
+    
+    Priority:
+    1. BvP (if sample > 15 PA)
+    2. Split Dominance (handedness)
+    3. Standard factors (VK, Market, Scout)
+    """
+    
+    WEIGHTS = {
+        "bvp": 0.35,           # Highest weight if available
+        "split": 0.20,         # Second priority
+        "vk_projection": 0.20,
+        "market_signal": 0.15,
+        "badges": 0.10
+    }
+    
+    @classmethod
+    def calculate_weighted_score(
+        cls,
+        bvp_score: Optional[float],
+        split_score: Optional[float],
+        vk_score: float,
+        market_score: float,
+        badge_boost: float,
+        has_bvp: bool = False
+    ) -> Dict[str, Any]:
+        """
+        Calculate weighted Oracle score with MLB priorities.
+        
+        Args:
+            bvp_score: BvP historical performance score (0-10)
+            split_score: Handedness split score (0-10)
+            vk_score: VK projection score (0-10)
+            market_score: Market signal score (0-10)
+            badge_boost: Badge multiplier (e.g., 1.10 for 10% boost)
+            has_bvp: Whether BvP data is available (15+ PA)
+            
+        Returns:
+            Weighted score and breakdown
+        """
+        if has_bvp and bvp_score is not None:
+            # BvP available - use priority weighting
+            weighted = (
+                bvp_score * cls.WEIGHTS["bvp"] +
+                (split_score or 5) * cls.WEIGHTS["split"] +
+                vk_score * cls.WEIGHTS["vk_projection"] +
+                market_score * cls.WEIGHTS["market_signal"] +
+                5 * cls.WEIGHTS["badges"]  # Badge neutral, boost applied after
+            )
+        else:
+            # No BvP - redistribute weight to splits and VK
+            adjusted_split_weight = cls.WEIGHTS["bvp"] + cls.WEIGHTS["split"]
+            weighted = (
+                (split_score or 5) * adjusted_split_weight +
+                vk_score * (cls.WEIGHTS["vk_projection"] + 0.10) +
+                market_score * cls.WEIGHTS["market_signal"] +
+                5 * cls.WEIGHTS["badges"]
+            )
+        
+        # Apply badge boost
+        final_score = weighted * badge_boost
+        
+        # Clamp to 1-10
+        final_score = max(1, min(10, round(final_score)))
+        
+        return {
+            "final_score": final_score,
+            "base_score": round(weighted, 2),
+            "badge_multiplier": badge_boost,
+            "weights_used": {
+                "bvp": cls.WEIGHTS["bvp"] if has_bvp else 0,
+                "split": cls.WEIGHTS["split"] if has_bvp else cls.WEIGHTS["bvp"] + cls.WEIGHTS["split"],
+                "vk": cls.WEIGHTS["vk_projection"],
+                "market": cls.WEIGHTS["market_signal"],
+                "badges": cls.WEIGHTS["badges"]
+            },
+            "priority": "BvP" if has_bvp else "Split Dominance"
+        }
+
+
+# =============================================================================
+# FRONTEND BADGE ICON MAPPING
+# =============================================================================
+
+FRONTEND_BADGE_ICONS = {
+    "pure_contact": {
+        "icon": "Target",          # Lucide React icon
+        "color": "#22c55e",        # Green
+        "bgColor": "#dcfce7"
+    },
+    "high_heat_trap": {
+        "icon": "Flame",
+        "color": "#ef4444",        # Red
+        "bgColor": "#fee2e2"
+    },
+    "workhorse": {
+        "icon": "Shield",
+        "color": "#3b82f6",        # Blue
+        "bgColor": "#dbeafe"
+    },
+    "barrel_master": {
+        "icon": "Zap",             # Lightning bolt for power
+        "color": "#f97316",        # Orange
+        "bgColor": "#ffedd5"
+    },
+    "wind_boost": {
+        "icon": "Wind",
+        "color": "#06b6d4",        # Cyan
+        "bgColor": "#cffafe"
+    },
+    "cold_zone": {
+        "icon": "Snowflake",
+        "color": "#60a5fa",        # Light blue
+        "bgColor": "#e0f2fe"
+    },
+    "bvp_dominator": {
+        "icon": "Swords",
+        "color": "#a855f7",        # Purple
+        "bgColor": "#f3e8ff"
+    },
+    "split_advantage": {
+        "icon": "BarChart3",
+        "color": "#14b8a6",        # Teal
+        "bgColor": "#ccfbf1"
+    }
+}
+
+
+def get_badge_icon_config(badge_id: str) -> Dict:
+    """Get frontend icon configuration for a badge."""
+    return FRONTEND_BADGE_ICONS.get(badge_id, {
+        "icon": "Badge",
+        "color": "#6b7280",
+        "bgColor": "#f3f4f6"
+    })
+
+
+# Singleton
+_badge_service: Optional[MLBBadgeService] = None
+
+
+def get_mlb_badge_service(db: AsyncIOMotorDatabase) -> MLBBadgeService:
+    """Get or create MLB Badge service instance."""
+    global _badge_service
+    if _badge_service is None:
+        _badge_service = MLBBadgeService(db)
+    return _badge_service
