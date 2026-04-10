@@ -147,35 +147,43 @@ SPORT_API_CONFIG = {
     "mlb": {
         "sport_key": "baseball_mlb",
         "display_name": "MLB",
-        # MLB Markets - Pitcher and Batter props
+        # MLB Markets - Split into primary and secondary for API limits
         "markets": [
-            # Pitcher props
-            "pitcher_strikeouts",
-            "pitcher_strikeouts_alternate",
-            "pitcher_walks",
-            "pitcher_walks_alternate",
-            "pitcher_hits_allowed",
-            "pitcher_hits_allowed_alternate",
-            # Batter props
+            # Core batter props
             "batter_hits",
-            "batter_hits_alternate",
             "batter_total_bases",
-            "batter_total_bases_alternate",
             "batter_rbis",
-            "batter_rbis_alternate",
             "batter_runs_scored",
-            "batter_runs_scored_alternate",
             "batter_stolen_bases",
-            "batter_stolen_bases_alternate",
+            # Combo props (HRR, H+R)
+            "batter_hits_runs_rbis",
+            # Core pitcher props
+            "pitcher_strikeouts",
+            "pitcher_hits_allowed",
+        ],
+        # Secondary markets (fetched in second pass)
+        "markets_secondary": [
+            "batter_home_runs",
+            "batter_walks",
+            "batter_strikeouts",
+            "pitcher_walks",
+            "pitcher_earned_runs",
+            "pitcher_outs",
         ],
         # Map Odds API market names to our stat types
         "stat_type_map": {
-            "pitcher_strikeouts": "Strikeouts",
-            "pitcher_strikeouts_alternate": "Strikeouts",
-            "pitcher_walks": "Walks",
-            "pitcher_walks_alternate": "Walks",
+            # Pitcher stats
+            "pitcher_strikeouts": "Pitcher Strikeouts",
+            "pitcher_strikeouts_alternate": "Pitcher Strikeouts",
+            "pitcher_walks": "Walks Allowed",
+            "pitcher_walks_alternate": "Walks Allowed",
             "pitcher_hits_allowed": "Hits Allowed",
             "pitcher_hits_allowed_alternate": "Hits Allowed",
+            "pitcher_earned_runs": "Earned Runs",
+            "pitcher_earned_runs_alternate": "Earned Runs",
+            "pitcher_outs": "Pitcher Outs",
+            "pitcher_outs_alternate": "Pitcher Outs",
+            # Batter stats
             "batter_hits": "Hits",
             "batter_hits_alternate": "Hits",
             "batter_total_bases": "Total Bases",
@@ -186,6 +194,23 @@ SPORT_API_CONFIG = {
             "batter_runs_scored_alternate": "Runs",
             "batter_stolen_bases": "Stolen Bases",
             "batter_stolen_bases_alternate": "Stolen Bases",
+            "batter_walks": "Batter Walks",
+            "batter_walks_alternate": "Batter Walks",
+            "batter_strikeouts": "Batter Strikeouts",
+            "batter_strikeouts_alternate": "Batter Strikeouts",
+            "batter_home_runs": "Home Runs",
+            "batter_home_runs_alternate": "Home Runs",
+            "batter_singles": "Singles",
+            "batter_singles_alternate": "Singles",
+            "batter_doubles": "Doubles",
+            "batter_doubles_alternate": "Doubles",
+            # Combo stats
+            "batter_hits_runs_rbis": "Hits+Runs+RBIs",
+            "batter_hits_runs_rbis_alternate": "Hits+Runs+RBIs",
+            "batter_total_bases_runs_rbis": "Total Bases+Runs+RBIs",
+            "batter_total_bases_runs_rbis_alternate": "Total Bases+Runs+RBIs",
+            "batter_hits_runs": "Hits+Runs",
+            "batter_hits_runs_alternate": "Hits+Runs",
         }
     }
 }

@@ -47,16 +47,31 @@ SEASON_WEIGHTS = {
 
 # Stat type mapping from Odds API prop names to internal field names
 STAT_FIELD_MAPPING = {
+    # Batter stats
     "Total Bases": "total_bases",
     "Hits": "hits",
     "RBIs": "rbis",
     "Runs": "runs",
     "Stolen Bases": "stolen_bases",
-    "Strikeouts": "pitcher_strikeouts",  # For pitchers
-    "Batter Strikeouts": "strikeouts",   # For batters
+    "Home Runs": "home_runs",
+    "Batter Walks": "walks",
+    "Batter Strikeouts": "strikeouts",
+    "Singles": "singles",
+    "Doubles": "doubles",
+    # Pitcher stats
+    "Pitcher Strikeouts": "pitcher_strikeouts",
+    "Strikeouts": "pitcher_strikeouts",  # Legacy alias
     "Walks Allowed": "pitcher_walks",
     "Hits Allowed": "hits_allowed",
-    "Home Runs": "home_runs",
+    "Earned Runs": "earned_runs",
+    "Pitcher Outs": "pitcher_outs",
+}
+
+# Combo stats (sum of components)
+COMBO_STAT_MAPPING = {
+    "Hits+Runs+RBIs": ["hits", "runs", "rbis"],
+    "Hits+Runs": ["hits", "runs"],
+    "Total Bases+Runs+RBIs": ["total_bases", "runs", "rbis"],
 }
 
 # MLB Park Factors (2026 estimates - higher = more hitter-friendly)
@@ -272,7 +287,11 @@ class MLBVKRegressionModel:
         if not game_logs:
             return {"valid": False, "error": "No game logs"}
         
-        # Get stat field name
+        # Check if this is a combo stat
+        is_combo = stat_type in COMBO_STAT_MAPPING
+        combo_fields = COMBO_STAT_MAPPING.get(stat_type, [])
+        
+        # Get stat field name for single stats
         stat_field = STAT_FIELD_MAPPING.get(stat_type, stat_type.lower().replace(" ", "_"))
         
         # Extract values with recency weights
@@ -288,9 +307,30 @@ class MLBVKRegressionModel:
         )
         
         for i, log in enumerate(sorted_logs):
-            value = log.get(stat_field)
-            if value is None:
-                continue
+            # Get value - either single stat or combo
+            if is_combo:
+                # Sum component fields
+                combo_value = 0
+                valid = True
+                for field in combo_fields:
+                    val = log.get(field)
+                    if val is not None:
+                        try:
+                            combo_value += float(val)
+                        except (ValueError, TypeError):
+                            valid = False
+                            break
+                    else:
+                        valid = False
+                        break
+                
+                if not valid:
+                    continue
+                value = combo_value
+            else:
+                value = log.get(stat_field)
+                if value is None:
+                    continue
             
             try:
                 value = float(value)

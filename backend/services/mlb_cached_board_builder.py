@@ -36,10 +36,28 @@ MLB_STAT_MAPPING = {
     "RBIs": "rbis",
     "Runs": "runs",
     "Stolen Bases": "stolen_bases",
+    "Home Runs": "home_runs",
+    "Batter Walks": "walks",
+    "Batter Strikeouts": "strikeouts",
+    "Singles": "singles",
+    "Doubles": "doubles",
     # Pitcher stats
-    "Strikeouts": "pitcher_strikeouts",
-    "Walks": "pitcher_walks",
+    "Pitcher Strikeouts": "pitcher_strikeouts",
+    "Walks Allowed": "pitcher_walks",
     "Hits Allowed": "hits_allowed",
+    "Earned Runs": "earned_runs",
+    "Pitcher Outs": "pitcher_outs",
+    # Combo stats (calculated from components)
+    "Hits+Runs+RBIs": ["hits", "runs", "rbis"],  # HRR combo
+    "Hits+Runs": ["hits", "runs"],
+    "Total Bases+Runs+RBIs": ["total_bases", "runs", "rbis"],
+}
+
+# Stats that need to be calculated as sum of components
+COMBO_STATS = {
+    "Hits+Runs+RBIs": ["hits", "runs", "rbis"],
+    "Hits+Runs": ["hits", "runs"],
+    "Total Bases+Runs+RBIs": ["total_bases", "runs", "rbis"],
 }
 
 # Minimum games for reliable CV calculation
@@ -145,18 +163,53 @@ class MLBCachedBoardBuilder:
         """
         Extract stat values from game logs.
         
+        Handles both single stats and combo stats (Hits+Runs+RBIs, etc.)
+        
         Args:
             game_logs: List of game log dictionaries
-            stat_type: Prop stat type (e.g., "Hits", "Strikeouts")
+            stat_type: Prop stat type (e.g., "Hits", "Hits+Runs+RBIs")
             limit: Number of recent games to include
             
         Returns:
             Tuple of (values list, field name used)
         """
-        field_name = MLB_STAT_MAPPING.get(stat_type)
-        if not field_name:
+        # Check if this is a combo stat
+        if stat_type in COMBO_STATS:
+            component_fields = COMBO_STATS[stat_type]
+            values = []
+            
+            for log in game_logs[:limit]:
+                combo_value = 0
+                valid = True
+                
+                for field in component_fields:
+                    val = log.get(field)
+                    if val is not None:
+                        try:
+                            combo_value += float(val)
+                        except (ValueError, TypeError):
+                            valid = False
+                            break
+                    else:
+                        valid = False
+                        break
+                
+                if valid:
+                    values.append(combo_value)
+            
+            return values, "+".join(component_fields)
+        
+        # Single stat
+        field_mapping = MLB_STAT_MAPPING.get(stat_type)
+        if not field_mapping:
             logger.warning(f"[MLB_BOARD] Unknown stat type: {stat_type}")
             return [], stat_type.lower()
+        
+        # Handle if mapping is a list (shouldn't happen for non-combo, but be safe)
+        if isinstance(field_mapping, list):
+            field_name = field_mapping[0]
+        else:
+            field_name = field_mapping
         
         values = []
         for log in game_logs[:limit]:
