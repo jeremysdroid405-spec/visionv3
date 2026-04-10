@@ -1158,21 +1158,28 @@ async def get_mlb_player_props(
         
         player["props"] = list(prop_map.values())
     
-    # Fetch game logs from mlb_historical_logs
-    historical_logs = _db["mlb_historical_logs"]
-    player_logs = await historical_logs.find_one(
-        {"player_name": {"$regex": f"^{player_name}$", "$options": "i"}},
-        {"_id": 0, "game_logs": 1}
+    # SSOT: Fetch game logs from mlb_master_hub_2026.bdl_game_logs
+    # This ensures consistency between pick cards and player detail views
+    master_hub = _db["mlb_master_hub_2026"]
+    player_hub = await master_hub.find_one(
+        {"display_name": {"$regex": f"^{player_name}$", "$options": "i"}},
+        {"_id": 0, "bdl_game_logs": 1}
     )
     
+    # Fallback: Try partial match if exact match fails
+    if not player_hub:
+        player_hub = await master_hub.find_one(
+            {"display_name": {"$regex": player_name, "$options": "i"}},
+            {"_id": 0, "bdl_game_logs": 1}
+        )
+    
     game_logs = []
-    if player_logs and player_logs.get("game_logs"):
-        # Sort by game_id descending (most recent first) - game_id is reliable
-        # Fall back to date if game_id not available
-        raw_logs = player_logs["game_logs"]
+    if player_hub and player_hub.get("bdl_game_logs"):
+        # Sort by date descending (most recent first)
+        raw_logs = player_hub["bdl_game_logs"]
         sorted_logs = sorted(
             raw_logs, 
-            key=lambda x: (x.get("game_id") or 0, x.get("date") or ""), 
+            key=lambda x: (x.get("date") or "", x.get("game_id") or 0), 
             reverse=True
         )
         
@@ -1181,7 +1188,7 @@ async def get_mlb_player_props(
             game_log = {
                 "date": game.get("date"),
                 "game_id": game.get("game_id"),  # Include for debugging
-                "opponent": game.get("opponent_abbr") or game.get("team_name", "")[:3].upper(),
+                "opponent": game.get("opponent_abbr") or game.get("opponent") or game.get("team_name", "")[:3].upper(),
                 "pts": game.get("hits", 0),  # For chart compatibility
                 "hits": game.get("hits", 0),
                 "rbi": game.get("rbis", 0),  # Frontend uses 'rbi'
@@ -1192,6 +1199,10 @@ async def get_mlb_player_props(
                 "home_runs": game.get("home_runs", 0),
                 "walks": game.get("walks", 0),
                 "strikeouts": game.get("strikeouts", 0),
+                # Additional batter stats
+                "doubles": game.get("doubles", 0),
+                "singles": game.get("singles", 0),
+                "triples": game.get("triples", 0),
                 # Pitcher stats
                 "innings_pitched": game.get("innings_pitched"),
                 "pitcher_strikeouts": game.get("pitcher_strikeouts"),
@@ -1204,7 +1215,7 @@ async def get_mlb_player_props(
     player["game_logs"] = game_logs
     
     # MLB stat type to game log field mapping
-    # Note: historical logs use 'rbis' (plural from BDL API)
+    # SSOT: mlb_master_hub_2026.bdl_game_logs uses 'rbis' (plural from BDL API)
     STAT_FIELD_MAP = {
         "Hits": "hits",
         "Total Bases": "total_bases",
@@ -1214,6 +1225,9 @@ async def get_mlb_player_props(
         "Home Runs": "home_runs",
         "Walks": "walks",
         "Strikeouts": "strikeouts",
+        "Doubles": "doubles",
+        "Singles": "singles",
+        "Triples": "triples",
         "Hits+Runs+RBIs": None,  # Combo stat
         # Pitcher stats
         "Pitcher Strikeouts": "pitcher_strikeouts",
@@ -1224,46 +1238,74 @@ async def get_mlb_player_props(
     }
     
     def calculate_hit_rate(games, stat_field, line, is_combo=False):
-        """Calculate hit rate for L5 and L10 - how often player goes OVER the line"""
+        """Calculate hit rate for L5 and L10 - how often player goes OVER the line
+        
+        SSOT: Skips games with None/missing values (consistent with cached board builder)
+        """
         if not games:
             return 0
         
         hits = 0
+        valid_games = 0
         for game in games:
             if is_combo:
-                # Hits + Runs + RBIs combo
-                value = (game.get("hits", 0) or 0) + (game.get("runs", 0) or 0) + (game.get("rbis", 0) or 0)
+                # Hits + Runs + RBIs combo - all components must exist
+                h = game.get("hits")
+                r = game.get("runs")
+                rbi = game.get("rbis")
+                if h is None or r is None or rbi is None:
+                    continue  # Skip games with missing combo components
+                value = (h or 0) + (r or 0) + (rbi or 0)
             elif stat_field == "innings_pitched":
                 # Convert IP to outs (IP * 3)
-                ip = game.get(stat_field, 0) or 0
+                ip = game.get(stat_field)
+                if ip is None:
+                    continue  # Skip games with missing data
                 value = ip * 3 if ip else 0
             else:
-                value = game.get(stat_field, 0) or 0
+                value = game.get(stat_field)
+                if value is None:
+                    continue  # Skip games with missing data
             
-            # For "Over" props, player needs to EXCEED the line (>= for .5 lines means > line)
+            valid_games += 1
+            # For "Over" props, player needs to meet or exceed the line
             if value >= line:
                 hits += 1
         
-        return round((hits / len(games)) * 100) if games else 0
+        return round((hits / valid_games) * 100, 1) if valid_games else 0
     
     def calculate_avg(games, stat_field, is_combo=False):
-        """Calculate average for L5 and L10"""
+        """Calculate average for L5 and L10
+        
+        SSOT: Skips games with None/missing values (consistent with cached board builder)
+        """
         if not games:
             return None
         
         total = 0
+        valid_games = 0
         for game in games:
             if is_combo:
-                value = (game.get("hits", 0) or 0) + (game.get("runs", 0) or 0) + (game.get("rbis", 0) or 0)
+                h = game.get("hits")
+                r = game.get("runs")
+                rbi = game.get("rbis")
+                if h is None or r is None or rbi is None:
+                    continue
+                value = (h or 0) + (r or 0) + (rbi or 0)
             elif stat_field == "innings_pitched":
-                # Convert IP to outs
-                ip = game.get(stat_field, 0) or 0
+                ip = game.get(stat_field)
+                if ip is None:
+                    continue
                 value = ip * 3 if ip else 0
             else:
-                value = game.get(stat_field, 0) or 0
+                value = game.get(stat_field)
+                if value is None:
+                    continue
+            
+            valid_games += 1
             total += value
         
-        return round(total / len(games), 1) if games else None
+        return round(total / valid_games, 1) if valid_games else None
     
     if player.get("props"):
         for prop in player["props"]:

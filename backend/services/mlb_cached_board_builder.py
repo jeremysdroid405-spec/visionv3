@@ -93,12 +93,16 @@ def calculate_hit_rate(values: List[float], line: float) -> Optional[float]:
     """
     Calculate hit rate (% of games over the line).
     
+    SSOT: Uses >= for "over" evaluation (consistent with player detail endpoint).
+    For a 1.5 line, getting 2 hits = HIT. Getting 1 hit = MISS.
+    
     Returns percentage (0-100).
     """
     if len(values) < MIN_GAMES_FOR_HIT_RATE:
         return None
     
-    hits = sum(1 for v in values if v > line)
+    # SSOT: >= for "over" evaluation (value meets or exceeds line = HIT)
+    hits = sum(1 for v in values if v >= line)
     rate = (hits / len(values)) * 100
     
     return round(rate, 1)
@@ -236,11 +240,13 @@ class MLBCachedBoardBuilder:
         - cv: Coefficient of Variation
         - hit_rate_l10: % of L10 games over the line
         - hit_rate_l5: % of L5 games over the line
+        
+        SSOT: Uses mlb_master_hub_2026.bdl_game_logs as the single source of truth.
         """
         stat_type = prop.get("stat_type", "")
         line = prop.get("line", 0)
         
-        # Get game logs
+        # SSOT: mlb_master_hub_2026.bdl_game_logs
         game_logs = player.get("bdl_game_logs", [])
         
         # Extract stat values

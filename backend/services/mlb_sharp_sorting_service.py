@@ -42,18 +42,27 @@ class MLBSharpSortingService:
     # =========================================================================
     
     async def _load_player_logs_cache(self):
-        """Load all player historical logs into cache for fast lookup."""
+        """Load all player game logs from mlb_master_hub_2026 into cache for fast lookup.
+        
+        SSOT: Uses mlb_master_hub_2026.bdl_game_logs as the single source of truth.
+        This ensures consistency between pick cards, player detail views, and hit rate calculations.
+        """
         if self._player_logs_cache:
             return  # Already loaded
         
         try:
-            logs_coll = self.db["mlb_historical_logs"]
-            all_logs = await logs_coll.find({}, {"_id": 0}).to_list(length=None)
-            for log_doc in all_logs:
-                player_name = log_doc.get("player_name", "").lower().strip()
+            # SSOT: mlb_master_hub_2026.bdl_game_logs
+            master_hub = self.db["mlb_master_hub_2026"]
+            all_players = await master_hub.find(
+                {"bdl_game_logs": {"$exists": True, "$ne": []}},
+                {"_id": 0, "display_name": 1, "bdl_game_logs": 1}
+            ).to_list(length=None)
+            
+            for player_doc in all_players:
+                player_name = player_doc.get("display_name", "").lower().strip()
                 if player_name:
-                    self._player_logs_cache[player_name] = log_doc.get("game_logs", [])
-            logger.info(f"[SHARP_SORT] Loaded historical logs for {len(self._player_logs_cache)} MLB players")
+                    self._player_logs_cache[player_name] = player_doc.get("bdl_game_logs", [])
+            logger.info(f"[SHARP_SORT] Loaded game logs from mlb_master_hub_2026 for {len(self._player_logs_cache)} MLB players")
         except Exception as e:
             logger.warning(f"[SHARP_SORT] Failed to load player logs cache: {e}")
     
