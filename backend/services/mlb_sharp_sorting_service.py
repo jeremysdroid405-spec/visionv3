@@ -31,6 +31,127 @@ from config.db_config import get_collection_name
 
 logger = logging.getLogger(__name__)
 
+# =============================================================================
+# MLB BALLPARK FACTORS - For War Zone Post-Filters
+# =============================================================================
+# Park Factor > 1.05 = Hitter's Haven (boosts offense)
+# Park Factor < 0.95 = Pitcher's Park (suppresses offense)
+
+HITTERS_HAVEN_PARKS = {
+    "Coors Field": {"team": "COL", "factor": 1.28, "priority": 1},
+    "Great American Ball Park": {"team": "CIN", "factor": 1.12, "priority": 2},
+    "Fenway Park": {"team": "BOS", "factor": 1.08, "priority": 3},
+    "Globe Life Field": {"team": "TEX", "factor": 1.07, "priority": 4},
+    "Citizens Bank Park": {"team": "PHI", "factor": 1.06, "priority": 5},
+    "Yankee Stadium": {"team": "NYY", "factor": 1.05, "priority": 6},
+}
+
+PITCHERS_PARKS = {
+    "Oracle Park": {"team": "SF", "factor": 0.88},
+    "Petco Park": {"team": "SD", "factor": 0.90},
+    "T-Mobile Park": {"team": "SEA", "factor": 0.91},
+    "Dodger Stadium": {"team": "LAD", "factor": 0.93},
+    "Oakland Coliseum": {"team": "OAK", "factor": 0.93},
+    "Tropicana Field": {"team": "TB", "factor": 0.94},
+}
+
+# Team abbreviation to park name mapping
+TEAM_TO_PARK = {
+    "COL": "Coors Field",
+    "CIN": "Great American Ball Park",
+    "BOS": "Fenway Park",
+    "TEX": "Globe Life Field",
+    "PHI": "Citizens Bank Park",
+    "NYY": "Yankee Stadium",
+    "SF": "Oracle Park",
+    "SD": "Petco Park",
+    "SEA": "T-Mobile Park",
+    "LAD": "Dodger Stadium",
+    "OAK": "Oakland Coliseum",
+    "TB": "Tropicana Field",
+}
+
+# =============================================================================
+# MLB BADGE THRESHOLDS - For Vision Intel Evaluation
+# =============================================================================
+
+MLB_BADGE_THRESHOLDS = {
+    "barrel_master": {
+        "barrel_pct_min": 15.0,  # Barrel % > 15% over L25 PA
+        "hard_hit_pct_min": 40.0,  # Hard hit rate > 40%
+    },
+    "whiff_wizard": {
+        "k_pct_min": 28.0,  # K% > 28%
+        "swstr_pct_min": 12.0,  # Swinging strike % > 12%
+    },
+    "pure_contact": {
+        "whiff_rate_max": 15.0,  # Whiff Rate < 15%
+        "xba_min": 0.290,  # xBA > .290
+    },
+    "workhorse": {
+        "deep_game_pct": 80.0,  # 80% of L10 reaching 6th inning
+        "min_innings_avg": 5.5,
+    },
+}
+
+# =============================================================================
+# VOLATILITY INDEX SCORING
+# =============================================================================
+# Scale 1-10 where 10 = Extreme Volatility
+# War Zone requires score > 8 for qualification
+
+def calculate_volatility_index(cv: float, hit_rate: float, ceiling_stats: Dict) -> int:
+    """
+    Calculate Volatility Index (1-10) for War Zone qualification.
+    
+    Factors:
+    - CV (Coefficient of Variation) - higher = more volatile
+    - Hit Rate Variance - lower/inconsistent = more volatile  
+    - Ceiling vs Floor spread - wider = more volatile
+    
+    Returns:
+        int: Volatility index 1-10 (>8 = extreme, qualifies for War Zone)
+    """
+    score = 0
+    
+    # CV Score (0-4 points)
+    if cv is not None:
+        if cv > 1.2:
+            score += 4
+        elif cv > 1.0:
+            score += 3
+        elif cv > 0.8:
+            score += 2
+        elif cv > 0.6:
+            score += 1
+    
+    # Hit Rate Variance Score (0-3 points)
+    # Lower hit rates = more volatile
+    if hit_rate is not None:
+        if hit_rate < 30:
+            score += 3
+        elif hit_rate < 50:
+            score += 2
+        elif hit_rate < 70:
+            score += 1
+    
+    # Ceiling/Floor Spread Score (0-3 points)
+    if ceiling_stats:
+        max_val = ceiling_stats.get("max_value", 0) or 0
+        values = ceiling_stats.get("values", [])
+        if values:
+            min_val = min(values) if values else 0
+            spread = max_val - min_val
+            if spread >= 5:
+                score += 3
+            elif spread >= 3:
+                score += 2
+            elif spread >= 2:
+                score += 1
+    
+    return min(10, max(1, score))
+
+
 # MLB DK Odds threshold for Safe Haven
 MLB_DK_SAFE_HAVEN_MAX = -240
 
@@ -1282,6 +1403,50 @@ class MLBSharpSortingService:
                         if gate_results.get("gate2_volatility", {}).get("fast_tracked"):
                             prop["volatility_fast_tracked"] = True
                         
+                        # Calculate Volatility Index (1-10)
+                        volatility_index = calculate_volatility_index(
+                            cv, 
+                            hit_rates.get("h10_rate"), 
+                            ceiling_stats
+                        )
+                        prop["volatility_index"] = volatility_index
+                        
+                        # Add badges for War Zone
+                        prop["badges"] = []
+                        
+                        # Volatility Extreme badge (index > 8)
+                        if volatility_index >= 8:
+                            prop["badges"].append({
+                                "id": "volatility_extreme",
+                                "name": "Extreme Volatility",
+                                "earned": True,
+                                "metrics": {
+                                    "volatility_index": volatility_index,
+                                    "cv": cv
+                                }
+                            })
+                        
+                        # Check for hitter's haven (park factor boost)
+                        team = prop.get("team") or ""
+                        if team in TEAM_TO_PARK:
+                            park_name = TEAM_TO_PARK[team]
+                            if park_name in HITTERS_HAVEN_PARKS:
+                                park_info = HITTERS_HAVEN_PARKS[park_name]
+                                prop["park_factor"] = park_info["factor"]
+                                prop["hitters_haven"] = True
+                                prop["badges"].append({
+                                    "id": "hitters_haven",
+                                    "name": "Hitter's Haven",
+                                    "earned": True,
+                                    "metrics": {
+                                        "park_name": park_name,
+                                        "park_factor": park_info["factor"],
+                                        "priority": park_info["priority"]
+                                    }
+                                })
+                                # Boost max upside for hitter's parks
+                                prop["max_upside_pct"] = round(max_upside * park_info["factor"], 1)
+                        
                         if "war_zone" not in results:
                             results["war_zone"] = []
                         results["war_zone"].append(prop)
@@ -1326,8 +1491,15 @@ class MLBSharpSortingService:
                 results["front_lines"] = deduped_front_lines[:20]  # Top 20
             
             # Sort War Zone by Max Upside % (descending) - Top 15
+            # Priority: Hitter's Haven picks first, then by max upside
             if "war_zone" in results and results["war_zone"]:
-                results["war_zone"].sort(key=lambda x: x.get("max_upside_pct") or 0, reverse=True)
+                results["war_zone"].sort(
+                    key=lambda x: (
+                        x.get("hitters_haven", False),  # Hitter's haven first
+                        x.get("max_upside_pct") or 0    # Then by max upside
+                    ), 
+                    reverse=True
+                )
                 # Dedupe: keep best moonshot per player
                 seen_players = set()
                 deduped_war_zone = []

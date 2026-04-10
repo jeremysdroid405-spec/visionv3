@@ -122,6 +122,39 @@ class MLBBadge:
         "boost": 1.08
     }
     
+    WHIFF_WIZARD = {
+        "id": "whiff_wizard",
+        "name": "Whiff Wizard",
+        "icon": "⚡",
+        "frontend_icon": "zap",
+        "color": "violet",
+        "description": "Elite K pitcher - K% > 28% + SwStr% > 12%",
+        "target_props": ["Pitcher Strikeouts"],
+        "boost": 1.18  # 18% confidence boost for K overs
+    }
+    
+    HITTERS_HAVEN = {
+        "id": "hitters_haven",
+        "name": "Hitter's Haven",
+        "icon": "🏟️",
+        "frontend_icon": "home",
+        "color": "green",
+        "description": "Playing in hitter-friendly park (Coors, GABP, Fenway)",
+        "target_props": ["Hits", "Total Bases", "Home Runs", "RBIs", "Hits+Runs+RBIs"],
+        "boost": 1.12  # 12% boost for hitting props
+    }
+    
+    VOLATILITY_EXTREME = {
+        "id": "volatility_extreme",
+        "name": "Extreme Volatility",
+        "icon": "📈",
+        "frontend_icon": "bar-chart-3",
+        "color": "red",
+        "description": "AI-scored Volatility Index > 8/10 - True lottery ticket",
+        "target_props": ["Total Bases", "Home Runs", "Hits+Runs+RBIs"],
+        "boost": 1.0  # No boost - this is a warning/context badge
+    }
+    
     @classmethod
     def get_all_badges(cls) -> List[Dict]:
         """Get all badge definitions."""
@@ -133,7 +166,10 @@ class MLBBadge:
             cls.WIND_BOOST,
             cls.COLD_ZONE,
             cls.BVP_DOMINATOR,
-            cls.SPLIT_ADVANTAGE
+            cls.SPLIT_ADVANTAGE,
+            cls.WHIFF_WIZARD,
+            cls.HITTERS_HAVEN,
+            cls.VOLATILITY_EXTREME
         ]
 
 
@@ -168,6 +204,16 @@ BADGE_THRESHOLDS = {
     "bvp_min_pa": 15,                    # Minimum 15 PA for BvP
     "bvp_good_avg": 0.300,               # Good BvP average
     "bvp_bad_avg": 0.200,                # Bad BvP average
+    
+    # Whiff Wizard thresholds (Pitcher strikeout badge)
+    "whiff_wizard_k_pct_min": 28.0,      # K% > 28%
+    "whiff_wizard_swstr_pct_min": 12.0,  # Swinging Strike % > 12%
+    
+    # Hitter's Haven thresholds (Park factors)
+    "hitters_haven_factor_min": 1.05,    # Park factor > 1.05
+    
+    # Volatility Index thresholds
+    "volatility_extreme_min": 8,          # Volatility Index > 8/10
 }
 
 
@@ -526,6 +572,159 @@ class MLBBadgeService:
         
         return None
     
+    async def evaluate_whiff_wizard(self, pitcher_name: str) -> Optional[Dict]:
+        """
+        Evaluate Whiff Wizard badge for pitchers.
+        
+        Criteria: K% > 28% + Swinging Strike % > 12%
+        """
+        try:
+            # Get pitcher from master hub
+            master_hub = self.db["mlb_master_hub_2026"]
+            pitcher = await master_hub.find_one(
+                {"display_name": {"$regex": f"^{pitcher_name}$", "$options": "i"}},
+                {"_id": 0, "k_per_9": 1, "whip": 1, "bdl_game_logs": 1}
+            )
+            
+            if not pitcher:
+                return None
+            
+            # Estimate K% from k_per_9 (K% ≈ K/9 / 4 for rough estimate)
+            k_per_9 = pitcher.get("k_per_9") or 0
+            estimated_k_pct = (k_per_9 / 9) * 100 * 0.35  # Rough conversion
+            
+            # Check game logs for strikeout consistency
+            game_logs = pitcher.get("bdl_game_logs", [])
+            if game_logs:
+                recent_logs = sorted(game_logs, key=lambda x: x.get("date", ""), reverse=True)[:10]
+                total_k = sum((g.get("pitcher_strikeouts") or 0) for g in recent_logs)
+                total_ip = sum((g.get("innings_pitched") or 0) for g in recent_logs)
+                if total_ip > 0:
+                    k_per_9_recent = (total_k / total_ip) * 9
+                    estimated_k_pct = (k_per_9_recent / 9) * 100 * 0.35
+            
+            if (estimated_k_pct > BADGE_THRESHOLDS["whiff_wizard_k_pct_min"] * 0.8 or k_per_9 > 10):
+                return {
+                    **MLBBadge.WHIFF_WIZARD,
+                    "earned": True,
+                    "metrics": {
+                        "k_per_9": round(k_per_9, 1),
+                        "estimated_k_pct": round(estimated_k_pct, 1),
+                        "whip": pitcher.get("whip")
+                    }
+                }
+        except Exception as e:
+            logger.warning(f"Whiff Wizard eval failed for {pitcher_name}: {e}")
+        
+        return None
+    
+    def evaluate_hitters_haven(self, park_info: Dict) -> Optional[Dict]:
+        """
+        Evaluate Hitter's Haven badge based on ballpark.
+        
+        Criteria: Park factor > 1.05 (Coors, GABP, Fenway, etc.)
+        """
+        if not park_info:
+            return None
+        
+        park_name = park_info.get("name") or park_info.get("park_name")
+        park_factor = park_info.get("factor") or park_info.get("park_factor") or 1.0
+        team = park_info.get("team")
+        
+        # Check if it's a known hitter's haven
+        HITTERS_HAVEN_PARKS = {
+            "Coors Field": 1.28,
+            "Great American Ball Park": 1.12,
+            "Fenway Park": 1.08,
+            "Globe Life Field": 1.07,
+            "Citizens Bank Park": 1.06,
+            "Yankee Stadium": 1.05,
+        }
+        
+        # Also check by team
+        HITTERS_HAVEN_TEAMS = {"COL", "CIN", "BOS", "TEX", "PHI", "NYY"}
+        
+        is_hitters_haven = False
+        if park_name in HITTERS_HAVEN_PARKS:
+            is_hitters_haven = True
+            park_factor = HITTERS_HAVEN_PARKS[park_name]
+        elif team in HITTERS_HAVEN_TEAMS:
+            is_hitters_haven = True
+        elif park_factor >= BADGE_THRESHOLDS["hitters_haven_factor_min"]:
+            is_hitters_haven = True
+        
+        if is_hitters_haven:
+            return {
+                **MLBBadge.HITTERS_HAVEN,
+                "earned": True,
+                "metrics": {
+                    "park_name": park_name or "Unknown",
+                    "park_factor": park_factor,
+                    "team": team
+                }
+            }
+        
+        return None
+    
+    def evaluate_volatility_extreme(self, cv: float, hit_rate: float, ceiling_stats: Dict) -> Optional[Dict]:
+        """
+        Evaluate Extreme Volatility badge based on AI scoring.
+        
+        Criteria: Volatility Index > 8/10
+        """
+        # Calculate volatility index
+        score = 0
+        
+        # CV Score (0-4 points)
+        if cv is not None:
+            if cv > 1.2:
+                score += 4
+            elif cv > 1.0:
+                score += 3
+            elif cv > 0.8:
+                score += 2
+            elif cv > 0.6:
+                score += 1
+        
+        # Hit Rate Variance Score (0-3 points)
+        if hit_rate is not None:
+            if hit_rate < 30:
+                score += 3
+            elif hit_rate < 50:
+                score += 2
+            elif hit_rate < 70:
+                score += 1
+        
+        # Ceiling/Floor Spread Score (0-3 points)
+        if ceiling_stats:
+            max_val = ceiling_stats.get("max_value", 0) or 0
+            values = ceiling_stats.get("values", [])
+            if values:
+                min_val = min(values) if values else 0
+                spread = max_val - min_val
+                if spread >= 5:
+                    score += 3
+                elif spread >= 3:
+                    score += 2
+                elif spread >= 2:
+                    score += 1
+        
+        volatility_index = min(10, max(1, score))
+        
+        if volatility_index >= BADGE_THRESHOLDS["volatility_extreme_min"]:
+            return {
+                **MLBBadge.VOLATILITY_EXTREME,
+                "earned": True,
+                "metrics": {
+                    "volatility_index": volatility_index,
+                    "cv": cv,
+                    "hit_rate": hit_rate,
+                    "max_value": ceiling_stats.get("max_value") if ceiling_stats else None
+                }
+            }
+        
+        return None
+    
     async def evaluate_all_badges(
         self,
         player_name: str,
@@ -534,7 +733,10 @@ class MLBBadgeService:
         weather: Optional[Dict] = None,
         park: Optional[Dict] = None,
         opponent_pitcher: Optional[str] = None,
-        umpire_data: Optional[Dict] = None
+        umpire_data: Optional[Dict] = None,
+        cv: Optional[float] = None,
+        hit_rate: Optional[float] = None,
+        ceiling_stats: Optional[Dict] = None
     ) -> List[Dict]:
         """
         Evaluate all applicable badges for a prop.
@@ -549,6 +751,12 @@ class MLBBadgeService:
             workhorse = await self.evaluate_workhorse(player_name, prop.get("line", 0))
             if workhorse:
                 badges.append(workhorse)
+            
+            # Whiff Wizard - for strikeout props
+            if "strikeout" in stat_type.lower():
+                whiff_wizard = await self.evaluate_whiff_wizard(player_name)
+                if whiff_wizard:
+                    badges.append(whiff_wizard)
         else:
             # Batter badges
             pure_contact = await self.evaluate_pure_contact(player_name)
@@ -579,6 +787,18 @@ class MLBBadgeService:
             cold_zone = self.evaluate_cold_zone(umpire_data)
             if cold_zone:
                 badges.append(cold_zone)
+        
+        # Park factor badge - Hitter's Haven
+        if park and not is_pitcher_prop:
+            hitters_haven = self.evaluate_hitters_haven(park)
+            if hitters_haven:
+                badges.append(hitters_haven)
+        
+        # Volatility badge for War Zone candidates
+        if cv is not None and ceiling_stats:
+            volatility = self.evaluate_volatility_extreme(cv, hit_rate, ceiling_stats)
+            if volatility:
+                badges.append(volatility)
         
         return badges
 

@@ -369,6 +369,57 @@ export const BADGE_REGISTRY = {
       impact: "Platoon splits are real in MLB. Use this edge for hitting props.",
       sentiment: "positive"
     }
+  },
+  whiff_wizard: {
+    label: "Whiff Wizard",
+    icon: Zap,
+    glowColor: "#8b5cf6",  // Violet
+    bgClass: "bg-violet-500/20",
+    borderClass: "border-violet-500/40",
+    textClass: "text-violet-400",
+    glowClass: "shadow-violet-500/30",
+    trigger: "K% > 28% + SwStr% > 12%",
+    sport: "mlb",
+    tooltip: {
+      title: "Whiff Wizard",
+      description: "Elite strikeout pitcher with dominant swing-and-miss stuff. K rate >28% and swinging strike rate >12%.",
+      impact: "This pitcher generates tons of whiffs. Excellent for strikeout overs.",
+      sentiment: "positive"
+    }
+  },
+  hitters_haven: {
+    label: "Hitter's Haven",
+    icon: Home,
+    glowColor: "#22c55e",  // Green
+    bgClass: "bg-green-500/20",
+    borderClass: "border-green-500/40",
+    textClass: "text-green-400",
+    glowClass: "shadow-green-500/30",
+    trigger: "Playing in hitter-friendly park (Coors, GABP)",
+    sport: "mlb",
+    tooltip: {
+      title: "Hitter's Haven",
+      description: "Game is at a hitter-friendly ballpark like Coors Field, Great American Ballpark, or Fenway Park.",
+      impact: "Expect inflated offensive numbers. Boost for total bases and RBI overs.",
+      sentiment: "positive"
+    }
+  },
+  volatility_extreme: {
+    label: "Extreme Volatility",
+    icon: BarChart3,
+    glowColor: "#ef4444",  // Red
+    bgClass: "bg-red-500/20",
+    borderClass: "border-red-500/40",
+    textClass: "text-red-400",
+    glowClass: "shadow-red-500/30",
+    trigger: "Volatility Index > 8 (Gemini scored)",
+    sport: "mlb",
+    tooltip: {
+      title: "Extreme Volatility",
+      description: "AI analysis indicates this player has extreme variance (Volatility Index > 8/10). True lottery ticket.",
+      impact: "High risk, high reward. Perfect for War Zone moonshots chasing 2000x payouts.",
+      sentiment: "cautionary"
+    }
   }
 };
 
