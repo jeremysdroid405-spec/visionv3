@@ -1556,6 +1556,78 @@ async def get_mlb_war_zone_picks(
     }
 
 
+@router.get("/v3/mlb/ferrari/hrr-picks")
+async def get_mlb_hrr_picks(
+    response: Response,
+    limit: int = Query(20, ge=1, le=100),
+    min_edge: float = Query(50.0, description="Minimum edge percentage"),
+    min_hit_rate: float = Query(0.5, description="Minimum L10 hit rate")
+):
+    """
+    Get MLB Hits+Runs+RBIs (HRR) combo picks.
+    
+    HRR props have inherently lower R² due to variance in combo stats.
+    Uses adjusted criteria: High edge + High hit rate.
+    
+    **Adjusted Criteria for Combo Stats:**
+    - Edge > 50% (combo lines are often set conservatively)
+    - L10 Hit Rate > 50%
+    - Sorted by balanced score (edge * hit_rate)
+    
+    **Returns:** HRR picks sorted by value score
+    """
+    from config.db_config import get_collection_name
+    
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    
+    if _db is None:
+        raise HTTPException(status_code=500, detail="Database not initialized")
+    
+    # Query HRR props from war_zone (they end up there due to low R²)
+    collection = _db[get_collection_name("war_zone", "mlb")]
+    
+    # Find HRR props with edge and hit rate filters
+    query = {
+        "stat_type": "Hits+Runs+RBIs",
+        "edge_pct": {"$gte": min_edge},
+        "hit_rate_l10": {"$gte": min_hit_rate}
+    }
+    
+    picks = await collection.find(query, {"_id": 0}).to_list(length=None)
+    
+    # Calculate value score and sort
+    for pick in picks:
+        edge = abs(pick.get("edge_pct", 0))
+        hr = pick.get("hit_rate_l10", 0) or 0
+        # Score: edge weighted by hit rate
+        pick["value_score"] = round(edge * hr, 1)
+    
+    # Sort by value_score descending
+    picks.sort(key=lambda x: x.get("value_score", 0), reverse=True)
+    
+    # Deduplicate (same player can appear twice for OVER/UNDER)
+    seen = set()
+    unique_picks = []
+    for p in picks:
+        key = f"{p.get('player_name')}|{p.get('line')}|{p.get('direction')}"
+        if key not in seen:
+            seen.add(key)
+            unique_picks.append(p)
+    
+    return {
+        "success": True,
+        "stat_type": "Hits+Runs+RBIs",
+        "sport": "mlb",
+        "picks": unique_picks[:limit],
+        "count": len(unique_picks[:limit]),
+        "total_available": len(unique_picks),
+        "filters": {
+            "min_edge": min_edge,
+            "min_hit_rate": min_hit_rate
+        }
+    }
+
+
 # =============================================================================
 # MLB HEADSHOT SYNC ENDPOINTS
 # =============================================================================
