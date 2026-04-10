@@ -1593,45 +1593,50 @@ const Dashboard = () => {
               />
             </>
           )}
-            
-            {/* Safe Haven */}
-            <SafeHavenSection picks={vaultPicks} onPickClick={handleVaultClick} onQuickAdd={handleQuickAdd} isLoading={safeHavenLoading} />
-            
-            {/* Shield Parlays */}
-            <ParlaySection 
-              picks={vaultPicks} 
-              onParlayClick={handleParlayClick} 
-              sectionName="safe_haven"
-              title="THE SHIELD"
-              subtitle="Safe Haven parlay combinations"
-              badgeColor="green"
-            />
-            
-            {/* Front Lines */}
-            <FrontLinesSection picks={frontLinesPicks} onPickClick={handleRadarClick} onQuickAdd={handleQuickAdd} isLoading={frontLinesLoading} />
-            
-            {/* Strike Parlays */}
-            <ParlaySection 
-              picks={frontLinesPicks} 
-              onParlayClick={handleParlayClick} 
-              sectionName="front_lines"
-              title="THE STRIKE"
-              subtitle="Front Lines parlay combinations"
-              badgeColor="amber"
-            />
-            
-            {/* War Zone */}
-            <WarZoneSection picks={radarPicks} onPickClick={handleRadarClick} onQuickAdd={handleQuickAdd} isLoading={warZoneLoading} />
-            
-            {/* Gauntlet Parlays */}
-            <ParlaySection 
-              picks={radarPicks} 
-              onParlayClick={handleParlayClick} 
-              sectionName="war_zone"
-              title="THE GAUNTLET"
-              subtitle="War Zone parlay combinations"
-              badgeColor="red"
-            />
+          
+          {/* NBA-SPECIFIC SECTIONS */}
+          {currentSport === 'nba' && (
+            <>
+              {/* Safe Haven */}
+              <SafeHavenSection picks={vaultPicks} onPickClick={handleVaultClick} onQuickAdd={handleQuickAdd} isLoading={safeHavenLoading} />
+              
+              {/* Shield Parlays */}
+              <ParlaySection 
+                picks={vaultPicks} 
+                onParlayClick={handleParlayClick} 
+                sectionName="safe_haven"
+                title="THE SHIELD"
+                subtitle="Safe Haven parlay combinations"
+                badgeColor="green"
+              />
+              
+              {/* Front Lines */}
+              <FrontLinesSection picks={frontLinesPicks} onPickClick={handleRadarClick} onQuickAdd={handleQuickAdd} isLoading={frontLinesLoading} />
+              
+              {/* Strike Parlays */}
+              <ParlaySection 
+                picks={frontLinesPicks} 
+                onParlayClick={handleParlayClick} 
+                sectionName="front_lines"
+                title="THE STRIKE"
+                subtitle="Front Lines parlay combinations"
+                badgeColor="amber"
+              />
+              
+              {/* War Zone */}
+              <WarZoneSection picks={radarPicks} onPickClick={handleRadarClick} onQuickAdd={handleQuickAdd} isLoading={warZoneLoading} />
+              
+              {/* Gauntlet Parlays */}
+              <ParlaySection 
+                picks={radarPicks} 
+                onParlayClick={handleParlayClick} 
+                sectionName="war_zone"
+                title="THE GAUNTLET"
+                subtitle="War Zone parlay combinations"
+                badgeColor="red"
+              />
+            </>
+          )}
           </>
       </div>
       

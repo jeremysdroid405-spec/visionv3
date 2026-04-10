@@ -208,9 +208,29 @@ class MLBSharpSortingService:
         hit_rate = vk_projection.get("hit_rate_l10") if vk_projection else prop.get("hit_rate_l10")
         
         # =================================================================
-        # GOBLIN CHECK: Sharp money + VK alignment
+        # GOBLIN CHECK: PP odds-based (negative odds = favorable)
+        # Since Pinnacle doesn't offer MLB props, use PP classification
         # =================================================================
-        # Realistic threshold: -150 or better (covers -214, -189, -166, etc.)
+        # Check the is_goblin flag (set during sync based on PP odds < 0)
+        if prop.get("is_goblin"):
+            return "GOBLIN"
+        
+        # Alternative: Check PP odds directly
+        pp_odds = prop.get("pp_odds")
+        if pp_odds is not None and pp_odds < 0:
+            # Favorable PP odds = Goblin
+            # Also require some VK confirmation if available
+            vk_confirms = True
+            if projected_value and line:
+                if direction == "OVER" and projected_value <= line:
+                    vk_confirms = False
+                elif direction == "UNDER" and projected_value >= line:
+                    vk_confirms = False
+            
+            if vk_confirms:
+                return "GOBLIN"
+        
+        # Sharp odds classification (if Pinnacle data available - usually not for MLB)
         if sharp_odds is not None and sharp_odds <= -150:
             vk_confirms = False
             if direction == "OVER" and projected_value and projected_value > line:
@@ -221,28 +241,16 @@ class MLBSharpSortingService:
             if vk_confirms:
                 return "GOBLIN"
         
-        # Alternative Goblin: Sharp fair value > 58% with strong edge
-        if sharp_odds is not None:
-            fair_value = self.calculate_fair_value(sharp_odds)
-            if fair_value > 0.58 and edge_pct and abs(edge_pct) > 15:
-                return "GOBLIN"
-        
         # =================================================================
-        # DEMON CHECK: DK/PP line discrepancy with edge support
+        # DEMON CHECK: PP odds >= +100 or significant line discrepancy
         # =================================================================
-        dk_line = prop.get("dk_line")
-        pp_line = line
+        # Check the is_demon flag (set during sync based on PP odds >= +100)
+        if prop.get("is_demon"):
+            return "DEMON"
         
-        if dk_line is not None and pp_line is not None:
-            line_diff = abs(dk_line - pp_line)
-            # Significant line discrepancy (0.5+ is meaningful in baseball)
-            if line_diff >= 0.5:
-                # Check if we have edge support
-                if edge_pct and abs(edge_pct) > 20:
-                    return "DEMON"
-                # Check if hit rate is high despite variance
-                if hit_rate and hit_rate > 0.6:
-                    return "DEMON"
+        # Alternative: Check PP odds directly
+        if pp_odds is not None and pp_odds >= 100:
+            return "DEMON"
         
         # =================================================================
         # STANDARD CHECK: Books agree on the line
