@@ -2139,3 +2139,157 @@ async def get_oracle_verdict(
         },
         "oracle": verdict
     }
+
+
+# =============================================================================
+# MLB FOUR-GATE SYSTEM ENDPOINTS
+# =============================================================================
+
+@router.post("/v3/mlb/four-gate/analyze")
+async def analyze_four_gate_system(
+    tier: str = Query("safe_haven", description="Tier to analyze (safe_haven, front_lines, war_zone)"),
+    limit: int = Query(10, description="Max props to analyze")
+):
+    """
+    Run MLB props through the 4-Gate System.
+    
+    **THE 4 GATES:**
+    
+    | Gate | Name | Source |
+    |------|------|--------|
+    | 1 | The Math | VK Linear Regression (5-Year History) |
+    | 2 | The Market | Sharp Book (Pinnacle) + DK Alt Lines |
+    | 3 | The Scout | Vision Intel (Weather, Park Factor, Statcast) |
+    | 4 | The Brain | Oracle Adversarial Verdict (Bull vs Bear) |
+    
+    **TRAP DETECTOR:**
+    - Weather: Wind > 15mph + HR prop = TRAP
+    - Park: HR Factor < 0.85 = TRAP
+    - Statcast: Cold batter (L5 AVG < .150) = TRAP
+    - Pitcher: Velocity drop > 2mph = TRAP
+    
+    **VERDICTS:**
+    - ELITE_PLAY: All 4 gates passed
+    - SOLID_PLAY: 3 gates passed
+    - LEAN: 2 gates passed
+    - TRAP: Trap detected
+    - AVOID: Failed gates
+    """
+    from services.mlb_four_gate_system import get_four_gate_service
+    
+    if _db is None:
+        raise HTTPException(status_code=500, detail="Database not initialized")
+    
+    service = get_four_gate_service(_db)
+    results = await service.analyze_tier_props(tier=tier, limit=limit)
+    
+    return results
+
+
+@router.get("/v3/mlb/four-gate/prop/{player_name}/{stat_type}")
+async def analyze_single_prop_four_gate(
+    player_name: str,
+    stat_type: str
+):
+    """
+    Analyze a single prop through all 4 gates.
+    
+    Returns detailed gate-by-gate analysis including:
+    - Gate 1 (Math): VK projection, edge, R-squared
+    - Gate 2 (Market): PP/DK/Sharp lines and edges
+    - Gate 3 (Scout): Weather, park factor, Statcast data, TRAPS
+    - Gate 4 (Brain): Oracle score and reasoning
+    """
+    from services.mlb_four_gate_system import get_four_gate_service
+    from urllib.parse import unquote
+    
+    if _db is None:
+        raise HTTPException(status_code=500, detail="Database not initialized")
+    
+    player_name = unquote(player_name)
+    stat_type = unquote(stat_type)
+    
+    # Find prop in cached board
+    cached_board = _db["mlb_cached_board"]
+    player_doc = await cached_board.find_one(
+        {"player_name": {"$regex": f"^{player_name}$", "$options": "i"}},
+        {"_id": 0}
+    )
+    
+    if not player_doc:
+        raise HTTPException(status_code=404, detail=f"Player {player_name} not found")
+    
+    # Find specific prop
+    prop = None
+    for p in player_doc.get("props", []):
+        if p.get("stat_type", "").lower() == stat_type.lower():
+            prop = p
+            break
+    
+    if not prop:
+        raise HTTPException(status_code=404, detail=f"Stat type {stat_type} not found for {player_name}")
+    
+    # Add team info
+    prop["team"] = player_doc.get("team")
+    prop["home_team"] = prop.get("home_team") or player_doc.get("team")
+    
+    service = get_four_gate_service(_db)
+    result = await service.analyze_prop(prop)
+    
+    return result
+
+
+@router.get("/v3/mlb/park-factors")
+async def get_park_factors():
+    """
+    Get all MLB park factors.
+    
+    Park Factor > 1.0 = Hitter friendly
+    Park Factor < 1.0 = Pitcher friendly
+    
+    Includes HR factor, altitude, and venue type.
+    """
+    from services.mlb_four_gate_system import PARK_FACTORS
+    
+    parks = []
+    for team, data in sorted(PARK_FACTORS.items(), key=lambda x: -x[1]["factor"]):
+        parks.append({
+            "team": team,
+            **data
+        })
+    
+    return {
+        "success": True,
+        "count": len(parks),
+        "parks": parks
+    }
+
+
+@router.get("/v3/mlb/weather/{team}")
+async def get_venue_weather(team: str):
+    """
+    Get current weather at an MLB venue.
+    
+    Uses Open-Meteo API (free, no key required).
+    Returns temperature, wind speed/direction.
+    """
+    from services.mlb_four_gate_system import get_four_gate_service
+    
+    if _db is None:
+        raise HTTPException(status_code=500, detail="Database not initialized")
+    
+    service = get_four_gate_service(_db)
+    team = team.upper()
+    
+    park = service.get_park_factor(team)
+    weather = await service.get_weather(team)
+    
+    return {
+        "success": True,
+        "team": team,
+        "venue": park.get("name"),
+        "venue_type": park.get("type"),
+        "park_factor": park.get("factor"),
+        "hr_factor": park.get("hr_factor"),
+        "weather": weather
+    }
