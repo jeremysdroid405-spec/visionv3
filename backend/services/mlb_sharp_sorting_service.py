@@ -35,6 +35,130 @@ class MLBSharpSortingService:
     
     def __init__(self, db: AsyncIOMotorDatabase):
         self.db = db
+        self._player_logs_cache = {}  # Cache for player historical logs
+    
+    # =========================================================================
+    # MLB HIT RATE CALCULATION FROM GAME LOGS
+    # =========================================================================
+    
+    async def _load_player_logs_cache(self):
+        """Load all player historical logs into cache for fast lookup."""
+        if self._player_logs_cache:
+            return  # Already loaded
+        
+        try:
+            logs_coll = self.db["mlb_historical_logs"]
+            all_logs = await logs_coll.find({}, {"_id": 0}).to_list(length=None)
+            for log_doc in all_logs:
+                player_name = log_doc.get("player_name", "").lower().strip()
+                if player_name:
+                    self._player_logs_cache[player_name] = log_doc.get("game_logs", [])
+            logger.info(f"[SHARP_SORT] Loaded historical logs for {len(self._player_logs_cache)} MLB players")
+        except Exception as e:
+            logger.warning(f"[SHARP_SORT] Failed to load player logs cache: {e}")
+    
+    def calculate_mlb_hit_rates(self, player_name: str, stat_type: str, line: float) -> Dict[str, Any]:
+        """
+        Calculate L5/L10 hit rates from MLB historical game logs.
+        
+        Args:
+            player_name: Player name to look up
+            stat_type: MLB stat type (e.g., "Hits", "Total Bases", "RBIs", etc.)
+            line: The prop line to compare against
+            
+        Returns:
+            Dict with h5_rate, h10_rate, l5_avg, l10_avg, season_avg
+        """
+        default_result = {
+            "h5_rate": None,
+            "h10_rate": None,
+            "l5_avg": None,
+            "l10_avg": None,
+            "season_avg": None
+        }
+        
+        if not player_name or not line:
+            return default_result
+        
+        # Look up player logs
+        player_key = player_name.lower().strip()
+        game_logs = self._player_logs_cache.get(player_key, [])
+        
+        if not game_logs:
+            return default_result
+        
+        # Map stat type to game log field
+        stat_map = {
+            "hits": "hits",
+            "total bases": "total_bases",
+            "rbis": "rbis",
+            "runs": "runs",
+            "home runs": "home_runs",
+            "stolen bases": "stolen_bases",
+            "walks": "walks",
+            "strikeouts": "strikeouts",
+            "hits+runs+rbis": ["hits", "runs", "rbis"],  # Combo stat
+            "pitcher strikeouts": "pitcher_strikeouts",
+            "pitching outs": "innings_pitched",  # IP * 3
+            "earned runs": "earned_runs",
+            "hits allowed": "hits_allowed",
+            "walks allowed": "pitcher_walks",
+        }
+        
+        stat_key = stat_type.lower().strip()
+        log_field = stat_map.get(stat_key, stat_key.replace(" ", "_"))
+        
+        # Sort logs by date descending
+        try:
+            sorted_logs = sorted(
+                game_logs, 
+                key=lambda x: x.get("date", "") or "", 
+                reverse=True
+            )
+        except Exception:
+            sorted_logs = game_logs
+        
+        def get_stat_value(game, field):
+            """Extract stat value from game log, handling combo stats."""
+            if isinstance(field, list):
+                # Combo stat - sum the fields
+                return sum(game.get(f, 0) or 0 for f in field)
+            else:
+                val = game.get(field, 0)
+                # Special handling for pitching outs (IP * 3)
+                if field == "innings_pitched" and val:
+                    return round(val * 3)
+                return val or 0
+        
+        def calc_stats(game_list):
+            """Calculate avg and hit rate for a set of games."""
+            if not game_list:
+                return 0, 0
+            
+            values = []
+            hits = 0
+            for g in game_list:
+                val = get_stat_value(g, log_field)
+                values.append(val)
+                if line and val >= line:  # >= for "over" comparison
+                    hits += 1
+            
+            avg = sum(values) / len(values) if values else 0
+            hit_rate = (hits / len(values) * 100) if values else 0
+            return avg, hit_rate
+        
+        # Calculate L5, L10, and season stats
+        l5_avg, h5_rate = calc_stats(sorted_logs[:5])
+        l10_avg, h10_rate = calc_stats(sorted_logs[:10])
+        season_avg, _ = calc_stats(sorted_logs)
+        
+        return {
+            "h5_rate": round(h5_rate) if h5_rate else None,
+            "h10_rate": round(h10_rate) if h10_rate else None,
+            "l5_avg": round(l5_avg, 1) if l5_avg else None,
+            "l10_avg": round(l10_avg, 1) if l10_avg else None,
+            "season_avg": round(season_avg, 1) if season_avg else None
+        }
     
     # =========================================================================
     # PINNACLE DE-VIG CALCULATIONS
@@ -204,8 +328,7 @@ class MLBSharpSortingService:
         direction = prop.get("recommendation", "OVER")
         line = prop.get("line", 0)
         projected_value = vk_projection.get("projected_value") if vk_projection else prop.get("projected_value")
-        edge_pct = vk_projection.get("edge_pct") if vk_projection else prop.get("edge_pct")
-        hit_rate = vk_projection.get("hit_rate_l10") if vk_projection else prop.get("hit_rate_l10")
+        # Note: edge_pct and hit_rate available in vk_projection but not used in current classification logic
         
         # =================================================================
         # GOBLIN CHECK: PP odds-based (negative odds = favorable)
@@ -361,8 +484,12 @@ class MLBSharpSortingService:
             
             logger.info(f"[SHARP_SORT] Loaded {len(vk_lookup)} VK projections for matching")
             
+            # Load player historical logs cache for hit rate calculation
+            await self._load_player_logs_cache()
+            
             # Process each prop
             fair_values = []
+            hit_rates_calculated = 0
             
             for prop in props:
                 all_odds = prop.get("all_odds", {})
@@ -390,8 +517,38 @@ class MLBSharpSortingService:
                 prop["r_squared"] = vk_projection.get("r_squared")
                 prop["slope"] = vk_projection.get("slope")
                 prop["edge_pct"] = vk_projection.get("edge_pct")
-                prop["hit_rate_l10"] = vk_projection.get("hit_rate_l10")
-                prop["l10_avg"] = vk_projection.get("l10_avg")
+                
+                # Calculate hit rates from historical game logs
+                hit_rates = self.calculate_mlb_hit_rates(
+                    prop.get("player_name"),
+                    prop.get("stat_type"),
+                    prop.get("line")
+                )
+                
+                # Apply calculated hit rates (prioritize fresh calculation over VK data)
+                if hit_rates.get("h5_rate") is not None:
+                    prop["h5_rate"] = hit_rates["h5_rate"]
+                    hit_rates_calculated += 1
+                if hit_rates.get("h10_rate") is not None:
+                    prop["h10_rate"] = hit_rates["h10_rate"]
+                    prop["hit_rate_l10"] = hit_rates["h10_rate"] / 100  # Also keep decimal version
+                else:
+                    # Fallback to VK data if no logs
+                    prop["hit_rate_l10"] = vk_projection.get("hit_rate_l10")
+                    # Convert to percentage for h10_rate
+                    if prop["hit_rate_l10"] is not None:
+                        prop["h10_rate"] = round(prop["hit_rate_l10"] * 100) if prop["hit_rate_l10"] <= 1 else prop["hit_rate_l10"]
+                
+                # Apply averages from game logs
+                if hit_rates.get("l10_avg") is not None:
+                    prop["l10_avg"] = hit_rates["l10_avg"]
+                else:
+                    prop["l10_avg"] = vk_projection.get("l10_avg")
+                
+                if hit_rates.get("season_avg") is not None:
+                    prop["season_avg"] = hit_rates["season_avg"]
+                elif prop.get("l10_avg"):
+                    prop["season_avg"] = prop["l10_avg"]  # Use L10 as fallback
                 
                 # Analyze DK vs PP
                 dk_analysis = self.analyze_dk_vs_pp(
@@ -441,6 +598,7 @@ class MLBSharpSortingService:
             
             logger.info("[SHARP_SORT] Sharp Sorting Complete:")
             logger.info(f"  • Props Processed: {results['props_processed']}")
+            logger.info(f"  • Hit Rates Calculated: {hit_rates_calculated}")
             logger.info(f"  • Sharp Goblins: {len(results['goblins'])}")
             logger.info(f"  • Demons: {len(results['demons'])}")
             logger.info(f"  • Standard: {len(results['standard'])}")

@@ -1559,11 +1559,13 @@ const Dashboard = () => {
       <div className="p-3 space-y-4">
         {/* Main Picks Content */}
         <>
-          {/* Live Injury Advantage (Usage Vacuum) - FIRST */}
-          <LiveInjuryAdvantageSection 
-            alerts={vacuumAlerts} 
-            isLoading={vacuumAlertsLoading} 
-          />
+          {/* Live Injury Advantage (Usage Vacuum) - NBA ONLY */}
+          {currentSport === 'nba' && (
+            <LiveInjuryAdvantageSection 
+              alerts={vacuumAlerts} 
+              isLoading={vacuumAlertsLoading} 
+            />
+          )}
           
           {/* MLB-SPECIFIC SECTIONS */}
           {currentSport === 'mlb' && (

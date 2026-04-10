@@ -60,6 +60,55 @@ def get_vegas_killer():
     return _vegas_killer_model
 
 
+def normalize_mlb_pick_for_ui(pick: dict) -> dict:
+    """
+    Normalize MLB pick fields to match the UI expected format.
+    
+    MLB data uses:
+    - hit_rate_l10 -> maps to h10_rate
+    - l10_avg -> maps to season_avg
+    
+    The UI (UniversalPlayerCard) expects:
+    - h5_rate, h10_rate, season_avg
+    """
+    if not pick:
+        return pick
+    
+    normalized = dict(pick)
+    
+    # Map MLB hit rate fields to UI expected format
+    # h10_rate = hit_rate_l10 (already a percentage like 0.7 = 70%)
+    if 'hit_rate_l10' in normalized and normalized.get('h10_rate') is None:
+        hit_rate = normalized['hit_rate_l10']
+        # Convert decimal (0.7) to percentage (70) if needed
+        if hit_rate is not None and hit_rate <= 1:
+            normalized['h10_rate'] = round(hit_rate * 100)
+        else:
+            normalized['h10_rate'] = hit_rate
+    
+    # Map l10_avg to season_avg for display purposes
+    if 'l10_avg' in normalized and normalized.get('season_avg') is None:
+        normalized['season_avg'] = normalized['l10_avg']
+    
+    # Also map projected_value as season_avg fallback
+    if normalized.get('season_avg') is None and 'projected_value' in normalized:
+        normalized['season_avg'] = normalized['projected_value']
+    
+    # Map edge_pct if available (as additional context)
+    if 'edge_pct' in normalized and normalized.get('vk_edge') is None:
+        normalized['vk_edge'] = normalized['edge_pct']
+    
+    # Ensure sport is set
+    normalized['sport'] = 'mlb'
+    
+    return normalized
+
+
+def normalize_mlb_picks_batch(picks: list) -> list:
+    """Normalize a batch of MLB picks for UI display."""
+    return [normalize_mlb_pick_for_ui(p) for p in picks]
+
+
 def enrich_picks_with_vk(picks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """Enrich picks with Vegas Killer ML predictions."""
     vk_model = get_vegas_killer()
@@ -1755,7 +1804,7 @@ async def get_mlb_hrr_picks(
         "success": True,
         "stat_type": "Hits+Runs+RBIs",
         "sport": "mlb",
-        "picks": unique_picks[:limit],
+        "picks": normalize_mlb_picks_batch(unique_picks[:limit]),
         "count": len(unique_picks[:limit]),
         "total_available": len(unique_picks),
         "filters": {
@@ -1859,12 +1908,15 @@ async def get_mlb_goblins(
     collection = _db["mlb_goblins"]
     picks = await collection.find({}, {"_id": 0}).limit(limit).to_list(length=limit)
     
+    # Normalize MLB pick fields for UI compatibility
+    normalized_picks = normalize_mlb_picks_batch(picks)
+    
     return {
         "success": True,
         "tier": "GOBLINS",
         "description": "Sharp odds ≤ -240 AND VK confirms",
-        "picks": picks,
-        "count": len(picks)
+        "picks": normalized_picks,
+        "count": len(normalized_picks)
     }
 
 
@@ -1888,12 +1940,15 @@ async def get_mlb_demons(
     collection = _db["mlb_demons"]
     picks = await collection.find({}, {"_id": 0}).limit(limit).to_list(length=limit)
     
+    # Normalize MLB pick fields for UI compatibility
+    normalized_picks = normalize_mlb_picks_batch(picks)
+    
     return {
         "success": True,
         "tier": "DEMONS",
         "description": "DK mispricing + VK slope confirms",
-        "picks": picks,
-        "count": len(picks)
+        "picks": normalized_picks,
+        "count": len(normalized_picks)
     }
 
 
@@ -1917,12 +1972,15 @@ async def get_mlb_standard(
     collection = _db["mlb_standard"]
     picks = await collection.find({}, {"_id": 0}).limit(limit).to_list(length=limit)
     
+    # Normalize MLB pick fields for UI compatibility
+    normalized_picks = normalize_mlb_picks_batch(picks)
+    
     return {
         "success": True,
         "tier": "STANDARD",
         "description": "Books agree (-110 to -130)",
-        "picks": picks,
-        "count": len(picks)
+        "picks": normalized_picks,
+        "count": len(normalized_picks)
     }
 
 
