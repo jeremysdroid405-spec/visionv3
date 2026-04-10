@@ -2571,3 +2571,70 @@ async def get_oracle_weights():
             {"priority": 5, "source": "Badge Boost", "condition": "Multiplier", "weight": "varies"}
         ]
     }
+
+
+
+# =============================================================================
+# MLB PROPVISION FERRARI PIPELINE
+# =============================================================================
+
+@router.post("/v3/mlb/ferrari-pipeline")
+async def run_mlb_ferrari_pipeline_endpoint(
+    save_to_db: bool = Query(True, description="Save results to collections"),
+):
+    """
+    Execute the full MLB PropVision Ferrari Pipeline.
+    
+    Phases:
+    1. Quantitative Sorting Gates
+    2. Vision Intel Scout Badges  
+    3. Gemini Oracle Summarizer
+    4. Save to Ferrari Collections
+    
+    Returns:
+        Complete pipeline results with all tiers
+    """
+    if _db is None:
+        raise HTTPException(status_code=500, detail="Database not initialized")
+    
+    try:
+        from services.mlb_ferrari_pipeline import run_mlb_ferrari_pipeline
+        
+        result = await run_mlb_ferrari_pipeline(_db, save_to_db)
+        
+        return result
+        
+    except Exception as e:
+        logger.error(f"[FERRARI_PIPELINE] Error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/v3/mlb/ferrari-pipeline/top-hrr")
+async def get_top_hrr_safe_haven_endpoint(
+    limit: int = Query(3, description="Number of props to return", ge=1, le=10),
+):
+    """
+    Get top Safe Haven HRR (Hits+Runs+RBIs) props.
+    
+    Returns:
+        Top HRR props from Safe Haven tier with Oracle summaries
+    """
+    if _db is None:
+        raise HTTPException(status_code=500, detail="Database not initialized")
+    
+    try:
+        from services.mlb_ferrari_pipeline import get_top_safe_haven_hrr
+        
+        props = await get_top_safe_haven_hrr(_db, limit)
+        
+        return {
+            "success": True,
+            "count": len(props),
+            "tier": "safe_haven",
+            "stat_filter": "HRR",
+            "props": props
+        }
+        
+    except Exception as e:
+        logger.error(f"[FERRARI_PIPELINE] Error getting HRR props: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
