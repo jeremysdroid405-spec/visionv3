@@ -1130,24 +1130,6 @@ async def get_mlb_player_props(
     
     player["game_logs"] = game_logs
     
-    # Get goblins/demons for this player
-    goblins_coll = _db["mlb_goblins"]
-    demons_coll = _db["mlb_demons"]
-    
-    player_goblins = await goblins_coll.find(
-        {"player_name": {"$regex": f"^{player_name}$", "$options": "i"}},
-        {"_id": 0}
-    ).to_list(length=100)
-    
-    player_demons = await demons_coll.find(
-        {"player_name": {"$regex": f"^{player_name}$", "$options": "i"}},
-        {"_id": 0}
-    ).to_list(length=100)
-    
-    # Create lookup maps with full data
-    goblin_map = {f"{g['stat_type']}|{g['line']}": g for g in player_goblins}
-    demon_map = {f"{d['stat_type']}|{d['line']}": d for d in player_demons}
-    
     # MLB stat type to game log field mapping
     STAT_FIELD_MAP = {
         "Hits": "hits",
@@ -1198,7 +1180,6 @@ async def get_mlb_player_props(
         for prop in player["props"]:
             stat_type = prop.get("stat_type", "")
             line = prop.get("line", 0)
-            prop_key = f"{stat_type}|{line}"
             
             # Add stat_type_extracted for frontend
             prop["stat_type_extracted"] = stat_type
@@ -1211,21 +1192,10 @@ async def get_mlb_player_props(
             if not prop.get("market"):
                 prop["market"] = prop.get("market_key") or stat_type
             
-            # Check if goblin/demon and merge data
-            prop["is_goblin"] = prop_key in goblin_map
-            prop["is_demon"] = prop_key in demon_map
-            
-            # Merge enrichment data from goblins/demons
-            if prop_key in goblin_map:
-                goblin_data = goblin_map[prop_key]
-                prop["edge_pct"] = goblin_data.get("edge_pct")
-                prop["projected_value"] = goblin_data.get("projected_value")
-                prop["hit_rate_l10"] = goblin_data.get("hit_rate_l10")
-            elif prop_key in demon_map:
-                demon_data = demon_map[prop_key]
-                prop["edge_pct"] = demon_data.get("edge_pct")
-                prop["projected_value"] = demon_data.get("projected_value")
-                prop["hit_rate_l10"] = demon_data.get("hit_rate_l10")
+            # is_goblin and is_demon should already be set from PrizePicks data
+            # Ensure they're boolean, not None
+            prop["is_goblin"] = bool(prop.get("is_goblin", False))
+            prop["is_demon"] = bool(prop.get("is_demon", False))
             
             # Calculate L5/L10 hit rates and averages from game logs
             stat_field = STAT_FIELD_MAP.get(stat_type)

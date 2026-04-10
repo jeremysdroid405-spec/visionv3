@@ -426,6 +426,10 @@ class UniversalOddsSyncService:
                     outcome_name = outcome.get("name", "").lower()
                     recommendation = "OVER" if "over" in outcome_name else "UNDER"
                     
+                    # Capture PrizePicks goblin/demon flags
+                    is_goblin = outcome.get("goblin", False) or outcome.get("is_goblin", False)
+                    is_demon = outcome.get("demon", False) or outcome.get("is_demon", False)
+                    
                     # Create group key (unique per player/stat/recommendation)
                     group_key = f"{player_name}|{stat_type}|{recommendation}"
                     
@@ -444,11 +448,20 @@ class UniversalOddsSyncService:
                             "odds": {},   # bookmaker -> odds
                             "sharp_line": None,
                             "dfs_line": None,
+                            "is_goblin": False,
+                            "is_demon": False,
                         }
                     
                     # Store line by bookmaker
                     prop_groups[group_key]["lines"][bm_key] = float(line)
                     prop_groups[group_key]["odds"][bm_key] = outcome.get("price", -110)
+                    
+                    # Update goblin/demon flags if from PrizePicks
+                    if bm_key == "prizepicks":
+                        if is_goblin:
+                            prop_groups[group_key]["is_goblin"] = True
+                        if is_demon:
+                            prop_groups[group_key]["is_demon"] = True
                     
                     # Track sharp line
                     if is_sharp and prop_groups[group_key]["sharp_line"] is None:
@@ -515,6 +528,9 @@ class UniversalOddsSyncService:
                 "dk_edge": dk_edge,
                 "dfs_line": group_data.get("dfs_line"),
                 "dfs_book": group_data.get("dfs_book"),
+                # PrizePicks goblin/demon flags
+                "is_goblin": group_data.get("is_goblin", False),
+                "is_demon": group_data.get("is_demon", False),
                 # Metadata
                 "sport": sport,
                 "fetched_at": datetime.now(timezone.utc).isoformat(),
