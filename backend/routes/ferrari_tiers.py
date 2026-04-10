@@ -711,3 +711,153 @@ async def get_live_props(
         "count": len(props),
         "available_stat_types": stat_types
     }
+
+
+
+@router.post("/v3/bdl/sync")
+async def sync_bdl_universal(
+    sport: str = Query("nba", description="Sport to sync (nba or mlb)"),
+    include_players: bool = Query(True, description="Sync player roster"),
+    include_stats: bool = Query(True, description="Sync game logs/stats")
+):
+    """
+    BDL Universal Sync - Fetch stats from BallDontLie v1 API.
+    
+    **Endpoints:**
+    - NBA: https://api.balldontlie.io/nba/v1/stats
+    - MLB: https://api.balldontlie.io/mlb/v1/stats
+    
+    **STRICT cursor-based pagination** using next_cursor from meta object.
+    
+    Saves to sport-specific master_hub collection:
+    - NBA: nba_master_hub_2026
+    - MLB: mlb_master_hub_2026
+    
+    Returns sync summary with player count, game logs count, and errors.
+    """
+    from config.db_config import validate_sport
+    from services.bdl_universal_sync import run_bdl_universal_sync
+    
+    if _db is None:
+        raise HTTPException(status_code=500, detail="Database not initialized")
+    
+    # Validate sport parameter
+    try:
+        sport = validate_sport(sport)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    
+    # Run the sync
+    result = await run_bdl_universal_sync(
+        _db,
+        sport=sport,
+        include_players=include_players,
+        include_stats=include_stats
+    )
+    
+    return result
+
+
+@router.get("/v3/bdl/players")
+async def get_bdl_players(
+    response: Response,
+    sport: str = Query("nba", description="Sport to query (nba or mlb)"),
+    limit: int = Query(50, ge=1, le=500),
+    team: str = Query(None, description="Filter by team abbreviation")
+):
+    """
+    Get players from sport-specific master_hub collection.
+    
+    Returns player profiles synced from BDL.
+    """
+    from config.db_config import get_collection_name, validate_sport
+    
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    
+    if _db is None:
+        raise HTTPException(status_code=500, detail="Database not initialized")
+    
+    # Validate sport parameter
+    try:
+        sport = validate_sport(sport)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    
+    # Get sport-specific collection
+    collection_name = get_collection_name("master_hub", sport)
+    collection = _db[collection_name]
+    
+    # Build query
+    query = {"bdl_id": {"$exists": True}}
+    if team:
+        query["team_abbr"] = team.upper()
+    
+    # Fetch players
+    cursor = collection.find(query, {"_id": 0}).limit(limit)
+    players = await cursor.to_list(length=limit)
+    
+    # Get unique teams for reference
+    teams = await collection.distinct("team_abbr")
+    
+    return {
+        "sport": sport,
+        "collection": collection_name,
+        "players": players,
+        "count": len(players),
+        "available_teams": sorted([t for t in teams if t])
+    }
+
+
+@router.get("/v3/bdl/stats/{player_name}")
+async def get_bdl_player_stats(
+    player_name: str,
+    response: Response,
+    sport: str = Query("nba", description="Sport to query (nba or mlb)")
+):
+    """
+    Get game logs for a specific player from master_hub.
+    
+    Returns BDL game logs with full box score data.
+    """
+    from config.db_config import get_collection_name, validate_sport
+    
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    
+    if _db is None:
+        raise HTTPException(status_code=500, detail="Database not initialized")
+    
+    # Validate sport parameter
+    try:
+        sport = validate_sport(sport)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    
+    # Get sport-specific collection
+    collection_name = get_collection_name("master_hub", sport)
+    collection = _db[collection_name]
+    
+    # Search for player (case-insensitive)
+    player = await collection.find_one(
+        {"display_name": {"$regex": f"^{player_name}$", "$options": "i"}},
+        {"_id": 0}
+    )
+    
+    if not player:
+        # Try partial match
+        player = await collection.find_one(
+            {"display_name": {"$regex": player_name, "$options": "i"}},
+            {"_id": 0}
+        )
+    
+    if not player:
+        raise HTTPException(status_code=404, detail=f"Player '{player_name}' not found")
+    
+    return {
+        "sport": sport,
+        "player": player.get("display_name"),
+        "team": player.get("team_abbr"),
+        "bdl_id": player.get("bdl_id"),
+        "game_logs_count": player.get("bdl_game_logs_count", 0),
+        "game_logs": player.get("bdl_game_logs", [])[:20],  # Limit to recent 20
+        "last_sync": player.get("bdl_last_sync")
+    }

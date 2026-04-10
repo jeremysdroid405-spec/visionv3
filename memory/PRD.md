@@ -61,18 +61,30 @@ Build a local-first betting intelligence app restructuring React/FastAPI to inte
 
 ## Completed Work (April 2026)
 
-### Session 5 - Multi-Sport Database Schema & Universal Odds (April 10, 2026)
+### Session 5 - Multi-Sport Database Schema & Universal APIs (April 10, 2026)
 - [x] Created `/app/backend/config/db_config.py` with collection prefixes for each sport
 - [x] Implemented `get_collection_name(base_name, sport)` helper function
-- [x] Implemented `get_collection(db, base_name, sport)` for direct collection access
-- [x] Implemented `validate_sport(sport)` for input validation
 - [x] Updated `/api/v3/ferrari/*` endpoints to use `?sport=` parameter
-- [x] Created `/app/backend/services/universal_odds_sync.py` for multi-sport odds fetching
-- [x] **NBA Markets**: PTS, REB, AST, PRA → Saves to `dg_live_props`
-- [x] **MLB Markets**: Strikeouts, Walks, Hits Allowed, Hits, Total Bases, RBIs, Runs, Stolen Bases → Saves to `mlb_live_props`
-- [x] Added `POST /api/v3/odds/sync?sport=nba|mlb` endpoint
-- [x] Added `GET /api/v3/odds/props?sport=nba|mlb` endpoint
-- [x] Tested: NBA sync (9 events, 655 props), MLB sync (18 events, 1972 props)
+
+**Universal Odds Sync (`/app/backend/services/universal_odds_sync.py`):**
+- [x] NBA: `basketball_nba` → PTS, REB, AST, PRA → `dg_live_props`
+- [x] MLB: `baseball_mlb` → Strikeouts, Walks, Hits Allowed, Hits, Total Bases, RBIs, Runs, Stolen Bases → `mlb_live_props`
+- [x] Tested: NBA (9 events, 655 props), MLB (18 events, 1972 props)
+
+**BDL Universal Sync (`/app/backend/services/bdl_universal_sync.py`):**
+- [x] NBA: `https://api.balldontlie.io/nba/v1/stats` → `nba_master_hub_2026`
+- [x] MLB: `https://api.balldontlie.io/mlb/v1/stats` → `mlb_master_hub_2026`
+- [x] **STRICT cursor-based pagination** using `next_cursor` from meta object
+- [x] Circuit breaker to prevent DB wipes on low results
+- [x] Tested: NBA players (537), MLB players (777)
+- [x] Verified: LeBron James - 57 game logs with PTS/REB/AST data
+
+**New Endpoints:**
+- `POST /api/v3/odds/sync?sport=` - Fetch live props from Odds API
+- `GET /api/v3/odds/props?sport=` - Query saved live props
+- `POST /api/v3/bdl/sync?sport=` - Fetch stats from BDL v1 API
+- `GET /api/v3/bdl/players?sport=` - Query player roster
+- `GET /api/v3/bdl/stats/{player_name}?sport=` - Get player game logs
 
 ### Session 4 - Sport-Exclusive Architecture (April 10, 2026)
 - [x] Implemented Sport-Exclusive sync engine with `target_sport` argument
