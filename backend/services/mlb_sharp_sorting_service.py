@@ -8,8 +8,14 @@ Layers:
 2. DraftKings Market Depth: Compare DK alt-lines to PrizePicks
 3. Ferrari Final Sort: Classify into Goblins, Demons, Standard
 
+MLB Safe Haven Tier Logic:
+- DK Odds <= -240 (sweet spot for "0.5 Hits" or "4.5 Strikeouts" Goblins)
+- ONLY Goblin props qualify
+- 3-Gate System: Hit Rate (L20) + CV (Stability) + VK Edge/TP
+
 Collections:
 - mlb_goblins: Sharp odds ≤ -240 AND VK Projection > Line
+- mlb_safe_haven: Goblins that pass 3-Gate qualification
 - mlb_demons: VK Slope massive over + DK alt-line mispricing
 - mlb_standard: Sharp and public agree (-110 to -130)
 """
@@ -24,6 +30,48 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 from config.db_config import get_collection_name
 
 logger = logging.getLogger(__name__)
+
+# MLB Safe Haven DK Odds threshold
+MLB_DK_SAFE_HAVEN_MAX = -240
+
+# MLB Oracle Apex Gate Configuration
+MLB_SAFE_HAVEN_GATES = {
+    'Hits': {
+        'max_cv': 0.60,
+        'min_hit_rate': 16,  # 80% of L20
+        'sample_size': 20,
+        'min_edge': 15.0,
+        'min_prob': 70.0,
+    },
+    'Total Bases': {
+        'max_cv': 0.75,
+        'min_hit_rate': 15,  # 75% of L20
+        'sample_size': 20,
+        'min_edge': 20.0,
+        'min_prob': 70.0,
+    },
+    'Pitcher Strikeouts': {
+        'max_cv': 0.45,
+        'min_hit_rate': 15,  # 75% of L20
+        'sample_size': 20,
+        'min_edge': 12.0,
+        'min_prob': 75.0,
+    },
+    'Pitching Outs': {
+        'max_cv': 0.30,
+        'min_hit_rate': 17,  # 85% of L20
+        'sample_size': 20,
+        'min_edge': 8.0,
+        'min_prob': 80.0,
+    },
+    'Hits+Runs+RBIs': {
+        'max_cv': 0.55,
+        'min_hit_rate': 16,  # 80% of L20
+        'sample_size': 20,
+        'min_edge': 18.0,
+        'min_prob': 70.0,
+    },
+}
 
 
 class MLBSharpSortingService:
@@ -187,6 +235,145 @@ class MLBSharpSortingService:
             "l10_avg": round(l10_avg, 1) if l10_avg else None,
             "season_avg": round(season_avg, 1) if season_avg else None
         }
+    
+    def calculate_cv(self, player_name: str, stat_type: str) -> Optional[float]:
+        """Calculate Coefficient of Variation for a player's stat over L20."""
+        player_key = player_name.lower().strip()
+        game_logs = self._player_logs_cache.get(player_key, [])
+        
+        if len(game_logs) < 5:
+            return None
+        
+        # Map stat type to log field
+        stat_map = {
+            "Hits": "hits",
+            "Total Bases": "total_bases",
+            "RBIs": "rbis",
+            "Runs": "runs",
+            "Stolen Bases": "stolen_bases",
+            "Home Runs": "home_runs",
+            "Pitcher Strikeouts": "pitcher_strikeouts",
+            "Pitching Outs": "innings_pitched",
+            "Hits+Runs+RBIs": ["hits", "runs", "rbis"],
+        }
+        
+        log_field = stat_map.get(stat_type)
+        if not log_field:
+            return None
+        
+        # Sort by date and get L20
+        sorted_logs = sorted(
+            game_logs,
+            key=lambda x: x.get("date", "") or "",
+            reverse=True
+        )[:20]
+        
+        values = []
+        for g in sorted_logs:
+            if isinstance(log_field, list):
+                val = sum((g.get(f) or 0) for f in log_field)
+            else:
+                val = g.get(log_field)
+                if val is None:
+                    continue
+                if log_field == "innings_pitched":
+                    val = val * 3  # Convert to outs
+            values.append(val)
+        
+        if len(values) < 5:
+            return None
+        
+        mean = sum(values) / len(values)
+        if mean == 0:
+            return None
+        
+        variance = sum((x - mean) ** 2 for x in values) / len(values)
+        std_dev = math.sqrt(variance)
+        cv = std_dev / mean
+        
+        return round(cv, 3)
+    
+    def check_safe_haven_gates(
+        self, 
+        prop: Dict, 
+        hit_rates: Dict,
+        cv: Optional[float]
+    ) -> Tuple[bool, str, Dict]:
+        """
+        Check if a prop passes MLB Safe Haven 3-Gate qualification.
+        
+        Gates:
+        1. Hit Rate (L20): Must hit prop X% of last 20 games (stat-specific)
+        2. CV (Stability): Must be below stat-specific threshold
+        3. VK Edge + TP: Projection edge and sharp probability thresholds
+        
+        Returns:
+            Tuple of (passes, reason, gate_results)
+        """
+        stat_type = prop.get("stat_type", "")
+        
+        # Get gate config for this stat type
+        gate_config = MLB_SAFE_HAVEN_GATES.get(stat_type, MLB_SAFE_HAVEN_GATES.get('Hits'))
+        
+        gate_results = {
+            "gate1_hit_rate": {"passed": False, "value": None, "threshold": gate_config['min_hit_rate']},
+            "gate2_cv": {"passed": False, "value": None, "threshold": gate_config['max_cv']},
+            "gate3_edge": {"passed": False, "value": None, "threshold": gate_config['min_edge']},
+        }
+        
+        # GATE 1: Hit Rate Check (L20 -> using L10 * 2 as proxy if L20 not available)
+        h10_rate = hit_rates.get("h10_rate")
+        if h10_rate is not None:
+            # Scale L10 to approximate L20 (conservative)
+            approx_l20_hits = (h10_rate / 100) * 20
+            gate_results["gate1_hit_rate"]["value"] = round(approx_l20_hits, 1)
+            gate_results["gate1_hit_rate"]["passed"] = approx_l20_hits >= gate_config['min_hit_rate']
+        
+        if not gate_results["gate1_hit_rate"]["passed"]:
+            return False, f"GATE1_FAIL: Hit rate {gate_results['gate1_hit_rate']['value']}/20 < {gate_config['min_hit_rate']}/20 required", gate_results
+        
+        # GATE 2: CV (Stability) Check
+        if cv is not None:
+            gate_results["gate2_cv"]["value"] = cv
+            gate_results["gate2_cv"]["passed"] = cv <= gate_config['max_cv']
+        else:
+            # No CV data - use fallback based on hit rate
+            gate_results["gate2_cv"]["passed"] = h10_rate and h10_rate >= 70
+            gate_results["gate2_cv"]["value"] = "N/A (HR fallback)"
+        
+        if not gate_results["gate2_cv"]["passed"]:
+            return False, f"GATE2_FAIL: CV {cv} > {gate_config['max_cv']} max allowed", gate_results
+        
+        # GATE 3: VK Edge + True Probability
+        edge_pct = prop.get("edge_pct") or 0
+        
+        # Calculate True Probability - prefer Pinnacle, fallback to DK odds
+        sharp_fair_value = prop.get("sharp_fair_value")
+        if sharp_fair_value is None or sharp_fair_value == 0.5:
+            # No Pinnacle odds - use DK odds to estimate TP
+            dk_odds = prop.get("all_odds", {}).get("draftkings")
+            if dk_odds and dk_odds < 0:
+                # Convert DK American odds to implied probability
+                # For negative odds: prob = |odds| / (|odds| + 100)
+                tp_prob = abs(dk_odds) / (abs(dk_odds) + 100) * 100
+            else:
+                tp_prob = 50.0  # Default fallback
+        else:
+            tp_prob = sharp_fair_value * 100
+        
+        gate_results["gate3_edge"]["value"] = {"edge": edge_pct, "tp_prob": round(tp_prob, 1)}
+        
+        passes_edge = edge_pct >= gate_config['min_edge']
+        passes_prob = tp_prob >= gate_config['min_prob']
+        
+        gate_results["gate3_edge"]["passed"] = passes_edge and passes_prob
+        
+        if not passes_edge:
+            return False, f"GATE3_FAIL: Edge {edge_pct}% < {gate_config['min_edge']}% required", gate_results
+        if not passes_prob:
+            return False, f"GATE3_FAIL: TP {tp_prob:.1f}% < {gate_config['min_prob']}% required", gate_results
+        
+        return True, "ALL_GATES_PASSED", gate_results
     
     # =========================================================================
     # PINNACLE DE-VIG CALCULATIONS
@@ -599,6 +786,35 @@ class MLBSharpSortingService:
                 
                 # Add to appropriate list
                 if tier == "GOBLIN":
+                    # Calculate CV for Safe Haven gate check
+                    cv = self.calculate_cv(prop.get("player_name"), prop.get("stat_type"))
+                    prop["cv"] = cv
+                    
+                    # Check Safe Haven 3-Gate qualification
+                    dk_odds = all_odds.get("draftkings")
+                    if dk_odds is not None and dk_odds <= MLB_DK_SAFE_HAVEN_MAX:
+                        # DK odds qualify - check gates
+                        passes_gates, gate_reason, gate_results = self.check_safe_haven_gates(
+                            prop, hit_rates, cv
+                        )
+                        prop["safe_haven_gate_results"] = gate_results
+                        prop["safe_haven_qualified"] = passes_gates
+                        prop["safe_haven_reason"] = gate_reason
+                        
+                        if passes_gates:
+                            # Calculate Board Score for ranking
+                            tp_prob = (prop.get("sharp_fair_value") or 0.5) * 100
+                            vk_edge = prop.get("edge_pct") or 0
+                            hit_rate_score = (prop.get("h10_rate") or 0) * 10
+                            weather_penalty = 0  # TODO: Add weather check
+                            
+                            board_score = tp_prob + vk_edge + hit_rate_score - weather_penalty
+                            prop["board_score"] = round(board_score, 1)
+                            
+                            if "safe_haven" not in results:
+                                results["safe_haven"] = []
+                            results["safe_haven"].append(prop)
+                    
                     results["goblins"].append(prop)
                 elif tier == "DEMON":
                     results["demons"].append(prop)
@@ -616,6 +832,19 @@ class MLBSharpSortingService:
             results["demons"].sort(key=lambda x: abs(x.get("edge_pct") or 0), reverse=True)
             results["standard"].sort(key=lambda x: abs(x.get("edge_pct") or 0), reverse=True)
             
+            # Sort Safe Haven by Board Score (top 10)
+            if "safe_haven" in results and results["safe_haven"]:
+                results["safe_haven"].sort(key=lambda x: x.get("board_score") or 0, reverse=True)
+                # Dedupe: keep best prop per player
+                seen_players = set()
+                deduped_safe_haven = []
+                for prop in results["safe_haven"]:
+                    player = prop.get("player_name")
+                    if player not in seen_players:
+                        seen_players.add(player)
+                        deduped_safe_haven.append(prop)
+                results["safe_haven"] = deduped_safe_haven[:10]  # Top 10
+            
             # Save to collections
             if save_to_db:
                 await self._save_to_collections(results)
@@ -628,6 +857,7 @@ class MLBSharpSortingService:
             logger.info(f"  • Props Processed: {results['props_processed']}")
             logger.info(f"  • Hit Rates Calculated: {hit_rates_calculated}")
             logger.info(f"  • Sharp Goblins: {len(results['goblins'])}")
+            logger.info(f"  • Safe Haven: {len(results.get('safe_haven', []))}")
             logger.info(f"  • Demons: {len(results['demons'])}")
             logger.info(f"  • Standard: {len(results['standard'])}")
             logger.info(f"  • Unclassified: {results['unclassified']}")
@@ -668,6 +898,14 @@ class MLBSharpSortingService:
             clean_standard = [{k: v for k, v in p.items() if k != "_id"} for p in results["standard"]]
             await standard_coll.insert_many(clean_standard)
             logger.info(f"[SHARP_SORT] Saved {len(clean_standard)} Standard")
+        
+        # Safe Haven (Top 10 Elite Goblins that pass 3-Gate)
+        if results.get("safe_haven"):
+            safe_haven_coll = self.db["mlb_ferrari_safe_haven"]
+            await safe_haven_coll.delete_many({})
+            clean_safe_haven = [{k: v for k, v in p.items() if k != "_id"} for p in results["safe_haven"]]
+            await safe_haven_coll.insert_many(clean_safe_haven)
+            logger.info(f"[SHARP_SORT] Saved {len(clean_safe_haven)} Safe Haven picks")
 
 
 # Singleton

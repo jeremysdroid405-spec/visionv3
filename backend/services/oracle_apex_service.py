@@ -146,6 +146,153 @@ WAR_ZONE_CONFIG = {
 # Minimum minutes for volume check
 MIN_MINUTES = 22
 
+# =============================================================================
+# MLB ORACLE APEX CONFIGURATION - SAFE HAVEN (Strictest)
+# =============================================================================
+# MLB props have higher CV than NBA due to baseball's binary nature.
+# Gates tuned for "Contact" and "Volume" metrics.
+# DK Odds <= -240 for MLB Safe Haven (sweet spot for 0.5 Hits, 4.5 K props)
+
+MLB_ORACLE_APEX_CONFIG = {
+    'Hits': {
+        'max_cv': 0.60,           # Higher CV due to 0-for-4 nights
+        'min_hit_rate': 16,       # 80% of L20
+        'sample_size': 20,
+        'min_edge': 15.0,         # VK projection must be 15% above line
+        'min_prob': 70.0,         # Sharp book de-vigged probability
+    },
+    'Total Bases': {
+        'max_cv': 0.75,           # Highest CV - XBH are volatile
+        'min_hit_rate': 15,       # 75% of L20
+        'sample_size': 20,
+        'min_edge': 20.0,         # Higher edge required due to variance
+        'min_prob': 70.0,
+    },
+    'Pitcher Strikeouts': {
+        'max_cv': 0.45,           # Moderately stable for aces
+        'min_hit_rate': 15,       # 75% of L20
+        'sample_size': 20,
+        'min_edge': 12.0,
+        'min_prob': 75.0,
+    },
+    'Pitching Outs': {
+        'max_cv': 0.30,           # Most stable - manager pulls early = fail
+        'min_hit_rate': 17,       # 85% of L20
+        'sample_size': 20,
+        'min_edge': 8.0,
+        'min_prob': 80.0,
+    },
+    'Hits+Runs+RBIs': {
+        'max_cv': 0.55,           # Combo smooths variance
+        'min_hit_rate': 16,       # 80% of L20
+        'sample_size': 20,
+        'min_edge': 18.0,
+        'min_prob': 70.0,
+    },
+    # Fallback for unmapped stats
+    'DEFAULT': {
+        'max_cv': 0.65,
+        'min_hit_rate': 14,
+        'sample_size': 20,
+        'min_edge': 15.0,
+        'min_prob': 70.0,
+    },
+}
+
+# =============================================================================
+# MLB FRONT LINES CONFIGURATION (Moderate)
+# =============================================================================
+
+MLB_FRONT_LINES_CONFIG = {
+    'Hits': {
+        'max_cv': 0.75,
+        'min_hit_rate': 12,
+        'sample_size': 20,
+        'min_edge': 10.0,
+        'min_prob': 55.0,
+    },
+    'Total Bases': {
+        'max_cv': 0.85,
+        'min_hit_rate': 11,
+        'sample_size': 20,
+        'min_edge': 12.0,
+        'min_prob': 55.0,
+    },
+    'Pitcher Strikeouts': {
+        'max_cv': 0.55,
+        'min_hit_rate': 12,
+        'sample_size': 20,
+        'min_edge': 8.0,
+        'min_prob': 60.0,
+    },
+    'Pitching Outs': {
+        'max_cv': 0.40,
+        'min_hit_rate': 14,
+        'sample_size': 20,
+        'min_edge': 5.0,
+        'min_prob': 65.0,
+    },
+    'Hits+Runs+RBIs': {
+        'max_cv': 0.70,
+        'min_hit_rate': 12,
+        'sample_size': 20,
+        'min_edge': 12.0,
+        'min_prob': 55.0,
+    },
+    'DEFAULT': {
+        'max_cv': 0.80,
+        'min_hit_rate': 10,
+        'sample_size': 20,
+        'min_edge': 8.0,
+        'min_prob': 55.0,
+    },
+}
+
+# =============================================================================
+# MLB WAR ZONE CONFIGURATION (Demon Ceiling Plays)
+# =============================================================================
+
+MLB_WAR_ZONE_CONFIG = {
+    'Hits': {
+        'max_cv': 1.0,            # High variance allowed for ceiling plays
+        'min_hit_rate': 6,
+        'sample_size': 20,
+        'min_edge': -999,         # No edge requirement for demons
+        'min_prob': 35.0,
+    },
+    'Total Bases': {
+        'max_cv': 1.2,            # Very high variance for XBH demons
+        'min_hit_rate': 5,
+        'sample_size': 20,
+        'min_edge': -999,
+        'min_prob': 30.0,
+    },
+    'Pitcher Strikeouts': {
+        'max_cv': 0.70,
+        'min_hit_rate': 6,
+        'sample_size': 20,
+        'min_edge': -999,
+        'min_prob': 40.0,
+    },
+    'Hits+Runs+RBIs': {
+        'max_cv': 0.90,
+        'min_hit_rate': 6,
+        'sample_size': 20,
+        'min_edge': -999,
+        'min_prob': 35.0,
+    },
+    'DEFAULT': {
+        'max_cv': 1.0,
+        'min_hit_rate': 5,
+        'sample_size': 20,
+        'min_edge': -999,
+        'min_prob': 35.0,
+    },
+}
+
+# MLB DK Odds threshold for Safe Haven
+MLB_DK_TIER_SAFE_HAVEN_MAX = -240  # -240 is the sweet spot for MLB Goblins
+
 
 class OracleApexService:
     """
