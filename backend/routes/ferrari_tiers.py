@@ -1240,6 +1240,7 @@ async def get_mlb_player_props(
         "Pitcher Strikeouts": "pitcher_strikeouts",
         "Pitching Outs": "innings_pitched",  # Will multiply by 3
         "Earned Runs Allowed": "earned_runs",
+        "Earned Runs": "earned_runs",  # Both variants
         "Hits Allowed": "hits_allowed",
         "Walks Allowed": "pitcher_walks",
     }
