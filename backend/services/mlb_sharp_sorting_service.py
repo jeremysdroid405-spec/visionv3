@@ -128,19 +128,33 @@ class MLBSharpSortingService:
             sorted_logs = game_logs
         
         def get_stat_value(game, field):
-            """Extract stat value from game log, handling combo stats."""
+            """Extract stat value from game log, handling combo stats.
+            
+            Returns None if value is missing (to be skipped in calculation).
+            """
             if isinstance(field, list):
-                # Combo stat - sum the fields
-                return sum(game.get(f, 0) or 0 for f in field)
+                # Combo stat - all components must exist
+                combo_val = 0
+                for f in field:
+                    v = game.get(f)
+                    if v is None:
+                        return None  # Skip games with missing combo components
+                    combo_val += (v or 0)
+                return combo_val
             else:
-                val = game.get(field, 0)
+                val = game.get(field)
+                if val is None:
+                    return None  # Skip games with missing data
                 # Special handling for pitching outs (IP * 3)
                 if field == "innings_pitched" and val:
                     return round(val * 3)
                 return val or 0
         
         def calc_stats(game_list):
-            """Calculate avg and hit rate for a set of games."""
+            """Calculate avg and hit rate for a set of games.
+            
+            SSOT: Skips games with None/missing values (consistent with player detail endpoint).
+            """
             if not game_list:
                 return 0, 0
             
@@ -148,12 +162,17 @@ class MLBSharpSortingService:
             hits = 0
             for g in game_list:
                 val = get_stat_value(g, log_field)
+                if val is None:
+                    continue  # Skip games with missing data
                 values.append(val)
                 if line and val >= line:  # >= for "over" comparison
                     hits += 1
             
-            avg = sum(values) / len(values) if values else 0
-            hit_rate = (hits / len(values) * 100) if values else 0
+            if not values:
+                return 0, 0
+            
+            avg = sum(values) / len(values)
+            hit_rate = (hits / len(values) * 100)
             return avg, hit_rate
         
         # Calculate L5, L10, and season stats
