@@ -1624,35 +1624,56 @@ class FerrariTierService:
             # =================================================================
             logger.info("[PHASE 6] FINAL SELECTION - Storing picks and parlays...")
             
-            await self.ferrari_safe_haven.delete_many({})
-            if top_safe_haven:
-                await self.ferrari_safe_haven.insert_many(top_safe_haven)
-            
-            await self.ferrari_front_lines.delete_many({})
-            if top_front_lines:
-                await self.ferrari_front_lines.insert_many(top_front_lines)
-            
-            await self.ferrari_war_zone.delete_many({})
-            if top_war_zone:
-                await self.ferrari_war_zone.insert_many(top_war_zone)
-            
-            # Store parlays in a new collection
-            parlays_collection = self.db.ferrari_parlays
-            await parlays_collection.delete_many({})
-            if all_parlays:
-                logger.info(f"  Storing {len(all_parlays)} parlays to ferrari_parlays collection...")
-                try:
-                    insert_result = await parlays_collection.insert_many(all_parlays)
-                    logger.info(f"  Successfully inserted {len(insert_result.inserted_ids)} parlays")
-                except Exception as e:
-                    logger.error(f"  Parlay insert failed: {e}")
-            
-            # Update results
-            results["output"]["safe_haven"] = len(top_safe_haven)
-            results["output"]["front_lines"] = len(top_front_lines)
-            results["output"]["war_zone"] = len(top_war_zone)
-            results["output"]["total_picks"] = len(top_safe_haven) + len(top_front_lines) + len(top_war_zone)
-            results["output"]["total_parlays"] = len(all_parlays)
+            # CIRCUIT BREAKER: Don't wipe collections if we have very few/no picks
+            # This prevents empty DB scenarios from bad API responses
+            total_new_picks = len(top_safe_haven) + len(top_front_lines) + len(top_war_zone)
+            if total_new_picks == 0:
+                logger.warning("[CIRCUIT BREAKER] No picks generated - preserving existing tier data!")
+                results["circuit_breaker"] = {
+                    "triggered": True,
+                    "reason": "No picks generated from pipeline",
+                    "action": "Preserved existing tier collections"
+                }
+                # Skip the delete/insert and just return current state
+                existing_safe = await self.ferrari_safe_haven.count_documents({})
+                existing_front = await self.ferrari_front_lines.count_documents({})
+                existing_war = await self.ferrari_war_zone.count_documents({})
+                results["output"]["safe_haven"] = existing_safe
+                results["output"]["front_lines"] = existing_front
+                results["output"]["war_zone"] = existing_war
+                results["output"]["total_picks"] = existing_safe + existing_front + existing_war
+                results["output"]["preserved"] = True
+            else:
+                # Normal flow - update collections
+                await self.ferrari_safe_haven.delete_many({})
+                if top_safe_haven:
+                    await self.ferrari_safe_haven.insert_many(top_safe_haven)
+                
+                await self.ferrari_front_lines.delete_many({})
+                if top_front_lines:
+                    await self.ferrari_front_lines.insert_many(top_front_lines)
+                
+                await self.ferrari_war_zone.delete_many({})
+                if top_war_zone:
+                    await self.ferrari_war_zone.insert_many(top_war_zone)
+                
+                # Store parlays in a new collection
+                parlays_collection = self.db.ferrari_parlays
+                await parlays_collection.delete_many({})
+                if all_parlays:
+                    logger.info(f"  Storing {len(all_parlays)} parlays to ferrari_parlays collection...")
+                    try:
+                        insert_result = await parlays_collection.insert_many(all_parlays)
+                        logger.info(f"  Successfully inserted {len(insert_result.inserted_ids)} parlays")
+                    except Exception as e:
+                        logger.error(f"  Parlay insert failed: {e}")
+                
+                # Update results
+                results["output"]["safe_haven"] = len(top_safe_haven)
+                results["output"]["front_lines"] = len(top_front_lines)
+                results["output"]["war_zone"] = len(top_war_zone)
+                results["output"]["total_picks"] = total_new_picks
+                results["output"]["total_parlays"] = len(all_parlays)
             
             results["parlays"]["safe_haven"] = len(safe_haven_parlays)
             results["parlays"]["front_lines"] = len(front_lines_parlays)

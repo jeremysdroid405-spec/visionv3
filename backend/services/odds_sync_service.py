@@ -305,7 +305,23 @@ class OddsSyncService:
             results["stats_enriched"] = len([p for p in enriched_props if p.get("hit_rates")])
             
             # Step 5: Wipe and insert deduplicated data
+            # CIRCUIT BREAKER: Don't wipe if we have very few props
             if enriched_props:
+                # Check existing count first
+                existing_count = await self.live_props.count_documents({})
+                
+                if len(enriched_props) < 30 and existing_count > len(enriched_props) * 2:
+                    logger.warning(f"[CIRCUIT BREAKER] Only {len(enriched_props)} props from API, existing has {existing_count}. Preserving existing data!")
+                    results["circuit_breaker"] = {
+                        "triggered": True,
+                        "reason": f"API returned only {len(enriched_props)} props, existing has {existing_count}",
+                        "action": "Preserved existing live_props collection"
+                    }
+                    results["success"] = True
+                    results["total_props"] = existing_count
+                    results["preserved"] = True
+                    return results
+                
                 deleted = await self.live_props.delete_many({})
                 logger.info(f"[CLEANUP] Wiped {deleted.deleted_count} old records")
                 

@@ -300,6 +300,19 @@ class CachedBoardBuilderService:
         # Instead of delete_many + insert_many, we use bulk upserts
         # This keeps the old data visible while new data is hydrated
         
+        # CIRCUIT BREAKER: Don't wipe the board if we have very few players
+        # This prevents empty DB scenarios from bad API responses
+        if len(players_dict) < 20:
+            existing_count = await self.cached_board.count_documents({})
+            if existing_count > len(players_dict) * 2:
+                logger.warning(f"[CIRCUIT BREAKER] Only {len(players_dict)} players from sync, existing has {existing_count}. Preserving existing data!")
+                return {
+                    "success": False,
+                    "circuit_breaker": True,
+                    "reason": f"Sync returned only {len(players_dict)} players, existing has {existing_count}",
+                    "players_preserved": existing_count
+                }
+        
         sorted_players = sorted(
             players_dict.values(),
             key=lambda x: len(x["props"]),
