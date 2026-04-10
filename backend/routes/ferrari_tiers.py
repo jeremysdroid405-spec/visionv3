@@ -1158,19 +1158,19 @@ async def get_mlb_player_props(
         
         player["props"] = list(prop_map.values())
     
-    # SSOT: Fetch game logs from mlb_master_hub_2026.bdl_game_logs
+    # SSOT: Fetch game logs AND vk_baselines from mlb_master_hub_2026
     # This ensures consistency between pick cards and player detail views
     master_hub = _db["mlb_master_hub_2026"]
     player_hub = await master_hub.find_one(
         {"display_name": {"$regex": f"^{player_name}$", "$options": "i"}},
-        {"_id": 0, "bdl_game_logs": 1}
+        {"_id": 0, "bdl_game_logs": 1, "vk_baselines": 1, "vk_baseline_games": 1, "is_pitcher": 1, "is_batter": 1}
     )
     
     # Fallback: Try partial match if exact match fails
     if not player_hub:
         player_hub = await master_hub.find_one(
             {"display_name": {"$regex": player_name, "$options": "i"}},
-            {"_id": 0, "bdl_game_logs": 1}
+            {"_id": 0, "bdl_game_logs": 1, "vk_baselines": 1, "vk_baseline_games": 1, "is_pitcher": 1, "is_batter": 1}
         )
     
     game_logs = []
@@ -1213,6 +1213,13 @@ async def get_mlb_player_props(
             game_logs.append(game_log)
     
     player["game_logs"] = game_logs
+    
+    # Add vk_baselines from master hub (5-year historical data)
+    if player_hub:
+        player["vk_baselines"] = player_hub.get("vk_baselines", {})
+        player["vk_baseline_games"] = player_hub.get("vk_baseline_games", 0)
+        player["is_pitcher"] = player_hub.get("is_pitcher", False)
+        player["is_batter"] = player_hub.get("is_batter", False)
     
     # MLB stat type to game log field mapping
     # SSOT: mlb_master_hub_2026.bdl_game_logs uses 'rbis' (plural from BDL API)

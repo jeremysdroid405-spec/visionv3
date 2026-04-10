@@ -238,6 +238,7 @@ class MLBBadgeService:
         Evaluate Pure Contact badge.
         
         Criteria: Whiff Rate < 15% + xBA > .290
+        Uses real historical data from vk_baselines when available.
         """
         player = await self.master_hub.find_one(
             {"display_name": {"$regex": f"^{player_name}$", "$options": "i"}},
@@ -247,27 +248,47 @@ class MLBBadgeService:
         if not player:
             return None
         
-        # Get advanced stats
+        # Get real data from vk_baselines (historical backfill)
+        baselines = player.get("vk_baselines", {})
+        
+        # Try to get real strikeout baseline
+        k_baseline = baselines.get("strikeouts", {})
+        hits_baseline = baselines.get("hits", {})
+        at_bats_baseline = baselines.get("at_bats", {})
+        
+        # Get advanced stats as fallback
         advanced = player.get("advanced_stats", {})
         season_stats = advanced.get("season_stats", {}).get("2026", {})
         batting = season_stats.get("batting", {})
         
         # Calculate whiff rate proxy from K rate
-        # Whiff Rate ≈ K% * 0.4 (rough estimate)
-        # games = batting.get("games_played", 0) or 0  # For future use
-        strikeouts = batting.get("strikeouts", 0) or 0
-        at_bats = batting.get("at_bats", 0) or 0
+        strikeouts = batting.get("strikeouts", 0) or k_baseline.get("weighted_baseline", 0) or 0
+        at_bats = batting.get("at_bats", 0) or at_bats_baseline.get("weighted_baseline", 0) or 0
         avg = batting.get("avg", 0) or 0
         
+        # Use historical baseline for better estimates
+        if hits_baseline.get("weighted_baseline") and at_bats_baseline.get("weighted_baseline"):
+            historical_avg = hits_baseline["weighted_baseline"] / at_bats_baseline["weighted_baseline"]
+            avg = max(avg, historical_avg)  # Use higher of current or historical
+        
         if at_bats < 20:  # Need minimum sample
-            return None
+            # Check historical data
+            if at_bats_baseline.get("sample_size", 0) < 50:
+                return None
         
         k_rate = strikeouts / at_bats if at_bats > 0 else 0
-        estimated_whiff = k_rate * 0.4
         
-        # xBA estimate from AVG + BABIP adjustment
-        # This is a proxy - real xBA comes from Statcast
-        estimated_xba = avg + 0.015 if avg else 0  # Slight boost as xBA proxy
+        # Use CV from baselines if available to estimate whiff rate more accurately
+        k_cv = k_baseline.get("weighted_cv", 50)  # Default 50%
+        # Lower CV = more consistent contact = lower whiff rate
+        estimated_whiff = k_rate * (0.3 + (k_cv / 200))  # CV-adjusted whiff estimate
+        
+        # xBA estimate - use consistency metrics
+        estimated_xba = avg + 0.015 if avg else 0
+        if hits_baseline.get("weighted_cv"):
+            # Lower CV in hits = more consistent hitter = higher xBA
+            cv_boost = max(0, (50 - hits_baseline["weighted_cv"]) / 500)
+            estimated_xba += cv_boost
         
         if estimated_whiff < BADGE_THRESHOLDS["pure_contact_whiff_max"] and estimated_xba > BADGE_THRESHOLDS["pure_contact_xba_min"]:
             return {
@@ -276,8 +297,10 @@ class MLBBadgeService:
                 "metrics": {
                     "estimated_whiff_rate": round(estimated_whiff, 3),
                     "estimated_xba": round(estimated_xba, 3),
-                    "avg": avg,
-                    "k_rate": round(k_rate, 3)
+                    "avg": round(avg, 3) if avg else None,
+                    "k_rate": round(k_rate, 3),
+                    "hits_baseline": hits_baseline.get("weighted_baseline"),
+                    "seasons_data": hits_baseline.get("seasons_included", [])
                 }
             }
         
@@ -377,6 +400,7 @@ class MLBBadgeService:
         Evaluate Barrel Master badge.
         
         Criteria: Barrel % > 15% over last 25 PA
+        Uses real historical data from vk_baselines when available.
         """
         player = await self.master_hub.find_one(
             {"display_name": {"$regex": f"^{player_name}$", "$options": "i"}, "is_batter": True},
@@ -385,6 +409,11 @@ class MLBBadgeService:
         
         if not player:
             return None
+        
+        # Get historical baselines for power metrics
+        baselines = player.get("vk_baselines", {})
+        hr_baseline = baselines.get("home_runs", {})
+        tb_baseline = baselines.get("total_bases", {})
         
         game_logs = player.get("bdl_game_logs", [])
         
@@ -415,13 +444,40 @@ class MLBBadgeService:
             if total_pa >= 25:
                 break
         
-        if total_pa < 20:  # Need minimum sample
+        # Use historical baseline if recent data is insufficient
+        if total_pa < 20:
+            if hr_baseline.get("sample_size", 0) < 30:
+                return None
+            # Use historical averages
+            hr_avg = hr_baseline.get("weighted_baseline", 0)
+            tb_avg = tb_baseline.get("weighted_baseline", 0)
+            # Estimate barrel % from HR rate and TB
+            if hr_avg > 0.15 or tb_avg > 2.0:  # Significant power
+                return {
+                    **MLBBadge.BARREL_MASTER,
+                    "earned": True,
+                    "metrics": {
+                        "hr_per_game": round(hr_avg, 3),
+                        "tb_per_game": round(tb_avg, 3),
+                        "estimated_barrel_pct": round((hr_avg / 0.15) * 15, 1),  # Scale to barrel %
+                        "sample_size": hr_baseline.get("sample_size", 0),
+                        "seasons_data": hr_baseline.get("seasons_included", []),
+                        "data_source": "historical_5yr"
+                    }
+                }
             return None
         
-        # Estimate barrel % from XBH rate
-        # Elite barrel % > 15% ≈ XBH rate > 10%
+        # Calculate from recent games
         xbh_rate = total_xbh / total_pa if total_pa > 0 else 0
-        estimated_barrel_pct = xbh_rate * 150  # Scale to barrel %
+        hr_rate = total_hrs / total_pa if total_pa > 0 else 0
+        
+        # Use historical HR baseline to boost barrel estimate
+        historical_hr_boost = 0
+        if hr_baseline.get("weighted_baseline"):
+            historical_hr_boost = hr_baseline["weighted_baseline"] * 5  # Scale historical HR to barrel boost
+        
+        # Estimate barrel % from XBH rate + HR rate + historical
+        estimated_barrel_pct = (xbh_rate * 100) + (hr_rate * 200) + historical_hr_boost
         
         if estimated_barrel_pct > BADGE_THRESHOLDS["barrel_master_pct_min"]:
             return {
@@ -432,8 +488,11 @@ class MLBBadgeService:
                     "xbh": total_xbh,
                     "home_runs": total_hrs,
                     "xbh_rate": round(xbh_rate, 3),
+                    "hr_rate": round(hr_rate, 3),
                     "estimated_barrel_pct": round(estimated_barrel_pct, 1),
-                    "games_analyzed": games_used
+                    "games_analyzed": games_used,
+                    "historical_hr_baseline": hr_baseline.get("weighted_baseline"),
+                    "data_source": "recent_games"
                 }
             }
         
@@ -577,40 +636,67 @@ class MLBBadgeService:
         Evaluate Whiff Wizard badge for pitchers.
         
         Criteria: K% > 28% + Swinging Strike % > 12%
+        Uses real historical data from vk_baselines when available.
         """
         try:
             # Get pitcher from master hub
             master_hub = self.db["mlb_master_hub_2026"]
             pitcher = await master_hub.find_one(
                 {"display_name": {"$regex": f"^{pitcher_name}$", "$options": "i"}},
-                {"_id": 0, "k_per_9": 1, "whip": 1, "bdl_game_logs": 1}
+                {"_id": 0, "k_per_9": 1, "whip": 1, "bdl_game_logs": 1, "vk_baselines": 1}
             )
             
             if not pitcher:
                 return None
             
-            # Estimate K% from k_per_9 (K% ≈ K/9 / 4 for rough estimate)
+            # Get historical baselines for strikeout metrics
+            baselines = pitcher.get("vk_baselines", {})
+            k_baseline = baselines.get("pitcher_strikeouts", {})
+            ip_baseline = baselines.get("innings_pitched", {})
+            
             k_per_9 = pitcher.get("k_per_9") or 0
-            estimated_k_pct = (k_per_9 / 9) * 100 * 0.35  # Rough conversion
+            
+            # Calculate K/9 from historical baselines if available
+            if k_baseline.get("weighted_baseline") and ip_baseline.get("weighted_baseline"):
+                historical_k_per_9 = (k_baseline["weighted_baseline"] / ip_baseline["weighted_baseline"]) * 9
+                # Use higher of current or historical
+                k_per_9 = max(k_per_9, historical_k_per_9)
             
             # Check game logs for strikeout consistency
             game_logs = pitcher.get("bdl_game_logs", [])
+            k_per_9_recent = 0
             if game_logs:
                 recent_logs = sorted(game_logs, key=lambda x: x.get("date", ""), reverse=True)[:10]
                 total_k = sum((g.get("pitcher_strikeouts") or 0) for g in recent_logs)
                 total_ip = sum((g.get("innings_pitched") or 0) for g in recent_logs)
                 if total_ip > 0:
                     k_per_9_recent = (total_k / total_ip) * 9
-                    estimated_k_pct = (k_per_9_recent / 9) * 100 * 0.35
             
-            if (estimated_k_pct > BADGE_THRESHOLDS["whiff_wizard_k_pct_min"] * 0.8 or k_per_9 > 10):
+            # Use best K/9 from available sources
+            best_k_per_9 = max(k_per_9, k_per_9_recent)
+            
+            # Estimate K% from K/9 (K% ≈ K/9 * 0.035 for rough conversion)
+            estimated_k_pct = best_k_per_9 * 3.1
+            
+            # Use CV to estimate SwStr% - lower CV in Ks means more consistent swing-and-miss
+            k_cv = k_baseline.get("weighted_cv", 50)  # Default 50%
+            estimated_swstr_pct = 12 + ((50 - k_cv) / 10)  # Lower CV = higher SwStr%
+            
+            # Qualify based on K/9 > 10 OR estimated K% > threshold
+            if best_k_per_9 > 10 or (estimated_k_pct > BADGE_THRESHOLDS["whiff_wizard_k_pct_min"] * 0.8 and estimated_swstr_pct > BADGE_THRESHOLDS["whiff_wizard_swstr_pct_min"] * 0.8):
                 return {
                     **MLBBadge.WHIFF_WIZARD,
                     "earned": True,
                     "metrics": {
-                        "k_per_9": round(k_per_9, 1),
+                        "k_per_9": round(best_k_per_9, 2),
+                        "k_per_9_recent": round(k_per_9_recent, 2),
                         "estimated_k_pct": round(estimated_k_pct, 1),
-                        "whip": pitcher.get("whip")
+                        "estimated_swstr_pct": round(estimated_swstr_pct, 1),
+                        "whip": pitcher.get("whip"),
+                        "k_baseline": k_baseline.get("weighted_baseline"),
+                        "k_cv": round(k_cv, 1) if k_cv else None,
+                        "seasons_data": k_baseline.get("seasons_included", []),
+                        "data_source": "historical_5yr" if k_baseline.get("weighted_baseline") else "current_season"
                     }
                 }
         except Exception as e:
@@ -666,24 +752,35 @@ class MLBBadgeService:
         
         return None
     
-    def evaluate_volatility_extreme(self, cv: float, hit_rate: float, ceiling_stats: Dict) -> Optional[Dict]:
+    def evaluate_volatility_extreme(self, cv: float, hit_rate: float, ceiling_stats: Dict, baselines: Dict = None) -> Optional[Dict]:
         """
         Evaluate Extreme Volatility badge based on AI scoring.
         
         Criteria: Volatility Index > 8/10
+        Uses real CV data from vk_baselines when available.
         """
         # Calculate volatility index
         score = 0
         
-        # CV Score (0-4 points)
-        if cv is not None:
-            if cv > 1.2:
+        # Get real CV from baselines if available
+        real_cv = cv
+        if baselines:
+            # Find the highest CV across relevant stats
+            for stat_name, stat_data in baselines.items():
+                if stat_data.get("weighted_cv"):
+                    stat_cv = stat_data["weighted_cv"] / 100  # Convert from % to decimal
+                    if stat_cv > real_cv:
+                        real_cv = stat_cv
+        
+        # CV Score (0-4 points) - using real CV data
+        if real_cv is not None:
+            if real_cv > 1.2:
                 score += 4
-            elif cv > 1.0:
+            elif real_cv > 1.0:
                 score += 3
-            elif cv > 0.8:
+            elif real_cv > 0.8:
                 score += 2
-            elif cv > 0.6:
+            elif real_cv > 0.6:
                 score += 1
         
         # Hit Rate Variance Score (0-3 points)
@@ -717,9 +814,11 @@ class MLBBadgeService:
                 "earned": True,
                 "metrics": {
                     "volatility_index": volatility_index,
-                    "cv": cv,
+                    "cv": round(cv, 3) if cv else None,
+                    "real_cv": round(real_cv, 3) if real_cv else None,
                     "hit_rate": hit_rate,
-                    "max_value": ceiling_stats.get("max_value") if ceiling_stats else None
+                    "max_value": ceiling_stats.get("max_value") if ceiling_stats else None,
+                    "data_source": "historical_5yr" if baselines else "current_season"
                 }
             }
         
@@ -742,9 +841,17 @@ class MLBBadgeService:
         Evaluate all applicable badges for a prop.
         
         Returns list of earned badges.
+        Uses real historical data from vk_baselines when available.
         """
         badges = []
         is_pitcher_prop = "pitcher" in stat_type.lower() or "strikeout" in stat_type.lower() and "batter" not in stat_type.lower()
+        
+        # Fetch player baselines for enhanced badge evaluation
+        player = await self.master_hub.find_one(
+            {"display_name": {"$regex": f"^{player_name}$", "$options": "i"}},
+            {"_id": 0, "vk_baselines": 1}
+        )
+        baselines = player.get("vk_baselines", {}) if player else {}
         
         if is_pitcher_prop:
             # Pitcher badges
@@ -794,9 +901,9 @@ class MLBBadgeService:
             if hitters_haven:
                 badges.append(hitters_haven)
         
-        # Volatility badge for War Zone candidates
+        # Volatility badge for War Zone candidates - now with real baselines
         if cv is not None and ceiling_stats:
-            volatility = self.evaluate_volatility_extreme(cv, hit_rate, ceiling_stats)
+            volatility = self.evaluate_volatility_extreme(cv, hit_rate, ceiling_stats, baselines)
             if volatility:
                 badges.append(volatility)
         

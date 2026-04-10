@@ -262,12 +262,40 @@ Provide ONLY the JSON array, no additional text.
         # Clear old picks
         await collection.delete_many({})
         
+        # Clean picks of any ObjectId fields before saving
+        clean_picks = []
+        for pick in picks:
+            clean_pick = self._clean_for_json(pick)
+            clean_picks.append(clean_pick)
+        
         # Insert new picks
-        await collection.insert_many(picks)
+        await collection.insert_many(clean_picks)
         
-        logger.info(f"[MLB_VISION] Saved {len(picks)} picks to {collection_name}")
+        logger.info(f"[MLB_VISION] Saved {len(clean_picks)} picks to {collection_name}")
         
-        return len(picks)
+        return len(clean_picks)
+    
+    def _clean_for_json(self, obj: Any) -> Any:
+        """
+        Recursively clean an object for JSON serialization.
+        Removes ObjectId and converts non-serializable types.
+        """
+        from bson import ObjectId
+        
+        if isinstance(obj, dict):
+            return {
+                k: self._clean_for_json(v)
+                for k, v in obj.items()
+                if k != "_id" and not isinstance(v, ObjectId)
+            }
+        elif isinstance(obj, list):
+            return [self._clean_for_json(item) for item in obj]
+        elif isinstance(obj, ObjectId):
+            return str(obj)
+        elif hasattr(obj, 'isoformat'):  # datetime objects
+            return obj.isoformat()
+        else:
+            return obj
 
 
 # Singleton
@@ -321,10 +349,17 @@ async def run_mlb_vision_intel_analysis(
     if save_to_db:
         saved_count = await service.save_analyzed_picks(analyzed)
     
+    # Clean picks for JSON response
+    clean_confirmed = [
+        service._clean_for_json(p) 
+        for p in analyzed 
+        if p.get("vision_intel", {}).get("verdict") == "CONFIRMED"
+    ]
+    
     return {
         "success": True,
         "total_analyzed": len(analyzed),
         "verdicts": verdicts,
-        "confirmed_picks": [p for p in analyzed if p.get("vision_intel", {}).get("verdict") == "CONFIRMED"],
+        "confirmed_picks": clean_confirmed,
         "saved_count": saved_count
     }
