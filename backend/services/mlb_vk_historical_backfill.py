@@ -43,17 +43,17 @@ logger = logging.getLogger(__name__)
 BDL_API_KEY = os.environ.get("BDL_API_KEY")
 BDL_MLB_BASE_URL = "https://api.balldontlie.io/mlb/v1"
 
-# Historical seasons to fetch
-HISTORICAL_SEASONS = [2021, 2022, 2023, 2024, 2025, 2026]
+# Historical seasons to fetch (focus on recent seasons for current data)
+HISTORICAL_SEASONS = [2024, 2025, 2026]
 
 # Time-decaying weights (most recent = highest weight)
 SEASON_WEIGHTS = {
     2026: 1.0,
-    2025: 0.9,
-    2024: 0.8,
-    2023: 0.7,
-    2022: 0.6,
-    2021: 0.5,
+    2025: 0.85,
+    2024: 0.7,
+    2023: 0.55,
+    2022: 0.4,
+    2021: 0.25,
 }
 
 # MLB stat types for regression
