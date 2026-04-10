@@ -149,26 +149,39 @@ SPORT_API_CONFIG = {
         "display_name": "MLB",
         # MLB Markets - Split into primary and secondary for API limits
         "markets": [
-            # Core batter props
+            # Core batter props (standard + alternate)
             "batter_hits",
+            "batter_hits_alternate",
             "batter_total_bases",
+            "batter_total_bases_alternate",
             "batter_rbis",
+            "batter_rbis_alternate",
             "batter_runs_scored",
+            "batter_runs_scored_alternate",
             "batter_stolen_bases",
+            "batter_stolen_bases_alternate",
             # Combo props (HRR, H+R)
             "batter_hits_runs_rbis",
             # Core pitcher props
             "pitcher_strikeouts",
+            "pitcher_strikeouts_alternate",
             "pitcher_hits_allowed",
+            "pitcher_hits_allowed_alternate",
         ],
         # Secondary markets (fetched in second pass)
         "markets_secondary": [
             "batter_home_runs",
+            "batter_home_runs_alternate",
             "batter_walks",
+            "batter_walks_alternate",
             "batter_strikeouts",
+            "batter_strikeouts_alternate",
             "pitcher_walks",
+            "pitcher_walks_alternate",
             "pitcher_earned_runs",
+            "pitcher_earned_runs_alternate",
             "pitcher_outs",
+            "pitcher_outs_alternate",
         ],
         # Map Odds API market names to our stat types
         "stat_type_map": {
@@ -426,17 +439,23 @@ class UniversalOddsSyncService:
                     outcome_name = outcome.get("name", "").lower()
                     recommendation = "OVER" if "over" in outcome_name else "UNDER"
                     
-                    # Capture PrizePicks goblin/demon flags
-                    is_goblin = outcome.get("goblin", False) or outcome.get("is_goblin", False)
-                    is_demon = outcome.get("demon", False) or outcome.get("is_demon", False)
+                    # Get the price/odds
+                    price = outcome.get("price", -110)
                     
-                    # Create group key (unique per player/stat/recommendation)
-                    group_key = f"{player_name}|{stat_type}|{recommendation}"
+                    # Classify based on price: +100 = DEMON, -137 = GOBLIN
+                    # Positive odds (e.g., +100) = DEMON (harder to hit, better payout)
+                    # Negative odds (e.g., -137) = GOBLIN (easier to hit, worse payout)
+                    is_demon = price >= 100   # +100 or better = DEMON
+                    is_goblin = price < 0     # -137 or worse = GOBLIN
+                    
+                    # Create group key (unique per player/stat/line/recommendation)
+                    group_key = f"{player_name}|{stat_type}|{line}|{recommendation}"
                     
                     if group_key not in prop_groups:
                         prop_groups[group_key] = {
                             "player_name": player_name,
                             "stat_type": stat_type,
+                            "line": float(line),
                             "recommendation": recommendation,
                             "market_key": market_key,
                             "event_id": odds_data.get("event_id"),
@@ -450,18 +469,17 @@ class UniversalOddsSyncService:
                             "dfs_line": None,
                             "is_goblin": False,
                             "is_demon": False,
+                            "is_alternate_market": "alternate" in market_key.lower(),
                         }
                     
                     # Store line by bookmaker
                     prop_groups[group_key]["lines"][bm_key] = float(line)
-                    prop_groups[group_key]["odds"][bm_key] = outcome.get("price", -110)
+                    prop_groups[group_key]["odds"][bm_key] = price
                     
-                    # Update goblin/demon flags if from PrizePicks
+                    # Update goblin/demon flags based on PrizePicks price
                     if bm_key == "prizepicks":
-                        if is_goblin:
-                            prop_groups[group_key]["is_goblin"] = True
-                        if is_demon:
-                            prop_groups[group_key]["is_demon"] = True
+                        prop_groups[group_key]["is_goblin"] = is_goblin
+                        prop_groups[group_key]["is_demon"] = is_demon
                     
                     # Track sharp line
                     if is_sharp and prop_groups[group_key]["sharp_line"] is None:
@@ -508,7 +526,7 @@ class UniversalOddsSyncService:
             prop = {
                 "player_name": group_data["player_name"],
                 "stat_type": group_data["stat_type"],
-                "line": primary_line,
+                "line": group_data.get("line") or primary_line,
                 "recommendation": group_data["recommendation"],
                 "odds": group_data["odds"].get(primary_book, -110),
                 "market_key": group_data["market_key"],
@@ -528,9 +546,10 @@ class UniversalOddsSyncService:
                 "dk_edge": dk_edge,
                 "dfs_line": group_data.get("dfs_line"),
                 "dfs_book": group_data.get("dfs_book"),
-                # PrizePicks goblin/demon flags
+                # PrizePicks goblin/demon flags (based on price: +100=goblin, -137=demon)
                 "is_goblin": group_data.get("is_goblin", False),
                 "is_demon": group_data.get("is_demon", False),
+                "is_alternate_market": group_data.get("is_alternate_market", False),
                 # Metadata
                 "sport": sport,
                 "fetched_at": datetime.now(timezone.utc).isoformat(),

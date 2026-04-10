@@ -1088,15 +1088,23 @@ async def get_mlb_player_props(
         raise HTTPException(status_code=404, detail=f"Player '{player_name}' not found in MLB board")
     
     # Deduplicate props - keep only unique stat_type + line combinations
+    # Priority: GOBLIN > DEMON > STANDARD (keep the better classification)
     if player.get("props"):
-        seen = set()
-        unique_props = []
+        prop_map = {}
         for prop in player["props"]:
             key = f"{prop.get('stat_type')}|{prop.get('line')}"
-            if key not in seen:
-                seen.add(key)
-                unique_props.append(prop)
-        player["props"] = unique_props
+            
+            if key not in prop_map:
+                prop_map[key] = prop
+            else:
+                # If current prop is goblin and existing is not, replace
+                if prop.get('is_goblin') and not prop_map[key].get('is_goblin'):
+                    prop_map[key] = prop
+                # If current prop is demon and existing is standard (neither goblin nor demon), replace
+                elif prop.get('is_demon') and not prop_map[key].get('is_goblin') and not prop_map[key].get('is_demon'):
+                    prop_map[key] = prop
+        
+        player["props"] = list(prop_map.values())
     
     # Fetch game logs from mlb_historical_logs
     historical_logs = _db["mlb_historical_logs"]

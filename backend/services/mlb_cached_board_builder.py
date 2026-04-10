@@ -341,12 +341,15 @@ class MLBCachedBoardBuilder:
         }
         
         try:
-            # Step 1: Fetch all props from mlb_live_props
+            # Step 1: Fetch all props from mlb_live_props (PrizePicks only)
             live_props = self._get_collection("live_props")
-            props = await live_props.find({}, {"_id": 0}).to_list(length=None)
+            props = await live_props.find(
+                {"source": "prizepicks"},  # Filter to PrizePicks only
+                {"_id": 0}
+            ).to_list(length=None)
             results["props_fetched"] = len(props)
             
-            logger.info(f"[MLB_BOARD] Fetched {len(props)} props from mlb_live_props")
+            logger.info(f"[MLB_BOARD] Fetched {len(props)} PrizePicks props from mlb_live_props")
             
             # ========================================================
             # CIRCUIT BREAKER: Do not wipe board if 0 props
