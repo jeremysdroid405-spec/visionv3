@@ -181,10 +181,11 @@ class MLBSharpSortingService:
         """
         Classify a prop into Goblin, Demon, or Standard tier.
         
-        Criteria:
-        - GOBLIN: Sharp odds ≤ -240 AND VK Projection > Line
-        - DEMON: VK Slope points to massive over AND DK mispricing detected
-        - STANDARD: Sharp and public agree in -110 to -130 range
+        UPDATED CRITERIA (based on real Pinnacle data ranges):
+        - GOBLIN: Sharp odds ≤ -150 AND VK Projection aligns with direction
+                  OR Sharp Fair Value > 58% AND VK confirms
+        - DEMON: DK/PP line discrepancy > 0.5 AND high edge
+        - STANDARD: Sharp and public agree in -130 to +110 range
         
         Args:
             prop: Prop data with all_odds, sharp_line, etc.
@@ -202,47 +203,59 @@ class MLBSharpSortingService:
         
         direction = prop.get("recommendation", "OVER")
         line = prop.get("line", 0)
-        
-        # Check for Goblin
         projected_value = vk_projection.get("projected_value") if vk_projection else prop.get("projected_value")
+        edge_pct = vk_projection.get("edge_pct") if vk_projection else prop.get("edge_pct")
+        hit_rate = vk_projection.get("hit_rate_l10") if vk_projection else prop.get("hit_rate_l10")
         
-        if sharp_odds is not None and sharp_odds <= -240:
-            # Sharp is heavily favoring this side
+        # =================================================================
+        # GOBLIN CHECK: Sharp money + VK alignment
+        # =================================================================
+        # Realistic threshold: -150 or better (covers -214, -189, -166, etc.)
+        if sharp_odds is not None and sharp_odds <= -150:
+            vk_confirms = False
             if direction == "OVER" and projected_value and projected_value > line:
-                return "GOBLIN"
+                vk_confirms = True
             elif direction == "UNDER" and projected_value and projected_value < line:
+                vk_confirms = True
+            
+            if vk_confirms:
                 return "GOBLIN"
         
-        # Check for Demon (DK mispricing)
-        dk_analysis = self.analyze_dk_vs_pp(
-            prop.get("dk_line"),
-            all_odds.get("draftkings"),
-            line,
-            -110
-        )
-        
-        if dk_analysis.get("is_demon"):
-            # Also check VK slope for massive over/under trend
-            slope = vk_projection.get("slope") if vk_projection else prop.get("slope")
-            if slope:
-                if direction == "OVER" and slope > 0.1:  # Strong upward trend
-                    return "DEMON"
-                elif direction == "UNDER" and slope < -0.1:  # Strong downward trend
-                    return "DEMON"
-        
-        # Check for Standard (books agree)
+        # Alternative Goblin: Sharp fair value > 58% with strong edge
         if sharp_odds is not None:
-            # Standard: Sharp odds between -130 and -110
-            if -130 <= sharp_odds <= -110:
+            fair_value = self.calculate_fair_value(sharp_odds)
+            if fair_value > 0.58 and edge_pct and abs(edge_pct) > 15:
+                return "GOBLIN"
+        
+        # =================================================================
+        # DEMON CHECK: DK/PP line discrepancy with edge support
+        # =================================================================
+        dk_line = prop.get("dk_line")
+        pp_line = line
+        
+        if dk_line is not None and pp_line is not None:
+            line_diff = abs(dk_line - pp_line)
+            # Significant line discrepancy (0.5+ is meaningful in baseball)
+            if line_diff >= 0.5:
+                # Check if we have edge support
+                if edge_pct and abs(edge_pct) > 20:
+                    return "DEMON"
+                # Check if hit rate is high despite variance
+                if hit_rate and hit_rate > 0.6:
+                    return "DEMON"
+        
+        # =================================================================
+        # STANDARD CHECK: Books agree on the line
+        # =================================================================
+        if sharp_odds is not None:
+            # Standard: Sharp odds in the -130 to +110 range (neutral pricing)
+            if -130 <= sharp_odds <= 110:
                 return "STANDARD"
         
-        # Default: Check if public books agree
+        # Fallback: Check DK odds for standard classification
         dk_odds = all_odds.get("draftkings")
-        fd_odds = all_odds.get("fanduel")
-        
-        if dk_odds and fd_odds:
-            # Both in the -130 to -110 range
-            if -130 <= dk_odds <= -110 and -130 <= fd_odds <= -110:
+        if dk_odds is not None:
+            if -130 <= dk_odds <= 110:
                 return "STANDARD"
         
         return "UNCLASSIFIED"
@@ -316,19 +329,27 @@ class MLBSharpSortingService:
             war_zone = self.db[get_collection_name("war_zone", "mlb")]
             vk_props = await war_zone.find({}, {"_id": 0}).to_list(length=None)
             
-            # Build lookup by player/stat/line
+            # Build lookup by player/stat/line - use direction (VK) or recommendation (live_props)
             vk_lookup = {}
             for vk in vk_props:
-                key = f"{vk.get('player_name')}|{vk.get('stat_type')}|{vk.get('line')}|{vk.get('recommendation')}"
-                vk_lookup[key] = vk
+                # VK picks use 'direction' field, normalize to support both
+                dir_field = vk.get('direction') or vk.get('recommendation', 'OVER')
+                # Create multiple lookup keys for flexible matching
+                key1 = f"{vk.get('player_name')}|{vk.get('stat_type')}|{vk.get('line')}|{dir_field}"
+                key2 = f"{vk.get('player_name')}|{vk.get('stat_type')}|{vk.get('line')}"  # Without direction
+                vk_lookup[key1] = vk
+                vk_lookup[key2] = vk
             
             # Also check safe haven and front lines
             for tier_name in ["safe_haven", "front_lines"]:
                 tier_coll = self.db[get_collection_name(tier_name, "mlb")]
                 tier_props = await tier_coll.find({}, {"_id": 0}).to_list(length=None)
                 for vk in tier_props:
-                    key = f"{vk.get('player_name')}|{vk.get('stat_type')}|{vk.get('line')}|{vk.get('recommendation')}"
-                    vk_lookup[key] = vk
+                    dir_field = vk.get('direction') or vk.get('recommendation', 'OVER')
+                    key1 = f"{vk.get('player_name')}|{vk.get('stat_type')}|{vk.get('line')}|{dir_field}"
+                    key2 = f"{vk.get('player_name')}|{vk.get('stat_type')}|{vk.get('line')}"
+                    vk_lookup[key1] = vk
+                    vk_lookup[key2] = vk
             
             logger.info(f"[SHARP_SORT] Loaded {len(vk_lookup)} VK projections for matching")
             
@@ -350,9 +371,11 @@ class MLBSharpSortingService:
                 if prop.get("dk_line") is not None:
                     results["stats"]["total_with_dk_line"] += 1
                 
-                # Get VK projection
-                key = f"{prop.get('player_name')}|{prop.get('stat_type')}|{prop.get('line')}|{prop.get('recommendation')}"
-                vk_projection = vk_lookup.get(key, {})
+                # Get VK projection - try multiple key formats
+                prop_dir = prop.get('recommendation') or prop.get('direction', 'OVER')
+                key1 = f"{prop.get('player_name')}|{prop.get('stat_type')}|{prop.get('line')}|{prop_dir}"
+                key2 = f"{prop.get('player_name')}|{prop.get('stat_type')}|{prop.get('line')}"
+                vk_projection = vk_lookup.get(key1) or vk_lookup.get(key2, {})
                 
                 # Merge VK data into prop
                 prop["projected_value"] = vk_projection.get("projected_value")

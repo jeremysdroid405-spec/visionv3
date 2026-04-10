@@ -389,12 +389,16 @@ class MLBVKRegressionModel:
         handedness_data = None
         if opponent_pitcher_hand:
             if opponent_pitcher_hand.upper() == "L" and player.get("vs_left"):
-                handedness_data = player.get("vs_left")
+                raw_handedness = player.get("vs_left")
+                # Strip _id if present
+                handedness_data = {k: v for k, v in raw_handedness.items() if k != "_id"} if isinstance(raw_handedness, dict) else raw_handedness
             elif opponent_pitcher_hand.upper() == "R" and player.get("vs_right"):
-                handedness_data = player.get("vs_right")
+                raw_handedness = player.get("vs_right")
+                # Strip _id if present
+                handedness_data = {k: v for k, v in raw_handedness.items() if k != "_id"} if isinstance(raw_handedness, dict) else raw_handedness
             
             # Adjust based on split performance vs overall
-            if handedness_data and handedness_data.get("ops"):
+            if handedness_data and isinstance(handedness_data, dict) and handedness_data.get("ops"):
                 split_ops = handedness_data.get("ops", 0) or 0
                 overall_ops = player.get("ops", 0.750) or 0.750
                 if overall_ops > 0:
@@ -699,6 +703,14 @@ class MLBVKRegressionModel:
                         hit_rate
                     )
                     
+                    # Clean advanced stats for JSON serialization
+                    clean_advanced_stats = None
+                    if projection.get("advanced_stats"):
+                        clean_advanced_stats = {
+                            k: v for k, v in projection["advanced_stats"].items() 
+                            if k != "_id" and not hasattr(v, '_id')
+                        }
+                    
                     # Build pick object
                     pick = {
                         "player_name": player_name,
@@ -720,7 +732,7 @@ class MLBVKRegressionModel:
                             "opponent_adjustment": projection["adjustments"].get("opponent_adjustment"),
                             "handedness_adjustment": projection["adjustments"].get("handedness_adjustment"),
                         },
-                        "advanced_stats": projection.get("advanced_stats"),
+                        "advanced_stats": clean_advanced_stats,
                         "prop_data": {
                             "bookmaker": prop.get("bookmaker"),
                             "event_id": str(prop.get("event_id")) if prop.get("event_id") else None,
@@ -811,11 +823,30 @@ class MLBVKRegressionModel:
                 # Clear old picks
                 await collection.delete_many({})
                 
-                # Insert new picks
-                await collection.insert_many(picks)
-                save_results[tier_name] = len(picks)
+                # Strip any _id fields and ensure all values are JSON serializable
+                clean_picks = []
+                for pick in picks:
+                    clean_pick = {k: v for k, v in pick.items() if k != "_id"}
+                    # Ensure nested objects don't have _id either
+                    if "prop_data" in clean_pick and isinstance(clean_pick["prop_data"], dict):
+                        clean_pick["prop_data"] = {
+                            k: v for k, v in clean_pick["prop_data"].items() if k != "_id"
+                        }
+                    if "advanced_stats" in clean_pick and isinstance(clean_pick["advanced_stats"], dict):
+                        clean_pick["advanced_stats"] = {
+                            k: v for k, v in clean_pick["advanced_stats"].items() if k != "_id"
+                        }
+                    if "adjustments" in clean_pick and isinstance(clean_pick["adjustments"], dict):
+                        clean_pick["adjustments"] = {
+                            k: v for k, v in clean_pick["adjustments"].items() if k != "_id"
+                        }
+                    clean_picks.append(clean_pick)
                 
-                logger.info(f"[MLB_VK_REGRESSION] Saved {len(picks)} to mlb_{tier_name}")
+                # Insert new picks
+                await collection.insert_many(clean_picks)
+                save_results[tier_name] = len(clean_picks)
+                
+                logger.info(f"[MLB_VK_REGRESSION] Saved {len(clean_picks)} to mlb_{tier_name}")
         
         return save_results
 

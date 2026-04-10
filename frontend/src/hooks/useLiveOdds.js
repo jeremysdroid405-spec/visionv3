@@ -138,6 +138,42 @@ const fetchFrontLines = async (sport = 'nba') => {
 };
 
 /**
+ * Fetch MLB Sharp Goblins (Sharp money confirmed)
+ * MLB-only tier: Pinnacle odds ≤ -150 AND VK confirms
+ */
+const fetchMLBGoblins = async () => {
+  const response = await fetch(`${API}/api/v3/mlb/sharp/goblins`);
+  if (!response.ok) throw new Error('MLB Goblins fetch failed');
+  const data = await response.json();
+  preloadImages(data.picks);
+  return data;
+};
+
+/**
+ * Fetch MLB Demons (DK/PP line discrepancy)
+ * MLB-only tier: Line discrepancy + high edge
+ */
+const fetchMLBDemons = async () => {
+  const response = await fetch(`${API}/api/v3/mlb/sharp/demons`);
+  if (!response.ok) throw new Error('MLB Demons fetch failed');
+  const data = await response.json();
+  preloadImages(data.picks);
+  return data;
+};
+
+/**
+ * Fetch MLB HRR (Hits+Runs+RBIs) combo picks
+ * MLB-only tier: High edge + high hit rate on combo stats
+ */
+const fetchMLBHRRPicks = async () => {
+  const response = await fetch(`${API}/api/v3/mlb/ferrari/hrr-picks`);
+  if (!response.ok) throw new Error('MLB HRR picks fetch failed');
+  const data = await response.json();
+  preloadImages(data.picks);
+  return data;
+};
+
+/**
  * Fetch Most Popular Bets (by volume - all types)
  */
 const fetchMostPopularBets = async (sport = 'nba') => {
@@ -349,6 +385,60 @@ export const useTrapGraveyard = (options = {}) => {
     queryKey: ['trapGraveyard', currentSport],
     queryFn: () => fetchTrapGraveyard(currentSport),
     enabled: enabled && !isTransitioning,
+    staleTime: LIVE_ODDS_STALE_TIME,
+    refetchInterval,
+    refetchOnWindowFocus: true,
+  });
+};
+
+/**
+ * useMLBGoblins - MLB Sharp Goblins (Pinnacle confirmed)
+ * MLB-only
+ */
+export const useMLBGoblins = (options = {}) => {
+  const { enabled = true, refetchInterval = LIVE_ODDS_REFETCH_INTERVAL } = options;
+  const { currentSport, isTransitioning } = useSport();
+  
+  return useQuery({
+    queryKey: ['mlbGoblins'],
+    queryFn: fetchMLBGoblins,
+    enabled: enabled && !isTransitioning && currentSport === 'mlb',
+    staleTime: LIVE_ODDS_STALE_TIME,
+    refetchInterval,
+    refetchOnWindowFocus: true,
+  });
+};
+
+/**
+ * useMLBDemons - MLB Demons (DK/PP mispricing)
+ * MLB-only
+ */
+export const useMLBDemons = (options = {}) => {
+  const { enabled = true, refetchInterval = LIVE_ODDS_REFETCH_INTERVAL } = options;
+  const { currentSport, isTransitioning } = useSport();
+  
+  return useQuery({
+    queryKey: ['mlbDemons'],
+    queryFn: fetchMLBDemons,
+    enabled: enabled && !isTransitioning && currentSport === 'mlb',
+    staleTime: LIVE_ODDS_STALE_TIME,
+    refetchInterval,
+    refetchOnWindowFocus: true,
+  });
+};
+
+/**
+ * useMLBHRRPicks - MLB Hits+Runs+RBIs combo picks
+ * MLB-only
+ */
+export const useMLBHRRPicks = (options = {}) => {
+  const { enabled = true, refetchInterval = LIVE_ODDS_REFETCH_INTERVAL } = options;
+  const { currentSport, isTransitioning } = useSport();
+  
+  return useQuery({
+    queryKey: ['mlbHRRPicks'],
+    queryFn: fetchMLBHRRPicks,
+    enabled: enabled && !isTransitioning && currentSport === 'mlb',
     staleTime: LIVE_ODDS_STALE_TIME,
     refetchInterval,
     refetchOnWindowFocus: true,

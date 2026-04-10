@@ -49,7 +49,10 @@ import {
   useSafeHaven,
   useFrontLines,
   useLiveOdds,
-  useLiveVacuumAlerts
+  useLiveVacuumAlerts,
+  useMLBGoblins,
+  useMLBDemons,
+  useMLBHRRPicks
 } from '../hooks/useLiveOdds';
 import { useMasterStats } from '../hooks/useMasterStats';
 
@@ -595,6 +598,195 @@ const FrontLinesSection = memo(({ picks, onPickClick, onQuickAdd, isLoading }) =
 
 // ==================== TRAP GRAVEYARD SECTION ====================
 
+// ==================== MLB SHARP GOBLINS SECTION ====================
+const MLBGoblinsSection = memo(({ picks, onPickClick, onQuickAdd, isLoading }) => {
+  if (isLoading) {
+    return (
+      <div className="goblin-recon-section mb-4">
+        <SectionHeader 
+          icon={<GoblinIcon size={18} />}
+          title="SHARP GOBLINS"
+          subtitle="Pinnacle confirmed plays"
+          badgeText="LOADING"
+          badgeColor="green"
+        />
+        <div className="flex justify-center py-8">
+          <div className="animate-pulse text-green-400">Loading Sharp Goblins...</div>
+        </div>
+      </div>
+    );
+  }
+  
+  if (!picks?.length) {
+    return (
+      <div className="goblin-recon-section mb-4">
+        <SectionHeader 
+          icon={<GoblinIcon size={18} />}
+          title="SHARP GOBLINS"
+          subtitle="Pinnacle confirmed plays"
+          badgeText="0 PICKS"
+          badgeColor="zinc"
+        />
+        <EmptyStateMessage 
+          icon={<GoblinIcon size={20} />}
+          title="No Sharp Goblins Found"
+          message="Run Sharp Sort to classify picks"
+        />
+      </div>
+    );
+  }
+  
+  return (
+    <div className="goblin-recon-section mb-4">
+      <SectionHeader 
+        icon={<GoblinIcon size={18} />}
+        title="SHARP GOBLINS"
+        subtitle="Pinnacle odds ≤ -150 + VK confirms"
+        badgeText={`${picks.length} PICKS`}
+        badgeColor="green"
+      />
+      <SwipeContainer>
+        {picks.slice(0, 10).map((pick, idx) => (
+          <div key={`mlb-goblin-${pick.player_name}-${pick.stat_type}-${idx}`} className="swipe-card">
+            <UniversalPlayerCard 
+              player={pick} 
+              onClick={() => onPickClick(pick)} 
+              onQuickAdd={onQuickAdd}
+              showStats={true}
+              showProps={false}
+              mode="compact"
+              sectionColor="green"
+              forceTheme="GOBLIN"
+              isBoardPick={true}
+            />
+          </div>
+        ))}
+      </SwipeContainer>
+    </div>
+  );
+});
+
+// ==================== MLB DEMONS SECTION ====================
+const MLBDemonsSection = memo(({ picks, onPickClick, onQuickAdd, isLoading }) => {
+  if (isLoading) {
+    return (
+      <div className="war-zone-section mb-4">
+        <SectionHeader 
+          icon={<DemonIcon size={18} />}
+          title="DEMONS"
+          subtitle="DK/PP line discrepancy plays"
+          badgeText="LOADING"
+          badgeColor="red"
+        />
+        <div className="flex justify-center py-8">
+          <div className="animate-pulse text-red-400">Loading Demons...</div>
+        </div>
+      </div>
+    );
+  }
+  
+  if (!picks?.length) {
+    return (
+      <div className="war-zone-section mb-4">
+        <SectionHeader 
+          icon={<DemonIcon size={18} />}
+          title="DEMONS"
+          subtitle="DK/PP line discrepancy plays"
+          badgeText="0 PICKS"
+          badgeColor="zinc"
+        />
+        <EmptyStateMessage 
+          icon={<DemonIcon size={20} />}
+          title="No Demons Found"
+          message="Run Sharp Sort to classify picks"
+        />
+      </div>
+    );
+  }
+  
+  return (
+    <div className="war-zone-section mb-4">
+      <SectionHeader 
+        icon={<DemonIcon size={18} />}
+        title="DEMONS"
+        subtitle="DK ≠ PP line + high edge"
+        badgeText={`${Math.min(10, picks.length)} PICKS`}
+        badgeColor="red"
+      />
+      <SwipeContainer>
+        {picks.slice(0, 10).map((pick, idx) => (
+          <div key={`mlb-demon-${pick.player_name}-${pick.stat_type}-${idx}`} className="swipe-card">
+            <UniversalPlayerCard 
+              player={pick} 
+              onClick={() => onPickClick(pick)} 
+              onQuickAdd={onQuickAdd}
+              showStats={true}
+              showProps={false}
+              mode="compact"
+              sectionColor="red"
+              forceTheme="DEMON"
+              isBoardPick={true}
+            />
+          </div>
+        ))}
+      </SwipeContainer>
+    </div>
+  );
+});
+
+// ==================== MLB HRR PICKS SECTION ====================
+const MLBHRRSection = memo(({ picks, onPickClick, onQuickAdd, isLoading }) => {
+  if (isLoading) {
+    return (
+      <div className="front-lines-section mb-4">
+        <SectionHeader 
+          icon={<Flame className="w-4 h-4 text-orange-400" />}
+          title="COMBO PLAYS"
+          subtitle="Hits+Runs+RBIs picks"
+          badgeText="LOADING"
+          badgeColor="orange"
+        />
+        <div className="flex justify-center py-8">
+          <div className="animate-pulse text-orange-400">Loading HRR Combos...</div>
+        </div>
+      </div>
+    );
+  }
+  
+  if (!picks?.length) {
+    return null; // Don't show empty HRR section
+  }
+  
+  return (
+    <div className="front-lines-section mb-4">
+      <SectionHeader 
+        icon={<Flame className="w-4 h-4 text-orange-400" />}
+        title="COMBO PLAYS"
+        subtitle="Hits+Runs+RBIs high value"
+        badgeText={`${Math.min(10, picks.length)} PICKS`}
+        badgeColor="orange"
+      />
+      <SwipeContainer>
+        {picks.slice(0, 10).map((pick, idx) => (
+          <div key={`mlb-hrr-${pick.player_name}-${idx}`} className="swipe-card">
+            <UniversalPlayerCard 
+              player={pick} 
+              onClick={() => onPickClick(pick)} 
+              onQuickAdd={onQuickAdd}
+              showStats={true}
+              showProps={false}
+              mode="compact"
+              sectionColor="orange"
+              forceTheme="FRONT_LINE"
+              isBoardPick={true}
+            />
+          </div>
+        ))}
+      </SwipeContainer>
+    </div>
+  );
+});
+
 // Trap Card - Shows warning badges prominently
 
 
@@ -908,6 +1100,7 @@ const LiveInjuryAdvantageSection = memo(({ alerts, isLoading }) => {
 const Dashboard = () => {
   const navigate = useNavigate();
   const { user, logout, isDemo } = useAuth();
+  const { currentSport } = useSport();
   
   // ========== SSOT: TanStack Query Subscriptions ==========
   // PIPE 2: Live Wire - 30s polling for real-time updates
@@ -917,11 +1110,21 @@ const Dashboard = () => {
   const { data: liveOddsData, isLoading: boardLoading, refetch: refetchBoard } = useLiveOdds();
   const { data: vacuumAlertsData, isLoading: vacuumAlertsLoading } = useLiveVacuumAlerts();
   
+  // MLB-specific hooks (only active when sport=mlb)
+  const { data: mlbGoblinsData, isLoading: mlbGoblinsLoading, refetch: refetchMLBGoblins } = useMLBGoblins();
+  const { data: mlbDemonsData, isLoading: mlbDemonsLoading, refetch: refetchMLBDemons } = useMLBDemons();
+  const { data: mlbHRRData, isLoading: mlbHRRLoading, refetch: refetchMLBHRR } = useMLBHRRPicks();
+  
   // Extract picks from TanStack Query data
   const radarPicks = useMemo(() => warZoneData?.picks || [], [warZoneData]);
   const vaultPicks = useMemo(() => safeHavenData?.picks || [], [safeHavenData]);
   const frontLinesPicks = useMemo(() => frontLinesData?.picks || [], [frontLinesData]);
   const players = useMemo(() => liveOddsData?.players || [], [liveOddsData]);
+  
+  // MLB Sharp tiers
+  const mlbGoblinsPicks = useMemo(() => mlbGoblinsData?.picks || [], [mlbGoblinsData]);
+  const mlbDemonsPicks = useMemo(() => mlbDemonsData?.picks || [], [mlbDemonsData]);
+  const mlbHRRPicks = useMemo(() => mlbHRRData?.picks || [], [mlbHRRData]);
   
   // Live Vacuum Alerts (Usage Vacuum)
   const vacuumAlerts = useMemo(() => vacuumAlertsData?.alerts || [], [vacuumAlertsData]);
@@ -931,8 +1134,8 @@ const Dashboard = () => {
   const staticLoaded = !warZoneLoading && !safeHavenLoading;
   const syncing = boardLoading || warZoneLoading || safeHavenLoading;
   const boardIntelStatus = { 
-    demon_count: radarPicks.length, 
-    goblin_count: vaultPicks.length,
+    demon_count: currentSport === 'mlb' ? mlbDemonsPicks.length : radarPicks.length, 
+    goblin_count: currentSport === 'mlb' ? mlbGoblinsPicks.length : vaultPicks.length,
     total_players: players.length 
   };
   const syncStatus = { last_sync: warZoneData?.synced_at };
@@ -957,8 +1160,14 @@ const Dashboard = () => {
     refetchSafeHaven();
     refetchFrontLines();
     refetchBoard();
+    // Also refetch MLB-specific data if on MLB
+    if (currentSport === 'mlb') {
+      refetchMLBGoblins();
+      refetchMLBDemons();
+      refetchMLBHRR();
+    }
     toast.success('Data refreshed');
-  }, [refetchWarZone, refetchSafeHaven, refetchFrontLines, refetchBoard]);
+  }, [refetchWarZone, refetchSafeHaven, refetchFrontLines, refetchBoard, refetchMLBGoblins, refetchMLBDemons, refetchMLBHRR, currentSport]);
   
   // Local UI state
   const [searchTerm, setSearchTerm] = useState('');
@@ -1305,6 +1514,35 @@ const Dashboard = () => {
             alerts={vacuumAlerts} 
             isLoading={vacuumAlertsLoading} 
           />
+          
+          {/* MLB-SPECIFIC SECTIONS */}
+          {currentSport === 'mlb' && (
+            <>
+              {/* MLB Sharp Goblins */}
+              <MLBGoblinsSection 
+                picks={mlbGoblinsPicks} 
+                onPickClick={handleVaultClick} 
+                onQuickAdd={handleQuickAdd} 
+                isLoading={mlbGoblinsLoading} 
+              />
+              
+              {/* MLB Demons */}
+              <MLBDemonsSection 
+                picks={mlbDemonsPicks} 
+                onPickClick={handleRadarClick} 
+                onQuickAdd={handleQuickAdd} 
+                isLoading={mlbDemonsLoading} 
+              />
+              
+              {/* MLB HRR Combo Picks */}
+              <MLBHRRSection 
+                picks={mlbHRRPicks} 
+                onPickClick={handleRadarClick} 
+                onQuickAdd={handleQuickAdd} 
+                isLoading={mlbHRRLoading} 
+              />
+            </>
+          )}
             
             {/* Safe Haven */}
             <SafeHavenSection picks={vaultPicks} onPickClick={handleVaultClick} onQuickAdd={handleQuickAdd} isLoading={safeHavenLoading} />
