@@ -737,10 +737,10 @@ async def get_ferrari_parlays(
 async def sync_odds_universal(
     sport: str = Query("nba", description="Sport to sync (nba or mlb)"),
     bookmakers: str = Query(
-        "prizepicks,draftkings,fanduel,pinnacle",
-        description="Comma-separated bookmakers to fetch"
+        None,
+        description="Comma-separated bookmakers to fetch. MLB defaults to PrizePicks only. NBA defaults to prizepicks,draftkings,fanduel,pinnacle"
     ),
-    include_sharp: bool = Query(True, description="Include sharp books (Pinnacle, Circa, BetCRIS)")
+    include_sharp: bool = Query(True, description="Include sharp books (Pinnacle, Circa, BetCRIS) - ignored for MLB")
 ):
     """
     Universal Multi-Bookmaker Odds Sync.
@@ -754,17 +754,18 @@ async def sync_odds_universal(
     
     **NBA** (basketball_nba):
     - Markets: player_points, player_rebounds, player_assists, PRA
+    - Bookmakers: All (prizepicks, draftkings, fanduel, pinnacle)
     - Saves to: dg_live_props
     
     **MLB** (baseball_mlb):
-    - Markets: pitcher_strikeouts, pitcher_walks, pitcher_hits_allowed,
-               batter_hits, batter_total_bases, batter_rbis, batter_runs_scored, batter_stolen_bases
+    - Markets: ALL available PrizePicks markets (home_runs, hits, total_bases, rbis, runs, strikeouts, walks, stolen_bases, pitcher_strikeouts, etc.)
+    - Bookmakers: PrizePicks ONLY
     - Saves to: mlb_live_props
     
     **Output includes:**
     - all_lines: Lines from each bookmaker
-    - sharp_line: Line from sharp book (Pinnacle)
-    - sharp_edge: Percentage difference between DFS line and sharp line
+    - sharp_line: Line from sharp book (Pinnacle) - NBA only
+    - sharp_edge: Percentage difference between DFS line and sharp line - NBA only
     
     Returns sync summary with event count, prop count, bookmaker breakdown.
     """
@@ -780,8 +781,10 @@ async def sync_odds_universal(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     
-    # Parse bookmakers
-    bookmaker_list = [b.strip().lower() for b in bookmakers.split(",") if b.strip()]
+    # Parse bookmakers - if None, let the service use sport-specific defaults
+    bookmaker_list = None
+    if bookmakers is not None:
+        bookmaker_list = [b.strip().lower() for b in bookmakers.split(",") if b.strip()]
     
     # Run the sync
     service = get_universal_odds_service(_db)

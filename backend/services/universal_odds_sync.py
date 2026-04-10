@@ -113,6 +113,9 @@ BOOKMAKER_CONFIG = {
 DEFAULT_BOOKMAKERS = ["prizepicks", "draftkings", "fanduel", "pinnacle"]
 SHARP_BOOKMAKERS = ["pinnacle", "circa", "betcris"]
 
+# MLB-specific: Only PrizePicks
+MLB_BOOKMAKERS = ["prizepicks"]
+
 # =============================================================================
 # SPORT-SPECIFIC CONFIGURATION
 # =============================================================================
@@ -147,40 +150,43 @@ SPORT_API_CONFIG = {
     "mlb": {
         "sport_key": "baseball_mlb",
         "display_name": "MLB",
-        # MLB Markets - Split into primary and secondary for API limits
+        # MLB Markets - ALL available markets from PrizePicks
         "markets": [
-            # Core batter props (standard + alternate)
-            "batter_hits",
-            "batter_hits_alternate",
-            "batter_total_bases",
-            "batter_total_bases_alternate",
-            "batter_rbis",
-            "batter_rbis_alternate",
-            "batter_runs_scored",
-            "batter_runs_scored_alternate",
-            "batter_stolen_bases",
-            "batter_stolen_bases_alternate",
-            # Combo props (HRR, H+R)
-            "batter_hits_runs_rbis",
-            # Core pitcher props
-            "pitcher_strikeouts",
-            "pitcher_strikeouts_alternate",
-            "pitcher_hits_allowed",
-            "pitcher_hits_allowed_alternate",
-        ],
-        # Secondary markets (fetched in second pass)
-        "markets_secondary": [
+            # Batter props - Standard
             "batter_home_runs",
-            "batter_home_runs_alternate",
+            "batter_hits",
+            "batter_total_bases",
+            "batter_rbis",
+            "batter_runs_scored",
+            "batter_stolen_bases",
             "batter_walks",
-            "batter_walks_alternate",
             "batter_strikeouts",
+            "batter_singles",
+            "batter_doubles",
+            "batter_triples",
+            # Batter props - Alternate lines
+            "batter_home_runs_alternate",
+            "batter_hits_alternate",
+            "batter_total_bases_alternate",
+            "batter_rbis_alternate",
+            "batter_runs_scored_alternate",
+            "batter_stolen_bases_alternate",
+            "batter_walks_alternate",
             "batter_strikeouts_alternate",
+            # Batter combo props
+            "batter_hits_runs_rbis",
+            # Pitcher props - Standard
+            "pitcher_strikeouts",
+            "pitcher_hits_allowed",
             "pitcher_walks",
-            "pitcher_walks_alternate",
             "pitcher_earned_runs",
-            "pitcher_earned_runs_alternate",
             "pitcher_outs",
+            "pitcher_record_a_win",
+            # Pitcher props - Alternate lines
+            "pitcher_strikeouts_alternate",
+            "pitcher_hits_allowed_alternate",
+            "pitcher_walks_alternate",
+            "pitcher_earned_runs_alternate",
             "pitcher_outs_alternate",
         ],
         # Map Odds API market names to our stat types
@@ -196,7 +202,10 @@ SPORT_API_CONFIG = {
             "pitcher_earned_runs_alternate": "Earned Runs",
             "pitcher_outs": "Pitcher Outs",
             "pitcher_outs_alternate": "Pitcher Outs",
+            "pitcher_record_a_win": "Pitcher Win",
             # Batter stats
+            "batter_home_runs": "Home Runs",
+            "batter_home_runs_alternate": "Home Runs",
             "batter_hits": "Hits",
             "batter_hits_alternate": "Hits",
             "batter_total_bases": "Total Bases",
@@ -211,12 +220,12 @@ SPORT_API_CONFIG = {
             "batter_walks_alternate": "Batter Walks",
             "batter_strikeouts": "Batter Strikeouts",
             "batter_strikeouts_alternate": "Batter Strikeouts",
-            "batter_home_runs": "Home Runs",
-            "batter_home_runs_alternate": "Home Runs",
             "batter_singles": "Singles",
             "batter_singles_alternate": "Singles",
             "batter_doubles": "Doubles",
             "batter_doubles_alternate": "Doubles",
+            "batter_triples": "Triples",
+            "batter_triples_alternate": "Triples",
             # Combo stats
             "batter_hits_runs_rbis": "Hits+Runs+RBIs",
             "batter_hits_runs_rbis_alternate": "Hits+Runs+RBIs",
@@ -224,7 +233,9 @@ SPORT_API_CONFIG = {
             "batter_total_bases_runs_rbis_alternate": "Total Bases+Runs+RBIs",
             "batter_hits_runs": "Hits+Runs",
             "batter_hits_runs_alternate": "Hits+Runs",
-        }
+        },
+        # PrizePicks only for MLB
+        "bookmakers": ["prizepicks"]
     }
 }
 
@@ -324,9 +335,12 @@ class UniversalOddsSyncService:
         sport_key = config["sport_key"]
         markets = ",".join(config["markets"])
         
-        # Default bookmakers if not specified
+        # Default bookmakers if not specified - use sport-specific config
         if bookmakers is None:
-            bookmakers = DEFAULT_BOOKMAKERS
+            if "bookmakers" in config:
+                bookmakers = config["bookmakers"]
+            else:
+                bookmakers = DEFAULT_BOOKMAKERS
         
         # Build regions list based on bookmakers
         regions = set()
@@ -588,11 +602,17 @@ class UniversalOddsSyncService:
         config = self._get_sport_config(sport)
         display_name = config["display_name"]
         
-        # Build bookmaker list
+        # Build bookmaker list - use sport-specific config if available
         if bookmakers is None:
-            bookmakers = DEFAULT_BOOKMAKERS.copy()
+            # Check for sport-specific bookmaker config
+            if "bookmakers" in config:
+                bookmakers = config["bookmakers"].copy()
+                # MLB uses ONLY PrizePicks, no sharp books
+                include_sharp = False
+            else:
+                bookmakers = DEFAULT_BOOKMAKERS.copy()
         
-        # Add sharp books if requested
+        # Add sharp books if requested (not for MLB)
         if include_sharp:
             for sharp in SHARP_BOOKMAKERS:
                 if sharp not in bookmakers:

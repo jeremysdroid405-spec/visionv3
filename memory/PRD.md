@@ -202,9 +202,21 @@ Build a local-first betting intelligence app restructuring React/FastAPI to inte
   - Goblins, Demons, Standard tier classification
   - Frontend integration with new hooks and sections
 
+### Session 11 - MLB PrizePicks-Only Sync & Full Markets (April 10, 2026)
+- [x] **FIXED P0 BLOCKER**: Missing MLB Prop Markets (Home Runs, etc.)
+  - Root Cause: `universal_odds_sync.py` was pulling from multiple bookmakers with limited markets
+  - Solution: Added sport-specific bookmaker config (`"bookmakers": ["prizepicks"]`) for MLB
+  - Solution: Expanded MLB markets to include ALL available PrizePicks props
+- [x] **MLB Markets Now Include**:
+  - Batter: home_runs, hits, total_bases, rbis, runs, stolen_bases, walks, strikeouts, singles, doubles, triples
+  - Pitcher: strikeouts, hits_allowed, walks, earned_runs, outs, record_a_win
+  - Combos: hits_runs_rbis
+  - All alternate lines (_alternate suffix) for DEMON/GOBLIN classification
+- [x] **Updated endpoint**: `/api/v3/odds/sync` now uses sport-specific defaults (MLB = PrizePicks only, NBA = multi-book)
+- [x] **Results**: 4,170 PrizePicks props synced, including 226 Home Runs props
+
 ### P1 - Critical
 - [ ] **Complete MLB Headshot Sync** - ~700 players remaining (60 done)
-- [ ] **Upstream Prop Duplication** - Investigate `universal_odds_sync.py` for duplicate prop insertion
 
 ### P2 - Important
 - [ ] **MLB Vision Intel** - Gemini TRAP filtering adapted for MLB stat rules
