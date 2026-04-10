@@ -735,13 +735,25 @@ async def get_ferrari_parlays(
 
 @router.post("/v3/odds/sync")
 async def sync_odds_universal(
-    sport: str = Query("nba", description="Sport to sync (nba or mlb)")
+    sport: str = Query("nba", description="Sport to sync (nba or mlb)"),
+    bookmakers: str = Query(
+        "prizepicks,draftkings,fanduel,pinnacle",
+        description="Comma-separated bookmakers to fetch"
+    ),
+    include_sharp: bool = Query(True, description="Include sharp books (Pinnacle, Circa, BetCRIS)")
 ):
     """
-    Universal Odds Sync - Fetch live PrizePicks props for any sport.
+    Universal Multi-Bookmaker Odds Sync.
+    
+    Fetches props from multiple bookmakers for cross-market comparison.
+    
+    **Bookmakers Supported:**
+    - DFS: prizepicks, underdog
+    - US Books: draftkings, fanduel, betmgm
+    - Sharp Books: pinnacle, circa, betcris
     
     **NBA** (basketball_nba):
-    - Markets: player_points, player_rebounds, player_assists, player_points_rebounds_assists
+    - Markets: player_points, player_rebounds, player_assists, PRA
     - Saves to: dg_live_props
     
     **MLB** (baseball_mlb):
@@ -749,7 +761,12 @@ async def sync_odds_universal(
                batter_hits, batter_total_bases, batter_rbis, batter_runs_scored, batter_stolen_bases
     - Saves to: mlb_live_props
     
-    Returns sync summary with event count, prop count, and stat types.
+    **Output includes:**
+    - all_lines: Lines from each bookmaker
+    - sharp_line: Line from sharp book (Pinnacle)
+    - sharp_edge: Percentage difference between DFS line and sharp line
+    
+    Returns sync summary with event count, prop count, bookmaker breakdown.
     """
     from config.db_config import validate_sport
     from services.universal_odds_sync import get_universal_odds_service
@@ -763,9 +780,12 @@ async def sync_odds_universal(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     
+    # Parse bookmakers
+    bookmaker_list = [b.strip().lower() for b in bookmakers.split(",") if b.strip()]
+    
     # Run the sync
     service = get_universal_odds_service(_db)
-    result = await service.sync_sport_props(sport)
+    result = await service.sync_sport_props(sport, bookmakers=bookmaker_list, include_sharp=include_sharp)
     
     return result
 

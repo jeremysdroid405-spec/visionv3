@@ -8,6 +8,12 @@ Supports:
 - MLB (baseball_mlb): Pitcher strikeouts, walks, hits allowed; 
                       Batter hits, total bases, RBIs, runs, stolen bases
 
+Bookmakers Supported:
+- PrizePicks (DFS)
+- DraftKings (DK)
+- FanDuel (FD)
+- Sharp Books: Pinnacle, Circa, BetCRIS
+
 Each sport saves to its own collection:
 - NBA: dg_live_props (legacy name)
 - MLB: mlb_live_props
@@ -29,9 +35,83 @@ logger = logging.getLogger(__name__)
 ODDS_API_KEY = os.environ.get("ODDS_API_KEY")
 ODDS_API_BASE = "https://api.the-odds-api.com/v4"
 
-# Region for DFS props
+# =============================================================================
+# BOOKMAKER CONFIGURATION
+# =============================================================================
+
+# DFS Region (PrizePicks, Underdog, etc.)
 DFS_REGION = "us_dfs"
-PRIZEPICKS_BOOKMAKER = "prizepicks"
+# US sportsbooks region (DraftKings, FanDuel, etc.)
+US_REGION = "us"
+# EU region (Pinnacle, Bet365)
+EU_REGION = "eu"
+
+# Bookmaker categories
+BOOKMAKER_CONFIG = {
+    # DFS platforms
+    "prizepicks": {
+        "region": "us_dfs",
+        "display_name": "PrizePicks",
+        "is_dfs": True,
+        "is_sharp": False,
+        "priority": 1,  # Primary source
+    },
+    "underdog": {
+        "region": "us_dfs",
+        "display_name": "Underdog Fantasy",
+        "is_dfs": True,
+        "is_sharp": False,
+        "priority": 2,
+    },
+    # US Sportsbooks
+    "draftkings": {
+        "region": "us",
+        "display_name": "DraftKings",
+        "is_dfs": False,
+        "is_sharp": False,
+        "priority": 3,
+    },
+    "fanduel": {
+        "region": "us",
+        "display_name": "FanDuel",
+        "is_dfs": False,
+        "is_sharp": False,
+        "priority": 4,
+    },
+    "betmgm": {
+        "region": "us",
+        "display_name": "BetMGM",
+        "is_dfs": False,
+        "is_sharp": False,
+        "priority": 5,
+    },
+    # Sharp Books (lower limits, sharper lines)
+    "pinnacle": {
+        "region": "eu",
+        "display_name": "Pinnacle",
+        "is_dfs": False,
+        "is_sharp": True,
+        "priority": 10,  # Sharp reference
+    },
+    "circa": {
+        "region": "us",
+        "display_name": "Circa",
+        "is_dfs": False,
+        "is_sharp": True,
+        "priority": 11,
+    },
+    "betcris": {
+        "region": "eu",
+        "display_name": "BetCRIS",
+        "is_dfs": False,
+        "is_sharp": True,
+        "priority": 12,
+    },
+}
+
+# Default bookmakers to fetch (prioritized list)
+DEFAULT_BOOKMAKERS = ["prizepicks", "draftkings", "fanduel", "pinnacle"]
+SHARP_BOOKMAKERS = ["pinnacle", "circa", "betcris"]
 
 # =============================================================================
 # SPORT-SPECIFIC CONFIGURATION
@@ -187,31 +267,47 @@ class UniversalOddsSyncService:
         self,
         event_id: str,
         event_info: Dict[str, Any],
-        sport: str = "nba"
+        sport: str = "nba",
+        bookmakers: List[str] = None
     ) -> Dict[str, Any]:
         """
-        Fetch PrizePicks odds for a single event.
+        Fetch odds for a single event from multiple bookmakers.
         
         Args:
             event_id: The Odds API event ID
             event_info: Event metadata (teams, time, etc.)
             sport: Sport to fetch ('nba' or 'mlb')
+            bookmakers: List of bookmakers to fetch (default: prizepicks, draftkings, fanduel, pinnacle)
             
         Returns:
-            Odds data with all player props
+            Odds data with all player props from all bookmakers
         """
         config = self._get_sport_config(sport)
         sport_key = config["sport_key"]
         markets = ",".join(config["markets"])
+        
+        # Default bookmakers if not specified
+        if bookmakers is None:
+            bookmakers = DEFAULT_BOOKMAKERS
+        
+        # Build regions list based on bookmakers
+        regions = set()
+        for bm in bookmakers:
+            bm_config = BOOKMAKER_CONFIG.get(bm)
+            if bm_config:
+                regions.add(bm_config["region"])
+        
+        regions_str = ",".join(regions)
+        bookmakers_str = ",".join(bookmakers)
         
         try:
             url = f"{ODDS_API_BASE}/sports/{sport_key}/events/{event_id}/odds"
             
             params = {
                 "apiKey": ODDS_API_KEY,
-                "regions": DFS_REGION,
+                "regions": regions_str,
                 "markets": markets,
-                "bookmakers": PRIZEPICKS_BOOKMAKER,
+                "bookmakers": bookmakers_str,
                 "oddsFormat": "american",
                 "includeMultipliers": "true"
             }
@@ -224,16 +320,24 @@ class UniversalOddsSyncService:
                 odds_data["event_id"] = event_id
                 odds_data["sport"] = sport
                 odds_data["fetched_at"] = datetime.now(timezone.utc).isoformat()
+                odds_data["bookmakers_requested"] = bookmakers
                 
-                # Count outcomes
+                # Count outcomes per bookmaker
                 total_outcomes = 0
+                bookmaker_counts = {}
                 for bm in odds_data.get("bookmakers", []):
+                    bm_key = bm.get("key", "unknown")
+                    bm_count = 0
                     for market in bm.get("markets", []):
-                        total_outcomes += len(market.get("outcomes", []))
+                        bm_count += len(market.get("outcomes", []))
+                    bookmaker_counts[bm_key] = bm_count
+                    total_outcomes += bm_count
+                
+                odds_data["outcome_counts"] = bookmaker_counts
                 
                 logger.debug(
                     f"  [{config['display_name']}] {event_info.get('away_team')} @ "
-                    f"{event_info.get('home_team')}: {total_outcomes} lines"
+                    f"{event_info.get('home_team')}: {total_outcomes} lines ({bookmaker_counts})"
                 )
                 
                 return odds_data
@@ -255,7 +359,10 @@ class UniversalOddsSyncService:
         sport: str = "nba"
     ) -> List[Dict[str, Any]]:
         """
-        Extract individual props from odds data.
+        Extract individual props from odds data with multi-bookmaker support.
+        
+        Groups props by player/stat and tracks lines from each bookmaker.
+        Identifies sharp book lines for edge calculation.
         
         Args:
             odds_data: Raw odds data from API
@@ -263,15 +370,20 @@ class UniversalOddsSyncService:
             sport: Sport for stat type mapping
             
         Returns:
-            List of normalized prop dictionaries
+            List of normalized prop dictionaries with multi-book data
         """
         config = self._get_sport_config(sport)
         stat_type_map = config["stat_type_map"]
         
-        props = []
-        seen_keys = set()  # Deduplication
+        # First pass: Collect all props grouped by player/stat
+        prop_groups: Dict[str, Dict] = {}  # key -> {lines: {bookmaker: line}, ...}
         
         for bookmaker in odds_data.get("bookmakers", []):
+            bm_key = bookmaker.get("key", "unknown")
+            bm_config = BOOKMAKER_CONFIG.get(bm_key, {})
+            is_sharp = bm_config.get("is_sharp", False)
+            is_dfs = bm_config.get("is_dfs", False)
+            
             for market in bookmaker.get("markets", []):
                 market_key = market.get("key", "")
                 stat_type = stat_type_map.get(market_key, market_key)
@@ -289,51 +401,125 @@ class UniversalOddsSyncService:
                     outcome_name = outcome.get("name", "").lower()
                     recommendation = "OVER" if "over" in outcome_name else "UNDER"
                     
-                    # Create deduplication key
-                    dedup_key = f"{player_name}|{stat_type}|{line}|{recommendation}"
-                    if dedup_key in seen_keys:
-                        continue
-                    seen_keys.add(dedup_key)
+                    # Create group key (unique per player/stat/recommendation)
+                    group_key = f"{player_name}|{stat_type}|{recommendation}"
                     
-                    # Build prop document
-                    prop = {
-                        "player_name": player_name,
-                        "stat_type": stat_type,
-                        "line": float(line),
-                        "recommendation": recommendation,
-                        "odds": outcome.get("price", -110),
-                        "market_key": market_key,
-                        "bookmaker": bookmaker.get("key", PRIZEPICKS_BOOKMAKER),
-                        # Event context
-                        "event_id": odds_data.get("event_id"),
-                        "home_team": event_info.get("home_team"),
-                        "away_team": event_info.get("away_team"),
-                        "commence_time": event_info.get("commence_time"),
-                        # Metadata
-                        "sport": sport,
-                        "fetched_at": datetime.now(timezone.utc).isoformat(),
-                        "source": "prizepicks"
-                    }
+                    if group_key not in prop_groups:
+                        prop_groups[group_key] = {
+                            "player_name": player_name,
+                            "stat_type": stat_type,
+                            "recommendation": recommendation,
+                            "market_key": market_key,
+                            "event_id": odds_data.get("event_id"),
+                            "home_team": event_info.get("home_team"),
+                            "away_team": event_info.get("away_team"),
+                            "commence_time": event_info.get("commence_time"),
+                            "sport": sport,
+                            "lines": {},  # bookmaker -> line
+                            "odds": {},   # bookmaker -> odds
+                            "sharp_line": None,
+                            "dfs_line": None,
+                        }
                     
-                    # Determine player's team (heuristic based on name parsing)
-                    # This will be enriched later by roster matching
-                    prop["team"] = None  # Will be set during enrichment
+                    # Store line by bookmaker
+                    prop_groups[group_key]["lines"][bm_key] = float(line)
+                    prop_groups[group_key]["odds"][bm_key] = outcome.get("price", -110)
                     
-                    props.append(prop)
+                    # Track sharp line
+                    if is_sharp and prop_groups[group_key]["sharp_line"] is None:
+                        prop_groups[group_key]["sharp_line"] = float(line)
+                        prop_groups[group_key]["sharp_book"] = bm_key
+                    
+                    # Track DFS line (PrizePicks, Underdog)
+                    if is_dfs and prop_groups[group_key]["dfs_line"] is None:
+                        prop_groups[group_key]["dfs_line"] = float(line)
+                        prop_groups[group_key]["dfs_book"] = bm_key
+        
+        # Second pass: Build prop documents with multi-book comparison
+        props = []
+        
+        for group_key, group_data in prop_groups.items():
+            # Use DFS line as primary if available, else use first available
+            lines = group_data["lines"]
+            primary_line = group_data.get("dfs_line")
+            primary_book = group_data.get("dfs_book", "prizepicks")
+            
+            if primary_line is None and lines:
+                # Fallback to first available line
+                primary_book = list(lines.keys())[0]
+                primary_line = lines[primary_book]
+            
+            if primary_line is None:
+                continue
+            
+            # Calculate sharp edge if available
+            sharp_edge = None
+            sharp_line = group_data.get("sharp_line")
+            if sharp_line is not None and primary_line > 0:
+                # Positive edge = DFS line below sharp (value on OVER)
+                # Negative edge = DFS line above sharp (value on UNDER)
+                sharp_edge = round((sharp_line - primary_line) / primary_line * 100, 2)
+            
+            # Calculate DraftKings edge (DK line vs DFS line)
+            dk_edge = None
+            dk_line = lines.get("draftkings")
+            if dk_line is not None and primary_line > 0:
+                dk_edge = round((dk_line - primary_line) / primary_line * 100, 2)
+            
+            # Build prop document
+            prop = {
+                "player_name": group_data["player_name"],
+                "stat_type": group_data["stat_type"],
+                "line": primary_line,
+                "recommendation": group_data["recommendation"],
+                "odds": group_data["odds"].get(primary_book, -110),
+                "market_key": group_data["market_key"],
+                "bookmaker": primary_book,
+                # Event context
+                "event_id": group_data["event_id"],
+                "home_team": group_data["home_team"],
+                "away_team": group_data["away_team"],
+                "commence_time": group_data["commence_time"],
+                # Multi-book data
+                "all_lines": lines,
+                "all_odds": group_data["odds"],
+                "sharp_line": sharp_line,
+                "sharp_book": group_data.get("sharp_book"),
+                "sharp_edge": sharp_edge,
+                "dk_line": dk_line,
+                "dk_edge": dk_edge,
+                "dfs_line": group_data.get("dfs_line"),
+                "dfs_book": group_data.get("dfs_book"),
+                # Metadata
+                "sport": sport,
+                "fetched_at": datetime.now(timezone.utc).isoformat(),
+                "source": primary_book,
+                "bookmakers_available": list(lines.keys()),
+                "team": None  # Will be set during enrichment
+            }
+            
+            props.append(prop)
         
         return props
     
-    async def sync_sport_props(self, sport: str = "nba") -> Dict[str, Any]:
+    async def sync_sport_props(
+        self, 
+        sport: str = "nba",
+        bookmakers: List[str] = None,
+        include_sharp: bool = True
+    ) -> Dict[str, Any]:
         """
-        Full sync of props for a sport.
+        Full sync of props for a sport from multiple bookmakers.
         
         1. Fetch all events
-        2. Fetch odds for each event
-        3. Extract and normalize props
+        2. Fetch odds for each event from all specified bookmakers
+        3. Extract and normalize props with multi-book comparison
         4. Save to sport-specific collection
         
         Args:
             sport: Sport to sync ('nba' or 'mlb')
+            bookmakers: List of bookmakers (default: prizepicks, draftkings, fanduel, pinnacle)
+            include_sharp: Include sharp books for edge calculation
             
         Returns:
             Sync results summary
@@ -342,20 +528,34 @@ class UniversalOddsSyncService:
         config = self._get_sport_config(sport)
         display_name = config["display_name"]
         
+        # Build bookmaker list
+        if bookmakers is None:
+            bookmakers = DEFAULT_BOOKMAKERS.copy()
+        
+        # Add sharp books if requested
+        if include_sharp:
+            for sharp in SHARP_BOOKMAKERS:
+                if sharp not in bookmakers:
+                    bookmakers.append(sharp)
+        
         sync_start = datetime.now(timezone.utc)
         
         logger.info("=" * 70)
         logger.info(f"[UNIVERSAL_ODDS] Starting {display_name} Props Sync")
+        logger.info(f"[UNIVERSAL_ODDS] Bookmakers: {bookmakers}")
         logger.info("=" * 70)
         
         results = {
             "success": True,
             "sport": sport,
             "synced_at": sync_start.isoformat(),
+            "bookmakers_requested": bookmakers,
             "events_count": 0,
             "total_props": 0,
             "unique_players": set(),
             "stat_types": {},
+            "bookmaker_counts": {},
+            "props_with_sharp_edge": 0,
             "api_calls": 0,
             "errors": []
         }
@@ -380,8 +580,8 @@ class UniversalOddsSyncService:
                 if not event_id:
                     continue
                 
-                # Fetch odds
-                odds_data = await self.fetch_event_odds(event_id, event, sport)
+                # Fetch odds from all bookmakers
+                odds_data = await self.fetch_event_odds(event_id, event, sport, bookmakers)
                 results["api_calls"] += 1
                 
                 if odds_data:
@@ -394,6 +594,14 @@ class UniversalOddsSyncService:
                         results["unique_players"].add(prop["player_name"])
                         stat_type = prop["stat_type"]
                         results["stat_types"][stat_type] = results["stat_types"].get(stat_type, 0) + 1
+                        
+                        # Track bookmaker availability
+                        for bm in prop.get("bookmakers_available", []):
+                            results["bookmaker_counts"][bm] = results["bookmaker_counts"].get(bm, 0) + 1
+                        
+                        # Track props with sharp edge
+                        if prop.get("sharp_edge") is not None:
+                            results["props_with_sharp_edge"] += 1
                 
                 # Rate limiting - The Odds API has limits
                 await asyncio.sleep(0.1)
