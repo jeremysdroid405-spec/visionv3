@@ -606,7 +606,7 @@ const MLBSafeHavenSection = memo(({ picks, onPickClick, onQuickAdd, isLoading })
         <SectionHeader 
           icon={<GoblinIcon size={18} />}
           title="SAFE HAVEN"
-          subtitle="Pinnacle confirmed plays"
+          subtitle="High-floor plays with best consistency"
           badgeText="LOADING"
           badgeColor="green"
         />
@@ -623,7 +623,7 @@ const MLBSafeHavenSection = memo(({ picks, onPickClick, onQuickAdd, isLoading })
         <SectionHeader 
           icon={<GoblinIcon size={18} />}
           title="SAFE HAVEN"
-          subtitle="Pinnacle confirmed plays"
+          subtitle="High-floor plays with best consistency"
           badgeText="0 PICKS"
           badgeColor="zinc"
         />
@@ -641,7 +641,7 @@ const MLBSafeHavenSection = memo(({ picks, onPickClick, onQuickAdd, isLoading })
       <SectionHeader 
         icon={<GoblinIcon size={18} />}
         title="SAFE HAVEN"
-        subtitle="Pinnacle odds ≤ -150 + VK confirms"
+        subtitle="High-floor plays with best consistency"
         badgeText={`${picks.length} PICKS`}
         badgeColor="green"
       />
@@ -1568,7 +1568,7 @@ const Dashboard = () => {
           {/* MLB-SPECIFIC SECTIONS */}
           {currentSport === 'mlb' && (
             <>
-              {/* MLB Safe Haven (Pinnacle confirmed) */}
+              {/* MLB Safe Haven */}
               <MLBSafeHavenSection 
                 picks={mlbGoblinsPicks} 
                 onPickClick={handleVaultClick} 
