@@ -1087,6 +1087,17 @@ async def get_mlb_player_props(
     if not player:
         raise HTTPException(status_code=404, detail=f"Player '{player_name}' not found in MLB board")
     
+    # Deduplicate props - keep only unique stat_type + line combinations
+    if player.get("props"):
+        seen = set()
+        unique_props = []
+        for prop in player["props"]:
+            key = f"{prop.get('stat_type')}|{prop.get('line')}"
+            if key not in seen:
+                seen.add(key)
+                unique_props.append(prop)
+        player["props"] = unique_props
+    
     # Fetch game logs from mlb_historical_logs
     historical_logs = _db["mlb_historical_logs"]
     player_logs = await historical_logs.find_one(
