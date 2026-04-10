@@ -862,26 +862,37 @@ export const PlayerDetailPage = ({ playerName, playerData = null, onBack, highli
                 </div>
                 
                 {/* Active Badges Summary */}
-                {(selectedVisionProp.active_badges?.length > 0 || 
-                  selectedVisionProp.intel_suite?.context_badges?.length > 0 ||
-                  selectedVisionProp.scout_badges?.length > 0 ||
-                  selectedVisionProp.mlb_badges?.length > 0) && (
-                  <div className="mt-4 pt-4 border-t border-zinc-700">
-                    <div className="text-xs text-amber-400 font-semibold mb-2">
-                      ACTIVE FOR {playerName?.toUpperCase()}:
+                {/* Active Badges Summary - Sport-specific logic */}
+                {currentSport === 'mlb' ? (
+                  // MLB: Show scout_badges
+                  (selectedVisionProp.scout_badges?.length > 0) && (
+                    <div className="mt-4 pt-4 border-t border-zinc-700">
+                      <div className="text-xs text-amber-400 font-semibold mb-2">
+                        ACTIVE FOR {playerName?.toUpperCase()}:
+                      </div>
+                      <BadgeRow 
+                        badges={selectedVisionProp.scout_badges.map(b => ({
+                          badge_key: b.id
+                        }))}
+                        size="md"
+                      />
                     </div>
-                    <BadgeRow 
-                      badges={[
-                        ...(selectedVisionProp.active_badges || []),
-                        ...(selectedVisionProp.intel_suite?.context_badges || []),
-                        ...(selectedVisionProp.scout_badges || []).map(b => ({ badge_key: b.id })),
-                        ...(selectedVisionProp.mlb_badges || []).map(b => ({ badge_key: b.id }))
-                      ].map(b => ({
-                        badge_key: typeof b === 'string' ? b : (b.badge_key || b.id)
-                      }))}
-                      size="md"
-                    />
-                  </div>
+                  )
+                ) : (
+                  // NBA: Original logic - use active_badges OR context_badges (not both)
+                  (selectedVisionProp.active_badges?.length > 0 || selectedVisionProp.intel_suite?.context_badges?.length > 0) && (
+                    <div className="mt-4 pt-4 border-t border-zinc-700">
+                      <div className="text-xs text-amber-400 font-semibold mb-2">
+                        ACTIVE FOR {playerName?.toUpperCase()}:
+                      </div>
+                      <BadgeRow 
+                        badges={(selectedVisionProp.active_badges || selectedVisionProp.intel_suite?.context_badges || []).map(b => ({
+                          badge_key: typeof b === 'string' ? b : b.badge_key
+                        }))}
+                        size="md"
+                      />
+                    </div>
+                  )
                 )}
               </div>
               
