@@ -861,3 +861,103 @@ async def get_bdl_player_stats(
         "game_logs": player.get("bdl_game_logs", [])[:20],  # Limit to recent 20
         "last_sync": player.get("bdl_last_sync")
     }
+
+
+
+@router.post("/v3/mlb/build-board")
+async def build_mlb_cached_board():
+    """
+    Build the MLB Cached Board (Enrichment Pipeline).
+    
+    Process:
+    1. Fetches all props from mlb_live_props
+    2. Matches each prop to mlb_master_hub_2026 by player_name
+    3. Enriches with:
+       - Last 10 game logs
+       - Season average
+       - CV (Coefficient of Variation)
+       - Hit rates (L10, L5)
+    4. Saves to mlb_cached_board
+    
+    **CIRCUIT BREAKER**: If 0 props found, preserves existing board.
+    
+    Returns build summary with counts.
+    """
+    from services.mlb_cached_board_builder import run_mlb_board_build
+    
+    if _db is None:
+        raise HTTPException(status_code=500, detail="Database not initialized")
+    
+    result = await run_mlb_board_build(_db)
+    return result
+
+
+@router.get("/v3/mlb/cached-board")
+async def get_mlb_cached_board(
+    response: Response,
+    limit: int = Query(100, ge=1, le=500)
+):
+    """
+    Get the MLB Cached Board with enriched props.
+    
+    Returns players with their enriched props including:
+    - Season averages
+    - CV scores
+    - Hit rates
+    - Last 10 game logs
+    """
+    from services.mlb_cached_board_builder import get_mlb_board_builder
+    
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    
+    if _db is None:
+        raise HTTPException(status_code=500, detail="Database not initialized")
+    
+    builder = get_mlb_board_builder(_db)
+    result = await builder.get_cached_board(limit)
+    return result
+
+
+@router.get("/v3/mlb/player/{player_name}")
+async def get_mlb_player_props(
+    player_name: str,
+    response: Response
+):
+    """
+    Get a specific MLB player's enriched props from the cached board.
+    
+    Returns:
+    - Player info
+    - All props with enrichment data (CV, hit rates, averages)
+    - Last 10 game logs
+    """
+    from config.db_config import get_collection_name
+    
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    
+    if _db is None:
+        raise HTTPException(status_code=500, detail="Database not initialized")
+    
+    collection_name = get_collection_name("cached_board", "mlb")
+    collection = _db[collection_name]
+    
+    # Search for player (case-insensitive)
+    player = await collection.find_one(
+        {"player_name": {"$regex": f"^{player_name}$", "$options": "i"}},
+        {"_id": 0}
+    )
+    
+    if not player:
+        # Try partial match
+        player = await collection.find_one(
+            {"player_name": {"$regex": player_name, "$options": "i"}},
+            {"_id": 0}
+        )
+    
+    if not player:
+        raise HTTPException(status_code=404, detail=f"Player '{player_name}' not found in MLB board")
+    
+    return {
+        "success": True,
+        "player": player
+    }

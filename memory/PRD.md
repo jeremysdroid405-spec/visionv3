@@ -77,7 +77,14 @@ Build a local-first betting intelligence app restructuring React/FastAPI to inte
 - [x] **STRICT cursor-based pagination** using `next_cursor` from meta object
 - [x] Circuit breaker to prevent DB wipes on low results
 - [x] Tested: NBA players (537), MLB players (777)
-- [x] Verified: LeBron James - 57 game logs with PTS/REB/AST data
+
+**MLB Cached Board Builder (`/app/backend/services/mlb_cached_board_builder.py`):**
+- [x] Merges `mlb_live_props` with `mlb_master_hub_2026`
+- [x] Matches by player_name and team
+- [x] Enriches with: Last 10 game logs, Season average, CV (Coefficient of Variation), Hit rates
+- [x] Saves to `mlb_cached_board`
+- [x] **CIRCUIT BREAKER**: If 0 props, preserves existing board with warning log
+- [x] Tested: 2015 props enriched, 254 players in board
 
 **New Endpoints:**
 - `POST /api/v3/odds/sync?sport=` - Fetch live props from Odds API
@@ -85,6 +92,9 @@ Build a local-first betting intelligence app restructuring React/FastAPI to inte
 - `POST /api/v3/bdl/sync?sport=` - Fetch stats from BDL v1 API
 - `GET /api/v3/bdl/players?sport=` - Query player roster
 - `GET /api/v3/bdl/stats/{player_name}?sport=` - Get player game logs
+- `POST /api/v3/mlb/build-board` - Build MLB cached board with enrichment
+- `GET /api/v3/mlb/cached-board` - Get MLB cached board
+- `GET /api/v3/mlb/player/{name}` - Get MLB player's enriched props
 
 ### Session 4 - Sport-Exclusive Architecture (April 10, 2026)
 - [x] Implemented Sport-Exclusive sync engine with `target_sport` argument

@@ -392,7 +392,7 @@ class BDLUniversalSyncService:
         # Sort each player's logs by date (most recent first)
         for player_id in player_stats:
             player_stats[player_id].sort(
-                key=lambda x: x.get("date", ""),
+                key=lambda x: x.get("date") or "",
                 reverse=True
             )
         
