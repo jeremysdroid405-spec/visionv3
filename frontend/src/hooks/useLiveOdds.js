@@ -47,9 +47,9 @@ const buildUrl = (endpoint, sport = 'nba') => {
  * Fetch all active lines (full board)
  */
 const fetchLiveOdds = async (sport = 'nba') => {
-  // MOCK DATA MODE
-  if (USE_MOCK_DATA) {
-    console.log(`[MOCK] Returning mock props for ${sport.toUpperCase()}`);
+  // MOCK DATA MODE - MLB ONLY
+  if (USE_MOCK_DATA && sport === 'mlb') {
+    console.log(`[MOCK] Returning mock props for MLB`);
     return getMockAllProps(sport);
   }
   
@@ -68,9 +68,9 @@ const fetchLiveOdds = async (sport = 'nba') => {
  * Sharp price >= +500, Bovada 200+ pts separation
  */
 const fetchWarZone = async (sport = 'nba') => {
-  // MOCK DATA MODE
-  if (USE_MOCK_DATA) {
-    console.log(`[MOCK] Returning War Zone mock data for ${sport.toUpperCase()}`);
+  // MOCK DATA MODE - MLB ONLY
+  if (USE_MOCK_DATA && sport === 'mlb') {
+    console.log(`[MOCK] Returning War Zone mock data for MLB`);
     return getMockTierData(sport, 'war_zone');
   }
   
@@ -86,9 +86,9 @@ const fetchWarZone = async (sport = 'nba') => {
  * Sharp price <= -250, L10 >= 70%
  */
 const fetchSafeHaven = async (sport = 'nba') => {
-  // MOCK DATA MODE
-  if (USE_MOCK_DATA) {
-    console.log(`[MOCK] Returning Safe Haven mock data for ${sport.toUpperCase()}`);
+  // MOCK DATA MODE - MLB ONLY
+  if (USE_MOCK_DATA && sport === 'mlb') {
+    console.log(`[MOCK] Returning Safe Haven mock data for MLB`);
     return getMockTierData(sport, 'safe_haven');
   }
   
@@ -123,9 +123,9 @@ const preloadImages = (picks) => {
  * Sharp price -245 to -149, L10 >= 70%, sorted by hit rate
  */
 const fetchFrontLines = async (sport = 'nba') => {
-  // MOCK DATA MODE
-  if (USE_MOCK_DATA) {
-    console.log(`[MOCK] Returning Front Lines mock data for ${sport.toUpperCase()}`);
+  // MOCK DATA MODE - MLB ONLY
+  if (USE_MOCK_DATA && sport === 'mlb') {
+    console.log(`[MOCK] Returning Front Lines mock data for MLB`);
     return getMockTierData(sport, 'front_lines');
   }
   

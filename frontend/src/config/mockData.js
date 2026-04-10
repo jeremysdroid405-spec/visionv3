@@ -1,148 +1,14 @@
 /**
- * Mock Data Configuration for Sport-Exclusive Testing
- * ====================================================
+ * Mock Data Configuration for MLB Sport Testing
+ * ==============================================
  * 
- * Set USE_MOCK_DATA = true to test sport switching without backend data.
- * 
- * NBA: Points, Rebounds props
- * MLB: Strikeouts, Total Bases props
+ * Set USE_MOCK_DATA = true to test MLB sport switching.
+ * - NBA: Uses REAL data from the backend API
+ * - MLB: Uses MOCK data below (Strikeouts, Total Bases props)
  */
 
-// ⚠️ SET TO TRUE TO ENABLE MOCK DATA MODE
+// ⚠️ SET TO TRUE TO ENABLE MLB MOCK DATA MODE
 export const USE_MOCK_DATA = true;
-
-// NBA Mock Props (Points, Rebounds)
-export const NBA_MOCK_DATA = {
-  safe_haven: {
-    tier: "safe_haven",
-    tier_label: "Safe Haven",
-    description: "High-floor plays with best consistency",
-    count: 2,
-    picks: [
-      {
-        player_name: "LeBron James",
-        team: "LAL",
-        opponent: "GSW",
-        stat_type: "PTS",
-        line: 27.5,
-        recommendation: "OVER",
-        hit_rate_l10: 80,
-        hit_rate_l5: 100,
-        l10_rate: 80,
-        l5_rate: 100,
-        edge: 12.5,
-        prob_over: 72,
-        dk_odds: -180,
-        tier: "safe_haven",
-        sport: "nba",
-        photo_url: null,
-        intel_verdict: "CHALK",
-        intel_score: 8,
-        composite_score: 85
-      },
-      {
-        player_name: "Nikola Jokic",
-        team: "DEN",
-        opponent: "PHX",
-        stat_type: "REB",
-        line: 12.5,
-        recommendation: "OVER",
-        hit_rate_l10: 90,
-        hit_rate_l5: 100,
-        l10_rate: 90,
-        l5_rate: 100,
-        edge: 15.3,
-        prob_over: 78,
-        dk_odds: -220,
-        tier: "safe_haven",
-        sport: "nba",
-        photo_url: null,
-        intel_verdict: "CHALK",
-        intel_score: 9,
-        composite_score: 92
-      }
-    ]
-  },
-  front_lines: {
-    tier: "front_lines",
-    tier_label: "Front Lines",
-    description: "Balanced risk-reward opportunities",
-    count: 2,
-    picks: [
-      {
-        player_name: "Stephen Curry",
-        team: "GSW",
-        opponent: "LAL",
-        stat_type: "PTS",
-        line: 29.5,
-        recommendation: "OVER",
-        hit_rate_l10: 70,
-        hit_rate_l5: 80,
-        l10_rate: 70,
-        l5_rate: 80,
-        edge: 8.2,
-        prob_over: 65,
-        dk_odds: -145,
-        tier: "front_lines",
-        sport: "nba",
-        photo_url: null,
-        intel_verdict: "VALUE",
-        intel_score: 7,
-        composite_score: 72
-      },
-      {
-        player_name: "Jayson Tatum",
-        team: "BOS",
-        opponent: "MIA",
-        stat_type: "REB",
-        line: 8.5,
-        recommendation: "OVER",
-        hit_rate_l10: 75,
-        hit_rate_l5: 80,
-        l10_rate: 75,
-        l5_rate: 80,
-        edge: 10.1,
-        prob_over: 68,
-        dk_odds: -160,
-        tier: "front_lines",
-        sport: "nba",
-        photo_url: null,
-        intel_verdict: "VALUE",
-        intel_score: 7,
-        composite_score: 74
-      }
-    ]
-  },
-  war_zone: {
-    tier: "war_zone",
-    tier_label: "War Zone",
-    description: "High-upside demon plays",
-    count: 1,
-    picks: [
-      {
-        player_name: "Anthony Edwards",
-        team: "MIN",
-        opponent: "DAL",
-        stat_type: "PTS",
-        line: 25.5,
-        recommendation: "OVER",
-        hit_rate_l10: 60,
-        hit_rate_l5: 60,
-        l10_rate: 60,
-        l5_rate: 60,
-        edge: 5.5,
-        prob_over: 55,
-        dk_odds: 120,
-        tier: "war_zone",
-        sport: "nba",
-        photo_url: null,
-        intel_verdict: "VALUE",
-        intel_score: 6,
-        composite_score: 58
-      }
-    ]
-  }
-};
 
 // MLB Mock Props (Strikeouts, Total Bases)
 export const MLB_MOCK_DATA = {
@@ -299,22 +165,25 @@ export const MLB_MOCK_DATA = {
 };
 
 /**
- * Get mock data for a specific sport and tier
+ * Get mock data for MLB tier (only used when sport='mlb')
  */
 export const getMockTierData = (sport, tier) => {
-  const data = sport === 'mlb' ? MLB_MOCK_DATA : NBA_MOCK_DATA;
-  return data[tier] || { picks: [], count: 0 };
+  // Only return mock data for MLB
+  if (sport !== 'mlb') return null;
+  return MLB_MOCK_DATA[tier] || { picks: [], count: 0 };
 };
 
 /**
- * Get all mock props for a sport
+ * Get all mock props for MLB
  */
 export const getMockAllProps = (sport) => {
-  const data = sport === 'mlb' ? MLB_MOCK_DATA : NBA_MOCK_DATA;
+  // Only return mock data for MLB
+  if (sport !== 'mlb') return null;
+  
   const allPicks = [
-    ...data.safe_haven.picks,
-    ...data.front_lines.picks,
-    ...data.war_zone.picks
+    ...MLB_MOCK_DATA.safe_haven.picks,
+    ...MLB_MOCK_DATA.front_lines.picks,
+    ...MLB_MOCK_DATA.war_zone.picks
   ];
   return {
     players: allPicks.map(p => ({
@@ -327,4 +196,4 @@ export const getMockAllProps = (sport) => {
   };
 };
 
-export default { USE_MOCK_DATA, NBA_MOCK_DATA, MLB_MOCK_DATA, getMockTierData, getMockAllProps };
+export default { USE_MOCK_DATA, MLB_MOCK_DATA, getMockTierData, getMockAllProps };
