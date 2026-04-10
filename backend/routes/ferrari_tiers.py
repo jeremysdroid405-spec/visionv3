@@ -1629,6 +1629,167 @@ async def get_mlb_hrr_picks(
 
 
 # =============================================================================
+# MLB SHARP SORTING & TIER DISTRIBUTION
+# =============================================================================
+
+@router.post("/v3/mlb/sharp-sort")
+async def run_mlb_sharp_sorting_endpoint(
+    stat_types: str = Query(
+        None, 
+        description="Comma-separated stat types to filter (e.g., 'Hits+Runs+RBIs,Total Bases')"
+    ),
+    save_to_db: bool = Query(True, description="Save results to collections")
+):
+    """
+    MLB Sharp Sorting & Tier Distribution.
+    
+    Classifies props using sharp book analysis:
+    
+    **1. Pinnacle De-Vig Layer:**
+    - Calculates fair value probability from Pinnacle odds
+    - Removes ~4.5% vig to get true probability
+    - Sharp Goblin: Fair value > 70% (odds ≤ -240)
+    
+    **2. DraftKings Market Depth:**
+    - Compares DK alt-lines to PrizePicks
+    - Identifies mispricing where DK is plus money but PP favors
+    - Demon: DK +180 vs PP -110 equivalent = 12% edge
+    
+    **3. Ferrari Final Sort:**
+    - mlb_goblins: Sharp odds ≤ -240 AND VK Projection > Line
+    - mlb_demons: VK Slope trending + DK alt-line mispricing
+    - mlb_standard: Sharp and public agree (-110 to -130)
+    
+    **Collections Created:**
+    - mlb_goblins, mlb_demons, mlb_standard
+    """
+    from services.mlb_sharp_sorting_service import run_mlb_sharp_sorting
+    
+    if _db is None:
+        raise HTTPException(status_code=500, detail="Database not initialized")
+    
+    # Parse stat types
+    stat_type_list = None
+    if stat_types:
+        stat_type_list = [s.strip() for s in stat_types.split(",") if s.strip()]
+    
+    results = await run_mlb_sharp_sorting(_db, stat_types=stat_type_list, save_to_db=save_to_db)
+    
+    # Return summary (don't return full lists to avoid serialization issues)
+    return {
+        "success": results.get("success"),
+        "props_processed": results.get("props_processed"),
+        "goblins_count": len(results.get("goblins", [])),
+        "demons_count": len(results.get("demons", [])),
+        "standard_count": len(results.get("standard", [])),
+        "unclassified": results.get("unclassified"),
+        "stats": results.get("stats"),
+        "duration_seconds": results.get("duration_seconds"),
+        "top_5_goblins": [
+            {
+                "player_name": g.get("player_name"),
+                "stat_type": g.get("stat_type"),
+                "line": g.get("line"),
+                "projected_value": g.get("projected_value"),
+                "direction": g.get("recommendation"),
+                "sharp_odds": g.get("all_odds", {}).get("pinnacle"),
+                "sharp_fair_value": g.get("sharp_fair_value"),
+                "edge_pct": g.get("edge_pct"),
+                "hit_rate_l10": g.get("hit_rate_l10")
+            }
+            for g in results.get("goblins", [])[:5]
+        ]
+    }
+
+
+@router.get("/v3/mlb/sharp/goblins")
+async def get_mlb_goblins(
+    response: Response,
+    limit: int = Query(20, ge=1, le=100)
+):
+    """
+    Get MLB Sharp Goblins.
+    
+    Criteria: Sharp odds ≤ -240 AND VK Projection > Line
+    
+    These are the highest-confidence plays backed by sharp money.
+    """
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    
+    if _db is None:
+        raise HTTPException(status_code=500, detail="Database not initialized")
+    
+    collection = _db["mlb_goblins"]
+    picks = await collection.find({}, {"_id": 0}).limit(limit).to_list(length=limit)
+    
+    return {
+        "success": True,
+        "tier": "GOBLINS",
+        "description": "Sharp odds ≤ -240 AND VK confirms",
+        "picks": picks,
+        "count": len(picks)
+    }
+
+
+@router.get("/v3/mlb/sharp/demons")
+async def get_mlb_demons(
+    response: Response,
+    limit: int = Query(20, ge=1, le=100)
+):
+    """
+    Get MLB Demons.
+    
+    Criteria: DK mispricing detected + VK Slope trending
+    
+    These are mispriced props where DK alt-lines suggest PP is wrong.
+    """
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    
+    if _db is None:
+        raise HTTPException(status_code=500, detail="Database not initialized")
+    
+    collection = _db["mlb_demons"]
+    picks = await collection.find({}, {"_id": 0}).limit(limit).to_list(length=limit)
+    
+    return {
+        "success": True,
+        "tier": "DEMONS",
+        "description": "DK mispricing + VK slope confirms",
+        "picks": picks,
+        "count": len(picks)
+    }
+
+
+@router.get("/v3/mlb/sharp/standard")
+async def get_mlb_standard(
+    response: Response,
+    limit: int = Query(30, ge=1, le=100)
+):
+    """
+    Get MLB Standard Props.
+    
+    Criteria: Sharp and public books agree (-110 to -130 range)
+    
+    These are consensus plays where all books are aligned.
+    """
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    
+    if _db is None:
+        raise HTTPException(status_code=500, detail="Database not initialized")
+    
+    collection = _db["mlb_standard"]
+    picks = await collection.find({}, {"_id": 0}).limit(limit).to_list(length=limit)
+    
+    return {
+        "success": True,
+        "tier": "STANDARD",
+        "description": "Books agree (-110 to -130)",
+        "picks": picks,
+        "count": len(picks)
+    }
+
+
+# =============================================================================
 # MLB HEADSHOT SYNC ENDPOINTS
 # =============================================================================
 
