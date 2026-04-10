@@ -341,10 +341,15 @@ class MLBCachedBoardBuilder:
         }
         
         try:
-            # Step 1: Fetch all props from mlb_live_props (PrizePicks only)
+            # Step 1: Fetch all props from mlb_live_props (must have PrizePicks line)
             live_props = self._get_collection("live_props")
             props = await live_props.find(
-                {"source": "prizepicks"},  # Filter to PrizePicks only
+                {
+                    "$or": [
+                        {"source": "prizepicks"},
+                        {"pp_line": {"$ne": None}}  # Has a PrizePicks line
+                    ]
+                },
                 {"_id": 0}
             ).to_list(length=None)
             results["props_fetched"] = len(props)

@@ -113,8 +113,8 @@ BOOKMAKER_CONFIG = {
 DEFAULT_BOOKMAKERS = ["prizepicks", "draftkings", "fanduel", "pinnacle"]
 SHARP_BOOKMAKERS = ["pinnacle", "circa", "betcris"]
 
-# MLB-specific: Only PrizePicks
-MLB_BOOKMAKERS = ["prizepicks"]
+# MLB-specific: PrizePicks + DraftKings + Pinnacle (for reference/sorting)
+MLB_BOOKMAKERS = ["prizepicks", "draftkings", "pinnacle"]
 
 # =============================================================================
 # SPORT-SPECIFIC CONFIGURATION
@@ -238,8 +238,8 @@ SPORT_API_CONFIG = {
             "batter_hits_runs": "Hits+Runs",
             "batter_hits_runs_alternate": "Hits+Runs",
         },
-        # PrizePicks only for MLB
-        "bookmakers": ["prizepicks"]
+        # PrizePicks + DK + Pinnacle for MLB (DK/Pinnacle for reference only)
+        "bookmakers": ["prizepicks", "draftkings", "pinnacle"]
     }
 }
 
@@ -554,24 +554,39 @@ class UniversalOddsSyncService:
                 "home_team": group_data["home_team"],
                 "away_team": group_data["away_team"],
                 "commence_time": group_data["commence_time"],
-                # Multi-book data
+                # ============================================================
+                # SEPARATED BOOK COLUMNS (PP, DK, Sharp/Pinnacle)
+                # These are for reference and sorting - NOT displayed on frontend
+                # ============================================================
+                # PrizePicks (PP) - Primary display book
+                "pp_line": lines.get("prizepicks"),
+                "pp_odds": group_data["odds"].get("prizepicks"),
+                # DraftKings (DK) - Reference book
+                "dk_line": lines.get("draftkings"),
+                "dk_odds": group_data["odds"].get("draftkings"),
+                # Sharp/Pinnacle - Reference book for sharp line comparison
+                "sharp_line": lines.get("pinnacle") or sharp_line,
+                "sharp_odds": group_data["odds"].get("pinnacle"),
+                "sharp_book": group_data.get("sharp_book") or ("pinnacle" if lines.get("pinnacle") else None),
+                # Edge calculations
+                "pp_dk_edge": round((lines.get("draftkings", 0) - lines.get("prizepicks", 0)) / lines.get("prizepicks", 1) * 100, 2) if lines.get("prizepicks") and lines.get("draftkings") else None,
+                "pp_sharp_edge": round((lines.get("pinnacle", 0) - lines.get("prizepicks", 0)) / lines.get("prizepicks", 1) * 100, 2) if lines.get("prizepicks") and lines.get("pinnacle") else None,
+                # ============================================================
+                # Legacy multi-book data (kept for backwards compatibility)
                 "all_lines": lines,
                 "all_odds": group_data["odds"],
-                "sharp_line": sharp_line,
-                "sharp_book": group_data.get("sharp_book"),
                 "sharp_edge": sharp_edge,
-                "dk_line": dk_line,
                 "dk_edge": dk_edge,
                 "dfs_line": group_data.get("dfs_line"),
                 "dfs_book": group_data.get("dfs_book"),
-                # PrizePicks goblin/demon flags (based on price: +100=goblin, -137=demon)
+                # PrizePicks goblin/demon flags (based on price: +100=demon, negative=goblin)
                 "is_goblin": group_data.get("is_goblin", False),
                 "is_demon": group_data.get("is_demon", False),
                 "is_alternate_market": group_data.get("is_alternate_market", False),
                 # Metadata
                 "sport": sport,
                 "fetched_at": datetime.now(timezone.utc).isoformat(),
-                "source": primary_book,
+                "source": "prizepicks" if lines.get("prizepicks") else primary_book,  # Always mark as PP source if PP line exists
                 "bookmakers_available": list(lines.keys()),
                 "team": None  # Will be set during enrichment
             }
