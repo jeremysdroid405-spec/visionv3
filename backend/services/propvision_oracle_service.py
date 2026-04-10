@@ -64,9 +64,9 @@ class PropVisionOracleService:
             import google.generativeai as genai
             genai.configure(api_key=GOOGLE_API_KEY)
             self._genai = genai
-            # Use gemini-2.5-flash for Bull vs Bear analysis
-            self._model = genai.GenerativeModel("gemini-2.5-flash")
-            logger.info("[ORACLE] Gemini API initialized with gemini-2.5-flash")
+            # Use gemini-3.1-pro-preview for Bull vs Bear analysis (Tier 1 paid key)
+            self._model = genai.GenerativeModel("gemini-3.1-pro-preview")
+            logger.info("[ORACLE] Gemini API initialized with gemini-3.1-pro-preview")
             return True
         except Exception as e:
             logger.error(f"[ORACLE] Failed to initialize Gemini: {e}")
@@ -500,85 +500,134 @@ Only return valid JSON. No markdown code blocks.
         }
     
     # =========================================================================
-    # BATCH ORACLE PROCESSING
+    # BATCH ORACLE PROCESSING - TIER-BASED
     # =========================================================================
     
-    async def process_safe_haven_props(
-        self,
-        use_gemini: bool = True,
-        max_props: int = 10
-    ) -> Dict[str, Any]:
+    async def get_tier_picks(self) -> Dict[str, List[Dict]]:
         """
-        Process Safe Haven props through Oracle analysis.
+        Get all picks from the 3 tiers (Safe Haven, Front Lines, War Zone).
         
-        1. Fetch current Safe Haven picks
-        2. Run Bull vs Bear analysis (if use_gemini=True)
-        3. Calculate Oracle scores
-        4. Demote props with score < 7
-        
-        Args:
-            use_gemini: Whether to use Gemini for Bull/Bear analysis
-            max_props: Max props to send to Gemini
-            
         Returns:
-            Summary of processing results
+            Dict with tier names as keys and list of picks as values
+        """
+        tiers = {
+            "safe_haven": [],
+            "front_lines": [],
+            "war_zone": []
+        }
+        
+        try:
+            # Safe Haven (Goblins) - max 10
+            goblins_collection = self.db[f"{self.sport}_goblins"]
+            tiers["safe_haven"] = await goblins_collection.find(
+                {}, {"_id": 0}
+            ).limit(10).to_list(length=10)
+            
+            # Front Lines (Combo/HRR) - max 10
+            # Try mlb_hrr_picks first, fallback to combo
+            hrr_collection = self.db[f"{self.sport}_hrr_picks"]
+            tiers["front_lines"] = await hrr_collection.find(
+                {}, {"_id": 0}
+            ).limit(10).to_list(length=10)
+            
+            # War Zone (Demons) - max 10
+            demons_collection = self.db[f"{self.sport}_demons"]
+            tiers["war_zone"] = await demons_collection.find(
+                {}, {"_id": 0}
+            ).limit(10).to_list(length=10)
+            
+        except Exception as e:
+            logger.error(f"[ORACLE] Error fetching tier picks: {e}")
+        
+        return tiers
+    
+    async def batch_oracle_analysis(self) -> Dict[str, Any]:
+        """
+        Run Oracle analysis on ALL tier picks in a single batch.
+        
+        Process:
+        1. Fetch picks from Safe Haven, Front Lines, War Zone (max 30 total)
+        2. Synthesize data for each pick (VK, Pinnacle, DK)
+        3. Run single Gemini Bull vs Bear call for all 30 picks
+        4. Calculate Oracle scores and verdicts
+        5. Return enriched tier data
+        
+        Returns:
+            Dict with tier analysis results
         """
         results = {
-            "processed": 0,
-            "promoted": 0,
-            "demoted": 0,
-            "props": [],
+            "success": True,
+            "sport": self.sport,
+            "tiers": {
+                "safe_haven": {"picks": [], "count": 0},
+                "front_lines": {"picks": [], "count": 0},
+                "war_zone": {"picks": [], "count": 0}
+            },
+            "total_analyzed": 0,
+            "gemini_analysis": None,
             "errors": []
         }
         
         try:
-            # Get Safe Haven props from cached board
-            cached_board = self._get_collection("cached_board")
+            # Step 1: Get all tier picks
+            tier_picks = await self.get_tier_picks()
             
-            # Aggregate props with high hit rates (current Safe Haven criteria)
-            pipeline = [
-                {"$unwind": "$props"},
-                {"$match": {
-                    "props.hit_rate_l10": {"$gte": 60},
-                    "props.is_goblin": True
-                }},
-                {"$replaceRoot": {"newRoot": "$props"}},
-                {"$limit": max_props * 2}  # Fetch extra for filtering
-            ]
+            all_picks = []
+            pick_tier_map = {}  # Map to track which tier each pick belongs to
             
-            safe_haven_props = await cached_board.aggregate(pipeline).to_list(length=None)
+            for tier_name, picks in tier_picks.items():
+                for pick in picks:
+                    key = f"{pick.get('player_name')}_{pick.get('stat_type')}"
+                    pick["_tier"] = tier_name
+                    all_picks.append(pick)
+                    pick_tier_map[key] = tier_name
             
-            if not safe_haven_props:
-                logger.info("[ORACLE] No Safe Haven props found")
+            if not all_picks:
+                logger.info("[ORACLE] No tier picks found to analyze")
                 return results
             
-            logger.info(f"[ORACLE] Found {len(safe_haven_props)} Safe Haven candidates")
+            logger.info(f"[ORACLE] Batch analyzing {len(all_picks)} tier picks")
+            results["total_analyzed"] = len(all_picks)
             
-            # Run Bull vs Bear analysis if enabled
+            # Step 2: Synthesize data for all picks
+            synthesized_picks = []
+            for pick in all_picks:
+                synth = await self.oracle_data_synthesis(pick)
+                synth["_tier"] = pick.get("_tier")
+                synthesized_picks.append(synth)
+            
+            # Step 3: Run single Gemini Bull vs Bear call for ALL picks
             gemini_verdicts = {}
-            if use_gemini and len(safe_haven_props) > 0:
+            if self._initialize_genai():
                 verdicts = await self.run_bull_bear_analysis(
-                    safe_haven_props[:max_props]
+                    synthesized_picks,
+                    max_props=100  # Tier 1 paid key supports larger batches
                 )
                 for v in verdicts:
                     key = f"{v.get('player_name')}_{v.get('stat_type')}"
                     gemini_verdicts[key] = v
+                
+                results["gemini_analysis"] = {
+                    "verdicts_returned": len(verdicts),
+                    "model": "gemini-3.1-pro-preview"
+                }
             
-            # Process each prop
-            for prop in safe_haven_props:
-                player = prop.get("player_name")
-                stat = prop.get("stat_type")
+            # Step 4: Calculate Oracle scores and organize by tier
+            for pick in all_picks:
+                player = pick.get("player_name")
+                stat = pick.get("stat_type")
+                tier = pick.get("_tier")
                 key = f"{player}_{stat}"
                 
-                # Synthesize data
-                synth = await self.oracle_data_synthesis(prop)
+                # Get synthesized data
+                synth = next((s for s in synthesized_picks if f"{s.get('player_name')}_{s.get('stat_type')}" == key), {})
                 
-                # Get Oracle verdict
+                # Calculate base Oracle verdict
                 verdict = await self.oracle_final_verdict(
                     vk_projection=synth.get("vk_projection"),
                     pinnacle_devig_prob=synth.get("pinnacle_devig_prob"),
                     dk_ladder=synth.get("dk_ladder"),
-                    prop=prop
+                    prop=pick
                 )
                 
                 # Merge Gemini verdict if available
@@ -590,40 +639,62 @@ Only return valid JSON. No markdown code blocks.
                     verdict["gemini_verdict"] = gv.get("verdict")
                     verdict["key_factor"] = gv.get("key_factor")
                     
-                    # Average the scores if both available
+                    # Average scores if both available
                     if gv.get("oracle_score"):
                         avg_score = (verdict["oracle_score"] + gv["oracle_score"]) / 2
                         verdict["oracle_score"] = round(avg_score)
                         verdict["tier_eligible"] = verdict["oracle_score"] >= SAFE_HAVEN_MIN_SCORE
                 
-                # Track results
-                results["processed"] += 1
-                
-                if verdict["tier_eligible"]:
-                    results["promoted"] += 1
-                else:
-                    results["demoted"] += 1
-                
-                results["props"].append({
+                # Build enriched pick
+                enriched_pick = {
                     "player_name": player,
                     "stat_type": stat,
-                    "line": prop.get("line"),
+                    "line": pick.get("line"),
+                    "recommendation": pick.get("recommendation"),
+                    "team": pick.get("team"),
+                    # Book data
+                    "pp_line": pick.get("pp_line"),
+                    "pp_odds": pick.get("pp_odds"),
+                    "dk_line": pick.get("dk_line"),
+                    "dk_odds": pick.get("dk_odds"),
+                    "sharp_line": pick.get("sharp_line"),
+                    "sharp_odds": pick.get("sharp_odds"),
+                    # Historical
+                    "hit_rate_l5": pick.get("hit_rate_l5") or pick.get("h5_rate"),
+                    "hit_rate_l10": pick.get("hit_rate_l10") or pick.get("h10_rate"),
+                    "l5_avg": pick.get("l5_avg"),
+                    "l10_avg": pick.get("l10_avg"),
+                    # Oracle verdict
                     "oracle_score": verdict["oracle_score"],
-                    "verdict": verdict["verdict"],
+                    "oracle_verdict": verdict["verdict"],
                     "tier_eligible": verdict["tier_eligible"],
+                    "reasoning": verdict["reasoning"],
+                    # Gemini analysis
                     "bull_argument": verdict.get("bull_argument"),
                     "bear_argument": verdict.get("bear_argument"),
-                    "reasoning": verdict["reasoning"]
-                })
+                    "key_factor": verdict.get("key_factor"),
+                    # Flags
+                    "is_goblin": pick.get("is_goblin"),
+                    "is_demon": pick.get("is_demon")
+                }
+                
+                # Add to appropriate tier
+                results["tiers"][tier]["picks"].append(enriched_pick)
+                results["tiers"][tier]["count"] += 1
             
-            # Sort by Oracle score descending
-            results["props"].sort(key=lambda x: x["oracle_score"], reverse=True)
+            # Sort each tier by Oracle score
+            for tier_name in results["tiers"]:
+                results["tiers"][tier_name]["picks"].sort(
+                    key=lambda x: x["oracle_score"], 
+                    reverse=True
+                )
             
-            logger.info(f"[ORACLE] Processed {results['processed']} props: {results['promoted']} promoted, {results['demoted']} demoted")
+            logger.info(f"[ORACLE] Batch analysis complete: {results['total_analyzed']} picks processed")
             
         except Exception as e:
-            logger.error(f"[ORACLE] Error processing Safe Haven: {e}")
+            logger.error(f"[ORACLE] Batch analysis error: {e}")
             results["errors"].append(str(e))
+            results["success"] = False
         
         return results
     

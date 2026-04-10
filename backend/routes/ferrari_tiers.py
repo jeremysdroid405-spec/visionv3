@@ -2033,30 +2033,26 @@ async def get_mlb_mapping_errors(response: Response):
 # PROPVISION ORACLE SERVICE ENDPOINTS
 # =============================================================================
 
-@router.post("/v3/oracle/analyze")
-async def run_oracle_analysis(
-    sport: str = Query("mlb", description="Sport to analyze (mlb or nba)"),
-    use_gemini: bool = Query(True, description="Use Gemini for Bull vs Bear analysis"),
-    max_props: int = Query(10, description="Maximum props to analyze with Gemini")
+@router.post("/v3/oracle/analyze-tiers")
+async def run_oracle_tier_analysis(
+    sport: str = Query("mlb", description="Sport to analyze (mlb or nba)")
 ):
     """
-    Run PropVision Oracle Bull vs Bear Analysis.
+    Run PropVision Oracle Analysis on ALL tier picks (single batch call).
     
     **Process:**
-    1. Fetches Safe Haven candidates from cached board
-    2. Synthesizes VK Projection, Pinnacle De-Vig, DK Ladder
-    3. Runs adversarial Bull vs Bear analysis via Gemini 3.1 Pro
-    4. Calculates Oracle Confidence Score (1-10)
-    5. Props with score < 7 are flagged for demotion
+    1. Fetches picks from Safe Haven, Front Lines, War Zone (max 30 total)
+    2. Synthesizes VK Projection, Pinnacle De-Vig, DK Ladder for each
+    3. Sends ALL picks to Gemini in ONE batch call
+    4. Returns Bull/Bear arguments + Oracle scores for each pick
     
-    **Agents:**
-    - Agent Bull: Argues for 'More' based on historical trends
-    - Agent Bear: Argues for 'Trap' based on cold streaks/manipulation
+    **Single Gemini Call:**
+    - Input: All tier picks (up to 30)
+    - Output: JSON array with verdict for each pick
     
-    **Returns:**
-    - Oracle scores and verdicts for each prop
-    - Bull and Bear arguments
-    - Tier eligibility status
+    **Oracle uses verdicts to:**
+    - Gate/filter picks (score < 7 = demoted)
+    - Sort picks within tiers by confidence
     """
     from services.propvision_oracle_service import get_oracle_service
     
@@ -2066,21 +2062,9 @@ async def run_oracle_analysis(
     service = get_oracle_service(_db)
     service.sport = sport
     
-    results = await service.process_safe_haven_props(
-        use_gemini=use_gemini,
-        max_props=max_props
-    )
+    results = await service.batch_oracle_analysis()
     
-    return {
-        "success": True,
-        "sport": sport,
-        "processed": results["processed"],
-        "promoted_to_safe_haven": results["promoted"],
-        "demoted_from_safe_haven": results["demoted"],
-        "gemini_enabled": use_gemini,
-        "props": results["props"],
-        "errors": results["errors"]
-    }
+    return results
 
 
 @router.get("/v3/oracle/verdict/{player_name}/{stat_type}")
@@ -2090,18 +2074,13 @@ async def get_oracle_verdict(
     sport: str = Query("mlb", description="Sport (mlb or nba)")
 ):
     """
-    Get Oracle verdict for a specific player/stat combo.
+    Get Oracle verdict for a specific player/stat combo (no Gemini call).
     
-    **Data Synthesis:**
-    - VK Projection (edge, r-squared, confidence)
+    Uses quantitative factors only:
+    - VK Projection edge
     - Pinnacle De-Vigged Probability
-    - DK Alt Line Ladder
-    
-    **Returns:**
-    - Oracle Confidence Score (1-10)
-    - Verdict: STRONG_PLAY, PLAY, LEAN, AVOID, TRAP
-    - Reasoning breakdown
-    - Tier eligibility
+    - DK Line comparison
+    - Historical hit rates
     """
     from services.propvision_oracle_service import get_oracle_service
     from urllib.parse import unquote
@@ -2138,7 +2117,7 @@ async def get_oracle_verdict(
     # Synthesize data
     synth = await service.oracle_data_synthesis(prop)
     
-    # Get verdict
+    # Get verdict (no Gemini)
     verdict = await service.oracle_final_verdict(
         vk_projection=synth.get("vk_projection"),
         pinnacle_devig_prob=synth.get("pinnacle_devig_prob"),
@@ -2159,92 +2138,4 @@ async def get_oracle_verdict(
             "dk_ladder": synth.get("dk_ladder")
         },
         "oracle": verdict
-    }
-
-
-@router.post("/v3/oracle/update-board")
-async def update_board_with_oracle(
-    sport: str = Query("mlb", description="Sport to update (mlb or nba)")
-):
-    """
-    Update cached board with Oracle scores.
-    
-    Adds to each prop:
-    - oracle_score (1-10)
-    - oracle_verdict (STRONG_PLAY, PLAY, LEAN, AVOID, TRAP)
-    - oracle_tier_eligible (boolean)
-    - oracle_reasoning (array of factors)
-    
-    **Note:** This does NOT run Gemini analysis for every prop.
-    Use /v3/oracle/analyze for full Bull vs Bear analysis.
-    """
-    from services.propvision_oracle_service import get_oracle_service
-    
-    if _db is None:
-        raise HTTPException(status_code=500, detail="Database not initialized")
-    
-    service = get_oracle_service(_db)
-    service.sport = sport
-    
-    results = await service.update_cached_board_with_oracle()
-    
-    return {
-        "success": True,
-        "sport": sport,
-        "players_updated": results["updated"],
-        "errors": results["errors"]
-    }
-
-
-@router.get("/v3/oracle/safe-haven")
-async def get_oracle_safe_haven(
-    sport: str = Query("mlb", description="Sport (mlb or nba)"),
-    min_score: int = Query(7, description="Minimum Oracle score for Safe Haven")
-):
-    """
-    Get Oracle-filtered Safe Haven picks.
-    
-    Only returns props with:
-    - Oracle Score >= min_score (default 7)
-    - Goblin classification (favorable odds)
-    - L10 Hit Rate >= 60%
-    
-    **Sorted by:** Oracle Score (descending)
-    """
-    if _db is None:
-        raise HTTPException(status_code=500, detail="Database not initialized")
-    
-    cached_board = _db[f"{sport}_cached_board"]
-    
-    # Aggregate props meeting Safe Haven criteria
-    pipeline = [
-        {"$unwind": "$props"},
-        {"$match": {
-            "$or": [
-                {"props.oracle_score": {"$gte": min_score}},
-                {"props.oracle_tier_eligible": True}
-            ],
-            "props.is_goblin": True,
-            "props.hit_rate_l10": {"$gte": 60}
-        }},
-        {"$sort": {"props.oracle_score": -1}},
-        {"$limit": 20},
-        {"$project": {
-            "_id": 0,
-            "player_name": 1,
-            "team": 1,
-            "headshot_url": 1,
-            "prop": "$props"
-        }}
-    ]
-    
-    picks = await cached_board.aggregate(pipeline).to_list(length=None)
-    
-    return {
-        "success": True,
-        "sport": sport,
-        "tier": "Safe Haven",
-        "min_oracle_score": min_score,
-        "count": len(picks),
-        "picks": picks
     }
