@@ -1920,6 +1920,7 @@ async def get_mlb_goblins(
     Criteria: Sharp odds ≤ -240 AND VK Projection > Line
     
     These are the highest-confidence plays backed by sharp money.
+    Sorted by pp_odds ascending (most negative/favorable first), then by line ascending.
     """
     response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
     
@@ -1927,7 +1928,8 @@ async def get_mlb_goblins(
         raise HTTPException(status_code=500, detail="Database not initialized")
     
     collection = _db["mlb_goblins"]
-    picks = await collection.find({}, {"_id": 0}).limit(limit).to_list(length=limit)
+    # Sort by pp_odds ascending (most negative first), then by line ascending
+    picks = await collection.find({}, {"_id": 0}).sort([("pp_odds", 1), ("line", 1)]).limit(limit).to_list(length=limit)
     
     # Normalize MLB pick fields for UI compatibility
     normalized_picks = normalize_mlb_picks_batch(picks)
@@ -1952,6 +1954,7 @@ async def get_mlb_demons(
     Criteria: DK mispricing detected + VK Slope trending
     
     These are mispriced props where DK alt-lines suggest PP is wrong.
+    Sorted by pp_odds ascending, then by line ascending (highest line/demon at bottom).
     """
     response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
     
@@ -1959,7 +1962,8 @@ async def get_mlb_demons(
         raise HTTPException(status_code=500, detail="Database not initialized")
     
     collection = _db["mlb_demons"]
-    picks = await collection.find({}, {"_id": 0}).limit(limit).to_list(length=limit)
+    # Sort by pp_odds ascending, then by line ascending (lowest line first, highest demon at bottom)
+    picks = await collection.find({}, {"_id": 0}).sort([("pp_odds", 1), ("line", 1)]).limit(limit).to_list(length=limit)
     
     # Normalize MLB pick fields for UI compatibility
     normalized_picks = normalize_mlb_picks_batch(picks)
@@ -1984,6 +1988,7 @@ async def get_mlb_standard(
     Criteria: Sharp and public books agree (-110 to -130 range)
     
     These are consensus plays where all books are aligned.
+    Sorted by pp_odds ascending, then by line ascending.
     """
     response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
     
@@ -1991,7 +1996,8 @@ async def get_mlb_standard(
         raise HTTPException(status_code=500, detail="Database not initialized")
     
     collection = _db["mlb_standard"]
-    picks = await collection.find({}, {"_id": 0}).limit(limit).to_list(length=limit)
+    # Sort by pp_odds ascending, then by line ascending
+    picks = await collection.find({}, {"_id": 0}).sort([("pp_odds", 1), ("line", 1)]).limit(limit).to_list(length=limit)
     
     # Normalize MLB pick fields for UI compatibility
     normalized_picks = normalize_mlb_picks_batch(picks)
