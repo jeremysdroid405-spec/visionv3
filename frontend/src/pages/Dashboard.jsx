@@ -10,6 +10,7 @@
 import React, { useState, useCallback, useEffect, memo, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useSport } from '../context/SportContext';
 import { toast } from 'sonner';
 
 // Centralized styles
@@ -32,6 +33,7 @@ import { ParlayTicket } from '../components/dashboard/ParlayTicket';
 import { PlayerDetailPage } from '../components/dashboard/PlayerDetailPage';
 import CommandPost from '../components/dashboard/CommandPost';
 import IntelligenceModal from '../components/dashboard/IntelligenceModal';
+import SportSwitcher from '../components/dashboard/SportSwitcher';
 import { 
   TEAM_LOGOS, STAT_CATEGORIES, getCategoryKey 
 } from '../components/dashboard/constants';
@@ -1117,7 +1119,7 @@ const Dashboard = () => {
       {/* Header */}
       <header className="sticky top-0 z-50 bg-zinc-950/95 backdrop-blur-sm border-b border-zinc-800 px-3 sm:px-4 py-2 sm:py-3">
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2 sm:gap-3">
+          <div className="flex items-center gap-2 sm:gap-4">
             <Crosshair className="w-6 h-6 sm:w-8 sm:h-8 text-yellow-500" />
             <div>
               <h1 className="text-lg sm:text-2xl font-black tracking-tight text-white">PROPVISION</h1>
@@ -1129,6 +1131,11 @@ const Dashboard = () => {
                   {boardIntelStatus.time_since_sync_display || 'syncing...'}
                 </span>
               </div>
+            </div>
+            
+            {/* Sport Switcher */}
+            <div className="ml-2 sm:ml-4">
+              <SportSwitcher />
             </div>
           </div>
           

@@ -15,9 +15,14 @@
  * - staleTime: 15 seconds (odds change frequently)
  * - refetchInterval: 30 seconds (Open Door background polling)
  * - Fresh odds are critical for betting decisions
+ * 
+ * Sport-Aware:
+ * - All fetches include ?sport= parameter
+ * - Query keys include sport for proper cache invalidation
  */
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useSport } from '../context/SportContext';
 
 const API = process.env.REACT_APP_BACKEND_URL;
 
@@ -26,10 +31,18 @@ const LIVE_ODDS_STALE_TIME = 15 * 1000;  // 15 seconds
 const LIVE_ODDS_REFETCH_INTERVAL = 30 * 1000;  // 30 seconds
 
 /**
+ * Build URL with sport parameter
+ */
+const buildUrl = (endpoint, sport = 'nba') => {
+  const separator = endpoint.includes('?') ? '&' : '?';
+  return `${API}${endpoint}${separator}sport=${sport}`;
+};
+
+/**
  * Fetch all active lines (full board)
  */
-const fetchLiveOdds = async () => {
-  const response = await fetch(`${API}/api/v3/cached-props`);
+const fetchLiveOdds = async (sport = 'nba') => {
+  const response = await fetch(buildUrl('/api/v3/cached-props', sport));
   
   if (!response.ok) {
     throw new Error(`Live odds fetch failed: ${response.status}`);
@@ -43,8 +56,8 @@ const fetchLiveOdds = async () => {
  * Fetch War Zone picks (Elite Demons - Ferrari filtered)
  * Sharp price >= +500, Bovada 200+ pts separation
  */
-const fetchWarZone = async () => {
-  const response = await fetch(`${API}/api/v3/ferrari/war-zone`);
+const fetchWarZone = async (sport = 'nba') => {
+  const response = await fetch(buildUrl('/api/v3/ferrari/war-zone', sport));
   if (!response.ok) throw new Error('War Zone fetch failed');
   const data = await response.json();
   preloadImages(data.picks);
@@ -55,8 +68,8 @@ const fetchWarZone = async () => {
  * Fetch Safe Haven picks (Elite Goblins - Ferrari filtered)
  * Sharp price <= -250, L10 >= 70%
  */
-const fetchSafeHaven = async () => {
-  const response = await fetch(`${API}/api/v3/ferrari/safe-haven`);
+const fetchSafeHaven = async (sport = 'nba') => {
+  const response = await fetch(buildUrl('/api/v3/ferrari/safe-haven', sport));
   if (!response.ok) throw new Error('Safe Haven fetch failed');
   const data = await response.json();
   preloadImages(data.picks);
@@ -86,8 +99,8 @@ const preloadImages = (picks) => {
  * Fetch Front Lines picks (Battleground - Ferrari filtered)
  * Sharp price -245 to -149, L10 >= 70%, sorted by hit rate
  */
-const fetchFrontLines = async () => {
-  const response = await fetch(`${API}/api/v3/ferrari/front-lines`);
+const fetchFrontLines = async (sport = 'nba') => {
+  const response = await fetch(buildUrl('/api/v3/ferrari/front-lines', sport));
   if (!response.ok) throw new Error('Front Lines fetch failed');
   const data = await response.json();
   // Preload images immediately after fetch
@@ -98,8 +111,8 @@ const fetchFrontLines = async () => {
 /**
  * Fetch Most Popular Bets (by volume - all types)
  */
-const fetchMostPopularBets = async () => {
-  const response = await fetch(`${API}/api/v3/most-popular-bets`);
+const fetchMostPopularBets = async (sport = 'nba') => {
+  const response = await fetch(buildUrl('/api/v3/most-popular-bets', sport));
   if (!response.ok) throw new Error('Most Popular fetch failed');
   return response.json();
 };
@@ -107,8 +120,8 @@ const fetchMostPopularBets = async () => {
 /**
  * Fetch live scores
  */
-const fetchLiveScores = async () => {
-  const response = await fetch(`${API}/api/live/scores`);
+const fetchLiveScores = async (sport = 'nba') => {
+  const response = await fetch(buildUrl('/api/live/scores', sport));
   if (!response.ok) return { games: [] };
   return response.json();
 };
@@ -116,8 +129,8 @@ const fetchLiveScores = async () => {
 /**
  * Fetch breaking news
  */
-const fetchBreakingNews = async () => {
-  const response = await fetch(`${API}/api/live/news`);
+const fetchBreakingNews = async (sport = 'nba') => {
+  const response = await fetch(buildUrl('/api/live/news', sport));
   if (!response.ok) return { headlines: [] };
   return response.json();
 };
@@ -189,14 +202,16 @@ const runSimulation = async (legs) => {
 /**
  * useLiveOdds - PIPE 2 Primary Hook
  * Returns full cached board with live lines
+ * Sport-aware: includes currentSport in query key and fetch
  */
 export const useLiveOdds = (options = {}) => {
   const { enabled = true, refetchInterval = LIVE_ODDS_REFETCH_INTERVAL } = options;
+  const { currentSport, isTransitioning } = useSport();
   
   return useQuery({
-    queryKey: ['liveOdds'],
-    queryFn: fetchLiveOdds,
-    enabled,
+    queryKey: ['liveOdds', currentSport],
+    queryFn: () => fetchLiveOdds(currentSport),
+    enabled: enabled && !isTransitioning,
     
     // LIGHT CACHE - Fresh odds are critical
     staleTime: LIVE_ODDS_STALE_TIME,
@@ -212,14 +227,16 @@ export const useLiveOdds = (options = {}) => {
 
 /**
  * useWarZone - War Zone (Demon) picks
+ * Sport-aware
  */
 export const useWarZone = (options = {}) => {
   const { enabled = true, refetchInterval = LIVE_ODDS_REFETCH_INTERVAL } = options;
+  const { currentSport, isTransitioning } = useSport();
   
   return useQuery({
-    queryKey: ['warZone'],
-    queryFn: fetchWarZone,
-    enabled,
+    queryKey: ['warZone', currentSport],
+    queryFn: () => fetchWarZone(currentSport),
+    enabled: enabled && !isTransitioning,
     staleTime: LIVE_ODDS_STALE_TIME,
     refetchInterval,
     refetchOnWindowFocus: true,
@@ -228,14 +245,16 @@ export const useWarZone = (options = {}) => {
 
 /**
  * useSafeHaven - Safe Haven (Goblin) picks
+ * Sport-aware
  */
 export const useSafeHaven = (options = {}) => {
   const { enabled = true, refetchInterval = LIVE_ODDS_REFETCH_INTERVAL } = options;
+  const { currentSport, isTransitioning } = useSport();
   
   return useQuery({
-    queryKey: ['safeHaven'],
-    queryFn: fetchSafeHaven,
-    enabled,
+    queryKey: ['safeHaven', currentSport],
+    queryFn: () => fetchSafeHaven(currentSport),
+    enabled: enabled && !isTransitioning,
     staleTime: LIVE_ODDS_STALE_TIME,
     refetchInterval,
     refetchOnWindowFocus: true,
@@ -244,14 +263,16 @@ export const useSafeHaven = (options = {}) => {
 
 /**
  * useFrontLines - Front Lines (Mixed) picks
+ * Sport-aware
  */
 export const useFrontLines = (options = {}) => {
   const { enabled = true, refetchInterval = LIVE_ODDS_REFETCH_INTERVAL } = options;
+  const { currentSport, isTransitioning } = useSport();
   
   return useQuery({
-    queryKey: ['frontLines'],
-    queryFn: fetchFrontLines,
-    enabled,
+    queryKey: ['frontLines', currentSport],
+    queryFn: () => fetchFrontLines(currentSport),
+    enabled: enabled && !isTransitioning,
     staleTime: LIVE_ODDS_STALE_TIME,
     refetchInterval,
     refetchOnWindowFocus: true,
@@ -260,14 +281,16 @@ export const useFrontLines = (options = {}) => {
 
 /**
  * useMostPopularBets - Most Popular bets by volume (all types)
+ * Sport-aware
  */
 export const useMostPopularBets = (options = {}) => {
   const { enabled = true, refetchInterval = LIVE_ODDS_REFETCH_INTERVAL } = options;
+  const { currentSport, isTransitioning } = useSport();
   
   return useQuery({
-    queryKey: ['mostPopularBets'],
-    queryFn: fetchMostPopularBets,
-    enabled,
+    queryKey: ['mostPopularBets', currentSport],
+    queryFn: () => fetchMostPopularBets(currentSport),
+    enabled: enabled && !isTransitioning,
     staleTime: LIVE_ODDS_STALE_TIME,
     refetchInterval,
     refetchOnWindowFocus: true,
@@ -277,8 +300,8 @@ export const useMostPopularBets = (options = {}) => {
 /**
  * Fetch Trap Graveyard picks (flagged hook/bait picks)
  */
-const fetchTrapGraveyard = async () => {
-  const response = await fetch(`${API}/api/v3/trap-graveyard`);
+const fetchTrapGraveyard = async (sport = 'nba') => {
+  const response = await fetch(buildUrl('/api/v3/trap-graveyard', sport));
   if (!response.ok) throw new Error('Trap Graveyard fetch failed');
   const data = await response.json();
   preloadImages(data.picks);
@@ -287,14 +310,16 @@ const fetchTrapGraveyard = async () => {
 
 /**
  * useTrapGraveyard - Trap Graveyard (Hook Risk / Vegas Bait) picks
+ * Sport-aware
  */
 export const useTrapGraveyard = (options = {}) => {
   const { enabled = true, refetchInterval = LIVE_ODDS_REFETCH_INTERVAL } = options;
+  const { currentSport, isTransitioning } = useSport();
   
   return useQuery({
-    queryKey: ['trapGraveyard'],
-    queryFn: fetchTrapGraveyard,
-    enabled,
+    queryKey: ['trapGraveyard', currentSport],
+    queryFn: () => fetchTrapGraveyard(currentSport),
+    enabled: enabled && !isTransitioning,
     staleTime: LIVE_ODDS_STALE_TIME,
     refetchInterval,
     refetchOnWindowFocus: true,
@@ -303,11 +328,15 @@ export const useTrapGraveyard = (options = {}) => {
 
 /**
  * useLiveScores - Live game scores
+ * Sport-aware
  */
 export const useLiveScores = () => {
+  const { currentSport, isTransitioning } = useSport();
+  
   return useQuery({
-    queryKey: ['liveScores'],
-    queryFn: fetchLiveScores,
+    queryKey: ['liveScores', currentSport],
+    queryFn: () => fetchLiveScores(currentSport),
+    enabled: !isTransitioning,
     staleTime: 10 * 1000,  // 10 seconds
     refetchInterval: 30 * 1000,  // 30 seconds
     refetchOnWindowFocus: true,
@@ -316,11 +345,15 @@ export const useLiveScores = () => {
 
 /**
  * useBreakingNews - Breaking news ticker
+ * Sport-aware
  */
 export const useBreakingNews = () => {
+  const { currentSport, isTransitioning } = useSport();
+  
   return useQuery({
-    queryKey: ['breakingNews'],
-    queryFn: fetchBreakingNews,
+    queryKey: ['breakingNews', currentSport],
+    queryFn: () => fetchBreakingNews(currentSport),
+    enabled: !isTransitioning,
     staleTime: 60 * 1000,  // 1 minute
     refetchInterval: 60 * 1000,  // 1 minute
     refetchOnWindowFocus: false,
