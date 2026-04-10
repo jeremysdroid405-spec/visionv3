@@ -30,7 +30,6 @@ Restructure the React/FastAPI betting app to a 100% Local-First Database Model, 
 - [ ] MLB headshot sync (~700 players remaining)
 
 ### Upcoming/Backlog
-- [ ] Integrate Oracle summaries with frontend Vision Intel Suite
 - [ ] Scheduled daily pipeline execution
 - [ ] Weather API integration for Wind Tunnel badge
 - [ ] Google/Apple OAuth (Emergent-managed Google Auth)
@@ -81,3 +80,4 @@ WAR_ZONE_GATES = {
 - **2026-04-10**: Fixed L5/L10 hit rates on tier pick cards
 - **2026-04-10**: Added "Earned Runs" to STAT_FIELD_MAP
 - **2026-04-10**: **Implemented full MLB PropVision Ferrari Pipeline with Gemini Oracle**
+- **2026-04-10**: **Integrated Oracle summaries + Hit Rate Analysis into Vision Intel Suite frontend**

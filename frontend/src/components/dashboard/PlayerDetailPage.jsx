@@ -441,6 +441,17 @@ export const PlayerDetailPage = ({ playerName, playerData = null, onBack, highli
                     projected_value: clickedProp.projected_value || prop.projected_value,
                     hit_rate_l10: clickedProp.hit_rate_l10 || prop.hit_rate_l10,
                     l10_avg: clickedProp.l10_avg || prop.l10_avg,
+                    // MLB Ferrari Pipeline fields
+                    h5_rate: clickedProp.h5_rate || prop.h5_rate,
+                    h10_rate: clickedProp.h10_rate || prop.h10_rate,
+                    l5_avg: clickedProp.l5_avg || prop.l5_avg,
+                    season_avg: clickedProp.season_avg || prop.season_avg,
+                    oracle_summary: clickedProp.oracle_summary || prop.oracle_summary,
+                    scout_badges: clickedProp.scout_badges || prop.scout_badges,
+                    cv: clickedProp.cv || prop.cv,
+                    board_score: clickedProp.board_score || prop.board_score,
+                    ferrari_tier: clickedProp.ferrari_tier || prop.ferrari_tier,
+                    tp_odds: clickedProp.tp_odds || prop.tp_odds,
                   };
                 }
                 return prop;
