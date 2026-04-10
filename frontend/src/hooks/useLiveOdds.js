@@ -19,10 +19,15 @@
  * Sport-Aware:
  * - All fetches include ?sport= parameter
  * - Query keys include sport for proper cache invalidation
+ * 
+ * Mock Data Mode:
+ * - Set USE_MOCK_DATA = true in config/mockData.js
+ * - Returns mock NBA/MLB data based on currentSport
  */
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useSport } from '../context/SportContext';
+import { USE_MOCK_DATA, getMockTierData, getMockAllProps } from '../config/mockData';
 
 const API = process.env.REACT_APP_BACKEND_URL;
 
@@ -42,6 +47,12 @@ const buildUrl = (endpoint, sport = 'nba') => {
  * Fetch all active lines (full board)
  */
 const fetchLiveOdds = async (sport = 'nba') => {
+  // MOCK DATA MODE
+  if (USE_MOCK_DATA) {
+    console.log(`[MOCK] Returning mock props for ${sport.toUpperCase()}`);
+    return getMockAllProps(sport);
+  }
+  
   const response = await fetch(buildUrl('/api/v3/cached-props', sport));
   
   if (!response.ok) {
@@ -57,6 +68,12 @@ const fetchLiveOdds = async (sport = 'nba') => {
  * Sharp price >= +500, Bovada 200+ pts separation
  */
 const fetchWarZone = async (sport = 'nba') => {
+  // MOCK DATA MODE
+  if (USE_MOCK_DATA) {
+    console.log(`[MOCK] Returning War Zone mock data for ${sport.toUpperCase()}`);
+    return getMockTierData(sport, 'war_zone');
+  }
+  
   const response = await fetch(buildUrl('/api/v3/ferrari/war-zone', sport));
   if (!response.ok) throw new Error('War Zone fetch failed');
   const data = await response.json();
@@ -69,6 +86,12 @@ const fetchWarZone = async (sport = 'nba') => {
  * Sharp price <= -250, L10 >= 70%
  */
 const fetchSafeHaven = async (sport = 'nba') => {
+  // MOCK DATA MODE
+  if (USE_MOCK_DATA) {
+    console.log(`[MOCK] Returning Safe Haven mock data for ${sport.toUpperCase()}`);
+    return getMockTierData(sport, 'safe_haven');
+  }
+  
   const response = await fetch(buildUrl('/api/v3/ferrari/safe-haven', sport));
   if (!response.ok) throw new Error('Safe Haven fetch failed');
   const data = await response.json();
@@ -100,6 +123,12 @@ const preloadImages = (picks) => {
  * Sharp price -245 to -149, L10 >= 70%, sorted by hit rate
  */
 const fetchFrontLines = async (sport = 'nba') => {
+  // MOCK DATA MODE
+  if (USE_MOCK_DATA) {
+    console.log(`[MOCK] Returning Front Lines mock data for ${sport.toUpperCase()}`);
+    return getMockTierData(sport, 'front_lines');
+  }
+  
   const response = await fetch(buildUrl('/api/v3/ferrari/front-lines', sport));
   if (!response.ok) throw new Error('Front Lines fetch failed');
   const data = await response.json();
