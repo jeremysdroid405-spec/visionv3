@@ -506,6 +506,36 @@ export const useMLBFrontLines = (options = {}) => {
 };
 
 /**
+ * Fetch MLB War Zone picks (Moonshot Demons with Ceiling Protocol)
+ * MLB-only: High CV + Boom Rule + Moonshot Edge
+ */
+const fetchMLBWarZone = async () => {
+  const response = await fetch(`${API}/api/v3/ferrari/war-zone?sport=mlb`);
+  if (!response.ok) throw new Error('MLB War Zone fetch failed');
+  const data = await response.json();
+  preloadImages(data.picks);
+  return data;
+};
+
+/**
+ * useMLBWarZone - MLB War Zone picks (Moonshot Demons)
+ * MLB-only: High volatility Lottery Tickets
+ */
+export const useMLBWarZone = (options = {}) => {
+  const { enabled = true, refetchInterval = LIVE_ODDS_REFETCH_INTERVAL } = options;
+  const { currentSport, isTransitioning } = useSport();
+  
+  return useQuery({
+    queryKey: ['mlbWarZone'],
+    queryFn: fetchMLBWarZone,
+    enabled: enabled && !isTransitioning && currentSport === 'mlb',
+    staleTime: LIVE_ODDS_STALE_TIME,
+    refetchInterval,
+    refetchOnWindowFocus: true,
+  });
+};
+
+/**
  * useLiveScores - Live game scores
  * Sport-aware
  */

@@ -54,7 +54,8 @@ import {
   useMLBDemons,
   useMLBHRRPicks,
   useMLBSafeHaven,
-  useMLBFrontLines
+  useMLBFrontLines,
+  useMLBWarZone
 } from '../hooks/useLiveOdds';
 import { useMasterStats } from '../hooks/useMasterStats';
 
@@ -1133,6 +1134,7 @@ const Dashboard = () => {
   const { data: mlbHRRData, isLoading: mlbHRRLoading, refetch: refetchMLBHRR } = useMLBHRRPicks();
   const { data: mlbSafeHavenData, isLoading: mlbSafeHavenLoading, refetch: refetchMLBSafeHaven } = useMLBSafeHaven();
   const { data: mlbFrontLinesData, isLoading: mlbFrontLinesLoading, refetch: refetchMLBFrontLines } = useMLBFrontLines();
+  const { data: mlbWarZoneData, isLoading: mlbWarZoneLoading, refetch: refetchMLBWarZone } = useMLBWarZone();
   
   // Extract picks from TanStack Query data
   const radarPicks = useMemo(() => warZoneData?.picks || [], [warZoneData]);
@@ -1146,6 +1148,7 @@ const Dashboard = () => {
   const mlbHRRPicks = useMemo(() => mlbHRRData?.picks || [], [mlbHRRData]);
   const mlbSafeHavenPicks = useMemo(() => mlbSafeHavenData?.picks || [], [mlbSafeHavenData]);
   const mlbFrontLinesPicks = useMemo(() => mlbFrontLinesData?.picks || [], [mlbFrontLinesData]);
+  const mlbWarZonePicks = useMemo(() => mlbWarZoneData?.picks || [], [mlbWarZoneData]);
   
   // Live Vacuum Alerts (Usage Vacuum)
   const vacuumAlerts = useMemo(() => vacuumAlertsData?.alerts || [], [vacuumAlertsData]);
@@ -1188,9 +1191,10 @@ const Dashboard = () => {
       refetchMLBHRR();
       refetchMLBSafeHaven();
       refetchMLBFrontLines();
+      refetchMLBWarZone();
     }
     toast.success('Data refreshed');
-  }, [refetchWarZone, refetchSafeHaven, refetchFrontLines, refetchBoard, refetchMLBGoblins, refetchMLBDemons, refetchMLBHRR, refetchMLBSafeHaven, refetchMLBFrontLines, currentSport]);
+  }, [refetchWarZone, refetchSafeHaven, refetchFrontLines, refetchBoard, refetchMLBGoblins, refetchMLBDemons, refetchMLBHRR, refetchMLBSafeHaven, refetchMLBFrontLines, refetchMLBWarZone, currentSport]);
   
   // Local UI state
   const [searchTerm, setSearchTerm] = useState('');
@@ -1594,12 +1598,12 @@ const Dashboard = () => {
                 isLoading={mlbFrontLinesLoading || mlbHRRLoading} 
               />
               
-              {/* MLB War Zone (DK/PP discrepancy) */}
+              {/* MLB War Zone (Moonshot Demons with Ceiling Protocol) */}
               <MLBWarZoneSection 
-                picks={mlbDemonsPicks} 
+                picks={mlbWarZonePicks.length > 0 ? mlbWarZonePicks : mlbDemonsPicks} 
                 onPickClick={handleRadarClick} 
                 onQuickAdd={handleQuickAdd} 
-                isLoading={mlbDemonsLoading} 
+                isLoading={mlbWarZoneLoading || mlbDemonsLoading} 
               />
             </>
           )}

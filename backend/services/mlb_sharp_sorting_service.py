@@ -38,6 +38,9 @@ MLB_DK_SAFE_HAVEN_MAX = -240
 MLB_DK_FRONT_LINES_MIN = -240  # Exclusive (must be > -240)
 MLB_DK_FRONT_LINES_MAX = -145  # Inclusive (must be <= -145)
 
+# MLB DK Odds threshold for War Zone (underdog plays)
+MLB_DK_WAR_ZONE_MIN = 150  # Must be > +150 for alt lines
+
 # MLB Oracle Apex Gate Configuration
 MLB_SAFE_HAVEN_GATES = {
     'Hits': {
@@ -132,6 +135,65 @@ MLB_FRONT_LINES_GATES = {
         'sample_size': 20,
         'min_edge': 10.0,
         'min_prob': 60.0,
+    },
+}
+
+# MLB War Zone Gate Configuration (The "Ceiling" Protocol)
+# High CV is ENCOURAGED - we want explosive, pendulum players
+MLB_WAR_ZONE_GATES = {
+    'Hits': {
+        'max_cv': 1.10,           # High variance encouraged
+        'min_cv': 0.0,            # No minimum - but CV > 1.0 fast-tracked
+        'min_hit_rate': 8,        # 40% of L20 (we want ceiling games)
+        'boom_threshold': 2,      # Must surpass line 2x in L15
+        'sample_size': 20,
+        'min_edge': 25.0,         # Moonshot edge
+        'min_prob': 45.0,         # Lower prob = higher payout
+    },
+    'Total Bases': {
+        'max_cv': 1.25,           # Very high variance for XBH demons
+        'min_cv': 0.0,
+        'min_hit_rate': 7,        # 35% of L20
+        'boom_threshold': 2,
+        'sample_size': 20,
+        'min_edge': 35.0,
+        'min_prob': 40.0,
+    },
+    'Pitcher Strikeouts': {
+        'max_cv': 0.85,
+        'min_cv': 0.0,
+        'min_hit_rate': 10,       # 50% of L20
+        'boom_threshold': 2,
+        'sample_size': 20,
+        'min_edge': 20.0,
+        'min_prob': 50.0,
+    },
+    'Pitching Outs': {
+        'max_cv': 0.70,
+        'min_cv': 0.0,
+        'min_hit_rate': 12,       # 60% of L20
+        'boom_threshold': 2,
+        'sample_size': 20,
+        'min_edge': 15.0,
+        'min_prob': 55.0,
+    },
+    'Hits+Runs+RBIs': {
+        'max_cv': 1.00,
+        'min_cv': 0.0,
+        'min_hit_rate': 9,        # 45% of L20
+        'boom_threshold': 2,
+        'sample_size': 20,
+        'min_edge': 30.0,
+        'min_prob': 45.0,
+    },
+    'DEFAULT': {
+        'max_cv': 1.10,
+        'min_cv': 0.0,
+        'min_hit_rate': 8,
+        'boom_threshold': 2,
+        'sample_size': 20,
+        'min_edge': 25.0,
+        'min_prob': 45.0,
     },
 }
 
@@ -530,6 +592,174 @@ class MLBSharpSortingService:
             return False, f"GATE3_FAIL: Edge {edge_pct}% < {gate_config['min_edge']}% required", gate_results
         if not passes_prob:
             return False, f"GATE3_FAIL: TP {tp_prob:.1f}% < {gate_config['min_prob']}% required", gate_results
+        
+        return True, "ALL_GATES_PASSED", gate_results
+    
+    def calculate_ceiling_stats(self, player_name: str, stat_type: str, line: float) -> Dict:
+        """
+        Calculate ceiling statistics for War Zone qualification.
+        
+        Returns:
+            Dict with max_value, ceiling_90th, boom_count (times surpassed line in L15)
+        """
+        player_key = player_name.lower().strip()
+        game_logs = self._player_logs_cache.get(player_key, [])
+        
+        if len(game_logs) < 5:
+            return {"max_value": None, "ceiling_90th": None, "boom_count": 0, "values": []}
+        
+        # Map stat type to log field
+        stat_map = {
+            "Hits": "hits",
+            "Total Bases": "total_bases",
+            "RBIs": "rbis",
+            "Runs": "runs",
+            "Stolen Bases": "stolen_bases",
+            "Home Runs": "home_runs",
+            "Pitcher Strikeouts": "pitcher_strikeouts",
+            "Pitching Outs": "innings_pitched",
+            "Hits+Runs+RBIs": ["hits", "runs", "rbis"],
+        }
+        
+        log_field = stat_map.get(stat_type)
+        if not log_field:
+            return {"max_value": None, "ceiling_90th": None, "boom_count": 0, "values": []}
+        
+        # Sort by date and get L20
+        sorted_logs = sorted(
+            game_logs,
+            key=lambda x: x.get("date", "") or "",
+            reverse=True
+        )[:20]
+        
+        values = []
+        for g in sorted_logs:
+            if isinstance(log_field, list):
+                # Combo stat - all components must exist
+                combo_vals = [g.get(f) for f in log_field]
+                if any(v is None for v in combo_vals):
+                    continue
+                val = sum(v or 0 for v in combo_vals)
+            else:
+                val = g.get(log_field)
+                if val is None:
+                    continue
+                if log_field == "innings_pitched":
+                    val = val * 3  # Convert to outs
+            values.append(val)
+        
+        if len(values) < 5:
+            return {"max_value": None, "ceiling_90th": None, "boom_count": 0, "values": []}
+        
+        # Calculate ceiling stats
+        max_value = max(values)
+        
+        # 90th percentile ceiling
+        sorted_values = sorted(values, reverse=True)
+        ceiling_idx = max(0, int(len(sorted_values) * 0.1))  # Top 10%
+        ceiling_90th = sorted_values[ceiling_idx] if ceiling_idx < len(sorted_values) else max_value
+        
+        # Boom count: times surpassed line in L15
+        l15_values = values[:15]
+        boom_count = sum(1 for v in l15_values if v >= line)
+        
+        return {
+            "max_value": max_value,
+            "ceiling_90th": ceiling_90th,
+            "boom_count": boom_count,
+            "values": values[:10],  # Return L10 for display
+            "max_upside_pct": round(((ceiling_90th - line) / line) * 100, 1) if line > 0 else 0
+        }
+    
+    def check_war_zone_gates(
+        self, 
+        prop: Dict, 
+        hit_rates: Dict,
+        cv: Optional[float],
+        ceiling_stats: Dict
+    ) -> Tuple[bool, str, Dict]:
+        """
+        Check if a prop passes MLB War Zone 3-Gate qualification (The "Ceiling" Protocol).
+        
+        War Zone is for "Lottery Tickets" - high-variance Demons with explosive potential.
+        High CV is ENCOURAGED (CV > 1.0 = fast-tracked).
+        
+        Gates:
+        1. Ceiling Hit Rate: Must surpass line at least 2x in L15 ("Boom Rule")
+        2. CV (Volatility): High CV encouraged - "Swing" rule fast-tracks CV > 1.0
+        3. Moonshot Edge: 90th percentile ceiling must be 35%+ above line
+        
+        Returns:
+            Tuple of (passes, reason, gate_results)
+        """
+        stat_type = prop.get("stat_type", "")
+        line = prop.get("line", 0)
+        
+        # Get gate config for this stat type
+        gate_config = MLB_WAR_ZONE_GATES.get(stat_type, MLB_WAR_ZONE_GATES.get('DEFAULT'))
+        
+        gate_results = {
+            "gate1_ceiling": {"passed": False, "value": None, "threshold": gate_config['boom_threshold']},
+            "gate2_volatility": {"passed": False, "value": None, "fast_tracked": False},
+            "gate3_moonshot": {"passed": False, "value": None, "threshold": gate_config['min_edge']},
+        }
+        
+        # GATE 1: "Boom Rule" - Must surpass line at least 2x in L15
+        boom_count = ceiling_stats.get("boom_count", 0)
+        max_value = ceiling_stats.get("max_value")
+        
+        gate_results["gate1_ceiling"]["value"] = {
+            "boom_count": boom_count,
+            "max_value": max_value,
+            "line": line
+        }
+        gate_results["gate1_ceiling"]["passed"] = boom_count >= gate_config['boom_threshold']
+        
+        if not gate_results["gate1_ceiling"]["passed"]:
+            return False, f"GATE1_FAIL: Boom count {boom_count} < {gate_config['boom_threshold']} (surpassed line only {boom_count}x in L15)", gate_results
+        
+        # GATE 2: "Swing Rule" - High volatility encouraged
+        # CV > 1.0 = fast-tracked as high-upside candidate
+        if cv is not None:
+            gate_results["gate2_volatility"]["value"] = cv
+            # High CV is GOOD for War Zone - fast-track if CV > 1.0
+            if cv > 1.0:
+                gate_results["gate2_volatility"]["passed"] = True
+                gate_results["gate2_volatility"]["fast_tracked"] = True
+            else:
+                # Still passes if CV is reasonable (below max threshold)
+                gate_results["gate2_volatility"]["passed"] = cv <= gate_config['max_cv']
+        else:
+            # No CV data - use hit rate volatility as proxy
+            h10_rate = hit_rates.get("h10_rate") or 50
+            # Highly variable hit rates (not 80-90%) suggest volatile player
+            gate_results["gate2_volatility"]["passed"] = h10_rate < 70
+            gate_results["gate2_volatility"]["value"] = f"N/A (HR proxy: {h10_rate}%)"
+        
+        if not gate_results["gate2_volatility"]["passed"]:
+            return False, f"GATE2_FAIL: CV {cv} > {gate_config['max_cv']} (too stable for War Zone)", gate_results
+        
+        # GATE 3: "Moonshot Edge" - 90th percentile ceiling must be significantly above line
+        ceiling_90th = ceiling_stats.get("ceiling_90th", 0)
+        max_upside_pct = ceiling_stats.get("max_upside_pct", 0)
+        
+        # Calculate moonshot edge: how far above line is the ceiling?
+        if line > 0 and ceiling_90th:
+            moonshot_edge = ((ceiling_90th - line) / line) * 100
+        else:
+            moonshot_edge = 0
+        
+        gate_results["gate3_moonshot"]["value"] = {
+            "ceiling_90th": ceiling_90th,
+            "line": line,
+            "moonshot_edge": round(moonshot_edge, 1),
+            "max_upside_pct": max_upside_pct
+        }
+        
+        gate_results["gate3_moonshot"]["passed"] = moonshot_edge >= gate_config['min_edge']
+        
+        if not gate_results["gate3_moonshot"]["passed"]:
+            return False, f"GATE3_FAIL: Moonshot edge {moonshot_edge:.1f}% < {gate_config['min_edge']}% required", gate_results
         
         return True, "ALL_GATES_PASSED", gate_results
     
@@ -1019,7 +1249,43 @@ class MLBSharpSortingService:
                     results["standard"].append(prop)
                     
                 elif tier == "DEMON":
-                    # Demons restricted to War Zone only
+                    # Demons are candidates for War Zone (high-variance plays)
+                    cv = self.calculate_cv(prop.get("player_name"), prop.get("stat_type"))
+                    prop["cv"] = cv
+                    
+                    # Calculate ceiling stats for War Zone qualification
+                    ceiling_stats = self.calculate_ceiling_stats(
+                        prop.get("player_name"),
+                        prop.get("stat_type"),
+                        prop.get("line", 0)
+                    )
+                    prop["ceiling_stats"] = ceiling_stats
+                    
+                    dk_odds = all_odds.get("draftkings")
+                    
+                    # Check War Zone 3-Gate qualification
+                    # Qualify if: DK Odds > +150 (underdog) OR is a Demon (PP status)
+                    # All Demons are potential War Zone candidates
+                    passes_gates, gate_reason, gate_results = self.check_war_zone_gates(
+                        prop, hit_rates, cv, ceiling_stats
+                    )
+                    prop["war_zone_gate_results"] = gate_results
+                    prop["war_zone_qualified"] = passes_gates
+                    prop["war_zone_reason"] = gate_reason
+                    
+                    if passes_gates:
+                        # Calculate Max Upside % for ranking
+                        max_upside = ceiling_stats.get("max_upside_pct", 0)
+                        prop["max_upside_pct"] = max_upside
+                        
+                        # Track if fast-tracked due to high volatility
+                        if gate_results.get("gate2_volatility", {}).get("fast_tracked"):
+                            prop["volatility_fast_tracked"] = True
+                        
+                        if "war_zone" not in results:
+                            results["war_zone"] = []
+                        results["war_zone"].append(prop)
+                    
                     results["demons"].append(prop)
                 else:
                     results["unclassified"] += 1
@@ -1059,6 +1325,19 @@ class MLBSharpSortingService:
                         deduped_front_lines.append(prop)
                 results["front_lines"] = deduped_front_lines[:20]  # Top 20
             
+            # Sort War Zone by Max Upside % (descending) - Top 15
+            if "war_zone" in results and results["war_zone"]:
+                results["war_zone"].sort(key=lambda x: x.get("max_upside_pct") or 0, reverse=True)
+                # Dedupe: keep best moonshot per player
+                seen_players = set()
+                deduped_war_zone = []
+                for prop in results["war_zone"]:
+                    player = prop.get("player_name")
+                    if player not in seen_players:
+                        seen_players.add(player)
+                        deduped_war_zone.append(prop)
+                results["war_zone"] = deduped_war_zone[:15]  # Top 15 Moonshots
+            
             # Save to collections
             if save_to_db:
                 await self._save_to_collections(results)
@@ -1073,6 +1352,7 @@ class MLBSharpSortingService:
             logger.info(f"  • Sharp Goblins: {len(results['goblins'])}")
             logger.info(f"  • Safe Haven: {len(results.get('safe_haven', []))}")
             logger.info(f"  • Front Lines: {len(results.get('front_lines', []))}")
+            logger.info(f"  • War Zone: {len(results.get('war_zone', []))}")
             logger.info(f"  • Demons: {len(results['demons'])}")
             logger.info(f"  • Standard: {len(results['standard'])}")
             logger.info(f"  • Unclassified: {results['unclassified']}")
@@ -1129,6 +1409,14 @@ class MLBSharpSortingService:
             clean_front_lines = [{k: v for k, v in p.items() if k != "_id"} for p in results["front_lines"]]
             await front_lines_coll.insert_many(clean_front_lines)
             logger.info(f"[SHARP_SORT] Saved {len(clean_front_lines)} Front Lines picks")
+        
+        # War Zone (Top 15 Moonshot Demons that pass Ceiling Protocol)
+        if results.get("war_zone"):
+            war_zone_coll = self.db["mlb_ferrari_war_zone"]
+            await war_zone_coll.delete_many({})
+            clean_war_zone = [{k: v for k, v in p.items() if k != "_id"} for p in results["war_zone"]]
+            await war_zone_coll.insert_many(clean_war_zone)
+            logger.info(f"[SHARP_SORT] Saved {len(clean_war_zone)} War Zone picks")
 
 
 # Singleton
