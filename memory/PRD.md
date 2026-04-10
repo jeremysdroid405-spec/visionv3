@@ -81,14 +81,31 @@ Build a local-first betting intelligence app restructuring React/FastAPI to inte
   - Applies time-decaying weights (2026=1.0, 2021=0.5)
   - Calculates weighted baselines for all MLB stats
   - Stores in `mlb_historical_logs` and updates `mlb_master_hub_2026.vk_baselines`
+- [x] **Built MLB VK Regression Model** (`/app/backend/services/mlb_vk_regression.py`):
+  - Weighted Linear Regression (y = mx + b) with recency weighting
+  - Edge Formula: (Projected - Line) / Line
+  - Tier Classification:
+    - **Safe Haven**: Edge > 20% + R² > 0.75 + L10 Hit Rate > 70%
+    - **Front Lines**: Edge > 15% + R² > 0.60
+    - **War Zone**: Edge > 25% + R² < 0.40 (High risk/reward)
+  - Park Factor adjustments for all 30 MLB stadiums
+  - Opponent strength modifiers
+- [x] **Built MLB Vision Intel Service** (`/app/backend/services/mlb_vision_intel_service.py`):
+  - Gemini 3.1 Pro integration for Safe Haven final context check
+  - Weather, pitcher/batter splits, hot/cold streaks analysis
+  - TRAP verdict kills picks from Safe Haven
 - [x] **New VK Endpoints**:
   - `POST /api/v3/mlb/vk-backfill?seasons=2021,2022,2023,2024,2025,2026` - Run historical backfill
   - `GET /api/v3/mlb/vk-baselines/{player_name}` - Get player's weighted baselines
-- [x] **Tested**: VK backfill for 2026 season completed successfully:
-  - 2,884 games cached
-  - 20,000 stats fetched
-  - 3,252 player logs collected
-  - 774 players with VK baselines calculated
+  - `POST /api/v3/mlb/vk-regression` - Run slate analysis with tier distribution
+  - `GET /api/v3/mlb/vk-projection/{player_name}` - Get individual player projection
+  - `GET /api/v3/mlb/ferrari/safe-haven` - MLB Safe Haven picks
+  - `GET /api/v3/mlb/ferrari/front-lines` - MLB Front Lines picks
+  - `GET /api/v3/mlb/ferrari/war-zone` - MLB War Zone picks
+- [x] **Tested**: VK Regression on live slate:
+  - 1,931 live props processed | 250 unique players
+  - **Safe Haven: 10 picks** | Front Lines: 16 picks | War Zone: 1,457 picks
+  - Top Safe Haven: Dustin May UNDER 6.5 Ks (Edge: -30.32%, R²: 0.75, L10 HR: 100%)
 - [x] All 17 backend tests passed (iteration_37.json)
 
 ### Session 5 - Multi-Sport Database Schema & Universal APIs (April 10, 2026)

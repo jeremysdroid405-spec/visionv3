@@ -1173,6 +1173,252 @@ async def get_mlb_vk_baselines(
 
 
 # =============================================================================
+# MLB VK REGRESSION MODEL ENDPOINTS
+# =============================================================================
+
+@router.post("/v3/mlb/vk-regression")
+async def run_mlb_vk_regression_analysis(
+    save_to_db: bool = Query(True, description="Save results to Ferrari collections"),
+    vision_intel: bool = Query(True, description="Run Vision Intel on Safe Haven picks")
+):
+    """
+    MLB Vegas Killer Regression Analysis.
+    
+    Runs weighted linear regression on today's MLB slate:
+    
+    **Process:**
+    1. Fetch all live props from mlb_live_props
+    2. Calculate projections using weighted linear regression
+    3. Calculate VK Edge: (Projected - Line) / Line
+    4. Classify into Ferrari tiers:
+       - Safe Haven: Edge > 20% + R² > 0.75 + L10 Hit Rate > 70%
+       - Front Lines: Edge > 15% + R² > 0.60
+       - War Zone: Edge > 25% + R² < 0.40 (High risk/reward)
+    5. Run Vision Intel on Safe Haven picks (optional)
+    6. Save to mlb_ferrari_* collections
+    
+    **Returns:** Tiered picks with projections and edges
+    """
+    from services.mlb_vk_regression import run_mlb_vk_slate_analysis
+    from services.mlb_vision_intel_service import run_mlb_vision_intel_analysis
+    
+    if _db is None:
+        raise HTTPException(status_code=500, detail="Database not initialized")
+    
+    # Run regression analysis
+    results = await run_mlb_vk_slate_analysis(_db, save_to_db=save_to_db)
+    
+    # Run Vision Intel on Safe Haven picks if requested
+    if vision_intel and results.get("tiers", {}).get("safe_haven"):
+        vision_results = await run_mlb_vision_intel_analysis(
+            _db,
+            results["tiers"]["safe_haven"],
+            save_to_db=save_to_db
+        )
+        results["vision_intel"] = vision_results
+    
+    return results
+
+
+@router.get("/v3/mlb/vk-projection/{player_name}")
+async def get_mlb_vk_projection(
+    player_name: str,
+    stat_type: str = Query(..., description="Stat type (e.g., 'Total Bases', 'Strikeouts')"),
+    line: float = Query(..., description="Sportsbook line to calculate edge against"),
+    opponent: str = Query(None, description="Opponent team abbreviation"),
+    venue: str = Query(None, description="Home team abbreviation for park factor"),
+    response: Response = None
+):
+    """
+    Get VK projection for a specific player and stat.
+    
+    Uses weighted linear regression on historical game logs.
+    
+    **Returns:**
+    - projected_value: Model's prediction
+    - r_squared: Confidence score (0-1)
+    - edge: (Projected - Line) / Line
+    - tier: Suggested tier classification
+    """
+    from services.mlb_vk_regression import get_mlb_vk_regression
+    from config.db_config import get_collection_name
+    
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    
+    if _db is None:
+        raise HTTPException(status_code=500, detail="Database not initialized")
+    
+    # Find player
+    collection = _db[get_collection_name("master_hub", "mlb")]
+    player = await collection.find_one(
+        {"display_name": {"$regex": f"^{player_name}$", "$options": "i"}},
+        {"_id": 0, "bdl_id": 1}
+    )
+    
+    if not player:
+        player = await collection.find_one(
+            {"display_name": {"$regex": player_name, "$options": "i"}},
+            {"_id": 0, "bdl_id": 1}
+        )
+    
+    if not player or not player.get("bdl_id"):
+        raise HTTPException(status_code=404, detail=f"Player '{player_name}' not found")
+    
+    # Get model and calculate projection
+    model = get_mlb_vk_regression(_db)
+    
+    projection = await model.calculate_player_projection(
+        player_id=player["bdl_id"],
+        stat_type=stat_type,
+        opponent_abbr=opponent,
+        venue_team=venue
+    )
+    
+    if not projection.get("valid"):
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Could not calculate projection: {projection.get('error', 'Unknown error')}"
+        )
+    
+    # Calculate edge
+    edge_data = model.calculate_edge(projection["projected_value"], line)
+    
+    # Calculate hit rate
+    hit_rate = model.calculate_hit_rate(
+        projection.get("l10_values", []),
+        line,
+        edge_data["direction"]
+    )
+    
+    # Classify tier
+    tier = model.classify_tier(
+        edge_data["edge"],
+        projection["r_squared"],
+        hit_rate
+    )
+    
+    return {
+        "success": True,
+        "player_name": projection["player_name"],
+        "stat_type": stat_type,
+        "line": line,
+        "projection": {
+            "projected_value": projection["projected_value"],
+            "raw_projection": projection["raw_projection"],
+            "r_squared": projection["r_squared"],
+            "std_error": projection["std_error"],
+            "slope": projection["slope"],
+            "intercept": projection["intercept"],
+            "sample_size": projection["sample_size"]
+        },
+        "edge": edge_data,
+        "hit_rate_l10": hit_rate,
+        "l10_avg": projection["l10_avg"],
+        "tier": tier,
+        "adjustments": projection["adjustments"]
+    }
+
+
+@router.get("/v3/mlb/ferrari/safe-haven")
+async def get_mlb_safe_haven_picks(
+    response: Response,
+    limit: int = Query(20, ge=1, le=100)
+):
+    """
+    Get MLB Safe Haven picks.
+    
+    Safe Haven criteria:
+    - VK Edge > 20%
+    - R-Squared > 0.75
+    - L10 Hit Rate > 70%
+    - Vision Intel: CONFIRMED (not TRAP)
+    """
+    from config.db_config import get_collection_name
+    
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    
+    if _db is None:
+        raise HTTPException(status_code=500, detail="Database not initialized")
+    
+    collection = _db[get_collection_name("safe_haven", "mlb")]
+    picks = await collection.find({}, {"_id": 0}).limit(limit).to_list(length=limit)
+    
+    # Filter out TRAP picks
+    confirmed = [p for p in picks if p.get("vision_intel", {}).get("verdict") != "TRAP"]
+    
+    return {
+        "success": True,
+        "tier": "SAFE_HAVEN",
+        "sport": "mlb",
+        "picks": confirmed,
+        "count": len(confirmed),
+        "total_before_filter": len(picks)
+    }
+
+
+@router.get("/v3/mlb/ferrari/front-lines")
+async def get_mlb_front_lines_picks(
+    response: Response,
+    limit: int = Query(30, ge=1, le=100)
+):
+    """
+    Get MLB Front Lines picks.
+    
+    Front Lines criteria:
+    - VK Edge > 15%
+    - R-Squared > 0.60
+    """
+    from config.db_config import get_collection_name
+    
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    
+    if _db is None:
+        raise HTTPException(status_code=500, detail="Database not initialized")
+    
+    collection = _db[get_collection_name("front_lines", "mlb")]
+    picks = await collection.find({}, {"_id": 0}).limit(limit).to_list(length=limit)
+    
+    return {
+        "success": True,
+        "tier": "FRONT_LINES",
+        "sport": "mlb",
+        "picks": picks,
+        "count": len(picks)
+    }
+
+
+@router.get("/v3/mlb/ferrari/war-zone")
+async def get_mlb_war_zone_picks(
+    response: Response,
+    limit: int = Query(20, ge=1, le=100)
+):
+    """
+    Get MLB War Zone picks.
+    
+    War Zone criteria:
+    - VK Edge > 25%
+    - R-Squared < 0.40 (High variance = high risk/reward)
+    """
+    from config.db_config import get_collection_name
+    
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    
+    if _db is None:
+        raise HTTPException(status_code=500, detail="Database not initialized")
+    
+    collection = _db[get_collection_name("war_zone", "mlb")]
+    picks = await collection.find({}, {"_id": 0}).limit(limit).to_list(length=limit)
+    
+    return {
+        "success": True,
+        "tier": "WAR_ZONE",
+        "sport": "mlb",
+        "picks": picks,
+        "count": len(picks)
+    }
+
+
+# =============================================================================
 # MLB HEADSHOT SYNC ENDPOINTS
 # =============================================================================
 
