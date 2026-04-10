@@ -162,6 +162,18 @@ Build a local-first betting intelligence app restructuring React/FastAPI to inte
 - [x] Console logging: "Syncing MLB... NBA Data Protected." (and vice versa)
 - [x] Verified isolation: MLB sync skips BDL NBA game logs, uses empty cache
 
+### Session 7 - MLB Sharp Sorting & Tier Distribution (April 10, 2026)
+- [x] Built `mlb_sharp_sorting_service.py` with Pinnacle De-Vig calculations
+- [x] Implemented `classify_prop()` with adjusted thresholds (≤-150 for Goblins)
+- [x] Added Goblins, Demons, Standard tier classification logic
+- [x] Created endpoints: `/api/v3/mlb/sharp-sort`, `/api/v3/mlb/sharp/goblins`, `/api/v3/mlb/sharp/demons`, `/api/v3/mlb/sharp/standard`
+- [x] Fixed VK lookup key matching to use both `direction` and `recommendation` fields
+- [x] Fixed ObjectId serialization errors in VK regression response
+- [x] Added frontend hooks: `useMLBGoblins`, `useMLBDemons`, `useMLBHRRPicks`
+- [x] Created frontend sections: `MLBGoblinsSection`, `MLBDemonsSection`, `MLBHRRSection`
+- [x] Integrated MLB-specific sections into Dashboard (render when `currentSport === 'mlb'`)
+- [x] Testing: 21/21 backend tests passed, frontend displays correctly
+
 ### Session 3 - Gemini Intelligence Gate (April 9, 2026)
 - [x] Implemented Gemini 3.1 Pro as true intelligence gatekeeper
 - [x] Added `adjusted_confidence` scoring (0-1) combining VK probability + contextual factors
@@ -184,11 +196,15 @@ Build a local-first betting intelligence app restructuring React/FastAPI to inte
 ### P0 - Completed ✅
 - [x] **MLB BDL Date Mapping Issue** - Fixed in Session 6
 - [x] **5-Season Historical Backfill for MLB VK Model** - Implemented in Session 6
+- [x] **MLB Sharp Sorting & Tier Distribution** - Implemented in Session 7 (April 10, 2026)
+  - Pinnacle De-Vig layer for fair value calculation
+  - DK/PP line discrepancy detection
+  - Goblins, Demons, Standard tier classification
+  - Frontend integration with new hooks and sections
 
 ### P1 - Critical
 - [ ] **Complete MLB Headshot Sync** - ~700 players remaining (60 done)
-- [ ] **MLB Tier Qualification Logic** - Build 3-Gate system for MLB stats
-- [ ] **Upstream Prop Duplication** - Investigate `odds_sync_service.py` for duplicate prop insertion
+- [ ] **Upstream Prop Duplication** - Investigate `universal_odds_sync.py` for duplicate prop insertion
 
 ### P2 - Important
 - [ ] **MLB Vision Intel** - Gemini TRAP filtering adapted for MLB stat rules
@@ -214,9 +230,15 @@ Use "Demo Mode" button on frontend login page.
 5. **MLB Stat Field Names**: BDL MLB uses short names (`rbi`, `k`, `hr`, `bb`) - must map to internal names (`rbis`, `strikeouts`, etc.)
 6. **Gemini Vision Intel**: Use BATCHED API calls only (one per tier)
 7. **Google API Key**: Use user's `GOOGLE_API_KEY`, NOT Emergent LLM key
+8. **MLB Sharp Sorting Thresholds**: Pinnacle ≤ -150 for Goblins (adjusted from -240 due to real data range -214 max)
+9. **VK Lookup Key Matching**: Use flexible matching with both `direction` and `recommendation` fields
 
 ## Key Files Reference
 - `/app/backend/services/bdl_universal_sync.py` - BDL sync with MLB game cache fix
 - `/app/backend/services/mlb_vk_historical_backfill.py` - 5-Season VK backfill service
+- `/app/backend/services/mlb_vk_regression.py` - MLB VK regression model
+- `/app/backend/services/mlb_sharp_sorting_service.py` - Sharp Sorting & Tier Distribution
 - `/app/backend/services/mlb_cached_board_builder.py` - MLB prop enrichment
 - `/app/backend/config/db_config.py` - Sport-specific collection routing
+- `/app/frontend/src/hooks/useLiveOdds.js` - useMLBGoblins, useMLBDemons, useMLBHRRPicks hooks
+- `/app/frontend/src/pages/Dashboard.jsx` - MLBGoblinsSection, MLBDemonsSection, MLBHRRSection components
