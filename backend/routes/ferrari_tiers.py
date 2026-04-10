@@ -2026,3 +2026,225 @@ async def get_mlb_mapping_errors(response: Response):
         "count": len(players),
         "log_path": str(error_log)
     }
+
+
+
+# =============================================================================
+# PROPVISION ORACLE SERVICE ENDPOINTS
+# =============================================================================
+
+@router.post("/v3/oracle/analyze")
+async def run_oracle_analysis(
+    sport: str = Query("mlb", description="Sport to analyze (mlb or nba)"),
+    use_gemini: bool = Query(True, description="Use Gemini for Bull vs Bear analysis"),
+    max_props: int = Query(10, description="Maximum props to analyze with Gemini")
+):
+    """
+    Run PropVision Oracle Bull vs Bear Analysis.
+    
+    **Process:**
+    1. Fetches Safe Haven candidates from cached board
+    2. Synthesizes VK Projection, Pinnacle De-Vig, DK Ladder
+    3. Runs adversarial Bull vs Bear analysis via Gemini 3.1 Pro
+    4. Calculates Oracle Confidence Score (1-10)
+    5. Props with score < 7 are flagged for demotion
+    
+    **Agents:**
+    - Agent Bull: Argues for 'More' based on historical trends
+    - Agent Bear: Argues for 'Trap' based on cold streaks/manipulation
+    
+    **Returns:**
+    - Oracle scores and verdicts for each prop
+    - Bull and Bear arguments
+    - Tier eligibility status
+    """
+    from services.propvision_oracle_service import get_oracle_service
+    
+    if _db is None:
+        raise HTTPException(status_code=500, detail="Database not initialized")
+    
+    service = get_oracle_service(_db)
+    service.sport = sport
+    
+    results = await service.process_safe_haven_props(
+        use_gemini=use_gemini,
+        max_props=max_props
+    )
+    
+    return {
+        "success": True,
+        "sport": sport,
+        "processed": results["processed"],
+        "promoted_to_safe_haven": results["promoted"],
+        "demoted_from_safe_haven": results["demoted"],
+        "gemini_enabled": use_gemini,
+        "props": results["props"],
+        "errors": results["errors"]
+    }
+
+
+@router.get("/v3/oracle/verdict/{player_name}/{stat_type}")
+async def get_oracle_verdict(
+    player_name: str,
+    stat_type: str,
+    sport: str = Query("mlb", description="Sport (mlb or nba)")
+):
+    """
+    Get Oracle verdict for a specific player/stat combo.
+    
+    **Data Synthesis:**
+    - VK Projection (edge, r-squared, confidence)
+    - Pinnacle De-Vigged Probability
+    - DK Alt Line Ladder
+    
+    **Returns:**
+    - Oracle Confidence Score (1-10)
+    - Verdict: STRONG_PLAY, PLAY, LEAN, AVOID, TRAP
+    - Reasoning breakdown
+    - Tier eligibility
+    """
+    from services.propvision_oracle_service import get_oracle_service
+    from urllib.parse import unquote
+    
+    if _db is None:
+        raise HTTPException(status_code=500, detail="Database not initialized")
+    
+    player_name = unquote(player_name)
+    stat_type = unquote(stat_type)
+    
+    service = get_oracle_service(_db)
+    service.sport = sport
+    
+    # Get prop from cached board
+    cached_board = _db[f"{sport}_cached_board"]
+    player_doc = await cached_board.find_one(
+        {"player_name": {"$regex": f"^{player_name}$", "$options": "i"}},
+        {"_id": 0}
+    )
+    
+    if not player_doc:
+        raise HTTPException(status_code=404, detail=f"Player {player_name} not found")
+    
+    # Find the specific prop
+    prop = None
+    for p in player_doc.get("props", []):
+        if p.get("stat_type", "").lower() == stat_type.lower():
+            prop = p
+            break
+    
+    if not prop:
+        raise HTTPException(status_code=404, detail=f"Stat type {stat_type} not found for {player_name}")
+    
+    # Synthesize data
+    synth = await service.oracle_data_synthesis(prop)
+    
+    # Get verdict
+    verdict = await service.oracle_final_verdict(
+        vk_projection=synth.get("vk_projection"),
+        pinnacle_devig_prob=synth.get("pinnacle_devig_prob"),
+        dk_ladder=synth.get("dk_ladder"),
+        prop=prop
+    )
+    
+    return {
+        "success": True,
+        "player_name": player_name,
+        "stat_type": stat_type,
+        "line": prop.get("line"),
+        "recommendation": prop.get("recommendation"),
+        "data_synthesis": {
+            "vk_projection": synth.get("vk_projection"),
+            "pinnacle_devig_prob": synth.get("pinnacle_devig_prob"),
+            "sharp_line": synth.get("sharp_line"),
+            "dk_ladder": synth.get("dk_ladder")
+        },
+        "oracle": verdict
+    }
+
+
+@router.post("/v3/oracle/update-board")
+async def update_board_with_oracle(
+    sport: str = Query("mlb", description="Sport to update (mlb or nba)")
+):
+    """
+    Update cached board with Oracle scores.
+    
+    Adds to each prop:
+    - oracle_score (1-10)
+    - oracle_verdict (STRONG_PLAY, PLAY, LEAN, AVOID, TRAP)
+    - oracle_tier_eligible (boolean)
+    - oracle_reasoning (array of factors)
+    
+    **Note:** This does NOT run Gemini analysis for every prop.
+    Use /v3/oracle/analyze for full Bull vs Bear analysis.
+    """
+    from services.propvision_oracle_service import get_oracle_service
+    
+    if _db is None:
+        raise HTTPException(status_code=500, detail="Database not initialized")
+    
+    service = get_oracle_service(_db)
+    service.sport = sport
+    
+    results = await service.update_cached_board_with_oracle()
+    
+    return {
+        "success": True,
+        "sport": sport,
+        "players_updated": results["updated"],
+        "errors": results["errors"]
+    }
+
+
+@router.get("/v3/oracle/safe-haven")
+async def get_oracle_safe_haven(
+    sport: str = Query("mlb", description="Sport (mlb or nba)"),
+    min_score: int = Query(7, description="Minimum Oracle score for Safe Haven")
+):
+    """
+    Get Oracle-filtered Safe Haven picks.
+    
+    Only returns props with:
+    - Oracle Score >= min_score (default 7)
+    - Goblin classification (favorable odds)
+    - L10 Hit Rate >= 60%
+    
+    **Sorted by:** Oracle Score (descending)
+    """
+    if _db is None:
+        raise HTTPException(status_code=500, detail="Database not initialized")
+    
+    cached_board = _db[f"{sport}_cached_board"]
+    
+    # Aggregate props meeting Safe Haven criteria
+    pipeline = [
+        {"$unwind": "$props"},
+        {"$match": {
+            "$or": [
+                {"props.oracle_score": {"$gte": min_score}},
+                {"props.oracle_tier_eligible": True}
+            ],
+            "props.is_goblin": True,
+            "props.hit_rate_l10": {"$gte": 60}
+        }},
+        {"$sort": {"props.oracle_score": -1}},
+        {"$limit": 20},
+        {"$project": {
+            "_id": 0,
+            "player_name": 1,
+            "team": 1,
+            "headshot_url": 1,
+            "prop": "$props"
+        }}
+    ]
+    
+    picks = await cached_board.aggregate(pipeline).to_list(length=None)
+    
+    return {
+        "success": True,
+        "sport": sport,
+        "tier": "Safe Haven",
+        "min_oracle_score": min_score,
+        "count": len(picks),
+        "picks": picks
+    }
