@@ -1273,6 +1273,27 @@ async def get_mlb_player_props(
                 # Add game_logs to prop for bar chart
                 prop["game_logs"] = game_logs
     
+    # Evaluate MLB badges for each prop
+    try:
+        from services.mlb_badge_system import get_mlb_badge_service
+        badge_service = get_mlb_badge_service(_db)
+        
+        if player.get("props"):
+            for prop in player["props"]:
+                try:
+                    badges = await badge_service.evaluate_all_badges(
+                        player_name=player_name,
+                        stat_type=prop.get("stat_type", "Total Bases"),
+                        prop=prop,
+                        opponent_pitcher=None  # Could be enhanced with game data
+                    )
+                    prop["scout_badges"] = badges
+                except Exception as badge_err:
+                    logger.warning(f"Badge evaluation failed for {player_name}: {badge_err}")
+                    prop["scout_badges"] = []
+    except Exception as e:
+        logger.warning(f"MLB badge service initialization failed: {e}")
+    
     return {
         "success": True,
         "player": player

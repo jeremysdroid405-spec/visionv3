@@ -819,24 +819,36 @@ export const PlayerDetailPage = ({ playerName, playerData = null, onBack, highli
                 </button>
               )}
               
-              {/* ===== CONTEXT BADGES - 10 Situational Indicators ===== */}
+              {/* ===== CONTEXT BADGES - Sport-Specific Indicators ===== */}
               <div className="bg-gradient-to-r from-zinc-900 to-zinc-800/50 border border-zinc-700 rounded-lg p-4">
                 <h3 className="text-sm font-bold text-white mb-3 flex items-center gap-2">
                   <Target className="w-4 h-4 text-amber-400" />
-                  CONTEXT BADGES
+                  {currentSport === 'mlb' ? 'SCOUT INTEL BADGES' : 'CONTEXT BADGES'}
                 </h3>
-                <p className="text-xs text-zinc-500 mb-4">Situational factors affecting tonight's performance</p>
+                <p className="text-xs text-zinc-500 mb-4">
+                  {currentSport === 'mlb' 
+                    ? 'Statcast, weather, and matchup factors for tonight' 
+                    : 'Situational factors affecting tonight\'s performance'}
+                </p>
                 
-                {/* Badge Grid - All 11 Badges with Tooltips */}
+                {/* Badge Grid - Filter by sport */}
                 <div className="grid grid-cols-2 gap-3">
-                  {Object.entries(BADGE_REGISTRY).map(([badgeKey, badge]) => {
+                  {Object.entries(BADGE_REGISTRY)
+                    .filter(([_, badge]) => !badge.sport || badge.sport === currentSport)
+                    .map(([badgeKey, badge]) => {
                     // Check if this badge is active for this player
+                    // For MLB, also check scout_badges and mlb_badges arrays
                     const isActive = selectedVisionProp.active_badges?.includes(badgeKey) || 
-                                     selectedVisionProp.intel_suite?.context_badges?.includes(badgeKey);
+                                     selectedVisionProp.intel_suite?.context_badges?.includes(badgeKey) ||
+                                     selectedVisionProp.scout_badges?.some(b => b.id === badgeKey || b.badge_key === badgeKey) ||
+                                     selectedVisionProp.mlb_badges?.some(b => b.id === badgeKey || b.badge_key === badgeKey);
                     
                     // Get custom description from player badges if available (e.g., milestone details)
                     const playerBadge = player?.badges?.find(b => b.badge_key === badgeKey);
-                    const customDescription = isActive ? playerBadge?.description : null;
+                    // For MLB, also check scout_badges for metrics/description
+                    const mlbBadge = selectedVisionProp.scout_badges?.find(b => b.id === badgeKey) ||
+                                     selectedVisionProp.mlb_badges?.find(b => b.id === badgeKey);
+                    const customDescription = isActive ? (playerBadge?.description || mlbBadge?.name) : null;
                     
                     return (
                       <BadgeGridItem 
@@ -850,14 +862,22 @@ export const PlayerDetailPage = ({ playerName, playerData = null, onBack, highli
                 </div>
                 
                 {/* Active Badges Summary */}
-                {(selectedVisionProp.active_badges?.length > 0 || selectedVisionProp.intel_suite?.context_badges?.length > 0) && (
+                {(selectedVisionProp.active_badges?.length > 0 || 
+                  selectedVisionProp.intel_suite?.context_badges?.length > 0 ||
+                  selectedVisionProp.scout_badges?.length > 0 ||
+                  selectedVisionProp.mlb_badges?.length > 0) && (
                   <div className="mt-4 pt-4 border-t border-zinc-700">
                     <div className="text-xs text-amber-400 font-semibold mb-2">
                       ACTIVE FOR {playerName?.toUpperCase()}:
                     </div>
                     <BadgeRow 
-                      badges={(selectedVisionProp.active_badges || selectedVisionProp.intel_suite?.context_badges || []).map(b => ({
-                        badge_key: typeof b === 'string' ? b : b.badge_key
+                      badges={[
+                        ...(selectedVisionProp.active_badges || []),
+                        ...(selectedVisionProp.intel_suite?.context_badges || []),
+                        ...(selectedVisionProp.scout_badges || []).map(b => ({ badge_key: b.id })),
+                        ...(selectedVisionProp.mlb_badges || []).map(b => ({ badge_key: b.id }))
+                      ].map(b => ({
+                        badge_key: typeof b === 'string' ? b : (b.badge_key || b.id)
                       }))}
                       size="md"
                     />

@@ -1,5 +1,28 @@
 # PropVision AI - Changelog
 
+## 2026-04-10 - MLB Scout Intel Badges in Vision Intel Suite
+
+### Added
+- **8 MLB Scout Intel Badges** integrated into BADGE_REGISTRY:
+  - Pure Contact, High-Heat Trap, Workhorse, Barrel Master
+  - Wind Blowing Out, Cold Zone, BvP Dominator, Split Advantage
+
+- **Sport-aware Vision Intel Suite**:
+  - NBA shows "CONTEXT BADGES" with 11 NBA-specific badges
+  - MLB shows "SCOUT INTEL BADGES" with 8 MLB-specific badges
+  - Badges filter automatically based on currentSport
+
+- **MLB player API badge evaluation**:
+  - `/api/v3/mlb/player/{name}` now returns `scout_badges` array
+  - Each prop evaluated against badge criteria via `mlb_badge_system`
+
+### Files Modified
+- `/app/frontend/src/components/ui/BadgePill.jsx` - Added MLB badges to registry
+- `/app/frontend/src/components/dashboard/PlayerDetailPage.jsx` - Sport-aware badge grid
+- `/app/backend/routes/ferrari_tiers.py` - Badge evaluation in MLB player endpoint
+
+---
+
 ## 2026-04-10 - MLB Stats Display Fix
 
 ### Fixed

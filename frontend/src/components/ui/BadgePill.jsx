@@ -29,12 +29,21 @@ import {
   Waves, 
   AlertCircle,
   HeartPulse,
-  X
+  X,
+  // MLB-specific icons
+  Flame,
+  Shield,
+  Zap,
+  Wind,
+  Snowflake,
+  BarChart3
 } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './tooltip';
 
 // Badge Registry - Maps badge IDs to visual config with enhanced tooltips
+// Includes both NBA and MLB badges for sport-specific rendering
 export const BADGE_REGISTRY = {
+  // ==================== NBA BADGES ====================
   injured: {
     label: "Injured",
     icon: HeartPulse,
@@ -44,6 +53,7 @@ export const BADGE_REGISTRY = {
     textClass: "text-red-500",
     glowClass: "shadow-red-600/30",
     trigger: "Player has reported injury",
+    sport: "nba",
     // Enhanced tooltip content
     tooltip: {
       title: "Injured",
@@ -61,6 +71,7 @@ export const BADGE_REGISTRY = {
     textClass: "text-orange-400",
     glowClass: "shadow-orange-500/30",
     trigger: "Active legal/personal news flag in context",
+    sport: "nba",
     tooltip: {
       title: "Legal Noise",
       description: "Player is involved in active legal proceedings or significant personal news.",
@@ -77,6 +88,7 @@ export const BADGE_REGISTRY = {
     textClass: "text-yellow-400",
     glowClass: "shadow-yellow-500/30",
     trigger: "Within 5% of a major career stat",
+    sport: "nba",
     tooltip: {
       title: "Milestone Alert",
       description: "Player is approaching a significant career milestone (e.g., 20,000 points, triple-double record).",
@@ -93,6 +105,7 @@ export const BADGE_REGISTRY = {
     textClass: "text-cyan-400",
     glowClass: "shadow-cyan-500/30",
     trigger: "Avg +5 PPG over season mean in L5",
+    sport: "nba",
     tooltip: {
       title: "Locked In",
       description: "Player is on a hot streak, averaging 5+ points above their season average over the last 5 games.",
@@ -109,6 +122,7 @@ export const BADGE_REGISTRY = {
     textClass: "text-purple-400",
     glowClass: "shadow-purple-500/30",
     trigger: "Road game + traveled >1000mi in 48hrs",
+    sport: "nba",
     tooltip: {
       title: "Jet Lag",
       description: "Team traveled over 1,000 miles within the last 48 hours for this road game.",
@@ -125,6 +139,7 @@ export const BADGE_REGISTRY = {
     textClass: "text-red-400",
     glowClass: "shadow-red-500/30",
     trigger: "Playing against former team",
+    sport: "nba",
     tooltip: {
       title: "Revenge Game",
       description: "Player is facing their former team for the first time or in a meaningful matchup.",
@@ -141,6 +156,7 @@ export const BADGE_REGISTRY = {
     textClass: "text-green-400",
     glowClass: "shadow-green-500/30",
     trigger: "Home PPG 15%+ higher than Away",
+    sport: "nba",
     tooltip: {
       title: "Home Cookin'",
       description: "Player scores significantly better at home, averaging 15%+ more points than on the road.",
@@ -157,6 +173,7 @@ export const BADGE_REGISTRY = {
     textClass: "text-red-500",
     glowClass: "shadow-red-600/30",
     trigger: "2nd night of back-to-back",
+    sport: "nba",
     tooltip: {
       title: "Gassed",
       description: "This is the second night of a back-to-back. Player played yesterday.",
@@ -173,6 +190,7 @@ export const BADGE_REGISTRY = {
     textClass: "text-emerald-400",
     glowClass: "shadow-emerald-500/30",
     trigger: "Final year of contract",
+    sport: "nba",
     tooltip: {
       title: "Pay Day",
       description: "Player is in the final year of their contract and looking to prove their value.",
@@ -189,6 +207,7 @@ export const BADGE_REGISTRY = {
     textClass: "text-blue-400",
     glowClass: "shadow-blue-500/30",
     trigger: "Elimination or high-stakes game",
+    sport: "nba",
     tooltip: {
       title: "Deep Water",
       description: "High-stakes game situation: playoff elimination game, play-in tournament, or season-defining matchup.",
@@ -205,11 +224,150 @@ export const BADGE_REGISTRY = {
     textClass: "text-amber-400",
     glowClass: "shadow-amber-500/30",
     trigger: "Trade rumors or locker room drama",
+    sport: "nba",
     tooltip: {
       title: "Distraction",
       description: "Player is involved in trade rumors, public disputes, or locker room issues.",
       impact: "Mental distractions can hurt focus. Watch for unusual body language or effort.",
       sentiment: "negative"
+    }
+  },
+  
+  // ==================== MLB BADGES ====================
+  pure_contact: {
+    label: "Pure Contact",
+    icon: Target,
+    glowColor: "#22c55e",  // Green
+    bgClass: "bg-green-500/20",
+    borderClass: "border-green-500/40",
+    textClass: "text-green-400",
+    glowClass: "shadow-green-500/30",
+    trigger: "Whiff Rate < 15% + xBA > .290",
+    sport: "mlb",
+    tooltip: {
+      title: "Pure Contact",
+      description: "Elite contact hitter with exceptional plate discipline. Low whiff rate combined with high expected batting average.",
+      impact: "This batter makes consistent contact. Great for hits and total bases overs.",
+      sentiment: "positive"
+    }
+  },
+  high_heat_trap: {
+    label: "High-Heat Trap",
+    icon: Flame,
+    glowColor: "#ef4444",  // Red
+    bgClass: "bg-red-500/20",
+    borderClass: "border-red-500/40",
+    textClass: "text-red-400",
+    glowClass: "shadow-red-500/30",
+    trigger: "Facing pitcher with +1.5mph velocity spike",
+    sport: "mlb",
+    tooltip: {
+      title: "High-Heat Trap",
+      description: "Opposing pitcher has shown a significant velocity increase (+1.5mph) in recent outings.",
+      impact: "Caution: Hotter fastballs = more swings and misses. Consider unders.",
+      sentiment: "negative"
+    }
+  },
+  workhorse: {
+    label: "Workhorse",
+    icon: Shield,
+    glowColor: "#3b82f6",  // Blue
+    bgClass: "bg-blue-500/20",
+    borderClass: "border-blue-500/40",
+    textClass: "text-blue-400",
+    glowClass: "shadow-blue-500/30",
+    trigger: "80% L10 reaching 6th inning",
+    sport: "mlb",
+    tooltip: {
+      title: "Workhorse",
+      description: "Reliable starting pitcher who consistently goes deep into games. 80%+ of last 10 starts reached the 6th inning.",
+      impact: "Expect 5.5+ innings. Great for pitcher strikeout overs and pitching outs.",
+      sentiment: "positive"
+    }
+  },
+  barrel_master: {
+    label: "Barrel Master",
+    icon: Zap,
+    glowColor: "#f97316",  // Orange
+    bgClass: "bg-orange-500/20",
+    borderClass: "border-orange-500/40",
+    textClass: "text-orange-400",
+    glowClass: "shadow-orange-500/30",
+    trigger: "Barrel % > 15% over L25 PA",
+    sport: "mlb",
+    tooltip: {
+      title: "Barrel Master",
+      description: "Elite power hitter with exceptional barrel rate (>15%) over the last 25 plate appearances.",
+      impact: "High exit velocities = more extra-base hits. Great for total bases and home runs.",
+      sentiment: "positive"
+    }
+  },
+  wind_boost: {
+    label: "Wind Blowing Out",
+    icon: Wind,
+    glowColor: "#06b6d4",  // Cyan
+    bgClass: "bg-cyan-500/20",
+    borderClass: "border-cyan-500/40",
+    textClass: "text-cyan-400",
+    glowClass: "shadow-cyan-500/30",
+    trigger: "Wind conditions favor Over bets (+10% boost)",
+    sport: "mlb",
+    tooltip: {
+      title: "Wind Blowing Out",
+      description: "Current weather shows wind blowing out to the outfield at 10+ mph.",
+      impact: "Fly balls carry further. Boost for home runs and total bases overs.",
+      sentiment: "positive"
+    }
+  },
+  cold_zone: {
+    label: "Cold Zone",
+    icon: Snowflake,
+    glowColor: "#60a5fa",  // Light Blue
+    bgClass: "bg-blue-400/20",
+    borderClass: "border-blue-400/40",
+    textClass: "text-blue-300",
+    glowClass: "shadow-blue-400/30",
+    trigger: "Pitcher-friendly umpire (SZR > 1.05)",
+    sport: "mlb",
+    tooltip: {
+      title: "Cold Zone",
+      description: "Tonight's home plate umpire has a strike zone ratio above 1.05, favoring pitchers.",
+      impact: "Expanded strike zone = more called strikes. Lean towards pitcher props.",
+      sentiment: "cautionary"
+    }
+  },
+  bvp_dominator: {
+    label: "BvP Dominator",
+    icon: Swords,
+    glowColor: "#a855f7",  // Purple
+    bgClass: "bg-purple-500/20",
+    borderClass: "border-purple-500/40",
+    textClass: "text-purple-400",
+    glowClass: "shadow-purple-500/30",
+    trigger: "Strong historical performance vs today's pitcher",
+    sport: "mlb",
+    tooltip: {
+      title: "BvP Dominator",
+      description: "This batter has historically dominated the opposing pitcher (20+ PA sample, .300+ AVG or 1.000+ OPS).",
+      impact: "History repeats. Extra confidence on overs for this matchup.",
+      sentiment: "positive"
+    }
+  },
+  split_advantage: {
+    label: "Split Advantage",
+    icon: BarChart3,
+    glowColor: "#14b8a6",  // Teal
+    bgClass: "bg-teal-500/20",
+    borderClass: "border-teal-500/40",
+    textClass: "text-teal-400",
+    glowClass: "shadow-teal-500/30",
+    trigger: "Favorable handedness matchup",
+    sport: "mlb",
+    tooltip: {
+      title: "Split Advantage",
+      description: "Batter has a significant platoon advantage (e.g., lefty batter vs righty pitcher with strong L vs R splits).",
+      impact: "Platoon splits are real in MLB. Use this edge for hitting props.",
+      sentiment: "positive"
     }
   }
 };
