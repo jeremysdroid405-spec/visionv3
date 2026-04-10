@@ -43,8 +43,8 @@ logger = logging.getLogger(__name__)
 BDL_API_KEY = os.environ.get("BDL_API_KEY")
 BDL_MLB_BASE_URL = "https://api.balldontlie.io/mlb/v1"
 
-# Historical seasons to fetch (focus on recent seasons for current data)
-HISTORICAL_SEASONS = [2024, 2025, 2026]
+# Historical seasons to fetch (use 'current' for live season data)
+HISTORICAL_SEASONS = ['current']  # Will also get historical from 'current'
 
 # Time-decaying weights (most recent = highest weight)
 SEASON_WEIGHTS = {
@@ -193,14 +193,14 @@ class MLBVKHistoricalBackfill:
     
     async def fetch_season_stats(
         self,
-        season: int,
+        season: str,
         player_ids: List[int] = None
     ) -> List[Dict]:
         """
         Fetch all stats for a season.
         
         Args:
-            season: Year to fetch
+            season: Year to fetch (int or 'current' for current season)
             player_ids: Optional filter for specific players
             
         Returns:
@@ -214,10 +214,18 @@ class MLBVKHistoricalBackfill:
         logger.info(f"[MLB_VK] Fetching stats for season {season}...")
         
         while page_count < 200:  # Safety limit
-            params = {
-                "seasons[]": season,
-                "per_page": 100
-            }
+            # Use 'season' param for 'current', 'seasons[]' for year
+            if season == 'current':
+                params = {
+                    "season": "current",
+                    "per_page": 100
+                }
+            else:
+                params = {
+                    "seasons[]": season,
+                    "per_page": 100
+                }
+            
             if cursor:
                 params["cursor"] = cursor
             if player_ids:
@@ -253,19 +261,26 @@ class MLBVKHistoricalBackfill:
         logger.info(f"[MLB_VK] Fetched {len(all_stats)} stats for season {season}")
         return all_stats
     
-    def _transform_stat(self, stat: Dict, season: int) -> Dict:
+    def _transform_stat(self, stat: Dict, season) -> Dict:
         """Transform BDL stat to internal format with game info."""
         player = stat.get("player", {})
         game_id = stat.get("game_id")
         team_name = stat.get("team_name", "")
         
-        game_date = self._get_game_date(season, game_id)
-        opponent = self._get_opponent(season, game_id, team_name)
+        # For current season, dates may not be available from BDL API
+        # Use game_id for ordering (higher = more recent)
+        game_date = None
+        opponent = None
+        
+        # Only fetch game details for historical seasons (not 'current')
+        if isinstance(season, int) and season < 2026:
+            game_date = self._get_game_date(season, game_id)
+            opponent = self._get_opponent(season, game_id, team_name)
         
         return {
-            "season": season,
+            "season": season if isinstance(season, int) else 2026,  # 'current' -> 2026
             "game_id": game_id,
-            "date": game_date,
+            "date": game_date,  # May be None for current season
             "player_id": player.get("id"),
             "player_name": player.get("full_name"),
             "team_name": team_name,

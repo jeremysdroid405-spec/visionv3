@@ -1167,15 +1167,21 @@ async def get_mlb_player_props(
     
     game_logs = []
     if player_logs and player_logs.get("game_logs"):
-        # Sort by date descending (most recent first) and take last 10
+        # Sort by game_id descending (most recent first) - game_id is reliable
+        # Fall back to date if game_id not available
         raw_logs = player_logs["game_logs"]
-        sorted_logs = sorted(raw_logs, key=lambda x: x.get("date", ""), reverse=True)
+        sorted_logs = sorted(
+            raw_logs, 
+            key=lambda x: (x.get("game_id") or 0, x.get("date") or ""), 
+            reverse=True
+        )
         
         # Format game logs for frontend (take most recent 10)
         for game in sorted_logs[:10]:
             game_log = {
                 "date": game.get("date"),
-                "opponent": game.get("opponent_abbr"),
+                "game_id": game.get("game_id"),  # Include for debugging
+                "opponent": game.get("opponent_abbr") or game.get("team_name", "")[:3].upper(),
                 "pts": game.get("hits", 0),  # For chart compatibility
                 "hits": game.get("hits", 0),
                 "rbi": game.get("rbis", 0),  # Frontend uses 'rbi'
