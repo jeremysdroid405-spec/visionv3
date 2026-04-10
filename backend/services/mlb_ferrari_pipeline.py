@@ -121,18 +121,43 @@ class MLBFerrariPipeline:
         if save_to_db:
             logger.info("\n[PHASE 4] Saving to Ferrari Collections...")
             
-            # Clean props for MongoDB (remove any ObjectId issues)
-            def clean_prop(prop: Dict) -> Dict:
-                """Remove _id and clean for JSON serialization."""
+            # Clean props for MongoDB and normalize to match NBA field structure
+            def clean_prop(prop: Dict, tier: str) -> Dict:
+                """Remove _id, clean for JSON, and normalize to NBA field names."""
                 clean = {k: v for k, v in prop.items() if k != "_id"}
                 clean["pipeline_timestamp"] = datetime.now(timezone.utc).isoformat()
+                
+                # === NORMALIZE TO NBA FIELD STRUCTURE ===
+                # Map oracle_summary -> vision_intel (NBA uses vision_intel)
+                if clean.get("oracle_summary") and not clean.get("vision_intel"):
+                    clean["vision_intel"] = clean["oracle_summary"]
+                    clean["vision_summary"] = clean["oracle_summary"]
+                
+                # Add intel metadata like NBA
+                clean["intel_score"] = 10 if tier == "safe_haven" else (7 if tier == "front_lines" else 5)
+                clean["intel_verdict"] = "CHALK" if tier == "safe_haven" else ("LEAN" if tier == "front_lines" else "GAMBLE")
+                clean["intel_risk"] = "Low" if tier == "safe_haven" else ("Medium" if tier == "front_lines" else "High")
+                clean["adjusted_confidence"] = 0.95 if tier == "safe_haven" else (0.75 if tier == "front_lines" else 0.55)
+                
+                # Map tier info
+                clean["tier"] = tier
+                clean["dk_tier"] = tier
+                clean["is_goblin"] = tier in ["safe_haven", "front_lines"]
+                clean["is_demon"] = tier == "war_zone"
+                
+                # Ensure hit rates are present at top level
+                if clean.get("hit_rate_l10") and not clean.get("h10_rate"):
+                    clean["h10_rate"] = clean["hit_rate_l10"] * 100 if clean["hit_rate_l10"] <= 1 else clean["hit_rate_l10"]
+                if clean.get("hit_rate_l5") and not clean.get("h5_rate"):
+                    clean["h5_rate"] = clean["hit_rate_l5"] * 100 if clean["hit_rate_l5"] <= 1 else clean["hit_rate_l5"]
+                
                 return clean
             
             # Save Safe Haven
             if safe_haven:
                 safe_haven_coll = self.db["mlb_ferrari_safe_haven"]
                 await safe_haven_coll.delete_many({})
-                clean_safe_haven = [clean_prop(p) for p in safe_haven]
+                clean_safe_haven = [clean_prop(p, "safe_haven") for p in safe_haven]
                 await safe_haven_coll.insert_many(clean_safe_haven)
                 logger.info(f"  ✓ Saved {len(safe_haven)} Safe Haven props")
             
@@ -140,7 +165,7 @@ class MLBFerrariPipeline:
             if front_lines:
                 front_lines_coll = self.db["mlb_ferrari_front_lines"]
                 await front_lines_coll.delete_many({})
-                clean_front_lines = [clean_prop(p) for p in front_lines]
+                clean_front_lines = [clean_prop(p, "front_lines") for p in front_lines]
                 await front_lines_coll.insert_many(clean_front_lines)
                 logger.info(f"  ✓ Saved {len(front_lines)} Front Lines props")
             
@@ -148,7 +173,7 @@ class MLBFerrariPipeline:
             if war_zone:
                 war_zone_coll = self.db["mlb_ferrari_war_zone"]
                 await war_zone_coll.delete_many({})
-                clean_war_zone = [clean_prop(p) for p in war_zone]
+                clean_war_zone = [clean_prop(p, "war_zone") for p in war_zone]
                 await war_zone_coll.insert_many(clean_war_zone)
                 logger.info(f"  ✓ Saved {len(war_zone)} War Zone props")
         

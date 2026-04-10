@@ -81,3 +81,4 @@ WAR_ZONE_GATES = {
 - **2026-04-10**: Added "Earned Runs" to STAT_FIELD_MAP
 - **2026-04-10**: **Implemented full MLB PropVision Ferrari Pipeline with Gemini Oracle**
 - **2026-04-10**: **Integrated Oracle summaries + Hit Rate Analysis into Vision Intel Suite frontend**
+- **2026-04-10**: **Normalized MLB data structure to match NBA fields (vision_intel, intel_score, intel_verdict, etc.)**
