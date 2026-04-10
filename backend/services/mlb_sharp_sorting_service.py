@@ -913,6 +913,9 @@ class MLBSharpSortingService:
                         prop["h10_rate"] = round(prop["hit_rate_l10"] * 100) if prop["hit_rate_l10"] <= 1 else prop["hit_rate_l10"]
                 
                 # Apply averages from game logs
+                if hit_rates.get("l5_avg") is not None:
+                    prop["l5_avg"] = hit_rates["l5_avg"]
+                
                 if hit_rates.get("l10_avg") is not None:
                     prop["l10_avg"] = hit_rates["l10_avg"]
                 else:

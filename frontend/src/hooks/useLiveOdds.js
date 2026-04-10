@@ -174,6 +174,30 @@ const fetchMLBHRRPicks = async () => {
 };
 
 /**
+ * Fetch MLB Safe Haven picks (3-Gate qualified Goblins)
+ * MLB-only: DK Odds ≤ -240 + passes HR/CV/Edge gates
+ */
+const fetchMLBSafeHaven = async () => {
+  const response = await fetch(`${API}/api/v3/ferrari/safe-haven?sport=mlb`);
+  if (!response.ok) throw new Error('MLB Safe Haven fetch failed');
+  const data = await response.json();
+  preloadImages(data.picks);
+  return data;
+};
+
+/**
+ * Fetch MLB Front Lines picks (Mid-juice 3-Gate qualified)
+ * MLB-only: -240 < DK Odds ≤ -145 + passes HR/CV/Edge gates with Pivot Rule
+ */
+const fetchMLBFrontLines = async () => {
+  const response = await fetch(`${API}/api/v3/ferrari/front-lines?sport=mlb`);
+  if (!response.ok) throw new Error('MLB Front Lines fetch failed');
+  const data = await response.json();
+  preloadImages(data.picks);
+  return data;
+};
+
+/**
  * Fetch Most Popular Bets (by volume - all types)
  */
 const fetchMostPopularBets = async (sport = 'nba') => {
@@ -438,6 +462,42 @@ export const useMLBHRRPicks = (options = {}) => {
   return useQuery({
     queryKey: ['mlbHRRPicks'],
     queryFn: fetchMLBHRRPicks,
+    enabled: enabled && !isTransitioning && currentSport === 'mlb',
+    staleTime: LIVE_ODDS_STALE_TIME,
+    refetchInterval,
+    refetchOnWindowFocus: true,
+  });
+};
+
+/**
+ * useMLBSafeHaven - MLB Safe Haven picks (3-Gate qualified Goblins)
+ * MLB-only: DK ≤ -240 + HR/CV/Edge gates
+ */
+export const useMLBSafeHaven = (options = {}) => {
+  const { enabled = true, refetchInterval = LIVE_ODDS_REFETCH_INTERVAL } = options;
+  const { currentSport, isTransitioning } = useSport();
+  
+  return useQuery({
+    queryKey: ['mlbSafeHaven'],
+    queryFn: fetchMLBSafeHaven,
+    enabled: enabled && !isTransitioning && currentSport === 'mlb',
+    staleTime: LIVE_ODDS_STALE_TIME,
+    refetchInterval,
+    refetchOnWindowFocus: true,
+  });
+};
+
+/**
+ * useMLBFrontLines - MLB Front Lines picks (Mid-juice 3-Gate qualified)
+ * MLB-only: -240 < DK ≤ -145 + HR/CV/Edge gates with Pivot Rule
+ */
+export const useMLBFrontLines = (options = {}) => {
+  const { enabled = true, refetchInterval = LIVE_ODDS_REFETCH_INTERVAL } = options;
+  const { currentSport, isTransitioning } = useSport();
+  
+  return useQuery({
+    queryKey: ['mlbFrontLines'],
+    queryFn: fetchMLBFrontLines,
     enabled: enabled && !isTransitioning && currentSport === 'mlb',
     staleTime: LIVE_ODDS_STALE_TIME,
     refetchInterval,

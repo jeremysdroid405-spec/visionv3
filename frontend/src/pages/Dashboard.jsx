@@ -52,7 +52,9 @@ import {
   useLiveVacuumAlerts,
   useMLBGoblins,
   useMLBDemons,
-  useMLBHRRPicks
+  useMLBHRRPicks,
+  useMLBSafeHaven,
+  useMLBFrontLines
 } from '../hooks/useLiveOdds';
 import { useMasterStats } from '../hooks/useMasterStats';
 
@@ -1129,6 +1131,8 @@ const Dashboard = () => {
   const { data: mlbGoblinsData, isLoading: mlbGoblinsLoading, refetch: refetchMLBGoblins } = useMLBGoblins();
   const { data: mlbDemonsData, isLoading: mlbDemonsLoading, refetch: refetchMLBDemons } = useMLBDemons();
   const { data: mlbHRRData, isLoading: mlbHRRLoading, refetch: refetchMLBHRR } = useMLBHRRPicks();
+  const { data: mlbSafeHavenData, isLoading: mlbSafeHavenLoading, refetch: refetchMLBSafeHaven } = useMLBSafeHaven();
+  const { data: mlbFrontLinesData, isLoading: mlbFrontLinesLoading, refetch: refetchMLBFrontLines } = useMLBFrontLines();
   
   // Extract picks from TanStack Query data
   const radarPicks = useMemo(() => warZoneData?.picks || [], [warZoneData]);
@@ -1140,6 +1144,8 @@ const Dashboard = () => {
   const mlbGoblinsPicks = useMemo(() => mlbGoblinsData?.picks || [], [mlbGoblinsData]);
   const mlbDemonsPicks = useMemo(() => mlbDemonsData?.picks || [], [mlbDemonsData]);
   const mlbHRRPicks = useMemo(() => mlbHRRData?.picks || [], [mlbHRRData]);
+  const mlbSafeHavenPicks = useMemo(() => mlbSafeHavenData?.picks || [], [mlbSafeHavenData]);
+  const mlbFrontLinesPicks = useMemo(() => mlbFrontLinesData?.picks || [], [mlbFrontLinesData]);
   
   // Live Vacuum Alerts (Usage Vacuum)
   const vacuumAlerts = useMemo(() => vacuumAlertsData?.alerts || [], [vacuumAlertsData]);
@@ -1180,9 +1186,11 @@ const Dashboard = () => {
       refetchMLBGoblins();
       refetchMLBDemons();
       refetchMLBHRR();
+      refetchMLBSafeHaven();
+      refetchMLBFrontLines();
     }
     toast.success('Data refreshed');
-  }, [refetchWarZone, refetchSafeHaven, refetchFrontLines, refetchBoard, refetchMLBGoblins, refetchMLBDemons, refetchMLBHRR, currentSport]);
+  }, [refetchWarZone, refetchSafeHaven, refetchFrontLines, refetchBoard, refetchMLBGoblins, refetchMLBDemons, refetchMLBHRR, refetchMLBSafeHaven, refetchMLBFrontLines, currentSport]);
   
   // Local UI state
   const [searchTerm, setSearchTerm] = useState('');
@@ -1570,20 +1578,20 @@ const Dashboard = () => {
           {/* MLB-SPECIFIC SECTIONS */}
           {currentSport === 'mlb' && (
             <>
-              {/* MLB Safe Haven */}
+              {/* MLB Safe Haven (3-Gate Qualified) */}
               <MLBSafeHavenSection 
-                picks={mlbGoblinsPicks} 
+                picks={mlbSafeHavenPicks.length > 0 ? mlbSafeHavenPicks : mlbGoblinsPicks} 
                 onPickClick={handleVaultClick} 
                 onQuickAdd={handleQuickAdd} 
-                isLoading={mlbGoblinsLoading} 
+                isLoading={mlbSafeHavenLoading || mlbGoblinsLoading} 
               />
               
-              {/* MLB Front Lines (HRR Combos) */}
+              {/* MLB Front Lines (Mid-Juice 3-Gate Qualified) */}
               <MLBFrontLinesSection 
-                picks={mlbHRRPicks} 
+                picks={mlbFrontLinesPicks.length > 0 ? mlbFrontLinesPicks : mlbHRRPicks} 
                 onPickClick={handleRadarClick} 
                 onQuickAdd={handleQuickAdd} 
-                isLoading={mlbHRRLoading} 
+                isLoading={mlbFrontLinesLoading || mlbHRRLoading} 
               />
               
               {/* MLB War Zone (DK/PP discrepancy) */}
