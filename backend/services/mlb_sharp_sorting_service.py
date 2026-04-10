@@ -1242,6 +1242,33 @@ class MLBSharpSortingService:
                 prop["slope"] = vk_projection.get("slope")
                 prop["edge_pct"] = vk_projection.get("edge_pct")
                 
+                # Add VK predicted fields for frontend compatibility (matches NBA format)
+                projected_val = vk_projection.get("projected_value")
+                edge = vk_projection.get("edge_pct") or 0
+                line = prop.get("line") or 0
+                
+                if projected_val is not None:
+                    prop["vk_predicted"] = round(projected_val, 1)
+                    prop["vk_edge"] = round(edge, 1) if edge else None
+                    
+                    # Calculate VK recommendation based on edge
+                    if edge > 25:
+                        prop["vk_recommendation"] = "STRONG_OVER"
+                    elif edge > 10:
+                        prop["vk_recommendation"] = "LEAN_OVER"
+                    elif edge < -25:
+                        prop["vk_recommendation"] = "STRONG_UNDER"
+                    elif edge < -10:
+                        prop["vk_recommendation"] = "LEAN_UNDER"
+                    else:
+                        prop["vk_recommendation"] = "NEUTRAL"
+                    
+                    # Calculate probability estimates from edge
+                    # Using logistic conversion: prob_over ≈ 50% + (edge%/2) capped at 95%
+                    prob_over = min(95, max(5, 50 + (edge / 2)))
+                    prop["vk_prob_over"] = round(prob_over, 0)
+                    prop["vk_prob_under"] = round(100 - prob_over, 0)
+                
                 # Calculate hit rates from historical game logs
                 hit_rates = self.calculate_mlb_hit_rates(
                     prop.get("player_name"),
