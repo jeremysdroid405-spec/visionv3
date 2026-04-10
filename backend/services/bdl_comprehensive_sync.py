@@ -1058,33 +1058,59 @@ class BDLComprehensiveSyncService:
         return baseline
     
     async def _batch_fetch_game_logs(self, bdl_ids: List[int]) -> Dict[int, List[Dict]]:
-        """Fetch game logs for multiple players in batches."""
+        """Fetch game logs for multiple players in batches with cursor pagination."""
         result = {pid: [] for pid in bdl_ids}
         
         batch_size = 30
         for i in range(0, len(bdl_ids), batch_size):
             batch = bdl_ids[i:i+batch_size]
             
-            url = f"{BDL_BASE_URL}/stats?seasons[]={CURRENT_SEASON}&per_page=100&postseason=false"
+            # Build base URL with player IDs
+            base_url = f"{BDL_BASE_URL}/stats?seasons[]={CURRENT_SEASON}&per_page=100&postseason=false"
             for pid in batch:
-                url += f"&player_ids[]={pid}"
+                base_url += f"&player_ids[]={pid}"
+            
+            # Cursor-based pagination loop
+            cursor = None
+            page_count = 0
+            max_pages = 10  # Safety limit
             
             try:
                 async with httpx.AsyncClient(timeout=60.0) as client:
-                    response = await client.get(url, headers={"Authorization": BDL_API_KEY})
-                    if response.status_code == 200:
-                        data = response.json().get("data", [])
-                        for game in data:
-                            player = game.get("player", {})
-                            pid = player.get("id") if isinstance(player, dict) else None
-                            if pid and pid in result:
-                                result[pid].append(game)
-                    else:
-                        logger.error(f"[BDL] Game logs batch error: {response.status_code}")
+                    while page_count < max_pages:
+                        url = base_url
+                        if cursor:
+                            url += f"&cursor={cursor}"
+                        
+                        response = await client.get(url, headers={"Authorization": BDL_API_KEY})
+                        if response.status_code == 200:
+                            json_data = response.json()
+                            data = json_data.get("data", [])
+                            
+                            for game in data:
+                                player = game.get("player", {})
+                                pid = player.get("id") if isinstance(player, dict) else None
+                                if pid and pid in result:
+                                    result[pid].append(game)
+                            
+                            # Check for next cursor
+                            meta = json_data.get("meta", {})
+                            cursor = meta.get("next_cursor")
+                            
+                            if not cursor or len(data) < 100:
+                                break  # No more pages
+                            
+                            page_count += 1
+                        else:
+                            logger.error(f"[BDL] Game logs batch error: {response.status_code}")
+                            break
+                        
+                        await asyncio.sleep(0.1)  # Rate limit between pages
+                        
             except Exception as e:
                 logger.error(f"[BDL] Batch game_logs error: {e}")
             
-            await asyncio.sleep(0.2)
+            await asyncio.sleep(0.2)  # Rate limit between batches
         
         # Sort by date descending
         for pid in result:
