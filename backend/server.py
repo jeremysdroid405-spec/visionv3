@@ -1288,27 +1288,23 @@ async def startup_event():
     # WEEKEND-READY SCHEDULER: High-Performance Interval System
     # ==========================================================================
     
-    # 1. DAILY HARD REFRESH at 4:00 AM EST (9:00 AM UTC) - Safety Backup
-    # This is the comprehensive daily sync that runs all 10 steps
-    scheduler.add_job(
-        scheduled_daily_sync,
-        CronTrigger(hour=9, minute=0, timezone=SCHEDULER_TIMEZONE),  # 4:00 AM EST = 9:00 AM UTC
-        id='daily_hard_refresh',
-        name='4:00 AM EST Daily Hard Refresh (NBA)',
-        replace_existing=True
-    )
+    # ==========================================================================
+    # DAILY SYNC SCHEDULE (4:00 AM EST / 9:00 AM UTC)
+    # ORDER IS CRITICAL: Sync data FIRST, then run pipelines to recalculate
+    #
+    # NBA Schedule:
+    # 4:00-4:08 AM - NBA.com L5/L10 batches (sync fresh stats)
+    # 4:10 AM - NBA BDL Game Values (sync game values)
+    # 4:15 AM - NBA BDL Game Logs (sync game logs) 
+    # 4:20 AM - NBA Daily Pipeline (recalculate with fresh data)
+    #
+    # MLB Schedule (3 min after each NBA job):
+    # 4:13 AM - MLB BDL Game Values (sync)
+    # 4:18 AM - MLB BDL Game Logs (sync)
+    # 4:23 AM - MLB Daily Pipeline (recalculate with fresh data)
+    # ==========================================================================
     
-    # MLB DAILY SYNC at 4:03 AM EST (9:03 AM UTC) - 3 min after NBA
-    # Runs MLB Ferrari pipeline for full props refresh
-    scheduler.add_job(
-        scheduled_mlb_daily_sync,
-        CronTrigger(hour=9, minute=3, timezone=SCHEDULER_TIMEZONE),  # 4:03 AM EST = 9:03 AM UTC
-        id='mlb_daily_refresh',
-        name='4:03 AM EST MLB Daily Refresh',
-        replace_existing=True
-    )
-    
-    # 2. HOURLY FULL SYNC (The Engine) - Every 60 minutes
+    # 1. HOURLY FULL SYNC (The Engine) - Every 60 minutes
     # Keeps props fresh during game days
     scheduler.add_job(
         scheduled_hourly_full_sync,
@@ -1318,7 +1314,7 @@ async def startup_event():
         replace_existing=True
     )
     
-    # 3. HOURLY BADGE SYNC (The Intel) - Every 60 minutes
+    # 2. HOURLY BADGE SYNC (The Intel) - Every 60 minutes
     # Updates context badges for all players
     scheduler.add_job(
         scheduled_hourly_badge_sync,
@@ -1328,7 +1324,7 @@ async def startup_event():
         replace_existing=True
     )
     
-    # 4. HOURLY INJURY SYNC (The Roster) - Every 60 minutes
+    # 3. HOURLY INJURY SYNC (The Roster) - Every 60 minutes
     # Catches injury report updates for Usage Ripple
     scheduler.add_job(
         scheduled_hourly_injury_sync,
@@ -1338,7 +1334,7 @@ async def startup_event():
         replace_existing=True
     )
     
-    # 5. LIVE INJURY CHECK (Every 5 minutes)
+    # 4. LIVE INJURY CHECK (Every 5 minutes)
     # Powers the "Live Injury Advantage" section - needs frequent updates
     scheduler.add_job(
         scheduled_live_injury_check,
@@ -1351,7 +1347,7 @@ async def startup_event():
     # NOTE: Vision Intel enrichment now runs at the END of every sync cycle
     # in adaptive_sync_engine.py - no separate scheduled job needed
     
-    # 6. HALF-HOURLY SOCIAL SYNC (The News) - Every 30 minutes
+    # 5. HALF-HOURLY SOCIAL SYNC (The News) - Every 30 minutes
     # Catches late-breaking lineup news and social signals
     scheduler.add_job(
         scheduled_half_hourly_social_sync,
@@ -1361,7 +1357,7 @@ async def startup_event():
         replace_existing=True
     )
     
-    # 7. HOURLY REFEREE SYNC (The Whistle Matrix) - Every 60 minutes
+    # 6. HOURLY REFEREE SYNC (The Whistle Matrix) - Every 60 minutes
     # Scrapes referee assignments and stats for Vision Intel Suite
     # Critical for new picks to have officiating data (ref_ppg, crew_chief, whistle_class)
     scheduler.add_job(
@@ -1373,7 +1369,7 @@ async def startup_event():
     )
     
     # ==========================================================================
-    # DAILY ENRICHMENT JOBS (Keep existing for comprehensive data refresh)
+    # DAILY SYNC JOBS - Correct Order: SYNC DATA FIRST, THEN PIPELINE
     # ==========================================================================
     
     # NBA.com L5/L10 STAGGERED BATCH ENRICHMENT
@@ -1426,31 +1422,67 @@ async def startup_event():
     )
     
     # BDL Game Values Enrichment at 4:10 AM EST (9:10 AM UTC)
-    # CRITICAL: Provides l10_values for hit rate calculations
     scheduler.add_job(
         scheduled_bdl_game_values_sync,
         CronTrigger(hour=9, minute=10, timezone=SCHEDULER_TIMEZONE),
         id='bdl_game_values_sync',
-        name='4:10 AM EST BDL Game Values Enrichment (NBA)',
+        name='4:10 AM EST NBA BDL Game Values Sync',
         replace_existing=True
     )
     
-    # MLB BDL Game Values Enrichment at 4:13 AM EST (9:13 AM UTC)
-    # 3 minutes after NBA to prevent API overload
+    # MLB BDL Game Values Enrichment at 4:13 AM EST (9:13 AM UTC) - 3 min after NBA
     scheduler.add_job(
         scheduled_mlb_game_values_sync,
         CronTrigger(hour=9, minute=13, timezone=SCHEDULER_TIMEZONE),
         id='mlb_bdl_game_values_sync',
-        name='4:13 AM EST MLB BDL Game Values Enrichment',
+        name='4:13 AM EST MLB BDL Game Values Sync',
         replace_existing=True
     )
     
-    # Ticker Sync at 4:15 AM EST (9:15 AM UTC) - Games and News
+    # NBA BDL Game Logs Sync at 4:15 AM EST (09:15 AM UTC)
+    scheduler.add_job(
+        scheduled_bdl_game_logs_sync,
+        CronTrigger(hour=9, minute=15, timezone=SCHEDULER_TIMEZONE),
+        id='bdl_game_logs_sync',
+        name='4:15 AM EST NBA BDL Game Logs Sync',
+        replace_existing=True
+    )
+    
+    # MLB BDL Game Logs Sync at 4:18 AM EST (09:18 AM UTC) - 3 min after NBA
+    scheduler.add_job(
+        scheduled_mlb_game_logs_sync,
+        CronTrigger(hour=9, minute=18, timezone=SCHEDULER_TIMEZONE),
+        id='mlb_bdl_game_logs_sync',
+        name='4:18 AM EST MLB BDL Game Logs Sync',
+        replace_existing=True
+    )
+    
+    # NBA Daily Pipeline at 4:20 AM EST (9:20 AM UTC) - AFTER all data syncs
+    # Recalculates hit rates with fresh data
+    scheduler.add_job(
+        scheduled_daily_sync,
+        CronTrigger(hour=9, minute=20, timezone=SCHEDULER_TIMEZONE),
+        id='daily_hard_refresh',
+        name='4:20 AM EST NBA Daily Pipeline (with fresh data)',
+        replace_existing=True
+    )
+    
+    # MLB Daily Pipeline at 4:23 AM EST (9:23 AM UTC) - 3 min after NBA
+    # Recalculates hit rates with fresh data
+    scheduler.add_job(
+        scheduled_mlb_daily_sync,
+        CronTrigger(hour=9, minute=23, timezone=SCHEDULER_TIMEZONE),
+        id='mlb_daily_refresh',
+        name='4:23 AM EST MLB Daily Pipeline (with fresh data)',
+        replace_existing=True
+    )
+    
+    # Ticker Sync at 4:26 AM EST (9:26 AM UTC) - Games and News
     scheduler.add_job(
         scheduled_ticker_sync,
-        CronTrigger(hour=9, minute=15, timezone=SCHEDULER_TIMEZONE),
+        CronTrigger(hour=9, minute=26, timezone=SCHEDULER_TIMEZONE),
         id='ticker_sync',
-        name='4:15 AM EST Ticker Games/News Sync',
+        name='4:26 AM EST Ticker Games/News Sync',
         replace_existing=True
     )
     
@@ -1463,26 +1495,6 @@ async def startup_event():
         replace_existing=True
     )
     
-    # BDL Game Logs Sync at 4:25 AM EST (09:25 AM UTC) - CRITICAL for hit rates
-    # This syncs game-by-game stats from BDL for accurate per-line hit rate calculations
-    scheduler.add_job(
-        scheduled_bdl_game_logs_sync,
-        CronTrigger(hour=9, minute=25, timezone=SCHEDULER_TIMEZONE),  # 4:25 AM EST = 9:25 AM UTC
-        id='bdl_game_logs_sync',
-        name='4:25 AM EST BDL Game Logs Sync (NBA)',
-        replace_existing=True
-    )
-    
-    # MLB BDL Game Logs Sync at 4:28 AM EST (09:28 AM UTC) - CRITICAL for MLB hit rates
-    # 3 minutes after NBA to prevent BDL API overload
-    scheduler.add_job(
-        scheduled_mlb_game_logs_sync,
-        CronTrigger(hour=9, minute=28, timezone=SCHEDULER_TIMEZONE),  # 4:28 AM EST = 9:28 AM UTC
-        id='mlb_bdl_game_logs_sync',
-        name='4:28 AM EST MLB BDL Game Logs Sync',
-        replace_existing=True
-    )
-    
     scheduler.start()
     logger.info(f"[SCHEDULER] APScheduler started - WEEKEND-READY MODE")
     logger.info(f"[SCHEDULER] === INTERVAL JOBS (High-Performance) ===")
@@ -1492,12 +1504,13 @@ async def startup_event():
     logger.info(f"[SCHEDULER] Hourly Referee Sync: Every 60 min (id: hourly_referee_sync)")
     logger.info(f"[SCHEDULER] Live Injury Check: Every 5 min (id: live_injury_check)")
     logger.info(f"[SCHEDULER] Half-Hourly Social: Every 30 min (id: half_hourly_social_sync)")
-    logger.info(f"[SCHEDULER] === DAILY CRON JOBS (NBA + MLB 3 min later) ===")
-    logger.info(f"[SCHEDULER] NBA Daily Refresh: 04:00 AM EST | MLB Daily: 04:03 AM EST")
-    logger.info(f"[SCHEDULER] NBA.com L5/L10: 5 batches @ 04:00, 04:02, 04:04, 04:06, 04:08 AM EST")
-    logger.info(f"[SCHEDULER] NBA BDL Game Values: 04:10 AM EST | MLB Game Values: 04:13 AM EST")
-    logger.info(f"[SCHEDULER] NBA BDL Game Logs: 04:25 AM EST | MLB Game Logs: 04:28 AM EST")
-    logger.info(f"[SCHEDULER] Weekly Roster: Sunday 00:00 UTC")
+    logger.info(f"[SCHEDULER] === DAILY CRON JOBS (Sync Data FIRST, Then Pipeline) ===")
+    logger.info(f"[SCHEDULER] 4:00-4:08 AM EST - NBA.com L5/L10 Batches (5 batches)")
+    logger.info(f"[SCHEDULER] 4:10 AM EST - NBA BDL Game Values | 4:13 AM - MLB")
+    logger.info(f"[SCHEDULER] 4:15 AM EST - NBA BDL Game Logs   | 4:18 AM - MLB")
+    logger.info(f"[SCHEDULER] 4:20 AM EST - NBA Daily Pipeline  | 4:23 AM - MLB (recalc HR)")
+    logger.info(f"[SCHEDULER] 4:26 AM EST - Ticker Sync")
+    logger.info(f"[SCHEDULER] Sunday 00:00 UTC - Weekly Roster Sync")
     
     # AUTO-SYNC: Check if database is empty and trigger initial population
     # This runs only once when deployed to a new environment with empty DB
