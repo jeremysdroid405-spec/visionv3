@@ -151,6 +151,14 @@ class MLBFerrariPipeline:
                 if clean.get("hit_rate_l5") and not clean.get("h5_rate"):
                     clean["h5_rate"] = clean["hit_rate_l5"] * 100 if clean["hit_rate_l5"] <= 1 else clean["hit_rate_l5"]
                 
+                # Map averages - use l20_avg as season_avg, derive l5/l10 from it
+                if clean.get("l20_avg") and not clean.get("season_avg"):
+                    clean["season_avg"] = clean["l20_avg"]
+                if clean.get("l20_avg") and not clean.get("l10_avg"):
+                    clean["l10_avg"] = clean["l20_avg"]
+                if clean.get("l20_avg") and not clean.get("l5_avg"):
+                    clean["l5_avg"] = clean["l20_avg"]
+                
                 return clean
             
             # Save Safe Haven
