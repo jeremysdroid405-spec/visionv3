@@ -64,12 +64,19 @@ const PROP_LABELS = {
   'Runs': 'RUNS',
   'Stolen Bases': 'SB',
   'Home Runs': 'HR',
+  'Singles': '1B',
+  'Doubles': '2B',
+  'Triples': '3B',
   'Walks': 'BB',
+  'Batter Walks': 'BB',
   'Strikeouts': 'K',
+  'Batter Strikeouts': 'K',
   'Hits Allowed': 'HA',
   'Earned Runs': 'ER',
   'Pitcher Strikeouts': 'SO',
   'Pitcher Walks': 'BB',
+  'Walks Allowed': 'BB',
+  'Pitcher Outs': 'OUTS',
   'Hits+Runs+RBIs': 'HRR',
   'batter_hits_runs_rbis': 'HRR',
 };
@@ -77,9 +84,11 @@ const PROP_LABELS = {
 const CATEGORY_ORDER = [
   // NBA
   'PTS', 'REB', 'AST', 'PRA', 'PR', 'PA', 'RA', '3PM', 'STL', 'BLK', 'BLST', 'TO', 'FGM', 'FTM', 'MIN',
-  // MLB
-  'Hits', 'Total Bases', 'RBIs', 'Runs', 'Stolen Bases', 'Home Runs', 'Walks', 'Strikeouts',
-  'Hits Allowed', 'Earned Runs', 'Pitcher Strikeouts', 'Hits+Runs+RBIs'
+  // MLB Batter
+  'Hits', 'Total Bases', 'Singles', 'Doubles', 'Triples', 'RBIs', 'Runs', 'Stolen Bases', 'Home Runs', 
+  'Batter Walks', 'Walks', 'Batter Strikeouts', 'Strikeouts', 'Hits+Runs+RBIs',
+  // MLB Pitcher
+  'Pitcher Strikeouts', 'Pitcher Outs', 'Hits Allowed', 'Earned Runs', 'Walks Allowed'
 ];
 
 const normalizeStatType = (statType) => {

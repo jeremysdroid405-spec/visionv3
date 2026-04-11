@@ -411,10 +411,17 @@ class MLBSharpSortingService:
             "home runs": "home_runs",
             "stolen bases": "stolen_bases",
             "walks": "walks",
+            "batter walks": "walks",
             "strikeouts": "strikeouts",
+            "batter strikeouts": "strikeouts",
+            # Singles is calculated: hits - doubles - triples - home_runs
+            "singles": "singles",
+            "doubles": "doubles",
+            "triples": "triples",
             "hits+runs+rbis": ["hits", "runs", "rbis"],  # Combo stat
             "pitcher strikeouts": "pitcher_strikeouts",
             "pitching outs": "innings_pitched",  # IP * 3
+            "pitcher outs": "innings_pitched",
             "earned runs": "earned_runs",
             "hits allowed": "hits_allowed",
             "walks allowed": "pitcher_walks",
@@ -447,6 +454,15 @@ class MLBSharpSortingService:
                         return None  # Skip games with missing combo components
                     combo_val += (v or 0)
                 return combo_val
+            elif field == "singles":
+                # Singles = hits - doubles - triples - home_runs (calculated)
+                hits = game.get("hits")
+                doubles = game.get("doubles") or 0
+                triples = game.get("triples") or 0
+                home_runs = game.get("home_runs") or 0
+                if hits is None:
+                    return None
+                return max(0, hits - doubles - triples - home_runs)
             else:
                 val = game.get(field)
                 if val is None:

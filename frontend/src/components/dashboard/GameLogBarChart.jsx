@@ -40,7 +40,7 @@ const STAT_FIELD_MAP = {
   'BLST': ['blk', 'stl'],
   'FTM': 'ftm',
   'MIN': 'min',
-  // MLB Stats
+  // MLB Batter Stats
   'Hits': 'hits',
   'HITS': 'hits',
   'Total Bases': 'total_bases',
@@ -56,17 +56,43 @@ const STAT_FIELD_MAP = {
   'Home Runs': 'home_runs',
   'HOME RUNS': 'home_runs',
   'HR': 'home_runs',
+  // Singles = hits - doubles - triples - home_runs (calculated field)
+  'Singles': 'singles',
+  'SINGLES': 'singles',
+  '1B': 'singles',
+  // Doubles
+  'Doubles': 'doubles',
+  'DOUBLES': 'doubles',
+  '2B': 'doubles',
+  // Triples
+  'Triples': 'triples',
+  'TRIPLES': 'triples',
+  '3B': 'triples',
+  // Walks
   'Walks': 'walks',
   'WALKS': 'walks',
+  'Batter Walks': 'walks',
+  'BATTER WALKS': 'walks',
   'BB': 'walks',
+  // Strikeouts
   'Strikeouts': 'strikeouts',
   'STRIKEOUTS': 'strikeouts',
   'Batter Strikeouts': 'strikeouts',
   'BATTER STRIKEOUTS': 'strikeouts',
   'K': 'strikeouts',
+  // MLB Pitcher Stats
   'Hits Allowed': 'hits_allowed',
+  'HITS ALLOWED': 'hits_allowed',
   'Earned Runs': 'earned_runs',
+  'EARNED RUNS': 'earned_runs',
+  'ER': 'earned_runs',
   'Pitcher Strikeouts': 'pitcher_strikeouts',
+  'PITCHER STRIKEOUTS': 'pitcher_strikeouts',
+  'SO': 'pitcher_strikeouts',
+  'Walks Allowed': 'pitcher_walks',
+  'WALKS ALLOWED': 'pitcher_walks',
+  'Pitcher Outs': 'pitcher_outs',
+  'PITCHER OUTS': 'pitcher_outs',
   // MLB Combo Stats
   'Hits+Runs+RBIs': ['hits', 'runs', 'rbis'],
   'HITS+RUNS+RBIS': ['hits', 'runs', 'rbis'],
@@ -79,10 +105,22 @@ const getStatValue = (game, statType) => {
   let field = STAT_FIELD_MAP[statType] || STAT_FIELD_MAP[statType?.toUpperCase()];
   if (!field) return null;
   
+  // Handle combo stats (arrays)
   if (Array.isArray(field)) {
     return field.reduce((sum, f) => sum + (parseFloat(game[f]) || 0), 0);
   }
   
+  // Handle calculated fields
+  if (field === 'singles') {
+    // Singles = hits - doubles - triples - home_runs
+    const hits = parseFloat(game.hits) || 0;
+    const doubles = parseFloat(game.doubles) || 0;
+    const triples = parseFloat(game.triples) || 0;
+    const home_runs = parseFloat(game.home_runs) || 0;
+    return hits - doubles - triples - home_runs;
+  }
+  
+  // Handle minutes (time format)
   if (field === 'min') {
     const min = game[field];
     if (typeof min === 'string' && min.includes(':')) {
