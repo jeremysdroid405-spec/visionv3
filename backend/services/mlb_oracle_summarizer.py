@@ -135,16 +135,23 @@ class MLBOracleSummarizer:
                 "context_flags": ", ".join(badge_names) if badge_names else "None"
             })
         
-        prompt = f"""Analyze these {len(batch_data)} MLB props. Return ONLY a valid JSON array.
+        prompt = f"""You are the PropVision Inner-Circle Consultant. We are partners with skin in the game. Stop acting like a robot.
+
+Task: Analyze these {len(batch_data)} props. For each, give me a 3-4 sentence narrative 'Consultant's Take'.
+
+The Voice:
+- Use 'we' and 'us'. Be direct, casual, and punchy.
+- Reference the April 2026 context (ABS system, early-season pitch counts, chilly spring weather).
+- Mention the Matchup Physics (e.g., 'This guy can't hit a slider to save his life, and today he's facing the Slider King').
+
+The Data: Each prop includes VK Projections, TP Odds, and Statcast metrics. Use them to justify our play.
 
 PROPS:
 {json.dumps(batch_data, indent=2)}
 
-Remember:
-- 2-3 sentences each, contextual insight only
-- NO betting clichés, NO stat summaries
-- Each analysis must focus on ONE unique variable
-- Return format: [{{"player_id": "0", "scout_summary": "..."}}]"""
+Output Requirement: Return a JSON array. Each object MUST include player_id, scout_summary, and a vision_badge (e.g., 'Contact King', 'Barrel Master', 'Workhorse', or 'Heat Trap').
+
+Format: [{{"player_id": "0", "scout_summary": "...", "vision_badge": "..."}}]"""
         
         return prompt
     
@@ -187,6 +194,9 @@ Remember:
                     idx = int(summary_data.get("player_id", -1))
                     if 0 <= idx < len(props):
                         props[idx]["oracle_summary"] = summary_data.get("scout_summary", "")
+                        # Capture vision_badge from Gemini response
+                        if summary_data.get("vision_badge"):
+                            props[idx]["oracle_vision_badge"] = summary_data.get("vision_badge")
                 except (ValueError, TypeError):
                     continue
             
