@@ -28,8 +28,8 @@ logger = logging.getLogger(__name__)
 # API Key - Use Emergent LLM Key for better quota
 EMERGENT_LLM_KEY = os.environ.get("EMERGENT_LLM_KEY")
 
-# Single model for all tiers
-MODEL = "gemini-2.5-flash-lite"
+# Single model for all tiers - gemini-3-flash-preview for volume processing
+MODEL = "gemini-3-flash-preview"
 
 # Batch size
 BATCH_SIZE = 12
