@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY")
 
 # Model
-MODEL = "gemini-3.1-flash"
+MODEL = "gemini-3.1-flash-lite-preview"
 
 # Batch size
 BATCH_SIZE = 12
