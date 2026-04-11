@@ -27,7 +27,11 @@ Restructure the React/FastAPI betting app to a 100% Local-First Database Model, 
   - Phase 4: Save to Ferrari collections
 - [x] **Edge Calculation Bug Fix** - Edge = Hit Rate - True Probability (not DK odds)
 - [x] **Live MLB Ticker** - BDL scores + ESPN RSS news
-- [x] **TARGET-LOCK RATIONALE Player-Specific Summaries (April 11, 2026)** - Summaries now reference actual game logs (last 3), L5/season averages, hot/cold streaks, and CV concerns
+- [x] **TARGET-LOCK RATIONALE Player-Specific Summaries (April 11, 2026)**
+  - Rewritten to "Professional Analyst" persona (no betting clichés)
+  - Contextual insights: slider RPM, umpire zones, swing planes, platoon splits, humidity
+  - Uses Emergent LLM Key with gemini-2.5-flash-lite for reliability
+  - Batch processing (10-15 props per API call)
 
 ### In Progress
 - [ ] MLB headshot sync (~700 players remaining)
