@@ -558,12 +558,22 @@ class MLBTierSorter:
             
             # Get VK projection - try multiple sources
             vk = self._get_vk_projection(player_name, stat_type, line)
-            edge_pct = vk.get("edge_pct") or prop.get("edge_pct") or prop.get("edge") or prop.get("sharp_edge")
+            vk_edge = vk.get("edge_pct") or prop.get("edge_pct") or prop.get("edge") or prop.get("sharp_edge")
             vk_predicted = vk.get("projected_value") or prop.get("vk_predicted") or prop.get("projected_value")
             
             # Calculate TP from DK odds (primary) or sharp odds (fallback)
             # The tier rules are based on DK odds, so use those for TP
             tp_odds = self._calculate_tp_odds(dk_odds or sharp_odds)
+            
+            # Calculate edge properly: Edge = Hit Rate - Implied Probability
+            # If no VK edge available, calculate from hit rate and TP odds
+            if vk_edge is not None and vk_edge != 0:
+                edge_pct = vk_edge
+            elif hit_rate is not None and tp_odds is not None:
+                # Edge = (Hit Rate - True Probability) as percentage points
+                edge_pct = round(hit_rate - tp_odds, 1)
+            else:
+                edge_pct = None
             
             # Enrich prop with all hit rate data
             prop["cv"] = cv

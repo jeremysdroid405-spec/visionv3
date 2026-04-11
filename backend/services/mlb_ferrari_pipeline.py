@@ -159,6 +159,15 @@ class MLBFerrariPipeline:
                 if clean.get("l20_avg") and not clean.get("l5_avg"):
                     clean["l5_avg"] = clean["l20_avg"]
                 
+                # RECALCULATE EDGE: Edge = Hit Rate - True Probability (percentage points)
+                # This fixes the incorrect edge values (e.g., 240 from DK odds)
+                hit_rate = clean.get("h20_rate") or clean.get("h10_rate") or clean.get("hit_rate_l10")
+                tp_odds = clean.get("tp_odds")
+                if hit_rate is not None and tp_odds is not None:
+                    correct_edge = round(hit_rate - tp_odds, 1)
+                    clean["edge"] = correct_edge
+                    clean["edge_pct"] = correct_edge
+                
                 return clean
             
             # Save Safe Haven

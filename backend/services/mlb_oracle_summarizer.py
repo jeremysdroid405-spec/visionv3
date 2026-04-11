@@ -327,9 +327,11 @@ Provide ONLY the JSON array."""
         player_name = prop.get("player_name", "Unknown")
         stat_type = prop.get("stat_type", "Unknown")
         line = prop.get("line", 0)
-        edge_pct = prop.get("edge_pct", 0) or 0
         tp_odds = prop.get("tp_odds", 50) or 50
         h20_rate = prop.get("h20_rate") or prop.get("h10_rate") or 0
+        
+        # Calculate correct edge: Hit Rate - True Probability
+        edge_pct = round(h20_rate - tp_odds, 1) if h20_rate and tp_odds else 0
         
         badges = prop.get("scout_badges", [])
         positive_badge = next((b.get("name", "") for b in badges if b.get("is_positive")), None)
@@ -340,13 +342,13 @@ Provide ONLY the JSON array."""
                 physics = f"{player_name}'s {positive_badge} profile means the bat speed is there and he's not chasing meatballs."
             else:
                 physics = f"{player_name}'s barrel rate is cooking at {h20_rate}% hit rate over L20 - that's not luck, that's skill."
-            verdict = f"Lock it in. {edge_pct}% edge with {tp_odds}% true probability. Hammer the More."
+            verdict = f"Lock it in. +{edge_pct}% edge with {tp_odds}% true probability. Hammer the More."
             
         elif tier == "front_lines":
             if positive_badge:
                 physics = f"{player_name}'s got the {positive_badge} tag for a reason - the Statcast numbers back it up."
             else:
-                physics = f"The numbers say {edge_pct}% edge and {h20_rate}% hit rate. Not elite, but the math works."
+                physics = f"The numbers say +{edge_pct}% edge and {h20_rate}% hit rate. Not elite, but the math works."
             verdict = f"Worth the ride at these odds. Don't overthink it."
             
         else:  # war_zone
