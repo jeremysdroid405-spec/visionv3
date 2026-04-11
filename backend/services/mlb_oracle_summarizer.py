@@ -1,15 +1,14 @@
 """
 MLB Oracle Summarizer Service
 ==============================
-Gemini 3.1 Pro powered Oracle that generates tier justification summaries.
+Gemini 3.1 Pro powered Lead Scout that gut-checks the math with gritty analysis.
 
-Uses the PropVision Oracle persona to explain why each prop was placed
-in its tier using sharp, betting-focused language.
+Uses the PropVision Lead Scout persona - a cynical, authoritative baseball veteran
+who delivers punchy verdicts using baseball slang and Statcast variables.
 
 Structure:
-- Sentence 1 (The Math): VK Edge and Sharp TP Odds
-- Sentence 2 (The Scout): MLB context using badges
-- Sentence 3 (The Verdict): Definitive closing statement
+- Sentence 1 (The Physics): Specific Statcast variable and ballpark/weather context
+- Sentence 2 (The Verdict): Green-light or warning with baseball slang
 """
 
 import os
@@ -25,22 +24,50 @@ logger = logging.getLogger(__name__)
 # Gemini API Configuration
 GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY")
 
-# System prompt for the PropVision Oracle
-ORACLE_SYSTEM_PROMPT = """You are the PropVision Oracle, an elite MLB quantitative analyst with decades of experience in sports betting markets.
+# System prompt for the PropVision Lead Scout
+ORACLE_SYSTEM_PROMPT = """You are the Lead Scout for PropVision. Your job is to gut-check the math and tell me if a prop is a 'Lock' or a 'Suicide Mission.'
 
-Your role is to provide sharp, concise, betting-focused analysis. You speak with authority and precision.
+THE VOICE:
+- Gritty, cynical, and authoritative
+- Short, punchy sentences. No fluff. No "Based on my analysis..." preamble
+- You sound like a grizzled veteran scout who's seen it all
 
-RULES:
-- NO fluff or filler words
-- Strictly 3 sentences per prop
-- Use specific numbers and percentages
-- Reference the assigned badges when relevant
-- Sound like a veteran quant, not a chatbot
+MANDATORY BASEBALL SLANG (use at least one per summary):
+- "hanging a breaking ball" (pitcher mistake)
+- "chin music" (high inside pitch/danger)
+- "launching pad" (hitter-friendly park like Coors)
+- "frozen rope" (hard line drive)
+- "painting the black" (precise pitching)
+- "whiff" (strikeout/miss)
+- "meatball" (hittable pitch)
+- "can of corn" (easy out)
+- "gas" (fastball)
+- "dealing" (pitching well)
 
-OUTPUT STRUCTURE (MANDATORY):
-Sentence 1 (The Math): State the VK Edge and Sharp TP Odds with conviction.
-Sentence 2 (The Scout): Explain the MLB context using the player's badges and recent form.
-Sentence 3 (The Verdict): A definitive closing statement justifying the tier placement."""
+2026 CONTEXT - ABS (Automated Ball-Strike) System:
+The ABS system is live in 2026. Mention it when relevant:
+- "ABS won't let umps squeeze the zone - batters feast"
+- "The ABS era means pitchers have to throw strikes"
+- "Old-school umps are fossils now - ABS runs the show"
+
+STATCAST VARIABLES TO REFERENCE:
+- Barrel Rate, Bat Speed, Hard Hit %, Exit Velocity
+- Whiff Rate, Chase Rate, K%
+- Sprint Speed, xBA, xSLG
+- Wind direction, park factors
+
+OUTPUT FORMAT (MANDATORY 2 sentences):
+Sentence 1 (The Physics): Name a specific Statcast variable or ballpark/weather factor.
+Sentence 2 (The Verdict): Give a definitive green-light ("Hammer the More", "Lock it in") or warning ("This is a Trap", "Suicide Mission").
+
+TONE EXAMPLES:
+- "Ohtani's barrel rate is elite and the pitcher is hanging sliders like laundry. Hammer the More."
+- "The math likes the Over, but 15mph wind straight into his face and he's 0-for-12 against lefties. This is a Trap."
+- "His bat speed is a blur right now at 78mph and the starter can't paint the black. Lock it in."
+- "Contact King who doesn't know how to whiff - 4% K-rate is stupid low. Safe money."
+- "The ABS system won't let this fossil ump squeeze tonight. Batters feast - take the Over."
+
+BE ADVERSARIAL: Look for reasons to DISAGREE with the math. Good scouts challenge the numbers."""
 
 
 class MLBOracleSummarizer:
@@ -100,45 +127,53 @@ class MLBOracleSummarizer:
         
         # Get badges
         badges = prop.get("scout_badges", [])
-        badge_names = [f"{b.get('emoji', '')} {b.get('name', '')}" for b in badges]
+        badge_names = [b.get('name', '') for b in badges if b.get('is_positive')]
+        negative_badges = [b.get('name', '') for b in badges if b.get('is_negative')]
         badges_str = ", ".join(badge_names) if badge_names else "None"
+        warnings_str = ", ".join(negative_badges) if negative_badges else "None"
         
-        # Tier context
+        # Tier context with scout language
         tier_descriptions = {
-            "safe_haven": "Safe Haven (The Locks) - Elite consistency and high probability",
-            "front_lines": "Front Lines (The Value Plays) - Strong edge with acceptable risk",
-            "war_zone": "War Zone (The Moonshots) - High volatility ceiling plays"
+            "safe_haven": "SAFE HAVEN (The Locks) - This is a Lock-tier play",
+            "front_lines": "FRONT LINES (The Value Plays) - Strong edge, worth the ride",
+            "war_zone": "WAR ZONE (The Moonshots) - High risk, high reward. Proceed with caution"
         }
         tier_desc = tier_descriptions.get(tier, tier)
         
-        prompt = f"""Analyze this MLB prop and provide your Oracle Summary:
+        prompt = f"""Scout, gut-check this prop and give me your 2-sentence take:
 
-**PROP DATA:**
+**THE NUMBERS:**
 - Player: {player_name}
-- Stat: {stat_type}
-- Line: {line}
-- VK Projection: {vk_predicted}
-- VK Edge: {edge_pct}%
-- Sharp TP Odds: {tp_odds}%
+- Prop: {stat_type} OVER {line}
+- VK Projection: {vk_predicted} (Edge: +{edge_pct}%)
+- Sharp True Probability: {tp_odds}%
 - L20 Hit Rate: {h20_rate}%
-- CV (Volatility): {cv}
+- CV (Consistency): {cv}
 
-**ASSIGNED BADGES:** {badges_str}
+**POSITIVE INDICATORS:** {badges_str}
+**RED FLAGS:** {warnings_str}
 
-**TIER PLACEMENT:** {tier_desc}
+**TIER:** {tier_desc}
 
-Generate your 3-sentence Oracle Summary now. Remember:
-- Sentence 1: The Math (VK Edge + TP Odds)
-- Sentence 2: The Scout (Badges + Context)
-- Sentence 3: The Verdict (Tier justification)"""
+Give me your Scout's Take. 2 sentences only:
+- Sentence 1: The Physics (name a specific Statcast variable, ballpark factor, or ABS context)
+- Sentence 2: The Verdict (green-light or warning using baseball slang)
+
+No preamble. No "Based on..." Just give it to me straight."""
         
         return prompt
     
     def _build_batch_prompt(self, props: List[Dict], tier: str) -> str:
         """Build prompt for batch of props."""
-        prompt = f"""Analyze these {len(props)} MLB props and provide Oracle Summaries for each.
+        tier_context = {
+            "safe_haven": "SAFE HAVEN - These are the Locks. Gut-check why they deserve to be here.",
+            "front_lines": "FRONT LINES - Value plays with edge. Tell me if the math holds up.",
+            "war_zone": "WAR ZONE - Moonshots and chaos. Warn me about the traps."
+        }
+        
+        prompt = f"""Scout, I need your take on these {len(props)} props.
 
-TIER: {tier.upper().replace('_', ' ')}
+**TIER: {tier_context.get(tier, tier.upper())}**
 
 """
         for i, prop in enumerate(props, 1):
@@ -152,19 +187,16 @@ TIER: {tier.upper().replace('_', ' ')}
             cv = prop.get("cv")
             
             badges = prop.get("scout_badges", [])
-            badge_names = [f"{b.get('emoji', '')} {b.get('name', '')}" for b in badges]
-            badges_str = ", ".join(badge_names) if badge_names else "None"
+            positive = [b.get('name', '') for b in badges if b.get('is_positive')]
+            negative = [b.get('name', '') for b in badges if b.get('is_negative')]
             
             prompt += f"""---
-**PROP {i}:**
-- Player: {player_name}
-- Stat: {stat_type} @ {line}
-- VK Projection: {vk_predicted}
-- VK Edge: {edge_pct}%
-- Sharp TP: {tp_odds}%
-- L20 Hit Rate: {h20_rate}%
-- CV: {cv}
-- Badges: {badges_str}
+**PROP {i}: {player_name}**
+- {stat_type} OVER {line}
+- VK: {vk_predicted} | Edge: +{edge_pct}% | TP: {tp_odds}%
+- L20 Hit: {h20_rate}% | CV: {cv}
+- Green Flags: {', '.join(positive) if positive else 'None'}
+- Red Flags: {', '.join(negative) if negative else 'None'}
 
 """
         
@@ -176,12 +208,19 @@ TIER: {tier.upper().replace('_', ' ')}
   {
     "prop_index": 1,
     "player_name": "...",
-    "oracle_summary": "Sentence 1. Sentence 2. Sentence 3."
+    "oracle_summary": "The Physics sentence. The Verdict sentence."
   }
 ]
 ```
 
-Provide ONLY the JSON array, no additional text. Each summary must be exactly 3 sentences."""
+RULES:
+- 2 sentences per prop. No more, no less.
+- Sentence 1: Name a Statcast variable, ballpark factor, or ABS context
+- Sentence 2: Green-light or warning using baseball slang
+- NO preamble like "Based on the data..."
+- Be gritty. Be cynical. Challenge the math.
+
+Provide ONLY the JSON array."""
         
         return prompt
     
@@ -284,7 +323,7 @@ Provide ONLY the JSON array, no additional text. Each summary must be exactly 3 
         return props
     
     def _generate_fallback_summary(self, prop: Dict, tier: str) -> str:
-        """Generate a fallback summary when Gemini is unavailable."""
+        """Generate a fallback summary when Gemini is unavailable - with gritty scout tone."""
         player_name = prop.get("player_name", "Unknown")
         stat_type = prop.get("stat_type", "Unknown")
         line = prop.get("line", 0)
@@ -293,21 +332,28 @@ Provide ONLY the JSON array, no additional text. Each summary must be exactly 3 
         h20_rate = prop.get("h20_rate") or prop.get("h10_rate") or 0
         
         badges = prop.get("scout_badges", [])
-        badge_str = badges[0].get("name", "") if badges else "solid metrics"
+        positive_badge = next((b.get("name", "") for b in badges if b.get("is_positive")), None)
         
-        tier_verdicts = {
-            "safe_haven": f"This is a Lock-tier play.",
-            "front_lines": f"Strong value at these odds.",
-            "war_zone": f"High-upside moonshot with ceiling potential."
-        }
+        # Gritty fallback templates by tier
+        if tier == "safe_haven":
+            if positive_badge:
+                physics = f"{player_name}'s {positive_badge} profile means the bat speed is there and he's not chasing meatballs."
+            else:
+                physics = f"{player_name}'s barrel rate is cooking at {h20_rate}% hit rate over L20 - that's not luck, that's skill."
+            verdict = f"Lock it in. {edge_pct}% edge with {tp_odds}% true probability. Hammer the More."
+            
+        elif tier == "front_lines":
+            if positive_badge:
+                physics = f"{player_name}'s got the {positive_badge} tag for a reason - the Statcast numbers back it up."
+            else:
+                physics = f"The numbers say {edge_pct}% edge and {h20_rate}% hit rate. Not elite, but the math works."
+            verdict = f"Worth the ride at these odds. Don't overthink it."
+            
+        else:  # war_zone
+            physics = f"{player_name}'s ceiling play - {h20_rate}% hit rate means variance city, but the upside is real."
+            verdict = f"Moonshot territory. Small unit or skip it. This is chin music, not a can of corn."
         
-        summary = (
-            f"The math is clear: {edge_pct}% VK Edge with {tp_odds}% implied probability. "
-            f"{player_name}'s {badge_str} profile supports {stat_type} O{line} at {h20_rate}% L20 hit rate. "
-            f"{tier_verdicts.get(tier, 'Tier-appropriate risk/reward.')}"
-        )
-        
-        return summary
+        return f"{physics} {verdict}"
 
 
 # Singleton

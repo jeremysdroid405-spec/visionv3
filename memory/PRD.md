@@ -85,3 +85,4 @@ WAR_ZONE_GATES = {
 - **2026-04-10**: **Fixed PlayerDetailPage prop merge to include ALL Vision Intel fields for MLB**
 - **2026-04-10**: **Added "Batter Strikeouts" to STAT_FIELD_MAP - enabled L5/L10 averages and game log charts**
 - **2026-04-10**: **MLB Vision Intel Suite now exactly matches NBA structure (L5 AVG, L10 AVG, SEASON AVG, game charts, TARGET-LOCK RATIONALE)**
+- **2026-04-11**: **Updated MLB Oracle Summarizer with gritty Lead Scout persona - baseball slang, Statcast references, ABS system context, adversarial tone**
