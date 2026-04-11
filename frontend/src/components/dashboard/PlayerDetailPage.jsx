@@ -1510,8 +1510,8 @@ export const PlayerDetailPage = ({ playerName, playerData = null, onBack, highli
                     <Target className="w-4 h-4 text-purple-400" />
                     TARGET-LOCK RATIONALE
                   </h3>
-                  <p className="text-sm text-white leading-relaxed italic">
-                    "{selectedVisionProp.oracle_summary}"
+                  <p className="text-sm text-zinc-200 leading-relaxed italic">
+                    {selectedVisionProp.oracle_summary}
                   </p>
                   <div className="mt-2 text-[10px] text-purple-400/60 flex items-center gap-1">
                     <span className="inline-block w-1.5 h-1.5 rounded-full bg-purple-400 animate-pulse"></span>
