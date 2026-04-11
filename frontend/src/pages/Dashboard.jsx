@@ -50,6 +50,7 @@ import {
   useFrontLines,
   useLiveOdds,
   useLiveVacuumAlerts,
+  useMLBLiveVacuumAlerts,
   useMLBGoblins,
   useMLBDemons,
   useMLBHRRPicks,
@@ -1113,6 +1114,137 @@ const LiveInjuryAdvantageSection = memo(({ alerts, isLoading }) => {
   );
 });
 
+// ==================== MLB LIVE INJURY ADVANTAGE ====================
+
+const MLBLiveInjuryAdvantageSection = memo(({ alerts, isLoading }) => {
+  if (isLoading) {
+    return (
+      <div className="mb-4 p-4 bg-zinc-900/50 border border-zinc-800 rounded-xl">
+        <div className="flex items-center gap-2 mb-3">
+          <div className="w-4 h-4 bg-orange-500/30 rounded animate-pulse" />
+          <div className="h-4 w-48 bg-zinc-700 rounded animate-pulse" />
+        </div>
+        <div className="h-16 bg-zinc-800/50 rounded animate-pulse" />
+      </div>
+    );
+  }
+
+  // No active alerts - show monitoring state
+  if (!alerts || alerts.length === 0) {
+    return (
+      <div className="mb-4 p-4 bg-zinc-900/50 border border-zinc-800 rounded-xl">
+        <div className="flex items-center gap-2 mb-2">
+          <Activity className="w-4 h-4 text-zinc-500 animate-pulse" />
+          <span className="text-sm font-bold text-zinc-400">MLB LIVE INJURY ADVANTAGE</span>
+          <span className="text-[10px] px-2 py-0.5 rounded bg-zinc-700 text-zinc-400">MONITORING</span>
+        </div>
+        <p className="text-xs text-zinc-500">
+          Monitoring for late-breaking MLB injury scratches... No active lineup changes detected.
+        </p>
+      </div>
+    );
+  }
+
+  // Group alerts by injured player
+  const groupedByInjuredPlayer = alerts.reduce((acc, alert) => {
+    const key = alert.injured_player;
+    if (!acc[key]) {
+      acc[key] = {
+        injured_player: alert.injured_player,
+        injured_team: alert.injured_team,
+        injury_reason: alert.injury_reason,
+        injured_ops: alert.injured_ops,
+        time_ago: alert.time_ago,
+        is_late_scratch: alert.is_late_scratch,
+        beneficiaries: []
+      };
+    }
+    acc[key].beneficiaries.push(alert);
+    return acc;
+  }, {});
+
+  const injuredPlayers = Object.values(groupedByInjuredPlayer);
+
+  return (
+    <div className="mb-4">
+      <SectionHeader 
+        icon={<ShieldAlert className="w-4 h-4 text-orange-400" />}
+        title="MLB LIVE INJURY ADVANTAGE"
+        subtitle="Late-breaking injury news creating lineup opportunities"
+        badgeText={`${injuredPlayers.length} IL/OUT`}
+        badgeColor="red"
+      />
+      
+      {/* Horizontal scrollable container */}
+      <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-thin scrollbar-thumb-zinc-700 scrollbar-track-transparent">
+        {injuredPlayers.map((injury) => (
+          <div
+            key={injury.injured_player}
+            className="flex-shrink-0 w-72 p-3 rounded-xl border bg-gradient-to-br from-red-950/40 via-zinc-900 to-zinc-900 border-red-500/30"
+          >
+            {/* Injured Player - THE FOCUS */}
+            <div className="flex items-center gap-3 mb-3">
+              <div className="w-10 h-10 rounded-full bg-red-500/20 flex items-center justify-center ring-2 ring-red-500/50">
+                <AlertTriangle className="w-5 h-5 text-red-400" />
+              </div>
+              <div className="flex-1">
+                <div className="flex items-center gap-2">
+                  <span className="text-base font-bold text-white">{injury.injured_player}</span>
+                  <span className="px-1.5 py-0.5 text-[9px] font-black bg-red-500 text-white rounded">IL</span>
+                </div>
+                <div className="text-[10px] text-zinc-400">
+                  {injury.injured_team} • {injury.injured_ops ? `${injury.injured_ops} OPS` : ''} • {injury.time_ago}
+                </div>
+              </div>
+            </div>
+
+            {/* Injury Reason Headline */}
+            {injury.injury_reason && (
+              <div className="text-sm text-zinc-200 bg-zinc-800/60 rounded-lg p-3 mb-3">
+                {injury.injury_reason}
+              </div>
+            )}
+
+            {/* Lineup Change Indicator */}
+            <div className="flex items-center gap-1 mb-2 text-[10px] text-orange-400 font-semibold">
+              <TrendingUp className="w-3 h-3" />
+              <span>LINEUP OPPORTUNITY</span>
+            </div>
+
+            {/* Beneficiaries - smaller cards */}
+            <div className="space-y-1.5">
+              {injury.beneficiaries.map((ben, idx) => (
+                <div
+                  key={ben.id}
+                  className="flex items-center justify-between p-2 rounded-lg bg-zinc-800/50 hover:bg-zinc-800/70 transition-colors"
+                >
+                  <div className="flex items-center gap-2">
+                    <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold ${
+                      idx === 0 ? 'bg-orange-500/30 text-orange-400' : 'bg-zinc-700 text-zinc-400'
+                    }`}>
+                      {idx + 1}
+                    </div>
+                    <div>
+                      <div className="text-xs font-semibold text-white">{ben.beneficiary_name}</div>
+                      <div className="text-[9px] text-zinc-500">+{ben.lineup_bump || 0} lineup spots</div>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className={`text-sm font-bold ${idx === 0 ? 'text-orange-400' : 'text-orange-400/70'}`}>
+                      +{ben.ab_bump} AB
+                    </div>
+                    <div className="text-[8px] text-zinc-500">projected</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+});
+
 // ==================== MAIN DASHBOARD ====================
 
 const Dashboard = () => {
@@ -1127,6 +1259,7 @@ const Dashboard = () => {
   const { data: frontLinesData, isLoading: frontLinesLoading, refetch: refetchFrontLines } = useFrontLines();
   const { data: liveOddsData, isLoading: boardLoading, refetch: refetchBoard } = useLiveOdds();
   const { data: vacuumAlertsData, isLoading: vacuumAlertsLoading } = useLiveVacuumAlerts();
+  const { data: mlbVacuumAlertsData, isLoading: mlbVacuumAlertsLoading } = useMLBLiveVacuumAlerts();
   
   // MLB-specific hooks (only active when sport=mlb)
   const { data: mlbGoblinsData, isLoading: mlbGoblinsLoading, refetch: refetchMLBGoblins } = useMLBGoblins();
@@ -1152,6 +1285,7 @@ const Dashboard = () => {
   
   // Live Vacuum Alerts (Usage Vacuum)
   const vacuumAlerts = useMemo(() => vacuumAlertsData?.alerts || [], [vacuumAlertsData]);
+  const mlbVacuumAlerts = useMemo(() => mlbVacuumAlertsData?.alerts || [], [mlbVacuumAlertsData]);
   
   // Status flags derived from query state
   const linesLoaded = !boardLoading && players.length > 0;
@@ -1582,6 +1716,12 @@ const Dashboard = () => {
           {/* MLB-SPECIFIC SECTIONS */}
           {currentSport === 'mlb' && (
             <>
+              {/* MLB Live Injury Advantage (Usage Vacuum) */}
+              <MLBLiveInjuryAdvantageSection 
+                alerts={mlbVacuumAlerts} 
+                isLoading={mlbVacuumAlertsLoading} 
+              />
+              
               {/* MLB Safe Haven (3-Gate Qualified) */}
               <MLBSafeHavenSection 
                 picks={mlbSafeHavenPicks.length > 0 ? mlbSafeHavenPicks : mlbGoblinsPicks} 

@@ -29,6 +29,7 @@ from .qa_testing import router as qa_router, set_qa_db
 from .image_proxy import router as image_proxy_router
 from .ferrari_tiers import router as ferrari_router, set_ferrari_db
 from .vacuum import router as vacuum_router, set_vacuum_db
+from .mlb_vacuum import router as mlb_vacuum_router, set_mlb_vacuum_db
 
 # ARCHIVED ROUTES (moved to routes_archive/):
 # - intel.py (duplicates of injuries.py, intel_sync.py, live_scores.py)
@@ -162,3 +163,8 @@ def register_all_routes(app, engine, game_lock_engine=None, db=None,
     if db is not None:
         set_vacuum_db(db)
     app.include_router(vacuum_router, prefix="/api")
+    
+    # MLB Usage Vacuum
+    if db is not None:
+        set_mlb_vacuum_db(db)
+    app.include_router(mlb_vacuum_router, prefix="/api")

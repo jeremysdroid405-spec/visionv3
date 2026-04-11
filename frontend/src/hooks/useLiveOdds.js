@@ -652,4 +652,29 @@ export const useLiveVacuumAlerts = () => {
   });
 };
 
+/**
+ * Fetch MLB Live Vacuum Alerts (Usage Vacuum)
+ * Returns players benefiting from late-breaking MLB injury news
+ */
+const fetchMLBLiveVacuumAlerts = async () => {
+  const response = await fetch(`${API}/api/v3/mlb/vacuum/live-alerts`);
+  if (!response.ok) throw new Error('MLB Vacuum alerts fetch failed');
+  return response.json();
+};
+
+/**
+ * useMLBLiveVacuumAlerts - MLB Live Injury Advantage alerts
+ * Polls every 60 seconds for late-breaking MLB injury news
+ */
+export const useMLBLiveVacuumAlerts = () => {
+  return useQuery({
+    queryKey: ['mlb-live-vacuum-alerts'],
+    queryFn: fetchMLBLiveVacuumAlerts,
+    staleTime: 30 * 1000,  // 30 seconds
+    refetchInterval: 60 * 1000,  // Poll every 60 seconds
+    refetchOnWindowFocus: true,
+    retry: 2
+  });
+};
+
 export default useLiveOdds;
