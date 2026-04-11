@@ -1,14 +1,14 @@
 """
 Live Data Routes
 ================
-Real-time NBA scores and breaking news endpoints.
+Real-time NBA/MLB scores and breaking news endpoints.
 
 SSOT ARCHITECTURE: Scores/news come from cached data in MongoDB.
 Data is refreshed daily at 4 AM EST via scheduler.
 
 Endpoints:
-- GET /api/live/scores - Today's NBA games from DB cache
-- GET /api/live/news - Breaking news from DB cache
+- GET /api/live/scores - Today's games from DB cache (sport-aware)
+- GET /api/live/news - Breaking news from DB cache (sport-aware)
 - POST /api/live/sync-ticker - Manual sync trigger (admin only)
 """
 import os
@@ -17,7 +17,7 @@ import logging
 from datetime import datetime, timezone, timedelta
 from typing import List, Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from motor.motor_asyncio import AsyncIOMotorClient
 
 logger = logging.getLogger(__name__)
@@ -60,15 +60,32 @@ TEAM_ABBREV_MAP = {
     "Washington Wizards": "WAS"
 }
 
-def get_team_abbrev(team_name: str) -> str:
-    """Get proper NBA team abbreviation from full name."""
+# MLB Team abbreviations
+MLB_TEAM_ABBREV_MAP = {
+    "Arizona Diamondbacks": "ARI", "Atlanta Braves": "ATL", "Baltimore Orioles": "BAL",
+    "Boston Red Sox": "BOS", "Chicago Cubs": "CHC", "Chicago White Sox": "CHW",
+    "Cincinnati Reds": "CIN", "Cleveland Guardians": "CLE", "Colorado Rockies": "COL",
+    "Detroit Tigers": "DET", "Houston Astros": "HOU", "Kansas City Royals": "KC",
+    "Los Angeles Angels": "LAA", "Los Angeles Dodgers": "LAD", "Miami Marlins": "MIA",
+    "Milwaukee Brewers": "MIL", "Minnesota Twins": "MIN", "New York Mets": "NYM",
+    "New York Yankees": "NYY", "Oakland Athletics": "OAK", "Philadelphia Phillies": "PHI",
+    "Pittsburgh Pirates": "PIT", "San Diego Padres": "SD", "San Francisco Giants": "SF",
+    "Seattle Mariners": "SEA", "St. Louis Cardinals": "STL", "Tampa Bay Rays": "TB",
+    "Texas Rangers": "TEX", "Toronto Blue Jays": "TOR", "Washington Nationals": "WSH"
+}
+
+def get_team_abbrev(team_name: str, sport: str = "nba") -> str:
+    """Get proper team abbreviation from full name."""
     if not team_name:
         return "???"
+    
+    abbrev_map = MLB_TEAM_ABBREV_MAP if sport == "mlb" else TEAM_ABBREV_MAP
+    
     # Direct lookup
-    if team_name in TEAM_ABBREV_MAP:
-        return TEAM_ABBREV_MAP[team_name]
+    if team_name in abbrev_map:
+        return abbrev_map[team_name]
     # Try partial match
-    for full_name, abbrev in TEAM_ABBREV_MAP.items():
+    for full_name, abbrev in abbrev_map.items():
         if team_name in full_name or full_name in team_name:
             return abbrev
     # Fallback to first 3 letters
@@ -80,6 +97,242 @@ _db = None
 def set_db(db):
     global _db
     _db = db
+
+
+# ============================================================
+# MLB GAMES SYNC (Circuit Breaker Pattern)
+# ============================================================
+MLB_SYNC_CIRCUIT_BREAKER = {
+    "failures": 0,
+    "last_failure": None,
+    "is_open": False,
+    "threshold": 3,
+    "reset_timeout": 300  # 5 minutes
+}
+
+async def sync_mlb_todays_games():
+    """
+    Sync today's MLB games to the database.
+    Uses BallDontLie MLB API with circuit breaker pattern.
+    """
+    global MLB_SYNC_CIRCUIT_BREAKER
+    
+    # Check circuit breaker
+    if MLB_SYNC_CIRCUIT_BREAKER["is_open"]:
+        if MLB_SYNC_CIRCUIT_BREAKER["last_failure"]:
+            elapsed = (datetime.now(timezone.utc) - MLB_SYNC_CIRCUIT_BREAKER["last_failure"]).total_seconds()
+            if elapsed < MLB_SYNC_CIRCUIT_BREAKER["reset_timeout"]:
+                logger.warning(f"[MLB TICKER] Circuit breaker OPEN - skipping sync ({elapsed:.0f}s since last failure)")
+                return {"success": False, "error": "Circuit breaker open", "retry_after": int(MLB_SYNC_CIRCUIT_BREAKER["reset_timeout"] - elapsed)}
+            else:
+                # Reset circuit breaker
+                MLB_SYNC_CIRCUIT_BREAKER["is_open"] = False
+                MLB_SYNC_CIRCUIT_BREAKER["failures"] = 0
+                logger.info("[MLB TICKER] Circuit breaker RESET - attempting sync")
+    
+    logger.info("[MLB TICKER] Starting daily MLB games sync...")
+    
+    try:
+        api_key = os.environ.get("BDL_API_KEY") or os.environ.get("BALLDONTLIE_API_KEY")
+        if not api_key:
+            logger.warning("[MLB TICKER] No BDL API key found")
+            return {"success": False, "error": "No BDL API key"}
+        
+        today = datetime.now().strftime("%Y-%m-%d")
+        
+        async with httpx.AsyncClient(timeout=20.0) as client:
+            response = await client.get(
+                "https://api.balldontlie.io/mlb/v1/games",
+                params={"dates[]": today, "per_page": 30},
+                headers={"Authorization": api_key}
+            )
+            
+            if response.status_code != 200:
+                # Increment failure count
+                MLB_SYNC_CIRCUIT_BREAKER["failures"] += 1
+                MLB_SYNC_CIRCUIT_BREAKER["last_failure"] = datetime.now(timezone.utc)
+                if MLB_SYNC_CIRCUIT_BREAKER["failures"] >= MLB_SYNC_CIRCUIT_BREAKER["threshold"]:
+                    MLB_SYNC_CIRCUIT_BREAKER["is_open"] = True
+                    logger.error(f"[MLB TICKER] Circuit breaker TRIPPED after {MLB_SYNC_CIRCUIT_BREAKER['failures']} failures")
+                
+                logger.error(f"[MLB TICKER] BDL API error: {response.status_code}")
+                return {"success": False, "error": f"BDL API error: {response.status_code}"}
+            
+            data = response.json()
+            bdl_games = data.get("data", [])
+        
+        games = []
+        for game in bdl_games:
+            home = game.get("home_team", {})
+            away = game.get("away_team", {}) or game.get("visitor_team", {}) or {}
+            
+            # Parse game time
+            game_time_utc = game.get("datetime", "") or game.get("date", "")
+            start_time_display = ""
+            if game_time_utc:
+                try:
+                    utc_time = datetime.fromisoformat(game_time_utc.replace("Z", "+00:00"))
+                    est_time = utc_time - timedelta(hours=5)
+                    start_time_display = est_time.strftime("%-I:%M %p ET")
+                except:
+                    start_time_display = game.get("status", "")
+            
+            # Determine status
+            status_text = game.get("status", "")
+            inning = game.get("inning", 0) or game.get("period", 0)
+            inning_half = game.get("inning_half", "")
+            
+            if "Final" in str(status_text):
+                status_display = "Final"
+                status_code = 3
+            elif inning > 0:
+                half = "Top" if inning_half == "top" else "Bot" if inning_half == "bottom" else ""
+                status_display = f"{half} {inning}" if half else f"Inning {inning}"
+                status_code = 2
+            else:
+                status_display = start_time_display or "Scheduled"
+                status_code = 1
+            
+            games.append({
+                "game_id": str(game.get("id")),
+                "home_team": home.get("abbreviation", "???"),
+                "home_score": game.get("home_team_score", 0),
+                "home_name": home.get("name", ""),
+                "away_team": away.get("abbreviation", "???"),
+                "away_score": game.get("visitor_team_score", 0),
+                "away_name": away.get("name", ""),
+                "status": status_display,
+                "status_code": status_code,
+                "inning": inning,
+                "inning_half": inning_half,
+                "start_time": game_time_utc,
+                "start_time_display": start_time_display,
+                "sport": "mlb"
+            })
+        
+        # Sort by start time
+        games.sort(key=lambda x: x.get("start_time", ""))
+        
+        # Store in database
+        if _db is not None:
+            await _db.ticker_cache.update_one(
+                {"type": "mlb_games"},
+                {"$set": {
+                    "type": "mlb_games",
+                    "date": today,
+                    "games": games,
+                    "games_count": len(games),
+                    "synced_at": datetime.now(timezone.utc).isoformat()
+                }},
+                upsert=True
+            )
+            logger.info(f"[MLB TICKER] Synced {len(games)} MLB games for {today}")
+        
+        # Reset failure count on success
+        MLB_SYNC_CIRCUIT_BREAKER["failures"] = 0
+        
+        return {"success": True, "games_count": len(games), "date": today}
+        
+    except Exception as e:
+        # Increment failure count
+        MLB_SYNC_CIRCUIT_BREAKER["failures"] += 1
+        MLB_SYNC_CIRCUIT_BREAKER["last_failure"] = datetime.now(timezone.utc)
+        if MLB_SYNC_CIRCUIT_BREAKER["failures"] >= MLB_SYNC_CIRCUIT_BREAKER["threshold"]:
+            MLB_SYNC_CIRCUIT_BREAKER["is_open"] = True
+            logger.error(f"[MLB TICKER] Circuit breaker TRIPPED after {MLB_SYNC_CIRCUIT_BREAKER['failures']} failures")
+        
+        logger.error(f"[MLB TICKER] Games sync error: {e}")
+        return {"success": False, "error": str(e)}
+
+
+async def sync_mlb_news_headlines():
+    """
+    Sync MLB news headlines to the database.
+    Fetches from ESPN MLB RSS feed.
+    """
+    logger.info("[MLB TICKER] Starting MLB news sync...")
+    
+    try:
+        headlines = []
+        import re
+        
+        async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:
+            # ===== ESPN MLB News RSS =====
+            try:
+                espn_response = await client.get("https://www.espn.com/espn/rss/mlb/news")
+                if espn_response.status_code == 200:
+                    items = re.findall(r'<item>.*?<title><!\[CDATA\[(.*?)\]\]></title>.*?</item>', 
+                                      espn_response.text, re.DOTALL)[:8]
+                    for item in items:
+                        clean_title = item.strip()
+                        if clean_title and len(clean_title) > 10:
+                            headlines.append({
+                                "text": f"ESPN: {clean_title}",
+                                "type": "breaking",
+                                "source": "espn_mlb",
+                                "priority": 1
+                            })
+            except Exception as e:
+                logger.debug(f"ESPN MLB fetch failed: {e}")
+            
+            # ===== CBS Sports MLB RSS =====
+            try:
+                cbs_response = await client.get("https://www.cbssports.com/rss/headlines/mlb/")
+                if cbs_response.status_code == 200:
+                    items = re.findall(r'<title><!\[CDATA\[(.*?)\]\]></title>', cbs_response.text)[:5]
+                    for item in items[1:]:
+                        clean_title = item.strip()
+                        if clean_title and len(clean_title) > 10:
+                            headlines.append({
+                                "text": f"CBS: {clean_title}",
+                                "type": "info",
+                                "source": "cbs_mlb",
+                                "priority": 2
+                            })
+            except Exception as e:
+                logger.debug(f"CBS MLB fetch failed: {e}")
+            
+            # ===== MLB.com News (via Bleacher Report) =====
+            try:
+                br_response = await client.get("https://bleacherreport.com/articles/feed")
+                if br_response.status_code == 200:
+                    items = re.findall(r'<title>(.*?)</title>', br_response.text)
+                    mlb_items = [i for i in items if any(term in i.lower() for term in ['mlb', 'yankees', 'dodgers', 'mets', 'red sox', 'cubs', 'braves', 'astros', 'phillies'])][:3]
+                    for item in mlb_items:
+                        clean_title = item.strip()
+                        if clean_title and len(clean_title) > 10:
+                            headlines.append({
+                                "text": f"BR: {clean_title}",
+                                "type": "info",
+                                "source": "bleacher_report_mlb",
+                                "priority": 3
+                            })
+            except Exception as e:
+                logger.debug(f"Bleacher Report MLB fetch failed: {e}")
+        
+        # Sort by priority and limit
+        headlines.sort(key=lambda x: x.get("priority", 99))
+        headlines = headlines[:15]
+        
+        # Store in database
+        if _db is not None:
+            await _db.ticker_cache.update_one(
+                {"type": "mlb_news"},
+                {"$set": {
+                    "type": "mlb_news",
+                    "headlines": headlines,
+                    "headlines_count": len(headlines),
+                    "synced_at": datetime.now(timezone.utc).isoformat()
+                }},
+                upsert=True
+            )
+            logger.info(f"[MLB TICKER] Synced {len(headlines)} MLB news headlines")
+        
+        return {"success": True, "headlines_count": len(headlines)}
+        
+    except Exception as e:
+        logger.error(f"[MLB TICKER] News sync error: {e}")
+        return {"success": False, "error": str(e)}
 
 
 async def sync_todays_games():
@@ -117,7 +370,7 @@ async def sync_todays_games():
         games = []
         for game in bdl_games:
             home = game.get("home_team", {})
-            away = game.get("visitor_team", {})
+            away = game.get("away_team", {}) or game.get("visitor_team", {}) or {}
             
             # Parse game time for display
             game_time_utc = game.get("datetime", "")
@@ -294,14 +547,18 @@ async def sync_news_headlines():
 
 
 @router.get("/scores")
-async def get_live_scores():
+async def get_live_scores(sport: str = Query("nba", description="Sport: nba or mlb")):
     """
-    Get today's NBA games with live scores.
+    Get today's games with live scores.
     
-    Uses BDL live box scores endpoint for real-time updates.
+    Sport-aware: Returns NBA or MLB games based on query param.
     """
+    # Route to sport-specific handler
+    if sport == "mlb":
+        return await get_mlb_live_scores()
+    
+    # NBA (default) - uses BDL live box scores endpoint
     try:
-        # Always fetch fresh from BDL live endpoint for most current data
         api_key = os.environ.get("BDL_API_KEY") or os.environ.get("BALLDONTLIE_API_KEY")
         
         if api_key:
@@ -322,7 +579,7 @@ async def get_live_scores():
                             
                             for game in bdl_games:
                                 home = game.get("home_team", {})
-                                away = game.get("visitor_team", {})
+                                away = game.get("away_team", {}) or game.get("visitor_team", {}) or {}
                                 
                                 # Parse game time
                                 game_time_utc = game.get("datetime", "")
@@ -409,17 +666,20 @@ async def get_live_scores():
 
 
 @router.get("/news")
-async def get_breaking_news():
+async def get_breaking_news(sport: str = Query("nba", description="Sport: nba or mlb")):
     """
-    Get breaking NBA news from cached data.
+    Get breaking news from cached data.
     
-    Returns headlines synced at 4 AM daily.
+    Sport-aware: Returns NBA or MLB news based on query param.
     """
     try:
+        # Determine cache key based on sport
+        cache_type = "mlb_news" if sport == "mlb" else "news"
+        
         # Get from DB cache
         if _db is not None:
             cached = await _db.ticker_cache.find_one(
-                {"type": "news"},
+                {"type": cache_type},
                 {"_id": 0}
             )
             
@@ -428,26 +688,30 @@ async def get_breaking_news():
                     "success": True,
                     "headlines": cached.get("headlines", []),
                     "synced_at": cached.get("synced_at"),
-                    "cached": True
+                    "cached": True,
+                    "sport": sport
                 }
         
         # Fallback: fetch live if no cache
-        return await _fetch_news_fallback()
+        return await _fetch_news_fallback(sport)
         
     except Exception as e:
         logger.error(f"[LIVE] News error: {e}")
         return {"success": False, "headlines": [], "error": str(e)}
 
 
-async def _fetch_news_fallback():
+async def _fetch_news_fallback(sport: str = "nba"):
     """Fallback to fetch news directly from RSS feeds."""
     try:
         headlines = []
         import re
         
+        # Select RSS feed based on sport
+        rss_url = "https://www.espn.com/espn/rss/mlb/news" if sport == "mlb" else "https://www.espn.com/espn/rss/nba/news"
+        
         async with httpx.AsyncClient(timeout=8.0, follow_redirects=True) as client:
             try:
-                espn_response = await client.get("https://www.espn.com/espn/rss/nba/news")
+                espn_response = await client.get(rss_url)
                 if espn_response.status_code == 200:
                     items = re.findall(r'<item>.*?<title><!\[CDATA\[(.*?)\]\]></title>.*?</item>', 
                                       espn_response.text, re.DOTALL)[:5]
@@ -457,29 +721,139 @@ async def _fetch_news_fallback():
                             headlines.append({
                                 "text": f"ESPN: {clean_title}",
                                 "type": "breaking",
-                                "source": "espn"
+                                "source": f"espn_{sport}"
                             })
             except:
                 pass
         
-        return {"success": True, "headlines": headlines, "cached": False}
+        return {"success": True, "headlines": headlines, "cached": False, "sport": sport}
         
     except Exception as e:
         return {"success": False, "headlines": [], "error": str(e)}
 
 
+async def get_mlb_live_scores():
+    """Get today's MLB games with live scores."""
+    try:
+        api_key = os.environ.get("BDL_API_KEY") or os.environ.get("BALLDONTLIE_API_KEY")
+        
+        if api_key:
+            try:
+                async with httpx.AsyncClient(timeout=15.0) as client:
+                    # Try BDL MLB live endpoint
+                    response = await client.get(
+                        "https://api.balldontlie.io/mlb/v1/games",
+                        params={"dates[]": datetime.now().strftime("%Y-%m-%d"), "per_page": 30},
+                        headers={"Authorization": api_key}
+                    )
+                    
+                    if response.status_code == 200:
+                        data = response.json()
+                        bdl_games = data.get("data", [])
+                        
+                        if bdl_games:
+                            games = []
+                            today = datetime.now().strftime("%Y-%m-%d")
+                            
+                            for game in bdl_games:
+                                home = game.get("home_team", {})
+                                away = game.get("away_team", {}) or game.get("visitor_team", {}) or {}
+                                
+                                game_time_utc = game.get("datetime", "") or game.get("date", "")
+                                start_time_display = ""
+                                if game_time_utc:
+                                    try:
+                                        utc_time = datetime.fromisoformat(game_time_utc.replace("Z", "+00:00"))
+                                        est_time = utc_time - timedelta(hours=5)
+                                        start_time_display = est_time.strftime("%-I:%M %p ET")
+                                    except:
+                                        pass
+                                
+                                status_text = game.get("status", "")
+                                inning = game.get("inning", 0) or game.get("period", 0)
+                                inning_half = game.get("inning_half", "")
+                                
+                                if "Final" in str(status_text):
+                                    status_display = "Final"
+                                    status_code = 3
+                                elif inning > 0:
+                                    half = "Top" if inning_half == "top" else "Bot" if inning_half == "bottom" else ""
+                                    status_display = f"{half} {inning}" if half else f"Inning {inning}"
+                                    status_code = 2
+                                else:
+                                    status_display = start_time_display or "Scheduled"
+                                    status_code = 1
+                                
+                                games.append({
+                                    "game_id": str(game.get("id")),
+                                    "home_team": home.get("abbreviation", "???"),
+                                    "home_score": game.get("home_team_score", 0),
+                                    "home_name": home.get("name", ""),
+                                    "away_team": away.get("abbreviation", "???"),
+                                    "away_score": game.get("visitor_team_score", 0),
+                                    "away_name": away.get("name", ""),
+                                    "status": status_display,
+                                    "status_code": status_code,
+                                    "inning": inning,
+                                    "start_time": game_time_utc,
+                                    "start_time_display": start_time_display,
+                                    "sport": "mlb"
+                                })
+                            
+                            games.sort(key=lambda x: x.get("start_time", ""))
+                            
+                            return {
+                                "games": games,
+                                "date": today,
+                                "games_count": len(games),
+                                "source": "bdl_mlb_live",
+                                "sport": "mlb",
+                                "synced_at": datetime.now(timezone.utc).isoformat()
+                            }
+            except Exception as e:
+                logger.warning(f"[MLB TICKER] BDL live fetch failed: {e}")
+        
+        # Fallback to DB cache
+        if _db is not None:
+            cached = await _db.ticker_cache.find_one(
+                {"type": "mlb_games"},
+                {"_id": 0}
+            )
+            
+            if cached and cached.get("games"):
+                return {
+                    "games": cached.get("games", []),
+                    "date": cached.get("date"),
+                    "games_count": cached.get("games_count", 0),
+                    "source": "cache",
+                    "sport": "mlb",
+                    "synced_at": cached.get("synced_at")
+                }
+        
+        return {"games": [], "date": None, "games_count": 0, "source": "empty", "sport": "mlb"}
+        
+    except Exception as e:
+        logger.error(f"[MLB LIVE] Scores error: {e}")
+        return {"success": False, "games": [], "error": str(e), "sport": "mlb"}
+
+
 @router.post("/sync-ticker")
-async def manual_sync_ticker():
+async def manual_sync_ticker(sport: str = Query("all", description="Sport: nba, mlb, or all")):
     """
     Manually trigger ticker data sync.
-    Syncs both games and news headlines.
+    Syncs games and news headlines for specified sport.
     """
-    games_result = await sync_todays_games()
-    news_result = await sync_news_headlines()
-    
-    return {
+    results = {
         "success": True,
-        "games": games_result,
-        "news": news_result,
         "synced_at": datetime.now(timezone.utc).isoformat()
     }
+    
+    if sport in ["nba", "all"]:
+        results["nba_games"] = await sync_todays_games()
+        results["nba_news"] = await sync_news_headlines()
+    
+    if sport in ["mlb", "all"]:
+        results["mlb_games"] = await sync_mlb_todays_games()
+        results["mlb_news"] = await sync_mlb_news_headlines()
+    
+    return results

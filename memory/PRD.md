@@ -86,3 +86,5 @@ WAR_ZONE_GATES = {
 - **2026-04-10**: **Added "Batter Strikeouts" to STAT_FIELD_MAP - enabled L5/L10 averages and game log charts**
 - **2026-04-10**: **MLB Vision Intel Suite now exactly matches NBA structure (L5 AVG, L10 AVG, SEASON AVG, game charts, TARGET-LOCK RATIONALE)**
 - **2026-04-11**: **Updated MLB Oracle Summarizer with gritty Lead Scout persona - baseball slang, Statcast references, ABS system context, adversarial tone**
+- **2026-04-11**: **Implemented MLB live ticker sync with circuit breakers - ESPN MLB news RSS + BDL MLB games API**
+- **2026-04-11**: **Made /live/scores and /live/news endpoints sport-aware (supports ?sport=mlb)**
