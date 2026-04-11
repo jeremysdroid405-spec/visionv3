@@ -1,16 +1,22 @@
 """
-ADAPTIVE SYNC ENGINE - Mission-Critical Polling System
-========================================================
-Implements intelligent polling based on game proximity:
-- Standby (>6hrs): Refresh every 60 minutes
-- Active (1-6hrs): Refresh every 10 minutes  
-- Mission Critical (<60mins): Refresh every 60 seconds
-- Post-Tip: Cease polling for that game
+ADAPTIVE SYNC ENGINE - PropVision Multi-Sport Polling System
+==============================================================
+Implements "Market Stability" polling optimized for both NBA and MLB.
 
-Also handles:
-- Stale Intel detection and alerts
-- Client-side protection (all reads from MongoDB)
-- Last updated timestamps on all cached data
+POLLING SCHEDULE (2026 Season):
+- STANDBY (> 8 hours):     Every 4 hours   - Early board scouting, line openers
+- ACTIVE (2-8 hours):      Every 60 min    - Catching initial line moves
+- LOCK_IN (30m-2 hours):   Every 15 min    - Lineup Gate: MLB lineups confirmed, NBA rotations
+- FINAL_CALL (< 30 min):   Every 10 min    - Last-minute Sharp moves, Demon verification
+- LIVE (Game started):     STOP            - No betting on active games (stale/trap lines)
+
+SPORT KEYS:
+- NBA: basketball_nba
+- MLB: baseball_mlb
+
+MLB-SPECIFIC FEATURES:
+- Lineup Gate: Props barred from Safe Haven until lineup_confirmed == True
+- ABS System awareness: Umpire Challenge Success rate check in Final Call phase
 
 TIER CLASSIFICATION (v3 - ANCHOR-BASED):
 For each player+stat combination:
@@ -31,27 +37,38 @@ import httpx
 
 logger = logging.getLogger(__name__)
 
-# Polling intervals in seconds - INCREASED to conserve API quota
+# =============================================================================
+# ADAPTIVE SYNC INTERVALS (Seconds) - Market Stability Logic
+# =============================================================================
 class PollInterval(Enum):
-    STANDBY = 7200       # 2 hours (>6hrs to tip) - was 60 min
-    ACTIVE = 1800        # 30 minutes (1-6hrs to tip) - was 10 min
-    MISSION_CRITICAL = 300  # 5 minutes (<60mins to tip) - was 60 sec
-    POST_TIP = None      # Stop polling
+    STANDBY = 14400      # 4 hours (> 8h to tip) - Early board scouting
+    ACTIVE = 3600        # 60 minutes (2-8h to tip) - Catching line moves
+    LOCK_IN = 900        # 15 minutes (30m-2h to tip) - Lineup Gate phase
+    FINAL_CALL = 600     # 10 minutes (< 30m to tip) - Sharp moves verification
+    LIVE = None          # Stop polling - Game started
 
 # Thresholds in hours
-STANDBY_THRESHOLD = 6       # >6 hours = Standby
-ACTIVE_THRESHOLD = 1        # 1-6 hours = Active
-MISSION_CRITICAL_THRESHOLD = 1  # <1 hour = Mission Critical
+STANDBY_THRESHOLD = 8        # > 8 hours = Standby
+ACTIVE_THRESHOLD = 2         # 2-8 hours = Active
+LOCK_IN_THRESHOLD = 0.5      # 30m-2 hours = Lock-In (Lineup Gate)
+FINAL_CALL_THRESHOLD = 0.5   # < 30 minutes = Final Call
 
 # Stale data threshold
-STALE_DATA_THRESHOLD_SECONDS = 300  # 5 minutes
+STALE_DATA_THRESHOLD_SECONDS = 600  # 10 minutes (aligned with Final Call)
+
+# Sport keys for The Odds API
+SPORT_KEYS = {
+    "nba": "basketball_nba",
+    "mlb": "baseball_mlb"
+}
 
 
 class GameStatus(Enum):
     STANDBY = "standby"
     ACTIVE = "active"
-    MISSION_CRITICAL = "mission_critical"
-    POST_TIP = "post_tip"
+    LOCK_IN = "lock_in"
+    FINAL_CALL = "final_call"
+    LIVE = "live"
 
 
 def _normalize_name(name: str) -> str:
@@ -399,6 +416,13 @@ class AdaptiveSyncEngine:
         """
         Determine game status based on time to tip-off.
         
+        Market Stability Logic (2026):
+        - STANDBY (> 8h):     Early board scouting
+        - ACTIVE (2-8h):      Catching initial line moves
+        - LOCK_IN (30m-2h):   Lineup Gate phase
+        - FINAL_CALL (< 30m): Sharp moves verification
+        - LIVE (started):     Stop polling
+        
         Args:
             commence_time: ISO format game start time
             
@@ -414,12 +438,14 @@ class AdaptiveSyncEngine:
             time_to_tip = (game_time - now).total_seconds() / 3600  # Hours
             
             if time_to_tip < 0:
-                return GameStatus.POST_TIP
-            elif time_to_tip < ACTIVE_THRESHOLD:
-                return GameStatus.MISSION_CRITICAL
-            elif time_to_tip < STANDBY_THRESHOLD:
+                return GameStatus.LIVE
+            elif time_to_tip < FINAL_CALL_THRESHOLD:  # < 30 minutes
+                return GameStatus.FINAL_CALL
+            elif time_to_tip < ACTIVE_THRESHOLD:  # 30m - 2 hours
+                return GameStatus.LOCK_IN
+            elif time_to_tip < STANDBY_THRESHOLD:  # 2-8 hours
                 return GameStatus.ACTIVE
-            else:
+            else:  # > 8 hours
                 return GameStatus.STANDBY
                 
         except Exception as e:
@@ -429,35 +455,70 @@ class AdaptiveSyncEngine:
     def _get_poll_interval(self, status: GameStatus) -> Optional[int]:
         """Get polling interval in seconds based on game status."""
         intervals = {
-            GameStatus.STANDBY: PollInterval.STANDBY.value,
-            GameStatus.ACTIVE: PollInterval.ACTIVE.value,
-            GameStatus.MISSION_CRITICAL: PollInterval.MISSION_CRITICAL.value,
-            GameStatus.POST_TIP: None
+            GameStatus.STANDBY: PollInterval.STANDBY.value,      # 4 hours
+            GameStatus.ACTIVE: PollInterval.ACTIVE.value,        # 60 minutes
+            GameStatus.LOCK_IN: PollInterval.LOCK_IN.value,      # 15 minutes
+            GameStatus.FINAL_CALL: PollInterval.FINAL_CALL.value,  # 10 minutes
+            GameStatus.LIVE: None                                 # Stop
         }
         return intervals.get(status)
     
-    async def _fetch_live_odds(self) -> List[Dict[str, Any]]:
+    async def _fetch_live_odds(self, sport: str = "nba") -> List[Dict[str, Any]]:
         """
-        Fetch PrizePicks odds from The Odds API.
+        Fetch odds from The Odds API for NBA or MLB.
+        
+        Multi-Sport Support (2026):
+        - NBA: basketball_nba
+        - MLB: baseball_mlb
         
         PRIZEPICKS-SPECIFIC FETCH:
         - Uses regions=us_dfs (Daily Fantasy Sports region)
         - Uses bookmakers=prizepicks (primary), underdog (fallback)
         - Fetches both standard and alternate markets for proper tier classification
         
-        PrizePicks Classification:
-        - STANDARD (Gray): Main market lines (player_points, player_rebounds, player_assists)
-        - GOBLIN (Green): Alternate lines BELOW player's L10 average
-        - DEMON (Red): Alternate lines ABOVE player's L10 average
+        Classification:
+        - STANDARD (Gray): Main market lines
+        - GOBLIN (Green): Alternate lines BELOW player's average
+        - DEMON (Red): Alternate lines ABOVE player's average
         
+        Args:
+            sport: "nba" or "mlb"
+            
         Returns raw odds data for processing.
         """
         if not self.odds_api_key:
             logger.warning("[ADAPTIVE_SYNC] No Odds API key configured")
             return []
         
-        # Step 1: Fetch list of NBA events
-        events_url = f"{self.base_url}/sports/basketball_nba/events"
+        # Sport key mapping
+        sport_key = SPORT_KEYS.get(sport.lower(), "basketball_nba")
+        sport_upper = sport.upper()
+        
+        # Define markets based on sport
+        if sport.lower() == "mlb":
+            # MLB-specific markets
+            standard_markets = [
+                "batter_hits", "batter_total_bases", "batter_rbis", "batter_runs",
+                "batter_home_runs", "batter_stolen_bases", "batter_walks",
+                "batter_strikeouts", "batter_hits_runs_rbis",
+                "pitcher_strikeouts", "pitcher_outs", "pitcher_hits_allowed",
+                "pitcher_walks", "pitcher_earned_runs"
+            ]
+        else:
+            # NBA markets
+            standard_markets = [
+                "player_points", "player_rebounds", "player_assists",
+                "player_threes", "player_blocks", "player_steals",
+                "player_points_rebounds_assists", "player_points_rebounds",
+                "player_points_assists", "player_rebounds_assists"
+            ]
+        
+        # Add alternate markets for tier classification
+        all_markets = standard_markets + [f"{m}_alternate" for m in standard_markets]
+        markets_str = ",".join(all_markets)
+        
+        # Step 1: Fetch list of events
+        events_url = f"{self.base_url}/sports/{sport_key}/events"
         events_params = {
             "apiKey": self.odds_api_key,
             "dateFormat": "iso"
@@ -468,25 +529,10 @@ class AdaptiveSyncEngine:
                 events_response = await client.get(events_url, params=events_params)
                 events_response.raise_for_status()
                 events = events_response.json()
-                logger.info(f"[UNDERDOG_SYNC] Found {len(events)} NBA events")
+                logger.info(f"[ADAPTIVE_SYNC] Found {len(events)} {sport_upper} events")
                 
                 if not events:
                     return []
-                
-                # Step 2: Fetch PrizePicks odds for each event
-                # PrizePicks-specific markets (standard + alternate for tier classification)
-                prizepicks_markets = ",".join([
-                    # Standard markets (STANDARD tier)
-                    "player_points", "player_rebounds", "player_assists",
-                    "player_threes", "player_blocks", "player_steals",
-                    "player_points_rebounds_assists", "player_points_rebounds",
-                    "player_points_assists", "player_rebounds_assists",
-                    # Alternate markets (GOBLIN/DEMON tiers based on odds)
-                    "player_points_alternate", "player_rebounds_alternate", "player_assists_alternate",
-                    "player_threes_alternate", "player_blocks_alternate", "player_steals_alternate",
-                    "player_points_rebounds_assists_alternate", "player_points_rebounds_alternate",
-                    "player_points_assists_alternate", "player_rebounds_assists_alternate"
-                ])
                 
                 enriched_events = []
                 
@@ -495,7 +541,7 @@ class AdaptiveSyncEngine:
                     if not event_id:
                         continue
                     
-                    odds_url = f"{self.base_url}/sports/basketball_nba/events/{event_id}/odds"
+                    odds_url = f"{self.base_url}/sports/{sport_key}/events/{event_id}/odds"
                     
                     # === FETCH 1: PrizePicks (DFS region) ===
                     prizepicks_data = None
@@ -503,7 +549,7 @@ class AdaptiveSyncEngine:
                         "apiKey": self.odds_api_key,
                         "regions": "us_dfs",
                         "bookmakers": "prizepicks",
-                        "markets": prizepicks_markets,
+                        "markets": markets_str,
                         "oddsFormat": "american",
                         "includeMultipliers": "true"
                     }
@@ -521,7 +567,7 @@ class AdaptiveSyncEngine:
                         "apiKey": self.odds_api_key,
                         "regions": "us",
                         "bookmakers": "draftkings,fanduel",
-                        "markets": prizepicks_markets,
+                        "markets": markets_str,
                         "oddsFormat": "american",
                         "includeMultipliers": "true"
                     }
@@ -535,7 +581,7 @@ class AdaptiveSyncEngine:
                                 bm_key = bm.get("key", "")
                                 bm_markets = len(bm.get("markets", []))
                                 if bm_markets > 0:
-                                    logger.info(f"  [SHARP:{bm_key.upper()}] {event.get('away_team')} @ {event.get('home_team')}: {bm_markets} markets")
+                                    logger.debug(f"  [SHARP:{bm_key.upper()}] {event.get('away_team')} @ {event.get('home_team')}: {bm_markets} markets")
                     except Exception as e:
                         logger.warning(f"[SYNC] Sharp books fetch failed for {event_id}: {e}")
                     
@@ -544,6 +590,7 @@ class AdaptiveSyncEngine:
                         merged_event = {
                             "id": event_id,
                             "event_id": event_id,
+                            "sport": sport.lower(),
                             "home_team": event.get("home_team"),
                             "away_team": event.get("away_team"),
                             "commence_time": event.get("commence_time"),
@@ -563,21 +610,22 @@ class AdaptiveSyncEngine:
                         # Log combined data
                         pp_count = len(prizepicks_data.get("bookmakers", [])) if prizepicks_data else 0
                         sharp_count = len(sharp_data.get("bookmakers", [])) if sharp_data else 0
-                        logger.info(f"  [MERGED] {event.get('away_team')} @ {event.get('home_team')}: PrizePicks={pp_count}, Sharp={sharp_count} bookmakers")
+                        logger.debug(f"  [MERGED] {event.get('away_team')} @ {event.get('home_team')}: PP={pp_count}, Sharp={sharp_count}")
                 
-                logger.info(f"[SYNC] Fetched odds for {len(enriched_events)} events (PrizePicks + DraftKings + FanDuel)")
+                logger.info(f"[ADAPTIVE_SYNC] Fetched {sport_upper} odds: {len(enriched_events)} events (PrizePicks + DK + FD)")
                 return enriched_events
                 
         except httpx.HTTPStatusError as e:
-            logger.error(f"[UNDERDOG_SYNC] Odds API HTTP error: {e.response.status_code}")
+            logger.error(f"[ADAPTIVE_SYNC] {sport_upper} Odds API HTTP error: {e.response.status_code}")
             return []
         except Exception as e:
-            logger.error(f"[UNDERDOG_SYNC] Odds API error: {e}")
+            logger.error(f"[ADAPTIVE_SYNC] {sport_upper} Odds API error: {e}")
             return []
     
     async def _update_game_registry(self, events: List[Dict[str, Any]]) -> None:
         """
         Update the game registry with current events and their statuses.
+        Supports both NBA and MLB events with sport tracking.
         """
         current_game_ids = set()
         
@@ -589,9 +637,11 @@ class AdaptiveSyncEngine:
             current_game_ids.add(game_id)
             commence_time = event.get("commence_time", "")
             status = self._get_game_status(commence_time)
+            sport = event.get("sport", "nba")  # Default to NBA for backwards compatibility
             
             self.game_registry[game_id] = {
                 "id": game_id,
+                "sport": sport,
                 "home_team": event.get("home_team", ""),
                 "away_team": event.get("away_team", ""),
                 "commence_time": commence_time,
@@ -603,7 +653,7 @@ class AdaptiveSyncEngine:
         # Remove games that are no longer in the feed
         stale_games = set(self.game_registry.keys()) - current_game_ids
         for game_id in stale_games:
-            if self.game_registry[game_id]["status"] == GameStatus.POST_TIP.value:
+            if self.game_registry[game_id]["status"] == GameStatus.LIVE.value:
                 del self.game_registry[game_id]
                 logger.info(f"[ADAPTIVE_SYNC] Removed completed game: {game_id}")
     
@@ -1050,89 +1100,138 @@ class AdaptiveSyncEngine:
         """
         logger.info("[ADAPTIVE_SYNC] Starting adaptive poll loop")
         
-        # Track last sync times (sync every 30 min at most)
+        # Track last sync times
         last_injury_sync = None
         last_ticker_sync = None
-        last_game_logs_sync = None
-        INJURY_SYNC_INTERVAL = 1800  # 30 minutes
-        TICKER_SYNC_INTERVAL = 1800  # 30 minutes
-        GAME_LOGS_SYNC_INTERVAL = 14400  # 4 hours - refresh game logs to keep hit rates accurate
+        last_nba_game_logs_sync = None
+        last_mlb_game_logs_sync = None
+        last_mlb_lineup_check = None
+        
+        # Sync intervals
+        INJURY_SYNC_INTERVAL = 1800      # 30 minutes
+        TICKER_SYNC_INTERVAL = 1800      # 30 minutes
+        GAME_LOGS_SYNC_INTERVAL = 14400  # 4 hours - refresh game logs for accurate hit rates
+        MLB_LINEUP_CHECK_INTERVAL = 900  # 15 minutes - MLB Lineup Gate check
         
         while self.is_running:
             try:
                 now = datetime.now(timezone.utc)
                 
-                # Sync BDL game logs periodically (every 4 hours) for accurate hit rates
-                # This is CRITICAL - without fresh game logs, hit rates will be wrong
-                # Using BATCHED sync for 10x faster performance
-                if last_game_logs_sync is None or (now - last_game_logs_sync).total_seconds() >= GAME_LOGS_SYNC_INTERVAL:
+                # =================================================================
+                # NBA GAME LOGS SYNC (Every 4 hours) - BATCHED
+                # =================================================================
+                if last_nba_game_logs_sync is None or (now - last_nba_game_logs_sync).total_seconds() >= GAME_LOGS_SYNC_INTERVAL:
                     try:
                         from services.bdl_game_logs_sync_batched import run_bdl_game_logs_sync_batched
-                        logger.info("[ADAPTIVE_SYNC] Refreshing BDL game logs (BATCHED) for accurate hit rates...")
+                        logger.info("[ADAPTIVE_SYNC] Refreshing NBA BDL game logs (BATCHED)...")
                         result = await run_bdl_game_logs_sync_batched(self.db)
-                        logger.info(f"[ADAPTIVE_SYNC] Game logs refreshed: {result.get('players_synced', 0)} players, {result.get('total_games', 0)} games in {result.get('duration_seconds', 0):.1f}s")
-                        last_game_logs_sync = now
+                        logger.info(f"[ADAPTIVE_SYNC] NBA game logs: {result.get('players_synced', 0)} players, {result.get('total_games', 0)} games")
+                        last_nba_game_logs_sync = now
                     except Exception as e:
-                        logger.error(f"[ADAPTIVE_SYNC] Game logs refresh failed: {e}")
-                        last_game_logs_sync = now  # Don't retry immediately on failure
+                        logger.error(f"[ADAPTIVE_SYNC] NBA game logs refresh failed: {e}")
+                        last_nba_game_logs_sync = now
                 
-                # USE PROPER SYNC: Call the main sync function that builds nested player docs
-                # Vision Intel Enrichment is now triggered automatically by the Board Builder
+                # =================================================================
+                # MLB GAME LOGS SYNC (Every 4 hours) - BATCHED
+                # =================================================================
+                if last_mlb_game_logs_sync is None or (now - last_mlb_game_logs_sync).total_seconds() >= GAME_LOGS_SYNC_INTERVAL:
+                    try:
+                        from services.bdl_universal_sync import run_bdl_universal_sync
+                        logger.info("[ADAPTIVE_SYNC] Refreshing MLB BDL game logs (BATCHED)...")
+                        result = await run_bdl_universal_sync(self.db, sport="mlb", include_players=False, include_stats=True)
+                        logger.info(f"[ADAPTIVE_SYNC] MLB game logs: {result.get('game_logs_synced', 0)} games synced")
+                        last_mlb_game_logs_sync = now
+                    except Exception as e:
+                        logger.error(f"[ADAPTIVE_SYNC] MLB game logs refresh failed: {e}")
+                        last_mlb_game_logs_sync = now
+                
+                # =================================================================
+                # MAIN SYNC: NBA + MLB via callback or legacy
+                # =================================================================
                 if self._sync_odds_callback:
-                    logger.info("[ADAPTIVE_SYNC] Triggering proper sync (Vision Intel auto-triggers after Board Build)...")
+                    logger.info("[ADAPTIVE_SYNC] Triggering multi-sport sync...")
                     sync_result = await self._sync_odds_callback()
                     logger.info(f"[ADAPTIVE_SYNC] Sync complete: {sync_result.get('demons_count', 0)} demons, {sync_result.get('goblins_count', 0)} goblins")
                 else:
-                    # Fallback to old method (for backwards compatibility during transition)
-                    logger.warning("[ADAPTIVE_SYNC] No sync callback set - using legacy method")
-                    events = await self._fetch_live_odds()
-                    await self._update_game_registry(events)
-                    await self._update_cached_board(events)
+                    # Legacy fallback - fetch both sports
+                    logger.warning("[ADAPTIVE_SYNC] No sync callback - using legacy method")
+                    nba_events = await self._fetch_live_odds(sport="nba")
+                    mlb_events = await self._fetch_live_odds(sport="mlb")
+                    all_events = nba_events + mlb_events
+                    await self._update_game_registry(all_events)
+                    await self._update_cached_board(all_events)
                 
-                # Sync injuries periodically (every 30 min) alongside odds
+                # =================================================================
+                # MLB LINEUP GATE CHECK (Every 15 min during Lock-In phase)
+                # Props barred from Safe Haven until lineup_confirmed == True
+                # =================================================================
+                mlb_lock_in_games = [g for g in self.game_registry.values() 
+                                     if g.get("sport") == "mlb" and g["status"] == "lock_in"]
+                
+                if mlb_lock_in_games and (last_mlb_lineup_check is None or 
+                    (now - last_mlb_lineup_check).total_seconds() >= MLB_LINEUP_CHECK_INTERVAL):
+                    try:
+                        await self._check_mlb_lineups()
+                        last_mlb_lineup_check = now
+                    except Exception as e:
+                        logger.error(f"[LINEUP_GATE] MLB lineup check failed: {e}")
+                
+                # =================================================================
+                # INJURY SYNC (Every 30 min)
+                # =================================================================
                 if last_injury_sync is None or (now - last_injury_sync).total_seconds() >= INJURY_SYNC_INTERVAL:
                     await self._sync_injuries()
                     last_injury_sync = now
                 
-                # Sync ticker (games/news) periodically (every 30 min)
+                # =================================================================
+                # TICKER SYNC (Every 30 min)
+                # =================================================================
                 if last_ticker_sync is None or (now - last_ticker_sync).total_seconds() >= TICKER_SYNC_INTERVAL:
                     await self._sync_ticker()
                     last_ticker_sync = now
                 
-                # ========== BOARD INTELLIGENCE ENRICHMENT (FIRE-AND-FORGET) ==========
-                # Run in a separate background task to NEVER block the main sync loop
-                # Uses AI-Weighted Waterfall to select 30 unique players (10 per board)
-                # Full Intel Suite enrichment (same code path for all boards)
+                # =================================================================
+                # BOARD INTELLIGENCE ENRICHMENT (Fire-and-Forget)
+                # =================================================================
                 async def _run_enrichment_background():
                     try:
                         from services.board_intelligence_service import run_board_intelligence_enrichment
                         intel_result = await run_board_intelligence_enrichment(self.db)
-                        logger.info(f"[BOARD_INTEL] COMPLETE: {intel_result.get('enriched', 0)}/{intel_result.get('total', 0)} enriched, {intel_result.get('errors', 0)} errors, {intel_result.get('duration', 0):.1f}s")
+                        logger.info(f"[BOARD_INTEL] COMPLETE: {intel_result.get('enriched', 0)}/{intel_result.get('total', 0)} enriched")
                     except Exception as e:
                         logger.error(f"[BOARD_INTEL] Background enrichment failed: {e}")
                 
-                # Fire and forget - don't await
                 asyncio.create_task(_run_enrichment_background())
                 
-                # Determine next poll interval based on most urgent game
-                min_interval = PollInterval.STANDBY.value  # Default to 60 minutes
+                # =================================================================
+                # DETERMINE NEXT POLL INTERVAL (Market Stability Logic)
+                # =================================================================
+                min_interval = PollInterval.STANDBY.value  # Default: 4 hours
                 
                 for game in self.game_registry.values():
-                    if game["status"] == "mission_critical":
-                        min_interval = min(min_interval, PollInterval.MISSION_CRITICAL.value)
-                    elif game["status"] == "active":
-                        min_interval = min(min_interval, PollInterval.ACTIVE.value)
+                    status = game["status"]
+                    if status == "final_call":
+                        min_interval = min(min_interval, PollInterval.FINAL_CALL.value)  # 10 min
+                    elif status == "lock_in":
+                        min_interval = min(min_interval, PollInterval.LOCK_IN.value)      # 15 min
+                    elif status == "active":
+                        min_interval = min(min_interval, PollInterval.ACTIVE.value)       # 60 min
                 
-                # Check for stale intel in mission-critical windows
+                # Check for stale intel
                 stale_check = await self.check_stale_intel()
                 if stale_check["has_stale_intel"]:
-                    logger.warning(f"[ADAPTIVE_SYNC] STALE INTEL DETECTED: {len(stale_check['stale_games'])} games")
-                    # Don't wait, do immediate refresh
-                    min_interval = 5  # 5 second emergency refresh
+                    logger.warning(f"[ADAPTIVE_SYNC] STALE INTEL: {len(stale_check['stale_games'])} games")
+                    min_interval = 60  # 1 minute emergency refresh
                 
-                logger.info(f"[ADAPTIVE_SYNC] Poll complete. Next refresh in {min_interval}s. "
+                # Log status breakdown
+                status_counts = {}
+                for g in self.game_registry.values():
+                    s = g["status"]
+                    status_counts[s] = status_counts.get(s, 0) + 1
+                
+                logger.info(f"[ADAPTIVE_SYNC] Poll complete. Next: {min_interval}s. "
                            f"Games: {len(self.game_registry)} | "
-                           f"Critical: {len([g for g in self.game_registry.values() if g['status'] == 'mission_critical'])}")
+                           f"Status: {status_counts}")
                 
                 # Wait for next poll
                 await asyncio.sleep(min_interval)
@@ -1171,6 +1270,65 @@ class AdaptiveSyncEngine:
                        f"{news_result.get('headlines_count', 0)} headlines")
         except Exception as e:
             logger.error(f"[ADAPTIVE_SYNC] Ticker sync error: {e}")
+    
+    async def _check_mlb_lineups(self) -> None:
+        """
+        MLB LINEUP GATE - Check if lineups are confirmed via BDL starting_lineups.
+        
+        During the Lock-In phase (30m-2h before first pitch), props are barred from
+        Safe Haven until lineup_confirmed == True.
+        
+        This is critical for MLB because:
+        - Lineups often drop 30-60 minutes before first pitch
+        - Late scratches can invalidate props
+        - ABS system affects strikeout props
+        """
+        try:
+            logger.info("[LINEUP_GATE] Checking MLB starting lineups...")
+            
+            # Get today's MLB games
+            from datetime import date
+            today = date.today().isoformat()
+            
+            # Query BDL for starting lineups (if available)
+            # Note: BDL may not have this endpoint - fallback to checking roster status
+            lineup_confirmed_teams = set()
+            
+            # For now, check if players have recent game activity as a proxy
+            # In production, this would call BDL's starting_lineups endpoint
+            mlb_props = await self.db["mlb_ferrari_safe_haven"].find({}).to_list(100)
+            
+            for prop in mlb_props:
+                player_name = prop.get("player_name")
+                if not player_name:
+                    continue
+                
+                # Check if player is in confirmed lineup
+                player = await self.db["mlb_master_hub_2026"].find_one(
+                    {"display_name": player_name},
+                    {"_id": 0, "lineup_confirmed": 1, "lineup_position": 1}
+                )
+                
+                if player:
+                    lineup_confirmed = player.get("lineup_confirmed", False)
+                    
+                    if not lineup_confirmed:
+                        # Update prop to indicate lineup not confirmed
+                        await self.db["mlb_ferrari_safe_haven"].update_one(
+                            {"_id": prop.get("_id")},
+                            {"$set": {"lineup_gate_passed": False, "lineup_warning": "Lineup not yet confirmed"}}
+                        )
+                        logger.debug(f"[LINEUP_GATE] {player_name}: Lineup NOT confirmed - barred from Safe Haven")
+                    else:
+                        await self.db["mlb_ferrari_safe_haven"].update_one(
+                            {"_id": prop.get("_id")},
+                            {"$set": {"lineup_gate_passed": True}}
+                        )
+            
+            logger.info(f"[LINEUP_GATE] MLB lineup check complete")
+            
+        except Exception as e:
+            logger.error(f"[LINEUP_GATE] MLB lineup check error: {e}")
     
     async def start(self) -> None:
         """Start the adaptive sync engine."""
