@@ -833,6 +833,63 @@ async def scheduled_mlb_game_logs_sync():
         logger.error(f"[SCHEDULER] MLB BDL game logs sync failed: {e}")
 
 
+async def scheduled_mlb_daily_sync():
+    """
+    MLB Daily Sync - Runs at 4:03 AM EST (3 min after NBA daily sync).
+    
+    Runs the MLB Ferrari pipeline to refresh all MLB props and enrichments.
+    """
+    logger.info("=" * 70)
+    logger.info("[SCHEDULER] MLB DAILY SYNC (4:03 AM EST)")
+    logger.info(f"[SCHEDULER] Time: {datetime.now(timezone.utc).isoformat()}")
+    logger.info("=" * 70)
+    
+    try:
+        from services.mlb_ferrari_pipeline import run_mlb_ferrari_pipeline
+        
+        result = await run_mlb_ferrari_pipeline(db, save_to_db=True)
+        
+        logger.info(f"[SCHEDULER] MLB Ferrari Pipeline complete:")
+        logger.info(f"[SCHEDULER]   - Success: {result.get('success', False)}")
+        logger.info(f"[SCHEDULER]   - Props processed: {result.get('stats', {}).get('total_processed', 0)}")
+        logger.info(f"[SCHEDULER]   - Duration: {result.get('duration_seconds', 0):.1f}s")
+        logger.info("=" * 70)
+        
+    except Exception as e:
+        logger.error(f"[SCHEDULER] MLB daily sync failed: {e}")
+
+
+async def scheduled_mlb_game_values_sync():
+    """
+    MLB BDL Game Values Enrichment - Runs at 4:13 AM EST (3 min after NBA).
+    
+    Uses bdl_universal_sync to refresh game logs for all MLB players.
+    BATCHED: 25 players per API call.
+    """
+    logger.info("=" * 70)
+    logger.info("[SCHEDULER] MLB BDL GAME VALUES ENRICHMENT (4:13 AM EST)")
+    logger.info(f"[SCHEDULER] Time: {datetime.now(timezone.utc).isoformat()}")
+    logger.info("=" * 70)
+    
+    try:
+        from services.bdl_universal_sync import run_bdl_universal_sync
+        
+        # Only sync stats (game values), not players
+        result = await run_bdl_universal_sync(
+            db,
+            sport="mlb",
+            include_players=False,
+            include_stats=True
+        )
+        
+        logger.info(f"[SCHEDULER] MLB game values: {result.get('game_logs_synced', 0)} game logs synced")
+        logger.info(f"[SCHEDULER]   - Duration: {result.get('duration_seconds', 0):.1f}s")
+        logger.info("=" * 70)
+        
+    except Exception as e:
+        logger.error(f"[SCHEDULER] MLB game values sync failed: {e}")
+
+
 # =============================================================================
 # WEEKEND-READY INTERVAL JOBS (High-Performance Refresh)
 # =============================================================================
@@ -1237,7 +1294,17 @@ async def startup_event():
         scheduled_daily_sync,
         CronTrigger(hour=9, minute=0, timezone=SCHEDULER_TIMEZONE),  # 4:00 AM EST = 9:00 AM UTC
         id='daily_hard_refresh',
-        name='4:00 AM EST Daily Hard Refresh (Safety Backup)',
+        name='4:00 AM EST Daily Hard Refresh (NBA)',
+        replace_existing=True
+    )
+    
+    # MLB DAILY SYNC at 4:03 AM EST (9:03 AM UTC) - 3 min after NBA
+    # Runs MLB Ferrari pipeline for full props refresh
+    scheduler.add_job(
+        scheduled_mlb_daily_sync,
+        CronTrigger(hour=9, minute=3, timezone=SCHEDULER_TIMEZONE),  # 4:03 AM EST = 9:03 AM UTC
+        id='mlb_daily_refresh',
+        name='4:03 AM EST MLB Daily Refresh',
         replace_existing=True
     )
     
@@ -1364,7 +1431,17 @@ async def startup_event():
         scheduled_bdl_game_values_sync,
         CronTrigger(hour=9, minute=10, timezone=SCHEDULER_TIMEZONE),
         id='bdl_game_values_sync',
-        name='4:10 AM EST BDL Game Values Enrichment',
+        name='4:10 AM EST BDL Game Values Enrichment (NBA)',
+        replace_existing=True
+    )
+    
+    # MLB BDL Game Values Enrichment at 4:13 AM EST (9:13 AM UTC)
+    # 3 minutes after NBA to prevent API overload
+    scheduler.add_job(
+        scheduled_mlb_game_values_sync,
+        CronTrigger(hour=9, minute=13, timezone=SCHEDULER_TIMEZONE),
+        id='mlb_bdl_game_values_sync',
+        name='4:13 AM EST MLB BDL Game Values Enrichment',
         replace_existing=True
     )
     
@@ -1396,13 +1473,13 @@ async def startup_event():
         replace_existing=True
     )
     
-    # MLB BDL Game Logs Sync at 4:35 AM EST (09:35 AM UTC) - CRITICAL for MLB hit rates
-    # Runs 10 minutes after NBA to prevent BDL API overload
+    # MLB BDL Game Logs Sync at 4:28 AM EST (09:28 AM UTC) - CRITICAL for MLB hit rates
+    # 3 minutes after NBA to prevent BDL API overload
     scheduler.add_job(
         scheduled_mlb_game_logs_sync,
-        CronTrigger(hour=9, minute=35, timezone=SCHEDULER_TIMEZONE),  # 4:35 AM EST = 9:35 AM UTC
+        CronTrigger(hour=9, minute=28, timezone=SCHEDULER_TIMEZONE),  # 4:28 AM EST = 9:28 AM UTC
         id='mlb_bdl_game_logs_sync',
-        name='4:35 AM EST MLB BDL Game Logs Sync',
+        name='4:28 AM EST MLB BDL Game Logs Sync',
         replace_existing=True
     )
     
@@ -1415,11 +1492,11 @@ async def startup_event():
     logger.info(f"[SCHEDULER] Hourly Referee Sync: Every 60 min (id: hourly_referee_sync)")
     logger.info(f"[SCHEDULER] Live Injury Check: Every 5 min (id: live_injury_check)")
     logger.info(f"[SCHEDULER] Half-Hourly Social: Every 30 min (id: half_hourly_social_sync)")
-    logger.info(f"[SCHEDULER] === DAILY CRON JOBS ===")
-    logger.info(f"[SCHEDULER] Daily Hard Refresh: 04:00 AM EST (id: daily_hard_refresh)")
+    logger.info(f"[SCHEDULER] === DAILY CRON JOBS (NBA + MLB 3 min later) ===")
+    logger.info(f"[SCHEDULER] NBA Daily Refresh: 04:00 AM EST | MLB Daily: 04:03 AM EST")
     logger.info(f"[SCHEDULER] NBA.com L5/L10: 5 batches @ 04:00, 04:02, 04:04, 04:06, 04:08 AM EST")
-    logger.info(f"[SCHEDULER] NBA BDL Game Logs: 04:25 AM EST")
-    logger.info(f"[SCHEDULER] MLB BDL Game Logs: 04:35 AM EST (10 min after NBA)")
+    logger.info(f"[SCHEDULER] NBA BDL Game Values: 04:10 AM EST | MLB Game Values: 04:13 AM EST")
+    logger.info(f"[SCHEDULER] NBA BDL Game Logs: 04:25 AM EST | MLB Game Logs: 04:28 AM EST")
     logger.info(f"[SCHEDULER] Weekly Roster: Sunday 00:00 UTC")
     
     # AUTO-SYNC: Check if database is empty and trigger initial population
