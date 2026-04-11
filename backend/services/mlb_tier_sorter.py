@@ -73,7 +73,13 @@ class MLBTierSorter:
     
     async def _load_caches(self):
         """Load player logs and VK projections into memory."""
-        # Load player logs from master hub
+        from datetime import datetime
+        
+        # Current season (2026)
+        current_year = datetime.now().year
+        current_season = current_year
+        
+        # Load player logs from master hub - FILTER TO CURRENT SEASON ONLY
         master_hub = self.db["mlb_master_hub_2026"]
         players = await master_hub.find(
             {"bdl_game_logs": {"$exists": True, "$ne": []}},
@@ -83,9 +89,24 @@ class MLBTierSorter:
         for player in players:
             name = player.get("display_name", "").lower().strip()
             if name:
-                self._player_logs_cache[name] = player.get("bdl_game_logs", [])
+                all_logs = player.get("bdl_game_logs", [])
+                
+                # CRITICAL: Filter to ONLY current season (2026) games
+                # Check both 'season' field and date year
+                current_season_logs = []
+                for log in all_logs:
+                    season = log.get("season")
+                    date_str = log.get("date", "")
+                    
+                    # Include if season matches OR date is in current year
+                    if season == current_season:
+                        current_season_logs.append(log)
+                    elif date_str and str(current_season) in date_str[:4]:
+                        current_season_logs.append(log)
+                
+                self._player_logs_cache[name] = current_season_logs
         
-        logger.info(f"[TIER_SORTER] Loaded {len(self._player_logs_cache)} player logs")
+        logger.info(f"[TIER_SORTER] Loaded {len(self._player_logs_cache)} player logs (filtered to {current_season} season)")
         
         # Load VK projections
         vk_collection = self.db["mlb_vk_projections"]
@@ -346,7 +367,7 @@ class MLBTierSorter:
                 formatted.append({
                     "date": game.get("date"),
                     "value": val,
-                    "opponent": game.get("opponent") or game.get("opp_team")
+                    "opponent": game.get("opponent_abbr") or game.get("opponent") or game.get("opp_team")
                 })
         
         return formatted

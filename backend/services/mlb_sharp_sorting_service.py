@@ -339,9 +339,13 @@ class MLBSharpSortingService:
         
         SSOT: Uses mlb_master_hub_2026.bdl_game_logs as the single source of truth.
         This ensures consistency between pick cards, player detail views, and hit rate calculations.
+        IMPORTANT: Filters to CURRENT SEASON (2026) only.
         """
         if self._player_logs_cache:
             return  # Already loaded
+        
+        from datetime import datetime
+        current_season = datetime.now().year
         
         try:
             # SSOT: mlb_master_hub_2026.bdl_game_logs
@@ -354,8 +358,17 @@ class MLBSharpSortingService:
             for player_doc in all_players:
                 player_name = player_doc.get("display_name", "").lower().strip()
                 if player_name:
-                    self._player_logs_cache[player_name] = player_doc.get("bdl_game_logs", [])
-            logger.info(f"[SHARP_SORT] Loaded game logs from mlb_master_hub_2026 for {len(self._player_logs_cache)} MLB players")
+                    all_logs = player_doc.get("bdl_game_logs", [])
+                    
+                    # CRITICAL: Filter to current season only
+                    current_season_logs = [
+                        log for log in all_logs
+                        if log.get("season") == current_season or 
+                           (log.get("date", "")[:4] == str(current_season))
+                    ]
+                    
+                    self._player_logs_cache[player_name] = current_season_logs
+            logger.info(f"[SHARP_SORT] Loaded game logs from mlb_master_hub_2026 for {len(self._player_logs_cache)} MLB players (filtered to {current_season} season)")
         except Exception as e:
             logger.warning(f"[SHARP_SORT] Failed to load player logs cache: {e}")
     

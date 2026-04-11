@@ -16,6 +16,8 @@ SITUATIONAL INTEL:
 ORACLE WEIGHTING:
 - Priority 1: BvP (if sample > 15 PA)
 - Priority 2: Split Dominance (LHB vs RHP, etc.)
+
+IMPORTANT: All game log data is filtered to CURRENT SEASON (2026) only.
 """
 
 import logging
@@ -24,6 +26,20 @@ from datetime import datetime, timezone
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
 logger = logging.getLogger(__name__)
+
+# Current season for filtering
+CURRENT_SEASON = datetime.now().year
+
+
+def filter_current_season_logs(game_logs: List[Dict]) -> List[Dict]:
+    """Filter game logs to CURRENT SEASON only."""
+    if not game_logs:
+        return []
+    return [
+        log for log in game_logs
+        if log.get("season") == CURRENT_SEASON or 
+           (log.get("date", "")[:4] == str(CURRENT_SEASON) if log.get("date") else False)
+    ]
 
 # =============================================================================
 # MLB BADGE DEFINITIONS
@@ -368,7 +384,9 @@ class MLBBadgeService:
         if not pitcher:
             return None
         
-        game_logs = pitcher.get("bdl_game_logs", [])[:10]  # L10 starts
+        # CURRENT SEASON ONLY - then take L10
+        all_logs = filter_current_season_logs(pitcher.get("bdl_game_logs", []))
+        game_logs = all_logs[:10]  # L10 starts
         
         if len(game_logs) < 5:  # Need minimum sample
             return None
@@ -415,7 +433,8 @@ class MLBBadgeService:
         hr_baseline = baselines.get("home_runs", {})
         tb_baseline = baselines.get("total_bases", {})
         
-        game_logs = player.get("bdl_game_logs", [])
+        # CURRENT SEASON ONLY
+        game_logs = filter_current_season_logs(player.get("bdl_game_logs", []))
         
         # Accumulate last 25 PA worth of games
         total_pa = 0
@@ -662,11 +681,11 @@ class MLBBadgeService:
                 # Use higher of current or historical
                 k_per_9 = max(k_per_9, historical_k_per_9)
             
-            # Check game logs for strikeout consistency
-            game_logs = pitcher.get("bdl_game_logs", [])
+            # Check game logs for strikeout consistency - CURRENT SEASON ONLY
+            all_logs = filter_current_season_logs(pitcher.get("bdl_game_logs", []))
             k_per_9_recent = 0
-            if game_logs:
-                recent_logs = sorted(game_logs, key=lambda x: x.get("date", ""), reverse=True)[:10]
+            if all_logs:
+                recent_logs = sorted(all_logs, key=lambda x: x.get("date", ""), reverse=True)[:10]
                 total_k = sum((g.get("pitcher_strikeouts") or 0) for g in recent_logs)
                 total_ip = sum((g.get("innings_pitched") or 0) for g in recent_logs)
                 if total_ip > 0:

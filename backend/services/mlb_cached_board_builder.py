@@ -242,12 +242,21 @@ class MLBCachedBoardBuilder:
         - hit_rate_l5: % of L5 games over the line
         
         SSOT: Uses mlb_master_hub_2026.bdl_game_logs as the single source of truth.
+        IMPORTANT: Filters to CURRENT SEASON only.
         """
+        from datetime import datetime
+        current_season = datetime.now().year
+        
         stat_type = prop.get("stat_type", "")
         line = prop.get("line", 0)
         
-        # SSOT: mlb_master_hub_2026.bdl_game_logs
-        game_logs = player.get("bdl_game_logs", [])
+        # SSOT: mlb_master_hub_2026.bdl_game_logs - FILTER TO CURRENT SEASON
+        all_game_logs = player.get("bdl_game_logs", [])
+        game_logs = [
+            log for log in all_game_logs
+            if log.get("season") == current_season or 
+               (log.get("date", "")[:4] == str(current_season))
+        ]
         
         # Extract stat values
         l10_values, field_name = self.extract_stat_values(game_logs, stat_type, limit=10)

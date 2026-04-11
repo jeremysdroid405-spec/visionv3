@@ -7,6 +7,8 @@ Badge Categories:
 - Batters: Contact King, Barrel Master, High-Heat Trap
 - Pitchers: Workhorse, Zone Painter, Whiff Wizard, Short Leash
 - Environment: Wind Tunnel, Travel Lag
+
+IMPORTANT: All calculations use CURRENT SEASON data only (2026).
 """
 
 import logging
@@ -15,6 +17,26 @@ from datetime import datetime, timezone
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
 logger = logging.getLogger(__name__)
+
+# Current season for filtering
+CURRENT_SEASON = datetime.now().year
+
+
+def filter_current_season_logs(game_logs: List[Dict]) -> List[Dict]:
+    """
+    Filter game logs to include only CURRENT SEASON games.
+    
+    This is the CENTRAL function for season filtering to ensure consistency
+    across all MLB services.
+    """
+    if not game_logs:
+        return []
+    
+    return [
+        log for log in game_logs
+        if log.get("season") == CURRENT_SEASON or 
+           (log.get("date", "")[:4] == str(CURRENT_SEASON) if log.get("date") else False)
+    ]
 
 # =============================================================================
 # BADGE DEFINITIONS
@@ -134,8 +156,8 @@ class MLBVisionScout:
         return player
     
     def _calculate_whiff_rate(self, player: Dict) -> Optional[float]:
-        """Calculate whiff rate from game logs."""
-        game_logs = player.get("bdl_game_logs", [])
+        """Calculate whiff rate from game logs (CURRENT SEASON ONLY)."""
+        game_logs = filter_current_season_logs(player.get("bdl_game_logs", []))
         if len(game_logs) < 10:
             return None
         
@@ -158,8 +180,8 @@ class MLBVisionScout:
         return round(whiff_rate, 3)
     
     def _calculate_barrel_rate(self, player: Dict) -> Optional[float]:
-        """Estimate barrel rate from XBH and HR."""
-        game_logs = player.get("bdl_game_logs", [])
+        """Estimate barrel rate from XBH and HR (CURRENT SEASON ONLY)."""
+        game_logs = filter_current_season_logs(player.get("bdl_game_logs", []))
         if len(game_logs) < 10:
             return None
         
@@ -190,8 +212,8 @@ class MLBVisionScout:
         return round(min(barrel_rate, 0.25), 3)  # Cap at 25%
     
     def _calculate_k_rate(self, player: Dict, is_pitcher: bool = False) -> Optional[float]:
-        """Calculate strikeout rate."""
-        game_logs = player.get("bdl_game_logs", [])
+        """Calculate strikeout rate (CURRENT SEASON ONLY)."""
+        game_logs = filter_current_season_logs(player.get("bdl_game_logs", []))
         if len(game_logs) < 5:
             return None
         
@@ -227,8 +249,8 @@ class MLBVisionScout:
             return round(total_k / total_ab, 3)
     
     def _calculate_walk_rate(self, player: Dict) -> Optional[float]:
-        """Calculate walk rate for pitchers."""
-        game_logs = player.get("bdl_game_logs", [])
+        """Calculate walk rate for pitchers (CURRENT SEASON ONLY)."""
+        game_logs = filter_current_season_logs(player.get("bdl_game_logs", []))
         if len(game_logs) < 5:
             return None
         
@@ -248,8 +270,8 @@ class MLBVisionScout:
         return round(total_walks / total_bf, 3)
     
     def _check_workhorse(self, player: Dict, prop: Dict) -> bool:
-        """Check if pitcher qualifies as Workhorse."""
-        game_logs = player.get("bdl_game_logs", [])
+        """Check if pitcher qualifies as Workhorse (CURRENT SEASON ONLY)."""
+        game_logs = filter_current_season_logs(player.get("bdl_game_logs", []))
         if len(game_logs) < 5:
             return False
         
@@ -276,8 +298,8 @@ class MLBVisionScout:
         return avg_ip >= 6.0
     
     def _check_short_leash(self, player: Dict) -> bool:
-        """Check if pitcher has Short Leash warning."""
-        game_logs = player.get("bdl_game_logs", [])
+        """Check if pitcher has Short Leash warning (CURRENT SEASON ONLY)."""
+        game_logs = filter_current_season_logs(player.get("bdl_game_logs", []))
         if len(game_logs) < 4:
             return False
         
