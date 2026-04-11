@@ -128,7 +128,7 @@ class MLBOracleSummarizer:
             return False
     
     def _build_prop_prompt(self, prop: Dict, tier: str) -> str:
-        """Build prompt for a single prop."""
+        """Build prompt for a single prop with rich player-specific context."""
         player_name = prop.get("player_name", "Unknown")
         stat_type = prop.get("stat_type", "Unknown")
         line = prop.get("line", 0)
@@ -136,7 +136,40 @@ class MLBOracleSummarizer:
         edge_pct = prop.get("edge_pct", 0) or 0
         tp_odds = prop.get("tp_odds", 50) or 50
         h20_rate = prop.get("h20_rate") or prop.get("h10_rate") or 0
+        h5_rate = prop.get("h5_rate") or prop.get("hit_rate_l5") or 0
         cv = prop.get("cv")
+        
+        # Get averages
+        l5_avg = prop.get("l5_avg") or prop.get("l20_avg")
+        l10_avg = prop.get("l10_avg") or prop.get("l20_avg")
+        season_avg = prop.get("season_avg") or prop.get("l20_avg")
+        
+        # Get game logs for recent performance details
+        game_logs = prop.get("game_logs", [])
+        recent_games_str = ""
+        if game_logs and len(game_logs) >= 3:
+            last_3 = game_logs[:3]
+            recent_vals = []
+            for g in last_3:
+                val = g.get("value") or g.get("stat_value")
+                if val is not None:
+                    recent_vals.append(str(val))
+            if recent_vals:
+                recent_games_str = f"Last 3 games: {', '.join(recent_vals)}"
+        
+        # Determine hot/cold streak
+        streak_info = ""
+        if h5_rate and h20_rate:
+            if h5_rate >= h20_rate + 15:
+                streak_info = "HOT STREAK - L5 hit rate 15%+ above season average"
+            elif h5_rate <= h20_rate - 15:
+                streak_info = "COLD STREAK - L5 hit rate 15%+ below season average"
+            elif h5_rate >= 80:
+                streak_info = "LOCKED IN - hitting at 80%+ over L5"
+        
+        # Get matchup info
+        opponent = prop.get("opponent") or prop.get("opp_team") or prop.get("matchup")
+        matchup_str = f"vs {opponent}" if opponent else ""
         
         # Get badges
         badges = prop.get("scout_badges", [])
@@ -150,39 +183,43 @@ class MLBOracleSummarizer:
         
         # Tier context
         tier_vibes = {
-            "safe_haven": "This is a LOCK-tier play - we love these",
+            "safe_haven": "LOCK-tier play - we love these",
             "front_lines": "Solid VALUE play - good edge here",
             "war_zone": "HIGH VARIANCE moonshot - proceed with caution"
         }
         tier_vibe = tier_vibes.get(tier, tier)
         
-        prompt = f"""Give me your Inner-Circle take on this prop. Talk to me like a partner - use "we", contractions, and casual language. 3-4 flowing sentences, NO bullet points.
+        prompt = f"""Give me your Inner-Circle take on this prop. Talk like we're partners - use "we", contractions, casual language. 3-4 flowing sentences, NO bullet points.
 
 **THE PLAY:**
-- Player: {player_name}
+- Player: {player_name} {matchup_str}
 - Prop: {stat_type} OVER {line}
 - Our Edge: +{edge_pct}%
 - True Probability: {tp_odds}%
-- L20 Hit Rate: {h20_rate}%
+- L5 Hit Rate: {h5_rate}% | L20 Hit Rate: {h20_rate}%
+- L5 Avg: {l5_avg} | L10 Avg: {l10_avg} | Season Avg: {season_avg}
 - Consistency (CV): {cv}
+- {recent_games_str}
+- Trend: {streak_info if streak_info else "Steady performer"}
 
 **WHAT WE LIKE:** {badges_str}
 **WHAT CONCERNS US:** {warnings_str}
-
 **TIER:** {tier_vibe}
 
-Structure your response as:
-1. THE HOOK - Your vibe on this play (start with "I'm..." or "Listen, we..." or "This is...")
-2. THE MEAT - What the math says + what you're actually seeing
-3. THE 'BUT' - The one risk we need to watch
-4. THE VERDICT - "Let's ride" or "I'm passing" or "Small unit"
+IMPORTANT: Make this summary SPECIFIC to {player_name}'s actual numbers and situation. Reference their recent performance ({recent_games_str}), their averages ({l5_avg}/{season_avg}), and any streak ({streak_info}). 
 
-Make it UNIQUE to {player_name} - don't use a generic template. Reference April 2026 context if relevant (cold weather, ABS system, early-season pitch counts)."""
+Structure:
+1. HOOK - Your vibe on this play
+2. MEAT - The math + what you're seeing in their recent games
+3. BUT - The one risk 
+4. VERDICT - "Let's ride" or "I'm passing" or "Small unit"
+
+DO NOT write generic filler. Use {player_name}'s ACTUAL stats from above."""
         
         return prompt
     
     def _build_batch_prompt(self, props: List[Dict], tier: str) -> str:
-        """Build prompt for batch of props."""
+        """Build prompt for batch of props with rich player-specific context."""
         tier_context = {
             "safe_haven": "SAFE HAVEN - Our Lock-tier plays. We love these.",
             "front_lines": "FRONT LINES - Solid value plays. Good edge here.",
@@ -200,7 +237,40 @@ Make it UNIQUE to {player_name} - don't use a generic template. Reference April 
             line = prop.get("line", 0)
             tp_odds = prop.get("tp_odds", 50) or 50
             h20_rate = prop.get("h20_rate") or prop.get("h10_rate") or 0
+            h5_rate = prop.get("h5_rate") or prop.get("hit_rate_l5") or 0
             cv = prop.get("cv")
+            
+            # Get averages
+            l5_avg = prop.get("l5_avg") or prop.get("l20_avg") or "N/A"
+            l10_avg = prop.get("l10_avg") or prop.get("l20_avg") or "N/A"
+            season_avg = prop.get("season_avg") or prop.get("l20_avg") or "N/A"
+            
+            # Get game logs for recent performance
+            game_logs = prop.get("game_logs", [])
+            recent_games_str = ""
+            if game_logs and len(game_logs) >= 3:
+                last_3 = game_logs[:3]
+                recent_vals = []
+                for g in last_3:
+                    val = g.get("value") or g.get("stat_value")
+                    if val is not None:
+                        recent_vals.append(str(val))
+                if recent_vals:
+                    recent_games_str = f"Last 3: {', '.join(recent_vals)}"
+            
+            # Determine hot/cold streak
+            streak_info = ""
+            if h5_rate and h20_rate:
+                if h5_rate >= h20_rate + 15:
+                    streak_info = "HOT STREAK"
+                elif h5_rate <= h20_rate - 15:
+                    streak_info = "COLD"
+                elif h5_rate >= 80:
+                    streak_info = "LOCKED IN"
+            
+            # Get opponent
+            opponent = prop.get("opponent") or prop.get("opp_team") or ""
+            matchup_str = f"vs {opponent}" if opponent else ""
             
             # Calculate correct edge
             edge_pct = round(h20_rate - tp_odds, 1) if h20_rate and tp_odds else 0
@@ -210,11 +280,13 @@ Make it UNIQUE to {player_name} - don't use a generic template. Reference April 
             negative = [b.get('name', '') for b in badges if b.get('is_negative')]
             
             prompt += f"""---
-**PROP {i}: {player_name}**
+**PROP {i}: {player_name}** {matchup_str}
 - {stat_type} OVER {line}
-- Our Edge: +{edge_pct}% | True Prob: {tp_odds}%
-- L20 Hit Rate: {h20_rate}% | CV: {cv}
-- What We Like: {', '.join(positive) if positive else 'None'}
+- Edge: +{edge_pct}% | TP: {tp_odds}%
+- L5 Hit: {h5_rate}% | L20 Hit: {h20_rate}% | CV: {cv}
+- Avgs: L5={l5_avg}, L10={l10_avg}, Season={season_avg}
+- {recent_games_str} {f'| {streak_info}' if streak_info else ''}
+- Strengths: {', '.join(positive) if positive else 'None'}
 - Concerns: {', '.join(negative) if negative else 'None'}
 
 """
@@ -233,12 +305,13 @@ Make it UNIQUE to {player_name} - don't use a generic template. Reference April 
 ```
 
 CRITICAL RULES:
-- Each summary MUST be UNIQUE to that player - don't repeat templates
+- Each summary MUST reference that player's SPECIFIC numbers (their averages, recent games, streak status)
 - Use "we", "I'm", "us" - talk like partners
-- Structure: Hook (your vibe) → Meat (math + eyes) → But (the risk) → Verdict (let's ride or pass)
-- Reference April 2026 context naturally: cold weather, ABS system, early-season pitch counts
-- NO bullet points in summaries - flowing sentences only
+- Structure: Hook (vibe) → Meat (cite their actual L5/L20 numbers) → But (risk) → Verdict
+- Reference April 2026 context when relevant: cold weather, ABS system, pitch counts
+- NO bullet points - flowing sentences only
 - End with clear verdict: "Let's ride", "I'm passing", or "Small unit"
+- DO NOT use generic filler - cite the player's real stats provided above
 
 Provide ONLY the JSON array."""
         
@@ -343,7 +416,7 @@ Provide ONLY the JSON array."""
         return props
     
     def _generate_fallback_summary(self, prop: Dict, tier: str) -> str:
-        """Generate a fallback summary - Inner-Circle Consultant style with variety."""
+        """Generate a fallback summary using actual player-specific data."""
         import random
         
         player_name = prop.get("player_name", "Unknown")
@@ -351,97 +424,79 @@ Provide ONLY the JSON array."""
         line = prop.get("line", 0)
         tp_odds = prop.get("tp_odds", 50) or 50
         h20_rate = prop.get("h20_rate") or prop.get("h10_rate") or 0
+        h5_rate = prop.get("h5_rate") or prop.get("hit_rate_l5") or 0
         cv = prop.get("cv", 0.5) or 0.5
+        
+        # Get averages
+        l5_avg = prop.get("l5_avg") or prop.get("l20_avg")
+        season_avg = prop.get("season_avg") or prop.get("l20_avg")
+        
+        # Get recent games
+        game_logs = prop.get("game_logs", [])
+        last_3_str = ""
+        if game_logs and len(game_logs) >= 3:
+            vals = [str(g.get("value") or g.get("stat_value", "?")) for g in game_logs[:3]]
+            last_3_str = f"{', '.join(vals)} in his last 3"
         
         # Calculate correct edge: Hit Rate - True Probability
         edge_pct = round(h20_rate - tp_odds, 1) if h20_rate and tp_odds else 0
+        
+        # Determine streak
+        is_hot = h5_rate and h20_rate and h5_rate >= h20_rate + 10
+        is_cold = h5_rate and h20_rate and h5_rate <= h20_rate - 10
         
         badges = prop.get("scout_badges", [])
         positive_badge = next((b.get("name", "") for b in badges if b.get("is_positive")), None)
         negative_badge = next((b.get("name", "") for b in badges if b.get("is_negative")), None)
         
-        # Variety in hooks
-        hooks_safe = [
-            f"I'm all over this {player_name} line tonight.",
-            f"This is one of my favorite plays on the board - {player_name} looks locked in.",
-            f"We've got a real edge here with {player_name}.",
-            f"Listen, I've been waiting for this {player_name} spot all week.",
-        ]
-        
-        hooks_front = [
-            f"I'm leaning into this {player_name} play.",
-            f"The math on {player_name} is too good to ignore.",
-            f"We've got solid value here with {player_name}.",
-            f"This {player_name} line caught my eye.",
-        ]
-        
-        hooks_war = [
-            f"Alright, hear me out on {player_name}.",
-            f"This is a swing-for-the-fences play with {player_name}.",
-            f"I've been going back and forth on {player_name}.",
-            f"Listen, {player_name} is high risk but the upside is real.",
-        ]
-        
-        # Variety in meat
-        meats = [
-            f"The model has us at +{edge_pct}% edge and he's been crushing it with a {h20_rate}% hit rate over L20.",
-            f"We're seeing +{edge_pct}% edge here, and what I'm actually watching is a guy who's locked in at the plate.",
-            f"Numbers don't lie - {h20_rate}% hit rate with a +{edge_pct}% edge against what the books are offering.",
-            f"The edge is there mathematically at +{edge_pct}%, plus he's been putting the bat on the ball consistently.",
-        ]
-        
-        # Variety in buts
-        buts_low_risk = [
-            f"The only thing that could bite us is if they manage his pitch count in this April cold.",
-            f"My one concern is the early-season fatigue factor, but the ABS system is helping hitters right now.",
-            f"What could slow this down is the cold weather affecting bat speed, but the edge compensates.",
-        ]
-        
-        buts_high_risk = [
-            f"The catch is that {cv:.2f} CV means we're dealing with some variance here.",
-            f"My concern is the volatility - this guy can go cold quick.",
-            f"What worries me is the inconsistency, but the upside is worth a shot.",
-        ]
-        
-        # Variety in verdicts
-        verdicts_safe = [
-            "This is a full send for me. Let's ride on the More.",
-            "The edge is too good to pass up. Let's ride.",
-            "I'm locking this one in. Let's ride on the More.",
-        ]
-        
-        verdicts_front = [
-            "Worth the ride at this price. Let's do it.",
-            "I'm in on this one. The math works.",
-            "Solid play - let's ride.",
-        ]
-        
-        verdicts_war = [
-            "Small unit here - the variance is real but so is the upside.",
-            "I'm taking a shot with a smaller stake. High ceiling play.",
-            "Worth a sprinkle if you're feeling it.",
-        ]
-        
-        # Build summary based on tier
+        # Build UNIQUE hook based on actual situation
         if tier == "safe_haven":
-            hook = random.choice(hooks_safe)
-            meat = random.choice(meats)
-            but_text = random.choice(buts_low_risk)
-            verdict = random.choice(verdicts_safe)
+            if is_hot:
+                hook = f"I'm all over this {player_name} line - he's been on fire lately."
+            elif edge_pct >= 20:
+                hook = f"This {player_name} play is screaming value at +{edge_pct}% edge."
+            else:
+                hook = f"We've got a lock-tier play here with {player_name}."
         elif tier == "front_lines":
-            hook = random.choice(hooks_front)
-            meat = random.choice(meats)
-            but_text = random.choice(buts_low_risk if cv < 0.5 else buts_high_risk)
-            verdict = random.choice(verdicts_front)
+            if l5_avg and season_avg and l5_avg > season_avg:
+                hook = f"I'm leaning into {player_name} - his L5 average of {l5_avg} is above his season norm."
+            else:
+                hook = f"The math on {player_name} is solid - worth the ride."
         else:  # war_zone
-            hook = random.choice(hooks_war)
-            meat = random.choice(meats)
-            but_text = random.choice(buts_high_risk)
-            verdict = random.choice(verdicts_war)
+            if is_cold:
+                hook = f"Hear me out on {player_name} - yeah he's been cold, but the upside is real."
+            else:
+                hook = f"This is a swing-for-the-fences play with {player_name}."
         
-        # Add badge context if available
-        if positive_badge and random.random() > 0.5:
-            meat = f"He's got the {positive_badge} tag for a reason - {meat.lower()}"
+        # Build UNIQUE meat based on actual numbers
+        if last_3_str:
+            meat = f"He's put up {last_3_str} and is hitting at {h20_rate}% over his last 20 games against a line of {line}."
+        elif l5_avg and season_avg:
+            trend_text = "trending up" if l5_avg > season_avg else "steady"
+            meat = f"His L5 average of {l5_avg} vs season of {season_avg} shows he is {trend_text}, and the {h20_rate}% hit rate gives us a +{edge_pct}% edge."
+        else:
+            meat = f"The model has him at {h20_rate}% hit rate against this {line} line, giving us a +{edge_pct}% edge over the books."
+        
+        # Build UNIQUE but based on actual concerns
+        if cv >= 0.7:
+            but_text = f"My concern is the {cv:.2f} CV - this guy runs hot and cold."
+        elif is_cold:
+            but_text = f"He's been struggling lately with only {h5_rate}% over L5, so there's some cold weather in his bat."
+        elif negative_badge:
+            but_text = f"The {negative_badge} flag is worth watching here."
+        else:
+            but_text = "The April cold could slow things down, but the edge compensates."
+        
+        # Build UNIQUE verdict based on tier and data
+        if tier == "safe_haven":
+            if edge_pct >= 20:
+                verdict = "This is a full send. Let's ride on the More."
+            else:
+                verdict = "The edge is there. Let's ride."
+        elif tier == "front_lines":
+            verdict = "Worth the ride at this price."
+        else:  # war_zone
+            verdict = "Small unit - high variance but the ceiling is real."
         
         return f"{hook} {meat} {but_text} {verdict}"
 

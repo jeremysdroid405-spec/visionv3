@@ -296,6 +296,61 @@ class MLBTierSorter:
             tp = 100 / (sharp_odds + 100) * 100
         
         return round(tp, 1)
+
+    def _get_recent_game_logs(
+        self, 
+        player_name: str, 
+        stat_type: str, 
+        num_games: int = 5
+    ) -> List[Dict]:
+        """Get formatted recent game logs for Oracle context."""
+        player_key = player_name.lower().strip()
+        game_logs = self._player_logs_cache.get(player_key, [])
+        
+        if not game_logs:
+            return []
+        
+        stat_key = self._normalize_stat_type(stat_type)
+        stat_map = {
+            "hits": "hits",
+            "total_bases": "total_bases",
+            "rbis": "rbis",
+            "runs": "runs",
+            "hits+runs+rbis": ["hits", "runs", "rbis"],
+            "pitcher_strikeouts": "pitcher_strikeouts",
+            "pitching_outs": "innings_pitched",
+            "earned_runs": "earned_runs",
+            "batter_strikeouts": "batter_strikeouts",
+        }
+        
+        field = stat_map.get(stat_key, stat_key)
+        
+        # Sort by date descending
+        sorted_logs = sorted(
+            game_logs,
+            key=lambda x: x.get("date", "") or "",
+            reverse=True
+        )[:num_games]
+        
+        formatted = []
+        for game in sorted_logs:
+            if isinstance(field, list):
+                val = sum(game.get(f) or 0 for f in field)
+            elif field == "innings_pitched":
+                ip = game.get(field)
+                val = round(ip * 3) if ip else None
+            else:
+                val = game.get(field)
+            
+            if val is not None:
+                formatted.append({
+                    "date": game.get("date"),
+                    "value": val,
+                    "opponent": game.get("opponent") or game.get("opp_team")
+                })
+        
+        return formatted
+
     
     def check_safe_haven_gates(
         self,
@@ -575,6 +630,9 @@ class MLBTierSorter:
             else:
                 edge_pct = None
             
+            # Get recent game logs for Oracle context
+            recent_logs = self._get_recent_game_logs(player_name, stat_type, 5)
+            
             # Enrich prop with all hit rate data
             prop["cv"] = cv
             prop["h5_rate"] = h5_rate
@@ -587,6 +645,7 @@ class MLBTierSorter:
             prop["vk_predicted"] = vk_predicted
             prop["edge_pct"] = edge_pct
             prop["tp_odds"] = tp_odds
+            prop["game_logs"] = recent_logs  # For Oracle summaries
             
             is_goblin = prop.get("is_goblin", False)
             is_demon = prop.get("is_demon", False)

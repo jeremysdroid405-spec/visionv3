@@ -1780,8 +1780,18 @@ async def get_mlb_safe_haven_picks(
     collection = _db[get_collection_name("safe_haven", "mlb")]
     picks = await collection.find({}, {"_id": 0}).limit(limit).to_list(length=limit)
     
-    # Filter out TRAP picks
-    confirmed = [p for p in picks if p.get("vision_intel", {}).get("verdict") != "TRAP"]
+    # Filter out TRAP picks (vision_intel can be a string now or dict for legacy)
+    confirmed = []
+    for p in picks:
+        vi = p.get("vision_intel")
+        # If vision_intel is a string (new format), include it
+        # If it's a dict (legacy format), check verdict
+        if isinstance(vi, str):
+            confirmed.append(p)
+        elif isinstance(vi, dict) and vi.get("verdict") != "TRAP":
+            confirmed.append(p)
+        elif vi is None:
+            confirmed.append(p)
     
     return {
         "success": True,

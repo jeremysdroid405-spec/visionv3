@@ -25,6 +25,9 @@ Restructure the React/FastAPI betting app to a 100% Local-First Database Model, 
   - Phase 2: Vision Intel Scout Badges (`mlb_vision_scout.py`)
   - Phase 3: Gemini Oracle Summarizer (`mlb_oracle_summarizer.py`)
   - Phase 4: Save to Ferrari collections
+- [x] **Edge Calculation Bug Fix** - Edge = Hit Rate - True Probability (not DK odds)
+- [x] **Live MLB Ticker** - BDL scores + ESPN RSS news
+- [x] **TARGET-LOCK RATIONALE Player-Specific Summaries (April 11, 2026)** - Summaries now reference actual game logs (last 3), L5/season averages, hot/cold streaks, and CV concerns
 
 ### In Progress
 - [ ] MLB headshot sync (~700 players remaining)
@@ -34,6 +37,7 @@ Restructure the React/FastAPI betting app to a 100% Local-First Database Model, 
 - [ ] Weather API integration for Wind Tunnel badge
 - [ ] Google/Apple OAuth (Emergent-managed Google Auth)
 - [ ] Stripe payment integration
+- [ ] Refactor Dashboard.jsx into NBADashboard.jsx and MLBDashboard.jsx
 
 ## Technical Architecture
 
