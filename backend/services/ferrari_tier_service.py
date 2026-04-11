@@ -731,8 +731,26 @@ class FerrariTierService:
                     # Calculate implied probabilities (0 if no sharp data for demons)
                     sharp_implied = american_to_implied(effective_sharp) if effective_sharp else 0
                     
-                    # Get prop details
-                    stat_type = prop.get("stat_type", "").upper()
+                    # Get prop details - use stat_type_extracted or market as fallback
+                    stat_type = (prop.get("stat_type") or prop.get("stat_type_extracted") or "").upper()
+                    if not stat_type:
+                        # Extract from market field (e.g., "player_assists" -> "AST")
+                        market = prop.get("market", "")
+                        market_to_stat = {
+                            "player_points": "PTS",
+                            "player_rebounds": "REB",
+                            "player_assists": "AST",
+                            "player_threes": "3PM",
+                            "player_steals": "STL",
+                            "player_blocks": "BLK",
+                            "player_turnovers": "TO",
+                            "player_points_rebounds_assists": "PRA",
+                            "player_points_rebounds": "PR",
+                            "player_points_assists": "PA",
+                            "player_rebounds_assists": "RA"
+                        }
+                        stat_type = market_to_stat.get(market, "")
+                    
                     pp_line = prop.get("line", 0)
                     season_median = player_medians.get(stat_type)
                     
@@ -1363,7 +1381,17 @@ class FerrariTierService:
             
             for prop in all_oracle_props:
                 player_name = prop.get("player_name", "")
-                stat_type = prop.get("stat_type", "")
+                stat_type = (prop.get("stat_type") or prop.get("stat_type_extracted") or "").upper()
+                if not stat_type:
+                    market = prop.get("market", "")
+                    market_to_stat = {
+                        "player_points": "PTS", "player_rebounds": "REB", "player_assists": "AST",
+                        "player_threes": "3PM", "player_steals": "STL", "player_blocks": "BLK",
+                        "player_turnovers": "TO", "player_points_rebounds_assists": "PRA",
+                        "player_points_rebounds": "PR", "player_points_assists": "PA",
+                        "player_rebounds_assists": "RA"
+                    }
+                    stat_type = market_to_stat.get(market, "")
                 line = prop.get("line", 0)
                 
                 # Get DK odds from lookup (dg_cached_board has the fresh odds)
