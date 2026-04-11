@@ -374,16 +374,30 @@ class MLBVisionScout:
         """Evaluate environment badges."""
         badges = []
         
-        # Wind Tunnel - Wind Out > 12mph
+        # Wind Tunnel - Check weather service data
         if weather:
-            wind_speed = weather.get("wind_speed", 0)
-            wind_direction = weather.get("wind_direction", "")
-            
-            # Check if wind is blowing out
-            if wind_speed >= 12 and wind_direction.lower() in ["out", "outfield", "cf", "center"]:
+            # New format from MLBWeatherService
+            if weather.get("is_favorable"):
                 badge = {**ENVIRONMENT_BADGES["wind_tunnel"]}
-                badge["metrics"] = {"wind_speed": wind_speed, "direction": wind_direction}
+                badge["description"] = weather.get("description", "Favorable wind conditions")
+                badge["metrics"] = {
+                    "wind_speed": weather.get("wind_speed", 0),
+                    "wind_effect": weather.get("wind_effect", "out"),
+                    "impact_score": weather.get("wind_impact_score", 0),
+                    "stadium": weather.get("stadium", "")
+                }
                 badges.append(badge)
+            
+            # Legacy format support
+            elif weather.get("wind_speed", 0) >= 12:
+                wind_effect = weather.get("wind_effect", "").lower()
+                if wind_effect in ["out", "outfield", "cf", "center"]:
+                    badge = {**ENVIRONMENT_BADGES["wind_tunnel"]}
+                    badge["metrics"] = {
+                        "wind_speed": weather.get("wind_speed"),
+                        "direction": weather.get("wind_effect")
+                    }
+                    badges.append(badge)
         
         # Travel Lag - First game after cross-country flight
         if is_travel_game:

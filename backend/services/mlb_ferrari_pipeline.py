@@ -72,24 +72,58 @@ class MLBFerrariPipeline:
         logger.info(f"  ✓ War Zone: {len(war_zone)} props qualified")
         
         # =====================================================================
-        # PHASE 2: Vision Intel Scout Badges
+        # PHASE 2: Vision Intel Scout Badges + Weather
         # =====================================================================
         logger.info("\n[PHASE 2] Evaluating Vision Intel Scout Badges...")
         
+        # Fetch weather for all unique teams
+        from services.mlb_weather_service import get_weather_service
+        weather_service = get_weather_service()
+        
+        # Get unique teams from props
+        all_props = safe_haven + front_lines + war_zone
+        unique_teams = set()
+        for prop in all_props:
+            team = prop.get("team") or prop.get("opp_team") or ""
+            if team:
+                unique_teams.add(team.upper())
+        
+        # Fetch weather for all teams
+        weather_map = {}
+        if unique_teams:
+            logger.info(f"  Fetching weather for {len(unique_teams)} stadiums...")
+            weather_map = await weather_service.get_weather_for_games(list(unique_teams))
+            wind_favorable = sum(1 for w in weather_map.values() if w and w.get("is_favorable"))
+            logger.info(f"  ✓ Weather fetched: {wind_favorable} stadiums with favorable wind")
+        
         async def add_badges(props: List[Dict]) -> List[Dict]:
-            """Add scout badges to props."""
+            """Add scout badges to props including weather-based badges."""
             for prop in props:
                 player_name = prop.get("player_name", "")
                 stat_type = prop.get("stat_type", "").lower()
                 is_pitcher = "pitcher" in stat_type or "earned" in stat_type or "out" in stat_type
                 
+                # Get weather for this prop's team
+                team = prop.get("team") or prop.get("opp_team") or ""
+                weather = weather_map.get(team.upper()) if team else None
+                
                 badges = await self.vision_scout.evaluate_all_badges(
                     player_name=player_name,
                     prop=prop,
-                    is_pitcher=is_pitcher
+                    is_pitcher=is_pitcher,
+                    weather=weather
                 )
                 
                 prop["scout_badges"] = badges
+                
+                # Add weather info to prop for Oracle context
+                if weather:
+                    prop["weather"] = {
+                        "description": weather.get("description"),
+                        "wind_speed": weather.get("wind_speed"),
+                        "wind_effect": weather.get("wind_effect"),
+                        "is_favorable": weather.get("is_favorable")
+                    }
             
             return props
         
