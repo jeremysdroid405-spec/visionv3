@@ -797,6 +797,42 @@ async def scheduled_bdl_game_logs_sync():
         logger.error(f"[SCHEDULER] BDL game logs sync failed: {e}")
 
 
+async def scheduled_mlb_game_logs_sync():
+    """
+    Scheduled job that runs at 4:35 AM EST (09:35 UTC) daily.
+    10 minutes after NBA sync to prevent API overload.
+    
+    Syncs game-by-game stats from BDL /mlb/v1/stats endpoint for all MLB players.
+    This data is CRITICAL for accurate per-line hit rate calculations.
+    
+    The sync fetches 2026 season data and stores it in
+    mlb_master_hub_2026.bdl_game_logs for each player.
+    """
+    logger.info("=" * 70)
+    logger.info("[SCHEDULER] MLB BDL GAME LOGS SYNC (2026 SEASON)")
+    logger.info(f"[SCHEDULER] Time: {datetime.now(timezone.utc).isoformat()}")
+    logger.info("=" * 70)
+    
+    try:
+        from services.bdl_universal_sync import run_bdl_universal_sync
+        
+        result = await run_bdl_universal_sync(
+            db,
+            sport="mlb",
+            include_players=True,
+            include_stats=True
+        )
+        
+        logger.info(f"[SCHEDULER] MLB BDL Game Logs sync complete:")
+        logger.info(f"[SCHEDULER]   - Players synced: {result.get('players_synced', 0)}")
+        logger.info(f"[SCHEDULER]   - Game logs: {result.get('game_logs_synced', 0)}")
+        logger.info(f"[SCHEDULER]   - Duration: {result.get('duration_seconds', 0):.1f}s")
+        logger.info("=" * 70)
+        
+    except Exception as e:
+        logger.error(f"[SCHEDULER] MLB BDL game logs sync failed: {e}")
+
+
 # =============================================================================
 # WEEKEND-READY INTERVAL JOBS (High-Performance Refresh)
 # =============================================================================
@@ -1356,7 +1392,17 @@ async def startup_event():
         scheduled_bdl_game_logs_sync,
         CronTrigger(hour=9, minute=25, timezone=SCHEDULER_TIMEZONE),  # 4:25 AM EST = 9:25 AM UTC
         id='bdl_game_logs_sync',
-        name='4:25 AM EST BDL Game Logs Sync',
+        name='4:25 AM EST BDL Game Logs Sync (NBA)',
+        replace_existing=True
+    )
+    
+    # MLB BDL Game Logs Sync at 4:35 AM EST (09:35 AM UTC) - CRITICAL for MLB hit rates
+    # Runs 10 minutes after NBA to prevent BDL API overload
+    scheduler.add_job(
+        scheduled_mlb_game_logs_sync,
+        CronTrigger(hour=9, minute=35, timezone=SCHEDULER_TIMEZONE),  # 4:35 AM EST = 9:35 AM UTC
+        id='mlb_bdl_game_logs_sync',
+        name='4:35 AM EST MLB BDL Game Logs Sync',
         replace_existing=True
     )
     
@@ -1372,7 +1418,8 @@ async def startup_event():
     logger.info(f"[SCHEDULER] === DAILY CRON JOBS ===")
     logger.info(f"[SCHEDULER] Daily Hard Refresh: 04:00 AM EST (id: daily_hard_refresh)")
     logger.info(f"[SCHEDULER] NBA.com L5/L10: 5 batches @ 04:00, 04:02, 04:04, 04:06, 04:08 AM EST")
-    logger.info(f"[SCHEDULER] BDL Game Logs: 04:25 AM EST")
+    logger.info(f"[SCHEDULER] NBA BDL Game Logs: 04:25 AM EST")
+    logger.info(f"[SCHEDULER] MLB BDL Game Logs: 04:35 AM EST (10 min after NBA)")
     logger.info(f"[SCHEDULER] Weekly Roster: Sunday 00:00 UTC")
     
     # AUTO-SYNC: Check if database is empty and trigger initial population
