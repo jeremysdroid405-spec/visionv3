@@ -1,12 +1,9 @@
 """
 MLB Oracle Summarizer Service
 ==============================
-Gemini-powered professional prop analyst with tier-based routing.
+Gemini-powered professional prop analyst.
 
-Routing:
-- Safe Haven (Top 10): gemini-3.1-pro-preview (premium analysis)
-- Front Lines & War Zone: gemini-3-flash-preview (volume processing)
-
+Model: gemini-3.1-flash
 Batch Processing: 10-15 props per API call for efficiency.
 Output: JSON array with player_id and scout_summary.
 """
@@ -25,11 +22,11 @@ load_dotenv()
 
 logger = logging.getLogger(__name__)
 
-# API Key - Use Emergent LLM Key for better quota
-EMERGENT_LLM_KEY = os.environ.get("EMERGENT_LLM_KEY")
+# API Key
+GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY")
 
-# Single model for all tiers - gemini-3-flash-preview for volume processing
-MODEL = "gemini-3-flash-preview"
+# Model
+MODEL = "gemini-3.1-flash"
 
 # Batch size
 BATCH_SIZE = 12
@@ -60,39 +57,39 @@ OUTPUT: Return ONLY a valid JSON array. Each object must have exactly:
 
 
 class MLBOracleSummarizer:
-    """MLB Oracle Summarizer with tier-based model routing."""
+    """MLB Oracle Summarizer using Google Gemini SDK."""
     
     def __init__(self, db: AsyncIOMotorDatabase):
         self.db = db
-        self._chat = None
+        self._model = None
     
-    def _initialize_chat(self):
-        """Initialize Emergent LLM Chat."""
-        if not EMERGENT_LLM_KEY:
-            logger.error("[ORACLE] EMERGENT_LLM_KEY not configured")
+    def _initialize_model(self):
+        """Initialize Google Gemini model."""
+        if not GOOGLE_API_KEY:
+            logger.error("[ORACLE] GOOGLE_API_KEY not configured")
             return None
         
         try:
-            from emergentintegrations.llm.chat import LlmChat
+            import google.generativeai as genai
             
-            chat = LlmChat(
-                api_key=EMERGENT_LLM_KEY,
-                session_id=f"mlb-oracle-{datetime.now().strftime('%Y%m%d%H%M%S')}",
-                system_message=ORACLE_SYSTEM_PROMPT
-            ).with_model("gemini", MODEL)
+            genai.configure(api_key=GOOGLE_API_KEY)
+            model = genai.GenerativeModel(
+                model_name=MODEL,
+                system_instruction=ORACLE_SYSTEM_PROMPT
+            )
             
             logger.info(f"[ORACLE] Initialized {MODEL}")
-            return chat
+            return model
             
         except Exception as e:
             logger.error(f"[ORACLE] Failed to initialize: {e}")
             return None
     
-    def _get_chat(self):
-        """Get chat instance."""
-        if self._chat is None:
-            self._chat = self._initialize_chat()
-        return self._chat
+    def _get_model(self):
+        """Get model instance."""
+        if self._model is None:
+            self._model = self._initialize_model()
+        return self._model
     
     def _build_batch_payload(self, props: List[Dict]) -> str:
         """Build batch payload for Gemini API."""
@@ -153,20 +150,18 @@ Remember:
     
     async def _call_gemini_batch(self, props: List[Dict]) -> List[Dict]:
         """Call Gemini API with batched props."""
-        chat = self._get_chat()
+        model = self._get_model()
         
-        if chat is None:
-            logger.warning("[ORACLE] Chat not available, using fallback")
+        if model is None:
+            logger.warning("[ORACLE] Model not available, using fallback")
             return self._generate_fallback_batch(props)
         
         try:
-            from emergentintegrations.llm.chat import UserMessage
-            
             prompt = self._build_batch_payload(props)
-            message = UserMessage(text=prompt)
             
-            response = await chat.send_message(message)
-            response_text = response.strip()
+            # Call Gemini API
+            response = await model.generate_content_async(prompt)
+            response_text = response.text.strip()
             
             # Parse JSON response
             if "```json" in response_text:
