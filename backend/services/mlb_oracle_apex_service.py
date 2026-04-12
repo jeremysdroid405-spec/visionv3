@@ -479,7 +479,7 @@ class MLBOracleApexService:
             return False, "NOT_GOBLIN: Only green props allowed in Safe Haven"
         
         # 3. Lineup must be confirmed
-        if not is_lineup_confirmed:
+        if is_lineup_confirmed is False:
             return False, "LINEUP_NOT_CONFIRMED: Player lineup status unverified"
         
         # 4. Weather hard-stop for batter props
@@ -571,6 +571,19 @@ class MLBOracleApexService:
             "K": {"max_cv": 0.45, "min_l20": 15, "min_edge": 1.00, "min_tp": 75.0},
             "OUTS": {"max_cv": 0.30, "min_l20": 17, "min_edge": 1.50, "min_tp": 80.0},
             "HRR": {"max_cv": 0.55, "min_l20": 16, "min_edge": 0.45, "min_tp": 70.0},
+            # Additional batter stats
+            "RBIS": {"max_cv": 0.80, "min_l20": 14, "min_edge": 0.25, "min_tp": 65.0},
+            "RUNS": {"max_cv": 0.85, "min_l20": 13, "min_edge": 0.25, "min_tp": 65.0},
+            "SINGLES": {"max_cv": 0.65, "min_l20": 15, "min_edge": 0.25, "min_tp": 68.0},
+            "DOUBLES": {"max_cv": 0.90, "min_l20": 12, "min_edge": 0.20, "min_tp": 60.0},
+            "HR": {"max_cv": 1.20, "min_l20": 10, "min_edge": 0.15, "min_tp": 55.0},
+            "SB": {"max_cv": 1.00, "min_l20": 11, "min_edge": 0.20, "min_tp": 58.0},
+            "BB": {"max_cv": 0.85, "min_l20": 13, "min_edge": 0.25, "min_tp": 62.0},
+            "BATTER_K": {"max_cv": 0.70, "min_l20": 14, "min_edge": 0.30, "min_tp": 65.0},
+            # Pitcher stats
+            "HITS_ALLOWED": {"max_cv": 0.65, "min_l20": 14, "min_edge": 0.50, "min_tp": 68.0},
+            "ER": {"max_cv": 0.80, "min_l20": 13, "min_edge": 0.40, "min_tp": 65.0},
+            "WALKS": {"max_cv": 0.85, "min_l20": 12, "min_edge": 0.35, "min_tp": 60.0},
         }
         
         # Stat type aliases mapping to threshold keys
@@ -579,11 +592,25 @@ class MLBOracleApexService:
             "TOTAL BASES": "TB", "TB": "TB", "TOTAL_BASES": "TB",
             "PITCHER STRIKEOUTS": "K", "K": "K", "PITCHER_STRIKEOUTS": "K", "STRIKEOUTS": "K",
             "PITCHING OUTS": "OUTS", "OUTS": "OUTS", "PITCHING_OUTS": "OUTS", "OUTS RECORDED": "OUTS",
+            "PITCHER OUTS": "OUTS", "PITCHER_OUTS": "OUTS",
             "HRR": "HRR", "HITS+RUNS+RBIS": "HRR", "HITS_RUNS_RBIS": "HRR",
+            # Additional batter stats
+            "RBIS": "RBIS", "RBI": "RBIS",
+            "RUNS": "RUNS", "RUNS SCORED": "RUNS",
+            "SINGLES": "SINGLES",
+            "DOUBLES": "DOUBLES",
+            "HOME RUNS": "HR", "HR": "HR", "HOME_RUNS": "HR",
+            "STOLEN BASES": "SB", "SB": "SB", "STOLEN_BASES": "SB",
+            "BATTER WALKS": "BB", "BB": "BB", "BATTER_WALKS": "BB", "WALKS": "BB",
+            "BATTER STRIKEOUTS": "BATTER_K", "BATTER_STRIKEOUTS": "BATTER_K",
+            # Pitcher stats
+            "HITS ALLOWED": "HITS_ALLOWED", "HITS_ALLOWED": "HITS_ALLOWED",
+            "EARNED RUNS": "ER", "ER": "ER", "EARNED_RUNS": "ER",
+            "WALKS ALLOWED": "WALKS", "WALKS_ALLOWED": "WALKS",
         }
         
         # Batter stats affected by wind
-        BATTER_STATS = {"HITS", "TB", "HRR"}
+        BATTER_STATS = {"HITS", "TB", "HRR", "RBIS", "RUNS", "SINGLES", "DOUBLES", "HR", "SB", "BB"}
         
         # Track gate statistics
         gate_stats = {
@@ -634,7 +661,7 @@ class MLBOracleApexService:
             
             # 1c. Lineup Status: is_lineup_confirmed MUST be True
             is_lineup_confirmed = prop.get("is_lineup_confirmed")
-            if not is_lineup_confirmed:
+            if is_lineup_confirmed is False:
                 gate_stats['lineup_not_confirmed'] += 1
                 continue
             
@@ -643,7 +670,7 @@ class MLBOracleApexService:
             # ================================================================
             
             # Get raw VK projection
-            raw_vk_pred = prop.get("vk_predicted") or prop.get("raw_vk_pred")
+            raw_vk_pred = prop.get("vk_predicted") or prop.get("raw_vk_pred") or prop.get("season_average")
             if not raw_vk_pred or raw_vk_pred <= 0:
                 continue
             
@@ -680,43 +707,30 @@ class MLBOracleApexService:
             # 3. THE 3-GATE CHECK
             # ================================================================
             
-            # Get hit data and games played
+            # Get L20 data
             l20_hits = prop.get("l20_hits")
-            games_played = prop.get("games_played_l20") or prop.get("games_in_sample") or 20
             cv = prop.get("cv") or prop.get("vk_cv")
             tp_prob = prop.get("vk_prob_over") or prop.get("vk_probability") or prop.get("pinnacle_tp")
             
             # If L20 hits not directly available, calculate from hit rate
+            # MLB boards primarily use hit_rate_l10, so fall back to that
             if l20_hits is None:
-                h20_rate = prop.get("h20_rate") or prop.get("hit_rate_l20")
+                h20_rate = prop.get("h20_rate") or prop.get("hit_rate_l20") or prop.get("hit_rate_l10")
                 if h20_rate is not None:
-                    # Calculate hits based on actual games played (not always 20)
-                    effective_games = min(games_played, 20)
-                    l20_hits = int((h20_rate / 100) * effective_games)
+                    # Scale L10 rate to L20 equivalent (proportional estimation)
+                    games_played = prop.get("games_played", 10)
+                    l20_hits = int((h20_rate / 100) * min(games_played, 20))
                 else:
                     # Cannot evaluate without hit data
                     gate_stats['gate1_fail'] += 1
                     continue
             
-            # ----------------------------------------------------------------
-            # GATE 1: Percentage-Based Hit Rate (Dynamic Sample Size)
-            # ----------------------------------------------------------------
-            # Convert min_l20 to required percentage: e.g., 16/20 = 0.80 (80%)
-            required_pct = cfg["min_l20"] / 20.0
-            
-            # Calculate actual games in sample (capped at 20)
-            effective_games = min(games_played, 20)
-            
-            # SAMPLE SIZE FLOOR: Reject players with < 5 games of data
-            if effective_games < 5:
-                gate_stats['gate1_fail'] += 1
-                continue
-            
-            # Calculate actual hit rate based on games played
-            actual_hit_rate = l20_hits / effective_games if effective_games > 0 else 0
-            
-            # Primary Check: actual_hit_rate >= required_pct
-            if actual_hit_rate < required_pct:
+            # GATE 1: Strict Hit Rate (L20)
+            # Must hit in >= min_l20 out of last 20 games (NO recency exceptions)
+            # For early season with fewer games, scale proportionally
+            games_played = prop.get("games_played", 20)
+            required_hits = int(cfg["min_l20"] * min(games_played, 20) / 20)
+            if l20_hits < required_hits:
                 gate_stats['gate1_fail'] += 1
                 continue
             
@@ -941,6 +955,18 @@ class MLBOracleApexService:
             "K": {"max_cv": 0.60, "min_l20": 13, "min_edge": 0.80},
             "OUTS": {"max_cv": 0.50, "min_l20": 14, "min_edge": 1.00},
             "HRR": {"max_cv": 0.75, "min_l20": 13, "min_edge": 0.30},
+            # Additional stats
+            "RBIS": {"max_cv": 0.95, "min_l20": 11, "min_edge": 0.20},
+            "RUNS": {"max_cv": 1.00, "min_l20": 10, "min_edge": 0.20},
+            "SINGLES": {"max_cv": 0.80, "min_l20": 12, "min_edge": 0.20},
+            "DOUBLES": {"max_cv": 1.10, "min_l20": 9, "min_edge": 0.15},
+            "HR": {"max_cv": 1.40, "min_l20": 7, "min_edge": 0.10},
+            "SB": {"max_cv": 1.20, "min_l20": 8, "min_edge": 0.15},
+            "BB": {"max_cv": 1.00, "min_l20": 10, "min_edge": 0.20},
+            "BATTER_K": {"max_cv": 0.85, "min_l20": 11, "min_edge": 0.25},
+            "HITS_ALLOWED": {"max_cv": 0.80, "min_l20": 11, "min_edge": 0.40},
+            "ER": {"max_cv": 0.95, "min_l20": 10, "min_edge": 0.30},
+            "WALKS": {"max_cv": 1.00, "min_l20": 9, "min_edge": 0.25},
         }
         
         # Stat type aliases mapping to threshold keys
@@ -949,7 +975,19 @@ class MLBOracleApexService:
             "TOTAL BASES": "TB", "TB": "TB", "TOTAL_BASES": "TB",
             "PITCHER STRIKEOUTS": "K", "K": "K", "PITCHER_STRIKEOUTS": "K", "STRIKEOUTS": "K",
             "PITCHING OUTS": "OUTS", "OUTS": "OUTS", "PITCHING_OUTS": "OUTS", "OUTS RECORDED": "OUTS",
+            "PITCHER OUTS": "OUTS", "PITCHER_OUTS": "OUTS",
             "HRR": "HRR", "HITS+RUNS+RBIS": "HRR", "HITS_RUNS_RBIS": "HRR",
+            "RBIS": "RBIS", "RBI": "RBIS",
+            "RUNS": "RUNS", "RUNS SCORED": "RUNS",
+            "SINGLES": "SINGLES",
+            "DOUBLES": "DOUBLES",
+            "HOME RUNS": "HR", "HR": "HR", "HOME_RUNS": "HR",
+            "STOLEN BASES": "SB", "SB": "SB", "STOLEN_BASES": "SB",
+            "BATTER WALKS": "BB", "BB": "BB", "BATTER_WALKS": "BB", "WALKS": "BB",
+            "BATTER STRIKEOUTS": "BATTER_K", "BATTER_STRIKEOUTS": "BATTER_K",
+            "HITS ALLOWED": "HITS_ALLOWED", "HITS_ALLOWED": "HITS_ALLOWED",
+            "EARNED RUNS": "ER", "ER": "ER", "EARNED_RUNS": "ER",
+            "WALKS ALLOWED": "WALKS", "WALKS_ALLOWED": "WALKS",
         }
         
         # DK Odds range for Front Lines
@@ -1014,7 +1052,7 @@ class MLBOracleApexService:
             
             # 1c. Lineup Status: is_lineup_confirmed MUST be True
             is_lineup_confirmed = prop.get("is_lineup_confirmed")
-            if not is_lineup_confirmed:
+            if is_lineup_confirmed is False:
                 gate_stats['lineup_not_confirmed'] += 1
                 continue
             
@@ -1029,7 +1067,7 @@ class MLBOracleApexService:
             # ================================================================
             
             # Get raw VK projection
-            raw_vk_pred = prop.get("vk_predicted") or prop.get("raw_vk_pred")
+            raw_vk_pred = prop.get("vk_predicted") or prop.get("raw_vk_pred") or prop.get("season_average")
             if not raw_vk_pred or raw_vk_pred <= 0:
                 continue
             
@@ -1066,22 +1104,18 @@ class MLBOracleApexService:
             # 3. THE 3-GATE CHECK with RECENCY OVERRIDE
             # ================================================================
             
-            # Get hit data and games played
+            # Get L20 and L10 hit data
             l20_hits = prop.get("l20_hits")
             l10_hits = prop.get("l10_hits")
-            games_played_l20 = prop.get("games_played_l20") or prop.get("games_in_sample") or 20
-            games_played_l10 = prop.get("games_played_l10") or min(games_played_l20, 10)
             cv = prop.get("cv") or prop.get("vk_cv")
-            
-            # Calculate effective games (capped at sample size)
-            effective_games_l20 = min(games_played_l20, 20)
-            effective_games_l10 = min(games_played_l10, 10)
+            games_played = prop.get("games_played", 10)
             
             # If L20 hits not directly available, calculate from hit rate
+            # MLB boards primarily use hit_rate_l10, so fall back to that
             if l20_hits is None:
-                h20_rate = prop.get("h20_rate") or prop.get("hit_rate_l20")
+                h20_rate = prop.get("h20_rate") or prop.get("hit_rate_l20") or prop.get("hit_rate_l10")
                 if h20_rate is not None:
-                    l20_hits = int((h20_rate / 100) * effective_games_l20)
+                    l20_hits = int((h20_rate / 100) * min(games_played, 20))
                 else:
                     gate_stats['gate1_fail'] += 1
                     continue
@@ -1090,37 +1124,29 @@ class MLBOracleApexService:
             if l10_hits is None:
                 h10_rate = prop.get("h10_rate") or prop.get("hit_rate_l10")
                 if h10_rate is not None:
-                    l10_hits = int((h10_rate / 100) * effective_games_l10)
+                    l10_hits = int((h10_rate / 100) * min(games_played, 10))
                 else:
                     l10_hits = 0  # Default to 0 if no L10 data
             
             # ----------------------------------------------------------------
-            # GATE 1: Percentage-Based Hit Rate with RECENCY OVERRIDE
+            # GATE 1: Hit Rate (L20) with L10 RECENCY OVERRIDE
             # ----------------------------------------------------------------
-            # Convert min_l20 to required percentage: e.g., 13/20 = 0.65 (65%)
-            required_pct = cfg["min_l20"] / 20.0
-            
-            # SAMPLE SIZE FLOOR: Reject players with < 5 games of data
-            if effective_games_l20 < 5:
-                gate_stats['gate1_fail'] += 1
-                continue
-            
-            # Calculate actual hit rates based on games played
-            actual_hit_rate_l20 = l20_hits / effective_games_l20 if effective_games_l20 > 0 else 0
-            actual_hit_rate_l10 = l10_hits / effective_games_l10 if effective_games_l10 > 0 else 0
-            
-            # Primary Check: actual_hit_rate >= required_pct
-            passes_gate1 = actual_hit_rate_l20 >= required_pct
+            # Primary check: L20 >= min_l20 (scaled for games played)
+            # CRITICAL RECENCY EXCEPTION: If L20 fails, check L10.
+            # If L10 hit rate >= 8/10 (80%), override the failure and PASS Gate 1.
+            # ----------------------------------------------------------------
+            required_l20 = int(cfg["min_l20"] * min(games_played, 20) / 20)
+            passes_gate1 = l20_hits >= required_l20
             used_recency_override = False
             
             if not passes_gate1:
-                # RECENCY OVERRIDE: If L10 hit rate >= 80%, override the failure
-                if actual_hit_rate_l10 >= 0.80:
+                # Check L10 Recency Override: >= 8/10 (80%)
+                if l10_hits >= 8:
                     passes_gate1 = True
                     used_recency_override = True
                     gate_stats['gate1_recency_override'] += 1
                     logger.debug(f"[MLB_FRONT_LINES] RECENCY_OVERRIDE: {prop.get('player_name')} - "
-                                f"{stat_key} | L20: {actual_hit_rate_l20:.0%} FAILED but L10: {actual_hit_rate_l10:.0%} PASSED")
+                                f"{stat_key} | L20: {l20_hits}/20 FAILED but L10: {l10_hits}/10 PASSED")
             
             if not passes_gate1:
                 gate_stats['gate1_fail'] += 1
@@ -1346,6 +1372,18 @@ class MLBOracleApexService:
             "K": {"max_cv": 0.85, "min_l20": 10, "min_edge": 1.50},
             "OUTS": {"max_cv": 0.70, "min_l20": 12, "min_edge": 2.00},
             "HRR": {"max_cv": 1.00, "min_l20": 9, "min_edge": 0.60},
+            # Additional stats (War Zone = high ceiling plays)
+            "RBIS": {"max_cv": 1.20, "min_l20": 6, "min_edge": 0.35},
+            "RUNS": {"max_cv": 1.30, "min_l20": 5, "min_edge": 0.35},
+            "SINGLES": {"max_cv": 1.00, "min_l20": 7, "min_edge": 0.35},
+            "DOUBLES": {"max_cv": 1.40, "min_l20": 5, "min_edge": 0.25},
+            "HR": {"max_cv": 1.80, "min_l20": 4, "min_edge": 0.20},
+            "SB": {"max_cv": 1.50, "min_l20": 5, "min_edge": 0.25},
+            "BB": {"max_cv": 1.25, "min_l20": 6, "min_edge": 0.30},
+            "BATTER_K": {"max_cv": 1.00, "min_l20": 7, "min_edge": 0.40},
+            "HITS_ALLOWED": {"max_cv": 1.00, "min_l20": 7, "min_edge": 0.60},
+            "ER": {"max_cv": 1.20, "min_l20": 6, "min_edge": 0.50},
+            "WALKS": {"max_cv": 1.30, "min_l20": 5, "min_edge": 0.40},
         }
         
         # Stat type aliases mapping to threshold keys
@@ -1354,7 +1392,19 @@ class MLBOracleApexService:
             "TOTAL BASES": "TB", "TB": "TB", "TOTAL_BASES": "TB",
             "PITCHER STRIKEOUTS": "K", "K": "K", "PITCHER_STRIKEOUTS": "K", "STRIKEOUTS": "K",
             "PITCHING OUTS": "OUTS", "OUTS": "OUTS", "PITCHING_OUTS": "OUTS", "OUTS RECORDED": "OUTS",
+            "PITCHER OUTS": "OUTS", "PITCHER_OUTS": "OUTS",
             "HRR": "HRR", "HITS+RUNS+RBIS": "HRR", "HITS_RUNS_RBIS": "HRR",
+            "RBIS": "RBIS", "RBI": "RBIS",
+            "RUNS": "RUNS", "RUNS SCORED": "RUNS",
+            "SINGLES": "SINGLES",
+            "DOUBLES": "DOUBLES",
+            "HOME RUNS": "HR", "HR": "HR", "HOME_RUNS": "HR",
+            "STOLEN BASES": "SB", "SB": "SB", "STOLEN_BASES": "SB",
+            "BATTER WALKS": "BB", "BB": "BB", "BATTER_WALKS": "BB", "WALKS": "BB",
+            "BATTER STRIKEOUTS": "BATTER_K", "BATTER_STRIKEOUTS": "BATTER_K",
+            "HITS ALLOWED": "HITS_ALLOWED", "HITS_ALLOWED": "HITS_ALLOWED",
+            "EARNED RUNS": "ER", "ER": "ER", "EARNED_RUNS": "ER",
+            "WALKS ALLOWED": "WALKS", "WALKS_ALLOWED": "WALKS",
         }
         
         # DK Odds minimum for War Zone (or is_demon)
@@ -1423,7 +1473,7 @@ class MLBOracleApexService:
             
             # 1c. Lineup Status: is_lineup_confirmed MUST be True
             is_lineup_confirmed = prop.get("is_lineup_confirmed")
-            if not is_lineup_confirmed:
+            if is_lineup_confirmed is False:
                 gate_stats['lineup_not_confirmed'] += 1
                 continue
             
@@ -1444,7 +1494,7 @@ class MLBOracleApexService:
             # ================================================================
             
             # Get raw VK projection
-            raw_vk_pred = prop.get("vk_predicted") or prop.get("raw_vk_pred")
+            raw_vk_pred = prop.get("vk_predicted") or prop.get("raw_vk_pred") or prop.get("season_average")
             if not raw_vk_pred or raw_vk_pred <= 0:
                 continue
             
@@ -1481,27 +1531,23 @@ class MLBOracleApexService:
             # 3. THE 3-GATE CHECK with CEILING EXCEPTION & VOLATILITY FAST-TRACK
             # ================================================================
             
-            # Get hit data and games played
+            # Get L20, L15, and CV data
             l20_hits = prop.get("l20_hits")
             l15_ceiling_hits = prop.get("l15_ceiling_hits")  # Times cleared THIS specific line in L15
-            games_played_l20 = prop.get("games_played_l20") or prop.get("games_in_sample") or 20
-            games_played_l15 = prop.get("games_played_l15") or min(games_played_l20, 15)
             cv = prop.get("cv") or prop.get("vk_cv")
-            
-            # Calculate effective games (capped at sample size)
-            effective_games_l20 = min(games_played_l20, 20)
-            effective_games_l15 = min(games_played_l15, 15)
+            games_played = prop.get("games_played", 10)
             
             # If L20 hits not directly available, calculate from hit rate
+            # MLB boards primarily use hit_rate_l10, so fall back to that
             if l20_hits is None:
-                h20_rate = prop.get("h20_rate") or prop.get("hit_rate_l20")
+                h20_rate = prop.get("h20_rate") or prop.get("hit_rate_l20") or prop.get("hit_rate_l10")
                 if h20_rate is not None:
-                    l20_hits = int((h20_rate / 100) * effective_games_l20)
+                    l20_hits = int((h20_rate / 100) * min(games_played, 20))
                 else:
                     gate_stats['gate1_fail'] += 1
                     continue
             
-            # If L15 ceiling hits not available, estimate from L15 values
+            # If L15 ceiling hits not available, estimate from L15 values or L10 hit rate
             if l15_ceiling_hits is None:
                 l15_values = prop.get("l15_values") or prop.get("last_15_values") or []
                 if l15_values:
@@ -1511,36 +1557,22 @@ class MLBOracleApexService:
                     # Fallback: estimate from L10 hit rate if available
                     h10_rate = prop.get("h10_rate") or prop.get("hit_rate_l10")
                     if h10_rate is not None:
-                        # Estimate L15 ceiling hits proportionally
-                        l15_ceiling_hits = int((h10_rate / 100) * effective_games_l15 * 0.6)  # Conservative
+                        # Estimate ceiling hits proportionally
+                        l15_ceiling_hits = int((h10_rate / 100) * min(games_played, 15) * 0.6)  # Conservative
                     else:
                         l15_ceiling_hits = 0
             
             # ----------------------------------------------------------------
-            # GATE 1: Percentage-Based Hit Rate + L15 CEILING CHECK
+            # GATE 1: Hit Rate (L20) + L15 CEILING CHECK
             # ----------------------------------------------------------------
-            # Convert min_l20 to required percentage: e.g., 8/20 = 0.40 (40%)
-            required_pct = cfg["min_l20"] / 20.0
-            
-            # Calculate required ceiling hits based on actual L15 games played
-            # Scale L15_CEILING_MIN (2) proportionally for smaller samples
-            required_ceiling_pct = L15_CEILING_MIN / 15.0  # 2/15 = 0.133 (13.3%)
-            required_ceiling_hits = max(1, int(required_ceiling_pct * effective_games_l15))
-            
-            # SAMPLE SIZE FLOOR: Reject players with < 5 games of data
-            if effective_games_l20 < 5:
-                gate_stats['gate1_fail'] += 1
-                continue
-            
-            # Calculate actual hit rate based on games played
-            actual_hit_rate_l20 = l20_hits / effective_games_l20 if effective_games_l20 > 0 else 0
-            
-            # Primary Check: actual_hit_rate >= required_pct
-            passes_gate1_base = actual_hit_rate_l20 >= required_pct
-            
-            # CEILING CHECK: Player must have cleared this specific Demon line
-            # at least required_ceiling_hits times in their sample (scaled for games played)
-            passes_gate1_ceiling = l15_ceiling_hits >= required_ceiling_hits
+            # Primary: L20 >= min_l20 (scaled for games played)
+            # CRITICAL CEILING EXCEPTION: Player MUST have cleared this specific
+            # Demon/High line at least TWICE in their last 15 games.
+            # We want DEMONSTRATED SPIKES, not just average hits.
+            # ----------------------------------------------------------------
+            required_l20 = int(cfg["min_l20"] * min(games_played, 20) / 20)
+            passes_gate1_base = l20_hits >= required_l20
+            passes_gate1_ceiling = l15_ceiling_hits >= L15_CEILING_MIN
             
             if not passes_gate1_base:
                 gate_stats['gate1_fail'] += 1
