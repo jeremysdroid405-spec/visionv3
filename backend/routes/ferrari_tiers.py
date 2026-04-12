@@ -819,58 +819,100 @@ async def get_ferrari_safe_haven(
     
     # MLB Fallback: If no picks in tier collection, get from cached_board
     if not picks and sport == "mlb":
+        # =====================================================================
+        # CHECK GEMINI CACHE FIRST - Avoid regenerating on every request
+        # =====================================================================
+        gemini_cache = _db["mlb_gemini_cache_safe_haven"]
+        
+        # Check if we have a valid cache (less than 30 minutes old)
+        from datetime import datetime, timezone, timedelta
+        cache_doc = await gemini_cache.find_one({"tier": "safe_haven"})
+        cache_valid = False
+        
+        if cache_doc:
+            cached_at = cache_doc.get("cached_at")
+            if cached_at and isinstance(cached_at, datetime):
+                # Handle both timezone-aware and naive datetimes
+                if cached_at.tzinfo is None:
+                    cached_at = cached_at.replace(tzinfo=timezone.utc)
+                age = datetime.now(timezone.utc) - cached_at
+                cache_valid = age < timedelta(minutes=30)
+        
+        if cache_valid and cache_doc.get("picks"):
+            logger.info(f"[SAFE_HAVEN MLB] Using cached Gemini results ({len(cache_doc['picks'])} picks)")
+            return {
+                "tier": "safe_haven",
+                "tier_label": f"Safe Haven ({sport.upper()})",
+                "logic": "gemini_cached",
+                "sport": sport,
+                "picks": cache_doc["picks"][:limit],
+                "count": min(len(cache_doc["picks"]), limit),
+                "note": "MLB picks from Gemini cache"
+            }
+        
+        # =====================================================================
+        # NO VALID CACHE - Build fresh with Gemini enrichment
+        # =====================================================================
         cached_board_name = get_collection_name("cached_board", sport)
         cached_board = _db[cached_board_name]
         
         # Get top players from cached board with best hit rates
         players = await cached_board.find({}, {"_id": 0}).to_list(length=50)
         
-        # Flatten props and enrich with averages
+        # Flatten props and enrich with averages, tempo, badges
         all_props = []
         for player in players:
             for prop in player.get("props", []):
-                # Enrich with L5/L10 averages, tempo, and full intel suite
+                # Enrich with L5/L10 averages, tempo, and full intel suite (badges)
                 prop = enrich_mlb_prop_with_averages(prop, player)
                 prop = enrich_mlb_prop_with_tempo(prop)
-                prop = enrich_mlb_intel_suite(prop)
+                prop = enrich_mlb_intel_suite(prop)  # This adds context_badges
                 all_props.append(prop)
         
-        # Filter for safe haven criteria:
-        # 1. GOBLIN only (no demons) - heavily juiced favorites
-        # 2. DK odds <= -240 (or missing DK odds with goblin flag)
-        # 3. High hit rate (>= 60%)
-        # 4. Low CV (<= 50) for consistency
+        # Filter for safe haven criteria
         safe_picks = [
             p for p in all_props
-            if not p.get("is_demon", False)  # No demons in Safe Haven
-            and p.get("is_goblin", False)  # Must be goblin
-            and (p.get("dk_odds") is None or p.get("dk_odds") <= -240)  # Heavy juice
+            if not p.get("is_demon", False)
+            and p.get("is_goblin", False)
+            and (p.get("dk_odds") is None or p.get("dk_odds") <= -240)
             and p.get("hit_rate_l10") and p.get("hit_rate_l10") >= 60
             and (p.get("cv") is None or p.get("cv") <= 50)
         ]
         
-        # Dedupe by player+stat, keeping best hit rate
+        # Dedupe and sort
         safe_picks = dedupe_mlb_props(safe_picks, sort_key="hit_rate_l10")
-        
-        # Sort by hit rate descending
         safe_picks.sort(key=lambda x: x.get("hit_rate_l10", 0), reverse=True)
         picks = safe_picks[:limit]
         
         # =====================================================================
-        # GEMINI VISION INTEL - Generate AI summaries for MLB props
+        # GEMINI BATCH CALL - Generate AI summaries for all MLB props at once
+        # This is the ONLY Gemini call - badges are already set by enrich_mlb_intel_suite
         # =====================================================================
         try:
             from services.mlb_vision_intel import get_mlb_vision_intel
             vision_intel_service = get_mlb_vision_intel()
-            if vision_intel_service.enabled:
-                logger.info(f"[SAFE_HAVEN MLB] Running Gemini Vision Intel on {len(picks)} picks")
+            if vision_intel_service.enabled and picks:
+                logger.info(f"[SAFE_HAVEN MLB] Running Gemini batch on {len(picks)} picks")
                 picks = await vision_intel_service.analyze_tier_batch(picks, "safe_haven")
-                logger.info(f"[SAFE_HAVEN MLB] Gemini enrichment complete")
-            else:
-                logger.warning("[SAFE_HAVEN MLB] Vision Intel service disabled - using template summaries")
+                
+                # Mark all as gemini enriched
+                for p in picks:
+                    p["gemini_enriched"] = True
+                
+                # Cache the results
+                await gemini_cache.update_one(
+                    {"tier": "safe_haven"},
+                    {"$set": {
+                        "tier": "safe_haven",
+                        "picks": picks,
+                        "cached_at": datetime.now(timezone.utc),
+                        "count": len(picks)
+                    }},
+                    upsert=True
+                )
+                logger.info(f"[SAFE_HAVEN MLB] Gemini enrichment cached")
         except Exception as e:
-            logger.error(f"[SAFE_HAVEN MLB] Gemini Vision Intel failed: {e}")
-            # Keep the template-based summaries from enrich_mlb_prop_with_averages
+            logger.error(f"[SAFE_HAVEN MLB] Gemini batch failed: {e}")
         
         return {
             "tier": "safe_haven",
@@ -932,6 +974,36 @@ async def get_ferrari_front_lines(
     
     # MLB Fallback: If no picks in tier collection, get from cached_board
     if not picks and sport == "mlb":
+        # =====================================================================
+        # CHECK GEMINI CACHE FIRST
+        # =====================================================================
+        gemini_cache = _db["mlb_gemini_cache_front_lines"]
+        
+        from datetime import datetime, timezone, timedelta
+        cache_doc = await gemini_cache.find_one({"tier": "front_lines"})
+        cache_valid = False
+        
+        if cache_doc:
+            cached_at = cache_doc.get("cached_at")
+            if cached_at and isinstance(cached_at, datetime):
+                if cached_at.tzinfo is None:
+                    cached_at = cached_at.replace(tzinfo=timezone.utc)
+                age = datetime.now(timezone.utc) - cached_at
+                cache_valid = age < timedelta(minutes=30)
+        
+        if cache_valid and cache_doc.get("picks"):
+            logger.info(f"[FRONT_LINES MLB] Using cached Gemini results")
+            return {
+                "tier": "front_lines",
+                "tier_label": f"Front Lines ({sport.upper()})",
+                "logic": "gemini_cached",
+                "sport": sport,
+                "picks": cache_doc["picks"][:limit],
+                "count": min(len(cache_doc["picks"]), limit),
+                "note": "MLB picks from Gemini cache"
+            }
+        
+        # Build fresh
         cached_board_name = get_collection_name("cached_board", sport)
         cached_board = _db[cached_board_name]
         
@@ -940,41 +1012,40 @@ async def get_ferrari_front_lines(
         all_props = []
         for player in players:
             for prop in player.get("props", []):
-                # Enrich with L5/L10 averages, tempo, and full intel suite
                 prop = enrich_mlb_prop_with_averages(prop, player)
                 prop = enrich_mlb_prop_with_tempo(prop)
                 prop = enrich_mlb_intel_suite(prop)
                 all_props.append(prop)
         
-        # Front lines: moderate hit rate, no demons (they go to War Zone)
-        # DK odds between -145 and -239 (mid-juice plays)
         front_picks = [
             p for p in all_props
-            if not p.get("is_demon", False)  # No demons in Front Lines
+            if not p.get("is_demon", False)
             and p.get("hit_rate_l10") and 40 <= p.get("hit_rate_l10", 0) < 60
             and (p.get("dk_odds") is None or -239 <= p.get("dk_odds") <= -145)
         ]
         
-        # Dedupe by player+stat, keeping best hit rate
         front_picks = dedupe_mlb_props(front_picks, sort_key="hit_rate_l10")
-        
         front_picks.sort(key=lambda x: x.get("hit_rate_l10", 0), reverse=True)
         picks = front_picks[:limit]
         
-        # =====================================================================
-        # GEMINI VISION INTEL - Generate AI summaries for MLB props
-        # =====================================================================
+        # Gemini batch call
         try:
             from services.mlb_vision_intel import get_mlb_vision_intel
             vision_intel_service = get_mlb_vision_intel()
-            if vision_intel_service.enabled:
-                logger.info(f"[FRONT_LINES MLB] Running Gemini Vision Intel on {len(picks)} picks")
+            if vision_intel_service.enabled and picks:
+                logger.info(f"[FRONT_LINES MLB] Running Gemini batch on {len(picks)} picks")
                 picks = await vision_intel_service.analyze_tier_batch(picks, "front_lines")
-                logger.info(f"[FRONT_LINES MLB] Gemini enrichment complete")
-            else:
-                logger.warning("[FRONT_LINES MLB] Vision Intel service disabled - using template summaries")
+                for p in picks:
+                    p["gemini_enriched"] = True
+                
+                # Cache results
+                await gemini_cache.update_one(
+                    {"tier": "front_lines"},
+                    {"$set": {"tier": "front_lines", "picks": picks, "cached_at": datetime.now(timezone.utc)}},
+                    upsert=True
+                )
         except Exception as e:
-            logger.error(f"[FRONT_LINES MLB] Gemini Vision Intel failed: {e}")
+            logger.error(f"[FRONT_LINES MLB] Gemini batch failed: {e}")
         
         return {
             "tier": "front_lines",
@@ -1036,6 +1107,36 @@ async def get_ferrari_war_zone(
     
     # MLB Fallback: If no picks in tier collection, get from cached_board
     if not picks and sport == "mlb":
+        # =====================================================================
+        # CHECK GEMINI CACHE FIRST
+        # =====================================================================
+        gemini_cache = _db["mlb_gemini_cache_war_zone"]
+        
+        from datetime import datetime, timezone, timedelta
+        cache_doc = await gemini_cache.find_one({"tier": "war_zone"})
+        cache_valid = False
+        
+        if cache_doc:
+            cached_at = cache_doc.get("cached_at")
+            if cached_at and isinstance(cached_at, datetime):
+                if cached_at.tzinfo is None:
+                    cached_at = cached_at.replace(tzinfo=timezone.utc)
+                age = datetime.now(timezone.utc) - cached_at
+                cache_valid = age < timedelta(minutes=30)
+        
+        if cache_valid and cache_doc.get("picks"):
+            logger.info(f"[WAR_ZONE MLB] Using cached Gemini results")
+            return {
+                "tier": "war_zone",
+                "tier_label": f"War Zone ({sport.upper()})",
+                "logic": "gemini_cached",
+                "sport": sport,
+                "picks": cache_doc["picks"][:limit],
+                "count": min(len(cache_doc["picks"]), limit),
+                "note": "MLB picks from Gemini cache"
+            }
+        
+        # Build fresh
         cached_board_name = get_collection_name("cached_board", sport)
         cached_board = _db[cached_board_name]
         
@@ -1044,39 +1145,39 @@ async def get_ferrari_war_zone(
         all_props = []
         for player in players:
             for prop in player.get("props", []):
-                # Enrich with L5/L10 averages, tempo, and full intel suite
                 prop = enrich_mlb_prop_with_averages(prop, player)
                 prop = enrich_mlb_prop_with_tempo(prop)
                 prop = enrich_mlb_intel_suite(prop)
                 all_props.append(prop)
         
-        # War zone: DEMONS or high DK odds (+150 or higher) - boom/bust plays
         war_picks = [
             p for p in all_props
-            if p.get("is_demon", False)  # Demons go to War Zone
-            or (p.get("dk_odds") is not None and p.get("dk_odds") >= 150)  # High odds underdogs
+            if p.get("is_demon", False)
+            or (p.get("dk_odds") is not None and p.get("dk_odds") >= 150)
         ]
         
-        # Dedupe by player+stat, keeping best edge
         war_picks = dedupe_mlb_props(war_picks, sort_key="edge")
-        
         war_picks.sort(key=lambda x: x.get("edge", 0) or 0, reverse=True)
         picks = war_picks[:limit]
         
-        # =====================================================================
-        # GEMINI VISION INTEL - Generate AI summaries for MLB props
-        # =====================================================================
+        # Gemini batch call
         try:
             from services.mlb_vision_intel import get_mlb_vision_intel
             vision_intel_service = get_mlb_vision_intel()
-            if vision_intel_service.enabled:
-                logger.info(f"[WAR_ZONE MLB] Running Gemini Vision Intel on {len(picks)} picks")
+            if vision_intel_service.enabled and picks:
+                logger.info(f"[WAR_ZONE MLB] Running Gemini batch on {len(picks)} picks")
                 picks = await vision_intel_service.analyze_tier_batch(picks, "war_zone")
-                logger.info(f"[WAR_ZONE MLB] Gemini enrichment complete")
-            else:
-                logger.warning("[WAR_ZONE MLB] Vision Intel service disabled - using template summaries")
+                for p in picks:
+                    p["gemini_enriched"] = True
+                
+                # Cache results
+                await gemini_cache.update_one(
+                    {"tier": "war_zone"},
+                    {"$set": {"tier": "war_zone", "picks": picks, "cached_at": datetime.now(timezone.utc)}},
+                    upsert=True
+                )
         except Exception as e:
-            logger.error(f"[WAR_ZONE MLB] Gemini Vision Intel failed: {e}")
+            logger.error(f"[WAR_ZONE MLB] Gemini batch failed: {e}")
         
         return {
             "tier": "war_zone",
