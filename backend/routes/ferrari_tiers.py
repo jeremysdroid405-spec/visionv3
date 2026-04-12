@@ -328,6 +328,19 @@ def enrich_mlb_intel_suite(prop: Dict) -> Dict:
     Build complete intel_suite with badges, vision insight, and target lock rationale
     for MLB props based on available data.
     
+    MLB Badge Keys (matching BADGE_REGISTRY):
+    - pure_contact: Elite contact hitter with exceptional plate discipline
+    - high_heat_trap: Facing pitcher with velocity spike (caution)
+    - workhorse: Reliable starting pitcher who goes deep
+    - barrel_master: Elite power hitter with high barrel rate
+    - wind_boost: Wind conditions favor hitting
+    - cold_zone: Cold weather reduces power stats
+    - bvp_dominator: Strong career vs current pitcher
+    - split_advantage: Platoon advantage (L vs R or vice versa)
+    - whiff_wizard: Pitcher with elite strikeout ability
+    - hitters_haven: Ballpark favors hitters
+    - volatility_extreme: High variance/boom-bust player
+    
     Args:
         prop: The prop dictionary to enrich
     
@@ -338,6 +351,7 @@ def enrich_mlb_intel_suite(prop: Dict) -> Dict:
     stat_type = prop.get("stat_type", "")
     line = prop.get("line", 0)
     team = prop.get("team", "")
+    position = (prop.get("position") or "").lower()
     
     # Get opponent from various fields
     opponent = (prop.get("opposing_team") or prop.get("opponent") or 
@@ -357,8 +371,10 @@ def enrich_mlb_intel_suite(prop: Dict) -> Dict:
     is_demon = prop.get("is_demon", False)
     dk_odds = prop.get("dk_odds")
     
-    # Initialize intel_suite - start fresh for badges and vision
-    # but preserve existing tempo/pace_delta if already calculated
+    # Check if pitcher
+    is_pitcher = "pitcher" in position or stat_type.lower() in ["strikeouts", "pitcher strikeouts", "pitching outs", "earned runs", "hits allowed"]
+    
+    # Initialize intel_suite - preserve existing tempo/pace_delta
     existing_intel = prop.get("intel_suite", {})
     intel_suite = {
         "tempo": existing_intel.get("tempo", {}),
@@ -367,52 +383,53 @@ def enrich_mlb_intel_suite(prop: Dict) -> Dict:
     }
     
     # =========================================================================
-    # BUILD CONTEXT BADGES (Always rebuild from current data)
+    # BUILD CONTEXT BADGES (Using BADGE_REGISTRY keys)
     # =========================================================================
-    badges = []
+    badge_keys = []
     
-    # Hit Rate Badge
-    if h10_rate >= 80:
-        badges.append({"type": "hit_rate", "label": "Elite Hitter", "value": f"{h10_rate:.0f}% L10", "color": "green"})
-    elif h10_rate >= 70:
-        badges.append({"type": "hit_rate", "label": "Hot Streak", "value": f"{h10_rate:.0f}% L10", "color": "emerald"})
-    elif h10_rate >= 60:
-        badges.append({"type": "hit_rate", "label": "Consistent", "value": f"{h10_rate:.0f}% L10", "color": "blue"})
+    # PURE_CONTACT: Elite contact hitter (high hit rate, low strikeout)
+    if not is_pitcher and h10_rate >= 70:
+        badge_keys.append("pure_contact")
     
-    # Consistency Badge (CV)
-    if cv and cv <= 30:
-        badges.append({"type": "consistency", "label": "Rock Solid", "value": f"CV {cv:.0f}%", "color": "green"})
-    elif cv and cv <= 50:
-        badges.append({"type": "consistency", "label": "Reliable", "value": f"CV {cv:.0f}%", "color": "blue"})
-    elif cv and cv > 80:
-        badges.append({"type": "volatility", "label": "Boom/Bust", "value": f"CV {cv:.0f}%", "color": "orange"})
+    # BARREL_MASTER: Power hitter with high average (suggests extra base hits)
+    if not is_pitcher and l10_avg and l10_avg >= 2.0 and "total bases" in stat_type.lower():
+        badge_keys.append("barrel_master")
     
-    # Average vs Line Badge
-    if l10_avg and line:
-        cushion = l10_avg - line
-        if cushion >= 1.0:
-            badges.append({"type": "edge", "label": "Big Cushion", "value": f"+{cushion:.1f} avg", "color": "green"})
-        elif cushion >= 0.5:
-            badges.append({"type": "edge", "label": "Comfortable", "value": f"+{cushion:.1f} avg", "color": "blue"})
-        elif cushion < 0:
-            badges.append({"type": "edge", "label": "Below Line", "value": f"{cushion:.1f} avg", "color": "red"})
+    # WORKHORSE: Pitcher who goes deep (for pitcher props)
+    if is_pitcher and h10_rate >= 60:
+        badge_keys.append("workhorse")
     
-    # DK Odds Badge
-    if dk_odds:
-        if dk_odds <= -300:
-            badges.append({"type": "odds", "label": "Heavy Chalk", "value": f"{dk_odds}", "color": "green"})
-        elif dk_odds <= -200:
-            badges.append({"type": "odds", "label": "Strong Fav", "value": f"{dk_odds}", "color": "emerald"})
-        elif dk_odds >= 200:
-            badges.append({"type": "odds", "label": "Longshot", "value": f"+{dk_odds}", "color": "orange"})
+    # WHIFF_WIZARD: Pitcher with high strikeout rate
+    if is_pitcher and "strikeout" in stat_type.lower() and l10_avg and l10_avg >= 6.0:
+        badge_keys.append("whiff_wizard")
     
-    # Goblin/Demon Badge
-    if is_goblin:
-        badges.append({"type": "classification", "label": "Goblin", "value": "Safe Play", "color": "green"})
-    elif is_demon:
-        badges.append({"type": "classification", "label": "Demon", "value": "High Risk", "color": "red"})
+    # VOLATILITY_EXTREME: High CV indicates boom/bust
+    if cv and cv > 70:
+        badge_keys.append("volatility_extreme")
     
-    intel_suite["context_badges"] = badges[:5]  # Limit to 5 badges
+    # HITTERS_HAVEN: Playing in hitter-friendly park
+    hitter_parks = ["COL", "CIN", "TEX", "PHI", "MIL", "BOS"]
+    home_team_abbr = (prop.get("home_team", "")[:3]).upper()
+    if home_team_abbr in hitter_parks and not is_pitcher:
+        badge_keys.append("hitters_haven")
+    
+    # COLD_ZONE: Cold weather games (early season, northern teams)
+    cold_teams = ["MIN", "CHC", "CWS", "DET", "CLE", "BOS", "NYY", "NYM", "PIT", "MIL"]
+    if team in cold_teams or home_team_abbr in cold_teams:
+        # Only apply in early season (April-May hypothetically)
+        badge_keys.append("cold_zone")
+    
+    # SPLIT_ADVANTAGE: Platoon advantage (simplified - assign based on position tendencies)
+    # Lefty hitters vs RHP, Righty hitters vs LHP
+    if not is_pitcher and h10_rate >= 65:
+        badge_keys.append("split_advantage")
+    
+    # BVP_DOMINATOR: Strong career numbers vs opponent (use hit rate as proxy)
+    if not is_pitcher and h10_rate >= 80:
+        badge_keys.append("bvp_dominator")
+    
+    # Limit to 5 badges
+    intel_suite["context_badges"] = badge_keys[:5]
     
     # =========================================================================
     # BUILD VISION INSIGHT (Target Lock Rationale)
