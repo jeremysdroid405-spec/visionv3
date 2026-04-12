@@ -135,24 +135,34 @@ def enrich_mlb_prop_with_averages(prop: Dict, player_data: Dict = None) -> Dict:
                 prop["vk_recommendation"] = "HOLD"
     
     # =========================================================================
-    # VISION INTEL - Generate AI-style summary
+    # VISION INTEL - Generate gritty scout-style summary
     # =========================================================================
     player_name = prop.get("player_name", "Player")
     stat_type = prop.get("stat_type", "stat")
     h10 = prop.get("h10_rate") or 0
     vk_pred = prop.get("vk_predicted") or 0
     vk_edge = prop.get("vk_edge") or 0
+    tempo_mult = prop.get("tempo_modifier") or prop.get("intel_suite", {}).get("tempo", {}).get("multiplier") or 1.0
+    is_goblin = prop.get("is_goblin", False)
+    is_demon = prop.get("is_demon", False)
     
-    if h10 >= 70 and vk_edge >= 0.3:
-        vision_intel = f"{player_name} is locked in with {h10:.0f}% hit rate. VK projects {vk_pred:.1f} vs {line} line (+{vk_edge:.2f} edge). High-confidence play."
-    elif h10 >= 60 and vk_edge >= 0:
-        vision_intel = f"{player_name} showing consistency at {h10:.0f}% L10. Model projects {vk_pred:.1f}, slight edge over {line} line."
-    elif prop.get("is_demon"):
-        vision_intel = f"DEMON ALERT: {player_name} {stat_type} @ {line} is a ceiling play. High variance but explosive upside when hot."
+    # Gritty scout-style reports based on conditions
+    if h10 >= 80 and vk_edge >= 0.5:
+        vision_intel = f"{player_name} is absolutely locked in right now - {h10:.0f}% hit rate over L10 is printing money. Our math has him at {vk_pred:.1f} vs a {line} line, that's a +{vk_edge:.1f} cushion the book is sleeping on. Smash spot, don't overthink it."
+    elif h10 >= 70 and vk_edge >= 0.3:
+        vision_intel = f"Riding the hot hand with {player_name} here. {h10:.0f}% L10 hit rate with a +{vk_edge:.1f} edge over the line - the book set this too low. This is a soft landing, lock it in."
+    elif is_goblin and h10 >= 60:
+        vision_intel = f"{player_name} {stat_type} is chalky for a reason - this line is disrespectful at {line}. {h10:.0f}% L10, averaging {l10:.1f}. Safe haven territory, let it ride."
+    elif is_demon:
+        vision_intel = f"DEMON PLAY: {player_name} {stat_type} @ {line} is a ceiling spot. High variance but when this hits, it pays big. Boom or bust - you know what you're signing up for."
+    elif tempo_mult >= 1.05:
+        vision_intel = f"Volume play on {player_name} today. Lineup spot and pace means extra ABs coming his way. At {l10:.1f} L10 average vs a {line} line, let the plate appearances pile up."
     elif h10 < 50:
-        vision_intel = f"{player_name} struggling at {h10:.0f}% hit rate. Projection of {vk_pred:.1f} suggests caution on {line} line."
+        vision_intel = f"{player_name} has been ice cold at {h10:.0f}% L10 - this feels like a trap. Our model still sees {vk_pred:.1f} but proceed with caution or fade entirely."
+    elif vk_edge >= 0.2:
+        vision_intel = f"Solid value on {player_name} {stat_type} @ {line}. Model projects {vk_pred:.1f} with a comfortable +{vk_edge:.1f} edge. Not a slam dunk but the math works."
     else:
-        vision_intel = f"{player_name} {stat_type} @ {line}: L10 avg {l10:.1f}, projecting {vk_pred:.1f}. {h10:.0f}% recent hit rate."
+        vision_intel = f"{player_name} {stat_type} @ {line}: Projecting {vk_pred:.1f} with {h10:.0f}% recent hit rate. Edge is thin here - need the situation to break right."
     
     prop["vision_intel"] = vision_intel
     prop["vision_summary"] = vision_intel
@@ -846,15 +856,31 @@ async def get_ferrari_safe_haven(
         safe_picks.sort(key=lambda x: x.get("hit_rate_l10", 0), reverse=True)
         picks = safe_picks[:limit]
         
+        # =====================================================================
+        # GEMINI VISION INTEL - Generate AI summaries for MLB props
+        # =====================================================================
+        try:
+            from services.mlb_vision_intel import get_mlb_vision_intel
+            vision_intel_service = get_mlb_vision_intel()
+            if vision_intel_service.enabled:
+                logger.info(f"[SAFE_HAVEN MLB] Running Gemini Vision Intel on {len(picks)} picks")
+                picks = await vision_intel_service.analyze_tier_batch(picks, "safe_haven")
+                logger.info(f"[SAFE_HAVEN MLB] Gemini enrichment complete")
+            else:
+                logger.warning("[SAFE_HAVEN MLB] Vision Intel service disabled - using template summaries")
+        except Exception as e:
+            logger.error(f"[SAFE_HAVEN MLB] Gemini Vision Intel failed: {e}")
+            # Keep the template-based summaries from enrich_mlb_prop_with_averages
+        
         return {
             "tier": "safe_haven",
             "tier_label": f"Safe Haven ({sport.upper()})",
-            "logic": "mlb_cached_board_fallback",
+            "logic": "mlb_cached_board_with_gemini",
             "sport": sport,
             "collection": cached_board_name,
             "picks": picks,
             "count": len(picks),
-            "note": "MLB picks from cached board (tier routing pending)"
+            "note": "MLB picks enriched with Gemini Vision Intel"
         }
     
     return {
@@ -935,15 +961,30 @@ async def get_ferrari_front_lines(
         front_picks.sort(key=lambda x: x.get("hit_rate_l10", 0), reverse=True)
         picks = front_picks[:limit]
         
+        # =====================================================================
+        # GEMINI VISION INTEL - Generate AI summaries for MLB props
+        # =====================================================================
+        try:
+            from services.mlb_vision_intel import get_mlb_vision_intel
+            vision_intel_service = get_mlb_vision_intel()
+            if vision_intel_service.enabled:
+                logger.info(f"[FRONT_LINES MLB] Running Gemini Vision Intel on {len(picks)} picks")
+                picks = await vision_intel_service.analyze_tier_batch(picks, "front_lines")
+                logger.info(f"[FRONT_LINES MLB] Gemini enrichment complete")
+            else:
+                logger.warning("[FRONT_LINES MLB] Vision Intel service disabled - using template summaries")
+        except Exception as e:
+            logger.error(f"[FRONT_LINES MLB] Gemini Vision Intel failed: {e}")
+        
         return {
             "tier": "front_lines",
             "tier_label": f"Front Lines ({sport.upper()})",
-            "logic": "mlb_cached_board_fallback",
+            "logic": "mlb_cached_board_with_gemini",
             "sport": sport,
             "collection": cached_board_name,
             "picks": picks,
             "count": len(picks),
-            "note": "MLB picks from cached board (tier routing pending)"
+            "note": "MLB picks enriched with Gemini Vision Intel"
         }
     
     return {
@@ -1022,15 +1063,30 @@ async def get_ferrari_war_zone(
         war_picks.sort(key=lambda x: x.get("edge", 0) or 0, reverse=True)
         picks = war_picks[:limit]
         
+        # =====================================================================
+        # GEMINI VISION INTEL - Generate AI summaries for MLB props
+        # =====================================================================
+        try:
+            from services.mlb_vision_intel import get_mlb_vision_intel
+            vision_intel_service = get_mlb_vision_intel()
+            if vision_intel_service.enabled:
+                logger.info(f"[WAR_ZONE MLB] Running Gemini Vision Intel on {len(picks)} picks")
+                picks = await vision_intel_service.analyze_tier_batch(picks, "war_zone")
+                logger.info(f"[WAR_ZONE MLB] Gemini enrichment complete")
+            else:
+                logger.warning("[WAR_ZONE MLB] Vision Intel service disabled - using template summaries")
+        except Exception as e:
+            logger.error(f"[WAR_ZONE MLB] Gemini Vision Intel failed: {e}")
+        
         return {
             "tier": "war_zone",
             "tier_label": f"War Zone ({sport.upper()})",
-            "logic": "mlb_cached_board_fallback",
+            "logic": "mlb_cached_board_with_gemini",
             "sport": sport,
             "collection": cached_board_name,
             "picks": picks,
             "count": len(picks),
-            "note": "MLB picks from cached board (tier routing pending)"
+            "note": "MLB picks enriched with Gemini Vision Intel"
         }
     
     return {
