@@ -391,6 +391,9 @@ export const PlayerDetailPage = ({ playerName, playerData = null, onBack, highli
   const [error, setError] = useState(null);
   const fetchIdRef = useRef(0);
   
+  // Store original clicked prop's intel_suite for fallback
+  const originalClickedProp = useRef(playerData?.props?.[0] || null);
+  
   useEffect(() => {
     // If we have partial playerData (single prop), still fetch all props
     const hasOnlyOneProp = playerData?.props?.length === 1;
@@ -467,8 +470,9 @@ export const PlayerDetailPage = ({ playerName, playerData = null, onBack, highli
                     l10_avg: clickedProp.l10_avg ?? prop.l10_avg,
                     l20_avg: clickedProp.l20_avg ?? prop.l20_avg,
                     season_avg: clickedProp.season_avg ?? prop.season_avg,
-                    // Vision Intel fields (NBA-style)
+                    // Vision Intel fields - direct string fields
                     vision_intel: clickedProp.vision_intel || prop.vision_intel,
+                    vision_badge: clickedProp.vision_badge || prop.vision_badge,
                     vision_summary: clickedProp.vision_summary || prop.vision_summary,
                     intel_score: clickedProp.intel_score ?? prop.intel_score,
                     intel_verdict: clickedProp.intel_verdict || prop.intel_verdict,
@@ -478,6 +482,8 @@ export const PlayerDetailPage = ({ playerName, playerData = null, onBack, highli
                     oracle_summary: clickedProp.oracle_summary || prop.oracle_summary,
                     // Scout badges
                     scout_badges: clickedProp.scout_badges || prop.scout_badges,
+                    // INTEL SUITE - Critical for Tempo, Badges, etc.
+                    intel_suite: clickedProp.intel_suite || prop.intel_suite,
                     // Edge and probability fields
                     edge: clickedProp.edge ?? prop.edge,
                     edge_pct: clickedProp.edge_pct ?? prop.edge_pct,
@@ -523,9 +529,16 @@ export const PlayerDetailPage = ({ playerName, playerData = null, onBack, highli
   const [selectedVisionProp, setSelectedVisionProp] = useState(null);
   const highlightRef = useRef(null);
   
-  // Handle Vision Pick click
+  // Handle Vision Pick click - merge intel_suite from original clicked prop if missing
   const handleVisionClick = useCallback((prop) => {
-    setSelectedVisionProp(prop);
+    // Ensure intel_suite is available - use original clicked prop's data if missing
+    const enrichedProp = {
+      ...prop,
+      intel_suite: prop.intel_suite || originalClickedProp.current?.intel_suite,
+      vision_intel: prop.vision_intel || originalClickedProp.current?.vision_intel,
+      vision_badge: prop.vision_badge || originalClickedProp.current?.vision_badge,
+    };
+    setSelectedVisionProp(enrichedProp);
     setShowIntelSuite(true);
   }, []);
   
@@ -1079,24 +1092,30 @@ export const PlayerDetailPage = ({ playerName, playerData = null, onBack, highli
                   
                   {/* Pace Delta (Tempo Multiplier) + Stability Index */}
                   <div className="grid grid-cols-2 gap-2 sm:gap-4">
-                    {/* Pace Delta */}
+                    {/* Tempo - MLB uses total_pct, NBA uses possessions */}
                     <div className="bg-zinc-800/50 border border-zinc-700 rounded-lg p-2 sm:p-4 overflow-hidden">
                       <h3 className="text-[10px] sm:text-xs font-bold text-zinc-400 mb-1 sm:mb-2 truncate">TEMPO</h3>
-                      <div className={`text-lg sm:text-2xl font-bold truncate ${
-                        selectedVisionProp.intel_suite.pace_delta?.possessions >= 2 
-                          ? 'text-green-400' 
-                          : selectedVisionProp.intel_suite.pace_delta?.possessions <= -2
-                            ? 'text-red-400'
-                            : 'text-white'
-                      }`}>
-                        {selectedVisionProp.intel_suite.pace_delta?.display || '-'}
-                      </div>
-                      <div className="text-[9px] sm:text-xs text-zinc-500 mt-1 truncate">
-                        {selectedVisionProp.intel_suite.pace_delta?.tempo_label}
-                      </div>
-                      <div className="text-[8px] sm:text-[10px] text-zinc-600 mt-1 sm:mt-2 truncate hidden sm:block">
-                        Pace: {selectedVisionProp.intel_suite.pace_delta?.expected_game_pace}
-                      </div>
+                      {(() => {
+                        const tempo = selectedVisionProp.intel_suite?.pace_delta || selectedVisionProp.intel_suite?.tempo;
+                        const pct = tempo?.total_pct ?? tempo?.possessions ?? 0;
+                        return (
+                          <>
+                            <div className={`text-lg sm:text-2xl font-bold truncate ${
+                              pct >= 5 ? 'text-green-400' : pct <= -5 ? 'text-red-400' : 'text-white'
+                            }`}>
+                              {tempo?.display || '-'}
+                            </div>
+                            <div className="text-[9px] sm:text-xs text-zinc-500 mt-1 truncate">
+                              {tempo?.tempo_label}
+                            </div>
+                            {tempo?.factors?.length > 0 && (
+                              <div className="text-[8px] sm:text-[10px] text-zinc-600 mt-1 sm:mt-2 truncate hidden sm:block">
+                                {tempo.factors.map(f => f.name).join(' + ')}
+                              </div>
+                            )}
+                          </>
+                        );
+                      })()}
                     </div>
                     
                     {/* Stability Index */}
@@ -1301,38 +1320,37 @@ export const PlayerDetailPage = ({ playerName, playerData = null, onBack, highli
                     </div>
                   )}
                   
-                  {/* Vision Insight (Target-Lock Rationale) */}
-                  <div className="bg-gradient-to-r from-amber-950/50 to-zinc-900 border border-amber-500/30 rounded-lg p-4">
-                    <h3 className="text-sm font-bold text-amber-300 mb-2 flex items-center gap-2">
-                      <Crosshair className="w-4 h-4 text-amber-400" />
-                      TARGET-LOCK RATIONALE
-                    </h3>
+                  {/* Vision Intel (Target-Lock Rationale) - CLEANED: Direct read of vision_intel and vision_badge */}
+                  {(() => {
+                    const intelText = selectedVisionProp?.vision_intel;
+                    const badgeText = selectedVisionProp?.vision_badge;
                     
-                    {/* PROPVISION ORACLE - Gemini 3.1 Pro Summary (Primary) */}
-                    {selectedVisionProp.oracle_summary && (
-                      <div className="bg-gradient-to-r from-purple-900/30 to-zinc-900 border border-purple-500/40 rounded-lg p-4 mb-4">
+                    if (!intelText) return null;
+                    
+                    return (
+                      <div className="bg-gradient-to-r from-amber-950/50 to-zinc-900 border border-amber-500/30 rounded-lg p-4">
                         <div className="flex items-center justify-between mb-3">
-                          <div className="flex items-center gap-2">
-                            <div className="w-2 h-2 rounded-full bg-purple-400 animate-pulse"></div>
-                            <span className="text-xs font-bold text-purple-300 uppercase tracking-wider">PropVision Oracle</span>
-                          </div>
-                          {selectedVisionProp.ferrari_tier && (
+                          <h3 className="text-sm font-bold text-amber-300 flex items-center gap-2">
+                            <Crosshair className="w-4 h-4 text-amber-400" />
+                            TARGET-LOCK RATIONALE
+                          </h3>
+                          {badgeText && (
                             <span className={`text-[10px] font-bold px-2 py-1 rounded ${
-                              selectedVisionProp.ferrari_tier === 'safe_haven'
+                              badgeText.toLowerCase().includes('safe') || badgeText.toLowerCase().includes('goblin')
                                 ? 'bg-green-500/20 text-green-400 border border-green-500/30'
-                                : selectedVisionProp.ferrari_tier === 'front_lines'
+                                : badgeText.toLowerCase().includes('front')
                                   ? 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30'
                                   : 'bg-red-500/20 text-red-400 border border-red-500/30'
                             }`}>
-                              {selectedVisionProp.tier_label || selectedVisionProp.ferrari_tier?.replace('_', ' ').toUpperCase()}
+                              {badgeText}
                             </span>
                           )}
                         </div>
                         <p className="text-sm text-white leading-relaxed">
-                          {selectedVisionProp.oracle_summary}
+                          {intelText}
                         </p>
-                        <div className="mt-3 pt-2 border-t border-purple-500/20 flex items-center justify-between">
-                          <span className="text-[10px] text-purple-400/70">Powered by Gemini 3.1 Pro</span>
+                        <div className="mt-3 pt-2 border-t border-amber-500/20 flex items-center justify-between">
+                          <span className="text-[10px] text-amber-400/70">Powered by Vision Intel</span>
                           {selectedVisionProp.board_score && (
                             <span className="text-[10px] text-zinc-400">
                               Board Score: <span className="text-white font-bold">{selectedVisionProp.board_score}</span>
@@ -1340,99 +1358,8 @@ export const PlayerDetailPage = ({ playerName, playerData = null, onBack, highli
                           )}
                         </div>
                       </div>
-                    )}
-                    
-                    {/* Fallback: Legacy Vision Intel */}
-                    {!selectedVisionProp.oracle_summary && (() => {
-                      const gemini = selectedVisionProp.intel_suite?.gemini_intel || {};
-                      const visionIntel = selectedVisionProp.vision_intel || gemini.vision_intel || selectedVisionProp.vision_summary || selectedVisionProp.intel_suite?.vision_insight?.ai_summary;
-                      const intelVerdict = selectedVisionProp.intel_verdict || gemini.intel_verdict;
-                      const intelScore = selectedVisionProp.intel_score || gemini.intel_score;
-                      const intelRisk = selectedVisionProp.intel_risk || gemini.intel_risk;
-                      const adjustedConfidence = selectedVisionProp.adjusted_confidence || gemini.adjusted_confidence;
-                      
-                      if (!visionIntel && !intelVerdict) return null;
-                      
-                      return (
-                        <div className={`border rounded-lg p-3 mb-4 ${
-                          intelVerdict === 'TRAP' 
-                            ? 'bg-red-500/10 border-red-500/30' 
-                            : intelVerdict === 'CHALK'
-                              ? 'bg-green-500/10 border-green-500/30'
-                              : 'bg-amber-500/10 border-amber-500/30'
-                        }`}>
-                          <div className="flex items-center justify-between mb-2">
-                            <div className="flex items-center gap-2">
-                              <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${
-                                intelVerdict === 'TRAP'
-                                  ? 'text-red-400 bg-red-500/20'
-                                  : intelVerdict === 'CHALK'
-                                    ? 'text-green-400 bg-green-500/20'
-                                    : 'text-amber-400 bg-amber-500/20'
-                              }`}>
-                                {intelVerdict || 'AI VISION'}
-                              </span>
-                              {intelScore && (
-                                <span className="text-[10px] text-zinc-400">
-                                  Intel Score: <span className="text-white font-medium">{intelScore}/10</span>
-                                </span>
-                              )}
-                            </div>
-                            {adjustedConfidence && (
-                              <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${
-                                adjustedConfidence >= 0.8
-                                  ? 'bg-green-500/20 text-green-400'
-                                  : adjustedConfidence >= 0.6
-                                    ? 'bg-yellow-500/20 text-yellow-400'
-                                    : 'bg-zinc-600/50 text-zinc-300'
-                              }`}>
-                                {(adjustedConfidence * 100).toFixed(0)}% Confidence
-                              </span>
-                            )}
-                          </div>
-                          <p className="text-sm text-white leading-relaxed">
-                            {visionIntel}
-                          </p>
-                          {intelRisk && (
-                            <div className="mt-2 text-[10px] text-zinc-400">
-                              Risk Level: <span className={`font-medium ${
-                                intelRisk === 'High' ? 'text-red-400' :
-                                intelRisk === 'Low' ? 'text-green-400' :
-                                'text-yellow-400'
-                              }`}>{intelRisk}</span>
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })()}
-                    
-                    <div className="text-sm text-white mb-3">
-                      {selectedVisionProp.intel_suite.vision_insight?.primary}
-                    </div>
-                    {selectedVisionProp.intel_suite.vision_insight?.reasons?.length > 1 && (
-                      <div className="space-y-1 mb-3">
-                        {selectedVisionProp.intel_suite.vision_insight.reasons.slice(1).map((reason, i) => (
-                          <div key={i} className="text-xs text-zinc-400 flex items-center gap-2">
-                            <span className="text-amber-400">•</span> {reason}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                    <div className="flex items-center justify-between pt-3 border-t border-amber-500/20">
-                      <div className="text-xs text-zinc-500">
-                        {selectedVisionProp.intel_suite.vision_insight?.tactical_note}
-                      </div>
-                      <div className={`px-2 py-1 rounded text-[10px] font-bold ${
-                        selectedVisionProp.intel_suite.vision_insight?.confidence === 'High'
-                          ? 'bg-green-500 text-white'
-                          : selectedVisionProp.intel_suite.vision_insight?.confidence === 'Medium-High'
-                            ? 'bg-yellow-500 text-black'
-                            : 'bg-zinc-600 text-white'
-                      }`}>
-                        {selectedVisionProp.intel_suite.vision_insight?.confidence} Confidence
-                      </div>
-                    </div>
-                  </div>
+                    );
+                  })()}
                 </div>
               )}
               
@@ -1522,16 +1449,21 @@ export const PlayerDetailPage = ({ playerName, playerData = null, onBack, highli
                 )}
               </div>
               
-              {/* Oracle Summary - Gemini Rationale */}
-              {selectedVisionProp.oracle_summary && (
-                <div className="bg-gradient-to-r from-purple-950/50 to-zinc-900 border border-purple-500/30 rounded-lg p-4">
-                  <h3 className="text-sm font-bold text-purple-300 mb-2 flex items-center gap-2">
-                    <Target className="w-4 h-4 text-purple-400" />
-                    TARGET-LOCK RATIONALE
+              {/* Vision Intel Summary - shown only if not already shown above */}
+              {selectedVisionProp.vision_intel && !selectedVisionProp.intel_suite && (
+                <div className="bg-gradient-to-r from-amber-950/50 to-zinc-900 border border-amber-500/30 rounded-lg p-4">
+                  <h3 className="text-sm font-bold text-amber-300 mb-2 flex items-center gap-2">
+                    <Target className="w-4 h-4 text-amber-400" />
+                    VISION INTEL
                   </h3>
                   <p className="text-sm text-zinc-200 leading-relaxed">
-                    {selectedVisionProp.oracle_summary}
+                    {selectedVisionProp.vision_intel}
                   </p>
+                  {selectedVisionProp.vision_badge && (
+                    <div className="mt-2 text-[10px] text-amber-400/70">
+                      Badge: <span className="text-white font-medium">{selectedVisionProp.vision_badge}</span>
+                    </div>
+                  )}
                 </div>
               )}
               
