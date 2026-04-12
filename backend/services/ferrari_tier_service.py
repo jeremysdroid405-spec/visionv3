@@ -1543,44 +1543,112 @@ class FerrariTierService:
             logger.info(f"    War Zone: {len(top_war_zone)} picks")
             
             # =================================================================
-            # STEP 7: VISION INTEL LAYER - Run ONLY on Final Top 10
-            # This ensures ALL displayed picks have vision_intel
+            # STEP 7: JUST-IN-TIME VISION INTEL (Delta Batch Strategy)
+            # Only call Gemini for NEW or MISSING intel picks to save tokens
             # =================================================================
             try:
                 from services.vision_intel_service import get_vision_intel_service
                 vision_intel = get_vision_intel_service()
                 
                 if vision_intel.enabled:
-                    logger.info("[VISION INTEL] Analyzing FINAL TOP 10 picks with Gemini...")
+                    logger.info("[VISION INTEL] Starting Just-In-Time Diff Check...")
                     
-                    # Analyze ONLY the final picks (not the pool)
-                    if top_safe_haven:
-                        top_safe_haven = await vision_intel.analyze_tier_props(
-                            top_safe_haven, "Safe Haven", max_concurrent=3
-                        )
-                        logger.info(f"  Safe Haven: {len(top_safe_haven)} picks enriched with vision_intel")
+                    async def diff_check_and_enrich(new_picks, collection, tier_name):
+                        """
+                        Just-In-Time Diff Check:
+                        1. Query existing collection for cached vision_intel
+                        2. Identify delta picks (new or missing intel)
+                        3. Call Gemini ONLY for delta picks
+                        4. Merge cached intel for returning players
+                        """
+                        if not new_picks:
+                            return []
+                        
+                        # Step 1: Query existing board for cached intel
+                        existing_docs = await collection.find(
+                            {},
+                            {"player_name": 1, "stat_type": 1, "line": 1, "vision_intel": 1, 
+                             "intel_score": 1, "intel_verdict": 1, "intel_risk": 1, 
+                             "adjusted_confidence": 1, "vision_summary": 1}
+                        ).to_list(length=50)
+                        
+                        # Build cache map: key -> cached intel data
+                        cache_map = {}
+                        for doc in existing_docs:
+                            key = f"{doc.get('player_name')}|{doc.get('stat_type')}|{doc.get('line')}"
+                            if doc.get("vision_intel"):  # Only cache if has intel
+                                cache_map[key] = {
+                                    "vision_intel": doc.get("vision_intel"),
+                                    "vision_summary": doc.get("vision_summary"),
+                                    "intel_score": doc.get("intel_score"),
+                                    "intel_verdict": doc.get("intel_verdict"),
+                                    "intel_risk": doc.get("intel_risk"),
+                                    "adjusted_confidence": doc.get("adjusted_confidence")
+                                }
+                        
+                        logger.info(f"  [{tier_name}] Cached intel found: {len(cache_map)} picks")
+                        
+                        # Step 2: Identify delta picks (new or missing intel)
+                        delta_picks = []
+                        returning_picks = []
+                        
+                        for pick in new_picks:
+                            key = f"{pick.get('player_name')}|{pick.get('stat_type')}|{pick.get('line')}"
+                            if key in cache_map:
+                                # Returning player with cached intel - merge it
+                                pick.update(cache_map[key])
+                                returning_picks.append(pick)
+                            else:
+                                # New player or missing intel - needs Gemini
+                                delta_picks.append(pick)
+                        
+                        logger.info(f"  [{tier_name}] Diff result: {len(returning_picks)} cached, {len(delta_picks)} delta (need Gemini)")
+                        
+                        # Step 3: Call Gemini ONLY for delta picks
+                        if delta_picks:
+                            logger.info(f"  [{tier_name}] Firing Gemini batch for {len(delta_picks)} delta picks...")
+                            enriched_delta = await vision_intel.analyze_tier_props(
+                                delta_picks, tier_name, max_concurrent=3
+                            )
+                            # Merge enriched delta back
+                            enriched_picks = returning_picks + enriched_delta
+                        else:
+                            logger.info(f"  [{tier_name}] No delta picks - skipping Gemini call (0 tokens used)")
+                            enriched_picks = returning_picks
+                        
+                        # Step 4: Preserve original sort order
+                        # Re-sort by original position in new_picks
+                        pick_order = {f"{p.get('player_name')}|{p.get('stat_type')}|{p.get('line')}": i 
+                                      for i, p in enumerate(new_picks)}
+                        enriched_picks.sort(key=lambda p: pick_order.get(
+                            f"{p.get('player_name')}|{p.get('stat_type')}|{p.get('line')}", 999
+                        ))
+                        
+                        return enriched_picks
                     
-                    if top_front_lines:
-                        top_front_lines = await vision_intel.analyze_tier_props(
-                            top_front_lines, "Front Lines", max_concurrent=3
-                        )
-                        logger.info(f"  Front Lines: {len(top_front_lines)} picks enriched with vision_intel")
+                    # Apply diff check to all three tiers
+                    top_safe_haven = await diff_check_and_enrich(
+                        top_safe_haven, self.ferrari_safe_haven, "Safe Haven"
+                    )
+                    top_front_lines = await diff_check_and_enrich(
+                        top_front_lines, self.ferrari_front_lines, "Front Lines"
+                    )
+                    top_war_zone = await diff_check_and_enrich(
+                        top_war_zone, self.ferrari_war_zone, "War Zone"
+                    )
                     
-                    if top_war_zone:
-                        top_war_zone = await vision_intel.analyze_tier_props(
-                            top_war_zone, "War Zone", max_concurrent=3
-                        )
-                        logger.info(f"  War Zone: {len(top_war_zone)} picks enriched with vision_intel")
-                    
-                    logger.info("[VISION INTEL] All final picks now have vision_intel")
-                    
-                    # OPTIONAL: Re-sort by composite score if desired
-                    # (Usually keep original VK order since Gemini just enriches)
+                    # Summary stats
+                    total_with_intel = sum(1 for p in top_safe_haven + top_front_lines + top_war_zone 
+                                           if p.get("vision_intel"))
+                    total_picks = len(top_safe_haven) + len(top_front_lines) + len(top_war_zone)
+                    logger.info(f"[VISION INTEL] Diff Check complete: {total_with_intel}/{total_picks} picks have vision_intel")
                     
                 else:
                     logger.info("[VISION INTEL] Service disabled - picks will use fallback summaries")
             except Exception as e:
-                logger.warning(f"[VISION INTEL] Failed to load service: {e} - continuing without vision_intel")
+                logger.warning(f"[VISION INTEL] Diff Check failed: {e} - continuing without vision_intel")
+                import traceback
+                logger.warning(traceback.format_exc())
             
             # Track used players
             for pick in top_safe_haven:

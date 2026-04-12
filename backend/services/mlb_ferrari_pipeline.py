@@ -204,29 +204,61 @@ class MLBFerrariPipeline:
                 
                 return clean
             
-            # Save Safe Haven
-            if safe_haven:
-                safe_haven_coll = self.db["mlb_ferrari_safe_haven"]
-                await safe_haven_coll.delete_many({})
-                clean_safe_haven = [clean_prop(p, "safe_haven") for p in safe_haven]
-                await safe_haven_coll.insert_many(clean_safe_haven)
-                logger.info(f"  ✓ Saved {len(safe_haven)} Safe Haven props")
+            # ========================================================
+            # ATOMIC UPSERT for MLB Tiers (prevents race conditions)
+            # ========================================================
+            async def atomic_upsert_mlb_tier(collection_name, picks, tier_name):
+                """Atomic upsert: Replace all docs without emptying collection."""
+                coll = self.db[collection_name]
+                
+                if not picks:
+                    await coll.delete_many({})
+                    return 0
+                
+                from pymongo import UpdateOne
+                
+                # Clean and build operations
+                clean_picks = [clean_prop(p, tier_name.lower().replace(" ", "_")) for p in picks]
+                current_keys = set()
+                operations = []
+                
+                for pick in clean_picks:
+                    key = f"{pick.get('player_name')}|{pick.get('stat_type')}|{pick.get('line')}"
+                    current_keys.add(key)
+                    
+                    operations.append(UpdateOne(
+                        {
+                            "player_name": pick.get("player_name"),
+                            "stat_type": pick.get("stat_type"),
+                            "line": pick.get("line")
+                        },
+                        {"$set": pick},
+                        upsert=True
+                    ))
+                
+                # Upsert first (collection always has data)
+                if operations:
+                    await coll.bulk_write(operations, ordered=False)
+                
+                # Clean stale picks
+                all_docs = await coll.find({}, {"player_name": 1, "stat_type": 1, "line": 1}).to_list(length=100)
+                stale_ids = []
+                for doc in all_docs:
+                    key = f"{doc.get('player_name')}|{doc.get('stat_type')}|{doc.get('line')}"
+                    if key not in current_keys:
+                        stale_ids.append(doc["_id"])
+                
+                if stale_ids:
+                    await coll.delete_many({"_id": {"$in": stale_ids}})
+                    logger.info(f"  [{tier_name}] Cleaned {len(stale_ids)} stale props")
+                
+                logger.info(f"  ✓ Saved {len(picks)} {tier_name} props (atomic upsert)")
+                return len(picks)
             
-            # Save Front Lines
-            if front_lines:
-                front_lines_coll = self.db["mlb_ferrari_front_lines"]
-                await front_lines_coll.delete_many({})
-                clean_front_lines = [clean_prop(p, "front_lines") for p in front_lines]
-                await front_lines_coll.insert_many(clean_front_lines)
-                logger.info(f"  ✓ Saved {len(front_lines)} Front Lines props")
-            
-            # Save War Zone
-            if war_zone:
-                war_zone_coll = self.db["mlb_ferrari_war_zone"]
-                await war_zone_coll.delete_many({})
-                clean_war_zone = [clean_prop(p, "war_zone") for p in war_zone]
-                await war_zone_coll.insert_many(clean_war_zone)
-                logger.info(f"  ✓ Saved {len(war_zone)} War Zone props")
+            # Save all tiers using atomic upsert
+            await atomic_upsert_mlb_tier("mlb_ferrari_safe_haven", safe_haven, "Safe Haven")
+            await atomic_upsert_mlb_tier("mlb_ferrari_front_lines", front_lines, "Front Lines")
+            await atomic_upsert_mlb_tier("mlb_ferrari_war_zone", war_zone, "War Zone")
         
         # =====================================================================
         # PIPELINE COMPLETE

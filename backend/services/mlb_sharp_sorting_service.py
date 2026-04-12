@@ -1636,29 +1636,65 @@ class MLBSharpSortingService:
             await standard_coll.insert_many(clean_standard)
             logger.info(f"[SHARP_SORT] Saved {len(clean_standard)} Standard")
         
+        # ========================================================
+        # ATOMIC UPSERT for Ferrari Tiers (prevents race conditions)
+        # ========================================================
+        async def atomic_upsert_tier(collection_name, picks, tier_name):
+            """Atomic upsert: Replace all docs without emptying collection."""
+            from pymongo import UpdateOne
+            
+            coll = self.db[collection_name]
+            
+            if not picks:
+                await coll.delete_many({})
+                return 0
+            
+            clean_picks = [{k: v for k, v in p.items() if k != "_id"} for p in picks]
+            current_keys = set()
+            operations = []
+            
+            for pick in clean_picks:
+                key = f"{pick.get('player_name')}|{pick.get('stat_type')}|{pick.get('line')}"
+                current_keys.add(key)
+                
+                operations.append(UpdateOne(
+                    {
+                        "player_name": pick.get("player_name"),
+                        "stat_type": pick.get("stat_type"),
+                        "line": pick.get("line")
+                    },
+                    {"$set": pick},
+                    upsert=True
+                ))
+            
+            if operations:
+                await coll.bulk_write(operations, ordered=False)
+            
+            # Clean stale picks
+            all_docs = await coll.find({}, {"player_name": 1, "stat_type": 1, "line": 1}).to_list(length=100)
+            stale_ids = []
+            for doc in all_docs:
+                key = f"{doc.get('player_name')}|{doc.get('stat_type')}|{doc.get('line')}"
+                if key not in current_keys:
+                    stale_ids.append(doc["_id"])
+            
+            if stale_ids:
+                await coll.delete_many({"_id": {"$in": stale_ids}})
+            
+            logger.info(f"[SHARP_SORT] Saved {len(picks)} {tier_name} picks (atomic upsert)")
+            return len(picks)
+        
         # Safe Haven (Top 10 Elite Goblins that pass 3-Gate)
         if results.get("safe_haven"):
-            safe_haven_coll = self.db["mlb_ferrari_safe_haven"]
-            await safe_haven_coll.delete_many({})
-            clean_safe_haven = [{k: v for k, v in p.items() if k != "_id"} for p in results["safe_haven"]]
-            await safe_haven_coll.insert_many(clean_safe_haven)
-            logger.info(f"[SHARP_SORT] Saved {len(clean_safe_haven)} Safe Haven picks")
+            await atomic_upsert_tier("mlb_ferrari_safe_haven", results["safe_haven"], "Safe Haven")
         
         # Front Lines (Top 20 Mid-Juice Goblins/Standards that pass 3-Gate)
         if results.get("front_lines"):
-            front_lines_coll = self.db["mlb_ferrari_front_lines"]
-            await front_lines_coll.delete_many({})
-            clean_front_lines = [{k: v for k, v in p.items() if k != "_id"} for p in results["front_lines"]]
-            await front_lines_coll.insert_many(clean_front_lines)
-            logger.info(f"[SHARP_SORT] Saved {len(clean_front_lines)} Front Lines picks")
+            await atomic_upsert_tier("mlb_ferrari_front_lines", results["front_lines"], "Front Lines")
         
         # War Zone (Top 15 Moonshot Demons that pass Ceiling Protocol)
         if results.get("war_zone"):
-            war_zone_coll = self.db["mlb_ferrari_war_zone"]
-            await war_zone_coll.delete_many({})
-            clean_war_zone = [{k: v for k, v in p.items() if k != "_id"} for p in results["war_zone"]]
-            await war_zone_coll.insert_many(clean_war_zone)
-            logger.info(f"[SHARP_SORT] Saved {len(clean_war_zone)} War Zone picks")
+            await atomic_upsert_tier("mlb_ferrari_war_zone", results["war_zone"], "War Zone")
 
 
 # Singleton

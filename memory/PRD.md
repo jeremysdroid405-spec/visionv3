@@ -54,11 +54,18 @@ Restructure the React/FastAPI betting app to a 100% Local-First Database Model, 
   - **Atomic Upsert**: Replaced `delete_many()` + `insert_many()` with `bulkWrite(upsert=True)` in `ferrari_tier_service.py`
     - Collections never empty during sync (prevents frontend glitching)
     - Stale picks cleaned up AFTER new picks are written
+    - Applied to ALL tiers: Safe Haven, Front Lines, War Zone (NBA + MLB)
   - **Pipeline Reorder**: Vision Intel now runs ONLY on Final Top 10 picks (not pre-selection pool)
     - Guarantees ALL displayed picks have `vision_intel` populated
     - Fixed "Jokic bug" where newly-qualified picks had missing intel
   - **Naming Unification**: Standardized on `vision_intel` field across entire stack
     - `vision_summary` kept for backward compatibility but `vision_intel` is primary
+- [x] **Just-In-Time Diff Check (April 12, 2026)**
+  - Queries existing collection for cached `vision_intel` before calling Gemini
+  - Only fires Gemini batch for DELTA picks (new players or missing intel)
+  - Returning players get cached intel merged instantly (0 tokens used)
+  - Log output shows: `[Safe Haven] Cached intel found: X, Delta: Y (need Gemini)`
+  - Token savings: ~70% reduction when board is stable
   - Displays beneficiary opportunities with AB bumps (Teoscar Hernandez +0.5 AB, etc.)
   - BDL injury status mapping: "10-Day-IL"/"60-Day-IL" → "OUT", "Day-To-Day" → "DTD"
 
