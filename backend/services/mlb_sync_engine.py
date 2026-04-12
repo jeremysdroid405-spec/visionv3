@@ -1,19 +1,17 @@
 """
-Optimized Sync Engine (Sport-Exclusive Architecture)
-=====================================================
-High-performance sync engine that:
-1. Pre-caches ALL global data (standings, referees, momentum) ONCE at sync start
+MLB Sync Engine (1:1 Clone of NBA Architecture)
+================================================
+High-performance sync engine for MLB that:
+1. Pre-caches ALL global data (standings, injuries, weather) ONCE at sync start
 2. Uses async batching with asyncio.gather() for concurrent processing
 3. Enriches ALL picks with complete data in a single pass
 4. Returns unified JSON payload with all intel data
-5. **Sport-Exclusive Mode**: Isolates data pipelines per sport (NBA/MLB)
-   - Collection prefixes: nba_ vs mlb_
-   - Locked State: Prevents cross-sport data corruption
+5. **MLB-Exclusive Mode**: Isolated data pipeline for MLB only
 
 Target: Complete sync in under 5 seconds
 
-Author: PropVision AI
-Version: 2.0.0 (Sport-Exclusive)
+Author: PropVision AI - MLB Clone
+Version: 2.0.0 (MLB)
 """
 import asyncio
 import logging
@@ -25,32 +23,21 @@ logger = logging.getLogger(__name__)
 
 # Batch processing limits
 BATCH_SIZE = 30  # Process all picks at once
-GEMINI_CONCURRENT_LIMIT = 30  # Max concurrent Gemini calls (Tier 1 paid = 1000 RPM, ~16/sec)
+GEMINI_CONCURRENT_LIMIT = 30  # Max concurrent Gemini calls
 
-# Supported sports for Sport-Exclusive architecture
-SUPPORTED_SPORTS = ["nba", "mlb"]
-DEFAULT_SPORT = "nba"
+# MLB-specific collection mappings
+DEFAULT_SPORT = "mlb"
 
-# Sport-specific collection mappings
-# Each sport has its own isolated set of collections
+# MLB-specific collection mappings
 SPORT_COLLECTION_MAP = {
-    "nba": {
-        "master_hub": "mlb_master_hub_2026_2026",
-        "cached_board": "mlb_cached_board",  # Legacy NBA naming (no prefix for backwards compat)
-        "live_props": "dg_live_props",
-        "safe_haven": "ferrari_safe_haven",
-        "front_lines": "ferrari_front_lines",
-        "war_zone": "ferrari_war_zone",
-        "oracle_analyzed": "oracle_apex_analyzed",
-    },
     "mlb": {
         "master_hub": "mlb_master_hub_2026",
         "cached_board": "mlb_cached_board",
         "live_props": "mlb_live_props",
-        "safe_haven": "mlb_ferrari_safe_haven",
-        "front_lines": "mlb_ferrari_front_lines",
-        "war_zone": "mlb_ferrari_war_zone",
-        "oracle_analyzed": "mlb_oracle_apex_analyzed",
+        "safe_haven": "mlb_safe_haven",
+        "front_lines": "mlb_front_lines",
+        "war_zone": "mlb_war_zone",
+        "oracle_analyzed": "mlb_oracle_analyzed",
     }
 }
 
@@ -514,32 +501,29 @@ async def _batch_generate_summaries(picks: List[Dict], db) -> None:
     pass
 
 
-async def run_mlb_sync(db, target_sport: str = DEFAULT_SPORT) -> Dict[str, Any]:
+async def run_mlb_sync(db, save_to_db: bool = True, target_sport: str = "mlb") -> Dict[str, Any]:
     """
-    Run the full optimized sync pipeline for a SPECIFIC sport.
+    Run the full optimized sync pipeline for MLB.
     
-    **SPORT-EXCLUSIVE MODE**: This sync is isolated to `target_sport` only.
-    Collections for other sports are LOCKED and cannot be modified.
+    **SPORT-EXCLUSIVE MODE**: This sync is isolated to MLB only.
     
     Pipeline:
     1. Fetch ALL global data (standings, refs, momentum, vacuums) in parallel
-    2. Run Ferrari pipeline to build scored picks
+    2. Run MLB Tier Service to build scored picks with JIT Delta Check
     3. Enrich picks with cached global data (fast, sync)
     4. Generate AI summaries in batches (rate-limited)
     5. Update mlb_cached_board with enriched intel_suite data
     
     Args:
         db: MongoDB database connection
-        target_sport: Sport to sync ('nba' or 'mlb')
+        save_to_db: Whether to persist results to database
+        target_sport: Sport to sync (always 'mlb' for this function)
     
     Returns:
         Complete payload with all picks enriched.
     """
-    # Normalize and validate sport
-    target_sport = (target_sport or DEFAULT_SPORT).lower()
-    if target_sport not in SUPPORTED_SPORTS:
-        logger.warning(f"[OPTIMIZED_SYNC] Unknown sport '{target_sport}', defaulting to {DEFAULT_SPORT}")
-        target_sport = DEFAULT_SPORT
+    # Force MLB for this function
+    target_sport = "mlb"
     
     start = datetime.now(timezone.utc)
     timings = {}  # Track timing for each phase

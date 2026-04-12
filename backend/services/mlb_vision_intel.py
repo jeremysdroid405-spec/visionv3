@@ -469,11 +469,11 @@ Return your analysis as a JSON array. One object per prop with all required fiel
 
 
 # Singleton instance
-_mlb_vision_intel: Optional[MLBVisionIntel] = None
+_mlb_vision_intel_instance: Optional[MLBVisionIntel] = None
 
 def get_mlb_vision_intel() -> MLBVisionIntel:
-    """Get or create the Vision Intel service singleton."""
+    """Get or create the MLB Vision Intel service singleton."""
     global _mlb_vision_intel_instance
-    if _mlb_vision_intel is None:
-        _mlb_vision_intel = MLBVisionIntel()
-    return _mlb_vision_intel
+    if _mlb_vision_intel_instance is None:
+        _mlb_vision_intel_instance = MLBVisionIntel()
+    return _mlb_vision_intel_instance

@@ -837,7 +837,8 @@ async def scheduled_mlb_daily_sync():
     """
     MLB Daily Sync - Runs at 4:03 AM EST (3 min after NBA daily sync).
     
-    Runs the MLB Ferrari pipeline to refresh all MLB props and enrichments.
+    Runs the MLB Pipeline (1:1 clone of NBA) to refresh all MLB props and enrichments.
+    Uses JIT Delta Check for Vision Intel efficiency.
     """
     logger.info("=" * 70)
     logger.info("[SCHEDULER] MLB DAILY SYNC (4:03 AM EST)")
@@ -845,18 +846,20 @@ async def scheduled_mlb_daily_sync():
     logger.info("=" * 70)
     
     try:
-        from services.mlb_ferrari_pipeline import run_mlb_ferrari_pipeline
+        from services.mlb_sync_engine import run_mlb_sync
         
-        result = await run_mlb_ferrari_pipeline(db, save_to_db=True)
+        result = await run_mlb_sync(db, save_to_db=True, target_sport="mlb")
         
-        logger.info(f"[SCHEDULER] MLB Ferrari Pipeline complete:")
+        logger.info(f"[SCHEDULER] MLB Sync Engine complete:")
         logger.info(f"[SCHEDULER]   - Success: {result.get('success', False)}")
-        logger.info(f"[SCHEDULER]   - Props processed: {result.get('stats', {}).get('total_processed', 0)}")
-        logger.info(f"[SCHEDULER]   - Duration: {result.get('duration_seconds', 0):.1f}s")
+        logger.info(f"[SCHEDULER]   - Output: {result.get('output', {})}")
+        logger.info(f"[SCHEDULER]   - Timings: {result.get('timings', {})}")
         logger.info("=" * 70)
         
     except Exception as e:
         logger.error(f"[SCHEDULER] MLB daily sync failed: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
 
 
 async def scheduled_mlb_game_values_sync():

@@ -55,6 +55,16 @@ MLB_TEAMS = [
     "PHI", "PIT", "SD", "SF", "SEA", "STL", "TB", "TEX", "TOR", "WSH"
 ]
 
+# Import MLB-specific engine classes
+from services.mlb_propvision_engine import (
+    TrueProbabilityEngine,
+    DiversifiedParlayOptimizer,
+    calculate_granular_hit_rates,
+    calculate_median,
+    calculate_mode,
+    calculate_std_dev
+)
+
 # =============================================================================
 # PROPVISION v7 CONSTANTS
 # =============================================================================
@@ -153,7 +163,7 @@ def calculate_mean(values: List[float]) -> Optional[float]:
 # FERRARI v6 PIPELINE SERVICE
 # =============================================================================
 
-class FerrariTierService:
+class MLBTierService:
     """
     Ferrari v6 Pipeline - Global Power Ranking + Whistle Matrix
     
@@ -301,7 +311,7 @@ class FerrariTierService:
         Returns:
             (qualifies: bool, reason: str)
         """
-        from services.oracle_apex_service import FRONT_LINES_CONFIG
+        from services.mlb_oracle_apex_service import FRONT_LINES_CONFIG
         import numpy as np
         
         if stat_type not in FRONT_LINES_CONFIG:
@@ -370,7 +380,7 @@ class FerrariTierService:
         Returns:
             (qualifies: bool, reason: str)
         """
-        from services.oracle_apex_service import WAR_ZONE_CONFIG
+        from services.mlb_oracle_apex_service import WAR_ZONE_CONFIG
         import numpy as np
         
         if stat_type not in WAR_ZONE_CONFIG:
@@ -1334,9 +1344,9 @@ class FerrariTierService:
             # =================================================================
             logger.info("[PHASE 4] DK ODDS-BASED TIER BUILDING FROM ORACLE APEX DATA...")
             
-            oracle_analyzed = self.db.oracle_apex_analyzed
+            oracle_analyzed = self.db.mlb_oracle_analyzed
             all_oracle_props = await oracle_analyzed.find({}, {"_id": 0}).to_list(length=None)
-            logger.info(f"  Loaded {len(all_oracle_props)} props from oracle_apex_analyzed")
+            logger.info(f"  Loaded {len(all_oracle_props)} props from mlb_oracle_analyzed")
             
             # =================================================================
             # BUILD DK ODDS LOOKUP FROM mlb_cached_board
@@ -1534,7 +1544,7 @@ class FerrariTierService:
             # Only call Gemini for NEW or MISSING intel picks to save tokens
             # =================================================================
             try:
-                from services.vision_intel_service import get_vision_intel_service
+                from services.mlb_vision_intel import get_mlb_vision_intel as get_vision_intel_service
                 vision_intel = get_vision_intel_service()
                 
                 if vision_intel.enabled:
@@ -2387,8 +2397,8 @@ class FerrariTierService:
 # Singleton
 _ferrari_service = None
 
-def get_ferrari_tier_service(db=None):
+def get_mlb_tier_service(db=None):
     global _ferrari_service
     if _ferrari_service is None and db is not None:
-        _ferrari_service = FerrariTierService(db)
+        _ferrari_service = MLBTierService(db)
     return _ferrari_service
