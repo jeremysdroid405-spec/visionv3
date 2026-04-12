@@ -108,6 +108,19 @@ Restructure the React/FastAPI betting app to a 100% Local-First Database Model, 
   - Board Score = (Edge * 15) + TP + CV_Bonus (edge-weighted for max payout potential)
   - Updated `optimized_sync_engine.py` to route MLB to `mlb_tier_service.py`
 
+- [x] **MLB Tempo Math Integration (April 12, 2026)**
+  - Created `mlb_tempo_math.py` utility file for PA/IP opportunity modifiers
+  - **Hitter Tempo**: `calculate_hitter_tempo(batting_order, is_away_team, team_obp_rank)`
+    - Away Team: +3% boost (guaranteed 9th inning AB) / Home: -2%
+    - Batting Order: Slots 1-3 +5%, 4-5 neutral, 6-9 -8%
+    - Team OBP: Top 10 +4%, Bottom 10 -4%
+  - **Pitcher Tempo**: `calculate_pitcher_tempo(pitcher_ppa, bullpen_rest_days)`
+    - P/PA < 3.8 (Efficient): +8% / P/PA > 4.2 (Grinder): -10%
+    - Bullpen 0 Rest Days: +5% (longer leash)
+  - **Integration**: Chained modifiers in Oracle Apex:
+    - `Final_Adjusted = Raw_VK * Matchup_Multiplier * Tempo_Multiplier`
+  - All three tier functions updated (Safe Haven, Front Lines, War Zone)
+
 ### In Progress
 - [ ] MLB headshot sync (~700 players remaining)
 

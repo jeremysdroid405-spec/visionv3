@@ -46,6 +46,12 @@ import logging
 import numpy as np
 
 from services.mlb_matchup_math import get_mlb_matchup_analysis
+from services.mlb_tempo_math import (
+    calculate_hitter_tempo,
+    calculate_pitcher_tempo,
+    get_hitter_tempo_breakdown,
+    get_pitcher_tempo_breakdown
+)
 
 logger = logging.getLogger(__name__)
 
@@ -535,7 +541,7 @@ class MLBOracleApexService:
                 continue
             
             # ================================================================
-            # 2. PRE-COMPUTATION (Matchup Modifier)
+            # 2. PRE-COMPUTATION (Matchup Modifier + Tempo Modifier)
             # ================================================================
             
             # Get raw VK projection
@@ -546,9 +552,26 @@ class MLBOracleApexService:
             # Get opponent for matchup calculation
             opponent = prop.get("opponent") or prop.get("opponent_abbr")
             
-            # Calculate matchup modifier and adjusted projection
+            # Calculate matchup modifier
             matchup_modifier = self._get_matchup_modifier(raw_stat, opponent) if opponent else 1.0
-            adjusted_vk_pred = raw_vk_pred * matchup_modifier
+            
+            # Calculate tempo modifier based on player type (hitter vs pitcher)
+            is_pitcher_stat = stat_key in ["K", "OUTS"]
+            
+            if is_pitcher_stat:
+                # Pitcher tempo: P/PA efficiency + bullpen rest
+                pitcher_ppa = prop.get("pitcher_ppa") or prop.get("pitches_per_pa")
+                bullpen_rest = prop.get("bullpen_rest_days")
+                tempo_modifier = calculate_pitcher_tempo(pitcher_ppa, bullpen_rest)
+            else:
+                # Hitter tempo: batting order + away/home + team OBP
+                batting_order = prop.get("batting_order") or prop.get("lineup_position")
+                is_away = prop.get("is_away_team") or prop.get("is_away")
+                team_obp_rank = prop.get("team_obp_rank")
+                tempo_modifier = calculate_hitter_tempo(batting_order, is_away, team_obp_rank)
+            
+            # Chain the modifiers: Raw * Matchup * Tempo = Final Adjusted
+            adjusted_vk_pred = raw_vk_pred * matchup_modifier * tempo_modifier
             
             # Get prop line
             line = prop.get("line", 0)
@@ -673,10 +696,11 @@ class MLBOracleApexService:
                 # Consistency
                 'cv': round(cv, 3) if cv else None,
                 
-                # VK predictions
+                # VK predictions with tempo
                 'raw_vk_pred': round(raw_vk_pred, 2),
                 'matchup_modifier': round(matchup_modifier, 3),
-                'vk_predicted': round(adjusted_vk_pred, 2),  # Adjusted projection
+                'tempo_modifier': round(tempo_modifier, 3),
+                'vk_predicted': round(adjusted_vk_pred, 2),  # Adjusted projection (Raw * Matchup * Tempo)
                 'vk_edge': round(raw_edge, 2),  # Raw cushion (adjusted_pred - line)
                 'vk_prob_over': round(tp_prob, 1),
                 'vk_probability': round(tp_prob, 1),
@@ -878,7 +902,7 @@ class MLBOracleApexService:
                 continue
             
             # ================================================================
-            # 2. PRE-COMPUTATION (Matchup Modifier)
+            # 2. PRE-COMPUTATION (Matchup Modifier + Tempo Modifier)
             # ================================================================
             
             # Get raw VK projection
@@ -889,9 +913,26 @@ class MLBOracleApexService:
             # Get opponent for matchup calculation
             opponent = prop.get("opponent") or prop.get("opponent_abbr")
             
-            # Calculate matchup modifier and adjusted projection
+            # Calculate matchup modifier
             matchup_modifier = self._get_matchup_modifier(raw_stat, opponent) if opponent else 1.0
-            adjusted_vk_pred = raw_vk_pred * matchup_modifier
+            
+            # Calculate tempo modifier based on player type (hitter vs pitcher)
+            is_pitcher_stat = stat_key in ["K", "OUTS"]
+            
+            if is_pitcher_stat:
+                # Pitcher tempo: P/PA efficiency + bullpen rest
+                pitcher_ppa = prop.get("pitcher_ppa") or prop.get("pitches_per_pa")
+                bullpen_rest = prop.get("bullpen_rest_days")
+                tempo_modifier = calculate_pitcher_tempo(pitcher_ppa, bullpen_rest)
+            else:
+                # Hitter tempo: batting order + away/home + team OBP
+                batting_order = prop.get("batting_order") or prop.get("lineup_position")
+                is_away = prop.get("is_away_team") or prop.get("is_away")
+                team_obp_rank = prop.get("team_obp_rank")
+                tempo_modifier = calculate_hitter_tempo(batting_order, is_away, team_obp_rank)
+            
+            # Chain the modifiers: Raw * Matchup * Tempo = Final Adjusted
+            adjusted_vk_pred = raw_vk_pred * matchup_modifier * tempo_modifier
             
             # Get prop line
             line = prop.get("line", 0)
@@ -1029,10 +1070,11 @@ class MLBOracleApexService:
                 # Consistency
                 'cv': round(cv, 3) if cv else None,
                 
-                # VK predictions
+                # VK predictions with tempo
                 'raw_vk_pred': round(raw_vk_pred, 2),
                 'matchup_modifier': round(matchup_modifier, 3),
-                'vk_predicted': round(adjusted_vk_pred, 2),  # Adjusted projection
+                'tempo_modifier': round(tempo_modifier, 3),
+                'vk_predicted': round(adjusted_vk_pred, 2),  # Adjusted projection (Raw * Matchup * Tempo)
                 'vk_edge': round(raw_edge, 2),  # Raw cushion (adjusted_pred - line)
                 'vk_prob_over': round(pinnacle_tp, 1),
                 'vk_probability': round(pinnacle_tp, 1),
@@ -1254,7 +1296,7 @@ class MLBOracleApexService:
                 pinnacle_tp = 35.0
             
             # ================================================================
-            # 2. PRE-COMPUTATION (Matchup Modifier)
+            # 2. PRE-COMPUTATION (Matchup Modifier + Tempo Modifier)
             # ================================================================
             
             # Get raw VK projection
@@ -1265,9 +1307,26 @@ class MLBOracleApexService:
             # Get opponent for matchup calculation
             opponent = prop.get("opponent") or prop.get("opponent_abbr")
             
-            # Calculate matchup modifier and adjusted projection
+            # Calculate matchup modifier
             matchup_modifier = self._get_matchup_modifier(raw_stat, opponent) if opponent else 1.0
-            adjusted_vk_pred = raw_vk_pred * matchup_modifier
+            
+            # Calculate tempo modifier based on player type (hitter vs pitcher)
+            is_pitcher_stat = stat_key in ["K", "OUTS"]
+            
+            if is_pitcher_stat:
+                # Pitcher tempo: P/PA efficiency + bullpen rest
+                pitcher_ppa = prop.get("pitcher_ppa") or prop.get("pitches_per_pa")
+                bullpen_rest = prop.get("bullpen_rest_days")
+                tempo_modifier = calculate_pitcher_tempo(pitcher_ppa, bullpen_rest)
+            else:
+                # Hitter tempo: batting order + away/home + team OBP
+                batting_order = prop.get("batting_order") or prop.get("lineup_position")
+                is_away = prop.get("is_away_team") or prop.get("is_away")
+                team_obp_rank = prop.get("team_obp_rank")
+                tempo_modifier = calculate_hitter_tempo(batting_order, is_away, team_obp_rank)
+            
+            # Chain the modifiers: Raw * Matchup * Tempo = Final Adjusted
+            adjusted_vk_pred = raw_vk_pred * matchup_modifier * tempo_modifier
             
             # Get prop line
             line = prop.get("line", 0)
@@ -1424,10 +1483,11 @@ class MLBOracleApexService:
                 'used_volatility_fasttrack': used_volatility_fasttrack,
                 'volatility_fasttrack_reason': f"CV {cv:.2f} > 1.0 = Boom/Bust" if used_volatility_fasttrack else None,
                 
-                # VK predictions
+                # VK predictions with tempo
                 'raw_vk_pred': round(raw_vk_pred, 2),
                 'matchup_modifier': round(matchup_modifier, 3),
-                'vk_predicted': round(adjusted_vk_pred, 2),  # Adjusted projection
+                'tempo_modifier': round(tempo_modifier, 3),
+                'vk_predicted': round(adjusted_vk_pred, 2),  # Adjusted projection (Raw * Matchup * Tempo)
                 'vk_edge': round(raw_edge, 2),  # Raw cushion (adjusted_pred - line)
                 'vk_prob_over': round(pinnacle_tp, 1),
                 'vk_probability': round(pinnacle_tp, 1),
