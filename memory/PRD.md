@@ -40,6 +40,11 @@ Restructure the React/FastAPI betting app to a 100% Local-First Database Model, 
   - Added MLB team logos (ESPN CDN) to constants.js
   - Updated LiveScoresTicker to handle MLB status codes (Inning 1, Top 5, etc.)
   - Sport-aware "live" detection for both NBA quarters and MLB innings
+- [x] **MLB Live Scores Real-Time Fix (April 12, 2026)**
+  - Fixed timezone issue: Now uses US Eastern date for BDL API queries (MLB games are US-based)
+  - Properly parsing BDL `/mlb/v1/games` endpoint fields: `status`, `period`, `home_team_data.runs`, `inning_scores`
+  - Inning half logic: Calculates "Top"/"Bot" from `away_inning_scores.length` vs `home_inning_scores.length`
+  - Status displays: "Top 6", "Bot 9", "Final" with real scores (e.g., NYY 4 @ TB 3 Bot 10)
 
 ### In Progress
 - [ ] MLB headshot sync (~700 players remaining)

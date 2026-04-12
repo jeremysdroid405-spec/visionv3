@@ -733,108 +733,161 @@ async def _fetch_news_fallback(sport: str = "nba"):
 
 
 async def get_mlb_live_scores():
-    """Get today's MLB games with live scores."""
+    """
+    Get today's MLB games with live scores.
+    Uses BallDontLie MLB API which provides real-time game data.
+    
+    Note: Uses US Eastern timezone for date since MLB games are based on US times.
+    
+    BDL MLB Games Response Fields:
+    - status: "STATUS_IN_PROGRESS", "STATUS_SCHEDULED", "STATUS_FINAL"
+    - period: current inning number
+    - home_team_data.runs / away_team_data.runs: current scores
+    - home_team_data.inning_scores: array of runs per inning (length = innings played)
+    - away_team_data.inning_scores: array of runs per inning
+    
+    Inning Half Logic:
+    - If away_inning_scores.length > home_inning_scores.length: Bottom of inning
+    - If away_inning_scores.length == home_inning_scores.length: Top of inning
+    """
     try:
         api_key = os.environ.get("BDL_API_KEY") or os.environ.get("BALLDONTLIE_API_KEY")
         
-        if api_key:
-            try:
-                async with httpx.AsyncClient(timeout=15.0) as client:
-                    # Try BDL MLB live endpoint
-                    response = await client.get(
-                        "https://api.balldontlie.io/mlb/v1/games",
-                        params={"dates[]": datetime.now().strftime("%Y-%m-%d"), "per_page": 30},
-                        headers={"Authorization": api_key}
-                    )
-                    
-                    if response.status_code == 200:
-                        data = response.json()
-                        bdl_games = data.get("data", [])
-                        
-                        if bdl_games:
-                            games = []
-                            today = datetime.now().strftime("%Y-%m-%d")
-                            
-                            for game in bdl_games:
-                                home = game.get("home_team", {})
-                                away = game.get("away_team", {}) or game.get("visitor_team", {}) or {}
-                                
-                                game_time_utc = game.get("datetime", "") or game.get("date", "")
-                                start_time_display = ""
-                                if game_time_utc:
-                                    try:
-                                        utc_time = datetime.fromisoformat(game_time_utc.replace("Z", "+00:00"))
-                                        est_time = utc_time - timedelta(hours=5)
-                                        start_time_display = est_time.strftime("%-I:%M %p ET")
-                                    except:
-                                        pass
-                                
-                                status_text = game.get("status", "")
-                                inning = game.get("inning", 0) or game.get("period", 0)
-                                inning_half = game.get("inning_half", "")
-                                
-                                if "Final" in str(status_text):
-                                    status_display = "Final"
-                                    status_code = 3
-                                elif inning > 0:
-                                    half = "Top" if inning_half == "top" else "Bot" if inning_half == "bottom" else ""
-                                    status_display = f"{half} {inning}" if half else f"Inning {inning}"
-                                    status_code = 2
-                                else:
-                                    status_display = start_time_display or "Scheduled"
-                                    status_code = 1
-                                
-                                games.append({
-                                    "game_id": str(game.get("id")),
-                                    "home_team": home.get("abbreviation", "???"),
-                                    "home_score": game.get("home_team_score", 0),
-                                    "home_name": home.get("name", ""),
-                                    "away_team": away.get("abbreviation", "???"),
-                                    "away_score": game.get("visitor_team_score", 0),
-                                    "away_name": away.get("name", ""),
-                                    "status": status_display,
-                                    "status_code": status_code,
-                                    "inning": inning,
-                                    "start_time": game_time_utc,
-                                    "start_time_display": start_time_display,
-                                    "sport": "mlb"
-                                })
-                            
-                            games.sort(key=lambda x: x.get("start_time", ""))
-                            
-                            return {
-                                "games": games,
-                                "date": today,
-                                "games_count": len(games),
-                                "source": "bdl_mlb_live",
-                                "sport": "mlb",
-                                "synced_at": datetime.now(timezone.utc).isoformat()
-                            }
-            except Exception as e:
-                logger.warning(f"[MLB TICKER] BDL live fetch failed: {e}")
+        if not api_key:
+            logger.warning("[MLB TICKER] No BDL API key found")
+            return {"games": [], "date": None, "games_count": 0, "source": "no_key", "sport": "mlb"}
         
-        # Fallback to DB cache
-        if _db is not None:
-            cached = await _db.ticker_cache.find_one(
-                {"type": "mlb_games"},
-                {"_id": 0}
+        # Use US Eastern timezone for date since MLB games are US-based
+        # This ensures we query the correct day's games
+        from zoneinfo import ZoneInfo
+        eastern = ZoneInfo("America/New_York")
+        today_eastern = datetime.now(eastern).strftime("%Y-%m-%d")
+        
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            response = await client.get(
+                "https://api.balldontlie.io/mlb/v1/games",
+                params={"dates[]": today_eastern, "per_page": 30},
+                headers={"Authorization": api_key}
             )
             
-            if cached and cached.get("games"):
-                return {
-                    "games": cached.get("games", []),
-                    "date": cached.get("date"),
-                    "games_count": cached.get("games_count", 0),
-                    "source": "cache",
+            if response.status_code != 200:
+                logger.error(f"[MLB TICKER] BDL API error: {response.status_code}")
+                return await _get_mlb_cache_fallback()
+            
+            data = response.json()
+            bdl_games = data.get("data", [])
+            
+            games = []
+            for game in bdl_games:
+                home_team = game.get("home_team", {})
+                away_team = game.get("away_team", {})
+                home_data = game.get("home_team_data", {})
+                away_data = game.get("away_team_data", {})
+                
+                # Get scores from team_data
+                home_score = home_data.get("runs", 0) or 0
+                away_score = away_data.get("runs", 0) or 0
+                
+                # Get inning info
+                current_inning = game.get("period", 0) or 0
+                status_raw = game.get("status", "")
+                
+                # Determine inning half from inning_scores arrays
+                home_innings = home_data.get("inning_scores", []) or []
+                away_innings = away_data.get("inning_scores", []) or []
+                
+                # Inning half logic:
+                # - Away team always bats first (top)
+                # - If away has more inning entries than home, we're in bottom
+                # - If equal, we're in top
+                inning_half = ""
+                if current_inning > 0:
+                    if len(away_innings) > len(home_innings):
+                        inning_half = "bottom"
+                    else:
+                        inning_half = "top"
+                
+                # Parse game time for scheduled games
+                game_time_utc = game.get("date", "")
+                start_time_display = ""
+                if game_time_utc:
+                    try:
+                        utc_time = datetime.fromisoformat(game_time_utc.replace("Z", "+00:00"))
+                        est_time = utc_time - timedelta(hours=4)  # EDT
+                        start_time_display = est_time.strftime("%-I:%M %p ET")
+                    except:
+                        pass
+                
+                # Build status display
+                if status_raw == "STATUS_FINAL":
+                    status_display = "Final"
+                    status_code = 3
+                elif status_raw == "STATUS_IN_PROGRESS" and current_inning > 0:
+                    # Format as "Top 5" or "Bot 9"
+                    half_abbrev = "Top" if inning_half == "top" else "Bot" if inning_half == "bottom" else ""
+                    status_display = f"{half_abbrev} {current_inning}" if half_abbrev else f"Inn {current_inning}"
+                    status_code = 2
+                else:
+                    # Scheduled game - show start time
+                    status_display = start_time_display or "Scheduled"
+                    status_code = 1
+                
+                games.append({
+                    "game_id": str(game.get("id")),
+                    "home_team": home_team.get("abbreviation", "???"),
+                    "home_score": home_score,
+                    "home_name": home_team.get("name", ""),
+                    "away_team": away_team.get("abbreviation", "???"),
+                    "away_score": away_score,
+                    "away_name": away_team.get("name", ""),
+                    "status": status_display,
+                    "status_code": status_code,
+                    "inning": current_inning,
+                    "inning_half": inning_half,
+                    "start_time": game_time_utc,
+                    "start_time_display": start_time_display,
                     "sport": "mlb",
-                    "synced_at": cached.get("synced_at")
-                }
-        
-        return {"games": [], "date": None, "games_count": 0, "source": "empty", "sport": "mlb"}
+                    "venue": game.get("venue", "")
+                })
+            
+            # Sort by start time
+            games.sort(key=lambda x: x.get("start_time", ""))
+            
+            logger.info(f"[MLB TICKER] Fetched {len(games)} games from BDL")
+            
+            return {
+                "games": games,
+                "date": today_eastern,
+                "games_count": len(games),
+                "source": "bdl_mlb",
+                "sport": "mlb",
+                "synced_at": datetime.now(timezone.utc).isoformat()
+            }
         
     except Exception as e:
         logger.error(f"[MLB LIVE] Scores error: {e}")
-        return {"success": False, "games": [], "error": str(e), "sport": "mlb"}
+        return await _get_mlb_cache_fallback()
+
+
+async def _get_mlb_cache_fallback():
+    """Fallback to DB cache if BDL API fails."""
+    if _db is not None:
+        cached = await _db.ticker_cache.find_one(
+            {"type": "mlb_games"},
+            {"_id": 0}
+        )
+        
+        if cached and cached.get("games"):
+            return {
+                "games": cached.get("games", []),
+                "date": cached.get("date"),
+                "games_count": cached.get("games_count", 0),
+                "source": "cache",
+                "sport": "mlb",
+                "synced_at": cached.get("synced_at")
+            }
+    
+    return {"games": [], "date": None, "games_count": 0, "source": "empty", "sport": "mlb"}
 
 
 @router.post("/sync-ticker")
