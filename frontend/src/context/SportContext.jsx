@@ -60,6 +60,7 @@ export const SportProvider = ({ children }) => {
   const value = {
     currentSport,
     switchSport,
+    setSport: switchSport, // Alias for convenience
     isTransitioning,
     sportConfig,
     availableSports: Object.values(SPORTS_CONFIG).filter(s => s.enabled)

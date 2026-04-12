@@ -4,30 +4,23 @@
  * This component wraps the main Dashboard with MLB sport context pre-set.
  * Used for /mlb route to provide direct MLB access without manual sport switching.
  */
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { useSport } from '../context/SportContext';
 import Dashboard from './Dashboard';
 
 const MLBDashboard = ({ isDemoMode = false }) => {
-  const { currentSport, setSport } = useSport();
+  const { currentSport, switchSport } = useSport();
+  const hasSetSport = useRef(false);
   
-  // Set sport to MLB on mount if not already
+  // Set sport to MLB on mount only once
   useEffect(() => {
-    if (currentSport !== 'mlb') {
-      setSport('mlb');
+    if (!hasSetSport.current && currentSport !== 'mlb') {
+      hasSetSport.current = true;
+      switchSport('mlb');
     }
-  }, [currentSport, setSport]);
+  }, []); // Empty deps - run once on mount
   
-  // Wait for sport to be set before rendering
-  if (currentSport !== 'mlb') {
-    return (
-      <div className="min-h-screen bg-black flex items-center justify-center">
-        <div className="animate-pulse text-green-400 text-lg">Loading MLB Board...</div>
-      </div>
-    );
-  }
-  
-  return <Dashboard isDemoMode={isDemoMode} forceSport="mlb" />;
+  return <Dashboard isDemoMode={isDemoMode} />;
 };
 
 export default MLBDashboard;

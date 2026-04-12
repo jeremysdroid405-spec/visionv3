@@ -4,30 +4,23 @@
  * This component wraps the main Dashboard with NBA sport context pre-set.
  * Used for /nba route to provide direct NBA access without manual sport switching.
  */
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { useSport } from '../context/SportContext';
 import Dashboard from './Dashboard';
 
 const NBADashboard = ({ isDemoMode = false }) => {
-  const { currentSport, setSport } = useSport();
+  const { currentSport, switchSport } = useSport();
+  const hasSetSport = useRef(false);
   
-  // Set sport to NBA on mount if not already
+  // Set sport to NBA on mount only once
   useEffect(() => {
-    if (currentSport !== 'nba') {
-      setSport('nba');
+    if (!hasSetSport.current && currentSport !== 'nba') {
+      hasSetSport.current = true;
+      switchSport('nba');
     }
-  }, [currentSport, setSport]);
+  }, []); // Empty deps - run once on mount
   
-  // Wait for sport to be set before rendering
-  if (currentSport !== 'nba') {
-    return (
-      <div className="min-h-screen bg-black flex items-center justify-center">
-        <div className="animate-pulse text-amber-400 text-lg">Loading NBA Board...</div>
-      </div>
-    );
-  }
-  
-  return <Dashboard isDemoMode={isDemoMode} forceSport="nba" />;
+  return <Dashboard isDemoMode={isDemoMode} />;
 };
 
 export default NBADashboard;
