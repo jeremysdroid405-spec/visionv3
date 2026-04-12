@@ -478,11 +478,38 @@ class MLBInjuryVacuumService:
     async def get_live_alerts(self, refresh: bool = False) -> List[Dict]:
         """
         Get formatted alerts for the "Live Injury Advantage" section.
+        
+        ACTIVE PROP GATE:
+        Only returns alerts where the beneficiary has an active prop on today's board.
+        Injuries without actionable betting value are filtered out.
         """
         if refresh or not self.last_injury_check:
             await self.check_injuries()
         
+        # =====================================================================
+        # STEP 1: Get active props from today's board
+        # =====================================================================
+        active_players_on_board = set()
+        active_props_by_player = {}
+        
+        try:
+            # Check mlb_cached_board for today's active props
+            cached_board = self.db.get_collection("mlb_cached_board") if self.db else None
+            if cached_board:
+                async for player_doc in cached_board.find({}, {"player_name": 1, "props": 1, "_id": 0}):
+                    player_name = player_doc.get("player_name")
+                    if player_name:
+                        normalized = self._normalize_player_name(player_name)
+                        active_players_on_board.add(normalized)
+                        # Store props for volume boost calculation
+                        active_props_by_player[normalized] = player_doc.get("props", [])
+                
+                logger.info(f"[MLBVacuum] Active Prop Gate: {len(active_players_on_board)} players on today's board")
+        except Exception as e:
+            logger.warning(f"[MLBVacuum] Error fetching active board: {e}")
+        
         alerts = []
+        filtered_count = 0
         
         for vacuum in self.active_vacuums.values():
             injured_player = vacuum.get("injured_player")
@@ -509,21 +536,63 @@ class MLBInjuryVacuumService:
             injury_reason = f"{injury_type}: {injury_details}" if injury_details else injury_type
             
             for beneficiary in vacuum.get("beneficiaries", []):
+                beneficiary_name = beneficiary["name"]
+                normalized_beneficiary = self._normalize_player_name(beneficiary_name)
+                
+                # =====================================================================
+                # STEP 2: ACTIVE PROP GATE
+                # Only include if beneficiary has active prop on today's board
+                # =====================================================================
+                if normalized_beneficiary not in active_players_on_board:
+                    filtered_count += 1
+                    logger.debug(f"[MLBVacuum] Filtered: {beneficiary_name} (no active props)")
+                    continue
+                
+                # Get the beneficiary's props for display
+                beneficiary_props = active_props_by_player.get(normalized_beneficiary, [])
+                prop_lines = []
+                for prop in beneficiary_props[:3]:  # Top 3 props
+                    stat_type = prop.get("stat_type", "")
+                    line = prop.get("line", 0)
+                    if stat_type and line:
+                        prop_lines.append(f"{stat_type} {line}")
+                
+                # =====================================================================
+                # STEP 3: Calculate volume/tempo boost
+                # =====================================================================
+                ab_bump = beneficiary.get("ab_bump", 0)
+                lineup_bump = beneficiary.get("lineup_bump", 0)
+                
+                # Calculate adjusted projection boost
+                # Formula: base_modifier + (ab_bump * 0.1) + (late_injury_bonus if within 2 hours of game)
+                base_modifier = beneficiary.get("modifier", 0.05)
+                volume_boost = ab_bump * 0.1
+                late_scratch_bonus = 0.05 if vacuum.get("is_late_scratch") else 0
+                total_projection_boost = base_modifier + volume_boost + late_scratch_bonus
+                
                 alerts.append({
-                    "id": f"{injured_player}-{beneficiary['name']}",
+                    "id": f"{injured_player}-{beneficiary_name}",
                     "injured_player": injured_player,
                     "injured_team": vacuum.get("injured_team"),
                     "injured_ops": profile.get("ops", 0),
                     "injury_reason": injury_reason,
                     "time_ago": time_ago,
                     "is_late_scratch": vacuum.get("is_late_scratch", True),
-                    "beneficiary_name": beneficiary["name"],
-                    "ab_bump": beneficiary.get("ab_bump", 0),
-                    "lineup_bump": beneficiary.get("lineup_bump", 0),
+                    "beneficiary_name": beneficiary_name,
+                    "ab_bump": ab_bump,
+                    "lineup_bump": lineup_bump,
                     "modifier": beneficiary.get("modifier", 0),
                     "rank": beneficiary.get("rank", "secondary"),
-                    "late_injury_boost": beneficiary.get("late_injury_boost", True)
+                    "late_injury_boost": beneficiary.get("late_injury_boost", True),
+                    # NEW: Active prop data
+                    "has_active_prop": True,
+                    "active_prop_lines": prop_lines,
+                    "projection_boost": round(total_projection_boost, 3),
+                    "projection_boost_pct": f"+{round(total_projection_boost * 100, 1)}%"
                 })
+        
+        if filtered_count > 0:
+            logger.info(f"[MLBVacuum] Active Prop Gate: Filtered {filtered_count} beneficiaries (no active props)")
         
         return alerts
     

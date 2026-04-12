@@ -174,18 +174,9 @@ async def get_live_vacuum_alerts(response: Response, refresh: bool = False):
     """
     Get live usage vacuum alerts for frontend display.
     
-    If refresh=True, fetches fresh injury data from database first.
-    
-    Returns formatted alerts showing which players are benefiting from
-    late-breaking injury news (within last 120 minutes).
-    
-    Includes:
-    - Beneficiary name and rank (primary/secondary)
-    - Usage boost percentage
-    - Minutes boost
-    - Projected stats with boost applied
-    - Board promotion status
-    - "high_usage_advantage" badge flag
+    ACTIVE PROP GATE: Only returns alerts where the beneficiary has an 
+    active prop on today's board. Injuries without actionable betting 
+    value are filtered out.
     
     Returns:
         List of formatted alerts for the "Live Injury Advantage" section.
@@ -212,9 +203,30 @@ async def get_live_vacuum_alerts(response: Response, refresh: bool = False):
     # Get vacuums filtered to today's teams only
     vacuums = await service.get_active_vacuums_for_today()
     
+    # =========================================================================
+    # ACTIVE PROP GATE: Get players with active props on today's board
+    # =========================================================================
+    active_players_on_board = set()
+    active_props_by_player = {}
+    
+    try:
+        cached_board = _db.get_collection("dg_cached_board") if _db else None
+        if cached_board:
+            async for player_doc in cached_board.find({}, {"player_name": 1, "props": 1, "_id": 0}):
+                player_name = player_doc.get("player_name")
+                if player_name:
+                    normalized = player_name.strip().lower()
+                    active_players_on_board.add(normalized)
+                    active_props_by_player[normalized] = player_doc.get("props", [])
+            
+            logger.info(f"[VacuumAlerts] Active Prop Gate: {len(active_players_on_board)} players on today's board")
+    except Exception as e:
+        logger.warning(f"[VacuumAlerts] Error fetching active board: {e}")
+    
     # Format alerts for frontend display
     alerts = []
     board_promotions = []
+    filtered_count = 0
     
     for vacuum in vacuums:
         injured_player = vacuum.get("injured_player", "Unknown")
@@ -242,12 +254,29 @@ async def get_live_vacuum_alerts(response: Response, refresh: bool = False):
                 pass
         
         for beneficiary in vacuum.get("beneficiaries", []):
+            beneficiary_name = beneficiary.get("name", "Unknown")
+            normalized_beneficiary = beneficiary_name.strip().lower()
+            
+            # ACTIVE PROP GATE: Only include if beneficiary has active prop
+            if active_players_on_board and normalized_beneficiary not in active_players_on_board:
+                filtered_count += 1
+                continue
+            
+            # Get beneficiary's active props
+            beneficiary_props = active_props_by_player.get(normalized_beneficiary, [])
+            prop_lines = []
+            for prop in beneficiary_props[:3]:
+                stat_type = prop.get("stat_type", "")
+                line = prop.get("line", 0)
+                if stat_type and line:
+                    prop_lines.append(f"{stat_type} {line}")
+            
             projections = beneficiary.get("projections", {})
             promotion = beneficiary.get("board_promotion", {})
             
             alert = {
-                "id": f"{injured_player}-{beneficiary.get('name', '')}".replace(" ", "-").lower(),
-                "beneficiary_name": beneficiary.get("name", "Unknown"),
+                "id": f"{injured_player}-{beneficiary_name}".replace(" ", "-").lower(),
+                "beneficiary_name": beneficiary_name,
                 "beneficiary_rank": beneficiary.get("rank", "primary"),
                 "usage_bump": beneficiary.get("usage_bump", 0),
                 "minutes_bump": beneficiary.get("minutes_bump", 0),
@@ -270,8 +299,11 @@ async def get_live_vacuum_alerts(response: Response, refresh: bool = False):
                 "high_usage_advantage": beneficiary.get("high_usage_advantage", True),
                 "late_injury_boost": beneficiary.get("late_injury_boost", True),
                 "is_late_scratch": is_late_scratch,
+                # NEW: Active prop data
+                "has_active_prop": True,
+                "active_prop_lines": prop_lines,
                 # Formatted display string
-                "display_text": f"{beneficiary.get('name', 'Unknown')} — {injured_player} ruled OUT {time_ago}. +{beneficiary.get('usage_bump', 0)}% usage rate increase."
+                "display_text": f"{beneficiary_name} — {injured_player} ruled OUT {time_ago}. +{beneficiary.get('usage_bump', 0)}% usage rate increase."
             }
             
             alerts.append(alert)
@@ -279,11 +311,14 @@ async def get_live_vacuum_alerts(response: Response, refresh: bool = False):
             # Track board promotions separately
             if promotion.get("should_promote"):
                 board_promotions.append({
-                    "player_name": beneficiary.get("name"),
+                    "player_name": beneficiary_name,
                     "injured_star": injured_player,
                     "props": promotion.get("eligible_props", []),
                     "high_usage_advantage": True
                 })
+    
+    if filtered_count > 0:
+        logger.info(f"[VacuumAlerts] Active Prop Gate: Filtered {filtered_count} beneficiaries (no active props)")
     
     return {
         "has_alerts": len(alerts) > 0,
@@ -291,6 +326,7 @@ async def get_live_vacuum_alerts(response: Response, refresh: bool = False):
         "alerts": alerts,
         "board_promotions": board_promotions,
         "total_promotions": len(board_promotions),
+        "filtered_count": filtered_count,
         "last_check": service.last_injury_check.isoformat() if service.last_injury_check else None,
         "timestamp": datetime.now(timezone.utc).isoformat()
     }
