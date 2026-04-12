@@ -151,3 +151,11 @@ WAR_ZONE_GATES = {
   - For Pitchers: Lineup K-Rate + Lineup wRC+ + Overall Edge
 - **2026-04-12**: **Backend Matchup Math Service** - Created `mlb_matchup_math.py` with team ranking data for all 30 MLB teams
 - **2026-04-12**: **Player Endpoint Enhancement** - Added matchup_analysis enrichment to `/api/v3/mlb/player/{name}` endpoint
+- **2026-04-12**: **MLB VK Edge Formula Fixed** - Changed from percentage to raw cushion (predicted - line) to match NBA
+- **2026-04-12**: **MLB L5/L10/Season Avg** - Added hit rate and average calculations from game logs
+- **2026-04-12**: **MLB Oracle Apex Service Rewrite** - Complete rewrite of `mlb_oracle_apex_service.py` with 2026 thresholds:
+  - Stat-specific gates (HITS: 80% HR, 0.60 CV, 15% edge | TB: 75% HR, 0.75 CV, 20% edge | K: 75% HR, 0.45 CV, 12% edge | OUTS: 85% HR, 0.30 CV, 8% edge | HRR: 80% HR, 0.55 CV, 18% edge)
+  - Primary qualifications: DK Odds <= -240, GOBLIN only, Lineup confirmed
+  - Weather hard-stop: Wind IN > 12mph rejects batter props
+  - Matchup modifier integration from mlb_matchup_math.py
+  - Board Score sorting (TP Prob + VK Edge + Hit Rate * 10), Top 10

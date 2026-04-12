@@ -1,305 +1,168 @@
 """
-Oracle Apex Service - Safe Haven Tier Logic
-============================================
-The "Vegas Killer" mathematically-proven Safe Haven tier.
+MLB Oracle Apex Service - Safe Haven Tier Logic (2026 Season)
+==============================================================
+The "Vegas Killer" mathematically-proven Safe Haven tier for MLB.
 
-STAT-SPECIFIC CALIBRATION:
-| Stat | Max CV | Hit Rate | Min Edge | Notes |
-|------|--------|----------|----------|-------|
-| PTS  | 0.22   | 18/20    | 2.0      | Points are stable |
-| REB  | 0.35   | 16/20*   | 1.5      | *14/20 OK if L20 Mean >= Line + 2.5 |
-| AST  | 0.35   | 15/20    | 2.0      | Higher variance accepted |
-| PRA  | 0.20   | 18/20    | 2.0      | Combos self-correct |
+2026 MLB STAT-SPECIFIC CALIBRATION:
+| Stat | Max CV | Min Hit Rate (L20) | Min Edge | Min VK Prob |
+|------|--------|-------------------|----------|-------------|
+| HITS | 0.60   | 16/20 (80%)       | 15%      | 70%         |
+| TB   | 0.75   | 15/20 (75%)       | 20%      | 70%         |
+| K    | 0.45   | 15/20 (75%)       | 12%      | 75%         |
+| OUTS | 0.30   | 17/20 (85%)       | 8%       | 80%         |
+| HRR  | 0.55   | 16/20 (80%)       | 18%      | 70%         |
 
-GATE LOGIC:
-- Gate 1: Hit Rate (stat-specific, with REB buffer rule)
-- Gate 2: CV (Coefficient of Variation) <= stat-specific limit
-- Gate 3: Edge >= stat-specific AND VK Prob >= 75%
+PRIMARY QUALIFICATIONS:
+1. DK Odds: Must be <= -240
+2. Prop Type: GOBLIN (Green) only - reject standard and demon props
+3. Lineup Status: is_lineup_confirmed MUST be True
 
-POST-FILTERS:
-- Minutes >= 22 (volume check)
-- Dedupe: Keep lowest line per player+stat (best goblin)
+PRE-COMPUTATION:
+- Import mlb_matchup_math.py for Matchup Modifier
+- Multiply raw VK_Projection by Matchup Multiplier for Adjusted_VK_Projection
+
+3-GATE QUALIFICATION:
+- Gate 1: Hit Rate (strict L20 percentage, no weighted recency exceptions)
+- Gate 2: CV <= stat-specific limit
+- Gate 3: Adjusted_VK_Projection Edge >= min edge AND TP >= 70%
+
+HARD-STOP FILTERS:
+- Weather: If wind_direction == 'IN' AND wind_speed > 12mph, reject batter props
+
+FINAL SORT:
+- Sort by Board_Score (TP Prob + VK Edge + (Hit Rate * 10))
+- Top 10 before Vision Intel Delta Check
 """
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any, Optional, Tuple
 from datetime import datetime, timezone
 import logging
 import numpy as np
 
+from services.mlb_matchup_math import get_mlb_matchup_analysis
+
 logger = logging.getLogger(__name__)
 
 # =============================================================================
-# ORACLE APEX CONFIGURATION - SAFE HAVEN (Strictest)
+# 2026 MLB ORACLE APEX CONFIGURATION - SAFE HAVEN (Strictest)
 # =============================================================================
 
-ORACLE_APEX_CONFIG = {
-    'PTS': {
-        'max_cv': 0.22,
-        'min_hit_rate': 18,
+MLB_SAFE_HAVEN_CONFIG = {
+    'HITS': {
+        'max_cv': 0.60,
+        'min_hit_rate': 16,      # 16/20 = 80%
         'sample_size': 20,
-        'min_edge': 2.0,
-        'min_prob': 75.0,
+        'min_edge_pct': 15.0,    # 15% edge minimum
+        'min_prob': 70.0,
+        'is_batter_stat': True,
     },
-    'REB': {
-        'max_cv': 0.35,
-        'min_hit_rate': 16,
+    'TB': {  # Total Bases
+        'max_cv': 0.75,
+        'min_hit_rate': 15,      # 15/20 = 75%
         'sample_size': 20,
-        'min_edge': 1.5,
-        'min_prob': 75.0,
-        # Buffer rule: 14/20 OK if L20 Mean >= Line + 2.5
-        'relaxed_hit_rate': 14,
-        'relaxed_mean_buffer': 2.5,
+        'min_edge_pct': 20.0,    # 20% edge minimum
+        'min_prob': 70.0,
+        'is_batter_stat': True,
     },
-    'AST': {
-        'max_cv': 0.35,
+    'TOTAL BASES': {  # Alias for TB
+        'max_cv': 0.75,
         'min_hit_rate': 15,
         'sample_size': 20,
-        'min_edge': 2.0,
-        'min_prob': 75.0,
-    },
-    'PRA': {
-        'max_cv': 0.20,
-        'min_hit_rate': 18,
-        'sample_size': 20,
-        'min_edge': 2.0,
-        'min_prob': 75.0,
-    },
-}
-
-# =============================================================================
-# FRONT LINES CONFIGURATION (Moderate)
-# =============================================================================
-
-FRONT_LINES_CONFIG = {
-    'PTS': {
-        'max_cv': 0.28,           # Accommodates standard nightly variance
-        'min_hit_rate': 14,
-        'sample_size': 20,
-        'min_edge': 1.5,
-        'min_prob': 55.0,
-    },
-    'REB': {
-        'max_cv': 0.40,           # Normal for players getting 25-30 mins
-        'min_hit_rate': 12,
-        'sample_size': 20,
-        'min_edge': 1.5,
-        'min_prob': 55.0,
-        # Buffer rule: 10/20 OK if L5 Mean >= Line + 1.5
-        'relaxed_hit_rate': 10,
-        'relaxed_mean_buffer': 1.5,
-        'relaxed_sample_size': 5,  # Uses L5 mean for buffer
-    },
-    'AST': {
-        'max_cv': 0.40,           # Normal for secondary ball handlers
-        'min_hit_rate': 12,
-        'sample_size': 20,
-        'min_edge': 1.5,
-        'min_prob': 55.0,
-    },
-    'PRA': {
-        'max_cv': 0.25,           # Baseline combo variance
-        'min_hit_rate': 14,
-        'sample_size': 20,
-        'min_edge': 1.5,
-        'min_prob': 55.0,
-    },
-}
-
-# =============================================================================
-# WAR ZONE CONFIGURATION (Riskiest - Demon Ceiling Plays)
-# =============================================================================
-
-WAR_ZONE_CONFIG = {
-    'PTS': {
-        'max_cv': 0.45,           # High variance REQUIRED to hit demon ceilings
-        'min_hit_rate': 7,        # 7/20 hit rate minimum
-        'sample_size': 20,
-        'min_edge': -999,         # No edge requirement for demons (removed)
-        'min_prob': 40.0,         # Higher prob threshold for quality
-        # Buffer rule: 5/20 OK if L5 Mean > Line + 3.0
-        'relaxed_hit_rate': 5,
-        'relaxed_mean_buffer': 3.0,
-        'relaxed_sample_size': 5,
-    },
-    'REB': {
-        'max_cv': 0.50,           # Massive spikes allowed
-        'min_hit_rate': 7,        # 7/20 hit rate minimum
-        'sample_size': 20,
-        'min_edge': -999,         # No edge requirement for demons (removed)
-        'min_prob': 40.0,         # Higher prob threshold for quality
-    },
-    'AST': {
-        'max_cv': 0.50,           # Massive spikes allowed
-        'min_hit_rate': 7,        # 7/20 hit rate minimum
-        'sample_size': 20,
-        'min_edge': -999,         # No edge requirement for demons (removed)
-        'min_prob': 40.0,         # Higher prob threshold for quality
-    },
-    'PRA': {
-        'max_cv': 0.40,           # Allows for outlier ceiling games
-        'min_hit_rate': 7,        # 7/20 hit rate minimum
-        'sample_size': 20,
-        'min_edge': -999,         # No edge requirement for demons (removed)
-        'min_prob': 40.0,         # Higher prob threshold for quality
-    },
-}
-
-# Minimum minutes for volume check
-MIN_MINUTES = 22
-
-# =============================================================================
-# MLB ORACLE APEX CONFIGURATION - SAFE HAVEN (Strictest)
-# =============================================================================
-# MLB props have higher CV than NBA due to baseball's binary nature.
-# Gates tuned for "Contact" and "Volume" metrics.
-# DK Odds <= -240 for MLB Safe Haven (sweet spot for 0.5 Hits, 4.5 K props)
-
-MLB_ORACLE_APEX_CONFIG = {
-    'Hits': {
-        'max_cv': 0.60,           # Higher CV due to 0-for-4 nights
-        'min_hit_rate': 16,       # 80% of L20
-        'sample_size': 20,
-        'min_edge': 15.0,         # VK projection must be 15% above line
-        'min_prob': 70.0,         # Sharp book de-vigged probability
-    },
-    'Total Bases': {
-        'max_cv': 0.75,           # Highest CV - XBH are volatile
-        'min_hit_rate': 15,       # 75% of L20
-        'sample_size': 20,
-        'min_edge': 20.0,         # Higher edge required due to variance
+        'min_edge_pct': 20.0,
         'min_prob': 70.0,
+        'is_batter_stat': True,
     },
-    'Pitcher Strikeouts': {
-        'max_cv': 0.45,           # Moderately stable for aces
-        'min_hit_rate': 15,       # 75% of L20
+    'K': {  # Pitcher Strikeouts
+        'max_cv': 0.45,
+        'min_hit_rate': 15,      # 15/20 = 75%
         'sample_size': 20,
-        'min_edge': 12.0,
+        'min_edge_pct': 12.0,    # 12% edge minimum
         'min_prob': 75.0,
+        'is_batter_stat': False,
     },
-    'Pitching Outs': {
-        'max_cv': 0.30,           # Most stable - manager pulls early = fail
-        'min_hit_rate': 17,       # 85% of L20
+    'PITCHER STRIKEOUTS': {  # Alias for K
+        'max_cv': 0.45,
+        'min_hit_rate': 15,
         'sample_size': 20,
-        'min_edge': 8.0,
+        'min_edge_pct': 12.0,
+        'min_prob': 75.0,
+        'is_batter_stat': False,
+    },
+    'OUTS': {  # Pitching Outs Recorded
+        'max_cv': 0.30,
+        'min_hit_rate': 17,      # 17/20 = 85%
+        'sample_size': 20,
+        'min_edge_pct': 8.0,     # 8% edge minimum
         'min_prob': 80.0,
+        'is_batter_stat': False,
     },
-    'Hits+Runs+RBIs': {
-        'max_cv': 0.55,           # Combo smooths variance
-        'min_hit_rate': 16,       # 80% of L20
+    'PITCHING OUTS': {  # Alias for OUTS
+        'max_cv': 0.30,
+        'min_hit_rate': 17,
         'sample_size': 20,
-        'min_edge': 18.0,
-        'min_prob': 70.0,
+        'min_edge_pct': 8.0,
+        'min_prob': 80.0,
+        'is_batter_stat': False,
     },
-    # Fallback for unmapped stats
-    'DEFAULT': {
-        'max_cv': 0.65,
-        'min_hit_rate': 14,
-        'sample_size': 20,
-        'min_edge': 15.0,
-        'min_prob': 70.0,
-    },
-}
-
-# =============================================================================
-# MLB FRONT LINES CONFIGURATION (Moderate)
-# =============================================================================
-
-MLB_FRONT_LINES_CONFIG = {
-    'Hits': {
-        'max_cv': 0.75,
-        'min_hit_rate': 12,
-        'sample_size': 20,
-        'min_edge': 10.0,
-        'min_prob': 55.0,
-    },
-    'Total Bases': {
-        'max_cv': 0.85,
-        'min_hit_rate': 11,
-        'sample_size': 20,
-        'min_edge': 12.0,
-        'min_prob': 55.0,
-    },
-    'Pitcher Strikeouts': {
+    'HRR': {  # Hits + Runs + RBIs combo
         'max_cv': 0.55,
-        'min_hit_rate': 12,
+        'min_hit_rate': 16,      # 16/20 = 80%
         'sample_size': 20,
-        'min_edge': 8.0,
-        'min_prob': 60.0,
-    },
-    'Pitching Outs': {
-        'max_cv': 0.40,
-        'min_hit_rate': 14,
-        'sample_size': 20,
-        'min_edge': 5.0,
-        'min_prob': 65.0,
-    },
-    'Hits+Runs+RBIs': {
-        'max_cv': 0.70,
-        'min_hit_rate': 12,
-        'sample_size': 20,
-        'min_edge': 12.0,
-        'min_prob': 55.0,
-    },
-    'DEFAULT': {
-        'max_cv': 0.80,
-        'min_hit_rate': 10,
-        'sample_size': 20,
-        'min_edge': 8.0,
-        'min_prob': 55.0,
+        'min_edge_pct': 18.0,    # 18% edge minimum
+        'min_prob': 70.0,
+        'is_batter_stat': True,
     },
 }
 
-# =============================================================================
-# MLB WAR ZONE CONFIGURATION (Demon Ceiling Plays)
-# =============================================================================
-
-MLB_WAR_ZONE_CONFIG = {
-    'Hits': {
-        'max_cv': 1.0,            # High variance allowed for ceiling plays
-        'min_hit_rate': 6,
-        'sample_size': 20,
-        'min_edge': -999,         # No edge requirement for demons
-        'min_prob': 35.0,
-    },
-    'Total Bases': {
-        'max_cv': 1.2,            # Very high variance for XBH demons
-        'min_hit_rate': 5,
-        'sample_size': 20,
-        'min_edge': -999,
-        'min_prob': 30.0,
-    },
-    'Pitcher Strikeouts': {
-        'max_cv': 0.70,
-        'min_hit_rate': 6,
-        'sample_size': 20,
-        'min_edge': -999,
-        'min_prob': 40.0,
-    },
-    'Hits+Runs+RBIs': {
-        'max_cv': 0.90,
-        'min_hit_rate': 6,
-        'sample_size': 20,
-        'min_edge': -999,
-        'min_prob': 35.0,
-    },
-    'DEFAULT': {
-        'max_cv': 1.0,
-        'min_hit_rate': 5,
-        'sample_size': 20,
-        'min_edge': -999,
-        'min_prob': 35.0,
-    },
+# Stat type normalization map
+MLB_STAT_MAP = {
+    'hits': 'HITS',
+    'total_bases': 'TB',
+    'total bases': 'TB',
+    'tb': 'TB',
+    'pitcher_strikeouts': 'PITCHER STRIKEOUTS',
+    'pitcher strikeouts': 'PITCHER STRIKEOUTS',
+    'strikeouts': 'PITCHER STRIKEOUTS',
+    'k': 'K',
+    'pitching_outs': 'PITCHING OUTS',
+    'pitching outs': 'PITCHING OUTS',
+    'outs': 'OUTS',
+    'outs_recorded': 'OUTS',
+    'hrr': 'HRR',
+    'hits_runs_rbis': 'HRR',
+    'hits+runs+rbis': 'HRR',
+    # Direct mappings (uppercase)
+    'HITS': 'HITS',
+    'TB': 'TB',
+    'TOTAL BASES': 'TB',
+    'K': 'K',
+    'PITCHER STRIKEOUTS': 'PITCHER STRIKEOUTS',
+    'OUTS': 'OUTS',
+    'PITCHING OUTS': 'PITCHING OUTS',
+    'HRR': 'HRR',
 }
 
-# MLB DK Odds threshold for Safe Haven
-MLB_DK_TIER_SAFE_HAVEN_MAX = -240  # -240 is the sweet spot for MLB Goblins
+# DK Odds threshold for Safe Haven
+DK_ODDS_THRESHOLD = -240
+
+# VK baseline key mapping for MLB stats
+VK_BASELINE_MAP = {
+    'HITS': 'hits',
+    'TB': 'total_bases',
+    'TOTAL BASES': 'total_bases',
+    'K': 'pitcher_strikeouts',
+    'PITCHER STRIKEOUTS': 'pitcher_strikeouts',
+    'OUTS': 'innings_pitched',  # Use IP as proxy for outs
+    'PITCHING OUTS': 'innings_pitched',
+    'HRR': 'hrr',  # Combo stat
+}
 
 
-class OracleApexService:
+class MLBOracleApexService:
     """
-    Oracle Apex Service - The new Safe Haven tier logic.
+    MLB Oracle Apex Service for Safe Haven tier qualification.
     
-    Uses Vegas Killer ML predictions combined with statistical filters
-    to identify mathematically-proven safe plays.
+    Uses Vegas Killer ML predictions combined with MLB-specific statistical filters
+    to identify mathematically-proven safe plays for baseball.
     """
     
     def __init__(self, db, vegas_killer_model=None):
@@ -314,752 +177,579 @@ class OracleApexService:
         """Set the Vegas Killer model reference."""
         self.vegas_killer_model = model
     
-    def _did_play(self, game: Dict) -> bool:
-        """Check if player actually played in a game (not DNP)."""
-        mins = game.get("min", "0") or "0"
-        if isinstance(mins, str):
-            try:
-                mins_val = int(mins.split(':')[0]) if ':' in mins else int(mins)
-            except (ValueError, TypeError):
-                mins_val = 0
-        else:
-            mins_val = mins
-        return mins_val > 0
+    def _normalize_stat_type(self, raw_stat: str) -> str:
+        """Normalize stat type to our standard format."""
+        if not raw_stat:
+            return ''
+        normalized = raw_stat.lower().replace('_', ' ').replace('-', ' ').strip()
+        return MLB_STAT_MAP.get(normalized, MLB_STAT_MAP.get(raw_stat, raw_stat.upper()))
     
-    def _get_stat_values(self, game_logs: List[Dict], stat_type: str) -> List[float]:
-        """Extract stat values from game logs based on stat type."""
+    def _get_mlb_stat_values(self, game_logs: List[Dict], stat_type: str) -> List[float]:
+        """
+        Extract stat values from MLB game logs based on stat type.
+        
+        MLB game log fields (from BallDontLie API):
+        - hits, doubles, triples, home_runs, rbi, runs, stolen_bases
+        - strikeouts (batter), walks
+        - For pitchers: innings_pitched, earned_runs, strikeouts (pitcher)
+        """
+        stat_normalized = self._normalize_stat_type(stat_type)
+        
+        # Field mapping for MLB stats
         stat_field_map = {
-            "PTS": "pts",
-            "REB": "reb", 
-            "AST": "ast",
-            "STL": "stl",
-            "BLK": "blk",
-            "3PM": "fg3m",
-            "THREES": "fg3m",
-            "TO": "turnover",
+            'HITS': 'hits',
+            'TB': None,  # Calculated: singles + (2*doubles) + (3*triples) + (4*hr)
+            'TOTAL BASES': None,
+            'K': 'strikeouts',  # Pitcher strikeouts
+            'PITCHER STRIKEOUTS': 'strikeouts',
+            'OUTS': None,  # Calculated from innings_pitched
+            'PITCHING OUTS': None,
+            'HRR': None,  # Calculated: hits + runs + rbi
+            'RBIS': 'rbi',
+            'RUNS': 'runs',
+            'STOLEN BASES': 'stolen_bases',
+            'HOME RUNS': 'home_runs',
+            'DOUBLES': 'doubles',
+            'WALKS': 'walks',
+            'BATTER STRIKEOUTS': 'strikeouts',  # Batter K (different context)
         }
         
-        played_games = [g for g in game_logs if self._did_play(g)]
+        values = []
+        for game in game_logs:
+            if stat_normalized == 'TB' or stat_normalized == 'TOTAL BASES':
+                # Total Bases = 1B + 2*2B + 3*3B + 4*HR
+                hits = game.get('hits', 0) or 0
+                doubles = game.get('doubles', 0) or 0
+                triples = game.get('triples', 0) or 0
+                home_runs = game.get('home_runs', 0) or 0
+                singles = hits - doubles - triples - home_runs
+                tb = singles + (2 * doubles) + (3 * triples) + (4 * home_runs)
+                values.append(float(tb))
+            elif stat_normalized == 'HRR':
+                # Hits + Runs + RBIs
+                hits = game.get('hits', 0) or 0
+                runs = game.get('runs', 0) or 0
+                rbi = game.get('rbi', 0) or 0
+                values.append(float(hits + runs + rbi))
+            elif stat_normalized in ('OUTS', 'PITCHING OUTS'):
+                # Convert innings pitched to outs (IP * 3)
+                ip = game.get('innings_pitched', 0) or 0
+                if isinstance(ip, str):
+                    try:
+                        ip = float(ip)
+                    except (ValueError, TypeError):
+                        ip = 0
+                outs = int(ip) * 3 + round((ip % 1) * 10)  # Handle .1, .2 innings
+                values.append(float(outs))
+            elif stat_normalized in stat_field_map and stat_field_map[stat_normalized]:
+                field = stat_field_map[stat_normalized]
+                val = game.get(field, 0) or 0
+                values.append(float(val))
         
-        if stat_type == 'PRA':
-            return [g.get('pts', 0) + g.get('reb', 0) + g.get('ast', 0) for g in played_games]
-        elif stat_type == 'PR':
-            return [g.get('pts', 0) + g.get('reb', 0) for g in played_games]
-        elif stat_type == 'PA':
-            return [g.get('pts', 0) + g.get('ast', 0) for g in played_games]
-        elif stat_type == 'RA':
-            return [g.get('reb', 0) + g.get('ast', 0) for g in played_games]
-        elif stat_type in stat_field_map:
-            field = stat_field_map[stat_type]
-            return [g.get(field, 0) for g in played_games]
-        else:
-            # Unknown stat type - return empty
-            return []
+        return values
     
-    def _get_avg_minutes(self, game_logs: List[Dict], sample_size: int = 10) -> float:
-        """Calculate average minutes from recent games."""
-        mins_list = []
-        for g in game_logs[:sample_size]:
-            if not self._did_play(g):
-                continue
-            mins = g.get('min', '0') or '0'
-            if isinstance(mins, str):
-                try:
-                    mins_val = int(mins.split(':')[0]) if ':' in mins else int(mins)
-                except (ValueError, TypeError):
-                    continue
-            else:
-                mins_val = mins
-            if mins_val > 0:
-                mins_list.append(mins_val)
-        return np.mean(mins_list) if mins_list else 0
+    def _get_matchup_modifier(self, stat_type: str, opponent_team: str) -> float:
+        """
+        Get matchup modifier from mlb_matchup_math service.
+        
+        Returns a multiplier to adjust the VK projection based on matchup quality.
+        - Favorable matchup (Easy): 1.05 - 1.15
+        - Neutral matchup (Medium): 1.0
+        - Tough matchup (Brutal): 0.85 - 0.95
+        """
+        if not opponent_team:
+            return 1.0
+        
+        try:
+            matchup = get_mlb_matchup_analysis(
+                stat_type=stat_type,
+                opponent_team=opponent_team
+            )
+            
+            if not matchup:
+                return 1.0
+            
+            overall_edge = matchup.get('overall_edge', 0)
+            
+            # Convert edge (-30 to +30) to multiplier (0.85 to 1.15)
+            # +30% edge = 1.15 multiplier, -30% edge = 0.85 multiplier
+            modifier = 1.0 + (overall_edge / 200)  # Scale down for reasonable adjustment
+            return max(0.85, min(1.15, modifier))
+            
+        except Exception as e:
+            logger.warning(f"[MLB_APEX] Matchup modifier error: {e}")
+            return 1.0
     
-    def qualifies_for_oracle_apex(
+    def _check_weather_hardstop(
+        self, 
+        prop: Dict, 
+        stat_type: str
+    ) -> Tuple[bool, str]:
+        """
+        Check weather hard-stop filter for batter props.
+        
+        RULE: If wind_direction == 'IN' AND wind_speed > 12mph, 
+              reject all Batter props (Hits, TB, HRR) for that game.
+        
+        Returns:
+            (passes: bool, reason: str)
+        """
+        stat_config = MLB_SAFE_HAVEN_CONFIG.get(stat_type, {})
+        is_batter_stat = stat_config.get('is_batter_stat', True)
+        
+        if not is_batter_stat:
+            return True, "NOT_BATTER_STAT"
+        
+        # Get weather data from prop
+        weather = prop.get('weather', {}) or {}
+        wind_direction = weather.get('wind_direction', '').upper()
+        wind_speed = weather.get('wind_speed', 0) or 0
+        
+        # Convert wind_speed to float if string
+        if isinstance(wind_speed, str):
+            try:
+                wind_speed = float(wind_speed.replace('mph', '').strip())
+            except (ValueError, TypeError):
+                wind_speed = 0
+        
+        # Hard-stop: Wind blowing IN > 12mph kills batter props
+        if wind_direction == 'IN' and wind_speed > 12:
+            return False, f"WEATHER_HARDSTOP: Wind {wind_direction} @ {wind_speed}mph"
+        
+        return True, "WEATHER_OK"
+    
+    def qualifies_for_mlb_safe_haven(
         self,
         stat_type: str,
         line: float,
         l20_values: List[float],
         cv: float,
-        oracle_pred: float,
-        vk_prob: float
-    ) -> tuple[bool, str]:
+        adjusted_vk_pred: float,
+        vk_prob: float,
+        dk_odds: float,
+        is_goblin: bool,
+        is_lineup_confirmed: bool,
+        prop: Dict = None
+    ) -> Tuple[bool, str]:
         """
-        Check if a prop qualifies for Oracle Apex (Safe Haven).
+        Check if a prop qualifies for MLB Safe Haven tier.
+        
+        PRIMARY QUALIFICATIONS:
+        1. DK Odds <= -240
+        2. Must be GOBLIN (Green) prop
+        3. is_lineup_confirmed must be True
+        
+        3-GATE QUALIFICATION:
+        - Gate 1: Hit Rate (strict L20 %, no weighted recency exceptions)
+        - Gate 2: CV <= stat-specific limit
+        - Gate 3: Adjusted_VK Edge >= min edge AND TP >= 70%
         
         Returns:
             (qualifies: bool, reason: str)
         """
-        if stat_type not in ORACLE_APEX_CONFIG:
+        # Normalize stat type
+        stat_normalized = self._normalize_stat_type(stat_type)
+        
+        if stat_normalized not in MLB_SAFE_HAVEN_CONFIG:
             return False, f"UNSUPPORTED_STAT: {stat_type}"
         
-        cfg = ORACLE_APEX_CONFIG[stat_type]
+        cfg = MLB_SAFE_HAVEN_CONFIG[stat_normalized]
         
-        # Calculate L20 stats
+        # ============================================================
+        # PRIMARY QUALIFICATIONS (Pre-Gate Checks)
+        # ============================================================
+        
+        # 1. DK Odds must be <= -240 (heavy favorites only)
+        if dk_odds is not None and dk_odds > DK_ODDS_THRESHOLD:
+            return False, f"DK_ODDS_FAIL: {dk_odds} > {DK_ODDS_THRESHOLD}"
+        
+        # 2. Must be a GOBLIN (Green) prop - reject standard and demon
+        if not is_goblin:
+            return False, "NOT_GOBLIN: Only green props allowed in Safe Haven"
+        
+        # 3. Lineup must be confirmed
+        if not is_lineup_confirmed:
+            return False, "LINEUP_NOT_CONFIRMED: Player lineup status unverified"
+        
+        # 4. Weather hard-stop for batter props
+        if prop:
+            passes_weather, weather_reason = self._check_weather_hardstop(prop, stat_normalized)
+            if not passes_weather:
+                return False, weather_reason
+        
+        # ============================================================
+        # 3-GATE QUALIFICATION
+        # ============================================================
+        
+        # Ensure we have enough L20 data
+        if len(l20_values) < cfg['sample_size']:
+            return False, f"INSUFFICIENT_DATA: {len(l20_values)}/{cfg['sample_size']} games"
+        
+        # Calculate L20 hit rate
         l20_hits = sum(1 for v in l20_values if v >= line)
-        l20_mean = np.mean(l20_values) if l20_values else 0
+        l20_hit_rate_pct = (l20_hits / 20) * 100
         
-        # GATE 1: HIT RATE (stat-specific)
-        passes_gate1 = l20_hits >= cfg['min_hit_rate']
+        # GATE 1: HIT RATE (strict L20 percentage, NO weighted recency exceptions)
+        if l20_hits < cfg['min_hit_rate']:
+            return False, f"GATE1_HIT_RATE: {l20_hits}/20 ({l20_hit_rate_pct:.0f}%) < {cfg['min_hit_rate']}/20 ({cfg['min_hit_rate']/20*100:.0f}%)"
         
-        # REB buffer rule: 14/20 OK if L20 Mean >= Line + 2.5
-        if not passes_gate1 and 'relaxed_hit_rate' in cfg:
-            if l20_hits >= cfg['relaxed_hit_rate']:
-                if l20_mean >= (line + cfg['relaxed_mean_buffer']):
-                    passes_gate1 = True
-        
-        if not passes_gate1:
-            return False, f"GATE1_HIT_RATE: {l20_hits}/20 < {cfg['min_hit_rate']}/20"
-        
-        # GATE 2: CV (Coefficient of Variation)
+        # GATE 2: CV (Coefficient of Variation) - consistency check
         if cv > cfg['max_cv']:
             return False, f"GATE2_CV: {cv:.3f} > {cfg['max_cv']}"
         
-        # GATE 3: EDGE + PROB
-        edge = oracle_pred - line
-        if edge < cfg['min_edge']:
-            return False, f"GATE3_EDGE: {edge:.1f} < {cfg['min_edge']}"
+        # GATE 3: EDGE + PROBABILITY
+        # Calculate edge as percentage: (adjusted_pred - line) / line * 100
+        if line > 0:
+            edge_pct = ((adjusted_vk_pred - line) / line) * 100
+        else:
+            edge_pct = 0
+        
+        if edge_pct < cfg['min_edge_pct']:
+            return False, f"GATE3_EDGE: {edge_pct:.1f}% < {cfg['min_edge_pct']}%"
         
         if vk_prob < cfg['min_prob']:
             return False, f"GATE3_PROB: {vk_prob:.1f}% < {cfg['min_prob']}%"
         
-        return True, "ORACLE_APEX_QUALIFIED"
+        return True, "MLB_SAFE_HAVEN_QUALIFIED"
     
-    def qualifies_for_front_lines(
+    def calculate_board_score(
         self,
-        stat_type: str,
-        line: float,
-        l20_values: List[float],
-        l5_values: List[float],
-        cv: float,
-        oracle_pred: float,
-        vk_prob: float
-    ) -> tuple[bool, str]:
+        vk_prob: float,
+        edge_pct: float,
+        hit_rate_pct: float
+    ) -> float:
         """
-        Check if a prop qualifies for Front Lines tier.
+        Calculate Board Score for final sorting.
         
-        Front Lines has relaxed gates compared to Safe Haven:
-        - Lower hit rate requirements (14/20 PTS, 12/20 REB/AST)
-        - Higher CV tolerance (0.28-0.40)
-        - Lower edge/prob requirements (1.5 edge, 55% prob)
+        Formula: TP Prob + VK Edge + (Hit Rate * 10)
         
-        Returns:
-            (qualifies: bool, reason: str)
+        Example:
+        - VK Prob: 75%
+        - Edge: 18%
+        - Hit Rate: 80%
+        Board Score = 75 + 18 + (80 * 0.1) = 75 + 18 + 8 = 101
         """
-        if stat_type not in FRONT_LINES_CONFIG:
-            return False, f"UNSUPPORTED_STAT: {stat_type}"
-        
-        cfg = FRONT_LINES_CONFIG[stat_type]
-        
-        # Calculate L20 stats
-        l20_hits = sum(1 for v in l20_values if v >= line)
-        l20_mean = np.mean(l20_values) if l20_values else 0
-        l5_mean = np.mean(l5_values) if l5_values else 0
-        
-        # GATE 1: HIT RATE (stat-specific)
-        passes_gate1 = l20_hits >= cfg['min_hit_rate']
-        
-        # REB buffer rule: 10/20 OK if L5 Mean >= Line + 1.5
-        if not passes_gate1 and 'relaxed_hit_rate' in cfg:
-            if l20_hits >= cfg['relaxed_hit_rate']:
-                # Use L5 mean for Front Lines buffer (more recent form)
-                buffer_mean = l5_mean if cfg.get('relaxed_sample_size') == 5 else l20_mean
-                if buffer_mean >= (line + cfg['relaxed_mean_buffer']):
-                    passes_gate1 = True
-        
-        if not passes_gate1:
-            return False, f"FL_GATE1_HIT_RATE: {l20_hits}/20 < {cfg['min_hit_rate']}/20"
-        
-        # GATE 2: CV (Coefficient of Variation)
-        if cv > cfg['max_cv']:
-            return False, f"FL_GATE2_CV: {cv:.3f} > {cfg['max_cv']}"
-        
-        # GATE 3: EDGE + PROB
-        edge = oracle_pred - line
-        if edge < cfg['min_edge']:
-            return False, f"FL_GATE3_EDGE: {edge:.1f} < {cfg['min_edge']}"
-        
-        if vk_prob < cfg['min_prob']:
-            return False, f"FL_GATE3_PROB: {vk_prob:.1f}% < {cfg['min_prob']}%"
-        
-        return True, "FRONT_LINES_QUALIFIED"
-    
-    async def scan_all_props(self) -> Dict[str, Any]:
-        """
-        Scan ALL props and identify Oracle Apex (Safe Haven) picks.
-        
-        Returns:
-            Dict with apex_picks list and stats
-        """
-        if not self.vegas_killer_model:
-            logger.error("[ORACLE_APEX] Vegas Killer model not set!")
-            return {"success": False, "error": "Vegas Killer model not initialized"}
-        
-        logger.info("[ORACLE_APEX] Starting full prop scan...")
-        
-        # Load all data
-        all_props = await self.live_props.find({}, {"_id": 0}).to_list(length=None)
-        cached_players = {p['player_name']: p async for p in self.cached_board.find({}, {"_id": 0})}
-        hub_players = {p['display_name']: p async for p in self.master_hub.find({}, {"_id": 0})}
-        
-        logger.info(f"[ORACLE_APEX] Loaded {len(all_props)} props, {len(cached_players)} cached, {len(hub_players)} hub")
-        
-        # Normalize stat types
-        stat_map = {
-            'player_points': 'PTS',
-            'player_rebounds': 'REB',
-            'player_assists': 'AST',
-            'player_points_rebounds_assists': 'PRA',
-            'PTS': 'PTS', 'REB': 'REB', 'AST': 'AST', 'PRA': 'PRA'
-        }
-        
-        apex_picks = []
-        gate_stats = {stat: {'total': 0, 'g1': 0, 'g2': 0, 'g3': 0, 'passed': 0} 
-                      for stat in ORACLE_APEX_CONFIG.keys()}
-        skipped = {'no_data': 0, 'insufficient_games': 0, 'no_vk': 0, 'low_minutes': 0}
-        
-        seen = set()
-        
-        for prop in all_props:
-            player_name = prop.get('player_name', '')
-            raw_stat = prop.get('stat_type_extracted', prop.get('market', ''))
-            stat_type = stat_map.get(raw_stat, raw_stat)
-            line = prop.get('line', 0)
-            
-            if stat_type not in ORACLE_APEX_CONFIG:
-                continue
-            
-            # Dedupe
-            key = f"{player_name}|{stat_type}|{line}"
-            if key in seen:
-                continue
-            seen.add(key)
-            
-            gate_stats[stat_type]['total'] += 1
-            
-            # Get player data
-            player_data = cached_players.get(player_name) or hub_players.get(player_name)
-            if not player_data:
-                skipped['no_data'] += 1
-                continue
-            
-            game_logs = player_data.get('bdl_game_logs', [])
-            
-            # Need at least 20 games
-            played_games = [g for g in game_logs if self._did_play(g)]
-            if len(played_games) < 20:
-                skipped['insufficient_games'] += 1
-                continue
-            
-            # Calculate L20 values
-            all_values = self._get_stat_values(game_logs, stat_type)
-            if len(all_values) < 20:
-                skipped['insufficient_games'] += 1
-                continue
-            
-            l20_values = all_values[:20]
-            l10_values = all_values[:10]
-            
-            # Calculate CV from L10
-            l10_mean = np.mean(l10_values)
-            l10_std = np.std(l10_values)
-            cv = l10_std / l10_mean if l10_mean > 0 else 999
-            
-            # Get VK prediction
-            try:
-                opponent = prop.get('away_team') or prop.get('home_team', '')
-                result = self.vegas_killer_model.predict(player_name, stat_type, line, opponent_team=opponent)
-                
-                if not result or result.get('error'):
-                    skipped['no_vk'] += 1
-                    continue
-                
-                oracle_pred = result.get('predicted', 0)
-                vk_prob_over = result.get('prob_over', 0)
-                vk_prob_under = result.get('prob_under', 0)
-                
-                # The VK model returns percentages (0-100), not decimals (0-1)
-                # So we don't need to multiply by 100
-                # Only convert if values are in decimal format (0-1 range)
-                if vk_prob_over > 0 and vk_prob_over <= 1:
-                    vk_prob_over = vk_prob_over * 100
-                    vk_prob_under = 100 - vk_prob_over  # Recalculate to ensure they sum to 100
-                
-                vk_recommendation = result.get('recommendation', '')
-            except Exception:
-                skipped['no_vk'] += 1
-                continue
-            
-            # Check Oracle Apex qualification
-            qualifies, reason = self.qualifies_for_oracle_apex(
-                stat_type, line, l20_values, cv, oracle_pred, vk_prob_over
-            )
-            
-            if not qualifies:
-                if "GATE1" in reason:
-                    gate_stats[stat_type]['g1'] += 1
-                elif "GATE2" in reason:
-                    gate_stats[stat_type]['g2'] += 1
-                elif "GATE3" in reason:
-                    gate_stats[stat_type]['g3'] += 1
-                continue
-            
-            # Check minutes
-            avg_mins = self._get_avg_minutes(game_logs)
-            if avg_mins < MIN_MINUTES:
-                skipped['low_minutes'] += 1
-                continue
-            
-            gate_stats[stat_type]['passed'] += 1
-            
-            # Build apex pick with all required fields
-            l5_values = all_values[:5]
-            l5_avg = round(np.mean(l5_values), 1) if len(l5_values) >= 5 else None
-            l10_avg = round(np.mean(l10_values), 1) if len(l10_values) >= 10 else None
-            l20_avg = round(np.mean(l20_values), 1)
-            season_avg = round(np.mean(all_values), 1) if all_values else None
-            
-            l20_hits = sum(1 for v in l20_values if v >= line)
-            l10_hits = sum(1 for v in l10_values if v >= line)
-            l5_hits = sum(1 for v in l5_values if v >= line)
-            
-            # Calculate hit rates as percentages (frontend expects h5_rate, h10_rate)
-            h5_rate = round((l5_hits / 5) * 100, 1) if len(l5_values) >= 5 else None
-            h10_rate = round((l10_hits / 10) * 100, 1) if len(l10_values) >= 10 else None
-            h20_rate = round((l20_hits / 20) * 100, 1)
-            
-            edge = oracle_pred - line
-            diff_from_avg = round(season_avg - line, 1) if season_avg else None
-            
-            apex_picks.append({
-                'player_name': player_name,
-                'stat_type': stat_type,
-                'line': line,
-                # L5/L10/L20 averages for frontend
-                'l5_avg': l5_avg,
-                'l10_avg': l10_avg,
-                'l20_avg': l20_avg,
-                'season_avg': season_avg,
-                'diff_from_avg': diff_from_avg,
-                # Hit rates - frontend field names (h5_rate, h10_rate)
-                'h5_rate': h5_rate,
-                'h10_rate': h10_rate,
-                'h20_rate': h20_rate,
-                'l5_hits': l5_hits,
-                'l10_hits': l10_hits,
-                'l20_hits': l20_hits,
-                'l5_hit_rate': h5_rate,
-                'l10_hit_rate': h10_rate,
-                'l20_hit_rate': h20_rate,
-                # CV
-                'cv': round(cv, 3),
-                # Vegas Killer predictions - frontend field names
-                'vk_predicted': round(oracle_pred, 1),
-                'vk_edge': round(edge, 1),
-                'vk_prob_over': round(vk_prob_over, 1),
-                'vk_prob_under': round(vk_prob_under, 1),
-                'vk_recommendation': vk_recommendation,
-                # Legacy field names for backward compat
-                'oracle_pred': round(oracle_pred, 1),
-                'edge': round(edge, 1),
-                'vk_prob': round(vk_prob_over, 1),
-                # Minutes
-                'avg_mins': round(avg_mins, 1),
-                # Prop metadata
-                'is_goblin': prop.get('is_goblin', False),
-                'is_demon': prop.get('is_demon', False),
-                'team': player_data.get('team') or prop.get('home_team') or prop.get('away_team'),
-                'opponent': prop.get('away_team') or prop.get('home_team'),
-                'game_time': prop.get('commence_time'),
-                'headshot_url': player_data.get('headshot_url'),
-                'photo_url': player_data.get('photo_url') or player_data.get('headshot_url'),
-                # Tier
-                'tier': 'safe_haven',
-                'tier_label': 'Oracle Apex',
-                'synced_at': datetime.now(timezone.utc).isoformat(),
-            })
-        
-        logger.info(f"[ORACLE_APEX] Gate stats: {gate_stats}")
-        logger.info(f"[ORACLE_APEX] Skipped: {skipped}")
-        logger.info(f"[ORACLE_APEX] Raw apex picks: {len(apex_picks)}")
-        
-        # Dedupe: Keep lowest line per player+stat
-        dedupe_map = {}
-        for pick in apex_picks:
-            key = f"{pick['player_name']}|{pick['stat_type']}"
-            if key not in dedupe_map or pick['line'] < dedupe_map[key]['line']:
-                dedupe_map[key] = pick
-        
-        final_picks = list(dedupe_map.values())
-        
-        # =================================================================
-        # ENRICHMENT: Merge with dg_cached_board to get full context data
-        # This ensures intel_suite, active_badges, context data are included
-        # =================================================================
-        enriched_picks = []
-        mlb_scored = self.db.mlb_scored
-        
-        for pick in final_picks:
-            player_name = pick['player_name']
-            stat_type = pick['stat_type']
-            line = pick['line']
-            
-            # Look up player in cached_board
-            player_doc = await self.cached_board.find_one(
-                {"player_name": player_name},
-                {"_id": 0}
-            )
-            
-            # Also look up mlb_scored for officiating data
-            # First try to match exact stat_type, then fallback to any entry for this player
-            # (Referee data is per-game, not per-stat-type)
-            mlb_doc = await mlb_scored.find_one(
-                {"player_name": player_name, "stat_type": stat_type},
-                {"_id": 0, "ref_ppg": 1, "ref_ou_pct": 1, "whistle_class": 1, 
-                 "whistle_modifier": 1, "crew_chief": 1, "opponent": 1, "game_time": 1}
-            )
-            
-            # Fallback: if no exact stat_type match, get referee data from any entry for this player
-            if not mlb_doc or not mlb_doc.get('ref_ppg'):
-                mlb_doc_fallback = await mlb_scored.find_one(
-                    {"player_name": player_name, "ref_ppg": {"$exists": True, "$ne": None}},
-                    {"_id": 0, "ref_ppg": 1, "ref_ou_pct": 1, "whistle_class": 1, 
-                     "whistle_modifier": 1, "crew_chief": 1, "opponent": 1, "game_time": 1}
-                )
-                if mlb_doc_fallback:
-                    mlb_doc = mlb_doc_fallback
-                    logger.debug(f"[ORACLE_APEX] Using fallback ref data for {player_name} {stat_type}")
-            
-            enriched_prop = None
-            if player_doc and player_doc.get('props'):
-                # Remove any _id fields that MongoDB adds
-                if '_id' in player_doc:
-                    del player_doc['_id']
-                    
-                # Find the matching prop by stat_type and line
-                for prop in player_doc['props']:
-                    # Remove _id from prop if present
-                    if '_id' in prop:
-                        del prop['_id']
-                    if prop.get('stat_type') == stat_type and prop.get('line') == line:
-                        enriched_prop = prop
-                        break
-                
-                # If exact line not found, try to find closest line with same stat_type
-                if not enriched_prop:
-                    same_stat_props = [p for p in player_doc['props'] if p.get('stat_type') == stat_type]
-                    if same_stat_props:
-                        # Use the one with closest line
-                        same_stat_props.sort(key=lambda x: abs(x.get('line', 0) - line))
-                        enriched_prop = same_stat_props[0]
-                        logger.info(f"[ORACLE_APEX] Using closest line {enriched_prop.get('line')} instead of {line} for {player_name} {stat_type}")
-            
-            if enriched_prop:
-                # Merge Oracle Apex fields into enriched data
-                merged = {**enriched_prop}
-                merged.update({
-                    'player_name': player_name,
-                    'line': line,  # Keep the Oracle Apex line (goblin)
-                    'tier': 'safe_haven',
-                    'tier_label': 'Oracle Apex',
-                    'oracle_apex_qualified': True,
-                    # Oracle Apex specific metrics
-                    'vk_predicted': pick['vk_predicted'],
-                    'vk_edge': pick['vk_edge'],
-                    'vk_prob_over': pick['vk_prob_over'],
-                    'vk_prob_under': pick['vk_prob_under'],
-                    'vk_recommendation': pick['vk_recommendation'],
-                    'cv': pick['cv'],
-                    'l5_avg': pick['l5_avg'],
-                    'l10_avg': pick['l10_avg'],
-                    'l20_avg': pick['l20_avg'],
-                    'season_avg': pick['season_avg'],
-                    'h5_rate': pick['h5_rate'],
-                    'h10_rate': pick['h10_rate'],
-                    'h20_rate': pick['h20_rate'],
-                    'l20_hits': pick['l20_hits'],
-                    'avg_mins': pick['avg_mins'],
-                    # Use enriched data for intel_suite and badges
-                    'intel_suite': enriched_prop.get('intel_suite', {}),
-                    'active_badges': enriched_prop.get('active_badges', []),
-                    'momentum_data': enriched_prop.get('momentum_data'),
-                    'vacuum_data': enriched_prop.get('vacuum_data'),
-                    'whistle_data': enriched_prop.get('whistle_data'),
-                    # Officiating data from mlb_scored (primary) or player doc/prop
-                    'ref_ppg': (mlb_doc or {}).get('ref_ppg') or player_doc.get('ref_ppg') or enriched_prop.get('ref_ppg'),
-                    'ref_ou_pct': (mlb_doc or {}).get('ref_ou_pct') or player_doc.get('ref_ou_pct') or enriched_prop.get('ref_ou_pct'),
-                    'whistle_class': (mlb_doc or {}).get('whistle_class') or player_doc.get('whistle_class') or enriched_prop.get('whistle_class'),
-                    'whistle_modifier': (mlb_doc or {}).get('whistle_modifier') or player_doc.get('whistle_modifier') or enriched_prop.get('whistle_modifier'),
-                    'crew_chief': (mlb_doc or {}).get('crew_chief') or player_doc.get('crew_chief') or enriched_prop.get('crew_chief'),
-                    # Photo URLs from player doc
-                    'photo_url': player_doc.get('photo_url') or player_doc.get('headshot_url'),
-                    'headshot_url': player_doc.get('headshot_url'),
-                    'team': player_doc.get('team'),
-                    # Game context
-                    'opponent': (mlb_doc or {}).get('opponent') or player_doc.get('opponent') or enriched_prop.get('opponent'),
-                    'game_time': (mlb_doc or {}).get('game_time') or player_doc.get('game_time') or enriched_prop.get('game_time'),
-                })
-                enriched_picks.append(merged)
-                logger.info(f"[ORACLE_APEX] Enriched: {player_name} {stat_type} {line} with intel_suite={bool(merged.get('intel_suite'))}")
-            else:
-                # Fallback: use the basic Oracle Apex data
-                pick['oracle_apex_qualified'] = True
-                pick['intel_suite'] = {}
-                pick['active_badges'] = []
-                enriched_picks.append(pick)
-                logger.warning(f"[ORACLE_APEX] No enriched data for: {player_name} {stat_type} {line}")
-        
-        enriched_picks.sort(key=lambda x: x.get('vk_edge', x.get('edge', 0)), reverse=True)
-        
-        logger.info(f"[ORACLE_APEX] Final enriched picks: {len(enriched_picks)}")
-        
-        return {
-            'success': True,
-            'apex_picks': enriched_picks,
-            'total_scanned': len(seen),
-            'gate_stats': gate_stats,
-            'skipped': skipped,
-        }
-    
-    async def scan_all_props_for_distribution(self) -> Dict[str, Any]:
-        """
-        Scan ALL props and return them with Oracle Apex analysis data.
-        
-        Unlike scan_all_props() which filters for Safe Haven only, this method:
-        1. Analyzes EVERY prop with VK model
-        2. Calculates Oracle Apex metrics (CV, hit rates, edge)
-        3. Returns ALL props with their qualification status
-        
-        The tier distribution logic then uses this to cascade:
-        - Safe Haven: Oracle Apex qualified props
-        - Front Lines: Remaining props meeting FL criteria
-        - War Zone: Remaining props meeting WZ criteria
-        
-        Returns:
-            Dict with all_props list and analysis stats
-        """
-        if not self.vegas_killer_model:
-            logger.error("[ORACLE_APEX] Vegas Killer model not set!")
-            return {"success": False, "error": "Vegas Killer model not initialized"}
-        
-        logger.info("[ORACLE_APEX] Starting FULL prop scan for tier distribution...")
-        
-        # Load all data
-        all_props = await self.live_props.find({}, {"_id": 0}).to_list(length=None)
-        cached_players = {p['player_name']: p async for p in self.cached_board.find({}, {"_id": 0})}
-        hub_players = {p['display_name']: p async for p in self.master_hub.find({}, {"_id": 0})}
-        
-        logger.info(f"[ORACLE_APEX] Loaded {len(all_props)} props, {len(cached_players)} cached, {len(hub_players)} hub")
-        
-        # Normalize stat types
-        stat_map = {
-            'player_points': 'PTS',
-            'player_rebounds': 'REB',
-            'player_assists': 'AST',
-            'player_points_rebounds_assists': 'PRA',
-            'PTS': 'PTS', 'REB': 'REB', 'AST': 'AST', 'PRA': 'PRA'
-        }
-        
-        analyzed_props = []
-        stats = {
-            'total': 0, 
-            'safe_haven_qualified': 0,
-            'has_vk_data': 0,
-            'skipped_no_data': 0,
-            'skipped_insufficient_games': 0,
-            'skipped_no_vk': 0,
-        }
-        
-        seen = set()
-        
-        for prop in all_props:
-            player_name = prop.get('player_name', '')
-            raw_stat = prop.get('stat_type_extracted', prop.get('market', ''))
-            stat_type = stat_map.get(raw_stat, raw_stat)
-            line = prop.get('line', 0)
-            
-            # Dedupe
-            key = f"{player_name}|{stat_type}|{line}"
-            if key in seen:
-                continue
-            seen.add(key)
-            
-            stats['total'] += 1
-            
-            # Get player data - prefer cached_board for bdl_game_logs (SSOT for all stats)
-            cached_player = cached_players.get(player_name)
-            hub_player = hub_players.get(player_name)
-            player_data = cached_player or hub_player
-            if not player_data:
-                stats['skipped_no_data'] += 1
-                continue
-            
-            # SSOT: All stats come from BDL game logs
-            game_logs = player_data.get('bdl_game_logs', [])
-            played_games = [g for g in game_logs if self._did_play(g)]
-            
-            # Calculate values from BDL game logs (SSOT)
-            all_values = self._get_stat_values(game_logs, stat_type)
-            
-            if len(played_games) < 5:
-                stats['skipped_insufficient_games'] += 1
-                continue
-            
-            # Calculate L values from BDL game logs (SSOT for all averages)
-            l20_values = all_values[:20] if len(all_values) >= 20 else all_values
-            l10_values = all_values[:10] if len(all_values) >= 10 else all_values
-            l5_values = all_values[:5] if len(all_values) >= 5 else all_values
-            
-            # SSOT: All averages calculated from BDL game logs
-            l5_avg = round(np.mean(l5_values), 1) if l5_values else None
-            l10_avg = round(np.mean(l10_values), 1) if l10_values else None
-            l20_avg = round(np.mean(l20_values), 1) if l20_values else None
-            season_avg = round(np.mean(all_values), 1) if all_values else None
-            
-            # Calculate CV from L10
-            l10_mean = np.mean(l10_values) if l10_values else 0
-            l10_std = np.std(l10_values) if l10_values else 0
-            cv = l10_std / l10_mean if l10_mean > 0 else 999
-            
-            # Get VK prediction
-            oracle_pred = None
-            vk_prob_over = 0
-            vk_prob_under = 0
-            vk_recommendation = ''
-            edge = 0
-            
-            try:
-                opponent = prop.get('away_team') or prop.get('home_team', '')
-                result = self.vegas_killer_model.predict(player_name, stat_type, line, opponent_team=opponent)
-                
-                if result and not result.get('error'):
-                    oracle_pred = result.get('predicted', 0)
-                    vk_prob_over = result.get('prob_over', 0)
-                    vk_prob_under = result.get('prob_under', 0)
-                    
-                    # Handle decimal vs percentage format
-                    if vk_prob_over > 0 and vk_prob_over <= 1:
-                        vk_prob_over = vk_prob_over * 100
-                        vk_prob_under = 100 - vk_prob_over
-                    
-                    vk_recommendation = result.get('recommendation', '')
-                    edge = oracle_pred - line if oracle_pred else 0
-                    stats['has_vk_data'] += 1
-                else:
-                    stats['skipped_no_vk'] += 1
-            except Exception as vk_err:
-                if stats['total'] < 5:  # Log first few errors
-                    logger.warning(f"[ORACLE_APEX] VK predict error for {player_name} {stat_type}: {vk_err}")
-                stats['skipped_no_vk'] += 1
-            
-            # Check Oracle Apex qualification
-            oracle_apex_qualified = False
-            apex_reason = "NOT_ANALYZED"
-            
-            if stat_type in ORACLE_APEX_CONFIG and len(l20_values) >= 20 and oracle_pred is not None:
-                oracle_apex_qualified, apex_reason = self.qualifies_for_oracle_apex(
-                    stat_type, line, l20_values, cv, oracle_pred, vk_prob_over
-                )
-                
-                # Also check minutes
-                avg_mins = self._get_avg_minutes(game_logs)
-                if oracle_apex_qualified and avg_mins < MIN_MINUTES:
-                    oracle_apex_qualified = False
-                    apex_reason = "LOW_MINUTES"
-            
-            if oracle_apex_qualified:
-                stats['safe_haven_qualified'] += 1
-            
-            # Calculate hit rates (always use game log values for hit rate accuracy)
-            l20_hits = sum(1 for v in l20_values if v >= line) if l20_values else 0
-            l10_hits = sum(1 for v in l10_values if v >= line) if l10_values else 0
-            l5_hits = sum(1 for v in l5_values if v >= line) if l5_values else 0
-            
-            h5_rate = round((l5_hits / len(l5_values)) * 100, 1) if l5_values else None
-            h10_rate = round((l10_hits / len(l10_values)) * 100, 1) if l10_values else None
-            h20_rate = round((l20_hits / len(l20_values)) * 100, 1) if l20_values else None
-            
-            avg_mins = self._get_avg_minutes(game_logs)
-            
-            analyzed_props.append({
-                'player_name': player_name,
-                'stat_type': stat_type,
-                'line': line,
-                # Oracle Apex qualification
-                'oracle_apex_qualified': oracle_apex_qualified,
-                'apex_reason': apex_reason,
-                # L averages
-                'l5_avg': l5_avg,
-                'l10_avg': l10_avg,
-                'l20_avg': l20_avg,
-                'season_avg': season_avg,
-                # Hit rates
-                'h5_rate': h5_rate,
-                'h10_rate': h10_rate,
-                'h20_rate': h20_rate,
-                'l5_hits': l5_hits,
-                'l10_hits': l10_hits,
-                'l20_hits': l20_hits,
-                # CV
-                'cv': round(cv, 3),
-                # VK predictions
-                'vk_predicted': round(oracle_pred, 1) if oracle_pred else None,
-                'vk_edge': round(edge, 1) if edge else None,
-                'vk_prob_over': round(vk_prob_over, 1),
-                'vk_prob_under': round(vk_prob_under, 1),
-                'vk_recommendation': vk_recommendation,
-                # Minutes
-                'avg_mins': round(avg_mins, 1),
-                # Prop metadata
-                'is_goblin': prop.get('is_goblin', False),
-                'is_demon': prop.get('is_demon', False),
-                'team': player_data.get('team') or prop.get('home_team') or prop.get('away_team'),
-                'opponent': prop.get('away_team') or prop.get('home_team'),
-                'game_time': prop.get('commence_time'),
-                'headshot_url': player_data.get('headshot_url'),
-                'photo_url': player_data.get('photo_url') or player_data.get('headshot_url'),
-                'synced_at': datetime.now(timezone.utc).isoformat(),
-            })
-        
-        logger.info(f"[ORACLE_APEX] Distribution scan complete: {stats}")
-        
-        return {
-            'success': True,
-            'all_props': analyzed_props,
-            'stats': stats,
-        }
+        return vk_prob + edge_pct + (hit_rate_pct * 0.1)
     
     async def build_safe_haven_tier(self) -> List[Dict]:
         """
-        Build the Safe Haven tier using Oracle Apex logic.
+        Build the MLB Safe Haven tier using 2026 thresholds.
         
-        This replaces the legacy Safe Haven logic with mathematically-proven picks.
+        PROCESS:
+        1. Load all props from mlb_cached_board
+        2. Apply Primary Qualifications (DK Odds, Goblin, Lineup)
+        3. Get VK predictions from master_hub vk_baselines
+        4. Apply Matchup Modifier for Adjusted_VK_Projection
+        5. Apply 3-Gate Qualification (Hit Rate, CV, Edge+Prob)
+        6. Apply Weather Hard-Stop for batter props
+        7. Sort by Board_Score, take Top 10
+        
+        Returns:
+            List of qualified Safe Haven picks
         """
-        result = await self.scan_all_props()
+        logger.info("[MLB_APEX] Building Safe Haven tier with 2026 thresholds...")
         
-        if not result.get('success'):
-            logger.error(f"[ORACLE_APEX] Failed to scan props: {result.get('error')}")
-            return []
+        # Load data sources
+        all_players = await self.cached_board.find({}, {"_id": 0}).to_list(length=None)
         
-        apex_picks = result.get('apex_picks', [])
+        # Pre-load VK baselines from master hub
+        vk_baselines_lookup = {}
+        async for hub_doc in self.master_hub.find({}, {"_id": 0, "display_name": 1, "vk_baselines": 1}):
+            display_name = hub_doc.get("display_name", "")
+            if display_name and hub_doc.get("vk_baselines"):
+                vk_baselines_lookup[display_name.lower()] = hub_doc.get("vk_baselines", {})
         
-        # Store to collection
-        await self.oracle_apex_collection.delete_many({})
-        if apex_picks:
-            await self.oracle_apex_collection.insert_many(apex_picks)
+        logger.info(f"[MLB_APEX] Loaded {len(all_players)} players, {len(vk_baselines_lookup)} VK baselines")
         
-        logger.info(f"[ORACLE_APEX] Stored {len(apex_picks)} Oracle Apex picks to collection")
+        # Track gate statistics
+        gate_stats = {
+            'total_props': 0,
+            'dk_odds_fail': 0,
+            'not_goblin': 0,
+            'lineup_not_confirmed': 0,
+            'unsupported_stat': 0,
+            'insufficient_data': 0,
+            'no_vk_baseline': 0,
+            'weather_hardstop': 0,
+            'gate1_fail': 0,
+            'gate2_fail': 0,
+            'gate3_fail': 0,
+            'qualified': 0,
+        }
         
-        return apex_picks
+        qualified_picks = []
+        seen_combos = set()
+        
+        for player_doc in all_players:
+            player_name = player_doc.get("player_name", "")
+            team = player_doc.get("team", "")
+            
+            # Get VK baselines for this player
+            player_vk = vk_baselines_lookup.get(player_name.lower(), {})
+            
+            for prop in player_doc.get("props", []):
+                gate_stats['total_props'] += 1
+                
+                raw_stat = prop.get("stat_type", "")
+                stat_type = self._normalize_stat_type(raw_stat)
+                line = prop.get("line", 0)
+                
+                # Skip unsupported stats
+                if stat_type not in MLB_SAFE_HAVEN_CONFIG:
+                    gate_stats['unsupported_stat'] += 1
+                    continue
+                
+                # Dedupe by player + stat + line
+                combo_key = f"{player_name}|{stat_type}|{line}"
+                if combo_key in seen_combos:
+                    continue
+                seen_combos.add(combo_key)
+                
+                # ============================================================
+                # PRIMARY QUALIFICATION CHECKS
+                # ============================================================
+                
+                # 1. DK Odds check
+                dk_odds = prop.get("dk_odds") or prop.get("all_odds", {}).get("draftkings")
+                if dk_odds is None or dk_odds > DK_ODDS_THRESHOLD:
+                    gate_stats['dk_odds_fail'] += 1
+                    continue
+                
+                # 2. Goblin check
+                is_goblin = prop.get("is_goblin", False)
+                if not is_goblin:
+                    gate_stats['not_goblin'] += 1
+                    continue
+                
+                # 3. Lineup confirmed check
+                is_lineup_confirmed = prop.get("is_lineup_confirmed", False)
+                # Also accept if lineup data isn't available but player has recent games
+                if not is_lineup_confirmed:
+                    # Check if player has recent game data as proxy
+                    last_games = prop.get("last_10_games", [])
+                    if last_games and len(last_games) >= 5:
+                        is_lineup_confirmed = True  # Assume active player
+                
+                if not is_lineup_confirmed:
+                    gate_stats['lineup_not_confirmed'] += 1
+                    continue
+                
+                # ============================================================
+                # GET GAME LOG DATA
+                # ============================================================
+                
+                last_games = prop.get("last_10_games", [])
+                
+                # Need at least 20 games for L20 calculation
+                if len(last_games) < 20:
+                    # Try to get from master hub
+                    hub_doc = await self.master_hub.find_one(
+                        {"display_name": player_name},
+                        {"_id": 0, "bdl_game_logs": 1}
+                    )
+                    if hub_doc and hub_doc.get("bdl_game_logs"):
+                        last_games = hub_doc["bdl_game_logs"][:20]
+                
+                if len(last_games) < 20:
+                    gate_stats['insufficient_data'] += 1
+                    continue
+                
+                # Calculate L20 values
+                l20_values = self._get_mlb_stat_values(last_games[:20], stat_type)
+                if len(l20_values) < 20:
+                    gate_stats['insufficient_data'] += 1
+                    continue
+                
+                # Calculate CV from L10
+                l10_values = l20_values[:10]
+                l10_mean = np.mean(l10_values) if l10_values else 0
+                l10_std = np.std(l10_values) if l10_values else 0
+                cv = l10_std / l10_mean if l10_mean > 0 else 999
+                
+                # ============================================================
+                # GET VK PREDICTION & APPLY MATCHUP MODIFIER
+                # ============================================================
+                
+                vk_key = VK_BASELINE_MAP.get(stat_type)
+                if not vk_key or vk_key not in player_vk:
+                    gate_stats['no_vk_baseline'] += 1
+                    continue
+                
+                vk_stat = player_vk[vk_key]
+                raw_vk_pred = vk_stat.get("weighted_baseline", 0)
+                
+                if not raw_vk_pred or raw_vk_pred <= 0:
+                    gate_stats['no_vk_baseline'] += 1
+                    continue
+                
+                # Get opponent for matchup modifier
+                opponent = prop.get("opponent") or prop.get("opponent_abbr")
+                if not opponent:
+                    # Derive from away_team/home_team
+                    away = prop.get("away_team", "")
+                    home = prop.get("home_team", "")
+                    if away and home:
+                        # Simple derivation - if player team matches one, opponent is the other
+                        if team in away:
+                            opponent = home[:3].upper()
+                        else:
+                            opponent = away[:3].upper()
+                
+                # Apply matchup modifier
+                matchup_modifier = self._get_matchup_modifier(stat_type, opponent)
+                adjusted_vk_pred = raw_vk_pred * matchup_modifier
+                
+                # Calculate edge percentage
+                edge_pct = ((adjusted_vk_pred - line) / line * 100) if line > 0 else 0
+                
+                # Calculate probability (simplified model based on edge)
+                # Higher edge = higher probability of going over
+                vk_prob = min(90, max(50, 50 + edge_pct * 1.5))
+                
+                # ============================================================
+                # 3-GATE QUALIFICATION
+                # ============================================================
+                
+                qualifies, reason = self.qualifies_for_mlb_safe_haven(
+                    stat_type=stat_type,
+                    line=line,
+                    l20_values=l20_values,
+                    cv=cv,
+                    adjusted_vk_pred=adjusted_vk_pred,
+                    vk_prob=vk_prob,
+                    dk_odds=dk_odds,
+                    is_goblin=is_goblin,
+                    is_lineup_confirmed=is_lineup_confirmed,
+                    prop=prop
+                )
+                
+                if not qualifies:
+                    if "GATE1" in reason:
+                        gate_stats['gate1_fail'] += 1
+                    elif "GATE2" in reason:
+                        gate_stats['gate2_fail'] += 1
+                    elif "GATE3" in reason:
+                        gate_stats['gate3_fail'] += 1
+                    elif "WEATHER" in reason:
+                        gate_stats['weather_hardstop'] += 1
+                    continue
+                
+                gate_stats['qualified'] += 1
+                
+                # ============================================================
+                # BUILD QUALIFIED PICK
+                # ============================================================
+                
+                l5_values = l20_values[:5]
+                l5_avg = round(np.mean(l5_values), 1) if l5_values else None
+                l10_avg = round(l10_mean, 1)
+                l20_avg = round(np.mean(l20_values), 1)
+                
+                l20_hits = sum(1 for v in l20_values if v >= line)
+                l10_hits = sum(1 for v in l10_values if v >= line)
+                l5_hits = sum(1 for v in l5_values if v >= line)
+                
+                h5_rate = round((l5_hits / 5) * 100, 1) if len(l5_values) >= 5 else None
+                h10_rate = round((l10_hits / 10) * 100, 1) if len(l10_values) >= 10 else None
+                h20_rate = round((l20_hits / 20) * 100, 1)
+                
+                # Calculate Board Score for sorting
+                board_score = self.calculate_board_score(vk_prob, edge_pct, h20_rate)
+                
+                qualified_picks.append({
+                    'player_name': player_name,
+                    'stat_type': stat_type,
+                    'line': line,
+                    # Averages
+                    'l5_avg': l5_avg,
+                    'l10_avg': l10_avg,
+                    'l20_avg': l20_avg,
+                    'season_avg': l10_avg,
+                    # Hit rates (frontend field names)
+                    'h5_rate': h5_rate,
+                    'h10_rate': h10_rate,
+                    'h20_rate': h20_rate,
+                    'hit_rate_l5': h5_rate,
+                    'hit_rate_l10': h10_rate,
+                    'hit_rate_l20': h20_rate,
+                    'l20_hits': l20_hits,
+                    # CV
+                    'cv': round(cv, 3),
+                    # VK predictions
+                    'vk_predicted': round(adjusted_vk_pred, 2),
+                    'vk_edge': round(adjusted_vk_pred - line, 2),
+                    'vk_edge_pct': round(edge_pct, 1),
+                    'vk_prob_over': round(vk_prob, 1),
+                    'vk_probability': round(vk_prob, 1),
+                    'matchup_modifier': round(matchup_modifier, 3),
+                    'raw_vk_pred': round(raw_vk_pred, 2),
+                    # Board score for sorting
+                    'board_score': round(board_score, 1),
+                    # Prop metadata
+                    'dk_odds': dk_odds,
+                    'is_goblin': True,
+                    'is_demon': False,
+                    'team': team,
+                    'opponent': opponent,
+                    'game_time': prop.get('game_time') or prop.get('commence_time'),
+                    'photo_url': player_doc.get('photo_url') or player_doc.get('headshot_url'),
+                    'headshot_url': player_doc.get('headshot_url'),
+                    # Tier
+                    'tier': 'safe_haven',
+                    'tier_label': 'MLB Safe Haven',
+                    'oracle_apex_qualified': True,
+                    'synced_at': datetime.now(timezone.utc).isoformat(),
+                })
+        
+        logger.info(f"[MLB_APEX] Gate stats: {gate_stats}")
+        
+        # ============================================================
+        # FINAL SORT BY BOARD SCORE, TAKE TOP 10
+        # ============================================================
+        
+        # Sort by board_score descending
+        qualified_picks.sort(key=lambda x: x.get('board_score', 0), reverse=True)
+        
+        # Dedupe: Keep highest board_score per player+stat
+        dedupe_map = {}
+        for pick in qualified_picks:
+            key = f"{pick['player_name']}|{pick['stat_type']}"
+            if key not in dedupe_map or pick['board_score'] > dedupe_map[key]['board_score']:
+                dedupe_map[key] = pick
+        
+        final_picks = list(dedupe_map.values())
+        final_picks.sort(key=lambda x: x.get('board_score', 0), reverse=True)
+        
+        # Take Top 10
+        top_10 = final_picks[:10]
+        
+        logger.info(f"[MLB_APEX] Final Safe Haven: {len(top_10)} picks (from {len(final_picks)} qualified)")
+        
+        for i, pick in enumerate(top_10[:5], 1):
+            logger.info(f"[MLB_APEX]   {i}. {pick['player_name']} - {pick['stat_type']} @ {pick['line']} | "
+                       f"Score: {pick['board_score']} | Edge: {pick['vk_edge_pct']:.1f}% | "
+                       f"HR: {pick['h20_rate']}%")
+        
+        return top_10
+    
+    async def analyze_all_props(self) -> List[Dict]:
+        """
+        Analyze all MLB props and return Safe Haven qualified picks.
+        
+        This is the main entry point for the Safe Haven tier builder.
+        """
+        return await self.build_safe_haven_tier()
 
 
-# Singleton instance
-_oracle_apex_service = None
+# =============================================================================
+# SINGLETON INSTANCE
+# =============================================================================
 
-def get_mlb_oracle_service(db, vegas_killer_model=None):
-    """Get or create the Oracle Apex service singleton."""
-    global _oracle_apex_service
-    if _oracle_apex_service is None:
-        _oracle_apex_service = OracleApexService(db, vegas_killer_model)
-    elif vegas_killer_model:
-        _oracle_apex_service.set_vegas_killer_model(vegas_killer_model)
-    return _oracle_apex_service
+_mlb_oracle_apex_instance = None
+
+def get_mlb_oracle_apex_service(db, vegas_killer_model=None):
+    """Get singleton instance of MLB Oracle Apex service."""
+    global _mlb_oracle_apex_instance
+    if _mlb_oracle_apex_instance is None:
+        _mlb_oracle_apex_instance = MLBOracleApexService(db, vegas_killer_model)
+    return _mlb_oracle_apex_instance
