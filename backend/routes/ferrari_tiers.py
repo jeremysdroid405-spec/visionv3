@@ -27,55 +27,153 @@ _sync_db = None
 
 def enrich_mlb_prop_with_averages(prop: Dict, player_data: Dict = None) -> Dict:
     """
-    Enrich an MLB prop with L5/L10 averages calculated from last_10_games.
-    This ensures pick cards always have average data to display.
+    Enrich an MLB prop with ALL fields needed to match NBA pick card display:
+    - L5/L10/L20 averages
+    - Hit rates (h5_rate, h10_rate, h20_rate)
+    - VK prediction and edge
+    - Vision intel summary
     
     Args:
         prop: The prop dictionary to enrich
         player_data: Optional player-level data (for player_name, team, etc.)
     
     Returns:
-        The enriched prop dictionary
+        The enriched prop dictionary matching NBA structure
     """
     # Add player-level data if provided
     if player_data:
         prop["player_name"] = prop.get("player_name") or player_data.get("player_name")
         prop["team"] = prop.get("team") or player_data.get("team")
         prop["position"] = prop.get("position") or player_data.get("position")
+        prop["headshot_url"] = prop.get("headshot_url") or player_data.get("headshot_url")
+        prop["photo_url"] = prop.get("photo_url") or player_data.get("headshot_url")
     
-    # Calculate L5/L10 averages from last_10_games if missing
-    last_10 = prop.get("last_10_games", [])
+    # Calculate L5/L10/L20 averages from last_10_games
+    last_games = prop.get("last_10_games", [])
     line = prop.get("line", 0)
     
-    if last_10 and isinstance(last_10, list):
-        values = [g.get("value", 0) for g in last_10 if isinstance(g, dict) and "value" in g]
-        if values:
-            # L10 average
-            l10_vals = values[:10]
-            if l10_vals and not prop.get("l10_avg"):
-                prop["l10_avg"] = round(sum(l10_vals) / len(l10_vals), 2)
-            
-            # L5 average
-            l5_vals = values[:5]
-            if l5_vals and not prop.get("l5_avg"):
-                prop["l5_avg"] = round(sum(l5_vals) / len(l5_vals), 2)
-            
-            # Hit rates (times >= line)
-            if line > 0:
-                if l10_vals and not prop.get("h10_rate"):
-                    prop["h10_rate"] = round((sum(1 for v in l10_vals if v >= line) / len(l10_vals)) * 100, 1)
-                if l5_vals and not prop.get("h5_rate"):
-                    prop["h5_rate"] = round((sum(1 for v in l5_vals if v >= line) / len(l5_vals)) * 100, 1)
+    values = []
+    if last_games and isinstance(last_games, list):
+        values = [g.get("value", 0) for g in last_games if isinstance(g, dict) and "value" in g]
     
-    # Fallback to season_average if still missing
+    # L5 calculations
+    l5_vals = values[:5] if len(values) >= 5 else values
+    if l5_vals:
+        prop["l5_avg"] = prop.get("l5_avg") or round(sum(l5_vals) / len(l5_vals), 2)
+        if line > 0:
+            l5_hits = sum(1 for v in l5_vals if v >= line)
+            prop["l5_hits"] = l5_hits
+            prop["h5_rate"] = prop.get("h5_rate") or round((l5_hits / len(l5_vals)) * 100, 1)
+            prop["hit_rate_l5"] = prop["h5_rate"]
+    
+    # L10 calculations
+    l10_vals = values[:10] if len(values) >= 10 else values
+    if l10_vals:
+        prop["l10_avg"] = prop.get("l10_avg") or round(sum(l10_vals) / len(l10_vals), 2)
+        if line > 0:
+            l10_hits = sum(1 for v in l10_vals if v >= line)
+            prop["l10_hits"] = l10_hits
+            prop["h10_rate"] = prop.get("h10_rate") or round((l10_hits / len(l10_vals)) * 100, 1)
+            prop["hit_rate_l10"] = prop["h10_rate"]
+    
+    # L20 calculations (use all available, up to 20)
+    l20_vals = values[:20] if len(values) >= 20 else values
+    if l20_vals:
+        prop["l20_avg"] = prop.get("l20_avg") or round(sum(l20_vals) / len(l20_vals), 2)
+        if line > 0:
+            l20_hits = sum(1 for v in l20_vals if v >= line)
+            prop["l20_hits"] = l20_hits
+            prop["h20_rate"] = prop.get("h20_rate") or round((l20_hits / len(l20_vals)) * 100, 1)
+            prop["hit_rate_l20"] = prop["h20_rate"]
+    
+    # Fallbacks for averages
+    season_avg = prop.get("season_average") or prop.get("season_avg")
     if not prop.get("l10_avg"):
-        prop["l10_avg"] = prop.get("season_average")
+        prop["l10_avg"] = season_avg
     if not prop.get("l5_avg"):
-        prop["l5_avg"] = prop.get("l10_avg") or prop.get("season_average")
+        prop["l5_avg"] = prop.get("l10_avg") or season_avg
+    if not prop.get("l20_avg"):
+        prop["l20_avg"] = prop.get("l10_avg") or season_avg
     
-    # Ensure season_avg is set
-    if not prop.get("season_avg"):
-        prop["season_avg"] = prop.get("season_average") or prop.get("l10_avg")
+    # Set season_avg
+    prop["season_avg"] = season_avg or prop.get("l10_avg")
+    
+    # =========================================================================
+    # VK PREDICTION - Calculate vision model projection
+    # Use weighted average: L5 (40%) + L10 (35%) + Season (25%)
+    # =========================================================================
+    l5 = prop.get("l5_avg") or 0
+    l10 = prop.get("l10_avg") or 0
+    season = prop.get("season_avg") or l10
+    
+    if l5 or l10 or season:
+        # Weighted projection
+        vk_predicted = (l5 * 0.40) + (l10 * 0.35) + (season * 0.25)
+        prop["vk_predicted"] = round(vk_predicted, 2)
+        
+        # VK Edge = Projection - Line (raw cushion)
+        if line > 0:
+            vk_edge = vk_predicted - line
+            prop["vk_edge"] = round(vk_edge, 2)
+            
+            # VK Probability (simplified: based on hit rate and edge)
+            h10 = prop.get("h10_rate") or 50
+            edge_boost = min(20, max(-20, vk_edge * 10))  # Cap at ±20%
+            vk_prob = min(95, max(5, h10 + edge_boost))
+            prop["vk_prob_over"] = round(vk_prob, 1)
+            prop["vk_probability"] = round(vk_prob, 1)
+            prop["vk_prob_under"] = round(100 - vk_prob, 1)
+            
+            # VK Recommendation
+            if vk_edge >= 0.5 and h10 >= 60:
+                prop["vk_recommendation"] = "STRONG OVER"
+            elif vk_edge >= 0.2 and h10 >= 50:
+                prop["vk_recommendation"] = "LEAN OVER"
+            elif vk_edge <= -0.5 and h10 <= 40:
+                prop["vk_recommendation"] = "LEAN UNDER"
+            else:
+                prop["vk_recommendation"] = "HOLD"
+    
+    # =========================================================================
+    # VISION INTEL - Generate AI-style summary
+    # =========================================================================
+    player_name = prop.get("player_name", "Player")
+    stat_type = prop.get("stat_type", "stat")
+    h10 = prop.get("h10_rate") or 0
+    vk_pred = prop.get("vk_predicted") or 0
+    vk_edge = prop.get("vk_edge") or 0
+    
+    if h10 >= 70 and vk_edge >= 0.3:
+        vision_intel = f"{player_name} is locked in with {h10:.0f}% hit rate. VK projects {vk_pred:.1f} vs {line} line (+{vk_edge:.2f} edge). High-confidence play."
+    elif h10 >= 60 and vk_edge >= 0:
+        vision_intel = f"{player_name} showing consistency at {h10:.0f}% L10. Model projects {vk_pred:.1f}, slight edge over {line} line."
+    elif prop.get("is_demon"):
+        vision_intel = f"DEMON ALERT: {player_name} {stat_type} @ {line} is a ceiling play. High variance but explosive upside when hot."
+    elif h10 < 50:
+        vision_intel = f"{player_name} struggling at {h10:.0f}% hit rate. Projection of {vk_pred:.1f} suggests caution on {line} line."
+    else:
+        vision_intel = f"{player_name} {stat_type} @ {line}: L10 avg {l10:.1f}, projecting {vk_pred:.1f}. {h10:.0f}% recent hit rate."
+    
+    prop["vision_intel"] = vision_intel
+    prop["vision_summary"] = vision_intel
+    
+    # =========================================================================
+    # ADDITIONAL NBA-MATCHING FIELDS
+    # =========================================================================
+    prop["oracle_apex_qualified"] = prop.get("is_goblin", False) and h10 >= 60
+    prop["tier"] = prop.get("tier") or ("safe_haven" if prop.get("is_goblin") else "front_lines")
+    prop["synced_at"] = prop.get("synced_at") or prop.get("fetched_at")
+    
+    # Opponent field
+    if not prop.get("opponent"):
+        player_team = prop.get("team")
+        away = prop.get("away_team")
+        home = prop.get("home_team")
+        if player_team and away and home:
+            prop["opponent"] = away if player_team == home else home
+    
+    # Game time
+    prop["game_time"] = prop.get("game_time") or prop.get("commence_time")
     
     return prop
 
