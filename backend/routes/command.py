@@ -103,58 +103,95 @@ async def simulate_configuration(request: SimulationRequest):
 @router.get("/search")
 async def search_players(
     query: str = Query(..., min_length=2, description="Player name to search"),
+    sport: str = Query("nba", description="Sport to search (nba or mlb)"),
     limit: int = Query(10, ge=1, le=25, description="Max results")
 ):
     """
-    SSOT: Search players from NBA Master Hub.
+    SSOT: Search players from Master Hub (sport-specific).
     
     Returns player list with basic info for Command Post selection.
-    All data comes from nba_master_hub_2026 - NO external API calls.
+    - NBA: Searches nba_master_hub_2026
+    - MLB: Searches mlb_master_hub_2026
     """
     if _db is None:
         raise HTTPException(status_code=503, detail="Database not initialized")
     
     try:
-        # Build lookup cache if needed
-        lookup = await build_player_lookup(_db)
+        sport_lower = sport.lower()
         
-        # Search by name (case-insensitive)
-        query_lower = query.lower()
-        results = []
-        seen_player_ids = set()  # Track seen players to avoid duplicates
-        
-        for name_key, player in lookup.items():
-            if query_lower in name_key:
-                # DEDUP: Skip if we've already added this player
-                player_id = player.get("player_id")
-                display_name = player.get("display_name", "")
-                dedup_key = player_id or display_name.lower()
-                
-                if dedup_key in seen_player_ids:
-                    continue
-                seen_player_ids.add(dedup_key)
-                
+        if sport_lower == "mlb":
+            # Search MLB Master Hub
+            collection = _db["mlb_master_hub_2026"]
+            results = []
+            
+            cursor = collection.find(
+                {"display_name": {"$regex": query, "$options": "i"}},
+                {"_id": 0, "display_name": 1, "team": 1, "position": 1, 
+                 "headshot_url": 1, "bdl_id": 1, "bdl_player_id": 1}
+            ).limit(limit)
+            
+            async for player in cursor:
+                player_id = player.get("bdl_player_id") or player.get("bdl_id")
                 results.append({
                     "id": player_id,
-                    "player_name": display_name,
+                    "player_name": player.get("display_name", ""),
                     "team": player.get("team", ""),
                     "position": player.get("position", ""),
                     "headshot_url": player.get("headshot_url"),
-                    "photo_url": f"/static/player-headshots/{player.get('nba_id')}.png" if player.get("nba_id") else None,
-                    "nba_id": player.get("nba_id"),
-                    "has_stats": bool(player.get("baseline_stats"))
+                    "photo_url": player.get("headshot_url"),
+                    "sport": "mlb",
+                    "has_stats": True
                 })
-                
-                if len(results) >= limit:
-                    break
-        
-        return {
-            "success": True,
-            "query": query,
-            "count": len(results),
-            "players": results,
-            "source": "master_hub"
-        }
+            
+            return {
+                "success": True,
+                "query": query,
+                "sport": "mlb",
+                "count": len(results),
+                "players": results,
+                "source": "mlb_master_hub_2026"
+            }
+        else:
+            # Search NBA Master Hub (default)
+            lookup = await build_player_lookup(_db)
+            
+            query_lower = query.lower()
+            results = []
+            seen_player_ids = set()
+            
+            for name_key, player in lookup.items():
+                if query_lower in name_key:
+                    player_id = player.get("player_id")
+                    display_name = player.get("display_name", "")
+                    dedup_key = player_id or display_name.lower()
+                    
+                    if dedup_key in seen_player_ids:
+                        continue
+                    seen_player_ids.add(dedup_key)
+                    
+                    results.append({
+                        "id": player_id,
+                        "player_name": display_name,
+                        "team": player.get("team", ""),
+                        "position": player.get("position", ""),
+                        "headshot_url": player.get("headshot_url"),
+                        "photo_url": f"/static/player-headshots/{player.get('nba_id')}.png" if player.get("nba_id") else None,
+                        "nba_id": player.get("nba_id"),
+                        "sport": "nba",
+                        "has_stats": bool(player.get("baseline_stats"))
+                    })
+                    
+                    if len(results) >= limit:
+                        break
+            
+            return {
+                "success": True,
+                "query": query,
+                "sport": "nba",
+                "count": len(results),
+                "players": results,
+                "source": "nba_master_hub_2026"
+            }
         
     except Exception as e:
         logger.error(f"[COMMAND] Search error: {e}")

@@ -2,6 +2,7 @@
  * COMMAND SEARCH COMPONENT
  * =========================
  * Global player search for Command Post.
+ * Now SPORT-AWARE: Searches NBA or MLB based on current sport context.
  * 
  * SSOT: Uses usePlayerSearch hook (PIPE 2) for search results
  */
@@ -13,11 +14,15 @@ import debounce from 'lodash/debounce';
 
 // SSOT Global State Hooks
 import { usePlayerSearch } from '../../hooks/useLiveOdds';
+import { useSport } from '../../context/SportContext';
 
-const CommandSearch = memo(({ onPlayerSelect, placeholder = "Search players..." }) => {
+const CommandSearch = memo(({ onPlayerSelect, placeholder }) => {
   const [query, setQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
   const [showResults, setShowResults] = useState(false);
+  
+  // Get current sport from context
+  const { sport } = useSport();
   
   // Ref to track if we're clicking inside the component
   const containerRef = React.useRef(null);
@@ -45,9 +50,12 @@ const CommandSearch = memo(({ onPlayerSelect, placeholder = "Search players..." 
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // PIPE 2: Search players via usePlayerSearch hook
-  const { data: searchData, isLoading: loading } = usePlayerSearch(debouncedQuery);
+  // PIPE 2: Search players via usePlayerSearch hook - NOW SPORT-AWARE
+  const { data: searchData, isLoading: loading } = usePlayerSearch(debouncedQuery, sport);
   const results = searchData?.players || [];
+  
+  // Dynamic placeholder based on sport
+  const sportPlaceholder = placeholder || (sport === 'mlb' ? 'Search MLB players...' : 'Search NBA players...');
 
   const handleInputChange = (e) => {
     const value = e.target.value;
@@ -78,7 +86,7 @@ const CommandSearch = memo(({ onPlayerSelect, placeholder = "Search players..." 
           value={query}
           onChange={handleInputChange}
           onFocus={() => setShowResults(true)}
-          placeholder={placeholder}
+          placeholder={sportPlaceholder}
           className="pl-10 pr-10 bg-zinc-900/50 border-zinc-700 focus:border-cyan-500 text-white placeholder-zinc-500"
           data-testid="command-search-input"
         />

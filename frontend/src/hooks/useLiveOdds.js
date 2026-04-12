@@ -225,11 +225,11 @@ const fetchBreakingNews = async (sport = 'nba') => {
 };
 
 /**
- * Search players
+ * Search players (sport-specific)
  */
-const fetchPlayerSearch = async (query) => {
+const fetchPlayerSearch = async (query, sport = 'nba') => {
   if (!query || query.length < 2) return { players: [] };
-  const response = await fetch(`${API}/api/command/search?query=${encodeURIComponent(query)}&limit=15`);
+  const response = await fetch(`${API}/api/command/search?query=${encodeURIComponent(query)}&sport=${sport}&limit=15`);
   if (!response.ok) throw new Error('Search failed');
   return response.json();
 };
@@ -571,11 +571,12 @@ export const useBreakingNews = () => {
 
 /**
  * usePlayerSearch - Player search with debouncing handled by caller
+ * Now sport-aware: searches NBA or MLB based on current sport context
  */
-export const usePlayerSearch = (query) => {
+export const usePlayerSearch = (query, sport = 'nba') => {
   return useQuery({
-    queryKey: ['playerSearch', query],
-    queryFn: () => fetchPlayerSearch(query),
+    queryKey: ['playerSearch', query, sport],
+    queryFn: () => fetchPlayerSearch(query, sport),
     enabled: Boolean(query && query.length >= 2),
     staleTime: 30 * 1000,  // Cache search results for 30 seconds
     gcTime: 5 * 60 * 1000,  // Keep in cache for 5 minutes
