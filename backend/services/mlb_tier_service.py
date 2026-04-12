@@ -549,7 +549,7 @@ class MLBTierService:
         
         return context_data
     
-    async def build_ferrari_tiers(self, sync_time: datetime, target_sport: str = "nba") -> Dict[str, Any]:
+    async def build_ferrari_tiers(self, sync_time: datetime, target_sport: str = "nba", refresh_intel: bool = False) -> Dict[str, Any]:
         """
         Execute MLB PropVision Pipeline - True Probability & Diversified Parlays
         
@@ -566,12 +566,18 @@ class MLBTierService:
         Args:
             sync_time: Timestamp of sync start
             target_sport: Sport to process ('nba' or 'mlb')
+            refresh_intel: If True, force regenerate all Vision Intel (ignores cache)
         """
+        # Store refresh_intel for potential use (MLB uses separate vision intel service)
+        self._refresh_intel = refresh_intel
+        
         # Normalize sport
         target_sport = (target_sport or "nba").lower()
         
         logger.info("=" * 70)
         logger.info(f"[PROPVISION v7] TRUE PROBABILITY & DIVERSIFIED PARLAYS - {target_sport.upper()}")
+        if refresh_intel:
+            logger.info("[PROPVISION v7] 🔄 REFRESH_INTEL MODE: Forcing Vision Intel regeneration")
         logger.info("=" * 70)
         
         results = {
