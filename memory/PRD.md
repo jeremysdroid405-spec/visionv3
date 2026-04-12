@@ -32,6 +32,10 @@ Restructure the React/FastAPI betting app to a 100% Local-First Database Model, 
   - Contextual insights: slider RPM, umpire zones, swing planes, platoon splits, humidity
   - Uses Emergent LLM Key with gemini-2.5-flash-lite for reliability
   - Batch processing (10-15 props per API call)
+- [x] **Sport-Specific Intel Search (April 12, 2026)**
+  - Dashboard Intel Search now passes `currentSport` to `usePlayerSearch` hook
+  - MLB mode searches `mlb_master_hub_2026`, NBA mode searches `nba_master_hub_2026`
+  - Backend `/api/command/search` accepts `sport` parameter for routing
 
 ### In Progress
 - [ ] MLB headshot sync (~700 players remaining)

@@ -1482,8 +1482,8 @@ const Dashboard = () => {
     return () => document.removeEventListener('click', handleClickOutside);
   }, [showUserMenu]);
   
-  // PIPE 2: Player Search via usePlayerSearch hook
-  const { data: searchData, isLoading: searchQueryLoading } = usePlayerSearch(searchTerm);
+  // PIPE 2: Player Search via usePlayerSearch hook (SPORT-AWARE)
+  const { data: searchData, isLoading: searchQueryLoading } = usePlayerSearch(searchTerm, currentSport);
   
   // Sync search results from TanStack Query
   useEffect(() => {
