@@ -514,7 +514,7 @@ async def _batch_generate_summaries(picks: List[Dict], db) -> None:
     pass
 
 
-async def run_optimized_sync(db, target_sport: str = DEFAULT_SPORT) -> Dict[str, Any]:
+async def run_optimized_sync(db, target_sport: str = DEFAULT_SPORT, refresh_intel: bool = False) -> Dict[str, Any]:
     """
     Run the full optimized sync pipeline for a SPECIFIC sport.
     
@@ -531,6 +531,7 @@ async def run_optimized_sync(db, target_sport: str = DEFAULT_SPORT) -> Dict[str,
     Args:
         db: MongoDB database connection
         target_sport: Sport to sync ('nba' or 'mlb')
+        refresh_intel: If True, force regenerate all Vision Intel (ignores cache)
     
     Returns:
         Complete payload with all picks enriched.
@@ -590,8 +591,8 @@ async def run_optimized_sync(db, target_sport: str = DEFAULT_SPORT) -> Dict[str,
         ferrari_service = get_ferrari_tier_service(db)
         logger.info("[OPTIMIZED_SYNC] Using NBA Ferrari Tier Service")
     
-    # Pass the pre-fetched cache and target_sport to Ferrari for use during scoring
-    ferrari_result = await ferrari_service.build_ferrari_tiers(start, target_sport=target_sport)
+    # Pass the pre-fetched cache, target_sport, and refresh_intel to Ferrari
+    ferrari_result = await ferrari_service.build_ferrari_tiers(start, target_sport=target_sport, refresh_intel=refresh_intel)
     timings["2_ferrari_pipeline"] = (datetime.now(timezone.utc) - t2).total_seconds()
     logger.info(f"[OPTIMIZED_SYNC] Step 2 (Ferrari Pipeline): {timings['2_ferrari_pipeline']:.2f}s")
     

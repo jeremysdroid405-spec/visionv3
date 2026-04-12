@@ -85,8 +85,11 @@ Return a JSON array with one object per prop:
 ## Automatic TRAP Triggers
 - Elite DvP matchup (#1-5) against the stat type
 - Blowout risk HIGH for volume stats (PTS, PRA)
-- Recent cold streak (L3 < 50%) despite good L10
 - Line set at/above season average with negative cushion
+- CV > 0.40 for non-combo stats indicates boom/bust volatility
+
+## CRITICAL INSTRUCTION
+Do NOT mention or reference L3 (last 3 games) hit rates or data. This data is NOT provided. Only reference data fields that exist in the PROPS DATA: h20_rate (L20), h10_rate (L10), l5_avg, season_avg, vk_proj, vk_prob, vk_edge, cushion, cv, defense, dk_odds, blowout_risk, badges.
 
 IMPORTANT: Return ONLY the JSON array. No markdown, no code blocks, no extra text."""
 
@@ -173,9 +176,6 @@ class VisionIntelService:
             blowout_risk = prop.get('intel_suite', {}).get('blowout_risk', {})
             blowout_level = blowout_risk.get('risk_level', 'UNKNOWN')
             
-            # L3 hit rate (most recent form)
-            l3_rate = prop.get('h3_rate', prop.get('l3_rate', 0))
-            
             # Calculate cushion (how far above line is average)
             cushion = round(l5_avg - line, 1) if l5_avg and line else 0
             
@@ -189,7 +189,6 @@ class VisionIntelService:
                 "vk_prob": round(vk_prob, 0) if vk_prob else 50,
                 "vk_edge": round(vk_edge, 1) if vk_edge else 0,
                 "cushion": cushion,  # How far L5 avg is above/below line
-                "l3_rate": round(l3_rate, 0) if l3_rate else 0,  # Most recent form
                 "h20_rate": round(h20_rate, 0) if h20_rate else 0,
                 "h10_rate": round(h10_rate, 0) if h10_rate else 0,
                 "l5_avg": round(l5_avg, 1) if l5_avg else 0,
@@ -239,6 +238,10 @@ Return your analysis as a JSON array. One object per prop with all required fiel
             prompt = self._build_batch_prompt(props, tier_name)
             full_prompt = f"{VISION_INTEL_BATCH_PROMPT}\n\n{prompt}"
             
+            # Debug: Log first part of prompt to verify L3 is not included
+            logger.info(f"[VISION INTEL] Sending {len(props)} props to Gemini for {tier_name}")
+            logger.debug(f"[VISION INTEL] Sample prop data keys: {list(props[0].keys()) if props else 'N/A'}")
+            
             # Make ONE API call for the entire tier
             loop = asyncio.get_event_loop()
             response = await loop.run_in_executor(
@@ -248,6 +251,9 @@ Return your analysis as a JSON array. One object per prop with all required fiel
                     contents=full_prompt
                 )
             )
+            
+            # Debug: Log raw response to see if Gemini is hallucinating
+            logger.info(f"[VISION INTEL] Gemini response length: {len(response.text)} chars")
             
             # Parse the batch response
             intel_map = self._parse_batch_response(response.text, props)

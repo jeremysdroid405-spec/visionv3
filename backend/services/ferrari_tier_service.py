@@ -543,7 +543,7 @@ class FerrariTierService:
         
         return context_data
     
-    async def build_ferrari_tiers(self, sync_time: datetime, target_sport: str = "nba") -> Dict[str, Any]:
+    async def build_ferrari_tiers(self, sync_time: datetime, target_sport: str = "nba", refresh_intel: bool = False) -> Dict[str, Any]:
         """
         Execute PropVision v7 Pipeline - True Probability & Diversified Parlays
         
@@ -560,12 +560,18 @@ class FerrariTierService:
         Args:
             sync_time: Timestamp of sync start
             target_sport: Sport to process ('nba' or 'mlb')
+            refresh_intel: If True, force regenerate all Vision Intel (ignores cache)
         """
+        # Store refresh_intel for use in diff_check_and_enrich
+        self._refresh_intel = refresh_intel
+        
         # Normalize sport
         target_sport = (target_sport or "nba").lower()
         
         logger.info("=" * 70)
         logger.info(f"[PROPVISION v7] TRUE PROBABILITY & DIVERSIFIED PARLAYS - {target_sport.upper()}")
+        if refresh_intel:
+            logger.info("[PROPVISION v7] 🔄 REFRESH_INTEL MODE: Forcing Vision Intel regeneration")
         logger.info("=" * 70)
         
         results = {
@@ -1574,16 +1580,32 @@ class FerrariTierService:
                 if vision_intel.enabled:
                     logger.info("[VISION INTEL] Starting Just-In-Time Diff Check...")
                     
-                    async def diff_check_and_enrich(new_picks, collection, tier_name):
+                    async def diff_check_and_enrich(new_picks, collection, tier_name, force_refresh=False):
                         """
                         Just-In-Time Diff Check:
                         1. Query existing collection for cached vision_intel
                         2. Identify delta picks (new or missing intel)
                         3. Call Gemini ONLY for delta picks
                         4. Merge cached intel for returning players
+                        
+                        Args:
+                            force_refresh: If True, ignore cached intel and call Gemini for all picks
                         """
                         if not new_picks:
                             return []
+                        
+                        # If force_refresh, skip cache lookup entirely
+                        if force_refresh:
+                            logger.info(f"  [{tier_name}] FORCE_REFRESH: Calling Gemini for all {len(new_picks)} picks...")
+                            enriched_picks = await vision_intel.analyze_tier_props(
+                                new_picks, tier_name, max_concurrent=3
+                            )
+                            return enriched_picks
+                        
+                        # DEBUG: Log collection name and count
+                        collection_name = collection.name
+                        doc_count = await collection.count_documents({})
+                        logger.info(f"  [{tier_name}] Collection '{collection_name}' has {doc_count} docs BEFORE query")
                         
                         # Step 1: Query existing board for cached intel
                         existing_docs = await collection.find(
@@ -1592,6 +1614,8 @@ class FerrariTierService:
                              "intel_score": 1, "intel_verdict": 1, "intel_risk": 1, 
                              "adjusted_confidence": 1, "vision_summary": 1}
                         ).to_list(length=50)
+                        
+                        logger.info(f"  [{tier_name}] Query returned {len(existing_docs)} existing docs")
                         
                         # Build cache map: key -> cached intel data
                         cache_map = {}
@@ -1608,6 +1632,11 @@ class FerrariTierService:
                                 }
                         
                         logger.info(f"  [{tier_name}] Cached intel found: {len(cache_map)} picks")
+                        
+                        # Also check if incoming picks already have vision_intel
+                        incoming_with_intel = sum(1 for p in new_picks if p.get('vision_intel'))
+                        if incoming_with_intel > 0:
+                            logger.info(f"  [{tier_name}] WARNING: {incoming_with_intel} incoming picks ALREADY have vision_intel!")
                         
                         # Step 2: Identify delta picks (new or missing intel)
                         delta_picks = []
@@ -1647,15 +1676,16 @@ class FerrariTierService:
                         
                         return enriched_picks
                     
-                    # Apply diff check to all three tiers
+                    # Apply diff check to all three tiers (with refresh_intel flag)
+                    force_refresh = getattr(self, '_refresh_intel', False)
                     top_safe_haven = await diff_check_and_enrich(
-                        top_safe_haven, self.ferrari_safe_haven, "Safe Haven"
+                        top_safe_haven, self.ferrari_safe_haven, "Safe Haven", force_refresh=force_refresh
                     )
                     top_front_lines = await diff_check_and_enrich(
-                        top_front_lines, self.ferrari_front_lines, "Front Lines"
+                        top_front_lines, self.ferrari_front_lines, "Front Lines", force_refresh=force_refresh
                     )
                     top_war_zone = await diff_check_and_enrich(
-                        top_war_zone, self.ferrari_war_zone, "War Zone"
+                        top_war_zone, self.ferrari_war_zone, "War Zone", force_refresh=force_refresh
                     )
                     
                     # Summary stats

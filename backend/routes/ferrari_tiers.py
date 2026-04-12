@@ -1307,7 +1307,8 @@ async def get_ferrari_discarded(
 @router.post("/v3/ferrari/rebuild")
 async def rebuild_ferrari_tiers(
     use_optimized: bool = True,
-    sport: str = Query("nba", description="Target sport to sync (nba or mlb)")
+    sport: str = Query("nba", description="Target sport to sync (nba or mlb)"),
+    refresh_intel: bool = Query(False, description="Force refresh all Vision Intel (ignores cache)")
 ):
     """
     Manually trigger a rebuild of all Ferrari tiers.
@@ -1325,6 +1326,10 @@ async def rebuild_ferrari_tiers(
     
     Target: Complete sync in under 5 seconds (excluding AI summaries)
     
+    With refresh_intel=True:
+    - Forces Gemini to regenerate all Vision Intel (ignores cached intel)
+    - Use when Vision Intel prompt has been updated
+    
     With use_optimized=False:
     - Falls back to legacy sequential pipeline (NBA only)
     """
@@ -1338,14 +1343,14 @@ async def rebuild_ferrari_tiers(
     if use_optimized:
         # Use the new optimized sync engine with sport isolation
         from services.optimized_sync_engine import run_optimized_sync
-        result = await run_optimized_sync(_db, target_sport=target_sport)
+        result = await run_optimized_sync(_db, target_sport=target_sport, refresh_intel=refresh_intel)
         return result
     else:
         # Legacy path (NBA only for backwards compatibility)
         if target_sport != "nba":
             raise HTTPException(status_code=400, detail="Legacy sync only supports NBA. Use use_optimized=true for MLB.")
         service = get_service()
-        result = await service.build_ferrari_tiers(datetime.now(timezone.utc), target_sport=target_sport)
+        result = await service.build_ferrari_tiers(datetime.now(timezone.utc), target_sport=target_sport, refresh_intel=refresh_intel)
         return result
 
 
