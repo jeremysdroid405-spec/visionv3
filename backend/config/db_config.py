@@ -111,6 +111,11 @@ def get_collection_name(base_name: str, sport: str = DEFAULT_SPORT) -> str:
     # MLB and other sports use consistent prefixing
     prefix = SPORT_PREFIXES.get(sport, f"{sport}_")
     
+    # For MLB tier collections, use simple names (mlb_safe_haven, etc.)
+    # without the ferrari_ middle part
+    if sport == "mlb" and base_name in ["safe_haven", "front_lines", "war_zone"]:
+        return f"mlb_{base_name}"
+    
     # Get the base collection name from config, or use the provided name
     actual_base = BASE_COLLECTIONS.get(base_name, base_name)
     

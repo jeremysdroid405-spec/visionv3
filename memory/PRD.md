@@ -66,6 +66,16 @@ Restructure the React/FastAPI betting app to a 100% Local-First Database Model, 
   - Returning players get cached intel merged instantly (0 tokens used)
   - Log output shows: `[Safe Haven] Cached intel found: X, Delta: Y (need Gemini)`
   - Token savings: ~70% reduction when board is stable
+- [x] **MLB Pipeline 1:1 Clone (April 12, 2026)**
+  - Archived old MLB files to `_archive_mlb_v1/` (14 services, 2 routes)
+  - Created exact clones of NBA architecture:
+    - `mlb_tier_service.py` (from ferrari_tier_service.py)
+    - `mlb_sync_engine.py` (from optimized_sync_engine.py)
+    - `mlb_oracle_apex_service.py` (from oracle_apex_service.py)
+    - `mlb_vision_intel.py` (from vision_intel_service.py)
+  - New MLB collections: `mlb_safe_haven`, `mlb_front_lines`, `mlb_war_zone`
+  - MLB-specific Gemini prompt with park factors, pitcher matchups, weather
+  - New routes: `/api/v3/mlb/safe-haven`, `/api/v3/mlb/front-lines`, `/api/v3/mlb/war-zone`
   - Displays beneficiary opportunities with AB bumps (Teoscar Hernandez +0.5 AB, etc.)
   - BDL injury status mapping: "10-Day-IL"/"60-Day-IL" → "OUT", "Day-To-Day" → "DTD"
 

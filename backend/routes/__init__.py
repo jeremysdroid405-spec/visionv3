@@ -31,6 +31,7 @@ from .ferrari_tiers import router as ferrari_router, set_ferrari_db
 from .vacuum import router as vacuum_router, set_vacuum_db
 from .mlb_vacuum import router as mlb_vacuum_router, set_mlb_vacuum_db
 from .mlb_weather import router as mlb_weather_router
+from .mlb_tiers import router as mlb_tiers_router, set_mlb_tiers_db
 
 # ARCHIVED ROUTES (moved to routes_archive/):
 # - intel.py (duplicates of injuries.py, intel_sync.py, live_scores.py)
@@ -172,3 +173,8 @@ def register_all_routes(app, engine, game_lock_engine=None, db=None,
     
     # MLB Weather
     app.include_router(mlb_weather_router, prefix="/api")
+    
+    # MLB Tiers (1:1 Clone of NBA Ferrari)
+    if db is not None:
+        set_mlb_tiers_db(db)
+    app.include_router(mlb_tiers_router, prefix="/api")
