@@ -208,51 +208,73 @@ class LiveInjuryMicroSync:
     
     async def _fetch_mlb_injuries(self) -> List[Dict]:
         """
-        Fetch MLB injuries from lightweight API.
+        Fetch MLB injuries from BallDontLie API.
         Returns minimal payload: player_name, status, team, injury_type
         """
         injuries = []
         
+        # Get BDL API key
+        api_key = os.environ.get("BDL_API_KEY") or os.environ.get("BALLDONTLIE_API_KEY")
+        
+        if not api_key:
+            logger.warning("[INJURY-MICRO] No BDL API key found for MLB injuries")
+            return injuries
+        
+        BDL_MLB_INJURIES_URL = "https://api.balldontlie.io/mlb/v1/player_injuries"
+        
         try:
-            # Check mlb_injuries collection
-            mlb_injuries = self.db.get_collection("mlb_injuries")
-            if mlb_injuries:
-                async for doc in mlb_injuries.find({}, {"_id": 0}).limit(100):
-                    player_name = doc.get("player_name") or doc.get("name")
-                    status = (doc.get("status") or "").upper()
-                    if player_name and status in ["IL", "OUT", "DTD", "GTD", "IL-10", "IL-60", "DOUBTFUL"]:
-                        injuries.append({
-                            "player_name": player_name,
-                            "status": status,
-                            "team": doc.get("team"),
-                            "injury_type": doc.get("injury_type", "Unknown"),
-                            "description": doc.get("description", ""),
-                            "severity": "high" if "IL" in status or status == "OUT" else "medium",
-                            "is_out": "IL" in status or status == "OUT"
-                        })
-            
-            # Also check dg_injuries for MLB entries
-            dg_injuries = self.db["dg_injuries"]
-            async for doc in dg_injuries.find(
-                {"sport": "mlb"},
-                {"_id": 0}
-            ).limit(100):
-                player_name = doc.get("player_name")
-                status = (doc.get("status") or "").upper()
-                if player_name and status in ["IL", "OUT", "DTD", "GTD"]:
-                    if not any(i["player_name"] == player_name for i in injuries):
-                        injuries.append({
-                            "player_name": player_name,
-                            "status": status,
-                            "team": doc.get("team"),
-                            "injury_type": doc.get("injury_type", "Unknown"),
-                            "description": doc.get("description", ""),
-                            "severity": "high" if status in ["IL", "OUT"] else "medium",
-                            "is_out": status in ["IL", "OUT"]
-                        })
+            async with aiohttp.ClientSession() as session:
+                async with session.get(
+                    BDL_MLB_INJURIES_URL,
+                    params={"per_page": 100},
+                    headers={"Authorization": api_key},
+                    timeout=aiohttp.ClientTimeout(total=15)
+                ) as resp:
+                    if resp.status == 200:
+                        data = await resp.json()
+                        
+                        for inj in data.get("data", []):
+                            player = inj.get("player", {})
+                            team = player.get("team", {})
+                            player_name = player.get("full_name", "Unknown")
+                            
+                            if not player_name or player_name == "Unknown":
+                                continue
+                            
+                            # Map BDL status to normalized status
+                            bdl_status = (inj.get("status") or "").upper()
+                            # BDL uses: "10-Day-IL", "60-Day-IL", "15-Day-IL", "Day-To-Day", "Out"
+                            if "IL" in bdl_status:
+                                status = "IL"
+                                is_out = True
+                            elif bdl_status == "OUT":
+                                status = "OUT"
+                                is_out = True
+                            elif "DAY-TO-DAY" in bdl_status or bdl_status == "DTD":
+                                status = "DTD"
+                                is_out = False
+                            else:
+                                status = bdl_status if bdl_status else "UNKNOWN"
+                                is_out = False
+                            
+                            injuries.append({
+                                "player_name": player_name,
+                                "status": status,
+                                "team": team.get("abbreviation", "???"),
+                                "injury_type": inj.get("type", "Unknown"),
+                                "description": inj.get("short_comment", "") or inj.get("long_comment", ""),
+                                "severity": "high" if is_out else "medium",
+                                "is_out": is_out,
+                                "return_date": inj.get("return_date"),
+                                "source": "BDL"
+                            })
+                        
+                        logger.info(f"[INJURY-MICRO] BDL MLB: {len(injuries)} injuries fetched")
+                    else:
+                        logger.warning(f"[INJURY-MICRO] BDL MLB returned {resp.status}")
                         
         except Exception as e:
-            logger.warning(f"[INJURY-MICRO] MLB fetch error: {e}")
+            logger.warning(f"[INJURY-MICRO] BDL MLB fetch error: {e}")
         
         return injuries
     
