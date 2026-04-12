@@ -32,6 +32,9 @@ import math
 # Import MLB Matchup Math for split matchup analysis
 from services.mlb_matchup_math import get_mlb_matchup_analysis
 
+# Import MLB Oracle Apex Service for Safe Haven strict 2026 gate logic
+from services.mlb_oracle_apex_service import get_mlb_oracle_apex_service
+
 logger = logging.getLogger(__name__)
 
 # ========== MLB STAT MAPPINGS ==========
@@ -1535,10 +1538,34 @@ class MLBTierService:
             
             logger.info(f"  Loaded {len(all_mlb_props)} props from mlb_cached_board")
             
-            # Classify all props by DK odds
-            safe_haven_pool = []
+            # ====================================================================
+            # MLB SAFE HAVEN: Use Oracle Apex Service for STRICT 2026 Gate Logic
+            # ====================================================================
+            # The Oracle Apex Service enforces:
+            # - PRIMARY: DK Odds <= -240, GOBLIN only, Lineup confirmed
+            # - GATE 1: Strict L20 Hit Rate (16-17/20 depending on stat)
+            # - GATE 2: Max CV per stat type
+            # - GATE 3: Raw Cushion Edge >= thresholds + TP >= 70-80%
+            # - HARD-STOP: Wind Environment filter (IN > 12mph kills batter props)
+            # ====================================================================
+            logger.info("[MLB_ORACLE_APEX] Delegating Safe Haven tier to Oracle Apex Service...")
+            
+            oracle_apex = get_mlb_oracle_apex_service(self.db)
+            safe_haven_pool = await oracle_apex.build_safe_haven_tier(all_mlb_props)
+            
+            logger.info(f"[MLB_ORACLE_APEX] Oracle Apex returned {len(safe_haven_pool)} Safe Haven picks")
+            
+            # ====================================================================
+            # FRONT LINES & WAR ZONE: Continue with DK odds-based classification
+            # ====================================================================
             front_lines_pool = []
             war_zone_pool = []
+            
+            # Track which props are already in Safe Haven (avoid duplicates)
+            safe_haven_keys = set()
+            for sh_prop in safe_haven_pool:
+                key = f"{sh_prop.get('player_name')}|{sh_prop.get('stat_type')}|{sh_prop.get('line')}"
+                safe_haven_keys.add(key)
             
             for prop in all_mlb_props:
                 player_name = prop.get("player_name", "")
@@ -1554,6 +1581,11 @@ class MLBTierService:
                     }
                     stat_type = market_to_stat.get(market, "")
                 line = prop.get("line", 0)
+                
+                # Skip if already in Safe Haven
+                prop_key = f"{player_name}|{stat_type}|{line}"
+                if prop_key in safe_haven_keys:
+                    continue
                 
                 # Get DK odds directly from prop (already embedded in mlb_cached_board)
                 dk_odds = prop.get("dk_odds")
@@ -1571,40 +1603,26 @@ class MLBTierService:
                 is_demon = prop.get("is_demon", False)
                 is_goblin = prop.get("is_goblin", False)
                 
-                # For MLB, check hit rates as qualification instead of oracle_apex_qualified
-                hit_rate_l10 = prop.get("hit_rate_l10") or 0
-                hit_rate_l5 = prop.get("hit_rate_l5") or 0
+                # For Front Lines / War Zone: check hit rates as qualification
+                hit_rate_l10 = prop.get("hit_rate_l10") or prop.get("h10_rate") or 0
+                hit_rate_l5 = prop.get("hit_rate_l5") or prop.get("h5_rate") or 0
                 is_mlb_qualified = hit_rate_l10 >= 50 or hit_rate_l5 >= 50  # At least 50% hit rate
                 
                 # Add DK tier info to prop
                 prop["dk_odds"] = dk_odds
                 prop["dk_tier"] = classify_tier_by_dk_odds(dk_odds)
                 
-                # Get L5/L20 values for gate checks
-                l5_values = prop.get("l5_values", [])
-                l20_values = prop.get("l20_values", [])
-                cv = prop.get("cv", 0)
-                vk_predicted = prop.get("vk_predicted", 0)
-                vk_prob = prop.get("vk_prob_over", 0)
-                
-                # Also get pre-calculated values from oracle scan
-                l20_hits = prop.get("l20_hits")
-                l5_avg = prop.get("l5_avg")
-                l20_avg = prop.get("l20_avg")
-                
                 # ==========================================================
-                # DK ODDS = TIER SEPARATION ONLY
-                # For MLB, simplified qualification: hit_rate >= 50%
+                # DK ODDS = TIER SEPARATION (Front Lines & War Zone)
+                # Safe Haven is handled by Oracle Apex above
                 # ==========================================================
                 
-                # Classify by DK odds with simplified gates for MLB
                 if dk_odds is not None:
+                    # Skip Safe Haven range (already handled by Oracle Apex)
                     if dk_odds <= DK_TIER_SAFE_HAVEN_MAX:  # <= -250
-                        # Safe Haven: MUST be MLB qualified + Goblins
-                        if is_mlb_qualified and is_goblin:
-                            prop["tier"] = "safe_haven"
-                            safe_haven_pool.append(prop)
-                        # No fallthrough - strict gates mean no tier placement
+                        # These should have been evaluated by Oracle Apex
+                        # If they didn't qualify, they don't go anywhere
+                        continue
                     elif dk_odds >= DK_TIER_WAR_ZONE_MIN:  # >= +200
                         # War Zone: Demons only - simplified to just check if demon + qualified
                         if is_demon and is_mlb_qualified:
@@ -1625,8 +1643,8 @@ class MLBTierService:
                         prop["front_lines_qualified"] = True
                         front_lines_pool.append(prop)
             
-            logger.info(f"  DK-based classification:")
-            logger.info(f"    Safe Haven pool: {len(safe_haven_pool)} goblins (DK <= -250)")
+            logger.info(f"  DK-based classification (after Oracle Apex Safe Haven):")
+            logger.info(f"    Safe Haven pool: {len(safe_haven_pool)} (via Oracle Apex 2026 Gates)")
             logger.info(f"    Front Lines pool: {len(front_lines_pool)} (DK -249 to +199)")
             logger.info(f"    War Zone pool: {len(war_zone_pool)} demons (DK >= +200)")
             

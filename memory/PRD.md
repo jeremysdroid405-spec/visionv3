@@ -79,15 +79,27 @@ Restructure the React/FastAPI betting app to a 100% Local-First Database Model, 
   - Displays beneficiary opportunities with AB bumps (Teoscar Hernandez +0.5 AB, etc.)
   - BDL injury status mapping: "10-Day-IL"/"60-Day-IL" → "OUT", "Day-To-Day" → "DTD"
 
+### Completed (April 12, 2026 - Session 2)
+- [x] **MLB Oracle Apex Wiring (April 12, 2026)**
+  - Wired `mlb_tier_service.py` PHASE 4 to call `mlb_oracle_apex_service.build_safe_haven_tier()`
+  - Oracle Apex enforces strict 2026 MLB thresholds:
+    - PRIMARY: DK Odds <= -240, GOBLIN only, Lineup confirmed
+    - GATE 1: Strict L20 Hit Rate (16-17/20 depending on stat)
+    - GATE 2: Max CV per stat type (0.30-0.75)
+    - GATE 3: Raw Cushion Edge >= thresholds + TP >= 70-80%
+    - HARD-STOP: Wind Environment filter (IN > 12mph kills batter props)
+  - Front Lines & War Zone continue using DK odds-based classification
+  - Import added: `from services.mlb_oracle_apex_service import get_mlb_oracle_apex_service`
+
 ### In Progress
 - [ ] MLB headshot sync (~700 players remaining)
 
 ### Upcoming/Backlog
-- [ ] Scheduled daily pipeline execution
-- [ ] Weather API integration for Wind Tunnel badge
-- [ ] Google/Apple OAuth (Emergent-managed Google Auth)
-- [ ] Stripe payment integration
-- [ ] Refactor Dashboard.jsx into NBADashboard.jsx and MLBDashboard.jsx
+- [ ] P1: Refactor Dashboard.jsx into NBADashboard.jsx and MLBDashboard.jsx
+- [ ] P2: Google/Apple OAuth (Emergent-managed Google Auth)
+- [ ] P2: Stripe payment integration
+- [ ] P3: Scheduled daily pipeline execution (Forward-Testing Infrastructure)
+- [ ] P3: Weather API integration for Wind Tunnel badge
 
 ## Technical Architecture
 
