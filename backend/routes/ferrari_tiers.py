@@ -25,6 +25,123 @@ _vegas_killer_model = None
 _sync_db = None
 
 
+def enrich_mlb_prop_with_averages(prop: Dict, player_data: Dict = None) -> Dict:
+    """
+    Enrich an MLB prop with L5/L10 averages calculated from last_10_games.
+    This ensures pick cards always have average data to display.
+    
+    Args:
+        prop: The prop dictionary to enrich
+        player_data: Optional player-level data (for player_name, team, etc.)
+    
+    Returns:
+        The enriched prop dictionary
+    """
+    # Add player-level data if provided
+    if player_data:
+        prop["player_name"] = prop.get("player_name") or player_data.get("player_name")
+        prop["team"] = prop.get("team") or player_data.get("team")
+        prop["position"] = prop.get("position") or player_data.get("position")
+    
+    # Calculate L5/L10 averages from last_10_games if missing
+    last_10 = prop.get("last_10_games", [])
+    line = prop.get("line", 0)
+    
+    if last_10 and isinstance(last_10, list):
+        values = [g.get("value", 0) for g in last_10 if isinstance(g, dict) and "value" in g]
+        if values:
+            # L10 average
+            l10_vals = values[:10]
+            if l10_vals and not prop.get("l10_avg"):
+                prop["l10_avg"] = round(sum(l10_vals) / len(l10_vals), 2)
+            
+            # L5 average
+            l5_vals = values[:5]
+            if l5_vals and not prop.get("l5_avg"):
+                prop["l5_avg"] = round(sum(l5_vals) / len(l5_vals), 2)
+            
+            # Hit rates (times >= line)
+            if line > 0:
+                if l10_vals and not prop.get("h10_rate"):
+                    prop["h10_rate"] = round((sum(1 for v in l10_vals if v >= line) / len(l10_vals)) * 100, 1)
+                if l5_vals and not prop.get("h5_rate"):
+                    prop["h5_rate"] = round((sum(1 for v in l5_vals if v >= line) / len(l5_vals)) * 100, 1)
+    
+    # Fallback to season_average if still missing
+    if not prop.get("l10_avg"):
+        prop["l10_avg"] = prop.get("season_average")
+    if not prop.get("l5_avg"):
+        prop["l5_avg"] = prop.get("l10_avg") or prop.get("season_average")
+    
+    # Ensure season_avg is set
+    if not prop.get("season_avg"):
+        prop["season_avg"] = prop.get("season_average") or prop.get("l10_avg")
+    
+    return prop
+
+
+def enrich_mlb_prop_with_tempo(prop: Dict) -> Dict:
+    """
+    Add tempo intel_suite data to an MLB prop.
+    
+    Args:
+        prop: The prop dictionary to enrich
+    
+    Returns:
+        The enriched prop dictionary with intel_suite.tempo
+    """
+    from services.mlb_tempo_math import (
+        calculate_hitter_tempo, calculate_pitcher_tempo,
+        get_hitter_tempo_breakdown, get_pitcher_tempo_breakdown
+    )
+    
+    stat_key = (prop.get("stat_type") or "").upper()
+    is_pitcher = stat_key in ["K", "OUTS", "ER", "STRIKEOUTS", "PITCHER STRIKEOUTS"]
+    
+    if is_pitcher:
+        ppa = prop.get("pitcher_ppa") or prop.get("pitches_per_pa")
+        rest = prop.get("bullpen_rest_days")
+        mult = calculate_pitcher_tempo(ppa, rest)
+        breakdown = get_pitcher_tempo_breakdown(ppa, rest)
+        pct = (mult - 1) * 100
+        if pct >= 8:
+            label = "Pitcher Deep - High K Upside"
+        elif pct <= -8:
+            label = "Early Hook Risk"
+        else:
+            label = "Standard Workload"
+    else:
+        order = prop.get("batting_order") or prop.get("lineup_position")
+        away = prop.get("is_away_team") or prop.get("is_away")
+        obp = prop.get("team_obp_rank")
+        mult = calculate_hitter_tempo(order, away, obp)
+        breakdown = get_hitter_tempo_breakdown(order, away, obp)
+        pct = (mult - 1) * 100
+        if pct >= 10:
+            label = "Max PA Opportunity"
+        elif pct >= 5:
+            label = "High PA Upside"
+        elif pct <= -10:
+            label = "Limited PA Risk"
+        elif pct <= -5:
+            label = "Reduced Opportunity"
+        else:
+            label = "Standard PA Volume"
+    
+    prop["tempo_modifier"] = mult
+    prop["intel_suite"] = prop.get("intel_suite", {})
+    prop["intel_suite"]["tempo"] = {
+        "multiplier": mult,
+        "display": f"{'+' if pct >= 0 else ''}{pct:.0f}%",
+        "tempo_label": label,
+        "factors": breakdown.get("factors", []),
+        "total_pct": breakdown.get("total_pct", 0),
+    }
+    prop["intel_suite"]["pace_delta"] = prop["intel_suite"]["tempo"]
+    
+    return prop
+
+
 def set_ferrari_db(db):
     """Set the database reference for Ferrari service."""
     global _db
@@ -309,13 +426,13 @@ async def get_ferrari_safe_haven(
         # Get top players from cached board with best hit rates
         players = await cached_board.find({}, {"_id": 0}).to_list(length=50)
         
-        # Flatten props and sort by CV (lower = more consistent = safe haven)
+        # Flatten props and enrich with averages
         all_props = []
         for player in players:
             for prop in player.get("props", []):
-                prop["player_name"] = player.get("player_name")
-                prop["team"] = player.get("team")
-                prop["position"] = player.get("position")
+                # Enrich with L5/L10 averages and tempo
+                prop = enrich_mlb_prop_with_averages(prop, player)
+                prop = enrich_mlb_prop_with_tempo(prop)
                 all_props.append(prop)
         
         # Filter for safe haven criteria: high hit rate + low CV
@@ -328,39 +445,6 @@ async def get_ferrari_safe_haven(
         # Sort by hit rate descending
         safe_picks.sort(key=lambda x: x.get("hit_rate_l10", 0), reverse=True)
         picks = safe_picks[:limit]
-        
-        # Add tempo intel_suite to fallback picks
-        from services.mlb_tempo_math import calculate_hitter_tempo, calculate_pitcher_tempo, get_hitter_tempo_breakdown, get_pitcher_tempo_breakdown
-        for pick in picks:
-            stat_key = (pick.get("stat_type") or "").upper()
-            is_pitcher = stat_key in ["K", "OUTS", "ER"]
-            
-            if is_pitcher:
-                ppa = pick.get("pitcher_ppa") or pick.get("pitches_per_pa")
-                rest = pick.get("bullpen_rest_days")
-                mult = calculate_pitcher_tempo(ppa, rest)
-                breakdown = get_pitcher_tempo_breakdown(ppa, rest)
-                pct = (mult - 1) * 100
-                label = "Pitcher Deep" if pct >= 8 else ("Early Hook Risk" if pct <= -8 else "Standard Workload")
-            else:
-                order = pick.get("batting_order") or pick.get("lineup_position")
-                away = pick.get("is_away_team") or pick.get("is_away")
-                obp = pick.get("team_obp_rank")
-                mult = calculate_hitter_tempo(order, away, obp)
-                breakdown = get_hitter_tempo_breakdown(order, away, obp)
-                pct = (mult - 1) * 100
-                label = "Max PA" if pct >= 10 else ("Limited PA" if pct <= -10 else "Standard PA Volume")
-            
-            pick["tempo_modifier"] = mult
-            pick["intel_suite"] = pick.get("intel_suite", {})
-            pick["intel_suite"]["tempo"] = {
-                "multiplier": mult,
-                "display": f"{'+' if pct >= 0 else ''}{pct:.0f}%",
-                "tempo_label": label,
-                "factors": breakdown.get("factors", []),
-                "total_pct": breakdown.get("total_pct", 0),
-            }
-            pick["intel_suite"]["pace_delta"] = pick["intel_suite"]["tempo"]
         
         return {
             "tier": "safe_haven",
@@ -430,9 +514,9 @@ async def get_ferrari_front_lines(
         all_props = []
         for player in players:
             for prop in player.get("props", []):
-                prop["player_name"] = player.get("player_name")
-                prop["team"] = player.get("team")
-                prop["position"] = player.get("position")
+                # Enrich with L5/L10 averages and tempo
+                prop = enrich_mlb_prop_with_averages(prop, player)
+                prop = enrich_mlb_prop_with_tempo(prop)
                 all_props.append(prop)
         
         # Front lines: moderate hit rate + moderate CV
@@ -443,38 +527,6 @@ async def get_ferrari_front_lines(
         
         front_picks.sort(key=lambda x: x.get("hit_rate_l10", 0), reverse=True)
         picks = front_picks[:limit]
-        
-        # Add tempo intel_suite to fallback picks
-        from services.mlb_tempo_math import calculate_hitter_tempo, calculate_pitcher_tempo, get_hitter_tempo_breakdown, get_pitcher_tempo_breakdown
-        for pick in picks:
-            stat_key = (pick.get("stat_type") or "").upper()
-            is_pitcher = stat_key in ["K", "OUTS", "ER"]
-            
-            if is_pitcher:
-                ppa = pick.get("pitcher_ppa")
-                rest = pick.get("bullpen_rest_days")
-                mult = calculate_pitcher_tempo(ppa, rest)
-                breakdown = get_pitcher_tempo_breakdown(ppa, rest)
-            else:
-                order = pick.get("batting_order")
-                away = pick.get("is_away_team")
-                obp = pick.get("team_obp_rank")
-                mult = calculate_hitter_tempo(order, away, obp)
-                breakdown = get_hitter_tempo_breakdown(order, away, obp)
-            
-            pct = (mult - 1) * 100
-            label = "High PA" if pct >= 5 else ("Reduced PA" if pct <= -5 else "Standard PA Volume")
-            
-            pick["tempo_modifier"] = mult
-            pick["intel_suite"] = pick.get("intel_suite", {})
-            pick["intel_suite"]["tempo"] = {
-                "multiplier": mult,
-                "display": f"{'+' if pct >= 0 else ''}{pct:.0f}%",
-                "tempo_label": label,
-                "factors": breakdown.get("factors", []),
-                "total_pct": breakdown.get("total_pct", 0),
-            }
-            pick["intel_suite"]["pace_delta"] = pick["intel_suite"]["tempo"]
         
         return {
             "tier": "front_lines",
@@ -544,9 +596,9 @@ async def get_ferrari_war_zone(
         all_props = []
         for player in players:
             for prop in player.get("props", []):
-                prop["player_name"] = player.get("player_name")
-                prop["team"] = player.get("team")
-                prop["position"] = player.get("position")
+                # Enrich with L5/L10 averages and tempo
+                prop = enrich_mlb_prop_with_averages(prop, player)
+                prop = enrich_mlb_prop_with_tempo(prop)
                 all_props.append(prop)
         
         # War zone: lower hit rate OR high CV (risky plays)
@@ -558,38 +610,6 @@ async def get_ferrari_war_zone(
         
         war_picks.sort(key=lambda x: x.get("edge", 0) or 0, reverse=True)
         picks = war_picks[:limit]
-        
-        # Add tempo intel_suite to fallback picks
-        from services.mlb_tempo_math import calculate_hitter_tempo, calculate_pitcher_tempo, get_hitter_tempo_breakdown, get_pitcher_tempo_breakdown
-        for pick in picks:
-            stat_key = (pick.get("stat_type") or "").upper()
-            is_pitcher = stat_key in ["K", "OUTS", "ER"]
-            
-            if is_pitcher:
-                ppa = pick.get("pitcher_ppa")
-                rest = pick.get("bullpen_rest_days")
-                mult = calculate_pitcher_tempo(ppa, rest)
-                breakdown = get_pitcher_tempo_breakdown(ppa, rest)
-            else:
-                order = pick.get("batting_order")
-                away = pick.get("is_away_team")
-                obp = pick.get("team_obp_rank")
-                mult = calculate_hitter_tempo(order, away, obp)
-                breakdown = get_hitter_tempo_breakdown(order, away, obp)
-            
-            pct = (mult - 1) * 100
-            label = "Boom Potential" if pct >= 5 else ("Bust Risk" if pct <= -5 else "Standard Volume")
-            
-            pick["tempo_modifier"] = mult
-            pick["intel_suite"] = pick.get("intel_suite", {})
-            pick["intel_suite"]["tempo"] = {
-                "multiplier": mult,
-                "display": f"{'+' if pct >= 0 else ''}{pct:.0f}%",
-                "tempo_label": label,
-                "factors": breakdown.get("factors", []),
-                "total_pct": breakdown.get("total_pct", 0),
-            }
-            pick["intel_suite"]["pace_delta"] = pick["intel_suite"]["tempo"]
         
         return {
             "tier": "war_zone",
