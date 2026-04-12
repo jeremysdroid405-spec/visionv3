@@ -1395,6 +1395,15 @@ class MLBTierService:
             # =================================================================
             logger.info("[PHASE 4] DK ODDS-BASED TIER BUILDING FROM MLB CACHED BOARD...")
             
+            # Pre-load VK baselines from mlb_master_hub_2026 for model projections
+            vk_baselines_lookup = {}
+            master_hub = self.db.mlb_master_hub_2026
+            async for hub_doc in master_hub.find({}, {"_id": 0, "display_name": 1, "vk_baselines": 1}):
+                display_name = hub_doc.get("display_name", "")
+                if display_name and hub_doc.get("vk_baselines"):
+                    vk_baselines_lookup[display_name.lower()] = hub_doc.get("vk_baselines", {})
+            logger.info(f"  Loaded VK baselines for {len(vk_baselines_lookup)} players")
+            
             # Flatten all props from mlb_cached_board directly
             all_mlb_props = []
             cached_board = self.db.mlb_cached_board
@@ -1413,13 +1422,83 @@ class MLBTierService:
                 "Oakland Athletics": "OAK", "Chicago White Sox": "CWS", "Washington Nationals": "WAS"
             }
             
+            # Stat type to VK baseline key mapping
+            STAT_TO_VK_KEY = {
+                "HITS": "hits", "TOTAL BASES": "total_bases", "TB": "total_bases",
+                "RBIS": "rbis", "RBI": "rbis", "RUNS": "runs", "STOLEN BASES": "stolen_bases",
+                "HOME RUNS": "home_runs", "HR": "home_runs", "WALKS": "walks",
+                "STRIKEOUTS": "strikeouts", "BATTER STRIKEOUTS": "strikeouts",
+                "DOUBLES": "doubles", "SINGLES": "singles", "TRIPLES": "triples",
+                # Pitcher stats
+                "PITCHER STRIKEOUTS": "pitcher_strikeouts", "EARNED RUNS": "earned_runs",
+                "ER": "earned_runs", "PITCHING OUTS": "innings_pitched"
+            }
+            
             async for player_doc in cached_board.find({}, {"_id": 0}):
                 player_name = player_doc.get("player_name", "")
                 team = player_doc.get("team", "")
+                
+                # Get VK baselines for this player
+                player_vk = vk_baselines_lookup.get(player_name.lower(), {})
+                
                 for prop in player_doc.get("props", []):
                     # Copy player-level fields to prop
                     prop["player_name"] = player_name
                     prop["team"] = team
+                    
+                    # ========== CALCULATE L5/L10/SEASON AVERAGES ==========
+                    last_games = prop.get("last_10_games", [])
+                    if last_games:
+                        # Extract values from last_10_games
+                        values = [g.get("value") for g in last_games if g.get("value") is not None]
+                        if values:
+                            l5_values = values[:5]
+                            l10_values = values[:10]
+                            prop["l5_avg"] = round(sum(l5_values) / len(l5_values), 1) if l5_values else None
+                            prop["l10_avg"] = round(sum(l10_values) / len(l10_values), 1) if l10_values else None
+                            prop["season_avg"] = prop["l10_avg"]  # Use L10 as proxy for season
+                            
+                            # Calculate hit rates (% over line)
+                            pp_line = prop.get("line", 0)
+                            if pp_line:
+                                l5_hits = sum(1 for v in l5_values if v > pp_line)
+                                l10_hits = sum(1 for v in l10_values if v > pp_line)
+                                prop["hit_rate_l5"] = round((l5_hits / len(l5_values)) * 100, 1) if l5_values else None
+                                prop["hit_rate_l10"] = round((l10_hits / len(l10_values)) * 100, 1) if l10_values else None
+                                # Frontend expects h5_rate and h10_rate
+                                prop["h5_rate"] = prop["hit_rate_l5"]
+                                prop["h10_rate"] = prop["hit_rate_l10"]
+                    
+                    # ========== ADD VK MODEL PROJECTIONS ==========
+                    stat_type_upper = (prop.get("stat_type") or "").upper()
+                    vk_key = STAT_TO_VK_KEY.get(stat_type_upper)
+                    if vk_key and vk_key in player_vk:
+                        vk_stat = player_vk[vk_key]
+                        vk_predicted = vk_stat.get("weighted_baseline")
+                        prop["vk_predicted"] = round(vk_predicted, 2) if vk_predicted else None
+                        
+                        # Calculate VK edge (same as NBA: raw cushion = predicted - line)
+                        pp_line = prop.get("line", 0)
+                        if pp_line and vk_predicted:
+                            # Raw edge = cushion (how much above/below line)
+                            edge = vk_predicted - pp_line
+                            prop["vk_edge"] = round(edge, 2)
+                            
+                            # Probability estimate based on cushion and CV
+                            # More cushion = higher probability of going over
+                            cv = vk_stat.get("weighted_cv") or 50  # Default to 50 if None
+                            
+                            # Simple probability model:
+                            # - Cushion of 1.0 with low CV (30) = ~75% over
+                            # - Cushion of 0.5 with high CV (100) = ~55% over
+                            # Base formula: 50 + (edge / max(1, line)) * 30 - (cv / 10)
+                            cushion_factor = (edge / max(1.0, pp_line)) * 30
+                            cv_penalty = min(15, cv / 10) if cv else 5  # Cap CV penalty at 15%
+                            prob = 50 + cushion_factor - cv_penalty
+                            prop["vk_prob_over"] = round(max(20, min(90, prob)), 1)
+                            prop["vk_probability"] = prop["vk_prob_over"]  # Alias
+                        
+                        prop["vk_cv"] = vk_stat.get("weighted_cv")
                     
                     # Derive opponent from away_team/home_team
                     prop_away = prop.get("away_team", "")
@@ -1436,7 +1515,6 @@ class MLBTierService:
                     
                     # Fallback to last_10_games
                     if not derived_opponent:
-                        last_games = prop.get("last_10_games", [])
                         if last_games:
                             derived_opponent = last_games[0].get("opponent")
                     
