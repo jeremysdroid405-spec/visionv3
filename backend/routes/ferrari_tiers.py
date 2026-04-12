@@ -124,7 +124,14 @@ def enrich_mlb_prop_with_tempo(prop: Dict) -> Dict:
     )
     
     stat_key = (prop.get("stat_type") or "").upper()
-    is_pitcher = stat_key in ["K", "OUTS", "ER", "STRIKEOUTS", "PITCHER STRIKEOUTS"]
+    is_pitcher = stat_key in ["K", "OUTS", "ER", "STRIKEOUTS", "PITCHER STRIKEOUTS", 
+                              "PITCHER_STRIKEOUTS", "PITCHING OUTS", "HITS ALLOWED", "EARNED RUNS"]
+    
+    # Determine if player is on away team
+    player_team = prop.get("team")
+    away_team = prop.get("away_team")
+    home_team = prop.get("home_team")
+    is_away = player_team == away_team if player_team and away_team else prop.get("is_away_team")
     
     if is_pitcher:
         ppa = prop.get("pitcher_ppa") or prop.get("pitches_per_pa")
@@ -140,10 +147,9 @@ def enrich_mlb_prop_with_tempo(prop: Dict) -> Dict:
             label = "Standard Workload"
     else:
         order = prop.get("batting_order") or prop.get("lineup_position")
-        away = prop.get("is_away_team") or prop.get("is_away")
         obp = prop.get("team_obp_rank")
-        mult = calculate_hitter_tempo(order, away, obp)
-        breakdown = get_hitter_tempo_breakdown(order, away, obp)
+        mult = calculate_hitter_tempo(order, is_away, obp)
+        breakdown = get_hitter_tempo_breakdown(order, is_away, obp)
         pct = (mult - 1) * 100
         if pct >= 10:
             label = "Max PA Opportunity"
@@ -167,6 +173,197 @@ def enrich_mlb_prop_with_tempo(prop: Dict) -> Dict:
     }
     prop["intel_suite"]["pace_delta"] = prop["intel_suite"]["tempo"]
     
+    return prop
+
+
+def enrich_mlb_intel_suite(prop: Dict) -> Dict:
+    """
+    Build complete intel_suite with badges, vision insight, and target lock rationale
+    for MLB props based on available data.
+    
+    Args:
+        prop: The prop dictionary to enrich
+    
+    Returns:
+        The enriched prop dictionary with full intel_suite
+    """
+    player_name = prop.get("player_name", "Unknown")
+    stat_type = prop.get("stat_type", "")
+    line = prop.get("line", 0)
+    team = prop.get("team", "")
+    
+    # Get opponent from various fields
+    opponent = (prop.get("opposing_team") or prop.get("opponent") or 
+                prop.get("away_team") if prop.get("team") == prop.get("home_team") 
+                else prop.get("home_team") or "OPP")
+    
+    # Get hit rates and averages
+    h5_rate = prop.get("h5_rate") or prop.get("hit_rate_l5") or 0
+    h10_rate = prop.get("h10_rate") or prop.get("hit_rate_l10") or 0
+    l5_avg = prop.get("l5_avg") or 0
+    l10_avg = prop.get("l10_avg") or 0
+    season_avg = prop.get("season_avg") or prop.get("season_average") or l10_avg
+    cv = prop.get("cv") or 0
+    
+    # Classification
+    is_goblin = prop.get("is_goblin", False)
+    is_demon = prop.get("is_demon", False)
+    dk_odds = prop.get("dk_odds")
+    
+    # Initialize intel_suite - start fresh for badges and vision
+    # but preserve existing tempo/pace_delta if already calculated
+    existing_intel = prop.get("intel_suite", {})
+    intel_suite = {
+        "tempo": existing_intel.get("tempo", {}),
+        "pace_delta": existing_intel.get("pace_delta", {}),
+        "sport": "mlb"
+    }
+    
+    # =========================================================================
+    # BUILD CONTEXT BADGES (Always rebuild from current data)
+    # =========================================================================
+    badges = []
+    
+    # Hit Rate Badge
+    if h10_rate >= 80:
+        badges.append({"type": "hit_rate", "label": "Elite Hitter", "value": f"{h10_rate:.0f}% L10", "color": "green"})
+    elif h10_rate >= 70:
+        badges.append({"type": "hit_rate", "label": "Hot Streak", "value": f"{h10_rate:.0f}% L10", "color": "emerald"})
+    elif h10_rate >= 60:
+        badges.append({"type": "hit_rate", "label": "Consistent", "value": f"{h10_rate:.0f}% L10", "color": "blue"})
+    
+    # Consistency Badge (CV)
+    if cv and cv <= 30:
+        badges.append({"type": "consistency", "label": "Rock Solid", "value": f"CV {cv:.0f}%", "color": "green"})
+    elif cv and cv <= 50:
+        badges.append({"type": "consistency", "label": "Reliable", "value": f"CV {cv:.0f}%", "color": "blue"})
+    elif cv and cv > 80:
+        badges.append({"type": "volatility", "label": "Boom/Bust", "value": f"CV {cv:.0f}%", "color": "orange"})
+    
+    # Average vs Line Badge
+    if l10_avg and line:
+        cushion = l10_avg - line
+        if cushion >= 1.0:
+            badges.append({"type": "edge", "label": "Big Cushion", "value": f"+{cushion:.1f} avg", "color": "green"})
+        elif cushion >= 0.5:
+            badges.append({"type": "edge", "label": "Comfortable", "value": f"+{cushion:.1f} avg", "color": "blue"})
+        elif cushion < 0:
+            badges.append({"type": "edge", "label": "Below Line", "value": f"{cushion:.1f} avg", "color": "red"})
+    
+    # DK Odds Badge
+    if dk_odds:
+        if dk_odds <= -300:
+            badges.append({"type": "odds", "label": "Heavy Chalk", "value": f"{dk_odds}", "color": "green"})
+        elif dk_odds <= -200:
+            badges.append({"type": "odds", "label": "Strong Fav", "value": f"{dk_odds}", "color": "emerald"})
+        elif dk_odds >= 200:
+            badges.append({"type": "odds", "label": "Longshot", "value": f"+{dk_odds}", "color": "orange"})
+    
+    # Goblin/Demon Badge
+    if is_goblin:
+        badges.append({"type": "classification", "label": "Goblin", "value": "Safe Play", "color": "green"})
+    elif is_demon:
+        badges.append({"type": "classification", "label": "Demon", "value": "High Risk", "color": "red"})
+    
+    intel_suite["context_badges"] = badges[:5]  # Limit to 5 badges
+    
+    # =========================================================================
+    # BUILD VISION INSIGHT (Target Lock Rationale)
+    # =========================================================================
+    reasons = []
+    confidence = "STANDARD"
+    
+    # Build reasons based on actual data
+    if h10_rate >= 70:
+        reasons.append(f"Hitting at {h10_rate:.0f}% over last 10 games")
+        confidence = "HIGH" if h10_rate >= 80 else "ELEVATED"
+    
+    if l10_avg and line and l10_avg > line:
+        reasons.append(f"L10 average of {l10_avg:.1f} exceeds {line} line")
+    
+    if cv and cv <= 40:
+        reasons.append(f"Low variance (CV {cv:.0f}%) indicates consistency")
+    elif cv and cv > 70:
+        reasons.append(f"High variance (CV {cv:.0f}%) - boom/bust potential")
+        confidence = "SPECULATIVE"
+    
+    if is_goblin and dk_odds and dk_odds <= -250:
+        reasons.append(f"Sharp money favors this line ({dk_odds})")
+        confidence = "HIGH" if confidence != "SPECULATIVE" else confidence
+    
+    if is_demon:
+        reasons.append("Demon line - high risk, high reward play")
+        confidence = "SPECULATIVE"
+    
+    # Matchup insight
+    if opponent and opponent != "OPP":
+        reasons.append(f"Matchup vs {opponent}")
+    
+    # Default if no reasons
+    if not reasons:
+        reasons.append(f"Analyzing {player_name} {stat_type} @ {line}")
+    
+    # Primary insight text
+    if h10_rate >= 80 and l10_avg and l10_avg > line:
+        primary = f"{player_name} is locked in - {h10_rate:.0f}% hit rate with {l10_avg:.1f} avg vs {line} line"
+    elif is_goblin and h10_rate >= 60:
+        primary = f"Goblin play: {player_name} showing {h10_rate:.0f}% consistency on {stat_type}"
+    elif is_demon:
+        primary = f"Demon alert: {player_name} {stat_type} @ {line} - ceiling play"
+    else:
+        primary = f"{player_name} {stat_type} @ {line} - {h10_rate:.0f}% L10 hit rate"
+    
+    intel_suite["vision_insight"] = {
+        "primary": primary,
+        "reasons": reasons[:4],  # Limit to 4 reasons
+        "confidence": confidence
+    }
+    
+    # =========================================================================
+    # BUILD STABILITY INDEX from actual data
+    # =========================================================================
+    if cv:
+        if cv <= 30:
+            stability_score = 90
+            consistency = "Elite"
+        elif cv <= 50:
+            stability_score = 70
+            consistency = "Stable"
+        elif cv <= 70:
+            stability_score = 50
+            consistency = "Variable"
+        else:
+            stability_score = 30
+            consistency = "Volatile"
+    else:
+        stability_score = 50
+        consistency = "Unknown"
+    
+    intel_suite["stability_index"] = {
+        "display": f"{stability_score}%",
+        "score": stability_score,
+        "consistency": consistency,
+        "std_dev": cv
+    }
+    
+    # =========================================================================
+    # BUILD MATCHUP DVP
+    # =========================================================================
+    intel_suite["matchup_dvp"] = {
+        "display": f"vs {opponent}",
+        "opponent": opponent,
+        "opponent_abbr": opponent[:3] if opponent else "OPP",
+        "friction_level": "Medium",
+        "friction_label": "Standard Matchup",
+        "color": "yellow",
+        "dvp_rank": 15,
+        "stat_type": stat_type
+    }
+    
+    # Set sport
+    intel_suite["sport"] = "mlb"
+    
+    prop["intel_suite"] = intel_suite
     return prop
 
 
@@ -458,9 +655,10 @@ async def get_ferrari_safe_haven(
         all_props = []
         for player in players:
             for prop in player.get("props", []):
-                # Enrich with L5/L10 averages and tempo
+                # Enrich with L5/L10 averages, tempo, and full intel suite
                 prop = enrich_mlb_prop_with_averages(prop, player)
                 prop = enrich_mlb_prop_with_tempo(prop)
+                prop = enrich_mlb_intel_suite(prop)
                 all_props.append(prop)
         
         # Filter for safe haven criteria:
@@ -552,9 +750,10 @@ async def get_ferrari_front_lines(
         all_props = []
         for player in players:
             for prop in player.get("props", []):
-                # Enrich with L5/L10 averages and tempo
+                # Enrich with L5/L10 averages, tempo, and full intel suite
                 prop = enrich_mlb_prop_with_averages(prop, player)
                 prop = enrich_mlb_prop_with_tempo(prop)
+                prop = enrich_mlb_intel_suite(prop)
                 all_props.append(prop)
         
         # Front lines: moderate hit rate, no demons (they go to War Zone)
@@ -640,9 +839,10 @@ async def get_ferrari_war_zone(
         all_props = []
         for player in players:
             for prop in player.get("props", []):
-                # Enrich with L5/L10 averages and tempo
+                # Enrich with L5/L10 averages, tempo, and full intel suite
                 prop = enrich_mlb_prop_with_averages(prop, player)
                 prop = enrich_mlb_prop_with_tempo(prop)
+                prop = enrich_mlb_intel_suite(prop)
                 all_props.append(prop)
         
         # War zone: DEMONS or high DK odds (+150 or higher) - boom/bust plays
