@@ -36,6 +36,10 @@ Restructure the React/FastAPI betting app to a 100% Local-First Database Model, 
   - Dashboard Intel Search now passes `currentSport` to `usePlayerSearch` hook
   - MLB mode searches `mlb_master_hub_2026`, NBA mode searches `nba_master_hub_2026`
   - Backend `/api/command/search` accepts `sport` parameter for routing
+- [x] **MLB Score Ticker Fix (April 12, 2026)**
+  - Added MLB team logos (ESPN CDN) to constants.js
+  - Updated LiveScoresTicker to handle MLB status codes (Inning 1, Top 5, etc.)
+  - Sport-aware "live" detection for both NBA quarters and MLB innings
 
 ### In Progress
 - [ ] MLB headshot sync (~700 players remaining)

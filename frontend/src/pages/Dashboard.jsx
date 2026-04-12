@@ -184,6 +184,7 @@ const SectionHeader = memo(({ icon, title, subtitle, badgeText, badgeColor = 're
 // Live Scores Ticker - PIPE 2: useLiveScores()
 const LiveScoresTicker = memo(() => {
   const { data, isLoading } = useLiveScores();
+  const { currentSport } = useSport();
   const scores = data?.games || [];
   
   if (isLoading) {
@@ -205,7 +206,7 @@ const LiveScoresTicker = memo(() => {
             <div className="w-2 h-2 rounded-full bg-zinc-500" />
             <span className="text-[10px] font-bold text-zinc-300">NO GAMES</span>
           </div>
-          <span className="text-xs text-zinc-500">Check back at tip-off</span>
+          <span className="text-xs text-zinc-500">Check back at {currentSport === 'mlb' ? 'first pitch' : 'tip-off'}</span>
         </div>
       </div>
     );
@@ -223,8 +224,13 @@ const LiveScoresTicker = memo(() => {
             </div>
           </div>
           {[...scores, ...scores].map((game, idx) => {
-            const isLive = game.status?.startsWith('Q') || game.status === 'live';
-            const isFinal = game.status === 'final';
+            // Sport-aware live detection
+            const isMLB = game.sport === 'mlb' || currentSport === 'mlb';
+            const statusLower = (game.status || '').toLowerCase();
+            const isLive = isMLB 
+              ? (game.status_code === 2 || statusLower.includes('inning') || statusLower.includes('top') || statusLower.includes('bot'))
+              : (statusLower.startsWith('q') || statusLower === 'live' || game.status_code === 2);
+            const isFinal = statusLower === 'final' || game.status_code === 3;
             
             // Determine winner and loser
             const awayWins = game.away_score > game.home_score;

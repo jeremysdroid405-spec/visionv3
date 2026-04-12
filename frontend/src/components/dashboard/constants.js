@@ -2,8 +2,8 @@
 export const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 export const API = `${BACKEND_URL}/api`;
 
-// Team Logo URLs (fallback for missing player headshots)
-export const TEAM_LOGOS = {
+// NBA Team Logo URLs
+export const NBA_TEAM_LOGOS = {
   "ATL": "https://cdn.nba.com/logos/nba/1610612737/global/L/logo.svg",
   "BOS": "https://cdn.nba.com/logos/nba/1610612738/global/L/logo.svg",
   "BKN": "https://cdn.nba.com/logos/nba/1610612751/global/L/logo.svg",
@@ -35,6 +35,43 @@ export const TEAM_LOGOS = {
   "UTA": "https://cdn.nba.com/logos/nba/1610612762/global/L/logo.svg",
   "WAS": "https://cdn.nba.com/logos/nba/1610612764/global/L/logo.svg",
 };
+
+// MLB Team Logo URLs (ESPN CDN)
+export const MLB_TEAM_LOGOS = {
+  "ARI": "https://a.espncdn.com/i/teamlogos/mlb/500/ari.png",
+  "ATL": "https://a.espncdn.com/i/teamlogos/mlb/500/atl.png",
+  "BAL": "https://a.espncdn.com/i/teamlogos/mlb/500/bal.png",
+  "BOS": "https://a.espncdn.com/i/teamlogos/mlb/500/bos.png",
+  "CHC": "https://a.espncdn.com/i/teamlogos/mlb/500/chc.png",
+  "CHW": "https://a.espncdn.com/i/teamlogos/mlb/500/chw.png",
+  "CIN": "https://a.espncdn.com/i/teamlogos/mlb/500/cin.png",
+  "CLE": "https://a.espncdn.com/i/teamlogos/mlb/500/cle.png",
+  "COL": "https://a.espncdn.com/i/teamlogos/mlb/500/col.png",
+  "DET": "https://a.espncdn.com/i/teamlogos/mlb/500/det.png",
+  "HOU": "https://a.espncdn.com/i/teamlogos/mlb/500/hou.png",
+  "KC": "https://a.espncdn.com/i/teamlogos/mlb/500/kc.png",
+  "LAA": "https://a.espncdn.com/i/teamlogos/mlb/500/laa.png",
+  "LAD": "https://a.espncdn.com/i/teamlogos/mlb/500/lad.png",
+  "MIA": "https://a.espncdn.com/i/teamlogos/mlb/500/mia.png",
+  "MIL": "https://a.espncdn.com/i/teamlogos/mlb/500/mil.png",
+  "MIN": "https://a.espncdn.com/i/teamlogos/mlb/500/min.png",
+  "NYM": "https://a.espncdn.com/i/teamlogos/mlb/500/nym.png",
+  "NYY": "https://a.espncdn.com/i/teamlogos/mlb/500/nyy.png",
+  "OAK": "https://a.espncdn.com/i/teamlogos/mlb/500/oak.png",
+  "PHI": "https://a.espncdn.com/i/teamlogos/mlb/500/phi.png",
+  "PIT": "https://a.espncdn.com/i/teamlogos/mlb/500/pit.png",
+  "SD": "https://a.espncdn.com/i/teamlogos/mlb/500/sd.png",
+  "SF": "https://a.espncdn.com/i/teamlogos/mlb/500/sf.png",
+  "SEA": "https://a.espncdn.com/i/teamlogos/mlb/500/sea.png",
+  "STL": "https://a.espncdn.com/i/teamlogos/mlb/500/stl.png",
+  "TB": "https://a.espncdn.com/i/teamlogos/mlb/500/tb.png",
+  "TEX": "https://a.espncdn.com/i/teamlogos/mlb/500/tex.png",
+  "TOR": "https://a.espncdn.com/i/teamlogos/mlb/500/tor.png",
+  "WSH": "https://a.espncdn.com/i/teamlogos/mlb/500/wsh.png",
+};
+
+// Combined TEAM_LOGOS for backward compatibility (NBA + MLB)
+export const TEAM_LOGOS = { ...NBA_TEAM_LOGOS, ...MLB_TEAM_LOGOS };
 
 // Cache Keys
 export const CACHE_KEYS = {
