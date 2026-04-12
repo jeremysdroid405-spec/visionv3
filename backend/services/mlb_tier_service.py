@@ -35,6 +35,14 @@ from services.mlb_matchup_math import get_mlb_matchup_analysis
 # Import MLB Oracle Apex Service for Safe Haven strict 2026 gate logic
 from services.mlb_oracle_apex_service import get_mlb_oracle_apex_service
 
+# Import MLB Tempo Math for PA/IP opportunity modifiers
+from services.mlb_tempo_math import (
+    calculate_hitter_tempo,
+    calculate_pitcher_tempo,
+    get_hitter_tempo_breakdown,
+    get_pitcher_tempo_breakdown
+)
+
 logger = logging.getLogger(__name__)
 
 # ========== MLB STAT MAPPINGS ==========
@@ -1266,10 +1274,10 @@ class MLBTierService:
                                 "display": f"#{int(momentum_data.get('composite_rank', 15))} Defense" if momentum_data and momentum_data.get("composite_rank") else f"vs {opponent}" if opponent else "Unknown",
                                 "data_available": momentum_data is not None
                             },
-                            # ===== TEMPO (Pace Delta) =====
-                            "tempo": self._calculate_tempo(player.get("team"), opponent),
-                            # Pace Delta (legacy - keep for compatibility)
-                            "pace_delta": self._calculate_tempo(player.get("team"), opponent),
+                            # ===== MLB TEMPO (PA/IP Opportunity Multiplier) =====
+                            "tempo": self._calculate_mlb_tempo(prop, stat_type),
+                            # Pace Delta (legacy - keep for compatibility with NBA)
+                            "pace_delta": self._calculate_mlb_tempo(prop, stat_type),
                             # ===== VARIANCE (Stability Index) =====
                             "variance": self._calculate_variance(stat_values, l10_rate, l5_rate),
                             # Stability Index from hit rates
@@ -1533,6 +1541,14 @@ class MLBTierService:
                         )
                     else:
                         prop["matchup_analysis"] = None
+                    
+                    # Add tempo to intel_suite for Vision Intel Suite display
+                    stat_key = (prop.get("stat_type") or "").upper()
+                    tempo_data = self._calculate_mlb_tempo(prop, stat_key)
+                    prop["intel_suite"] = prop.get("intel_suite", {})
+                    prop["intel_suite"]["tempo"] = tempo_data
+                    prop["intel_suite"]["pace_delta"] = tempo_data  # Legacy alias
+                    prop["tempo_modifier"] = tempo_data.get("multiplier", 1.0)
                     
                     all_mlb_props.append(prop)
             
@@ -2000,6 +2016,133 @@ class MLBTierService:
             "opponent_pace": round(opp_pace, 1),
             "expected_game_pace": round(expected_game_pace, 1)
         }
+    
+    def _calculate_mlb_tempo(self, prop: Dict, stat_key: str) -> Dict[str, Any]:
+        """
+        Calculate MLB-specific tempo multiplier for Vision Intel Suite.
+        
+        For HITTERS (HITS, TB, HRR):
+        - Away Team: +3% boost (guaranteed 9th inning AB)
+        - Batting Order: 1-3 = +5%, 4-5 = 0%, 6-9 = -8%
+        - Team OBP Rank: Top 10 = +4%, Bottom 10 = -4%
+        
+        For PITCHERS (K, OUTS):
+        - P/PA < 3.8 (Efficient): +8%
+        - P/PA > 4.2 (Grinder): -10%
+        - Bullpen 0 Rest Days: +5%
+        """
+        is_pitcher_stat = stat_key in ["K", "OUTS", "ER"]
+        
+        if is_pitcher_stat:
+            # Pitcher tempo
+            pitcher_ppa = prop.get("pitcher_ppa") or prop.get("pitches_per_pa")
+            bullpen_rest = prop.get("bullpen_rest_days")
+            
+            multiplier = calculate_pitcher_tempo(pitcher_ppa, bullpen_rest)
+            breakdown = get_pitcher_tempo_breakdown(pitcher_ppa, bullpen_rest)
+            
+            # Build display string
+            pct_change = (multiplier - 1) * 100
+            if pct_change >= 8:
+                tempo_label = "Pitcher Deep - High K Upside"
+            elif pct_change >= 3:
+                tempo_label = "Extended Outing Expected"
+            elif pct_change <= -8:
+                tempo_label = "Early Hook Risk"
+            elif pct_change <= -3:
+                tempo_label = "Short Start Likely"
+            else:
+                tempo_label = "Standard Workload"
+            
+            return {
+                "multiplier": multiplier,
+                "display": f"{'+' if pct_change >= 0 else ''}{pct_change:.0f}%",
+                "tempo_label": tempo_label,
+                "factors": breakdown.get("factors", []),
+                "total_pct": breakdown.get("total_pct", 0),
+                "player_type": "pitcher",
+                "ppa": pitcher_ppa,
+                "bullpen_rest": bullpen_rest,
+                "tooltip": self._build_pitcher_tempo_tooltip(pitcher_ppa, bullpen_rest, pct_change)
+            }
+        else:
+            # Hitter tempo
+            batting_order = prop.get("batting_order") or prop.get("lineup_position")
+            is_away = prop.get("is_away_team") or prop.get("is_away")
+            team_obp_rank = prop.get("team_obp_rank")
+            
+            multiplier = calculate_hitter_tempo(batting_order, is_away, team_obp_rank)
+            breakdown = get_hitter_tempo_breakdown(batting_order, is_away, team_obp_rank)
+            
+            # Build display string
+            pct_change = (multiplier - 1) * 100
+            if pct_change >= 10:
+                tempo_label = "Max PA Opportunity"
+            elif pct_change >= 5:
+                tempo_label = "High PA Upside"
+            elif pct_change <= -10:
+                tempo_label = "Limited PA Risk"
+            elif pct_change <= -5:
+                tempo_label = "Reduced Opportunity"
+            else:
+                tempo_label = "Standard PA Volume"
+            
+            return {
+                "multiplier": multiplier,
+                "display": f"{'+' if pct_change >= 0 else ''}{pct_change:.0f}%",
+                "tempo_label": tempo_label,
+                "factors": breakdown.get("factors", []),
+                "total_pct": breakdown.get("total_pct", 0),
+                "player_type": "hitter",
+                "batting_order": batting_order,
+                "is_away": is_away,
+                "team_obp_rank": team_obp_rank,
+                "tooltip": self._build_hitter_tempo_tooltip(batting_order, is_away, team_obp_rank, pct_change)
+            }
+    
+    def _build_hitter_tempo_tooltip(self, batting_order: Optional[int], is_away: Optional[bool], 
+                                     team_obp_rank: Optional[int], pct_change: float) -> str:
+        """Build tooltip explanation for hitter tempo."""
+        parts = []
+        if is_away is True:
+            parts.append("Away team guarantees 9th inning AB")
+        elif is_away is False:
+            parts.append("Home team risks no 9th inning")
+        
+        if batting_order is not None:
+            if batting_order <= 3:
+                parts.append(f"Batting {batting_order} maximizes PAs")
+            elif batting_order >= 6:
+                parts.append(f"Batting {batting_order} risks only 3 PAs")
+        
+        if team_obp_rank is not None:
+            if team_obp_rank <= 10:
+                parts.append(f"Top {team_obp_rank} OBP creates lineup turnover")
+            elif team_obp_rank >= 21:
+                parts.append(f"#{team_obp_rank} OBP limits at-bats")
+        
+        if not parts:
+            return "Standard plate appearance volume expected"
+        
+        return " | ".join(parts) + f" ({'+' if pct_change >= 0 else ''}{pct_change:.0f}% adjustment)"
+    
+    def _build_pitcher_tempo_tooltip(self, pitcher_ppa: Optional[float], bullpen_rest: Optional[int],
+                                      pct_change: float) -> str:
+        """Build tooltip explanation for pitcher tempo."""
+        parts = []
+        if pitcher_ppa is not None:
+            if pitcher_ppa < 3.8:
+                parts.append(f"P/PA {pitcher_ppa:.2f} is efficient - goes deep")
+            elif pitcher_ppa > 4.2:
+                parts.append(f"P/PA {pitcher_ppa:.2f} is high - early hook risk")
+        
+        if bullpen_rest is not None and bullpen_rest == 0:
+            parts.append("Bullpen worked yesterday - longer leash")
+        
+        if not parts:
+            return "Standard workload expected"
+        
+        return " | ".join(parts) + f" ({'+' if pct_change >= 0 else ''}{pct_change:.0f}% adjustment)"
     
     def _calculate_std_dev(self, values: List[float]) -> Optional[float]:
         """Calculate sample standard deviation of values (Bessel's correction: n-1)."""

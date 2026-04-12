@@ -120,6 +120,9 @@ Restructure the React/FastAPI betting app to a 100% Local-First Database Model, 
   - **Integration**: Chained modifiers in Oracle Apex:
     - `Final_Adjusted = Raw_VK * Matchup_Multiplier * Tempo_Multiplier`
   - All three tier functions updated (Safe Haven, Front Lines, War Zone)
+  - **Vision Intel Suite**: Tempo output populated in `intel_suite.tempo`:
+    - `multiplier`, `display`, `tempo_label`, `factors`, `total_pct`, `tooltip`
+    - Fallback routes in `ferrari_tiers.py` enriched with tempo for MLB cached_board picks
 
 ### In Progress
 - [ ] MLB headshot sync (~700 players remaining)

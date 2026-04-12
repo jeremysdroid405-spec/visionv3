@@ -329,6 +329,39 @@ async def get_ferrari_safe_haven(
         safe_picks.sort(key=lambda x: x.get("hit_rate_l10", 0), reverse=True)
         picks = safe_picks[:limit]
         
+        # Add tempo intel_suite to fallback picks
+        from services.mlb_tempo_math import calculate_hitter_tempo, calculate_pitcher_tempo, get_hitter_tempo_breakdown, get_pitcher_tempo_breakdown
+        for pick in picks:
+            stat_key = (pick.get("stat_type") or "").upper()
+            is_pitcher = stat_key in ["K", "OUTS", "ER"]
+            
+            if is_pitcher:
+                ppa = pick.get("pitcher_ppa") or pick.get("pitches_per_pa")
+                rest = pick.get("bullpen_rest_days")
+                mult = calculate_pitcher_tempo(ppa, rest)
+                breakdown = get_pitcher_tempo_breakdown(ppa, rest)
+                pct = (mult - 1) * 100
+                label = "Pitcher Deep" if pct >= 8 else ("Early Hook Risk" if pct <= -8 else "Standard Workload")
+            else:
+                order = pick.get("batting_order") or pick.get("lineup_position")
+                away = pick.get("is_away_team") or pick.get("is_away")
+                obp = pick.get("team_obp_rank")
+                mult = calculate_hitter_tempo(order, away, obp)
+                breakdown = get_hitter_tempo_breakdown(order, away, obp)
+                pct = (mult - 1) * 100
+                label = "Max PA" if pct >= 10 else ("Limited PA" if pct <= -10 else "Standard PA Volume")
+            
+            pick["tempo_modifier"] = mult
+            pick["intel_suite"] = pick.get("intel_suite", {})
+            pick["intel_suite"]["tempo"] = {
+                "multiplier": mult,
+                "display": f"{'+' if pct >= 0 else ''}{pct:.0f}%",
+                "tempo_label": label,
+                "factors": breakdown.get("factors", []),
+                "total_pct": breakdown.get("total_pct", 0),
+            }
+            pick["intel_suite"]["pace_delta"] = pick["intel_suite"]["tempo"]
+        
         return {
             "tier": "safe_haven",
             "tier_label": f"Safe Haven ({sport.upper()})",
@@ -410,6 +443,38 @@ async def get_ferrari_front_lines(
         
         front_picks.sort(key=lambda x: x.get("hit_rate_l10", 0), reverse=True)
         picks = front_picks[:limit]
+        
+        # Add tempo intel_suite to fallback picks
+        from services.mlb_tempo_math import calculate_hitter_tempo, calculate_pitcher_tempo, get_hitter_tempo_breakdown, get_pitcher_tempo_breakdown
+        for pick in picks:
+            stat_key = (pick.get("stat_type") or "").upper()
+            is_pitcher = stat_key in ["K", "OUTS", "ER"]
+            
+            if is_pitcher:
+                ppa = pick.get("pitcher_ppa")
+                rest = pick.get("bullpen_rest_days")
+                mult = calculate_pitcher_tempo(ppa, rest)
+                breakdown = get_pitcher_tempo_breakdown(ppa, rest)
+            else:
+                order = pick.get("batting_order")
+                away = pick.get("is_away_team")
+                obp = pick.get("team_obp_rank")
+                mult = calculate_hitter_tempo(order, away, obp)
+                breakdown = get_hitter_tempo_breakdown(order, away, obp)
+            
+            pct = (mult - 1) * 100
+            label = "High PA" if pct >= 5 else ("Reduced PA" if pct <= -5 else "Standard PA Volume")
+            
+            pick["tempo_modifier"] = mult
+            pick["intel_suite"] = pick.get("intel_suite", {})
+            pick["intel_suite"]["tempo"] = {
+                "multiplier": mult,
+                "display": f"{'+' if pct >= 0 else ''}{pct:.0f}%",
+                "tempo_label": label,
+                "factors": breakdown.get("factors", []),
+                "total_pct": breakdown.get("total_pct", 0),
+            }
+            pick["intel_suite"]["pace_delta"] = pick["intel_suite"]["tempo"]
         
         return {
             "tier": "front_lines",
@@ -493,6 +558,38 @@ async def get_ferrari_war_zone(
         
         war_picks.sort(key=lambda x: x.get("edge", 0) or 0, reverse=True)
         picks = war_picks[:limit]
+        
+        # Add tempo intel_suite to fallback picks
+        from services.mlb_tempo_math import calculate_hitter_tempo, calculate_pitcher_tempo, get_hitter_tempo_breakdown, get_pitcher_tempo_breakdown
+        for pick in picks:
+            stat_key = (pick.get("stat_type") or "").upper()
+            is_pitcher = stat_key in ["K", "OUTS", "ER"]
+            
+            if is_pitcher:
+                ppa = pick.get("pitcher_ppa")
+                rest = pick.get("bullpen_rest_days")
+                mult = calculate_pitcher_tempo(ppa, rest)
+                breakdown = get_pitcher_tempo_breakdown(ppa, rest)
+            else:
+                order = pick.get("batting_order")
+                away = pick.get("is_away_team")
+                obp = pick.get("team_obp_rank")
+                mult = calculate_hitter_tempo(order, away, obp)
+                breakdown = get_hitter_tempo_breakdown(order, away, obp)
+            
+            pct = (mult - 1) * 100
+            label = "Boom Potential" if pct >= 5 else ("Bust Risk" if pct <= -5 else "Standard Volume")
+            
+            pick["tempo_modifier"] = mult
+            pick["intel_suite"] = pick.get("intel_suite", {})
+            pick["intel_suite"]["tempo"] = {
+                "multiplier": mult,
+                "display": f"{'+' if pct >= 0 else ''}{pct:.0f}%",
+                "tempo_label": label,
+                "factors": breakdown.get("factors", []),
+                "total_pct": breakdown.get("total_pct", 0),
+            }
+            pick["intel_suite"]["pace_delta"] = pick["intel_suite"]["tempo"]
         
         return {
             "tier": "war_zone",

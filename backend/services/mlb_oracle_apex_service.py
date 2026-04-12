@@ -293,6 +293,104 @@ class MLBOracleApexService:
             logger.warning(f"[MLB_APEX] Matchup modifier error: {e}")
             return 1.0
     
+    def _build_tempo_intel_suite(
+        self, 
+        prop: Dict, 
+        stat_key: str,
+        tempo_modifier: float
+    ) -> Dict[str, Any]:
+        """
+        Build the tempo section of intel_suite for Vision Intel Suite display.
+        
+        Returns a structured object with display, label, factors for UI rendering.
+        """
+        is_pitcher_stat = stat_key in ["K", "OUTS", "ER"]
+        pct_change = (tempo_modifier - 1) * 100
+        
+        if is_pitcher_stat:
+            # Pitcher tempo breakdown
+            pitcher_ppa = prop.get("pitcher_ppa") or prop.get("pitches_per_pa")
+            bullpen_rest = prop.get("bullpen_rest_days")
+            breakdown = get_pitcher_tempo_breakdown(pitcher_ppa, bullpen_rest)
+            
+            if pct_change >= 8:
+                tempo_label = "Pitcher Deep - High K Upside"
+            elif pct_change >= 3:
+                tempo_label = "Extended Outing Expected"
+            elif pct_change <= -8:
+                tempo_label = "Early Hook Risk"
+            elif pct_change <= -3:
+                tempo_label = "Short Start Likely"
+            else:
+                tempo_label = "Standard Workload"
+            
+            tooltip_parts = []
+            if pitcher_ppa is not None:
+                if pitcher_ppa < 3.8:
+                    tooltip_parts.append(f"P/PA {pitcher_ppa:.2f} is efficient - goes deep")
+                elif pitcher_ppa > 4.2:
+                    tooltip_parts.append(f"P/PA {pitcher_ppa:.2f} is high - early hook risk")
+            if bullpen_rest is not None and bullpen_rest == 0:
+                tooltip_parts.append("Bullpen worked yesterday - longer leash")
+            
+            return {
+                "multiplier": tempo_modifier,
+                "display": f"{'+' if pct_change >= 0 else ''}{pct_change:.0f}%",
+                "tempo_label": tempo_label,
+                "factors": breakdown.get("factors", []),
+                "total_pct": breakdown.get("total_pct", 0),
+                "player_type": "pitcher",
+                "ppa": pitcher_ppa,
+                "bullpen_rest": bullpen_rest,
+                "tooltip": " | ".join(tooltip_parts) if tooltip_parts else "Standard workload expected"
+            }
+        else:
+            # Hitter tempo breakdown
+            batting_order = prop.get("batting_order") or prop.get("lineup_position")
+            is_away = prop.get("is_away_team") or prop.get("is_away")
+            team_obp_rank = prop.get("team_obp_rank")
+            breakdown = get_hitter_tempo_breakdown(batting_order, is_away, team_obp_rank)
+            
+            if pct_change >= 10:
+                tempo_label = "Max PA Opportunity"
+            elif pct_change >= 5:
+                tempo_label = "High PA Upside"
+            elif pct_change <= -10:
+                tempo_label = "Limited PA Risk"
+            elif pct_change <= -5:
+                tempo_label = "Reduced Opportunity"
+            else:
+                tempo_label = "Standard PA Volume"
+            
+            tooltip_parts = []
+            if is_away is True:
+                tooltip_parts.append("Away team guarantees 9th inning AB")
+            elif is_away is False:
+                tooltip_parts.append("Home team risks no 9th inning")
+            if batting_order is not None:
+                if batting_order <= 3:
+                    tooltip_parts.append(f"Batting {batting_order} maximizes PAs")
+                elif batting_order >= 6:
+                    tooltip_parts.append(f"Batting {batting_order} risks only 3 PAs")
+            if team_obp_rank is not None:
+                if team_obp_rank <= 10:
+                    tooltip_parts.append(f"Top {team_obp_rank} OBP creates lineup turnover")
+                elif team_obp_rank >= 21:
+                    tooltip_parts.append(f"#{team_obp_rank} OBP limits at-bats")
+            
+            return {
+                "multiplier": tempo_modifier,
+                "display": f"{'+' if pct_change >= 0 else ''}{pct_change:.0f}%",
+                "tempo_label": tempo_label,
+                "factors": breakdown.get("factors", []),
+                "total_pct": breakdown.get("total_pct", 0),
+                "player_type": "hitter",
+                "batting_order": batting_order,
+                "is_away": is_away,
+                "team_obp_rank": team_obp_rank,
+                "tooltip": " | ".join(tooltip_parts) if tooltip_parts else "Standard plate appearance volume expected"
+            }
+    
     def _check_weather_hardstop(
         self, 
         prop: Dict, 
@@ -721,6 +819,12 @@ class MLBOracleApexService:
                 'tier_label': 'MLB Safe Haven',
                 'oracle_apex_qualified': True,
                 
+                # INTEL SUITE: Tempo breakdown for Vision Intel Suite
+                'intel_suite': {
+                    'tempo': self._build_tempo_intel_suite(prop, stat_key, tempo_modifier),
+                    'pace_delta': self._build_tempo_intel_suite(prop, stat_key, tempo_modifier),  # Legacy alias
+                },
+                
                 # Carry forward any vision intel
                 'vision_intel': prop.get('vision_intel'),
                 'intel_score': prop.get('intel_score'),
@@ -1096,6 +1200,12 @@ class MLBOracleApexService:
                 'tier': 'front_lines',
                 'tier_label': 'MLB Front Lines',
                 'front_lines_qualified': True,
+                
+                # INTEL SUITE: Tempo breakdown for Vision Intel Suite
+                'intel_suite': {
+                    'tempo': self._build_tempo_intel_suite(prop, stat_key, tempo_modifier),
+                    'pace_delta': self._build_tempo_intel_suite(prop, stat_key, tempo_modifier),  # Legacy alias
+                },
                 
                 # Carry forward any vision intel
                 'vision_intel': prop.get('vision_intel'),
@@ -1511,6 +1621,12 @@ class MLBOracleApexService:
                 'tier': 'war_zone',
                 'tier_label': 'MLB War Zone',
                 'war_zone_qualified': True,
+                
+                # INTEL SUITE: Tempo breakdown for Vision Intel Suite
+                'intel_suite': {
+                    'tempo': self._build_tempo_intel_suite(prop, stat_key, tempo_modifier),
+                    'pace_delta': self._build_tempo_intel_suite(prop, stat_key, tempo_modifier),  # Legacy alias
+                },
                 
                 # Carry forward any vision intel
                 'vision_intel': prop.get('vision_intel'),
