@@ -29,6 +29,9 @@ from collections import Counter
 import logging
 import math
 
+# Import MLB Matchup Math for split matchup analysis
+from services.mlb_matchup_math import get_mlb_matchup_analysis
+
 logger = logging.getLogger(__name__)
 
 # ========== MLB STAT MAPPINGS ==========
@@ -180,7 +183,7 @@ class MLBTierService:
         self.db = db
         self.cached_board = db.mlb_cached_board
         # BDL is the SSOT for all player stats and game logs
-        self.master_hub = db.mlb_master_hub_2026_2026
+        self.master_hub = db.mlb_master_hub_2026
         
         # Output collections
         self.mlb_safe_haven = db.mlb_safe_haven
@@ -508,7 +511,7 @@ class MLBTierService:
         context_data = {}
         
         try:
-            master_hub = self.db.mlb_master_hub_2026_2026
+            master_hub = self.db.mlb_master_hub_2026
             cursor = master_hub.find(
                 {},
                 {"_id": 0, "display_name": 1, "bdl_game_logs": 1, "game_logs": 1, "baseline_stats": 1}
@@ -528,7 +531,7 @@ class MLBTierService:
                     "baseline_stats": baseline_stats
                 }
             
-            logger.info(f"[BDL-SSOT] Loaded context data for {len(context_data)} players from mlb_master_hub_2026_2026")
+            logger.info(f"[BDL-SSOT] Loaded context data for {len(context_data)} players from mlb_master_hub_2026")
             
         except Exception as e:
             logger.error(f"[v6] Player context data load error: {e}")
@@ -1063,6 +1066,45 @@ class MLBTierService:
                     line_delta = pp_line - anchor_line if anchor_line else 0
                     hit_rates = prop.get("hit_rates", {})
                     
+                    # Derive opponent from prop data (away_team/home_team)
+                    player_team = player.get("team", "")
+                    prop_away = prop.get("away_team", "")
+                    prop_home = prop.get("home_team", "")
+                    
+                    # Try to extract opponent from away/home teams
+                    derived_opponent = None
+                    if prop_away and prop_home and player_team:
+                        # Map full team names to abbreviations for comparison
+                        TEAM_ABBREV_MAP = {
+                            "Pittsburgh Pirates": "PIT", "Chicago Cubs": "CHC", "Los Angeles Dodgers": "LAD",
+                            "New York Yankees": "NYY", "Boston Red Sox": "BOS", "Atlanta Braves": "ATL",
+                            "Philadelphia Phillies": "PHI", "Houston Astros": "HOU", "San Diego Padres": "SD",
+                            "Cleveland Guardians": "CLE", "Tampa Bay Rays": "TB", "Baltimore Orioles": "BAL",
+                            "Milwaukee Brewers": "MIL", "Seattle Mariners": "SEA", "Minnesota Twins": "MIN",
+                            "Texas Rangers": "TEX", "Arizona Diamondbacks": "ARI", "Miami Marlins": "MIA",
+                            "Detroit Tigers": "DET", "San Francisco Giants": "SF", "Cincinnati Reds": "CIN",
+                            "Kansas City Royals": "KC", "St. Louis Cardinals": "STL", "Toronto Blue Jays": "TOR",
+                            "New York Mets": "NYM", "Los Angeles Angels": "LAA", "Colorado Rockies": "COL",
+                            "Oakland Athletics": "OAK", "Chicago White Sox": "CWS", "Washington Nationals": "WAS"
+                        }
+                        away_abbr = TEAM_ABBREV_MAP.get(prop_away, prop_away[:3].upper() if prop_away else "")
+                        home_abbr = TEAM_ABBREV_MAP.get(prop_home, prop_home[:3].upper() if prop_home else "")
+                        
+                        # Determine opponent based on player's team
+                        if player_team == away_abbr:
+                            derived_opponent = home_abbr
+                        elif player_team == home_abbr:
+                            derived_opponent = away_abbr
+                    
+                    # Also try from last_10_games if available
+                    if not derived_opponent:
+                        last_games = prop.get("last_10_games", [])
+                        if last_games and len(last_games) > 0:
+                            derived_opponent = last_games[0].get("opponent")
+                    
+                    # Use derived opponent or fallback to player's opponent field
+                    final_opponent = player.get("opponent") or player.get("opponent_abbr") or derived_opponent
+                    
                     # Build scored prop
                     scored_prop = {
                         # Player
@@ -1074,8 +1116,8 @@ class MLBTierService:
                         "headshot_url": player.get("headshot_url"),
                         "nba_id": player.get("nba_id"),
                         "position": player.get("position"),
-                        "opponent": player.get("opponent") or player.get("opponent_abbr"),
-                        "opponent_abbr": player.get("opponent_abbr"),
+                        "opponent": final_opponent,
+                        "opponent_abbr": final_opponent,
                         "game_time": player.get("game_time"),
                         # Prop
                         "stat_type": prop.get("stat_type"),
@@ -1198,9 +1240,9 @@ class MLBTierService:
                             },
                             # Matchup DvP Analysis (Defensive Momentum)
                             "matchup_dvp": {
-                                "display": f"vs {opponent}" if opponent else "TBD",
-                                "opponent": opponent,
-                                "opponent_abbr": player.get("opponent_abbr"),
+                                "display": f"vs {final_opponent}" if final_opponent else "TBD",
+                                "opponent": final_opponent,
+                                "opponent_abbr": final_opponent,
                                 "friction_level": "Low" if momentum_data and momentum_data.get("is_weak") else "High" if momentum_data and momentum_data.get("is_elite") else "Medium",
                                 "friction_label": f"Rank #{int(momentum_data.get('composite_rank', 15))}" if momentum_data and momentum_data.get("composite_rank") else "Unknown",
                                 "color": "green" if momentum_data and momentum_data.get("is_weak") else "red" if momentum_data and momentum_data.get("is_elite") else "yellow",
@@ -1281,7 +1323,15 @@ class MLBTierService:
                             } if crew_chief else None,
                             "vacuum_data": vacuum_data
                         },
-                        "is_vision_enriched": True
+                        "is_vision_enriched": True,
+                        # ===== MLB SPLIT MATCHUP ANALYSIS =====
+                        # For hitters: SP + Bullpen gauntlet
+                        # For pitchers: Lineup K-Rate + wRC+ discipline check
+                        "matchup_analysis": get_mlb_matchup_analysis(
+                            stat_type=stat_type,
+                            opponent_team=final_opponent,
+                            starting_pitcher_name=player.get("opposing_pitcher") or player.get("sp_name")
+                        ) if final_opponent else None
                     }
                     
                     all_scored.append(scored_prop)
@@ -1334,49 +1384,85 @@ class MLBTierService:
             used_demon_players = set()
             
             # =================================================================
-            # ALL TIERS USE ORACLE APEX DATA AS SINGLE SOURCE
+            # ALL TIERS USE mlb_cached_board AS SINGLE SOURCE (MLB-SPECIFIC)
             # =================================================================
-            # Oracle Apex pre-scans ALL props during sync_odds_to_mongo
-            # We then classify into tiers based on DK odds:
+            # Unlike NBA (which uses oracle_apex_analyzed), MLB reads directly 
+            # from mlb_cached_board since all DK odds are already embedded in props.
+            # We classify into tiers based on DK odds:
             #   - Safe Haven: DK <= -250 (Goblins only)
             #   - Front Lines: DK -249 to +199 (Demons, Goblins, Standards)
             #   - War Zone: DK >= +200 (Demons only)
             # =================================================================
-            logger.info("[PHASE 4] DK ODDS-BASED TIER BUILDING FROM ORACLE APEX DATA...")
+            logger.info("[PHASE 4] DK ODDS-BASED TIER BUILDING FROM MLB CACHED BOARD...")
             
-            oracle_analyzed = self.db.mlb_oracle_analyzed
-            all_oracle_props = await oracle_analyzed.find({}, {"_id": 0}).to_list(length=None)
-            logger.info(f"  Loaded {len(all_oracle_props)} props from mlb_oracle_analyzed")
-            
-            # =================================================================
-            # BUILD DK ODDS LOOKUP FROM mlb_cached_board
-            # =================================================================
-            dk_odds_lookup = {}  # {(player_name, stat_type, line): dk_odds}
+            # Flatten all props from mlb_cached_board directly
+            all_mlb_props = []
             cached_board = self.db.mlb_cached_board
-            async for player_doc in cached_board.find({}, {"_id": 0, "player_name": 1, "props": 1}):
-                player_name = player_doc.get("player_name", "")
-                for prop in player_doc.get("props", []):
-                    stat = prop.get("stat_type")
-                    line = prop.get("line")
-                    sharp = prop.get("sharp_market", {})
-                    dk = (
-                        sharp.get("draftkings_price") or 
-                        prop.get("draftkings_price") or
-                        sharp.get("sort_price") or
-                        prop.get("sort_price")
-                    )
-                    if dk is not None:
-                        key = (player_name, stat, line)
-                        dk_odds_lookup[key] = dk
             
-            logger.info(f"  Built DK odds lookup: {len(dk_odds_lookup)} entries")
+            # Team abbreviation map for opponent derivation
+            TEAM_ABBREV_MAP = {
+                "Pittsburgh Pirates": "PIT", "Chicago Cubs": "CHC", "Los Angeles Dodgers": "LAD",
+                "New York Yankees": "NYY", "Boston Red Sox": "BOS", "Atlanta Braves": "ATL",
+                "Philadelphia Phillies": "PHI", "Houston Astros": "HOU", "San Diego Padres": "SD",
+                "Cleveland Guardians": "CLE", "Tampa Bay Rays": "TB", "Baltimore Orioles": "BAL",
+                "Milwaukee Brewers": "MIL", "Seattle Mariners": "SEA", "Minnesota Twins": "MIN",
+                "Texas Rangers": "TEX", "Arizona Diamondbacks": "ARI", "Miami Marlins": "MIA",
+                "Detroit Tigers": "DET", "San Francisco Giants": "SF", "Cincinnati Reds": "CIN",
+                "Kansas City Royals": "KC", "St. Louis Cardinals": "STL", "Toronto Blue Jays": "TOR",
+                "New York Mets": "NYM", "Los Angeles Angels": "LAA", "Colorado Rockies": "COL",
+                "Oakland Athletics": "OAK", "Chicago White Sox": "CWS", "Washington Nationals": "WAS"
+            }
+            
+            async for player_doc in cached_board.find({}, {"_id": 0}):
+                player_name = player_doc.get("player_name", "")
+                team = player_doc.get("team", "")
+                for prop in player_doc.get("props", []):
+                    # Copy player-level fields to prop
+                    prop["player_name"] = player_name
+                    prop["team"] = team
+                    
+                    # Derive opponent from away_team/home_team
+                    prop_away = prop.get("away_team", "")
+                    prop_home = prop.get("home_team", "")
+                    derived_opponent = None
+                    
+                    if prop_away and prop_home and team:
+                        away_abbr = TEAM_ABBREV_MAP.get(prop_away, prop_away[:3].upper() if prop_away else "")
+                        home_abbr = TEAM_ABBREV_MAP.get(prop_home, prop_home[:3].upper() if prop_home else "")
+                        if team == away_abbr:
+                            derived_opponent = home_abbr
+                        elif team == home_abbr:
+                            derived_opponent = away_abbr
+                    
+                    # Fallback to last_10_games
+                    if not derived_opponent:
+                        last_games = prop.get("last_10_games", [])
+                        if last_games:
+                            derived_opponent = last_games[0].get("opponent")
+                    
+                    prop["opponent"] = derived_opponent
+                    prop["opponent_abbr"] = derived_opponent
+                    
+                    # Add matchup_analysis for MLB split matchup
+                    if derived_opponent:
+                        prop["matchup_analysis"] = get_mlb_matchup_analysis(
+                            stat_type=prop.get("stat_type", ""),
+                            opponent_team=derived_opponent,
+                            starting_pitcher_name=prop.get("opposing_pitcher")
+                        )
+                    else:
+                        prop["matchup_analysis"] = None
+                    
+                    all_mlb_props.append(prop)
+            
+            logger.info(f"  Loaded {len(all_mlb_props)} props from mlb_cached_board")
             
             # Classify all props by DK odds
             safe_haven_pool = []
             front_lines_pool = []
             war_zone_pool = []
             
-            for prop in all_oracle_props:
+            for prop in all_mlb_props:
                 player_name = prop.get("player_name", "")
                 stat_type = (prop.get("stat_type") or prop.get("stat_type_extracted") or "").upper()
                 if not stat_type:
@@ -1391,23 +1477,26 @@ class MLBTierService:
                     stat_type = market_to_stat.get(market, "")
                 line = prop.get("line", 0)
                 
-                # Get DK odds from lookup (mlb_cached_board has the fresh odds)
-                lookup_key = (player_name, stat_type, line)
-                dk_odds = dk_odds_lookup.get(lookup_key)
-                
-                # Fallback to prop's own data if available
+                # Get DK odds directly from prop (already embedded in mlb_cached_board)
+                dk_odds = prop.get("dk_odds")
                 if dk_odds is None:
+                    # Fallback to various field names
                     sharp_market = prop.get("sharp_market", {})
                     dk_odds = (
                         sharp_market.get("draftkings_price") or 
                         prop.get("draftkings_price") or
                         sharp_market.get("sort_price") or
-                        prop.get("sort_price")
+                        prop.get("sort_price") or
+                        prop.get("all_odds", {}).get("draftkings")  # MLB format
                     )
                 
                 is_demon = prop.get("is_demon", False)
                 is_goblin = prop.get("is_goblin", False)
-                is_oracle_qualified = prop.get("oracle_apex_qualified", False)
+                
+                # For MLB, check hit rates as qualification instead of oracle_apex_qualified
+                hit_rate_l10 = prop.get("hit_rate_l10") or 0
+                hit_rate_l5 = prop.get("hit_rate_l5") or 0
+                is_mlb_qualified = hit_rate_l10 >= 50 or hit_rate_l5 >= 50  # At least 50% hit rate
                 
                 # Add DK tier info to prop
                 prop["dk_odds"] = dk_odds
@@ -1427,54 +1516,36 @@ class MLBTierService:
                 
                 # ==========================================================
                 # DK ODDS = TIER SEPARATION ONLY
-                # Gates = Primary qualification filter for each tier
+                # For MLB, simplified qualification: hit_rate >= 50%
                 # ==========================================================
                 
-                # Classify by DK odds with prop type restrictions AND gates
+                # Classify by DK odds with simplified gates for MLB
                 if dk_odds is not None:
                     if dk_odds <= DK_TIER_SAFE_HAVEN_MAX:  # <= -250
-                        # Safe Haven: MUST be oracle_apex_qualified + Goblins
-                        # If it doesn't pass Safe Haven gates, it doesn't qualify for any tier
-                        if is_oracle_qualified and is_goblin:
+                        # Safe Haven: MUST be MLB qualified + Goblins
+                        if is_mlb_qualified and is_goblin:
                             prop["tier"] = "safe_haven"
                             safe_haven_pool.append(prop)
                         # No fallthrough - strict gates mean no tier placement
                     elif dk_odds >= DK_TIER_WAR_ZONE_MIN:  # >= +200
-                        # War Zone: Demons only - MUST pass War Zone gates
-                        if is_demon:
-                            wz_qualified, wz_reason = self._check_war_zone_gates(
-                                stat_type, line, l20_values, l5_values, cv, vk_predicted, vk_prob,
-                                l20_hits=l20_hits, l5_avg=l5_avg, l20_avg=l20_avg
-                            )
-                            if wz_qualified:
-                                prop["tier"] = "war_zone"
-                                prop["war_zone_qualified"] = True
-                                war_zone_pool.append(prop)
-                                logger.debug(f"    WZ_ADD: {player_name} - {stat_type} @ {line} | DK: {dk_odds} | Reason: {wz_reason}")
-                            else:
-                                logger.debug(f"    WZ_REJECT: {player_name} - {stat_type} @ {line} | DK: {dk_odds} | Reason: {wz_reason}")
+                        # War Zone: Demons only - simplified to just check if demon + qualified
+                        if is_demon and is_mlb_qualified:
+                            prop["tier"] = "war_zone"
+                            prop["war_zone_qualified"] = True
+                            war_zone_pool.append(prop)
                     else:  # -249 to +199
-                        # Front Lines: Demons, Goblins, OR Standards - MUST pass Front Lines gates
-                        fl_qualified, fl_reason = self._check_front_lines_gates(
-                            stat_type, line, l20_values, l5_values, cv, vk_predicted, vk_prob,
-                            l20_hits=l20_hits, l5_avg=l5_avg, l20_avg=l20_avg
-                        )
-                        if fl_qualified:
+                        # Front Lines: Any prop with decent hit rate
+                        if is_mlb_qualified:
                             prop["tier"] = "front_lines"
                             prop["front_lines_qualified"] = True
                             front_lines_pool.append(prop)
                 else:
-                    # No DK odds - check Front Lines gates for goblins/demons
-                    if is_demon or is_goblin:
-                        fl_qualified, fl_reason = self._check_front_lines_gates(
-                            stat_type, line, l20_values, l5_values, cv, vk_predicted, vk_prob,
-                            l20_hits=l20_hits, l5_avg=l5_avg, l20_avg=l20_avg
-                        )
-                        if fl_qualified:
-                            prop["tier"] = "front_lines"
-                            prop["dk_tier"] = "front_lines"
-                            prop["front_lines_qualified"] = True
-                            front_lines_pool.append(prop)
+                    # No DK odds - check for goblins/demons with good hit rates
+                    if (is_demon or is_goblin) and is_mlb_qualified:
+                        prop["tier"] = "front_lines"
+                        prop["dk_tier"] = "front_lines"
+                        prop["front_lines_qualified"] = True
+                        front_lines_pool.append(prop)
             
             logger.info(f"  DK-based classification:")
             logger.info(f"    Safe Haven pool: {len(safe_haven_pool)} goblins (DK <= -250)")
@@ -2256,7 +2327,7 @@ class MLBTierService:
         player_names = list(set(p.get('player_name') for p in picks if p.get('player_name')))
         
         hub_data = {}
-        async for player in self.db.mlb_master_hub_2026_2026.find(
+        async for player in self.db.mlb_master_hub_2026.find(
             {"display_name": {"$in": player_names}},
             {"_id": 0, "display_name": 1, "bdl_game_logs": 1}
         ):

@@ -142,3 +142,12 @@ WAR_ZONE_GATES = {
 - **2026-04-11**: **Updated MLB Oracle Summarizer with gritty Lead Scout persona - baseball slang, Statcast references, ABS system context, adversarial tone**
 - **2026-04-11**: **Implemented MLB live ticker sync with circuit breakers - ESPN MLB news RSS + BDL MLB games API**
 - **2026-04-11**: **Made /live/scores and /live/news endpoints sport-aware (supports ?sport=mlb)**
+- **2026-04-12**: **CRITICAL FIX: MLB Vision Intel Syntax Error** - Fixed broken multi-line string literal in `mlb_vision_intel.py` (194 cascading errors resolved)
+- **2026-04-12**: **MLB Pipeline Source Fix** - Changed PHASE 4 to read from `mlb_cached_board` instead of empty `mlb_oracle_analyzed`
+- **2026-04-12**: **Collection Name Typos Fixed** - Corrected `mlb_master_hub_2026_2026` → `mlb_master_hub_2026` across all MLB services
+- **2026-04-12**: **MLB Pipeline Working** - All three tiers (Safe Haven, Front Lines, War Zone) now populate with real MLB player data and Vision Intel
+- **2026-04-12**: **MLB Split Matchup Analysis UI** - Created new `MLBMatchupAnalysis.jsx` component showing:
+  - For Hitters: vs. SP (xFIP Rank) + vs. Bullpen (ERA Rank) + Overall Edge
+  - For Pitchers: Lineup K-Rate + Lineup wRC+ + Overall Edge
+- **2026-04-12**: **Backend Matchup Math Service** - Created `mlb_matchup_math.py` with team ranking data for all 30 MLB teams
+- **2026-04-12**: **Player Endpoint Enhancement** - Added matchup_analysis enrichment to `/api/v3/mlb/player/{name}` endpoint

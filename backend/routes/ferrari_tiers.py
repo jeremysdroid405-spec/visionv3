@@ -14,6 +14,7 @@ import os
 
 from services.ferrari_tier_service import get_ferrari_tier_service
 from services.referee_scraper_service import get_referee_service
+from services.mlb_matchup_math import get_mlb_matchup_analysis
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["Ferrari Tiers"])
@@ -1375,6 +1376,60 @@ async def get_mlb_player_props(
                     prop["scout_badges"] = []
     except Exception as e:
         logger.warning(f"MLB badge service initialization failed: {e}")
+    
+    # Add MLB Matchup Analysis to each prop
+    # Team abbreviation map for opponent derivation
+    TEAM_ABBREV_MAP = {
+        "Pittsburgh Pirates": "PIT", "Chicago Cubs": "CHC", "Los Angeles Dodgers": "LAD",
+        "New York Yankees": "NYY", "Boston Red Sox": "BOS", "Atlanta Braves": "ATL",
+        "Philadelphia Phillies": "PHI", "Houston Astros": "HOU", "San Diego Padres": "SD",
+        "Cleveland Guardians": "CLE", "Tampa Bay Rays": "TB", "Baltimore Orioles": "BAL",
+        "Milwaukee Brewers": "MIL", "Seattle Mariners": "SEA", "Minnesota Twins": "MIN",
+        "Texas Rangers": "TEX", "Arizona Diamondbacks": "ARI", "Miami Marlins": "MIA",
+        "Detroit Tigers": "DET", "San Francisco Giants": "SF", "Cincinnati Reds": "CIN",
+        "Kansas City Royals": "KC", "St. Louis Cardinals": "STL", "Toronto Blue Jays": "TOR",
+        "New York Mets": "NYM", "Los Angeles Angels": "LAA", "Colorado Rockies": "COL",
+        "Oakland Athletics": "OAK", "Chicago White Sox": "CWS", "Washington Nationals": "WAS"
+    }
+    
+    if player.get("props"):
+        player_team = player.get("team", "")
+        for prop in player["props"]:
+            # Derive opponent from prop data
+            prop_away = prop.get("away_team", "")
+            prop_home = prop.get("home_team", "")
+            opponent = None
+            
+            if prop_away and prop_home and player_team:
+                away_abbr = TEAM_ABBREV_MAP.get(prop_away, prop_away[:3].upper() if prop_away else "")
+                home_abbr = TEAM_ABBREV_MAP.get(prop_home, prop_home[:3].upper() if prop_home else "")
+                if player_team == away_abbr:
+                    opponent = home_abbr
+                elif player_team == home_abbr:
+                    opponent = away_abbr
+            
+            # Fallback to last_10_games
+            if not opponent:
+                last_games = prop.get("last_10_games", [])
+                if last_games:
+                    opponent = last_games[0].get("opponent")
+            
+            prop["opponent"] = opponent
+            prop["opponent_abbr"] = opponent
+            
+            # Add matchup_analysis
+            if opponent:
+                try:
+                    prop["matchup_analysis"] = get_mlb_matchup_analysis(
+                        stat_type=prop.get("stat_type", ""),
+                        opponent_team=opponent,
+                        starting_pitcher_name=prop.get("opposing_pitcher")
+                    )
+                except Exception as ma_err:
+                    logger.warning(f"Matchup analysis failed: {ma_err}")
+                    prop["matchup_analysis"] = None
+            else:
+                prop["matchup_analysis"] = None
     
     return {
         "success": True,

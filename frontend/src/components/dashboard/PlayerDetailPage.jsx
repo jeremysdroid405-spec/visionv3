@@ -17,6 +17,7 @@ import { STAT_CATEGORIES, getCategoryKey, TEAM_LOGOS, BACKEND_URL } from './cons
 import { BadgeRow, BADGE_REGISTRY, BadgeGridItem } from '../ui/BadgePill';
 import GameLogBarChart from './GameLogBarChart';
 import { MomentumTrackerFull } from './MomentumTracker';
+import { MLBMatchupAnalysis } from './MLBMatchupAnalysis';
 
 // Gold Whistle Icon for High Whistle refs
 const GoldWhistleIcon = ({ className }) => (
@@ -992,8 +993,8 @@ export const PlayerDetailPage = ({ playerName, playerData = null, onBack, highli
                   </div>
                   
                   {/* Defensive Momentum (replaces old Matchup DvP / Defensive Friction) */}
-                  {/* Momentum Tracker - Primary display for defensive analysis */}
-                  {selectedVisionProp.momentum_data && (
+                  {/* NBA: Momentum Tracker - Primary display for defensive analysis */}
+                  {currentSport === 'nba' && selectedVisionProp.momentum_data && (
                     <MomentumTrackerFull
                       momentumData={selectedVisionProp.momentum_data}
                       opponent={selectedVisionProp.intel_suite?.matchup_dvp?.opponent || selectedVisionProp.opponent || selectedVisionProp.opponent_abbr}
@@ -1001,8 +1002,17 @@ export const PlayerDetailPage = ({ playerName, playerData = null, onBack, highli
                     />
                   )}
                   
-                  {/* Defensive Momentum from intel_suite - fallback when no momentum_data */}
-                  {!selectedVisionProp.momentum_data && selectedVisionProp.intel_suite?.defensive_momentum && (
+                  {/* MLB: Split Matchup Analysis (SP + Bullpen for hitters, K-Rate + wRC+ for pitchers) */}
+                  {currentSport === 'mlb' && (
+                    <MLBMatchupAnalysis
+                      matchupData={selectedVisionProp.matchup_analysis}
+                      statType={selectedVisionProp.stat_type}
+                      opponent={selectedVisionProp.opponent || selectedVisionProp.opponent_abbr}
+                    />
+                  )}
+                  
+                  {/* NBA: Defensive Momentum from intel_suite - fallback when no momentum_data */}
+                  {currentSport === 'nba' && !selectedVisionProp.momentum_data && selectedVisionProp.intel_suite?.defensive_momentum && (
                     <div className="bg-gradient-to-r from-cyan-950/40 to-zinc-900 border border-cyan-500/30 rounded-lg p-4">
                       <h3 className="text-sm font-bold text-white mb-2 flex items-center gap-2">
                         <Target className="w-4 h-4 text-cyan-400" />
@@ -1035,8 +1045,8 @@ export const PlayerDetailPage = ({ playerName, playerData = null, onBack, highli
                     </div>
                   )}
                   
-                  {/* Final fallback: matchup_dvp when no momentum data available */}
-                  {!selectedVisionProp.momentum_data && !selectedVisionProp.intel_suite?.defensive_momentum && selectedVisionProp.intel_suite?.matchup_dvp && (
+                  {/* NBA: Final fallback: matchup_dvp when no momentum data available */}
+                  {currentSport === 'nba' && !selectedVisionProp.momentum_data && !selectedVisionProp.intel_suite?.defensive_momentum && selectedVisionProp.intel_suite?.matchup_dvp && (
                     <div className="bg-gradient-to-r from-cyan-950/40 to-zinc-900 border border-cyan-500/30 rounded-lg p-4">
                       <h3 className="text-sm font-bold text-white mb-2 flex items-center gap-2">
                         <Target className="w-4 h-4 text-cyan-400" />

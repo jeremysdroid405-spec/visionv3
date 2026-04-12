@@ -305,10 +305,10 @@ class OracleApexService:
     def __init__(self, db, vegas_killer_model=None):
         self.db = db
         self.vegas_killer_model = vegas_killer_model
-        self.cached_board = db.dg_cached_board
-        self.live_props = db.dg_live_props
-        self.master_hub = db.mlb_master_hub_2026_2026
-        self.oracle_apex_collection = db.oracle_apex_picks
+        self.cached_board = db.mlb_cached_board
+        self.live_props = db.mlb_live_props
+        self.master_hub = db.mlb_master_hub_2026
+        self.oracle_apex_collection = db.mlb_oracle_apex_analyzed
         
     def set_vegas_killer_model(self, model):
         """Set the Vegas Killer model reference."""
