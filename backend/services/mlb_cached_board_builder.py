@@ -217,7 +217,24 @@ class MLBCachedBoardBuilder:
         
         values = []
         for log in game_logs[:limit]:
-            value = log.get(field_name)
+            # Special handling for calculated fields
+            if field_name == "singles":
+                # Singles = hits - doubles - triples - home_runs
+                hits = log.get("hits")
+                if hits is not None:
+                    doubles = log.get("doubles") or 0
+                    triples = log.get("triples") or 0
+                    home_runs = log.get("home_runs") or 0
+                    value = max(0, hits - doubles - triples - home_runs)
+                else:
+                    value = None
+            elif field_name == "pitcher_outs":
+                # Pitcher Outs = innings_pitched * 3
+                ip = log.get("innings_pitched")
+                value = round(ip * 3) if ip is not None else None
+            else:
+                value = log.get(field_name)
+            
             if value is not None:
                 try:
                     values.append(float(value))
@@ -284,15 +301,7 @@ class MLBCachedBoardBuilder:
             "hit_rate_l10": hit_rate_l10,
             "hit_rate_l5": hit_rate_l5,
             # L10 game logs (trimmed for storage)
-            "last_10_games": [
-                {
-                    "date": log.get("date"),
-                    "value": log.get(field_name),
-                    "opponent": log.get("opponent_abbr"),
-                }
-                for log in game_logs[:10]
-                if log.get(field_name) is not None
-            ],
+            "last_10_games": self._build_game_logs_for_prop(game_logs[:10], field_name),
             "games_played": len(l10_values),
             # Edge calculation
             "edge": self._calculate_edge(season_avg, line) if season_avg else None,
@@ -302,6 +311,36 @@ class MLBCachedBoardBuilder:
         }
         
         return enriched
+    
+    def _build_game_logs_for_prop(self, game_logs: List[Dict], field_name: str) -> List[Dict]:
+        """Build game logs with proper value extraction for all stat types including calculated fields."""
+        result = []
+        for log in game_logs:
+            # Calculate value based on field type
+            if field_name == "singles":
+                # Singles = hits - doubles - triples - home_runs
+                hits = log.get("hits")
+                if hits is not None:
+                    doubles = log.get("doubles") or 0
+                    triples = log.get("triples") or 0
+                    home_runs = log.get("home_runs") or 0
+                    value = max(0, hits - doubles - triples - home_runs)
+                else:
+                    value = None
+            elif field_name == "pitcher_outs":
+                # Pitcher Outs = innings_pitched * 3
+                ip = log.get("innings_pitched")
+                value = round(ip * 3) if ip is not None else None
+            else:
+                value = log.get(field_name)
+            
+            if value is not None:
+                result.append({
+                    "date": log.get("date"),
+                    "value": value,
+                    "opponent": log.get("opponent_abbr"),
+                })
+        return result
     
     def _grade_cv(self, cv: Optional[float]) -> str:
         """Grade CV for consistency."""

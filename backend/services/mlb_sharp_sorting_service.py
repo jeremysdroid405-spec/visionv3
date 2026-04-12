@@ -1314,8 +1314,10 @@ class MLBSharpSortingService:
                 
                 # Debug: Log Singles props specifically
                 if prop.get("stat_type") == "Singles":
+                    player_key = prop.get("player_name", "").lower().strip()
+                    logs_count = len(self._player_logs_cache.get(player_key, []))
                     logger.info(f"[SHARP_SORT] Singles prop: {prop.get('player_name')} OVER {prop.get('line')} - "
-                               f"H5={hit_rates.get('h5_rate')}, H10={hit_rates.get('h10_rate')}")
+                               f"Logs={logs_count}, H5={hit_rates.get('h5_rate')}, H10={hit_rates.get('h10_rate')}")
                 
                 # Apply calculated hit rates (prioritize fresh calculation over VK data)
                 if hit_rates.get("h5_rate") is not None:
