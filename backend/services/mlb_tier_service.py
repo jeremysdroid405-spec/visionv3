@@ -1558,7 +1558,10 @@ class MLBTierService:
                     
                     all_mlb_props.append(prop)
             
+            # Debug: Check VK enrichment
+            vk_enriched = sum(1 for p in all_mlb_props if p.get("vk_predicted"))
             logger.info(f"  Loaded {len(all_mlb_props)} props from mlb_cached_board")
+            logger.info(f"  VK Enriched: {vk_enriched} / {len(all_mlb_props)} props have vk_predicted")
             
             # ====================================================================
             # MLB SAFE HAVEN: Use Oracle Apex Service for STRICT 2026 Gate Logic
