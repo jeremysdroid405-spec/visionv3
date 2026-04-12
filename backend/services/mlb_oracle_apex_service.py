@@ -1110,6 +1110,405 @@ class MLBOracleApexService:
         
         return top_10
     
+    async def build_war_zone_tier(self, all_picks: List[Dict]) -> List[Dict]:
+        """
+        Build the MLB War Zone tier using 2026 logic with L15 Ceiling Check and CV Fast-Track.
+        
+        WAR ZONE LOGIC (2026 Season):
+        ==============================
+        
+        The War Zone hunts for MASSIVE PAYOUTS. We throw out "safety" entirely.
+        We want boom-or-bust players - guys who might strike out 3 times, but
+        when they connect, it's a 450-foot home run.
+        
+        KEY DIFFERENCE: We REWARD high CV (volatility) here - opposite of Safe Haven.
+        
+        1. PRIMARY MARKET QUALIFICATIONS (The Filter):
+           - DK Odds: >= +150 OR is_demon == True
+           - Prop Type: DEMON or High-Yield STANDARD (reject GOBLIN)
+           - Lineup Status: is_lineup_confirmed MUST be True
+           - Pinnacle TP: < 45.0% (underdog plays are acceptable)
+        
+        2. PRE-COMPUTATION:
+           - Apply Matchup Modifier for Adjusted_VK_Projection
+        
+        3. 3-GATE CHECK with CEILING EXCEPTION & VOLATILITY FAST-TRACK:
+           - Gate 1: Hit Rate (L20) + L15 CEILING CHECK (must have cleared line 2x in L15)
+           - Gate 2: CV check with VOLATILITY FAST-TRACK (CV > 1.0 = auto-pass)
+           - Gate 3: Adjusted Edge >= min_edge (must project to SMASH the line)
+        
+        4. FINAL SORT:
+           - Board_Score weights raw edge heavier than TP
+           - Return Top 10
+        
+        Args:
+            all_picks: List of all props from the pipeline
+            
+        Returns:
+            List of Top 10 qualified War Zone picks
+        """
+        logger.info("[MLB_WAR_ZONE] Building War Zone tier with 2026 logic (L15 Ceiling + CV Fast-Track)...")
+        logger.info(f"[MLB_WAR_ZONE] Input: {len(all_picks)} props to evaluate")
+        
+        # ====================================================================
+        # WAR ZONE THRESHOLD DICTIONARY (Raw Decimal Cushion Edges)
+        # HIGH CV is allowed/rewarded here - we want VOLATILE players
+        # ====================================================================
+        thresholds = {
+            "HITS": {"max_cv": 1.10, "min_l20": 8, "min_edge": 0.40},
+            "TB": {"max_cv": 1.25, "min_l20": 7, "min_edge": 0.60},
+            "K": {"max_cv": 0.85, "min_l20": 10, "min_edge": 1.50},
+            "OUTS": {"max_cv": 0.70, "min_l20": 12, "min_edge": 2.00},
+            "HRR": {"max_cv": 1.00, "min_l20": 9, "min_edge": 0.60},
+        }
+        
+        # Stat type aliases mapping to threshold keys
+        stat_aliases = {
+            "HITS": "HITS",
+            "TOTAL BASES": "TB", "TB": "TB", "TOTAL_BASES": "TB",
+            "PITCHER STRIKEOUTS": "K", "K": "K", "PITCHER_STRIKEOUTS": "K", "STRIKEOUTS": "K",
+            "PITCHING OUTS": "OUTS", "OUTS": "OUTS", "PITCHING_OUTS": "OUTS", "OUTS RECORDED": "OUTS",
+            "HRR": "HRR", "HITS+RUNS+RBIS": "HRR", "HITS_RUNS_RBIS": "HRR",
+        }
+        
+        # DK Odds minimum for War Zone (or is_demon)
+        DK_MIN_WAR_ZONE = 150  # +150 or higher
+        
+        # Maximum Pinnacle True Probability (underdog plays)
+        MAX_PINNACLE_TP = 45.0
+        
+        # Volatility threshold for CV Fast-Track
+        VOLATILITY_THRESHOLD = 1.0
+        
+        # L15 Ceiling requirement (must clear line at least 2x in L15)
+        L15_CEILING_MIN = 2
+        
+        # Track gate statistics
+        gate_stats = {
+            'total_input': len(all_picks),
+            'dk_odds_fail': 0,
+            'goblin_rejected': 0,  # War Zone rejects GOBLINs
+            'lineup_not_confirmed': 0,
+            'pinnacle_tp_fail': 0,
+            'unsupported_stat': 0,
+            'gate1_fail': 0,
+            'gate1_ceiling_fail': 0,  # L15 ceiling check failures
+            'gate2_fail': 0,
+            'gate2_volatility_fasttrack': 0,  # CV > 1.0 fast-tracks
+            'gate3_fail': 0,
+            'qualified': 0,
+        }
+        
+        qualified_picks = []
+        
+        for prop in all_picks:
+            # ================================================================
+            # 1. PRIMARY MARKET QUALIFICATIONS (The Filter)
+            # ================================================================
+            
+            # Get stat type and normalize
+            raw_stat = (prop.get("stat_type") or "").upper().replace(" ", "_")
+            stat_key = stat_aliases.get(raw_stat.replace("_", " "), stat_aliases.get(raw_stat))
+            
+            # Skip unsupported stats
+            if not stat_key or stat_key not in thresholds:
+                gate_stats['unsupported_stat'] += 1
+                continue
+            
+            cfg = thresholds[stat_key]
+            
+            # 1a. DK Odds: >= +150 OR is_demon == True
+            dk_odds = prop.get("dk_odds")
+            if dk_odds is None:
+                dk_odds = prop.get("all_odds", {}).get("draftkings")
+            
+            is_demon = prop.get("is_demon", False)
+            is_goblin = prop.get("is_goblin", False)
+            
+            # Must be DEMON or have high DK odds (+150 or higher)
+            if not is_demon and (dk_odds is None or dk_odds < DK_MIN_WAR_ZONE):
+                gate_stats['dk_odds_fail'] += 1
+                continue
+            
+            # 1b. Prop Type: DEMON or High-Yield STANDARD (Strictly reject GOBLIN)
+            if is_goblin:
+                gate_stats['goblin_rejected'] += 1
+                continue
+            
+            # 1c. Lineup Status: is_lineup_confirmed MUST be True
+            is_lineup_confirmed = prop.get("is_lineup_confirmed")
+            if not is_lineup_confirmed:
+                gate_stats['lineup_not_confirmed'] += 1
+                continue
+            
+            # 1d. Pinnacle TP: < 45.0% (underdog plays are acceptable)
+            pinnacle_tp = prop.get("pinnacle_tp") or prop.get("vk_prob_over") or prop.get("vk_probability")
+            # For War Zone, we accept lower TP - these are high-risk plays
+            # If TP is missing or high (> 45%), we still allow demons through
+            if pinnacle_tp is not None and pinnacle_tp > MAX_PINNACLE_TP and not is_demon:
+                gate_stats['pinnacle_tp_fail'] += 1
+                continue
+            
+            # Default to 35% if no TP available (typical for demon lines)
+            if pinnacle_tp is None:
+                pinnacle_tp = 35.0
+            
+            # ================================================================
+            # 2. PRE-COMPUTATION (Matchup Modifier)
+            # ================================================================
+            
+            # Get raw VK projection
+            raw_vk_pred = prop.get("vk_predicted") or prop.get("raw_vk_pred")
+            if not raw_vk_pred or raw_vk_pred <= 0:
+                continue
+            
+            # Get opponent for matchup calculation
+            opponent = prop.get("opponent") or prop.get("opponent_abbr")
+            
+            # Calculate matchup modifier and adjusted projection
+            matchup_modifier = self._get_matchup_modifier(raw_stat, opponent) if opponent else 1.0
+            adjusted_vk_pred = raw_vk_pred * matchup_modifier
+            
+            # Get prop line
+            line = prop.get("line", 0)
+            if line <= 0:
+                continue
+            
+            # ================================================================
+            # 3. THE 3-GATE CHECK with CEILING EXCEPTION & VOLATILITY FAST-TRACK
+            # ================================================================
+            
+            # Get L20, L15, and CV data
+            l20_hits = prop.get("l20_hits")
+            l15_ceiling_hits = prop.get("l15_ceiling_hits")  # Times cleared THIS specific line in L15
+            cv = prop.get("cv") or prop.get("vk_cv")
+            
+            # If L20 hits not directly available, calculate from hit rate
+            if l20_hits is None:
+                h20_rate = prop.get("h20_rate") or prop.get("hit_rate_l20")
+                if h20_rate is not None:
+                    l20_hits = int((h20_rate / 100) * 20)
+                else:
+                    gate_stats['gate1_fail'] += 1
+                    continue
+            
+            # If L15 ceiling hits not available, estimate from L15 values
+            if l15_ceiling_hits is None:
+                l15_values = prop.get("l15_values") or prop.get("last_15_values") or []
+                if l15_values:
+                    # Count how many times they cleared the line in L15
+                    l15_ceiling_hits = sum(1 for v in l15_values if v >= line)
+                else:
+                    # Fallback: estimate from L10 hit rate if available
+                    h10_rate = prop.get("h10_rate") or prop.get("hit_rate_l10")
+                    if h10_rate is not None:
+                        # Estimate L15 ceiling hits proportionally
+                        l15_ceiling_hits = int((h10_rate / 100) * 15 * 0.6)  # Conservative
+                    else:
+                        l15_ceiling_hits = 0
+            
+            # ----------------------------------------------------------------
+            # GATE 1: Hit Rate (L20) + L15 CEILING CHECK
+            # ----------------------------------------------------------------
+            # Primary: L20 >= min_l20
+            # CRITICAL CEILING EXCEPTION: Player MUST have cleared this specific
+            # Demon/High line at least TWICE in their last 15 games.
+            # We want DEMONSTRATED SPIKES, not just average hits.
+            # ----------------------------------------------------------------
+            passes_gate1_base = l20_hits >= cfg["min_l20"]
+            passes_gate1_ceiling = l15_ceiling_hits >= L15_CEILING_MIN
+            
+            if not passes_gate1_base:
+                gate_stats['gate1_fail'] += 1
+                continue
+            
+            if not passes_gate1_ceiling:
+                gate_stats['gate1_ceiling_fail'] += 1
+                continue
+            
+            # ----------------------------------------------------------------
+            # GATE 2: Consistency/Volatility Check with CV FAST-TRACK
+            # ----------------------------------------------------------------
+            # Normally: CV must be <= max_cv
+            # VOLATILITY FAST-TRACK: If CV > 1.0, do NOT reject.
+            # Fast-track to Gate 3 - we ACTIVELY WANT boom/bust profiles!
+            # ----------------------------------------------------------------
+            used_volatility_fasttrack = False
+            
+            if cv is None:
+                gate_stats['gate2_fail'] += 1
+                continue
+            
+            if cv > VOLATILITY_THRESHOLD:
+                # CV > 1.0 = FAST-TRACK! High volatility is DESIRED in War Zone
+                used_volatility_fasttrack = True
+                gate_stats['gate2_volatility_fasttrack'] += 1
+                logger.debug(f"[MLB_WAR_ZONE] VOLATILITY_FASTTRACK: {prop.get('player_name')} - "
+                            f"{stat_key} | CV: {cv:.2f} > 1.0 = Boom/Bust Profile!")
+            elif cv > cfg["max_cv"]:
+                # CV is between max_cv and 1.0 - reject
+                gate_stats['gate2_fail'] += 1
+                continue
+            
+            # ----------------------------------------------------------------
+            # GATE 3: Adjusted Edge
+            # (Adjusted_VK_Projection - Prop_Line) >= min_edge
+            # They must project to SMASH the line - big cushion required
+            # ----------------------------------------------------------------
+            raw_edge = adjusted_vk_pred - line
+            if raw_edge < cfg["min_edge"]:
+                gate_stats['gate3_fail'] += 1
+                continue
+            
+            # ================================================================
+            # QUALIFIED - Build output pick
+            # ================================================================
+            gate_stats['qualified'] += 1
+            
+            # Calculate hit rate percentages
+            h20_rate_pct = (l20_hits / 20) * 100
+            h15_ceiling_pct = (l15_ceiling_hits / 15) * 100 if l15_ceiling_hits else 0
+            
+            # Calculate Board_Score (WEIGHT EDGE HEAVIER than TP for War Zone)
+            # Formula: (Raw_Edge * 15) + TP + (CV_Bonus)
+            # The raw edge matters MORE here - we want players who project to crush the line
+            cv_bonus = 5.0 if used_volatility_fasttrack else 0.0  # Bonus for high volatility
+            board_score = (raw_edge * 15) + pinnacle_tp + cv_bonus
+            
+            # Build qualified pick with all required fields
+            player_name = prop.get('player_name')
+            
+            qualified_pick = {
+                # Player info
+                'player_name': player_name,
+                'team': prop.get('team'),
+                'opponent': opponent,
+                'photo_url': prop.get('photo_url') or prop.get('headshot_url'),
+                'headshot_url': prop.get('headshot_url'),
+                'game_time': prop.get('game_time') or prop.get('commence_time'),
+                
+                # Prop details
+                'stat_type': raw_stat.replace("_", " ").title(),
+                'stat_key': stat_key,  # Normalized key (HITS, TB, K, OUTS, HRR)
+                'line': line,
+                'dk_odds': dk_odds,
+                
+                # Classification
+                'is_goblin': False,  # Goblins are rejected
+                'is_demon': is_demon,
+                'is_standard': not is_demon,
+                'is_lineup_confirmed': True,
+                
+                # Averages (carry forward from input)
+                'l5_avg': prop.get('l5_avg'),
+                'l10_avg': prop.get('l10_avg'),
+                'l20_avg': prop.get('l20_avg'),
+                'season_avg': prop.get('season_avg') or prop.get('l10_avg'),
+                
+                # Hit rates
+                'h5_rate': prop.get('h5_rate') or prop.get('hit_rate_l5'),
+                'h10_rate': prop.get('h10_rate') or prop.get('hit_rate_l10'),
+                'h20_rate': round(h20_rate_pct, 1),
+                'hit_rate_l5': prop.get('h5_rate') or prop.get('hit_rate_l5'),
+                'hit_rate_l10': prop.get('h10_rate') or prop.get('hit_rate_l10'),
+                'hit_rate_l20': round(h20_rate_pct, 1),
+                'l20_hits': l20_hits,
+                
+                # L15 Ceiling data
+                'l15_ceiling_hits': l15_ceiling_hits,
+                'l15_ceiling_pct': round(h15_ceiling_pct, 1),
+                'ceiling_check_reason': f"Cleared line {l15_ceiling_hits}x in L15",
+                
+                # Volatility data
+                'cv': round(cv, 3) if cv else None,
+                'used_volatility_fasttrack': used_volatility_fasttrack,
+                'volatility_fasttrack_reason': f"CV {cv:.2f} > 1.0 = Boom/Bust" if used_volatility_fasttrack else None,
+                
+                # VK predictions
+                'raw_vk_pred': round(raw_vk_pred, 2),
+                'matchup_modifier': round(matchup_modifier, 3),
+                'vk_predicted': round(adjusted_vk_pred, 2),  # Adjusted projection
+                'vk_edge': round(raw_edge, 2),  # Raw cushion (adjusted_pred - line)
+                'vk_prob_over': round(pinnacle_tp, 1),
+                'vk_probability': round(pinnacle_tp, 1),
+                'pinnacle_tp': round(pinnacle_tp, 1),
+                
+                # Board score
+                'board_score': round(board_score, 1),
+                
+                # Gate thresholds met (for debugging)
+                'gate_thresholds': {
+                    'min_l20_required': cfg["min_l20"],
+                    'max_cv_allowed': cfg["max_cv"],
+                    'min_edge_required': cfg["min_edge"],
+                    'dk_min': f"+{DK_MIN_WAR_ZONE} or is_demon",
+                    'max_pinnacle_tp': MAX_PINNACLE_TP,
+                    'l15_ceiling_min': L15_CEILING_MIN,
+                    'volatility_threshold': VOLATILITY_THRESHOLD,
+                },
+                
+                # Tier classification
+                'tier': 'war_zone',
+                'tier_label': 'MLB War Zone',
+                'war_zone_qualified': True,
+                
+                # Carry forward any vision intel
+                'vision_intel': prop.get('vision_intel'),
+                'intel_score': prop.get('intel_score'),
+                'intel_verdict': prop.get('intel_verdict'),
+                
+                # Timestamp
+                'synced_at': datetime.now(timezone.utc).isoformat(),
+            }
+            
+            qualified_picks.append(qualified_pick)
+        
+        # ====================================================================
+        # 4. FINAL SORT & SLICE
+        # ====================================================================
+        
+        # Log gate statistics
+        logger.info("[MLB_WAR_ZONE] Gate Statistics:")
+        logger.info(f"  Total Input: {gate_stats['total_input']}")
+        logger.info(f"  DK Odds Fail (< +150 and not demon): {gate_stats['dk_odds_fail']}")
+        logger.info(f"  Goblin Rejected (War Zone = Demons only): {gate_stats['goblin_rejected']}")
+        logger.info(f"  Lineup Not Confirmed: {gate_stats['lineup_not_confirmed']}")
+        logger.info(f"  Pinnacle TP Fail (> 45% and not demon): {gate_stats['pinnacle_tp_fail']}")
+        logger.info(f"  Unsupported Stat: {gate_stats['unsupported_stat']}")
+        logger.info(f"  Gate 1 Fail (L20 Hit Rate): {gate_stats['gate1_fail']}")
+        logger.info(f"  Gate 1 Ceiling Fail (L15 < 2x): {gate_stats['gate1_ceiling_fail']}")
+        logger.info(f"  Gate 2 Fail (CV): {gate_stats['gate2_fail']}")
+        logger.info(f"  Gate 2 Volatility Fast-Tracks (CV > 1.0): {gate_stats['gate2_volatility_fasttrack']}")
+        logger.info(f"  Gate 3 Fail (Edge): {gate_stats['gate3_fail']}")
+        logger.info(f"  QUALIFIED: {gate_stats['qualified']}")
+        
+        # Sort descending by Board_Score (edge-weighted)
+        qualified_picks.sort(key=lambda x: x.get('board_score', 0), reverse=True)
+        
+        # Dedupe: Keep highest board_score per player+stat
+        dedupe_map = {}
+        for pick in qualified_picks:
+            key = f"{pick['player_name']}|{pick['stat_key']}"
+            if key not in dedupe_map or pick['board_score'] > dedupe_map[key]['board_score']:
+                dedupe_map[key] = pick
+        
+        final_picks = list(dedupe_map.values())
+        final_picks.sort(key=lambda x: x.get('board_score', 0), reverse=True)
+        
+        # Slice to Top 10
+        top_10 = final_picks[:10]
+        
+        logger.info(f"[MLB_WAR_ZONE] Final Result: {len(top_10)} picks (from {len(final_picks)} qualified)")
+        
+        for i, pick in enumerate(top_10[:5], 1):
+            fasttrack_flag = " [CV FAST-TRACK]" if pick.get('used_volatility_fasttrack') else ""
+            logger.info(f"[MLB_WAR_ZONE]   {i}. {pick['player_name']} - {pick['stat_key']} @ {pick['line']} | "
+                       f"Board: {pick['board_score']:.1f} | Edge: +{pick['vk_edge']:.2f} | "
+                       f"L20: {pick['l20_hits']}/20 | L15 Ceiling: {pick['l15_ceiling_hits']}x | "
+                       f"CV: {pick['cv']:.2f}{fasttrack_flag}")
+        
+        return top_10
+    
     async def analyze_all_props(self) -> List[Dict]:
         """
         Analyze all MLB props and return Safe Haven qualified picks.

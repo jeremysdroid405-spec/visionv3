@@ -97,6 +97,15 @@ Restructure the React/FastAPI betting app to a 100% Local-First Database Model, 
     - GATE 2: CV <= max_cv (relaxed: HITS 0.85, TB 0.95, K 0.60, OUTS 0.50, HRR 0.75)
     - GATE 3: Raw Cushion Edge >= min_edge (HITS +0.20, TB +0.30, K +0.80, OUTS +1.00, HRR +0.30)
   - Board Score = TP + (Edge * 10) + (HitRate * 0.1)
+
+- [x] **MLB Oracle Apex Wiring - War Zone (April 12, 2026)** ✅ **FINAL TIER COMPLETE**
+  - Created `build_war_zone_tier()` in `mlb_oracle_apex_service.py`
+  - 2026 War Zone Logic (Boom-or-Bust Hunting):
+    - PRIMARY: DK Odds >= +150 OR is_demon, DEMON or High-Yield STANDARD (reject GOBLIN), Lineup confirmed, TP < 45%
+    - GATE 1: L20 Hit Rate + **L15 CEILING CHECK** (must have cleared line 2x in L15 games)
+    - GATE 2: CV with **VOLATILITY FAST-TRACK** (if CV > 1.0, auto-pass - we WANT volatile players)
+    - GATE 3: Raw Cushion Edge >= min_edge (HITS +0.40, TB +0.60, K +1.50, OUTS +2.00, HRR +0.60)
+  - Board Score = (Edge * 15) + TP + CV_Bonus (edge-weighted for max payout potential)
   - Updated `optimized_sync_engine.py` to route MLB to `mlb_tier_service.py`
 
 ### In Progress
