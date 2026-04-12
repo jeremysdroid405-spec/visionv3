@@ -80,6 +80,34 @@ def enrich_mlb_prop_with_averages(prop: Dict, player_data: Dict = None) -> Dict:
     return prop
 
 
+def dedupe_mlb_props(props: List[Dict], sort_key: str = "hit_rate_l10") -> List[Dict]:
+    """
+    Deduplicate MLB props by player_name + stat_type.
+    Keeps the prop with the best sort_key value (highest by default).
+    
+    Args:
+        props: List of prop dictionaries
+        sort_key: Field to use for determining which duplicate to keep
+    
+    Returns:
+        Deduplicated list of props
+    """
+    seen = {}
+    for prop in props:
+        key = f"{prop.get('player_name')}|{prop.get('stat_type')}"
+        
+        if key not in seen:
+            seen[key] = prop
+        else:
+            # Keep the one with better sort_key value
+            current_val = seen[key].get(sort_key) or 0
+            new_val = prop.get(sort_key) or 0
+            if new_val > current_val:
+                seen[key] = prop
+    
+    return list(seen.values())
+
+
 def enrich_mlb_prop_with_tempo(prop: Dict) -> Dict:
     """
     Add tempo intel_suite data to an MLB prop.
@@ -442,6 +470,9 @@ async def get_ferrari_safe_haven(
             and (p.get("cv") is None or p.get("cv") <= 50)
         ]
         
+        # Dedupe by player+stat, keeping best hit rate
+        safe_picks = dedupe_mlb_props(safe_picks, sort_key="hit_rate_l10")
+        
         # Sort by hit rate descending
         safe_picks.sort(key=lambda x: x.get("hit_rate_l10", 0), reverse=True)
         picks = safe_picks[:limit]
@@ -525,6 +556,9 @@ async def get_ferrari_front_lines(
             if p.get("hit_rate_l10") and 40 <= p.get("hit_rate_l10", 0) < 60
         ]
         
+        # Dedupe by player+stat, keeping best hit rate
+        front_picks = dedupe_mlb_props(front_picks, sort_key="hit_rate_l10")
+        
         front_picks.sort(key=lambda x: x.get("hit_rate_l10", 0), reverse=True)
         picks = front_picks[:limit]
         
@@ -607,6 +641,9 @@ async def get_ferrari_war_zone(
             if p.get("hit_rate_l10") and p.get("hit_rate_l10", 0) < 40
             or (p.get("cv") and p.get("cv") > 50)
         ]
+        
+        # Dedupe by player+stat, keeping best edge
+        war_picks = dedupe_mlb_props(war_picks, sort_key="edge")
         
         war_picks.sort(key=lambda x: x.get("edge", 0) or 0, reverse=True)
         picks = war_picks[:limit]
