@@ -680,8 +680,9 @@ class MLBOracleApexService:
             # 3. THE 3-GATE CHECK
             # ================================================================
             
-            # Get L20 data
+            # Get hit data and games played
             l20_hits = prop.get("l20_hits")
+            games_played = prop.get("games_played_l20") or prop.get("games_in_sample") or 20
             cv = prop.get("cv") or prop.get("vk_cv")
             tp_prob = prop.get("vk_prob_over") or prop.get("vk_probability") or prop.get("pinnacle_tp")
             
@@ -689,15 +690,33 @@ class MLBOracleApexService:
             if l20_hits is None:
                 h20_rate = prop.get("h20_rate") or prop.get("hit_rate_l20")
                 if h20_rate is not None:
-                    l20_hits = int((h20_rate / 100) * 20)
+                    # Calculate hits based on actual games played (not always 20)
+                    effective_games = min(games_played, 20)
+                    l20_hits = int((h20_rate / 100) * effective_games)
                 else:
                     # Cannot evaluate without hit data
                     gate_stats['gate1_fail'] += 1
                     continue
             
-            # GATE 1: Strict Hit Rate (L20)
-            # Must hit in >= min_l20 out of last 20 games (NO recency exceptions)
-            if l20_hits < cfg["min_l20"]:
+            # ----------------------------------------------------------------
+            # GATE 1: Percentage-Based Hit Rate (Dynamic Sample Size)
+            # ----------------------------------------------------------------
+            # Convert min_l20 to required percentage: e.g., 16/20 = 0.80 (80%)
+            required_pct = cfg["min_l20"] / 20.0
+            
+            # Calculate actual games in sample (capped at 20)
+            effective_games = min(games_played, 20)
+            
+            # SAMPLE SIZE FLOOR: Reject players with < 5 games of data
+            if effective_games < 5:
+                gate_stats['gate1_fail'] += 1
+                continue
+            
+            # Calculate actual hit rate based on games played
+            actual_hit_rate = l20_hits / effective_games if effective_games > 0 else 0
+            
+            # Primary Check: actual_hit_rate >= required_pct
+            if actual_hit_rate < required_pct:
                 gate_stats['gate1_fail'] += 1
                 continue
             
@@ -1047,16 +1066,22 @@ class MLBOracleApexService:
             # 3. THE 3-GATE CHECK with RECENCY OVERRIDE
             # ================================================================
             
-            # Get L20 and L10 hit data
+            # Get hit data and games played
             l20_hits = prop.get("l20_hits")
             l10_hits = prop.get("l10_hits")
+            games_played_l20 = prop.get("games_played_l20") or prop.get("games_in_sample") or 20
+            games_played_l10 = prop.get("games_played_l10") or min(games_played_l20, 10)
             cv = prop.get("cv") or prop.get("vk_cv")
+            
+            # Calculate effective games (capped at sample size)
+            effective_games_l20 = min(games_played_l20, 20)
+            effective_games_l10 = min(games_played_l10, 10)
             
             # If L20 hits not directly available, calculate from hit rate
             if l20_hits is None:
                 h20_rate = prop.get("h20_rate") or prop.get("hit_rate_l20")
                 if h20_rate is not None:
-                    l20_hits = int((h20_rate / 100) * 20)
+                    l20_hits = int((h20_rate / 100) * effective_games_l20)
                 else:
                     gate_stats['gate1_fail'] += 1
                     continue
@@ -1065,28 +1090,37 @@ class MLBOracleApexService:
             if l10_hits is None:
                 h10_rate = prop.get("h10_rate") or prop.get("hit_rate_l10")
                 if h10_rate is not None:
-                    l10_hits = int((h10_rate / 100) * 10)
+                    l10_hits = int((h10_rate / 100) * effective_games_l10)
                 else:
                     l10_hits = 0  # Default to 0 if no L10 data
             
             # ----------------------------------------------------------------
-            # GATE 1: Hit Rate (L20) with L10 RECENCY OVERRIDE
+            # GATE 1: Percentage-Based Hit Rate with RECENCY OVERRIDE
             # ----------------------------------------------------------------
-            # Primary check: L20 >= min_l20
-            # CRITICAL RECENCY EXCEPTION: If L20 fails, check L10.
-            # If L10 hit rate >= 8/10 (80%), override the failure and PASS Gate 1.
-            # ----------------------------------------------------------------
-            passes_gate1 = l20_hits >= cfg["min_l20"]
+            # Convert min_l20 to required percentage: e.g., 13/20 = 0.65 (65%)
+            required_pct = cfg["min_l20"] / 20.0
+            
+            # SAMPLE SIZE FLOOR: Reject players with < 5 games of data
+            if effective_games_l20 < 5:
+                gate_stats['gate1_fail'] += 1
+                continue
+            
+            # Calculate actual hit rates based on games played
+            actual_hit_rate_l20 = l20_hits / effective_games_l20 if effective_games_l20 > 0 else 0
+            actual_hit_rate_l10 = l10_hits / effective_games_l10 if effective_games_l10 > 0 else 0
+            
+            # Primary Check: actual_hit_rate >= required_pct
+            passes_gate1 = actual_hit_rate_l20 >= required_pct
             used_recency_override = False
             
             if not passes_gate1:
-                # Check L10 Recency Override: >= 8/10 (80%)
-                if l10_hits >= 8:
+                # RECENCY OVERRIDE: If L10 hit rate >= 80%, override the failure
+                if actual_hit_rate_l10 >= 0.80:
                     passes_gate1 = True
                     used_recency_override = True
                     gate_stats['gate1_recency_override'] += 1
                     logger.debug(f"[MLB_FRONT_LINES] RECENCY_OVERRIDE: {prop.get('player_name')} - "
-                                f"{stat_key} | L20: {l20_hits}/20 FAILED but L10: {l10_hits}/10 PASSED")
+                                f"{stat_key} | L20: {actual_hit_rate_l20:.0%} FAILED but L10: {actual_hit_rate_l10:.0%} PASSED")
             
             if not passes_gate1:
                 gate_stats['gate1_fail'] += 1
@@ -1447,16 +1481,22 @@ class MLBOracleApexService:
             # 3. THE 3-GATE CHECK with CEILING EXCEPTION & VOLATILITY FAST-TRACK
             # ================================================================
             
-            # Get L20, L15, and CV data
+            # Get hit data and games played
             l20_hits = prop.get("l20_hits")
             l15_ceiling_hits = prop.get("l15_ceiling_hits")  # Times cleared THIS specific line in L15
+            games_played_l20 = prop.get("games_played_l20") or prop.get("games_in_sample") or 20
+            games_played_l15 = prop.get("games_played_l15") or min(games_played_l20, 15)
             cv = prop.get("cv") or prop.get("vk_cv")
+            
+            # Calculate effective games (capped at sample size)
+            effective_games_l20 = min(games_played_l20, 20)
+            effective_games_l15 = min(games_played_l15, 15)
             
             # If L20 hits not directly available, calculate from hit rate
             if l20_hits is None:
                 h20_rate = prop.get("h20_rate") or prop.get("hit_rate_l20")
                 if h20_rate is not None:
-                    l20_hits = int((h20_rate / 100) * 20)
+                    l20_hits = int((h20_rate / 100) * effective_games_l20)
                 else:
                     gate_stats['gate1_fail'] += 1
                     continue
@@ -1472,20 +1512,35 @@ class MLBOracleApexService:
                     h10_rate = prop.get("h10_rate") or prop.get("hit_rate_l10")
                     if h10_rate is not None:
                         # Estimate L15 ceiling hits proportionally
-                        l15_ceiling_hits = int((h10_rate / 100) * 15 * 0.6)  # Conservative
+                        l15_ceiling_hits = int((h10_rate / 100) * effective_games_l15 * 0.6)  # Conservative
                     else:
                         l15_ceiling_hits = 0
             
             # ----------------------------------------------------------------
-            # GATE 1: Hit Rate (L20) + L15 CEILING CHECK
+            # GATE 1: Percentage-Based Hit Rate + L15 CEILING CHECK
             # ----------------------------------------------------------------
-            # Primary: L20 >= min_l20
-            # CRITICAL CEILING EXCEPTION: Player MUST have cleared this specific
-            # Demon/High line at least TWICE in their last 15 games.
-            # We want DEMONSTRATED SPIKES, not just average hits.
-            # ----------------------------------------------------------------
-            passes_gate1_base = l20_hits >= cfg["min_l20"]
-            passes_gate1_ceiling = l15_ceiling_hits >= L15_CEILING_MIN
+            # Convert min_l20 to required percentage: e.g., 8/20 = 0.40 (40%)
+            required_pct = cfg["min_l20"] / 20.0
+            
+            # Calculate required ceiling hits based on actual L15 games played
+            # Scale L15_CEILING_MIN (2) proportionally for smaller samples
+            required_ceiling_pct = L15_CEILING_MIN / 15.0  # 2/15 = 0.133 (13.3%)
+            required_ceiling_hits = max(1, int(required_ceiling_pct * effective_games_l15))
+            
+            # SAMPLE SIZE FLOOR: Reject players with < 5 games of data
+            if effective_games_l20 < 5:
+                gate_stats['gate1_fail'] += 1
+                continue
+            
+            # Calculate actual hit rate based on games played
+            actual_hit_rate_l20 = l20_hits / effective_games_l20 if effective_games_l20 > 0 else 0
+            
+            # Primary Check: actual_hit_rate >= required_pct
+            passes_gate1_base = actual_hit_rate_l20 >= required_pct
+            
+            # CEILING CHECK: Player must have cleared this specific Demon line
+            # at least required_ceiling_hits times in their sample (scaled for games played)
+            passes_gate1_ceiling = l15_ceiling_hits >= required_ceiling_hits
             
             if not passes_gate1_base:
                 gate_stats['gate1_fail'] += 1
