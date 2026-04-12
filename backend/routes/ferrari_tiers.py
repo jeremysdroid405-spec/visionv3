@@ -463,10 +463,17 @@ async def get_ferrari_safe_haven(
                 prop = enrich_mlb_prop_with_tempo(prop)
                 all_props.append(prop)
         
-        # Filter for safe haven criteria: high hit rate + low CV
+        # Filter for safe haven criteria:
+        # 1. GOBLIN only (no demons) - heavily juiced favorites
+        # 2. DK odds <= -240 (or missing DK odds with goblin flag)
+        # 3. High hit rate (>= 60%)
+        # 4. Low CV (<= 50) for consistency
         safe_picks = [
             p for p in all_props
-            if p.get("hit_rate_l10") and p.get("hit_rate_l10") >= 60
+            if not p.get("is_demon", False)  # No demons in Safe Haven
+            and p.get("is_goblin", False)  # Must be goblin
+            and (p.get("dk_odds") is None or p.get("dk_odds") <= -240)  # Heavy juice
+            and p.get("hit_rate_l10") and p.get("hit_rate_l10") >= 60
             and (p.get("cv") is None or p.get("cv") <= 50)
         ]
         
@@ -550,10 +557,13 @@ async def get_ferrari_front_lines(
                 prop = enrich_mlb_prop_with_tempo(prop)
                 all_props.append(prop)
         
-        # Front lines: moderate hit rate + moderate CV
+        # Front lines: moderate hit rate, no demons (they go to War Zone)
+        # DK odds between -145 and -239 (mid-juice plays)
         front_picks = [
             p for p in all_props
-            if p.get("hit_rate_l10") and 40 <= p.get("hit_rate_l10", 0) < 60
+            if not p.get("is_demon", False)  # No demons in Front Lines
+            and p.get("hit_rate_l10") and 40 <= p.get("hit_rate_l10", 0) < 60
+            and (p.get("dk_odds") is None or -239 <= p.get("dk_odds") <= -145)
         ]
         
         # Dedupe by player+stat, keeping best hit rate
@@ -635,11 +645,11 @@ async def get_ferrari_war_zone(
                 prop = enrich_mlb_prop_with_tempo(prop)
                 all_props.append(prop)
         
-        # War zone: lower hit rate OR high CV (risky plays)
+        # War zone: DEMONS or high DK odds (+150 or higher) - boom/bust plays
         war_picks = [
             p for p in all_props
-            if p.get("hit_rate_l10") and p.get("hit_rate_l10", 0) < 40
-            or (p.get("cv") and p.get("cv") > 50)
+            if p.get("is_demon", False)  # Demons go to War Zone
+            or (p.get("dk_odds") is not None and p.get("dk_odds") >= 150)  # High odds underdogs
         ]
         
         # Dedupe by player+stat, keeping best edge
