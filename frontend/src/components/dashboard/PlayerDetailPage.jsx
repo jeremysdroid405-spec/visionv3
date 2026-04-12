@@ -900,40 +900,61 @@ export const PlayerDetailPage = ({ playerName, playerData = null, onBack, highli
                     : 'Situational factors affecting tonight\'s performance'}
                 </p>
                 
-                {/* Badge Grid - Filter by sport */}
-                <div className="grid grid-cols-2 gap-3">
-                  {Object.entries(BADGE_REGISTRY)
-                    .filter(([_, badge]) => !badge.sport || badge.sport === currentSport)
-                    .map(([badgeKey, badge]) => {
-                    // Check if this badge is active for this player
-                    // For MLB, also check scout_badges and mlb_badges arrays
-                    const isActive = selectedVisionProp.active_badges?.includes(badgeKey) || 
-                                     selectedVisionProp.intel_suite?.context_badges?.includes(badgeKey) ||
-                                     selectedVisionProp.scout_badges?.some(b => b.id === badgeKey || b.badge_key === badgeKey) ||
-                                     selectedVisionProp.mlb_badges?.some(b => b.id === badgeKey || b.badge_key === badgeKey);
-                    
-                    // Get custom description from player badges if available (e.g., milestone details)
-                    const playerBadge = player?.badges?.find(b => b.badge_key === badgeKey);
-                    // For MLB, also check scout_badges for metrics/description
-                    const mlbBadge = selectedVisionProp.scout_badges?.find(b => b.id === badgeKey) ||
-                                     selectedVisionProp.mlb_badges?.find(b => b.id === badgeKey);
-                    const customDescription = isActive ? (playerBadge?.description || mlbBadge?.name) : null;
-                    
-                    return (
-                      <BadgeGridItem 
-                        key={badgeKey}
-                        badgeKey={badgeKey}
-                        isActive={isActive}
-                        customDescription={customDescription}
-                      />
-                    );
-                  })}
-                </div>
+                {/* MLB: Render context_badges directly as they come from backend */}
+                {currentSport === 'mlb' && selectedVisionProp.intel_suite?.context_badges?.length > 0 && (
+                  <div className="grid grid-cols-2 gap-3 mb-4">
+                    {selectedVisionProp.intel_suite.context_badges.map((badge, idx) => {
+                      const colorMap = {
+                        green: { bg: 'bg-green-500/20', border: 'border-green-500/40', text: 'text-green-400' },
+                        blue: { bg: 'bg-blue-500/20', border: 'border-blue-500/40', text: 'text-blue-400' },
+                        red: { bg: 'bg-red-500/20', border: 'border-red-500/40', text: 'text-red-400' },
+                        yellow: { bg: 'bg-yellow-500/20', border: 'border-yellow-500/40', text: 'text-yellow-400' },
+                        purple: { bg: 'bg-purple-500/20', border: 'border-purple-500/40', text: 'text-purple-400' },
+                        orange: { bg: 'bg-orange-500/20', border: 'border-orange-500/40', text: 'text-orange-400' },
+                      };
+                      const colors = colorMap[badge.color] || colorMap.green;
+                      return (
+                        <div 
+                          key={idx}
+                          className={`${colors.bg} ${colors.border} border rounded-lg p-2 flex flex-col`}
+                        >
+                          <span className={`text-xs font-bold ${colors.text}`}>{badge.label}</span>
+                          <span className="text-[10px] text-white/80 mt-0.5">{badge.value}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
                 
-                {/* Active Badges Summary */}
+                {/* Badge Grid - Filter by sport (NBA only uses BADGE_REGISTRY) */}
+                {currentSport !== 'mlb' && (
+                  <div className="grid grid-cols-2 gap-3">
+                    {Object.entries(BADGE_REGISTRY)
+                      .filter(([_, badge]) => !badge.sport || badge.sport === currentSport)
+                      .map(([badgeKey, badge]) => {
+                      // Check if this badge is active for this player
+                      const isActive = selectedVisionProp.active_badges?.includes(badgeKey) || 
+                                       selectedVisionProp.intel_suite?.context_badges?.includes(badgeKey);
+                      
+                      // Get custom description from player badges if available
+                      const playerBadge = player?.badges?.find(b => b.badge_key === badgeKey);
+                      const customDescription = isActive ? playerBadge?.description : null;
+                      
+                      return (
+                        <BadgeGridItem 
+                          key={badgeKey}
+                          badgeKey={badgeKey}
+                          isActive={isActive}
+                          customDescription={customDescription}
+                        />
+                      );
+                    })}
+                  </div>
+                )}
+                
                 {/* Active Badges Summary - Sport-specific logic */}
                 {currentSport === 'mlb' ? (
-                  // MLB: Show scout_badges
+                  // MLB: Show scout_badges if available
                   (selectedVisionProp.scout_badges?.length > 0) && (
                     <div className="mt-4 pt-4 border-t border-zinc-700">
                       <div className="text-xs text-amber-400 font-semibold mb-2">
