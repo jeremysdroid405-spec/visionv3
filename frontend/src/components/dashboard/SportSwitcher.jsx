@@ -3,8 +3,10 @@
  * 
  * Displays in the header, allows switching between NBA and MLB.
  * Shows loading state during transition.
+ * Navigates to sport-specific routes (/nba, /mlb) for clean URL state.
  */
 import React, { useState, useRef, useEffect } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useSport, SPORTS_CONFIG } from '../../context/SportContext';
 import { ChevronDown, Check, Lock } from 'lucide-react';
 
@@ -12,6 +14,8 @@ const SportSwitcher = () => {
   const { currentSport, switchSport, isTransitioning, sportConfig, availableSports } = useSport();
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef(null);
+  const navigate = useNavigate();
+  const location = useLocation();
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -28,8 +32,26 @@ const SportSwitcher = () => {
     const sport = SPORTS_CONFIG[sportId];
     if (!sport.enabled) return;
     
+    // Switch the sport context
     switchSport(sportId);
     setIsOpen(false);
+    
+    // Navigate to sport-specific route if on a dashboard page
+    const isDashboardPage = location.pathname.includes('/dashboard') || 
+                           location.pathname === '/nba' || 
+                           location.pathname === '/mlb' ||
+                           location.pathname.includes('/demo');
+    
+    if (isDashboardPage) {
+      // Check if we're in demo mode
+      const isDemo = location.pathname.includes('/demo');
+      
+      if (isDemo) {
+        navigate(`/demo/${sportId}`);
+      } else {
+        navigate(`/${sportId}`);
+      }
+    }
   };
 
   return (

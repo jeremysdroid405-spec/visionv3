@@ -7,10 +7,14 @@ import { GlobalQueryProvider } from './providers/QueryProvider';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { Auth } from './pages/Auth';
 import Dashboard from './pages/Dashboard';
+import NBADashboard from './pages/NBADashboard';
+import MLBDashboard from './pages/MLBDashboard';
 import { Toaster } from 'sonner';
 
-// Demo mode wrapper - passes isDemoMode prop to dashboard
+// Demo mode wrappers - passes isDemoMode prop to dashboards
 const DemoModeWrapper = () => <Dashboard isDemoMode={true} />;
+const NBADemoWrapper = () => <NBADashboard isDemoMode={true} />;
+const MLBDemoWrapper = () => <MLBDashboard isDemoMode={true} />;
 
 function App() {
   return (
@@ -45,15 +49,37 @@ function App() {
                   } 
                 />
                 
+                {/* Sport-specific routes - NBA */}
+                <Route 
+                  path="/nba" 
+                  element={
+                    <ProtectedRoute>
+                      <NBADashboard />
+                    </ProtectedRoute>
+                  } 
+                />
+                
+                {/* Sport-specific routes - MLB */}
+                <Route 
+                  path="/mlb" 
+                  element={
+                    <ProtectedRoute>
+                      <MLBDashboard />
+                    </ProtectedRoute>
+                  } 
+                />
+                
                 {/* Legacy routes - redirect to main dashboard */}
                 <Route path="/v3" element={<Navigate to="/dashboard" replace />} />
                 <Route path="/v3-legacy" element={<Navigate to="/dashboard" replace />} />
                 <Route path="/v4/demo" element={<Navigate to="/demo" replace />} />
                 <Route path="/full-board" element={<Navigate to="/dashboard" replace />} />
                 
-                {/* Demo page - public for testing */}
+                {/* Demo pages - public for testing */}
                 <Route path="/demo" element={<DemoModeWrapper />} />
                 <Route path="/v3/demo" element={<DemoModeWrapper />} />
+                <Route path="/demo/nba" element={<NBADemoWrapper />} />
+                <Route path="/demo/mlb" element={<MLBDemoWrapper />} />
               </Routes>
             </BrowserRouter>
           </div>
