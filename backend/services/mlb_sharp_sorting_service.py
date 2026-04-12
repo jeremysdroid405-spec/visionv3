@@ -334,20 +334,26 @@ class MLBSharpSortingService:
     # MLB HIT RATE CALCULATION FROM GAME LOGS
     # =========================================================================
     
-    async def _load_player_logs_cache(self):
+    async def _load_player_logs_cache(self, force_reload: bool = False):
         """Load all player game logs from mlb_master_hub_2026 into cache for fast lookup.
         
         SSOT: Uses mlb_master_hub_2026.bdl_game_logs as the single source of truth.
         This ensures consistency between pick cards, player detail views, and hit rate calculations.
         IMPORTANT: Filters to CURRENT SEASON (2026) only.
+        
+        Args:
+            force_reload: If True, reload cache even if already loaded
         """
-        if self._player_logs_cache:
+        if self._player_logs_cache and not force_reload:
             return  # Already loaded
         
         from datetime import datetime
         current_season = datetime.now().year
         
         try:
+            # Clear existing cache for fresh load
+            self._player_logs_cache = {}
+            
             # SSOT: mlb_master_hub_2026.bdl_game_logs
             master_hub = self.db["mlb_master_hub_2026"]
             all_players = await master_hub.find(
@@ -1238,7 +1244,8 @@ class MLBSharpSortingService:
             logger.info(f"[SHARP_SORT] Loaded {len(vk_lookup)} VK projections for matching")
             
             # Load player historical logs cache for hit rate calculation
-            await self._load_player_logs_cache()
+            # Force reload to ensure fresh data after syncs
+            await self._load_player_logs_cache(force_reload=True)
             
             # Process each prop
             fair_values = []
@@ -1304,6 +1311,11 @@ class MLBSharpSortingService:
                     prop.get("stat_type"),
                     prop.get("line")
                 )
+                
+                # Debug: Log Singles props specifically
+                if prop.get("stat_type") == "Singles":
+                    logger.info(f"[SHARP_SORT] Singles prop: {prop.get('player_name')} OVER {prop.get('line')} - "
+                               f"H5={hit_rates.get('h5_rate')}, H10={hit_rates.get('h10_rate')}")
                 
                 # Apply calculated hit rates (prioritize fresh calculation over VK data)
                 if hit_rates.get("h5_rate") is not None:

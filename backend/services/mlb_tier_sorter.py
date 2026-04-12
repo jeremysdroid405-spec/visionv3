@@ -122,16 +122,26 @@ class MLBTierSorter:
         """Normalize stat type for gate lookup."""
         normalized = stat_type.lower().strip()
         
-        # Map variations to canonical names
+        # Map PrizePicks variations to canonical names
         mappings = {
             "tb": "total_bases",
             "hrr": "hits+runs+rbis",
             "batter_hits_runs_rbis": "hits+runs+rbis",
-            "pitcher outs": "pitching_outs",
+            "hits+runs+rbis": "hits+runs+rbis",
+            # Pitcher stats
+            "pitcher outs": "pitcher_outs",
             "pitcher strikeouts": "pitcher_strikeouts",
             "pitcher_strikeouts": "pitcher_strikeouts",
             "earned runs": "earned_runs",
             "earned runs allowed": "earned_runs",
+            "hits allowed": "hits_allowed",
+            "walks allowed": "walks_allowed",
+            # Batter stats
+            "batter walks": "batter_walks",
+            "batter strikeouts": "batter_strikeouts",
+            "home runs": "home_runs",
+            "stolen bases": "stolen_bases",
+            "total bases": "total_bases",
         }
         
         return mappings.get(normalized, normalized.replace(" ", "_"))
@@ -144,16 +154,28 @@ class MLBTierSorter:
         if len(game_logs) < 5:
             return None
         
-        # Get stat field
+        # Get stat field - comprehensive mapping for all PrizePicks stat types
         stat_map = {
             "hits": "hits",
             "total_bases": "total_bases",
             "rbis": "rbis",
             "runs": "runs",
+            "home_runs": "home_runs",
+            "stolen_bases": "stolen_bases",
+            "singles": "singles",  # Calculated
+            "doubles": "doubles",
+            "triples": "triples",
+            "batter_walks": "walks",
+            "walks": "walks",
+            "batter_strikeouts": "strikeouts",
+            "strikeouts": "strikeouts",
             "hits+runs+rbis": ["hits", "runs", "rbis"],
             "pitcher_strikeouts": "pitcher_strikeouts",
+            "pitcher_outs": "innings_pitched",
             "pitching_outs": "innings_pitched",
             "earned_runs": "earned_runs",
+            "hits_allowed": "hits_allowed",
+            "walks_allowed": "pitcher_walks",
         }
         
         stat_key = self._normalize_stat_type(stat_type)
@@ -168,6 +190,16 @@ class MLBTierSorter:
             elif field == "innings_pitched":
                 ip = game.get(field)
                 val = (ip * 3) if ip else None
+            elif field == "singles":
+                # Calculate singles = hits - doubles - triples - home_runs
+                hits = game.get("hits")
+                if hits is not None:
+                    doubles = game.get("doubles") or 0
+                    triples = game.get("triples") or 0
+                    hr = game.get("home_runs") or 0
+                    val = max(0, hits - doubles - triples - hr)
+                else:
+                    val = None
             else:
                 val = game.get(field)
             
@@ -211,10 +243,22 @@ class MLBTierSorter:
             "total_bases": "total_bases",
             "rbis": "rbis",
             "runs": "runs",
+            "home_runs": "home_runs",
+            "stolen_bases": "stolen_bases",
+            "singles": "singles",
+            "doubles": "doubles",
+            "triples": "triples",
+            "batter_walks": "walks",
+            "walks": "walks",
+            "batter_strikeouts": "strikeouts",
+            "strikeouts": "strikeouts",
             "hits+runs+rbis": ["hits", "runs", "rbis"],
             "pitcher_strikeouts": "pitcher_strikeouts",
+            "pitcher_outs": "innings_pitched",
             "pitching_outs": "innings_pitched",
             "earned_runs": "earned_runs",
+            "hits_allowed": "hits_allowed",
+            "walks_allowed": "pitcher_walks",
         }
         
         stat_key = self._normalize_stat_type(stat_type)
@@ -236,6 +280,16 @@ class MLBTierSorter:
             elif field == "innings_pitched":
                 ip = game.get(field)
                 val = (ip * 3) if ip else None
+            elif field == "singles":
+                # Calculate singles = hits - doubles - triples - home_runs
+                h = game.get("hits")
+                if h is not None:
+                    d = game.get("doubles") or 0
+                    t = game.get("triples") or 0
+                    hr = game.get("home_runs") or 0
+                    val = max(0, h - d - t - hr)
+                else:
+                    val = None
             else:
                 val = game.get(field)
             
@@ -273,8 +327,21 @@ class MLBTierSorter:
             "total_bases": "total_bases",
             "rbis": "rbis",
             "runs": "runs",
+            "home_runs": "home_runs",
+            "stolen_bases": "stolen_bases",
+            "singles": "singles",
+            "doubles": "doubles",
+            "triples": "triples",
+            "batter_walks": "walks",
+            "walks": "walks",
+            "batter_strikeouts": "strikeouts",
+            "strikeouts": "strikeouts",
             "hits+runs+rbis": ["hits", "runs", "rbis"],
             "pitcher_strikeouts": "pitcher_strikeouts",
+            "pitcher_outs": "innings_pitched",
+            "earned_runs": "earned_runs",
+            "hits_allowed": "hits_allowed",
+            "walks_allowed": "pitcher_walks",
         }
         
         field = stat_map.get(stat_key, stat_key)
@@ -286,6 +353,15 @@ class MLBTierSorter:
         for game in game_logs[:20]:
             if isinstance(field, list):
                 val = sum(game.get(f) or 0 for f in field)
+            elif field == "singles":
+                h = game.get("hits")
+                if h is not None:
+                    val = max(0, h - (game.get("doubles") or 0) - (game.get("triples") or 0) - (game.get("home_runs") or 0))
+                else:
+                    val = None
+            elif field == "innings_pitched":
+                ip = game.get(field)
+                val = (ip * 3) if ip else None
             else:
                 val = game.get(field)
             
@@ -337,11 +413,27 @@ class MLBTierSorter:
             "total_bases": "total_bases",
             "rbis": "rbis",
             "runs": "runs",
+            "home_runs": "home_runs",
+            "stolen_bases": "stolen_bases",
+            # Singles is calculated
+            "singles": "singles",
+            "doubles": "doubles",
+            "triples": "triples",
+            # Walks
+            "walks": "walks",
+            "batter_walks": "walks",
+            # Strikeouts
+            "strikeouts": "strikeouts",
+            "batter_strikeouts": "strikeouts",
+            # Combo
             "hits+runs+rbis": ["hits", "runs", "rbis"],
+            # Pitcher
             "pitcher_strikeouts": "pitcher_strikeouts",
             "pitching_outs": "innings_pitched",
+            "pitcher_outs": "innings_pitched",
             "earned_runs": "earned_runs",
-            "batter_strikeouts": "batter_strikeouts",
+            "hits_allowed": "hits_allowed",
+            "walks_allowed": "pitcher_walks",
         }
         
         field = stat_map.get(stat_key, stat_key)
@@ -360,6 +452,16 @@ class MLBTierSorter:
             elif field == "innings_pitched":
                 ip = game.get(field)
                 val = round(ip * 3) if ip else None
+            elif field == "singles":
+                # Calculate singles = hits - doubles - triples - home_runs
+                hits = game.get("hits")
+                if hits is not None:
+                    doubles = game.get("doubles") or 0
+                    triples = game.get("triples") or 0
+                    hr = game.get("home_runs") or 0
+                    val = max(0, hits - doubles - triples - hr)
+                else:
+                    val = None
             else:
                 val = game.get(field)
             
