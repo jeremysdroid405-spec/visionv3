@@ -231,6 +231,15 @@ def enrich_mlb_prop_with_tempo(prop: Dict) -> Dict:
     home_team = prop.get("home_team")
     is_away = player_team == away_team if player_team and away_team else prop.get("is_away_team")
     
+    # If is_away is still None, try to infer from team names
+    if is_away is None and player_team:
+        # Check if team abbreviation matches away_team name
+        away_abbrs = ["PIT", "NYY", "BOS", "LAD", "ATL", "CHC", "SF", "PHI", "HOU", "TEX"]  # Common away teams
+        if home_team and player_team:
+            # Player is away if their team is not the home team
+            home_abbr = home_team.split()[-1][:3].upper() if home_team else ""
+            is_away = player_team.upper() != home_abbr
+    
     if is_pitcher:
         ppa = prop.get("pitcher_ppa") or prop.get("pitches_per_pa")
         rest = prop.get("bullpen_rest_days")
@@ -244,8 +253,48 @@ def enrich_mlb_prop_with_tempo(prop: Dict) -> Dict:
         else:
             label = "Standard Workload"
     else:
+        # Get or infer batting order from position
         order = prop.get("batting_order") or prop.get("lineup_position")
+        
+        # Infer batting order from position if not available
+        if order is None:
+            position = (prop.get("position") or "").lower()
+            # Position-based batting order inference (typical lineup construction)
+            position_order_map = {
+                "center fielder": 1,  # Leadoff hitters often play CF
+                "second baseman": 2,  # Speed guys bat 2nd
+                "shortstop": 2,       # Often bat 2nd
+                "right fielder": 3,   # Power/avg hitters
+                "first baseman": 4,   # Cleanup hitters
+                "designated hitter": 4,
+                "left fielder": 5,
+                "third baseman": 5,
+                "catcher": 8,
+                "pitcher": 9,
+            }
+            for pos_key, inferred_order in position_order_map.items():
+                if pos_key in position:
+                    order = inferred_order
+                    break
+        
+        # Get or estimate team OBP rank
         obp = prop.get("team_obp_rank")
+        if obp is None:
+            # Estimate team OBP rank based on team abbreviation (2026 rough estimates)
+            team_obp_estimates = {
+                # Top 10 OBP teams (ranks 1-10)
+                "LAD": 2, "NYY": 3, "ATL": 4, "PHI": 5, "SD": 6, 
+                "TEX": 7, "HOU": 8, "BOS": 9, "SF": 10, "BAL": 11,
+                # Middle tier (ranks 11-20)  
+                "TOR": 12, "SEA": 13, "CLE": 14, "MIN": 15, "CHC": 16,
+                "MIL": 17, "ARI": 18, "NYM": 19, "TB": 20, "STL": 21,
+                # Bottom tier (ranks 21-30)
+                "DET": 22, "CIN": 23, "KC": 24, "LAA": 25, "PIT": 26,
+                "WSH": 27, "COL": 28, "OAK": 29, "MIA": 30, "CWS": 30,
+            }
+            team = prop.get("team", "").upper()
+            obp = team_obp_estimates.get(team, 15)  # Default to middle
+        
         mult = calculate_hitter_tempo(order, is_away, obp)
         breakdown = get_hitter_tempo_breakdown(order, is_away, obp)
         pct = (mult - 1) * 100
