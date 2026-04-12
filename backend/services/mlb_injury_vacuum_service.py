@@ -298,15 +298,85 @@ class MLBInjuryVacuumService:
         
         return injuries
     
+    async def fetch_bdl_injuries(self) -> List[Dict]:
+        """Fetch current MLB injuries from BallDontLie API (primary source)."""
+        import os
+        logger.info("[MLBVacuum] Fetching BDL MLB injuries...")
+        
+        api_key = os.environ.get("BDL_API_KEY") or os.environ.get("BALLDONTLIE_API_KEY")
+        if not api_key:
+            logger.warning("[MLBVacuum] No BDL API key for injuries")
+            return []
+        
+        injuries = []
+        
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(
+                    "https://api.balldontlie.io/mlb/v1/player_injuries",
+                    params={"per_page": 100},
+                    headers={"Authorization": api_key},
+                    timeout=15
+                ) as response:
+                    if response.status != 200:
+                        logger.warning(f"[MLBVacuum] BDL injuries HTTP {response.status}")
+                        return []
+                    
+                    data = await response.json()
+                    
+                    for inj in data.get("data", []):
+                        player = inj.get("player", {})
+                        team = player.get("team", {})
+                        player_name = player.get("full_name", "Unknown")
+                        
+                        # Map BDL status to our trigger statuses
+                        bdl_status = inj.get("status", "").upper()
+                        # BDL uses: "10-Day-IL", "60-Day-IL", "15-Day-IL", "Day-To-Day", "Out"
+                        if "IL" in bdl_status or bdl_status == "OUT":
+                            status = "OUT"
+                        elif "DAY-TO-DAY" in bdl_status or bdl_status == "DTD":
+                            status = "DTD"
+                        else:
+                            status = bdl_status
+                        
+                        injuries.append({
+                            "player_name": player_name,
+                            "team": team.get("abbreviation", "???"),
+                            "team_full": team.get("display_name", "Unknown"),
+                            "status": status,
+                            "injury_type": inj.get("type", "Unknown"),
+                            "details": inj.get("short_comment", ""),
+                            "long_details": inj.get("long_comment", ""),
+                            "source": "BDL",
+                            "return_date": inj.get("return_date"),
+                            "fetched_at": datetime.now(timezone.utc).isoformat()
+                        })
+            
+            logger.info(f"[MLBVacuum] Fetched {len(injuries)} MLB injuries from BDL")
+            
+        except Exception as e:
+            logger.error(f"[MLBVacuum] Error fetching BDL injuries: {e}")
+        
+        return injuries
+    
     async def check_injuries(self) -> Dict[str, Any]:
-        """Check for MLB injuries and trigger vacuums for stars."""
+        """Check for MLB injuries and trigger vacuums for stars.
+        
+        Uses BDL as primary source, falls back to ESPN if needed.
+        """
         logger.info("[MLBVacuum] Checking MLB injuries...")
         
-        injuries = await self.fetch_espn_injuries()
+        # Try BDL first (more reliable), fallback to ESPN
+        injuries = await self.fetch_bdl_injuries()
+        if not injuries:
+            logger.info("[MLBVacuum] No BDL injuries, trying ESPN...")
+            injuries = await self.fetch_espn_injuries()
+        
         self.last_injury_check = datetime.now(timezone.utc)
         
         triggered_vacuums = []
         status_changes = []
+        all_star_injuries = []  # Track all star injuries for display
         
         for injury in injuries:
             player_name = injury.get("player_name", "")
@@ -317,6 +387,16 @@ class MLBInjuryVacuumService:
             
             if not is_star:
                 continue
+            
+            # Track all star injuries (even if no beneficiaries)
+            all_star_injuries.append({
+                "player": player_name,
+                "team": injury.get("team"),
+                "status": current_status,
+                "injury_type": injury.get("injury_type"),
+                "details": injury.get("details"),
+                "source": injury.get("source")
+            })
             
             # Check if status triggers a vacuum
             if current_status in TRIGGER_STATUSES:
@@ -376,6 +456,7 @@ class MLBInjuryVacuumService:
             "success": True,
             "injuries_checked": len(injuries),
             "stars_out": len(triggered_vacuums),
+            "star_injuries": all_star_injuries,  # All star injuries for display
             "triggered_vacuums": triggered_vacuums,
             "status_changes": status_changes,
             "timestamp": datetime.now(timezone.utc).isoformat()

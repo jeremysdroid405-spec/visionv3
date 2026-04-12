@@ -45,6 +45,11 @@ Restructure the React/FastAPI betting app to a 100% Local-First Database Model, 
   - Properly parsing BDL `/mlb/v1/games` endpoint fields: `status`, `period`, `home_team_data.runs`, `inning_scores`
   - Inning half logic: Calculates "Top"/"Bot" from `away_inning_scores.length` vs `home_inning_scores.length`
   - Status displays: "Top 6", "Bot 9", "Final" with real scores (e.g., NYY 4 @ TB 3 Bot 10)
+- [x] **MLB Live Injury Advantage Fix (April 12, 2026)**
+  - Switched from ESPN API (returning 0 injuries) to BDL `/mlb/v1/player_injuries` endpoint
+  - Now correctly fetches star player injuries (Mookie Betts, Juan Soto, etc.)
+  - Displays beneficiary opportunities with AB bumps (Teoscar Hernandez +0.5 AB, etc.)
+  - BDL injury status mapping: "10-Day-IL"/"60-Day-IL" → "OUT", "Day-To-Day" → "DTD"
 
 ### In Progress
 - [ ] MLB headshot sync (~700 players remaining)
