@@ -210,8 +210,8 @@ async def get_live_vacuum_alerts(response: Response, refresh: bool = False):
     active_props_by_player = {}
     
     try:
-        cached_board = _db.get_collection("dg_cached_board") if _db else None
-        if cached_board:
+        if _db is not None:
+            cached_board = _db.get_collection("dg_cached_board")
             async for player_doc in cached_board.find({}, {"player_name": 1, "props": 1, "_id": 0}):
                 player_name = player_doc.get("player_name")
                 if player_name:
