@@ -22,7 +22,7 @@ const CommandSearch = memo(({ onPlayerSelect, placeholder }) => {
   const [showResults, setShowResults] = useState(false);
   
   // Get current sport from context
-  const { sport } = useSport();
+  const { currentSport } = useSport();
   
   // Ref to track if we're clicking inside the component
   const containerRef = React.useRef(null);
@@ -51,11 +51,11 @@ const CommandSearch = memo(({ onPlayerSelect, placeholder }) => {
   }, []);
 
   // PIPE 2: Search players via usePlayerSearch hook - NOW SPORT-AWARE
-  const { data: searchData, isLoading: loading } = usePlayerSearch(debouncedQuery, sport);
+  const { data: searchData, isLoading: loading } = usePlayerSearch(debouncedQuery, currentSport);
   const results = searchData?.players || [];
   
   // Dynamic placeholder based on sport
-  const sportPlaceholder = placeholder || (sport === 'mlb' ? 'Search MLB players...' : 'Search NBA players...');
+  const sportPlaceholder = placeholder || (currentSport === 'mlb' ? 'Search MLB players...' : 'Search NBA players...');
 
   const handleInputChange = (e) => {
     const value = e.target.value;
