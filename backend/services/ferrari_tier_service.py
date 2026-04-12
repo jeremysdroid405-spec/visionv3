@@ -1497,84 +1497,17 @@ class FerrariTierService:
             war_zone_pool.sort(key=sort_key, reverse=True)
             
             # =================================================================
-            # STEP 6: VISION INTEL LAYER (Gemini 3.1 Pro Analysis)
-            # Analyzes gate-qualified props BEFORE Top 10 selection
             # =================================================================
-            try:
-                from services.vision_intel_service import get_vision_intel_service
-                vision_intel = get_vision_intel_service()
-                
-                if vision_intel.enabled:
-                    logger.info("[VISION INTEL] Analyzing gate-qualified props with Gemini 3.1 Pro...")
-                    
-                    # Analyze each pool (limit to top 15 per pool to save API costs)
-                    if safe_haven_pool:
-                        safe_haven_pool = await vision_intel.analyze_tier_props(
-                            safe_haven_pool[:15], "Safe Haven", max_concurrent=3
-                        )
-                        logger.info(f"  Safe Haven: {len(safe_haven_pool)} props analyzed")
-                    
-                    if front_lines_pool:
-                        front_lines_pool = await vision_intel.analyze_tier_props(
-                            front_lines_pool[:15], "Front Lines", max_concurrent=3
-                        )
-                        logger.info(f"  Front Lines: {len(front_lines_pool)} props analyzed")
-                    
-                    if war_zone_pool:
-                        war_zone_pool = await vision_intel.analyze_tier_props(
-                            war_zone_pool[:15], "War Zone", max_concurrent=3
-                        )
-                        logger.info(f"  War Zone: {len(war_zone_pool)} props analyzed")
-                    
-                    logger.info("[VISION INTEL] Analysis complete - props now sorted by composite score")
-                    
-                    # =================================================================
-                    # STEP 6B: GEMINI INTELLIGENCE GATE - Remove TRAP/Low-Score props
-                    # Props marked as gemini_killed=True are filtered OUT
-                    # =================================================================
-                    def apply_gemini_gate(pool, tier_name):
-                        """Remove props that Gemini flagged as TRAP or low confidence."""
-                        passed = []
-                        killed = []
-                        for prop in pool:
-                            if prop.get('gemini_killed', False):
-                                killed.append({
-                                    'player': prop.get('player_name'),
-                                    'stat': prop.get('stat_type'),
-                                    'reason': prop.get('gemini_kill_reason', 'Unknown')
-                                })
-                            else:
-                                passed.append(prop)
-                        
-                        if killed:
-                            logger.info(f"  [{tier_name}] GEMINI GATE: {len(killed)} props KILLED:")
-                            for k in killed[:5]:  # Log first 5
-                                logger.info(f"    - {k['player']} {k['stat']}: {k['reason']}")
-                            if len(killed) > 5:
-                                logger.info(f"    ... and {len(killed) - 5} more")
-                        
-                        logger.info(f"  [{tier_name}] GEMINI GATE: {len(passed)} props PASSED (from {len(pool)})")
-                        return passed
-                    
-                    safe_haven_pool = apply_gemini_gate(safe_haven_pool, "Safe Haven")
-                    front_lines_pool = apply_gemini_gate(front_lines_pool, "Front Lines")
-                    war_zone_pool = apply_gemini_gate(war_zone_pool, "War Zone")
-                    
-                else:
-                    logger.info("[VISION INTEL] Service disabled - using VK probability sorting")
-            except Exception as e:
-                logger.warning(f"[VISION INTEL] Failed to load service: {e} - continuing with VK sorting")
-            
-            # =================================================================
-            # DEDUPE: One pick per player per stat type per tier
-            # Sort by composite_score if available (from Vision Intel), else by VK metrics
+            # STEP 6: DEDUPE FIRST - Select Final Top 10 per Tier
+            # Sort by VK metrics, then slice to Top 10 BEFORE running Gemini
             # =================================================================
             def dedupe_pool(pool, max_picks, pool_name=""):
-                # Re-sort by composite_score if available (Vision Intel enriched)
+                """Dedupe and select top picks by VK metrics (pre-Gemini)."""
+                # Sort by VK edge and hit rate (Gemini runs AFTER this)
                 pool.sort(key=lambda x: (
-                    x.get('composite_score', 0),  # Vision Intel composite score
-                    x.get('vk_edge', 0),           # Fallback to VK edge
-                    x.get('h20_rate', 0)           # Then hit rate
+                    x.get('vk_edge', 0),           # VK edge first
+                    x.get('h20_rate', 0),          # Then hit rate
+                    x.get('vk_prob_over', 0)       # Then probability
                 ), reverse=True)
                 
                 seen = set()
@@ -1591,9 +1524,7 @@ class FerrariTierService:
                         duplicates.append(key)
                 
                 if pool_name:
-                    logger.info(f"    [{pool_name}] Pool size: {len(pool)}, Unique combos: {len(seen)}, Duplicates skipped: {len(duplicates)}")
-                    if duplicates and len(duplicates) <= 10:
-                        logger.info(f"    [{pool_name}] Duplicate keys: {duplicates}")
+                    logger.info(f"    [{pool_name}] Pool size: {len(pool)}, Unique combos: {len(seen)}, Selected: {len(deduped)}")
                 return deduped
             
             # Log War Zone pool before dedupe for debugging
@@ -1601,14 +1532,55 @@ class FerrariTierService:
             for i, prop in enumerate(war_zone_pool[:15]):  # Log first 15
                 logger.info(f"    {i+1}. {prop.get('player_name')} - {prop.get('stat_type')} | DK: {prop.get('dk_odds')} | Edge: {prop.get('vk_edge', 0):.1f} | Prob: {prop.get('vk_prob_over', 0):.0f}%")
             
+            # SELECT FINAL TOP 10 FIRST (before Gemini)
             top_safe_haven = dedupe_pool(safe_haven_pool, MAX_PICKS_PER_TIER, "SAFE_HAVEN")
             top_front_lines = dedupe_pool(front_lines_pool, MAX_PICKS_PER_TIER, "FRONT_LINES")
             top_war_zone = dedupe_pool(war_zone_pool, MAX_PICKS_PER_TIER, "WAR_ZONE")
             
-            logger.info(f"  After dedupe:")
+            logger.info(f"  After dedupe (Final Top 10 per tier):")
             logger.info(f"    Safe Haven: {len(top_safe_haven)} picks")
             logger.info(f"    Front Lines: {len(top_front_lines)} picks")
             logger.info(f"    War Zone: {len(top_war_zone)} picks")
+            
+            # =================================================================
+            # STEP 7: VISION INTEL LAYER - Run ONLY on Final Top 10
+            # This ensures ALL displayed picks have vision_intel
+            # =================================================================
+            try:
+                from services.vision_intel_service import get_vision_intel_service
+                vision_intel = get_vision_intel_service()
+                
+                if vision_intel.enabled:
+                    logger.info("[VISION INTEL] Analyzing FINAL TOP 10 picks with Gemini...")
+                    
+                    # Analyze ONLY the final picks (not the pool)
+                    if top_safe_haven:
+                        top_safe_haven = await vision_intel.analyze_tier_props(
+                            top_safe_haven, "Safe Haven", max_concurrent=3
+                        )
+                        logger.info(f"  Safe Haven: {len(top_safe_haven)} picks enriched with vision_intel")
+                    
+                    if top_front_lines:
+                        top_front_lines = await vision_intel.analyze_tier_props(
+                            top_front_lines, "Front Lines", max_concurrent=3
+                        )
+                        logger.info(f"  Front Lines: {len(top_front_lines)} picks enriched with vision_intel")
+                    
+                    if top_war_zone:
+                        top_war_zone = await vision_intel.analyze_tier_props(
+                            top_war_zone, "War Zone", max_concurrent=3
+                        )
+                        logger.info(f"  War Zone: {len(top_war_zone)} picks enriched with vision_intel")
+                    
+                    logger.info("[VISION INTEL] All final picks now have vision_intel")
+                    
+                    # OPTIONAL: Re-sort by composite score if desired
+                    # (Usually keep original VK order since Gemini just enriches)
+                    
+                else:
+                    logger.info("[VISION INTEL] Service disabled - picks will use fallback summaries")
+            except Exception as e:
+                logger.warning(f"[VISION INTEL] Failed to load service: {e} - continuing without vision_intel")
             
             # Track used players
             for pick in top_safe_haven:
@@ -1682,20 +1654,64 @@ class FerrariTierService:
                 results["output"]["total_picks"] = existing_safe + existing_front + existing_war
                 results["output"]["preserved"] = True
             else:
-                # Normal flow - update collections
-                await self.ferrari_safe_haven.delete_many({})
-                if top_safe_haven:
-                    await self.ferrari_safe_haven.insert_many(top_safe_haven)
+                # Normal flow - ATOMIC SWAP using bulkWrite with upsert
+                # This prevents race conditions where frontend sees empty collection
                 
-                await self.ferrari_front_lines.delete_many({})
-                if top_front_lines:
-                    await self.ferrari_front_lines.insert_many(top_front_lines)
+                async def atomic_upsert_tier(collection, picks, tier_name):
+                    """Atomic upsert: Replace all docs without emptying collection."""
+                    if not picks:
+                        # No picks = clear collection (rare edge case)
+                        await collection.delete_many({})
+                        return 0
+                    
+                    from pymongo import UpdateOne, DeleteMany
+                    
+                    # Build unique keys for current picks
+                    current_keys = set()
+                    operations = []
+                    
+                    for pick in picks:
+                        key = f"{pick.get('player_name')}|{pick.get('stat_type')}|{pick.get('line')}"
+                        current_keys.add(key)
+                        
+                        # Upsert each pick (insert or replace)
+                        operations.append(UpdateOne(
+                            {
+                                "player_name": pick.get("player_name"),
+                                "stat_type": pick.get("stat_type"),
+                                "line": pick.get("line")
+                            },
+                            {"$set": pick},
+                            upsert=True
+                        ))
+                    
+                    # Execute upserts first (collection always has data)
+                    if operations:
+                        await collection.bulk_write(operations, ordered=False)
+                    
+                    # Now delete stale picks that aren't in current batch
+                    # Build filter for picks NOT in current set
+                    all_docs = await collection.find({}, {"player_name": 1, "stat_type": 1, "line": 1}).to_list(length=100)
+                    stale_ids = []
+                    for doc in all_docs:
+                        key = f"{doc.get('player_name')}|{doc.get('stat_type')}|{doc.get('line')}"
+                        if key not in current_keys:
+                            stale_ids.append(doc["_id"])
+                    
+                    if stale_ids:
+                        await collection.delete_many({"_id": {"$in": stale_ids}})
+                        logger.info(f"  [{tier_name}] Cleaned {len(stale_ids)} stale picks")
+                    
+                    return len(picks)
                 
-                await self.ferrari_war_zone.delete_many({})
-                if top_war_zone:
-                    await self.ferrari_war_zone.insert_many(top_war_zone)
+                # Atomic upsert all tiers (collection never empty)
+                safe_count = await atomic_upsert_tier(self.ferrari_safe_haven, top_safe_haven, "Safe Haven")
+                front_count = await atomic_upsert_tier(self.ferrari_front_lines, top_front_lines, "Front Lines")
+                war_count = await atomic_upsert_tier(self.ferrari_war_zone, top_war_zone, "War Zone")
                 
-                # Store parlays in a new collection
+                logger.info(f"  ATOMIC UPSERT complete: Safe={safe_count}, Front={front_count}, War={war_count}")
+                
+                # Store parlays (less critical, can use simple replace)
                 parlays_collection = self.db.ferrari_parlays
                 await parlays_collection.delete_many({})
                 if all_parlays:

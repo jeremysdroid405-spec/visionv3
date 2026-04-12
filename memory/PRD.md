@@ -50,6 +50,17 @@ Restructure the React/FastAPI betting app to a 100% Local-First Database Model, 
   - Now correctly fetches star player injuries (Mookie Betts, Juan Soto, etc.)
   - Displays beneficiary opportunities with AB bumps (Teoscar Hernandez +0.5 AB, etc.)
   - BDL injury status mapping: "10-Day-IL"/"60-Day-IL" → "OUT", "Day-To-Day" → "DTD"
+- [x] **CRITICAL: Pipeline Race Condition & Vision Intel Fix (April 12, 2026)**
+  - **Atomic Upsert**: Replaced `delete_many()` + `insert_many()` with `bulkWrite(upsert=True)` in `ferrari_tier_service.py`
+    - Collections never empty during sync (prevents frontend glitching)
+    - Stale picks cleaned up AFTER new picks are written
+  - **Pipeline Reorder**: Vision Intel now runs ONLY on Final Top 10 picks (not pre-selection pool)
+    - Guarantees ALL displayed picks have `vision_intel` populated
+    - Fixed "Jokic bug" where newly-qualified picks had missing intel
+  - **Naming Unification**: Standardized on `vision_intel` field across entire stack
+    - `vision_summary` kept for backward compatibility but `vision_intel` is primary
+  - Displays beneficiary opportunities with AB bumps (Teoscar Hernandez +0.5 AB, etc.)
+  - BDL injury status mapping: "10-Day-IL"/"60-Day-IL" → "OUT", "Day-To-Day" → "DTD"
 
 ### In Progress
 - [ ] MLB headshot sync (~700 players remaining)

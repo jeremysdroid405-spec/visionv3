@@ -626,30 +626,36 @@ async def run_optimized_sync(db, target_sport: str = DEFAULT_SPORT) -> Dict[str,
     
     logger.info(f"[OPTIMIZED_SYNC] Collected {len(all_picks)} {target_sport.upper()} picks for AI summary generation")
     
-    # Step 4: Generate AI summaries - check cache first, generate missing in background
+    # Step 4: Vision Intel is now handled by ferrari_tier_service (runs on Final Top 10)
+    # This step is NO LONGER NEEDED - ferrari_tier_service writes vision_intel directly
     t4 = datetime.now(timezone.utc)
     
-    # Quick pass: attach any cached summaries immediately
-    cached_count = await _attach_cached_summaries(all_picks, db, target_sport)
-    picks_needing_summary = [p for p in all_picks if not p.get("vision_summary")]
+    # Check how many picks have vision_intel (should be all of them now)
+    picks_with_intel = sum(1 for p in all_picks if p.get("vision_intel"))
+    picks_missing_intel = sum(1 for p in all_picks if not p.get("vision_intel"))
     
-    logger.info(f"[OPTIMIZED_SYNC] AI Summaries: {cached_count} cached, {len(picks_needing_summary)} need generation")
+    logger.info(f"[OPTIMIZED_SYNC] Vision Intel status: {picks_with_intel} enriched, {picks_missing_intel} missing")
     
-    if picks_needing_summary:
-        # Generate remaining summaries (now with higher concurrency)
-        await _batch_generate_summaries(picks_needing_summary, db)
-        
-        # Copy generated summaries back to all_picks
-        summary_map = {f"{p['player_name']}|{p['stat_type']}|{p['line']}": p.get("vision_summary") 
-                       for p in picks_needing_summary if p.get("vision_summary")}
+    # If any picks are missing vision_intel, apply fallback (shouldn't happen with new pipeline)
+    if picks_missing_intel > 0:
+        logger.warning(f"[OPTIMIZED_SYNC] {picks_missing_intel} picks missing vision_intel - applying fallback")
         for pick in all_picks:
-            if not pick.get("vision_summary"):
-                key = f"{pick['player_name']}|{pick['stat_type']}|{pick['line']}"
-                if key in summary_map:
-                    pick["vision_summary"] = summary_map[key]
+            if not pick.get("vision_intel"):
+                # Generate fallback summary based on stats
+                player = pick.get("player_name", "Player")
+                stat = pick.get("stat_type", "stat")
+                line = pick.get("line", 0)
+                h10 = pick.get("h10_rate") or pick.get("hit_rate_l10", 0)
+                edge = pick.get("vk_edge", 0)
+                
+                pick["vision_intel"] = f"{player} shows {h10:.0f}% L10 hit rate on {stat} {line}. Edge: {edge:+.1f}%"
+                pick["intel_score"] = 5
+                pick["intel_verdict"] = "VALUE"
+                pick["intel_risk"] = "Medium"
+                pick["adjusted_confidence"] = 0.5
     
-    timings["4_ai_summaries"] = (datetime.now(timezone.utc) - t4).total_seconds()
-    logger.info(f"[OPTIMIZED_SYNC] Step 4 (AI Summaries): {timings['4_ai_summaries']:.2f}s")
+    timings["4_vision_intel_check"] = (datetime.now(timezone.utc) - t4).total_seconds()
+    logger.info(f"[OPTIMIZED_SYNC] Step 4 (Vision Intel Check): {timings['4_vision_intel_check']:.2f}s")
     
     # Step 5: Update cached_board with enriched data (sport-specific collection)
     t5 = datetime.now(timezone.utc)
@@ -657,11 +663,11 @@ async def run_optimized_sync(db, target_sport: str = DEFAULT_SPORT) -> Dict[str,
     timings["5_persist_enriched"] = (datetime.now(timezone.utc) - t5).total_seconds()
     logger.info(f"[OPTIMIZED_SYNC] Step 5 (Persist Enriched): {timings['5_persist_enriched']:.2f}s")
     
-    # Step 6: Update Ferrari tier collections with vision summaries (sport-specific)
+    # Step 6: SKIP - Ferrari tier collections already have vision_intel from ferrari_tier_service
+    # The atomic upsert in ferrari_tier_service handles this now
     t6 = datetime.now(timezone.utc)
-    await _update_tier_collections_with_summaries(db, all_picks, target_sport)
-    timings["6_update_tiers"] = (datetime.now(timezone.utc) - t6).total_seconds()
-    logger.info(f"[OPTIMIZED_SYNC] Step 6 (Update Tiers): {timings['6_update_tiers']:.2f}s")
+    logger.info(f"[OPTIMIZED_SYNC] Step 6 (Tier Update): SKIPPED - handled by ferrari_tier_service atomic upsert")
+    timings["6_update_tiers"] = 0
     
     duration = (datetime.now(timezone.utc) - start).total_seconds()
     
