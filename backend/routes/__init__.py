@@ -4,7 +4,7 @@ from .parlays import router as parlays_router, set_engine as set_parlays_engine
 from .board import router as board_router, set_engine as set_board_engine, set_photo_service
 from .board_intel_v2 import router as board_intel_v2_router, set_board_intel_deps
 from .auth import router as auth_router, profile_router
-from .injuries import router as injuries_router, set_injury_service
+from .injuries import router as injuries_router, set_injury_service, set_live_injury_service
 from .vision import router as vision_router, player_router as player_vision_router, context_router as context_router, set_vision_service
 from .live_scores import router as live_scores_router, command_center_router, set_live_scores_engine
 from .ai_context import router as ai_context_router, set_ai_context_deps
@@ -73,6 +73,13 @@ def register_all_routes(app, engine, game_lock_engine=None, db=None,
     # Set services for new routes
     if injury_service is not None:
         set_injury_service(injury_service)
+    
+    # Initialize and set live injury micro-sync service
+    if db is not None:
+        from services.live_injury_micro_sync import init_live_injury_service
+        live_injury_svc = init_live_injury_service(db)
+        set_live_injury_service(live_injury_svc)
+        
     # Always set db for vision routes (needed for badge/context system)
     if db is not None:
         set_vision_service(vision_service, db)

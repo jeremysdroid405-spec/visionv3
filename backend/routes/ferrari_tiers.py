@@ -817,6 +817,16 @@ async def get_ferrari_safe_haven(
     cursor = collection.find({}, {"_id": 0}).limit(limit)
     picks = await cursor.to_list(length=limit)
     
+    # JIT Injury Check for NBA picks
+    if sport == "nba" and picks:
+        try:
+            from services.live_injury_micro_sync import get_live_injury_service
+            live_injury_svc = get_live_injury_service()
+            if live_injury_svc:
+                picks = await live_injury_svc.jit_filter_picks(picks, sport="nba")
+        except Exception as e:
+            logger.warning(f"[SAFE_HAVEN NBA] JIT injury check failed: {e}")
+    
     # MLB Fallback: If no picks in tier collection, get from cached_board
     if not picks and sport == "mlb":
         # =====================================================================
@@ -883,6 +893,17 @@ async def get_ferrari_safe_haven(
         safe_picks = dedupe_mlb_props(safe_picks, sort_key="hit_rate_l10")
         safe_picks.sort(key=lambda x: x.get("hit_rate_l10", 0), reverse=True)
         picks = safe_picks[:limit]
+        
+        # =====================================================================
+        # JIT INJURY CHECK - Filter out injured players before finalization
+        # =====================================================================
+        try:
+            from services.live_injury_micro_sync import get_live_injury_service
+            live_injury_svc = get_live_injury_service()
+            if live_injury_svc:
+                picks = await live_injury_svc.jit_filter_picks(picks, sport="mlb")
+        except Exception as e:
+            logger.warning(f"[SAFE_HAVEN MLB] JIT injury check failed: {e}")
         
         # =====================================================================
         # GEMINI BATCH CALL - Generate AI summaries for all MLB props at once
@@ -972,6 +993,16 @@ async def get_ferrari_front_lines(
     cursor = collection.find({}, {"_id": 0}).limit(limit)
     picks = await cursor.to_list(length=limit)
     
+    # JIT Injury Check for NBA picks
+    if sport == "nba" and picks:
+        try:
+            from services.live_injury_micro_sync import get_live_injury_service
+            live_injury_svc = get_live_injury_service()
+            if live_injury_svc:
+                picks = await live_injury_svc.jit_filter_picks(picks, sport="nba")
+        except Exception as e:
+            logger.warning(f"[FRONT_LINES NBA] JIT injury check failed: {e}")
+    
     # MLB Fallback: If no picks in tier collection, get from cached_board
     if not picks and sport == "mlb":
         # =====================================================================
@@ -1027,6 +1058,15 @@ async def get_ferrari_front_lines(
         front_picks = dedupe_mlb_props(front_picks, sort_key="hit_rate_l10")
         front_picks.sort(key=lambda x: x.get("hit_rate_l10", 0), reverse=True)
         picks = front_picks[:limit]
+        
+        # JIT Injury Check
+        try:
+            from services.live_injury_micro_sync import get_live_injury_service
+            live_injury_svc = get_live_injury_service()
+            if live_injury_svc:
+                picks = await live_injury_svc.jit_filter_picks(picks, sport="mlb")
+        except Exception as e:
+            logger.warning(f"[FRONT_LINES MLB] JIT injury check failed: {e}")
         
         # Gemini batch call
         try:
@@ -1105,6 +1145,16 @@ async def get_ferrari_war_zone(
     cursor = collection.find({}, {"_id": 0}).limit(limit)
     picks = await cursor.to_list(length=limit)
     
+    # JIT Injury Check for NBA picks
+    if sport == "nba" and picks:
+        try:
+            from services.live_injury_micro_sync import get_live_injury_service
+            live_injury_svc = get_live_injury_service()
+            if live_injury_svc:
+                picks = await live_injury_svc.jit_filter_picks(picks, sport="nba")
+        except Exception as e:
+            logger.warning(f"[WAR_ZONE NBA] JIT injury check failed: {e}")
+    
     # MLB Fallback: If no picks in tier collection, get from cached_board
     if not picks and sport == "mlb":
         # =====================================================================
@@ -1159,6 +1209,15 @@ async def get_ferrari_war_zone(
         war_picks = dedupe_mlb_props(war_picks, sort_key="edge")
         war_picks.sort(key=lambda x: x.get("edge", 0) or 0, reverse=True)
         picks = war_picks[:limit]
+        
+        # JIT Injury Check
+        try:
+            from services.live_injury_micro_sync import get_live_injury_service
+            live_injury_svc = get_live_injury_service()
+            if live_injury_svc:
+                picks = await live_injury_svc.jit_filter_picks(picks, sport="mlb")
+        except Exception as e:
+            logger.warning(f"[WAR_ZONE MLB] JIT injury check failed: {e}")
         
         # Gemini batch call
         try:

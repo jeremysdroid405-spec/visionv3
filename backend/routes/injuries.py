@@ -1,9 +1,9 @@
 """
 Injuries Routes Module
 ======================
-Handles injury-related endpoints
+Handles injury-related endpoints including live micro-sync
 """
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 import logging
 
 logger = logging.getLogger(__name__)
@@ -12,12 +12,52 @@ router = APIRouter(prefix="/v3/injuries", tags=["injuries"])
 
 # Injury service reference (set by main app)
 _injury_service = None
+_live_injury_service = None
 
 
 def set_injury_service(service):
     """Set the injury service reference."""
     global _injury_service
     _injury_service = service
+
+
+def set_live_injury_service(service):
+    """Set the live injury micro-sync service reference."""
+    global _live_injury_service
+    _live_injury_service = service
+
+
+@router.get("/live")
+async def get_live_injuries(sport: str = Query(None, description="Filter by sport: nba or mlb")):
+    """
+    Get LIVE injury data from micro-sync cache.
+    
+    This endpoint returns the most up-to-date injury information
+    from the high-frequency polling loop (60-second refresh).
+    
+    Returns:
+    - high_risk: OUT, DOUBTFUL, IL players
+    - medium_risk: DTD, GTD, QUESTIONABLE players
+    - last_sync: Timestamp of last successful sync
+    """
+    if _live_injury_service is None:
+        raise HTTPException(status_code=500, detail="Live Injury Service not initialized")
+    
+    return await _live_injury_service.get_live_injuries(sport)
+
+
+@router.post("/live/sync")
+async def trigger_live_injury_sync():
+    """
+    Manually trigger a live injury sync.
+    
+    Useful for forcing an immediate refresh instead of waiting
+    for the next polling interval.
+    """
+    if _live_injury_service is None:
+        raise HTTPException(status_code=500, detail="Live Injury Service not initialized")
+    
+    return await _live_injury_service.fetch_live_injuries()
 
 
 @router.post("/sync")
