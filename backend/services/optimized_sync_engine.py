@@ -579,8 +579,16 @@ async def run_optimized_sync(db, target_sport: str = DEFAULT_SPORT) -> Dict[str,
     
     # Step 2: Run Ferrari pipeline (builds ferrari_scored, ferrari_safe_haven, etc.)
     t2 = datetime.now(timezone.utc)
-    from services.ferrari_tier_service import get_ferrari_tier_service
-    ferrari_service = get_ferrari_tier_service(db)
+    
+    # Route to sport-specific tier service
+    if target_sport == "mlb":
+        from services.mlb_tier_service import get_mlb_tier_service
+        ferrari_service = get_mlb_tier_service(db)
+        logger.info("[OPTIMIZED_SYNC] Using MLB Tier Service (Oracle Apex 2026 Logic)")
+    else:
+        from services.ferrari_tier_service import get_ferrari_tier_service
+        ferrari_service = get_ferrari_tier_service(db)
+        logger.info("[OPTIMIZED_SYNC] Using NBA Ferrari Tier Service")
     
     # Pass the pre-fetched cache and target_sport to Ferrari for use during scoring
     ferrari_result = await ferrari_service.build_ferrari_tiers(start, target_sport=target_sport)

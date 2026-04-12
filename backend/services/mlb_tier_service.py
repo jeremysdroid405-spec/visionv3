@@ -1556,16 +1556,29 @@ class MLBTierService:
             logger.info(f"[MLB_ORACLE_APEX] Oracle Apex returned {len(safe_haven_pool)} Safe Haven picks")
             
             # ====================================================================
-            # FRONT LINES & WAR ZONE: Continue with DK odds-based classification
+            # FRONT LINES: Use Oracle Apex Service for 2026 Logic (L10 Recency Override)
             # ====================================================================
-            front_lines_pool = []
+            logger.info("[MLB_ORACLE_APEX] Delegating Front Lines tier to Oracle Apex Service...")
+            
+            front_lines_pool = await oracle_apex.build_front_lines_tier(all_mlb_props)
+            
+            logger.info(f"[MLB_ORACLE_APEX] Oracle Apex returned {len(front_lines_pool)} Front Lines picks")
+            
+            # ====================================================================
+            # WAR ZONE: Continue with DK odds-based classification (Demons only)
+            # ====================================================================
             war_zone_pool = []
             
-            # Track which props are already in Safe Haven (avoid duplicates)
+            # Track which props are already in Safe Haven or Front Lines (avoid duplicates)
             safe_haven_keys = set()
             for sh_prop in safe_haven_pool:
                 key = f"{sh_prop.get('player_name')}|{sh_prop.get('stat_type')}|{sh_prop.get('line')}"
                 safe_haven_keys.add(key)
+            
+            front_lines_keys = set()
+            for fl_prop in front_lines_pool:
+                key = f"{fl_prop.get('player_name')}|{fl_prop.get('stat_type')}|{fl_prop.get('line')}"
+                front_lines_keys.add(key)
             
             for prop in all_mlb_props:
                 player_name = prop.get("player_name", "")
@@ -1582,9 +1595,9 @@ class MLBTierService:
                     stat_type = market_to_stat.get(market, "")
                 line = prop.get("line", 0)
                 
-                # Skip if already in Safe Haven
+                # Skip if already in Safe Haven or Front Lines
                 prop_key = f"{player_name}|{stat_type}|{line}"
-                if prop_key in safe_haven_keys:
+                if prop_key in safe_haven_keys or prop_key in front_lines_keys:
                     continue
                 
                 # Get DK odds directly from prop (already embedded in mlb_cached_board)
@@ -1601,9 +1614,8 @@ class MLBTierService:
                     )
                 
                 is_demon = prop.get("is_demon", False)
-                is_goblin = prop.get("is_goblin", False)
                 
-                # For Front Lines / War Zone: check hit rates as qualification
+                # For War Zone: check hit rates as qualification
                 hit_rate_l10 = prop.get("hit_rate_l10") or prop.get("h10_rate") or 0
                 hit_rate_l5 = prop.get("hit_rate_l5") or prop.get("h5_rate") or 0
                 is_mlb_qualified = hit_rate_l10 >= 50 or hit_rate_l5 >= 50  # At least 50% hit rate
@@ -1613,51 +1625,31 @@ class MLBTierService:
                 prop["dk_tier"] = classify_tier_by_dk_odds(dk_odds)
                 
                 # ==========================================================
-                # DK ODDS = TIER SEPARATION (Front Lines & War Zone)
-                # Safe Haven is handled by Oracle Apex above
+                # WAR ZONE: DK >= +200, Demons only
                 # ==========================================================
-                
-                if dk_odds is not None:
-                    # Skip Safe Haven range (already handled by Oracle Apex)
-                    if dk_odds <= DK_TIER_SAFE_HAVEN_MAX:  # <= -250
-                        # These should have been evaluated by Oracle Apex
-                        # If they didn't qualify, they don't go anywhere
-                        continue
-                    elif dk_odds >= DK_TIER_WAR_ZONE_MIN:  # >= +200
-                        # War Zone: Demons only - simplified to just check if demon + qualified
-                        if is_demon and is_mlb_qualified:
-                            prop["tier"] = "war_zone"
-                            prop["war_zone_qualified"] = True
-                            war_zone_pool.append(prop)
-                    else:  # -249 to +199
-                        # Front Lines: Any prop with decent hit rate
-                        if is_mlb_qualified:
-                            prop["tier"] = "front_lines"
-                            prop["front_lines_qualified"] = True
-                            front_lines_pool.append(prop)
-                else:
-                    # No DK odds - check for goblins/demons with good hit rates
-                    if (is_demon or is_goblin) and is_mlb_qualified:
-                        prop["tier"] = "front_lines"
-                        prop["dk_tier"] = "front_lines"
-                        prop["front_lines_qualified"] = True
-                        front_lines_pool.append(prop)
+                if dk_odds is not None and dk_odds >= DK_TIER_WAR_ZONE_MIN:  # >= +200
+                    if is_demon and is_mlb_qualified:
+                        prop["tier"] = "war_zone"
+                        prop["war_zone_qualified"] = True
+                        war_zone_pool.append(prop)
             
-            logger.info(f"  DK-based classification (after Oracle Apex Safe Haven):")
+            logger.info(f"  DK-based classification (after Oracle Apex tiers):")
             logger.info(f"    Safe Haven pool: {len(safe_haven_pool)} (via Oracle Apex 2026 Gates)")
-            logger.info(f"    Front Lines pool: {len(front_lines_pool)} (DK -249 to +199)")
+            logger.info(f"    Front Lines pool: {len(front_lines_pool)} (via Oracle Apex L10 Recency Override)")
             logger.info(f"    War Zone pool: {len(war_zone_pool)} demons (DK >= +200)")
             
             # =================================================================
-            # SORT EACH POOL BY VK_EDGE AND H20_RATE
+            # SORT EACH POOL BY BOARD SCORE (Oracle pools are pre-sorted)
             # =================================================================
             def sort_key(prop):
+                # Use board_score from Oracle Apex if available, otherwise VK metrics
+                board_score = prop.get("board_score") or 0
                 vk_edge = prop.get("vk_edge") or 0
                 h20_rate = prop.get("h20_rate") or 0
-                return (vk_edge, h20_rate)
+                return (board_score, vk_edge, h20_rate)
             
-            safe_haven_pool.sort(key=sort_key, reverse=True)
-            front_lines_pool.sort(key=sort_key, reverse=True)
+            # Safe Haven and Front Lines are already sorted by Oracle Apex
+            # Only sort War Zone
             war_zone_pool.sort(key=sort_key, reverse=True)
             
             # =================================================================

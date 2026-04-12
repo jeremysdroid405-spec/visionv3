@@ -750,6 +750,366 @@ class MLBOracleApexService:
         
         return top_10
     
+    async def build_front_lines_tier(self, all_picks: List[Dict]) -> List[Dict]:
+        """
+        Build the MLB Front Lines tier using 2026 logic with L10 Recency Override.
+        
+        FRONT LINES LOGIC (2026 Season):
+        ================================
+        
+        1. PRIMARY MARKET QUALIFICATIONS (The Filter):
+           - DK Odds: Must be strictly between -145 and -239 (inclusive)
+           - Prop Type: Must be STANDARD or GOBLIN (Reject DEMON)
+           - Lineup Status: is_lineup_confirmed MUST be True
+           - Pinnacle TP: De-vigged True Probability must be >= 58.0%
+        
+        2. PRE-COMPUTATION:
+           - Apply Matchup Modifier for Adjusted_VK_Projection
+        
+        3. 3-GATE CHECK with RECENCY OVERRIDE:
+           - Gate 1: Hit Rate (L20) with L10 >= 80% override
+           - Gate 2: CV <= max_cv
+           - Gate 3: Adjusted Edge >= min_edge
+        
+        4. FINAL SORT:
+           - Board_Score = TP_Prob + (Raw_Edge * 10) + (Hit_Rate_Pct * 0.1)
+           - Return Top 10
+        
+        Args:
+            all_picks: List of all props from the pipeline
+            
+        Returns:
+            List of Top 10 qualified Front Lines picks
+        """
+        logger.info("[MLB_FRONT_LINES] Building Front Lines tier with 2026 logic (L10 Recency Override)...")
+        logger.info(f"[MLB_FRONT_LINES] Input: {len(all_picks)} props to evaluate")
+        
+        # ====================================================================
+        # FRONT LINES THRESHOLD DICTIONARY (Raw Decimal Cushion Edges)
+        # More relaxed than Safe Haven - allows mid-juice plays
+        # ====================================================================
+        thresholds = {
+            "HITS": {"max_cv": 0.85, "min_l20": 13, "min_edge": 0.20},
+            "TB": {"max_cv": 0.95, "min_l20": 12, "min_edge": 0.30},
+            "K": {"max_cv": 0.60, "min_l20": 13, "min_edge": 0.80},
+            "OUTS": {"max_cv": 0.50, "min_l20": 14, "min_edge": 1.00},
+            "HRR": {"max_cv": 0.75, "min_l20": 13, "min_edge": 0.30},
+        }
+        
+        # Stat type aliases mapping to threshold keys
+        stat_aliases = {
+            "HITS": "HITS",
+            "TOTAL BASES": "TB", "TB": "TB", "TOTAL_BASES": "TB",
+            "PITCHER STRIKEOUTS": "K", "K": "K", "PITCHER_STRIKEOUTS": "K", "STRIKEOUTS": "K",
+            "PITCHING OUTS": "OUTS", "OUTS": "OUTS", "PITCHING_OUTS": "OUTS", "OUTS RECORDED": "OUTS",
+            "HRR": "HRR", "HITS+RUNS+RBIS": "HRR", "HITS_RUNS_RBIS": "HRR",
+        }
+        
+        # DK Odds range for Front Lines
+        DK_MIN = -239  # More negative = more juiced (inclusive)
+        DK_MAX = -145  # Less negative = less juiced (inclusive)
+        
+        # Minimum Pinnacle True Probability
+        MIN_PINNACLE_TP = 58.0
+        
+        # Track gate statistics
+        gate_stats = {
+            'total_input': len(all_picks),
+            'dk_odds_fail': 0,
+            'demon_rejected': 0,
+            'lineup_not_confirmed': 0,
+            'pinnacle_tp_fail': 0,
+            'unsupported_stat': 0,
+            'gate1_fail': 0,
+            'gate1_recency_override': 0,  # Track L10 overrides
+            'gate2_fail': 0,
+            'gate3_fail': 0,
+            'qualified': 0,
+        }
+        
+        qualified_picks = []
+        
+        for prop in all_picks:
+            # ================================================================
+            # 1. PRIMARY MARKET QUALIFICATIONS (The Filter)
+            # ================================================================
+            
+            # Get stat type and normalize
+            raw_stat = (prop.get("stat_type") or "").upper().replace(" ", "_")
+            stat_key = stat_aliases.get(raw_stat.replace("_", " "), stat_aliases.get(raw_stat))
+            
+            # Skip unsupported stats
+            if not stat_key or stat_key not in thresholds:
+                gate_stats['unsupported_stat'] += 1
+                continue
+            
+            cfg = thresholds[stat_key]
+            
+            # 1a. DK Odds: Must be strictly between -145 and -239 (inclusive)
+            dk_odds = prop.get("dk_odds")
+            if dk_odds is None:
+                dk_odds = prop.get("all_odds", {}).get("draftkings")
+            
+            if dk_odds is None:
+                gate_stats['dk_odds_fail'] += 1
+                continue
+            
+            # Front Lines range: -239 to -145 (inclusive on both ends)
+            if dk_odds < DK_MIN or dk_odds > DK_MAX:
+                gate_stats['dk_odds_fail'] += 1
+                continue
+            
+            # 1b. Prop Type: Must be STANDARD or GOBLIN (Reject DEMON)
+            is_demon = prop.get("is_demon", False)
+            if is_demon:
+                gate_stats['demon_rejected'] += 1
+                continue
+            
+            # 1c. Lineup Status: is_lineup_confirmed MUST be True
+            is_lineup_confirmed = prop.get("is_lineup_confirmed")
+            if not is_lineup_confirmed:
+                gate_stats['lineup_not_confirmed'] += 1
+                continue
+            
+            # 1d. Pinnacle TP: De-vigged True Probability must be >= 58.0%
+            pinnacle_tp = prop.get("pinnacle_tp") or prop.get("vk_prob_over") or prop.get("vk_probability")
+            if pinnacle_tp is None or pinnacle_tp < MIN_PINNACLE_TP:
+                gate_stats['pinnacle_tp_fail'] += 1
+                continue
+            
+            # ================================================================
+            # 2. PRE-COMPUTATION (Matchup Modifier)
+            # ================================================================
+            
+            # Get raw VK projection
+            raw_vk_pred = prop.get("vk_predicted") or prop.get("raw_vk_pred")
+            if not raw_vk_pred or raw_vk_pred <= 0:
+                continue
+            
+            # Get opponent for matchup calculation
+            opponent = prop.get("opponent") or prop.get("opponent_abbr")
+            
+            # Calculate matchup modifier and adjusted projection
+            matchup_modifier = self._get_matchup_modifier(raw_stat, opponent) if opponent else 1.0
+            adjusted_vk_pred = raw_vk_pred * matchup_modifier
+            
+            # Get prop line
+            line = prop.get("line", 0)
+            if line <= 0:
+                continue
+            
+            # ================================================================
+            # 3. THE 3-GATE CHECK with RECENCY OVERRIDE
+            # ================================================================
+            
+            # Get L20 and L10 hit data
+            l20_hits = prop.get("l20_hits")
+            l10_hits = prop.get("l10_hits")
+            cv = prop.get("cv") or prop.get("vk_cv")
+            
+            # If L20 hits not directly available, calculate from hit rate
+            if l20_hits is None:
+                h20_rate = prop.get("h20_rate") or prop.get("hit_rate_l20")
+                if h20_rate is not None:
+                    l20_hits = int((h20_rate / 100) * 20)
+                else:
+                    gate_stats['gate1_fail'] += 1
+                    continue
+            
+            # If L10 hits not directly available, calculate from hit rate
+            if l10_hits is None:
+                h10_rate = prop.get("h10_rate") or prop.get("hit_rate_l10")
+                if h10_rate is not None:
+                    l10_hits = int((h10_rate / 100) * 10)
+                else:
+                    l10_hits = 0  # Default to 0 if no L10 data
+            
+            # ----------------------------------------------------------------
+            # GATE 1: Hit Rate (L20) with L10 RECENCY OVERRIDE
+            # ----------------------------------------------------------------
+            # Primary check: L20 >= min_l20
+            # CRITICAL RECENCY EXCEPTION: If L20 fails, check L10.
+            # If L10 hit rate >= 8/10 (80%), override the failure and PASS Gate 1.
+            # ----------------------------------------------------------------
+            passes_gate1 = l20_hits >= cfg["min_l20"]
+            used_recency_override = False
+            
+            if not passes_gate1:
+                # Check L10 Recency Override: >= 8/10 (80%)
+                if l10_hits >= 8:
+                    passes_gate1 = True
+                    used_recency_override = True
+                    gate_stats['gate1_recency_override'] += 1
+                    logger.debug(f"[MLB_FRONT_LINES] RECENCY_OVERRIDE: {prop.get('player_name')} - "
+                                f"{stat_key} | L20: {l20_hits}/20 FAILED but L10: {l10_hits}/10 PASSED")
+            
+            if not passes_gate1:
+                gate_stats['gate1_fail'] += 1
+                continue
+            
+            # ----------------------------------------------------------------
+            # GATE 2: Consistency (CV)
+            # CV must be <= max_cv
+            # ----------------------------------------------------------------
+            if cv is None or cv > cfg["max_cv"]:
+                gate_stats['gate2_fail'] += 1
+                continue
+            
+            # ----------------------------------------------------------------
+            # GATE 3: Adjusted Edge
+            # (Adjusted_VK_Projection - Prop_Line) >= min_edge
+            # ----------------------------------------------------------------
+            raw_edge = adjusted_vk_pred - line
+            if raw_edge < cfg["min_edge"]:
+                gate_stats['gate3_fail'] += 1
+                continue
+            
+            # ================================================================
+            # QUALIFIED - Build output pick
+            # ================================================================
+            gate_stats['qualified'] += 1
+            
+            # Calculate hit rate percentages for board score
+            h20_rate_pct = (l20_hits / 20) * 100
+            h10_rate_pct = (l10_hits / 10) * 100 if l10_hits else 0
+            
+            # Use the better of L20 or L10 for board score if recency override was used
+            effective_hit_rate = max(h20_rate_pct, h10_rate_pct) if used_recency_override else h20_rate_pct
+            
+            # Calculate Board_Score
+            # Formula: TP_Prob + (Raw_Edge * 10) + (Hit_Rate_Pct * 0.1)
+            board_score = pinnacle_tp + (raw_edge * 10) + (effective_hit_rate * 0.1)
+            
+            # Build qualified pick with all required fields
+            player_name = prop.get('player_name')
+            is_goblin = prop.get("is_goblin", False)
+            is_standard = not is_goblin and not is_demon
+            
+            qualified_pick = {
+                # Player info
+                'player_name': player_name,
+                'team': prop.get('team'),
+                'opponent': opponent,
+                'photo_url': prop.get('photo_url') or prop.get('headshot_url'),
+                'headshot_url': prop.get('headshot_url'),
+                'game_time': prop.get('game_time') or prop.get('commence_time'),
+                
+                # Prop details
+                'stat_type': raw_stat.replace("_", " ").title(),
+                'stat_key': stat_key,  # Normalized key (HITS, TB, K, OUTS, HRR)
+                'line': line,
+                'dk_odds': dk_odds,
+                
+                # Classification
+                'is_goblin': is_goblin,
+                'is_demon': False,  # Demons are rejected
+                'is_standard': is_standard,
+                'is_lineup_confirmed': True,
+                
+                # Averages (carry forward from input)
+                'l5_avg': prop.get('l5_avg'),
+                'l10_avg': prop.get('l10_avg'),
+                'l20_avg': prop.get('l20_avg'),
+                'season_avg': prop.get('season_avg') or prop.get('l10_avg'),
+                
+                # Hit rates
+                'h5_rate': prop.get('h5_rate') or prop.get('hit_rate_l5'),
+                'h10_rate': round(h10_rate_pct, 1),
+                'h20_rate': round(h20_rate_pct, 1),
+                'hit_rate_l5': prop.get('h5_rate') or prop.get('hit_rate_l5'),
+                'hit_rate_l10': round(h10_rate_pct, 1),
+                'hit_rate_l20': round(h20_rate_pct, 1),
+                'l10_hits': l10_hits,
+                'l20_hits': l20_hits,
+                
+                # Recency Override flag
+                'used_recency_override': used_recency_override,
+                'recency_override_reason': f"L10 {l10_hits}/10 >= 80%" if used_recency_override else None,
+                
+                # Consistency
+                'cv': round(cv, 3) if cv else None,
+                
+                # VK predictions
+                'raw_vk_pred': round(raw_vk_pred, 2),
+                'matchup_modifier': round(matchup_modifier, 3),
+                'vk_predicted': round(adjusted_vk_pred, 2),  # Adjusted projection
+                'vk_edge': round(raw_edge, 2),  # Raw cushion (adjusted_pred - line)
+                'vk_prob_over': round(pinnacle_tp, 1),
+                'vk_probability': round(pinnacle_tp, 1),
+                'pinnacle_tp': round(pinnacle_tp, 1),
+                
+                # Board score
+                'board_score': round(board_score, 1),
+                
+                # Gate thresholds met (for debugging)
+                'gate_thresholds': {
+                    'min_l20_required': cfg["min_l20"],
+                    'max_cv_allowed': cfg["max_cv"],
+                    'min_edge_required': cfg["min_edge"],
+                    'dk_range': f"{DK_MIN} to {DK_MAX}",
+                    'min_pinnacle_tp': MIN_PINNACLE_TP,
+                },
+                
+                # Tier classification
+                'tier': 'front_lines',
+                'tier_label': 'MLB Front Lines',
+                'front_lines_qualified': True,
+                
+                # Carry forward any vision intel
+                'vision_intel': prop.get('vision_intel'),
+                'intel_score': prop.get('intel_score'),
+                'intel_verdict': prop.get('intel_verdict'),
+                
+                # Timestamp
+                'synced_at': datetime.now(timezone.utc).isoformat(),
+            }
+            
+            qualified_picks.append(qualified_pick)
+        
+        # ====================================================================
+        # 4. FINAL SORT & SLICE
+        # ====================================================================
+        
+        # Log gate statistics
+        logger.info("[MLB_FRONT_LINES] Gate Statistics:")
+        logger.info(f"  Total Input: {gate_stats['total_input']}")
+        logger.info(f"  DK Odds Fail (outside -239 to -145): {gate_stats['dk_odds_fail']}")
+        logger.info(f"  Demon Rejected: {gate_stats['demon_rejected']}")
+        logger.info(f"  Lineup Not Confirmed: {gate_stats['lineup_not_confirmed']}")
+        logger.info(f"  Pinnacle TP Fail (< 58%): {gate_stats['pinnacle_tp_fail']}")
+        logger.info(f"  Unsupported Stat: {gate_stats['unsupported_stat']}")
+        logger.info(f"  Gate 1 Fail (Hit Rate): {gate_stats['gate1_fail']}")
+        logger.info(f"  Gate 1 Recency Overrides (L10 >= 80%): {gate_stats['gate1_recency_override']}")
+        logger.info(f"  Gate 2 Fail (CV): {gate_stats['gate2_fail']}")
+        logger.info(f"  Gate 3 Fail (Edge): {gate_stats['gate3_fail']}")
+        logger.info(f"  QUALIFIED: {gate_stats['qualified']}")
+        
+        # Sort descending by Board_Score
+        qualified_picks.sort(key=lambda x: x.get('board_score', 0), reverse=True)
+        
+        # Dedupe: Keep highest board_score per player+stat
+        dedupe_map = {}
+        for pick in qualified_picks:
+            key = f"{pick['player_name']}|{pick['stat_key']}"
+            if key not in dedupe_map or pick['board_score'] > dedupe_map[key]['board_score']:
+                dedupe_map[key] = pick
+        
+        final_picks = list(dedupe_map.values())
+        final_picks.sort(key=lambda x: x.get('board_score', 0), reverse=True)
+        
+        # Slice to Top 10
+        top_10 = final_picks[:10]
+        
+        logger.info(f"[MLB_FRONT_LINES] Final Result: {len(top_10)} picks (from {len(final_picks)} qualified)")
+        
+        for i, pick in enumerate(top_10[:5], 1):
+            override_flag = " [L10 OVERRIDE]" if pick.get('used_recency_override') else ""
+            logger.info(f"[MLB_FRONT_LINES]   {i}. {pick['player_name']} - {pick['stat_key']} @ {pick['line']} | "
+                       f"Board: {pick['board_score']} | Edge: +{pick['vk_edge']:.2f} | "
+                       f"L20: {pick['l20_hits']}/20 | L10: {pick['l10_hits']}/10 | CV: {pick['cv']:.2f}{override_flag}")
+        
+        return top_10
+    
     async def analyze_all_props(self) -> List[Dict]:
         """
         Analyze all MLB props and return Safe Haven qualified picks.

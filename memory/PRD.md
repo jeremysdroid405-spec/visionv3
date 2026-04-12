@@ -80,7 +80,7 @@ Restructure the React/FastAPI betting app to a 100% Local-First Database Model, 
   - BDL injury status mapping: "10-Day-IL"/"60-Day-IL" → "OUT", "Day-To-Day" → "DTD"
 
 ### Completed (April 12, 2026 - Session 2)
-- [x] **MLB Oracle Apex Wiring (April 12, 2026)**
+- [x] **MLB Oracle Apex Wiring - Safe Haven (April 12, 2026)**
   - Wired `mlb_tier_service.py` PHASE 4 to call `mlb_oracle_apex_service.build_safe_haven_tier()`
   - Oracle Apex enforces strict 2026 MLB thresholds:
     - PRIMARY: DK Odds <= -240, GOBLIN only, Lineup confirmed
@@ -88,8 +88,16 @@ Restructure the React/FastAPI betting app to a 100% Local-First Database Model, 
     - GATE 2: Max CV per stat type (0.30-0.75)
     - GATE 3: Raw Cushion Edge >= thresholds + TP >= 70-80%
     - HARD-STOP: Wind Environment filter (IN > 12mph kills batter props)
-  - Front Lines & War Zone continue using DK odds-based classification
-  - Import added: `from services.mlb_oracle_apex_service import get_mlb_oracle_apex_service`
+
+- [x] **MLB Oracle Apex Wiring - Front Lines (April 12, 2026)**
+  - Created `build_front_lines_tier()` in `mlb_oracle_apex_service.py`
+  - 2026 Front Lines Logic:
+    - PRIMARY: DK Odds -145 to -239, STANDARD or GOBLIN (reject DEMON), Lineup confirmed, Pinnacle TP >= 58%
+    - GATE 1: L20 Hit Rate with **L10 RECENCY OVERRIDE** (if L20 fails but L10 >= 80%, PASS Gate 1)
+    - GATE 2: CV <= max_cv (relaxed: HITS 0.85, TB 0.95, K 0.60, OUTS 0.50, HRR 0.75)
+    - GATE 3: Raw Cushion Edge >= min_edge (HITS +0.20, TB +0.30, K +0.80, OUTS +1.00, HRR +0.30)
+  - Board Score = TP + (Edge * 10) + (HitRate * 0.1)
+  - Updated `optimized_sync_engine.py` to route MLB to `mlb_tier_service.py`
 
 ### In Progress
 - [ ] MLB headshot sync (~700 players remaining)
