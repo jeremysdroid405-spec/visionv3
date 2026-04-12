@@ -3,14 +3,21 @@ MLB Oracle Apex Service - Safe Haven Tier Logic (2026 Season)
 ==============================================================
 The "Vegas Killer" mathematically-proven Safe Haven tier for MLB.
 
-2026 MLB STAT-SPECIFIC CALIBRATION:
-| Stat | Max CV | Min Hit Rate (L20) | Min Edge | Min VK Prob |
-|------|--------|-------------------|----------|-------------|
-| HITS | 0.60   | 16/20 (80%)       | 15%      | 70%         |
-| TB   | 0.75   | 15/20 (75%)       | 20%      | 70%         |
-| K    | 0.45   | 15/20 (75%)       | 12%      | 75%         |
-| OUTS | 0.30   | 17/20 (85%)       | 8%       | 80%         |
-| HRR  | 0.55   | 16/20 (80%)       | 18%      | 70%         |
+2026 MLB STAT-SPECIFIC CALIBRATION (Raw Cushion Thresholds):
+| Stat | Max CV | Min Hit Rate (L20) | Min Raw Edge | Min VK Prob |
+|------|--------|-------------------|--------------|-------------|
+| HITS | 0.60   | 16/20 (80%)       | +0.30        | 70%         |
+| TB   | 0.75   | 15/20 (75%)       | +0.45        | 70%         |
+| K    | 0.45   | 15/20 (75%)       | +1.00        | 75%         |
+| OUTS | 0.30   | 17/20 (85%)       | +1.50        | 80%         |
+| HRR  | 0.55   | 16/20 (80%)       | +0.45        | 70%         |
+
+Raw Edge Logic (typical lines):
+- HITS: +0.30 requires 0.80+ pred on 0.5 line
+- TB: +0.45 requires 1.95+ pred on 1.5 line
+- K: +1.00 requires 6.5+ pred on 5.5 line
+- OUTS: +1.50 requires 19.0+ pred on 17.5 line
+- HRR: +0.45 requires 1.95+ pred on 1.5 line
 
 PRIMARY QUALIFICATIONS:
 1. DK Odds: Must be <= -240
@@ -24,13 +31,13 @@ PRE-COMPUTATION:
 3-GATE QUALIFICATION:
 - Gate 1: Hit Rate (strict L20 percentage, no weighted recency exceptions)
 - Gate 2: CV <= stat-specific limit
-- Gate 3: Adjusted_VK_Projection Edge >= min edge AND TP >= 70%
+- Gate 3: Adjusted_VK_Projection Raw Edge >= min threshold AND TP >= 70%
 
 HARD-STOP FILTERS:
 - Weather: If wind_direction == 'IN' AND wind_speed > 12mph, reject batter props
 
 FINAL SORT:
-- Sort by Board_Score (TP Prob + VK Edge + (Hit Rate * 10))
+- Sort by Board_Score (TP Prob + (Raw Edge * 10) + (Hit Rate * 10))
 - Top 10 before Vision Intel Delta Check
 """
 from typing import Dict, List, Any, Optional, Tuple
@@ -51,7 +58,7 @@ MLB_SAFE_HAVEN_CONFIG = {
         'max_cv': 0.60,
         'min_hit_rate': 16,      # 16/20 = 80%
         'sample_size': 20,
-        'min_edge_pct': 15.0,    # 15% edge minimum
+        'min_edge_raw': 0.30,    # Raw cushion: requires 0.80+ on 0.5 line
         'min_prob': 70.0,
         'is_batter_stat': True,
     },
@@ -59,7 +66,7 @@ MLB_SAFE_HAVEN_CONFIG = {
         'max_cv': 0.75,
         'min_hit_rate': 15,      # 15/20 = 75%
         'sample_size': 20,
-        'min_edge_pct': 20.0,    # 20% edge minimum
+        'min_edge_raw': 0.45,    # Raw cushion: requires 1.95+ on 1.5 line
         'min_prob': 70.0,
         'is_batter_stat': True,
     },
@@ -67,7 +74,7 @@ MLB_SAFE_HAVEN_CONFIG = {
         'max_cv': 0.75,
         'min_hit_rate': 15,
         'sample_size': 20,
-        'min_edge_pct': 20.0,
+        'min_edge_raw': 0.45,
         'min_prob': 70.0,
         'is_batter_stat': True,
     },
@@ -75,7 +82,7 @@ MLB_SAFE_HAVEN_CONFIG = {
         'max_cv': 0.45,
         'min_hit_rate': 15,      # 15/20 = 75%
         'sample_size': 20,
-        'min_edge_pct': 12.0,    # 12% edge minimum
+        'min_edge_raw': 1.00,    # Raw cushion: requires 6.5+ on 5.5 line
         'min_prob': 75.0,
         'is_batter_stat': False,
     },
@@ -83,7 +90,7 @@ MLB_SAFE_HAVEN_CONFIG = {
         'max_cv': 0.45,
         'min_hit_rate': 15,
         'sample_size': 20,
-        'min_edge_pct': 12.0,
+        'min_edge_raw': 1.00,
         'min_prob': 75.0,
         'is_batter_stat': False,
     },
@@ -91,7 +98,7 @@ MLB_SAFE_HAVEN_CONFIG = {
         'max_cv': 0.30,
         'min_hit_rate': 17,      # 17/20 = 85%
         'sample_size': 20,
-        'min_edge_pct': 8.0,     # 8% edge minimum
+        'min_edge_raw': 1.50,    # Raw cushion: requires 19.0+ on 17.5 line
         'min_prob': 80.0,
         'is_batter_stat': False,
     },
@@ -99,7 +106,7 @@ MLB_SAFE_HAVEN_CONFIG = {
         'max_cv': 0.30,
         'min_hit_rate': 17,
         'sample_size': 20,
-        'min_edge_pct': 8.0,
+        'min_edge_raw': 1.50,
         'min_prob': 80.0,
         'is_batter_stat': False,
     },
@@ -107,7 +114,7 @@ MLB_SAFE_HAVEN_CONFIG = {
         'max_cv': 0.55,
         'min_hit_rate': 16,      # 16/20 = 80%
         'sample_size': 20,
-        'min_edge_pct': 18.0,    # 18% edge minimum
+        'min_edge_raw': 0.45,    # Raw cushion: requires 1.95+ on 1.5 line
         'min_prob': 70.0,
         'is_batter_stat': True,
     },
@@ -397,15 +404,12 @@ class MLBOracleApexService:
         if cv > cfg['max_cv']:
             return False, f"GATE2_CV: {cv:.3f} > {cfg['max_cv']}"
         
-        # GATE 3: EDGE + PROBABILITY
-        # Calculate edge as percentage: (adjusted_pred - line) / line * 100
-        if line > 0:
-            edge_pct = ((adjusted_vk_pred - line) / line) * 100
-        else:
-            edge_pct = 0
+        # GATE 3: RAW CUSHION EDGE + PROBABILITY
+        # Calculate edge as raw cushion: adjusted_pred - line
+        raw_edge = adjusted_vk_pred - line
         
-        if edge_pct < cfg['min_edge_pct']:
-            return False, f"GATE3_EDGE: {edge_pct:.1f}% < {cfg['min_edge_pct']}%"
+        if raw_edge < cfg['min_edge_raw']:
+            return False, f"GATE3_EDGE: {raw_edge:.2f} < {cfg['min_edge_raw']} (pred {adjusted_vk_pred:.2f} vs line {line})"
         
         if vk_prob < cfg['min_prob']:
             return False, f"GATE3_PROB: {vk_prob:.1f}% < {cfg['min_prob']}%"
@@ -415,21 +419,24 @@ class MLBOracleApexService:
     def calculate_board_score(
         self,
         vk_prob: float,
-        edge_pct: float,
+        raw_edge: float,
         hit_rate_pct: float
     ) -> float:
         """
         Calculate Board Score for final sorting.
         
-        Formula: TP Prob + VK Edge + (Hit Rate * 10)
+        Formula: TP Prob + (Raw Edge * 10) + (Hit Rate * 10)
+        
+        The raw edge is multiplied by 10 to scale it appropriately since
+        raw cushion values are typically 0.3 - 2.0 range.
         
         Example:
         - VK Prob: 75%
-        - Edge: 18%
+        - Raw Edge: 1.5 (cushion above line)
         - Hit Rate: 80%
-        Board Score = 75 + 18 + (80 * 0.1) = 75 + 18 + 8 = 101
+        Board Score = 75 + (1.5 * 10) + (80 * 0.1) = 75 + 15 + 8 = 98
         """
-        return vk_prob + edge_pct + (hit_rate_pct * 0.1)
+        return vk_prob + (raw_edge * 10) + (hit_rate_pct * 0.1)
     
     async def build_safe_haven_tier(self) -> List[Dict]:
         """
@@ -599,12 +606,17 @@ class MLBOracleApexService:
                 matchup_modifier = self._get_matchup_modifier(stat_type, opponent)
                 adjusted_vk_pred = raw_vk_pred * matchup_modifier
                 
-                # Calculate edge percentage
-                edge_pct = ((adjusted_vk_pred - line) / line * 100) if line > 0 else 0
+                # Calculate raw edge (cushion above line)
+                raw_edge = adjusted_vk_pred - line
                 
-                # Calculate probability (simplified model based on edge)
+                # Calculate probability (simplified model based on raw edge)
                 # Higher edge = higher probability of going over
-                vk_prob = min(90, max(50, 50 + edge_pct * 1.5))
+                # Scale raw edge appropriately for probability calculation
+                if line > 0:
+                    edge_factor = (raw_edge / max(line, 1.0)) * 30  # Normalize edge impact
+                else:
+                    edge_factor = 0
+                vk_prob = min(90, max(50, 50 + edge_factor))
                 
                 # ============================================================
                 # 3-GATE QUALIFICATION
@@ -653,8 +665,8 @@ class MLBOracleApexService:
                 h10_rate = round((l10_hits / 10) * 100, 1) if len(l10_values) >= 10 else None
                 h20_rate = round((l20_hits / 20) * 100, 1)
                 
-                # Calculate Board Score for sorting
-                board_score = self.calculate_board_score(vk_prob, edge_pct, h20_rate)
+                # Calculate Board Score for sorting (using raw edge)
+                board_score = self.calculate_board_score(vk_prob, raw_edge, h20_rate)
                 
                 qualified_picks.append({
                     'player_name': player_name,
@@ -675,10 +687,9 @@ class MLBOracleApexService:
                     'l20_hits': l20_hits,
                     # CV
                     'cv': round(cv, 3),
-                    # VK predictions
+                    # VK predictions (raw cushion edge)
                     'vk_predicted': round(adjusted_vk_pred, 2),
-                    'vk_edge': round(adjusted_vk_pred - line, 2),
-                    'vk_edge_pct': round(edge_pct, 1),
+                    'vk_edge': round(raw_edge, 2),  # Raw cushion (predicted - line)
                     'vk_prob_over': round(vk_prob, 1),
                     'vk_probability': round(vk_prob, 1),
                     'matchup_modifier': round(matchup_modifier, 3),
@@ -727,7 +738,7 @@ class MLBOracleApexService:
         
         for i, pick in enumerate(top_10[:5], 1):
             logger.info(f"[MLB_APEX]   {i}. {pick['player_name']} - {pick['stat_type']} @ {pick['line']} | "
-                       f"Score: {pick['board_score']} | Edge: {pick['vk_edge_pct']:.1f}% | "
+                       f"Score: {pick['board_score']} | Edge: +{pick['vk_edge']:.2f} | "
                        f"HR: {pick['h20_rate']}%")
         
         return top_10
