@@ -1522,10 +1522,11 @@ class FerrariTierService:
             def dedupe_pool(pool, max_picks, pool_name=""):
                 """Dedupe and select top picks by VK metrics (pre-Gemini)."""
                 # Sort by VK edge and hit rate (Gemini runs AFTER this)
+                # Handle None values by converting to 0
                 pool.sort(key=lambda x: (
-                    x.get('vk_edge', 0),           # VK edge first
-                    x.get('h20_rate', 0),          # Then hit rate
-                    x.get('vk_prob_over', 0)       # Then probability
+                    x.get('vk_edge') or 0,           # VK edge first
+                    x.get('h20_rate') or 0,          # Then hit rate
+                    x.get('vk_prob_over') or 0       # Then probability
                 ), reverse=True)
                 
                 seen = set()
@@ -1548,7 +1549,9 @@ class FerrariTierService:
             # Log War Zone pool before dedupe for debugging
             logger.info(f"  WAR ZONE DEBUG - Pool before dedupe:")
             for i, prop in enumerate(war_zone_pool[:15]):  # Log first 15
-                logger.info(f"    {i+1}. {prop.get('player_name')} - {prop.get('stat_type')} | DK: {prop.get('dk_odds')} | Edge: {prop.get('vk_edge', 0):.1f} | Prob: {prop.get('vk_prob_over', 0):.0f}%")
+                vk_edge = prop.get('vk_edge') or 0
+                vk_prob = prop.get('vk_prob_over') or 0
+                logger.info(f"    {i+1}. {prop.get('player_name')} - {prop.get('stat_type')} | DK: {prop.get('dk_odds')} | Edge: {vk_edge:.1f} | Prob: {vk_prob:.0f}%")
             
             # SELECT FINAL TOP 10 FIRST (before Gemini)
             top_safe_haven = dedupe_pool(safe_haven_pool, MAX_PICKS_PER_TIER, "SAFE_HAVEN")
