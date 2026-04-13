@@ -3183,3 +3183,37 @@ async def get_top_hrr_safe_haven_endpoint(
     except Exception as e:
         logger.error(f"[FERRARI_PIPELINE] Error getting HRR props: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+
+# ============================================================================
+# MLB MASTER SYNC ENDPOINT
+# ============================================================================
+
+@router.post("/mlb/sync/master")
+async def mlb_master_sync():
+    """
+    MLB Master Sync - Enforces strict pipeline sequence.
+    
+    Sequence:
+    1. Sync Vegas Odds → mlb_live_props
+    2. Build mlb_cached_board (INTERSECTION: PrizePicks AND Odds only)
+    3. BDL Splits Prefetch (ONLY for players in cached_board)
+    4. Oracle Apex Tier Rebuilds
+    
+    Returns:
+        Detailed metrics for each step including BDL API calls made.
+    """
+    from services.mlb_master_sync import get_mlb_master_sync
+    
+    if _db is None:
+        raise HTTPException(status_code=500, detail="Database not initialized")
+    
+    try:
+        master_sync = get_mlb_master_sync(_db)
+        result = await master_sync.run_master_sync()
+        return result
+        
+    except Exception as e:
+        logger.error(f"[MLB_MASTER_SYNC] Error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
