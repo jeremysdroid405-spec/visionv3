@@ -900,6 +900,368 @@ class MLBOracleApexService:
         """
         return vk_prob + (raw_edge * 10) + (hit_rate_pct * 0.1)
     
+    async def build_elite_top_10_tiers(self, all_picks: List[Dict]) -> Dict[str, List[Dict]]:
+        """
+        ELITE TOP 10 SORTING ENGINE - Sequential Claim Logic
+        =====================================================
+        
+        Implements exclusive tier assignment to ensure NO prop appears in multiple tiers.
+        
+        PROCESS:
+        1. Build QUALIFIED POOL: All props passing safety filters with positive true_edge
+        2. WAR ZONE claims first: Demons + Standards (DK > +100), sorted by true_edge
+        3. SAFE HAVEN claims second: Goblins only, sorted by propvision_true_prob + true_edge
+        4. FRONT LINES claims last: Everything remaining, sorted by board_score
+        
+        CRITICAL: All safety filters (Lineup, Weather, CV, Hit Rate, Actuary Kill Switch)
+        remain intact. This only changes how survivors are SORTED and ASSIGNED.
+        
+        Returns:
+            Dict with 'safe_haven', 'front_lines', 'war_zone' lists (each Top 10, exclusive)
+        """
+        logger.info("=" * 70)
+        logger.info("[ELITE_TOP_10] Starting Sequential Claim Sorting Engine...")
+        logger.info(f"[ELITE_TOP_10] Total Input: {len(all_picks)} props")
+        logger.info("=" * 70)
+        
+        BATTER_STATS = {"HITS", "TB", "HRR", "RBIS", "RUNS", "SINGLES", "DOUBLES", "HR", "SB", "BB", "TOTAL BASES"}
+        
+        # ====================================================================
+        # STEP 1: BUILD THE QUALIFIED POOL
+        # ====================================================================
+        # Every prop must pass ALL safety filters to enter the pool
+        
+        gate_stats = {
+            'total_input': len(all_picks),
+            'fail_lineup': 0,
+            'fail_weather': 0,
+            'fail_hit_rate': 0,
+            'fail_cv': 0,
+            'fail_actuary_gate': 0,
+            'qualified_pool': 0,
+        }
+        
+        qualified_pool = []
+        
+        for prop in all_picks:
+            # Get basic prop info
+            player_name = prop.get("player_name", "Unknown")
+            stat_type = (prop.get("stat_type") or "").upper()
+            stat_key = stat_type.replace(" ", "_")
+            line = prop.get("line", 0)
+            
+            # Get prop classification
+            is_goblin = prop.get("is_goblin", False)
+            is_demon = prop.get("is_demon", False)
+            prop_type = "GOBLIN" if is_goblin else ("DEMON" if is_demon else "STANDARD")
+            
+            # Get DK odds
+            dk_odds = prop.get("dk_odds")
+            if dk_odds is None:
+                dk_odds = prop.get("all_odds", {}).get("draftkings")
+            
+            # ================================================================
+            # SAFETY FILTER 1: Lineup Gate
+            # ================================================================
+            lineup_status = prop.get('lineup_status')
+            if lineup_status == "BENCHED":
+                gate_stats['fail_lineup'] += 1
+                continue
+            
+            # ================================================================
+            # SAFETY FILTER 2: Weather Tunnel (Batter props only)
+            # ================================================================
+            if stat_key.replace("_", " ") in BATTER_STATS or stat_type in BATTER_STATS:
+                weather = prop.get("weather", {}) or {}
+                wind_direction = (weather.get("wind_direction") or "").upper()
+                wind_speed = weather.get("wind_speed", 0) or 0
+                
+                if isinstance(wind_speed, str):
+                    try:
+                        wind_speed = float(wind_speed.replace("mph", "").strip())
+                    except (ValueError, TypeError):
+                        wind_speed = 0
+                
+                if wind_direction == "IN" and wind_speed > 12:
+                    gate_stats['fail_weather'] += 1
+                    continue
+            
+            # ================================================================
+            # SAFETY FILTER 3: Dynamic Hit Rate Calculation
+            # ================================================================
+            games_played = prop.get("games_played") or prop.get("l10_games") or 0
+            hit_count = prop.get("l20_hits") or prop.get("l10_hits") or 0
+            existing_hit_rate = prop.get("hit_rate_l10") or prop.get("hit_rate_l20") or prop.get("h20_rate")
+            
+            if games_played > 0 and hit_count > 0:
+                true_hit_rate = (hit_count / games_played) * 100
+            elif existing_hit_rate is not None:
+                true_hit_rate = existing_hit_rate
+            else:
+                gate_stats['fail_hit_rate'] += 1
+                continue
+            
+            # Baseline hit rate floor: 50% (very relaxed - tiers will apply stricter filters)
+            if true_hit_rate < 50.0:
+                gate_stats['fail_hit_rate'] += 1
+                continue
+            
+            # ================================================================
+            # SAFETY FILTER 4: CV Check (relaxed - tiers apply stricter)
+            # ================================================================
+            cv = prop.get("cv") or prop.get("vk_cv") or 0.5
+            if cv > 1:
+                cv = cv / 100.0
+            
+            # Max CV 0.80 (tiers will apply stricter limits)
+            if cv > 0.80:
+                gate_stats['fail_cv'] += 1
+                continue
+            
+            # ================================================================
+            # SAFETY FILTER 5: THE ACTUARY KILL SWITCH (0.0 floor)
+            # ================================================================
+            prob_data = calculate_master_probability(dk_odds, true_hit_rate, prop_type)
+            market_prob = prob_data['market_prob']
+            propvision_true_prob = prob_data['propvision_true_prob']
+            casino_req_rate = prob_data['casino_req_rate']
+            true_edge = prob_data['true_edge']
+            
+            # KILL SWITCH: Must have positive edge
+            if true_edge <= 0.0:
+                gate_stats['fail_actuary_gate'] += 1
+                continue
+            
+            # ================================================================
+            # PASSED ALL SAFETY FILTERS - Add to Qualified Pool
+            # ================================================================
+            gate_stats['qualified_pool'] += 1
+            
+            # Get additional data for scoring
+            raw_vk_pred = prop.get("vk_predicted") or prop.get("raw_vk_pred") or prop.get("season_average") or 0
+            matchup_modifier = prop.get("matchup_modifier", 1.0)
+            tempo_modifier = prop.get("tempo_modifier", 1.0)
+            raw_edge = (raw_vk_pred - line) if line > 0 else 0
+            
+            # Calculate board scores for sorting
+            sh_board_score = (true_edge * 3.0) - (cv * 15)  # Safe Haven formula
+            fl_board_score = (true_edge * 4.0) + (true_hit_rate * 0.5) - (cv * 10)  # Front Lines formula
+            wz_board_score = (true_edge * 15.0) + (true_hit_rate * 2.0) - (cv * 5)  # War Zone formula
+            
+            qualified_prop = {
+                # Player info
+                'player_name': player_name,
+                'team': prop.get('team'),
+                'opponent': prop.get('opponent') or prop.get('opponent_abbr'),
+                'photo_url': prop.get('photo_url') or prop.get('headshot_url'),
+                'headshot_url': prop.get('headshot_url'),
+                'game_time': prop.get('game_time') or prop.get('commence_time'),
+                
+                # Prop details
+                'stat_type': stat_type.replace("_", " ").title(),
+                'stat_key': stat_key,
+                'line': line,
+                'dk_odds': dk_odds,
+                'pp_odds': prop.get('pp_odds') or prop.get('all_odds', {}).get('prizepicks'),
+                
+                # Classification
+                'prop_type': prop_type,
+                'is_goblin': is_goblin,
+                'is_demon': is_demon,
+                'is_standard': not is_goblin and not is_demon,
+                'lineup_status': lineup_status,
+                
+                # Hit rate & consistency
+                'games_played': games_played,
+                'hit_count': hit_count,
+                'true_hit_rate': round(true_hit_rate, 1),
+                'cv': round(cv, 3),
+                
+                # PropVision math (MASTER FUNCTION)
+                'market_prob': market_prob,
+                'propvision_true_prob': propvision_true_prob,
+                'casino_req_rate': casino_req_rate,
+                'true_edge': true_edge,
+                
+                # Board scores for each tier
+                'sh_board_score': round(sh_board_score, 1),
+                'fl_board_score': round(fl_board_score, 1),
+                'wz_board_score': round(wz_board_score, 1),
+                
+                # Additional data
+                'raw_vk_pred': round(raw_vk_pred, 2) if raw_vk_pred else None,
+                'vk_predicted': round(raw_vk_pred * matchup_modifier * tempo_modifier, 2) if raw_vk_pred else None,
+                'vk_edge': round(raw_edge, 2),
+                'matchup_modifier': round(matchup_modifier, 3),
+                'tempo_modifier': round(tempo_modifier, 3),
+                
+                # Carry forward intel
+                'vision_intel': prop.get('vision_intel'),
+                'intel_score': prop.get('intel_score'),
+                'intel_verdict': prop.get('intel_verdict'),
+                'bdl_modifiers': prop.get('bdl_modifiers'),
+                
+                # Timestamp
+                'synced_at': datetime.now(timezone.utc).isoformat(),
+            }
+            
+            qualified_pool.append(qualified_prop)
+        
+        # Log pool statistics
+        logger.info("[ELITE_TOP_10] Safety Filter Results:")
+        logger.info(f"  Failed Lineup (BENCHED): {gate_stats['fail_lineup']}")
+        logger.info(f"  Failed Weather: {gate_stats['fail_weather']}")
+        logger.info(f"  Failed Hit Rate (<50%): {gate_stats['fail_hit_rate']}")
+        logger.info(f"  Failed CV (>0.80): {gate_stats['fail_cv']}")
+        logger.info(f"  *** KILLED BY ACTUARY GATE (<=0%): {gate_stats['fail_actuary_gate']} ***")
+        logger.info(f"  QUALIFIED POOL SIZE: {gate_stats['qualified_pool']}")
+        
+        # ====================================================================
+        # STEP 2A: WAR ZONE CLAIMS FIRST (High-Alpha Payouts)
+        # ====================================================================
+        # Demons + Standards with DK > +100, sorted by true_edge DESC
+        
+        war_zone_candidates = [
+            p for p in qualified_pool
+            if p['prop_type'] == 'DEMON' or (p['prop_type'] == 'STANDARD' and (p['dk_odds'] or 0) > 100)
+        ]
+        
+        # Additional War Zone filter: true_edge >= 10% for high-alpha
+        war_zone_candidates = [p for p in war_zone_candidates if p['true_edge'] >= 10.0]
+        
+        # Sort by true_edge DESC
+        war_zone_candidates.sort(key=lambda x: x['true_edge'], reverse=True)
+        
+        # Dedupe by player+stat
+        wz_seen = set()
+        war_zone_picks = []
+        for p in war_zone_candidates:
+            key = f"{p['player_name']}|{p['stat_key']}"
+            if key not in wz_seen and len(war_zone_picks) < 10:
+                wz_seen.add(key)
+                p['tier'] = 'war_zone'
+                p['tier_label'] = 'MLB War Zone (Elite 10)'
+                p['board_score'] = p['wz_board_score']
+                war_zone_picks.append(p)
+        
+        # REMOVE claimed props from pool
+        claimed_keys = {f"{p['player_name']}|{p['stat_key']}" for p in war_zone_picks}
+        remaining_pool = [p for p in qualified_pool if f"{p['player_name']}|{p['stat_key']}" not in claimed_keys]
+        
+        logger.info(f"[ELITE_TOP_10] WAR ZONE claimed: {len(war_zone_picks)} picks")
+        logger.info(f"  Remaining pool: {len(remaining_pool)}")
+        
+        # ====================================================================
+        # STEP 2B: SAFE HAVEN CLAIMS SECOND (Elite Stability)
+        # ====================================================================
+        # Goblins only, sorted by propvision_true_prob + true_edge DESC
+        
+        safe_haven_candidates = [
+            p for p in remaining_pool
+            if p['prop_type'] == 'GOBLIN'
+        ]
+        
+        # Additional Safe Haven filters: HR >= 60%, CV <= 0.70
+        safe_haven_candidates = [
+            p for p in safe_haven_candidates 
+            if p['true_hit_rate'] >= 60.0 and p['cv'] <= 0.70
+        ]
+        
+        # Sort by propvision_true_prob + true_edge DESC
+        safe_haven_candidates.sort(
+            key=lambda x: (x['propvision_true_prob'] + x['true_edge']), 
+            reverse=True
+        )
+        
+        # Dedupe by player+stat
+        sh_seen = set()
+        safe_haven_picks = []
+        for p in safe_haven_candidates:
+            key = f"{p['player_name']}|{p['stat_key']}"
+            if key not in sh_seen and len(safe_haven_picks) < 10:
+                sh_seen.add(key)
+                p['tier'] = 'safe_haven'
+                p['tier_label'] = 'MLB Safe Haven (Elite 10)'
+                p['board_score'] = p['sh_board_score']
+                safe_haven_picks.append(p)
+        
+        # REMOVE claimed props from pool
+        claimed_keys = {f"{p['player_name']}|{p['stat_key']}" for p in safe_haven_picks}
+        remaining_pool = [p for p in remaining_pool if f"{p['player_name']}|{p['stat_key']}" not in claimed_keys]
+        
+        logger.info(f"[ELITE_TOP_10] SAFE HAVEN claimed: {len(safe_haven_picks)} picks")
+        logger.info(f"  Remaining pool: {len(remaining_pool)}")
+        
+        # ====================================================================
+        # STEP 2C: FRONT LINES CLAIMS LAST (Universal Value)
+        # ====================================================================
+        # Everything remaining, sorted by board_score DESC
+        
+        front_lines_candidates = remaining_pool.copy()
+        
+        # Additional Front Lines filters: HR >= 55%, CV <= 0.75
+        front_lines_candidates = [
+            p for p in front_lines_candidates 
+            if p['true_hit_rate'] >= 55.0 and p['cv'] <= 0.75
+        ]
+        
+        # Sort by fl_board_score DESC
+        front_lines_candidates.sort(key=lambda x: x['fl_board_score'], reverse=True)
+        
+        # Dedupe by player+stat
+        fl_seen = set()
+        front_lines_picks = []
+        for p in front_lines_candidates:
+            key = f"{p['player_name']}|{p['stat_key']}"
+            if key not in fl_seen and len(front_lines_picks) < 10:
+                fl_seen.add(key)
+                p['tier'] = 'front_lines'
+                p['tier_label'] = 'MLB Front Lines (Elite 10)'
+                p['board_score'] = p['fl_board_score']
+                front_lines_picks.append(p)
+        
+        logger.info(f"[ELITE_TOP_10] FRONT LINES claimed: {len(front_lines_picks)} picks")
+        
+        # ====================================================================
+        # LOG FINAL RESULTS
+        # ====================================================================
+        logger.info("=" * 70)
+        logger.info("[ELITE_TOP_10] FINAL TIER ASSIGNMENTS (Exclusive - No Duplicates):")
+        logger.info("=" * 70)
+        
+        logger.info(f"\n[WAR ZONE] Top {len(war_zone_picks)} High-Alpha Plays:")
+        for i, p in enumerate(war_zone_picks, 1):
+            logger.info(f"  {i}. {p['player_name']} - {p['stat_key']} [{p['prop_type']}] | "
+                       f"TRUE EDGE: +{p['true_edge']:.1f}% | PropVision: {p['propvision_true_prob']}%")
+        
+        logger.info(f"\n[SAFE HAVEN] Top {len(safe_haven_picks)} Stability Plays:")
+        for i, p in enumerate(safe_haven_picks, 1):
+            logger.info(f"  {i}. {p['player_name']} - {p['stat_key']} [{p['prop_type']}] | "
+                       f"PropVision: {p['propvision_true_prob']}% | TRUE EDGE: +{p['true_edge']:.1f}%")
+        
+        logger.info(f"\n[FRONT LINES] Top {len(front_lines_picks)} Universal Value Plays:")
+        for i, p in enumerate(front_lines_picks, 1):
+            logger.info(f"  {i}. {p['player_name']} - {p['stat_key']} [{p['prop_type']}] | "
+                       f"Board: {p['board_score']} | TRUE EDGE: +{p['true_edge']:.1f}%")
+        
+        # Verify no duplicates
+        all_keys = set()
+        for tier_name, picks in [('WAR_ZONE', war_zone_picks), ('SAFE_HAVEN', safe_haven_picks), ('FRONT_LINES', front_lines_picks)]:
+            for p in picks:
+                key = f"{p['player_name']}|{p['stat_key']}"
+                if key in all_keys:
+                    logger.error(f"[ELITE_TOP_10] DUPLICATE FOUND: {key}")
+                all_keys.add(key)
+        
+        logger.info(f"\n[ELITE_TOP_10] Total unique picks: {len(all_keys)} (verified no duplicates)")
+        logger.info("=" * 70)
+        
+        return {
+            'war_zone': war_zone_picks,
+            'safe_haven': safe_haven_picks,
+            'front_lines': front_lines_picks,
+        }
+    
     async def build_safe_haven_tier(self, all_picks: List[Dict]) -> List[Dict]:
         """
         Build the MLB Safe Haven 2.0 tier with the ACTUARY GATE.

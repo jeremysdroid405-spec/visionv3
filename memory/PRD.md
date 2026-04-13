@@ -1,90 +1,74 @@
 # PropVision MLB Betting App - Product Requirements Document
 
 ## Original Problem Statement
-Restructure the React/FastAPI betting app to a 100% Local-First Database Model, integrating multi-sport support (NBA/MLB) and an exact MLB 4-Gate evaluation system/UI replica of the NBA side.
+Restructure the React/FastAPI betting app to a 100% Local-First Database Model with multi-sport support (NBA/MLB) and a 4-Gate evaluation system.
 
-## Architecture
+## ELITE TOP 10 SORTING ENGINE (April 13, 2026)
 
-### Backend Stack
-- FastAPI (Python 3.11)
-- MongoDB (Motor async driver)
-- Gemini 3.1 Flash-Lite for Vision Intel
+### Sequential Claim Logic (Exclusivity Guaranteed)
+No prop appears in multiple tiers - each tier "claims" its picks in priority order:
 
-### Key Endpoints
-- `POST /api/mlb/sync/master` - Full MLB pipeline execution
-- `GET /api/v3/ferrari/safe-haven?sport=mlb` - Safe Haven tier picks
-- `GET /api/v3/ferrari/front-lines?sport=mlb` - Front Lines tier picks
-- `GET /api/v3/ferrari/war-zone?sport=mlb` - War Zone tier picks
+```
+1. Build QUALIFIED POOL
+   - All props pass: Lineup ≠ BENCHED, Weather OK, CV ≤ 0.80, HR ≥ 50%, true_edge > 0
 
-## UNIFIED MATH SYSTEM (April 13, 2026)
+2. WAR ZONE Claims FIRST (High-Alpha)
+   - Content: Demons + Standards with DK > +100
+   - Filter: true_edge ≥ 10%
+   - Sort: true_edge DESC
+   - Claim Top 10, REMOVE from pool
 
-### Master Probability Function
-ALL tiers use `calculate_master_probability()` for consistent edge calculation:
+3. SAFE HAVEN Claims SECOND (Elite Stability)  
+   - Content: Goblins only
+   - Filter: HR ≥ 60%, CV ≤ 0.70
+   - Sort: propvision_true_prob + true_edge DESC
+   - Claim Top 10, REMOVE from pool
 
-```python
-def calculate_master_probability(dk_odds, true_hit_rate, prop_type):
-    # Market Implied Probability from DK Odds
-    if dk_odds and dk_odds < 0:
-        market_prob = (abs(dk_odds) / (abs(dk_odds) + 100)) * 100
-    else:
-        market_prob = 50.0
-    
-    # MASTER 50/50 BLEND (same across ALL tiers)
-    propvision_true_prob = (market_prob * 0.50) + (true_hit_rate * 0.50)
-    
-    # True Edge vs Casino
-    casino_req_rate = get_pp_required_win_rate(dk_odds, prop_type)
-    true_edge = propvision_true_prob - casino_req_rate
-    
-    return {...}
+4. FRONT LINES Claims LAST (Universal Value)
+   - Content: Everything remaining
+   - Filter: HR ≥ 55%, CV ≤ 0.75
+   - Sort: board_score DESC
+   - Claim Top 10
 ```
 
-### Tier Differentiation by CONTENT (Not Math)
-
-| Tier | Prop Types Allowed | Edge Floor | HR Floor | CV Max |
-|------|--------------------|------------|----------|--------|
-| **Safe Haven** | GOBLIN only | 0% | 60% | 0.70 |
-| **Front Lines** | GOBLIN + STANDARD (NO Demons) | 0% | 55% | 0.75 |
-| **War Zone** | DEMON + High-Odds Standard (NO Goblins) | 10% | None | None |
-
-### Deduplication Logic
-- Props are filtered by tier based on prop_type
-- A GOBLIN can appear in Safe Haven AND Front Lines (same True Edge)
-- A DEMON can ONLY appear in War Zone (blocked from Front Lines)
-- A STANDARD can appear in Front Lines AND War Zone (if high-odds)
-
-## Board Score Formulas
+### Master Probability Function (Single Source of Truth)
+All tiers use `calculate_master_probability()` for consistent edge calculation:
 
 ```python
-# Safe Haven - Stability focused
-board_score = (true_edge * 3.0) - (cv * 15)
+# 50/50 MASTER BLEND
+market_prob = (abs(dk_odds) / (abs(dk_odds) + 100)) * 100  # if dk_odds < 0
+propvision_true_prob = (market_prob * 0.50) + (true_hit_rate * 0.50)
+true_edge = propvision_true_prob - casino_req_rate
+```
 
-# Front Lines - Arbitrage focused  
-board_score = (true_edge * 4.0) + (true_hit_rate * 0.5) - (cv * 10)
+### Board Score Formulas
+```python
+# Safe Haven - Stability
+sh_board_score = (true_edge * 3.0) - (cv * 15)
 
-# War Zone - Jackpot focused
-board_score = (true_edge * 15.0) + (true_hit_rate * 2.0) - (cv * 5)
+# Front Lines - Arbitrage
+fl_board_score = (true_edge * 4.0) + (true_hit_rate * 0.5) - (cv * 10)
+
+# War Zone - Jackpot
+wz_board_score = (true_edge * 15.0) + (true_hit_rate * 2.0) - (cv * 5)
 ```
 
 ## Test Results (April 13, 2026)
 
-### Consistency Verification
-Kyle Schwarber - BATTER_STRIKEOUTS [GOBLIN]:
-- Safe Haven: TRUE EDGE: +10.0% ✅
-- Front Lines: TRUE EDGE: +10.0% ✅ (IDENTICAL)
+### Verified No Duplicates
+```
+WAR ZONE: 10 picks (Turang +20.0%, Herrera +20.0% LOCKED here)
+SAFE HAVEN: 10 picks (Schwarber, Freeman, CJ Abrams HITS)
+FRONT LINES: 10 picks (remaining high-value plays)
 
-### Tier Isolation
-- Safe Haven: 41 qualified (ALL Goblins)
-- Front Lines: 54 qualified (54 Goblins, 0 Standards, 0 Demons)
-- War Zone: 35 qualified (35 Demons, 0 Standards, 0 Goblins)
+Total unique: 30 picks ✅
+```
 
-## Data Models
-
-### lineup_status
-- `"CONFIRMED"` - Player in today's BDL lineup
-- `"PROJECTED"` - Recent game activity (last 5 days)
-- `"BENCHED"` - Team has lineup but player not included
-- `"UNKNOWN"` - No lineup data or recent activity
+## Key Endpoints
+- `POST /api/mlb/sync/master` - Triggers Elite Top 10 sorting
+- `GET /api/v3/ferrari/safe-haven?sport=mlb`
+- `GET /api/v3/ferrari/front-lines?sport=mlb`
+- `GET /api/v3/ferrari/war-zone?sport=mlb`
 
 ## Pending
 

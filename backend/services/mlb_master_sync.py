@@ -269,10 +269,13 @@ class MLBMasterSync:
         # Get Oracle Apex service
         oracle = get_mlb_oracle_apex_service(self.db)
         
-        # Build tiers (BDL cache is already populated from Step 3)
-        safe_haven = await oracle.build_safe_haven_tier(all_props)
-        front_lines = await oracle.build_front_lines_tier(all_props)
-        war_zone = await oracle.build_war_zone_tier(all_props)
+        # Build tiers using ELITE TOP 10 SEQUENTIAL CLAIM ENGINE
+        # This ensures exclusive assignment - no prop appears in multiple tiers
+        elite_tiers = await oracle.build_elite_top_10_tiers(all_props)
+        
+        safe_haven = elite_tiers['safe_haven']
+        front_lines = elite_tiers['front_lines']
+        war_zone = elite_tiers['war_zone']
         
         # ================================================================
         # VISION INTEL ENRICHMENT (Gemini AI Summaries)
