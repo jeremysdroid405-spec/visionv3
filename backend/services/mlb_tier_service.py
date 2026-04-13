@@ -1564,6 +1564,29 @@ class MLBTierService:
             logger.info(f"  VK Enriched: {vk_enriched} / {len(all_mlb_props)} props have vk_predicted")
             
             # ====================================================================
+            # PRE-FETCH ALL BDL SPLITS DATA (ONE BATCH FOR ALL 3 TIERS)
+            # ====================================================================
+            from services.bdl_splits_cache import prefetch_all_splits, clear_cache
+            
+            # Collect ALL unique hitter player IDs 
+            all_player_ids = set()
+            for prop in all_mlb_props:
+                stat_key = (prop.get("stat_key") or prop.get("stat_type") or "").upper()
+                is_pitcher = stat_key in ["K", "OUTS", "ER", "PITCHER STRIKEOUTS", "PITCHING OUTS"]
+                if not is_pitcher:
+                    pid = prop.get("player_id") or prop.get("bdl_id")
+                    if pid:
+                        try:
+                            all_player_ids.add(int(pid))
+                        except (ValueError, TypeError):
+                            pass
+            
+            # Clear old cache and fetch ALL splits in ONE batch operation
+            clear_cache()
+            await prefetch_all_splits(all_player_ids)
+            logger.info(f"[BDL_SPLITS] Pre-fetched {len(all_player_ids)} unique hitter splits (ONE batch)")
+            
+            # ====================================================================
             # MLB SAFE HAVEN: Use Oracle Apex Service for STRICT 2026 Gate Logic
             # ====================================================================
             # The Oracle Apex Service enforces:

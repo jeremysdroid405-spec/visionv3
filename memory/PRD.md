@@ -9,13 +9,14 @@ Restructure the React/FastAPI betting app to a 100% Local-First Database Model, 
 - **Vision Intel Suite**: Gemini-powered target lock rationales with caching
 - **Live Injury Advantage**: High-frequency injury monitoring with Active Prop Gate
 - **Sport-Specific Routing**: `/nba` and `/mlb` routes with dedicated dashboards
+- **BDL Splits Integration**: L/R handedness splits for matchup modifiers (batch prefetch)
 
 ## Tech Stack
 - **Frontend**: React + Tailwind CSS + Shadcn/UI
 - **Backend**: FastAPI + Python
 - **Database**: MongoDB
 - **AI**: Gemini 3.1 Flash-Lite (via Emergent LLM Key)
-- **APIs**: The Odds API, BallDontLie API
+- **APIs**: The Odds API, BallDontLie API (batch calls only)
 
 ## Architecture
 ```
@@ -26,8 +27,9 @@ Restructure the React/FastAPI betting app to a 100% Local-First Database Model, 
 │   ├── src/hooks/useLiveInjuries.js
 ├── backend/
 │   ├── services/
-│   │   ├── live_injury_micro_sync.py
-│   │   ├── mlb_injury_vacuum_service.py
+│   │   ├── bdl_splits_cache.py (NEW - batch splits prefetch)
+│   │   ├── mlb_oracle_apex_service.py
+│   │   ├── mlb_tier_service.py
 │   │   ├── mlb_vision_intel.py
 │   ├── routes/
 │   │   ├── ferrari_tiers.py
@@ -44,6 +46,14 @@ Restructure the React/FastAPI betting app to a 100% Local-First Database Model, 
 - `GET /api/v3/mlb/vacuum/live-alerts` (MLB)
 
 ## Completed Work
+
+### April 13, 2026
+- ✅ **BDL Splits Batch Integration**: Implemented batch prefetch for L/R handedness splits
+  - `bdl_splits_cache.py`: Single batch prefetch for all unique hitters
+  - ONE batch operation for all 3 tiers (Safe Haven, Front Lines, War Zone)
+  - +5% matchup_modifier for OPS > 0.850 vs L/R pitchers
+  - `bdl_modifiers` field added to pick output with lr_split details
+  - Rebuild time reduced from timeout to ~49 seconds
 
 ### April 2026
 - ✅ **HR Power Bypass Implementation** (E2E Test 3): MLB War Zone Gate 1 now includes explicit bypass for HR props

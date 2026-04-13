@@ -44,6 +44,7 @@ from typing import Dict, List, Any, Optional, Tuple
 from datetime import datetime, timezone
 import logging
 import numpy as np
+import asyncio
 
 from services.mlb_matchup_math import get_mlb_matchup_analysis
 from services.mlb_tempo_math import (
@@ -51,6 +52,11 @@ from services.mlb_tempo_math import (
     calculate_pitcher_tempo,
     get_hitter_tempo_breakdown,
     get_pitcher_tempo_breakdown
+)
+from services.bdl_splits_cache import (
+    prefetch_all_splits,
+    get_cached_modifiers,
+    clear_cache
 )
 
 logger = logging.getLogger(__name__)
@@ -292,6 +298,64 @@ class MLBOracleApexService:
         except Exception as e:
             logger.warning(f"[MLB_APEX] Matchup modifier error: {e}")
             return 1.0
+    
+    def _get_bdl_modifiers_from_cache(
+        self,
+        prop: Dict,
+        stat_key: str
+    ) -> Tuple[float, float, Dict[str, Any]]:
+        """
+        Get BDL modifiers from pre-populated cache. NO API CALLS.
+        Cache is populated once at rebuild start via prefetch_all_splits().
+        """
+        matchup_modifier = 1.0
+        tempo_modifier = 1.0
+        bdl_details = None
+        
+        # Only apply to hitter stats
+        is_pitcher_stat = stat_key in ["K", "OUTS", "ER", "PITCHER STRIKEOUTS", "PITCHING OUTS"]
+        if is_pitcher_stat:
+            return matchup_modifier, tempo_modifier, bdl_details
+        
+        player_id = prop.get("player_id") or prop.get("bdl_id")
+        if not player_id:
+            return matchup_modifier, tempo_modifier, bdl_details
+        
+        try:
+            pitcher_hand = (prop.get("pitcher_hand") or 
+                           prop.get("opposing_pitcher_hand") or 
+                           prop.get("opp_pitcher_hand") or "R").upper()
+            
+            # Get from cache - no API call
+            cached = get_cached_modifiers(int(player_id), pitcher_hand)
+            matchup_modifier = cached.get("matchup_modifier", 1.0)
+            tempo_modifier = cached.get("tempo_modifier", 1.0)
+            
+            if cached.get("lr_split"):
+                bdl_details = {
+                    "source": "bdl_cache",
+                    "lr_split": cached.get("lr_split")
+                }
+        except Exception as e:
+            logger.debug(f"[BDL_CACHE] Error for player {player_id}: {e}")
+        
+        return matchup_modifier, tempo_modifier, bdl_details
+    
+    def _collect_unique_player_ids(self, props: List[Dict]) -> set:
+        """Collect unique hitter player IDs from props."""
+        player_ids = set()
+        for prop in props:
+            stat_key = (prop.get("stat_key") or prop.get("stat_type") or "").upper()
+            is_pitcher_stat = stat_key in ["K", "OUTS", "ER", "PITCHER STRIKEOUTS", "PITCHING OUTS"]
+            if is_pitcher_stat:
+                continue
+            player_id = prop.get("player_id") or prop.get("bdl_id")
+            if player_id:
+                try:
+                    player_ids.add(int(player_id))
+                except (ValueError, TypeError):
+                    pass
+        return player_ids
     
     def _build_tempo_intel_suite(
         self, 
@@ -749,6 +813,10 @@ class MLBOracleApexService:
         logger.info(f"[MLB_SAFE_HAVEN] Input: {len(all_picks)} props to evaluate")
         
         # ====================================================================
+        # BDL SPLITS DATA ALREADY PREFETCHED BY mlb_tier_service.py
+        # ====================================================================
+        
+        # ====================================================================
         # SAFE HAVEN THRESHOLD DICTIONARY (Raw Decimal Cushion Edges)
         # ====================================================================
         thresholds = {
@@ -854,32 +922,40 @@ class MLBOracleApexService:
             # ================================================================
             # 2. PRE-COMPUTATION (Matchup Modifier + Tempo Modifier)
             # ================================================================
+            # USES BDL MLB API (BallDontLie) for precise modifiers:
+            # - L/R Splits: OPS > .850 → +5% matchup boost
+            # - Batter vs Pitcher: OPS > .900 (10+ ABs) → +5% matchup boost  
+            # - Batting Order: Position 1-9 → tempo adjustment (0.90x to 1.10x)
+            # ================================================================
             
             # Get raw VK projection
             raw_vk_pred = prop.get("vk_predicted") or prop.get("raw_vk_pred") or prop.get("season_average")
             if not raw_vk_pred or raw_vk_pred <= 0:
                 continue
             
-            # Get opponent for matchup calculation
+            # Get opponent (needed for both pitcher and hitter paths)
             opponent = prop.get("opponent") or prop.get("opponent_abbr")
             
-            # Calculate matchup modifier
-            matchup_modifier = self._get_matchup_modifier(raw_stat, opponent) if opponent else 1.0
-            
-            # Calculate tempo modifier based on player type (hitter vs pitcher)
-            is_pitcher_stat = stat_key in ["K", "OUTS"]
+            # Determine if this is a pitcher stat (uses different tempo logic)
+            is_pitcher_stat = stat_key in ["K", "OUTS", "ER", "PITCHER STRIKEOUTS", "PITCHING OUTS"]
             
             if is_pitcher_stat:
-                # Pitcher tempo: P/PA efficiency + bullpen rest
+                # Pitcher stats: use legacy matchup + pitcher tempo
+                matchup_modifier = self._get_matchup_modifier(raw_stat, opponent) if opponent else 1.0
                 pitcher_ppa = prop.get("pitcher_ppa") or prop.get("pitches_per_pa")
                 bullpen_rest = prop.get("bullpen_rest_days")
                 tempo_modifier = calculate_pitcher_tempo(pitcher_ppa, bullpen_rest)
+                bdl_details = None
             else:
-                # Hitter tempo: batting order + away/home + team OBP
-                batting_order = prop.get("batting_order") or prop.get("lineup_position")
-                is_away = prop.get("is_away_team") or prop.get("is_away")
-                team_obp_rank = prop.get("team_obp_rank")
-                tempo_modifier = calculate_hitter_tempo(batting_order, is_away, team_obp_rank)
+                # Hitter stats: use cached BDL data (NO API CALLS)
+                matchup_modifier, tempo_modifier, bdl_details = self._get_bdl_modifiers_from_cache(
+                    prop=prop,
+                    stat_key=stat_key
+                )
+                
+                # Store BDL details in prop for Vision Intel Suite
+                if bdl_details:
+                    prop['bdl_modifiers'] = bdl_details
             
             # Chain the modifiers: Raw * Matchup * Tempo = Final Adjusted
             adjusted_vk_pred = raw_vk_pred * matchup_modifier * tempo_modifier
@@ -1053,6 +1129,9 @@ class MLBOracleApexService:
                 'intel_score': prop.get('intel_score'),
                 'intel_verdict': prop.get('intel_verdict'),
                 
+                # BDL API Modifier Details (L/R splits, BVP, batting order)
+                'bdl_modifiers': prop.get('bdl_modifiers'),
+                
                 # Timestamp
                 'synced_at': datetime.now(timezone.utc).isoformat(),
             }
@@ -1134,6 +1213,10 @@ class MLBOracleApexService:
         """
         logger.info("[MLB_FRONT_LINES] Building Front Lines tier with 2026 logic (L10 Recency Override)...")
         logger.info(f"[MLB_FRONT_LINES] Input: {len(all_picks)} props to evaluate")
+        
+        # ====================================================================
+        # BDL SPLITS DATA ALREADY PREFETCHED BY mlb_tier_service.py
+        # ====================================================================
         
         # ====================================================================
         # FRONT LINES THRESHOLD DICTIONARY (Raw Decimal Cushion Edges)
@@ -1255,32 +1338,40 @@ class MLBOracleApexService:
             # ================================================================
             # 2. PRE-COMPUTATION (Matchup Modifier + Tempo Modifier)
             # ================================================================
+            # USES BDL MLB API (BallDontLie) for precise modifiers:
+            # - L/R Splits: OPS > .850 → +5% matchup boost
+            # - Batter vs Pitcher: OPS > .900 (10+ ABs) → +5% matchup boost  
+            # - Batting Order: Position 1-9 → tempo adjustment (0.90x to 1.10x)
+            # ================================================================
             
             # Get raw VK projection
             raw_vk_pred = prop.get("vk_predicted") or prop.get("raw_vk_pred") or prop.get("season_average")
             if not raw_vk_pred or raw_vk_pred <= 0:
                 continue
             
-            # Get opponent for matchup calculation
+            # Get opponent (needed for both pitcher and hitter paths)
             opponent = prop.get("opponent") or prop.get("opponent_abbr")
             
-            # Calculate matchup modifier
-            matchup_modifier = self._get_matchup_modifier(raw_stat, opponent) if opponent else 1.0
-            
-            # Calculate tempo modifier based on player type (hitter vs pitcher)
-            is_pitcher_stat = stat_key in ["K", "OUTS"]
+            # Determine if this is a pitcher stat (uses different tempo logic)
+            is_pitcher_stat = stat_key in ["K", "OUTS", "ER", "PITCHER STRIKEOUTS", "PITCHING OUTS"]
             
             if is_pitcher_stat:
-                # Pitcher tempo: P/PA efficiency + bullpen rest
+                # Pitcher stats: use legacy matchup + pitcher tempo
+                matchup_modifier = self._get_matchup_modifier(raw_stat, opponent) if opponent else 1.0
                 pitcher_ppa = prop.get("pitcher_ppa") or prop.get("pitches_per_pa")
                 bullpen_rest = prop.get("bullpen_rest_days")
                 tempo_modifier = calculate_pitcher_tempo(pitcher_ppa, bullpen_rest)
+                bdl_details = None
             else:
-                # Hitter tempo: batting order + away/home + team OBP
-                batting_order = prop.get("batting_order") or prop.get("lineup_position")
-                is_away = prop.get("is_away_team") or prop.get("is_away")
-                team_obp_rank = prop.get("team_obp_rank")
-                tempo_modifier = calculate_hitter_tempo(batting_order, is_away, team_obp_rank)
+                # Hitter stats: use cached BDL data (NO API CALLS)
+                matchup_modifier, tempo_modifier, bdl_details = self._get_bdl_modifiers_from_cache(
+                    prop=prop,
+                    stat_key=stat_key
+                )
+                
+                # Store BDL details in prop for Vision Intel Suite
+                if bdl_details:
+                    prop['bdl_modifiers'] = bdl_details
             
             # Chain the modifiers: Raw * Matchup * Tempo = Final Adjusted
             adjusted_vk_pred = raw_vk_pred * matchup_modifier * tempo_modifier
@@ -1466,6 +1557,9 @@ class MLBOracleApexService:
                 'intel_score': prop.get('intel_score'),
                 'intel_verdict': prop.get('intel_verdict'),
                 
+                # BDL API Modifier Details (L/R splits, BVP, batting order)
+                'bdl_modifiers': prop.get('bdl_modifiers'),
+                
                 # Timestamp
                 'synced_at': datetime.now(timezone.utc).isoformat(),
             }
@@ -1555,6 +1649,10 @@ class MLBOracleApexService:
         """
         logger.info("[MLB_WAR_ZONE] Building War Zone tier with 2026 logic (L15 Ceiling + CV Fast-Track)...")
         logger.info(f"[MLB_WAR_ZONE] Input: {len(all_picks)} props to evaluate")
+        
+        # ====================================================================
+        # BDL SPLITS DATA ALREADY PREFETCHED BY mlb_tier_service.py
+        # ====================================================================
         
         # ====================================================================
         # WAR ZONE THRESHOLD DICTIONARY (Raw Decimal Cushion Edges)
@@ -1687,32 +1785,40 @@ class MLBOracleApexService:
             # ================================================================
             # 2. PRE-COMPUTATION (Matchup Modifier + Tempo Modifier)
             # ================================================================
+            # USES BDL MLB API (BallDontLie) for precise modifiers:
+            # - L/R Splits: OPS > .850 → +5% matchup boost
+            # - Batter vs Pitcher: OPS > .900 (10+ ABs) → +5% matchup boost  
+            # - Batting Order: Position 1-9 → tempo adjustment (0.90x to 1.10x)
+            # ================================================================
             
             # Get raw VK projection
             raw_vk_pred = prop.get("vk_predicted") or prop.get("raw_vk_pred") or prop.get("season_average")
             if not raw_vk_pred or raw_vk_pred <= 0:
                 continue
             
-            # Get opponent for matchup calculation
+            # Get opponent (needed for both pitcher and hitter paths)
             opponent = prop.get("opponent") or prop.get("opponent_abbr")
             
-            # Calculate matchup modifier
-            matchup_modifier = self._get_matchup_modifier(raw_stat, opponent) if opponent else 1.0
-            
-            # Calculate tempo modifier based on player type (hitter vs pitcher)
-            is_pitcher_stat = stat_key in ["K", "OUTS"]
+            # Determine if this is a pitcher stat (uses different tempo logic)
+            is_pitcher_stat = stat_key in ["K", "OUTS", "ER", "PITCHER STRIKEOUTS", "PITCHING OUTS"]
             
             if is_pitcher_stat:
-                # Pitcher tempo: P/PA efficiency + bullpen rest
+                # Pitcher stats: use legacy matchup + pitcher tempo
+                matchup_modifier = self._get_matchup_modifier(raw_stat, opponent) if opponent else 1.0
                 pitcher_ppa = prop.get("pitcher_ppa") or prop.get("pitches_per_pa")
                 bullpen_rest = prop.get("bullpen_rest_days")
                 tempo_modifier = calculate_pitcher_tempo(pitcher_ppa, bullpen_rest)
+                bdl_details = None
             else:
-                # Hitter tempo: batting order + away/home + team OBP
-                batting_order = prop.get("batting_order") or prop.get("lineup_position")
-                is_away = prop.get("is_away_team") or prop.get("is_away")
-                team_obp_rank = prop.get("team_obp_rank")
-                tempo_modifier = calculate_hitter_tempo(batting_order, is_away, team_obp_rank)
+                # Hitter stats: use cached BDL data (NO API CALLS)
+                matchup_modifier, tempo_modifier, bdl_details = self._get_bdl_modifiers_from_cache(
+                    prop=prop,
+                    stat_key=stat_key
+                )
+                
+                # Store BDL details in prop for Vision Intel Suite
+                if bdl_details:
+                    prop['bdl_modifiers'] = bdl_details
             
             # Chain the modifiers: Raw * Matchup * Tempo = Final Adjusted
             adjusted_vk_pred = raw_vk_pred * matchup_modifier * tempo_modifier
@@ -1984,6 +2090,9 @@ class MLBOracleApexService:
                 'vision_intel': prop.get('vision_intel'),
                 'intel_score': prop.get('intel_score'),
                 'intel_verdict': prop.get('intel_verdict'),
+                
+                # BDL API Modifier Details (L/R splits, BVP, batting order)
+                'bdl_modifiers': prop.get('bdl_modifiers'),
                 
                 # Timestamp
                 'synced_at': datetime.now(timezone.utc).isoformat(),
