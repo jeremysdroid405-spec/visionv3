@@ -1,228 +1,238 @@
-# PropVision / PickVision
+# PropVision
 
-NBA player props analytics platform with AI-powered insights.
+**The Edge Factory for PrizePicks.**
+
+PropVision is a real-time betting intelligence terminal engineered to systematically exploit inefficiencies in PrizePicks' fixed-payout prop markets. While books adjust lines in real-time, PropVision pre-computes edges using pace, usage, matchup data, and tempo—delivering mathematically-proven plays before the market corrects.
+
+This isn't a tips sheet. It's a quantitative trading desk for player props.
+
+---
+
+## The Problem We Solve
+
+PrizePicks offers fixed payouts regardless of implied probability. A 2-leg parlay pays 3x whether you're combining two -400 favorites or two +150 longshots. Most bettors treat all props equally.
+
+**We don't.**
+
+PropVision identifies props where the true probability exceeds what the payout implies—then ranks them by mathematical certainty. The result: a curated board of edge-positive plays, updated in real-time.
+
+---
+
+## Core Features
+
+### 1. Dual-Engine Dashboard
+
+Seamless sport switching between dedicated **NBA** and **MLB** analytical models—each calibrated for sport-specific variance patterns.
+
+```
+┌─────────────────────────────────────────────────────────┐
+│  [NBA]  [MLB]                              Live Sync ●  │
+├─────────────────────────────────────────────────────────┤
+│                                                         │
+│   SAFE HAVEN          FRONT LINES         WAR ZONE     │
+│   ━━━━━━━━━━          ━━━━━━━━━━━         ━━━━━━━━     │
+│   Bank Plays          Value Hunting       Ceiling Rips │
+│                                                         │
+└─────────────────────────────────────────────────────────┘
+```
+
+**NBA Engine:** Optimized for points, rebounds, assists, and PRA combos. Factors in pace, usage rate, defense vs. position (DvP), and blowout risk.
+
+**MLB Engine:** Calibrated for hits, total bases, pitcher strikeouts, and outs recorded. Incorporates pitcher matchups, lineup position, team OBP, and bullpen fatigue.
+
+One click. Complete context switch. Zero data bleed.
+
+---
+
+### 2. Tiered Intelligence — The Oracle
+
+Every prop on the board passes through **The Oracle**—a 3-gate qualification system that filters thousands of lines down to ~30 elite plays.
+
+#### Safe Haven — *The Bank Plays*
+```
+"If this doesn't hit, something is broken."
+```
+- **DK Odds:** ≤ -240 (heavily juiced favorites)
+- **Hit Rate:** 80-90% over last 20 games
+- **CV:** Ultra-low variance (consistency kings)
+- **Edge:** Model projects significant cushion above line
+
+These are the -400 favorites that PrizePicks still pays 3x on. Mathematical free money when stacked correctly.
+
+#### Front Lines — *Trend Chasing*
+```
+"The numbers are moving in our direction."
+```
+- **DK Odds:** -145 to -239 (moderate juice)
+- **Hit Rate:** 60-70% with recent uptick (L10 recency override)
+- **Edge:** Positive cushion with favorable matchup
+
+Players heating up. Usage bumps from injuries. Soft matchups the books haven't fully priced. This is where sharp money lives.
+
+#### War Zone — *Demon Ceiling Spikes*
+```
+"When it hits, we eat. When it misses, we knew the risk."
+```
+- **DK Odds:** ≥ +150 (plus-money longshots)
+- **Profile:** High-variance boom/bust players
+- **Ceiling Check:** Must have cleared line 2x in L15 (proven spikes)
+- **HR Power Bypass:** Home run props with L10 HRs ≥ 2 or ISO > .200
+
+Demon props exist for a reason—they're volatile. But volatility works both ways. War Zone isolates the demons with *demonstrated* ceiling potential, not just prayer.
+
+---
+
+### 3. Pre-Computation Edge
+
+By the time lines move, we've already identified the inefficiency.
+
+**What We Factor Before You See The Pick:**
+
+| Factor | NBA | MLB |
+|--------|-----|-----|
+| **Pace/Tempo** | Game pace, possessions per 48 | Plate appearances, lineup turnover |
+| **Usage/Volume** | Usage rate, minutes projection | Batting order, team OBP rank |
+| **Matchup** | DvP ranking (defense vs. position) | Pitcher handedness, bullpen strength |
+| **Situational** | Back-to-back, home/away | Wind direction, day/night splits |
+| **Injury Vacuum** | Teammate OUT = usage spike | Lineup changes, IL movements |
+
+**The Math:**
+```
+Adjusted_Projection = Raw_VK × Matchup_Modifier × Tempo_Modifier
+
+Where:
+- Matchup_Modifier: 0.85 (brutal) to 1.15 (smash spot)
+- Tempo_Modifier: 0.90 (limited volume) to 1.10 (pace-up game)
+```
+
+This isn't back-of-napkin analysis. It's systematic edge extraction.
+
+---
+
+### 4. Vision Intel — AI Scouting Reports
+
+Numbers tell the story. **Vision Intel** writes the headline.
+
+Every qualified pick receives a Gemini 3.1-powered scouting report that translates mathematical edges into human-readable betting rationale.
+
+**Example Output:**
+```json
+{
+  "player": "Tyrese Maxey",
+  "stat": "PTS",
+  "line": 24.5,
+  "vision_intel": "Maxey cooking at home with 90% L10. Houston's perimeter D 
+                   (#28) is a sieve—this is a smash spot. Lock the over.",
+  "intel_score": 9,
+  "verdict": "CHALK"
+}
+```
+
+**The Tone:** Gritty. Sharp. No robot spreadsheet readings.
+
+**The Verdicts:**
+- **CHALK** — Lock it. All systems go.
+- **VALUE** — Edge is real, minor concerns. Worth a play.
+- **TRAP** — Math looks good but context says no. Fade it.
+
+Vision Intel doesn't replace the math—it contextualizes it. When the model says "play" but the matchup screams "trap," you'll know.
+
+---
+
+### 5. Live Injury Advantage
+
+Injuries create edges. But only if you act fast.
+
+**The JIT Injury System:**
+- 60-second polling loop monitoring injury feeds
+- Automatic beneficiary identification (who absorbs the usage?)
+- **Active Prop Gate:** Only surfaces alerts where the beneficiary has a live prop on today's board
+
+```
+┌────────────────────────────────────────────────────────┐
+│  🔴 INJURY ADVANTAGE                     15 mins ago  │
+├────────────────────────────────────────────────────────┤
+│                                                        │
+│  Joel Embiid OUT (Knee)                               │
+│  ───────────────────────                              │
+│  BENEFICIARY: Tyrese Maxey                            │
+│  BOOST: +15% projection modifier                      │
+│  ACTIVE PROPS: PTS 24.5 • AST 5.5                     │
+│                                                        │
+│  [View Analysis]                                       │
+│                                                        │
+└────────────────────────────────────────────────────────┘
+```
+
+No noise. No dead alerts. Every injury notification is **actionable**.
+
+---
+
+## The Stack
+
+| Layer | Technology |
+|-------|------------|
+| Frontend | React + Tailwind CSS + Shadcn/UI |
+| Backend | FastAPI + Python |
+| Database | MongoDB (sport-isolated collections) |
+| AI | Gemini 3.1 Pro (Vision Intel) |
+| Data | The Odds API • BallDontLie API |
+
+---
+
+## Who This Is For
+
+- **DFS Grinders** maximizing PrizePicks flex plays
+- **Quantitative Bettors** who want systematic edge identification
+- **Sharp Followers** looking for pre-market inefficiencies
+- **Bankroll Managers** who need tiered risk allocation
+
+---
+
+## Who This Isn't For
+
+- Gamblers looking for "locks" (nothing is locked)
+- Bettors who don't understand variance
+- Anyone expecting 100% win rates
+
+PropVision identifies +EV plays. Variance still exists. Bankroll management still matters. But over volume, math wins.
+
+---
 
 ## Quick Start
 
-### Prerequisites
-- Python 3.11+
-- Node.js 18+
-- MongoDB 7.0+
-- API Keys: Odds API, BallDontLie, Google Gemini
-
-### Backend Setup
-
 ```bash
-cd backend
+# 1. Navigate to the application
+https://your-propvision-instance.com
 
-# Create virtual environment
-python3.11 -m venv venv
-source venv/bin/activate  # Linux/Mac
-# or: venv\Scripts\activate  # Windows
+# 2. Select your sport (NBA/MLB)
 
-# Install dependencies
-pip install -r requirements.txt
+# 3. Review tiered picks
+   - Safe Haven: Stack for floor
+   - Front Lines: Cherry-pick value
+   - War Zone: Sprinkle for ceiling
 
-# Copy environment file and add your keys
-cp .env.example .env
-nano .env  # Edit with your API keys
+# 4. Check Vision Intel for context
 
-# Run the server
-uvicorn server:app --host 0.0.0.0 --port 8001 --reload
-```
-
-### Frontend Setup
-
-```bash
-cd frontend
-
-# Install dependencies
-yarn install
-
-# Create environment file
-echo "REACT_APP_BACKEND_URL=http://localhost:8001" > .env
-
-# Start development server
-yarn start
-```
-
-### Initialize Database
-
-After the backend is running, populate the database:
-
-```bash
-# Option 1: Import existing dump (fastest)
-mongorestore --db=pick_vision dump/pick_vision/
-
-# Option 2: Run sync endpoints
-curl -X POST http://localhost:8001/api/v3/sync
-curl -X POST http://localhost:8001/api/hub/bdl-sync
+# 5. Build your slip
 ```
 
 ---
 
-## Project Structure
+## The Philosophy
 
-```
-/app
-├── backend/
-│   ├── config/              # Settings, API versioning
-│   ├── data/                # Static data (milestones, context)
-│   ├── middleware/          # Rate limiting, tracing
-│   ├── models/              # Pydantic schemas
-│   ├── repositories/        # Database access layer
-│   ├── routes/              # API endpoints
-│   ├── services/            # Business logic
-│   │   └── engines/         # Core orchestration engines
-│   ├── scripts/             # Utility scripts
-│   ├── utils/               # Helper functions
-│   └── server.py            # FastAPI application
-│
-├── frontend/
-│   ├── src/
-│   │   ├── components/      # React components
-│   │   ├── context/         # Auth context
-│   │   ├── hooks/           # Custom React hooks
-│   │   ├── lib/             # Utilities
-│   │   ├── pages/           # Page components
-│   │   ├── providers/       # Query providers
-│   │   ├── services/        # API client (DataService.js)
-│   │   └── styles/          # CSS
-│   └── public/
-│
-├── scripts/                 # Deployment scripts
-├── memory/                  # PRD and documentation
-└── docs/                    # Additional documentation
-```
+> *"The market is efficient until it isn't. Our job is to find the gaps before they close."*
+
+PrizePicks doesn't adjust payouts based on probability. They offer a fixed structure that assumes bettors pick randomly. PropVision exploits that assumption systematically.
+
+We don't predict winners. We identify mathematical inefficiencies and let volume do the rest.
 
 ---
 
-## MongoDB Collections
-
-### Authoritative (Source of Truth)
-| Collection | Purpose |
-|------------|---------|
-| `nba_master_hub_2026` | Player profiles, stats, game logs |
-| `dg_master_roster` | Active roster, team mappings |
-| `bdl_player_mapping` | BallDontLie ID mappings |
-| `odds_api_mapping_master` | Odds API name normalization |
-| `player_photos` | Headshot URLs |
-| `dvp_rankings` | Defense vs Position data |
-| `users` | User accounts |
-
-### Derived (Rebuilt on Sync)
-| Collection | Purpose |
-|------------|---------|
-| `dg_cached_board` | Frontend-ready player data |
-| `dg_live_props` | Live betting props |
-| `dg_parlay_builder` | Parlay recommendations |
-
-### Cache (Ephemeral)
-| Collection | Purpose |
-|------------|---------|
-| `dg_*_cache` | Various API response caches |
-| `ticker_cache` | News ticker data |
+**PropVision** — *Where math meets market.*
 
 ---
 
-## API Endpoints
-
-See [API_SURFACE.md](./API_SURFACE.md) for complete documentation.
-
-### Key Endpoints
-- `GET /api/v3/board` - Get all players and props
-- `GET /api/v3/player-with-badges/{name}` - Player detail with intel suite
-- `GET /api/v3/war-zone` - High-risk picks (demons)
-- `GET /api/v3/safe-haven` - Safe picks (goblins)
-- `GET /api/v3/parlay-builder` - Parlay recommendations
-- `POST /api/v3/sync` - Trigger data sync
-
----
-
-## Scheduled Jobs
-
-The backend runs these scheduled jobs (APScheduler):
-
-| Job | Time (EST) | Description |
-|-----|------------|-------------|
-| Daily Sync | 4:00 AM | Full BDL + Odds sync |
-| Roster Sync | Sunday 00:00 | Weekly roster update |
-| Ticker Sync | 4:15 AM | News refresh |
-
----
-
-## Environment Variables
-
-### Required
-```
-MONGO_URL=mongodb://localhost:27017
-DB_NAME=pick_vision
-ODDS_API_KEY=xxx
-BDL_API_KEY=xxx
-GOOGLE_API_KEY=xxx
-JWT_SECRET=xxx
-```
-
-### Optional
-```
-CORS_ORIGINS="*"
-RATE_LIMITING_ENABLED=true
-```
-
----
-
-## Production Deployment
-
-See [DEPLOYMENT_GUIDE.md](./DEPLOYMENT_GUIDE.md) for complete instructions.
-
-Quick steps:
-1. Install MongoDB, Python 3.11, Node.js 20, Nginx
-2. Clone repo to `/var/www/propvision`
-3. Set up backend venv and install requirements
-4. Copy `.env.example` to `.env` and add keys
-5. Build frontend: `yarn build`
-6. Configure Nginx reverse proxy
-7. Start backend with PM2
-8. Import database or run sync
-
----
-
-## Development
-
-### Running Tests
-```bash
-cd backend
-pytest tests/
-```
-
-### Linting
-```bash
-# Backend
-ruff check backend/
-
-# Frontend
-cd frontend && yarn lint
-```
-
-### Adding New Features
-1. Create model in `backend/models/`
-2. Add repository in `backend/repositories/`
-3. Create service in `backend/services/`
-4. Add route in `backend/routes/`
-5. Update frontend `DataService.js`
-
----
-
-## Contributing
-
-1. Fork the repository
-2. Create feature branch: `git checkout -b feature/my-feature`
-3. Commit changes: `git commit -am 'Add my feature'`
-4. Push to branch: `git push origin feature/my-feature`
-5. Submit pull request
-
----
-
-## License
-
-Proprietary - All rights reserved.
+<p align="center">
+  <i>Built for sharps. Powered by data. Fueled by edge.</i>
+</p>
