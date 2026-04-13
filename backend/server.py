@@ -765,6 +765,49 @@ async def scheduled_roster_sync():
         logger.error("[SCHEDULER] Demon & Goblin Engine not initialized")
 
 
+async def scheduled_forward_test_capture():
+    """
+    Scheduled job that runs at 6:30 PM ET (22:30 UTC) daily.
+    
+    Captures all tier props (Safe Haven, Front Lines, War Zone) for both
+    NBA and MLB to enable historical performance tracking.
+    
+    This builds the dataset for:
+    - Model calibration validation (predicted vs actual hit rates)
+    - Tier performance analysis
+    - A/B testing of threshold changes
+    """
+    logger.info("=" * 70)
+    logger.info("[SCHEDULER] FORWARD-TEST: DAILY PROP CAPTURE (6:30 PM ET)")
+    logger.info(f"[SCHEDULER] Time: {datetime.now(timezone.utc).isoformat()}")
+    logger.info("=" * 70)
+    
+    try:
+        from services.forward_testing_service import get_forward_testing_service
+        
+        service = get_forward_testing_service(db)
+        result = await service.capture_all_sports(capture_reason="scheduled_1830_et")
+        
+        # Log results
+        total_props = 0
+        for sport, data in result.get("sports", {}).items():
+            sport_total = data.get("total_props", 0)
+            total_props += sport_total
+            tiers = data.get("tiers", {})
+            logger.info(f"[SCHEDULER] {sport.upper()}: {sport_total} props captured")
+            for tier, count in tiers.items():
+                logger.info(f"[SCHEDULER]   - {tier}: {count}")
+        
+        logger.info("=" * 70)
+        logger.info(f"[SCHEDULER] FORWARD-TEST COMPLETE: {total_props} total props captured")
+        logger.info("=" * 70)
+        
+    except Exception as e:
+        logger.error(f"[SCHEDULER] Forward-test capture failed: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+
+
 async def scheduled_bdl_game_logs_sync():
     """
     Scheduled job that runs at 4:25 AM EST (09:25 UTC) daily.
@@ -1498,6 +1541,16 @@ async def startup_event():
         replace_existing=True
     )
     
+    # Forward-Testing: Daily prop capture at 6:30 PM ET (22:30 UTC summer / 23:30 UTC winter)
+    # Captures all tier props for historical performance tracking
+    scheduler.add_job(
+        scheduled_forward_test_capture,
+        CronTrigger(hour=22, minute=30, timezone=SCHEDULER_TIMEZONE),
+        id='forward_test_capture',
+        name='Forward-Test: Daily Prop Capture (6:30 PM ET)',
+        replace_existing=True
+    )
+    
     scheduler.start()
     logger.info(f"[SCHEDULER] APScheduler started - WEEKEND-READY MODE")
     logger.info(f"[SCHEDULER] === INTERVAL JOBS (High-Performance) ===")
@@ -1513,6 +1566,7 @@ async def startup_event():
     logger.info(f"[SCHEDULER] 4:15 AM EST - NBA BDL Game Logs   | 4:18 AM - MLB")
     logger.info(f"[SCHEDULER] 4:20 AM EST - NBA Daily Pipeline  | 4:23 AM - MLB (recalc HR)")
     logger.info(f"[SCHEDULER] 4:26 AM EST - Ticker Sync")
+    logger.info(f"[SCHEDULER] 6:30 PM ET - Forward-Test Capture (NBA + MLB)")
     logger.info(f"[SCHEDULER] Sunday 00:00 UTC - Weekly Roster Sync")
     
     # AUTO-SYNC: Check if database is empty and trigger initial population
