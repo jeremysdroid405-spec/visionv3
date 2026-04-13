@@ -3,8 +3,8 @@ MLB Oracle Apex Service - Safe Haven Tier Logic (2026 Season)
 ==============================================================
 The "Vegas Killer" mathematically-proven Safe Haven tier for MLB.
 
-SAFE HAVEN 2.0 - GOBLIN-ONLY PREMIUM STABILITY BOARD
-====================================================
+SAFE HAVEN 2.0 - PREDICTIVE ACTUARY MODEL
+=========================================
 
 STRICT PROP TYPE GATE:
 - Safe Haven ONLY accepts GOBLIN props
@@ -21,19 +21,28 @@ GATE THRESHOLDS:
 - CV Max: <= 0.70 (consistency check)
 - Lineup Status: CONFIRMED or PROJECTED only
 
-ACTUARY GATE (The Primary Filter):
-- Calculates casino's required win rate based on Goblin Tax curve
-- propvision_edge = vk_prob_over - casino_req_rate
-- KILL SWITCH: If propvision_edge <= 0, prop is dropped
+PREDICTIVE ACTUARY GATE:
+1. Market Implied Probability (from DK odds):
+   - If dk_odds < 0: market_prob = (abs(dk_odds) / (abs(dk_odds) + 100)) * 100
+   - Fallback: 50.0%
+
+2. PropVision True Probability (50/50 blend):
+   - propvision_true_prob = (market_prob * 0.50) + (true_hit_rate * 0.50)
+
+3. True Edge Calculation:
+   - casino_req_rate = get_pp_required_win_rate(dk_odds, prop_type)
+   - true_edge = propvision_true_prob - casino_req_rate
+
+4. KILL SWITCH: If true_edge <= 0, prop is dropped
 
 BOARD SCORE FORMULA:
-- (propvision_edge * 2.0) + (true_hit_rate * 0.8) - (cv * 15)
-- Blends mathematical edge with true historical consistency
+- (true_edge * 3.0) - (cv * 15)
+- Heavily weights true edge, penalizes volatility
 
 Lineup Status Values:
 - CONFIRMED: Player is in today's confirmed BDL lineup
 - PROJECTED: Player has recent game activity but lineup not yet confirmed
-- BENCHED: Player's team has lineup but player is NOT in it (pinch-hitter trap protection)
+- BENCHED: Player's team has lineup but player is NOT in it
 - UNKNOWN: No lineup data and no recent activity
 """
 from typing import Dict, List, Any, Optional, Tuple
@@ -980,30 +989,35 @@ class MLBOracleApexService:
                 continue
             
             # ================================================================
-            # PHASE 3: THE ACTUARY GATE (The Primary Filter)
+            # PHASE 3: THE PREDICTIVE ACTUARY GATE
             # ================================================================
-            # Let the Actuary Math dictate what qualifies.
-            # If edge is positive against the specific payout bucket, it passes.
+            # Blend Vegas market probability with our Season-to-Date True Hit Rate
+            # to create a predictive PropVision True Probability.
             
-            # Get our internal True Probability
-            vk_prob_over = prop.get("vk_prob_over") or prop.get("vk_probability") or prop.get("pinnacle_tp")
+            # 3a. Calculate Market Implied Probability from DK Odds
+            # Convert American odds to implied probability
+            if dk_odds and dk_odds < 0:
+                market_prob = (abs(dk_odds) / (abs(dk_odds) + 100)) * 100
+            else:
+                market_prob = 50.0  # Fallback for positive or missing odds
             
-            if vk_prob_over is None or vk_prob_over <= 0:
-                gate_stats['fail_actuary_gate'] += 1
-                continue
+            # 3b. Calculate PropVision True Probability (50/50 blend)
+            # Blend Vegas market with our internal Season-to-Date True Hit Rate
+            propvision_true_prob = (market_prob * 0.50) + (true_hit_rate * 0.50)
             
-            # Get the casino's required win rate based on Goblin Tax curve
+            # 3c. Get the casino's required win rate based on Goblin Tax curve
             casino_req_rate = get_pp_required_win_rate(dk_odds, prop_type)
             
-            # Calculate our edge vs the casino's required rate
-            propvision_edge = vk_prob_over - casino_req_rate
+            # 3d. Calculate True Edge: Our blended model vs Casino's required rate
+            true_edge = propvision_true_prob - casino_req_rate
             
-            # THE KILL SWITCH: If we can't beat the casino's tax, DROP IT
-            if propvision_edge <= 0.0:
+            # THE KILL SWITCH: If our blended model cannot beat the casino tax, kill it.
+            if true_edge <= 0.0:
                 gate_stats['fail_actuary_gate'] += 1
                 logger.debug(f"[ACTUARY_GATE] KILLED: {player_name} {stat_type} | "
-                            f"PropVision: {vk_prob_over:.1f}% vs Casino Req: {casino_req_rate:.1f}% | "
-                            f"Edge: {propvision_edge:.1f}%")
+                            f"Market: {market_prob:.1f}% + HR: {true_hit_rate:.1f}% = "
+                            f"PropVision: {propvision_true_prob:.1f}% vs Casino Req: {casino_req_rate:.1f}% | "
+                            f"Edge: {true_edge:.1f}%")
                 continue
             
             # ================================================================
@@ -1019,9 +1033,9 @@ class MLBOracleApexService:
             # Raw edge (prediction vs line)
             raw_edge = (raw_vk_pred - line) if line > 0 else 0
             
-            # Calculate Board Score - Blend of mathematical edge and true historical consistency
-            # Formula: (propvision_edge * 2.0) + (true_hit_rate * 0.8) - (cv * 15)
-            board_score = (propvision_edge * 2.0) + (true_hit_rate * 0.8) - (cv * 15)
+            # Calculate Board Score - Weights true edge heavily, penalizes volatility
+            # Formula: (true_edge * 3.0) - (cv * 15)
+            board_score = (true_edge * 3.0) - (cv * 15)
             
             qualified_pick = {
                 # Player info
@@ -1057,29 +1071,33 @@ class MLBOracleApexService:
                 'raw_vk_pred': round(raw_vk_pred, 2) if raw_vk_pred else None,
                 'vk_predicted': round(raw_vk_pred * matchup_modifier * tempo_modifier, 2) if raw_vk_pred else None,
                 'vk_edge': round(raw_edge, 2),
-                'vk_prob_over': round(vk_prob_over, 1),
                 'matchup_modifier': round(matchup_modifier, 3),
                 'tempo_modifier': round(tempo_modifier, 3),
                 
-                # *** ACTUARY GATE FIELDS ***
+                # *** PREDICTIVE ACTUARY GATE FIELDS ***
+                'market_prob': round(market_prob, 1),
+                'propvision_true_prob': round(propvision_true_prob, 1),
                 'casino_req_rate': round(casino_req_rate, 1),
-                'propvision_edge': round(propvision_edge, 1),
+                'true_edge': round(true_edge, 1),
                 
                 # Board score
                 'board_score': round(board_score, 1),
                 
                 # Tier classification
                 'tier': 'safe_haven',
-                'tier_label': 'MLB Safe Haven 2.0 (GOBLIN-ONLY)',
+                'tier_label': 'MLB Safe Haven 2.0 (Predictive)',
                 'oracle_apex_qualified': True,
                 'actuary_gate_passed': True,
                 
                 # Gate info for debugging
                 'gate_info': {
+                    'market_prob': round(market_prob, 1),
+                    'true_hit_rate': round(true_hit_rate, 1),
+                    'propvision_true_prob': round(propvision_true_prob, 1),
                     'casino_req_rate': round(casino_req_rate, 1),
-                    'propvision_edge': round(propvision_edge, 1),
-                    'true_hit_rate_required': 60.0,
-                    'cv_max_allowed': 0.70,
+                    'true_edge': round(true_edge, 1),
+                    'hit_rate_floor': 60.0,
+                    'cv_max': 0.70,
                 },
                 
                 # Carry forward vision intel
@@ -1099,14 +1117,14 @@ class MLBOracleApexService:
         # ====================================================================
         
         # Log gate statistics
-        logger.info("[MLB_SAFE_HAVEN 2.0] Gate Statistics (GOBLIN-ONLY):")
+        logger.info("[MLB_SAFE_HAVEN 2.0] Gate Statistics (Predictive Model):")
         logger.info(f"  Total Input: {gate_stats['total_input']}")
         logger.info(f"  Failed Prop Type (Non-GOBLIN): {gate_stats['fail_prop_type']}")
         logger.info(f"  Failed Lineup: {gate_stats['fail_lineup']}")
         logger.info(f"  Failed Weather: {gate_stats['fail_weather']}")
         logger.info(f"  Failed Hit Rate (<60%): {gate_stats['fail_hit_rate']}")
         logger.info(f"  Failed CV (>0.70): {gate_stats['fail_cv']}")
-        logger.info(f"  *** KILLED BY ACTUARY GATE: {gate_stats['fail_actuary_gate']} ***")
+        logger.info(f"  *** KILLED BY PREDICTIVE ACTUARY GATE: {gate_stats['fail_actuary_gate']} ***")
         logger.info(f"  QUALIFIED (Goblins that Beat the Tax): {gate_stats['qualified']}")
         
         # Sort descending by Board_Score
@@ -1125,13 +1143,13 @@ class MLBOracleApexService:
         # Slice to Top 10
         top_10 = final_picks[:10]
         
-        logger.info(f"[MLB_SAFE_HAVEN 2.0] Final Result: {len(top_10)} picks")
+        logger.info(f"[MLB_SAFE_HAVEN 2.0] Final Result: {len(top_10)} picks (Predictive Model)")
         
         for i, pick in enumerate(top_10[:5], 1):
             logger.info(f"[MLB_SAFE_HAVEN 2.0]   {i}. {pick['player_name']} - {pick['stat_key']} | "
-                       f"True HR: {pick['true_hit_rate']}% ({pick.get('games_played', 0)} GP) | "
-                       f"PropVision: {pick['vk_prob_over']}% vs Casino: {pick['casino_req_rate']}% | "
-                       f"EDGE: +{pick['propvision_edge']:.1f}% | Board: {pick['board_score']}")
+                       f"HR: {pick['true_hit_rate']}% + Market: {pick['market_prob']}% = "
+                       f"PropVision: {pick['propvision_true_prob']}% vs Casino: {pick['casino_req_rate']}% | "
+                       f"TRUE EDGE: +{pick['true_edge']:.1f}% | Board: {pick['board_score']}")
         
         return top_10
     
