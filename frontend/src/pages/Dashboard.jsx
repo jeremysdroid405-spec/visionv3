@@ -1730,26 +1730,26 @@ const Dashboard = () => {
               
               {/* MLB Safe Haven (3-Gate Qualified) */}
               <MLBSafeHavenSection 
-                picks={mlbSafeHavenPicks.length > 0 ? mlbSafeHavenPicks : mlbGoblinsPicks} 
+                picks={mlbSafeHavenPicks} 
                 onPickClick={handleVaultClick} 
                 onQuickAdd={handleQuickAdd} 
-                isLoading={mlbSafeHavenLoading || mlbGoblinsLoading} 
+                isLoading={mlbSafeHavenLoading} 
               />
               
               {/* MLB Front Lines (Mid-Juice 3-Gate Qualified) */}
               <MLBFrontLinesSection 
-                picks={mlbFrontLinesPicks.length > 0 ? mlbFrontLinesPicks : mlbHRRPicks} 
+                picks={mlbFrontLinesPicks} 
                 onPickClick={handleRadarClick} 
                 onQuickAdd={handleQuickAdd} 
-                isLoading={mlbFrontLinesLoading || mlbHRRLoading} 
+                isLoading={mlbFrontLinesLoading} 
               />
               
               {/* MLB War Zone (Moonshot Demons with Ceiling Protocol) */}
               <MLBWarZoneSection 
-                picks={mlbWarZonePicks.length > 0 ? mlbWarZonePicks : mlbDemonsPicks} 
+                picks={mlbWarZonePicks} 
                 onPickClick={handleRadarClick} 
                 onQuickAdd={handleQuickAdd} 
-                isLoading={mlbWarZoneLoading || mlbDemonsLoading} 
+                isLoading={mlbWarZoneLoading} 
               />
             </>
           )}
