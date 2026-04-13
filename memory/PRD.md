@@ -1,141 +1,82 @@
-# PropVision AI - Product Requirements Document
+# PropVision MLB Betting App - Product Requirements Document
 
 ## Original Problem Statement
-Restructure the React/FastAPI betting app to a 100% Local-First Database Model, integrating multi-sport support (NBA/MLB) and an exact MLB 4-Gate evaluation system/UI replica of the NBA side. Ensure the backend accurately computes edge projections, populates hit rates correctly, and outputs professional Gemini Oracle summaries.
+Restructure the React/FastAPI betting app to a 100% Local-First Database Model, integrating multi-sport support (NBA/MLB) and an exact MLB 4-Gate evaluation system/UI replica of the NBA side.
 
-## Core Features
-- **Multi-Sport Support**: NBA and MLB pipelines with sport-specific dashboards
-- **4-Gate Evaluation System**: Safe Haven, Front Lines, War Zone tiering
-- **Vision Intel Suite**: Gemini-powered target lock rationales with caching
-- **Live Injury Advantage**: High-frequency injury monitoring with Active Prop Gate
-- **Sport-Specific Routing**: `/nba` and `/mlb` routes with dedicated dashboards
-- **BDL Splits Integration**: L/R handedness splits for matchup modifiers (batch prefetch)
-
-## Tech Stack
-- **Frontend**: React + Tailwind CSS + Shadcn/UI
-- **Backend**: FastAPI + Python
-- **Database**: MongoDB
-- **AI**: Gemini 3.1 Flash-Lite (via Emergent LLM Key)
-- **APIs**: The Odds API, BallDontLie API (batch calls only)
+## Core Requirements
+- BallDontLie (BDL) API integration for player stats
+- Automated daily prop capture (Forward-Testing Infrastructure)
+- Google/Apple OAuth integration
+- Stripe payments implementation
+- Dashboard.jsx refactoring
 
 ## Architecture
-```
-/app
-├── frontend/
-│   ├── src/pages/NBADashboard.jsx
-│   ├── src/pages/MLBDashboard.jsx
-│   ├── src/hooks/useLiveInjuries.js
-├── backend/
-│   ├── services/
-│   │   ├── bdl_splits_cache.py (NEW - batch splits prefetch)
-│   │   ├── mlb_oracle_apex_service.py
-│   │   ├── mlb_tier_service.py
-│   │   ├── mlb_vision_intel.py
-│   ├── routes/
-│   │   ├── ferrari_tiers.py
-│   │   ├── injuries.py
-│   │   ├── vacuum.py
-```
 
-## Key API Endpoints
-- `GET /api/v3/ferrari/safe-haven?sport=mlb|nba`
-- `GET /api/v3/ferrari/front-lines?sport=mlb|nba`
-- `GET /api/v3/ferrari/war-zone?sport=mlb|nba`
-- `GET /api/v3/injuries/live`
-- `GET /api/v3/vacuum/live-alerts` (NBA)
-- `GET /api/v3/mlb/vacuum/live-alerts` (MLB)
+### Backend Stack
+- FastAPI (Python 3.11)
+- MongoDB (Motor async driver)
+- Gemini 3.1 Flash-Lite for Vision Intel
 
-## Completed Work
+### Key Services
+- `/app/backend/services/mlb_master_sync.py` - Master orchestrator for MLB sync pipeline
+- `/app/backend/services/bdl_splits_cache.py` - BDL batch pre-fetcher
+- `/app/backend/services/mlb_cached_board_builder.py` - Prop enrichment with lineup_status
+- `/app/backend/services/mlb_oracle_apex_service.py` - Tier evaluation (Safe Haven 2.0, Front Lines, War Zone)
+
+### Key Endpoints
+- `POST /api/mlb/sync/master` - Full MLB pipeline execution
+- `GET /api/v3/ferrari/safe-haven?sport=mlb` - Safe Haven tier picks
+
+## Data Models
+
+### lineup_status (NEW - 2026-04-13)
+String field replacing boolean `is_lineup_confirmed`:
+- `"CONFIRMED"` - Player in today's BDL lineup
+- `"PROJECTED"` - Recent game activity (last 5 days), no lineup yet
+- `"BENCHED"` - Team has lineup but player not included
+- `"UNKNOWN"` - No lineup data or recent activity
+
+### Safe Haven 2.0 Actuary Gate
+4-Phase qualification pipeline:
+1. Phase 1: Baseline Gates (lineup_status, weather, L20 rate, CV)
+2. Phase 2: Internal Math (PropVision True Probability)
+3. Phase 3: Actuary Gate - Kills props where PropVision Edge <= Casino Required Win Rate
+4. Phase 4: Output sorting by board_score
+
+## Completed Features (2026 Season)
 
 ### April 13, 2026
-- ✅ **BDL Splits Batch Integration**: Implemented batch prefetch for L/R handedness splits
-  - `bdl_splits_cache.py`: Single batch prefetch for all unique hitters
-  - ONE batch operation for all 3 tiers (Safe Haven, Front Lines, War Zone)
-  - +5% matchup_modifier for OPS > 0.850 vs L/R pitchers
-  - `bdl_modifiers` field added to pick output with lr_split details
-  - Rebuild time reduced from timeout to ~49 seconds
+- [x] Implemented `lineup_status` string field in data pipeline
+- [x] Updated Safe Haven Phase 1 gate to allow CONFIRMED/PROJECTED
+- [x] Safe Haven 2.0 Actuary Gate verified working (63 props killed by Goblin Tax check)
+- [x] MLB Master Sync pipeline functioning correctly
 
-### April 2026
-- ✅ **HR Power Bypass Implementation** (E2E Test 3): MLB War Zone Gate 1 now includes explicit bypass for HR props
-  - If stat_type == 'HR' and fails standard hit rate check
-  - Check L10 HRs >= 2 OR ISO > .200 vs pitcher handedness
-  - Forces PASS Gate 1 for power hitters with low base hit rates
-  - Logged under `Gate 1 HR Power Bypass (L10 HRs >= 2 or ISO > .200)`
+### Previous Sessions
+- [x] MLB Master Sync orchestrator (`/api/mlb/sync/master`)
+- [x] BDL batch prefetching (prevents rate limits)
+- [x] CV decimal scale normalization
+- [x] Vision Intel batch processing (single Gemini call)
+- [x] Props comparison export (6,677 props)
 
-- ✅ **MLB Headshot Sync** (P2 Complete)
-  - Service: `/app/backend/services/mlb_headshot_sync.py`
-  - Endpoints: `POST /api/v3/mlb/headshots/sync`, `GET /api/v3/mlb/headshots/status`
-  - Coverage: 96.7% (771/797 players with official MLB CDN headshots)
-  - Storage: `/app/frontend/public/images/mlb_headshots/{mlb_id}.png`
+## Pending Issues
 
-- ✅ **MLB Startup Health Check** (Auto-populate on pod fork)
-  - Location: `server.py` → `run_mlb_startup_health_check()`
-  - Checks: `mlb_live_props`, `mlb_cached_board`, `mlb_war_zone`
-  - Auto-triggers: Odds API sync → Board build → Tier rebuild (if empty)
-  - Prevents "empty MLB board" issue on fresh/forked environments
+### P0 - Critical
+- None currently
 
-- ✅ **Forward-Testing Infrastructure** (P2 Complete)
-  - Service: `/app/backend/services/forward_testing_service.py`
-  - Routes: `/app/backend/routes/forward_testing.py`
-  - Collections: `forward_test_snapshots`, `forward_test_outcomes`, `forward_test_metrics`
-  - Features:
-    - Daily prop snapshot capture for all tiers
-    - Outcome resolution with hit/miss tracking
-    - Performance metrics by sport/tier
-    - Calibration reports (predicted vs actual hit rates)
-  - Endpoints:
-    - `POST /api/v3/forward-test/capture` - Capture daily props
-    - `POST /api/v3/forward-test/resolve` - Resolve outcomes
-    - `GET /api/v3/forward-test/performance` - Performance summary
-    - `GET /api/v3/forward-test/calibration` - Model calibration
-
-### December 2025
-- ✅ MLB Vision Intel Suite with Tempo calculations and badge mapping
-- ✅ Gemini target lock rationales with MongoDB caching (reduced 57s → instant)
-- ✅ Dashboard refactor into NBADashboard.jsx and MLBDashboard.jsx
-- ✅ High-frequency live injury micro-sync (60s polling)
-- ✅ JIT (Just-In-Time) injury checks before UI transmission
-- ✅ Active Prop Gate for NBA and MLB vacuum alerts
-- ✅ Fixed MongoDB truthiness evaluation bug in vacuum.py
-- ✅ Percentage-Based Hit Rate (Gate 1) with dynamic sample size floor
-- ✅ NBA War Zone logic updates (DK odds +140, Demon Override, Volatility Fast-Track)
-- ✅ Fixed NoneType sorting crash in ferrari_tier_service.py
-- ✅ Fixed NBA Vision Intel hallucination (stripped L3 from prompts)
-- ✅ MLB GET endpoints strictly read from Oracle Apex collections
-- ✅ Updated NBA Vision Intel prompt to "Lead NBA Scout" persona
-
-## Prioritized Backlog
-
-### P0 - Critical (In Progress)
-- ✅ HR Power Bypass (Test 3) - COMPLETED
-
-### P1 - High Priority
-- [ ] Google OAuth integration (Emergent-managed)
-- [ ] Stripe payments integration
+### P1 - High Priority  
+- Front Lines tier still uses old `is_lineup_confirmed` (user to decide if update needed)
+- Google/Apple OAuth integration
+- Stripe payments integration
 
 ### P2 - Medium Priority
-- ✅ MLB headshot sync - COMPLETED (96.7% coverage)
-- ✅ Forward-Testing Infrastructure - COMPLETED
-- [ ] Wind Tunnel weather API integration
-- [ ] Apple OAuth integration
-
-### P3 - Low Priority / Refactoring
-- [ ] Refactor ferrari_tiers.py (3,500+ lines) into modular handlers
+- Wind Tunnel weather API integration
+- Refactor `ferrari_tiers.py` (>2000 lines)
+- Refactor `Dashboard.jsx`
 
 ## 3rd Party Integrations
-| Service | Status | Key Source |
-|---------|--------|------------|
-| Gemini 3.1 Flash-Lite | ✅ Active | Emergent LLM Key |
-| The Odds API | ✅ Active | User API Key |
-| BallDontLie API | ✅ Active | User API Key |
-| Google OAuth | ⏳ Pending | Emergent-managed |
-| Stripe | ⏳ Pending | Pod test keys |
+- Gemini 3.1 Flash-Lite (Google GenAI SDK) - Emergent LLM Key
+- The Odds API - User API Key required
+- BallDontLie API - User API Key required
 
-## Known Technical Debt
-- `ferrari_tiers.py` exceeds 3,500 lines and needs modularization
-- MLB injuries sourced from BDL API (consider ESPN fallback)
-
-## Testing Status
-- Active Prop Gate: ✅ Verified via curl
-- Vacuum Alerts NBA: ✅ Returns 9 alerts
-- Vacuum Alerts MLB: ✅ Returns 0 alerts (expected when no beneficiaries have props)
+## Testing Credentials
+- Use "Demo Mode" button on frontend login page

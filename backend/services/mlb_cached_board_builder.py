@@ -9,6 +9,13 @@ Enrichment Process:
 3. Calculate season average for that stat
 4. Calculate CV (Coefficient of Variation) for consistency scoring
 5. Calculate hit rate (% of games over the line)
+6. Determine lineup_status: CONFIRMED, PROJECTED, BENCHED, or UNKNOWN
+
+Lineup Status Mapping:
+- CONFIRMED: Player is in today's confirmed BDL lineup
+- PROJECTED: Player has recent game activity (last 5 days) but lineup not yet confirmed
+- BENCHED: Player's team has a confirmed lineup but player is NOT in it
+- UNKNOWN: No lineup data and no recent activity
 
 Circuit Breaker:
 - If Odds API returns 0 props, DO NOT wipe mlb_cached_board
@@ -123,6 +130,82 @@ class MLBCachedBoardBuilder:
     def __init__(self, db: AsyncIOMotorDatabase):
         self.db = db
         self.sport = "mlb"
+        # Lineup cache: {player_name_lower: lineup_status}
+        self._lineup_cache: Dict[str, str] = {}
+        self._lineup_teams_loaded: set = set()
+    
+    async def _load_today_lineups(self):
+        """
+        Load today's lineups from bdl_lineups collection.
+        Maps player names to lineup status: CONFIRMED, PROJECTED, BENCHED, UNKNOWN
+        """
+        from datetime import timedelta
+        
+        # Reset cache
+        self._lineup_cache = {}
+        self._lineup_teams_loaded = set()
+        
+        # Get lineups synced in the last 24 hours
+        cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
+        
+        lineups = await self.db.bdl_lineups.find({
+            "synced_at": {"$gte": cutoff}
+        }).to_list(None)
+        
+        logger.info(f"[MLB_BOARD] Loaded {len(lineups)} team lineups from bdl_lineups")
+        
+        # Build confirmed starters set
+        for lineup in lineups:
+            team_name = (lineup.get("team_name") or "").lower()
+            players = lineup.get("players", [])
+            
+            self._lineup_teams_loaded.add(team_name)
+            
+            for player in players:
+                player_name = (player.get("name") or "").strip().lower()
+                if player_name:
+                    # Player is in the confirmed lineup
+                    self._lineup_cache[player_name] = "CONFIRMED"
+        
+        logger.info(f"[MLB_BOARD] {len(self._lineup_cache)} players marked CONFIRMED")
+        logger.info(f"[MLB_BOARD] Teams with lineups: {len(self._lineup_teams_loaded)}")
+    
+    def _determine_lineup_status(self, player_name: str, team_name: str, game_logs: List[Dict]) -> str:
+        """
+        Determine lineup status for a player.
+        
+        Returns one of: "CONFIRMED", "PROJECTED", "BENCHED", "UNKNOWN"
+        
+        Logic:
+        - CONFIRMED: Player is in today's confirmed BDL lineup
+        - PROJECTED: Player has recent game activity (last 5 days) but lineup not yet confirmed
+        - BENCHED: Player's team has a confirmed lineup but player is NOT in it
+        - UNKNOWN: No lineup data and no recent activity
+        """
+        player_key = player_name.lower().strip()
+        team_key = (team_name or "").lower().strip()
+        
+        # Check if player is in confirmed lineup
+        if player_key in self._lineup_cache:
+            return "CONFIRMED"
+        
+        # Check if team has lineup posted but player not in it
+        if team_key in self._lineup_teams_loaded:
+            # Team has lineup but player not listed = BENCHED
+            return "BENCHED"
+        
+        # No lineup data for this team - check recent activity
+        if game_logs:
+            # Check for game in last 5 days = PROJECTED (expected starter)
+            from datetime import timedelta
+            cutoff_date = (datetime.now(timezone.utc) - timedelta(days=5)).strftime("%Y-%m-%d")
+            
+            for log in game_logs[:3]:  # Check last 3 logs
+                log_date = log.get("date", "")
+                if log_date >= cutoff_date:
+                    return "PROJECTED"
+        
+        return "UNKNOWN"
     
     def _get_collection(self, base_name: str):
         """Get MLB-specific collection."""
@@ -257,6 +340,7 @@ class MLBCachedBoardBuilder:
         - cv: Coefficient of Variation
         - hit_rate_l10: % of L10 games over the line
         - hit_rate_l5: % of L5 games over the line
+        - lineup_status: CONFIRMED, PROJECTED, BENCHED, or UNKNOWN
         
         SSOT: Uses mlb_master_hub_2026.bdl_game_logs as the single source of truth.
         IMPORTANT: Filters to CURRENT SEASON only.
@@ -266,6 +350,8 @@ class MLBCachedBoardBuilder:
         
         stat_type = prop.get("stat_type", "")
         line = prop.get("line", 0)
+        player_name = prop.get("player_name", "") or player.get("display_name", "")
+        team_name = player.get("team_name", "") or player.get("team_abbr", "")
         
         # SSOT: mlb_master_hub_2026.bdl_game_logs - FILTER TO CURRENT SEASON
         all_game_logs = player.get("bdl_game_logs", [])
@@ -274,6 +360,9 @@ class MLBCachedBoardBuilder:
             if log.get("season") == current_season or 
                (log.get("date", "")[:4] == str(current_season))
         ]
+        
+        # Determine lineup status
+        lineup_status = self._determine_lineup_status(player_name, team_name, game_logs)
         
         # Extract stat values
         l10_values, field_name = self.extract_stat_values(game_logs, stat_type, limit=10)
@@ -293,6 +382,8 @@ class MLBCachedBoardBuilder:
             "team": player.get("team_abbr"),
             "team_name": player.get("team_name"),
             "position": player.get("position") or player.get("primary_position"),
+            # Lineup status (NEW - replaces is_lineup_confirmed)
+            "lineup_status": lineup_status,
             # Stats enrichment
             "stat_field": field_name,
             "season_average": season_avg,
@@ -395,6 +486,9 @@ class MLBCachedBoardBuilder:
         }
         
         try:
+            # Step 0: Load today's lineups for lineup_status mapping
+            await self._load_today_lineups()
+            
             # Step 1: Fetch all props from mlb_live_props (must have PrizePicks line)
             live_props = self._get_collection("live_props")
             props = await live_props.find(

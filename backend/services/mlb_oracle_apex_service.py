@@ -22,16 +22,23 @@ Raw Edge Logic (typical lines):
 PRIMARY QUALIFICATIONS:
 1. DK Odds: Must be <= -240
 2. Prop Type: GOBLIN (Green) only - reject standard and demon props
-3. Lineup Status: is_lineup_confirmed MUST be True
+3. Lineup Status: Must be "CONFIRMED" or "PROJECTED" (rejects "BENCHED" and "UNKNOWN")
+
+Lineup Status Values:
+- CONFIRMED: Player is in today's confirmed BDL lineup
+- PROJECTED: Player has recent game activity but lineup not yet confirmed
+- BENCHED: Player's team has lineup but player is NOT in it (pinch-hitter trap protection)
+- UNKNOWN: No lineup data and no recent activity
 
 PRE-COMPUTATION:
 - Import mlb_matchup_math.py for Matchup Modifier
 - Multiply raw VK_Projection by Matchup Multiplier for Adjusted_VK_Projection
 
-3-GATE QUALIFICATION:
-- Gate 1: Hit Rate (strict L20 percentage, no weighted recency exceptions)
-- Gate 2: CV <= stat-specific limit
-- Gate 3: Adjusted_VK_Projection Raw Edge >= min threshold AND TP >= 70%
+4-PHASE QUALIFICATION (Safe Haven 2.0 - Actuary Gate):
+- Phase 1: Strict Baseline Gates (Lineup Status, Weather, L20 Rate, CV)
+- Phase 2: Internal Math (PropVision True Probability)
+- Phase 3: THE ACTUARY GATE - Kills props where PropVision Edge <= Casino Required Win Rate
+- Phase 4: Output & Sorting by board_score weighted by propvision_edge
 
 HARD-STOP FILTERS:
 - Weather: If wind_direction == 'IN' AND wind_speed > 12mph, reject batter props
@@ -101,13 +108,20 @@ def get_pp_required_win_rate(dk_odds: int, prop_type: str) -> float:
         
         # Goblin Tax Curve (mapped from PP multipliers)
         # More negative DK odds = higher required win rate
-        if dk_odds <= -350: return 91.2   # 1.2x slip equivalent (near lock)
-        if dk_odds <= -290: return 79.0   # 1.6x slip equivalent
-        if dk_odds <= -250: return 76.7   # 1.7x slip equivalent
-        if dk_odds <= -230: return 72.5   # 1.9x slip equivalent
-        if dk_odds <= -210: return 70.7   # 2.0x slip equivalent
-        if dk_odds <= -190: return 67.4   # 2.2x slip equivalent
-        if dk_odds <= -170: return 65.9   # 2.3x slip equivalent
+        if dk_odds <= -350:
+            return 91.2   # 1.2x slip equivalent (near lock)
+        if dk_odds <= -290:
+            return 79.0   # 1.6x slip equivalent
+        if dk_odds <= -250:
+            return 76.7   # 1.7x slip equivalent
+        if dk_odds <= -230:
+            return 72.5   # 1.9x slip equivalent
+        if dk_odds <= -210:
+            return 70.7   # 2.0x slip equivalent
+        if dk_odds <= -190:
+            return 67.4   # 2.2x slip equivalent
+        if dk_odds <= -170:
+            return 65.9   # 2.3x slip equivalent
         return 65.0  # Absolute floor for weak Goblins (-145 to -169)
     
     else:  # STANDARD
@@ -905,14 +919,12 @@ class MLBOracleApexService:
             # PHASE 1: STRICT BASELINE GATES
             # ================================================================
             
-            # 1a. Lineup Confirmation - STRICT (reject None and False)
-            is_lineup_confirmed = prop.get("is_lineup_confirmed")
-            if is_lineup_confirmed is not True:
-                # For now, skip this check if data is missing (None)
-                # Only reject if explicitly False
-                if is_lineup_confirmed is False:
-                    gate_stats['fail_lineup'] += 1
-                    continue
+            # 1a. Lineup Status Gate - Allow confirmed starters and projected starters
+            # Kill benched players and unknowns (early-day protection without empty board)
+            current_status = prop.get('lineup_status')
+            if current_status not in ["CONFIRMED", "PROJECTED"]:
+                gate_stats['fail_lineup'] += 1
+                continue
             
             # 1b. Weather Hard-Stop (Batter props only)
             if stat_key.replace("_", " ") in BATTER_STATS or stat_type in BATTER_STATS:
@@ -1024,7 +1036,7 @@ class MLBOracleApexService:
                 'prop_type': prop_type,
                 'is_goblin': is_goblin,
                 'is_demon': is_demon,
-                'is_lineup_confirmed': is_lineup_confirmed,
+                'lineup_status': current_status,
                 
                 # Hit rates
                 'l20_hits': l20_hits,
