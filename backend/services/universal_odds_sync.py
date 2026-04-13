@@ -368,11 +368,42 @@ class UniversalOddsSyncService:
                 "includeMultipliers": "true"
             }
             
+            # ================================================================
+            # DIAGNOSTIC LOG 1: Raw Request Parameters
+            # ================================================================
+            logger.info(f"[ODDS_DIAG] REQUEST: url={url}")
+            logger.info(f"[ODDS_DIAG] REQUEST: regions={regions_str}, bookmakers={bookmakers_str}")
+            logger.info(f"[ODDS_DIAG] REQUEST: markets={markets[:100]}...")
+            
             client = await self._get_client()
             response = await client.get(url, params=params)
             
             if response.status_code == 200:
                 odds_data = response.json()
+                
+                # ================================================================
+                # DIAGNOSTIC LOG 2: Raw JSON Payload for specific players
+                # ================================================================
+                raw_bookmakers = odds_data.get("bookmakers", [])
+                logger.info(f"[ODDS_DIAG] RESPONSE: {len(raw_bookmakers)} bookmakers in payload")
+                
+                # Log bookmaker keys received
+                bm_keys = [bm.get("key") for bm in raw_bookmakers]
+                logger.info(f"[ODDS_DIAG] RESPONSE: Bookmaker keys = {bm_keys}")
+                
+                # Find Yordan Alvarez or Julio Rodriguez and log their data
+                for bm in raw_bookmakers[:3]:  # First 3 bookmakers
+                    bm_key = bm.get("key")
+                    for market in bm.get("markets", []):
+                        for outcome in market.get("outcomes", []):
+                            player_name = outcome.get("description", "")
+                            if any(name in player_name for name in ["Alvarez", "Rodriguez", "Olson"]):
+                                logger.info(f"[ODDS_DIAG] PLAYER FOUND: {player_name}")
+                                logger.info(f"[ODDS_DIAG]   Bookmaker: {bm_key}")
+                                logger.info(f"[ODDS_DIAG]   Market: {market.get('key')}")
+                                logger.info(f"[ODDS_DIAG]   Outcome: {outcome}")
+                                break
+                
                 odds_data["event_id"] = event_id
                 odds_data["sport"] = sport
                 odds_data["fetched_at"] = datetime.now(timezone.utc).isoformat()
@@ -433,6 +464,12 @@ class UniversalOddsSyncService:
         
         # First pass: Collect all props grouped by player/stat
         prop_groups: Dict[str, Dict] = {}  # key -> {lines: {bookmaker: line}, ...}
+        
+        # ================================================================
+        # DIAGNOSTIC LOG 3: Mapping Dictionary
+        # ================================================================
+        logger.info("[ODDS_DIAG] MAPPING: Bookmaker config keys = %s", list(BOOKMAKER_CONFIG.keys()))
+        logger.info("[ODDS_DIAG] MAPPING: stat_type_map keys = %s", list(stat_type_map.keys())[:10])
         
         for bookmaker in odds_data.get("bookmakers", []):
             bm_key = bookmaker.get("key", "unknown")
