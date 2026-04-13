@@ -1155,431 +1155,235 @@ class MLBOracleApexService:
     
     async def build_front_lines_tier(self, all_picks: List[Dict]) -> List[Dict]:
         """
-        Build the MLB Front Lines tier using 2026 logic with L10 Recency Override.
+        Build the MLB Front Lines tier - Early-Morning Value Hunting with Predictive Actuary Gate.
         
-        FRONT LINES LOGIC (2026 Season):
-        ================================
+        FRONT LINES 2.0 LOGIC (2026 Season):
+        =====================================
         
-        1. PRIMARY MARKET QUALIFICATIONS (The Filter):
-           - DK Odds: Must be strictly between -145 and -239 (inclusive)
-           - Prop Type: Must be STANDARD or GOBLIN (Reject DEMON)
-           - Lineup Status: is_lineup_confirmed MUST be True
-           - Pinnacle TP: De-vigged True Probability must be >= 58.0%
+        Front Lines catches value before official lineups are out. It uses a hybrid
+        lineup check and the Predictive Actuary Gate to find Demon/Goblin arbitrage.
         
-        2. PRE-COMPUTATION:
-           - Apply Matchup Modifier for Adjusted_VK_Projection
+        1. HYBRID LINEUP GATE:
+           - Allow: CONFIRMED, PROJECTED, UNKNOWN
+           - Reject: Only BENCHED players (explicit pinch-hitter trap)
         
-        3. 3-GATE CHECK with RECENCY OVERRIDE:
-           - Gate 1: Hit Rate (L20) with L10 >= 80% override
-           - Gate 2: CV <= max_cv
-           - Gate 3: Adjusted Edge >= min_edge
+        2. BASELINE FILTERS:
+           - True Hit Rate >= 55% (lower than Safe Haven to allow high-value Demons)
+           - CV <= 0.75
         
-        4. FINAL SORT:
-           - Board_Score = TP_Prob + (Raw_Edge * 10) + (Hit_Rate_Pct * 0.1)
-           - Return Top 10
+        3. PREDICTIVE ACTUARY GATE:
+           - Market Implied Probability from DK odds
+           - PropVision True Prob = (market_prob * 0.50) + (true_hit_rate * 0.50)
+           - True Edge = propvision_true_prob - casino_req_rate
+           - KILL SWITCH: If true_edge <= 0.0, drop the prop
+        
+        4. ARBITRAGE-WEIGHTED BOARD SCORE:
+           - board_score = (true_edge * 4.0) + (true_hit_rate * 0.5) - (cv * 10)
+           - Heavily weights mathematical edge for pure arbitrage hunting
         
         Args:
             all_picks: List of all props from the pipeline
             
         Returns:
-            List of Top 10 qualified Front Lines picks
+            List of Top 10 qualified Front Lines picks (Demons + mispriced Goblins)
         """
-        logger.info("[MLB_FRONT_LINES] Building Front Lines tier with 2026 logic (L10 Recency Override)...")
-        logger.info(f"[MLB_FRONT_LINES] Input: {len(all_picks)} props to evaluate")
-        
-        # ====================================================================
-        # DIAGNOSTIC LOGGING - Identify where props are being filtered out
-        # ====================================================================
-        total_props = len(all_picks)
-        fail_lineup = 0
-        fail_odds = 0
-        fail_type = 0
-        passed_filters = 0
-        
-        for prop in all_picks:
-            # 1. Check Lineup
-            if not prop.get('is_lineup_confirmed'):
-                fail_lineup += 1
-                continue
-            
-            # 2. Check Odds (Handle potential string/int conversion safely)
-            # Front Lines: -145 to -239 (inclusive)
-            try:
-                odds = prop.get('dk_odds')
-                if odds is None:
-                    odds = prop.get('all_odds', {}).get('draftkings')
-                if odds is None:
-                    fail_odds += 1
-                    continue
-                odds = int(odds)
-                if not (-239 <= odds <= -145):
-                    fail_odds += 1
-                    continue
-            except (ValueError, TypeError):
-                fail_odds += 1
-                continue
-            
-            # 3. Check Prop Type (Handle case sensitivity)
-            is_goblin = prop.get('is_goblin', False)
-            is_demon = prop.get('is_demon', False)
-            # Front Lines accepts STANDARD or GOBLIN (reject DEMON)
-            if is_demon:
-                fail_type += 1
-                continue
-            
-            passed_filters += 1
-        
-        logger.info(f"[DIAGNOSTICS] Total: {total_props} | Failed Lineup: {fail_lineup} | Failed Odds: {fail_odds} | Failed Type: {fail_type} | Passed to Math: {passed_filters}")
-        
-        # ====================================================================
-        # BDL SPLITS DATA ALREADY PREFETCHED BY mlb_tier_service.py
-        # ====================================================================
-        
-        # ====================================================================
-        # FRONT LINES THRESHOLD DICTIONARY (Raw Decimal Cushion Edges)
-        # More relaxed than Safe Haven - allows mid-juice plays
-        # ====================================================================
-        thresholds = {
-            "HITS": {"max_cv": 0.85, "min_l20": 13, "min_edge": 0.20},
-            "TB": {"max_cv": 0.95, "min_l20": 12, "min_edge": 0.30},
-            "K": {"max_cv": 0.60, "min_l20": 13, "min_edge": 0.80},
-            "OUTS": {"max_cv": 0.50, "min_l20": 14, "min_edge": 1.00},
-            "HRR": {"max_cv": 0.75, "min_l20": 13, "min_edge": 0.30},
-            # Additional stats
-            "RBIS": {"max_cv": 0.95, "min_l20": 11, "min_edge": 0.20},
-            "RUNS": {"max_cv": 1.00, "min_l20": 10, "min_edge": 0.20},
-            "SINGLES": {"max_cv": 0.80, "min_l20": 12, "min_edge": 0.20},
-            "DOUBLES": {"max_cv": 1.10, "min_l20": 9, "min_edge": 0.15},
-            "HR": {"max_cv": 1.40, "min_l20": 7, "min_edge": 0.10},
-            "SB": {"max_cv": 1.20, "min_l20": 8, "min_edge": 0.15},
-            "BB": {"max_cv": 1.00, "min_l20": 10, "min_edge": 0.20},
-            "BATTER_K": {"max_cv": 0.85, "min_l20": 11, "min_edge": 0.25},
-            "HITS_ALLOWED": {"max_cv": 0.80, "min_l20": 11, "min_edge": 0.40},
-            "ER": {"max_cv": 0.95, "min_l20": 10, "min_edge": 0.30},
-            "WALKS": {"max_cv": 1.00, "min_l20": 9, "min_edge": 0.25},
-        }
-        
-        # Stat type aliases mapping to threshold keys
-        stat_aliases = {
-            "HITS": "HITS",
-            "TOTAL BASES": "TB", "TB": "TB", "TOTAL_BASES": "TB",
-            "PITCHER STRIKEOUTS": "K", "K": "K", "PITCHER_STRIKEOUTS": "K", "STRIKEOUTS": "K",
-            "PITCHING OUTS": "OUTS", "OUTS": "OUTS", "PITCHING_OUTS": "OUTS", "OUTS RECORDED": "OUTS",
-            "PITCHER OUTS": "OUTS", "PITCHER_OUTS": "OUTS",
-            "HRR": "HRR", "HITS+RUNS+RBIS": "HRR", "HITS_RUNS_RBIS": "HRR",
-            "RBIS": "RBIS", "RBI": "RBIS",
-            "RUNS": "RUNS", "RUNS SCORED": "RUNS",
-            "SINGLES": "SINGLES",
-            "DOUBLES": "DOUBLES",
-            "HOME RUNS": "HR", "HR": "HR", "HOME_RUNS": "HR",
-            "STOLEN BASES": "SB", "SB": "SB", "STOLEN_BASES": "SB",
-            "BATTER WALKS": "BB", "BB": "BB", "BATTER_WALKS": "BB", "WALKS": "BB",
-            "BATTER STRIKEOUTS": "BATTER_K", "BATTER_STRIKEOUTS": "BATTER_K",
-            "HITS ALLOWED": "HITS_ALLOWED", "HITS_ALLOWED": "HITS_ALLOWED",
-            "EARNED RUNS": "ER", "ER": "ER", "EARNED_RUNS": "ER",
-            "WALKS ALLOWED": "WALKS", "WALKS_ALLOWED": "WALKS",
-        }
-        
-        # DK Odds range for Front Lines
-        DK_MIN = -239  # More negative = more juiced (inclusive)
-        DK_MAX = -145  # Less negative = less juiced (inclusive)
-        
-        # Minimum Pinnacle True Probability
-        MIN_PINNACLE_TP = 58.0
+        logger.info("[MLB_FRONT_LINES 2.0] Building Front Lines with PREDICTIVE ACTUARY GATE...")
+        logger.info(f"[MLB_FRONT_LINES 2.0] Input: {len(all_picks)} props to evaluate")
         
         # Track gate statistics
         gate_stats = {
             'total_input': len(all_picks),
-            'dk_odds_fail': 0,
-            'demon_rejected': 0,
-            'lineup_not_confirmed': 0,
-            'pinnacle_tp_fail': 0,
-            'unsupported_stat': 0,
-            'gate1_fail': 0,
-            'gate1_recency_override': 0,  # Track L10 overrides
-            'gate2_fail': 0,
-            'gate3_fail': 0,
+            'fail_lineup': 0,
+            'fail_hit_rate': 0,
+            'fail_cv': 0,
+            'fail_actuary_gate': 0,
             'qualified': 0,
+            'goblins_qualified': 0,
+            'demons_qualified': 0,
+            'standards_qualified': 0,
         }
         
         qualified_picks = []
         
         for prop in all_picks:
-            # ================================================================
-            # 1. PRIMARY MARKET QUALIFICATIONS (The Filter)
-            # ================================================================
+            # Get basic prop info
+            player_name = prop.get("player_name", "Unknown")
+            stat_type = (prop.get("stat_type") or "").upper()
+            stat_key = stat_type.replace(" ", "_")
+            line = prop.get("line", 0)
             
-            # Get stat type and normalize
-            raw_stat = (prop.get("stat_type") or "").upper().replace(" ", "_")
-            stat_key = stat_aliases.get(raw_stat.replace("_", " "), stat_aliases.get(raw_stat))
+            # Get prop classification
+            is_goblin = prop.get("is_goblin", False)
+            is_demon = prop.get("is_demon", False)
+            prop_type = "GOBLIN" if is_goblin else ("DEMON" if is_demon else "STANDARD")
             
-            # Skip unsupported stats
-            if not stat_key or stat_key not in thresholds:
-                gate_stats['unsupported_stat'] += 1
-                continue
-            
-            cfg = thresholds[stat_key]
-            
-            # 1a. DK Odds: Must be strictly between -145 and -239 (inclusive)
+            # Get DK odds
             dk_odds = prop.get("dk_odds")
             if dk_odds is None:
                 dk_odds = prop.get("all_odds", {}).get("draftkings")
             
-            if dk_odds is None:
-                gate_stats['dk_odds_fail'] += 1
-                continue
-            
-            # Front Lines range: -239 to -145 (inclusive on both ends)
-            if dk_odds < DK_MIN or dk_odds > DK_MAX:
-                gate_stats['dk_odds_fail'] += 1
-                continue
-            
-            # 1b. Prop Type: Must be STANDARD or GOBLIN (Reject DEMON)
-            is_demon = prop.get("is_demon", False)
-            if is_demon:
-                gate_stats['demon_rejected'] += 1
-                continue
-            
-            # 1c. Lineup Status: is_lineup_confirmed MUST be True
-            is_lineup_confirmed = prop.get("is_lineup_confirmed")
-            if is_lineup_confirmed is False:
-                gate_stats['lineup_not_confirmed'] += 1
-                continue
-            
-            # 1d. Pinnacle TP: De-vigged True Probability must be >= 58.0%
-            pinnacle_tp = prop.get("pinnacle_tp") or prop.get("vk_prob_over") or prop.get("vk_probability")
-            if pinnacle_tp is None or pinnacle_tp < MIN_PINNACLE_TP:
-                gate_stats['pinnacle_tp_fail'] += 1
+            # ================================================================
+            # PHASE 1: HYBRID LINEUP GATE
+            # ================================================================
+            # Allow CONFIRMED, PROJECTED, and UNKNOWN. Only reject explicitly BENCHED.
+            # This catches value before official lineups are out.
+            lineup_status = prop.get('lineup_status')
+            if lineup_status == "BENCHED":
+                gate_stats['fail_lineup'] += 1
                 continue
             
             # ================================================================
-            # 2. PRE-COMPUTATION (Matchup Modifier + Tempo Modifier)
-            # ================================================================
-            # USES BDL MLB API (BallDontLie) for precise modifiers:
-            # - L/R Splits: OPS > .850 → +5% matchup boost
-            # - Batter vs Pitcher: OPS > .900 (10+ ABs) → +5% matchup boost  
-            # - Batting Order: Position 1-9 → tempo adjustment (0.90x to 1.10x)
+            # PHASE 2: BASELINE FILTERS
             # ================================================================
             
-            # Get raw VK projection
-            raw_vk_pred = prop.get("vk_predicted") or prop.get("raw_vk_pred") or prop.get("season_average")
-            if not raw_vk_pred or raw_vk_pred <= 0:
-                continue
+            # 2a. Dynamic Hit Rate (Season-to-Date)
+            games_played = prop.get("games_played") or prop.get("l10_games") or 0
+            hit_count = prop.get("l20_hits") or prop.get("l10_hits") or 0
+            existing_hit_rate = prop.get("hit_rate_l10") or prop.get("hit_rate_l20") or prop.get("h20_rate")
             
-            # Get opponent (needed for both pitcher and hitter paths)
-            opponent = prop.get("opponent") or prop.get("opponent_abbr")
-            
-            # Determine if this is a pitcher stat (uses different tempo logic)
-            is_pitcher_stat = stat_key in ["K", "OUTS", "ER", "PITCHER STRIKEOUTS", "PITCHING OUTS"]
-            
-            if is_pitcher_stat:
-                # Pitcher stats: use legacy matchup + pitcher tempo
-                matchup_modifier = self._get_matchup_modifier(raw_stat, opponent) if opponent else 1.0
-                pitcher_ppa = prop.get("pitcher_ppa") or prop.get("pitches_per_pa")
-                bullpen_rest = prop.get("bullpen_rest_days")
-                tempo_modifier = calculate_pitcher_tempo(pitcher_ppa, bullpen_rest)
-                bdl_details = None
+            # Calculate TRUE hit rate based on ACTUAL games played
+            if games_played > 0 and hit_count > 0:
+                true_hit_rate = (hit_count / games_played) * 100
+            elif existing_hit_rate is not None:
+                true_hit_rate = existing_hit_rate
             else:
-                # Hitter stats: use cached BDL data (NO API CALLS)
-                matchup_modifier, tempo_modifier, bdl_details = self._get_bdl_modifiers_from_cache(
-                    prop=prop,
-                    stat_key=stat_key
-                )
-                
-                # Store BDL details in prop for Vision Intel Suite
-                if bdl_details:
-                    prop['bdl_modifiers'] = bdl_details
-            
-            # Chain the modifiers: Raw * Matchup * Tempo = Final Adjusted
-            adjusted_vk_pred = raw_vk_pred * matchup_modifier * tempo_modifier
-            
-            # Get prop line
-            line = prop.get("line", 0)
-            if line <= 0:
+                gate_stats['fail_hit_rate'] += 1
                 continue
             
-            # ================================================================
-            # 3. THE 3-GATE CHECK with RECENCY OVERRIDE
-            # ================================================================
+            # Hit Rate Floor: 55% (lower than Safe Haven to allow high-value Demons)
+            if true_hit_rate < 55.0:
+                gate_stats['fail_hit_rate'] += 1
+                continue
             
-            # Get L20 and L10 hit data
-            l20_hits = prop.get("l20_hits")
-            l10_hits = prop.get("l10_hits")
+            # 2b. CV (Coefficient of Variation) <= 0.75
             cv = prop.get("cv") or prop.get("vk_cv")
-            games_played = prop.get("games_played", 10)
             
-            # NORMALIZE CV: Convert percentage (69.92) to decimal (0.6992)
-            # Thresholds are in decimal form (0.70 = 70%)
+            # Normalize CV if stored as percentage
             if cv is not None and cv > 1:
                 cv = cv / 100.0
             
-            # If L20 hits not directly available, calculate from hit rate
-            # MLB boards primarily use hit_rate_l10, so fall back to that
-            if l20_hits is None:
-                h20_rate = prop.get("h20_rate") or prop.get("hit_rate_l20") or prop.get("hit_rate_l10")
-                if h20_rate is not None:
-                    l20_hits = int((h20_rate / 100) * min(games_played, 20))
-                else:
-                    gate_stats['gate1_fail'] += 1
-                    continue
-            
-            # If L10 hits not directly available, calculate from hit rate
-            if l10_hits is None:
-                h10_rate = prop.get("h10_rate") or prop.get("hit_rate_l10")
-                if h10_rate is not None:
-                    l10_hits = int((h10_rate / 100) * min(games_played, 10))
-                else:
-                    l10_hits = 0  # Default to 0 if no L10 data
-            
-            # ----------------------------------------------------------------
-            # GATE 1: Hit Rate (L20) with L10 RECENCY OVERRIDE
-            # ----------------------------------------------------------------
-            # Primary check: L20 >= min_l20 (scaled for games played)
-            # CRITICAL RECENCY EXCEPTION: If L20 fails, check L10.
-            # If L10 hit rate >= 8/10 (80%), override the failure and PASS Gate 1.
-            # ----------------------------------------------------------------
-            required_l20 = int(cfg["min_l20"] * min(games_played, 20) / 20)
-            passes_gate1 = l20_hits >= required_l20
-            used_recency_override = False
-            
-            if not passes_gate1:
-                # Check L10 Recency Override: >= 8/10 (80%)
-                if l10_hits >= 8:
-                    passes_gate1 = True
-                    used_recency_override = True
-                    gate_stats['gate1_recency_override'] += 1
-                    logger.debug(f"[MLB_FRONT_LINES] RECENCY_OVERRIDE: {prop.get('player_name')} - "
-                                f"{stat_key} | L20: {l20_hits}/20 FAILED but L10: {l10_hits}/10 PASSED")
-            
-            if not passes_gate1:
-                gate_stats['gate1_fail'] += 1
-                continue
-            
-            # ----------------------------------------------------------------
-            # GATE 2: Consistency (CV)
-            # CV must be <= max_cv
-            # ----------------------------------------------------------------
-            if cv is None or cv > cfg["max_cv"]:
-                gate_stats['gate2_fail'] += 1
-                continue
-            
-            # ----------------------------------------------------------------
-            # GATE 3: Adjusted Edge
-            # (Adjusted_VK_Projection - Prop_Line) >= min_edge
-            # ----------------------------------------------------------------
-            raw_edge = adjusted_vk_pred - line
-            if raw_edge < cfg["min_edge"]:
-                gate_stats['gate3_fail'] += 1
+            if cv is None or cv > 0.75:
+                gate_stats['fail_cv'] += 1
                 continue
             
             # ================================================================
-            # QUALIFIED - Build output pick
+            # PHASE 3: THE PREDICTIVE ACTUARY GATE
+            # ================================================================
+            # Same blend as Safe Haven, but strictly enforced for pure arbitrage
+            
+            # 3a. Calculate Market Implied Probability from DK Odds
+            if dk_odds and dk_odds < 0:
+                market_prob = (abs(dk_odds) / (abs(dk_odds) + 100)) * 100
+            else:
+                market_prob = 50.0  # Fallback for positive or missing odds
+            
+            # 3b. Calculate PropVision True Probability (50/50 blend)
+            propvision_true_prob = (market_prob * 0.50) + (true_hit_rate * 0.50)
+            
+            # 3c. Get the casino's required win rate based on Goblin Tax curve
+            casino_req_rate = get_pp_required_win_rate(dk_odds, prop_type)
+            
+            # 3d. Calculate True Edge
+            true_edge = propvision_true_prob - casino_req_rate
+            
+            # THE KILL SWITCH: Keep it strict for pure arbitrage
+            if true_edge <= 0.0:
+                gate_stats['fail_actuary_gate'] += 1
+                continue
+            
+            # ================================================================
+            # PHASE 4: QUALIFIED - Build Output
             # ================================================================
             gate_stats['qualified'] += 1
             
-            # Calculate hit rate percentages for board score
-            h20_rate_pct = (l20_hits / 20) * 100
-            h10_rate_pct = (l10_hits / 10) * 100 if l10_hits else 0
+            # Track prop type distribution
+            if is_goblin:
+                gate_stats['goblins_qualified'] += 1
+            elif is_demon:
+                gate_stats['demons_qualified'] += 1
+            else:
+                gate_stats['standards_qualified'] += 1
             
-            # Use the better of L20 or L10 for board score if recency override was used
-            effective_hit_rate = max(h20_rate_pct, h10_rate_pct) if used_recency_override else h20_rate_pct
+            # Get additional prop data
+            raw_vk_pred = prop.get("vk_predicted") or prop.get("raw_vk_pred") or prop.get("season_average") or 0
+            matchup_modifier = prop.get("matchup_modifier", 1.0)
+            tempo_modifier = prop.get("tempo_modifier", 1.0)
             
-            # Calculate Board_Score
-            # Formula: TP_Prob + (Raw_Edge * 10) + (Hit_Rate_Pct * 0.1)
-            board_score = pinnacle_tp + (raw_edge * 10) + (effective_hit_rate * 0.1)
+            # Raw edge (prediction vs line)
+            raw_edge = (raw_vk_pred - line) if line > 0 else 0
             
-            # Build qualified pick with all required fields
-            player_name = prop.get('player_name')
-            is_goblin = prop.get("is_goblin", False)
-            is_standard = not is_goblin and not is_demon
+            # Calculate Board Score - Arbitrage-weighted (heavily favor true_edge)
+            # Formula: (true_edge * 4.0) + (true_hit_rate * 0.5) - (cv * 10)
+            board_score = (true_edge * 4.0) + (true_hit_rate * 0.5) - (cv * 10)
             
             qualified_pick = {
                 # Player info
                 'player_name': player_name,
                 'team': prop.get('team'),
-                'opponent': opponent,
+                'opponent': prop.get('opponent') or prop.get('opponent_abbr'),
                 'photo_url': prop.get('photo_url') or prop.get('headshot_url'),
                 'headshot_url': prop.get('headshot_url'),
                 'game_time': prop.get('game_time') or prop.get('commence_time'),
                 
                 # Prop details
-                'stat_type': raw_stat.replace("_", " ").title(),
-                'stat_key': stat_key,  # Normalized key (HITS, TB, K, OUTS, HRR)
+                'stat_type': stat_type.replace("_", " ").title(),
+                'stat_key': stat_key,
                 'line': line,
                 'dk_odds': dk_odds,
+                'pp_odds': prop.get('pp_odds') or prop.get('all_odds', {}).get('prizepicks'),
                 
                 # Classification
+                'prop_type': prop_type,
                 'is_goblin': is_goblin,
-                'is_demon': False,  # Demons are rejected
-                'is_standard': is_standard,
-                'is_lineup_confirmed': True,
+                'is_demon': is_demon,
+                'is_standard': not is_goblin and not is_demon,
+                'lineup_status': lineup_status,
                 
-                # Averages (carry forward from input)
-                'l5_avg': prop.get('l5_avg'),
-                'l10_avg': prop.get('l10_avg'),
-                'l20_avg': prop.get('l20_avg'),
-                'season_avg': prop.get('season_avg') or prop.get('l10_avg'),
-                
-                # Hit rates
-                'h5_rate': prop.get('h5_rate') or prop.get('hit_rate_l5'),
-                'h10_rate': round(h10_rate_pct, 1),
-                'h20_rate': round(h20_rate_pct, 1),
-                'hit_rate_l5': prop.get('h5_rate') or prop.get('hit_rate_l5'),
-                'hit_rate_l10': round(h10_rate_pct, 1),
-                'hit_rate_l20': round(h20_rate_pct, 1),
-                'l10_hits': l10_hits,
-                'l20_hits': l20_hits,
-                
-                # Recency Override flag
-                'used_recency_override': used_recency_override,
-                'recency_override_reason': f"L10 {l10_hits}/10 >= 80%" if used_recency_override else None,
+                # Dynamic Hit Rate (Season-to-Date)
+                'games_played': games_played,
+                'hit_count': hit_count,
+                'true_hit_rate': round(true_hit_rate, 1),
                 
                 # Consistency
                 'cv': round(cv, 3) if cv else None,
                 
-                # VK predictions with tempo
-                'raw_vk_pred': round(raw_vk_pred, 2),
+                # PropVision internal math
+                'raw_vk_pred': round(raw_vk_pred, 2) if raw_vk_pred else None,
+                'vk_predicted': round(raw_vk_pred * matchup_modifier * tempo_modifier, 2) if raw_vk_pred else None,
+                'vk_edge': round(raw_edge, 2),
                 'matchup_modifier': round(matchup_modifier, 3),
                 'tempo_modifier': round(tempo_modifier, 3),
-                'vk_predicted': round(adjusted_vk_pred, 2),  # Adjusted projection (Raw * Matchup * Tempo)
-                'vk_edge': round(raw_edge, 2),  # Raw cushion (adjusted_pred - line)
-                'vk_prob_over': round(pinnacle_tp, 1),
-                'vk_probability': round(pinnacle_tp, 1),
-                'pinnacle_tp': round(pinnacle_tp, 1),
+                
+                # *** PREDICTIVE ACTUARY GATE FIELDS ***
+                'market_prob': round(market_prob, 1),
+                'propvision_true_prob': round(propvision_true_prob, 1),
+                'casino_req_rate': round(casino_req_rate, 1),
+                'true_edge': round(true_edge, 1),
                 
                 # Board score
                 'board_score': round(board_score, 1),
                 
-                # Gate thresholds met (for debugging)
-                'gate_thresholds': {
-                    'min_l20_required': cfg["min_l20"],
-                    'max_cv_allowed': cfg["max_cv"],
-                    'min_edge_required': cfg["min_edge"],
-                    'dk_range': f"{DK_MIN} to {DK_MAX}",
-                    'min_pinnacle_tp': MIN_PINNACLE_TP,
-                },
-                
                 # Tier classification
                 'tier': 'front_lines',
-                'tier_label': 'MLB Front Lines',
+                'tier_label': 'MLB Front Lines 2.0 (Arbitrage)',
                 'front_lines_qualified': True,
+                'actuary_gate_passed': True,
                 
-                # INTEL SUITE: Tempo breakdown for Vision Intel Suite
-                'intel_suite': {
-                    'tempo': self._build_tempo_intel_suite(prop, stat_key, tempo_modifier),
-                    'pace_delta': self._build_tempo_intel_suite(prop, stat_key, tempo_modifier),  # Legacy alias
-                    'stability_index': self._build_stability_index(cv),
+                # Gate info for debugging
+                'gate_info': {
+                    'market_prob': round(market_prob, 1),
+                    'true_hit_rate': round(true_hit_rate, 1),
+                    'propvision_true_prob': round(propvision_true_prob, 1),
+                    'casino_req_rate': round(casino_req_rate, 1),
+                    'true_edge': round(true_edge, 1),
+                    'hit_rate_floor': 55.0,
+                    'cv_max': 0.75,
                 },
                 
-                # Active badges for UI display
-                'active_badges': self._build_front_lines_badges(prop, stat_key, h20_rate, cv, used_recency_override),
-                
-                # Carry forward any vision intel
+                # Carry forward vision intel
                 'vision_intel': prop.get('vision_intel'),
                 'intel_score': prop.get('intel_score'),
                 'intel_verdict': prop.get('intel_verdict'),
-                
-                # BDL API Modifier Details (L/R splits, BVP, batting order)
                 'bdl_modifiers': prop.get('bdl_modifiers'),
                 
                 # Timestamp
@@ -1589,22 +1393,17 @@ class MLBOracleApexService:
             qualified_picks.append(qualified_pick)
         
         # ====================================================================
-        # 4. FINAL SORT & SLICE
+        # FINAL SORT & SLICE
         # ====================================================================
         
         # Log gate statistics
-        logger.info("[MLB_FRONT_LINES] Gate Statistics:")
+        logger.info("[MLB_FRONT_LINES 2.0] Gate Statistics (Predictive Arbitrage):")
         logger.info(f"  Total Input: {gate_stats['total_input']}")
-        logger.info(f"  DK Odds Fail (outside -239 to -145): {gate_stats['dk_odds_fail']}")
-        logger.info(f"  Demon Rejected: {gate_stats['demon_rejected']}")
-        logger.info(f"  Lineup Not Confirmed: {gate_stats['lineup_not_confirmed']}")
-        logger.info(f"  Pinnacle TP Fail (< 58%): {gate_stats['pinnacle_tp_fail']}")
-        logger.info(f"  Unsupported Stat: {gate_stats['unsupported_stat']}")
-        logger.info(f"  Gate 1 Fail (Hit Rate): {gate_stats['gate1_fail']}")
-        logger.info(f"  Gate 1 Recency Overrides (L10 >= 80%): {gate_stats['gate1_recency_override']}")
-        logger.info(f"  Gate 2 Fail (CV): {gate_stats['gate2_fail']}")
-        logger.info(f"  Gate 3 Fail (Edge): {gate_stats['gate3_fail']}")
-        logger.info(f"  QUALIFIED: {gate_stats['qualified']}")
+        logger.info(f"  Failed Lineup (BENCHED only): {gate_stats['fail_lineup']}")
+        logger.info(f"  Failed Hit Rate (<55%): {gate_stats['fail_hit_rate']}")
+        logger.info(f"  Failed CV (>0.75): {gate_stats['fail_cv']}")
+        logger.info(f"  *** KILLED BY PREDICTIVE ACTUARY GATE: {gate_stats['fail_actuary_gate']} ***")
+        logger.info(f"  QUALIFIED: {gate_stats['qualified']} (Goblins: {gate_stats['goblins_qualified']} | Demons: {gate_stats['demons_qualified']} | Standards: {gate_stats['standards_qualified']})")
         
         # Sort descending by Board_Score
         qualified_picks.sort(key=lambda x: x.get('board_score', 0), reverse=True)
@@ -1622,13 +1421,13 @@ class MLBOracleApexService:
         # Slice to Top 10
         top_10 = final_picks[:10]
         
-        logger.info(f"[MLB_FRONT_LINES] Final Result: {len(top_10)} picks (from {len(final_picks)} qualified)")
+        logger.info(f"[MLB_FRONT_LINES 2.0] Final Result: {len(top_10)} picks (Predictive Arbitrage)")
         
         for i, pick in enumerate(top_10[:5], 1):
-            override_flag = " [L10 OVERRIDE]" if pick.get('used_recency_override') else ""
-            logger.info(f"[MLB_FRONT_LINES]   {i}. {pick['player_name']} - {pick['stat_key']} @ {pick['line']} | "
-                       f"Board: {pick['board_score']} | Edge: +{pick['vk_edge']:.2f} | "
-                       f"L20: {pick['l20_hits']}/20 | L10: {pick['l10_hits']}/10 | CV: {pick['cv']:.2f}{override_flag}")
+            logger.info(f"[MLB_FRONT_LINES 2.0]   {i}. {pick['player_name']} - {pick['stat_key']} [{pick['prop_type']}] | "
+                       f"HR: {pick['true_hit_rate']}% + Market: {pick['market_prob']}% = "
+                       f"PropVision: {pick['propvision_true_prob']}% vs Casino: {pick['casino_req_rate']}% | "
+                       f"TRUE EDGE: +{pick['true_edge']:.1f}% | Board: {pick['board_score']}")
         
         return top_10
     
