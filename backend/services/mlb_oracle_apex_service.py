@@ -377,19 +377,134 @@ class MLBOracleApexService:
                     tooltip_parts.append(f"Top {team_obp_rank} OBP creates lineup turnover")
                 elif team_obp_rank >= 21:
                     tooltip_parts.append(f"#{team_obp_rank} OBP limits at-bats")
-            
-            return {
-                "multiplier": tempo_modifier,
-                "display": f"{'+' if pct_change >= 0 else ''}{pct_change:.0f}%",
-                "tempo_label": tempo_label,
-                "factors": breakdown.get("factors", []),
-                "total_pct": breakdown.get("total_pct", 0),
-                "player_type": "hitter",
-                "batting_order": batting_order,
-                "is_away": is_away,
-                "team_obp_rank": team_obp_rank,
-                "tooltip": " | ".join(tooltip_parts) if tooltip_parts else "Standard plate appearance volume expected"
-            }
+    
+    def _build_war_zone_badges(
+        self,
+        prop: Dict[str, Any],
+        stat_key: str,
+        cv: float,
+        used_volatility_fasttrack: bool,
+        used_hr_power_bypass: bool
+    ) -> List[str]:
+        """
+        Build active badges for War Zone picks.
+        
+        Badges indicate special conditions or notable characteristics:
+        - volatility_king: CV > 1.0 (boom/bust profile)
+        - power_bypass: HR prop qualified via power metrics
+        - demon: PrizePicks demon prop
+        - sharp_fade: Sharps are fading this line
+        - ceiling_spike: Demonstrated ceiling hits
+        """
+        badges = []
+        
+        # Volatility badge
+        if used_volatility_fasttrack or cv > 1.0:
+            badges.append("volatility_king")
+        
+        # HR Power Bypass badge
+        if used_hr_power_bypass:
+            badges.append("power_bypass")
+        
+        # Demon badge (PrizePicks classification)
+        if prop.get("is_demon", False):
+            badges.append("demon")
+        
+        # Sharp fade badge (if Pinnacle is fading)
+        pinnacle_tp = prop.get("pinnacle_tp") or prop.get("sharp_tp")
+        if pinnacle_tp and pinnacle_tp < 40:
+            badges.append("sharp_fade")
+        
+        # Ceiling spike badge (L15 hits >= 3)
+        l15_ceiling_hits = prop.get("l15_ceiling_hits", 0)
+        if l15_ceiling_hits >= 3:
+            badges.append("ceiling_spike")
+        
+        # High hit rate badge (L10 > 60%)
+        h10_rate = prop.get("h10_rate") or prop.get("hit_rate_l10", 0)
+        if h10_rate and h10_rate >= 60:
+            badges.append("hot_hand")
+        
+        return badges
+    
+    def _build_safe_haven_badges(
+        self,
+        prop: Dict[str, Any],
+        stat_key: str,
+        h20_rate: float,
+        cv: float
+    ) -> List[str]:
+        """
+        Build active badges for Safe Haven picks.
+        
+        Badges indicate safety and consistency:
+        - goblin: PrizePicks goblin (safer) prop
+        - ultra_consistent: CV < 0.30 (very predictable)
+        - bank_it: Hit rate > 85%
+        - sharp_agree: Pinnacle TP > 70%
+        """
+        badges = []
+        
+        # Goblin badge (PrizePicks classification)
+        if prop.get("is_goblin", False):
+            badges.append("goblin")
+        
+        # Ultra consistent badge
+        if cv < 0.30:
+            badges.append("ultra_consistent")
+        
+        # Bank it badge (high hit rate)
+        if h20_rate >= 85:
+            badges.append("bank_it")
+        
+        # Sharp agreement badge
+        pinnacle_tp = prop.get("pinnacle_tp") or prop.get("sharp_tp")
+        if pinnacle_tp and pinnacle_tp >= 70:
+            badges.append("sharp_agree")
+        
+        return badges
+    
+    def _build_front_lines_badges(
+        self,
+        prop: Dict[str, Any],
+        stat_key: str,
+        h20_rate: float,
+        cv: float,
+        used_recency_override: bool
+    ) -> List[str]:
+        """
+        Build active badges for Front Lines picks.
+        
+        Badges indicate value and trend:
+        - value_play: Solid edge with moderate risk
+        - hot_streak: Used recency override (L10 > 80%)
+        - trending: Recent performance exceeds season average
+        - sharp_lean: Pinnacle leaning towards over
+        """
+        badges = []
+        
+        # Value play (default for Front Lines)
+        badges.append("value_play")
+        
+        # Hot streak badge (recency override triggered)
+        if used_recency_override:
+            badges.append("hot_streak")
+        
+        # Trending badge (L10 significantly better than L20)
+        h10_rate = prop.get("h10_rate") or prop.get("hit_rate_l10", 0)
+        if h10_rate and h20_rate and (h10_rate - h20_rate) >= 15:
+            badges.append("trending")
+        
+        # Sharp lean badge
+        pinnacle_tp = prop.get("pinnacle_tp") or prop.get("sharp_tp")
+        if pinnacle_tp and pinnacle_tp >= 58:
+            badges.append("sharp_lean")
+        
+        # Consistent performer badge
+        if cv < 0.50:
+            badges.append("consistent")
+        
+        return badges
     
     def _check_weather_hardstop(
         self, 
@@ -858,6 +973,9 @@ class MLBOracleApexService:
                     'pace_delta': self._build_tempo_intel_suite(prop, stat_key, tempo_modifier),  # Legacy alias
                 },
                 
+                # Active badges for UI display
+                'active_badges': self._build_safe_haven_badges(prop, stat_key, h20_rate, cv),
+                
                 # Carry forward any vision intel
                 'vision_intel': prop.get('vision_intel'),
                 'intel_score': prop.get('intel_score'),
@@ -1266,6 +1384,9 @@ class MLBOracleApexService:
                     'tempo': self._build_tempo_intel_suite(prop, stat_key, tempo_modifier),
                     'pace_delta': self._build_tempo_intel_suite(prop, stat_key, tempo_modifier),  # Legacy alias
                 },
+                
+                # Active badges for UI display
+                'active_badges': self._build_front_lines_badges(prop, stat_key, h20_rate, cv, used_recency_override),
                 
                 # Carry forward any vision intel
                 'vision_intel': prop.get('vision_intel'),
@@ -1781,6 +1902,9 @@ class MLBOracleApexService:
                     'tempo': self._build_tempo_intel_suite(prop, stat_key, tempo_modifier),
                     'pace_delta': self._build_tempo_intel_suite(prop, stat_key, tempo_modifier),  # Legacy alias
                 },
+                
+                # Active badges for UI display
+                'active_badges': self._build_war_zone_badges(prop, stat_key, cv, used_volatility_fasttrack, used_hr_power_bypass),
                 
                 # Carry forward any vision intel
                 'vision_intel': prop.get('vision_intel'),
