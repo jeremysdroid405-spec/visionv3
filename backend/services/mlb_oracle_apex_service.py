@@ -519,6 +519,52 @@ class MLBOracleApexService:
         
         return badges
     
+    def _build_stability_index(self, cv: float) -> Dict[str, Any]:
+        """
+        Build stability index from CV for Vision Intel Suite.
+        
+        Converts CV (Coefficient of Variation) to a 100-point stability score:
+        - 100% = CV of 0 (perfectly consistent)
+        - 0% = CV of 2.0+ (extremely volatile)
+        
+        Scale: stability_score = max(0, 100 - (cv * 50))
+        
+        Labels:
+        - 75-100%: "Ultra Consistent" (CV < 0.50)
+        - 50-74%: "Stable" (CV 0.50-1.00)  
+        - 25-49%: "Volatile" (CV 1.00-1.50)
+        - 0-24%: "Boom/Bust" (CV > 1.50)
+        """
+        if cv is None:
+            return {
+                "score": None,
+                "display": "-",
+                "consistency": "Data unavailable",
+                "std_dev": None
+            }
+        
+        # Convert CV to 100-point scale (lower CV = higher stability)
+        # CV of 0 = 100%, CV of 2.0 = 0%
+        stability_score = max(0, min(100, 100 - (cv * 50)))
+        
+        # Determine consistency label
+        if stability_score >= 75:
+            consistency = "Ultra Consistent"
+        elif stability_score >= 50:
+            consistency = "Stable"
+        elif stability_score >= 25:
+            consistency = "Volatile"
+        else:
+            consistency = "Boom/Bust"
+        
+        return {
+            "score": round(stability_score, 1),
+            "display": f"{round(stability_score)}%",
+            "consistency": consistency,
+            "std_dev": f"CV: {cv:.2f}" if cv else None,
+            "raw_cv": round(cv, 3) if cv else None
+        }
+    
     def _check_weather_hardstop(
         self, 
         prop: Dict, 
@@ -984,6 +1030,7 @@ class MLBOracleApexService:
                 'intel_suite': {
                     'tempo': self._build_tempo_intel_suite(prop, stat_key, tempo_modifier),
                     'pace_delta': self._build_tempo_intel_suite(prop, stat_key, tempo_modifier),  # Legacy alias
+                    'stability_index': self._build_stability_index(cv),
                 },
                 
                 # Active badges for UI display
@@ -1396,6 +1443,7 @@ class MLBOracleApexService:
                 'intel_suite': {
                     'tempo': self._build_tempo_intel_suite(prop, stat_key, tempo_modifier),
                     'pace_delta': self._build_tempo_intel_suite(prop, stat_key, tempo_modifier),  # Legacy alias
+                    'stability_index': self._build_stability_index(cv),
                 },
                 
                 # Active badges for UI display
@@ -1914,6 +1962,7 @@ class MLBOracleApexService:
                 'intel_suite': {
                     'tempo': self._build_tempo_intel_suite(prop, stat_key, tempo_modifier),
                     'pace_delta': self._build_tempo_intel_suite(prop, stat_key, tempo_modifier),  # Legacy alias
+                    'stability_index': self._build_stability_index(cv),
                 },
                 
                 # Active badges for UI display
