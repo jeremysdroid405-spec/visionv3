@@ -58,6 +58,12 @@ Restructure the React/FastAPI betting app to a 100% Local-First Database Model, 
   - Coverage: 96.7% (771/797 players with official MLB CDN headshots)
   - Storage: `/app/frontend/public/images/mlb_headshots/{mlb_id}.png`
 
+- ✅ **MLB Startup Health Check** (Auto-populate on pod fork)
+  - Location: `server.py` → `run_mlb_startup_health_check()`
+  - Checks: `mlb_live_props`, `mlb_cached_board`, `mlb_war_zone`
+  - Auto-triggers: Odds API sync → Board build → Tier rebuild (if empty)
+  - Prevents "empty MLB board" issue on fresh/forked environments
+
 - ✅ **Forward-Testing Infrastructure** (P2 Complete)
   - Service: `/app/backend/services/forward_testing_service.py`
   - Routes: `/app/backend/routes/forward_testing.py`

@@ -410,6 +410,99 @@ live_scores_engine = None  # Live Scores Engine - Real-time scores and news
 game_lock_engine = None  # Game Lock Engine - Auto-cleanup on game start
 scheduler = None  # APScheduler instance
 
+
+async def run_mlb_startup_health_check():
+    """
+    MLB Startup Health Check - Auto-populate on pod fork.
+    
+    Checks if MLB collections are empty and automatically syncs:
+    1. mlb_live_props (from The Odds API)
+    2. mlb_cached_board (enriched board)
+    3. mlb_war_zone, mlb_safe_haven, mlb_front_lines (tier collections)
+    
+    This prevents the "empty MLB board" issue that occurs when:
+    - Pod is forked from a snapshot without MLB data
+    - Database is reset or collections are dropped
+    - Fresh environment deployment
+    
+    The sync runs in the background to not block startup.
+    """
+    logger.info("=" * 70)
+    logger.info("[MLB_HEALTH] MLB Startup Health Check - Checking collections...")
+    logger.info("=" * 70)
+    
+    try:
+        # Check MLB collection counts
+        mlb_live_props_count = await db.mlb_live_props.count_documents({})
+        mlb_cached_board_count = await db.mlb_cached_board.count_documents({})
+        mlb_war_zone_count = await db.mlb_war_zone.count_documents({})
+        
+        logger.info(f"[MLB_HEALTH] mlb_live_props: {mlb_live_props_count} docs")
+        logger.info(f"[MLB_HEALTH] mlb_cached_board: {mlb_cached_board_count} docs")
+        logger.info(f"[MLB_HEALTH] mlb_war_zone: {mlb_war_zone_count} docs")
+        
+        needs_sync = False
+        
+        # If mlb_live_props is empty, sync from Odds API
+        if mlb_live_props_count == 0:
+            logger.warning("[MLB_HEALTH] mlb_live_props EMPTY - Triggering Odds API sync...")
+            needs_sync = True
+            
+            try:
+                from services.universal_odds_sync import UniversalOddsSync
+                
+                odds_sync = UniversalOddsSync(db)
+                result = await odds_sync.sync_sport("mlb")
+                
+                logger.info(f"[MLB_HEALTH] Odds sync complete: {result.get('total_props', 0)} props from {result.get('events_count', 0)} events")
+            except Exception as e:
+                logger.error(f"[MLB_HEALTH] Odds sync failed: {e}")
+        
+        # If mlb_cached_board is empty, build it
+        if mlb_cached_board_count == 0 or needs_sync:
+            logger.warning("[MLB_HEALTH] mlb_cached_board EMPTY - Building enriched board...")
+            
+            try:
+                from services.mlb_cached_board_builder import run_mlb_board_build
+                
+                result = await run_mlb_board_build(db)
+                
+                logger.info(f"[MLB_HEALTH] Board build complete: {result.get('props_enriched', 0)} props enriched")
+            except Exception as e:
+                logger.error(f"[MLB_HEALTH] Board build failed: {e}")
+        
+        # If mlb_war_zone is empty (or we synced above), rebuild tiers
+        if mlb_war_zone_count == 0 or needs_sync:
+            logger.warning("[MLB_HEALTH] MLB tiers EMPTY - Rebuilding via Oracle Apex...")
+            
+            try:
+                from services.mlb_tier_service import get_mlb_tier_service
+                
+                tier_service = get_mlb_tier_service(db)
+                result = await tier_service.rebuild_tiers_static_v7()
+                
+                output = result.get("output", {})
+                sh_count = output.get("safe_haven", {}).get("total", 0)
+                fl_count = output.get("front_lines", {}).get("total", 0)
+                wz_count = output.get("war_zone", {}).get("total", 0)
+                
+                logger.info(f"[MLB_HEALTH] Tier rebuild complete: SH={sh_count}, FL={fl_count}, WZ={wz_count}")
+            except Exception as e:
+                logger.error(f"[MLB_HEALTH] Tier rebuild failed: {e}")
+        
+        if not needs_sync:
+            logger.info("[MLB_HEALTH] All MLB collections populated - No action needed")
+        
+        logger.info("=" * 70)
+        logger.info("[MLB_HEALTH] MLB Startup Health Check COMPLETE")
+        logger.info("=" * 70)
+        
+    except Exception as e:
+        logger.error(f"[MLB_HEALTH] Health check failed: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+
+
 async def initial_autonomous_sync():
     """
     Run autonomous sync on startup - Demon & Goblin Engine v3
@@ -1329,6 +1422,14 @@ async def startup_event():
         logger.info("[ADAPTIVE_SYNC] Background polling STARTED")
     else:
         logger.warning("[ADAPTIVE_SYNC] No Odds API key - adaptive sync disabled")
+    
+    # ==========================================================================
+    # MLB STARTUP HEALTH CHECK - Auto-populate on pod fork
+    # ==========================================================================
+    # If MLB collections are empty (common after pod fork), automatically sync
+    # This prevents the "empty MLB board" issue on fresh environments
+    # ==========================================================================
+    await run_mlb_startup_health_check()
     
     # ==========================================================================
     # WEEKEND-READY SCHEDULER: High-Performance Interval System
