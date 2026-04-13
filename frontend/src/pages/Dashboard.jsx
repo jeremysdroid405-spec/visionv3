@@ -51,9 +51,6 @@ import {
   useLiveOdds,
   useLiveVacuumAlerts,
   useMLBLiveVacuumAlerts,
-  useMLBGoblins,
-  useMLBDemons,
-  useMLBHRRPicks,
   useMLBSafeHaven,
   useMLBFrontLines,
   useMLBWarZone
@@ -1267,10 +1264,7 @@ const Dashboard = () => {
   const { data: vacuumAlertsData, isLoading: vacuumAlertsLoading } = useLiveVacuumAlerts();
   const { data: mlbVacuumAlertsData, isLoading: mlbVacuumAlertsLoading } = useMLBLiveVacuumAlerts();
   
-  // MLB-specific hooks (only active when sport=mlb)
-  const { data: mlbGoblinsData, isLoading: mlbGoblinsLoading, refetch: refetchMLBGoblins } = useMLBGoblins();
-  const { data: mlbDemonsData, isLoading: mlbDemonsLoading, refetch: refetchMLBDemons } = useMLBDemons();
-  const { data: mlbHRRData, isLoading: mlbHRRLoading, refetch: refetchMLBHRR } = useMLBHRRPicks();
+  // MLB Oracle Apex tiers (only active when sport=mlb)
   const { data: mlbSafeHavenData, isLoading: mlbSafeHavenLoading, refetch: refetchMLBSafeHaven } = useMLBSafeHaven();
   const { data: mlbFrontLinesData, isLoading: mlbFrontLinesLoading, refetch: refetchMLBFrontLines } = useMLBFrontLines();
   const { data: mlbWarZoneData, isLoading: mlbWarZoneLoading, refetch: refetchMLBWarZone } = useMLBWarZone();
@@ -1281,10 +1275,7 @@ const Dashboard = () => {
   const frontLinesPicks = useMemo(() => frontLinesData?.picks || [], [frontLinesData]);
   const players = useMemo(() => liveOddsData?.players || [], [liveOddsData]);
   
-  // MLB Sharp tiers
-  const mlbGoblinsPicks = useMemo(() => mlbGoblinsData?.picks || [], [mlbGoblinsData]);
-  const mlbDemonsPicks = useMemo(() => mlbDemonsData?.picks || [], [mlbDemonsData]);
-  const mlbHRRPicks = useMemo(() => mlbHRRData?.picks || [], [mlbHRRData]);
+  // MLB Oracle Apex tiers (3-Gate qualified only)
   const mlbSafeHavenPicks = useMemo(() => mlbSafeHavenData?.picks || [], [mlbSafeHavenData]);
   const mlbFrontLinesPicks = useMemo(() => mlbFrontLinesData?.picks || [], [mlbFrontLinesData]);
   const mlbWarZonePicks = useMemo(() => mlbWarZoneData?.picks || [], [mlbWarZoneData]);
@@ -1297,9 +1288,11 @@ const Dashboard = () => {
   const linesLoaded = !boardLoading && players.length > 0;
   const staticLoaded = !warZoneLoading && !safeHavenLoading;
   const syncing = boardLoading || warZoneLoading || safeHavenLoading;
+  
+  // Board Intel Status - Use Oracle Apex tiers only (no legacy fallbacks)
   const boardIntelStatus = { 
-    demon_count: currentSport === 'mlb' ? mlbDemonsPicks.length : radarPicks.length, 
-    goblin_count: currentSport === 'mlb' ? mlbGoblinsPicks.length : vaultPicks.length,
+    demon_count: currentSport === 'mlb' ? mlbWarZonePicks.length : radarPicks.length, 
+    goblin_count: currentSport === 'mlb' ? mlbSafeHavenPicks.length : vaultPicks.length,
     total_players: players.length 
   };
   const syncStatus = { last_sync: warZoneData?.synced_at };
