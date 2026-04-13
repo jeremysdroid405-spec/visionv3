@@ -1429,6 +1429,7 @@ class MLBOracleApexService:
             'unsupported_stat': 0,
             'gate1_fail': 0,
             'gate1_ceiling_fail': 0,  # L15 ceiling check failures
+            'gate1_hr_power_bypass': 0,  # HR props bypassed via L10 HRs or ISO
             'gate2_fail': 0,
             'gate2_volatility_fasttrack': 0,  # CV > 1.0 fast-tracks
             'gate3_fail': 0,
@@ -1569,10 +1570,72 @@ class MLBOracleApexService:
             # CRITICAL CEILING EXCEPTION: Player MUST have cleared this specific
             # Demon/High line at least TWICE in their last 15 games.
             # We want DEMONSTRATED SPIKES, not just average hits.
+            #
+            # HR POWER BYPASS (2026): If stat_type == 'HR' and fails Gate 1,
+            # run secondary power check:
+            #   - If L10 HRs >= 2 OR ISO > .200 (vs pitcher handedness)
+            #   - Force PASS Gate 1 (power hitters with low hit rates still qualify)
             # ----------------------------------------------------------------
             required_l20 = int(cfg["min_l20"] * min(games_played, 20) / 20)
             passes_gate1_base = l20_hits >= required_l20
             passes_gate1_ceiling = l15_ceiling_hits >= L15_CEILING_MIN
+            used_hr_power_bypass = False
+            hr_bypass_reason = None
+            
+            # Check if this is an HR prop for the bypass rule
+            is_hr_prop = stat_key == "HR"
+            
+            if not passes_gate1_base or not passes_gate1_ceiling:
+                # ============================================================
+                # HR POWER BYPASS - Check for power hitters who fail hit rate
+                # ============================================================
+                if is_hr_prop:
+                    # Extract L10 HRs from game_logs (count HRs in last 10 games)
+                    game_logs = prop.get("game_logs", []) or prop.get("bdl_game_logs", []) or []
+                    l10_game_logs = game_logs[:10] if game_logs else []
+                    l10_hrs = sum(g.get("home_runs", 0) or 0 for g in l10_game_logs)
+                    
+                    # Extract ISO (Isolated Power) vs pitcher handedness
+                    # ISO = SLG - AVG (measures raw power)
+                    # Check splits data if available
+                    splits = prop.get("splits", {}) or {}
+                    pitcher_hand = prop.get("pitcher_hand", "").upper() or prop.get("opposing_pitcher_hand", "").upper()
+                    
+                    # Default ISO from overall stats if splits not available
+                    iso = 0.0
+                    if pitcher_hand == "R":
+                        vs_splits = splits.get("vs_rhp", {}) or splits.get("vs_right", {}) or {}
+                        iso = vs_splits.get("iso", 0.0) or vs_splits.get("ISO", 0.0)
+                    elif pitcher_hand == "L":
+                        vs_splits = splits.get("vs_lhp", {}) or splits.get("vs_left", {}) or {}
+                        iso = vs_splits.get("iso", 0.0) or vs_splits.get("ISO", 0.0)
+                    
+                    # Fallback: calculate ISO from prop averages if available
+                    if iso == 0.0:
+                        slg = prop.get("slg", 0.0) or prop.get("slugging", 0.0) or 0.0
+                        avg = prop.get("avg", 0.0) or prop.get("batting_avg", 0.0) or 0.0
+                        if slg > 0 and avg > 0:
+                            iso = slg - avg
+                    
+                    # HR POWER BYPASS CONDITIONS:
+                    # 1. L10 HRs >= 2 (hit 2+ dingers in last 10 games)
+                    # 2. ISO > .200 (strong power profile vs pitcher handedness)
+                    if l10_hrs >= 2:
+                        passes_gate1_base = True
+                        passes_gate1_ceiling = True
+                        used_hr_power_bypass = True
+                        hr_bypass_reason = f"L10_HRS={l10_hrs}>=2"
+                        gate_stats['gate1_hr_power_bypass'] += 1
+                        logger.info(f"[MLB_WAR_ZONE] HR_POWER_BYPASS: {prop.get('player_name')} - "
+                                   f"HR @ {line} | L10 HRs: {l10_hrs} >= 2 | FORCING GATE1 PASS")
+                    elif iso > 0.200:
+                        passes_gate1_base = True
+                        passes_gate1_ceiling = True
+                        used_hr_power_bypass = True
+                        hr_bypass_reason = f"ISO={iso:.3f}>.200"
+                        gate_stats['gate1_hr_power_bypass'] += 1
+                        logger.info(f"[MLB_WAR_ZONE] HR_POWER_BYPASS: {prop.get('player_name')} - "
+                                   f"HR @ {line} | ISO: {iso:.3f} > .200 vs {pitcher_hand or 'N/A'} | FORCING GATE1 PASS")
             
             if not passes_gate1_base:
                 gate_stats['gate1_fail'] += 1
@@ -1675,6 +1738,10 @@ class MLBOracleApexService:
                 'l15_ceiling_pct': round(h15_ceiling_pct, 1),
                 'ceiling_check_reason': f"Cleared line {l15_ceiling_hits}x in L15",
                 
+                # HR Power Bypass data (for HR props that failed standard Gate 1)
+                'used_hr_power_bypass': used_hr_power_bypass,
+                'hr_power_bypass_reason': hr_bypass_reason,
+                
                 # Volatility data
                 'cv': round(cv, 3) if cv else None,
                 'used_volatility_fasttrack': used_volatility_fasttrack,
@@ -1740,6 +1807,7 @@ class MLBOracleApexService:
         logger.info(f"  Unsupported Stat: {gate_stats['unsupported_stat']}")
         logger.info(f"  Gate 1 Fail (L20 Hit Rate): {gate_stats['gate1_fail']}")
         logger.info(f"  Gate 1 Ceiling Fail (L15 < 2x): {gate_stats['gate1_ceiling_fail']}")
+        logger.info(f"  Gate 1 HR Power Bypass (L10 HRs >= 2 or ISO > .200): {gate_stats['gate1_hr_power_bypass']}")
         logger.info(f"  Gate 2 Fail (CV): {gate_stats['gate2_fail']}")
         logger.info(f"  Gate 2 Volatility Fast-Tracks (CV > 1.0): {gate_stats['gate2_volatility_fasttrack']}")
         logger.info(f"  Gate 3 Fail (Edge): {gate_stats['gate3_fail']}")

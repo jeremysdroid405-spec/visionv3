@@ -45,6 +45,13 @@ Restructure the React/FastAPI betting app to a 100% Local-First Database Model, 
 
 ## Completed Work
 
+### April 2026
+- ✅ **HR Power Bypass Implementation** (E2E Test 3): MLB War Zone Gate 1 now includes explicit bypass for HR props
+  - If stat_type == 'HR' and fails standard hit rate check
+  - Check L10 HRs >= 2 OR ISO > .200 vs pitcher handedness
+  - Forces PASS Gate 1 for power hitters with low base hit rates
+  - Logged under `Gate 1 HR Power Bypass (L10 HRs >= 2 or ISO > .200)`
+
 ### December 2025
 - ✅ MLB Vision Intel Suite with Tempo calculations and badge mapping
 - ✅ Gemini target lock rationales with MongoDB caching (reduced 57s → instant)
@@ -53,11 +60,17 @@ Restructure the React/FastAPI betting app to a 100% Local-First Database Model, 
 - ✅ JIT (Just-In-Time) injury checks before UI transmission
 - ✅ Active Prop Gate for NBA and MLB vacuum alerts
 - ✅ Fixed MongoDB truthiness evaluation bug in vacuum.py
+- ✅ Percentage-Based Hit Rate (Gate 1) with dynamic sample size floor
+- ✅ NBA War Zone logic updates (DK odds +140, Demon Override, Volatility Fast-Track)
+- ✅ Fixed NoneType sorting crash in ferrari_tier_service.py
+- ✅ Fixed NBA Vision Intel hallucination (stripped L3 from prompts)
+- ✅ MLB GET endpoints strictly read from Oracle Apex collections
+- ✅ Updated NBA Vision Intel prompt to "Lead NBA Scout" persona
 
 ## Prioritized Backlog
 
 ### P0 - Critical (In Progress)
-- None currently
+- ✅ HR Power Bypass (Test 3) - COMPLETED
 
 ### P1 - High Priority
 - [ ] Google OAuth integration (Emergent-managed)
