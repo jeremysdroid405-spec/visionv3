@@ -248,11 +248,9 @@ class MLBMasterSync:
         """
         Run Oracle Apex tier rebuilds using the fresh cached_board.
         BDL splits are already prefetched in cache.
+        Includes Vision Intel enrichment via Gemini.
         """
-        from services.mlb_tier_service import get_mlb_tier_service
-        
-        # Reference tier service for future use if needed
-        _ = get_mlb_tier_service(self.db)
+        from services.mlb_vision_intel import get_mlb_vision_intel
         
         # Get all props from cached_board
         all_props = []
@@ -275,6 +273,86 @@ class MLBMasterSync:
         safe_haven = await oracle.build_safe_haven_tier(all_props)
         front_lines = await oracle.build_front_lines_tier(all_props)
         war_zone = await oracle.build_war_zone_tier(all_props)
+        
+        # ================================================================
+        # VISION INTEL ENRICHMENT (Gemini AI Summaries)
+        # ================================================================
+        vision_intel = get_mlb_vision_intel()
+        
+        if vision_intel.enabled:
+            logger.info("[VISION_INTEL] Enriching tier picks with AI summaries...")
+            
+            async def enrich_picks(picks: list, tier_name: str) -> list:
+                """Enrich picks with Vision Intel summaries."""
+                if not picks:
+                    return picks
+                
+                # Check existing collection for cached intel
+                collection = self.db[f"mlb_{tier_name}"]
+                existing_docs = await collection.find(
+                    {},
+                    {"player_name": 1, "stat_type": 1, "line": 1, "vision_intel": 1,
+                     "intel_score": 1, "intel_verdict": 1}
+                ).to_list(length=50)
+                
+                # Build cache map
+                cache_map = {}
+                for doc in existing_docs:
+                    key = f"{doc.get('player_name')}|{doc.get('stat_type')}|{doc.get('line')}"
+                    if doc.get("vision_intel"):
+                        cache_map[key] = {
+                            "vision_intel": doc.get("vision_intel"),
+                            "intel_score": doc.get("intel_score"),
+                            "intel_verdict": doc.get("intel_verdict")
+                        }
+                
+                # Identify delta picks needing Gemini
+                delta_picks = []
+                for pick in picks:
+                    key = f"{pick.get('player_name')}|{pick.get('stat_type')}|{pick.get('line')}"
+                    if key in cache_map:
+                        pick.update(cache_map[key])
+                    else:
+                        delta_picks.append(pick)
+                
+                logger.info(f"  [{tier_name}] {len(picks) - len(delta_picks)} cached, {len(delta_picks)} need Gemini")
+                
+                # Call Gemini for ALL delta picks in ONE BATCH (not individually)
+                if delta_picks:
+                    try:
+                        # analyze_tier_batch sends ALL props to Gemini in a single request
+                        # Returns a LIST of enriched props (not a dict)
+                        enriched_delta = await vision_intel.analyze_tier_batch(delta_picks, tier_name)
+                        
+                        # Build a map from player_name to enriched data for easy lookup
+                        enriched_map = {}
+                        for enriched in enriched_delta:
+                            key = f"{enriched.get('player_name')}|{enriched.get('stat_type')}|{enriched.get('line')}"
+                            enriched_map[key] = enriched
+                        
+                        # Update original picks with enriched data
+                        for pick in picks:
+                            key = f"{pick.get('player_name')}|{pick.get('stat_type')}|{pick.get('line')}"
+                            if key in enriched_map:
+                                # Copy Vision Intel fields from enriched to pick
+                                enriched = enriched_map[key]
+                                pick['vision_intel'] = enriched.get('vision_intel')
+                                pick['intel_score'] = enriched.get('intel_score')
+                                pick['intel_verdict'] = enriched.get('intel_verdict')
+                                pick['target_lock_rationale'] = enriched.get('target_lock_rationale')
+                                pick['composite_score'] = enriched.get('composite_score')
+                                    
+                        logger.info(f"  [{tier_name}] Gemini batch complete: {len(enriched_delta)} props enriched")
+                    except Exception as e:
+                        logger.warning(f"  [{tier_name}] Vision Intel batch error: {e}")
+                
+                return picks
+            
+            safe_haven = await enrich_picks(safe_haven, "safe_haven")
+            front_lines = await enrich_picks(front_lines, "front_lines")
+            war_zone = await enrich_picks(war_zone, "war_zone")
+        else:
+            logger.warning("[VISION_INTEL] Disabled - no AI summaries will be generated")
         
         # Store results
         await self._store_tier_results("mlb_safe_haven", safe_haven)

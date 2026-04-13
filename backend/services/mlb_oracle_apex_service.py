@@ -974,6 +974,11 @@ class MLBOracleApexService:
             cv = prop.get("cv") or prop.get("vk_cv")
             tp_prob = prop.get("vk_prob_over") or prop.get("vk_probability") or prop.get("pinnacle_tp")
             
+            # NORMALIZE CV: Convert percentage (69.92) to decimal (0.6992)
+            # Thresholds are in decimal form (0.70 = 70%)
+            if cv is not None and cv > 1:
+                cv = cv / 100.0
+            
             # If L20 hits not directly available, calculate from hit rate
             # MLB boards primarily use hit_rate_l10, so fall back to that
             if l20_hits is None:
@@ -1390,6 +1395,11 @@ class MLBOracleApexService:
             l10_hits = prop.get("l10_hits")
             cv = prop.get("cv") or prop.get("vk_cv")
             games_played = prop.get("games_played", 10)
+            
+            # NORMALIZE CV: Convert percentage (69.92) to decimal (0.6992)
+            # Thresholds are in decimal form (0.70 = 70%)
+            if cv is not None and cv > 1:
+                cv = cv / 100.0
             
             # If L20 hits not directly available, calculate from hit rate
             # MLB boards primarily use hit_rate_l10, so fall back to that
@@ -1837,6 +1847,11 @@ class MLBOracleApexService:
             l15_ceiling_hits = prop.get("l15_ceiling_hits")  # Times cleared THIS specific line in L15
             cv = prop.get("cv") or prop.get("vk_cv")
             games_played = prop.get("games_played", 10)
+            
+            # NORMALIZE CV: Convert percentage (69.92) to decimal (0.6992)
+            # Thresholds are in decimal form (0.70 = 70%)
+            if cv is not None and cv > 1:
+                cv = cv / 100.0
             
             # If L20 hits not directly available, calculate from hit rate
             # MLB boards primarily use hit_rate_l10, so fall back to that
