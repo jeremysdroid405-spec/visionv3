@@ -377,6 +377,19 @@ class MLBOracleApexService:
                     tooltip_parts.append(f"Top {team_obp_rank} OBP creates lineup turnover")
                 elif team_obp_rank >= 21:
                     tooltip_parts.append(f"#{team_obp_rank} OBP limits at-bats")
+            
+            return {
+                "multiplier": tempo_modifier,
+                "display": f"{'+' if pct_change >= 0 else ''}{pct_change:.0f}%",
+                "tempo_label": tempo_label,
+                "factors": breakdown.get("factors", []),
+                "total_pct": breakdown.get("total_pct", 0),
+                "player_type": "hitter",
+                "batting_order": batting_order,
+                "is_away": is_away,
+                "team_obp_rank": team_obp_rank,
+                "tooltip": " | ".join(tooltip_parts) if tooltip_parts else "Standard plate appearance volume expected"
+            }
     
     def _build_war_zone_badges(
         self,
