@@ -52,6 +52,27 @@ Restructure the React/FastAPI betting app to a 100% Local-First Database Model, 
   - Forces PASS Gate 1 for power hitters with low base hit rates
   - Logged under `Gate 1 HR Power Bypass (L10 HRs >= 2 or ISO > .200)`
 
+- ✅ **MLB Headshot Sync** (P2 Complete)
+  - Service: `/app/backend/services/mlb_headshot_sync.py`
+  - Endpoints: `POST /api/v3/mlb/headshots/sync`, `GET /api/v3/mlb/headshots/status`
+  - Coverage: 96.7% (771/797 players with official MLB CDN headshots)
+  - Storage: `/app/frontend/public/images/mlb_headshots/{mlb_id}.png`
+
+- ✅ **Forward-Testing Infrastructure** (P2 Complete)
+  - Service: `/app/backend/services/forward_testing_service.py`
+  - Routes: `/app/backend/routes/forward_testing.py`
+  - Collections: `forward_test_snapshots`, `forward_test_outcomes`, `forward_test_metrics`
+  - Features:
+    - Daily prop snapshot capture for all tiers
+    - Outcome resolution with hit/miss tracking
+    - Performance metrics by sport/tier
+    - Calibration reports (predicted vs actual hit rates)
+  - Endpoints:
+    - `POST /api/v3/forward-test/capture` - Capture daily props
+    - `POST /api/v3/forward-test/resolve` - Resolve outcomes
+    - `GET /api/v3/forward-test/performance` - Performance summary
+    - `GET /api/v3/forward-test/calibration` - Model calibration
+
 ### December 2025
 - ✅ MLB Vision Intel Suite with Tempo calculations and badge mapping
 - ✅ Gemini target lock rationales with MongoDB caching (reduced 57s → instant)
@@ -77,8 +98,8 @@ Restructure the React/FastAPI betting app to a 100% Local-First Database Model, 
 - [ ] Stripe payments integration
 
 ### P2 - Medium Priority
-- [ ] MLB headshot sync
-- [ ] Forward-Testing Infrastructure (automated daily prop capture)
+- ✅ MLB headshot sync - COMPLETED (96.7% coverage)
+- ✅ Forward-Testing Infrastructure - COMPLETED
 - [ ] Wind Tunnel weather API integration
 - [ ] Apple OAuth integration
 
