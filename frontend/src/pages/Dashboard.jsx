@@ -1317,17 +1317,14 @@ const Dashboard = () => {
     refetchSafeHaven();
     refetchFrontLines();
     refetchBoard();
-    // Also refetch MLB-specific data if on MLB
+    // Also refetch MLB Oracle Apex tiers if on MLB
     if (currentSport === 'mlb') {
-      refetchMLBGoblins();
-      refetchMLBDemons();
-      refetchMLBHRR();
       refetchMLBSafeHaven();
       refetchMLBFrontLines();
       refetchMLBWarZone();
     }
     toast.success('Data refreshed');
-  }, [refetchWarZone, refetchSafeHaven, refetchFrontLines, refetchBoard, refetchMLBGoblins, refetchMLBDemons, refetchMLBHRR, refetchMLBSafeHaven, refetchMLBFrontLines, refetchMLBWarZone, currentSport]);
+  }, [refetchWarZone, refetchSafeHaven, refetchFrontLines, refetchBoard, refetchMLBSafeHaven, refetchMLBFrontLines, refetchMLBWarZone, currentSport]);
   
   // Local UI state
   const [searchTerm, setSearchTerm] = useState('');
