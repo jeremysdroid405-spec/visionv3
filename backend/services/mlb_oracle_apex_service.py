@@ -3,49 +3,38 @@ MLB Oracle Apex Service - Safe Haven Tier Logic (2026 Season)
 ==============================================================
 The "Vegas Killer" mathematically-proven Safe Haven tier for MLB.
 
-2026 MLB STAT-SPECIFIC CALIBRATION (Raw Cushion Thresholds):
-| Stat | Max CV | Min Hit Rate (L20) | Min Raw Edge | Min VK Prob |
-|------|--------|-------------------|--------------|-------------|
-| HITS | 0.60   | 16/20 (80%)       | +0.30        | 70%         |
-| TB   | 0.75   | 15/20 (75%)       | +0.45        | 70%         |
-| K    | 0.45   | 15/20 (75%)       | +1.00        | 75%         |
-| OUTS | 0.30   | 17/20 (85%)       | +1.50        | 80%         |
-| HRR  | 0.55   | 16/20 (80%)       | +0.45        | 70%         |
+SAFE HAVEN 2.0 - GOBLIN-ONLY PREMIUM STABILITY BOARD
+====================================================
 
-Raw Edge Logic (typical lines):
-- HITS: +0.30 requires 0.80+ pred on 0.5 line
-- TB: +0.45 requires 1.95+ pred on 1.5 line
-- K: +1.00 requires 6.5+ pred on 5.5 line
-- OUTS: +1.50 requires 19.0+ pred on 17.5 line
-- HRR: +0.45 requires 1.95+ pred on 1.5 line
+STRICT PROP TYPE GATE:
+- Safe Haven ONLY accepts GOBLIN props
+- Demons and Standard props are strictly rejected
+- This is our premium stability board
 
-PRIMARY QUALIFICATIONS:
-1. DK Odds: Must be <= -240
-2. Prop Type: GOBLIN (Green) only - reject standard and demon props
-3. Lineup Status: Must be "CONFIRMED" or "PROJECTED" (rejects "BENCHED" and "UNKNOWN")
+DYNAMIC HIT RATE (Season-to-Date):
+- Uses actual games played, not hardcoded 20
+- Formula: (hits / actual_games_played) * 100
+- Solves early-season "teams haven't played 20 games" problem
+
+GATE THRESHOLDS:
+- Hit Rate Floor: >= 60% (filters cold streaks)
+- CV Max: <= 0.70 (consistency check)
+- Lineup Status: CONFIRMED or PROJECTED only
+
+ACTUARY GATE (The Primary Filter):
+- Calculates casino's required win rate based on Goblin Tax curve
+- propvision_edge = vk_prob_over - casino_req_rate
+- KILL SWITCH: If propvision_edge <= 0, prop is dropped
+
+BOARD SCORE FORMULA:
+- (propvision_edge * 2.0) + (true_hit_rate * 0.8) - (cv * 15)
+- Blends mathematical edge with true historical consistency
 
 Lineup Status Values:
 - CONFIRMED: Player is in today's confirmed BDL lineup
 - PROJECTED: Player has recent game activity but lineup not yet confirmed
 - BENCHED: Player's team has lineup but player is NOT in it (pinch-hitter trap protection)
 - UNKNOWN: No lineup data and no recent activity
-
-PRE-COMPUTATION:
-- Import mlb_matchup_math.py for Matchup Modifier
-- Multiply raw VK_Projection by Matchup Multiplier for Adjusted_VK_Projection
-
-4-PHASE QUALIFICATION (Safe Haven 2.0 - Actuary Gate):
-- Phase 1: Strict Baseline Gates (Lineup Status, Weather, L20 Rate, CV)
-- Phase 2: Internal Math (PropVision True Probability)
-- Phase 3: THE ACTUARY GATE - Kills props where PropVision Edge <= Casino Required Win Rate
-- Phase 4: Output & Sorting by board_score weighted by propvision_edge
-
-HARD-STOP FILTERS:
-- Weather: If wind_direction == 'IN' AND wind_speed > 12mph, reject batter props
-
-FINAL SORT:
-- Sort by Board_Score (TP Prob + (Raw Edge * 10) + (Hit Rate * 10))
-- Top 10 before Vision Intel Delta Check
 """
 from typing import Dict, List, Any, Optional, Tuple
 from datetime import datetime, timezone
@@ -879,7 +868,7 @@ class MLBOracleApexService:
         Returns:
             List of Top 10 qualified Safe Haven picks that BEAT the Goblin Tax
         """
-        logger.info("[MLB_SAFE_HAVEN 2.0] Building Safe Haven with ACTUARY GATE...")
+        logger.info("[MLB_SAFE_HAVEN 2.0] Building Safe Haven with ACTUARY GATE (GOBLIN-ONLY)...")
         logger.info(f"[MLB_SAFE_HAVEN 2.0] Input: {len(all_picks)} props to evaluate")
         
         # Batter stats affected by wind
@@ -888,9 +877,10 @@ class MLBOracleApexService:
         # Track gate statistics
         gate_stats = {
             'total_input': len(all_picks),
+            'fail_prop_type': 0,
             'fail_lineup': 0,
             'fail_weather': 0,
-            'fail_l20_rate': 0,
+            'fail_hit_rate': 0,
             'fail_cv': 0,
             'fail_actuary_gate': 0,
             'qualified': 0,
@@ -919,14 +909,20 @@ class MLBOracleApexService:
             # PHASE 1: STRICT BASELINE GATES
             # ================================================================
             
-            # 1a. Lineup Status Gate - Allow confirmed starters and projected starters
+            # 1a. STRICT PROP TYPE GATE - Safe Haven is GOBLIN-ONLY
+            # Reject Demons and Standard props - this is our premium stability board
+            if prop_type != 'GOBLIN':
+                gate_stats['fail_prop_type'] += 1
+                continue
+            
+            # 1b. Lineup Status Gate - Allow confirmed starters and projected starters
             # Kill benched players and unknowns (early-day protection without empty board)
             current_status = prop.get('lineup_status')
             if current_status not in ["CONFIRMED", "PROJECTED"]:
                 gate_stats['fail_lineup'] += 1
                 continue
             
-            # 1b. Weather Hard-Stop (Batter props only)
+            # 1c. Weather Hard-Stop (Batter props only)
             if stat_key.replace("_", " ") in BATTER_STATS or stat_type in BATTER_STATS:
                 weather = prop.get("weather", {}) or {}
                 wind_direction = (weather.get("wind_direction") or "").upper()
@@ -942,37 +938,52 @@ class MLBOracleApexService:
                     gate_stats['fail_weather'] += 1
                     continue
             
-            # 1c. L20 Hit Rate >= 75%
-            l20_hits = prop.get("l20_hits")
-            h20_rate = prop.get("h20_rate") or prop.get("hit_rate_l20") or prop.get("hit_rate_l10")
+            # ================================================================
+            # PHASE 2: DYNAMIC HIT RATE (Season-to-Date)
+            # ================================================================
+            # Early season fix: Use actual games played, not hardcoded 20
             
-            if l20_hits is None and h20_rate is not None:
-                # Convert hit rate to L20 hits estimate
-                l20_hits = int((h20_rate / 100) * 20)
+            games_played = prop.get("games_played") or prop.get("l10_games") or 0
             
-            if l20_hits is None:
-                gate_stats['fail_l20_rate'] += 1
+            # Get hit count from various possible fields
+            hit_count = prop.get("l20_hits") or prop.get("l10_hits") or 0
+            
+            # Also check hit_rate fields that may be pre-calculated
+            existing_hit_rate = prop.get("hit_rate_l10") or prop.get("hit_rate_l20") or prop.get("h20_rate")
+            
+            # Calculate TRUE hit rate based on ACTUAL games played
+            if games_played > 0 and hit_count > 0:
+                # Dynamic formula: (hits / actual_games_played) * 100
+                true_hit_rate = (hit_count / games_played) * 100
+            elif existing_hit_rate is not None:
+                # Use pre-calculated rate if available
+                true_hit_rate = existing_hit_rate
+            else:
+                # No hit rate data available
+                gate_stats['fail_hit_rate'] += 1
                 continue
             
-            l20_rate_pct = (l20_hits / 20) * 100
-            if l20_rate_pct < 75.0:
-                gate_stats['fail_l20_rate'] += 1
+            # 2a. Hit Rate Floor: Filter out cold streaks (60% minimum)
+            if true_hit_rate < 60.0:
+                gate_stats['fail_hit_rate'] += 1
                 continue
             
-            # 1d. CV (Coefficient of Variation) <= 0.65
+            # 2b. CV (Coefficient of Variation) <= 0.70
             cv = prop.get("cv") or prop.get("vk_cv")
             
             # Normalize CV if stored as percentage
             if cv is not None and cv > 1:
                 cv = cv / 100.0
             
-            if cv is None or cv > 0.65:
+            if cv is None or cv > 0.70:
                 gate_stats['fail_cv'] += 1
                 continue
             
             # ================================================================
-            # PHASE 2: INTERNAL MATH (PropVision)
+            # PHASE 3: THE ACTUARY GATE (The Primary Filter)
             # ================================================================
+            # Let the Actuary Math dictate what qualifies.
+            # If edge is positive against the specific payout bucket, it passes.
             
             # Get our internal True Probability
             vk_prob_over = prop.get("vk_prob_over") or prop.get("vk_probability") or prop.get("pinnacle_tp")
@@ -980,10 +991,6 @@ class MLBOracleApexService:
             if vk_prob_over is None or vk_prob_over <= 0:
                 gate_stats['fail_actuary_gate'] += 1
                 continue
-            
-            # ================================================================
-            # PHASE 3: THE ACTUARY GATE (The Casino Killer)
-            # ================================================================
             
             # Get the casino's required win rate based on Goblin Tax curve
             casino_req_rate = get_pp_required_win_rate(dk_odds, prop_type)
@@ -1012,9 +1019,9 @@ class MLBOracleApexService:
             # Raw edge (prediction vs line)
             raw_edge = (raw_vk_pred - line) if line > 0 else 0
             
-            # Calculate Board Score (heavily weight the Actuary Edge)
-            # Formula: (PropVision_Edge * 2) + (L20_Rate * 0.5) + (1 - CV) * 10
-            board_score = (propvision_edge * 2) + (l20_rate_pct * 0.5) + ((1 - cv) * 10)
+            # Calculate Board Score - Blend of mathematical edge and true historical consistency
+            # Formula: (propvision_edge * 2.0) + (true_hit_rate * 0.8) - (cv * 15)
+            board_score = (propvision_edge * 2.0) + (true_hit_rate * 0.8) - (cv * 15)
             
             qualified_pick = {
                 # Player info
@@ -1038,10 +1045,10 @@ class MLBOracleApexService:
                 'is_demon': is_demon,
                 'lineup_status': current_status,
                 
-                # Hit rates
-                'l20_hits': l20_hits,
-                'h20_rate': round(l20_rate_pct, 1),
-                'hit_rate_l20': round(l20_rate_pct, 1),
+                # Dynamic Hit Rate (Season-to-Date)
+                'games_played': games_played,
+                'hit_count': hit_count,
+                'true_hit_rate': round(true_hit_rate, 1),
                 
                 # Consistency
                 'cv': round(cv, 3) if cv else None,
@@ -1054,7 +1061,7 @@ class MLBOracleApexService:
                 'matchup_modifier': round(matchup_modifier, 3),
                 'tempo_modifier': round(tempo_modifier, 3),
                 
-                # *** ACTUARY GATE FIELDS (NEW) ***
+                # *** ACTUARY GATE FIELDS ***
                 'casino_req_rate': round(casino_req_rate, 1),
                 'propvision_edge': round(propvision_edge, 1),
                 
@@ -1063,7 +1070,7 @@ class MLBOracleApexService:
                 
                 # Tier classification
                 'tier': 'safe_haven',
-                'tier_label': 'MLB Safe Haven 2.0',
+                'tier_label': 'MLB Safe Haven 2.0 (GOBLIN-ONLY)',
                 'oracle_apex_qualified': True,
                 'actuary_gate_passed': True,
                 
@@ -1071,8 +1078,8 @@ class MLBOracleApexService:
                 'gate_info': {
                     'casino_req_rate': round(casino_req_rate, 1),
                     'propvision_edge': round(propvision_edge, 1),
-                    'l20_rate_required': 75.0,
-                    'cv_max_allowed': 0.65,
+                    'true_hit_rate_required': 60.0,
+                    'cv_max_allowed': 0.70,
                 },
                 
                 # Carry forward vision intel
@@ -1092,14 +1099,15 @@ class MLBOracleApexService:
         # ====================================================================
         
         # Log gate statistics
-        logger.info("[MLB_SAFE_HAVEN 2.0] Gate Statistics:")
+        logger.info("[MLB_SAFE_HAVEN 2.0] Gate Statistics (GOBLIN-ONLY):")
         logger.info(f"  Total Input: {gate_stats['total_input']}")
+        logger.info(f"  Failed Prop Type (Non-GOBLIN): {gate_stats['fail_prop_type']}")
         logger.info(f"  Failed Lineup: {gate_stats['fail_lineup']}")
         logger.info(f"  Failed Weather: {gate_stats['fail_weather']}")
-        logger.info(f"  Failed L20 Rate (<75%): {gate_stats['fail_l20_rate']}")
-        logger.info(f"  Failed CV (>0.65): {gate_stats['fail_cv']}")
+        logger.info(f"  Failed Hit Rate (<60%): {gate_stats['fail_hit_rate']}")
+        logger.info(f"  Failed CV (>0.70): {gate_stats['fail_cv']}")
         logger.info(f"  *** KILLED BY ACTUARY GATE: {gate_stats['fail_actuary_gate']} ***")
-        logger.info(f"  QUALIFIED (Beat Goblin Tax): {gate_stats['qualified']}")
+        logger.info(f"  QUALIFIED (Goblins that Beat the Tax): {gate_stats['qualified']}")
         
         # Sort descending by Board_Score
         qualified_picks.sort(key=lambda x: x.get('board_score', 0), reverse=True)
@@ -1121,6 +1129,7 @@ class MLBOracleApexService:
         
         for i, pick in enumerate(top_10[:5], 1):
             logger.info(f"[MLB_SAFE_HAVEN 2.0]   {i}. {pick['player_name']} - {pick['stat_key']} | "
+                       f"True HR: {pick['true_hit_rate']}% ({pick.get('games_played', 0)} GP) | "
                        f"PropVision: {pick['vk_prob_over']}% vs Casino: {pick['casino_req_rate']}% | "
                        f"EDGE: +{pick['propvision_edge']:.1f}% | Board: {pick['board_score']}")
         
