@@ -126,6 +126,49 @@ def get_pp_required_win_rate(dk_odds: int, prop_type: str) -> float:
         return 54.3  # 5/6-Pick Flex baseline
 
 
+def calculate_master_probability(dk_odds: int, true_hit_rate: float, prop_type: str) -> dict:
+    """
+    MASTER PROBABILITY FUNCTION - Used by ALL tiers for consistent edge calculation.
+    
+    This ensures the same player shows the EXACT same True Edge regardless of which tier
+    they appear in. Differentiation happens through FILTERING, not math.
+    
+    Formula (50/50 Blend):
+        market_prob = (abs(dk_odds) / (abs(dk_odds) + 100)) * 100  (if dk_odds < 0)
+        propvision_true_prob = (market_prob * 0.50) + (true_hit_rate * 0.50)
+        true_edge = propvision_true_prob - casino_req_rate
+    
+    Args:
+        dk_odds: DraftKings odds (negative for favorites, positive for dogs)
+        true_hit_rate: Dynamic hit rate based on actual games played (%)
+        prop_type: 'GOBLIN', 'DEMON', or 'STANDARD'
+        
+    Returns:
+        dict with market_prob, propvision_true_prob, casino_req_rate, true_edge
+    """
+    # Calculate Market Implied Probability from DK Odds
+    if dk_odds and dk_odds < 0:
+        market_prob = (abs(dk_odds) / (abs(dk_odds) + 100)) * 100
+    else:
+        market_prob = 50.0  # Fallback for positive or missing odds
+    
+    # Calculate PropVision True Probability (MASTER 50/50 BLEND)
+    propvision_true_prob = (market_prob * 0.50) + (true_hit_rate * 0.50)
+    
+    # Get the casino's required win rate based on Goblin Tax curve
+    casino_req_rate = get_pp_required_win_rate(dk_odds, prop_type)
+    
+    # Calculate True Edge
+    true_edge = propvision_true_prob - casino_req_rate
+    
+    return {
+        'market_prob': round(market_prob, 1),
+        'propvision_true_prob': round(propvision_true_prob, 1),
+        'casino_req_rate': round(casino_req_rate, 1),
+        'true_edge': round(true_edge, 1),
+    }
+
+
 # =============================================================================
 # 2026 MLB ORACLE APEX CONFIGURATION - SAFE HAVEN (Strictest)
 # =============================================================================
@@ -989,35 +1032,20 @@ class MLBOracleApexService:
                 continue
             
             # ================================================================
-            # PHASE 3: THE PREDICTIVE ACTUARY GATE
+            # PHASE 3: THE PREDICTIVE ACTUARY GATE (MASTER FUNCTION)
             # ================================================================
-            # Blend Vegas market probability with our Season-to-Date True Hit Rate
-            # to create a predictive PropVision True Probability.
+            # Uses the centralized calculate_master_probability for consistent
+            # edge calculations across ALL tiers.
             
-            # 3a. Calculate Market Implied Probability from DK Odds
-            # Convert American odds to implied probability
-            if dk_odds and dk_odds < 0:
-                market_prob = (abs(dk_odds) / (abs(dk_odds) + 100)) * 100
-            else:
-                market_prob = 50.0  # Fallback for positive or missing odds
-            
-            # 3b. Calculate PropVision True Probability (50/50 blend)
-            # Blend Vegas market with our internal Season-to-Date True Hit Rate
-            propvision_true_prob = (market_prob * 0.50) + (true_hit_rate * 0.50)
-            
-            # 3c. Get the casino's required win rate based on Goblin Tax curve
-            casino_req_rate = get_pp_required_win_rate(dk_odds, prop_type)
-            
-            # 3d. Calculate True Edge: Our blended model vs Casino's required rate
-            true_edge = propvision_true_prob - casino_req_rate
+            prob_data = calculate_master_probability(dk_odds, true_hit_rate, prop_type)
+            market_prob = prob_data['market_prob']
+            propvision_true_prob = prob_data['propvision_true_prob']
+            casino_req_rate = prob_data['casino_req_rate']
+            true_edge = prob_data['true_edge']
             
             # THE KILL SWITCH: If our blended model cannot beat the casino tax, kill it.
             if true_edge <= 0.0:
                 gate_stats['fail_actuary_gate'] += 1
-                logger.debug(f"[ACTUARY_GATE] KILLED: {player_name} {stat_type} | "
-                            f"Market: {market_prob:.1f}% + HR: {true_hit_rate:.1f}% = "
-                            f"PropVision: {propvision_true_prob:.1f}% vs Casino Req: {casino_req_rate:.1f}% | "
-                            f"Edge: {true_edge:.1f}%")
                 continue
             
             # ================================================================
@@ -1155,51 +1183,47 @@ class MLBOracleApexService:
     
     async def build_front_lines_tier(self, all_picks: List[Dict]) -> List[Dict]:
         """
-        Build the MLB Front Lines tier - Early-Morning Value Hunting with Predictive Actuary Gate.
+        Build the MLB Front Lines tier - Standard Props and 'Broken' Goblins.
         
         FRONT LINES 2.0 LOGIC (2026 Season):
         =====================================
         
-        Front Lines catches value before official lineups are out. It uses a hybrid
-        lineup check and the Predictive Actuary Gate to find Demon/Goblin arbitrage.
+        Front Lines targets Standard props and "broken" Goblins (Goblins that fail Safe Haven's
+        strict 60% hit rate / 0.70 CV thresholds but still have positive edge).
         
-        1. HYBRID LINEUP GATE:
-           - Allow: CONFIRMED, PROJECTED, UNKNOWN
-           - Reject: Only BENCHED players (explicit pinch-hitter trap)
+        CONTENT FILTER (Tier Differentiation):
+        - STANDARD props: ✅ ALLOWED
+        - GOBLIN props: ✅ ALLOWED (catches "broken" Goblins that miss Safe Haven)
+        - DEMON props: ❌ BLOCKED (reserved for War Zone)
         
-        2. BASELINE FILTERS:
-           - True Hit Rate >= 55% (lower than Safe Haven to allow high-value Demons)
-           - CV <= 0.75
+        GATES:
+        1. Lineup: Allow CONFIRMED, PROJECTED, UNKNOWN (reject only BENCHED)
+        2. Hit Rate >= 55%
+        3. CV <= 0.75
+        4. True Edge > 0 (MASTER 50/50 BLEND)
         
-        3. PREDICTIVE ACTUARY GATE:
-           - Market Implied Probability from DK odds
-           - PropVision True Prob = (market_prob * 0.50) + (true_hit_rate * 0.50)
-           - True Edge = propvision_true_prob - casino_req_rate
-           - KILL SWITCH: If true_edge <= 0.0, drop the prop
-        
-        4. ARBITRAGE-WEIGHTED BOARD SCORE:
-           - board_score = (true_edge * 4.0) + (true_hit_rate * 0.5) - (cv * 10)
-           - Heavily weights mathematical edge for pure arbitrage hunting
+        BOARD SCORE:
+        - board_score = (true_edge * 4.0) + (true_hit_rate * 0.5) - (cv * 10)
         
         Args:
             all_picks: List of all props from the pipeline
             
         Returns:
-            List of Top 10 qualified Front Lines picks (Demons + mispriced Goblins)
+            List of Top 10 qualified Front Lines picks (Standards + Broken Goblins)
         """
-        logger.info("[MLB_FRONT_LINES 2.0] Building Front Lines with PREDICTIVE ACTUARY GATE...")
+        logger.info("[MLB_FRONT_LINES 2.0] Building Front Lines (Standards + Broken Goblins)...")
         logger.info(f"[MLB_FRONT_LINES 2.0] Input: {len(all_picks)} props to evaluate")
         
         # Track gate statistics
         gate_stats = {
             'total_input': len(all_picks),
+            'fail_demon_blocked': 0,
             'fail_lineup': 0,
             'fail_hit_rate': 0,
             'fail_cv': 0,
             'fail_actuary_gate': 0,
             'qualified': 0,
             'goblins_qualified': 0,
-            'demons_qualified': 0,
             'standards_qualified': 0,
         }
         
@@ -1223,20 +1247,26 @@ class MLBOracleApexService:
                 dk_odds = prop.get("all_odds", {}).get("draftkings")
             
             # ================================================================
-            # PHASE 1: HYBRID LINEUP GATE
+            # PHASE 1: CONTENT FILTER - Block Demons (reserved for War Zone)
+            # ================================================================
+            if prop_type == 'DEMON':
+                gate_stats['fail_demon_blocked'] += 1
+                continue
+            
+            # ================================================================
+            # PHASE 2: LINEUP GATE (Hybrid)
             # ================================================================
             # Allow CONFIRMED, PROJECTED, and UNKNOWN. Only reject explicitly BENCHED.
-            # This catches value before official lineups are out.
             lineup_status = prop.get('lineup_status')
             if lineup_status == "BENCHED":
                 gate_stats['fail_lineup'] += 1
                 continue
             
             # ================================================================
-            # PHASE 2: BASELINE FILTERS
+            # PHASE 3: BASELINE FILTERS
             # ================================================================
             
-            # 2a. Dynamic Hit Rate (Season-to-Date)
+            # 3a. Dynamic Hit Rate (Season-to-Date)
             games_played = prop.get("games_played") or prop.get("l10_games") or 0
             hit_count = prop.get("l20_hits") or prop.get("l10_hits") or 0
             existing_hit_rate = prop.get("hit_rate_l10") or prop.get("hit_rate_l20") or prop.get("h20_rate")
@@ -1250,12 +1280,12 @@ class MLBOracleApexService:
                 gate_stats['fail_hit_rate'] += 1
                 continue
             
-            # Hit Rate Floor: 55% (lower than Safe Haven to allow high-value Demons)
+            # Hit Rate Floor: 55% (lower than Safe Haven)
             if true_hit_rate < 55.0:
                 gate_stats['fail_hit_rate'] += 1
                 continue
             
-            # 2b. CV (Coefficient of Variation) <= 0.75
+            # 3b. CV (Coefficient of Variation) <= 0.75
             cv = prop.get("cv") or prop.get("vk_cv")
             
             # Normalize CV if stored as percentage
@@ -1267,40 +1297,30 @@ class MLBOracleApexService:
                 continue
             
             # ================================================================
-            # PHASE 3: THE PREDICTIVE ACTUARY GATE
+            # PHASE 4: THE PREDICTIVE ACTUARY GATE (MASTER FUNCTION)
             # ================================================================
-            # Same blend as Safe Haven, but strictly enforced for pure arbitrage
+            # Uses the centralized calculate_master_probability for consistent
+            # edge calculations across ALL tiers.
             
-            # 3a. Calculate Market Implied Probability from DK Odds
-            if dk_odds and dk_odds < 0:
-                market_prob = (abs(dk_odds) / (abs(dk_odds) + 100)) * 100
-            else:
-                market_prob = 50.0  # Fallback for positive or missing odds
+            prob_data = calculate_master_probability(dk_odds, true_hit_rate, prop_type)
+            market_prob = prob_data['market_prob']
+            propvision_true_prob = prob_data['propvision_true_prob']
+            casino_req_rate = prob_data['casino_req_rate']
+            true_edge = prob_data['true_edge']
             
-            # 3b. Calculate PropVision True Probability (50/50 blend)
-            propvision_true_prob = (market_prob * 0.50) + (true_hit_rate * 0.50)
-            
-            # 3c. Get the casino's required win rate based on Goblin Tax curve
-            casino_req_rate = get_pp_required_win_rate(dk_odds, prop_type)
-            
-            # 3d. Calculate True Edge
-            true_edge = propvision_true_prob - casino_req_rate
-            
-            # THE KILL SWITCH: Keep it strict for pure arbitrage
+            # THE KILL SWITCH
             if true_edge <= 0.0:
                 gate_stats['fail_actuary_gate'] += 1
                 continue
             
             # ================================================================
-            # PHASE 4: QUALIFIED - Build Output
+            # PHASE 5: QUALIFIED - Build Output
             # ================================================================
             gate_stats['qualified'] += 1
             
-            # Track prop type distribution
+            # Track prop type distribution (Demons are blocked, so won't count)
             if is_goblin:
                 gate_stats['goblins_qualified'] += 1
-            elif is_demon:
-                gate_stats['demons_qualified'] += 1
             else:
                 gate_stats['standards_qualified'] += 1
             
@@ -1397,13 +1417,14 @@ class MLBOracleApexService:
         # ====================================================================
         
         # Log gate statistics
-        logger.info("[MLB_FRONT_LINES 2.0] Gate Statistics (Predictive Arbitrage):")
+        logger.info("[MLB_FRONT_LINES 2.0] Gate Statistics (Standards + Broken Goblins):")
         logger.info(f"  Total Input: {gate_stats['total_input']}")
+        logger.info(f"  Failed DEMON Blocked (reserved for War Zone): {gate_stats['fail_demon_blocked']}")
         logger.info(f"  Failed Lineup (BENCHED only): {gate_stats['fail_lineup']}")
         logger.info(f"  Failed Hit Rate (<55%): {gate_stats['fail_hit_rate']}")
         logger.info(f"  Failed CV (>0.75): {gate_stats['fail_cv']}")
-        logger.info(f"  *** KILLED BY PREDICTIVE ACTUARY GATE: {gate_stats['fail_actuary_gate']} ***")
-        logger.info(f"  QUALIFIED: {gate_stats['qualified']} (Goblins: {gate_stats['goblins_qualified']} | Demons: {gate_stats['demons_qualified']} | Standards: {gate_stats['standards_qualified']})")
+        logger.info(f"  *** KILLED BY MASTER ACTUARY GATE: {gate_stats['fail_actuary_gate']} ***")
+        logger.info(f"  QUALIFIED: {gate_stats['qualified']} (Goblins: {gate_stats['goblins_qualified']} | Standards: {gate_stats['standards_qualified']})")
         
         # Sort descending by Board_Score
         qualified_picks.sort(key=lambda x: x.get('board_score', 0), reverse=True)
@@ -1433,46 +1454,43 @@ class MLBOracleApexService:
     
     async def build_war_zone_tier(self, all_picks: List[Dict]) -> List[Dict]:
         """
-        Build the MLB War Zone tier - Elite 10 High-Risk, High-Reward Jackpots.
+        Build the MLB War Zone tier - ONLY Demons and High-Odds Standards.
         
         WAR ZONE 2.0 LOGIC (2026 Season):
         ==================================
         
-        The War Zone hunts for MASSIVE PAYOUTS with the highest risk vs. reward ratio.
-        Only the mathematically superior plays with huge Vegas disagreements make the cut.
+        CONTENT FILTER (Tier Differentiation):
+        - DEMON props: ✅ ALLOWED (high-risk, high-reward)
+        - STANDARD props with DK odds >= +150: ✅ ALLOWED (high-odds specials)
+        - GOBLIN props: ❌ BLOCKED (reserved for Safe Haven / Front Lines)
+        - STANDARD props with DK odds < +150: ❌ BLOCKED
         
-        ELITE 10 CONSTRAINTS:
+        GATES:
+        1. Content filter (Demons + High-Odds Standards only)
+        2. Lineup: Allow CONFIRMED, PROJECTED, UNKNOWN (reject only BENCHED)
+        3. True Edge >= 10.0 (MASTER 50/50 BLEND - aggressive floor)
         
-        1. PROP TYPE FILTER:
-           - Strictly block GOBLINs (low multipliers)
-           - Only allow DEMONs and high-yield STANDARDs
+        BOARD SCORE:
+        - board_score = (true_edge * 15.0) + (true_hit_rate * 2.0) - (cv * 5)
+        - Jackpot Ranker: finds biggest Vegas/PropVision disagreements
         
-        2. PREDICTIVE ACTUARY GATE:
-           - Market Implied Probability from DK odds
-           - PropVision True Prob = (market_prob * 0.30) + (true_hit_rate * 0.70) 
-           - True Edge = propvision_true_prob - casino_req_rate
-           - AGGRESSIVE FLOOR: true_edge >= 10.0 (massive disagreement required)
-        
-        3. JACKPOT RANKER BOARD SCORE:
-           - board_score = (true_edge * 15.0) + (true_hit_rate * 2.0) - (cv * 5)
-           - Ignores "safety" - finds biggest Vegas/PropVision disagreements
-        
-        4. TOP 10 CAP:
-           - Returns only the Elite 10 highest-scoring props
+        TOP 10 CAP:
+        - Returns only the Elite 10 highest-scoring props
         
         Args:
             all_picks: List of all props from the pipeline
             
         Returns:
-            List of Top 10 Elite War Zone picks (Demons + High-Yield Standards)
+            List of Top 10 Elite War Zone picks (Demons + High-Odds Standards)
         """
-        logger.info("[MLB_WAR_ZONE 2.0] Building Elite 10 War Zone with JACKPOT RANKER...")
+        logger.info("[MLB_WAR_ZONE 2.0] Building Elite 10 (Demons + High-Odds Standards)...")
         logger.info(f"[MLB_WAR_ZONE 2.0] Input: {len(all_picks)} props to evaluate")
         
         # Track gate statistics
         gate_stats = {
             'total_input': len(all_picks),
             'fail_goblin': 0,
+            'fail_standard_low_odds': 0,
             'fail_lineup': 0,
             'fail_hit_rate': 0,
             'fail_true_edge': 0,
@@ -1501,15 +1519,22 @@ class MLBOracleApexService:
                 dk_odds = prop.get("all_odds", {}).get("draftkings")
             
             # ================================================================
-            # PHASE 1: PROP TYPE CONSTRAINT
+            # PHASE 1: CONTENT FILTER (Demons + High-Odds Standards ONLY)
             # ================================================================
-            # Strictly block Goblins. Only allow high-multiplier potential (Demons/Standards).
+            
+            # Block Goblins (reserved for Safe Haven / Front Lines)
             if prop_type == 'GOBLIN':
                 gate_stats['fail_goblin'] += 1
                 continue
             
+            # For Standard props, require high odds (>= +150)
+            if prop_type == 'STANDARD':
+                if dk_odds is None or dk_odds < 150:
+                    gate_stats['fail_standard_low_odds'] += 1
+                    continue
+            
             # ================================================================
-            # PHASE 2: LINEUP GATE (Hybrid - same as Front Lines)
+            # PHASE 2: LINEUP GATE (Hybrid)
             # ================================================================
             # Allow CONFIRMED, PROJECTED, UNKNOWN. Only reject explicitly BENCHED.
             lineup_status = prop.get('lineup_status')
@@ -1539,24 +1564,16 @@ class MLBOracleApexService:
                 cv = cv / 100.0
             
             # ================================================================
-            # PHASE 4: THE PREDICTIVE ACTUARY GATE (Jackpot Edition)
+            # PHASE 4: THE PREDICTIVE ACTUARY GATE (MASTER FUNCTION)
             # ================================================================
-            # Market 30% / Hit Rate 70% blend (weights historical performance heavier)
+            # Uses the SAME 50/50 blend as other tiers for consistent edge calculation.
+            # Differentiation happens through the 10.0% floor, not different math.
             
-            # 4a. Calculate Market Implied Probability from DK Odds
-            if dk_odds and dk_odds < 0:
-                market_prob = (abs(dk_odds) / (abs(dk_odds) + 100)) * 100
-            else:
-                market_prob = 50.0  # Fallback for positive or missing odds
-            
-            # 4b. Calculate PropVision True Probability (30/70 blend - heavier on hit rate)
-            propvision_true_prob = (market_prob * 0.30) + (true_hit_rate * 0.70)
-            
-            # 4c. Get the casino's required win rate
-            casino_req_rate = get_pp_required_win_rate(dk_odds, prop_type)
-            
-            # 4d. Calculate True Edge
-            true_edge = propvision_true_prob - casino_req_rate
+            prob_data = calculate_master_probability(dk_odds, true_hit_rate, prop_type)
+            market_prob = prob_data['market_prob']
+            propvision_true_prob = prob_data['propvision_true_prob']
+            casino_req_rate = prob_data['casino_req_rate']
+            true_edge = prob_data['true_edge']
             
             # AGGRESSIVE FLOOR: If we are taking a 'War Zone' risk, the edge MUST be massive.
             # Require true_edge >= 10.0 to ensure only mathematically superior plays qualify.
@@ -1649,7 +1666,7 @@ class MLBOracleApexService:
                     'casino_req_rate': round(casino_req_rate, 1),
                     'true_edge': round(true_edge, 1),
                     'true_edge_floor': 10.0,
-                    'blend_ratio': '30% Market / 70% Hit Rate',
+                    'blend_ratio': 'MASTER 50/50 (same as all tiers)',
                 },
                 
                 # Carry forward vision intel
@@ -1669,9 +1686,10 @@ class MLBOracleApexService:
         # ====================================================================
         
         # Log gate statistics
-        logger.info("[MLB_WAR_ZONE 2.0] Gate Statistics (Elite 10 Jackpot Ranker):")
+        logger.info("[MLB_WAR_ZONE 2.0] Gate Statistics (Demons + High-Odds Standards):")
         logger.info(f"  Total Input: {gate_stats['total_input']}")
-        logger.info(f"  Failed Prop Type (GOBLIN blocked): {gate_stats['fail_goblin']}")
+        logger.info(f"  Failed GOBLIN blocked: {gate_stats['fail_goblin']}")
+        logger.info(f"  Failed STANDARD low odds (<+150): {gate_stats['fail_standard_low_odds']}")
         logger.info(f"  Failed Lineup (BENCHED only): {gate_stats['fail_lineup']}")
         logger.info(f"  Failed Hit Rate (no data): {gate_stats['fail_hit_rate']}")
         logger.info(f"  *** FAILED TRUE EDGE FLOOR (<10%): {gate_stats['fail_true_edge']} ***")
@@ -1697,7 +1715,7 @@ class MLBOracleApexService:
         
         for i, pick in enumerate(top_10, 1):
             logger.info(f"[MLB_WAR_ZONE 2.0]   {i}. {pick['player_name']} - {pick['stat_key']} [{pick['prop_type']}] | "
-                       f"HR: {pick['true_hit_rate']}% (30% Market: {pick['market_prob']}% / 70% HR) = "
+                       f"HR: {pick['true_hit_rate']}% + Market: {pick['market_prob']}% = "
                        f"PropVision: {pick['propvision_true_prob']}% vs Casino: {pick['casino_req_rate']}% | "
                        f"TRUE EDGE: +{pick['true_edge']:.1f}% | Board: {pick['board_score']}")
         

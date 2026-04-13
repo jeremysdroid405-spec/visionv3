@@ -16,57 +16,67 @@ Restructure the React/FastAPI betting app to a 100% Local-First Database Model, 
 - `GET /api/v3/ferrari/front-lines?sport=mlb` - Front Lines tier picks
 - `GET /api/v3/ferrari/war-zone?sport=mlb` - War Zone tier picks
 
-## MLB Tier Logic (April 13, 2026)
+## UNIFIED MATH SYSTEM (April 13, 2026)
 
-### Common: Predictive Actuary Gate
-All tiers share this core calculation:
+### Master Probability Function
+ALL tiers use `calculate_master_probability()` for consistent edge calculation:
+
 ```python
-# Market Implied Probability from DK Odds
-if dk_odds < 0:
-    market_prob = (abs(dk_odds) / (abs(dk_odds) + 100)) * 100
-else:
-    market_prob = 50.0
-
-# PropVision True Probability (blend varies by tier)
-propvision_true_prob = (market_prob * X) + (true_hit_rate * Y)
-
-# True Edge vs Casino Required Rate
-casino_req_rate = get_pp_required_win_rate(dk_odds, prop_type)
-true_edge = propvision_true_prob - casino_req_rate
+def calculate_master_probability(dk_odds, true_hit_rate, prop_type):
+    # Market Implied Probability from DK Odds
+    if dk_odds and dk_odds < 0:
+        market_prob = (abs(dk_odds) / (abs(dk_odds) + 100)) * 100
+    else:
+        market_prob = 50.0
+    
+    # MASTER 50/50 BLEND (same across ALL tiers)
+    propvision_true_prob = (market_prob * 0.50) + (true_hit_rate * 0.50)
+    
+    # True Edge vs Casino
+    casino_req_rate = get_pp_required_win_rate(dk_odds, prop_type)
+    true_edge = propvision_true_prob - casino_req_rate
+    
+    return {...}
 ```
 
-### Safe Haven 2.0 - GOBLIN-Only Premium Stability
-| Setting | Value |
-|---------|-------|
-| Prop Types | GOBLIN only |
-| Lineup | CONFIRMED, PROJECTED |
-| Hit Rate | >= 60% |
-| CV | <= 0.70 |
-| Edge Floor | 0% |
-| Blend | 50% Market / 50% HR |
-| Board Score | `(true_edge * 3.0) - (cv * 15)` |
+### Tier Differentiation by CONTENT (Not Math)
 
-### Front Lines 2.0 - Predictive Arbitrage
-| Setting | Value |
-|---------|-------|
-| Prop Types | ALL (Goblins, Demons, Standards) |
-| Lineup | CONFIRMED, PROJECTED, UNKNOWN (reject only BENCHED) |
-| Hit Rate | >= 55% |
-| CV | <= 0.75 |
-| Edge Floor | 0% |
-| Blend | 50% Market / 50% HR |
-| Board Score | `(true_edge * 4.0) + (true_hit_rate * 0.5) - (cv * 10)` |
+| Tier | Prop Types Allowed | Edge Floor | HR Floor | CV Max |
+|------|--------------------|------------|----------|--------|
+| **Safe Haven** | GOBLIN only | 0% | 60% | 0.70 |
+| **Front Lines** | GOBLIN + STANDARD (NO Demons) | 0% | 55% | 0.75 |
+| **War Zone** | DEMON + High-Odds Standard (NO Goblins) | 10% | None | None |
 
-### War Zone 2.0 - Elite 10 Jackpot Ranker
-| Setting | Value |
-|---------|-------|
-| Prop Types | DEMON only (GOBLINs strictly blocked) |
-| Lineup | CONFIRMED, PROJECTED, UNKNOWN (reject only BENCHED) |
-| Hit Rate | No strict floor |
-| CV | No strict limit |
-| **Edge Floor** | **>= 10%** (aggressive minimum) |
-| Blend | **30% Market / 70% HR** (heavier on historical) |
-| Board Score | `(true_edge * 15.0) + (true_hit_rate * 2.0) - (cv * 5)` |
+### Deduplication Logic
+- Props are filtered by tier based on prop_type
+- A GOBLIN can appear in Safe Haven AND Front Lines (same True Edge)
+- A DEMON can ONLY appear in War Zone (blocked from Front Lines)
+- A STANDARD can appear in Front Lines AND War Zone (if high-odds)
+
+## Board Score Formulas
+
+```python
+# Safe Haven - Stability focused
+board_score = (true_edge * 3.0) - (cv * 15)
+
+# Front Lines - Arbitrage focused  
+board_score = (true_edge * 4.0) + (true_hit_rate * 0.5) - (cv * 10)
+
+# War Zone - Jackpot focused
+board_score = (true_edge * 15.0) + (true_hit_rate * 2.0) - (cv * 5)
+```
+
+## Test Results (April 13, 2026)
+
+### Consistency Verification
+Kyle Schwarber - BATTER_STRIKEOUTS [GOBLIN]:
+- Safe Haven: TRUE EDGE: +10.0% ✅
+- Front Lines: TRUE EDGE: +10.0% ✅ (IDENTICAL)
+
+### Tier Isolation
+- Safe Haven: 41 qualified (ALL Goblins)
+- Front Lines: 54 qualified (54 Goblins, 0 Standards, 0 Demons)
+- War Zone: 35 qualified (35 Demons, 0 Standards, 0 Goblins)
 
 ## Data Models
 
@@ -75,30 +85,6 @@ true_edge = propvision_true_prob - casino_req_rate
 - `"PROJECTED"` - Recent game activity (last 5 days)
 - `"BENCHED"` - Team has lineup but player not included
 - `"UNKNOWN"` - No lineup data or recent activity
-
-## Completed Features (April 13, 2026)
-
-### Safe Haven 2.0 ✅
-- GOBLIN-only, 60% HR, 0.70 CV
-- 50/50 blend Predictive Actuary Gate
-
-### Front Lines 2.0 ✅  
-- All prop types, 55% HR, 0.75 CV
-- Hybrid lineup gate (BENCHED-only rejection)
-- Fixed empty board bug
-
-### War Zone 2.0 ✅
-- DEMON-only (GOBLINs blocked)
-- 10% minimum true_edge (aggressive floor)
-- 30/70 blend for higher historical weighting
-- Elite 10 cap
-
-## Test Results (April 13, 2026)
-```
-Safe Haven: 10 picks | Top Edge: +10.6% (CJ Abrams HITS)
-Front Lines: 10 picks | Top Edge: +20.0% (Brice Turang WALKS)
-War Zone: 10 picks | Top Edge: +28.0% (Brice Turang WALKS)
-```
 
 ## Pending
 
