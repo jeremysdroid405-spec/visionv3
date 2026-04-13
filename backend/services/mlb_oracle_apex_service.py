@@ -351,7 +351,13 @@ class MLBOracleApexService:
             team_obp_rank = prop.get("team_obp_rank")
             breakdown = get_hitter_tempo_breakdown(batting_order, is_away, team_obp_rank)
             
-            if pct_change >= 10:
+            # Determine tempo label based on actual data availability
+            has_tempo_data = any([batting_order is not None, is_away is not None, team_obp_rank is not None])
+            
+            if not has_tempo_data:
+                # No lineup data available - indicate clearly
+                tempo_label = "Lineup Pending"
+            elif pct_change >= 10:
                 tempo_label = "Max PA Opportunity"
             elif pct_change >= 5:
                 tempo_label = "High PA Upside"
@@ -363,20 +369,23 @@ class MLBOracleApexService:
                 tempo_label = "Standard PA Volume"
             
             tooltip_parts = []
-            if is_away is True:
-                tooltip_parts.append("Away team guarantees 9th inning AB")
-            elif is_away is False:
-                tooltip_parts.append("Home team risks no 9th inning")
-            if batting_order is not None:
-                if batting_order <= 3:
-                    tooltip_parts.append(f"Batting {batting_order} maximizes PAs")
-                elif batting_order >= 6:
-                    tooltip_parts.append(f"Batting {batting_order} risks only 3 PAs")
-            if team_obp_rank is not None:
-                if team_obp_rank <= 10:
-                    tooltip_parts.append(f"Top {team_obp_rank} OBP creates lineup turnover")
-                elif team_obp_rank >= 21:
-                    tooltip_parts.append(f"#{team_obp_rank} OBP limits at-bats")
+            if not has_tempo_data:
+                tooltip_parts.append("Lineup data not yet available")
+            else:
+                if is_away is True:
+                    tooltip_parts.append("Away team guarantees 9th inning AB")
+                elif is_away is False:
+                    tooltip_parts.append("Home team risks no 9th inning")
+                if batting_order is not None:
+                    if batting_order <= 3:
+                        tooltip_parts.append(f"Batting {batting_order} maximizes PAs")
+                    elif batting_order >= 6:
+                        tooltip_parts.append(f"Batting {batting_order} risks only 3 PAs")
+                if team_obp_rank is not None:
+                    if team_obp_rank <= 10:
+                        tooltip_parts.append(f"Top {team_obp_rank} OBP creates lineup turnover")
+                    elif team_obp_rank >= 21:
+                        tooltip_parts.append(f"#{team_obp_rank} OBP limits at-bats")
             
             return {
                 "multiplier": tempo_modifier,
@@ -523,36 +532,39 @@ class MLBOracleApexService:
         """
         Build stability index from CV for Vision Intel Suite.
         
+        CV in MLB is stored as a percentage (e.g., 50 means 50% variation).
+        
         Converts CV (Coefficient of Variation) to a 100-point stability score:
         - 100% = CV of 0 (perfectly consistent)
-        - 0% = CV of 2.0+ (extremely volatile)
+        - 0% = CV of 200+ (extremely volatile)
         
-        Scale: stability_score = max(0, 100 - (cv * 50))
+        Scale: stability_score = max(0, 100 - (cv / 2))
         
         Labels:
-        - 75-100%: "Ultra Consistent" (CV < 0.50)
-        - 50-74%: "Stable" (CV 0.50-1.00)  
-        - 25-49%: "Volatile" (CV 1.00-1.50)
-        - 0-24%: "Boom/Bust" (CV > 1.50)
+        - 75-100%: "Ultra Consistent" (CV < 50)
+        - 50-74%: "Stable" (CV 50-100)  
+        - 25-49%: "Volatile" (CV 100-150)
+        - 0-24%: "Boom/Bust" (CV > 150)
         """
         if cv is None:
             return {
                 "score": None,
                 "display": "-",
                 "consistency": "Data unavailable",
-                "std_dev": None
+                "std_dev": None,
+                "raw_cv": None
             }
         
-        # Convert CV to 100-point scale (lower CV = higher stability)
-        # CV of 0 = 100%, CV of 2.0 = 0%
-        stability_score = max(0, min(100, 100 - (cv * 50)))
+        # Convert CV percentage to 100-point stability scale (lower CV = higher stability)
+        # CV of 0% = 100% stability, CV of 200% = 0% stability
+        stability_score = max(0, min(100, 100 - (cv / 2)))
         
-        # Determine consistency label
-        if stability_score >= 75:
+        # Determine consistency label based on CV percentage
+        if cv < 50:
             consistency = "Ultra Consistent"
-        elif stability_score >= 50:
+        elif cv < 100:
             consistency = "Stable"
-        elif stability_score >= 25:
+        elif cv < 150:
             consistency = "Volatile"
         else:
             consistency = "Boom/Bust"
@@ -561,8 +573,8 @@ class MLBOracleApexService:
             "score": round(stability_score, 1),
             "display": f"{round(stability_score)}%",
             "consistency": consistency,
-            "std_dev": f"CV: {cv:.2f}" if cv else None,
-            "raw_cv": round(cv, 3) if cv else None
+            "std_dev": f"CV: {cv:.1f}%",
+            "raw_cv": round(cv, 2)
         }
     
     def _check_weather_hardstop(
