@@ -1220,6 +1220,50 @@ class MLBOracleApexService:
         logger.info(f"[MLB_FRONT_LINES] Input: {len(all_picks)} props to evaluate")
         
         # ====================================================================
+        # DIAGNOSTIC LOGGING - Identify where props are being filtered out
+        # ====================================================================
+        total_props = len(all_picks)
+        fail_lineup = 0
+        fail_odds = 0
+        fail_type = 0
+        passed_filters = 0
+        
+        for prop in all_picks:
+            # 1. Check Lineup
+            if not prop.get('is_lineup_confirmed'):
+                fail_lineup += 1
+                continue
+            
+            # 2. Check Odds (Handle potential string/int conversion safely)
+            # Front Lines: -145 to -239 (inclusive)
+            try:
+                odds = prop.get('dk_odds')
+                if odds is None:
+                    odds = prop.get('all_odds', {}).get('draftkings')
+                if odds is None:
+                    fail_odds += 1
+                    continue
+                odds = int(odds)
+                if not (-239 <= odds <= -145):
+                    fail_odds += 1
+                    continue
+            except (ValueError, TypeError):
+                fail_odds += 1
+                continue
+            
+            # 3. Check Prop Type (Handle case sensitivity)
+            is_goblin = prop.get('is_goblin', False)
+            is_demon = prop.get('is_demon', False)
+            # Front Lines accepts STANDARD or GOBLIN (reject DEMON)
+            if is_demon:
+                fail_type += 1
+                continue
+            
+            passed_filters += 1
+        
+        logger.info(f"[DIAGNOSTICS] Total: {total_props} | Failed Lineup: {fail_lineup} | Failed Odds: {fail_odds} | Failed Type: {fail_type} | Passed to Math: {passed_filters}")
+        
+        # ====================================================================
         # BDL SPLITS DATA ALREADY PREFETCHED BY mlb_tier_service.py
         # ====================================================================
         
