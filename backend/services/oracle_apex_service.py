@@ -1468,6 +1468,7 @@ class OracleApexService:
             
             # ================================================================
             # VK MODEL ENFORCEMENT - MANDATORY HANDSHAKE
+            # v2.0: TRUE VARIANCE - pass player_name and stat_type for L10 DB lookup
             # ================================================================
             # Ensure VK fields are populated (never None)
             if qualified_prop.get('vk_prob_over') is None or qualified_prop.get('vk_verdict') is None:
@@ -1478,7 +1479,10 @@ class OracleApexService:
                     line=line,
                     dk_odds=dk_odds,
                     season_avg=season_avg,
-                    require_market=True
+                    require_market=True,
+                    player_name=player_name,
+                    stat_type=stat_type,
+                    sport="NBA"
                 )
                 
                 if not vk_result.is_valid:
@@ -1491,6 +1495,9 @@ class OracleApexService:
                 qualified_prop['vk_edge'] = vk_result.vk_edge
                 qualified_prop['vk_recommendation'] = vk_result.vk_recommendation
                 qualified_prop['vk_confidence'] = vk_result.confidence_score
+                # v2.0: Add variance audit fields
+                qualified_prop['vk_sigma_used'] = vk_result.standard_deviation_used
+                qualified_prop['vk_sigma_source'] = vk_result.sigma_source
             
             qualified_pool.append(qualified_prop)
         

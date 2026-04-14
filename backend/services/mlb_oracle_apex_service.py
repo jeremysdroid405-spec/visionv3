@@ -1454,13 +1454,17 @@ class MLBOracleApexService:
             # VK MODEL ENFORCEMENT - MANDATORY HANDSHAKE
             # ================================================================
             # VK MODEL ENFORCEMENT - MANDATORY HANDSHAKE (with CV for proper stats)
+            # v2.0: TRUE VARIANCE - pass player_name and stat_type for L10 DB lookup
             # ================================================================
             vk_result = calculate_vk_model(
                 predicted_value=raw_vk_pred,
                 line=line,
                 dk_odds=dk_odds,
                 season_avg=season_avg,
-                cv=cv  # Pass CV for dynamic standard deviation calculation
+                cv=cv,  # Pass CV for dynamic standard deviation calculation
+                player_name=player_name,
+                stat_type=stat_type,
+                sport="MLB"
             )
             
             # STRICT: If VK model failed, log critical error
@@ -1472,7 +1476,10 @@ class MLBOracleApexService:
                     line=line,
                     dk_odds=dk_odds,
                     season_avg=season_avg,
-                    cv=cv
+                    cv=cv,
+                    player_name=player_name,
+                    stat_type=stat_type,
+                    sport="MLB"
                 )
             
             # Calculate Board Score - Weights true edge heavily, penalizes volatility
@@ -1773,13 +1780,17 @@ class MLBOracleApexService:
             
             # ================================================================
             # VK MODEL ENFORCEMENT - MANDATORY HANDSHAKE
+            # v2.0: TRUE VARIANCE - pass player_name and stat_type for L10 DB lookup
             # ================================================================
             season_avg = prop.get("season_average") or prop.get("season_avg") or 0
             vk_result = calculate_vk_model(
                 predicted_value=raw_vk_pred,
                 line=line,
                 dk_odds=dk_odds,
-                season_avg=season_avg
+                season_avg=season_avg,
+                player_name=player_name,
+                stat_type=stat_type,
+                sport="MLB"
             )
             
             # Calculate Board Score - Arbitrage-weighted (heavily favor true_edge)
@@ -2078,13 +2089,17 @@ class MLBOracleApexService:
             
             # ================================================================
             # VK MODEL ENFORCEMENT - MANDATORY HANDSHAKE
+            # v2.0: TRUE VARIANCE - pass player_name and stat_type for L10 DB lookup
             # ================================================================
             season_avg = prop.get("season_average") or prop.get("season_avg") or 0
             vk_result = calculate_vk_model(
                 predicted_value=raw_vk_pred,
                 line=line,
                 dk_odds=dk_odds,
-                season_avg=season_avg
+                season_avg=season_avg,
+                player_name=player_name,
+                stat_type=stat_type,
+                sport="MLB"
             )
             
             # Calculate Board Score - JACKPOT RANKER

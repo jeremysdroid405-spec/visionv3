@@ -76,7 +76,7 @@ The system for calculating "Lineup Ripple" effects in MLB when Lineup Anchors ar
 
 ## Completed Work
 
-### April 14, 2026: VK Model True Variance v2.0 (COMPLETE)
+### April 14, 2026: VK Model True Variance v2.0 - GLOBAL DEPLOYMENT (COMPLETE)
 
 #### Killed the 20% CV Default Trap
 - Removed hardcoded `cv = 0.20` default from `vk_model_enforcement.py`
@@ -88,6 +88,11 @@ The system for calculating "Lineup Ripple" effects in MLB when Lineup Anchors ar
 - Added `set_db_reference()` to set MongoDB reference at startup
 - Supports both NBA and MLB sport parameter
 
+#### MLB Volatility Floor
+- Added minimum CV of 0.35 for MLB hitting stats (Hits, Total Bases, RBIs, etc.)
+- Prevents "God Mode" probability hallucinations on volatile baseball props
+- MLB Safe Haven naturally produces fewer picks (0) due to inherent baseball volatility
+
 #### Variance Priority Chain
 1. **Direct std_dev passed in** (highest priority)
 2. **CV-based calculation** (if CV provided)
@@ -96,13 +101,14 @@ The system for calculating "Lineup Ripple" effects in MLB when Lineup Anchors ar
 
 #### Audit Fields Added to VKResult
 - `standard_deviation_used`: The actual σ used in Z-score calculation
-- `sigma_source`: Where the σ came from (`direct_input`, `cv_input`, `l10_db_lookup_nba`, `stat_default_cv_0.25`, etc.)
+- `sigma_source`: Where the σ came from (`l10_db_lookup_nba`, `l10_db_lookup_mlb`, `mlb_volatility_floor_0.35`, etc.)
 - `z_score`: The calculated Z-score for transparency
 
-#### Coby White Verification Test
-- OLD 20% Default: σ=2.740, P(Over)=78.9%
-- NEW True Variance: σ=4.881 (L10 std_dev), P(Over)=67.4%
-- **Probability Shift: -11.5%** (more accurate, less overconfident)
+#### Global Refresh Results
+- **NBA**: SH=10, FL=10, WZ=10 (all using L10 DB variance ✓)
+- **MLB**: SH=0, FL=10, WZ=0 (volatility floor prevents fake Safe Haven)
+- Coby White PTS (67.4%) EXCLUDED from Safe Haven ✓
+- Coby White PRA (85.3%) correctly INCLUDED in Safe Haven ✓
 
 ### April 14, 2026: MLB Lineup Ripple Engine v1.0 (COMPLETE)
 

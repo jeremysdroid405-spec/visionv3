@@ -380,7 +380,7 @@ def calculate_vk_model(
             "STL": 0.50,   # Steals are very volatile
             "BLK": 0.55,   # Blocks are very volatile
             "PRA": 0.22,   # Combos self-correct
-            # MLB - generally higher variance
+            # MLB - generally higher variance (baseball is binary/volatile)
             "Hits": 0.60,
             "Total Bases": 0.75,
             "Pitcher Strikeouts": 0.40,
@@ -399,6 +399,29 @@ def calculate_vk_model(
             f"[VK_MODEL] TRUE VARIANCE FALLBACK: Using stat-specific CV={default_cv} for "
             f"{player_name or 'unknown'} {stat_type or 'unknown'} | σ={sigma:.3f}"
         )
+    
+    # =========================================================================
+    # MLB VOLATILITY FLOOR: Prevent "God Mode" probability hallucinations
+    # =========================================================================
+    # MLB hitting props are inherently volatile (0-for-4 nights happen).
+    # Enforce minimum CV of 0.35 for MLB hitting stats to prevent fake 90%+ probabilities.
+    MLB_HITTING_STATS = ["Hits", "Total Bases", "Hits+Runs+RBIs", "RBIs", "Runs"]
+    MLB_VOLATILITY_FLOOR_CV = 0.35
+    
+    if sport.upper() == "MLB" and stat_type:
+        stat_normalized = stat_type.replace("_", " ").title()
+        if stat_normalized in MLB_HITTING_STATS or any(s in stat_normalized for s in ["Hit", "Base", "RBI", "Run"]):
+            # Calculate CV from current sigma
+            current_cv = sigma / adjusted_prediction if adjusted_prediction > 0 else 0
+            
+            if current_cv < MLB_VOLATILITY_FLOOR_CV:
+                old_sigma = sigma
+                sigma = adjusted_prediction * MLB_VOLATILITY_FLOOR_CV
+                logger.info(
+                    f"[VK_MODEL] MLB VOLATILITY FLOOR: {player_name} {stat_type} | "
+                    f"CV {current_cv:.3f} → {MLB_VOLATILITY_FLOOR_CV} | σ {old_sigma:.3f} → {sigma:.3f}"
+                )
+                sigma_source = f"mlb_volatility_floor_{MLB_VOLATILITY_FLOOR_CV}"
     
     # Ensure minimum sigma to avoid division by zero
     sigma = max(sigma, 0.01)
