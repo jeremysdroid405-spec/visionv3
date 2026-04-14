@@ -3217,3 +3217,85 @@ async def mlb_master_sync():
     except Exception as e:
         logger.error(f"[MLB_MASTER_SYNC] Error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/nba/sync/master")
+async def nba_master_sync_endpoint(
+    refresh_intel: bool = Query(False, description="Force refresh all Vision Intel")
+):
+    """
+    NBA Master Sync - Full Pipeline with Elite Top 10.
+    
+    This is the RECOMMENDED endpoint for NBA sync. It runs:
+    
+    **Phase 1: Ferrari Rebuild**
+    - Syncs fresh odds data
+    - Applies Blowout Risk filters
+    - Applies Injury/Usage adjustments
+    - Applies DvP Matchup analysis
+    - Applies V7 Quality gates
+    - Populates ferrari_scored with "smart-filtered" props
+    
+    **Phase 2: Elite Top 10 Sequential Claim**
+    - Reads from ferrari_scored (Ferrari-vetted props)
+    - WAR ZONE claims first (Demons + High-Odds Standards, true_edge >= 8%)
+    - SAFE HAVEN claims second (Goblins only, HR >= 60%, CV <= 0.35)
+    - FRONT LINES claims last (remaining pool, HR >= 50%, CV <= 0.50)
+    
+    **Phase 3: Store Results**
+    - Stores exclusive tier assignments to ferrari_safe_haven, ferrari_front_lines, ferrari_war_zone
+    - No prop appears in multiple tiers (deduplication guaranteed)
+    
+    Returns:
+        Combined metrics from both phases with tier counts.
+    """
+    from services.nba_master_sync import get_nba_master_sync
+    
+    if _db is None:
+        raise HTTPException(status_code=500, detail="Database not initialized")
+    
+    try:
+        master_sync = get_nba_master_sync(_db)
+        result = await master_sync.run_full_pipeline(refresh_intel=refresh_intel)
+        return result
+        
+    except Exception as e:
+        logger.error(f"[NBA_MASTER_SYNC] Error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/nba/sync/elite-top-10")
+async def nba_elite_top_10_sync():
+    """
+    NBA Elite Top 10 Sync - Sequential Claim Engine.
+    
+    Applies the Elite Top 10 Sequential Claim Logic to NBA props:
+    1. Build QUALIFIED POOL (preserves Blowout/Injury/DvP data)
+    2. WAR ZONE claims first (Demons + Standards DK > +100, true_edge >= 8%)
+    3. SAFE HAVEN claims second (Goblins only, HR >= 60%, CV <= 0.35)
+    4. FRONT LINES claims last (remaining pool, HR >= 50%, CV <= 0.50)
+    
+    PREREQUISITE: Run /api/v3/ferrari/rebuild first to populate ferrari_scored.
+    
+    Features:
+    - Uses unified 50/50 Master Probability (market_prob + true_hit_rate)
+    - Exclusive tier assignment (no prop in multiple tiers)
+    - Preserves NBA intel: Blowout Warnings, Injury/Usage, DvP Matchups
+    
+    Returns:
+        Detailed metrics including tier counts and no-duplicate verification.
+    """
+    from services.nba_master_sync import get_nba_master_sync
+    
+    if _db is None:
+        raise HTTPException(status_code=500, detail="Database not initialized")
+    
+    try:
+        master_sync = get_nba_master_sync(_db)
+        result = await master_sync.run_elite_sync()
+        return result
+        
+    except Exception as e:
+        logger.error(f"[NBA_ELITE_SYNC] Error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+

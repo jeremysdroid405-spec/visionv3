@@ -34,6 +34,9 @@ class CachedBoardBuilderService:
     - ZERO-DOWNTIME: Writes to dg_cached_board_temp, then atomic rename
     """
     
+    # Global flag to skip legacy tier builder (set when using Elite Top 10)
+    SKIP_LEGACY_TIER_BUILDER = False
+    
     def __init__(self, db: AsyncIOMotorDatabase, tier_builder_service, parlay_builder_service):
         self.db = db
         self.tier_builder_service = tier_builder_service
@@ -1325,12 +1328,26 @@ class CachedBoardBuilderService:
     async def _build_derived_collections(
         self,
         players_dict: Dict[str, Dict],
-        sync_time: datetime
+        sync_time: datetime,
+        skip_legacy_tiers: bool = False
     ) -> None:
-        """Build derived collections (War Zone, Goblin Vault, etc.) and trigger Vision Intel"""
-        await self.tier_builder_service.build_war_zone(players_dict, sync_time)
-        await self.tier_builder_service.build_goblin_vault(players_dict, sync_time)
-        await self.tier_builder_service.build_front_lines(players_dict, sync_time)
+        """Build derived collections (War Zone, Goblin Vault, etc.) and trigger Vision Intel
+        
+        Args:
+            players_dict: Dictionary of player data
+            sync_time: Current sync timestamp
+            skip_legacy_tiers: If True, skip legacy tier builder calls (use when Elite Top 10 will run after)
+        """
+        # Check both the parameter AND the global class flag
+        should_skip = skip_legacy_tiers or CachedBoardBuilderService.SKIP_LEGACY_TIER_BUILDER
+        
+        if not should_skip:
+            await self.tier_builder_service.build_war_zone(players_dict, sync_time)
+            await self.tier_builder_service.build_goblin_vault(players_dict, sync_time)
+            await self.tier_builder_service.build_front_lines(players_dict, sync_time)
+        else:
+            logger.info("[CACHED_BOARD] SKIPPING legacy tier builder - Elite Top 10 mode active")
+        
         await self.parlay_builder_service.build_parlay_builder(players_dict, sync_time)
         await self.parlay_builder_service.build_goblin_recon(players_dict, sync_time)
         

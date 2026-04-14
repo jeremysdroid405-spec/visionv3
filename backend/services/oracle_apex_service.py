@@ -300,6 +300,105 @@ MLB_WAR_ZONE_CONFIG = {
 MLB_DK_TIER_SAFE_HAVEN_MAX = -240  # -240 is the sweet spot for MLB Goblins
 
 
+# =============================================================================
+# NBA ACTUARY GATE - PrizePicks Goblin Tax Curve
+# =============================================================================
+# Mirrors the MLB implementation for unified math across both sports.
+
+def get_nba_pp_required_win_rate(dk_odds: int, prop_type: str) -> float:
+    """
+    Calculate the required win rate to beat PrizePicks' Goblin Tax curve for NBA.
+    
+    Based on empirical testing of PP multipliers vs DK sharp odds:
+    - DEMON (+100): 50% baseline (break-even on 2x payout)
+    - GOBLIN (-137 to -350+): Dynamic curve from 65% to 91.2%
+    - STANDARD: 54.3% (5/6-Pick Flex baseline)
+    
+    Args:
+        dk_odds: DraftKings odds (negative for favorites, positive for dogs)
+        prop_type: 'GOBLIN', 'DEMON', or 'STANDARD'
+        
+    Returns:
+        Required win rate percentage to be +EV against PrizePicks
+    """
+    p_type = str(prop_type).upper() if prop_type else "STANDARD"
+    
+    if p_type == 'DEMON':
+        return 50.0  # +100 baseline (2x payout requires 50% to break even)
+    
+    elif p_type == 'GOBLIN':
+        if dk_odds is None:
+            return 75.0  # Conservative fallback
+        
+        try:
+            dk_odds = int(dk_odds)
+        except (ValueError, TypeError):
+            return 75.0
+        
+        # Goblin Tax Curve (mapped from PP multipliers)
+        if dk_odds <= -350:
+            return 91.2   # 1.2x slip equivalent (near lock)
+        if dk_odds <= -290:
+            return 79.0   # 1.6x slip equivalent
+        if dk_odds <= -250:
+            return 76.7   # 1.7x slip equivalent
+        if dk_odds <= -230:
+            return 72.5   # 1.9x slip equivalent
+        if dk_odds <= -210:
+            return 70.7   # 2.0x slip equivalent
+        if dk_odds <= -190:
+            return 67.4   # 2.2x slip equivalent
+        if dk_odds <= -170:
+            return 65.9   # 2.3x slip equivalent
+        return 65.0  # Absolute floor for weak Goblins (-145 to -169)
+    
+    else:  # STANDARD
+        return 54.3  # 5/6-Pick Flex baseline
+
+
+def calculate_nba_master_probability(dk_odds: int, true_hit_rate: float, prop_type: str) -> dict:
+    """
+    NBA MASTER PROBABILITY FUNCTION - Used by ALL tiers for consistent edge calculation.
+    
+    This ensures the same player shows the EXACT same True Edge regardless of which tier
+    they appear in. Differentiation happens through FILTERING, not math.
+    
+    Formula (50/50 Blend):
+        market_prob = (abs(dk_odds) / (abs(dk_odds) + 100)) * 100  (if dk_odds < 0)
+        propvision_true_prob = (market_prob * 0.50) + (true_hit_rate * 0.50)
+        true_edge = propvision_true_prob - casino_req_rate
+    
+    Args:
+        dk_odds: DraftKings odds (negative for favorites, positive for dogs)
+        true_hit_rate: Hit rate based on L10 games (%)
+        prop_type: 'GOBLIN', 'DEMON', or 'STANDARD'
+        
+    Returns:
+        dict with market_prob, propvision_true_prob, casino_req_rate, true_edge
+    """
+    # Calculate Market Implied Probability from DK Odds
+    if dk_odds and dk_odds < 0:
+        market_prob = (abs(dk_odds) / (abs(dk_odds) + 100)) * 100
+    else:
+        market_prob = 50.0  # Fallback for positive or missing odds
+    
+    # Calculate PropVision True Probability (MASTER 50/50 BLEND)
+    propvision_true_prob = (market_prob * 0.50) + (true_hit_rate * 0.50)
+    
+    # Get the casino's required win rate based on Goblin Tax curve
+    casino_req_rate = get_nba_pp_required_win_rate(dk_odds, prop_type)
+    
+    # Calculate True Edge
+    true_edge = propvision_true_prob - casino_req_rate
+    
+    return {
+        'market_prob': round(market_prob, 1),
+        'propvision_true_prob': round(propvision_true_prob, 1),
+        'casino_req_rate': round(casino_req_rate, 1),
+        'true_edge': round(true_edge, 1),
+    }
+
+
 class OracleApexService:
     """
     Oracle Apex Service - The new Safe Haven tier logic.
@@ -1056,6 +1155,400 @@ class OracleApexService:
         logger.info(f"[ORACLE_APEX] Stored {len(apex_picks)} Oracle Apex picks to collection")
         
         return apex_picks
+    
+    async def build_elite_top_10_tiers(self, all_picks: List[Dict]) -> Dict[str, List[Dict]]:
+        """
+        NBA ELITE TOP 10 SORTING ENGINE - Sequential Claim Logic
+        =========================================================
+        
+        Implements exclusive tier assignment to ensure NO prop appears in multiple tiers.
+        PRESERVES: Blowout Warnings, Injury/Usage, DvP Matchups from existing pipeline.
+        
+        PROCESS:
+        1. Build QUALIFIED POOL: All props passing safety filters with positive true_edge
+           - Includes existing NBA intel: blowout_risk, vacuum_data, momentum_data
+        2. WAR ZONE claims first: Demons + Standards (DK > +100), sorted by true_edge
+        3. SAFE HAVEN claims second: Goblins only, sorted by propvision_true_prob + true_edge
+        4. FRONT LINES claims last: Everything remaining, sorted by board_score
+        
+        CRITICAL: All NBA safety filters (Blowout, Injury/Usage, DvP) feed into the
+        Qualified Pool BEFORE the sorting engine assigns them to tiers.
+        
+        Returns:
+            Dict with 'safe_haven', 'front_lines', 'war_zone' lists (each Top 10, exclusive)
+        """
+        logger.info("=" * 70)
+        logger.info("[NBA_ELITE_TOP_10] Starting Sequential Claim Sorting Engine...")
+        logger.info(f"[NBA_ELITE_TOP_10] Total Input: {len(all_picks)} props")
+        logger.info("=" * 70)
+        
+        # Track gate statistics
+        gate_stats = {
+            'total_input': len(all_picks),
+            'fail_blowout': 0,
+            'fail_hit_rate': 0,
+            'fail_cv': 0,
+            'fail_actuary_gate': 0,
+            'fail_minutes': 0,
+            'qualified_pool': 0,
+        }
+        
+        qualified_pool = []
+        
+        for prop in all_picks:
+            # Get basic prop info
+            player_name = prop.get("player_name", "Unknown")
+            stat_type = (prop.get("stat_type") or prop.get("stat_type_extracted") or "").upper()
+            if not stat_type:
+                market = prop.get("market", "")
+                market_to_stat = {
+                    "player_points": "PTS", "player_rebounds": "REB", "player_assists": "AST",
+                    "player_threes": "3PM", "player_steals": "STL", "player_blocks": "BLK",
+                    "player_turnovers": "TO", "player_points_rebounds_assists": "PRA",
+                    "player_points_rebounds": "PR", "player_points_assists": "PA",
+                    "player_rebounds_assists": "RA"
+                }
+                stat_type = market_to_stat.get(market, "")
+            
+            line = prop.get("line", 0)
+            
+            # Get prop classification
+            is_goblin = prop.get("is_goblin", False)
+            is_demon = prop.get("is_demon", False)
+            prop_type = "GOBLIN" if is_goblin else ("DEMON" if is_demon else "STANDARD")
+            
+            # Get DK odds
+            dk_odds = prop.get("dk_odds")
+            if dk_odds is None:
+                sharp_market = prop.get("sharp_market", {})
+                dk_odds = (
+                    sharp_market.get("draftkings_price") or 
+                    prop.get("draftkings_price") or
+                    sharp_market.get("sort_price")
+                )
+            
+            # ================================================================
+            # SAFETY FILTER 1: Blowout Risk Gate (NBA-SPECIFIC - PRESERVED)
+            # ================================================================
+            # High blowout risk means star players get benched in 4th quarter
+            blowout_risk = prop.get("blowout_risk") or prop.get("intel_suite", {}).get("blowout_risk", {}).get("risk_level", "UNKNOWN")
+            if blowout_risk == "HIGH":
+                gate_stats['fail_blowout'] += 1
+                continue
+            
+            # ================================================================
+            # SAFETY FILTER 2: Minutes Check (NBA-SPECIFIC)
+            # ================================================================
+            avg_mins = prop.get("avg_mins", 0) or 0
+            if avg_mins > 0 and avg_mins < MIN_MINUTES:
+                gate_stats['fail_minutes'] += 1
+                continue
+            
+            # ================================================================
+            # SAFETY FILTER 3: Hit Rate Calculation
+            # ================================================================
+            # Extract hit rates from nested structure (dg_live_props format)
+            # Format: hit_rates: {l5: {hit_rate: 0.4, ...}, l10: {hit_rate: 0.6, ...}}
+            hit_rates = prop.get("hit_rates", {})
+            
+            # Try nested structure first (dg_live_props format)
+            l10_data = hit_rates.get("l10", {})
+            l5_data = hit_rates.get("l5", {})
+            
+            # hit_rate is stored as decimal (0.6 = 60%), convert to percentage
+            l10_rate_raw = l10_data.get("hit_rate", 0) if isinstance(l10_data, dict) else 0
+            l5_rate_raw = l5_data.get("hit_rate", 0) if isinstance(l5_data, dict) else 0
+            
+            # Convert to percentage if stored as decimal
+            l10_rate = l10_rate_raw * 100 if l10_rate_raw <= 1 else l10_rate_raw
+            l5_rate = l5_rate_raw * 100 if l5_rate_raw <= 1 else l5_rate_raw
+            
+            # Fallback to flat fields if nested not available
+            if l10_rate == 0:
+                l10_rate = prop.get("l10_rate") or prop.get("h10_rate") or 0
+            if l5_rate == 0:
+                l5_rate = prop.get("l5_rate") or prop.get("h5_rate") or 0
+            
+            # Calculate true_hit_rate from available data
+            if l10_rate > 0:
+                true_hit_rate = l10_rate
+            elif l5_rate > 0:
+                true_hit_rate = l5_rate
+            else:
+                gate_stats['fail_hit_rate'] += 1
+                continue
+            
+            # Baseline hit rate floor: 40% (relaxed - tiers will apply stricter filters)
+            if true_hit_rate < 40.0:
+                gate_stats['fail_hit_rate'] += 1
+                continue
+            
+            # ================================================================
+            # SAFETY FILTER 4: CV Check (relaxed - tiers apply stricter)
+            # ================================================================
+            # Ferrari stores CV as l10_std_dev. Calculate CV = std_dev / mean
+            cv = prop.get("cv")
+            if cv is None or cv == 0:
+                # Calculate from std_dev and mean
+                l10_std_dev = prop.get("l10_std_dev") or 0
+                l10_avg = prop.get("l10_avg") or prop.get("l10_mean") or 1
+                if l10_avg > 0 and l10_std_dev > 0:
+                    cv = l10_std_dev / l10_avg
+                else:
+                    cv = 0.5  # Default moderate volatility
+            
+            # Normalize CV if stored as percentage
+            if cv > 1:
+                cv = cv / 100.0
+            
+            # Max CV 0.90 for NBA (higher variance than MLB)
+            if cv > 0.90:
+                gate_stats['fail_cv'] += 1
+                continue
+            
+            # ================================================================
+            # SAFETY FILTER 5: THE ACTUARY KILL SWITCH (0.0 floor)
+            # ================================================================
+            prob_data = calculate_nba_master_probability(dk_odds, true_hit_rate, prop_type)
+            market_prob = prob_data['market_prob']
+            propvision_true_prob = prob_data['propvision_true_prob']
+            casino_req_rate = prob_data['casino_req_rate']
+            true_edge = prob_data['true_edge']
+            
+            # KILL SWITCH: Must have positive edge
+            if true_edge <= 0.0:
+                gate_stats['fail_actuary_gate'] += 1
+                continue
+            
+            # ================================================================
+            # PASSED ALL SAFETY FILTERS - Add to Qualified Pool
+            # ================================================================
+            gate_stats['qualified_pool'] += 1
+            
+            # Get board scores for sorting (keep original board_score if available)
+            original_board_score = prop.get("board_score", 0)
+            
+            # Calculate tier-specific board scores
+            sh_board_score = (true_edge * 3.0) - (cv * 15)  # Safe Haven formula
+            fl_board_score = (true_edge * 4.0) + (true_hit_rate * 0.5) - (cv * 10)  # Front Lines formula
+            wz_board_score = (true_edge * 15.0) + (true_hit_rate * 2.0) - (cv * 5)  # War Zone formula
+            
+            qualified_prop = {
+                # Player info
+                'player_name': player_name,
+                'team': prop.get('team'),
+                'opponent': prop.get('opponent') or prop.get('opponent_abbr'),
+                'photo_url': prop.get('photo_url') or prop.get('headshot_url'),
+                'headshot_url': prop.get('headshot_url'),
+                'game_time': prop.get('game_time') or prop.get('commence_time'),
+                
+                # Prop details
+                'stat_type': stat_type,
+                'line': line,
+                'dk_odds': dk_odds,
+                'price': prop.get('price'),
+                
+                # Classification
+                'prop_type': prop_type,
+                'is_goblin': is_goblin,
+                'is_demon': is_demon,
+                'is_standard': not is_goblin and not is_demon,
+                
+                # Hit rate & consistency
+                'l10_rate': round(l10_rate, 1),
+                'l5_rate': round(l5_rate, 1),
+                'true_hit_rate': round(true_hit_rate, 1),
+                'cv': round(cv, 3),
+                'avg_mins': round(avg_mins, 1) if avg_mins else None,
+                
+                # PropVision math (MASTER FUNCTION)
+                'market_prob': market_prob,
+                'propvision_true_prob': propvision_true_prob,
+                'casino_req_rate': casino_req_rate,
+                'true_edge': true_edge,
+                
+                # Board scores for each tier
+                'sh_board_score': round(sh_board_score, 1),
+                'fl_board_score': round(fl_board_score, 1),
+                'wz_board_score': round(wz_board_score, 1),
+                'board_score': round(original_board_score, 1) if original_board_score else round(fl_board_score, 1),
+                
+                # ====== PRESERVED NBA INTEL (Blowout, Usage, DvP) ======
+                'blowout_risk': blowout_risk,
+                'intel_suite': prop.get('intel_suite', {}),
+                'active_badges': prop.get('active_badges', []),
+                'momentum_data': prop.get('momentum_data'),
+                'vacuum_data': prop.get('vacuum_data'),
+                'whistle_data': prop.get('whistle_data') or prop.get('intel_suite', {}).get('whistle_data'),
+                
+                # Carry forward additional fields
+                'season_avg': prop.get('season_avg'),
+                'l5_avg': prop.get('l5_avg'),
+                'l10_avg': prop.get('l10_avg'),
+                'vk_predicted': prop.get('vk_predicted'),
+                'vk_edge': prop.get('vk_edge'),
+                'vk_prob_over': prop.get('vk_prob_over'),
+                
+                # Timestamp
+                'synced_at': datetime.now(timezone.utc).isoformat(),
+            }
+            
+            qualified_pool.append(qualified_prop)
+        
+        # Log pool statistics
+        logger.info("[NBA_ELITE_TOP_10] Safety Filter Results:")
+        logger.info(f"  Failed Blowout (HIGH risk): {gate_stats['fail_blowout']}")
+        logger.info(f"  Failed Minutes (<{MIN_MINUTES}): {gate_stats['fail_minutes']}")
+        logger.info(f"  Failed Hit Rate (<40%): {gate_stats['fail_hit_rate']}")
+        logger.info(f"  Failed CV (>0.90): {gate_stats['fail_cv']}")
+        logger.info(f"  *** KILLED BY ACTUARY GATE (<=0%): {gate_stats['fail_actuary_gate']} ***")
+        logger.info(f"  QUALIFIED POOL SIZE: {gate_stats['qualified_pool']}")
+        
+        # ====================================================================
+        # STEP 2A: WAR ZONE CLAIMS FIRST (High-Alpha Demons)
+        # ====================================================================
+        # Demons + Standards with DK > +100, sorted by true_edge DESC
+        
+        war_zone_candidates = [
+            p for p in qualified_pool
+            if p['prop_type'] == 'DEMON' or (p['prop_type'] == 'STANDARD' and (p['dk_odds'] or 0) > 100)
+        ]
+        
+        # Additional War Zone filter: true_edge >= 8% for high-alpha (slightly relaxed vs MLB's 10%)
+        war_zone_candidates = [p for p in war_zone_candidates if p['true_edge'] >= 8.0]
+        
+        # Sort by true_edge DESC
+        war_zone_candidates.sort(key=lambda x: x['true_edge'], reverse=True)
+        
+        # Dedupe by player+stat
+        wz_seen = set()
+        war_zone_picks = []
+        for p in war_zone_candidates:
+            key = f"{p['player_name']}|{p['stat_type']}"
+            if key not in wz_seen and len(war_zone_picks) < 10:
+                wz_seen.add(key)
+                p['tier'] = 'war_zone'
+                p['tier_label'] = 'NBA War Zone (Elite 10)'
+                p['board_score'] = p['wz_board_score']
+                war_zone_picks.append(p)
+        
+        # REMOVE claimed props from pool
+        claimed_keys = {f"{p['player_name']}|{p['stat_type']}" for p in war_zone_picks}
+        remaining_pool = [p for p in qualified_pool if f"{p['player_name']}|{p['stat_type']}" not in claimed_keys]
+        
+        logger.info(f"[NBA_ELITE_TOP_10] WAR ZONE claimed: {len(war_zone_picks)} picks")
+        logger.info(f"  Remaining pool: {len(remaining_pool)}")
+        
+        # ====================================================================
+        # STEP 2B: SAFE HAVEN CLAIMS SECOND (Elite Stability)
+        # ====================================================================
+        # Goblins only, sorted by propvision_true_prob + true_edge DESC
+        
+        safe_haven_candidates = [
+            p for p in remaining_pool
+            if p['prop_type'] == 'GOBLIN'
+        ]
+        
+        # Additional Safe Haven filters: HR >= 60%, CV <= 0.35 (NBA-specific tighter CV)
+        safe_haven_candidates = [
+            p for p in safe_haven_candidates 
+            if p['true_hit_rate'] >= 60.0 and p['cv'] <= 0.35
+        ]
+        
+        # Sort by propvision_true_prob + true_edge DESC
+        safe_haven_candidates.sort(
+            key=lambda x: (x['propvision_true_prob'] + x['true_edge']), 
+            reverse=True
+        )
+        
+        # Dedupe by player+stat
+        sh_seen = set()
+        safe_haven_picks = []
+        for p in safe_haven_candidates:
+            key = f"{p['player_name']}|{p['stat_type']}"
+            if key not in sh_seen and len(safe_haven_picks) < 10:
+                sh_seen.add(key)
+                p['tier'] = 'safe_haven'
+                p['tier_label'] = 'NBA Safe Haven (Elite 10)'
+                p['board_score'] = p['sh_board_score']
+                safe_haven_picks.append(p)
+        
+        # REMOVE claimed props from pool
+        claimed_keys = {f"{p['player_name']}|{p['stat_type']}" for p in safe_haven_picks}
+        remaining_pool = [p for p in remaining_pool if f"{p['player_name']}|{p['stat_type']}" not in claimed_keys]
+        
+        logger.info(f"[NBA_ELITE_TOP_10] SAFE HAVEN claimed: {len(safe_haven_picks)} picks")
+        logger.info(f"  Remaining pool: {len(remaining_pool)}")
+        
+        # ====================================================================
+        # STEP 2C: FRONT LINES CLAIMS LAST (Universal Value)
+        # ====================================================================
+        # Everything remaining, sorted by board_score DESC
+        
+        front_lines_candidates = remaining_pool.copy()
+        
+        # Additional Front Lines filters: HR >= 50%, CV <= 0.50
+        front_lines_candidates = [
+            p for p in front_lines_candidates 
+            if p['true_hit_rate'] >= 50.0 and p['cv'] <= 0.50
+        ]
+        
+        # Sort by fl_board_score DESC
+        front_lines_candidates.sort(key=lambda x: x['fl_board_score'], reverse=True)
+        
+        # Dedupe by player+stat
+        fl_seen = set()
+        front_lines_picks = []
+        for p in front_lines_candidates:
+            key = f"{p['player_name']}|{p['stat_type']}"
+            if key not in fl_seen and len(front_lines_picks) < 10:
+                fl_seen.add(key)
+                p['tier'] = 'front_lines'
+                p['tier_label'] = 'NBA Front Lines (Elite 10)'
+                p['board_score'] = p['fl_board_score']
+                front_lines_picks.append(p)
+        
+        logger.info(f"[NBA_ELITE_TOP_10] FRONT LINES claimed: {len(front_lines_picks)} picks")
+        
+        # ====================================================================
+        # LOG FINAL RESULTS
+        # ====================================================================
+        logger.info("=" * 70)
+        logger.info("[NBA_ELITE_TOP_10] FINAL TIER ASSIGNMENTS (Exclusive - No Duplicates):")
+        logger.info("=" * 70)
+        
+        logger.info(f"\n[WAR ZONE] Top {len(war_zone_picks)} High-Alpha Plays:")
+        for i, p in enumerate(war_zone_picks, 1):
+            logger.info(f"  {i}. {p['player_name']} - {p['stat_type']} [{p['prop_type']}] | "
+                       f"TRUE EDGE: +{p['true_edge']:.1f}% | PropVision: {p['propvision_true_prob']}%")
+        
+        logger.info(f"\n[SAFE HAVEN] Top {len(safe_haven_picks)} Stability Plays:")
+        for i, p in enumerate(safe_haven_picks, 1):
+            logger.info(f"  {i}. {p['player_name']} - {p['stat_type']} [{p['prop_type']}] | "
+                       f"PropVision: {p['propvision_true_prob']}% | TRUE EDGE: +{p['true_edge']:.1f}%")
+        
+        logger.info(f"\n[FRONT LINES] Top {len(front_lines_picks)} Universal Value Plays:")
+        for i, p in enumerate(front_lines_picks, 1):
+            logger.info(f"  {i}. {p['player_name']} - {p['stat_type']} [{p['prop_type']}] | "
+                       f"Board: {p['board_score']} | TRUE EDGE: +{p['true_edge']:.1f}%")
+        
+        # Verify no duplicates
+        all_keys = set()
+        for tier_name, picks in [('WAR_ZONE', war_zone_picks), ('SAFE_HAVEN', safe_haven_picks), ('FRONT_LINES', front_lines_picks)]:
+            for p in picks:
+                key = f"{p['player_name']}|{p['stat_type']}"
+                if key in all_keys:
+                    logger.error(f"[NBA_ELITE_TOP_10] DUPLICATE FOUND: {key}")
+                all_keys.add(key)
+        
+        logger.info(f"\n[NBA_ELITE_TOP_10] Total unique picks: {len(all_keys)} (verified no duplicates)")
+        logger.info("=" * 70)
+        
+        return {
+            'war_zone': war_zone_picks,
+            'safe_haven': safe_haven_picks,
+            'front_lines': front_lines_picks,
+        }
 
 
 # Singleton instance
