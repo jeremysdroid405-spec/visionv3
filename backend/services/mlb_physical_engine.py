@@ -297,19 +297,64 @@ class MLBPhysicalEngine:
         
         return True, "VALID"
     
-    def _get_true_l10_sigma(
+    def _get_true_l20_sigma(
         self,
         player_name: str,
         stat_type: str,
         game_logs: List[Dict]
     ) -> Tuple[Optional[float], str]:
         """
-        Get TRUE L10 Standard Deviation from game logs.
+        Get TRUE L20 Standard Deviation from game logs.
+        
+        GLOBAL VARIANCE SYNCHRONIZATION:
+        - L10 = Heat (Hit Rate) - captures current streaks
+        - L20 = Risk (CV/Sigma) - captures stability, dilutes 1-game flukes
+        
+        L20 Fix: A 0-for-4 night is just 5% of sample (vs 10% in L10).
+        This keeps edge calculations alive by smoothing variance.
         
         NO DEFAULT VALUES. If we can't calculate real sigma, return None.
         
         Returns:
             (sigma, source)
+        """
+        if not game_logs or len(game_logs) < 10:
+            # Fall back to L10 if less than 20 games available
+            return self._get_true_l10_sigma_fallback(player_name, stat_type, game_logs)
+        
+        norm = self._norm_stat(stat_type)
+        values = []
+        
+        # Use L20 for "Stabilized Shield" variance calculation
+        for g in game_logs[:20]:
+            val = self._get_stat(g, norm)
+            if val is not None:
+                values.append(val)
+        
+        if len(values) < 10:
+            return None, "INSUFFICIENT_L20_VALUES"
+        
+        # Calculate TRUE L20 Standard Deviation (sample std)
+        sigma = float(np.std(values, ddof=1))
+        
+        # MLB volatility floor: minimum CV of 0.35 for hitting stats
+        mean_val = np.mean(values)
+        if mean_val > 0:
+            cv = sigma / mean_val
+            if cv < 0.35 and norm in ['hits', 'total_bases', 'rbis', 'runs', 'hits+runs+rbis', 'home_runs']:
+                sigma = mean_val * 0.35
+                return sigma, "L20_MLB_VOLATILITY_FLOOR_0.35"
+        
+        return sigma, "TRUE_L20_STABILIZED_SHIELD"
+    
+    def _get_true_l10_sigma_fallback(
+        self,
+        player_name: str,
+        stat_type: str,
+        game_logs: List[Dict]
+    ) -> Tuple[Optional[float], str]:
+        """
+        Fallback to L10 if player has fewer than 20 games.
         """
         if not game_logs or len(game_logs) < 5:
             return None, "INSUFFICIENT_GAMES"
@@ -325,18 +370,16 @@ class MLBPhysicalEngine:
         if len(values) < 5:
             return None, "INSUFFICIENT_STAT_VALUES"
         
-        # Calculate TRUE L10 Standard Deviation (sample std)
         sigma = float(np.std(values, ddof=1))
         
-        # MLB volatility floor: minimum CV of 0.35 for hitting stats
         mean_val = np.mean(values)
         if mean_val > 0:
             cv = sigma / mean_val
             if cv < 0.35 and norm in ['hits', 'total_bases', 'rbis', 'runs', 'hits+runs+rbis', 'home_runs']:
                 sigma = mean_val * 0.35
-                return sigma, f"MLB_VOLATILITY_FLOOR_0.35"
+                return sigma, "L10_FALLBACK_MLB_FLOOR_0.35"
         
-        return sigma, "TRUE_L10_CALCULATION"
+        return sigma, "L10_FALLBACK_INSUFFICIENT_HISTORY"
     
     # =========================================================================
     # PHYSICAL FEATURE EXTRACTION (105+ FEATURES)
@@ -410,16 +453,19 @@ class MLBPhysicalEngine:
         else:
             features['momentum'] = 0
         
-        # Volatility
+        # Volatility - L10 for immediate heat, L20 for stabilized risk
         features['std_l5'] = np.std(l5, ddof=1) if len(l5) > 1 else 0
         features['std_l10'] = np.std(l10, ddof=1) if len(l10) > 1 else 0
+        features['std_l20'] = np.std(l20, ddof=1) if len(l20) > 1 else 0  # L20 Stabilized Shield
         features['cv_l5'] = features['std_l5'] / features['l5_avg'] if features['l5_avg'] > 0 else 0
         features['cv_l10'] = features['std_l10'] / features['l10_avg'] if features['l10_avg'] > 0 else 0
+        features['cv_l20'] = features['std_l20'] / features['l20_avg'] if features['l20_avg'] > 0 else 0  # L20 CV for stability
         features['range_l5'] = features['l5_max'] - features['l5_min']
         features['range_l10'] = features['l10_max'] - features['l10_min']
         
-        # Consistency
-        features['consistency'] = 1 - features['cv_l10']
+        # Consistency - Use L20 CV for "Stabilized Shield"
+        features['consistency'] = 1 - features['cv_l20']  # L20-based stability
+        features['consistency_l10'] = 1 - features['cv_l10']  # Keep L10 for comparison
         
         # Floor/Ceiling
         features['floor_l10'] = np.percentile(l10, 10)
@@ -941,8 +987,9 @@ class MLBPhysicalEngine:
             else:
                 final_pred = raw_pred * pf
             
-            # TRUE L10 SIGMA (NO DEFAULTS)
-            sigma, sigma_source = self._get_true_l10_sigma(player_name, norm, logs)
+            # GLOBAL VARIANCE SYNC: TRUE L20 SIGMA ("Stabilized Shield")
+            # L20 dilutes 1-game flukes - a 0-for-4 is only 5% of the sample
+            sigma, sigma_source = self._get_true_l20_sigma(player_name, norm, logs)
             
             if sigma is None:
                 return MLBMLRResult(
@@ -961,7 +1008,7 @@ class MLBPhysicalEngine:
                     vk_edge=None,
                     mlr_matchup={},
                     is_valid=False,
-                    error=f"Could not calculate TRUE L10 sigma: {sigma_source}"
+                    error=f"Could not calculate TRUE L20 sigma: {sigma_source}"
                 )
             
             # PROBABILITY CALCULATION (Z-Score / Normal CDF)
@@ -1043,7 +1090,10 @@ class MLBPhysicalEngine:
                 },
                 'variance': {
                     'std_l10': round(feats.get('std_l10', 0), 3),
-                    'cv_l10': round(feats.get('cv_l10', 0), 3),
+                    'std_l20': round(feats.get('std_l20', 0), 3),  # L20 Stabilized Shield
+                    'cv_l10': round(feats.get('cv_l10', 0), 3),    # L10 for heat comparison
+                    'cv_l20': round(feats.get('cv_l20', 0), 3),    # L20 PRIMARY stability metric
+                    'consistency': round(feats.get('consistency', 0), 3),  # 1 - cv_l20
                 },
                 'discipline': {
                     'contact_rate': round(feats.get('contact_rate', 0), 3),

@@ -1,5 +1,5 @@
 """
-VK/MLR Model Enforcement Module v2.0
+VK/MLR Model Enforcement Module v2.1
 =====================================
 Centralized Vegas-Killer (MLR) calculation and validation.
 
@@ -11,16 +11,23 @@ STRICT REQUIREMENTS:
 
 Any record missing these fields is REJECTED from persistence.
 
-v2.0 CHANGES - TRUE VARIANCE CALCULATION:
------------------------------------------
-- KILLED the 20% CV default trap
-- If MLR model doesn't provide CV/std_dev, we pull actual L10 Standard Deviation
-  from nba_master_hub_2026 (NBA) or mlb_master_hub_2026 (MLB)
-- Exposes `standard_deviation_used` in the result for auditing
-- Z-score/CDF probabilities now use REAL player volatility
+v2.1 CHANGES - GLOBAL VARIANCE SYNCHRONIZATION (L20 Stabilized Shield):
+------------------------------------------------------------------------
+DUAL-ENGINE SYSTEM FOR BOTH NBA AND MLB:
+- L10 = Heat (Hit Rate) - Captures current "streaks" (shooting, swing mechanics)
+- L20 = Risk (CV/Sigma) - Captures "Stability" (dilutes 1-game flukes)
+
+NBA Impact:
+  - Player roles change with injuries. L10 CV spikes on "low usage" games.
+  - L20 keeps CV grounded in player's TRUE average role.
+
+MLB Impact:
+  - Baseball is king of "fluke zeroes"
+  - A 0-for-4 night is 5% of L20 vs 10% of L10
+  - Keeps 90% hit rate edges alive by smoothing variance
 
 Author: PropVision AI
-Version: 2.0.0
+Version: 2.1.0 - L20 Stabilized Shield
 """
 import logging
 from typing import Dict, Any, Tuple, Optional
@@ -30,16 +37,20 @@ import numpy as np
 logger = logging.getLogger(__name__)
 
 # =============================================================================
-# DATABASE REFERENCE FOR L10 STDEV LOOKUPS
+# DATABASE REFERENCE FOR L20 STDEV LOOKUPS (STABILIZED SHIELD)
 # =============================================================================
+# GLOBAL VARIANCE SYNCHRONIZATION:
+# - L10 = Heat (Hit Rate) - captures current streaks
+# - L20 = Risk (CV/Sigma) - captures stability, dilutes 1-game flukes
+#
 # This will be set by the service that imports this module
 _db_reference = None
 
 def set_db_reference(db):
-    """Set the MongoDB database reference for L10 std_dev lookups."""
+    """Set the MongoDB database reference for L20 std_dev lookups."""
     global _db_reference
     _db_reference = db
-    logger.info("[VK_ENFORCE] Database reference set for L10 variance lookups")
+    logger.info("[VK_ENFORCE] Database reference set for L20 variance lookups (Stabilized Shield)")
 
 # =============================================================================
 # VK/MLR THRESHOLDS
@@ -64,18 +75,24 @@ MARKET_FIRST_REQUIRED = True
 
 
 # =============================================================================
-# L10 STANDARD DEVIATION LOOKUP - KILLS THE DEFAULT TRAP
+# L20 STANDARD DEVIATION LOOKUP - "STABILIZED SHIELD"
 # =============================================================================
 
-def _get_l10_std_dev_from_db(
+def _get_l20_std_dev_from_db(
     player_name: str,
     stat_type: str,
     sport: str = "NBA"
 ) -> Tuple[Optional[float], str]:
     """
-    Query the actual L10 Standard Deviation for a player from the master hub.
+    Query the actual L20 Standard Deviation for a player from the master hub.
     
-    This ELIMINATES the 20% CV default trap by pulling real historical volatility.
+    GLOBAL VARIANCE SYNCHRONIZATION:
+    - L10 = Heat (Hit Rate) - captures current streaks
+    - L20 = Risk (CV/Sigma) - captures stability, dilutes 1-game flukes
+    
+    L20 Benefits:
+    - NBA: Player roles change with injuries. L20 keeps CV grounded in true average role.
+    - MLB: A 0-for-4 is only 5% of L20 sample vs 10% in L10. Keeps edges alive.
     
     Args:
         player_name: Player's name
@@ -88,7 +105,7 @@ def _get_l10_std_dev_from_db(
     global _db_reference
     
     if _db_reference is None:
-        logger.warning("[VK_MODEL] No DB reference set - cannot lookup L10 std_dev")
+        logger.warning("[VK_MODEL] No DB reference set - cannot lookup L20 std_dev")
         return None, "no_db_reference"
     
     try:
@@ -118,7 +135,7 @@ def _get_l10_std_dev_from_db(
             logger.debug(f"[VK_MODEL] Insufficient game logs for {player_name}: {len(game_logs)}")
             return None, "insufficient_games"
         
-        # Extract stat values from L10 games
+        # Extract stat values from L20 games (Stabilized Shield)
         stat_field_map = {
             "PTS": ["pts", "points"],
             "REB": ["reb", "rebounds"],
@@ -133,10 +150,10 @@ def _get_l10_std_dev_from_db(
             "Hits+Runs+RBIs": ["hits_runs_rbis", "hrr"],
         }
         
-        # Handle combo stats
+        # Handle combo stats - USE L20 FOR RISK CALCULATION
         if stat_type == "PRA":
             values = []
-            for g in game_logs[:10]:
+            for g in game_logs[:20]:  # L20 for stability
                 pts = g.get('pts') or g.get('points') or 0
                 reb = g.get('reb') or g.get('rebounds') or 0
                 ast = g.get('ast') or g.get('assists') or 0
@@ -147,10 +164,10 @@ def _get_l10_std_dev_from_db(
                 if mins > 0:
                     values.append(pts + reb + ast)
         else:
-            # Single stat
+            # Single stat - USE L20 FOR RISK CALCULATION
             fields = stat_field_map.get(stat_type.upper(), [stat_type.lower()])
             values = []
-            for g in game_logs[:10]:
+            for g in game_logs[:20]:  # L20 for stability
                 # Check if player actually played
                 mins = g.get('min') or g.get('minutes') or "0"
                 if isinstance(mins, str):
@@ -167,25 +184,36 @@ def _get_l10_std_dev_from_db(
                             pass
                         break
         
-        if len(values) < 5:
-            logger.debug(f"[VK_MODEL] Not enough valid L10 values for {player_name} {stat_type}: {len(values)}")
+        if len(values) < 10:
+            # Fall back to L10 if not enough games for L20
+            if len(values) >= 5:
+                l10_values = values[:10]
+                std_dev = float(np.std(l10_values, ddof=1))
+                l10_mean = float(np.mean(l10_values))
+                cv_value = std_dev / l10_mean if l10_mean > 0 else 0
+                logger.info(
+                    f"[VK_MODEL] L10 Fallback (insufficient L20): {player_name} {stat_type} | "
+                    f"L10 Mean: {l10_mean:.2f}, L10 σ: {std_dev:.3f}, CV: {cv_value:.3f}"
+                )
+                return std_dev, f"l10_fallback_{sport.lower()}"
+            logger.debug(f"[VK_MODEL] Not enough valid values for {player_name} {stat_type}: {len(values)}")
             return None, "insufficient_values"
         
-        # Calculate L10 Standard Deviation
-        l10_values = values[:10]
-        std_dev = float(np.std(l10_values, ddof=1))  # Sample std dev (ddof=1)
-        l10_mean = float(np.mean(l10_values))
+        # Calculate L20 Standard Deviation (Stabilized Shield)
+        l20_values = values[:20]
+        std_dev = float(np.std(l20_values, ddof=1))  # Sample std dev (ddof=1)
+        l20_mean = float(np.mean(l20_values))
         
         # Calculate CV for logging
-        cv_value = std_dev / l10_mean if l10_mean > 0 else 0
+        cv_value = std_dev / l20_mean if l20_mean > 0 else 0
         
         # Log for auditing
         logger.info(
-            f"[VK_MODEL] L10 Variance Lookup SUCCESS: {player_name} {stat_type} | "
-            f"L10 Mean: {l10_mean:.2f}, L10 σ: {std_dev:.3f}, CV: {cv_value:.3f}"
+            f"[VK_MODEL] L20 Variance Lookup SUCCESS (Stabilized Shield): {player_name} {stat_type} | "
+            f"L20 Mean: {l20_mean:.2f}, L20 σ: {std_dev:.3f}, CV: {cv_value:.3f}"
         )
         
-        return std_dev, f"l10_db_lookup_{sport.lower()}"
+        return std_dev, f"l20_stabilized_shield_{sport.lower()}"
         
     except Exception as e:
         logger.error(f"[VK_MODEL] L10 std_dev lookup failed for {player_name}: {e}")
@@ -360,9 +388,9 @@ def calculate_vk_model(
         sigma = cv * adjusted_prediction
         sigma_source = "cv_input"
     
-    # Priority 3: DB Lookup for REAL L10 Standard Deviation
+    # Priority 3: DB Lookup for REAL L20 Standard Deviation (Stabilized Shield)
     elif player_name and stat_type:
-        db_std_dev, db_source = _get_l10_std_dev_from_db(player_name, stat_type, sport)
+        db_std_dev, db_source = _get_l20_std_dev_from_db(player_name, stat_type, sport)
         if db_std_dev and db_std_dev > 0:
             sigma = db_std_dev
             sigma_source = db_source
