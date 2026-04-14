@@ -24,6 +24,13 @@ from typing import Dict, List, Any, Optional
 from datetime import datetime, timezone
 import logging
 import numpy as np
+from services.vk_model_enforcement import (
+    calculate_vk_model,
+    enforce_vk_fields,
+    validate_market_first,
+    VKResult,
+    MARKET_FIRST_REQUIRED
+)
 
 logger = logging.getLogger(__name__)
 
@@ -1224,8 +1231,18 @@ class OracleApexService:
                 dk_odds = (
                     sharp_market.get("draftkings_price") or 
                     prop.get("draftkings_price") or
-                    sharp_market.get("sort_price")
+                    sharp_market.get("sort_price") or
+                    prop.get("sort_price") or
+                    prop.get("price")  # Fallback to generic price field
                 )
+            
+            # ================================================================
+            # PHASE 0: MARKET-FIRST FILTER (dk_odds REQUIRED)
+            # ================================================================
+            # A prop MUST have non-null, non-zero dk_odds to be eligible
+            if MARKET_FIRST_REQUIRED and (dk_odds is None or dk_odds == 0):
+                gate_stats['fail_market_first'] = gate_stats.get('fail_market_first', 0) + 1
+                continue
             
             # ================================================================
             # SAFETY FILTER 1: Blowout Risk Gate (NBA-SPECIFIC - PRESERVED)
@@ -1448,6 +1465,32 @@ class OracleApexService:
                 # Timestamp
                 'synced_at': datetime.now(timezone.utc).isoformat(),
             }
+            
+            # ================================================================
+            # VK MODEL ENFORCEMENT - MANDATORY HANDSHAKE
+            # ================================================================
+            # Ensure VK fields are populated (never None)
+            if qualified_prop.get('vk_prob_over') is None or qualified_prop.get('vk_verdict') is None:
+                # Calculate VK model
+                season_avg = prop.get('season_avg') or prop.get('l10_avg') or line
+                vk_result = calculate_vk_model(
+                    predicted_value=prop.get('vk_predicted') or season_avg,
+                    line=line,
+                    dk_odds=dk_odds,
+                    season_avg=season_avg,
+                    require_market=True
+                )
+                
+                if not vk_result.is_valid:
+                    gate_stats['fail_vk_model'] = gate_stats.get('fail_vk_model', 0) + 1
+                    continue
+                
+                qualified_prop['vk_prob_over'] = vk_result.vk_prob_over
+                qualified_prop['vk_prob_under'] = vk_result.vk_prob_under
+                qualified_prop['vk_verdict'] = vk_result.vk_verdict
+                qualified_prop['vk_edge'] = vk_result.vk_edge
+                qualified_prop['vk_recommendation'] = vk_result.vk_recommendation
+                qualified_prop['vk_confidence'] = vk_result.confidence_score
             
             qualified_pool.append(qualified_prop)
         

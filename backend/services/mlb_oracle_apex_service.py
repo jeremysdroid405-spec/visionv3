@@ -48,6 +48,13 @@ Lineup Status Values:
 from typing import Dict, List, Any, Optional, Tuple
 from datetime import datetime, timezone
 import logging
+from services.vk_model_enforcement import (
+    calculate_vk_model, 
+    enforce_vk_fields, 
+    bulk_enforce_vk_fields,
+    validate_vk_fields,
+    VKResult
+)
 import numpy as np
 import asyncio
 
@@ -1091,7 +1098,6 @@ class MLBOracleApexService:
                 # Additional data
                 'raw_vk_pred': round(raw_vk_pred, 2) if raw_vk_pred else None,
                 'vk_predicted': round(raw_vk_pred * matchup_modifier * tempo_modifier, 2) if raw_vk_pred else None,
-                'vk_edge': round(raw_edge, 2),
                 'matchup_modifier': round(matchup_modifier, 3),
                 'tempo_modifier': round(tempo_modifier, 3),
                 
@@ -1320,6 +1326,14 @@ class MLBOracleApexService:
                 dk_odds = prop.get("all_odds", {}).get("draftkings")
             
             # ================================================================
+            # PHASE 0: MARKET-FIRST FILTER (dk_odds REQUIRED)
+            # ================================================================
+            # A prop MUST have non-null, non-zero dk_odds to be eligible
+            if dk_odds is None or dk_odds == 0:
+                gate_stats['fail_market_first'] = gate_stats.get('fail_market_first', 0) + 1
+                continue
+            
+            # ================================================================
             # PHASE 1: STRICT BASELINE GATES
             # ================================================================
             
@@ -1419,9 +1433,31 @@ class MLBOracleApexService:
             raw_vk_pred = prop.get("vk_predicted") or prop.get("raw_vk_pred") or prop.get("season_average") or 0
             matchup_modifier = prop.get("matchup_modifier", 1.0)
             tempo_modifier = prop.get("tempo_modifier", 1.0)
+            season_avg = prop.get("season_average") or prop.get("season_avg") or 0
             
             # Raw edge (prediction vs line)
             raw_edge = (raw_vk_pred - line) if line > 0 else 0
+            
+            # ================================================================
+            # VK MODEL ENFORCEMENT - MANDATORY HANDSHAKE
+            # ================================================================
+            vk_result = calculate_vk_model(
+                predicted_value=raw_vk_pred,
+                line=line,
+                dk_odds=dk_odds,
+                season_avg=season_avg
+            )
+            
+            # STRICT: If VK model failed, log critical error
+            if not vk_result.is_valid:
+                logger.critical(f"[MLB_SAFE_HAVEN] VK MODEL FAILED for {player_name} - RETRYING")
+                # Retry with fallback values
+                vk_result = calculate_vk_model(
+                    predicted_value=season_avg or line,
+                    line=line,
+                    dk_odds=dk_odds,
+                    season_avg=season_avg
+                )
             
             # Calculate Board Score - Weights true edge heavily, penalizes volatility
             # Formula: (true_edge * 3.0) - (cv * 15)
@@ -1464,13 +1500,20 @@ class MLBOracleApexService:
                 },
                 'last_10_games': prop.get('last_10_games'),
                 
+                # *** VK PROBABILITY FOR VISION MODEL DISPLAY ***
+                'vk_prob_over': vk_result.vk_prob_over,
+                'vk_prob_under': vk_result.vk_prob_under,
+                'vk_verdict': vk_result.vk_verdict,
+                'vk_edge': vk_result.vk_edge,
+                'vk_recommendation': vk_result.vk_recommendation,
+                'vk_confidence': vk_result.confidence_score,
+                
                 # Consistency
                 'cv': round(cv, 3) if cv else None,
                 
                 # PropVision internal math
                 'raw_vk_pred': round(raw_vk_pred, 2) if raw_vk_pred else None,
                 'vk_predicted': round(raw_vk_pred * matchup_modifier * tempo_modifier, 2) if raw_vk_pred else None,
-                'vk_edge': round(raw_edge, 2),
                 'matchup_modifier': round(matchup_modifier, 3),
                 'tempo_modifier': round(tempo_modifier, 3),
                 
@@ -1619,6 +1662,14 @@ class MLBOracleApexService:
                 dk_odds = prop.get("all_odds", {}).get("draftkings")
             
             # ================================================================
+            # PHASE 0: MARKET-FIRST FILTER (dk_odds REQUIRED)
+            # ================================================================
+            # A prop MUST have non-null, non-zero dk_odds to be eligible
+            if dk_odds is None or dk_odds == 0:
+                gate_stats['fail_market_first'] = gate_stats.get('fail_market_first', 0) + 1
+                continue
+            
+            # ================================================================
             # PHASE 1: CONTENT FILTER - Block Demons (reserved for War Zone)
             # ================================================================
             if prop_type == 'DEMON':
@@ -1704,6 +1755,17 @@ class MLBOracleApexService:
             # Raw edge (prediction vs line)
             raw_edge = (raw_vk_pred - line) if line > 0 else 0
             
+            # ================================================================
+            # VK MODEL ENFORCEMENT - MANDATORY HANDSHAKE
+            # ================================================================
+            season_avg = prop.get("season_average") or prop.get("season_avg") or 0
+            vk_result = calculate_vk_model(
+                predicted_value=raw_vk_pred,
+                line=line,
+                dk_odds=dk_odds,
+                season_avg=season_avg
+            )
+            
             # Calculate Board Score - Arbitrage-weighted (heavily favor true_edge)
             # Formula: (true_edge * 4.0) + (true_hit_rate * 0.5) - (cv * 10)
             board_score = (true_edge * 4.0) + (true_hit_rate * 0.5) - (cv * 10)
@@ -1746,13 +1808,20 @@ class MLBOracleApexService:
                 },
                 'last_10_games': prop.get('last_10_games'),
                 
+                # *** VK PROBABILITY FOR VISION MODEL DISPLAY ***
+                'vk_prob_over': vk_result.vk_prob_over,
+                'vk_prob_under': vk_result.vk_prob_under,
+                'vk_verdict': vk_result.vk_verdict,
+                'vk_edge': vk_result.vk_edge,
+                'vk_recommendation': vk_result.vk_recommendation,
+                'vk_confidence': vk_result.confidence_score,
+                
                 # Consistency
                 'cv': round(cv, 3) if cv else None,
                 
                 # PropVision internal math
                 'raw_vk_pred': round(raw_vk_pred, 2) if raw_vk_pred else None,
                 'vk_predicted': round(raw_vk_pred * matchup_modifier * tempo_modifier, 2) if raw_vk_pred else None,
-                'vk_edge': round(raw_edge, 2),
                 'matchup_modifier': round(matchup_modifier, 3),
                 'tempo_modifier': round(tempo_modifier, 3),
                 
@@ -1871,6 +1940,7 @@ class MLBOracleApexService:
         # Track gate statistics
         gate_stats = {
             'total_input': len(all_picks),
+            'fail_market_first': 0,
             'fail_goblin': 0,
             'fail_standard_low_odds': 0,
             'fail_lineup': 0,
@@ -1901,7 +1971,15 @@ class MLBOracleApexService:
                 dk_odds = prop.get("all_odds", {}).get("draftkings")
             
             # ================================================================
-            # PHASE 1: CONTENT FILTER (Demons + High-Odds Standards ONLY)
+            # PHASE 1: MARKET-FIRST FILTER (dk_odds REQUIRED)
+            # ================================================================
+            # A prop MUST have non-null, non-zero dk_odds to be eligible
+            if dk_odds is None or dk_odds == 0:
+                gate_stats['fail_market_first'] += 1
+                continue
+            
+            # ================================================================
+            # PHASE 2: CONTENT FILTER (Demons + High-Odds Standards ONLY)
             # ================================================================
             
             # Block Goblins (reserved for Safe Haven / Front Lines)
@@ -1911,12 +1989,12 @@ class MLBOracleApexService:
             
             # For Standard props, require high odds (>= +150)
             if prop_type == 'STANDARD':
-                if dk_odds is None or dk_odds < 150:
+                if dk_odds < 150:
                     gate_stats['fail_standard_low_odds'] += 1
                     continue
             
             # ================================================================
-            # PHASE 2: LINEUP GATE (Hybrid)
+            # PHASE 3: LINEUP GATE (Hybrid)
             # ================================================================
             # Allow CONFIRMED, PROJECTED, UNKNOWN. Only reject explicitly BENCHED.
             lineup_status = prop.get('lineup_status')
@@ -1982,6 +2060,17 @@ class MLBOracleApexService:
             # Raw edge (prediction vs line)
             raw_edge = (raw_vk_pred - line) if line > 0 else 0
             
+            # ================================================================
+            # VK MODEL ENFORCEMENT - MANDATORY HANDSHAKE
+            # ================================================================
+            season_avg = prop.get("season_average") or prop.get("season_avg") or 0
+            vk_result = calculate_vk_model(
+                predicted_value=raw_vk_pred,
+                line=line,
+                dk_odds=dk_odds,
+                season_avg=season_avg
+            )
+            
             # Calculate Board Score - JACKPOT RANKER
             # Weight True Edge HEAVILY to find the biggest Vegas/PropVision disagreements.
             # Formula: (true_edge * 15.0) + (true_hit_rate * 2.0) - (cv * 5)
@@ -2025,13 +2114,20 @@ class MLBOracleApexService:
                 },
                 'last_10_games': prop.get('last_10_games'),
                 
+                # *** VK PROBABILITY FOR VISION MODEL DISPLAY ***
+                'vk_prob_over': vk_result.vk_prob_over,
+                'vk_prob_under': vk_result.vk_prob_under,
+                'vk_verdict': vk_result.vk_verdict,
+                'vk_edge': vk_result.vk_edge,
+                'vk_recommendation': vk_result.vk_recommendation,
+                'vk_confidence': vk_result.confidence_score,
+                
                 # Volatility
                 'cv': round(cv, 3) if cv else None,
                 
                 # PropVision internal math
                 'raw_vk_pred': round(raw_vk_pred, 2) if raw_vk_pred else None,
                 'vk_predicted': round(raw_vk_pred * matchup_modifier * tempo_modifier, 2) if raw_vk_pred else None,
-                'vk_edge': round(raw_edge, 2),
                 'matchup_modifier': round(matchup_modifier, 3),
                 'tempo_modifier': round(tempo_modifier, 3),
                 
