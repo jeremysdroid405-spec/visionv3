@@ -3413,27 +3413,61 @@ async def lasso_predict(
 
     doc = await hub.find_one(
         {name_field: {"$regex": f"^{player_name}$", "$options": "i"}},
-        {"_id": 0, name_field: 1, "player_name": 1, "history": 1, "team": 1, "position": 1}
+        {"_id": 0, name_field: 1, "player_name": 1, "history": 1, "team": 1, "position": 1, "bdl_game_logs": 1}
     )
     if not doc:
         doc = await hub.find_one(
             {name_field: {"$regex": player_name, "$options": "i"}},
-            {"_id": 0, name_field: 1, "player_name": 1, "history": 1, "team": 1, "position": 1}
+            {"_id": 0, name_field: 1, "player_name": 1, "history": 1, "team": 1, "position": 1, "bdl_game_logs": 1}
         )
     if not doc:
         raise HTTPException(status_code=404, detail=f"Player '{player_name}' not found")
 
     name = doc.get("player_name") or doc.get("display_name")
 
-    # Flatten history chronologically
+    # =========================================================
+    # CURRENT-SEASON ANCHORING
+    # NBA: history.2025_season IS the 2025-26 season (Oct 2025 - Jun 2026)
+    # MLB: bdl_game_logs has live 2026 season; history.2025_season is LAST year
+    # Historical years only inform the Lasso coefficients, not live features
+    # =========================================================
     history = doc.get("history", {})
-    all_logs = []
-    for sk in ["2023_season", "2024_season", "2025_season"]:
-        all_logs.extend(history.get(sk, []))
-    all_logs.sort(key=lambda x: x.get("game_id") or 0)
+
+    if sport_lower == "nba":
+        # NBA: use 2025_season directly (already current season, DNPs already filtered)
+        all_logs = list(history.get("2025_season", []))
+        all_logs.sort(key=lambda x: x.get("game_id") or x.get("date") or 0)
+        data_source = "history.2025_season"
+    else:
+        # MLB: use bdl_game_logs (2026 live sync) as primary
+        # Reverse-map from mapped field names back to BDL raw keys
+        MLB_REVERSE_MAP = {
+            "rbis": "rbi", "home_runs": "hr", "walks": "bb",
+            "strikeouts": "k", "innings_pitched": "ip",
+            "pitcher_strikeouts": "p_k", "pitcher_walks": "p_bb",
+            "hits_allowed": "p_hits", "earned_runs": "er",
+            "batting_avg": "avg",
+        }
+        raw_bdl = doc.get("bdl_game_logs", [])
+        if raw_bdl and len(raw_bdl) >= 11:
+            # Map live sync logs back to BDL raw key names
+            all_logs = []
+            for log in raw_bdl:
+                mapped = dict(log)
+                for mapped_key, raw_key in MLB_REVERSE_MAP.items():
+                    if mapped_key in mapped:
+                        mapped[raw_key] = mapped.pop(mapped_key)
+                all_logs.append(mapped)
+            all_logs.sort(key=lambda x: x.get("game_id") or 0)
+            data_source = "bdl_game_logs (2026 live)"
+        else:
+            # Fallback: use history.2025_season (last MLB season)
+            all_logs = list(history.get("2025_season", []))
+            all_logs.sort(key=lambda x: x.get("game_id") or 0)
+            data_source = "history.2025_season (fallback)"
 
     if len(all_logs) < 11:
-        raise HTTPException(status_code=400, detail=f"Insufficient history: {len(all_logs)} games")
+        raise HTTPException(status_code=400, detail=f"Insufficient current-season data: {len(all_logs)} games (need 11+)")
 
     # Auto-fetch line from the live board if not provided
     if line is None:
@@ -3465,6 +3499,7 @@ async def lasso_predict(
     result["team"] = doc.get("team")
     result["position"] = doc.get("position")
     result["total_history_games"] = len(all_logs)
+    result["data_source"] = data_source
 
     return {"success": True, "prediction": result}
 
