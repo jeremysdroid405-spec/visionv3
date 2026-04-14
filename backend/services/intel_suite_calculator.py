@@ -32,6 +32,49 @@ STAT_TO_FIELD = {
     "PRA": "pra", "Pts+Rebs+Asts": "pra",
 }
 
+# Feature name -> human readable for vision intel text
+FEATURE_DISPLAY = {
+    "prev_fga": "last-game shot attempts",
+    "prev_fgm": "last-game field goals",
+    "prev_fg3a": "last-game 3pt attempts",
+    "prev_fg3m": "last-game threes",
+    "prev_fta": "last-game free throw attempts",
+    "prev_ftm": "last-game free throws",
+    "prev_ast": "last-game assists",
+    "prev_reb": "last-game rebounds",
+    "prev_pts": "last-game points",
+    "prev_turnover": "last-game turnovers",
+    "prev_stl": "last-game steals",
+    "prev_blk": "last-game blocks",
+    "prev_min": "last-game minutes",
+    "L10_avg_fgm": "L10 field goal average",
+    "L10_avg_fga": "L10 shot volume",
+    "L10_avg_fg3m": "L10 three-point average",
+    "L10_avg_fg3a": "L10 three-point volume",
+    "L10_avg_ftm": "L10 free throw average",
+    "L10_avg_fta": "L10 free throw volume",
+    "L10_avg_pts": "L10 scoring average",
+    "L10_avg_reb": "L10 rebound average",
+    "L10_avg_ast": "L10 assist average",
+    "L10_avg_stl": "L10 steal average",
+    "L10_avg_turnover": "L10 turnover rate",
+    "L10_avg_oreb": "L10 offensive rebounding",
+    "L10_avg_dreb": "L10 defensive rebounding",
+    "L10_avg_min": "L10 minutes average",
+    "L5_avg_ftm": "L5 free throw average",
+    "L5_avg_fgm": "L5 field goal average",
+    "L5_avg_reb": "L5 rebound average",
+    "L5_avg_ast": "L5 assist average",
+    "L3_avg_ast": "recent 3-game assist trend",
+    "L3_avg_fga": "recent 3-game shot volume",
+    "L3_avg_fg3a": "recent 3-game three-point volume",
+    "target_L10_avg": "L10 stat average",
+    "target_L5_avg": "L5 stat average",
+    "target_L3_avg": "recent 3-game average",
+    "target_cv_L10": "L10 consistency score",
+    "momentum_hit_rate_L5": "5-game momentum",
+}
+
 
 def _extract_stat_values(game_logs: List[Dict], stat_type: str) -> List[float]:
     """Pull a stat column from game logs, computing PRA on the fly if needed."""
@@ -45,6 +88,20 @@ def _extract_stat_values(game_logs: List[Dict], stat_type: str) -> List[float]:
         if val is not None:
             values.append(float(val))
     return values
+
+
+def _humanize_driver(feature_name: str) -> str:
+    """Convert a Lasso feature name to human-readable text."""
+    if feature_name in FEATURE_DISPLAY:
+        return FEATURE_DISPLAY[feature_name]
+    # Fallback: clean up the raw name
+    name = feature_name
+    name = name.replace("ix_", "").replace("_x_", " x ").replace("delta3_", "3-game trend in ")
+    name = name.replace("L10_avg_", "L10 ").replace("L5_avg_", "L5 ").replace("L3_avg_", "L3 ")
+    name = name.replace("L10_std_", "L10 volatility in ").replace("L5_std_", "L5 volatility in ")
+    name = name.replace("prev_", "last-game ")
+    name = name.replace("_", " ")
+    return name
 
 
 class IntelSuiteCalculator:
@@ -80,6 +137,16 @@ class IntelSuiteCalculator:
             player = {}
 
         team = player.get("team") or (board_pick.get("team") if board_pick else None)
+
+        # Derive opponent from home_team/away_team if not explicitly provided
+        if not opponent and board_pick:
+            opponent = board_pick.get("opponent") or board_pick.get("opponent_abbr")
+            if not opponent:
+                player_team = team
+                home = board_pick.get("home_team")
+                away = board_pick.get("away_team")
+                if player_team and home and away:
+                    opponent = away if player_team == home else home
 
         # Build active game logs (2025-26 season, DNP filtered)
         active_logs = self._get_active_logs(player)
@@ -298,7 +365,7 @@ class IntelSuiteCalculator:
 
         # Top Lasso feature as a reason
         if top_driver:
-            driver_clean = top_driver.replace("_", " ").replace("L10 avg ", "").replace("prev ", "last-game ").replace("ix ", "")
+            driver_clean = _humanize_driver(top_driver)
             reasons.append(f"Driven by {driver_clean}")
 
         confidence = "High" if len(reasons) >= 3 else "Medium-High" if len(reasons) >= 2 else "Medium" if reasons else "Standard"

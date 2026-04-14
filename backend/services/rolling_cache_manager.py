@@ -549,6 +549,21 @@ class DeltaManager:
         try:
             intel_calc = await self._get_intel_calculator()
 
+            player_name = prop.get('player_name', '')
+            stat_type = prop.get('stat_type', '') or prop.get('stat_type_raw', '')
+            line = prop.get('line', 0)
+            team = prop.get('team', '')
+
+            # Derive opponent: check prop, then look up from board
+            opponent = prop.get('opponent') or prop.get('opponent_abbr')
+            if not opponent and player_name:
+                board_doc = await self.db.dg_cached_board.find_one(
+                    {"player_name": {"$regex": f"^{player_name}$", "$options": "i"}},
+                    {"_id": 0, "opponent": 1, "opponent_abbr": 1}
+                )
+                if board_doc:
+                    opponent = board_doc.get("opponent") or board_doc.get("opponent_abbr")
+
             # Run Lasso prediction for this prop
             lasso_result = None
             try:
@@ -584,11 +599,11 @@ class DeltaManager:
                 logger.warning(f"[JIT_NBA] Lasso prediction failed for {prop.get('player_name')}: {e}")
 
             intel_suite = await intel_calc.calculate_intel_suite(
-                player_name=prop.get('player_name', ''),
-                stat_type=prop.get('stat_type', ''),
-                line=prop.get('line', 0),
+                player_name=player_name,
+                stat_type=stat_type,
+                line=line,
                 direction=prop.get('direction', 'over'),
-                opponent=prop.get('opponent'),
+                opponent=opponent,
                 board_pick=prop,
                 lasso_result=lasso_result,
             )
@@ -610,45 +625,46 @@ class DeltaManager:
 
     def _build_nba_vision_text(self, prop: Dict, lasso_result: Optional[Dict], intel_suite: Dict) -> str:
         """Generate grit-style scout text using Lasso + intel suite data."""
+        from services.intel_suite_calculator import _humanize_driver
+
         player = prop.get('player_name', 'Player')
         stat = prop.get('stat_type', 'stat')
         line = prop.get('line', 0)
         h10 = prop.get('h10_rate') or 0
 
-        # Lasso data
         proj = lasso_result.get('projection', 0) if lasso_result else 0
         tier = lasso_result.get('confidence_tier', '') if lasso_result else ''
         edge = (proj - line) if proj and line else 0
         top_drivers = [c['feature'] for c in (lasso_result or {}).get('top_contributors', [])[:2]]
-        driver_text = top_drivers[0].replace('_', ' ').replace('L10 avg ', '').replace('prev ', 'last-game ') if top_drivers else ''
+        driver_text = _humanize_driver(top_drivers[0]) if top_drivers else ''
 
-        # Intel suite data
         dvp = intel_suite.get('matchup_dvp', {}).get('rank', 15)
+        dvp_opp = intel_suite.get('matchup_dvp', {}).get('opponent', '?')
         pace = intel_suite.get('pace_delta', {}).get('possessions', 0)
+        pace_label = intel_suite.get('pace_delta', {}).get('tempo_label', '')
         stab = intel_suite.get('stability_index', {}).get('score', 50)
         bump = intel_suite.get('usage_ripple', {}).get('bump_percent', 0)
 
-        # Conditional templates
         if tier == 'HIGH_FIDELITY' and abs(edge) > line * 0.15 and edge > 0:
-            return f"{player} is absolutely locked in — Lasso projects {proj:.1f} vs a {line} line, that's a +{edge:.1f} cushion backed by R²=0.54 fidelity. Driven by {driver_text}. Smash spot, don't overthink it."
+            return f"{player} is absolutely locked in — Lasso projects {proj:.1f} vs a {line} line, that's a +{edge:.1f} cushion backed by R²=0.54 fidelity. Key driver: {driver_text}. Smash spot, don't overthink it."
         elif tier == 'HIGH_FIDELITY' and abs(edge) > line * 0.15 and edge < 0:
-            return f"FADE ALERT: {player} {stat} @ {line} — model sees only {proj:.1f} (edge {edge:+.1f}). {driver_text} is pulling him down. The book set this too high, take the UNDER."
+            return f"FADE ALERT on {player} {stat} @ {line} — model sees only {proj:.1f} ({edge:+.1f} edge). The {driver_text} is dragging projections down. Take the UNDER."
         elif h10 >= 80 and edge > 0:
-            return f"Riding the hot hand with {player} — {h10:.0f}% L10 hit rate and the Lasso has him at {proj:.1f} vs {line}. {driver_text} is the engine. Lock it in."
+            return f"Hot hand alert: {player} is rolling at {h10:.0f}% L10 hit rate, Lasso confirms at {proj:.1f} vs {line}. Key driver: {driver_text}. Lock it in."
         elif dvp >= 22 and edge > 0:
-            return f"Soft matchup spot for {player} — DvP #{dvp} plus Lasso at {proj:.1f}. Volume is there ({driver_text}), defense isn't. Safe Haven territory."
+            return f"Soft matchup for {player} vs {dvp_opp} (DvP #{dvp}). Lasso has {proj:.1f} vs {line} line. {driver_text.capitalize()} fueling the projection. Safe Haven territory."
         elif bump >= 3 and edge > 0:
-            return f"Volume play on {player} today — +{bump:.1f}% usage shift from injuries. Model projects {proj:.1f} vs {line} line. {driver_text} is surging."
+            return f"Volume spike for {player} — +{bump:.1f}% usage shift from injuries. Model projects {proj:.1f} vs {line}. {driver_text.capitalize()} is surging."
         elif stab >= 75 and edge > 0:
-            return f"Chalk play on {player} {stat} @ {line} — stability score {stab}/100. Lasso sees {proj:.1f}, floor is locked in. Boring but profitable."
+            return f"Floor play on {player} {stat} @ {line} — stability {stab}/100. Lasso sees {proj:.1f}. Consistent output driven by {driver_text}. Boring but it cashes."
         elif pace >= 3:
-            return f"Tempo play: {player} in a high-pace game (+{pace:.1f} possessions). Model has {proj:.1f} vs {line}. {driver_text} drives the projection."
+            return f"Tempo play: {player} in a {pace_label.lower()} game (+{pace:.1f} possessions). Model has {proj:.1f} vs {line}. {driver_text.capitalize()} drives the number."
         elif h10 < 40 and edge < 0:
-            return f"{player} has been ice cold at {h10:.0f}% L10 — model confirms at {proj:.1f}. UNDER {line} is the play. Proceed with caution or fade entirely."
+            return f"{player} ice cold at {h10:.0f}% L10. Model confirms the fade at {proj:.1f} vs {line}. UNDER is the play — {driver_text} tells the story."
         elif edge > 0:
-            return f"Solid value on {player} {stat} @ {line}. Lasso projects {proj:.1f} with a +{edge:.1f} edge. {driver_text} is the key feature. The math works."
+            return f"Solid value on {player} {stat} @ {line}. Lasso projects {proj:.1f} (+{edge:.1f} edge). Key driver: {driver_text}. The math checks out."
         else:
-            return f"{player} {stat} @ {line}: Model sees {proj:.1f} ({edge:+.1f}). Edge is thin — need the situation to break right. {driver_text} is the swing factor."
+            return f"{player} {stat} @ {line}: Model sees {proj:.1f} ({edge:+.1f}). Edge is thin — {driver_text} is the swing factor. Need the game script to break right."
     
     def _generate_mlb_badges(self, mlr_result, prop: Dict) -> List[str]:
         """Generate MLB scout badges based on MLR result."""

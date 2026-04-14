@@ -177,15 +177,23 @@ def enrich_mlb_prop_with_averages(prop: Dict, player_data: Dict = None) -> Dict:
     tempo_mult = prop.get("tempo_modifier") or prop.get("intel_suite", {}).get("tempo", {}).get("multiplier") or 1.0
     is_goblin = prop.get("is_goblin", False)
     is_demon = prop.get("is_demon", False)
-    driver_text = (lasso_top_driver or "").replace("_", " ").replace("L10 avg ", "").replace("prev ", "last-game ")
+
+    # Humanize Lasso driver text
+    driver_text = ""
+    if lasso_top_driver:
+        try:
+            from services.intel_suite_calculator import _humanize_driver
+            driver_text = _humanize_driver(lasso_top_driver)
+        except Exception:
+            driver_text = lasso_top_driver.replace("_", " ")
 
     # Lasso-enhanced templates
     if lasso_proj is not None and lasso_tier == "HIGH_FIDELITY" and abs(vk_edge) > line * 0.15 and vk_edge > 0:
-        vision_intel = f"{player_name} is absolutely locked in — Lasso projects {vk_pred:.1f} vs a {line} line, that's a +{vk_edge:.1f} cushion backed by high-fidelity math. Driven by {driver_text}. Smash spot, don't overthink it."
+        vision_intel = f"{player_name} is absolutely locked in — Lasso projects {vk_pred:.1f} vs a {line} line, that's a +{vk_edge:.1f} cushion backed by high-fidelity math. Key driver: {driver_text}. Smash spot, don't overthink it."
     elif lasso_proj is not None and lasso_tier == "HIGH_FIDELITY" and vk_edge < -line * 0.15:
-        vision_intel = f"FADE ALERT: {player_name} {stat_type} @ {line} — model sees only {vk_pred:.1f} (edge {vk_edge:+.1f}). {driver_text} is pulling projections down. Take the UNDER."
+        vision_intel = f"FADE ALERT on {player_name} {stat_type} @ {line} — model sees only {vk_pred:.1f} ({vk_edge:+.1f} edge). The {driver_text} is dragging projections. Take the UNDER."
     elif h10 >= 80 and vk_edge >= 0.5:
-        vision_intel = f"Riding the hot hand with {player_name} — {h10:.0f}% L10 hit rate with a +{vk_edge:.1f} edge. {f'Driven by {driver_text}. ' if driver_text else ''}Lock it in."
+        vision_intel = f"Hot hand alert: {player_name} at {h10:.0f}% L10 hit rate with +{vk_edge:.1f} edge. {f'Key driver: {driver_text}. ' if driver_text else ''}Lock it in."
     elif h10 >= 70 and vk_edge >= 0.3:
         vision_intel = f"{player_name} heating up — {h10:.0f}% L10 with +{vk_edge:.1f} edge over the line. The book set this too low."
     elif is_goblin and h10 >= 60:
@@ -197,7 +205,7 @@ def enrich_mlb_prop_with_averages(prop: Dict, player_data: Dict = None) -> Dict:
     elif h10 < 50:
         vision_intel = f"{player_name} has been ice cold at {h10:.0f}% L10 — model sees {vk_pred:.1f} but proceed with caution or fade entirely."
     elif vk_edge >= 0.2:
-        vision_intel = f"Solid value on {player_name} {stat_type} @ {line}. Model projects {vk_pred:.1f} with a +{vk_edge:.1f} edge. {f'{driver_text} drives it. ' if driver_text else ''}The math works."
+        vision_intel = f"Solid value on {player_name} {stat_type} @ {line}. Model projects {vk_pred:.1f} with +{vk_edge:.1f} edge. {f'Key driver: {driver_text}. ' if driver_text else ''}The math works."
     else:
         vision_intel = f"{player_name} {stat_type} @ {line}: Projecting {vk_pred:.1f} with {h10:.0f}% hit rate. Edge is thin — need the situation to break right."
     
