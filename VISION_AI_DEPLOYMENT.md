@@ -48,7 +48,7 @@ The Vision AI service is already integrated into your FastAPI backend using the 
 ### Test Single Insight
 
 ```bash
-curl -X POST https://best-bet-finder-1.preview.emergentagent.com/api/v3/vision/generate-insight \
+curl -X POST https://local-first-hub-2.preview.emergentagent.com/api/v3/vision/generate-insight \
   -H "Content-Type: application/json" \
   -d '{
     "player_name": "Kevin Durant",
@@ -67,13 +67,13 @@ curl -X POST https://best-bet-finder-1.preview.emergentagent.com/api/v3/vision/g
 ### Trigger Batch Processing
 
 ```bash
-curl -X POST https://best-bet-finder-1.preview.emergentagent.com/api/v3/vision/trigger-batch
+curl -X POST https://local-first-hub-2.preview.emergentagent.com/api/v3/vision/trigger-batch
 ```
 
 ### Check Status
 
 ```bash
-curl https://best-bet-finder-1.preview.emergentagent.com/api/v3/vision/status
+curl https://local-first-hub-2.preview.emergentagent.com/api/v3/vision/status
 ```
 
 ## Option B: Supabase Edge Function (Manual Deployment)

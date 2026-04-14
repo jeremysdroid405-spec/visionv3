@@ -667,7 +667,7 @@ BDL_API_KEY=... (deprecated)
 
 ### Frontend (`.env`)
 ```
-REACT_APP_BACKEND_URL=https://xxx.preview.emergentagent.com
+REACT_APP_BACKEND_URL=https://local-first-hub-2.preview.emergentagent.com
 ```
 
 ---

@@ -152,7 +152,7 @@ These are already in your `.env` files:
    ```
 
 3. **Access the app:**
-   - URL: https://best-bet-finder-1.preview.emergentagent.com
+   - URL: https://local-first-hub-2.preview.emergentagent.com
    - Create an account (starts as Free tier)
    - View NBA player prop opportunities
 

@@ -485,7 +485,24 @@ class MLBDeepIngestion:
         # Aggregate advanced metrics
         combined_advanced = self._aggregate_advanced(advanced_by_season)
         
-        # Build hub entry
+        # === SINGLE SOURCE OF TRUTH SCHEMA ===
+        # Group game logs by season for history object
+        history = {
+            '2023_season': [],
+            '2024_season': [],
+            '2025_season': [],
+            '2026_season': [],
+        }
+        
+        for log in bdl_game_logs:
+            log_date = log.get('date', '')
+            if log_date:
+                year = int(log_date[:4]) if len(log_date) >= 4 else 2026
+                season_key = f'{year}_season'
+                if season_key in history:
+                    history[season_key].append(log)
+        
+        # Build hub entry - SINGLE SOURCE OF TRUTH
         entry = {
             'player_id': player_id,
             'bdl_id': player_id,
@@ -494,7 +511,17 @@ class MLBDeepIngestion:
             'team': team,
             'position': game_logs[0].get('position') if game_logs else None,
             
-            # Game logs
+            # === HISTORY OBJECT - 3-Year Timeline ===
+            'history': history,
+            'history_stats': {
+                '2023_games': len(history['2023_season']),
+                '2024_games': len(history['2024_season']),
+                '2025_games': len(history['2025_season']),
+                '2026_games': len(history['2026_season']),
+                'total_games': sum(len(v) for v in history.values()),
+            },
+            
+            # Current season logs (for quick access)
             'bdl_game_logs': bdl_game_logs,
             'games_played': len(bdl_game_logs),
             
@@ -511,7 +538,7 @@ class MLBDeepIngestion:
             'night_splits': combined_splits.get('night'),
             
             # PvP Matchups
-            'pvp_matchups': pvp_matchups[:50],  # Top 50 matchups
+            'pvp_matchups': pvp_matchups[:50],
             'pvp_matchup_count': len(pvp_matchups),
             
             # Advanced Metrics
@@ -522,8 +549,9 @@ class MLBDeepIngestion:
             
             # Metadata
             'last_updated': datetime.now(timezone.utc).isoformat(),
-            'data_source': 'BDL_GOAT_TIER',
+            'data_source': 'BDL_SSOT_3YEAR',
             'seasons_ingested': list(splits_by_season.keys()),
+            'schema_version': '2.0_SSOT',
         }
         
         return entry

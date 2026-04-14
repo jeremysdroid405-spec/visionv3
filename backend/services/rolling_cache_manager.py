@@ -651,8 +651,8 @@ async def run_cache_refresh_loop(
             
             logger.info(
                 f"[CACHE_LOOP] {sport} refresh complete: "
-                f"{result['cached_total']} props cached, "
-                f"+{result['new_count']} new, -{result['stale_count']} purged"
+                f"{result.get('cached_total', 0)} props cached, "
+                f"+{result.get('new_count', 0)} new, -{result.get('stale_count', 0)} purged"
             )
             
         except Exception as e:
