@@ -19,6 +19,11 @@ GATE LOGIC:
 POST-FILTERS:
 - Minutes >= 22 (volume check)
 - Dedupe: Keep lowest line per player+stat (best goblin)
+
+v2.1 UPDATE: Integrated VegasKillerModel for TRUE MLR predictions
+- Now calls trained XGBoost model with 105 features
+- Matchup features (opp_def_rating, pace_delta, etc.) now flow into predictions
+- No more EWMA fallback as "prediction"
 """
 from typing import Dict, List, Any, Optional
 from datetime import datetime, timezone
@@ -31,6 +36,7 @@ from services.vk_model_enforcement import (
     VKResult,
     MARKET_FIRST_REQUIRED
 )
+from services.vegas_killer_model import VegasKillerModel
 
 logger = logging.getLogger(__name__)
 
@@ -412,15 +418,35 @@ class OracleApexService:
     
     Uses Vegas Killer ML predictions combined with statistical filters
     to identify mathematically-proven safe plays.
+    
+    v2.1: Now loads and uses the trained XGBoost model with 105 features
+    for TRUE MLR predictions (not just EWMA averages).
     """
     
     def __init__(self, db, vegas_killer_model=None):
         self.db = db
-        self.vegas_killer_model = vegas_killer_model
         self.cached_board = db.dg_cached_board
         self.live_props = db.dg_live_props
         self.master_hub = db.nba_master_hub_2026
         self.oracle_apex_collection = db.oracle_apex_picks
+        
+        # v2.1: Initialize VegasKillerModel for TRUE MLR predictions
+        # Note: VegasKillerModel requires SYNC PyMongo, not async Motor
+        if vegas_killer_model:
+            self.vegas_killer_model = vegas_killer_model
+        else:
+            # Create sync MongoDB client for VegasKillerModel
+            import os
+            from pymongo import MongoClient
+            mongo_url = os.environ.get('MONGO_URL')
+            db_name = os.environ.get('DB_NAME', 'propvision')
+            sync_client = MongoClient(mongo_url)
+            sync_db = sync_client[db_name]
+            
+            # Create and load the trained model with SYNC client
+            self.vegas_killer_model = VegasKillerModel(sync_db)
+            self.vegas_killer_model.load_models()
+            logger.info("[ORACLE_APEX] VegasKillerModel loaded with trained XGBoost models (105 features)")
         
     def set_vegas_killer_model(self, model):
         """Set the Vegas Killer model reference."""
@@ -1467,19 +1493,83 @@ class OracleApexService:
             }
             
             # ================================================================
-            # VK MODEL ENFORCEMENT - MANDATORY HANDSHAKE
-            # v2.0: TRUE VARIANCE - pass player_name and stat_type for L10 DB lookup
+            # v2.1: CALL TRAINED MLR MODEL - NO FALLBACKS ALLOWED
             # ================================================================
-            # Ensure VK fields are populated (never None)
+            # Get TRUE prediction from trained XGBoost model with 105 features
+            # This includes matchup features (opp_def_rating, pace, etc.)
+            # 
+            # STRICT RULE: If MLR model fails, prop is DISQUALIFIED from Elite tiers
+            # We will NOT label a 'Season Average' as an 'Elite' pick.
+            
+            mlr_prediction = None
+            mlr_std_dev = None
+            mlr_features = None
+            mlr_success = False
+            
+            if self.vegas_killer_model:
+                try:
+                    opponent = prop.get('opponent') or prop.get('away_team') or prop.get('home_team', '')
+                    vk_result_raw = self.vegas_killer_model.predict(
+                        player_name, 
+                        stat_type, 
+                        line=line, 
+                        opponent_team=opponent
+                    )
+                    
+                    if vk_result_raw and not vk_result_raw.get('error'):
+                        mlr_prediction = vk_result_raw.get('predicted')
+                        mlr_std_dev = vk_result_raw.get('full_features', {}).get('baseline', {}).get('std_dev_l10')
+                        mlr_features = vk_result_raw.get('full_features')
+                        
+                        # Validate MLR prediction is not NaN or None
+                        if mlr_prediction is not None and not (isinstance(mlr_prediction, float) and np.isnan(mlr_prediction)):
+                            mlr_success = True
+                            
+                            # Store matchup data from the trained model
+                            qualified_prop['mlr_matchup'] = vk_result_raw.get('full_features', {}).get('matchup', {})
+                            qualified_prop['mlr_friction'] = vk_result_raw.get('full_features', {}).get('friction', {})
+                            qualified_prop['mlr_features_used'] = True
+                            
+                            logger.info(
+                                f"[MLR_SUCCESS] {player_name} {stat_type}: pred={mlr_prediction:.2f}, "
+                                f"opp_def={qualified_prop['mlr_matchup'].get('opp_def_rating')}, "
+                                f"pace={qualified_prop['mlr_matchup'].get('opp_pace')}, "
+                                f"σ={mlr_std_dev}"
+                            )
+                    else:
+                        logger.warning(f"[MLR_FAIL] {player_name} {stat_type}: {vk_result_raw.get('error', 'Unknown error')}")
+                        
+                except Exception as e:
+                    logger.warning(f"[MLR_FAIL] {player_name} {stat_type}: {e}")
+            
+            # ================================================================
+            # STRICT DISQUALIFICATION: No MLR = No Elite Tier
+            # ================================================================
+            if not mlr_success:
+                gate_stats['fail_mlr_model'] = gate_stats.get('fail_mlr_model', 0) + 1
+                logger.debug(f"[DISQUALIFIED] {player_name} {stat_type}: MLR model failed - not eligible for Elite")
+                continue
+            
+            # ================================================================
+            # VK MODEL ENFORCEMENT - MANDATORY HANDSHAKE
+            # v2.1: Use MLR prediction ONLY - no season_avg fallback
+            # ================================================================
             if qualified_prop.get('vk_prob_over') is None or qualified_prop.get('vk_verdict') is None:
-                # Calculate VK model
-                season_avg = prop.get('season_avg') or prop.get('l10_avg') or line
+                # STRICT: Use MLR prediction only
+                prediction_to_use = mlr_prediction
+                std_dev_to_use = mlr_std_dev
+                
+                # Update vk_predicted with TRUE MLR prediction (high precision)
+                qualified_prop['vk_predicted'] = round(prediction_to_use, 2)
+                qualified_prop['mlr_raw_prediction'] = prediction_to_use  # Store unrounded for audit
+                
                 vk_result = calculate_vk_model(
-                    predicted_value=prop.get('vk_predicted') or season_avg,
+                    predicted_value=prediction_to_use,
                     line=line,
                     dk_odds=dk_odds,
-                    season_avg=season_avg,
+                    season_avg=prop.get('season_avg') or prop.get('l10_avg'),  # Only for context, not used as prediction
                     require_market=True,
+                    std_dev=std_dev_to_use,  # Pass actual L10 std_dev from MLR model
                     player_name=player_name,
                     stat_type=stat_type,
                     sport="NBA"
@@ -1498,6 +1588,7 @@ class OracleApexService:
                 # v2.0: Add variance audit fields
                 qualified_prop['vk_sigma_used'] = vk_result.standard_deviation_used
                 qualified_prop['vk_sigma_source'] = vk_result.sigma_source
+                qualified_prop['vk_z_score'] = vk_result.z_score
             
             qualified_pool.append(qualified_prop)
         
