@@ -32,6 +32,7 @@ from .vacuum import router as vacuum_router, set_vacuum_db
 from .mlb_vacuum import router as mlb_vacuum_router, set_mlb_vacuum_db
 from .mlb_weather import router as mlb_weather_router
 from .mlb_tiers import router as mlb_tiers_router, set_mlb_tiers_db
+from .mlb_ripple import router as mlb_ripple_router, set_mlb_ripple_db
 from .forward_testing import router as forward_testing_router, set_forward_test_db
 
 # ARCHIVED ROUTES (moved to routes_archive/):
@@ -186,6 +187,11 @@ def register_all_routes(app, engine, game_lock_engine=None, db=None,
     if db is not None:
         set_mlb_tiers_db(db)
     app.include_router(mlb_tiers_router, prefix="/api")
+    
+    # MLB Lineup Ripple Engine
+    if db is not None:
+        set_mlb_ripple_db(db)
+    app.include_router(mlb_ripple_router, prefix="/api")
     
     # Forward Testing Infrastructure
     if db is not None:

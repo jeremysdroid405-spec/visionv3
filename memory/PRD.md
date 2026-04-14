@@ -44,13 +44,58 @@ The system for calculating "Live Injury Advantage" beneficiaries:
    - Secondary: +8% PTS/PRA boost
    - Tertiary: +5% PTS/PRA boost
 
+### MLB Lineup Ripple Engine v1.0 (NEW)
+The system for calculating "Lineup Ripple" effects in MLB when Lineup Anchors are OUT:
+
+1. **Lineup Anchor Definition**:
+   - OPS > .850 OR wRC+ > 125
+   - Data source: `mlb_master_hub_2026.advanced_stats.season_stats.2026.batting`
+
+2. **Ripple Calculation**:
+   - **PA Bump**: +10% expected PAs for players moving UP in batting order
+   - **Protection Penalty**: -5% to hitters directly in front of/behind missing anchor
+
+3. **Boost Application**:
+   - Primary: +10% PA bump (moving up 2+ spots)
+   - Secondary: +8% PA bump (moving up 1 spot)
+   - Tertiary: +5% PA bump
+   - Protection Penalty: -5% (adjacent hitters)
+
+4. **Metadata Integration**:
+   - `lineup_ripple_adj` added to `intel_suite` for MLB props
+   - Tier collections updated with `missing_anchor` and `pa_bump_applied` flags
+
 ### Key API Endpoints
 - `POST /api/nba/sync/master` - Full NBA pipeline with Phase 7
-- `POST /api/mlb/sync/master` - Full MLB pipeline
+- `POST /api/mlb/sync/master` - Full MLB pipeline with Lineup Ripple
 - `POST /api/v3/ferrari/rebuild` - Ferrari rebuild only
-- `GET /api/v3/vacuum/live-alerts` - Live Injury Advantage alerts (Dynamic Model)
+- `GET /api/v3/vacuum/live-alerts` - Live Injury Advantage alerts (NBA Dynamic Model)
+- `GET /api/v3/mlb/ripple/alerts` - MLB Lineup Ripple alerts
+- `GET /api/v3/mlb/ripple/top-gainers` - Top 3 PA gainers
+- `GET /api/v3/mlb/ripple/anchors` - Get Lineup Anchors by team
 
 ## Completed Work
+
+### April 14, 2026: MLB Lineup Ripple Engine v1.0 (COMPLETE)
+
+#### Lineup Anchor Definition
+- Defined Lineup Anchor as OPS > .850 OR wRC+ > 125
+- Dynamic identification from `mlb_master_hub_2026` batting stats
+
+#### Ripple Calculation Implementation
+- PA Bump: +10% for primary, +8% secondary, +5% tertiary
+- Protection Penalty: -5% for adjacent hitters
+- `_calculate_ripple_beneficiaries()` with dynamic beneficiary ranking
+
+#### API Endpoints
+- `GET /api/v3/mlb/ripple/alerts` - Lineup ripple alerts
+- `GET /api/v3/mlb/ripple/top-gainers` - Top 3 PA gainers
+- `GET /api/v3/mlb/ripple/anchors` - Get Lineup Anchors by team
+- `POST /api/v3/mlb/ripple/check` - Trigger lineup check
+
+#### Phase 5 Integration
+- Added Step 5 to `mlb_master_sync.py` for Lineup Ripple Engine
+- Updates tier collections with `lineup_ripple_adj` in `intel_suite`
 
 ### April 14, 2026: Dynamic Usage Vacuum Model v3.0 (COMPLETE)
 
@@ -131,9 +176,11 @@ The system for calculating "Live Injury Advantage" beneficiaries:
 - `/app/backend/services/nba_master_sync.py` - NBA Elite Top 10 orchestrator
 - `/app/backend/services/oracle_apex_service.py` - NBA math and Elite engine
 - `/app/backend/services/mlb_oracle_apex_service.py` - MLB Elite engine
-- `/app/backend/services/mlb_master_sync.py` - MLB orchestrator
+- `/app/backend/services/mlb_master_sync.py` - MLB orchestrator with Lineup Ripple
+- `/app/backend/services/mlb_lineup_ripple_service.py` - MLB Lineup Ripple Engine v1.0
+- `/app/backend/services/injury_vacuum_service.py` - NBA Dynamic Usage Vacuum Model v3.0
 - `/app/backend/services/cached_board_builder_service.py` - SKIP_LEGACY_TIER_BUILDER flag
-- `/app/backend/services/injury_vacuum_service.py` - Dynamic Usage Vacuum Model v3.0
+- `/app/backend/routes/mlb_ripple.py` - MLB Ripple API routes
 
 ## 3rd Party Integrations
 - Gemini 3.1 Flash-Lite (Google GenAI SDK) — uses Emergent LLM Key

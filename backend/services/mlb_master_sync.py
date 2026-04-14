@@ -142,6 +142,27 @@ class MLBMasterSync:
             }
             logger.info(f"[MLB_MASTER] Step 4 complete: {tier_result.get('total', 0)} total picks")
             
+            # ================================================================
+            # STEP 5: LINEUP RIPPLE ENGINE (Phase 7 equivalent)
+            # ================================================================
+            logger.info("=" * 70)
+            logger.info("[MLB_MASTER] STEP 5: Running Lineup Ripple Engine...")
+            logger.info("=" * 70)
+            
+            step5_start = datetime.now(timezone.utc)
+            ripple_result = await self._run_lineup_ripple()
+            step5_duration = (datetime.now(timezone.utc) - step5_start).total_seconds()
+            
+            metrics["steps"]["5_lineup_ripple"] = {
+                "duration_seconds": step5_duration,
+                "anchors_missing": ripple_result.get("anchors_missing", 0),
+                "pa_bumps": len(ripple_result.get("pa_bumps", [])),
+                "protection_penalties": len(ripple_result.get("protection_penalties", [])),
+                "top_3_gainers": [g.get("name") for g in ripple_result.get("top_3_pa_gainers", [])]
+            }
+            logger.info(f"[MLB_MASTER] Step 5 complete: {ripple_result.get('anchors_missing', 0)} anchors missing, "
+                       f"{len(ripple_result.get('pa_bumps', []))} PA bumps")
+            
             # Final summary
             total_duration = (datetime.now(timezone.utc) - start_time).total_seconds()
             metrics["completed_at"] = datetime.now(timezone.utc).isoformat()
@@ -368,6 +389,53 @@ class MLBMasterSync:
             "war_zone": len(war_zone),
             "total": len(safe_haven) + len(front_lines) + len(war_zone)
         }
+    
+    async def _run_lineup_ripple(self) -> Dict[str, Any]:
+        """
+        Run MLB Lineup Ripple Engine (Phase 7 equivalent).
+        
+        Calculates PA bumps and protection penalties when Lineup Anchors are OUT.
+        Updates tier collections with lineup_ripple_adj in intel_suite.
+        """
+        from services.mlb_lineup_ripple_service import get_mlb_ripple_service
+        
+        ripple_service = get_mlb_ripple_service(self.db)
+        
+        # Run lineup check
+        result = await ripple_service.check_lineup_changes()
+        
+        if not result.get("success"):
+            logger.warning("[MLB_MASTER] Lineup ripple check failed")
+            return result
+        
+        # Apply ripple adjustments to tier collections
+        pa_bumps = result.get("pa_bumps", [])
+        
+        if pa_bumps:
+            logger.info(f"[MLB_MASTER] Applying {len(pa_bumps)} PA bumps to tier collections")
+            
+            # Update props in tier collections with lineup_ripple_adj
+            for bump in pa_bumps:
+                player_name = bump.get("name", "")
+                lineup_ripple_adj = bump.get("lineup_ripple_adj", 0)
+                missing_anchor = bump.get("missing_anchor", "")
+                
+                # Update in all tier collections
+                for collection_name in ["mlb_safe_haven", "mlb_front_lines", "mlb_war_zone"]:
+                    collection = self.db[collection_name]
+                    
+                    await collection.update_many(
+                        {"player_name": player_name},
+                        {"$set": {
+                            "intel_suite.lineup_ripple_adj": lineup_ripple_adj,
+                            "intel_suite.missing_anchor": missing_anchor,
+                            "intel_suite.pa_bump_applied": True
+                        }}
+                    )
+            
+            logger.info("[MLB_MASTER] Applied lineup_ripple_adj to tier props")
+        
+        return result
     
     async def _store_tier_results(self, collection_name: str, picks: list):
         """Store tier results in MongoDB."""
