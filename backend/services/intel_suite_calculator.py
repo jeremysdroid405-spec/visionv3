@@ -182,7 +182,7 @@ class IntelSuiteCalculator:
             logger.warning(f"[INTEL] blowout_risk failed: {e}")
             blowout_risk = {"risk_level": "UNKNOWN", "risk_reason": "Unavailable"}
 
-        vision_insight = self._generate_vision_insight(
+        vision_insight = await self._generate_vision_insight(
             player_name, stat_type, line, direction,
             usage_ripple, matchup_dvp, pace_delta, stability_index,
             board_pick, lasso_result,
@@ -304,84 +304,40 @@ class IntelSuiteCalculator:
         except Exception as e:
             return {"risk_level": "UNKNOWN", "risk_reason": str(e), "warning": None}
 
-    def _generate_vision_insight(self, player_name, stat_type, line, direction, usage_ripple, matchup_dvp, pace_delta, stability_index, board_pick, lasso_result):
-        """Generate vision_insight with Lasso v2 data injected."""
-        reasons = []
-        confidence_factors = []
+    async def _generate_vision_insight(self, player_name, stat_type, line, direction, usage_ripple, matchup_dvp, pace_delta, stability_index, board_pick, lasso_result):
+        """Generate vision_insight via Gemini LLM."""
+        from services.gemini_scout_engine import generate_gemini_scout_intel, build_scout_payload
 
-        # Lasso-driven insight (primary signal)
-        lasso_edge = None
-        lasso_proj = None
-        lasso_tier = None
-        top_driver = None
-        if lasso_result and lasso_result.get("projection"):
-            lasso_proj = lasso_result["projection"]
-            lasso_tier = lasso_result.get("confidence_tier", "HIGH_VARIANCE")
-            top_contribs = lasso_result.get("top_contributors", [])
-            if top_contribs:
-                top_driver = top_contribs[0].get("feature", "")
-            if line > 0:
-                lasso_edge = lasso_proj - line
-                edge_pct = abs(lasso_edge / line) * 100
-                if edge_pct >= 15:
-                    reasons.append(f"Lasso projects {lasso_proj:.1f} vs {line} line ({lasso_edge:+.1f} edge)")
-                    confidence_factors.append("lasso_high_edge")
-                elif edge_pct >= 5:
-                    reasons.append(f"Model sees {lasso_proj:.1f} (thin {lasso_edge:+.1f} edge)")
-                    confidence_factors.append("lasso_edge")
+        intel_suite_data = {
+            "matchup_dvp": matchup_dvp,
+            "pace_delta": pace_delta,
+            "stability_index": stability_index,
+            "usage_ripple": usage_ripple,
+        }
 
-        # Injury / usage
-        bump = usage_ripple.get("bump_percent", 0)
-        if bump >= 3:
-            reasons.append(f"Usage +{bump}% from lineup changes")
-            confidence_factors.append("volume_increase")
+        payload = build_scout_payload(
+            player_name=player_name,
+            stat_type=stat_type,
+            line=line,
+            lasso_result=lasso_result,
+            board_pick=board_pick,
+            intel_suite=intel_suite_data,
+            sport="nba",
+        )
 
-        # Matchup
-        dvp = matchup_dvp.get("rank", 15)
-        if dvp >= 22:
-            reasons.append(f"Soft defense (DvP #{dvp})")
-            confidence_factors.append("favorable_matchup")
-        elif dvp <= 8:
-            reasons.append(f"Tough defense (DvP #{dvp})")
+        scout_text = await generate_gemini_scout_intel(payload)
 
-        # Pace
-        poss = pace_delta.get("possessions", 0)
-        if poss >= 3:
-            reasons.append(f"High-tempo game (+{poss:.1f} possessions)")
-            confidence_factors.append("pace_advantage")
+        # Build structured insight with the LLM text as primary
+        lasso_proj = lasso_result.get("projection") if lasso_result else None
+        lasso_edge = (lasso_proj - line) if lasso_proj and line else None
 
-        # Stability
-        stab = stability_index.get("score", 50)
-        if stab >= 75:
-            reasons.append("Highly consistent performer")
-            confidence_factors.append("consistency")
-
-        # Board pick signals
-        if board_pick:
-            h10 = board_pick.get("h10_rate") or 0
-            if h10 >= 80:
-                reasons.append(f"L10 hit rate: {int(h10)}%")
-                confidence_factors.append("hit_rate")
-
-        # Top Lasso feature as a reason
-        if top_driver:
-            driver_clean = _humanize_driver(top_driver)
-            reasons.append(f"Driven by {driver_clean}")
-
-        confidence = "High" if len(reasons) >= 3 else "Medium-High" if len(reasons) >= 2 else "Medium" if reasons else "Standard"
-        if lasso_tier == "HIGH_FIDELITY" and "lasso_high_edge" in confidence_factors:
-            confidence = "High"
-
-        primary = reasons[0] if reasons else "Baseline projection favorable"
         return {
-            "primary": primary,
-            "reasons": reasons,
-            "confidence": confidence,
-            "confidence_factors": confidence_factors,
-            "summary": f"Target-Lock: {direction.upper()} {line} {stat_type} — {primary}",
+            "primary": scout_text,
+            "summary": scout_text,
             "lasso_projection": lasso_proj,
             "lasso_edge": round(lasso_edge, 2) if lasso_edge is not None else None,
-            "tactical_note": self._get_tactical_note(confidence_factors),
+            "confidence": lasso_result.get("confidence_tier", "STANDARD") if lasso_result else "STANDARD",
+            "tactical_note": self._get_tactical_note_from_data(usage_ripple, matchup_dvp, pace_delta, lasso_result),
         }
 
     def _generate_scout_badges(self, active_logs, stat_type, line, board_pick, lasso_result):
@@ -420,21 +376,29 @@ class IntelSuiteCalculator:
 
         return badges
 
-    def _get_tactical_note(self, factors):
-        if "lasso_high_edge" in factors and "favorable_matchup" in factors:
-            return "Lasso + DvP alignment — market fracture detected"
-        if "lasso_high_edge" in factors:
-            return "Lasso model projects significant edge over the posted line"
-        if "volume_increase" in factors and "favorable_matchup" in factors:
+    def _get_tactical_note_from_data(self, usage_ripple, matchup_dvp, pace_delta, lasso_result):
+        bump = usage_ripple.get("bump_percent", 0)
+        dvp = matchup_dvp.get("rank", 15)
+        poss = pace_delta.get("possessions", 0)
+        tier = lasso_result.get("confidence_tier", "") if lasso_result else ""
+        edge_pct = 0
+        if lasso_result and lasso_result.get("projection"):
+            line = lasso_result.get("line") or 0
+            if line:
+                edge_pct = abs(lasso_result["projection"] - line) / line * 100
+
+        if tier == "HIGH_FIDELITY" and edge_pct >= 15 and dvp >= 22:
+            return "Model + DvP alignment — market fracture detected"
+        if tier == "HIGH_FIDELITY" and edge_pct >= 15:
+            return "High-fidelity model projects significant edge over posted line"
+        if bump >= 3 and dvp >= 22:
             return "Volume shift + soft defense = opportunity window"
-        if "volume_increase" in factors:
+        if bump >= 3:
             return "Lineup change creating usage vacuum"
-        if "favorable_matchup" in factors:
+        if dvp >= 22:
             return "Defensive weakness in opponent's scheme"
-        if "pace_advantage" in factors:
+        if poss >= 3:
             return "Tempo multiplier active — increased opportunity volume"
-        if "consistency" in factors:
-            return "Low variance profile — reliable baseline performer"
         return "Baseline projection favorable"
 
 

@@ -12,6 +12,16 @@ Restructure the React/FastAPI betting app to a 100% Local-First Database Model, 
 
 ## What's Been Implemented
 
+### Gemini Scout Intelligence Engine (COMPLETE - 4/14/2026)
+- Ripped out all static f-string templates from intel_suite_calculator.py, rolling_cache_manager.py, ferrari_tiers.py
+- Built `gemini_scout_engine.py` with `generate_gemini_scout_intel()` async function
+- Gemini Flash (gemini-3-flash-preview) via emergentintegrations LlmChat
+- System prompt: "You are a highly analytical NBA/MLB DFS scout... Write exactly two gritty sentences..."
+- Strict JSON payload: player, stat, line, lasso_proj, edge, top_drivers, h10_rate, matchup_context
+- Concurrent batch processing via asyncio for all ~30 Ferrari Tier props (22.6s for 19 props)
+- Fallback: baseline string if LLM fails (so UI never crashes)
+- API: vision_intel text overlaid onto Ferrari tier endpoints via enrichment cache
+
 ### Vision Intel Suite v2 Refactor (COMPLETE - 4/14/2026)
 - Removed `baseline_stats` dependency from IntelSuiteCalculator — all metrics from live game logs
 - Lasso v2 wired into NBA JIT enrichment (`_calculate_nba_intel`)
