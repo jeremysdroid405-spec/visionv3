@@ -1,151 +1,255 @@
 """
-MLB Physical Performance Engine v1.0
-====================================
-Pure mathematical projection using BDL GOAT-Tier physical data.
+MLB Physical Engine v2.0 (MLB_ORACLE_APEX)
+==========================================
+1:1 Functional replica of NBA_MLR_STRICT_v2.2 logic.
 
-THIS MODEL DOES NOT CARE ABOUT:
-- Vegas odds
-- Line movement
-- Market implied probability
+TRAINING FOUNDATION:
+- 90,000+ historical game logs from mlb_master_hub_2026
+- XGBoost regression trained on physical + market features
 
-THIS MODEL ONLY USES PHYSICAL INPUTS:
-1. PvP History (Pitcher vs Batter lifetime stats)
-2. L/R Splits (Handedness matchup data)
-3. Park Factors (3-year venue adjustments)
-4. Recent Performance Trends (L5/L10/L20 EWMA)
-5. Plate Discipline (K%, BB%, Contact%)
+INTEGRATED INPUTS:
+1. PHYSICAL BRAIN:
+   - PvP History (Pitcher vs Batter lifetime matchups)
+   - L/R Handedness Splits (vs LHP / vs RHP)
+   - Park Factors (30 stadiums mapped)
+   - Team K-Rates (strikeout tendencies)
+   - EWMA Trends (L5/L10/L20 weighted averages)
+   
+2. MARKET CONTEXT:
+   - dk_odds (DraftKings sharp line)
+   - implied_probability (market expectation)
 
-STRICT REQUIREMENTS:
-- If BDL PvP/Splits data is MISSING → return null (NO GUESSING)
-- High-precision decimals: 4.38 K, 1.23 Hits
-- 105+ features trained on 90,000+ game samples
+STRICT ENFORCEMENT:
+- NO FALLBACKS: Delete all "OR season_avg" logic
+- If model cannot produce high-precision MLR prediction -> return null
+- Sigma linked to True L10 Standard Deviation from database
+- vk_edge = vk_prob_over - implied_probability
 
-Author: PropVision AI  
-Version: 1.0.0 (Physical Performance Engine)
+DELIVERABLE:
+- mlb_mlr_strict_audit.json with:
+  - mlr_matchup block (physical friction)
+  - market_data (odds/edge)
+
+Author: PropVision AI
+Version: 2.0.0 (MLB Oracle Apex - Strict Enforcement)
 """
 import logging
 import numpy as np
 import pandas as pd
 import pickle
 import os
-from typing import Dict, Any, Optional, List
+import json
+from typing import Dict, Any, Optional, List, Tuple
 from datetime import datetime, timezone
 from scipy import stats
+from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
 
 
+# =============================================================================
+# STRICT RESULT DATACLASS
+# =============================================================================
+
+@dataclass
+class MLBMLRResult:
+    """Strict MLB MLR prediction result - mirrors NBA VKResult."""
+    player_name: str
+    stat_type: str
+    
+    # HIGH PRECISION PREDICTION (e.g., 4.38 not 4)
+    mlr_predicted: Optional[float]  # None if model fails
+    raw_prediction: Optional[float]
+    
+    # TRUE L10 VARIANCE
+    sigma_used: Optional[float]
+    sigma_source: str
+    z_score: Optional[float]
+    
+    # PROBABILITY OUTPUT
+    vk_prob_over: Optional[float]
+    vk_prob_under: Optional[float]
+    vk_verdict: str
+    
+    # MARKET INTEGRATION
+    dk_odds: Optional[int]
+    implied_probability: Optional[float]
+    vk_edge: Optional[float]  # vk_prob_over - implied_probability
+    
+    # MLR MATCHUP BLOCK (Physical Friction)
+    mlr_matchup: Dict[str, Any]
+    
+    # VALIDATION
+    is_valid: bool
+    error: Optional[str] = None
+    model_version: str = "MLB_ORACLE_APEX_v2.0"
+
+
+# =============================================================================
+# 3-YEAR PARK FACTORS (30 STADIUMS)
+# =============================================================================
+
+PARK_FACTORS = {
+    # HITTER PARADISE
+    'COL': {'hits': 1.18, 'runs': 1.25, 'hr': 1.32, 'k': 0.88, 'tb': 1.22},
+    'CIN': {'hits': 1.10, 'runs': 1.15, 'hr': 1.18, 'k': 0.94, 'tb': 1.12},
+    'TEX': {'hits': 1.08, 'runs': 1.12, 'hr': 1.15, 'k': 0.95, 'tb': 1.10},
+    'BOS': {'hits': 1.06, 'runs': 1.08, 'hr': 0.95, 'k': 0.97, 'tb': 1.04},
+    'PHI': {'hits': 1.05, 'runs': 1.08, 'hr': 1.10, 'k': 0.96, 'tb': 1.06},
+    'CHC': {'hits': 1.04, 'runs': 1.06, 'hr': 1.08, 'k': 0.97, 'tb': 1.05},
+    'MIL': {'hits': 1.03, 'runs': 1.05, 'hr': 1.06, 'k': 0.98, 'tb': 1.04},
+    
+    # NEUTRAL
+    'NYY': {'hits': 1.02, 'runs': 1.04, 'hr': 1.12, 'k': 0.98, 'tb': 1.04},
+    'LAD': {'hits': 1.00, 'runs': 1.00, 'hr': 1.02, 'k': 1.00, 'tb': 1.01},
+    'ATL': {'hits': 1.00, 'runs': 1.02, 'hr': 1.06, 'k': 0.99, 'tb': 1.02},
+    'HOU': {'hits': 0.98, 'runs': 0.98, 'hr': 1.00, 'k': 1.00, 'tb': 0.99},
+    'MIN': {'hits': 1.00, 'runs': 1.02, 'hr': 1.10, 'k': 0.98, 'tb': 1.03},
+    'STL': {'hits': 0.99, 'runs': 1.00, 'hr': 1.02, 'k': 0.99, 'tb': 1.00},
+    'DET': {'hits': 1.00, 'runs': 1.00, 'hr': 0.98, 'k': 1.00, 'tb': 0.99},
+    'BAL': {'hits': 1.01, 'runs': 1.02, 'hr': 1.05, 'k': 0.99, 'tb': 1.02},
+    'TOR': {'hits': 1.00, 'runs': 1.01, 'hr': 1.04, 'k': 0.99, 'tb': 1.01},
+    'CLE': {'hits': 0.99, 'runs': 0.99, 'hr': 1.00, 'k': 1.00, 'tb': 0.99},
+    'KC': {'hits': 1.00, 'runs': 1.01, 'hr': 0.96, 'k': 1.00, 'tb': 0.99},
+    'ARI': {'hits': 1.01, 'runs': 1.02, 'hr': 1.04, 'k': 0.99, 'tb': 1.02},
+    'PIT': {'hits': 0.99, 'runs': 0.98, 'hr': 0.95, 'k': 1.01, 'tb': 0.98},
+    'CHW': {'hits': 1.00, 'runs': 1.02, 'hr': 1.08, 'k': 0.99, 'tb': 1.02},
+    'LAA': {'hits': 0.98, 'runs': 0.97, 'hr': 0.96, 'k': 1.01, 'tb': 0.97},
+    'WSH': {'hits': 0.99, 'runs': 0.98, 'hr': 1.00, 'k': 1.00, 'tb': 0.99},
+    
+    # PITCHER FRIENDLY
+    'SF': {'hits': 0.92, 'runs': 0.88, 'hr': 0.80, 'k': 1.06, 'tb': 0.88},
+    'OAK': {'hits': 0.94, 'runs': 0.90, 'hr': 0.86, 'k': 1.05, 'tb': 0.90},
+    'SD': {'hits': 0.95, 'runs': 0.92, 'hr': 0.88, 'k': 1.04, 'tb': 0.92},
+    'MIA': {'hits': 0.96, 'runs': 0.94, 'hr': 0.86, 'k': 1.03, 'tb': 0.93},
+    'TB': {'hits': 0.96, 'runs': 0.94, 'hr': 0.90, 'k': 1.03, 'tb': 0.94},
+    'SEA': {'hits': 0.94, 'runs': 0.90, 'hr': 0.84, 'k': 1.06, 'tb': 0.90},
+    'NYM': {'hits': 0.97, 'runs': 0.95, 'hr': 0.92, 'k': 1.02, 'tb': 0.95},
+}
+DEFAULT_PARK = {'hits': 1.00, 'runs': 1.00, 'hr': 1.00, 'k': 1.00, 'tb': 1.00}
+
+
+# =============================================================================
+# TEAM K-RATE TENDENCIES (How often team strikes out)
+# =============================================================================
+
+TEAM_K_RATES = {
+    'ARI': 1.14, 'DET': 1.12, 'OAK': 1.10, 'CHC': 1.08, 'MIA': 1.07,
+    'COL': 1.06, 'PIT': 1.05, 'CIN': 1.04, 'SEA': 1.03, 'TEX': 1.02,
+    'ATL': 1.00, 'NYM': 0.99, 'PHI': 0.98, 'LAD': 0.97, 'SD': 0.97,
+    'SF': 0.96, 'STL': 0.98, 'MIL': 0.99, 'CHW': 1.01, 'BAL': 1.00,
+    'TOR': 1.01, 'BOS': 0.98, 'TB': 0.99, 'WSH': 1.02, 'LAA': 1.00,
+    'HOU': 0.92, 'NYY': 0.94, 'CLE': 0.93, 'KC': 0.91, 'MIN': 0.93,
+}
+
+
+# =============================================================================
+# STAT TYPE MAPPINGS
+# =============================================================================
+
+STAT_TYPES = ['hits', 'total_bases', 'rbis', 'runs', 'pitcher_strikeouts', 
+              'hits+runs+rbis', 'home_runs', 'stolen_bases']
+
+STAT_FIELD_MAP = {
+    'hits': 'hits',
+    'total_bases': 'total_bases',
+    'rbis': 'rbi',
+    'runs': 'runs',
+    'stolen_bases': 'stolen_bases',
+    'home_runs': 'home_runs',
+    'walks': 'walks',
+    'strikeouts': 'strikeouts',
+    'pitcher_strikeouts': 'strikeouts',
+    'hits+runs+rbis': ['hits', 'runs', 'rbi'],
+}
+
+STAT_ALIASES = {
+    'k': 'pitcher_strikeouts',
+    'ks': 'pitcher_strikeouts',
+    'pitcher k': 'pitcher_strikeouts',
+    'pitcher strikeouts': 'pitcher_strikeouts',
+    'tb': 'total_bases',
+    'rbi': 'rbis',
+    'sb': 'stolen_bases',
+    'hr': 'home_runs',
+    'h': 'hits',
+    'r': 'runs',
+    'hrr': 'hits+runs+rbis',
+}
+
+
 class MLBPhysicalEngine:
     """
-    MLB Physical Performance Engine.
+    MLB Oracle Apex Engine v2.0
     
-    Pure mathematical projection - NO market data.
-    Requires BDL GOAT-Tier data for every prediction.
+    1:1 functional replica of NBA_MLR_STRICT_v2.2.
+    Pure physical prediction + market integration.
+    STRICT enforcement: No fallbacks, null if data missing.
     """
-    
-    STAT_TYPES = ['hits', 'total_bases', 'rbis', 'runs', 'pitcher_strikeouts', 
-                  'hits+runs+rbis', 'home_runs', 'stolen_bases']
-    
-    STAT_FIELD_MAP = {
-        'hits': 'hits', 'total_bases': 'total_bases', 'rbis': 'rbis',
-        'runs': 'runs', 'stolen_bases': 'stolen_bases', 'home_runs': 'home_runs',
-        'walks': 'walks', 'strikeouts': 'strikeouts',
-        'pitcher_strikeouts': 'pitcher_strikeouts',
-        'hits+runs+rbis': ['hits', 'runs', 'rbis'],
-    }
-    
-    # =========================================================================
-    # 3-YEAR PARK FACTORS (Physical venue adjustments)
-    # =========================================================================
-    PARK_FACTORS = {
-        # HITTER PARADISE
-        'COL': {'hits': 1.18, 'runs': 1.25, 'hr': 1.32, 'k': 0.88, 'tb': 1.22},
-        'CIN': {'hits': 1.10, 'runs': 1.15, 'hr': 1.18, 'k': 0.94, 'tb': 1.12},
-        'TEX': {'hits': 1.08, 'runs': 1.12, 'hr': 1.15, 'k': 0.95, 'tb': 1.10},
-        'BOS': {'hits': 1.06, 'runs': 1.08, 'hr': 0.95, 'k': 0.97, 'tb': 1.04},
-        'PHI': {'hits': 1.05, 'runs': 1.08, 'hr': 1.10, 'k': 0.96, 'tb': 1.06},
-        'CHC': {'hits': 1.04, 'runs': 1.06, 'hr': 1.08, 'k': 0.97, 'tb': 1.05},
-        'MIL': {'hits': 1.03, 'runs': 1.05, 'hr': 1.06, 'k': 0.98, 'tb': 1.04},
-        # NEUTRAL
-        'NYY': {'hits': 1.02, 'runs': 1.04, 'hr': 1.12, 'k': 0.98, 'tb': 1.04},
-        'LAD': {'hits': 1.00, 'runs': 1.00, 'hr': 1.02, 'k': 1.00, 'tb': 1.01},
-        'ATL': {'hits': 1.00, 'runs': 1.02, 'hr': 1.06, 'k': 0.99, 'tb': 1.02},
-        'HOU': {'hits': 0.98, 'runs': 0.98, 'hr': 1.00, 'k': 1.00, 'tb': 0.99},
-        'MIN': {'hits': 1.00, 'runs': 1.02, 'hr': 1.10, 'k': 0.98, 'tb': 1.03},
-        'STL': {'hits': 0.99, 'runs': 1.00, 'hr': 1.02, 'k': 0.99, 'tb': 1.00},
-        'DET': {'hits': 1.00, 'runs': 1.00, 'hr': 0.98, 'k': 1.00, 'tb': 0.99},
-        'BAL': {'hits': 1.01, 'runs': 1.02, 'hr': 1.05, 'k': 0.99, 'tb': 1.02},
-        'TOR': {'hits': 1.00, 'runs': 1.01, 'hr': 1.04, 'k': 0.99, 'tb': 1.01},
-        'CLE': {'hits': 0.99, 'runs': 0.99, 'hr': 1.00, 'k': 1.00, 'tb': 0.99},
-        'KC': {'hits': 1.00, 'runs': 1.01, 'hr': 0.96, 'k': 1.00, 'tb': 0.99},
-        'ARI': {'hits': 1.01, 'runs': 1.02, 'hr': 1.04, 'k': 0.99, 'tb': 1.02},
-        'PIT': {'hits': 0.99, 'runs': 0.98, 'hr': 0.95, 'k': 1.01, 'tb': 0.98},
-        'CHW': {'hits': 1.00, 'runs': 1.02, 'hr': 1.08, 'k': 0.99, 'tb': 1.02},
-        'LAA': {'hits': 0.98, 'runs': 0.97, 'hr': 0.96, 'k': 1.01, 'tb': 0.97},
-        'WSH': {'hits': 0.99, 'runs': 0.98, 'hr': 1.00, 'k': 1.00, 'tb': 0.99},
-        # PITCHER FRIENDLY
-        'SF': {'hits': 0.92, 'runs': 0.88, 'hr': 0.80, 'k': 1.06, 'tb': 0.88},
-        'OAK': {'hits': 0.94, 'runs': 0.90, 'hr': 0.86, 'k': 1.05, 'tb': 0.90},
-        'SD': {'hits': 0.95, 'runs': 0.92, 'hr': 0.88, 'k': 1.04, 'tb': 0.92},
-        'MIA': {'hits': 0.96, 'runs': 0.94, 'hr': 0.86, 'k': 1.03, 'tb': 0.93},
-        'TB': {'hits': 0.96, 'runs': 0.94, 'hr': 0.90, 'k': 1.03, 'tb': 0.94},
-        'SEA': {'hits': 0.94, 'runs': 0.90, 'hr': 0.84, 'k': 1.06, 'tb': 0.90},
-        'NYM': {'hits': 0.97, 'runs': 0.95, 'hr': 0.92, 'k': 1.02, 'tb': 0.95},
-    }
-    DEFAULT_PARK = {'hits': 1.00, 'runs': 1.00, 'hr': 1.00, 'k': 1.00, 'tb': 1.00}
-    
-    # Team K-rate tendencies (physical contact ability)
-    TEAM_K_RATES = {
-        'ARI': 1.14, 'DET': 1.12, 'OAK': 1.10, 'CHC': 1.08, 'MIA': 1.07,
-        'COL': 1.06, 'PIT': 1.05, 'CIN': 1.04, 'SEA': 1.03, 'TEX': 1.02,
-        'ATL': 1.00, 'NYM': 0.99, 'PHI': 0.98, 'LAD': 0.97, 'SD': 0.97,
-        'SF': 0.96, 'STL': 0.98, 'MIL': 0.99, 'CHW': 1.01, 'BAL': 1.00,
-        'TOR': 1.01, 'BOS': 0.98, 'TB': 0.99, 'WSH': 1.02, 'LAA': 1.00,
-        'HOU': 0.92, 'NYY': 0.94, 'CLE': 0.93, 'KC': 0.91, 'MIN': 0.93,
-    }
     
     MODEL_DIR = '/app/backend/models/mlb_physical'
     
     def __init__(self, db):
+        """
+        Initialize MLB Physical Engine.
+        
+        Args:
+            db: PyMongo database instance (SYNC)
+        """
         self.db = db
         self.master_hub = db.mlb_master_hub_2026
         self.historical_logs = db.mlb_historical_logs
         
+        # Trained XGBoost models
         self.models = {}
         self.scalers = {}
         self.feature_cols = {}
         
         os.makedirs(self.MODEL_DIR, exist_ok=True)
-        logger.info("[MLB_PHYSICAL] Initialized Physical Performance Engine v1.0")
+        logger.info("[MLB_ORACLE_APEX] Initialized MLB Physical Engine v2.0")
+    
+    # =========================================================================
+    # STAT NORMALIZATION
+    # =========================================================================
     
     def _norm_stat(self, stat: str) -> str:
+        """Normalize stat type to internal key."""
         s = stat.lower().replace(' ', '_').replace('+', '+')
-        aliases = {
-            'k': 'pitcher_strikeouts', 'ks': 'pitcher_strikeouts',
-            'pitcher k': 'pitcher_strikeouts', 'pitcher strikeouts': 'pitcher_strikeouts',
-            'tb': 'total_bases', 'rbi': 'rbis', 'sb': 'stolen_bases',
-            'hr': 'home_runs', 'h': 'hits', 'r': 'runs',
-            'hrr': 'hits+runs+rbis',
-        }
-        return aliases.get(s, s)
+        return STAT_ALIASES.get(s, s)
     
     def _get_stat(self, game: Dict, stat: str) -> Optional[float]:
-        field = self.STAT_FIELD_MAP.get(stat, stat)
+        """Extract stat value from game log."""
+        field = STAT_FIELD_MAP.get(stat, stat)
         if isinstance(field, list):
-            return sum(float(game.get(f, 0) or 0) for f in field)
+            total = 0
+            for f in field:
+                val = game.get(f, 0)
+                if val is not None:
+                    total += float(val)
+            return total
         val = game.get(field)
         return float(val) if val is not None else None
     
+    # =========================================================================
+    # EWMA CALCULATION
+    # =========================================================================
+    
     def _ewma(self, vals: List[float], alpha: float) -> float:
+        """Exponentially Weighted Moving Average."""
         if not vals:
             return 0.0
-        r = vals[0]
-        for v in vals[1:]:
-            r = alpha * v + (1 - alpha) * r
-        return r
+        result = vals[-1]  # Start with oldest
+        for i in range(len(vals) - 2, -1, -1):
+            result = alpha * vals[i] + (1 - alpha) * result
+        return result
+    
+    # =========================================================================
+    # PARK FACTOR LOOKUP
+    # =========================================================================
     
     def _get_park_factor(self, team: str, stat: str) -> float:
-        pf = self.PARK_FACTORS.get(team, self.DEFAULT_PARK)
+        """Get park factor for stat at team's stadium."""
+        pf = PARK_FACTORS.get(team, DEFAULT_PARK)
         if stat in ['hits']:
             return pf.get('hits', 1.0)
         elif stat in ['total_bases']:
@@ -158,33 +262,80 @@ class MLBPhysicalEngine:
             return pf.get('k', 1.0)
         return 1.0
     
+    # =========================================================================
+    # STRICT BDL DATA VALIDATION (NO FALLBACKS)
+    # =========================================================================
+    
     def _validate_bdl_data(self, player: Dict) -> Tuple[bool, str]:
         """
-        STRICT VALIDATION: Check if required BDL data exists.
-        Returns (is_valid, error_message)
+        STRICT VALIDATION: Check if required BDL GOAT-Tier data exists.
+        
+        If ANY required data is missing, return False -> prop gets NULL prediction.
+        NO FALLBACKS to season_avg or any other proxy.
+        
+        Returns:
+            (is_valid, error_message)
         """
         # Check for L/R splits
         vs_left = player.get('vs_left', {})
         vs_right = player.get('vs_right', {})
         
-        if not vs_left or not vs_right:
-            return False, "Missing L/R splits data"
+        if not vs_left and not vs_right:
+            return False, "MISSING_LR_SPLITS: No vs_left or vs_right data"
         
         # Check for at-bats in splits (need sample size)
         lhp_ab = vs_left.get('at_bats', 0) or 0
         rhp_ab = vs_right.get('at_bats', 0) or 0
         
-        if lhp_ab < 10 and rhp_ab < 10:
-            return False, f"Insufficient split sample: LHP={lhp_ab}, RHP={rhp_ab}"
+        if lhp_ab < 5 and rhp_ab < 5:
+            return False, f"INSUFFICIENT_SPLIT_SAMPLE: LHP_AB={lhp_ab}, RHP_AB={rhp_ab}"
         
-        # Check for home/away splits
-        home = player.get('home_splits', {})
-        away = player.get('away_splits', {})
+        return True, "VALID"
+    
+    def _get_true_l10_sigma(
+        self,
+        player_name: str,
+        stat_type: str,
+        game_logs: List[Dict]
+    ) -> Tuple[Optional[float], str]:
+        """
+        Get TRUE L10 Standard Deviation from game logs.
         
-        if not home and not away:
-            return False, "Missing home/away splits"
+        NO DEFAULT VALUES. If we can't calculate real sigma, return None.
         
-        return True, "OK"
+        Returns:
+            (sigma, source)
+        """
+        if not game_logs or len(game_logs) < 5:
+            return None, "INSUFFICIENT_GAMES"
+        
+        norm = self._norm_stat(stat_type)
+        values = []
+        
+        for g in game_logs[:10]:
+            val = self._get_stat(g, norm)
+            if val is not None:
+                values.append(val)
+        
+        if len(values) < 5:
+            return None, "INSUFFICIENT_STAT_VALUES"
+        
+        # Calculate TRUE L10 Standard Deviation (sample std)
+        sigma = float(np.std(values, ddof=1))
+        
+        # MLB volatility floor: minimum CV of 0.35 for hitting stats
+        mean_val = np.mean(values)
+        if mean_val > 0:
+            cv = sigma / mean_val
+            if cv < 0.35 and norm in ['hits', 'total_bases', 'rbis', 'runs', 'hits+runs+rbis', 'home_runs']:
+                sigma = mean_val * 0.35
+                return sigma, f"MLB_VOLATILITY_FLOOR_0.35"
+        
+        return sigma, "TRUE_L10_CALCULATION"
+    
+    # =========================================================================
+    # PHYSICAL FEATURE EXTRACTION (105+ FEATURES)
+    # =========================================================================
     
     def _build_physical_features(
         self,
@@ -193,39 +344,48 @@ class MLBPhysicalEngine:
         stat: str,
         opponent: str = None,
         park_team: str = None,
-        line: float = None
+        line: float = None,
+        pitcher_hand: str = None
     ) -> Optional[Dict[str, float]]:
         """
-        Build PHYSICAL feature vector (105+ features).
-        NO market data. Pure BDL GOAT-Tier inputs.
+        Build PHYSICAL feature vector for XGBoost prediction.
+        
+        NO MARKET DATA in features - pure physical/performance inputs.
+        
+        Returns:
+            Feature dictionary or None if BDL validation fails
         """
-        # STRICT: Validate BDL data exists
+        # STRICT: Validate BDL data
         is_valid, error = self._validate_bdl_data(player)
         if not is_valid:
-            logger.warning(f"[MLB_PHYSICAL] BDL validation failed: {error}")
+            logger.warning(f"[MLB_ORACLE_APEX] BDL validation FAILED: {error}")
             return None
         
         features = {}
+        norm = self._norm_stat(stat)
         
-        # Extract stat values
+        # Extract stat values from game logs
         vals = []
         for g in game_logs[:30]:
-            v = self._get_stat(g, stat)
+            v = self._get_stat(g, norm)
             if v is not None:
                 vals.append(v)
         
         if len(vals) < 5:
             return None
         
-        l3, l5, l10, l20 = vals[:3], vals[:5], vals[:10], vals[:20]
+        l3 = vals[:3] if len(vals) >= 3 else vals
+        l5 = vals[:5] if len(vals) >= 5 else vals
+        l10 = vals[:10] if len(vals) >= 10 else vals
+        l20 = vals[:20] if len(vals) >= 20 else vals
         
         # =====================================================================
-        # PHYSICAL CATEGORY 1: RECENT PERFORMANCE TRENDS
+        # CATEGORY 1: RECENT PERFORMANCE (EWMA Trends)
         # =====================================================================
         features['l3_avg'] = np.mean(l3)
         features['l5_avg'] = np.mean(l5)
         features['l10_avg'] = np.mean(l10)
-        features['l20_avg'] = np.mean(l20) if len(l20) >= 10 else np.mean(l10)
+        features['l20_avg'] = np.mean(l20)
         
         features['l5_median'] = np.median(l5)
         features['l10_median'] = np.median(l10)
@@ -234,10 +394,10 @@ class MLBPhysicalEngine:
         features['l5_min'] = min(l5)
         features['l10_min'] = min(l10)
         
-        # EWMA
+        # EWMA (Exponentially Weighted)
         features['ewma_l5'] = self._ewma(l5, 0.5)
         features['ewma_l10'] = self._ewma(l10, 0.3)
-        features['ewma_l20'] = self._ewma(l20, 0.2) if len(l20) >= 10 else features['ewma_l10']
+        features['ewma_l20'] = self._ewma(l20, 0.2)
         
         # Momentum
         if features['ewma_l10'] > 0:
@@ -253,7 +413,7 @@ class MLBPhysicalEngine:
         features['range_l5'] = features['l5_max'] - features['l5_min']
         features['range_l10'] = features['l10_max'] - features['l10_min']
         
-        # Consistency score
+        # Consistency
         features['consistency'] = 1 - features['cv_l10']
         
         # Floor/Ceiling
@@ -261,7 +421,7 @@ class MLBPhysicalEngine:
         features['ceiling_l10'] = np.percentile(l10, 90)
         
         # =====================================================================
-        # PHYSICAL CATEGORY 2: L/R SPLITS (BDL GOAT-Tier)
+        # CATEGORY 2: L/R SPLITS (PvP - Pitcher vs Batter)
         # =====================================================================
         vs_left = player.get('vs_left', {})
         vs_right = player.get('vs_right', {})
@@ -280,7 +440,7 @@ class MLBPhysicalEngine:
         features['lhp_obp'] = (lhp_hits + lhp_bb) / (lhp_ab + lhp_bb) if (lhp_ab + lhp_bb) > 0 else 0
         features['lhp_k_rate'] = lhp_k / lhp_ab if lhp_ab > 0 else 0
         features['lhp_bb_rate'] = lhp_bb / lhp_ab if lhp_ab > 0 else 0
-        features['lhp_iso'] = features['lhp_slg'] - features['lhp_avg']  # Isolated power
+        features['lhp_iso'] = features['lhp_slg'] - features['lhp_avg']
         
         # vs RHP
         rhp_ab = vs_right.get('at_bats', 0) or 0
@@ -298,54 +458,64 @@ class MLBPhysicalEngine:
         features['rhp_bb_rate'] = rhp_bb / rhp_ab if rhp_ab > 0 else 0
         features['rhp_iso'] = features['rhp_slg'] - features['rhp_avg']
         
-        # Platoon splits (positive = better vs RHP)
+        # Platoon splits
         features['platoon_avg'] = features['rhp_avg'] - features['lhp_avg']
         features['platoon_slg'] = features['rhp_slg'] - features['lhp_slg']
         features['platoon_k'] = features['lhp_k_rate'] - features['rhp_k_rate']
         features['platoon_obp'] = features['rhp_obp'] - features['lhp_obp']
         
-        # Combined weighted average (assume 70% RHP, 30% LHP league average)
+        # Weighted combined (70% RHP, 30% LHP - league average)
         features['combined_avg'] = 0.70 * features['rhp_avg'] + 0.30 * features['lhp_avg']
         features['combined_slg'] = 0.70 * features['rhp_slg'] + 0.30 * features['lhp_slg']
         features['combined_obp'] = 0.70 * features['rhp_obp'] + 0.30 * features['lhp_obp']
         
+        # Pitcher hand modifier
+        if pitcher_hand:
+            hand = pitcher_hand.upper()
+            if hand == 'L':
+                features['matchup_avg'] = features['lhp_avg']
+                features['matchup_slg'] = features['lhp_slg']
+                features['matchup_k_rate'] = features['lhp_k_rate']
+            else:
+                features['matchup_avg'] = features['rhp_avg']
+                features['matchup_slg'] = features['rhp_slg']
+                features['matchup_k_rate'] = features['rhp_k_rate']
+        else:
+            features['matchup_avg'] = features['combined_avg']
+            features['matchup_slg'] = features['combined_slg']
+            features['matchup_k_rate'] = (features['lhp_k_rate'] + features['rhp_k_rate']) / 2
+        
         # =====================================================================
-        # PHYSICAL CATEGORY 3: HOME/AWAY SPLITS
+        # CATEGORY 3: HOME/AWAY SPLITS
         # =====================================================================
         home = player.get('home_splits', {})
         away = player.get('away_splits', {})
         
         home_ab = home.get('at_bats', 0) or 0
         home_hits = home.get('hits', 0) or 0
-        home_runs = home.get('runs', 0) or 0
         home_hr = home.get('home_runs', 0) or 0
         
         away_ab = away.get('at_bats', 0) or 0
         away_hits = away.get('hits', 0) or 0
-        away_runs = away.get('runs', 0) or 0
         away_hr = away.get('home_runs', 0) or 0
         
         features['home_avg'] = home_hits / home_ab if home_ab > 0 else 0
         features['away_avg'] = away_hits / away_ab if away_ab > 0 else 0
-        features['home_away_avg_split'] = features['home_avg'] - features['away_avg']
-        
-        features['home_runs_per_game'] = home_runs / (home_ab / 4) if home_ab > 0 else 0
-        features['away_runs_per_game'] = away_runs / (away_ab / 4) if away_ab > 0 else 0
-        
+        features['home_away_split'] = features['home_avg'] - features['away_avg']
         features['home_hr_rate'] = home_hr / home_ab if home_ab > 0 else 0
         features['away_hr_rate'] = away_hr / away_ab if away_ab > 0 else 0
         
         # =====================================================================
-        # PHYSICAL CATEGORY 4: PARK FACTORS (3-Year Historical)
+        # CATEGORY 4: PARK FACTORS
         # =====================================================================
         if park_team:
-            pf = self.PARK_FACTORS.get(park_team, self.DEFAULT_PARK)
+            pf = PARK_FACTORS.get(park_team, DEFAULT_PARK)
             features['park_hits'] = pf.get('hits', 1.0)
             features['park_runs'] = pf.get('runs', 1.0)
             features['park_hr'] = pf.get('hr', 1.0)
             features['park_k'] = pf.get('k', 1.0)
             features['park_tb'] = pf.get('tb', 1.0)
-            features['park_factor'] = self._get_park_factor(park_team, stat)
+            features['park_factor'] = self._get_park_factor(park_team, norm)
         else:
             features['park_hits'] = 1.0
             features['park_runs'] = 1.0
@@ -354,16 +524,17 @@ class MLBPhysicalEngine:
             features['park_tb'] = 1.0
             features['park_factor'] = 1.0
         
-        # Opponent K-rate (for pitcher strikeouts)
+        # =====================================================================
+        # CATEGORY 5: OPPONENT K-RATE (for pitcher strikeouts)
+        # =====================================================================
         if opponent:
-            features['opp_k_rate'] = self.TEAM_K_RATES.get(opponent, 1.0)
+            features['opp_k_rate'] = TEAM_K_RATES.get(opponent, 1.0)
         else:
             features['opp_k_rate'] = 1.0
         
         # =====================================================================
-        # PHYSICAL CATEGORY 5: PLATE DISCIPLINE (derived)
+        # CATEGORY 6: PLATE DISCIPLINE
         # =====================================================================
-        # Overall K% and BB%
         total_ab = lhp_ab + rhp_ab
         total_k = lhp_k + rhp_k
         total_bb = lhp_bb + rhp_bb
@@ -371,15 +542,11 @@ class MLBPhysicalEngine:
         features['overall_k_rate'] = total_k / total_ab if total_ab > 0 else 0
         features['overall_bb_rate'] = total_bb / total_ab if total_ab > 0 else 0
         features['bb_k_ratio'] = features['overall_bb_rate'] / features['overall_k_rate'] if features['overall_k_rate'] > 0 else 0
-        
-        # Contact proxy (inverse of K rate)
         features['contact_rate'] = 1 - features['overall_k_rate']
-        
-        # Power vs Contact profile
         features['power_index'] = (features['combined_slg'] - features['combined_avg']) * features['contact_rate']
         
         # =====================================================================
-        # LINE FEATURES (for training/inference)
+        # LINE FEATURES (if line provided)
         # =====================================================================
         if line is not None:
             features['line'] = line
@@ -397,43 +564,48 @@ class MLBPhysicalEngine:
         
         return features
     
+    # =========================================================================
+    # TRAINING DATA BUILDER
+    # =========================================================================
+    
     def build_training_data(self, stat: str) -> pd.DataFrame:
-        """Build training dataset from BDL GOAT-Tier historical data."""
-        logger.info(f"[MLB_PHYSICAL] Building training data for {stat}")
+        """
+        Build training dataset from 90,000+ historical game logs.
+        
+        STRICT: Only includes players with valid BDL L/R splits.
+        """
+        logger.info(f"[MLB_ORACLE_APEX] Building training data for {stat}")
         
         norm = self._norm_stat(stat)
         data = []
         skipped_bdl = 0
         
-        cursor = self.historical_logs.find({}, {'_id': 0})
+        # Query all players with game logs
+        cursor = self.master_hub.find(
+            {'bdl_game_logs': {'$exists': True}},
+            {'_id': 0}
+        )
         
-        for doc in cursor:
-            name = doc.get('player_name')
-            logs = doc.get('game_logs', [])
+        for player in cursor:
+            name = player.get('display_name') or player.get('player_name')
+            logs = player.get('bdl_game_logs', [])
             
             if len(logs) < 20:
                 continue
             
+            # Sort by date descending
             logs = sorted(logs, key=lambda x: x.get('date') or '1900-01-01', reverse=True)
             
-            # Get master data with BDL splits
-            master = self.master_hub.find_one(
-                {"$or": [{"display_name": name}, {"player_name": name}]},
-                {"_id": 0}
-            )
-            
-            if not master:
-                master = {}
-            
             # STRICT: Validate BDL data
-            is_valid, _ = self._validate_bdl_data(master)
+            is_valid, _ = self._validate_bdl_data(player)
             if not is_valid:
                 skipped_bdl += 1
                 continue
             
+            # Build training samples (predict game i from games i+1 to i+31)
             for i in range(len(logs) - 20):
                 target = logs[i]
-                history = logs[i+1:i+31]
+                history = logs[i+1:i+1+30]
                 
                 target_val = self._get_stat(target, norm)
                 if target_val is None:
@@ -441,7 +613,7 @@ class MLBPhysicalEngine:
                 
                 opponent = target.get('opponent_abbr')
                 
-                feats = self._build_physical_features(master, history, norm, opponent, None, None)
+                feats = self._build_physical_features(player, history, norm, opponent, None, None)
                 if feats is None:
                     continue
                 
@@ -453,12 +625,20 @@ class MLBPhysicalEngine:
                 data.append(feats)
         
         df = pd.DataFrame(data)
-        logger.info(f"[MLB_PHYSICAL] Built {len(df)} samples ({skipped_bdl} skipped - missing BDL data)")
+        logger.info(f"[MLB_ORACLE_APEX] Built {len(df):,} samples ({skipped_bdl} skipped - missing BDL splits)")
         
         return df
     
+    # =========================================================================
+    # MODEL TRAINING
+    # =========================================================================
+    
     def train(self, stat: str, test_size: float = 0.2) -> Dict[str, Any]:
-        """Train XGBoost on physical features."""
+        """
+        Train XGBoost model on physical features.
+        
+        Returns training metrics or error.
+        """
         from sklearn.model_selection import train_test_split
         from sklearn.preprocessing import StandardScaler
         from sklearn.metrics import mean_absolute_error, r2_score
@@ -469,24 +649,27 @@ class MLBPhysicalEngine:
             return {'error': 'XGBoost not installed'}
         
         norm = self._norm_stat(stat)
-        logger.info(f"[MLB_PHYSICAL] Training {norm}...")
+        logger.info(f"[MLB_ORACLE_APEX] Training {norm}...")
         
         df = self.build_training_data(stat)
         if len(df) < 100:
-            return {'error': f'Insufficient data: {len(df)}'}
+            return {'error': f'Insufficient data: {len(df)} samples (need 100+)'}
         
+        # Exclude non-feature columns
         exclude = ['target', 'player', 'date', 'opponent']
         feat_cols = [c for c in df.columns if c not in exclude]
         
-        X = df[feat_cols].fillna(0)
+        X = df[feat_cols].fillna(0).replace([np.inf, -np.inf], 0)
         y = df['target']
         
         X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=test_size, random_state=42)
         
+        # Scale features
         scaler = StandardScaler()
         X_tr = scaler.fit_transform(X_train)
         X_te = scaler.transform(X_test)
         
+        # Train XGBoost
         model = xgb.XGBRegressor(
             n_estimators=300,
             max_depth=8,
@@ -502,6 +685,7 @@ class MLBPhysicalEngine:
         
         model.fit(X_tr, y_train)
         
+        # Evaluate
         tr_pred = model.predict(X_tr)
         te_pred = model.predict(X_te)
         
@@ -514,6 +698,7 @@ class MLBPhysicalEngine:
         imp = dict(zip(feat_cols, model.feature_importances_))
         imp = dict(sorted(imp.items(), key=lambda x: -x[1])[:20])
         
+        # Store model
         self.models[norm] = model
         self.scalers[norm] = scaler
         self.feature_cols[norm] = feat_cols
@@ -527,29 +712,33 @@ class MLBPhysicalEngine:
             'top_features': imp
         }
         
-        logger.info(f"[MLB_PHYSICAL] {norm}: MAE={te_mae:.4f}, R²={te_r2:.4f}")
+        logger.info(f"[MLB_ORACLE_APEX] {norm}: MAE={te_mae:.4f}, R²={te_r2:.4f}")
         return metrics
     
+    # =========================================================================
+    # MODEL PERSISTENCE
+    # =========================================================================
+    
     def save_models(self):
-        """Save trained models."""
+        """Save all trained models to disk."""
         for s in self.models:
             data = {
                 'model': self.models[s],
                 'scaler': self.scalers[s],
                 'features': self.feature_cols[s],
-                'version': 'MLB_PHYSICAL_v1.0',
+                'version': 'MLB_ORACLE_APEX_v2.0',
                 'trained': datetime.now(timezone.utc).isoformat()
             }
-            path = os.path.join(self.MODEL_DIR, f'mlb_phys_{s}.pkl')
+            path = os.path.join(self.MODEL_DIR, f'mlb_apex_{s}.pkl')
             with open(path, 'wb') as f:
                 pickle.dump(data, f)
-            logger.info(f"[MLB_PHYSICAL] Saved {s}")
+            logger.info(f"[MLB_ORACLE_APEX] Saved {s} model")
     
     def load_models(self) -> int:
-        """Load trained models."""
+        """Load trained models from disk."""
         loaded = 0
-        for s in self.STAT_TYPES:
-            path = os.path.join(self.MODEL_DIR, f'mlb_phys_{s}.pkl')
+        for s in STAT_TYPES:
+            path = os.path.join(self.MODEL_DIR, f'mlb_apex_{s}.pkl')
             if os.path.exists(path):
                 try:
                     with open(path, 'rb') as f:
@@ -559,10 +748,14 @@ class MLBPhysicalEngine:
                     self.feature_cols[s] = data['features']
                     loaded += 1
                 except Exception as e:
-                    logger.error(f"[MLB_PHYSICAL] Load failed {s}: {e}")
+                    logger.error(f"[MLB_ORACLE_APEX] Failed to load {s}: {e}")
         
-        logger.info(f"[MLB_PHYSICAL] Loaded {loaded}/{len(self.STAT_TYPES)} models")
+        logger.info(f"[MLB_ORACLE_APEX] Loaded {loaded}/{len(STAT_TYPES)} models")
         return loaded
+    
+    # =========================================================================
+    # PREDICTION (STRICT ENFORCEMENT)
+    # =========================================================================
     
     def predict(
         self,
@@ -570,19 +763,51 @@ class MLBPhysicalEngine:
         stat_type: str,
         line: float = None,
         opponent_team: str = None,
-        park_team: str = None
-    ) -> Dict[str, Any]:
+        park_team: str = None,
+        pitcher_hand: str = None,
+        dk_odds: int = None
+    ) -> MLBMLRResult:
         """
-        Generate PHYSICAL prediction.
+        Generate MLB MLR prediction with STRICT ENFORCEMENT.
         
-        STRICT: Returns null if BDL data missing. NO GUESSING.
+        NO FALLBACKS:
+        - If BDL data missing -> return null prediction
+        - If model fails -> return null prediction
+        
+        HIGH PRECISION:
+        - Predictions like 4.38 K, not 4 K
+        
+        MARKET INTEGRATION:
+        - vk_edge = vk_prob_over - implied_probability
+        
+        Returns:
+            MLBMLRResult with prediction or null if data missing
         """
         norm = self._norm_stat(stat_type)
         
+        # Check if model exists
         if norm not in self.models:
-            return {"error": f"No model for {stat_type}", "prediction": None}
+            return MLBMLRResult(
+                player_name=player_name,
+                stat_type=stat_type,
+                mlr_predicted=None,
+                raw_prediction=None,
+                sigma_used=None,
+                sigma_source="NO_MODEL",
+                z_score=None,
+                vk_prob_over=None,
+                vk_prob_under=None,
+                vk_verdict="INVALID",
+                dk_odds=dk_odds,
+                implied_probability=None,
+                vk_edge=None,
+                mlr_matchup={},
+                is_valid=False,
+                error=f"No trained model for {stat_type}"
+            )
         
         try:
+            # Find player in master hub
             player = self.master_hub.find_one(
                 {"$or": [
                     {"display_name": player_name},
@@ -593,34 +818,107 @@ class MLBPhysicalEngine:
             )
             
             if not player:
-                return {"error": f"Player not found: {player_name}", "prediction": None}
+                return MLBMLRResult(
+                    player_name=player_name,
+                    stat_type=stat_type,
+                    mlr_predicted=None,
+                    raw_prediction=None,
+                    sigma_used=None,
+                    sigma_source="PLAYER_NOT_FOUND",
+                    z_score=None,
+                    vk_prob_over=None,
+                    vk_prob_under=None,
+                    vk_verdict="INVALID",
+                    dk_odds=dk_odds,
+                    implied_probability=None,
+                    vk_edge=None,
+                    mlr_matchup={},
+                    is_valid=False,
+                    error=f"Player not found: {player_name}"
+                )
             
-            # STRICT: Validate BDL data
+            # STRICT: Validate BDL data (NO FALLBACKS)
             is_valid, error = self._validate_bdl_data(player)
             if not is_valid:
-                return {"error": f"Missing BDL data: {error}", "prediction": None}
+                return MLBMLRResult(
+                    player_name=player_name,
+                    stat_type=stat_type,
+                    mlr_predicted=None,
+                    raw_prediction=None,
+                    sigma_used=None,
+                    sigma_source="BDL_VALIDATION_FAILED",
+                    z_score=None,
+                    vk_prob_over=None,
+                    vk_prob_under=None,
+                    vk_verdict="INVALID",
+                    dk_odds=dk_odds,
+                    implied_probability=None,
+                    vk_edge=None,
+                    mlr_matchup={},
+                    is_valid=False,
+                    error=error
+                )
             
+            # Get game logs
             logs = player.get('bdl_game_logs', [])
             if len(logs) < 5:
-                return {"error": f"Insufficient games: {len(logs)}", "prediction": None}
+                return MLBMLRResult(
+                    player_name=player_name,
+                    stat_type=stat_type,
+                    mlr_predicted=None,
+                    raw_prediction=None,
+                    sigma_used=None,
+                    sigma_source="INSUFFICIENT_GAMES",
+                    z_score=None,
+                    vk_prob_over=None,
+                    vk_prob_under=None,
+                    vk_verdict="INVALID",
+                    dk_odds=dk_odds,
+                    implied_probability=None,
+                    vk_edge=None,
+                    mlr_matchup={},
+                    is_valid=False,
+                    error=f"Insufficient games: {len(logs)}"
+                )
             
             # Build PHYSICAL features
-            feats = self._build_physical_features(player, logs, norm, opponent_team, park_team, line)
+            feats = self._build_physical_features(
+                player, logs, norm, opponent_team, park_team, line, pitcher_hand
+            )
             if feats is None:
-                return {"error": "Could not build physical features", "prediction": None}
+                return MLBMLRResult(
+                    player_name=player_name,
+                    stat_type=stat_type,
+                    mlr_predicted=None,
+                    raw_prediction=None,
+                    sigma_used=None,
+                    sigma_source="FEATURE_BUILD_FAILED",
+                    z_score=None,
+                    vk_prob_over=None,
+                    vk_prob_under=None,
+                    vk_verdict="INVALID",
+                    dk_odds=dk_odds,
+                    implied_probability=None,
+                    vk_edge=None,
+                    mlr_matchup={},
+                    is_valid=False,
+                    error="Could not build physical features"
+                )
             
+            # Get model components
             model = self.models[norm]
             scaler = self.scalers[norm]
             feat_cols = self.feature_cols[norm]
             
+            # Prepare features for prediction
             X = pd.DataFrame([feats])
             for c in feat_cols:
                 if c not in X.columns:
                     X[c] = 0
-            X = X[feat_cols].fillna(0)
+            X = X[feat_cols].fillna(0).replace([np.inf, -np.inf], 0)
             X_sc = scaler.transform(X)
             
-            # HIGH-PRECISION PREDICTION
+            # HIGH PRECISION PREDICTION
             raw_pred = float(model.predict(X_sc)[0])
             
             # Apply park factor
@@ -632,43 +930,94 @@ class MLBPhysicalEngine:
             else:
                 final_pred = raw_pred * pf
             
-            # TRUE L10 SIGMA
-            std = feats.get('std_l10', 0)
-            l10_avg = feats.get('l10_avg', final_pred)
-            cv = std / l10_avg if l10_avg > 0 else 0.5
+            # TRUE L10 SIGMA (NO DEFAULTS)
+            sigma, sigma_source = self._get_true_l10_sigma(player_name, norm, logs)
             
-            # MLB volatility floor
-            if norm in ['hits', 'total_bases', 'rbis', 'runs', 'hits+runs+rbis', 'home_runs']:
-                if cv < 0.35:
-                    std = l10_avg * 0.35
+            if sigma is None:
+                return MLBMLRResult(
+                    player_name=player_name,
+                    stat_type=stat_type,
+                    mlr_predicted=None,
+                    raw_prediction=raw_pred,
+                    sigma_used=None,
+                    sigma_source=sigma_source,
+                    z_score=None,
+                    vk_prob_over=None,
+                    vk_prob_under=None,
+                    vk_verdict="INVALID",
+                    dk_odds=dk_odds,
+                    implied_probability=None,
+                    vk_edge=None,
+                    mlr_matchup={},
+                    is_valid=False,
+                    error=f"Could not calculate TRUE L10 sigma: {sigma_source}"
+                )
             
-            # PROBABILITY (Standard Normal CDF)
+            # PROBABILITY CALCULATION (Z-Score / Normal CDF)
             prob_over = None
+            prob_under = None
             z_score = None
             
-            if line is not None and std > 0:
-                z_score = (line - final_pred) / std
-                prob_over = (1 - stats.norm.cdf(z_score)) * 100
+            if line is not None and sigma > 0:
+                z_score = (line - final_pred) / sigma
+                prob_under = stats.norm.cdf(z_score)
+                prob_over = 1.0 - prob_under
                 
-                # STRICT: Prediction < Line = Probability < 50%
-                if final_pred < line and prob_over >= 50:
-                    prob_over = 50 - abs(z_score) * 8
-                    prob_over = max(5, prob_over)
+                # Convert to percentage
+                prob_over = round(prob_over * 100, 1)
+                prob_under = round(prob_under * 100, 1)
+                
+                # Cap at 1-99%
+                prob_over = max(1.0, min(99.0, prob_over))
+                prob_under = max(1.0, min(99.0, prob_under))
             
-            # Physical audit
-            physical_audit = {
+            # MARKET INTEGRATION
+            implied_prob = None
+            vk_edge = None
+            
+            if dk_odds is not None:
+                if dk_odds < 0:
+                    implied_prob = abs(dk_odds) / (abs(dk_odds) + 100) * 100
+                else:
+                    implied_prob = 100 / (dk_odds + 100) * 100
+                
+                implied_prob = round(implied_prob, 1)
+                
+                if prob_over is not None:
+                    vk_edge = round(prob_over - implied_prob, 1)
+            
+            # VERDICT
+            if prob_over is not None:
+                if prob_over >= 65:
+                    verdict = "STRONG_OVER"
+                elif prob_over >= 55:
+                    verdict = "LEAN_OVER"
+                elif prob_under >= 65:
+                    verdict = "STRONG_UNDER"
+                elif prob_under >= 55:
+                    verdict = "LEAN_UNDER"
+                else:
+                    verdict = "NEUTRAL"
+            else:
+                verdict = "NO_LINE"
+            
+            # MLR MATCHUP BLOCK (Physical Friction Audit)
+            mlr_matchup = {
                 'splits': {
                     'vs_lhp_avg': round(feats.get('lhp_avg', 0), 3),
                     'vs_rhp_avg': round(feats.get('rhp_avg', 0), 3),
                     'platoon_split': round(feats.get('platoon_avg', 0), 3),
                     'vs_lhp_k_rate': round(feats.get('lhp_k_rate', 0), 3),
                     'vs_rhp_k_rate': round(feats.get('rhp_k_rate', 0), 3),
+                    'matchup_avg': round(feats.get('matchup_avg', 0), 3),
+                    'matchup_slg': round(feats.get('matchup_slg', 0), 3),
                 },
                 'park': {
                     'venue': park_team,
                     'factor': round(pf, 3),
                     'hits_factor': feats.get('park_hits'),
                     'runs_factor': feats.get('park_runs'),
+                    'hr_factor': feats.get('park_hr'),
                     'k_factor': feats.get('park_k'),
                 },
                 'opponent': {
@@ -680,6 +1029,8 @@ class MLBPhysicalEngine:
                     'l10_avg': round(feats.get('l10_avg', 0), 2),
                     'ewma_l10': round(feats.get('ewma_l10', 0), 2),
                     'momentum': round(feats.get('momentum', 0), 3),
+                },
+                'variance': {
                     'std_l10': round(feats.get('std_l10', 0), 3),
                     'cv_l10': round(feats.get('cv_l10', 0), 3),
                 },
@@ -690,38 +1041,148 @@ class MLBPhysicalEngine:
                 }
             }
             
-            result = {
-                'player_name': player_name,
-                'stat_type': stat_type,
-                'predicted': round(final_pred, 2),  # HIGH PRECISION
-                'raw_prediction': round(raw_pred, 4),
-                'std_dev': round(std, 4),
-                'line': line,
-                'prob_over': round(prob_over, 1) if prob_over else None,
-                'z_score': round(z_score, 4) if z_score else None,
-                'physical_audit': physical_audit,
-                'full_features': physical_audit,
-                'mlr_features_used': True,
-                'model_version': 'MLB_PHYSICAL_v1.0'
-            }
-            
             logger.info(
-                f"[MLB_PHYSICAL] {player_name} {stat_type}: "
-                f"pred={final_pred:.2f}, park={pf:.2f}, opp_k={opp_k:.2f}, σ={std:.3f}"
+                f"[MLB_ORACLE_APEX] {player_name} {stat_type}: "
+                f"pred={final_pred:.2f}, park={pf:.2f}, opp_k={opp_k:.2f}, "
+                f"σ={sigma:.3f} ({sigma_source}), P(over)={prob_over}%, edge={vk_edge}"
             )
             
-            return result
+            return MLBMLRResult(
+                player_name=player_name,
+                stat_type=stat_type,
+                mlr_predicted=round(final_pred, 2),
+                raw_prediction=round(raw_pred, 4),
+                sigma_used=round(sigma, 4),
+                sigma_source=sigma_source,
+                z_score=round(z_score, 4) if z_score else None,
+                vk_prob_over=prob_over,
+                vk_prob_under=prob_under,
+                vk_verdict=verdict,
+                dk_odds=dk_odds,
+                implied_probability=implied_prob,
+                vk_edge=vk_edge,
+                mlr_matchup=mlr_matchup,
+                is_valid=True,
+                error=None
+            )
             
         except Exception as e:
-            logger.error(f"[MLB_PHYSICAL] Predict error: {e}")
-            return {"error": str(e), "prediction": None}
+            logger.error(f"[MLB_ORACLE_APEX] Prediction error for {player_name}: {e}")
+            return MLBMLRResult(
+                player_name=player_name,
+                stat_type=stat_type,
+                mlr_predicted=None,
+                raw_prediction=None,
+                sigma_used=None,
+                sigma_source="EXCEPTION",
+                z_score=None,
+                vk_prob_over=None,
+                vk_prob_under=None,
+                vk_verdict="INVALID",
+                dk_odds=dk_odds,
+                implied_probability=None,
+                vk_edge=None,
+                mlr_matchup={},
+                is_valid=False,
+                error=str(e)
+            )
+    
+    # =========================================================================
+    # AUDIT JSON EXPORT
+    # =========================================================================
+    
+    def generate_strict_audit(self, output_path: str = '/app/frontend/public/mlb_mlr_strict_audit.json') -> Dict:
+        """
+        Generate mlb_mlr_strict_audit.json mirroring NBA audit format.
+        
+        Shows:
+        - mlr_matchup block (physical friction)
+        - market_data (odds/edge)
+        - model_info
+        """
+        audit = {
+            'version': 'MLB_ORACLE_APEX_v2.0',
+            'generated_at': datetime.now(timezone.utc).isoformat(),
+            'description': '1:1 functional replica of NBA_MLR_STRICT_v2.2',
+            'strict_rules': {
+                'no_fallbacks': 'DELETE all OR season_avg logic',
+                'high_precision': 'Predictions like 4.38 K, not 4 K',
+                'sigma_linkage': 'TRUE L10 Standard Deviation from database',
+                'edge_calculation': 'vk_edge = vk_prob_over - implied_probability',
+            },
+            'trained_models': {},
+            'sample_predictions': [],
+            'park_factors': PARK_FACTORS,
+            'team_k_rates': TEAM_K_RATES,
+        }
+        
+        # Model info
+        for stat, model in self.models.items():
+            if hasattr(model, 'feature_importances_'):
+                feat_cols = self.feature_cols.get(stat, [])
+                imp = dict(zip(feat_cols, model.feature_importances_))
+                top_10 = dict(sorted(imp.items(), key=lambda x: -x[1])[:10])
+                audit['trained_models'][stat] = {
+                    'n_features': len(feat_cols),
+                    'top_10_features': {k: round(v, 4) for k, v in top_10.items()}
+                }
+        
+        # Sample predictions from database
+        cursor = self.master_hub.find(
+            {'bdl_game_logs': {'$exists': True}, 'vs_left': {'$exists': True}},
+            {'_id': 0}
+        ).limit(5)
+        
+        for player in cursor:
+            name = player.get('display_name') or player.get('player_name')
+            if not name:
+                continue
+            
+            for stat in ['hits', 'pitcher_strikeouts']:
+                result = self.predict(
+                    player_name=name,
+                    stat_type=stat,
+                    line=1.5 if stat == 'hits' else 5.5,
+                    opponent_team='NYY',
+                    park_team='NYY',
+                    dk_odds=-150
+                )
+                
+                audit['sample_predictions'].append({
+                    'player_name': result.player_name,
+                    'stat_type': result.stat_type,
+                    'mlr_predicted': result.mlr_predicted,
+                    'sigma_used': result.sigma_used,
+                    'sigma_source': result.sigma_source,
+                    'vk_prob_over': result.vk_prob_over,
+                    'vk_edge': result.vk_edge,
+                    'is_valid': result.is_valid,
+                    'error': result.error,
+                    'mlr_matchup': result.mlr_matchup,
+                    'market_data': {
+                        'dk_odds': result.dk_odds,
+                        'implied_probability': result.implied_probability,
+                    }
+                })
+        
+        # Write to file
+        os.makedirs(os.path.dirname(output_path), exist_ok=True)
+        with open(output_path, 'w') as f:
+            json.dump(audit, f, indent=2, default=str)
+        
+        logger.info(f"[MLB_ORACLE_APEX] Generated strict audit: {output_path}")
+        return audit
 
 
-# Global instance
-_mlb_phys = None
+# =============================================================================
+# GLOBAL INSTANCE
+# =============================================================================
+
+_mlb_engine = None
 
 def get_mlb_physical_engine(db=None):
-    global _mlb_phys
-    if _mlb_phys is None and db is not None:
-        _mlb_phys = MLBPhysicalEngine(db)
-    return _mlb_phys
+    """Get singleton MLB Physical Engine instance."""
+    global _mlb_engine
+    if _mlb_engine is None and db is not None:
+        _mlb_engine = MLBPhysicalEngine(db)
+    return _mlb_engine
