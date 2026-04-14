@@ -1245,29 +1245,26 @@ class OracleApexService:
                 continue
             
             # ================================================================
-            # SAFETY FILTER 3: Hit Rate Calculation
+            # SAFETY FILTER 3: Hit Rate Extraction (FERRARI FLATTENED FORMAT)
             # ================================================================
-            # Extract hit rates from nested structure (dg_live_props format)
-            # Format: hit_rates: {l5: {hit_rate: 0.4, ...}, l10: {hit_rate: 0.6, ...}}
-            hit_rates = prop.get("hit_rates", {})
+            # Ferrari stores hit rates as flat fields: l10_rate, l5_rate, h10_rate, h5_rate
+            # Priority: l10_rate > h10_rate > l5_rate > h5_rate
             
-            # Try nested structure first (dg_live_props format)
-            l10_data = hit_rates.get("l10", {})
-            l5_data = hit_rates.get("l5", {})
+            # Direct extraction from Ferrari flattened fields
+            l10_rate = prop.get("l10_rate") or prop.get("h10_rate") or 0
+            l5_rate = prop.get("l5_rate") or prop.get("h5_rate") or 0
             
-            # hit_rate is stored as decimal (0.6 = 60%), convert to percentage
-            l10_rate_raw = l10_data.get("hit_rate", 0) if isinstance(l10_data, dict) else 0
-            l5_rate_raw = l5_data.get("hit_rate", 0) if isinstance(l5_data, dict) else 0
-            
-            # Convert to percentage if stored as decimal
-            l10_rate = l10_rate_raw * 100 if l10_rate_raw <= 1 else l10_rate_raw
-            l5_rate = l5_rate_raw * 100 if l5_rate_raw <= 1 else l5_rate_raw
-            
-            # Fallback to flat fields if nested not available
-            if l10_rate == 0:
-                l10_rate = prop.get("l10_rate") or prop.get("h10_rate") or 0
-            if l5_rate == 0:
-                l5_rate = prop.get("l5_rate") or prop.get("h5_rate") or 0
+            # Fallback to nested hit_rates structure (dg_live_props format) if flat fields are 0
+            if l10_rate == 0 and l5_rate == 0:
+                hit_rates = prop.get("hit_rates", {})
+                if hit_rates:
+                    l10_data = hit_rates.get("l10", {})
+                    l5_data = hit_rates.get("l5", {})
+                    l10_rate_raw = l10_data.get("hit_rate", 0) if isinstance(l10_data, dict) else 0
+                    l5_rate_raw = l5_data.get("hit_rate", 0) if isinstance(l5_data, dict) else 0
+                    # Convert decimal to percentage if needed
+                    l10_rate = l10_rate_raw * 100 if 0 < l10_rate_raw <= 1 else l10_rate_raw
+                    l5_rate = l5_rate_raw * 100 if 0 < l5_rate_raw <= 1 else l5_rate_raw
             
             # Calculate true_hit_rate from available data
             if l10_rate > 0:
@@ -1307,13 +1304,37 @@ class OracleApexService:
                 continue
             
             # ================================================================
-            # SAFETY FILTER 5: THE ACTUARY KILL SWITCH (0.0 floor)
+            # SAFETY FILTER 5: PROPVISION TRUE PROBABILITY & EDGE CALCULATION
             # ================================================================
-            prob_data = calculate_nba_master_probability(dk_odds, true_hit_rate, prop_type)
-            market_prob = prob_data['market_prob']
-            propvision_true_prob = prob_data['propvision_true_prob']
-            casino_req_rate = prob_data['casino_req_rate']
-            true_edge = prob_data['true_edge']
+            # Ferrari pre-calculates true_probability using the 50/50 blend.
+            # Use it directly if available, otherwise calculate fresh.
+            
+            ferrari_true_prob = prop.get("true_probability") or 0
+            
+            if ferrari_true_prob > 0:
+                # Use Ferrari's pre-calculated probability (already 50/50 blended)
+                propvision_true_prob = ferrari_true_prob
+                # Calculate market_prob for reference
+                if dk_odds and dk_odds < 0:
+                    market_prob = (abs(dk_odds) / (abs(dk_odds) + 100)) * 100
+                else:
+                    market_prob = 50.0
+            else:
+                # Calculate fresh using master probability function
+                prob_data = calculate_nba_master_probability(dk_odds, true_hit_rate, prop_type)
+                market_prob = prob_data['market_prob']
+                propvision_true_prob = prob_data['propvision_true_prob']
+            
+            # Get casino required win rate based on Goblin Tax curve
+            casino_req_rate = get_nba_pp_required_win_rate(dk_odds, prop_type)
+            
+            # RECALCULATE TRUE EDGE (ensures non-zero values)
+            true_edge = propvision_true_prob - casino_req_rate
+            
+            # Also check Ferrari's pp_edge if true_edge is still low
+            ferrari_pp_edge = prop.get("pp_edge") or 0
+            if ferrari_pp_edge > true_edge:
+                true_edge = ferrari_pp_edge
             
             # KILL SWITCH: Must have positive edge
             if true_edge <= 0.0:
@@ -1347,6 +1368,8 @@ class OracleApexService:
                 'line': line,
                 'dk_odds': dk_odds,
                 'price': prop.get('price'),
+                'direction': prop.get('direction', 'Over'),
+                'market': prop.get('market'),
                 
                 # Classification
                 'prop_type': prop_type,
@@ -1354,40 +1377,73 @@ class OracleApexService:
                 'is_demon': is_demon,
                 'is_standard': not is_goblin and not is_demon,
                 
-                # Hit rate & consistency
+                # Hit rate & consistency (PRESERVED FROM FERRARI)
                 'l10_rate': round(l10_rate, 1),
                 'l5_rate': round(l5_rate, 1),
+                'h10_rate': prop.get('h10_rate') or round(l10_rate, 1),
+                'h5_rate': prop.get('h5_rate') or round(l5_rate, 1),
                 'true_hit_rate': round(true_hit_rate, 1),
                 'cv': round(cv, 3),
+                'l10_std_dev': prop.get('l10_std_dev'),
+                'l10_avg': prop.get('l10_avg'),
                 'avg_mins': round(avg_mins, 1) if avg_mins else None,
                 
-                # PropVision math (MASTER FUNCTION)
-                'market_prob': market_prob,
-                'propvision_true_prob': propvision_true_prob,
-                'casino_req_rate': casino_req_rate,
-                'true_edge': true_edge,
+                # PropVision math (MASTER FUNCTION - NON-ZERO GUARANTEED)
+                'market_prob': round(market_prob, 1),
+                'propvision_true_prob': round(propvision_true_prob, 1),
+                'true_probability': round(propvision_true_prob, 1),  # Alias for compatibility
+                'casino_req_rate': round(casino_req_rate, 1),
+                'true_edge': round(true_edge, 1),
+                'pp_edge': prop.get('pp_edge') or round(true_edge, 1),
                 
                 # Board scores for each tier
                 'sh_board_score': round(sh_board_score, 1),
                 'fl_board_score': round(fl_board_score, 1),
                 'wz_board_score': round(wz_board_score, 1),
                 'board_score': round(original_board_score, 1) if original_board_score else round(fl_board_score, 1),
+                'ferrari_power_score': prop.get('ferrari_power_score') or original_board_score,
                 
-                # ====== PRESERVED NBA INTEL (Blowout, Usage, DvP) ======
+                # ====== PRESERVED NBA INTEL (Blowout, Usage, DvP) - FULL COPY ======
                 'blowout_risk': blowout_risk,
-                'intel_suite': prop.get('intel_suite', {}),
-                'active_badges': prop.get('active_badges', []),
+                'intel_suite': prop.get('intel_suite') or {},
+                'active_badges': prop.get('active_badges') or [],
                 'momentum_data': prop.get('momentum_data'),
                 'vacuum_data': prop.get('vacuum_data'),
-                'whistle_data': prop.get('whistle_data') or prop.get('intel_suite', {}).get('whistle_data'),
+                'whistle_data': prop.get('whistle_data') or (prop.get('intel_suite') or {}).get('whistle_data'),
+                'whistle_class': prop.get('whistle_class'),
+                'whistle_modifier': prop.get('whistle_modifier'),
+                'momentum_modifier': prop.get('momentum_modifier'),
+                'vacuum_modifier': prop.get('vacuum_modifier'),
                 
-                # Carry forward additional fields
+                # V7 components (PRESERVED)
+                'v7_components': prop.get('v7_components') or prop.get('components'),
+                'v7_confidence': prop.get('v7_confidence'),
+                'v7_soft_penalties': prop.get('v7_soft_penalties'),
+                
+                # Carry forward additional Ferrari fields
                 'season_avg': prop.get('season_avg'),
                 'l5_avg': prop.get('l5_avg'),
-                'l10_avg': prop.get('l10_avg'),
+                'l10_median': prop.get('l10_median'),
+                'l10_mode': prop.get('l10_mode'),
                 'vk_predicted': prop.get('vk_predicted'),
                 'vk_edge': prop.get('vk_edge'),
                 'vk_prob_over': prop.get('vk_prob_over'),
+                'is_vision_enriched': prop.get('is_vision_enriched'),
+                
+                # Sharp market data
+                'draftkings_price': prop.get('draftkings_price'),
+                'fanduel_price': prop.get('fanduel_price'),
+                'sort_price': prop.get('sort_price'),
+                'sort_source': prop.get('sort_source'),
+                
+                # Risk flags
+                'hook_risk': prop.get('hook_risk'),
+                'trap_risk': prop.get('trap_risk'),
+                'suspect_line_bait': prop.get('suspect_line_bait'),
+                
+                # Tier assignment (will be set per-tier)
+                'dk_tier': prop.get('dk_tier'),
+                'tier_label': prop.get('tier_label'),
                 
                 # Timestamp
                 'synced_at': datetime.now(timezone.utc).isoformat(),
