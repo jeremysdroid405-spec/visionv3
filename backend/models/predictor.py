@@ -1,39 +1,53 @@
 """
-Lasso-Weighted Prediction Engine
-=================================
-Loads AutoFE survivor coefficients from /app/backend/data/autofe_*.json
-Builds dynamic feature vectors from live game logs.
-Produces dot-product projections with confidence scoring.
+Lasso-Weighted Prediction Engine v2
+====================================
+Standardized Linear Equation:
+  Projection = Intercept + SUM( beta_i * (Feature_i - Mean_i) / Std_i )
+
+Only computes the 40 survivor features per model. Zero wasted CPU.
+Includes Vision Score = (Projection - Line) with High Edge flagging.
 """
 
 import os
 import json
 import logging
 import numpy as np
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 from itertools import combinations
 
 logger = logging.getLogger(__name__)
 
 DATA_DIR = "/app/backend/data"
 
-# R² thresholds for confidence tiers
-CONFIDENCE_TIERS = {
-    "HIGH_FIDELITY": 0.35,
-    "MODERATE": 0.15,
-    "HIGH_VARIANCE": 0.0,
-}
+CONFIDENCE_TIERS = [
+    ("HIGH_FIDELITY", 0.35),
+    ("MODERATE", 0.15),
+    ("HIGH_VARIANCE", 0.0),
+]
 
-# Model registry: (sport, player_type, target_stat) -> filename
+# (sport, player_type, target_stat) -> filename
 MODEL_REGISTRY = {
     ("mlb", "batter", "hits"): "autofe_mlb_batter_hits.json",
     ("mlb", "batter", "total_bases"): "autofe_mlb_batter_total_bases.json",
     ("nba", "all", "pts"): "autofe_nba_all_pts.json",
 }
 
+# Stat type aliases: what PrizePicks calls it -> model target key
+STAT_ALIASES = {
+    "hits": "hits",
+    "Hits": "hits",
+    "total_bases": "total_bases",
+    "Total Bases": "total_bases",
+    "pts": "pts",
+    "points": "pts",
+    "Points": "pts",
+}
+
+HIGH_EDGE_THRESHOLD = 0.15  # 15% of line
+
 
 class LassoPredictor:
-    """Single-target Lasso prediction model loaded from AutoFE JSON."""
+    """Single-target Lasso model with StandardScaler normalization."""
 
     def __init__(self, model_path: str):
         with open(model_path) as f:
@@ -44,61 +58,44 @@ class LassoPredictor:
         self.target_stat = data["target_stat"]
         self.alpha = data["lasso_alpha"]
         self.intercept = data.get("lasso_intercept", 0.0)
-        self.r_squared = data.get("r_squared", self._fallback_r2(data))
+        self.r_squared = data.get("r_squared", 0.01)
         self.raw_keys = sorted(data.get("raw_keys_found", []))
 
-        # Scaler parameters for StandardScaler normalization
         self.scaler_means = data.get("scaler_means", {})
         self.scaler_scales = data.get("scaler_scales", {})
 
-        # Build coefficient map: feature_name -> coefficient
         self.survivor_names = []
         self.survivor_coefs = []
-        for name, abs_coef, raw_coef in data["survivor_list"]:
+        for name, _, raw_coef in data["survivor_list"]:
             self.survivor_names.append(name)
             self.survivor_coefs.append(raw_coef)
-        self.coef_map = dict(zip(self.survivor_names, self.survivor_coefs))
+        self.survivor_set = set(self.survivor_names)
 
-        self.confidence_tier = self._compute_confidence()
+        for tier_name, threshold in CONFIDENCE_TIERS:
+            if self.r_squared >= threshold:
+                self.confidence_tier = tier_name
+                break
+        else:
+            self.confidence_tier = "HIGH_VARIANCE"
 
         logger.info(
-            f"[LASSO] Loaded {self.sport}/{self.target_stat}: "
-            f"{len(self.survivor_names)} survivors, α={self.alpha:.6f}, "
-            f"R²={self.r_squared:.4f}, intercept={self.intercept:.4f}, "
-            f"scaler={'YES' if self.scaler_means else 'NO'}, tier={self.confidence_tier}"
+            f"[LASSO] {self.sport}/{self.target_stat}: "
+            f"{len(self.survivor_names)} survivors, R²={self.r_squared:.4f}, "
+            f"intercept={self.intercept:.4f}, tier={self.confidence_tier}"
         )
 
-    def _fallback_r2(self, data):
-        if self.sport == "nba" and self.target_stat == "pts":
-            return 0.4863
-        elif self.sport == "mlb" and self.target_stat == "hits":
-            return 0.0355
-        elif self.sport == "mlb" and self.target_stat == "total_bases":
-            return 0.0301
-        return 0.01
-
-    def _compute_confidence(self) -> str:
-        for tier, threshold in sorted(CONFIDENCE_TIERS.items(), key=lambda x: -x[1]):
-            if self.r_squared >= threshold:
-                return tier
-        return "HIGH_VARIANCE"
-
     def predict(self, feature_vector: Dict[str, float]) -> Dict:
-        """Run dot product prediction from feature vector.
-        Applies StandardScaler normalization if scaler params available."""
+        """
+        Projection = Intercept + SUM( beta_i * (Feature_i - Mean_i) / Std_i )
+        """
         projection = self.intercept
         contributions = []
 
         for name, coef in zip(self.survivor_names, self.survivor_coefs):
             raw_val = feature_vector.get(name, 0.0)
-
-            # Apply StandardScaler: (x - mean) / scale
             mean = self.scaler_means.get(name, 0.0)
-            scale = self.scaler_scales.get(name, 1.0)
-            if scale == 0:
-                scale = 1.0
-            scaled_val = (raw_val - mean) / scale if self.scaler_means else raw_val
-
+            scale = self.scaler_scales.get(name, 1.0) or 1.0
+            scaled_val = (raw_val - mean) / scale
             contrib = scaled_val * coef
             projection += contrib
             contributions.append({
@@ -109,124 +106,149 @@ class LassoPredictor:
                 "contribution": round(contrib, 4),
             })
 
-        # Sort by absolute contribution descending
         contributions.sort(key=lambda x: abs(x["contribution"]), reverse=True)
 
         return {
             "projection": round(projection, 3),
             "confidence_tier": self.confidence_tier,
-            "r_squared": self.r_squared,
-            "lasso_alpha": self.alpha,
+            "r_squared": round(self.r_squared, 4),
             "intercept": round(self.intercept, 4),
             "survivors_used": len(self.survivor_names),
             "top_contributors": contributions[:10],
-            "all_contributions": contributions,
         }
 
 
-class DynamicFeatureBuilder:
-    """Builds the 40 survivor features from raw game log history."""
+class SurvivorFeatureBuilder:
+    """
+    Optimized feature builder: only computes features in the survivor set.
+    Stops processing anything outside the 40 required features.
+    """
+
+    MLB_IX_KEYS = [
+        "at_bats", "hits", "hr", "bb", "k", "avg", "obp", "slg",
+        "total_bases", "rbi", "runs", "plate_appearances",
+        "fly_outs", "ground_outs", "stolen_bases",
+    ]
+    NBA_IX_KEYS = [
+        "pts", "reb", "ast", "fga", "fgm", "fg3a", "fg3m",
+        "fta", "ftm", "turnover", "usage_pct", "pace",
+        "true_shooting_pct", "off_rating", "def_rating",
+    ]
 
     def __init__(self, sport: str):
         self.sport = sport
-        if sport == "mlb":
-            self.interaction_keys = [
-                "at_bats", "hits", "hr", "bb", "k", "avg", "obp", "slg",
-                "total_bases", "rbi", "runs", "plate_appearances",
-                "fly_outs", "ground_outs", "stolen_bases",
-            ]
-        else:
-            self.interaction_keys = [
-                "pts", "reb", "ast", "fga", "fgm", "fg3a", "fg3m",
-                "fta", "ftm", "turnover", "usage_pct", "pace",
-                "true_shooting_pct", "off_rating", "def_rating",
-            ]
+        self.ix_keys = self.MLB_IX_KEYS if sport == "mlb" else self.NBA_IX_KEYS
 
-    def build_features(self, game_logs: List[Dict], raw_keys: List[str]) -> Dict[str, float]:
-        """Build all feature types from chronological game logs.
-        Expects logs sorted oldest→newest, uses the tail for recent windows."""
+    def build(
+        self, game_logs: List[Dict], raw_keys: List[str], survivor_set: set
+    ) -> Dict[str, float]:
+        """Build ONLY the survivor features from chronological game logs."""
         if len(game_logs) < 11:
             return {}
 
         n = len(game_logs)
-
-        # Build numeric matrix
-        matrix = []
-        for log in game_logs:
-            row = []
-            for k in raw_keys:
-                val = log.get(k)
-                row.append(float(val) if val is not None else 0.0)
-            matrix.append(row)
-        matrix = np.array(matrix)
-
-        features = {}
         key_idx = {k: i for i, k in enumerate(raw_keys)}
 
-        # 1. Raw features from previous (last) game
+        # Vectorize only the tail we need (max 10 games back + 6 for delta)
+        tail = game_logs[-min(n, 12):]
+        matrix = np.zeros((len(tail), len(raw_keys)))
+        for i, log in enumerate(tail):
+            for j, k in enumerate(raw_keys):
+                val = log.get(k)
+                matrix[i, j] = float(val) if val is not None else 0.0
+
+        t = len(tail)
+        features = {}
+
+        # 1. prev_ features
         for j, k in enumerate(raw_keys):
-            features[f"prev_{k}"] = matrix[-1, j]
+            fname = f"prev_{k}"
+            if fname in survivor_set:
+                features[fname] = float(matrix[-1, j])
 
-        # 2. Rolling averages + volatility (L3, L5, L10)
+        # 2. Rolling L3/L5/L10 avg + std
         for window, label in [(3, "L3"), (5, "L5"), (10, "L10")]:
-            if n >= window:
-                window_data = matrix[-window:]
+            if t >= window:
+                w_data = matrix[-window:]
                 for j, k in enumerate(raw_keys):
-                    col = window_data[:, j]
-                    features[f"{label}_avg_{k}"] = float(np.mean(col))
-                    features[f"{label}_std_{k}"] = float(np.std(col))
+                    avg_name = f"{label}_avg_{k}"
+                    std_name = f"{label}_std_{k}"
+                    col = w_data[:, j]
+                    if avg_name in survivor_set:
+                        features[avg_name] = float(np.mean(col))
+                    if std_name in survivor_set:
+                        features[std_name] = float(np.std(col))
 
-        # 3. Time-derivatives (change in L3 avg vs prior L3 avg)
-        if n >= 6:
+        # 3. delta3_ time-derivatives
+        if t >= 6:
             recent_3 = matrix[-3:]
             prior_3 = matrix[-6:-3]
             for j, k in enumerate(raw_keys):
-                features[f"delta3_{k}"] = float(np.mean(recent_3[:, j]) - np.mean(prior_3[:, j]))
+                dname = f"delta3_{k}"
+                if dname in survivor_set:
+                    features[dname] = float(
+                        np.mean(recent_3[:, j]) - np.mean(prior_3[:, j])
+                    )
 
-        # 4. Interaction features
-        for k1, k2 in combinations(self.interaction_keys, 2):
-            if k1 in key_idx and k2 in key_idx:
-                features[f"ix_{k1}_x_{k2}"] = matrix[-1, key_idx[k1]] * matrix[-1, key_idx[k2]]
+        # 4. ix_ interactions (only survivor pairs)
+        for k1, k2 in combinations(self.ix_keys, 2):
+            iname = f"ix_{k1}_x_{k2}"
+            if iname in survivor_set and k1 in key_idx and k2 in key_idx:
+                features[iname] = float(
+                    matrix[-1, key_idx[k1]] * matrix[-1, key_idx[k2]]
+                )
 
-        # 5. Momentum / Meta features
-        if n >= 10:
-            # Need target stat values — use common targets
-            for target_key in ["hits", "total_bases", "pts", "reb", "ast"]:
-                if target_key in key_idx:
-                    target_col = matrix[:, key_idx[target_key]]
-                    l10_avg = float(np.mean(target_col[-10:]))
-                    l5_vals = target_col[-5:]
-                    features["momentum_hit_rate_L5"] = float(np.mean(l5_vals > l10_avg)) if l10_avg > 0 else 0.0
-                    features["target_L10_avg"] = l10_avg
-                    features["target_L5_avg"] = float(np.mean(l5_vals))
-                    features["target_L3_avg"] = float(np.mean(target_col[-3:]))
-                    features["target_cv_L10"] = float(np.std(target_col[-10:]) / (l10_avg + 1e-9))
+        # 5. Momentum / Meta
+        if t >= 10:
+            for tgt in ["hits", "total_bases", "pts", "reb", "ast"]:
+                if tgt in key_idx:
+                    col = matrix[:, key_idx[tgt]]
+                    l10 = col[-10:]
+                    l10_avg = float(np.mean(l10))
+                    l5 = col[-5:]
+                    if "momentum_hit_rate_L5" in survivor_set:
+                        features["momentum_hit_rate_L5"] = (
+                            float(np.mean(l5 > l10_avg)) if l10_avg > 0 else 0.0
+                        )
+                    if "target_L10_avg" in survivor_set:
+                        features["target_L10_avg"] = l10_avg
+                    if "target_L5_avg" in survivor_set:
+                        features["target_L5_avg"] = float(np.mean(l5))
+                    if "target_L3_avg" in survivor_set:
+                        features["target_L3_avg"] = float(np.mean(col[-3:]))
+                    if "target_cv_L10" in survivor_set:
+                        features["target_cv_L10"] = float(
+                            np.std(l10) / (l10_avg + 1e-9)
+                        )
                     break
 
         return features
 
 
 class PropVisionLassoEngine:
-    """Top-level engine that manages all Lasso models and runs predictions."""
+    """Top-level engine: model loading, prediction, and Vision Score."""
 
     def __init__(self):
         self.models: Dict[str, LassoPredictor] = {}
-        self.builders: Dict[str, DynamicFeatureBuilder] = {}
+        self.builders: Dict[str, SurvivorFeatureBuilder] = {}
         self._load_all_models()
 
     def _load_all_models(self):
-        for key, filename in MODEL_REGISTRY.items():
+        for (sport, ptype, target), filename in MODEL_REGISTRY.items():
             path = os.path.join(DATA_DIR, filename)
             if os.path.exists(path):
-                sport, player_type, target = key
-                model_key = f"{sport}_{target}"
-                self.models[model_key] = LassoPredictor(path)
+                mkey = f"{sport}_{target}"
+                self.models[mkey] = LassoPredictor(path)
                 if sport not in self.builders:
-                    self.builders[sport] = DynamicFeatureBuilder(sport)
-                logger.info(f"[ENGINE] Loaded model: {model_key}")
+                    self.builders[sport] = SurvivorFeatureBuilder(sport)
 
-    def get_available_models(self) -> List[str]:
-        return list(self.models.keys())
+    def resolve_model_key(self, sport: str, stat_type: str) -> Optional[str]:
+        """Resolve a stat_type string to a model key."""
+        target = STAT_ALIASES.get(stat_type, stat_type.lower().replace(" ", "_"))
+        mkey = f"{sport}_{target}"
+        if mkey in self.models:
+            return mkey
+        return None
 
     def predict_player(
         self,
@@ -234,33 +256,49 @@ class PropVisionLassoEngine:
         target_stat: str,
         game_logs: List[Dict],
         player_name: str = "",
+        line: float = None,
     ) -> Optional[Dict]:
-        """Run prediction for a player given their game log history."""
-        model_key = f"{sport}_{target_stat}"
-        model = self.models.get(model_key)
-        if not model:
-            return {"error": f"No model for {model_key}"}
+        """Full prediction with Vision Score."""
+        mkey = self.resolve_model_key(sport, target_stat)
+        if not mkey:
+            return {"error": f"No model for {sport}/{target_stat}"}
 
+        model = self.models[mkey]
         builder = self.builders.get(sport)
         if not builder:
             return {"error": f"No feature builder for {sport}"}
 
-        # Build feature vector from game logs
-        features = builder.build_features(game_logs, model.raw_keys)
+        features = builder.build(game_logs, model.raw_keys, model.survivor_set)
         if not features:
             return {"error": "Insufficient game log history (need 11+ games)"}
 
-        # Run prediction
         result = model.predict(features)
         result["player_name"] = player_name
         result["sport"] = sport
         result["target_stat"] = target_stat
         result["games_analyzed"] = len(game_logs)
 
+        # Vision Score
+        if line is not None and line > 0:
+            projection = result["projection"]
+            vision_score = projection - line
+            vision_pct = (vision_score / line) * 100
+            is_high_edge = abs(vision_score) > (line * HIGH_EDGE_THRESHOLD)
+            direction = "OVER" if vision_score > 0 else "UNDER"
+
+            result["vision_score"] = {
+                "line": line,
+                "projection": projection,
+                "edge": round(vision_score, 3),
+                "edge_pct": round(vision_pct, 2),
+                "direction": direction,
+                "high_edge": is_high_edge,
+                "high_edge_threshold": f"{HIGH_EDGE_THRESHOLD*100:.0f}%",
+            }
+
         return result
 
 
-# Singleton
 _engine: Optional[PropVisionLassoEngine] = None
 
 

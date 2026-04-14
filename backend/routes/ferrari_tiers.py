@@ -3380,12 +3380,17 @@ async def nba_elite_top_10_sync():
 # =============================================================================
 
 @router.get("/v3/lasso/predict/{sport}/{player_name}/{target_stat}")
-async def lasso_predict(sport: str, player_name: str, target_stat: str):
+async def lasso_predict(
+    sport: str,
+    player_name: str,
+    target_stat: str,
+    line: float = Query(None, description="PrizePicks line to compute Vision Score"),
+):
     """
-    Lasso-Weighted Prediction for a player + stat.
+    Lasso-Weighted Prediction with Vision Score.
     
-    Uses AutoFE survivor coefficients to project next-game performance.
-    Returns projection, confidence tier, and top feature contributors.
+    Projection = Intercept + SUM( beta_i * (Feature_i - Mean_i) / Std_i )
+    Vision Score = Projection - Line (flagged as High Edge if >15% of line)
     """
     from models.predictor import get_lasso_engine
 
@@ -3393,37 +3398,33 @@ async def lasso_predict(sport: str, player_name: str, target_stat: str):
         raise HTTPException(status_code=500, detail="Database not initialized")
 
     engine = get_lasso_engine()
+    sport_lower = sport.lower()
 
     # Resolve hub + game logs
-    if sport.lower() == "mlb":
+    if sport_lower == "mlb":
         hub = _db["mlb_master_hub_2026"]
-        doc = await hub.find_one(
-            {"player_name": {"$regex": f"^{player_name}$", "$options": "i"}},
-            {"_id": 0, "player_name": 1, "history": 1, "team": 1, "position": 1}
-        )
-        if not doc:
-            doc = await hub.find_one(
-                {"player_name": {"$regex": player_name, "$options": "i"}},
-                {"_id": 0, "player_name": 1, "history": 1, "team": 1, "position": 1}
-            )
+        board = _db["mlb_cached_board"]
+        name_field = "player_name"
     else:
         hub = _db["nba_master_hub_2026"]
-        doc = await hub.find_one(
-            {"display_name": {"$regex": f"^{player_name}$", "$options": "i"}},
-            {"_id": 0, "display_name": 1, "history": 1, "team": 1, "position": 1}
-        )
-        if not doc:
-            doc = await hub.find_one(
-                {"display_name": {"$regex": player_name, "$options": "i"}},
-                {"_id": 0, "display_name": 1, "history": 1, "team": 1, "position": 1}
-            )
+        board = _db["dg_cached_board"]
+        name_field = "display_name"
 
+    doc = await hub.find_one(
+        {name_field: {"$regex": f"^{player_name}$", "$options": "i"}},
+        {"_id": 0, name_field: 1, "player_name": 1, "history": 1, "team": 1, "position": 1}
+    )
     if not doc:
-        raise HTTPException(status_code=404, detail=f"Player '{player_name}' not found in {sport} hub")
+        doc = await hub.find_one(
+            {name_field: {"$regex": player_name, "$options": "i"}},
+            {"_id": 0, name_field: 1, "player_name": 1, "history": 1, "team": 1, "position": 1}
+        )
+    if not doc:
+        raise HTTPException(status_code=404, detail=f"Player '{player_name}' not found")
 
     name = doc.get("player_name") or doc.get("display_name")
 
-    # Flatten history into chronological game logs
+    # Flatten history chronologically
     history = doc.get("history", {})
     all_logs = []
     for sk in ["2023_season", "2024_season", "2025_season"]:
@@ -3431,13 +3432,29 @@ async def lasso_predict(sport: str, player_name: str, target_stat: str):
     all_logs.sort(key=lambda x: x.get("game_id") or 0)
 
     if len(all_logs) < 11:
-        raise HTTPException(status_code=400, detail=f"Insufficient history: {len(all_logs)} games (need 11+)")
+        raise HTTPException(status_code=400, detail=f"Insufficient history: {len(all_logs)} games")
+
+    # Auto-fetch line from the live board if not provided
+    if line is None:
+        from models.predictor import STAT_ALIASES
+        target_resolved = STAT_ALIASES.get(target_stat, target_stat.lower().replace(" ", "_"))
+        board_doc = await board.find_one(
+            {"player_name": {"$regex": f"^{name}$", "$options": "i"}},
+            {"_id": 0, "props": 1}
+        )
+        if board_doc:
+            for prop in board_doc.get("props", []):
+                prop_stat = prop.get("stat_type", "").lower().replace(" ", "_")
+                if prop_stat == target_resolved or prop.get("stat_field") == target_resolved:
+                    line = prop.get("line")
+                    break
 
     result = engine.predict_player(
-        sport=sport.lower(),
+        sport=sport_lower,
         target_stat=target_stat,
         game_logs=all_logs,
         player_name=name,
+        line=line,
     )
 
     if result and result.get("error"):
