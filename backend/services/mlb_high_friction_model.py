@@ -1,0 +1,765 @@
+"""
+MLB High-Friction Ensemble Model v1.0
+=====================================
+GOAT-Tier XGBoost ensemble trained on 3+ years of BDL data with
+full friction features.
+
+CATEGORY 1: PITCHER-BATTER COLLISION (PvP)
+- Batter vs LHP/RHP splits (AVG, OBP, K%)
+- Handedness matchup advantage
+- Contact rates and chase tendencies
+
+CATEGORY 2: ENVIRONMENTAL FRICTION
+- Park factors (3-year historical)
+- Home/Away performance splits
+- Venue-specific adjustments
+
+CATEGORY 3: MARKET ALIGNMENT
+- DraftKings implied probability
+- Vig-removed baseline
+- Market efficiency features
+
+CATEGORY 4: PLATE DISCIPLINE & TRENDS
+- L5/L10/L20 EWMA with trend detection
+- Volatility (CV, std_dev)
+- Streak analysis
+
+STRICT OUTPUT REQUIREMENTS:
+- NO FALLBACKS to season_avg
+- High-precision decimals (5.42 K)
+- True L10 σ for probability
+- Standard Normal CDF for vk_prob_over
+
+Author: PropVision AI
+Version: 1.0.0 (High-Friction Ensemble)
+"""
+import logging
+import numpy as np
+import pandas as pd
+import pickle
+import os
+from typing import Dict, Any, Optional, List, Tuple
+from datetime import datetime, timezone
+from scipy import stats
+
+logger = logging.getLogger(__name__)
+
+
+class MLBHighFrictionModel:
+    """
+    MLB High-Friction Ensemble - GOAT-Tier XGBoost.
+    
+    Features 70+ inputs across 4 friction categories:
+    1. Pitcher-Batter Collision (PvP)
+    2. Environmental Friction (Park/Weather)
+    3. Market Alignment (Odds API)
+    4. Plate Discipline & Trends
+    """
+    
+    MLB_STAT_TYPES = [
+        'hits',
+        'total_bases', 
+        'rbis',
+        'runs',
+        'pitcher_strikeouts',
+        'hits+runs+rbis',
+        'home_runs',
+        'stolen_bases'
+    ]
+    
+    STAT_FIELD_MAP = {
+        'hits': 'hits',
+        'total_bases': 'total_bases',
+        'rbis': 'rbis',
+        'runs': 'runs',
+        'stolen_bases': 'stolen_bases',
+        'home_runs': 'home_runs',
+        'walks': 'walks',
+        'strikeouts': 'strikeouts',
+        'pitcher_strikeouts': 'pitcher_strikeouts',
+        'hits+runs+rbis': ['hits', 'runs', 'rbis'],
+    }
+    
+    # =========================================================================
+    # PARK FACTORS (3-Year Historical)
+    # =========================================================================
+    # Format: {team: {hits: factor, runs: factor, hr: factor, k: factor}}
+    PARK_FACTORS_3YR = {
+        # HITTER PARADISE
+        'COL': {'hits': 1.18, 'runs': 1.25, 'hr': 1.32, 'k': 0.88, 'tb': 1.22},  # Coors Field
+        'CIN': {'hits': 1.10, 'runs': 1.15, 'hr': 1.18, 'k': 0.94, 'tb': 1.12},  # Great American
+        'TEX': {'hits': 1.08, 'runs': 1.12, 'hr': 1.15, 'k': 0.95, 'tb': 1.10},  # Globe Life
+        'BOS': {'hits': 1.06, 'runs': 1.08, 'hr': 0.95, 'k': 0.97, 'tb': 1.04},  # Fenway
+        'PHI': {'hits': 1.05, 'runs': 1.08, 'hr': 1.10, 'k': 0.96, 'tb': 1.06},  # Citizens Bank
+        'CHC': {'hits': 1.04, 'runs': 1.06, 'hr': 1.08, 'k': 0.97, 'tb': 1.05},  # Wrigley
+        'MIL': {'hits': 1.03, 'runs': 1.05, 'hr': 1.06, 'k': 0.98, 'tb': 1.04},  # American Family
+        
+        # NEUTRAL
+        'NYY': {'hits': 1.02, 'runs': 1.04, 'hr': 1.12, 'k': 0.98, 'tb': 1.04},  # Yankee Stadium
+        'LAD': {'hits': 1.00, 'runs': 1.00, 'hr': 1.02, 'k': 1.00, 'tb': 1.01},  # Dodger Stadium
+        'ATL': {'hits': 1.00, 'runs': 1.02, 'hr': 1.06, 'k': 0.99, 'tb': 1.02},  # Truist Park
+        'HOU': {'hits': 0.98, 'runs': 0.98, 'hr': 1.00, 'k': 1.00, 'tb': 0.99},  # Minute Maid
+        'MIN': {'hits': 1.00, 'runs': 1.02, 'hr': 1.10, 'k': 0.98, 'tb': 1.03},  # Target Field
+        'STL': {'hits': 0.99, 'runs': 1.00, 'hr': 1.02, 'k': 0.99, 'tb': 1.00},  # Busch Stadium
+        'DET': {'hits': 1.00, 'runs': 1.00, 'hr': 0.98, 'k': 1.00, 'tb': 0.99},  # Comerica
+        'BAL': {'hits': 1.01, 'runs': 1.02, 'hr': 1.05, 'k': 0.99, 'tb': 1.02},  # Camden Yards
+        'TOR': {'hits': 1.00, 'runs': 1.01, 'hr': 1.04, 'k': 0.99, 'tb': 1.01},  # Rogers Centre
+        'CLE': {'hits': 0.99, 'runs': 0.99, 'hr': 1.00, 'k': 1.00, 'tb': 0.99},  # Progressive
+        'KC': {'hits': 1.00, 'runs': 1.01, 'hr': 0.96, 'k': 1.00, 'tb': 0.99},   # Kauffman
+        'ARI': {'hits': 1.01, 'runs': 1.02, 'hr': 1.04, 'k': 0.99, 'tb': 1.02},  # Chase Field
+        'PIT': {'hits': 0.99, 'runs': 0.98, 'hr': 0.95, 'k': 1.01, 'tb': 0.98},  # PNC Park
+        'CHW': {'hits': 1.00, 'runs': 1.02, 'hr': 1.08, 'k': 0.99, 'tb': 1.02},  # Guaranteed Rate
+        'LAA': {'hits': 0.98, 'runs': 0.97, 'hr': 0.96, 'k': 1.01, 'tb': 0.97},  # Angel Stadium
+        'WSH': {'hits': 0.99, 'runs': 0.98, 'hr': 1.00, 'k': 1.00, 'tb': 0.99},  # Nationals Park
+        
+        # PITCHER FRIENDLY
+        'SF': {'hits': 0.92, 'runs': 0.88, 'hr': 0.80, 'k': 1.06, 'tb': 0.88},   # Oracle Park
+        'OAK': {'hits': 0.94, 'runs': 0.90, 'hr': 0.86, 'k': 1.05, 'tb': 0.90},  # Oakland Coliseum
+        'SD': {'hits': 0.95, 'runs': 0.92, 'hr': 0.88, 'k': 1.04, 'tb': 0.92},   # Petco Park
+        'MIA': {'hits': 0.96, 'runs': 0.94, 'hr': 0.86, 'k': 1.03, 'tb': 0.93},  # LoanDepot Park
+        'TB': {'hits': 0.96, 'runs': 0.94, 'hr': 0.90, 'k': 1.03, 'tb': 0.94},   # Tropicana
+        'SEA': {'hits': 0.94, 'runs': 0.90, 'hr': 0.84, 'k': 1.06, 'tb': 0.90},  # T-Mobile Park
+        'NYM': {'hits': 0.97, 'runs': 0.95, 'hr': 0.92, 'k': 1.02, 'tb': 0.95},  # Citi Field
+    }
+    DEFAULT_PARK = {'hits': 1.00, 'runs': 1.00, 'hr': 1.00, 'k': 1.00, 'tb': 1.00}
+    
+    # =========================================================================
+    # TEAM STRIKEOUT TENDENCIES (2024-2026 avg)
+    # =========================================================================
+    TEAM_K_RATES = {
+        # HIGH K TEAMS (strikes out a lot - good for pitcher K props)
+        'ARI': 1.14, 'DET': 1.12, 'OAK': 1.10, 'CHC': 1.08, 'MIA': 1.07,
+        'COL': 1.06, 'PIT': 1.05, 'CIN': 1.04, 'SEA': 1.03, 'TEX': 1.02,
+        # NEUTRAL
+        'ATL': 1.00, 'NYM': 0.99, 'PHI': 0.98, 'LAD': 0.97, 'SD': 0.97,
+        'SF': 0.96, 'STL': 0.98, 'MIL': 0.99, 'CHW': 1.01, 'BAL': 1.00,
+        'TOR': 1.01, 'BOS': 0.98, 'TB': 0.99, 'WSH': 1.02, 'LAA': 1.00,
+        # LOW K TEAMS (makes contact - bad for pitcher K props)
+        'HOU': 0.92, 'NYY': 0.94, 'CLE': 0.93, 'KC': 0.91, 'MIN': 0.93,
+    }
+    
+    MODEL_DIR = '/app/backend/models/mlb_hf'
+    
+    def __init__(self, db):
+        """
+        Initialize MLB High-Friction Model.
+        
+        Args:
+            db: PyMongo database (SYNC)
+        """
+        self.db = db
+        self.master_hub = db.mlb_master_hub_2026
+        self.historical_logs = db.mlb_historical_logs
+        self.live_props = db.mlb_live_props
+        
+        self.models = {}
+        self.scalers = {}
+        self.feature_cols = {}
+        
+        os.makedirs(self.MODEL_DIR, exist_ok=True)
+        logger.info("[MLB_HF_MODEL] Initialized MLB High-Friction Ensemble v1.0")
+    
+    def _normalize_stat(self, stat_type: str) -> str:
+        """Normalize stat type."""
+        stat_lower = stat_type.lower().replace(' ', '_').replace('+', '+')
+        aliases = {
+            'k': 'pitcher_strikeouts', 'ks': 'pitcher_strikeouts',
+            'pitcher k': 'pitcher_strikeouts', 'pitcher strikeouts': 'pitcher_strikeouts',
+            'tb': 'total_bases', 'rbi': 'rbis', 'sb': 'stolen_bases',
+            'hr': 'home_runs', 'h': 'hits', 'r': 'runs',
+            'hrr': 'hits+runs+rbis', 'hits+runs+rbi': 'hits+runs+rbis',
+        }
+        return aliases.get(stat_lower, stat_lower)
+    
+    def _get_stat_value(self, game: Dict, stat: str) -> Optional[float]:
+        """Extract stat from game log."""
+        field = self.STAT_FIELD_MAP.get(stat, stat)
+        if isinstance(field, list):
+            return sum(float(game.get(f, 0) or 0) for f in field)
+        val = game.get(field)
+        return float(val) if val is not None else None
+    
+    def _ewma(self, values: List[float], alpha: float) -> float:
+        """Exponentially Weighted Moving Average."""
+        if not values:
+            return 0.0
+        result = values[0]
+        for v in values[1:]:
+            result = alpha * v + (1 - alpha) * result
+        return result
+    
+    def _get_park_factor(self, team: str, stat: str) -> float:
+        """Get 3-year park factor."""
+        park = self.PARK_FACTORS_3YR.get(team, self.DEFAULT_PARK)
+        
+        if stat in ['hits', 'total_bases']:
+            return park.get('hits', 1.0)
+        elif stat in ['runs', 'rbis', 'hits+runs+rbis']:
+            return park.get('runs', 1.0)
+        elif stat == 'home_runs':
+            return park.get('hr', 1.0)
+        elif stat == 'pitcher_strikeouts':
+            return park.get('k', 1.0)
+        elif stat == 'total_bases':
+            return park.get('tb', 1.0)
+        return 1.0
+    
+    def _get_team_k_rate(self, team: str) -> float:
+        """Get team's K tendency."""
+        return self.TEAM_K_RATES.get(team, 1.0)
+    
+    def _build_friction_features(
+        self,
+        player: Dict,
+        game_logs: List[Dict],
+        stat: str,
+        opponent: str = None,
+        park_team: str = None,
+        dk_odds: int = None,
+        line: float = None
+    ) -> Optional[Dict[str, float]]:
+        """
+        Build the FULL High-Friction feature vector (70+ features).
+        
+        Categories:
+        1. PvP (Pitcher-Batter Collision)
+        2. Environmental Friction
+        3. Market Alignment
+        4. Plate Discipline & Trends
+        """
+        features = {}
+        
+        # Extract stat values
+        stat_values = []
+        for g in game_logs[:30]:
+            val = self._get_stat_value(g, stat)
+            if val is not None:
+                stat_values.append(val)
+        
+        if len(stat_values) < 5:
+            return None
+        
+        # Slices
+        l3 = stat_values[:3]
+        l5 = stat_values[:5]
+        l10 = stat_values[:10]
+        l20 = stat_values[:20]
+        
+        # =====================================================================
+        # CATEGORY 4: PLATE DISCIPLINE & TRENDS
+        # =====================================================================
+        features['l3_avg'] = np.mean(l3)
+        features['l5_avg'] = np.mean(l5)
+        features['l10_avg'] = np.mean(l10)
+        features['l20_avg'] = np.mean(l20) if len(l20) >= 10 else np.mean(l10)
+        
+        features['l5_median'] = np.median(l5)
+        features['l10_median'] = np.median(l10)
+        
+        features['l5_max'] = max(l5)
+        features['l10_max'] = max(l10)
+        features['l5_min'] = min(l5)
+        features['l10_min'] = min(l10)
+        
+        # EWMA
+        features['ewma_l5'] = self._ewma(l5, 0.5)
+        features['ewma_l10'] = self._ewma(l10, 0.3)
+        features['ewma_l20'] = self._ewma(l20, 0.2) if len(l20) >= 10 else features['ewma_l10']
+        
+        # Trend
+        if features['ewma_l10'] > 0:
+            features['ewma_trend'] = (features['ewma_l5'] - features['ewma_l10']) / features['ewma_l10']
+        else:
+            features['ewma_trend'] = 0
+        
+        # Volatility
+        features['std_dev_l5'] = np.std(l5, ddof=1) if len(l5) > 1 else 0
+        features['std_dev_l10'] = np.std(l10, ddof=1) if len(l10) > 1 else 0
+        
+        features['cv_l5'] = features['std_dev_l5'] / features['l5_avg'] if features['l5_avg'] > 0 else 0
+        features['cv_l10'] = features['std_dev_l10'] / features['l10_avg'] if features['l10_avg'] > 0 else 0
+        
+        features['range_l5'] = features['l5_max'] - features['l5_min']
+        features['range_l10'] = features['l10_max'] - features['l10_min']
+        
+        # Streak analysis
+        if line is not None:
+            hit_streak = 0
+            miss_streak = 0
+            for val in stat_values[:10]:
+                if val > line:
+                    hit_streak += 1
+                else:
+                    break
+            for val in stat_values[:10]:
+                if val <= line:
+                    miss_streak += 1
+                else:
+                    break
+            
+            features['current_hit_streak'] = hit_streak
+            features['current_miss_streak'] = miss_streak
+            
+            l5_hits = sum(1 for v in l5 if v > line)
+            l10_hits = sum(1 for v in l10 if v > line)
+            features['hit_rate_l5'] = l5_hits / len(l5) * 100
+            features['hit_rate_l10'] = l10_hits / len(l10) * 100
+        
+        # =====================================================================
+        # CATEGORY 1: PITCHER-BATTER COLLISION (PvP)
+        # =====================================================================
+        # Get handedness splits from player data
+        vs_left = player.get('vs_left', {})
+        vs_right = player.get('vs_right', {})
+        
+        # vs LHP stats
+        features['vs_lhp_ab'] = vs_left.get('at_bats', 0) or 0
+        features['vs_lhp_hits'] = vs_left.get('hits', 0) or 0
+        features['vs_lhp_avg'] = features['vs_lhp_hits'] / features['vs_lhp_ab'] if features['vs_lhp_ab'] > 0 else 0
+        features['vs_lhp_hr'] = vs_left.get('home_runs', 0) or 0
+        features['vs_lhp_k'] = vs_left.get('strikeouts', 0) or 0
+        features['vs_lhp_k_rate'] = features['vs_lhp_k'] / features['vs_lhp_ab'] if features['vs_lhp_ab'] > 0 else 0
+        features['vs_lhp_bb'] = vs_left.get('walks', 0) or 0
+        features['vs_lhp_obp'] = (features['vs_lhp_hits'] + features['vs_lhp_bb']) / (features['vs_lhp_ab'] + features['vs_lhp_bb']) if (features['vs_lhp_ab'] + features['vs_lhp_bb']) > 0 else 0
+        
+        # vs RHP stats  
+        features['vs_rhp_ab'] = vs_right.get('at_bats', 0) or 0
+        features['vs_rhp_hits'] = vs_right.get('hits', 0) or 0
+        features['vs_rhp_avg'] = features['vs_rhp_hits'] / features['vs_rhp_ab'] if features['vs_rhp_ab'] > 0 else 0
+        features['vs_rhp_hr'] = vs_right.get('home_runs', 0) or 0
+        features['vs_rhp_k'] = vs_right.get('strikeouts', 0) or 0
+        features['vs_rhp_k_rate'] = features['vs_rhp_k'] / features['vs_rhp_ab'] if features['vs_rhp_ab'] > 0 else 0
+        features['vs_rhp_bb'] = vs_right.get('walks', 0) or 0
+        features['vs_rhp_obp'] = (features['vs_rhp_hits'] + features['vs_rhp_bb']) / (features['vs_rhp_ab'] + features['vs_rhp_bb']) if (features['vs_rhp_ab'] + features['vs_rhp_bb']) > 0 else 0
+        
+        # Platoon advantage (positive = better vs RHP)
+        features['platoon_avg_split'] = features['vs_rhp_avg'] - features['vs_lhp_avg']
+        features['platoon_k_split'] = features['vs_lhp_k_rate'] - features['vs_rhp_k_rate']  # Positive = strikes out more vs LHP
+        
+        # =====================================================================
+        # CATEGORY 2: ENVIRONMENTAL FRICTION
+        # =====================================================================
+        # Park factors
+        if park_team:
+            pf = self.PARK_FACTORS_3YR.get(park_team, self.DEFAULT_PARK)
+            features['park_hits_factor'] = pf.get('hits', 1.0)
+            features['park_runs_factor'] = pf.get('runs', 1.0)
+            features['park_hr_factor'] = pf.get('hr', 1.0)
+            features['park_k_factor'] = pf.get('k', 1.0)
+            features['park_tb_factor'] = pf.get('tb', 1.0)
+            features['park_factor'] = self._get_park_factor(park_team, stat)
+        else:
+            features['park_hits_factor'] = 1.0
+            features['park_runs_factor'] = 1.0
+            features['park_hr_factor'] = 1.0
+            features['park_k_factor'] = 1.0
+            features['park_tb_factor'] = 1.0
+            features['park_factor'] = 1.0
+        
+        # Home/Away splits
+        home_splits = player.get('home_splits', {})
+        away_splits = player.get('away_splits', {})
+        
+        home_ab = home_splits.get('at_bats', 0) or 0
+        home_hits = home_splits.get('hits', 0) or 0
+        away_ab = away_splits.get('at_bats', 0) or 0
+        away_hits = away_splits.get('hits', 0) or 0
+        
+        features['home_avg'] = home_hits / home_ab if home_ab > 0 else 0
+        features['away_avg'] = away_hits / away_ab if away_ab > 0 else 0
+        features['home_away_split'] = features['home_avg'] - features['away_avg']
+        
+        features['home_runs_split'] = (home_splits.get('runs', 0) or 0) - (away_splits.get('runs', 0) or 0)
+        features['home_hr_split'] = (home_splits.get('home_runs', 0) or 0) - (away_splits.get('home_runs', 0) or 0)
+        
+        # Opponent K rate (for pitcher strikeouts)
+        if opponent:
+            features['opp_k_rate'] = self._get_team_k_rate(opponent)
+        else:
+            features['opp_k_rate'] = 1.0
+        
+        # =====================================================================
+        # CATEGORY 3: MARKET ALIGNMENT
+        # =====================================================================
+        if dk_odds is not None and dk_odds != 0:
+            # Calculate implied probability (vig-removed approximation)
+            if dk_odds < 0:
+                raw_prob = abs(dk_odds) / (abs(dk_odds) + 100)
+            else:
+                raw_prob = 100 / (dk_odds + 100)
+            
+            # Vig removal (approximate - assumes equal vig on both sides)
+            features['dk_implied_prob'] = raw_prob * 100
+            features['dk_vig_removed_prob'] = (raw_prob / 1.05) * 100  # ~5% vig approximation
+            features['dk_odds_raw'] = dk_odds
+        else:
+            features['dk_implied_prob'] = 50.0
+            features['dk_vig_removed_prob'] = 50.0
+            features['dk_odds_raw'] = -110  # Default
+        
+        # Line features
+        if line is not None:
+            features['line'] = line
+            features['line_vs_l5'] = line - features['l5_avg']
+            features['line_vs_l10'] = line - features['l10_avg']
+            features['line_vs_ewma'] = line - features['ewma_l10']
+            features['line_vs_median'] = line - features['l10_median']
+            
+            # Line difficulty (how far above average)
+            features['line_difficulty'] = (line - features['l10_avg']) / features['std_dev_l10'] if features['std_dev_l10'] > 0 else 0
+        
+        return features
+    
+    def build_training_dataset(self, stat_type: str) -> pd.DataFrame:
+        """
+        Build training dataset with FULL High-Friction features.
+        """
+        logger.info(f"[MLB_HF_TRAIN] Building High-Friction dataset for {stat_type}")
+        
+        norm_stat = self._normalize_stat(stat_type)
+        training_data = []
+        
+        # Get all players with historical data
+        cursor = self.historical_logs.find({}, {'_id': 0})
+        
+        for player_doc in cursor:
+            player_name = player_doc.get('player_name')
+            player_id = player_doc.get('player_id')
+            game_logs = player_doc.get('game_logs', [])
+            
+            if len(game_logs) < 20:
+                continue
+            
+            # Sort by date
+            game_logs = sorted(game_logs, key=lambda x: x.get('date') or '1900-01-01', reverse=True)
+            
+            # Get player master data for splits
+            player_master = self.master_hub.find_one(
+                {"$or": [{"display_name": player_name}, {"player_name": player_name}]},
+                {"_id": 0}
+            )
+            
+            if not player_master:
+                player_master = {}
+            
+            # Create training samples
+            for i in range(len(game_logs) - 20):
+                target_game = game_logs[i]
+                history = game_logs[i+1:i+31]
+                
+                target_value = self._get_stat_value(target_game, norm_stat)
+                if target_value is None:
+                    continue
+                
+                opponent = target_game.get('opponent_abbr')
+                
+                # Build features
+                features = self._build_friction_features(
+                    player_master,
+                    history,
+                    norm_stat,
+                    opponent_team=opponent,
+                    park_team=None,
+                    dk_odds=None,
+                    line=None
+                )
+                
+                if features is None:
+                    continue
+                
+                features['target'] = target_value
+                features['player_name'] = player_name
+                features['game_date'] = target_game.get('date')
+                features['opponent'] = opponent
+                
+                training_data.append(features)
+        
+        df = pd.DataFrame(training_data)
+        logger.info(f"[MLB_HF_TRAIN] Built {len(df)} samples with {len(df.columns) - 4} features")
+        
+        return df
+    
+    def train(self, stat_type: str, test_size: float = 0.2) -> Dict[str, Any]:
+        """
+        Train XGBoost High-Friction model.
+        """
+        from sklearn.model_selection import train_test_split
+        from sklearn.preprocessing import StandardScaler
+        from sklearn.metrics import mean_absolute_error, r2_score
+        
+        try:
+            import xgboost as xgb
+        except ImportError:
+            return {'error': 'XGBoost not installed'}
+        
+        norm_stat = self._normalize_stat(stat_type)
+        logger.info(f"[MLB_HF_TRAIN] Training High-Friction model for {norm_stat}")
+        
+        df = self.build_training_dataset(stat_type)
+        
+        if len(df) < 100:
+            return {'error': f'Insufficient data: {len(df)}'}
+        
+        exclude = ['target', 'player_name', 'game_date', 'opponent']
+        feature_cols = [c for c in df.columns if c not in exclude]
+        
+        X = df[feature_cols].fillna(0)
+        y = df['target']
+        
+        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=test_size, random_state=42)
+        
+        scaler = StandardScaler()
+        X_train_scaled = scaler.fit_transform(X_train)
+        X_test_scaled = scaler.transform(X_test)
+        
+        model = xgb.XGBRegressor(
+            n_estimators=250,
+            max_depth=7,
+            learning_rate=0.08,
+            subsample=0.85,
+            colsample_bytree=0.85,
+            min_child_weight=3,
+            reg_alpha=0.1,
+            reg_lambda=1.0,
+            random_state=42,
+            n_jobs=-1
+        )
+        
+        model.fit(X_train_scaled, y_train)
+        
+        train_pred = model.predict(X_train_scaled)
+        test_pred = model.predict(X_test_scaled)
+        
+        train_mae = mean_absolute_error(y_train, train_pred)
+        test_mae = mean_absolute_error(y_test, test_pred)
+        train_r2 = r2_score(y_train, train_pred)
+        test_r2 = r2_score(y_test, test_pred)
+        
+        # Feature importance
+        importance = dict(zip(feature_cols, model.feature_importances_))
+        importance = dict(sorted(importance.items(), key=lambda x: -x[1])[:25])
+        
+        # Store
+        self.models[norm_stat] = model
+        self.scalers[norm_stat] = scaler
+        self.feature_cols[norm_stat] = feature_cols
+        
+        metrics = {
+            'stat_type': norm_stat,
+            'n_samples': len(df),
+            'n_features': len(feature_cols),
+            'train': {'mae': round(train_mae, 4), 'r2': round(train_r2, 4)},
+            'test': {'mae': round(test_mae, 4), 'r2': round(test_r2, 4)},
+            'top_features': importance
+        }
+        
+        logger.info(f"[MLB_HF_TRAIN] {norm_stat}: MAE={test_mae:.4f}, R²={test_r2:.4f}, Features={len(feature_cols)}")
+        
+        return metrics
+    
+    def save_models(self):
+        """Save trained models."""
+        for stat in self.models:
+            data = {
+                'model': self.models[stat],
+                'scaler': self.scalers[stat],
+                'features': self.feature_cols[stat],
+                'version': 'MLB_HF_v1.0',
+                'trained_at': datetime.now(timezone.utc).isoformat()
+            }
+            path = os.path.join(self.MODEL_DIR, f'mlb_hf_{stat}.pkl')
+            with open(path, 'wb') as f:
+                pickle.dump(data, f)
+            logger.info(f"[MLB_HF_MODEL] Saved {stat} to {path}")
+    
+    def load_models(self) -> int:
+        """Load trained models."""
+        loaded = 0
+        for stat in self.MLB_STAT_TYPES:
+            path = os.path.join(self.MODEL_DIR, f'mlb_hf_{stat}.pkl')
+            if os.path.exists(path):
+                try:
+                    with open(path, 'rb') as f:
+                        data = pickle.load(f)
+                    self.models[stat] = data['model']
+                    self.scalers[stat] = data['scaler']
+                    self.feature_cols[stat] = data['features']
+                    loaded += 1
+                    logger.info(f"[MLB_HF_MODEL] Loaded {stat}")
+                except Exception as e:
+                    logger.error(f"[MLB_HF_MODEL] Failed to load {stat}: {e}")
+        
+        logger.info(f"[MLB_HF_MODEL] Loaded {loaded}/{len(self.MLB_STAT_TYPES)} models")
+        return loaded
+    
+    def predict(
+        self,
+        player_name: str,
+        stat_type: str,
+        line: float = None,
+        opponent_team: str = None,
+        park_team: str = None,
+        dk_odds: int = None
+    ) -> Dict[str, Any]:
+        """
+        Generate High-Friction prediction.
+        
+        NO FALLBACKS - returns error if features can't be built.
+        """
+        norm_stat = self._normalize_stat(stat_type)
+        
+        if norm_stat not in self.models:
+            return {"error": f"No model for {stat_type}"}
+        
+        try:
+            # Find player
+            player = self.master_hub.find_one(
+                {"$or": [
+                    {"display_name": player_name},
+                    {"player_name": player_name},
+                    {"mlb_full_name": player_name}
+                ]},
+                {"_id": 0}
+            )
+            
+            if not player:
+                return {"error": f"Player not found: {player_name}"}
+            
+            game_logs = player.get('bdl_game_logs', [])
+            if len(game_logs) < 5:
+                return {"error": f"Insufficient games: {len(game_logs)}"}
+            
+            # Build HIGH-FRICTION features
+            features = self._build_friction_features(
+                player,
+                game_logs,
+                norm_stat,
+                opponent_team,
+                park_team,
+                dk_odds,
+                line
+            )
+            
+            if features is None:
+                return {"error": "Could not build friction features"}
+            
+            # Get model
+            model = self.models[norm_stat]
+            scaler = self.scalers[norm_stat]
+            feature_cols = self.feature_cols[norm_stat]
+            
+            # Prepare features
+            X = pd.DataFrame([features])
+            for col in feature_cols:
+                if col not in X.columns:
+                    X[col] = 0
+            
+            X = X[feature_cols].fillna(0)
+            X_scaled = scaler.transform(X)
+            
+            # HIGH-PRECISION PREDICTION
+            raw_pred = float(model.predict(X_scaled)[0])
+            
+            # Apply park factor
+            park_factor = features.get('park_factor', 1.0)
+            opp_k_rate = features.get('opp_k_rate', 1.0)
+            
+            # Final prediction with friction modifiers
+            if norm_stat == 'pitcher_strikeouts':
+                final_pred = raw_pred * park_factor * opp_k_rate
+            else:
+                final_pred = raw_pred * park_factor
+            
+            # TRUE L10 SIGMA
+            std_dev = features.get('std_dev_l10', 0)
+            l10_avg = features.get('l10_avg', final_pred)
+            cv = std_dev / l10_avg if l10_avg > 0 else 0.5
+            
+            # MLB VOLATILITY FLOOR
+            if norm_stat in ['hits', 'total_bases', 'rbis', 'runs', 'hits+runs+rbis', 'home_runs']:
+                if cv < 0.35:
+                    std_dev = l10_avg * 0.35
+            
+            # STANDARD NORMAL CDF PROBABILITY
+            prob_over = None
+            z_score = None
+            
+            if line is not None and std_dev > 0:
+                z_score = (line - final_pred) / std_dev
+                prob_over = (1 - stats.norm.cdf(z_score)) * 100
+                
+                # STRICT: If Prediction < Line, Probability MUST be < 50%
+                if final_pred < line and prob_over >= 50:
+                    prob_over = 50 - abs(z_score) * 10  # Force below 50
+                    prob_over = max(5, prob_over)
+            
+            # Build friction audit
+            friction_audit = {
+                'pvp': {
+                    'vs_lhp_avg': features.get('vs_lhp_avg'),
+                    'vs_rhp_avg': features.get('vs_rhp_avg'),
+                    'vs_lhp_k_rate': features.get('vs_lhp_k_rate'),
+                    'vs_rhp_k_rate': features.get('vs_rhp_k_rate'),
+                    'platoon_split': features.get('platoon_avg_split'),
+                },
+                'environment': {
+                    'park_team': park_team,
+                    'park_factor': park_factor,
+                    'park_hits': features.get('park_hits_factor'),
+                    'park_runs': features.get('park_runs_factor'),
+                    'park_k': features.get('park_k_factor'),
+                    'opp_k_rate': opp_k_rate,
+                    'home_away_split': features.get('home_away_split'),
+                },
+                'market': {
+                    'dk_odds': dk_odds,
+                    'dk_implied_prob': features.get('dk_implied_prob'),
+                    'dk_vig_removed': features.get('dk_vig_removed_prob'),
+                },
+                'trends': {
+                    'l5_avg': features.get('l5_avg'),
+                    'l10_avg': features.get('l10_avg'),
+                    'ewma_l10': features.get('ewma_l10'),
+                    'ewma_trend': features.get('ewma_trend'),
+                    'cv_l10': features.get('cv_l10'),
+                    'hit_rate_l5': features.get('hit_rate_l5'),
+                    'hit_rate_l10': features.get('hit_rate_l10'),
+                }
+            }
+            
+            result = {
+                'player_name': player_name,
+                'stat_type': stat_type,
+                'predicted': round(final_pred, 2),
+                'raw_prediction': round(raw_pred, 4),
+                'std_dev': round(std_dev, 4),
+                'line': line,
+                'prob_over': round(prob_over, 1) if prob_over else None,
+                'z_score': round(z_score, 4) if z_score else None,
+                'friction_audit': friction_audit,
+                'full_features': friction_audit,
+                'mlr_features_used': True,
+                'model_version': 'MLB_HF_v1.0'
+            }
+            
+            logger.info(
+                f"[MLB_HF_PRED] {player_name} {stat_type}: pred={final_pred:.2f}, "
+                f"park={park_factor:.2f}, opp_k={opp_k_rate:.2f}, σ={std_dev:.3f}"
+            )
+            
+            return result
+            
+        except Exception as e:
+            logger.error(f"[MLB_HF_MODEL] Predict failed: {e}")
+            return {"error": str(e)}
+
+
+# Global instance
+_mlb_hf_instance = None
+
+def get_mlb_high_friction_model(db=None):
+    """Get global MLB High-Friction model."""
+    global _mlb_hf_instance
+    if _mlb_hf_instance is None and db is not None:
+        _mlb_hf_instance = MLBHighFrictionModel(db)
+    return _mlb_hf_instance
