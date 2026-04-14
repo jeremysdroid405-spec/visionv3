@@ -25,6 +25,46 @@ _vegas_killer_model = None
 _sync_db = None
 
 
+def overlay_enrichment_cache(picks: list, sport: str) -> list:
+    """Merge vision_intel, scout_badges, and Lasso data from the enrichment cache onto picks."""
+    import json as _json
+    cache_path = f"/app/backend/data/{'nba' if sport == 'nba' else 'mlb'}_master_active_cache.json"
+    try:
+        with open(cache_path) as f:
+            cache = _json.load(f)
+        cache_props = cache.get("props", {})
+    except Exception:
+        return picks
+
+    if not cache_props:
+        return picks
+
+    # Build lookup: "player_name|stat_type" -> cached prop
+    cache_lookup = {}
+    for pid, cprop in cache_props.items():
+        key = f"{cprop.get('player_name', '')}|{cprop.get('stat_type', '')}".lower()
+        cache_lookup[key] = cprop
+
+    for pick in picks:
+        key = f"{pick.get('player_name', '')}|{pick.get('stat_type', '')}".lower()
+        cached = cache_lookup.get(key)
+        if cached:
+            if cached.get("vision_intel"):
+                pick["vision_intel"] = cached["vision_intel"]
+                pick["vision_summary"] = cached["vision_intel"]
+            if cached.get("scout_badges"):
+                pick["scout_badges"] = cached["scout_badges"]
+            # Merge enriched intel_suite (with Lasso data) over the stale one
+            enriched_suite = cached.get("intel_suite")
+            if enriched_suite and enriched_suite.get("lasso"):
+                existing = pick.get("intel_suite", {})
+                existing.update(enriched_suite)
+                pick["intel_suite"] = existing
+
+    return picks
+
+
+
 def enrich_mlb_prop_with_averages(prop: Dict, player_data: Dict = None) -> Dict:
     """
     Enrich an MLB prop with ALL fields needed to match NBA pick card display:
@@ -886,6 +926,9 @@ async def get_ferrari_safe_haven(
         except Exception as e:
             logger.warning(f"[SAFE_HAVEN MLB] JIT injury check failed: {e}")
     
+    # Overlay enrichment cache data (vision_intel, scout_badges, Lasso)
+    picks = overlay_enrichment_cache(picks, sport)
+
     # Return picks from vault-isolated collection
     return {
         "tier": "safe_haven",
@@ -962,6 +1005,9 @@ async def get_ferrari_front_lines(
         except Exception as e:
             logger.warning(f"[FRONT_LINES MLB] JIT injury check failed: {e}")
     
+    # Overlay enrichment cache data (vision_intel, scout_badges, Lasso)
+    picks = overlay_enrichment_cache(picks, sport)
+
     # Return picks from vault-isolated collection
     return {
         "tier": "front_lines",
@@ -1038,6 +1084,9 @@ async def get_ferrari_war_zone(
         except Exception as e:
             logger.warning(f"[WAR_ZONE MLB] JIT injury check failed: {e}")
     
+    # Overlay enrichment cache data (vision_intel, scout_badges, Lasso)
+    picks = overlay_enrichment_cache(picks, sport)
+
     # Return picks from vault-isolated collection
     return {
         "tier": "war_zone",
