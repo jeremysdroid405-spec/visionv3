@@ -1,0 +1,147 @@
+{
+  "sport": "mlb",
+  "player_type": "pitcher",
+  "target_stat": "p_k",
+  "total_features_engineered": 229,
+  "survivors": 14,
+  "killed": 215,
+  "lasso_alpha": 0.05014757515496847,
+  "lasso_intercept": 2.1409049034118652,
+  "r_squared": 0.5764195322990417,
+  "discovered_features": [],
+  "survivor_list": [
+    [
+      "L10_avg_p_k",
+      1.018334984779358,
+      1.018334984779358
+    ],
+    [
+      "L10_avg_games_started",
+      0.4894624650478363,
+      0.4894624650478363
+    ],
+    [
+      "L3_avg_ip",
+      0.10771556943655014,
+      0.10771556943655014
+    ],
+    [
+      "L5_avg_er",
+      0.040763162076473236,
+      0.040763162076473236
+    ],
+    [
+      "L3_avg_p_hr",
+      0.03655804693698883,
+      0.03655804693698883
+    ],
+    [
+      "prev_ip",
+      0.03549591451883316,
+      0.03549591451883316
+    ],
+    [
+      "L10_avg_wild_pitches",
+      0.025711024180054665,
+      0.025711024180054665
+    ],
+    [
+      "L5_avg_ip",
+      0.01624101772904396,
+      0.01624101772904396
+    ],
+    [
+      "L5_avg_wins",
+      0.013980299234390259,
+      0.013980299234390259
+    ],
+    [
+      "target_L10_avg",
+      0.011979521252214909,
+      0.011979521252214909
+    ],
+    [
+      "prev_wins",
+      0.010910353623330593,
+      0.010910353623330593
+    ],
+    [
+      "L5_avg_p_bb",
+      0.008250733837485313,
+      0.008250733837485313
+    ],
+    [
+      "L3_avg_pitching_hbp",
+      0.007150920107960701,
+      0.007150920107960701
+    ],
+    [
+      "L10_std_inherited_runners",
+      0.0015036773402243853,
+      -0.0015036773402243853
+    ]
+  ],
+  "raw_keys_found": [
+    "assists",
+    "balks",
+    "batters_faced",
+    "blown_saves",
+    "er",
+    "era",
+    "errors",
+    "fielding_chances",
+    "fielding_pct",
+    "game_id",
+    "games_started",
+    "holds",
+    "inherited_runners",
+    "inherited_runners_scored",
+    "ip",
+    "losses",
+    "p_bb",
+    "p_hits",
+    "p_hr",
+    "p_k",
+    "p_runs",
+    "pitch_count",
+    "pitching_hbp",
+    "pitching_outs",
+    "putouts",
+    "saves",
+    "strikes",
+    "wild_pitches",
+    "wins"
+  ],
+  "scaler_means": {
+    "L10_avg_p_k": 2.1665252920402844,
+    "L10_avg_games_started": 0.2607759975676375,
+    "L3_avg_ip": 2.0220913192303516,
+    "L5_avg_er": 0.919824071701334,
+    "L3_avg_p_hr": 0.2298670061777644,
+    "prev_ip": 2.0197455159912514,
+    "L10_avg_wild_pitches": 0.07038957083745831,
+    "L5_avg_ip": 2.026635246536865,
+    "L5_avg_wins": 0.13691486289740507,
+    "target_L10_avg": 2.1665252920402844,
+    "prev_wins": 0.13509267986176562,
+    "L5_avg_p_bb": 0.6959786437032847,
+    "L3_avg_pitching_hbp": 0.07807100431521359,
+    "L10_std_inherited_runners": 0.4594273882731678
+  },
+  "scaler_scales": {
+    "L10_avg_p_k": 1.9083754969685858,
+    "L10_avg_games_started": 0.40372436786274857,
+    "L3_avg_ip": 1.8926642677939196,
+    "L5_avg_er": 0.9998333336884482,
+    "L3_avg_p_hr": 0.3691759957192066,
+    "prev_ip": 2.0148173844880795,
+    "L10_avg_wild_pitches": 0.1063698816665703,
+    "L5_avg_ip": 1.8706774710576612,
+    "L5_avg_wins": 0.1909781929892512,
+    "target_L10_avg": 1.9083754969685858,
+    "prev_wins": 0.3418225383287721,
+    "L5_avg_p_bb": 0.6647203429294642,
+    "L3_avg_pitching_hbp": 0.17948840383374956,
+    "L10_std_inherited_runners": 0.40136547280177937
+  }
+}
