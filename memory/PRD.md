@@ -12,7 +12,15 @@ Restructure the React/FastAPI betting app to a 100% Local-First Database Model, 
 
 ## What's Been Implemented
 
-### Lasso-Weighted Prediction Engine (COMPLETE - 4/14/2026)
+### Vision Intel Suite v2 Refactor (COMPLETE - 4/14/2026)
+- Removed `baseline_stats` dependency from IntelSuiteCalculator — all metrics from live game logs
+- Lasso v2 wired into NBA JIT enrichment (`_calculate_nba_intel`)
+- Opponent resolution from `dg_cached_board` → fixes pace delta and DvP calculations
+- Human-readable Lasso driver names via `FEATURE_DISPLAY` mapping
+- 10 conditional vision_intel text templates (Smash spot / FADE ALERT / Hot hand / Floor play / Tempo play / etc.)
+- Scout badges as string arrays (`hot_streak`, `floor_lock`, `lasso_high_edge`, `high_fidelity_model`, etc.)
+- Frontend PropRow updated: Lasso projection bar (green/red edge), confidence tier badge (HI-FI/MOD/HI-VAR), scout badge pills, vision_intel italic text
+- Vision Intel Suite modal rendering: Operational Volume, Matchup Analysis, Tempo, Variance, Blowout Risk, Hit Rate Analysis
 - 3 models: MLB Hits, MLB Total Bases, NBA Points
 - AutoFE: 366 engineered features → Lasso L1 kills to 40 survivors each
 - StandardScaler normalization: Projection = Intercept + SUM(beta_i * (x_i - mean_i) / std_i)

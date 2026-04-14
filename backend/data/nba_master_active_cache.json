@@ -1,985 +1,21 @@
 {
   "sport": "NBA",
-  "last_updated": "2026-04-14T23:00:41.523392+00:00",
+  "last_updated": "2026-04-14T23:08:07.939399+00:00",
   "prop_count": 19,
   "props": {
-    "tari_eason|reb|3.5|dk": {
-      "player_name": "Tari Eason",
-      "team": "HOU",
-      "opponent": null,
-      "photo_url": null,
-      "headshot_url": null,
-      "game_time": "2026-04-19T00:40:00Z",
-      "stat_type": "REB",
-      "line": 3.5,
-      "dk_odds": -137,
-      "price": -137,
-      "direction": "Over",
-      "market": "player_rebounds_alternate",
-      "prop_type": "GOBLIN",
-      "is_goblin": true,
-      "is_demon": false,
-      "is_standard": false,
-      "l10_rate": 80,
-      "l5_rate": 80,
-      "h10_rate": 80,
-      "h5_rate": 80,
-      "true_hit_rate": 80,
-      "cv": 0.422,
-      "l10_std_dev": null,
-      "l10_avg": 6.0,
-      "avg_mins": null,
-      "market_prob": 57.8,
-      "propvision_true_prob": 68.9,
-      "true_probability": 68.9,
-      "casino_req_rate": 65.0,
-      "true_edge": 3.9,
-      "pp_edge": 3.9,
-      "sh_board_score": 5.4,
-      "fl_board_score": 51.4,
-      "wz_board_score": 216.4,
-      "board_score": 27.5,
-      "ferrari_power_score": 0,
-      "blowout_risk": "LOW",
-      "intel_suite": {
-        "usage_ripple": {
-          "bump_percent": 0,
-          "display": "Standard Volume",
-          "shift_label": "Standard Volume",
-          "injuries_affecting": [],
-          "reasoning": "No significant lineup changes"
-        },
-        "matchup_dvp": {
-          "rank": 9,
-          "display": "Rank #9 vs. Rebounders",
-          "color": "red",
-          "friction_level": "Med-High",
-          "friction_label": "Above Average Defense",
-          "opponent": "LAL",
-          "stat_category": "REB"
-        },
-        "pace_delta": {
-          "possessions": 0.8,
-          "display": "+0.8 Possessions",
-          "pace_factor": 1.0,
-          "tempo_label": "Standard Tempo",
-          "team_pace": 97.0,
-          "opponent_pace": 99.5,
-          "expected_game_pace": 98.2
-        },
-        "stability_index": {
-          "score": 95,
-          "label": "Elite",
-          "display": "95/100 (Elite)",
-          "std_dev": 1.27,
-          "consistency": "Extremely Consistent",
-          "variance_level": "Low"
-        },
-        "vision_insight": {
-          "primary": "Lasso projects 6.0 vs 3.5 line (+2.5 edge)",
-          "reasons": [
-            "Lasso projects 6.0 vs 3.5 line (+2.5 edge)",
-            "Highly consistent performer",
-            "L10 hit rate: 80%",
-            "Driven by L10 rebound average"
-          ],
-          "confidence": "High",
-          "confidence_factors": [
-            "lasso_high_edge",
-            "consistency",
-            "hit_rate"
-          ],
-          "summary": "Target-Lock: OVER 3.5 REB \u2014 Lasso projects 6.0 vs 3.5 line (+2.5 edge)",
-          "lasso_projection": 5.968,
-          "lasso_edge": 2.47,
-          "tactical_note": "Lasso model projects significant edge over the posted line"
-        },
-        "blowout_risk": {
-          "player_team_record": "52-30",
-          "opponent_team_record": "53-29",
-          "player_win_pct": 0.634,
-          "opponent_win_pct": 0.646,
-          "win_pct_diff": 0.012,
-          "favored_team": "LAL",
-          "player_is_favored": false,
-          "risk_level": "NONE",
-          "risk_reason": "Competitive matchup: HOU (52-30) vs LAL (53-29)",
-          "warning": null
-        },
-        "scout_badges": [
-          "hot_streak",
-          "floor_lock",
-          "lasso_high_edge",
-          "high_fidelity_model"
-        ],
-        "lasso": {
-          "projection": 5.968,
-          "confidence_tier": "HIGH_FIDELITY",
-          "r_squared": 0.5211,
-          "top_drivers": [
-            "L10_avg_reb",
-            "prev_fga"
-          ]
-        },
-        "calculated_at": "2026-04-14T23:00:41.463910+00:00"
-      },
-      "active_badges": [],
-      "momentum_data": null,
-      "vacuum_data": null,
-      "whistle_data": null,
-      "whistle_class": null,
-      "whistle_modifier": null,
-      "momentum_modifier": null,
-      "vacuum_modifier": null,
-      "v7_components": null,
-      "v7_confidence": null,
-      "v7_soft_penalties": null,
-      "season_avg": 6.2,
-      "l5_avg": 5.6,
-      "l10_median": null,
-      "l10_mode": null,
-      "vk_predicted": 6.3,
-      "vk_edge": 27.5,
-      "vk_prob_over": 85.3,
-      "is_vision_enriched": true,
-      "draftkings_price": null,
-      "fanduel_price": null,
-      "sort_price": null,
-      "sort_source": null,
-      "hook_risk": false,
-      "trap_risk": false,
-      "suspect_line_bait": false,
-      "dk_tier": null,
-      "tier_label": "NBA Front Lines (Elite 10 - vk_edge Sorted)",
-      "synced_at": "2026-04-14T04:02:41.410519+00:00",
-      "mlr_matchup": {
-        "opp_def_rating": 112.1,
-        "opp_pace": 100.5,
-        "opp_pts_allowed": 110,
-        "opp_def_rank": 5.5,
-        "pace_delta": 1.5
-      },
-      "mlr_friction": {
-        "b2b_penalty": 0,
-        "opp_interior_def": 112.1,
-        "opp_perimeter_def": 112.1,
-        "matchup_difficulty": 0.18,
-        "travel_factor": 0.8
-      },
-      "mlr_features_used": true,
-      "mlr_raw_prediction": 6.3,
-      "vk_prob_under": 14.7,
-      "vk_verdict": "STRONG_OVER",
-      "vk_recommendation": "STRONG_OVER",
-      "vk_confidence": 85.3,
-      "vk_sigma_used": 2.67,
-      "vk_sigma_source": "direct_input",
-      "vk_z_score": -1.0487,
-      "tier": "front_lines",
-      "vk_data": {
-        "projection": 5.968,
-        "confidence_tier": "HIGH_FIDELITY",
-        "r_squared": 0.5211,
-        "top_drivers": [
-          "L10_avg_reb",
-          "prev_fga"
-        ]
-      },
-      "vision_summary": "Tari Eason is absolutely locked in \u2014 Lasso projects 6.0 vs a 3.5 line, that's a +2.5 cushion backed by R\u00b2=0.54 fidelity. Key driver: L10 rebound average. Smash spot, don't overthink it.",
-      "vision_intel": "Tari Eason is absolutely locked in \u2014 Lasso projects 6.0 vs a 3.5 line, that's a +2.5 cushion backed by R\u00b2=0.54 fidelity. Key driver: L10 rebound average. Smash spot, don't overthink it.",
-      "scout_badges": [
-        "hot_streak",
-        "floor_lock",
-        "lasso_high_edge",
-        "high_fidelity_model"
-      ],
-      "_enriched": true,
-      "_enriched_at": "2026-04-14T23:00:41.464058+00:00",
-      "_cache_updated": "2026-04-14T23:00:41.464060+00:00"
-    },
-    "collin_gillespie|reb|1.5|dk": {
-      "player_name": "Collin Gillespie",
-      "team": "PHX",
+    "shaedon_sharpe|pra|16.5|dk": {
+      "player_name": "Shaedon Sharpe",
+      "team": "POR",
       "opponent": null,
       "photo_url": null,
       "headshot_url": null,
       "game_time": "2026-04-15T02:10:00Z",
-      "stat_type": "REB",
-      "line": 1.5,
-      "dk_odds": -137,
-      "price": -137,
-      "direction": "Over",
-      "market": "player_rebounds_alternate",
-      "prop_type": "GOBLIN",
-      "is_goblin": true,
-      "is_demon": false,
-      "is_standard": false,
-      "l10_rate": 90,
-      "l5_rate": 80,
-      "h10_rate": 90,
-      "h5_rate": 80,
-      "true_hit_rate": 90,
-      "cv": 0.451,
-      "l10_std_dev": null,
-      "l10_avg": 3.6,
-      "avg_mins": null,
-      "market_prob": 57.8,
-      "propvision_true_prob": 73.9,
-      "true_probability": 73.9,
-      "casino_req_rate": 65.0,
-      "true_edge": 8.9,
-      "pp_edge": 8.9,
-      "sh_board_score": 19.9,
-      "fl_board_score": 76.1,
-      "wz_board_score": 311.2,
-      "board_score": 31.4,
-      "ferrari_power_score": 0,
-      "blowout_risk": "UNKNOWN",
-      "intel_suite": {
-        "usage_ripple": {
-          "bump_percent": 0,
-          "display": "Standard Volume",
-          "shift_label": "Standard Volume",
-          "injuries_affecting": [],
-          "reasoning": "No significant lineup changes"
-        },
-        "matchup_dvp": {
-          "rank": 25,
-          "display": "Rank #25 vs. Rebounders",
-          "color": "green",
-          "friction_level": "Low",
-          "friction_label": "Soft Defense",
-          "opponent": "POR",
-          "stat_category": "REB"
-        },
-        "pace_delta": {
-          "possessions": 0.8,
-          "display": "+0.8 Possessions",
-          "pace_factor": 1.0,
-          "tempo_label": "Standard Tempo",
-          "team_pace": 99.0,
-          "opponent_pace": 97.5,
-          "expected_game_pace": 98.2
-        },
-        "stability_index": {
-          "score": 85,
-          "label": "High",
-          "display": "85/100 (High)",
-          "std_dev": 1.58,
-          "consistency": "Very Consistent",
-          "variance_level": "Low"
-        },
-        "vision_insight": {
-          "primary": "Lasso projects 3.6 vs 1.5 line (+2.1 edge)",
-          "reasons": [
-            "Lasso projects 3.6 vs 1.5 line (+2.1 edge)",
-            "Soft defense (DvP #25)",
-            "Highly consistent performer",
-            "L10 hit rate: 90%",
-            "Driven by L10 three-point volume"
-          ],
-          "confidence": "High",
-          "confidence_factors": [
-            "lasso_high_edge",
-            "favorable_matchup",
-            "consistency",
-            "hit_rate"
-          ],
-          "summary": "Target-Lock: OVER 1.5 REB \u2014 Lasso projects 3.6 vs 1.5 line (+2.1 edge)",
-          "lasso_projection": 3.59,
-          "lasso_edge": 2.09,
-          "tactical_note": "Lasso + DvP alignment \u2014 market fracture detected"
-        },
-        "blowout_risk": {
-          "player_team_record": "45-37",
-          "opponent_team_record": "42-40",
-          "player_win_pct": 0.549,
-          "opponent_win_pct": 0.512,
-          "win_pct_diff": 0.037,
-          "favored_team": "PHX",
-          "player_is_favored": true,
-          "risk_level": "NONE",
-          "risk_reason": "Competitive matchup: PHX (45-37) vs POR (42-40)",
-          "warning": null
-        },
-        "scout_badges": [
-          "hot_streak",
-          "floor_lock",
-          "lasso_high_edge",
-          "high_fidelity_model"
-        ],
-        "lasso": {
-          "projection": 3.59,
-          "confidence_tier": "HIGH_FIDELITY",
-          "r_squared": 0.5211,
-          "top_drivers": [
-            "L10_avg_fg3a",
-            "prev_pf"
-          ]
-        },
-        "calculated_at": "2026-04-14T23:00:41.468444+00:00"
-      },
-      "active_badges": [],
-      "momentum_data": null,
-      "vacuum_data": null,
-      "whistle_data": null,
-      "whistle_class": null,
-      "whistle_modifier": null,
-      "momentum_modifier": null,
-      "vacuum_modifier": null,
-      "v7_components": null,
-      "v7_confidence": null,
-      "v7_soft_penalties": null,
-      "season_avg": 4.1,
-      "l5_avg": 3.8,
-      "l10_median": null,
-      "l10_mode": null,
-      "vk_predicted": 3.62,
-      "vk_edge": 31.4,
-      "vk_prob_over": 89.2,
-      "is_vision_enriched": true,
-      "draftkings_price": null,
-      "fanduel_price": null,
-      "sort_price": null,
-      "sort_source": null,
-      "hook_risk": false,
-      "trap_risk": false,
-      "suspect_line_bait": false,
-      "dk_tier": null,
-      "tier_label": "NBA Front Lines (Elite 10 - vk_edge Sorted)",
-      "synced_at": "2026-04-14T04:02:41.802023+00:00",
-      "mlr_matchup": {
-        "opp_def_rating": 113.5,
-        "opp_pace": 99.7,
-        "opp_pts_allowed": 110,
-        "opp_def_rank": 19.0,
-        "pace_delta": 0.7
-      },
-      "mlr_friction": {
-        "b2b_penalty": 0,
-        "opp_interior_def": 113.5,
-        "opp_perimeter_def": 113.5,
-        "matchup_difficulty": 0.63,
-        "travel_factor": 0.8
-      },
-      "mlr_features_used": true,
-      "mlr_raw_prediction": 3.62,
-      "vk_prob_under": 10.8,
-      "vk_verdict": "STRONG_OVER",
-      "vk_recommendation": "STRONG_OVER",
-      "vk_confidence": 89.2,
-      "vk_sigma_used": 1.71,
-      "vk_sigma_source": "direct_input",
-      "vk_z_score": -1.2398,
-      "tier": "front_lines",
-      "vk_data": {
-        "projection": 3.59,
-        "confidence_tier": "HIGH_FIDELITY",
-        "r_squared": 0.5211,
-        "top_drivers": [
-          "L10_avg_fg3a",
-          "prev_pf"
-        ]
-      },
-      "vision_summary": "Collin Gillespie is absolutely locked in \u2014 Lasso projects 3.6 vs a 1.5 line, that's a +2.1 cushion backed by R\u00b2=0.54 fidelity. Key driver: L10 three-point volume. Smash spot, don't overthink it.",
-      "vision_intel": "Collin Gillespie is absolutely locked in \u2014 Lasso projects 3.6 vs a 1.5 line, that's a +2.1 cushion backed by R\u00b2=0.54 fidelity. Key driver: L10 three-point volume. Smash spot, don't overthink it.",
-      "scout_badges": [
-        "hot_streak",
-        "floor_lock",
-        "lasso_high_edge",
-        "high_fidelity_model"
-      ],
-      "_enriched": true,
-      "_enriched_at": "2026-04-14T23:00:41.468582+00:00",
-      "_cache_updated": "2026-04-14T23:00:41.468584+00:00"
-    },
-    "brandin_podziemski|pts|16.5|dk": {
-      "player_name": "Brandin Podziemski",
-      "team": "GSW",
-      "opponent": null,
-      "photo_url": null,
-      "headshot_url": null,
-      "game_time": "2026-04-16T02:10:00Z",
-      "stat_type": "PTS",
-      "line": 16.5,
-      "dk_odds": 148,
-      "price": 100,
-      "direction": "Over",
-      "market": "player_points_alternate",
-      "prop_type": "DEMON",
-      "is_goblin": false,
-      "is_demon": true,
-      "is_standard": false,
-      "l10_rate": 80,
-      "l5_rate": 80,
-      "h10_rate": 80,
-      "h5_rate": 80,
-      "true_hit_rate": 80,
-      "cv": 0.268,
-      "l10_std_dev": null,
-      "l10_avg": 20.1,
-      "avg_mins": null,
-      "market_prob": 50.0,
-      "propvision_true_prob": 65.0,
-      "true_probability": 65.0,
-      "casino_req_rate": 50.0,
-      "true_edge": 15.0,
-      "pp_edge": 15.0,
-      "sh_board_score": 41.0,
-      "fl_board_score": 97.3,
-      "wz_board_score": 383.7,
-      "board_score": 383.7,
-      "ferrari_power_score": 0,
-      "blowout_risk": "LOW",
-      "intel_suite": {
-        "usage_ripple": {
-          "bump_percent": 0,
-          "display": "Standard Volume",
-          "shift_label": "Standard Volume",
-          "injuries_affecting": [],
-          "reasoning": "No significant lineup changes"
-        },
-        "matchup_dvp": {
-          "rank": 27,
-          "display": "Rank #27 vs. Scorers",
-          "color": "green",
-          "friction_level": "Low",
-          "friction_label": "Soft Defense",
-          "opponent": "LAC",
-          "stat_category": "PTS"
-        },
-        "pace_delta": {
-          "possessions": -1.3,
-          "display": "-1.3 Possessions",
-          "pace_factor": 1.0,
-          "tempo_label": "Standard Tempo",
-          "team_pace": 98.2,
-          "opponent_pace": 94.2,
-          "expected_game_pace": 96.2
-        },
-        "stability_index": {
-          "score": 55,
-          "label": "Medium",
-          "display": "55/100 (Medium)",
-          "std_dev": 4.67,
-          "consistency": "Average",
-          "variance_level": "Medium"
-        },
-        "vision_insight": {
-          "primary": "Model sees 14.2 (thin -2.3 edge)",
-          "reasons": [
-            "Model sees 14.2 (thin -2.3 edge)",
-            "Soft defense (DvP #27)",
-            "L10 hit rate: 80%",
-            "Driven by L10 field goal average"
-          ],
-          "confidence": "High",
-          "confidence_factors": [
-            "lasso_edge",
-            "favorable_matchup",
-            "hit_rate"
-          ],
-          "summary": "Target-Lock: OVER 16.5 PTS \u2014 Model sees 14.2 (thin -2.3 edge)",
-          "lasso_projection": 14.16,
-          "lasso_edge": -2.34,
-          "tactical_note": "Defensive weakness in opponent's scheme"
-        },
-        "blowout_risk": {
-          "player_team_record": "37-45",
-          "opponent_team_record": "42-40",
-          "player_win_pct": 0.451,
-          "opponent_win_pct": 0.512,
-          "win_pct_diff": 0.061,
-          "favored_team": "LAC",
-          "player_is_favored": false,
-          "risk_level": "NONE",
-          "risk_reason": "Competitive matchup: GSW (37-45) vs LAC (42-40)",
-          "warning": null
-        },
-        "scout_badges": [
-          "high_fidelity_model"
-        ],
-        "lasso": {
-          "projection": 14.16,
-          "confidence_tier": "HIGH_FIDELITY",
-          "r_squared": 0.544,
-          "top_drivers": [
-            "L10_avg_fgm",
-            "L10_avg_ftm"
-          ]
-        },
-        "calculated_at": "2026-04-14T23:00:41.471927+00:00"
-      },
-      "active_badges": [],
-      "momentum_data": null,
-      "vacuum_data": null,
-      "whistle_data": null,
-      "whistle_class": null,
-      "whistle_modifier": null,
-      "momentum_modifier": null,
-      "vacuum_modifier": null,
-      "v7_components": null,
-      "v7_confidence": null,
-      "v7_soft_penalties": null,
-      "season_avg": 13.5,
-      "l5_avg": 19.0,
-      "l10_median": null,
-      "l10_mode": null,
-      "vk_predicted": 15.44,
-      "vk_edge": 2.3,
-      "vk_prob_over": 42.6,
-      "is_vision_enriched": true,
-      "draftkings_price": null,
-      "fanduel_price": null,
-      "sort_price": 148,
-      "sort_source": "betonline",
-      "hook_risk": false,
-      "trap_risk": false,
-      "suspect_line_bait": false,
-      "dk_tier": null,
-      "tier_label": "NBA War Zone (Elite 10)",
-      "synced_at": "2026-04-14T04:02:40.781024+00:00",
-      "mlr_matchup": {
-        "opp_def_rating": 113.9,
-        "opp_pace": 101.2,
-        "opp_pts_allowed": 110,
-        "opp_def_rank": 10.9,
-        "pace_delta": 2.2
-      },
-      "mlr_friction": {
-        "b2b_penalty": 0,
-        "opp_interior_def": 113.9,
-        "opp_perimeter_def": 113.9,
-        "matchup_difficulty": 0.36,
-        "travel_factor": 0.8
-      },
-      "mlr_features_used": true,
-      "mlr_raw_prediction": 15.44,
-      "vk_prob_under": 57.4,
-      "vk_verdict": "LEAN_UNDER",
-      "vk_recommendation": "LEAN_UNDER",
-      "vk_confidence": 57.4,
-      "vk_sigma_used": 5.69,
-      "vk_sigma_source": "direct_input",
-      "vk_z_score": 0.1863,
-      "tier": "war_zone",
-      "vk_data": {
-        "projection": 14.16,
-        "confidence_tier": "HIGH_FIDELITY",
-        "r_squared": 0.544,
-        "top_drivers": [
-          "L10_avg_fgm",
-          "L10_avg_ftm"
-        ]
-      },
-      "vision_summary": "Brandin Podziemski PTS @ 16.5: Model sees 14.2 (-2.3). Edge is thin \u2014 L10 field goal average is the swing factor. Need the game script to break right.",
-      "vision_intel": "Brandin Podziemski PTS @ 16.5: Model sees 14.2 (-2.3). Edge is thin \u2014 L10 field goal average is the swing factor. Need the game script to break right.",
-      "scout_badges": [
-        "high_fidelity_model"
-      ],
-      "_enriched": true,
-      "_enriched_at": "2026-04-14T23:00:41.472068+00:00",
-      "_cache_updated": "2026-04-14T23:00:41.472070+00:00"
-    },
-    "coby_white|pra|14.5|dk": {
-      "player_name": "Coby White",
-      "team": "CHA",
-      "opponent": null,
-      "photo_url": null,
-      "headshot_url": null,
-      "game_time": "2026-04-14T23:30:00Z",
       "stat_type": "PRA",
-      "line": 14.5,
-      "dk_odds": -329,
-      "price": -137,
+      "line": 16.5,
+      "dk_odds": 100,
+      "price": 100,
       "direction": "Over",
       "market": "player_points_rebounds_assists_alternate",
-      "prop_type": "GOBLIN",
-      "is_goblin": true,
-      "is_demon": false,
-      "is_standard": false,
-      "l10_rate": 90,
-      "l5_rate": 80,
-      "h10_rate": 90,
-      "h5_rate": 80,
-      "true_hit_rate": 90,
-      "cv": 0.241,
-      "l10_std_dev": null,
-      "l10_avg": 21.4,
-      "avg_mins": null,
-      "market_prob": 76.7,
-      "propvision_true_prob": 83.3,
-      "true_probability": 83.3,
-      "casino_req_rate": 79.0,
-      "true_edge": 4.3,
-      "pp_edge": 4.3,
-      "sh_board_score": 9.3,
-      "fl_board_score": 59.8,
-      "wz_board_score": 243.3,
-      "board_score": 85.4,
-      "ferrari_power_score": 0,
-      "blowout_risk": "LOW",
-      "intel_suite": {
-        "usage_ripple": {
-          "bump_percent": 0,
-          "display": "Standard Volume",
-          "shift_label": "Standard Volume",
-          "injuries_affecting": [],
-          "reasoning": "No significant lineup changes"
-        },
-        "matchup_dvp": {
-          "rank": 15,
-          "display": "Rank #15 vs. All-Around",
-          "color": "yellow",
-          "friction_level": "Medium",
-          "friction_label": "Below Average Defense",
-          "opponent": "MIA",
-          "stat_category": "PRA"
-        },
-        "pace_delta": {
-          "possessions": -1.2,
-          "display": "-1.2 Possessions",
-          "pace_factor": 1.0,
-          "tempo_label": "Standard Tempo",
-          "team_pace": 97.8,
-          "opponent_pace": 94.8,
-          "expected_game_pace": 96.3
-        },
-        "stability_index": {
-          "score": 40,
-          "label": "Medium-Low",
-          "display": "40/100 (Medium-Low)",
-          "std_dev": 6.26,
-          "consistency": "Below Average",
-          "variance_level": "High"
-        },
-        "vision_insight": {
-          "primary": "Lasso projects 23.2 vs 14.5 line (+8.7 edge)",
-          "reasons": [
-            "Lasso projects 23.2 vs 14.5 line (+8.7 edge)",
-            "L10 hit rate: 90%",
-            "Driven by last-game shot attempts"
-          ],
-          "confidence": "High",
-          "confidence_factors": [
-            "lasso_high_edge",
-            "hit_rate"
-          ],
-          "summary": "Target-Lock: OVER 14.5 PRA \u2014 Lasso projects 23.2 vs 14.5 line (+8.7 edge)",
-          "lasso_projection": 23.212,
-          "lasso_edge": 8.71,
-          "tactical_note": "Lasso model projects significant edge over the posted line"
-        },
-        "blowout_risk": {
-          "player_team_record": "44-38",
-          "opponent_team_record": "43-39",
-          "player_win_pct": 0.537,
-          "opponent_win_pct": 0.524,
-          "win_pct_diff": 0.012,
-          "favored_team": "CHA",
-          "player_is_favored": true,
-          "risk_level": "NONE",
-          "risk_reason": "Competitive matchup: CHA (44-38) vs MIA (43-39)",
-          "warning": null
-        },
-        "scout_badges": [
-          "hot_streak",
-          "volatility_extreme",
-          "lasso_high_edge",
-          "high_fidelity_model"
-        ],
-        "lasso": {
-          "projection": 23.212,
-          "confidence_tier": "HIGH_FIDELITY",
-          "r_squared": 0.6081,
-          "top_drivers": [
-            "prev_fga",
-            "L10_avg_fgm"
-          ]
-        },
-        "calculated_at": "2026-04-14T23:00:41.475275+00:00"
-      },
-      "active_badges": [],
-      "momentum_data": null,
-      "vacuum_data": null,
-      "whistle_data": null,
-      "whistle_class": null,
-      "whistle_modifier": null,
-      "momentum_modifier": null,
-      "vacuum_modifier": null,
-      "v7_components": null,
-      "v7_confidence": null,
-      "v7_soft_penalties": null,
-      "season_avg": 24.7,
-      "l5_avg": 19.6,
-      "l10_median": null,
-      "l10_mode": null,
-      "vk_predicted": 20.24,
-      "vk_edge": 8.7,
-      "vk_prob_over": 85.4,
-      "is_vision_enriched": true,
-      "draftkings_price": -329,
-      "fanduel_price": null,
-      "sort_price": -329,
-      "sort_source": "draftkings",
-      "hook_risk": false,
-      "trap_risk": false,
-      "suspect_line_bait": false,
-      "dk_tier": null,
-      "tier_label": "NBA Safe Haven (Elite 10 - MLR Sorted)",
-      "synced_at": "2026-04-14T04:02:41.561440+00:00",
-      "mlr_matchup": {
-        "opp_def_rating": 113.2,
-        "opp_pace": 95.8,
-        "opp_pts_allowed": 110,
-        "opp_def_rank": 16.8,
-        "pace_delta": -3.2
-      },
-      "mlr_friction": {
-        "b2b_penalty": 0,
-        "opp_interior_def": 113.2,
-        "opp_perimeter_def": 113.2,
-        "matchup_difficulty": 0.56,
-        "travel_factor": 0.8
-      },
-      "mlr_features_used": true,
-      "mlr_raw_prediction": 20.24,
-      "vk_prob_under": 14.6,
-      "vk_verdict": "STRONG_OVER",
-      "vk_recommendation": "STRONG_OVER",
-      "vk_confidence": 85.4,
-      "vk_sigma_used": 5.44,
-      "vk_sigma_source": "direct_input",
-      "vk_z_score": -1.0551,
-      "tier": "safe_haven",
-      "vk_data": {
-        "projection": 23.212,
-        "confidence_tier": "HIGH_FIDELITY",
-        "r_squared": 0.6081,
-        "top_drivers": [
-          "prev_fga",
-          "L10_avg_fgm"
-        ]
-      },
-      "vision_summary": "Coby White is absolutely locked in \u2014 Lasso projects 23.2 vs a 14.5 line, that's a +8.7 cushion backed by R\u00b2=0.54 fidelity. Key driver: last-game shot attempts. Smash spot, don't overthink it.",
-      "vision_intel": "Coby White is absolutely locked in \u2014 Lasso projects 23.2 vs a 14.5 line, that's a +8.7 cushion backed by R\u00b2=0.54 fidelity. Key driver: last-game shot attempts. Smash spot, don't overthink it.",
-      "scout_badges": [
-        "hot_streak",
-        "volatility_extreme",
-        "lasso_high_edge",
-        "high_fidelity_model"
-      ],
-      "_enriched": true,
-      "_enriched_at": "2026-04-14T23:00:41.475377+00:00",
-      "_cache_updated": "2026-04-14T23:00:41.475378+00:00"
-    },
-    "sion_james|reb|1.5|dk": {
-      "player_name": "Sion James",
-      "team": "CHA",
-      "opponent": null,
-      "photo_url": null,
-      "headshot_url": null,
-      "game_time": "2026-04-14T23:30:00Z",
-      "stat_type": "REB",
-      "line": 1.5,
-      "dk_odds": -137,
-      "price": -137,
-      "direction": "Over",
-      "market": "player_rebounds_alternate",
-      "prop_type": "GOBLIN",
-      "is_goblin": true,
-      "is_demon": false,
-      "is_standard": false,
-      "l10_rate": 80,
-      "l5_rate": 100,
-      "h10_rate": 80,
-      "h5_rate": 100,
-      "true_hit_rate": 80,
-      "cv": 0.468,
-      "l10_std_dev": null,
-      "l10_avg": 3.8,
-      "avg_mins": null,
-      "market_prob": 57.8,
-      "propvision_true_prob": 68.9,
-      "true_probability": 68.9,
-      "casino_req_rate": 65.0,
-      "true_edge": 3.9,
-      "pp_edge": 3.9,
-      "sh_board_score": 4.7,
-      "fl_board_score": 50.9,
-      "wz_board_score": 216.2,
-      "board_score": 29.0,
-      "ferrari_power_score": 0,
-      "blowout_risk": "LOW",
-      "intel_suite": {
-        "usage_ripple": {
-          "bump_percent": 0,
-          "display": "Standard Volume",
-          "shift_label": "Standard Volume",
-          "injuries_affecting": [],
-          "reasoning": "No significant lineup changes"
-        },
-        "matchup_dvp": {
-          "rank": 11,
-          "display": "Rank #11 vs. Rebounders",
-          "color": "yellow",
-          "friction_level": "Med-High",
-          "friction_label": "Above Average Defense",
-          "opponent": "MIA",
-          "stat_category": "REB"
-        },
-        "pace_delta": {
-          "possessions": -1.2,
-          "display": "-1.2 Possessions",
-          "pace_factor": 1.0,
-          "tempo_label": "Standard Tempo",
-          "team_pace": 97.8,
-          "opponent_pace": 94.8,
-          "expected_game_pace": 96.3
-        },
-        "stability_index": {
-          "score": 85,
-          "label": "High",
-          "display": "85/100 (High)",
-          "std_dev": 1.6,
-          "consistency": "Very Consistent",
-          "variance_level": "Low"
-        },
-        "vision_insight": {
-          "primary": "Lasso projects 4.7 vs 1.5 line (+3.2 edge)",
-          "reasons": [
-            "Lasso projects 4.7 vs 1.5 line (+3.2 edge)",
-            "Highly consistent performer",
-            "L10 hit rate: 80%",
-            "Driven by L10 rebound average"
-          ],
-          "confidence": "High",
-          "confidence_factors": [
-            "lasso_high_edge",
-            "consistency",
-            "hit_rate"
-          ],
-          "summary": "Target-Lock: OVER 1.5 REB \u2014 Lasso projects 4.7 vs 1.5 line (+3.2 edge)",
-          "lasso_projection": 4.674,
-          "lasso_edge": 3.17,
-          "tactical_note": "Lasso model projects significant edge over the posted line"
-        },
-        "blowout_risk": {
-          "player_team_record": "44-38",
-          "opponent_team_record": "43-39",
-          "player_win_pct": 0.537,
-          "opponent_win_pct": 0.524,
-          "win_pct_diff": 0.012,
-          "favored_team": "CHA",
-          "player_is_favored": true,
-          "risk_level": "NONE",
-          "risk_reason": "Competitive matchup: CHA (44-38) vs MIA (43-39)",
-          "warning": null
-        },
-        "scout_badges": [
-          "hot_streak",
-          "floor_lock",
-          "lasso_high_edge",
-          "high_fidelity_model"
-        ],
-        "lasso": {
-          "projection": 4.674,
-          "confidence_tier": "HIGH_FIDELITY",
-          "r_squared": 0.5211,
-          "top_drivers": [
-            "L10_avg_reb",
-            "prev_reb"
-          ]
-        },
-        "calculated_at": "2026-04-14T23:00:41.479137+00:00"
-      },
-      "active_badges": [],
-      "momentum_data": null,
-      "vacuum_data": null,
-      "whistle_data": null,
-      "whistle_class": null,
-      "whistle_modifier": null,
-      "momentum_modifier": null,
-      "vacuum_modifier": null,
-      "v7_components": null,
-      "v7_confidence": null,
-      "v7_soft_penalties": null,
-      "season_avg": 3.5,
-      "l5_avg": 4.8,
-      "l10_median": null,
-      "l10_mode": null,
-      "vk_predicted": 3.59,
-      "vk_edge": 29.0,
-      "vk_prob_over": 86.8,
-      "is_vision_enriched": true,
-      "draftkings_price": null,
-      "fanduel_price": null,
-      "sort_price": null,
-      "sort_source": null,
-      "hook_risk": false,
-      "trap_risk": false,
-      "suspect_line_bait": false,
-      "dk_tier": null,
-      "tier_label": "NBA Front Lines (Elite 10 - vk_edge Sorted)",
-      "synced_at": "2026-04-14T04:02:41.764201+00:00",
-      "mlr_matchup": {
-        "opp_def_rating": 113.2,
-        "opp_pace": 95.8,
-        "opp_pts_allowed": 110,
-        "opp_def_rank": 16.8,
-        "pace_delta": -3.2
-      },
-      "mlr_friction": {
-        "b2b_penalty": 0,
-        "opp_interior_def": 113.2,
-        "opp_perimeter_def": 113.2,
-        "matchup_difficulty": 0.56,
-        "travel_factor": 0.8
-      },
-      "mlr_features_used": true,
-      "mlr_raw_prediction": 3.59,
-      "vk_prob_under": 13.2,
-      "vk_verdict": "STRONG_OVER",
-      "vk_recommendation": "STRONG_OVER",
-      "vk_confidence": 86.8,
-      "vk_sigma_used": 1.87,
-      "vk_sigma_source": "direct_input",
-      "vk_z_score": -1.1176,
-      "tier": "front_lines",
-      "vk_data": {
-        "projection": 4.674,
-        "confidence_tier": "HIGH_FIDELITY",
-        "r_squared": 0.5211,
-        "top_drivers": [
-          "L10_avg_reb",
-          "prev_reb"
-        ]
-      },
-      "vision_summary": "Sion James is absolutely locked in \u2014 Lasso projects 4.7 vs a 1.5 line, that's a +3.2 cushion backed by R\u00b2=0.54 fidelity. Key driver: L10 rebound average. Smash spot, don't overthink it.",
-      "vision_intel": "Sion James is absolutely locked in \u2014 Lasso projects 4.7 vs a 1.5 line, that's a +3.2 cushion backed by R\u00b2=0.54 fidelity. Key driver: L10 rebound average. Smash spot, don't overthink it.",
-      "scout_badges": [
-        "hot_streak",
-        "floor_lock",
-        "lasso_high_edge",
-        "high_fidelity_model"
-      ],
-      "_enriched": true,
-      "_enriched_at": "2026-04-14T23:00:41.479279+00:00",
-      "_cache_updated": "2026-04-14T23:00:41.479281+00:00"
-    },
-    "jalen_green|pts|19.5|dk": {
-      "player_name": "Jalen Green",
-      "team": "PHX",
-      "opponent": null,
-      "photo_url": null,
-      "headshot_url": null,
-      "game_time": "2026-04-15T02:10:00Z",
-      "stat_type": "PTS",
-      "line": 19.5,
-      "dk_odds": 153,
-      "price": 100,
-      "direction": "Over",
-      "market": "player_points_alternate",
       "prop_type": "DEMON",
       "is_goblin": false,
       "is_demon": true,
@@ -989,9 +25,9 @@
       "h10_rate": 70,
       "h5_rate": 40,
       "true_hit_rate": 70,
-      "cv": 0.455,
+      "cv": 0.435,
       "l10_std_dev": null,
-      "l10_avg": 19.0,
+      "l10_avg": 23.5,
       "avg_mins": null,
       "market_prob": 50.0,
       "propvision_true_prob": 60.0,
@@ -999,10 +35,10 @@
       "casino_req_rate": 50.0,
       "true_edge": 10.0,
       "pp_edge": 10.0,
-      "sh_board_score": 23.2,
-      "fl_board_score": 70.5,
-      "wz_board_score": 287.7,
-      "board_score": 287.7,
+      "sh_board_score": 23.5,
+      "fl_board_score": 70.7,
+      "wz_board_score": 287.8,
+      "board_score": 32.1,
       "ferrari_power_score": 0,
       "blowout_risk": "NONE",
       "intel_suite": {
@@ -1014,1004 +50,49 @@
           "reasoning": "No significant lineup changes"
         },
         "matchup_dvp": {
-          "rank": 25,
-          "display": "Rank #25 vs. Scorers",
-          "color": "green",
-          "friction_level": "Low",
-          "friction_label": "Soft Defense",
-          "opponent": "POR",
-          "stat_category": "PTS"
-        },
-        "pace_delta": {
-          "possessions": 0.8,
-          "display": "+0.8 Possessions",
-          "pace_factor": 1.0,
-          "tempo_label": "Standard Tempo",
-          "team_pace": 99.0,
-          "opponent_pace": 97.5,
-          "expected_game_pace": 98.2
-        },
-        "stability_index": {
-          "score": 25,
-          "label": "Low",
-          "display": "25/100 (Low)",
-          "std_dev": 8.16,
-          "consistency": "High Variance",
-          "variance_level": "High"
-        },
-        "vision_insight": {
-          "primary": "Lasso projects 13.4 vs 19.5 line (-6.1 edge)",
-          "reasons": [
-            "Lasso projects 13.4 vs 19.5 line (-6.1 edge)",
-            "Soft defense (DvP #25)",
-            "Driven by L10 field goal average"
-          ],
-          "confidence": "High",
-          "confidence_factors": [
-            "lasso_high_edge",
-            "favorable_matchup"
-          ],
-          "summary": "Target-Lock: OVER 19.5 PTS \u2014 Lasso projects 13.4 vs 19.5 line (-6.1 edge)",
-          "lasso_projection": 13.421,
-          "lasso_edge": -6.08,
-          "tactical_note": "Lasso + DvP alignment \u2014 market fracture detected"
-        },
-        "blowout_risk": {
-          "player_team_record": "45-37",
-          "opponent_team_record": "42-40",
-          "player_win_pct": 0.549,
-          "opponent_win_pct": 0.512,
-          "win_pct_diff": 0.037,
-          "favored_team": "PHX",
-          "player_is_favored": true,
-          "risk_level": "NONE",
-          "risk_reason": "Competitive matchup: PHX (45-37) vs POR (42-40)",
-          "warning": null
-        },
-        "scout_badges": [
-          "volatility_extreme",
-          "high_fidelity_model"
-        ],
-        "lasso": {
-          "projection": 13.421,
-          "confidence_tier": "HIGH_FIDELITY",
-          "r_squared": 0.544,
-          "top_drivers": [
-            "L10_avg_fgm",
-            "prev_fga"
-          ]
-        },
-        "calculated_at": "2026-04-14T23:00:41.482095+00:00"
-      },
-      "active_badges": [],
-      "momentum_data": null,
-      "vacuum_data": null,
-      "whistle_data": null,
-      "whistle_class": null,
-      "whistle_modifier": null,
-      "momentum_modifier": null,
-      "vacuum_modifier": null,
-      "v7_components": null,
-      "v7_confidence": null,
-      "v7_soft_penalties": null,
-      "season_avg": 17.8,
-      "l5_avg": 14.6,
-      "l10_median": null,
-      "l10_mode": null,
-      "vk_predicted": 13.6,
-      "vk_edge": -13.6,
-      "vk_prob_over": 25.9,
-      "is_vision_enriched": true,
-      "draftkings_price": 153,
-      "fanduel_price": 132,
-      "sort_price": 153,
-      "sort_source": "draftkings",
-      "hook_risk": false,
-      "trap_risk": false,
-      "suspect_line_bait": false,
-      "dk_tier": null,
-      "tier_label": "NBA War Zone (Elite 10)",
-      "synced_at": "2026-04-14T04:02:40.326411+00:00",
-      "mlr_matchup": {
-        "opp_def_rating": 113.5,
-        "opp_pace": 99.7,
-        "opp_pts_allowed": 110,
-        "opp_def_rank": 19.0,
-        "pace_delta": 0.7
-      },
-      "mlr_friction": {
-        "b2b_penalty": 1,
-        "opp_interior_def": 113.5,
-        "opp_perimeter_def": 113.5,
-        "matchup_difficulty": 0.63,
-        "travel_factor": 0.8
-      },
-      "mlr_features_used": true,
-      "mlr_raw_prediction": 13.6,
-      "vk_prob_under": 74.1,
-      "vk_verdict": "STRONG_UNDER",
-      "vk_recommendation": "STRONG_UNDER",
-      "vk_confidence": 74.1,
-      "vk_sigma_used": 9.12,
-      "vk_sigma_source": "direct_input",
-      "vk_z_score": 0.6469,
-      "tier": "war_zone",
-      "vk_data": {
-        "projection": 13.421,
-        "confidence_tier": "HIGH_FIDELITY",
-        "r_squared": 0.544,
-        "top_drivers": [
-          "L10_avg_fgm",
-          "prev_fga"
-        ]
-      },
-      "vision_summary": "FADE ALERT on Jalen Green PTS @ 19.5 \u2014 model sees only 13.4 (-6.1 edge). The L10 field goal average is dragging projections down. Take the UNDER.",
-      "vision_intel": "FADE ALERT on Jalen Green PTS @ 19.5 \u2014 model sees only 13.4 (-6.1 edge). The L10 field goal average is dragging projections down. Take the UNDER.",
-      "scout_badges": [
-        "volatility_extreme",
-        "high_fidelity_model"
-      ],
-      "_enriched": true,
-      "_enriched_at": "2026-04-14T23:00:41.482177+00:00",
-      "_cache_updated": "2026-04-14T23:00:41.482179+00:00"
-    },
-    "davion_mitchell|reb|1.5|dk": {
-      "player_name": "Davion Mitchell",
-      "team": "MIA",
-      "opponent": null,
-      "photo_url": null,
-      "headshot_url": null,
-      "game_time": "2026-04-14T23:30:00Z",
-      "stat_type": "REB",
-      "line": 1.5,
-      "dk_odds": -137,
-      "price": -137,
-      "direction": "Over",
-      "market": "player_rebounds_alternate",
-      "prop_type": "GOBLIN",
-      "is_goblin": true,
-      "is_demon": false,
-      "is_standard": false,
-      "l10_rate": 90,
-      "l5_rate": 80,
-      "h10_rate": 90,
-      "h5_rate": 80,
-      "true_hit_rate": 90,
-      "cv": 0.372,
-      "l10_std_dev": null,
-      "l10_avg": 2.7,
-      "avg_mins": null,
-      "market_prob": 57.8,
-      "propvision_true_prob": 73.9,
-      "true_probability": 73.9,
-      "casino_req_rate": 65.0,
-      "true_edge": 8.9,
-      "pp_edge": 8.9,
-      "sh_board_score": 21.1,
-      "fl_board_score": 76.9,
-      "wz_board_score": 311.6,
-      "board_score": 32.4,
-      "ferrari_power_score": 0,
-      "blowout_risk": "UNKNOWN",
-      "intel_suite": {
-        "usage_ripple": {
-          "bump_percent": 0,
-          "display": "Standard Volume",
-          "shift_label": "Standard Volume",
-          "injuries_affecting": [],
-          "reasoning": "No significant lineup changes"
-        },
-        "matchup_dvp": {
-          "rank": 22,
-          "display": "Rank #22 vs. Rebounders",
+          "rank": 15,
+          "display": "Rank #15 vs. All-Around",
           "color": "yellow",
-          "friction_level": "Low-Med",
-          "friction_label": "Soft Defense",
-          "opponent": "CHA",
-          "stat_category": "REB"
+          "friction_level": "Medium",
+          "friction_label": "Below Average Defense",
+          "opponent": "Unknown",
+          "stat_category": "PRA"
         },
         "pace_delta": {
-          "possessions": -1.2,
-          "display": "-1.2 Possessions",
+          "possessions": 0.0,
+          "display": "+0.0 Possessions",
           "pace_factor": 1.0,
           "tempo_label": "Standard Tempo",
-          "team_pace": 94.8,
-          "opponent_pace": 97.8,
-          "expected_game_pace": 96.3
-        },
-        "stability_index": {
-          "score": 85,
-          "label": "High",
-          "display": "85/100 (High)",
-          "std_dev": 1.99,
-          "consistency": "Very Consistent",
-          "variance_level": "Low"
-        },
-        "vision_insight": {
-          "primary": "Lasso projects 3.4 vs 1.5 line (+1.9 edge)",
-          "reasons": [
-            "Lasso projects 3.4 vs 1.5 line (+1.9 edge)",
-            "Soft defense (DvP #22)",
-            "Highly consistent performer",
-            "L10 hit rate: 90%",
-            "Driven by L10 rebound average"
-          ],
-          "confidence": "High",
-          "confidence_factors": [
-            "lasso_high_edge",
-            "favorable_matchup",
-            "consistency",
-            "hit_rate"
-          ],
-          "summary": "Target-Lock: OVER 1.5 REB \u2014 Lasso projects 3.4 vs 1.5 line (+1.9 edge)",
-          "lasso_projection": 3.436,
-          "lasso_edge": 1.94,
-          "tactical_note": "Lasso + DvP alignment \u2014 market fracture detected"
-        },
-        "blowout_risk": {
-          "player_team_record": "43-39",
-          "opponent_team_record": "44-38",
-          "player_win_pct": 0.524,
-          "opponent_win_pct": 0.537,
-          "win_pct_diff": 0.012,
-          "favored_team": "CHA",
-          "player_is_favored": false,
-          "risk_level": "NONE",
-          "risk_reason": "Competitive matchup: MIA (43-39) vs CHA (44-38)",
-          "warning": null
-        },
-        "scout_badges": [
-          "floor_lock",
-          "lasso_high_edge",
-          "high_fidelity_model"
-        ],
-        "lasso": {
-          "projection": 3.436,
-          "confidence_tier": "HIGH_FIDELITY",
-          "r_squared": 0.5211,
-          "top_drivers": [
-            "L10_avg_reb",
-            "L5_avg_reb"
-          ]
-        },
-        "calculated_at": "2026-04-14T23:00:41.485209+00:00"
-      },
-      "active_badges": [],
-      "momentum_data": null,
-      "vacuum_data": null,
-      "whistle_data": null,
-      "whistle_class": null,
-      "whistle_modifier": null,
-      "momentum_modifier": null,
-      "vacuum_modifier": null,
-      "v7_components": null,
-      "v7_confidence": null,
-      "v7_soft_penalties": null,
-      "season_avg": 2.7,
-      "l5_avg": 2.4,
-      "l10_median": null,
-      "l10_mode": null,
-      "vk_predicted": 2.87,
-      "vk_edge": 32.4,
-      "vk_prob_over": 90.2,
-      "is_vision_enriched": true,
-      "draftkings_price": null,
-      "fanduel_price": null,
-      "sort_price": null,
-      "sort_source": null,
-      "hook_risk": false,
-      "trap_risk": false,
-      "suspect_line_bait": false,
-      "dk_tier": null,
-      "tier_label": "NBA Front Lines (Elite 10 - vk_edge Sorted)",
-      "synced_at": "2026-04-14T04:02:40.047403+00:00",
-      "mlr_matchup": {
-        "opp_def_rating": 113.2,
-        "opp_pace": 95.8,
-        "opp_pts_allowed": 110,
-        "opp_def_rank": 16.8,
-        "pace_delta": -3.2
-      },
-      "mlr_friction": {
-        "b2b_penalty": 0,
-        "opp_interior_def": 113.2,
-        "opp_perimeter_def": 113.2,
-        "matchup_difficulty": 0.56,
-        "travel_factor": 0.8
-      },
-      "mlr_features_used": true,
-      "mlr_raw_prediction": 2.87,
-      "vk_prob_under": 9.8,
-      "vk_verdict": "STRONG_OVER",
-      "vk_recommendation": "STRONG_OVER",
-      "vk_confidence": 90.2,
-      "vk_sigma_used": 1.06,
-      "vk_sigma_source": "direct_input",
-      "vk_z_score": -1.2925,
-      "tier": "front_lines",
-      "vk_data": {
-        "projection": 3.436,
-        "confidence_tier": "HIGH_FIDELITY",
-        "r_squared": 0.5211,
-        "top_drivers": [
-          "L10_avg_reb",
-          "L5_avg_reb"
-        ]
-      },
-      "vision_summary": "Davion Mitchell is absolutely locked in \u2014 Lasso projects 3.4 vs a 1.5 line, that's a +1.9 cushion backed by R\u00b2=0.54 fidelity. Key driver: L10 rebound average. Smash spot, don't overthink it.",
-      "vision_intel": "Davion Mitchell is absolutely locked in \u2014 Lasso projects 3.4 vs a 1.5 line, that's a +1.9 cushion backed by R\u00b2=0.54 fidelity. Key driver: L10 rebound average. Smash spot, don't overthink it.",
-      "scout_badges": [
-        "floor_lock",
-        "lasso_high_edge",
-        "high_fidelity_model"
-      ],
-      "_enriched": true,
-      "_enriched_at": "2026-04-14T23:00:41.485334+00:00",
-      "_cache_updated": "2026-04-14T23:00:41.485336+00:00"
-    },
-    "jordan_goodwin|pts|7.5|dk": {
-      "player_name": "Jordan Goodwin",
-      "team": "PHX",
-      "opponent": null,
-      "photo_url": null,
-      "headshot_url": null,
-      "game_time": "2026-04-15T02:10:00Z",
-      "stat_type": "PTS",
-      "line": 7.5,
-      "dk_odds": 101,
-      "price": 100,
-      "direction": "Over",
-      "market": "player_points_alternate",
-      "prop_type": "DEMON",
-      "is_goblin": false,
-      "is_demon": true,
-      "is_standard": false,
-      "l10_rate": 80,
-      "l5_rate": 80,
-      "h10_rate": 80,
-      "h5_rate": 80,
-      "true_hit_rate": 80,
-      "cv": 0.308,
-      "l10_std_dev": null,
-      "l10_avg": 9.3,
-      "avg_mins": null,
-      "market_prob": 50.0,
-      "propvision_true_prob": 65.0,
-      "true_probability": 65.0,
-      "casino_req_rate": 50.0,
-      "true_edge": 15.0,
-      "pp_edge": 15.0,
-      "sh_board_score": 40.4,
-      "fl_board_score": 96.9,
-      "wz_board_score": 383.5,
-      "board_score": 383.5,
-      "ferrari_power_score": 0,
-      "blowout_risk": "NONE",
-      "intel_suite": {
-        "usage_ripple": {
-          "bump_percent": 0,
-          "display": "Standard Volume",
-          "shift_label": "Standard Volume",
-          "injuries_affecting": [],
-          "reasoning": "No significant lineup changes"
-        },
-        "matchup_dvp": {
-          "rank": 25,
-          "display": "Rank #25 vs. Scorers",
-          "color": "green",
-          "friction_level": "Low",
-          "friction_label": "Soft Defense",
-          "opponent": "POR",
-          "stat_category": "PTS"
-        },
-        "pace_delta": {
-          "possessions": 0.8,
-          "display": "+0.8 Possessions",
-          "pace_factor": 1.0,
-          "tempo_label": "Standard Tempo",
-          "team_pace": 99.0,
+          "team_pace": 97.5,
           "opponent_pace": 97.5,
-          "expected_game_pace": 98.2
+          "expected_game_pace": 97.5
         },
         "stability_index": {
           "score": 55,
           "label": "Medium",
           "display": "55/100 (Medium)",
-          "std_dev": 4.3,
+          "std_dev": 4.53,
           "consistency": "Average",
           "variance_level": "Medium"
         },
         "vision_insight": {
-          "primary": "Soft defense (DvP #25)",
+          "primary": "Lasso projects 24.0 vs 16.5 line (+7.5 edge)",
           "reasons": [
-            "Soft defense (DvP #25)",
-            "L10 hit rate: 80%",
-            "Driven by L10 free throw average"
-          ],
-          "confidence": "High",
-          "confidence_factors": [
-            "favorable_matchup",
-            "hit_rate"
-          ],
-          "summary": "Target-Lock: OVER 7.5 PTS \u2014 Soft defense (DvP #25)",
-          "lasso_projection": 7.415,
-          "lasso_edge": -0.08,
-          "tactical_note": "Defensive weakness in opponent's scheme"
-        },
-        "blowout_risk": {
-          "player_team_record": "45-37",
-          "opponent_team_record": "42-40",
-          "player_win_pct": 0.549,
-          "opponent_win_pct": 0.512,
-          "win_pct_diff": 0.037,
-          "favored_team": "PHX",
-          "player_is_favored": true,
-          "risk_level": "NONE",
-          "risk_reason": "Competitive matchup: PHX (45-37) vs POR (42-40)",
-          "warning": null
-        },
-        "scout_badges": [
-          "high_fidelity_model"
-        ],
-        "lasso": {
-          "projection": 7.415,
-          "confidence_tier": "HIGH_FIDELITY",
-          "r_squared": 0.544,
-          "top_drivers": [
-            "L10_avg_ftm",
-            "L10_avg_fgm"
-          ]
-        },
-        "calculated_at": "2026-04-14T23:00:41.488511+00:00"
-      },
-      "active_badges": [],
-      "momentum_data": null,
-      "vacuum_data": null,
-      "whistle_data": null,
-      "whistle_class": null,
-      "whistle_modifier": null,
-      "momentum_modifier": null,
-      "vacuum_modifier": null,
-      "v7_components": null,
-      "v7_confidence": null,
-      "v7_soft_penalties": null,
-      "season_avg": 8.7,
-      "l5_avg": 8.8,
-      "l10_median": null,
-      "l10_mode": null,
-      "vk_predicted": 8.62,
-      "vk_edge": 14.7,
-      "vk_prob_over": 64.5,
-      "is_vision_enriched": true,
-      "draftkings_price": 101,
-      "fanduel_price": null,
-      "sort_price": 101,
-      "sort_source": "draftkings",
-      "hook_risk": false,
-      "trap_risk": false,
-      "suspect_line_bait": false,
-      "dk_tier": null,
-      "tier_label": "NBA War Zone (Elite 10)",
-      "synced_at": "2026-04-14T04:02:41.247615+00:00",
-      "mlr_matchup": {
-        "opp_def_rating": 113.5,
-        "opp_pace": 99.7,
-        "opp_pts_allowed": 110,
-        "opp_def_rank": 19.0,
-        "pace_delta": 0.7
-      },
-      "mlr_friction": {
-        "b2b_penalty": 1,
-        "opp_interior_def": 113.5,
-        "opp_perimeter_def": 113.5,
-        "matchup_difficulty": 0.63,
-        "travel_factor": 0.8
-      },
-      "mlr_features_used": true,
-      "mlr_raw_prediction": 8.62,
-      "vk_prob_under": 35.5,
-      "vk_verdict": "LEAN_OVER",
-      "vk_recommendation": "LEAN_OVER",
-      "vk_confidence": 64.5,
-      "vk_sigma_used": 3.02,
-      "vk_sigma_source": "direct_input",
-      "vk_z_score": -0.3709,
-      "tier": "war_zone",
-      "vk_data": {
-        "projection": 7.415,
-        "confidence_tier": "HIGH_FIDELITY",
-        "r_squared": 0.544,
-        "top_drivers": [
-          "L10_avg_ftm",
-          "L10_avg_fgm"
-        ]
-      },
-      "vision_summary": "Jordan Goodwin PTS @ 7.5: Model sees 7.4 (-0.1). Edge is thin \u2014 L10 free throw average is the swing factor. Need the game script to break right.",
-      "vision_intel": "Jordan Goodwin PTS @ 7.5: Model sees 7.4 (-0.1). Edge is thin \u2014 L10 free throw average is the swing factor. Need the game script to break right.",
-      "scout_badges": [
-        "high_fidelity_model"
-      ],
-      "_enriched": true,
-      "_enriched_at": "2026-04-14T23:00:41.488666+00:00",
-      "_cache_updated": "2026-04-14T23:00:41.488668+00:00"
-    },
-    "draymond_green|ast|5.5|dk": {
-      "player_name": "Draymond Green",
-      "team": "GSW",
-      "opponent": null,
-      "photo_url": null,
-      "headshot_url": null,
-      "game_time": "2026-04-16T02:10:00Z",
-      "stat_type": "AST",
-      "line": 5.5,
-      "dk_odds": 106,
-      "price": 100,
-      "direction": "Over",
-      "market": "player_assists_alternate",
-      "prop_type": "DEMON",
-      "is_goblin": false,
-      "is_demon": true,
-      "is_standard": false,
-      "l10_rate": 80,
-      "l5_rate": 100,
-      "h10_rate": 80,
-      "h5_rate": 100,
-      "true_hit_rate": 80,
-      "cv": 0.45,
-      "l10_std_dev": null,
-      "l10_avg": 6.8,
-      "avg_mins": null,
-      "market_prob": 50.0,
-      "propvision_true_prob": 65.0,
-      "true_probability": 65.0,
-      "casino_req_rate": 50.0,
-      "true_edge": 15.0,
-      "pp_edge": 15.0,
-      "sh_board_score": 38.2,
-      "fl_board_score": 95.5,
-      "wz_board_score": 382.8,
-      "board_score": 382.8,
-      "ferrari_power_score": 0,
-      "blowout_risk": "LOW",
-      "intel_suite": {
-        "usage_ripple": {
-          "bump_percent": 0,
-          "display": "Standard Volume",
-          "shift_label": "Standard Volume",
-          "injuries_affecting": [],
-          "reasoning": "No significant lineup changes"
-        },
-        "matchup_dvp": {
-          "rank": 26,
-          "display": "Rank #26 vs. Playmakers",
-          "color": "green",
-          "friction_level": "Low",
-          "friction_label": "Soft Defense",
-          "opponent": "LAC",
-          "stat_category": "AST"
-        },
-        "pace_delta": {
-          "possessions": -1.3,
-          "display": "-1.3 Possessions",
-          "pace_factor": 1.0,
-          "tempo_label": "Standard Tempo",
-          "team_pace": 98.2,
-          "opponent_pace": 94.2,
-          "expected_game_pace": 96.2
-        },
-        "stability_index": {
-          "score": 70,
-          "label": "Medium-High",
-          "display": "70/100 (Medium-High)",
-          "std_dev": 2.75,
-          "consistency": "Above Average",
-          "variance_level": "Low"
-        },
-        "vision_insight": {
-          "primary": "Lasso projects 6.9 vs 5.5 line (+1.4 edge)",
-          "reasons": [
-            "Lasso projects 6.9 vs 5.5 line (+1.4 edge)",
-            "Soft defense (DvP #26)",
-            "L10 hit rate: 80%",
-            "Driven by L10 assist average"
-          ],
-          "confidence": "High",
-          "confidence_factors": [
-            "lasso_high_edge",
-            "favorable_matchup",
-            "hit_rate"
-          ],
-          "summary": "Target-Lock: OVER 5.5 AST \u2014 Lasso projects 6.9 vs 5.5 line (+1.4 edge)",
-          "lasso_projection": 6.863,
-          "lasso_edge": 1.36,
-          "tactical_note": "Lasso + DvP alignment \u2014 market fracture detected"
-        },
-        "blowout_risk": {
-          "player_team_record": "37-45",
-          "opponent_team_record": "42-40",
-          "player_win_pct": 0.451,
-          "opponent_win_pct": 0.512,
-          "win_pct_diff": 0.061,
-          "favored_team": "LAC",
-          "player_is_favored": false,
-          "risk_level": "NONE",
-          "risk_reason": "Competitive matchup: GSW (37-45) vs LAC (42-40)",
-          "warning": null
-        },
-        "scout_badges": [
-          "lasso_high_edge",
-          "high_fidelity_model"
-        ],
-        "lasso": {
-          "projection": 6.863,
-          "confidence_tier": "HIGH_FIDELITY",
-          "r_squared": 0.5469,
-          "top_drivers": [
-            "L10_avg_ast",
-            "prev_turnover"
-          ]
-        },
-        "calculated_at": "2026-04-14T23:00:41.491725+00:00"
-      },
-      "active_badges": [],
-      "momentum_data": null,
-      "vacuum_data": null,
-      "whistle_data": null,
-      "whistle_class": null,
-      "whistle_modifier": null,
-      "momentum_modifier": null,
-      "vacuum_modifier": null,
-      "v7_components": null,
-      "v7_confidence": null,
-      "v7_soft_penalties": null,
-      "season_avg": 5.5,
-      "l5_avg": 8.0,
-      "l10_median": null,
-      "l10_mode": null,
-      "vk_predicted": 5.65,
-      "vk_edge": 3.4,
-      "vk_prob_over": 51.9,
-      "is_vision_enriched": true,
-      "draftkings_price": 106,
-      "fanduel_price": 100,
-      "sort_price": 106,
-      "sort_source": "draftkings",
-      "hook_risk": false,
-      "trap_risk": false,
-      "suspect_line_bait": false,
-      "dk_tier": null,
-      "tier_label": "NBA War Zone (Elite 10)",
-      "synced_at": "2026-04-14T04:02:41.162082+00:00",
-      "mlr_matchup": {
-        "opp_def_rating": 113.9,
-        "opp_pace": 101.2,
-        "opp_pts_allowed": 110,
-        "opp_def_rank": 10.9,
-        "pace_delta": 2.2
-      },
-      "mlr_friction": {
-        "b2b_penalty": 1,
-        "opp_interior_def": 113.9,
-        "opp_perimeter_def": 113.9,
-        "matchup_difficulty": 0.36,
-        "travel_factor": 0.8
-      },
-      "mlr_features_used": true,
-      "mlr_raw_prediction": 5.65,
-      "vk_prob_under": 48.1,
-      "vk_verdict": "NEUTRAL",
-      "vk_recommendation": "NEUTRAL",
-      "vk_confidence": 51.9,
-      "vk_sigma_used": 3.22,
-      "vk_sigma_source": "direct_input",
-      "vk_z_score": -0.0466,
-      "tier": "war_zone",
-      "vk_data": {
-        "projection": 6.863,
-        "confidence_tier": "HIGH_FIDELITY",
-        "r_squared": 0.5469,
-        "top_drivers": [
-          "L10_avg_ast",
-          "prev_turnover"
-        ]
-      },
-      "vision_summary": "Draymond Green is absolutely locked in \u2014 Lasso projects 6.9 vs a 5.5 line, that's a +1.4 cushion backed by R\u00b2=0.54 fidelity. Key driver: L10 assist average. Smash spot, don't overthink it.",
-      "vision_intel": "Draymond Green is absolutely locked in \u2014 Lasso projects 6.9 vs a 5.5 line, that's a +1.4 cushion backed by R\u00b2=0.54 fidelity. Key driver: L10 assist average. Smash spot, don't overthink it.",
-      "scout_badges": [
-        "lasso_high_edge",
-        "high_fidelity_model"
-      ],
-      "_enriched": true,
-      "_enriched_at": "2026-04-14T23:00:41.491857+00:00",
-      "_cache_updated": "2026-04-14T23:00:41.491859+00:00"
-    },
-    "bam_adebayo|pra|29.5|dk": {
-      "player_name": "Bam Adebayo",
-      "team": "MIA",
-      "opponent": null,
-      "photo_url": null,
-      "headshot_url": null,
-      "game_time": "2026-04-14T23:30:00Z",
-      "stat_type": "PRA",
-      "line": 29.5,
-      "dk_odds": -295,
-      "price": -137,
-      "direction": "Over",
-      "market": "player_points_rebounds_assists_alternate",
-      "prop_type": "GOBLIN",
-      "is_goblin": true,
-      "is_demon": false,
-      "is_standard": false,
-      "l10_rate": 90,
-      "l5_rate": 80,
-      "h10_rate": 90,
-      "h5_rate": 80,
-      "true_hit_rate": 90,
-      "cv": 0.208,
-      "l10_std_dev": null,
-      "l10_avg": 35.2,
-      "avg_mins": null,
-      "market_prob": 74.7,
-      "propvision_true_prob": 82.3,
-      "true_probability": 82.3,
-      "casino_req_rate": 79.0,
-      "true_edge": 3.3,
-      "pp_edge": 3.3,
-      "sh_board_score": 6.8,
-      "fl_board_score": 56.1,
-      "wz_board_score": 228.5,
-      "board_score": 90.2,
-      "ferrari_power_score": 0,
-      "blowout_risk": "LOW",
-      "intel_suite": {
-        "usage_ripple": {
-          "bump_percent": 0,
-          "display": "Standard Volume",
-          "shift_label": "Standard Volume",
-          "injuries_affecting": [],
-          "reasoning": "No significant lineup changes"
-        },
-        "matchup_dvp": {
-          "rank": 15,
-          "display": "Rank #15 vs. All-Around",
-          "color": "yellow",
-          "friction_level": "Medium",
-          "friction_label": "Below Average Defense",
-          "opponent": "CHA",
-          "stat_category": "PRA"
-        },
-        "pace_delta": {
-          "possessions": -1.2,
-          "display": "-1.2 Possessions",
-          "pace_factor": 1.0,
-          "tempo_label": "Standard Tempo",
-          "team_pace": 94.8,
-          "opponent_pace": 97.8,
-          "expected_game_pace": 96.3
-        },
-        "stability_index": {
-          "score": 25,
-          "label": "Low",
-          "display": "25/100 (Low)",
-          "std_dev": 10.26,
-          "consistency": "High Variance",
-          "variance_level": "High"
-        },
-        "vision_insight": {
-          "primary": "L10 hit rate: 90%",
-          "reasons": [
-            "L10 hit rate: 90%",
-            "Driven by L10 field goal average"
-          ],
-          "confidence": "Medium-High",
-          "confidence_factors": [
-            "hit_rate"
-          ],
-          "summary": "Target-Lock: OVER 29.5 PRA \u2014 L10 hit rate: 90%",
-          "lasso_projection": 29.927,
-          "lasso_edge": 0.43,
-          "tactical_note": "Baseline projection favorable"
-        },
-        "blowout_risk": {
-          "player_team_record": "43-39",
-          "opponent_team_record": "44-38",
-          "player_win_pct": 0.524,
-          "opponent_win_pct": 0.537,
-          "win_pct_diff": 0.012,
-          "favored_team": "CHA",
-          "player_is_favored": false,
-          "risk_level": "NONE",
-          "risk_reason": "Competitive matchup: MIA (43-39) vs CHA (44-38)",
-          "warning": null
-        },
-        "scout_badges": [
-          "hot_streak",
-          "volatility_extreme",
-          "high_fidelity_model"
-        ],
-        "lasso": {
-          "projection": 29.927,
-          "confidence_tier": "HIGH_FIDELITY",
-          "r_squared": 0.6081,
-          "top_drivers": [
-            "L10_avg_fgm",
-            "prev_fga"
-          ]
-        },
-        "calculated_at": "2026-04-14T23:00:41.494742+00:00"
-      },
-      "active_badges": [],
-      "momentum_data": null,
-      "vacuum_data": null,
-      "whistle_data": null,
-      "whistle_class": null,
-      "whistle_modifier": null,
-      "momentum_modifier": null,
-      "vacuum_modifier": null,
-      "v7_components": null,
-      "v7_confidence": null,
-      "v7_soft_penalties": null,
-      "season_avg": 33.2,
-      "l5_avg": 33.8,
-      "l10_median": null,
-      "l10_mode": null,
-      "vk_predicted": 39.46,
-      "vk_edge": 15.5,
-      "vk_prob_over": 90.2,
-      "is_vision_enriched": true,
-      "draftkings_price": -295,
-      "fanduel_price": null,
-      "sort_price": -295,
-      "sort_source": "draftkings",
-      "hook_risk": false,
-      "trap_risk": false,
-      "suspect_line_bait": false,
-      "dk_tier": null,
-      "tier_label": "NBA Safe Haven (Elite 10 - MLR Sorted)",
-      "synced_at": "2026-04-14T04:02:39.906883+00:00",
-      "mlr_matchup": {
-        "opp_def_rating": 113.2,
-        "opp_pace": 95.8,
-        "opp_pts_allowed": 110,
-        "opp_def_rank": 16.8,
-        "pace_delta": -3.2
-      },
-      "mlr_friction": {
-        "b2b_penalty": 0,
-        "opp_interior_def": 113.2,
-        "opp_perimeter_def": 113.2,
-        "matchup_difficulty": 0.56,
-        "travel_factor": 0.8
-      },
-      "mlr_features_used": true,
-      "mlr_raw_prediction": 39.46,
-      "vk_prob_under": 9.8,
-      "vk_verdict": "STRONG_OVER",
-      "vk_recommendation": "STRONG_OVER",
-      "vk_confidence": 90.2,
-      "vk_sigma_used": 7.71,
-      "vk_sigma_source": "direct_input",
-      "vk_z_score": -1.2918,
-      "tier": "safe_haven",
-      "vk_data": {
-        "projection": 29.927,
-        "confidence_tier": "HIGH_FIDELITY",
-        "r_squared": 0.6081,
-        "top_drivers": [
-          "L10_avg_fgm",
-          "prev_fga"
-        ]
-      },
-      "vision_summary": "Hot hand alert: Bam Adebayo is rolling at 90% L10 hit rate, Lasso confirms at 29.9 vs 29.5. Key driver: L10 field goal average. Lock it in.",
-      "vision_intel": "Hot hand alert: Bam Adebayo is rolling at 90% L10 hit rate, Lasso confirms at 29.9 vs 29.5. Key driver: L10 field goal average. Lock it in.",
-      "scout_badges": [
-        "hot_streak",
-        "volatility_extreme",
-        "high_fidelity_model"
-      ],
-      "_enriched": true,
-      "_enriched_at": "2026-04-14T23:00:41.494876+00:00",
-      "_cache_updated": "2026-04-14T23:00:41.494878+00:00"
-    },
-    "scoot_henderson|pts|10.5|dk": {
-      "player_name": "Scoot Henderson",
-      "team": "POR",
-      "opponent": null,
-      "photo_url": null,
-      "headshot_url": null,
-      "game_time": "2026-04-15T02:10:00Z",
-      "stat_type": "PTS",
-      "line": 10.5,
-      "dk_odds": -233,
-      "price": -137,
-      "direction": "Over",
-      "market": "player_points_alternate",
-      "prop_type": "GOBLIN",
-      "is_goblin": true,
-      "is_demon": false,
-      "is_standard": false,
-      "l10_rate": 80,
-      "l5_rate": 80,
-      "h10_rate": 80,
-      "h5_rate": 80,
-      "true_hit_rate": 80,
-      "cv": 0.289,
-      "l10_std_dev": null,
-      "l10_avg": 15.7,
-      "avg_mins": null,
-      "market_prob": 70.0,
-      "propvision_true_prob": 75.0,
-      "true_probability": 75.0,
-      "casino_req_rate": 72.5,
-      "true_edge": 2.5,
-      "pp_edge": 2.5,
-      "sh_board_score": 3.2,
-      "fl_board_score": 47.1,
-      "wz_board_score": 196.1,
-      "board_score": 83.7,
-      "ferrari_power_score": 0,
-      "blowout_risk": "UNKNOWN",
-      "intel_suite": {
-        "usage_ripple": {
-          "bump_percent": 0,
-          "display": "Standard Volume",
-          "shift_label": "Standard Volume",
-          "injuries_affecting": [],
-          "reasoning": "No significant lineup changes"
-        },
-        "matchup_dvp": {
-          "rank": 13,
-          "display": "Rank #13 vs. Scorers",
-          "color": "yellow",
-          "friction_level": "Medium",
-          "friction_label": "Average Defense",
-          "opponent": "PHX",
-          "stat_category": "PTS"
-        },
-        "pace_delta": {
-          "possessions": 0.8,
-          "display": "+0.8 Possessions",
-          "pace_factor": 1.0,
-          "tempo_label": "Standard Tempo",
-          "team_pace": 97.5,
-          "opponent_pace": 99.0,
-          "expected_game_pace": 98.2
-        },
-        "stability_index": {
-          "score": 70,
-          "label": "Medium-High",
-          "display": "70/100 (Medium-High)",
-          "std_dev": 3.28,
-          "consistency": "Above Average",
-          "variance_level": "Low"
-        },
-        "vision_insight": {
-          "primary": "Lasso projects 15.6 vs 10.5 line (+5.1 edge)",
-          "reasons": [
-            "Lasso projects 15.6 vs 10.5 line (+5.1 edge)",
-            "L10 hit rate: 80%",
+            "Lasso projects 24.0 vs 16.5 line (+7.5 edge)",
             "Driven by last-game shot attempts"
           ],
           "confidence": "High",
           "confidence_factors": [
-            "lasso_high_edge",
-            "hit_rate"
+            "lasso_high_edge"
           ],
-          "summary": "Target-Lock: OVER 10.5 PTS \u2014 Lasso projects 15.6 vs 10.5 line (+5.1 edge)",
-          "lasso_projection": 15.583,
-          "lasso_edge": 5.08,
+          "summary": "Target-Lock: OVER 16.5 PRA \u2014 Lasso projects 24.0 vs 16.5 line (+7.5 edge)",
+          "lasso_projection": 23.969,
+          "lasso_edge": 7.47,
           "tactical_note": "Lasso model projects significant edge over the posted line"
         },
         "blowout_risk": {
-          "player_team_record": "42-40",
-          "opponent_team_record": "45-37",
-          "player_win_pct": 0.512,
-          "opponent_win_pct": 0.549,
-          "win_pct_diff": 0.037,
-          "favored_team": "PHX",
-          "player_is_favored": false,
-          "risk_level": "NONE",
-          "risk_reason": "Competitive matchup: POR (42-40) vs PHX (45-37)",
+          "risk_level": "UNKNOWN",
+          "risk_reason": "Team data unavailable",
           "warning": null
         },
         "scout_badges": [
@@ -2020,15 +101,15 @@
           "high_fidelity_model"
         ],
         "lasso": {
-          "projection": 15.583,
+          "projection": 23.969,
           "confidence_tier": "HIGH_FIDELITY",
-          "r_squared": 0.544,
+          "r_squared": 0.6081,
           "top_drivers": [
             "prev_fga",
             "L10_avg_fgm"
           ]
         },
-        "calculated_at": "2026-04-14T23:00:41.497987+00:00"
+        "calculated_at": "2026-04-14T22:59:56.198679+00:00"
       },
       "active_badges": [],
       "momentum_data": null,
@@ -2041,206 +122,13 @@
       "v7_components": null,
       "v7_confidence": null,
       "v7_soft_penalties": null,
-      "season_avg": 14.2,
-      "l5_avg": 15.2,
+      "season_avg": 28.1,
+      "l5_avg": 16.0,
       "l10_median": null,
       "l10_mode": null,
-      "vk_predicted": 15.2,
-      "vk_edge": 13.7,
-      "vk_prob_over": 83.7,
-      "is_vision_enriched": true,
-      "draftkings_price": null,
-      "fanduel_price": null,
-      "sort_price": -233,
-      "sort_source": "betonline",
-      "hook_risk": false,
-      "trap_risk": false,
-      "suspect_line_bait": false,
-      "dk_tier": null,
-      "tier_label": "NBA Safe Haven (Elite 10 - MLR Sorted)",
-      "synced_at": "2026-04-14T04:02:40.504122+00:00",
-      "mlr_matchup": {
-        "opp_def_rating": 113.5,
-        "opp_pace": 99.7,
-        "opp_pts_allowed": 110,
-        "opp_def_rank": 19.0,
-        "pace_delta": 0.7
-      },
-      "mlr_friction": {
-        "b2b_penalty": 0,
-        "opp_interior_def": 113.5,
-        "opp_perimeter_def": 113.5,
-        "matchup_difficulty": 0.63,
-        "travel_factor": 0.8
-      },
-      "mlr_features_used": true,
-      "mlr_raw_prediction": 15.2,
-      "vk_prob_under": 16.3,
-      "vk_verdict": "STRONG_OVER",
-      "vk_recommendation": "STRONG_OVER",
-      "vk_confidence": 83.7,
-      "vk_sigma_used": 4.79,
-      "vk_sigma_source": "direct_input",
-      "vk_z_score": -0.9812,
-      "tier": "safe_haven",
-      "vk_data": {
-        "projection": 15.583,
-        "confidence_tier": "HIGH_FIDELITY",
-        "r_squared": 0.544,
-        "top_drivers": [
-          "prev_fga",
-          "L10_avg_fgm"
-        ]
-      },
-      "vision_summary": "Scoot Henderson is absolutely locked in \u2014 Lasso projects 15.6 vs a 10.5 line, that's a +5.1 cushion backed by R\u00b2=0.54 fidelity. Key driver: last-game shot attempts. Smash spot, don't overthink it.",
-      "vision_intel": "Scoot Henderson is absolutely locked in \u2014 Lasso projects 15.6 vs a 10.5 line, that's a +5.1 cushion backed by R\u00b2=0.54 fidelity. Key driver: last-game shot attempts. Smash spot, don't overthink it.",
-      "scout_badges": [
-        "hot_streak",
-        "lasso_high_edge",
-        "high_fidelity_model"
-      ],
-      "_enriched": true,
-      "_enriched_at": "2026-04-14T23:00:41.498058+00:00",
-      "_cache_updated": "2026-04-14T23:00:41.498059+00:00"
-    },
-    "scoot_henderson|reb|1.5|dk": {
-      "player_name": "Scoot Henderson",
-      "team": "POR",
-      "opponent": null,
-      "photo_url": null,
-      "headshot_url": null,
-      "game_time": "2026-04-15T02:10:00Z",
-      "stat_type": "REB",
-      "line": 1.5,
-      "dk_odds": -137,
-      "price": -137,
-      "direction": "Over",
-      "market": "player_rebounds_alternate",
-      "prop_type": "GOBLIN",
-      "is_goblin": true,
-      "is_demon": false,
-      "is_standard": false,
-      "l10_rate": 80,
-      "l5_rate": 60,
-      "h10_rate": 80,
-      "h5_rate": 60,
-      "true_hit_rate": 80,
-      "cv": 0.333,
-      "l10_std_dev": null,
-      "l10_avg": 2.4,
-      "avg_mins": null,
-      "market_prob": 57.8,
-      "propvision_true_prob": 68.9,
-      "true_probability": 68.9,
-      "casino_req_rate": 65.0,
-      "true_edge": 3.9,
-      "pp_edge": 3.9,
-      "sh_board_score": 6.7,
-      "fl_board_score": 52.3,
-      "wz_board_score": 216.8,
-      "board_score": 37.2,
-      "ferrari_power_score": 0,
-      "blowout_risk": "UNKNOWN",
-      "intel_suite": {
-        "usage_ripple": {
-          "bump_percent": 0,
-          "display": "Standard Volume",
-          "shift_label": "Standard Volume",
-          "injuries_affecting": [],
-          "reasoning": "No significant lineup changes"
-        },
-        "matchup_dvp": {
-          "rank": 13,
-          "display": "Rank #13 vs. Rebounders",
-          "color": "yellow",
-          "friction_level": "Medium",
-          "friction_label": "Average Defense",
-          "opponent": "PHX",
-          "stat_category": "REB"
-        },
-        "pace_delta": {
-          "possessions": 0.8,
-          "display": "+0.8 Possessions",
-          "pace_factor": 1.0,
-          "tempo_label": "Standard Tempo",
-          "team_pace": 97.5,
-          "opponent_pace": 99.0,
-          "expected_game_pace": 98.2
-        },
-        "stability_index": {
-          "score": 85,
-          "label": "High",
-          "display": "85/100 (High)",
-          "std_dev": 1.58,
-          "consistency": "Very Consistent",
-          "variance_level": "Low"
-        },
-        "vision_insight": {
-          "primary": "Lasso projects 2.8 vs 1.5 line (+1.3 edge)",
-          "reasons": [
-            "Lasso projects 2.8 vs 1.5 line (+1.3 edge)",
-            "Highly consistent performer",
-            "L10 hit rate: 80%",
-            "Driven by L10 rebound average"
-          ],
-          "confidence": "High",
-          "confidence_factors": [
-            "lasso_high_edge",
-            "consistency",
-            "hit_rate"
-          ],
-          "summary": "Target-Lock: OVER 1.5 REB \u2014 Lasso projects 2.8 vs 1.5 line (+1.3 edge)",
-          "lasso_projection": 2.78,
-          "lasso_edge": 1.28,
-          "tactical_note": "Lasso model projects significant edge over the posted line"
-        },
-        "blowout_risk": {
-          "player_team_record": "42-40",
-          "opponent_team_record": "45-37",
-          "player_win_pct": 0.512,
-          "opponent_win_pct": 0.549,
-          "win_pct_diff": 0.037,
-          "favored_team": "PHX",
-          "player_is_favored": false,
-          "risk_level": "NONE",
-          "risk_reason": "Competitive matchup: POR (42-40) vs PHX (45-37)",
-          "warning": null
-        },
-        "scout_badges": [
-          "hot_streak",
-          "floor_lock",
-          "lasso_high_edge",
-          "high_fidelity_model"
-        ],
-        "lasso": {
-          "projection": 2.78,
-          "confidence_tier": "HIGH_FIDELITY",
-          "r_squared": 0.5211,
-          "top_drivers": [
-            "L10_avg_reb",
-            "L10_avg_fg3a"
-          ]
-        },
-        "calculated_at": "2026-04-14T23:00:41.500990+00:00"
-      },
-      "active_badges": [],
-      "momentum_data": null,
-      "vacuum_data": null,
-      "whistle_data": null,
-      "whistle_class": null,
-      "whistle_modifier": null,
-      "momentum_modifier": null,
-      "vacuum_modifier": null,
-      "v7_components": null,
-      "v7_confidence": null,
-      "v7_soft_penalties": null,
-      "season_avg": 2.7,
-      "l5_avg": 2.0,
-      "l10_median": null,
-      "l10_mode": null,
-      "vk_predicted": 2.88,
-      "vk_edge": 37.2,
-      "vk_prob_over": 95.0,
+      "vk_predicted": 26.42,
+      "vk_edge": 32.1,
+      "vk_prob_over": 82.1,
       "is_vision_enriched": true,
       "draftkings_price": null,
       "fanduel_price": null,
@@ -2251,7 +139,7 @@
       "suspect_line_bait": false,
       "dk_tier": null,
       "tier_label": "NBA Front Lines (Elite 10 - vk_edge Sorted)",
-      "synced_at": "2026-04-14T04:02:40.524156+00:00",
+      "synced_at": "2026-04-14T04:02:41.726080+00:00",
       "mlr_matchup": {
         "opp_def_rating": 113.5,
         "opp_pace": 99.7,
@@ -2267,227 +155,34 @@
         "travel_factor": 0.8
       },
       "mlr_features_used": true,
-      "mlr_raw_prediction": 2.88,
-      "vk_prob_under": 5.0,
+      "mlr_raw_prediction": 26.42,
+      "vk_prob_under": 17.9,
       "vk_verdict": "STRONG_OVER",
       "vk_recommendation": "STRONG_OVER",
-      "vk_confidence": 95.0,
-      "vk_sigma_used": 0.84,
+      "vk_confidence": 82.1,
+      "vk_sigma_used": 10.78,
       "vk_sigma_source": "direct_input",
-      "vk_z_score": -1.6429,
+      "vk_z_score": -0.9202,
       "tier": "front_lines",
       "vk_data": {
-        "projection": 2.78,
-        "confidence_tier": "HIGH_FIDELITY",
-        "r_squared": 0.5211,
-        "top_drivers": [
-          "L10_avg_reb",
-          "L10_avg_fg3a"
-        ]
-      },
-      "vision_summary": "Scoot Henderson is absolutely locked in \u2014 Lasso projects 2.8 vs a 1.5 line, that's a +1.3 cushion backed by R\u00b2=0.54 fidelity. Key driver: L10 rebound average. Smash spot, don't overthink it.",
-      "vision_intel": "Scoot Henderson is absolutely locked in \u2014 Lasso projects 2.8 vs a 1.5 line, that's a +1.3 cushion backed by R\u00b2=0.54 fidelity. Key driver: L10 rebound average. Smash spot, don't overthink it.",
-      "scout_badges": [
-        "hot_streak",
-        "floor_lock",
-        "lasso_high_edge",
-        "high_fidelity_model"
-      ],
-      "_enriched": true,
-      "_enriched_at": "2026-04-14T23:00:41.501062+00:00",
-      "_cache_updated": "2026-04-14T23:00:41.501064+00:00"
-    },
-    "jaime_jaquez_jr.|pra|16.5|dk": {
-      "player_name": "Jaime Jaquez Jr.",
-      "team": "MIA",
-      "opponent": null,
-      "photo_url": null,
-      "headshot_url": null,
-      "game_time": "2026-04-14T23:30:00Z",
-      "stat_type": "PRA",
-      "line": 16.5,
-      "dk_odds": -137,
-      "price": -137,
-      "direction": "Over",
-      "market": "player_points_rebounds_assists_alternate",
-      "prop_type": "GOBLIN",
-      "is_goblin": true,
-      "is_demon": false,
-      "is_standard": false,
-      "l10_rate": 100,
-      "l5_rate": 100,
-      "h10_rate": 100,
-      "h5_rate": 100,
-      "true_hit_rate": 100,
-      "cv": 0.238,
-      "l10_std_dev": null,
-      "l10_avg": 27.1,
-      "avg_mins": null,
-      "market_prob": 57.8,
-      "propvision_true_prob": 78.9,
-      "true_probability": 78.9,
-      "casino_req_rate": 65.0,
-      "true_edge": 13.9,
-      "pp_edge": 13.9,
-      "sh_board_score": 38.1,
-      "fl_board_score": 103.2,
-      "wz_board_score": 407.3,
-      "board_score": 88.0,
-      "ferrari_power_score": 0,
-      "blowout_risk": "NONE",
-      "intel_suite": {
-        "usage_ripple": {
-          "bump_percent": 0,
-          "display": "Standard Volume",
-          "shift_label": "Standard Volume",
-          "injuries_affecting": [],
-          "reasoning": "No significant lineup changes"
-        },
-        "matchup_dvp": {
-          "rank": 15,
-          "display": "Rank #15 vs. All-Around",
-          "color": "yellow",
-          "friction_level": "Medium",
-          "friction_label": "Below Average Defense",
-          "opponent": "CHA",
-          "stat_category": "PRA"
-        },
-        "pace_delta": {
-          "possessions": -1.2,
-          "display": "-1.2 Possessions",
-          "pace_factor": 1.0,
-          "tempo_label": "Standard Tempo",
-          "team_pace": 94.8,
-          "opponent_pace": 97.8,
-          "expected_game_pace": 96.3
-        },
-        "stability_index": {
-          "score": 25,
-          "label": "Low",
-          "display": "25/100 (Low)",
-          "std_dev": 8.04,
-          "consistency": "High Variance",
-          "variance_level": "High"
-        },
-        "vision_insight": {
-          "primary": "Lasso projects 21.8 vs 16.5 line (+5.3 edge)",
-          "reasons": [
-            "Lasso projects 21.8 vs 16.5 line (+5.3 edge)",
-            "L10 hit rate: 100%",
-            "Driven by L10 field goal average"
-          ],
-          "confidence": "High",
-          "confidence_factors": [
-            "lasso_high_edge",
-            "hit_rate"
-          ],
-          "summary": "Target-Lock: OVER 16.5 PRA \u2014 Lasso projects 21.8 vs 16.5 line (+5.3 edge)",
-          "lasso_projection": 21.774,
-          "lasso_edge": 5.27,
-          "tactical_note": "Lasso model projects significant edge over the posted line"
-        },
-        "blowout_risk": {
-          "player_team_record": "43-39",
-          "opponent_team_record": "44-38",
-          "player_win_pct": 0.524,
-          "opponent_win_pct": 0.537,
-          "win_pct_diff": 0.012,
-          "favored_team": "CHA",
-          "player_is_favored": false,
-          "risk_level": "NONE",
-          "risk_reason": "Competitive matchup: MIA (43-39) vs CHA (44-38)",
-          "warning": null
-        },
-        "scout_badges": [
-          "hot_streak",
-          "volatility_extreme",
-          "lasso_high_edge",
-          "high_fidelity_model"
-        ],
-        "lasso": {
-          "projection": 21.774,
-          "confidence_tier": "HIGH_FIDELITY",
-          "r_squared": 0.6081,
-          "top_drivers": [
-            "L10_avg_fgm",
-            "prev_turnover"
-          ]
-        },
-        "calculated_at": "2026-04-14T23:00:41.504134+00:00"
-      },
-      "active_badges": [],
-      "momentum_data": null,
-      "vacuum_data": null,
-      "whistle_data": null,
-      "whistle_class": null,
-      "whistle_modifier": null,
-      "momentum_modifier": null,
-      "vacuum_modifier": null,
-      "v7_components": null,
-      "v7_confidence": null,
-      "v7_soft_penalties": null,
-      "season_avg": 25.0,
-      "l5_avg": 28.8,
-      "l10_median": null,
-      "l10_mode": null,
-      "vk_predicted": 24.5,
-      "vk_edge": 30.2,
-      "vk_prob_over": 88.0,
-      "is_vision_enriched": true,
-      "draftkings_price": null,
-      "fanduel_price": null,
-      "sort_price": null,
-      "sort_source": null,
-      "hook_risk": false,
-      "trap_risk": false,
-      "suspect_line_bait": false,
-      "dk_tier": null,
-      "tier_label": "NBA Safe Haven (Elite 10 - MLR Sorted)",
-      "synced_at": "2026-04-14T04:02:40.754183+00:00",
-      "mlr_matchup": {
-        "opp_def_rating": 113.2,
-        "opp_pace": 95.8,
-        "opp_pts_allowed": 110,
-        "opp_def_rank": 16.8,
-        "pace_delta": -3.2
-      },
-      "mlr_friction": {
-        "b2b_penalty": 0,
-        "opp_interior_def": 113.2,
-        "opp_perimeter_def": 113.2,
-        "matchup_difficulty": 0.56,
-        "travel_factor": 0.8
-      },
-      "mlr_features_used": true,
-      "mlr_raw_prediction": 24.5,
-      "vk_prob_under": 12.0,
-      "vk_verdict": "STRONG_OVER",
-      "vk_recommendation": "STRONG_OVER",
-      "vk_confidence": 88.0,
-      "vk_sigma_used": 6.81,
-      "vk_sigma_source": "direct_input",
-      "vk_z_score": -1.1747,
-      "tier": "safe_haven",
-      "vk_data": {
-        "projection": 21.774,
+        "projection": 23.969,
         "confidence_tier": "HIGH_FIDELITY",
         "r_squared": 0.6081,
         "top_drivers": [
-          "L10_avg_fgm",
-          "prev_turnover"
+          "prev_fga",
+          "L10_avg_fgm"
         ]
       },
-      "vision_summary": "Jaime Jaquez Jr. is absolutely locked in \u2014 Lasso projects 21.8 vs a 16.5 line, that's a +5.3 cushion backed by R\u00b2=0.54 fidelity. Key driver: L10 field goal average. Smash spot, don't overthink it.",
-      "vision_intel": "Jaime Jaquez Jr. is absolutely locked in \u2014 Lasso projects 21.8 vs a 16.5 line, that's a +5.3 cushion backed by R\u00b2=0.54 fidelity. Key driver: L10 field goal average. Smash spot, don't overthink it.",
+      "vision_summary": "Shaedon Sharpe is absolutely locked in \u2014 Lasso projects 24.0 vs a 16.5 line, that's a +7.5 cushion backed by R\u00b2=0.54 fidelity. Key driver: last-game shot attempts. Smash spot, don't overthink it.",
+      "vision_intel": "Shaedon Sharpe is absolutely locked in \u2014 Lasso projects 24.0 vs a 16.5 line, that's a +7.5 cushion backed by R\u00b2=0.54 fidelity. Key driver: last-game shot attempts. Smash spot, don't overthink it.",
       "scout_badges": [
         "hot_streak",
-        "volatility_extreme",
         "lasso_high_edge",
         "high_fidelity_model"
       ],
       "_enriched": true,
-      "_enriched_at": "2026-04-14T23:00:41.504271+00:00",
-      "_cache_updated": "2026-04-14T23:00:41.504273+00:00"
+      "_enriched_at": "2026-04-14T22:59:56.198786+00:00",
+      "_cache_updated": "2026-04-14T22:59:56.198788+00:00"
     },
     "tristan_da_silva|pra|9.5|dk": {
       "player_name": "Tristan Da Silva",
@@ -2541,17 +236,17 @@
           "color": "yellow",
           "friction_level": "Medium",
           "friction_label": "Below Average Defense",
-          "opponent": "PHI",
+          "opponent": "Unknown",
           "stat_category": "PRA"
         },
         "pace_delta": {
-          "possessions": -1.3,
-          "display": "-1.3 Possessions",
+          "possessions": -0.5,
+          "display": "-0.5 Possessions",
           "pace_factor": 1.0,
           "tempo_label": "Standard Tempo",
           "team_pace": 96.5,
-          "opponent_pace": 95.8,
-          "expected_game_pace": 96.2
+          "opponent_pace": 97.5,
+          "expected_game_pace": 97.0
         },
         "stability_index": {
           "score": 25,
@@ -2579,15 +274,8 @@
           "tactical_note": "Lasso model projects significant edge over the posted line"
         },
         "blowout_risk": {
-          "player_team_record": "45-37",
-          "opponent_team_record": "45-37",
-          "player_win_pct": 0.549,
-          "opponent_win_pct": 0.549,
-          "win_pct_diff": 0.0,
-          "favored_team": "PHI",
-          "player_is_favored": false,
-          "risk_level": "NONE",
-          "risk_reason": "Competitive matchup: ORL (45-37) vs PHI (45-37)",
+          "risk_level": "UNKNOWN",
+          "risk_reason": "Team data unavailable",
           "warning": null
         },
         "scout_badges": [
@@ -2605,7 +293,7 @@
             "target_L5_avg"
           ]
         },
-        "calculated_at": "2026-04-14T23:00:41.507811+00:00"
+        "calculated_at": "2026-04-14T22:59:56.202220+00:00"
       },
       "active_badges": [],
       "momentum_data": null,
@@ -2678,8 +366,933 @@
         "high_fidelity_model"
       ],
       "_enriched": true,
-      "_enriched_at": "2026-04-14T23:00:41.507943+00:00",
-      "_cache_updated": "2026-04-14T23:00:41.507944+00:00"
+      "_enriched_at": "2026-04-14T22:59:56.202338+00:00",
+      "_cache_updated": "2026-04-14T22:59:56.202339+00:00"
+    },
+    "davion_mitchell|reb|1.5|dk": {
+      "player_name": "Davion Mitchell",
+      "team": "MIA",
+      "opponent": null,
+      "photo_url": null,
+      "headshot_url": null,
+      "game_time": "2026-04-14T23:30:00Z",
+      "stat_type": "REB",
+      "line": 1.5,
+      "dk_odds": -137,
+      "price": -137,
+      "direction": "Over",
+      "market": "player_rebounds_alternate",
+      "prop_type": "GOBLIN",
+      "is_goblin": true,
+      "is_demon": false,
+      "is_standard": false,
+      "l10_rate": 90,
+      "l5_rate": 80,
+      "h10_rate": 90,
+      "h5_rate": 80,
+      "true_hit_rate": 90,
+      "cv": 0.372,
+      "l10_std_dev": null,
+      "l10_avg": 2.7,
+      "avg_mins": null,
+      "market_prob": 57.8,
+      "propvision_true_prob": 73.9,
+      "true_probability": 73.9,
+      "casino_req_rate": 65.0,
+      "true_edge": 8.9,
+      "pp_edge": 8.9,
+      "sh_board_score": 21.1,
+      "fl_board_score": 76.9,
+      "wz_board_score": 311.6,
+      "board_score": 32.4,
+      "ferrari_power_score": 0,
+      "blowout_risk": "UNKNOWN",
+      "intel_suite": {
+        "usage_ripple": {
+          "bump_percent": 0,
+          "display": "Standard Volume",
+          "shift_label": "Standard Volume",
+          "injuries_affecting": [],
+          "reasoning": "No significant lineup changes"
+        },
+        "matchup_dvp": {
+          "rank": 15,
+          "display": "Rank #15 vs. Rebounders",
+          "color": "yellow",
+          "friction_level": "Medium",
+          "friction_label": "Below Average Defense",
+          "opponent": "Unknown",
+          "stat_category": "REB"
+        },
+        "pace_delta": {
+          "possessions": -1.3,
+          "display": "-1.3 Possessions",
+          "pace_factor": 1.0,
+          "tempo_label": "Standard Tempo",
+          "team_pace": 94.8,
+          "opponent_pace": 97.5,
+          "expected_game_pace": 96.2
+        },
+        "stability_index": {
+          "score": 85,
+          "label": "High",
+          "display": "85/100 (High)",
+          "std_dev": 1.99,
+          "consistency": "Very Consistent",
+          "variance_level": "Low"
+        },
+        "vision_insight": {
+          "primary": "Lasso projects 3.4 vs 1.5 line (+1.9 edge)",
+          "reasons": [
+            "Lasso projects 3.4 vs 1.5 line (+1.9 edge)",
+            "Highly consistent performer",
+            "L10 hit rate: 90%",
+            "Driven by L10 rebound average"
+          ],
+          "confidence": "High",
+          "confidence_factors": [
+            "lasso_high_edge",
+            "consistency",
+            "hit_rate"
+          ],
+          "summary": "Target-Lock: OVER 1.5 REB \u2014 Lasso projects 3.4 vs 1.5 line (+1.9 edge)",
+          "lasso_projection": 3.436,
+          "lasso_edge": 1.94,
+          "tactical_note": "Lasso model projects significant edge over the posted line"
+        },
+        "blowout_risk": {
+          "risk_level": "UNKNOWN",
+          "risk_reason": "Team data unavailable",
+          "warning": null
+        },
+        "scout_badges": [
+          "floor_lock",
+          "lasso_high_edge",
+          "high_fidelity_model"
+        ],
+        "lasso": {
+          "projection": 3.436,
+          "confidence_tier": "HIGH_FIDELITY",
+          "r_squared": 0.5211,
+          "top_drivers": [
+            "L10_avg_reb",
+            "L5_avg_reb"
+          ]
+        },
+        "calculated_at": "2026-04-14T22:59:56.204713+00:00"
+      },
+      "active_badges": [],
+      "momentum_data": null,
+      "vacuum_data": null,
+      "whistle_data": null,
+      "whistle_class": null,
+      "whistle_modifier": null,
+      "momentum_modifier": null,
+      "vacuum_modifier": null,
+      "v7_components": null,
+      "v7_confidence": null,
+      "v7_soft_penalties": null,
+      "season_avg": 2.7,
+      "l5_avg": 2.4,
+      "l10_median": null,
+      "l10_mode": null,
+      "vk_predicted": 2.87,
+      "vk_edge": 32.4,
+      "vk_prob_over": 90.2,
+      "is_vision_enriched": true,
+      "draftkings_price": null,
+      "fanduel_price": null,
+      "sort_price": null,
+      "sort_source": null,
+      "hook_risk": false,
+      "trap_risk": false,
+      "suspect_line_bait": false,
+      "dk_tier": null,
+      "tier_label": "NBA Front Lines (Elite 10 - vk_edge Sorted)",
+      "synced_at": "2026-04-14T04:02:40.047403+00:00",
+      "mlr_matchup": {
+        "opp_def_rating": 113.2,
+        "opp_pace": 95.8,
+        "opp_pts_allowed": 110,
+        "opp_def_rank": 16.8,
+        "pace_delta": -3.2
+      },
+      "mlr_friction": {
+        "b2b_penalty": 0,
+        "opp_interior_def": 113.2,
+        "opp_perimeter_def": 113.2,
+        "matchup_difficulty": 0.56,
+        "travel_factor": 0.8
+      },
+      "mlr_features_used": true,
+      "mlr_raw_prediction": 2.87,
+      "vk_prob_under": 9.8,
+      "vk_verdict": "STRONG_OVER",
+      "vk_recommendation": "STRONG_OVER",
+      "vk_confidence": 90.2,
+      "vk_sigma_used": 1.06,
+      "vk_sigma_source": "direct_input",
+      "vk_z_score": -1.2925,
+      "tier": "front_lines",
+      "vk_data": {
+        "projection": 3.436,
+        "confidence_tier": "HIGH_FIDELITY",
+        "r_squared": 0.5211,
+        "top_drivers": [
+          "L10_avg_reb",
+          "L5_avg_reb"
+        ]
+      },
+      "vision_summary": "Davion Mitchell is absolutely locked in \u2014 Lasso projects 3.4 vs a 1.5 line, that's a +1.9 cushion backed by R\u00b2=0.54 fidelity. Key driver: L10 rebound average. Smash spot, don't overthink it.",
+      "vision_intel": "Davion Mitchell is absolutely locked in \u2014 Lasso projects 3.4 vs a 1.5 line, that's a +1.9 cushion backed by R\u00b2=0.54 fidelity. Key driver: L10 rebound average. Smash spot, don't overthink it.",
+      "scout_badges": [
+        "floor_lock",
+        "lasso_high_edge",
+        "high_fidelity_model"
+      ],
+      "_enriched": true,
+      "_enriched_at": "2026-04-14T22:59:56.204822+00:00",
+      "_cache_updated": "2026-04-14T22:59:56.204824+00:00"
+    },
+    "jaime_jaquez_jr.|pra|16.5|dk": {
+      "player_name": "Jaime Jaquez Jr.",
+      "team": "MIA",
+      "opponent": null,
+      "photo_url": null,
+      "headshot_url": null,
+      "game_time": "2026-04-14T23:30:00Z",
+      "stat_type": "PRA",
+      "line": 16.5,
+      "dk_odds": -137,
+      "price": -137,
+      "direction": "Over",
+      "market": "player_points_rebounds_assists_alternate",
+      "prop_type": "GOBLIN",
+      "is_goblin": true,
+      "is_demon": false,
+      "is_standard": false,
+      "l10_rate": 100,
+      "l5_rate": 100,
+      "h10_rate": 100,
+      "h5_rate": 100,
+      "true_hit_rate": 100,
+      "cv": 0.238,
+      "l10_std_dev": null,
+      "l10_avg": 27.1,
+      "avg_mins": null,
+      "market_prob": 57.8,
+      "propvision_true_prob": 78.9,
+      "true_probability": 78.9,
+      "casino_req_rate": 65.0,
+      "true_edge": 13.9,
+      "pp_edge": 13.9,
+      "sh_board_score": 38.1,
+      "fl_board_score": 103.2,
+      "wz_board_score": 407.3,
+      "board_score": 88.0,
+      "ferrari_power_score": 0,
+      "blowout_risk": "NONE",
+      "intel_suite": {
+        "usage_ripple": {
+          "bump_percent": 0,
+          "display": "Standard Volume",
+          "shift_label": "Standard Volume",
+          "injuries_affecting": [],
+          "reasoning": "No significant lineup changes"
+        },
+        "matchup_dvp": {
+          "rank": 15,
+          "display": "Rank #15 vs. All-Around",
+          "color": "yellow",
+          "friction_level": "Medium",
+          "friction_label": "Below Average Defense",
+          "opponent": "Unknown",
+          "stat_category": "PRA"
+        },
+        "pace_delta": {
+          "possessions": -1.3,
+          "display": "-1.3 Possessions",
+          "pace_factor": 1.0,
+          "tempo_label": "Standard Tempo",
+          "team_pace": 94.8,
+          "opponent_pace": 97.5,
+          "expected_game_pace": 96.2
+        },
+        "stability_index": {
+          "score": 25,
+          "label": "Low",
+          "display": "25/100 (Low)",
+          "std_dev": 8.04,
+          "consistency": "High Variance",
+          "variance_level": "High"
+        },
+        "vision_insight": {
+          "primary": "Lasso projects 21.8 vs 16.5 line (+5.3 edge)",
+          "reasons": [
+            "Lasso projects 21.8 vs 16.5 line (+5.3 edge)",
+            "L10 hit rate: 100%",
+            "Driven by L10 field goal average"
+          ],
+          "confidence": "High",
+          "confidence_factors": [
+            "lasso_high_edge",
+            "hit_rate"
+          ],
+          "summary": "Target-Lock: OVER 16.5 PRA \u2014 Lasso projects 21.8 vs 16.5 line (+5.3 edge)",
+          "lasso_projection": 21.774,
+          "lasso_edge": 5.27,
+          "tactical_note": "Lasso model projects significant edge over the posted line"
+        },
+        "blowout_risk": {
+          "risk_level": "UNKNOWN",
+          "risk_reason": "Team data unavailable",
+          "warning": null
+        },
+        "scout_badges": [
+          "hot_streak",
+          "volatility_extreme",
+          "lasso_high_edge",
+          "high_fidelity_model"
+        ],
+        "lasso": {
+          "projection": 21.774,
+          "confidence_tier": "HIGH_FIDELITY",
+          "r_squared": 0.6081,
+          "top_drivers": [
+            "L10_avg_fgm",
+            "prev_turnover"
+          ]
+        },
+        "calculated_at": "2026-04-14T22:59:56.207077+00:00"
+      },
+      "active_badges": [],
+      "momentum_data": null,
+      "vacuum_data": null,
+      "whistle_data": null,
+      "whistle_class": null,
+      "whistle_modifier": null,
+      "momentum_modifier": null,
+      "vacuum_modifier": null,
+      "v7_components": null,
+      "v7_confidence": null,
+      "v7_soft_penalties": null,
+      "season_avg": 25.0,
+      "l5_avg": 28.8,
+      "l10_median": null,
+      "l10_mode": null,
+      "vk_predicted": 24.5,
+      "vk_edge": 30.2,
+      "vk_prob_over": 88.0,
+      "is_vision_enriched": true,
+      "draftkings_price": null,
+      "fanduel_price": null,
+      "sort_price": null,
+      "sort_source": null,
+      "hook_risk": false,
+      "trap_risk": false,
+      "suspect_line_bait": false,
+      "dk_tier": null,
+      "tier_label": "NBA Safe Haven (Elite 10 - MLR Sorted)",
+      "synced_at": "2026-04-14T04:02:40.754183+00:00",
+      "mlr_matchup": {
+        "opp_def_rating": 113.2,
+        "opp_pace": 95.8,
+        "opp_pts_allowed": 110,
+        "opp_def_rank": 16.8,
+        "pace_delta": -3.2
+      },
+      "mlr_friction": {
+        "b2b_penalty": 0,
+        "opp_interior_def": 113.2,
+        "opp_perimeter_def": 113.2,
+        "matchup_difficulty": 0.56,
+        "travel_factor": 0.8
+      },
+      "mlr_features_used": true,
+      "mlr_raw_prediction": 24.5,
+      "vk_prob_under": 12.0,
+      "vk_verdict": "STRONG_OVER",
+      "vk_recommendation": "STRONG_OVER",
+      "vk_confidence": 88.0,
+      "vk_sigma_used": 6.81,
+      "vk_sigma_source": "direct_input",
+      "vk_z_score": -1.1747,
+      "tier": "safe_haven",
+      "vk_data": {
+        "projection": 21.774,
+        "confidence_tier": "HIGH_FIDELITY",
+        "r_squared": 0.6081,
+        "top_drivers": [
+          "L10_avg_fgm",
+          "prev_turnover"
+        ]
+      },
+      "vision_summary": "Jaime Jaquez Jr. is absolutely locked in \u2014 Lasso projects 21.8 vs a 16.5 line, that's a +5.3 cushion backed by R\u00b2=0.54 fidelity. Key driver: L10 field goal average. Smash spot, don't overthink it.",
+      "vision_intel": "Jaime Jaquez Jr. is absolutely locked in \u2014 Lasso projects 21.8 vs a 16.5 line, that's a +5.3 cushion backed by R\u00b2=0.54 fidelity. Key driver: L10 field goal average. Smash spot, don't overthink it.",
+      "scout_badges": [
+        "hot_streak",
+        "volatility_extreme",
+        "lasso_high_edge",
+        "high_fidelity_model"
+      ],
+      "_enriched": true,
+      "_enriched_at": "2026-04-14T22:59:56.207190+00:00",
+      "_cache_updated": "2026-04-14T22:59:56.207192+00:00"
+    },
+    "scoot_henderson|pts|10.5|dk": {
+      "player_name": "Scoot Henderson",
+      "team": "POR",
+      "opponent": null,
+      "photo_url": null,
+      "headshot_url": null,
+      "game_time": "2026-04-15T02:10:00Z",
+      "stat_type": "PTS",
+      "line": 10.5,
+      "dk_odds": -233,
+      "price": -137,
+      "direction": "Over",
+      "market": "player_points_alternate",
+      "prop_type": "GOBLIN",
+      "is_goblin": true,
+      "is_demon": false,
+      "is_standard": false,
+      "l10_rate": 80,
+      "l5_rate": 80,
+      "h10_rate": 80,
+      "h5_rate": 80,
+      "true_hit_rate": 80,
+      "cv": 0.289,
+      "l10_std_dev": null,
+      "l10_avg": 15.7,
+      "avg_mins": null,
+      "market_prob": 70.0,
+      "propvision_true_prob": 75.0,
+      "true_probability": 75.0,
+      "casino_req_rate": 72.5,
+      "true_edge": 2.5,
+      "pp_edge": 2.5,
+      "sh_board_score": 3.2,
+      "fl_board_score": 47.1,
+      "wz_board_score": 196.1,
+      "board_score": 83.7,
+      "ferrari_power_score": 0,
+      "blowout_risk": "UNKNOWN",
+      "intel_suite": {
+        "usage_ripple": {
+          "bump_percent": 0,
+          "display": "Standard Volume",
+          "shift_label": "Standard Volume",
+          "injuries_affecting": [],
+          "reasoning": "No significant lineup changes"
+        },
+        "matchup_dvp": {
+          "rank": 15,
+          "display": "Rank #15 vs. Scorers",
+          "color": "yellow",
+          "friction_level": "Medium",
+          "friction_label": "Below Average Defense",
+          "opponent": "Unknown",
+          "stat_category": "PTS"
+        },
+        "pace_delta": {
+          "possessions": 0.0,
+          "display": "+0.0 Possessions",
+          "pace_factor": 1.0,
+          "tempo_label": "Standard Tempo",
+          "team_pace": 97.5,
+          "opponent_pace": 97.5,
+          "expected_game_pace": 97.5
+        },
+        "stability_index": {
+          "score": 70,
+          "label": "Medium-High",
+          "display": "70/100 (Medium-High)",
+          "std_dev": 3.28,
+          "consistency": "Above Average",
+          "variance_level": "Low"
+        },
+        "vision_insight": {
+          "primary": "Lasso projects 15.6 vs 10.5 line (+5.1 edge)",
+          "reasons": [
+            "Lasso projects 15.6 vs 10.5 line (+5.1 edge)",
+            "L10 hit rate: 80%",
+            "Driven by last-game shot attempts"
+          ],
+          "confidence": "High",
+          "confidence_factors": [
+            "lasso_high_edge",
+            "hit_rate"
+          ],
+          "summary": "Target-Lock: OVER 10.5 PTS \u2014 Lasso projects 15.6 vs 10.5 line (+5.1 edge)",
+          "lasso_projection": 15.583,
+          "lasso_edge": 5.08,
+          "tactical_note": "Lasso model projects significant edge over the posted line"
+        },
+        "blowout_risk": {
+          "risk_level": "UNKNOWN",
+          "risk_reason": "Team data unavailable",
+          "warning": null
+        },
+        "scout_badges": [
+          "hot_streak",
+          "lasso_high_edge",
+          "high_fidelity_model"
+        ],
+        "lasso": {
+          "projection": 15.583,
+          "confidence_tier": "HIGH_FIDELITY",
+          "r_squared": 0.544,
+          "top_drivers": [
+            "prev_fga",
+            "L10_avg_fgm"
+          ]
+        },
+        "calculated_at": "2026-04-14T22:59:56.209523+00:00"
+      },
+      "active_badges": [],
+      "momentum_data": null,
+      "vacuum_data": null,
+      "whistle_data": null,
+      "whistle_class": null,
+      "whistle_modifier": null,
+      "momentum_modifier": null,
+      "vacuum_modifier": null,
+      "v7_components": null,
+      "v7_confidence": null,
+      "v7_soft_penalties": null,
+      "season_avg": 14.2,
+      "l5_avg": 15.2,
+      "l10_median": null,
+      "l10_mode": null,
+      "vk_predicted": 15.2,
+      "vk_edge": 13.7,
+      "vk_prob_over": 83.7,
+      "is_vision_enriched": true,
+      "draftkings_price": null,
+      "fanduel_price": null,
+      "sort_price": -233,
+      "sort_source": "betonline",
+      "hook_risk": false,
+      "trap_risk": false,
+      "suspect_line_bait": false,
+      "dk_tier": null,
+      "tier_label": "NBA Safe Haven (Elite 10 - MLR Sorted)",
+      "synced_at": "2026-04-14T04:02:40.504122+00:00",
+      "mlr_matchup": {
+        "opp_def_rating": 113.5,
+        "opp_pace": 99.7,
+        "opp_pts_allowed": 110,
+        "opp_def_rank": 19.0,
+        "pace_delta": 0.7
+      },
+      "mlr_friction": {
+        "b2b_penalty": 0,
+        "opp_interior_def": 113.5,
+        "opp_perimeter_def": 113.5,
+        "matchup_difficulty": 0.63,
+        "travel_factor": 0.8
+      },
+      "mlr_features_used": true,
+      "mlr_raw_prediction": 15.2,
+      "vk_prob_under": 16.3,
+      "vk_verdict": "STRONG_OVER",
+      "vk_recommendation": "STRONG_OVER",
+      "vk_confidence": 83.7,
+      "vk_sigma_used": 4.79,
+      "vk_sigma_source": "direct_input",
+      "vk_z_score": -0.9812,
+      "tier": "safe_haven",
+      "vk_data": {
+        "projection": 15.583,
+        "confidence_tier": "HIGH_FIDELITY",
+        "r_squared": 0.544,
+        "top_drivers": [
+          "prev_fga",
+          "L10_avg_fgm"
+        ]
+      },
+      "vision_summary": "Scoot Henderson is absolutely locked in \u2014 Lasso projects 15.6 vs a 10.5 line, that's a +5.1 cushion backed by R\u00b2=0.54 fidelity. Key driver: last-game shot attempts. Smash spot, don't overthink it.",
+      "vision_intel": "Scoot Henderson is absolutely locked in \u2014 Lasso projects 15.6 vs a 10.5 line, that's a +5.1 cushion backed by R\u00b2=0.54 fidelity. Key driver: last-game shot attempts. Smash spot, don't overthink it.",
+      "scout_badges": [
+        "hot_streak",
+        "lasso_high_edge",
+        "high_fidelity_model"
+      ],
+      "_enriched": true,
+      "_enriched_at": "2026-04-14T22:59:56.209584+00:00",
+      "_cache_updated": "2026-04-14T22:59:56.209586+00:00"
+    },
+    "coby_white|pra|14.5|dk": {
+      "player_name": "Coby White",
+      "team": "CHA",
+      "opponent": null,
+      "photo_url": null,
+      "headshot_url": null,
+      "game_time": "2026-04-14T23:30:00Z",
+      "stat_type": "PRA",
+      "line": 14.5,
+      "dk_odds": -329,
+      "price": -137,
+      "direction": "Over",
+      "market": "player_points_rebounds_assists_alternate",
+      "prop_type": "GOBLIN",
+      "is_goblin": true,
+      "is_demon": false,
+      "is_standard": false,
+      "l10_rate": 90,
+      "l5_rate": 80,
+      "h10_rate": 90,
+      "h5_rate": 80,
+      "true_hit_rate": 90,
+      "cv": 0.241,
+      "l10_std_dev": null,
+      "l10_avg": 21.4,
+      "avg_mins": null,
+      "market_prob": 76.7,
+      "propvision_true_prob": 83.3,
+      "true_probability": 83.3,
+      "casino_req_rate": 79.0,
+      "true_edge": 4.3,
+      "pp_edge": 4.3,
+      "sh_board_score": 9.3,
+      "fl_board_score": 59.8,
+      "wz_board_score": 243.3,
+      "board_score": 85.4,
+      "ferrari_power_score": 0,
+      "blowout_risk": "LOW",
+      "intel_suite": {
+        "usage_ripple": {
+          "bump_percent": 0,
+          "display": "Standard Volume",
+          "shift_label": "Standard Volume",
+          "injuries_affecting": [],
+          "reasoning": "No significant lineup changes"
+        },
+        "matchup_dvp": {
+          "rank": 15,
+          "display": "Rank #15 vs. All-Around",
+          "color": "yellow",
+          "friction_level": "Medium",
+          "friction_label": "Below Average Defense",
+          "opponent": "Unknown",
+          "stat_category": "PRA"
+        },
+        "pace_delta": {
+          "possessions": 0.2,
+          "display": "+0.2 Possessions",
+          "pace_factor": 1.0,
+          "tempo_label": "Standard Tempo",
+          "team_pace": 97.8,
+          "opponent_pace": 97.5,
+          "expected_game_pace": 97.7
+        },
+        "stability_index": {
+          "score": 40,
+          "label": "Medium-Low",
+          "display": "40/100 (Medium-Low)",
+          "std_dev": 6.26,
+          "consistency": "Below Average",
+          "variance_level": "High"
+        },
+        "vision_insight": {
+          "primary": "Lasso projects 23.2 vs 14.5 line (+8.7 edge)",
+          "reasons": [
+            "Lasso projects 23.2 vs 14.5 line (+8.7 edge)",
+            "L10 hit rate: 90%",
+            "Driven by last-game shot attempts"
+          ],
+          "confidence": "High",
+          "confidence_factors": [
+            "lasso_high_edge",
+            "hit_rate"
+          ],
+          "summary": "Target-Lock: OVER 14.5 PRA \u2014 Lasso projects 23.2 vs 14.5 line (+8.7 edge)",
+          "lasso_projection": 23.212,
+          "lasso_edge": 8.71,
+          "tactical_note": "Lasso model projects significant edge over the posted line"
+        },
+        "blowout_risk": {
+          "risk_level": "UNKNOWN",
+          "risk_reason": "Team data unavailable",
+          "warning": null
+        },
+        "scout_badges": [
+          "hot_streak",
+          "volatility_extreme",
+          "lasso_high_edge",
+          "high_fidelity_model"
+        ],
+        "lasso": {
+          "projection": 23.212,
+          "confidence_tier": "HIGH_FIDELITY",
+          "r_squared": 0.6081,
+          "top_drivers": [
+            "prev_fga",
+            "L10_avg_fgm"
+          ]
+        },
+        "calculated_at": "2026-04-14T22:59:56.211616+00:00"
+      },
+      "active_badges": [],
+      "momentum_data": null,
+      "vacuum_data": null,
+      "whistle_data": null,
+      "whistle_class": null,
+      "whistle_modifier": null,
+      "momentum_modifier": null,
+      "vacuum_modifier": null,
+      "v7_components": null,
+      "v7_confidence": null,
+      "v7_soft_penalties": null,
+      "season_avg": 24.7,
+      "l5_avg": 19.6,
+      "l10_median": null,
+      "l10_mode": null,
+      "vk_predicted": 20.24,
+      "vk_edge": 8.7,
+      "vk_prob_over": 85.4,
+      "is_vision_enriched": true,
+      "draftkings_price": -329,
+      "fanduel_price": null,
+      "sort_price": -329,
+      "sort_source": "draftkings",
+      "hook_risk": false,
+      "trap_risk": false,
+      "suspect_line_bait": false,
+      "dk_tier": null,
+      "tier_label": "NBA Safe Haven (Elite 10 - MLR Sorted)",
+      "synced_at": "2026-04-14T04:02:41.561440+00:00",
+      "mlr_matchup": {
+        "opp_def_rating": 113.2,
+        "opp_pace": 95.8,
+        "opp_pts_allowed": 110,
+        "opp_def_rank": 16.8,
+        "pace_delta": -3.2
+      },
+      "mlr_friction": {
+        "b2b_penalty": 0,
+        "opp_interior_def": 113.2,
+        "opp_perimeter_def": 113.2,
+        "matchup_difficulty": 0.56,
+        "travel_factor": 0.8
+      },
+      "mlr_features_used": true,
+      "mlr_raw_prediction": 20.24,
+      "vk_prob_under": 14.6,
+      "vk_verdict": "STRONG_OVER",
+      "vk_recommendation": "STRONG_OVER",
+      "vk_confidence": 85.4,
+      "vk_sigma_used": 5.44,
+      "vk_sigma_source": "direct_input",
+      "vk_z_score": -1.0551,
+      "tier": "safe_haven",
+      "vk_data": {
+        "projection": 23.212,
+        "confidence_tier": "HIGH_FIDELITY",
+        "r_squared": 0.6081,
+        "top_drivers": [
+          "prev_fga",
+          "L10_avg_fgm"
+        ]
+      },
+      "vision_summary": "Coby White is absolutely locked in \u2014 Lasso projects 23.2 vs a 14.5 line, that's a +8.7 cushion backed by R\u00b2=0.54 fidelity. Key driver: last-game shot attempts. Smash spot, don't overthink it.",
+      "vision_intel": "Coby White is absolutely locked in \u2014 Lasso projects 23.2 vs a 14.5 line, that's a +8.7 cushion backed by R\u00b2=0.54 fidelity. Key driver: last-game shot attempts. Smash spot, don't overthink it.",
+      "scout_badges": [
+        "hot_streak",
+        "volatility_extreme",
+        "lasso_high_edge",
+        "high_fidelity_model"
+      ],
+      "_enriched": true,
+      "_enriched_at": "2026-04-14T22:59:56.211704+00:00",
+      "_cache_updated": "2026-04-14T22:59:56.211706+00:00"
+    },
+    "tari_eason|reb|3.5|dk": {
+      "player_name": "Tari Eason",
+      "team": "HOU",
+      "opponent": null,
+      "photo_url": null,
+      "headshot_url": null,
+      "game_time": "2026-04-19T00:40:00Z",
+      "stat_type": "REB",
+      "line": 3.5,
+      "dk_odds": -137,
+      "price": -137,
+      "direction": "Over",
+      "market": "player_rebounds_alternate",
+      "prop_type": "GOBLIN",
+      "is_goblin": true,
+      "is_demon": false,
+      "is_standard": false,
+      "l10_rate": 80,
+      "l5_rate": 80,
+      "h10_rate": 80,
+      "h5_rate": 80,
+      "true_hit_rate": 80,
+      "cv": 0.422,
+      "l10_std_dev": null,
+      "l10_avg": 6.0,
+      "avg_mins": null,
+      "market_prob": 57.8,
+      "propvision_true_prob": 68.9,
+      "true_probability": 68.9,
+      "casino_req_rate": 65.0,
+      "true_edge": 3.9,
+      "pp_edge": 3.9,
+      "sh_board_score": 5.4,
+      "fl_board_score": 51.4,
+      "wz_board_score": 216.4,
+      "board_score": 27.5,
+      "ferrari_power_score": 0,
+      "blowout_risk": "LOW",
+      "intel_suite": {
+        "usage_ripple": {
+          "bump_percent": 0,
+          "display": "Standard Volume",
+          "shift_label": "Standard Volume",
+          "injuries_affecting": [],
+          "reasoning": "No significant lineup changes"
+        },
+        "matchup_dvp": {
+          "rank": 15,
+          "display": "Rank #15 vs. Rebounders",
+          "color": "yellow",
+          "friction_level": "Medium",
+          "friction_label": "Below Average Defense",
+          "opponent": "Unknown",
+          "stat_category": "REB"
+        },
+        "pace_delta": {
+          "possessions": -0.2,
+          "display": "-0.2 Possessions",
+          "pace_factor": 1.0,
+          "tempo_label": "Standard Tempo",
+          "team_pace": 97.0,
+          "opponent_pace": 97.5,
+          "expected_game_pace": 97.2
+        },
+        "stability_index": {
+          "score": 95,
+          "label": "Elite",
+          "display": "95/100 (Elite)",
+          "std_dev": 1.27,
+          "consistency": "Extremely Consistent",
+          "variance_level": "Low"
+        },
+        "vision_insight": {
+          "primary": "Lasso projects 6.0 vs 3.5 line (+2.5 edge)",
+          "reasons": [
+            "Lasso projects 6.0 vs 3.5 line (+2.5 edge)",
+            "Highly consistent performer",
+            "L10 hit rate: 80%",
+            "Driven by L10 rebound average"
+          ],
+          "confidence": "High",
+          "confidence_factors": [
+            "lasso_high_edge",
+            "consistency",
+            "hit_rate"
+          ],
+          "summary": "Target-Lock: OVER 3.5 REB \u2014 Lasso projects 6.0 vs 3.5 line (+2.5 edge)",
+          "lasso_projection": 5.968,
+          "lasso_edge": 2.47,
+          "tactical_note": "Lasso model projects significant edge over the posted line"
+        },
+        "blowout_risk": {
+          "risk_level": "UNKNOWN",
+          "risk_reason": "Team data unavailable",
+          "warning": null
+        },
+        "scout_badges": [
+          "hot_streak",
+          "floor_lock",
+          "lasso_high_edge",
+          "high_fidelity_model"
+        ],
+        "lasso": {
+          "projection": 5.968,
+          "confidence_tier": "HIGH_FIDELITY",
+          "r_squared": 0.5211,
+          "top_drivers": [
+            "L10_avg_reb",
+            "prev_fga"
+          ]
+        },
+        "calculated_at": "2026-04-14T22:59:56.214163+00:00"
+      },
+      "active_badges": [],
+      "momentum_data": null,
+      "vacuum_data": null,
+      "whistle_data": null,
+      "whistle_class": null,
+      "whistle_modifier": null,
+      "momentum_modifier": null,
+      "vacuum_modifier": null,
+      "v7_components": null,
+      "v7_confidence": null,
+      "v7_soft_penalties": null,
+      "season_avg": 6.2,
+      "l5_avg": 5.6,
+      "l10_median": null,
+      "l10_mode": null,
+      "vk_predicted": 6.3,
+      "vk_edge": 27.5,
+      "vk_prob_over": 85.3,
+      "is_vision_enriched": true,
+      "draftkings_price": null,
+      "fanduel_price": null,
+      "sort_price": null,
+      "sort_source": null,
+      "hook_risk": false,
+      "trap_risk": false,
+      "suspect_line_bait": false,
+      "dk_tier": null,
+      "tier_label": "NBA Front Lines (Elite 10 - vk_edge Sorted)",
+      "synced_at": "2026-04-14T04:02:41.410519+00:00",
+      "mlr_matchup": {
+        "opp_def_rating": 112.1,
+        "opp_pace": 100.5,
+        "opp_pts_allowed": 110,
+        "opp_def_rank": 5.5,
+        "pace_delta": 1.5
+      },
+      "mlr_friction": {
+        "b2b_penalty": 0,
+        "opp_interior_def": 112.1,
+        "opp_perimeter_def": 112.1,
+        "matchup_difficulty": 0.18,
+        "travel_factor": 0.8
+      },
+      "mlr_features_used": true,
+      "mlr_raw_prediction": 6.3,
+      "vk_prob_under": 14.7,
+      "vk_verdict": "STRONG_OVER",
+      "vk_recommendation": "STRONG_OVER",
+      "vk_confidence": 85.3,
+      "vk_sigma_used": 2.67,
+      "vk_sigma_source": "direct_input",
+      "vk_z_score": -1.0487,
+      "tier": "front_lines",
+      "vk_data": {
+        "projection": 5.968,
+        "confidence_tier": "HIGH_FIDELITY",
+        "r_squared": 0.5211,
+        "top_drivers": [
+          "L10_avg_reb",
+          "prev_fga"
+        ]
+      },
+      "vision_summary": "Tari Eason is absolutely locked in \u2014 Lasso projects 6.0 vs a 3.5 line, that's a +2.5 cushion backed by R\u00b2=0.54 fidelity. Key driver: L10 rebound average. Smash spot, don't overthink it.",
+      "vision_intel": "Tari Eason is absolutely locked in \u2014 Lasso projects 6.0 vs a 3.5 line, that's a +2.5 cushion backed by R\u00b2=0.54 fidelity. Key driver: L10 rebound average. Smash spot, don't overthink it.",
+      "scout_badges": [
+        "hot_streak",
+        "floor_lock",
+        "lasso_high_edge",
+        "high_fidelity_model"
+      ],
+      "_enriched": true,
+      "_enriched_at": "2026-04-14T22:59:56.214262+00:00",
+      "_cache_updated": "2026-04-14T22:59:56.214263+00:00"
     },
     "jalen_green|pra|27.5|dk": {
       "player_name": "Jalen Green",
@@ -2733,7 +1346,7 @@
           "color": "yellow",
           "friction_level": "Medium",
           "friction_label": "Below Average Defense",
-          "opponent": "POR",
+          "opponent": "Unknown",
           "stat_category": "PRA"
         },
         "pace_delta": {
@@ -2769,15 +1382,8 @@
           "tactical_note": "Lasso model projects significant edge over the posted line"
         },
         "blowout_risk": {
-          "player_team_record": "45-37",
-          "opponent_team_record": "42-40",
-          "player_win_pct": 0.549,
-          "opponent_win_pct": 0.512,
-          "win_pct_diff": 0.037,
-          "favored_team": "PHX",
-          "player_is_favored": true,
-          "risk_level": "NONE",
-          "risk_reason": "Competitive matchup: PHX (45-37) vs POR (42-40)",
+          "risk_level": "UNKNOWN",
+          "risk_reason": "Team data unavailable",
           "warning": null
         },
         "scout_badges": [
@@ -2793,7 +1399,7 @@
             "prev_fga"
           ]
         },
-        "calculated_at": "2026-04-14T23:00:41.510529+00:00"
+        "calculated_at": "2026-04-14T22:59:56.216171+00:00"
       },
       "active_badges": [],
       "momentum_data": null,
@@ -2864,8 +1470,929 @@
         "high_fidelity_model"
       ],
       "_enriched": true,
-      "_enriched_at": "2026-04-14T23:00:41.510620+00:00",
-      "_cache_updated": "2026-04-14T23:00:41.510622+00:00"
+      "_enriched_at": "2026-04-14T22:59:56.216241+00:00",
+      "_cache_updated": "2026-04-14T22:59:56.216242+00:00"
+    },
+    "scoot_henderson|reb|1.5|dk": {
+      "player_name": "Scoot Henderson",
+      "team": "POR",
+      "opponent": null,
+      "photo_url": null,
+      "headshot_url": null,
+      "game_time": "2026-04-15T02:10:00Z",
+      "stat_type": "REB",
+      "line": 1.5,
+      "dk_odds": -137,
+      "price": -137,
+      "direction": "Over",
+      "market": "player_rebounds_alternate",
+      "prop_type": "GOBLIN",
+      "is_goblin": true,
+      "is_demon": false,
+      "is_standard": false,
+      "l10_rate": 80,
+      "l5_rate": 60,
+      "h10_rate": 80,
+      "h5_rate": 60,
+      "true_hit_rate": 80,
+      "cv": 0.333,
+      "l10_std_dev": null,
+      "l10_avg": 2.4,
+      "avg_mins": null,
+      "market_prob": 57.8,
+      "propvision_true_prob": 68.9,
+      "true_probability": 68.9,
+      "casino_req_rate": 65.0,
+      "true_edge": 3.9,
+      "pp_edge": 3.9,
+      "sh_board_score": 6.7,
+      "fl_board_score": 52.3,
+      "wz_board_score": 216.8,
+      "board_score": 37.2,
+      "ferrari_power_score": 0,
+      "blowout_risk": "UNKNOWN",
+      "intel_suite": {
+        "usage_ripple": {
+          "bump_percent": 0,
+          "display": "Standard Volume",
+          "shift_label": "Standard Volume",
+          "injuries_affecting": [],
+          "reasoning": "No significant lineup changes"
+        },
+        "matchup_dvp": {
+          "rank": 15,
+          "display": "Rank #15 vs. Rebounders",
+          "color": "yellow",
+          "friction_level": "Medium",
+          "friction_label": "Below Average Defense",
+          "opponent": "Unknown",
+          "stat_category": "REB"
+        },
+        "pace_delta": {
+          "possessions": 0.0,
+          "display": "+0.0 Possessions",
+          "pace_factor": 1.0,
+          "tempo_label": "Standard Tempo",
+          "team_pace": 97.5,
+          "opponent_pace": 97.5,
+          "expected_game_pace": 97.5
+        },
+        "stability_index": {
+          "score": 85,
+          "label": "High",
+          "display": "85/100 (High)",
+          "std_dev": 1.58,
+          "consistency": "Very Consistent",
+          "variance_level": "Low"
+        },
+        "vision_insight": {
+          "primary": "Lasso projects 2.8 vs 1.5 line (+1.3 edge)",
+          "reasons": [
+            "Lasso projects 2.8 vs 1.5 line (+1.3 edge)",
+            "Highly consistent performer",
+            "L10 hit rate: 80%",
+            "Driven by L10 rebound average"
+          ],
+          "confidence": "High",
+          "confidence_factors": [
+            "lasso_high_edge",
+            "consistency",
+            "hit_rate"
+          ],
+          "summary": "Target-Lock: OVER 1.5 REB \u2014 Lasso projects 2.8 vs 1.5 line (+1.3 edge)",
+          "lasso_projection": 2.78,
+          "lasso_edge": 1.28,
+          "tactical_note": "Lasso model projects significant edge over the posted line"
+        },
+        "blowout_risk": {
+          "risk_level": "UNKNOWN",
+          "risk_reason": "Team data unavailable",
+          "warning": null
+        },
+        "scout_badges": [
+          "hot_streak",
+          "floor_lock",
+          "lasso_high_edge",
+          "high_fidelity_model"
+        ],
+        "lasso": {
+          "projection": 2.78,
+          "confidence_tier": "HIGH_FIDELITY",
+          "r_squared": 0.5211,
+          "top_drivers": [
+            "L10_avg_reb",
+            "L10_avg_fg3a"
+          ]
+        },
+        "calculated_at": "2026-04-14T22:59:56.218355+00:00"
+      },
+      "active_badges": [],
+      "momentum_data": null,
+      "vacuum_data": null,
+      "whistle_data": null,
+      "whistle_class": null,
+      "whistle_modifier": null,
+      "momentum_modifier": null,
+      "vacuum_modifier": null,
+      "v7_components": null,
+      "v7_confidence": null,
+      "v7_soft_penalties": null,
+      "season_avg": 2.7,
+      "l5_avg": 2.0,
+      "l10_median": null,
+      "l10_mode": null,
+      "vk_predicted": 2.88,
+      "vk_edge": 37.2,
+      "vk_prob_over": 95.0,
+      "is_vision_enriched": true,
+      "draftkings_price": null,
+      "fanduel_price": null,
+      "sort_price": null,
+      "sort_source": null,
+      "hook_risk": false,
+      "trap_risk": false,
+      "suspect_line_bait": false,
+      "dk_tier": null,
+      "tier_label": "NBA Front Lines (Elite 10 - vk_edge Sorted)",
+      "synced_at": "2026-04-14T04:02:40.524156+00:00",
+      "mlr_matchup": {
+        "opp_def_rating": 113.5,
+        "opp_pace": 99.7,
+        "opp_pts_allowed": 110,
+        "opp_def_rank": 19.0,
+        "pace_delta": 0.7
+      },
+      "mlr_friction": {
+        "b2b_penalty": 0,
+        "opp_interior_def": 113.5,
+        "opp_perimeter_def": 113.5,
+        "matchup_difficulty": 0.63,
+        "travel_factor": 0.8
+      },
+      "mlr_features_used": true,
+      "mlr_raw_prediction": 2.88,
+      "vk_prob_under": 5.0,
+      "vk_verdict": "STRONG_OVER",
+      "vk_recommendation": "STRONG_OVER",
+      "vk_confidence": 95.0,
+      "vk_sigma_used": 0.84,
+      "vk_sigma_source": "direct_input",
+      "vk_z_score": -1.6429,
+      "tier": "front_lines",
+      "vk_data": {
+        "projection": 2.78,
+        "confidence_tier": "HIGH_FIDELITY",
+        "r_squared": 0.5211,
+        "top_drivers": [
+          "L10_avg_reb",
+          "L10_avg_fg3a"
+        ]
+      },
+      "vision_summary": "Scoot Henderson is absolutely locked in \u2014 Lasso projects 2.8 vs a 1.5 line, that's a +1.3 cushion backed by R\u00b2=0.54 fidelity. Key driver: L10 rebound average. Smash spot, don't overthink it.",
+      "vision_intel": "Scoot Henderson is absolutely locked in \u2014 Lasso projects 2.8 vs a 1.5 line, that's a +1.3 cushion backed by R\u00b2=0.54 fidelity. Key driver: L10 rebound average. Smash spot, don't overthink it.",
+      "scout_badges": [
+        "hot_streak",
+        "floor_lock",
+        "lasso_high_edge",
+        "high_fidelity_model"
+      ],
+      "_enriched": true,
+      "_enriched_at": "2026-04-14T22:59:56.218418+00:00",
+      "_cache_updated": "2026-04-14T22:59:56.218420+00:00"
+    },
+    "draymond_green|ast|5.5|dk": {
+      "player_name": "Draymond Green",
+      "team": "GSW",
+      "opponent": null,
+      "photo_url": null,
+      "headshot_url": null,
+      "game_time": "2026-04-16T02:10:00Z",
+      "stat_type": "AST",
+      "line": 5.5,
+      "dk_odds": 106,
+      "price": 100,
+      "direction": "Over",
+      "market": "player_assists_alternate",
+      "prop_type": "DEMON",
+      "is_goblin": false,
+      "is_demon": true,
+      "is_standard": false,
+      "l10_rate": 80,
+      "l5_rate": 100,
+      "h10_rate": 80,
+      "h5_rate": 100,
+      "true_hit_rate": 80,
+      "cv": 0.45,
+      "l10_std_dev": null,
+      "l10_avg": 6.8,
+      "avg_mins": null,
+      "market_prob": 50.0,
+      "propvision_true_prob": 65.0,
+      "true_probability": 65.0,
+      "casino_req_rate": 50.0,
+      "true_edge": 15.0,
+      "pp_edge": 15.0,
+      "sh_board_score": 38.2,
+      "fl_board_score": 95.5,
+      "wz_board_score": 382.8,
+      "board_score": 382.8,
+      "ferrari_power_score": 0,
+      "blowout_risk": "LOW",
+      "intel_suite": {
+        "usage_ripple": {
+          "bump_percent": 0,
+          "display": "Standard Volume",
+          "shift_label": "Standard Volume",
+          "injuries_affecting": [],
+          "reasoning": "No significant lineup changes"
+        },
+        "matchup_dvp": {
+          "rank": 15,
+          "display": "Rank #15 vs. Playmakers",
+          "color": "yellow",
+          "friction_level": "Medium",
+          "friction_label": "Below Average Defense",
+          "opponent": "Unknown",
+          "stat_category": "AST"
+        },
+        "pace_delta": {
+          "possessions": 0.3,
+          "display": "+0.3 Possessions",
+          "pace_factor": 1.0,
+          "tempo_label": "Standard Tempo",
+          "team_pace": 98.2,
+          "opponent_pace": 97.5,
+          "expected_game_pace": 97.8
+        },
+        "stability_index": {
+          "score": 70,
+          "label": "Medium-High",
+          "display": "70/100 (Medium-High)",
+          "std_dev": 2.75,
+          "consistency": "Above Average",
+          "variance_level": "Low"
+        },
+        "vision_insight": {
+          "primary": "Lasso projects 6.9 vs 5.5 line (+1.4 edge)",
+          "reasons": [
+            "Lasso projects 6.9 vs 5.5 line (+1.4 edge)",
+            "L10 hit rate: 80%",
+            "Driven by L10 assist average"
+          ],
+          "confidence": "High",
+          "confidence_factors": [
+            "lasso_high_edge",
+            "hit_rate"
+          ],
+          "summary": "Target-Lock: OVER 5.5 AST \u2014 Lasso projects 6.9 vs 5.5 line (+1.4 edge)",
+          "lasso_projection": 6.863,
+          "lasso_edge": 1.36,
+          "tactical_note": "Lasso model projects significant edge over the posted line"
+        },
+        "blowout_risk": {
+          "risk_level": "UNKNOWN",
+          "risk_reason": "Team data unavailable",
+          "warning": null
+        },
+        "scout_badges": [
+          "lasso_high_edge",
+          "high_fidelity_model"
+        ],
+        "lasso": {
+          "projection": 6.863,
+          "confidence_tier": "HIGH_FIDELITY",
+          "r_squared": 0.5469,
+          "top_drivers": [
+            "L10_avg_ast",
+            "prev_turnover"
+          ]
+        },
+        "calculated_at": "2026-04-14T22:59:56.220668+00:00"
+      },
+      "active_badges": [],
+      "momentum_data": null,
+      "vacuum_data": null,
+      "whistle_data": null,
+      "whistle_class": null,
+      "whistle_modifier": null,
+      "momentum_modifier": null,
+      "vacuum_modifier": null,
+      "v7_components": null,
+      "v7_confidence": null,
+      "v7_soft_penalties": null,
+      "season_avg": 5.5,
+      "l5_avg": 8.0,
+      "l10_median": null,
+      "l10_mode": null,
+      "vk_predicted": 5.65,
+      "vk_edge": 3.4,
+      "vk_prob_over": 51.9,
+      "is_vision_enriched": true,
+      "draftkings_price": 106,
+      "fanduel_price": 100,
+      "sort_price": 106,
+      "sort_source": "draftkings",
+      "hook_risk": false,
+      "trap_risk": false,
+      "suspect_line_bait": false,
+      "dk_tier": null,
+      "tier_label": "NBA War Zone (Elite 10)",
+      "synced_at": "2026-04-14T04:02:41.162082+00:00",
+      "mlr_matchup": {
+        "opp_def_rating": 113.9,
+        "opp_pace": 101.2,
+        "opp_pts_allowed": 110,
+        "opp_def_rank": 10.9,
+        "pace_delta": 2.2
+      },
+      "mlr_friction": {
+        "b2b_penalty": 1,
+        "opp_interior_def": 113.9,
+        "opp_perimeter_def": 113.9,
+        "matchup_difficulty": 0.36,
+        "travel_factor": 0.8
+      },
+      "mlr_features_used": true,
+      "mlr_raw_prediction": 5.65,
+      "vk_prob_under": 48.1,
+      "vk_verdict": "NEUTRAL",
+      "vk_recommendation": "NEUTRAL",
+      "vk_confidence": 51.9,
+      "vk_sigma_used": 3.22,
+      "vk_sigma_source": "direct_input",
+      "vk_z_score": -0.0466,
+      "tier": "war_zone",
+      "vk_data": {
+        "projection": 6.863,
+        "confidence_tier": "HIGH_FIDELITY",
+        "r_squared": 0.5469,
+        "top_drivers": [
+          "L10_avg_ast",
+          "prev_turnover"
+        ]
+      },
+      "vision_summary": "Draymond Green is absolutely locked in \u2014 Lasso projects 6.9 vs a 5.5 line, that's a +1.4 cushion backed by R\u00b2=0.54 fidelity. Key driver: L10 assist average. Smash spot, don't overthink it.",
+      "vision_intel": "Draymond Green is absolutely locked in \u2014 Lasso projects 6.9 vs a 5.5 line, that's a +1.4 cushion backed by R\u00b2=0.54 fidelity. Key driver: L10 assist average. Smash spot, don't overthink it.",
+      "scout_badges": [
+        "lasso_high_edge",
+        "high_fidelity_model"
+      ],
+      "_enriched": true,
+      "_enriched_at": "2026-04-14T22:59:56.220783+00:00",
+      "_cache_updated": "2026-04-14T22:59:56.220785+00:00"
+    },
+    "brandin_podziemski|pts|16.5|dk": {
+      "player_name": "Brandin Podziemski",
+      "team": "GSW",
+      "opponent": null,
+      "photo_url": null,
+      "headshot_url": null,
+      "game_time": "2026-04-16T02:10:00Z",
+      "stat_type": "PTS",
+      "line": 16.5,
+      "dk_odds": 148,
+      "price": 100,
+      "direction": "Over",
+      "market": "player_points_alternate",
+      "prop_type": "DEMON",
+      "is_goblin": false,
+      "is_demon": true,
+      "is_standard": false,
+      "l10_rate": 80,
+      "l5_rate": 80,
+      "h10_rate": 80,
+      "h5_rate": 80,
+      "true_hit_rate": 80,
+      "cv": 0.268,
+      "l10_std_dev": null,
+      "l10_avg": 20.1,
+      "avg_mins": null,
+      "market_prob": 50.0,
+      "propvision_true_prob": 65.0,
+      "true_probability": 65.0,
+      "casino_req_rate": 50.0,
+      "true_edge": 15.0,
+      "pp_edge": 15.0,
+      "sh_board_score": 41.0,
+      "fl_board_score": 97.3,
+      "wz_board_score": 383.7,
+      "board_score": 383.7,
+      "ferrari_power_score": 0,
+      "blowout_risk": "LOW",
+      "intel_suite": {
+        "usage_ripple": {
+          "bump_percent": 0,
+          "display": "Standard Volume",
+          "shift_label": "Standard Volume",
+          "injuries_affecting": [],
+          "reasoning": "No significant lineup changes"
+        },
+        "matchup_dvp": {
+          "rank": 15,
+          "display": "Rank #15 vs. Scorers",
+          "color": "yellow",
+          "friction_level": "Medium",
+          "friction_label": "Below Average Defense",
+          "opponent": "Unknown",
+          "stat_category": "PTS"
+        },
+        "pace_delta": {
+          "possessions": 0.3,
+          "display": "+0.3 Possessions",
+          "pace_factor": 1.0,
+          "tempo_label": "Standard Tempo",
+          "team_pace": 98.2,
+          "opponent_pace": 97.5,
+          "expected_game_pace": 97.8
+        },
+        "stability_index": {
+          "score": 55,
+          "label": "Medium",
+          "display": "55/100 (Medium)",
+          "std_dev": 4.67,
+          "consistency": "Average",
+          "variance_level": "Medium"
+        },
+        "vision_insight": {
+          "primary": "Model sees 14.2 (thin -2.3 edge)",
+          "reasons": [
+            "Model sees 14.2 (thin -2.3 edge)",
+            "L10 hit rate: 80%",
+            "Driven by L10 field goal average"
+          ],
+          "confidence": "High",
+          "confidence_factors": [
+            "lasso_edge",
+            "hit_rate"
+          ],
+          "summary": "Target-Lock: OVER 16.5 PTS \u2014 Model sees 14.2 (thin -2.3 edge)",
+          "lasso_projection": 14.16,
+          "lasso_edge": -2.34,
+          "tactical_note": "Baseline projection favorable"
+        },
+        "blowout_risk": {
+          "risk_level": "UNKNOWN",
+          "risk_reason": "Team data unavailable",
+          "warning": null
+        },
+        "scout_badges": [
+          "high_fidelity_model"
+        ],
+        "lasso": {
+          "projection": 14.16,
+          "confidence_tier": "HIGH_FIDELITY",
+          "r_squared": 0.544,
+          "top_drivers": [
+            "L10_avg_fgm",
+            "L10_avg_ftm"
+          ]
+        },
+        "calculated_at": "2026-04-14T22:59:56.223368+00:00"
+      },
+      "active_badges": [],
+      "momentum_data": null,
+      "vacuum_data": null,
+      "whistle_data": null,
+      "whistle_class": null,
+      "whistle_modifier": null,
+      "momentum_modifier": null,
+      "vacuum_modifier": null,
+      "v7_components": null,
+      "v7_confidence": null,
+      "v7_soft_penalties": null,
+      "season_avg": 13.5,
+      "l5_avg": 19.0,
+      "l10_median": null,
+      "l10_mode": null,
+      "vk_predicted": 15.44,
+      "vk_edge": 2.3,
+      "vk_prob_over": 42.6,
+      "is_vision_enriched": true,
+      "draftkings_price": null,
+      "fanduel_price": null,
+      "sort_price": 148,
+      "sort_source": "betonline",
+      "hook_risk": false,
+      "trap_risk": false,
+      "suspect_line_bait": false,
+      "dk_tier": null,
+      "tier_label": "NBA War Zone (Elite 10)",
+      "synced_at": "2026-04-14T04:02:40.781024+00:00",
+      "mlr_matchup": {
+        "opp_def_rating": 113.9,
+        "opp_pace": 101.2,
+        "opp_pts_allowed": 110,
+        "opp_def_rank": 10.9,
+        "pace_delta": 2.2
+      },
+      "mlr_friction": {
+        "b2b_penalty": 0,
+        "opp_interior_def": 113.9,
+        "opp_perimeter_def": 113.9,
+        "matchup_difficulty": 0.36,
+        "travel_factor": 0.8
+      },
+      "mlr_features_used": true,
+      "mlr_raw_prediction": 15.44,
+      "vk_prob_under": 57.4,
+      "vk_verdict": "LEAN_UNDER",
+      "vk_recommendation": "LEAN_UNDER",
+      "vk_confidence": 57.4,
+      "vk_sigma_used": 5.69,
+      "vk_sigma_source": "direct_input",
+      "vk_z_score": 0.1863,
+      "tier": "war_zone",
+      "vk_data": {
+        "projection": 14.16,
+        "confidence_tier": "HIGH_FIDELITY",
+        "r_squared": 0.544,
+        "top_drivers": [
+          "L10_avg_fgm",
+          "L10_avg_ftm"
+        ]
+      },
+      "vision_summary": "Brandin Podziemski PTS @ 16.5: Model sees 14.2 (-2.3). Edge is thin \u2014 L10 field goal average is the swing factor. Need the game script to break right.",
+      "vision_intel": "Brandin Podziemski PTS @ 16.5: Model sees 14.2 (-2.3). Edge is thin \u2014 L10 field goal average is the swing factor. Need the game script to break right.",
+      "scout_badges": [
+        "high_fidelity_model"
+      ],
+      "_enriched": true,
+      "_enriched_at": "2026-04-14T22:59:56.223498+00:00",
+      "_cache_updated": "2026-04-14T22:59:56.223500+00:00"
+    },
+    "collin_gillespie|reb|1.5|dk": {
+      "player_name": "Collin Gillespie",
+      "team": "PHX",
+      "opponent": null,
+      "photo_url": null,
+      "headshot_url": null,
+      "game_time": "2026-04-15T02:10:00Z",
+      "stat_type": "REB",
+      "line": 1.5,
+      "dk_odds": -137,
+      "price": -137,
+      "direction": "Over",
+      "market": "player_rebounds_alternate",
+      "prop_type": "GOBLIN",
+      "is_goblin": true,
+      "is_demon": false,
+      "is_standard": false,
+      "l10_rate": 90,
+      "l5_rate": 80,
+      "h10_rate": 90,
+      "h5_rate": 80,
+      "true_hit_rate": 90,
+      "cv": 0.451,
+      "l10_std_dev": null,
+      "l10_avg": 3.6,
+      "avg_mins": null,
+      "market_prob": 57.8,
+      "propvision_true_prob": 73.9,
+      "true_probability": 73.9,
+      "casino_req_rate": 65.0,
+      "true_edge": 8.9,
+      "pp_edge": 8.9,
+      "sh_board_score": 19.9,
+      "fl_board_score": 76.1,
+      "wz_board_score": 311.2,
+      "board_score": 31.4,
+      "ferrari_power_score": 0,
+      "blowout_risk": "UNKNOWN",
+      "intel_suite": {
+        "usage_ripple": {
+          "bump_percent": 0,
+          "display": "Standard Volume",
+          "shift_label": "Standard Volume",
+          "injuries_affecting": [],
+          "reasoning": "No significant lineup changes"
+        },
+        "matchup_dvp": {
+          "rank": 15,
+          "display": "Rank #15 vs. Rebounders",
+          "color": "yellow",
+          "friction_level": "Medium",
+          "friction_label": "Below Average Defense",
+          "opponent": "Unknown",
+          "stat_category": "REB"
+        },
+        "pace_delta": {
+          "possessions": 0.8,
+          "display": "+0.8 Possessions",
+          "pace_factor": 1.0,
+          "tempo_label": "Standard Tempo",
+          "team_pace": 99.0,
+          "opponent_pace": 97.5,
+          "expected_game_pace": 98.2
+        },
+        "stability_index": {
+          "score": 85,
+          "label": "High",
+          "display": "85/100 (High)",
+          "std_dev": 1.58,
+          "consistency": "Very Consistent",
+          "variance_level": "Low"
+        },
+        "vision_insight": {
+          "primary": "Lasso projects 3.6 vs 1.5 line (+2.1 edge)",
+          "reasons": [
+            "Lasso projects 3.6 vs 1.5 line (+2.1 edge)",
+            "Highly consistent performer",
+            "L10 hit rate: 90%",
+            "Driven by L10 three-point volume"
+          ],
+          "confidence": "High",
+          "confidence_factors": [
+            "lasso_high_edge",
+            "consistency",
+            "hit_rate"
+          ],
+          "summary": "Target-Lock: OVER 1.5 REB \u2014 Lasso projects 3.6 vs 1.5 line (+2.1 edge)",
+          "lasso_projection": 3.59,
+          "lasso_edge": 2.09,
+          "tactical_note": "Lasso model projects significant edge over the posted line"
+        },
+        "blowout_risk": {
+          "risk_level": "UNKNOWN",
+          "risk_reason": "Team data unavailable",
+          "warning": null
+        },
+        "scout_badges": [
+          "hot_streak",
+          "floor_lock",
+          "lasso_high_edge",
+          "high_fidelity_model"
+        ],
+        "lasso": {
+          "projection": 3.59,
+          "confidence_tier": "HIGH_FIDELITY",
+          "r_squared": 0.5211,
+          "top_drivers": [
+            "L10_avg_fg3a",
+            "prev_pf"
+          ]
+        },
+        "calculated_at": "2026-04-14T22:59:56.225785+00:00"
+      },
+      "active_badges": [],
+      "momentum_data": null,
+      "vacuum_data": null,
+      "whistle_data": null,
+      "whistle_class": null,
+      "whistle_modifier": null,
+      "momentum_modifier": null,
+      "vacuum_modifier": null,
+      "v7_components": null,
+      "v7_confidence": null,
+      "v7_soft_penalties": null,
+      "season_avg": 4.1,
+      "l5_avg": 3.8,
+      "l10_median": null,
+      "l10_mode": null,
+      "vk_predicted": 3.62,
+      "vk_edge": 31.4,
+      "vk_prob_over": 89.2,
+      "is_vision_enriched": true,
+      "draftkings_price": null,
+      "fanduel_price": null,
+      "sort_price": null,
+      "sort_source": null,
+      "hook_risk": false,
+      "trap_risk": false,
+      "suspect_line_bait": false,
+      "dk_tier": null,
+      "tier_label": "NBA Front Lines (Elite 10 - vk_edge Sorted)",
+      "synced_at": "2026-04-14T04:02:41.802023+00:00",
+      "mlr_matchup": {
+        "opp_def_rating": 113.5,
+        "opp_pace": 99.7,
+        "opp_pts_allowed": 110,
+        "opp_def_rank": 19.0,
+        "pace_delta": 0.7
+      },
+      "mlr_friction": {
+        "b2b_penalty": 0,
+        "opp_interior_def": 113.5,
+        "opp_perimeter_def": 113.5,
+        "matchup_difficulty": 0.63,
+        "travel_factor": 0.8
+      },
+      "mlr_features_used": true,
+      "mlr_raw_prediction": 3.62,
+      "vk_prob_under": 10.8,
+      "vk_verdict": "STRONG_OVER",
+      "vk_recommendation": "STRONG_OVER",
+      "vk_confidence": 89.2,
+      "vk_sigma_used": 1.71,
+      "vk_sigma_source": "direct_input",
+      "vk_z_score": -1.2398,
+      "tier": "front_lines",
+      "vk_data": {
+        "projection": 3.59,
+        "confidence_tier": "HIGH_FIDELITY",
+        "r_squared": 0.5211,
+        "top_drivers": [
+          "L10_avg_fg3a",
+          "prev_pf"
+        ]
+      },
+      "vision_summary": "Collin Gillespie is absolutely locked in \u2014 Lasso projects 3.6 vs a 1.5 line, that's a +2.1 cushion backed by R\u00b2=0.54 fidelity. Key driver: L10 three-point volume. Smash spot, don't overthink it.",
+      "vision_intel": "Collin Gillespie is absolutely locked in \u2014 Lasso projects 3.6 vs a 1.5 line, that's a +2.1 cushion backed by R\u00b2=0.54 fidelity. Key driver: L10 three-point volume. Smash spot, don't overthink it.",
+      "scout_badges": [
+        "hot_streak",
+        "floor_lock",
+        "lasso_high_edge",
+        "high_fidelity_model"
+      ],
+      "_enriched": true,
+      "_enriched_at": "2026-04-14T22:59:56.225906+00:00",
+      "_cache_updated": "2026-04-14T22:59:56.225907+00:00"
+    },
+    "sion_james|reb|1.5|dk": {
+      "player_name": "Sion James",
+      "team": "CHA",
+      "opponent": null,
+      "photo_url": null,
+      "headshot_url": null,
+      "game_time": "2026-04-14T23:30:00Z",
+      "stat_type": "REB",
+      "line": 1.5,
+      "dk_odds": -137,
+      "price": -137,
+      "direction": "Over",
+      "market": "player_rebounds_alternate",
+      "prop_type": "GOBLIN",
+      "is_goblin": true,
+      "is_demon": false,
+      "is_standard": false,
+      "l10_rate": 80,
+      "l5_rate": 100,
+      "h10_rate": 80,
+      "h5_rate": 100,
+      "true_hit_rate": 80,
+      "cv": 0.468,
+      "l10_std_dev": null,
+      "l10_avg": 3.8,
+      "avg_mins": null,
+      "market_prob": 57.8,
+      "propvision_true_prob": 68.9,
+      "true_probability": 68.9,
+      "casino_req_rate": 65.0,
+      "true_edge": 3.9,
+      "pp_edge": 3.9,
+      "sh_board_score": 4.7,
+      "fl_board_score": 50.9,
+      "wz_board_score": 216.2,
+      "board_score": 29.0,
+      "ferrari_power_score": 0,
+      "blowout_risk": "LOW",
+      "intel_suite": {
+        "usage_ripple": {
+          "bump_percent": 0,
+          "display": "Standard Volume",
+          "shift_label": "Standard Volume",
+          "injuries_affecting": [],
+          "reasoning": "No significant lineup changes"
+        },
+        "matchup_dvp": {
+          "rank": 15,
+          "display": "Rank #15 vs. Rebounders",
+          "color": "yellow",
+          "friction_level": "Medium",
+          "friction_label": "Below Average Defense",
+          "opponent": "Unknown",
+          "stat_category": "REB"
+        },
+        "pace_delta": {
+          "possessions": 0.2,
+          "display": "+0.2 Possessions",
+          "pace_factor": 1.0,
+          "tempo_label": "Standard Tempo",
+          "team_pace": 97.8,
+          "opponent_pace": 97.5,
+          "expected_game_pace": 97.7
+        },
+        "stability_index": {
+          "score": 85,
+          "label": "High",
+          "display": "85/100 (High)",
+          "std_dev": 1.6,
+          "consistency": "Very Consistent",
+          "variance_level": "Low"
+        },
+        "vision_insight": {
+          "primary": "Lasso projects 4.7 vs 1.5 line (+3.2 edge)",
+          "reasons": [
+            "Lasso projects 4.7 vs 1.5 line (+3.2 edge)",
+            "Highly consistent performer",
+            "L10 hit rate: 80%",
+            "Driven by L10 rebound average"
+          ],
+          "confidence": "High",
+          "confidence_factors": [
+            "lasso_high_edge",
+            "consistency",
+            "hit_rate"
+          ],
+          "summary": "Target-Lock: OVER 1.5 REB \u2014 Lasso projects 4.7 vs 1.5 line (+3.2 edge)",
+          "lasso_projection": 4.674,
+          "lasso_edge": 3.17,
+          "tactical_note": "Lasso model projects significant edge over the posted line"
+        },
+        "blowout_risk": {
+          "risk_level": "UNKNOWN",
+          "risk_reason": "Team data unavailable",
+          "warning": null
+        },
+        "scout_badges": [
+          "hot_streak",
+          "floor_lock",
+          "lasso_high_edge",
+          "high_fidelity_model"
+        ],
+        "lasso": {
+          "projection": 4.674,
+          "confidence_tier": "HIGH_FIDELITY",
+          "r_squared": 0.5211,
+          "top_drivers": [
+            "L10_avg_reb",
+            "prev_reb"
+          ]
+        },
+        "calculated_at": "2026-04-14T22:59:56.228491+00:00"
+      },
+      "active_badges": [],
+      "momentum_data": null,
+      "vacuum_data": null,
+      "whistle_data": null,
+      "whistle_class": null,
+      "whistle_modifier": null,
+      "momentum_modifier": null,
+      "vacuum_modifier": null,
+      "v7_components": null,
+      "v7_confidence": null,
+      "v7_soft_penalties": null,
+      "season_avg": 3.5,
+      "l5_avg": 4.8,
+      "l10_median": null,
+      "l10_mode": null,
+      "vk_predicted": 3.59,
+      "vk_edge": 29.0,
+      "vk_prob_over": 86.8,
+      "is_vision_enriched": true,
+      "draftkings_price": null,
+      "fanduel_price": null,
+      "sort_price": null,
+      "sort_source": null,
+      "hook_risk": false,
+      "trap_risk": false,
+      "suspect_line_bait": false,
+      "dk_tier": null,
+      "tier_label": "NBA Front Lines (Elite 10 - vk_edge Sorted)",
+      "synced_at": "2026-04-14T04:02:41.764201+00:00",
+      "mlr_matchup": {
+        "opp_def_rating": 113.2,
+        "opp_pace": 95.8,
+        "opp_pts_allowed": 110,
+        "opp_def_rank": 16.8,
+        "pace_delta": -3.2
+      },
+      "mlr_friction": {
+        "b2b_penalty": 0,
+        "opp_interior_def": 113.2,
+        "opp_perimeter_def": 113.2,
+        "matchup_difficulty": 0.56,
+        "travel_factor": 0.8
+      },
+      "mlr_features_used": true,
+      "mlr_raw_prediction": 3.59,
+      "vk_prob_under": 13.2,
+      "vk_verdict": "STRONG_OVER",
+      "vk_recommendation": "STRONG_OVER",
+      "vk_confidence": 86.8,
+      "vk_sigma_used": 1.87,
+      "vk_sigma_source": "direct_input",
+      "vk_z_score": -1.1176,
+      "tier": "front_lines",
+      "vk_data": {
+        "projection": 4.674,
+        "confidence_tier": "HIGH_FIDELITY",
+        "r_squared": 0.5211,
+        "top_drivers": [
+          "L10_avg_reb",
+          "prev_reb"
+        ]
+      },
+      "vision_summary": "Sion James is absolutely locked in \u2014 Lasso projects 4.7 vs a 1.5 line, that's a +3.2 cushion backed by R\u00b2=0.54 fidelity. Key driver: L10 rebound average. Smash spot, don't overthink it.",
+      "vision_intel": "Sion James is absolutely locked in \u2014 Lasso projects 4.7 vs a 1.5 line, that's a +3.2 cushion backed by R\u00b2=0.54 fidelity. Key driver: L10 rebound average. Smash spot, don't overthink it.",
+      "scout_badges": [
+        "hot_streak",
+        "floor_lock",
+        "lasso_high_edge",
+        "high_fidelity_model"
+      ],
+      "_enriched": true,
+      "_enriched_at": "2026-04-14T22:59:56.228628+00:00",
+      "_cache_updated": "2026-04-14T22:59:56.228630+00:00"
     },
     "jaime_jaquez_jr.|pts|13.5|dk": {
       "player_name": "Jaime Jaquez Jr.",
@@ -2914,22 +2441,22 @@
           "reasoning": "No significant lineup changes"
         },
         "matchup_dvp": {
-          "rank": 23,
-          "display": "Rank #23 vs. Scorers",
+          "rank": 15,
+          "display": "Rank #15 vs. Scorers",
           "color": "yellow",
-          "friction_level": "Low-Med",
-          "friction_label": "Soft Defense",
-          "opponent": "CHA",
+          "friction_level": "Medium",
+          "friction_label": "Below Average Defense",
+          "opponent": "Unknown",
           "stat_category": "PTS"
         },
         "pace_delta": {
-          "possessions": -1.2,
-          "display": "-1.2 Possessions",
+          "possessions": -1.3,
+          "display": "-1.3 Possessions",
           "pace_factor": 1.0,
           "tempo_label": "Standard Tempo",
           "team_pace": 94.8,
-          "opponent_pace": 97.8,
-          "expected_game_pace": 96.3
+          "opponent_pace": 97.5,
+          "expected_game_pace": 96.2
         },
         "stability_index": {
           "score": 25,
@@ -2943,31 +2470,22 @@
           "primary": "Model sees 14.9 (thin +1.4 edge)",
           "reasons": [
             "Model sees 14.9 (thin +1.4 edge)",
-            "Soft defense (DvP #23)",
             "L10 hit rate: 90%",
             "Driven by L10 field goal average"
           ],
           "confidence": "High",
           "confidence_factors": [
             "lasso_edge",
-            "favorable_matchup",
             "hit_rate"
           ],
           "summary": "Target-Lock: OVER 13.5 PTS \u2014 Model sees 14.9 (thin +1.4 edge)",
           "lasso_projection": 14.869,
           "lasso_edge": 1.37,
-          "tactical_note": "Defensive weakness in opponent's scheme"
+          "tactical_note": "Baseline projection favorable"
         },
         "blowout_risk": {
-          "player_team_record": "43-39",
-          "opponent_team_record": "44-38",
-          "player_win_pct": 0.524,
-          "opponent_win_pct": 0.537,
-          "win_pct_diff": 0.012,
-          "favored_team": "CHA",
-          "player_is_favored": false,
-          "risk_level": "NONE",
-          "risk_reason": "Competitive matchup: MIA (43-39) vs CHA (44-38)",
+          "risk_level": "UNKNOWN",
+          "risk_reason": "Team data unavailable",
           "warning": null
         },
         "scout_badges": [
@@ -2983,7 +2501,7 @@
             "L5_avg_ftm"
           ]
         },
-        "calculated_at": "2026-04-14T23:00:41.513661+00:00"
+        "calculated_at": "2026-04-14T22:59:56.230913+00:00"
       },
       "active_badges": [],
       "momentum_data": null,
@@ -3054,8 +2572,547 @@
         "high_fidelity_model"
       ],
       "_enriched": true,
-      "_enriched_at": "2026-04-14T23:00:41.513798+00:00",
-      "_cache_updated": "2026-04-14T23:00:41.513800+00:00"
+      "_enriched_at": "2026-04-14T22:59:56.231030+00:00",
+      "_cache_updated": "2026-04-14T22:59:56.231031+00:00"
+    },
+    "jordan_goodwin|pts|7.5|dk": {
+      "player_name": "Jordan Goodwin",
+      "team": "PHX",
+      "opponent": null,
+      "photo_url": null,
+      "headshot_url": null,
+      "game_time": "2026-04-15T02:10:00Z",
+      "stat_type": "PTS",
+      "line": 7.5,
+      "dk_odds": 101,
+      "price": 100,
+      "direction": "Over",
+      "market": "player_points_alternate",
+      "prop_type": "DEMON",
+      "is_goblin": false,
+      "is_demon": true,
+      "is_standard": false,
+      "l10_rate": 80,
+      "l5_rate": 80,
+      "h10_rate": 80,
+      "h5_rate": 80,
+      "true_hit_rate": 80,
+      "cv": 0.308,
+      "l10_std_dev": null,
+      "l10_avg": 9.3,
+      "avg_mins": null,
+      "market_prob": 50.0,
+      "propvision_true_prob": 65.0,
+      "true_probability": 65.0,
+      "casino_req_rate": 50.0,
+      "true_edge": 15.0,
+      "pp_edge": 15.0,
+      "sh_board_score": 40.4,
+      "fl_board_score": 96.9,
+      "wz_board_score": 383.5,
+      "board_score": 383.5,
+      "ferrari_power_score": 0,
+      "blowout_risk": "NONE",
+      "intel_suite": {
+        "usage_ripple": {
+          "bump_percent": 0,
+          "display": "Standard Volume",
+          "shift_label": "Standard Volume",
+          "injuries_affecting": [],
+          "reasoning": "No significant lineup changes"
+        },
+        "matchup_dvp": {
+          "rank": 15,
+          "display": "Rank #15 vs. Scorers",
+          "color": "yellow",
+          "friction_level": "Medium",
+          "friction_label": "Below Average Defense",
+          "opponent": "Unknown",
+          "stat_category": "PTS"
+        },
+        "pace_delta": {
+          "possessions": 0.8,
+          "display": "+0.8 Possessions",
+          "pace_factor": 1.0,
+          "tempo_label": "Standard Tempo",
+          "team_pace": 99.0,
+          "opponent_pace": 97.5,
+          "expected_game_pace": 98.2
+        },
+        "stability_index": {
+          "score": 55,
+          "label": "Medium",
+          "display": "55/100 (Medium)",
+          "std_dev": 4.3,
+          "consistency": "Average",
+          "variance_level": "Medium"
+        },
+        "vision_insight": {
+          "primary": "L10 hit rate: 80%",
+          "reasons": [
+            "L10 hit rate: 80%",
+            "Driven by L10 free throw average"
+          ],
+          "confidence": "Medium-High",
+          "confidence_factors": [
+            "hit_rate"
+          ],
+          "summary": "Target-Lock: OVER 7.5 PTS \u2014 L10 hit rate: 80%",
+          "lasso_projection": 7.415,
+          "lasso_edge": -0.08,
+          "tactical_note": "Baseline projection favorable"
+        },
+        "blowout_risk": {
+          "risk_level": "UNKNOWN",
+          "risk_reason": "Team data unavailable",
+          "warning": null
+        },
+        "scout_badges": [
+          "high_fidelity_model"
+        ],
+        "lasso": {
+          "projection": 7.415,
+          "confidence_tier": "HIGH_FIDELITY",
+          "r_squared": 0.544,
+          "top_drivers": [
+            "L10_avg_ftm",
+            "L10_avg_fgm"
+          ]
+        },
+        "calculated_at": "2026-04-14T22:59:56.233306+00:00"
+      },
+      "active_badges": [],
+      "momentum_data": null,
+      "vacuum_data": null,
+      "whistle_data": null,
+      "whistle_class": null,
+      "whistle_modifier": null,
+      "momentum_modifier": null,
+      "vacuum_modifier": null,
+      "v7_components": null,
+      "v7_confidence": null,
+      "v7_soft_penalties": null,
+      "season_avg": 8.7,
+      "l5_avg": 8.8,
+      "l10_median": null,
+      "l10_mode": null,
+      "vk_predicted": 8.62,
+      "vk_edge": 14.7,
+      "vk_prob_over": 64.5,
+      "is_vision_enriched": true,
+      "draftkings_price": 101,
+      "fanduel_price": null,
+      "sort_price": 101,
+      "sort_source": "draftkings",
+      "hook_risk": false,
+      "trap_risk": false,
+      "suspect_line_bait": false,
+      "dk_tier": null,
+      "tier_label": "NBA War Zone (Elite 10)",
+      "synced_at": "2026-04-14T04:02:41.247615+00:00",
+      "mlr_matchup": {
+        "opp_def_rating": 113.5,
+        "opp_pace": 99.7,
+        "opp_pts_allowed": 110,
+        "opp_def_rank": 19.0,
+        "pace_delta": 0.7
+      },
+      "mlr_friction": {
+        "b2b_penalty": 1,
+        "opp_interior_def": 113.5,
+        "opp_perimeter_def": 113.5,
+        "matchup_difficulty": 0.63,
+        "travel_factor": 0.8
+      },
+      "mlr_features_used": true,
+      "mlr_raw_prediction": 8.62,
+      "vk_prob_under": 35.5,
+      "vk_verdict": "LEAN_OVER",
+      "vk_recommendation": "LEAN_OVER",
+      "vk_confidence": 64.5,
+      "vk_sigma_used": 3.02,
+      "vk_sigma_source": "direct_input",
+      "vk_z_score": -0.3709,
+      "tier": "war_zone",
+      "vk_data": {
+        "projection": 7.415,
+        "confidence_tier": "HIGH_FIDELITY",
+        "r_squared": 0.544,
+        "top_drivers": [
+          "L10_avg_ftm",
+          "L10_avg_fgm"
+        ]
+      },
+      "vision_summary": "Jordan Goodwin PTS @ 7.5: Model sees 7.4 (-0.1). Edge is thin \u2014 L10 free throw average is the swing factor. Need the game script to break right.",
+      "vision_intel": "Jordan Goodwin PTS @ 7.5: Model sees 7.4 (-0.1). Edge is thin \u2014 L10 free throw average is the swing factor. Need the game script to break right.",
+      "scout_badges": [
+        "high_fidelity_model"
+      ],
+      "_enriched": true,
+      "_enriched_at": "2026-04-14T22:59:56.233416+00:00",
+      "_cache_updated": "2026-04-14T22:59:56.233418+00:00"
+    },
+    "jordan_goodwin|pra|15.5|dk": {
+      "player_name": "Jordan Goodwin",
+      "team": "PHX",
+      "opponent": null,
+      "photo_url": null,
+      "headshot_url": null,
+      "game_time": "2026-04-15T02:10:00Z",
+      "stat_type": "PRA",
+      "line": 15.5,
+      "dk_odds": 100,
+      "price": 100,
+      "direction": "Over",
+      "market": "player_points_rebounds_assists_alternate",
+      "prop_type": "DEMON",
+      "is_goblin": false,
+      "is_demon": true,
+      "is_standard": false,
+      "l10_rate": 80,
+      "l5_rate": 60,
+      "h10_rate": 80,
+      "h5_rate": 60,
+      "true_hit_rate": 80,
+      "cv": 0.298,
+      "l10_std_dev": null,
+      "l10_avg": 16.9,
+      "avg_mins": null,
+      "market_prob": 50.0,
+      "propvision_true_prob": 65.0,
+      "true_probability": 65.0,
+      "casino_req_rate": 50.0,
+      "true_edge": 15.0,
+      "pp_edge": 15.0,
+      "sh_board_score": 40.5,
+      "fl_board_score": 97.0,
+      "wz_board_score": 383.5,
+      "board_score": 383.5,
+      "ferrari_power_score": 0,
+      "blowout_risk": "UNKNOWN",
+      "intel_suite": {
+        "usage_ripple": {
+          "bump_percent": 0,
+          "display": "Standard Volume",
+          "shift_label": "Standard Volume",
+          "injuries_affecting": [],
+          "reasoning": "No significant lineup changes"
+        },
+        "matchup_dvp": {
+          "rank": 15,
+          "display": "Rank #15 vs. All-Around",
+          "color": "yellow",
+          "friction_level": "Medium",
+          "friction_label": "Below Average Defense",
+          "opponent": "Unknown",
+          "stat_category": "PRA"
+        },
+        "pace_delta": {
+          "possessions": 0.8,
+          "display": "+0.8 Possessions",
+          "pace_factor": 1.0,
+          "tempo_label": "Standard Tempo",
+          "team_pace": 99.0,
+          "opponent_pace": 97.5,
+          "expected_game_pace": 98.2
+        },
+        "stability_index": {
+          "score": 25,
+          "label": "Low",
+          "display": "25/100 (Low)",
+          "std_dev": 7.48,
+          "consistency": "High Variance",
+          "variance_level": "High"
+        },
+        "vision_insight": {
+          "primary": "Lasso projects 11.4 vs 15.5 line (-4.1 edge)",
+          "reasons": [
+            "Lasso projects 11.4 vs 15.5 line (-4.1 edge)",
+            "L10 hit rate: 80%",
+            "Driven by L10 free throw average"
+          ],
+          "confidence": "High",
+          "confidence_factors": [
+            "lasso_high_edge",
+            "hit_rate"
+          ],
+          "summary": "Target-Lock: OVER 15.5 PRA \u2014 Lasso projects 11.4 vs 15.5 line (-4.1 edge)",
+          "lasso_projection": 11.441,
+          "lasso_edge": -4.06,
+          "tactical_note": "Lasso model projects significant edge over the posted line"
+        },
+        "blowout_risk": {
+          "risk_level": "UNKNOWN",
+          "risk_reason": "Team data unavailable",
+          "warning": null
+        },
+        "scout_badges": [
+          "volatility_extreme",
+          "high_fidelity_model"
+        ],
+        "lasso": {
+          "projection": 11.441,
+          "confidence_tier": "HIGH_FIDELITY",
+          "r_squared": 0.6081,
+          "top_drivers": [
+            "L10_avg_ftm",
+            "target_L5_avg"
+          ]
+        },
+        "calculated_at": "2026-04-14T22:59:56.235646+00:00"
+      },
+      "active_badges": [],
+      "momentum_data": null,
+      "vacuum_data": null,
+      "whistle_data": null,
+      "whistle_class": null,
+      "whistle_modifier": null,
+      "momentum_modifier": null,
+      "vacuum_modifier": null,
+      "v7_components": null,
+      "v7_confidence": null,
+      "v7_soft_penalties": null,
+      "season_avg": 15.8,
+      "l5_avg": 14.0,
+      "l10_median": null,
+      "l10_mode": null,
+      "vk_predicted": 15.0,
+      "vk_edge": -3.8,
+      "vk_prob_over": 46.2,
+      "is_vision_enriched": true,
+      "draftkings_price": null,
+      "fanduel_price": null,
+      "sort_price": null,
+      "sort_source": null,
+      "hook_risk": false,
+      "trap_risk": false,
+      "suspect_line_bait": false,
+      "dk_tier": null,
+      "tier_label": "NBA War Zone (Elite 10)",
+      "synced_at": "2026-04-14T04:02:41.269677+00:00",
+      "mlr_matchup": {
+        "opp_def_rating": 113.5,
+        "opp_pace": 99.7,
+        "opp_pts_allowed": 110,
+        "opp_def_rank": 19.0,
+        "pace_delta": 0.7
+      },
+      "mlr_friction": {
+        "b2b_penalty": 1,
+        "opp_interior_def": 113.5,
+        "opp_perimeter_def": 113.5,
+        "matchup_difficulty": 0.63,
+        "travel_factor": 0.8
+      },
+      "mlr_features_used": true,
+      "mlr_raw_prediction": 15.0,
+      "vk_prob_under": 53.8,
+      "vk_verdict": "NEUTRAL",
+      "vk_recommendation": "NEUTRAL",
+      "vk_confidence": 53.8,
+      "vk_sigma_used": 5.3,
+      "vk_sigma_source": "direct_input",
+      "vk_z_score": 0.0943,
+      "tier": "war_zone",
+      "vk_data": {
+        "projection": 11.441,
+        "confidence_tier": "HIGH_FIDELITY",
+        "r_squared": 0.6081,
+        "top_drivers": [
+          "L10_avg_ftm",
+          "target_L5_avg"
+        ]
+      },
+      "vision_summary": "FADE ALERT on Jordan Goodwin PRA @ 15.5 \u2014 model sees only 11.4 (-4.1 edge). The L10 free throw average is dragging projections down. Take the UNDER.",
+      "vision_intel": "FADE ALERT on Jordan Goodwin PRA @ 15.5 \u2014 model sees only 11.4 (-4.1 edge). The L10 free throw average is dragging projections down. Take the UNDER.",
+      "scout_badges": [
+        "volatility_extreme",
+        "high_fidelity_model"
+      ],
+      "_enriched": true,
+      "_enriched_at": "2026-04-14T22:59:56.235763+00:00",
+      "_cache_updated": "2026-04-14T22:59:56.235765+00:00"
+    },
+    "bam_adebayo|pra|29.5|dk": {
+      "player_name": "Bam Adebayo",
+      "team": "MIA",
+      "opponent": null,
+      "photo_url": null,
+      "headshot_url": null,
+      "game_time": "2026-04-14T23:30:00Z",
+      "stat_type": "PRA",
+      "line": 29.5,
+      "dk_odds": -295,
+      "price": -137,
+      "direction": "Over",
+      "market": "player_points_rebounds_assists_alternate",
+      "prop_type": "GOBLIN",
+      "is_goblin": true,
+      "is_demon": false,
+      "is_standard": false,
+      "l10_rate": 90,
+      "l5_rate": 80,
+      "h10_rate": 90,
+      "h5_rate": 80,
+      "true_hit_rate": 90,
+      "cv": 0.208,
+      "l10_std_dev": null,
+      "l10_avg": 35.2,
+      "avg_mins": null,
+      "market_prob": 74.7,
+      "propvision_true_prob": 82.3,
+      "true_probability": 82.3,
+      "casino_req_rate": 79.0,
+      "true_edge": 3.3,
+      "pp_edge": 3.3,
+      "sh_board_score": 6.8,
+      "fl_board_score": 56.1,
+      "wz_board_score": 228.5,
+      "board_score": 90.2,
+      "ferrari_power_score": 0,
+      "blowout_risk": "LOW",
+      "intel_suite": {
+        "usage_ripple": {
+          "bump_percent": 0,
+          "display": "Standard Volume",
+          "shift_label": "Standard Volume",
+          "injuries_affecting": [],
+          "reasoning": "No significant lineup changes"
+        },
+        "matchup_dvp": {
+          "rank": 15,
+          "display": "Rank #15 vs. All-Around",
+          "color": "yellow",
+          "friction_level": "Medium",
+          "friction_label": "Below Average Defense",
+          "opponent": "Unknown",
+          "stat_category": "PRA"
+        },
+        "pace_delta": {
+          "possessions": -1.3,
+          "display": "-1.3 Possessions",
+          "pace_factor": 1.0,
+          "tempo_label": "Standard Tempo",
+          "team_pace": 94.8,
+          "opponent_pace": 97.5,
+          "expected_game_pace": 96.2
+        },
+        "stability_index": {
+          "score": 25,
+          "label": "Low",
+          "display": "25/100 (Low)",
+          "std_dev": 10.26,
+          "consistency": "High Variance",
+          "variance_level": "High"
+        },
+        "vision_insight": {
+          "primary": "L10 hit rate: 90%",
+          "reasons": [
+            "L10 hit rate: 90%",
+            "Driven by L10 field goal average"
+          ],
+          "confidence": "Medium-High",
+          "confidence_factors": [
+            "hit_rate"
+          ],
+          "summary": "Target-Lock: OVER 29.5 PRA \u2014 L10 hit rate: 90%",
+          "lasso_projection": 29.927,
+          "lasso_edge": 0.43,
+          "tactical_note": "Baseline projection favorable"
+        },
+        "blowout_risk": {
+          "risk_level": "UNKNOWN",
+          "risk_reason": "Team data unavailable",
+          "warning": null
+        },
+        "scout_badges": [
+          "hot_streak",
+          "volatility_extreme",
+          "high_fidelity_model"
+        ],
+        "lasso": {
+          "projection": 29.927,
+          "confidence_tier": "HIGH_FIDELITY",
+          "r_squared": 0.6081,
+          "top_drivers": [
+            "L10_avg_fgm",
+            "prev_fga"
+          ]
+        },
+        "calculated_at": "2026-04-14T22:59:56.237789+00:00"
+      },
+      "active_badges": [],
+      "momentum_data": null,
+      "vacuum_data": null,
+      "whistle_data": null,
+      "whistle_class": null,
+      "whistle_modifier": null,
+      "momentum_modifier": null,
+      "vacuum_modifier": null,
+      "v7_components": null,
+      "v7_confidence": null,
+      "v7_soft_penalties": null,
+      "season_avg": 33.2,
+      "l5_avg": 33.8,
+      "l10_median": null,
+      "l10_mode": null,
+      "vk_predicted": 39.46,
+      "vk_edge": 15.5,
+      "vk_prob_over": 90.2,
+      "is_vision_enriched": true,
+      "draftkings_price": -295,
+      "fanduel_price": null,
+      "sort_price": -295,
+      "sort_source": "draftkings",
+      "hook_risk": false,
+      "trap_risk": false,
+      "suspect_line_bait": false,
+      "dk_tier": null,
+      "tier_label": "NBA Safe Haven (Elite 10 - MLR Sorted)",
+      "synced_at": "2026-04-14T04:02:39.906883+00:00",
+      "mlr_matchup": {
+        "opp_def_rating": 113.2,
+        "opp_pace": 95.8,
+        "opp_pts_allowed": 110,
+        "opp_def_rank": 16.8,
+        "pace_delta": -3.2
+      },
+      "mlr_friction": {
+        "b2b_penalty": 0,
+        "opp_interior_def": 113.2,
+        "opp_perimeter_def": 113.2,
+        "matchup_difficulty": 0.56,
+        "travel_factor": 0.8
+      },
+      "mlr_features_used": true,
+      "mlr_raw_prediction": 39.46,
+      "vk_prob_under": 9.8,
+      "vk_verdict": "STRONG_OVER",
+      "vk_recommendation": "STRONG_OVER",
+      "vk_confidence": 90.2,
+      "vk_sigma_used": 7.71,
+      "vk_sigma_source": "direct_input",
+      "vk_z_score": -1.2918,
+      "tier": "safe_haven",
+      "vk_data": {
+        "projection": 29.927,
+        "confidence_tier": "HIGH_FIDELITY",
+        "r_squared": 0.6081,
+        "top_drivers": [
+          "L10_avg_fgm",
+          "prev_fga"
+        ]
+      },
+      "vision_summary": "Hot hand alert: Bam Adebayo is rolling at 90% L10 hit rate, Lasso confirms at 29.9 vs 29.5. Key driver: L10 field goal average. Lock it in.",
+      "vision_intel": "Hot hand alert: Bam Adebayo is rolling at 90% L10 hit rate, Lasso confirms at 29.9 vs 29.5. Key driver: L10 field goal average. Lock it in.",
+      "scout_badges": [
+        "hot_streak",
+        "volatility_extreme",
+        "high_fidelity_model"
+      ],
+      "_enriched": true,
+      "_enriched_at": "2026-04-14T22:59:56.237901+00:00",
+      "_cache_updated": "2026-04-14T22:59:56.237903+00:00"
     },
     "ryan_kalkbrenner|pts|2.5|dk": {
       "player_name": "Ryan Kalkbrenner",
@@ -3104,22 +3161,22 @@
           "reasoning": "No significant lineup changes"
         },
         "matchup_dvp": {
-          "rank": 9,
-          "display": "Rank #9 vs. Scorers",
-          "color": "red",
-          "friction_level": "Med-High",
-          "friction_label": "Above Average Defense",
-          "opponent": "MIA",
+          "rank": 15,
+          "display": "Rank #15 vs. Scorers",
+          "color": "yellow",
+          "friction_level": "Medium",
+          "friction_label": "Below Average Defense",
+          "opponent": "Unknown",
           "stat_category": "PTS"
         },
         "pace_delta": {
-          "possessions": -1.2,
-          "display": "-1.2 Possessions",
+          "possessions": 0.2,
+          "display": "+0.2 Possessions",
           "pace_factor": 1.0,
           "tempo_label": "Standard Tempo",
           "team_pace": 97.8,
-          "opponent_pace": 94.8,
-          "expected_game_pace": 96.3
+          "opponent_pace": 97.5,
+          "expected_game_pace": 97.7
         },
         "stability_index": {
           "score": 55,
@@ -3147,15 +3204,8 @@
           "tactical_note": "Lasso model projects significant edge over the posted line"
         },
         "blowout_risk": {
-          "player_team_record": "44-38",
-          "opponent_team_record": "43-39",
-          "player_win_pct": 0.537,
-          "opponent_win_pct": 0.524,
-          "win_pct_diff": 0.012,
-          "favored_team": "CHA",
-          "player_is_favored": true,
-          "risk_level": "NONE",
-          "risk_reason": "Competitive matchup: CHA (44-38) vs MIA (43-39)",
+          "risk_level": "UNKNOWN",
+          "risk_reason": "Team data unavailable",
           "warning": null
         },
         "scout_badges": [
@@ -3172,7 +3222,7 @@
             "prev_fga"
           ]
         },
-        "calculated_at": "2026-04-14T23:00:41.517011+00:00"
+        "calculated_at": "2026-04-14T22:59:56.240296+00:00"
       },
       "active_badges": [],
       "momentum_data": null,
@@ -3244,47 +3294,47 @@
         "high_fidelity_model"
       ],
       "_enriched": true,
-      "_enriched_at": "2026-04-14T23:00:41.517133+00:00",
-      "_cache_updated": "2026-04-14T23:00:41.517134+00:00"
+      "_enriched_at": "2026-04-14T22:59:56.240407+00:00",
+      "_cache_updated": "2026-04-14T22:59:56.240409+00:00"
     },
-    "jordan_goodwin|pra|15.5|dk": {
-      "player_name": "Jordan Goodwin",
+    "jalen_green|pts|19.5|dk": {
+      "player_name": "Jalen Green",
       "team": "PHX",
       "opponent": null,
       "photo_url": null,
       "headshot_url": null,
       "game_time": "2026-04-15T02:10:00Z",
-      "stat_type": "PRA",
-      "line": 15.5,
-      "dk_odds": 100,
+      "stat_type": "PTS",
+      "line": 19.5,
+      "dk_odds": 153,
       "price": 100,
       "direction": "Over",
-      "market": "player_points_rebounds_assists_alternate",
+      "market": "player_points_alternate",
       "prop_type": "DEMON",
       "is_goblin": false,
       "is_demon": true,
       "is_standard": false,
-      "l10_rate": 80,
-      "l5_rate": 60,
-      "h10_rate": 80,
-      "h5_rate": 60,
-      "true_hit_rate": 80,
-      "cv": 0.298,
+      "l10_rate": 70,
+      "l5_rate": 40,
+      "h10_rate": 70,
+      "h5_rate": 40,
+      "true_hit_rate": 70,
+      "cv": 0.455,
       "l10_std_dev": null,
-      "l10_avg": 16.9,
+      "l10_avg": 19.0,
       "avg_mins": null,
       "market_prob": 50.0,
-      "propvision_true_prob": 65.0,
-      "true_probability": 65.0,
+      "propvision_true_prob": 60.0,
+      "true_probability": 60.0,
       "casino_req_rate": 50.0,
-      "true_edge": 15.0,
-      "pp_edge": 15.0,
-      "sh_board_score": 40.5,
-      "fl_board_score": 97.0,
-      "wz_board_score": 383.5,
-      "board_score": 383.5,
+      "true_edge": 10.0,
+      "pp_edge": 10.0,
+      "sh_board_score": 23.2,
+      "fl_board_score": 70.5,
+      "wz_board_score": 287.7,
+      "board_score": 287.7,
       "ferrari_power_score": 0,
-      "blowout_risk": "UNKNOWN",
+      "blowout_risk": "NONE",
       "intel_suite": {
         "usage_ripple": {
           "bump_percent": 0,
@@ -3295,12 +3345,12 @@
         },
         "matchup_dvp": {
           "rank": 15,
-          "display": "Rank #15 vs. All-Around",
+          "display": "Rank #15 vs. Scorers",
           "color": "yellow",
           "friction_level": "Medium",
           "friction_label": "Below Average Defense",
-          "opponent": "POR",
-          "stat_category": "PRA"
+          "opponent": "Unknown",
+          "stat_category": "PTS"
         },
         "pace_delta": {
           "possessions": 0.8,
@@ -3315,37 +3365,28 @@
           "score": 25,
           "label": "Low",
           "display": "25/100 (Low)",
-          "std_dev": 7.48,
+          "std_dev": 8.16,
           "consistency": "High Variance",
           "variance_level": "High"
         },
         "vision_insight": {
-          "primary": "Lasso projects 11.4 vs 15.5 line (-4.1 edge)",
+          "primary": "Lasso projects 13.4 vs 19.5 line (-6.1 edge)",
           "reasons": [
-            "Lasso projects 11.4 vs 15.5 line (-4.1 edge)",
-            "L10 hit rate: 80%",
-            "Driven by L10 free throw average"
+            "Lasso projects 13.4 vs 19.5 line (-6.1 edge)",
+            "Driven by L10 field goal average"
           ],
           "confidence": "High",
           "confidence_factors": [
-            "lasso_high_edge",
-            "hit_rate"
+            "lasso_high_edge"
           ],
-          "summary": "Target-Lock: OVER 15.5 PRA \u2014 Lasso projects 11.4 vs 15.5 line (-4.1 edge)",
-          "lasso_projection": 11.441,
-          "lasso_edge": -4.06,
+          "summary": "Target-Lock: OVER 19.5 PTS \u2014 Lasso projects 13.4 vs 19.5 line (-6.1 edge)",
+          "lasso_projection": 13.421,
+          "lasso_edge": -6.08,
           "tactical_note": "Lasso model projects significant edge over the posted line"
         },
         "blowout_risk": {
-          "player_team_record": "45-37",
-          "opponent_team_record": "42-40",
-          "player_win_pct": 0.549,
-          "opponent_win_pct": 0.512,
-          "win_pct_diff": 0.037,
-          "favored_team": "PHX",
-          "player_is_favored": true,
-          "risk_level": "NONE",
-          "risk_reason": "Competitive matchup: PHX (45-37) vs POR (42-40)",
+          "risk_level": "UNKNOWN",
+          "risk_reason": "Team data unavailable",
           "warning": null
         },
         "scout_badges": [
@@ -3353,15 +3394,15 @@
           "high_fidelity_model"
         ],
         "lasso": {
-          "projection": 11.441,
+          "projection": 13.421,
           "confidence_tier": "HIGH_FIDELITY",
-          "r_squared": 0.6081,
+          "r_squared": 0.544,
           "top_drivers": [
-            "L10_avg_ftm",
-            "target_L5_avg"
+            "L10_avg_fgm",
+            "prev_fga"
           ]
         },
-        "calculated_at": "2026-04-14T23:00:41.520154+00:00"
+        "calculated_at": "2026-04-14T22:59:56.242217+00:00"
       },
       "active_badges": [],
       "momentum_data": null,
@@ -3374,24 +3415,24 @@
       "v7_components": null,
       "v7_confidence": null,
       "v7_soft_penalties": null,
-      "season_avg": 15.8,
-      "l5_avg": 14.0,
+      "season_avg": 17.8,
+      "l5_avg": 14.6,
       "l10_median": null,
       "l10_mode": null,
-      "vk_predicted": 15.0,
-      "vk_edge": -3.8,
-      "vk_prob_over": 46.2,
+      "vk_predicted": 13.6,
+      "vk_edge": -13.6,
+      "vk_prob_over": 25.9,
       "is_vision_enriched": true,
-      "draftkings_price": null,
-      "fanduel_price": null,
-      "sort_price": null,
-      "sort_source": null,
+      "draftkings_price": 153,
+      "fanduel_price": 132,
+      "sort_price": 153,
+      "sort_source": "draftkings",
       "hook_risk": false,
       "trap_risk": false,
       "suspect_line_bait": false,
       "dk_tier": null,
       "tier_label": "NBA War Zone (Elite 10)",
-      "synced_at": "2026-04-14T04:02:41.269677+00:00",
+      "synced_at": "2026-04-14T04:02:40.326411+00:00",
       "mlr_matchup": {
         "opp_def_rating": 113.5,
         "opp_pace": 99.7,
@@ -3407,221 +3448,33 @@
         "travel_factor": 0.8
       },
       "mlr_features_used": true,
-      "mlr_raw_prediction": 15.0,
-      "vk_prob_under": 53.8,
-      "vk_verdict": "NEUTRAL",
-      "vk_recommendation": "NEUTRAL",
-      "vk_confidence": 53.8,
-      "vk_sigma_used": 5.3,
+      "mlr_raw_prediction": 13.6,
+      "vk_prob_under": 74.1,
+      "vk_verdict": "STRONG_UNDER",
+      "vk_recommendation": "STRONG_UNDER",
+      "vk_confidence": 74.1,
+      "vk_sigma_used": 9.12,
       "vk_sigma_source": "direct_input",
-      "vk_z_score": 0.0943,
+      "vk_z_score": 0.6469,
       "tier": "war_zone",
       "vk_data": {
-        "projection": 11.441,
+        "projection": 13.421,
         "confidence_tier": "HIGH_FIDELITY",
-        "r_squared": 0.6081,
+        "r_squared": 0.544,
         "top_drivers": [
-          "L10_avg_ftm",
-          "target_L5_avg"
+          "L10_avg_fgm",
+          "prev_fga"
         ]
       },
-      "vision_summary": "FADE ALERT on Jordan Goodwin PRA @ 15.5 \u2014 model sees only 11.4 (-4.1 edge). The L10 free throw average is dragging projections down. Take the UNDER.",
-      "vision_intel": "FADE ALERT on Jordan Goodwin PRA @ 15.5 \u2014 model sees only 11.4 (-4.1 edge). The L10 free throw average is dragging projections down. Take the UNDER.",
+      "vision_summary": "FADE ALERT on Jalen Green PTS @ 19.5 \u2014 model sees only 13.4 (-6.1 edge). The L10 field goal average is dragging projections down. Take the UNDER.",
+      "vision_intel": "FADE ALERT on Jalen Green PTS @ 19.5 \u2014 model sees only 13.4 (-6.1 edge). The L10 field goal average is dragging projections down. Take the UNDER.",
       "scout_badges": [
         "volatility_extreme",
         "high_fidelity_model"
       ],
       "_enriched": true,
-      "_enriched_at": "2026-04-14T23:00:41.520276+00:00",
-      "_cache_updated": "2026-04-14T23:00:41.520277+00:00"
-    },
-    "shaedon_sharpe|pra|16.5|dk": {
-      "player_name": "Shaedon Sharpe",
-      "team": "POR",
-      "opponent": null,
-      "photo_url": null,
-      "headshot_url": null,
-      "game_time": "2026-04-15T02:10:00Z",
-      "stat_type": "PRA",
-      "line": 16.5,
-      "dk_odds": 100,
-      "price": 100,
-      "direction": "Over",
-      "market": "player_points_rebounds_assists_alternate",
-      "prop_type": "DEMON",
-      "is_goblin": false,
-      "is_demon": true,
-      "is_standard": false,
-      "l10_rate": 70,
-      "l5_rate": 40,
-      "h10_rate": 70,
-      "h5_rate": 40,
-      "true_hit_rate": 70,
-      "cv": 0.435,
-      "l10_std_dev": null,
-      "l10_avg": 23.5,
-      "avg_mins": null,
-      "market_prob": 50.0,
-      "propvision_true_prob": 60.0,
-      "true_probability": 60.0,
-      "casino_req_rate": 50.0,
-      "true_edge": 10.0,
-      "pp_edge": 10.0,
-      "sh_board_score": 23.5,
-      "fl_board_score": 70.7,
-      "wz_board_score": 287.8,
-      "board_score": 32.1,
-      "ferrari_power_score": 0,
-      "blowout_risk": "NONE",
-      "intel_suite": {
-        "usage_ripple": {
-          "bump_percent": 0,
-          "display": "Standard Volume",
-          "shift_label": "Standard Volume",
-          "injuries_affecting": [],
-          "reasoning": "No significant lineup changes"
-        },
-        "matchup_dvp": {
-          "rank": 15,
-          "display": "Rank #15 vs. All-Around",
-          "color": "yellow",
-          "friction_level": "Medium",
-          "friction_label": "Below Average Defense",
-          "opponent": "PHX",
-          "stat_category": "PRA"
-        },
-        "pace_delta": {
-          "possessions": 0.8,
-          "display": "+0.8 Possessions",
-          "pace_factor": 1.0,
-          "tempo_label": "Standard Tempo",
-          "team_pace": 97.5,
-          "opponent_pace": 99.0,
-          "expected_game_pace": 98.2
-        },
-        "stability_index": {
-          "score": 55,
-          "label": "Medium",
-          "display": "55/100 (Medium)",
-          "std_dev": 4.53,
-          "consistency": "Average",
-          "variance_level": "Medium"
-        },
-        "vision_insight": {
-          "primary": "Lasso projects 24.0 vs 16.5 line (+7.5 edge)",
-          "reasons": [
-            "Lasso projects 24.0 vs 16.5 line (+7.5 edge)",
-            "Driven by last-game shot attempts"
-          ],
-          "confidence": "High",
-          "confidence_factors": [
-            "lasso_high_edge"
-          ],
-          "summary": "Target-Lock: OVER 16.5 PRA \u2014 Lasso projects 24.0 vs 16.5 line (+7.5 edge)",
-          "lasso_projection": 23.969,
-          "lasso_edge": 7.47,
-          "tactical_note": "Lasso model projects significant edge over the posted line"
-        },
-        "blowout_risk": {
-          "player_team_record": "42-40",
-          "opponent_team_record": "45-37",
-          "player_win_pct": 0.512,
-          "opponent_win_pct": 0.549,
-          "win_pct_diff": 0.037,
-          "favored_team": "PHX",
-          "player_is_favored": false,
-          "risk_level": "NONE",
-          "risk_reason": "Competitive matchup: POR (42-40) vs PHX (45-37)",
-          "warning": null
-        },
-        "scout_badges": [
-          "hot_streak",
-          "lasso_high_edge",
-          "high_fidelity_model"
-        ],
-        "lasso": {
-          "projection": 23.969,
-          "confidence_tier": "HIGH_FIDELITY",
-          "r_squared": 0.6081,
-          "top_drivers": [
-            "prev_fga",
-            "L10_avg_fgm"
-          ]
-        },
-        "calculated_at": "2026-04-14T23:00:41.523288+00:00"
-      },
-      "active_badges": [],
-      "momentum_data": null,
-      "vacuum_data": null,
-      "whistle_data": null,
-      "whistle_class": null,
-      "whistle_modifier": null,
-      "momentum_modifier": null,
-      "vacuum_modifier": null,
-      "v7_components": null,
-      "v7_confidence": null,
-      "v7_soft_penalties": null,
-      "season_avg": 28.1,
-      "l5_avg": 16.0,
-      "l10_median": null,
-      "l10_mode": null,
-      "vk_predicted": 26.42,
-      "vk_edge": 32.1,
-      "vk_prob_over": 82.1,
-      "is_vision_enriched": true,
-      "draftkings_price": null,
-      "fanduel_price": null,
-      "sort_price": null,
-      "sort_source": null,
-      "hook_risk": false,
-      "trap_risk": false,
-      "suspect_line_bait": false,
-      "dk_tier": null,
-      "tier_label": "NBA Front Lines (Elite 10 - vk_edge Sorted)",
-      "synced_at": "2026-04-14T04:02:41.726080+00:00",
-      "mlr_matchup": {
-        "opp_def_rating": 113.5,
-        "opp_pace": 99.7,
-        "opp_pts_allowed": 110,
-        "opp_def_rank": 19.0,
-        "pace_delta": 0.7
-      },
-      "mlr_friction": {
-        "b2b_penalty": 0,
-        "opp_interior_def": 113.5,
-        "opp_perimeter_def": 113.5,
-        "matchup_difficulty": 0.63,
-        "travel_factor": 0.8
-      },
-      "mlr_features_used": true,
-      "mlr_raw_prediction": 26.42,
-      "vk_prob_under": 17.9,
-      "vk_verdict": "STRONG_OVER",
-      "vk_recommendation": "STRONG_OVER",
-      "vk_confidence": 82.1,
-      "vk_sigma_used": 10.78,
-      "vk_sigma_source": "direct_input",
-      "vk_z_score": -0.9202,
-      "tier": "front_lines",
-      "vk_data": {
-        "projection": 23.969,
-        "confidence_tier": "HIGH_FIDELITY",
-        "r_squared": 0.6081,
-        "top_drivers": [
-          "prev_fga",
-          "L10_avg_fgm"
-        ]
-      },
-      "vision_summary": "Shaedon Sharpe is absolutely locked in \u2014 Lasso projects 24.0 vs a 16.5 line, that's a +7.5 cushion backed by R\u00b2=0.54 fidelity. Key driver: last-game shot attempts. Smash spot, don't overthink it.",
-      "vision_intel": "Shaedon Sharpe is absolutely locked in \u2014 Lasso projects 24.0 vs a 16.5 line, that's a +7.5 cushion backed by R\u00b2=0.54 fidelity. Key driver: last-game shot attempts. Smash spot, don't overthink it.",
-      "scout_badges": [
-        "hot_streak",
-        "lasso_high_edge",
-        "high_fidelity_model"
-      ],
-      "_enriched": true,
-      "_enriched_at": "2026-04-14T23:00:41.523384+00:00",
-      "_cache_updated": "2026-04-14T23:00:41.523385+00:00"
+      "_enriched_at": "2026-04-14T22:59:56.242280+00:00",
+      "_cache_updated": "2026-04-14T22:59:56.242282+00:00"
     }
   }
 }

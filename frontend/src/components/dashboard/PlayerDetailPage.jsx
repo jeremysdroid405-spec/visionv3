@@ -293,6 +293,101 @@ const PropRow = memo(({ prop, isHighlighted, highlightRef, onVisionClick, gameLo
         )}
       </div>
       
+      {/* LASSO PROJECTION BAR + VISION INTEL + SCOUT BADGES */}
+      {(prop.vk_predicted || prop.vision_intel || prop.intel_suite?.lasso) && (() => {
+        const lasso = prop.intel_suite?.lasso || {};
+        const vkPred = prop.vk_predicted || lasso.projection;
+        const vkEdge = prop.vk_edge || (vkPred && line ? vkPred - line : null);
+        const edgePct = vkEdge && line ? ((vkEdge / line) * 100) : 0;
+        const confidenceTier = prop.lasso_confidence || lasso.confidence_tier;
+        const visionText = prop.vision_intel || prop.vision_summary;
+        const scoutBadges = prop.scout_badges || prop.intel_suite?.scout_badges || [];
+        const isHighEdge = Math.abs(edgePct) >= 15;
+        const edgePositive = vkEdge > 0;
+
+        return (
+          <div className="mt-2 space-y-2">
+            {/* Lasso Projection vs Line */}
+            {vkPred != null && (
+              <div className={`flex items-center gap-2 px-3 py-1.5 rounded-md ${
+                isHighEdge && edgePositive ? 'bg-green-950/40 border border-green-500/30' :
+                isHighEdge && !edgePositive ? 'bg-red-950/40 border border-red-500/30' :
+                'bg-zinc-800/40 border border-zinc-700/30'
+              }`} data-testid="lasso-projection-bar">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[9px] uppercase tracking-wide text-zinc-500">Proj</span>
+                  <span className={`font-bold text-sm ${edgePositive ? 'text-green-400' : 'text-red-400'}`}>
+                    {typeof vkPred === 'number' ? vkPred.toFixed(1) : vkPred}
+                  </span>
+                </div>
+                {vkEdge != null && (
+                  <div className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                    isHighEdge && edgePositive ? 'bg-green-500/20 text-green-400' :
+                    isHighEdge && !edgePositive ? 'bg-red-500/20 text-red-400' :
+                    edgePositive ? 'text-green-400/70' : 'text-red-400/70'
+                  }`}>
+                    {edgePositive ? '+' : ''}{typeof vkEdge === 'number' ? vkEdge.toFixed(1) : vkEdge}
+                    <span className="text-[8px] opacity-70">({edgePct >= 0 ? '+' : ''}{edgePct.toFixed(0)}%)</span>
+                  </div>
+                )}
+                {confidenceTier && (
+                  <span className={`ml-auto px-1.5 py-0.5 rounded text-[8px] font-bold tracking-wide ${
+                    confidenceTier === 'HIGH_FIDELITY' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' :
+                    confidenceTier === 'MODERATE' ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30' :
+                    'bg-zinc-700/50 text-zinc-400'
+                  }`} data-testid="confidence-tier-badge">
+                    {confidenceTier === 'HIGH_FIDELITY' ? 'HI-FI' : confidenceTier === 'MODERATE' ? 'MOD' : 'HI-VAR'}
+                  </span>
+                )}
+              </div>
+            )}
+
+            {/* Scout Badges as pills */}
+            {scoutBadges.length > 0 && (
+              <div className="flex flex-wrap gap-1" data-testid="scout-badges-row">
+                {scoutBadges.map((badge, i) => {
+                  const badgeStr = typeof badge === 'string' ? badge : badge.badge_key || badge.id || '';
+                  const badgeColors = {
+                    'hot_streak': 'bg-orange-500/20 text-orange-400 border-orange-500/30',
+                    'floor_lock': 'bg-green-500/20 text-green-400 border-green-500/30',
+                    'lasso_high_edge': 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30',
+                    'high_fidelity_model': 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30',
+                    'soft_matchup': 'bg-blue-500/20 text-blue-400 border-blue-500/30',
+                    'usage_spike': 'bg-purple-500/20 text-purple-400 border-purple-500/30',
+                    'volatility_extreme': 'bg-red-500/20 text-red-400 border-red-500/30',
+                  };
+                  const badgeLabels = {
+                    'hot_streak': 'HOT',
+                    'floor_lock': 'FLOOR',
+                    'lasso_high_edge': 'EDGE',
+                    'high_fidelity_model': 'HI-FI',
+                    'soft_matchup': 'SOFT D',
+                    'usage_spike': 'VOL+',
+                    'volatility_extreme': 'VOLATILE',
+                  };
+                  const color = badgeColors[badgeStr] || 'bg-zinc-700/50 text-zinc-400 border-zinc-600/30';
+                  const label = badgeLabels[badgeStr] || badgeStr.replace(/_/g, ' ').toUpperCase();
+                  return (
+                    <span key={i} className={`px-1.5 py-0.5 rounded text-[8px] font-bold border ${color}`}>
+                      {label}
+                    </span>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Vision Intel Text */}
+            {visionText && (
+              <div className={`text-[11px] leading-relaxed px-3 py-2 rounded-md italic ${
+                isHighlighted ? 'text-amber-300/80 bg-amber-950/30' : 'text-zinc-400 bg-zinc-800/30'
+              }`} data-testid="vision-intel-text">
+                {visionText}
+              </div>
+            )}
+          </div>
+        );
+      })()}
+      
       {/* BOTTOM ROW: Stats column on left, Chart on right - Stack on mobile */}
       <div className="flex flex-col sm:flex-row items-stretch gap-4">
         {/* LEFT: Stats Column - Full width on mobile */}
