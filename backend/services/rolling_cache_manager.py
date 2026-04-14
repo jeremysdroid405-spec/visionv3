@@ -14,8 +14,13 @@ CRITICAL: NO "EMPTY SHELL" PROPS
 - If enrichment fails, prop is NOT saved to cache
 - Cache integrity check treats missing intel as "new"
 
+STRICT BOARD LOCKDOWN (v2.0):
+- ONLY enrich props on the LIVE active board
+- BANNED: Database-only props not currently visible
+- Surgical enrichment: What you SEE is what you GET
+
 Author: PropVision AI
-Version: 2.0.0
+Version: 2.1.0 - Strict Board Lockdown
 """
 
 import os
@@ -35,6 +40,7 @@ from services.normalize_to_intel_mapping import (
     generate_prop_id,
     get_missing_intel_keys,
 )
+from services.filter_logic import StrictBoardFilter
 
 logger = logging.getLogger(__name__)
 
@@ -283,18 +289,23 @@ class RollingCacheManager:
 
 class DeltaManager:
     """
-    Manages incremental updates between live feed and cache.
+    STRICT BOARD LOCKDOWN v2.0 - Ferrari Tiers Only.
     
-    JIT ENRICHMENT RULES:
-    - Only enrich NEW prop IDs (not in cache)
-    - DO NOT re-calculate CV, Park Factors, Matchup Ranks for cached props
-    - Purge stale props immediately
+    TARGET: ONLY props on Ferrari Tier pick cards
+    - Safe Haven (≤10 picks)
+    - Front Lines (≤10 picks)
+    - War Zone (≤10 picks)
+    - MAX TOTAL: ~30 props
+    
+    BANNED: Everything else. The cached_board has 1000+ props - we ignore them.
     """
     
-    def __init__(self, db: AsyncIOMotorDatabase, sport: str = "NBA"):
+    def __init__(self, db: AsyncIOMotorDatabase, sport: str = "NBA", backend_url: str = "http://localhost:8001"):
         self.db = db
         self.sport = sport.upper()
+        self.backend_url = backend_url
         self.cache_manager = RollingCacheManager(db, sport)
+        self.board_filter = StrictBoardFilter(sport, backend_url)
         
         # Intel calculators (lazy loaded)
         self._intel_calculator = None
@@ -330,124 +341,107 @@ class DeltaManager:
         
         return f"{player}|{stat}|{line}|{book}".lower().replace(' ', '_')
     
-    async def process_live_feed(self, live_props: List[Dict]) -> Dict[str, Any]:
+    async def process_ferrari_tiers(self) -> Dict[str, Any]:
         """
-        Process live feed and perform delta-based cache updates.
+        STRICT BOARD LOCKDOWN v2.0 - Enrich Ferrari Tier picks ONLY.
         
-        APEX-ONLY CACHING:
-        - Base props are NORMALIZED but NOT immediately cached
-        - Props are ONLY cached AFTER successful enrichment
-        - Cache integrity check treats missing intel as "new"
+        This is the ONLY valid enrichment method.
         
-        Returns:
-            {
-                'new_count': int,
-                'stale_count': int,
-                'enriched_count': int,
-                'cached_total': int
-            }
+        PROCESS:
+        1. Fetch picks from Ferrari Tier endpoints (Safe Haven, Front Lines, War Zone)
+        2. Compute delta against cache
+        3. Enrich ONLY new tier picks (MAX ~30)
+        4. Purge any cached props NOT in current tiers
+        5. Save cache
+        
+        Returns stats dict.
         """
         start_time = datetime.now(timezone.utc)
         
-        # Build set of live prop IDs (handling nested props structure)
-        # Use normalization layer for consistent format
-        live_prop_map = {}
-        for player_record in live_props:
-            # Use normalize_from_nested_props for consistent flattening
-            flat_props = normalize_from_nested_props(player_record, self.sport)
-            
-            for flat_prop in flat_props:
-                prop_id = generate_prop_id(flat_prop)
-                live_prop_map[prop_id] = flat_prop
+        # STEP 1: Fetch Ferrari Tier picks (THE ONLY VALID SOURCE)
+        tier_props = await self.board_filter.fetch_ferrari_tier_props()
         
-        live_ids = set(live_prop_map.keys())
+        if not tier_props:
+            logger.warning(f"[LOCKDOWN] {self.sport}: No Ferrari tier picks found")
+            return {
+                'tier_count': 0,
+                'enriched_count': 0,
+                'cached_total': len(self.cache_manager.get_all_props()),
+                'error': 'No tier picks found'
+            }
         
-        # STEP 1: Find NEW props (not in cache at all)
-        new_ids = self.cache_manager.find_new_props(live_ids)
+        # STEP 2: Compute delta
+        cached_prop_ids = self.cache_manager.get_prop_ids()
+        enrich_queue, filter_stats = self.board_filter.compute_enrich_queue(tier_props, cached_prop_ids)
         
-        # STEP 2: Find STALE props (need purge)
-        stale_ids = self.cache_manager.find_stale_props(live_ids)
-        
-        # STEP 3: PURGE stale props immediately
+        # STEP 3: Purge stale props (in cache but NOT in tiers)
+        stale_ids = filter_stats.get('stale_ids', set())
         if stale_ids:
             self.cache_manager.bulk_remove(stale_ids)
+            logger.info(f"[LOCKDOWN] Purged {len(stale_ids)} props not in Ferrari tiers")
         
-        # STEP 4: CACHE INTEGRITY CHECK
-        # Find props that exist in cache but are "empty shells" (missing intel)
-        existing_ids = live_ids - new_ids
-        empty_shell_ids = []
-        for prop_id in existing_ids:
-            cached_prop = self.cache_manager.get_prop(prop_id)
-            if cached_prop and prop_needs_enrichment(cached_prop, self.sport):
-                empty_shell_ids.append(prop_id)
-        
-        # Combine new props and empty shells - all need enrichment
-        needs_enrichment_ids = list(new_ids) + empty_shell_ids
-        
-        if empty_shell_ids:
-            logger.info(f"[CACHE_INTEGRITY] {len(empty_shell_ids)} empty shells detected, treating as new")
-        
-        # STEP 5: JIT ENRICHMENT - Enrich and ONLY THEN cache
+        # STEP 4: Enrich new tier picks
         enriched_count = 0
         failed_count = 0
         
-        for prop_id in needs_enrichment_ids[:30]:  # Limit batch size
-            prop = live_prop_map.get(prop_id)
-            if not prop:
-                continue
+        for prop in enrich_queue:
+            prop_id = generate_prop_id(prop)
             
             try:
-                # Calculate intel suite
                 intel_data = await self._calculate_intel_for_prop(prop)
                 
                 if intel_data and intel_data.get('vk_data', {}).get('predicted') is not None:
-                    # MERGE intel into prop
                     enriched_prop = merge_intel_into_prop(prop, intel_data)
                     
-                    # VALIDATE enrichment is complete
                     if validate_prop_has_intel(enriched_prop, self.sport):
-                        # ONLY NOW cache the prop
                         success = self.cache_manager.upsert_enriched_prop(prop_id, enriched_prop)
                         if success:
                             enriched_count += 1
-                            logger.debug(f"[JIT] Cached enriched prop: {prop_id}")
+                            logger.debug(f"[LOCKDOWN] Enriched: {prop_id}")
                         else:
                             failed_count += 1
                     else:
                         failed_count += 1
-                        logger.warning(f"[JIT] Enrichment incomplete for {prop_id}")
                 else:
                     failed_count += 1
-                    logger.debug(f"[JIT] No valid prediction for {prop_id}")
-                
+                    
             except Exception as e:
                 failed_count += 1
-                logger.warning(f"[JIT] Error enriching {prop_id}: {e}")
+                logger.warning(f"[LOCKDOWN] Error: {prop_id} - {e}")
         
-        # STEP 6: SAVE cache to file
+        # STEP 5: Save cache
         self.cache_manager.save()
         
         elapsed = (datetime.now(timezone.utc) - start_time).total_seconds()
         
         result = {
-            'new_count': len(new_ids),
-            'empty_shells_detected': len(empty_shell_ids),
-            'stale_count': len(stale_ids),
+            'tier_count': filter_stats['tier_props_count'],
+            'already_cached': filter_stats['already_cached'],
             'enriched_count': enriched_count,
             'failed_count': failed_count,
+            'purged_count': len(stale_ids),
             'cached_total': len(self.cache_manager.get_all_props()),
             'elapsed_seconds': round(elapsed, 2)
         }
         
         logger.info(
-            f"[DELTA] {self.sport} Apex Cache: "
-            f"+{result['new_count']} new, {result['empty_shells_detected']} shells, "
-            f"-{result['stale_count']} stale, {result['enriched_count']} enriched, "
-            f"{result['failed_count']} failed, {result['cached_total']} total "
+            f"[LOCKDOWN] {self.sport} Complete: "
+            f"Tiers={result['tier_count']}, Enriched={result['enriched_count']}, "
+            f"Cached={result['cached_total']}, Purged={result['purged_count']} "
             f"({result['elapsed_seconds']}s)"
         )
         
         return result
+    
+    async def process_live_feed(self, live_props: List[Dict]) -> Dict[str, Any]:
+        """
+        DEPRECATED - Use process_ferrari_tiers() instead.
+        
+        This method is kept for backwards compatibility but now just calls process_ferrari_tiers.
+        The live_props parameter is IGNORED - we only care about Ferrari tier picks.
+        """
+        logger.warning("[LOCKDOWN] process_live_feed is DEPRECATED. Using process_ferrari_tiers.")
+        return await self.process_ferrari_tiers()
     
     async def _calculate_intel_for_prop(self, prop: Dict) -> Dict:
         """

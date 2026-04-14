@@ -1608,13 +1608,21 @@ async def get_mlb_player_props(
     - Player info with game_logs
     - All props with enrichment data (CV, hit rates, averages)
     - L5/L10 stats calculated per stat type
+    - Vision Intel from Rolling Cache (vision_intel, scout_badges, vk_data)
     """
     from config.db_config import get_collection_name
+    from services.rolling_cache_manager import get_cached_props
+    from services.normalize_to_intel_mapping import generate_prop_id
     
     response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
     
     if _db is None:
         raise HTTPException(status_code=500, detail="Database not initialized")
+    
+    # Load Rolling Cache for Vision Intel merge
+    mlb_cache_data = get_cached_props("MLB")
+    cached_props_map = mlb_cache_data.get("props", {}) if mlb_cache_data.get("success") else {}
+    logger.info(f"[CACHE_MERGE] Loaded {len(cached_props_map)} props from MLB rolling cache")
     
     collection_name = get_collection_name("cached_board", "mlb")
     collection = _db[collection_name]
@@ -1851,13 +1859,60 @@ async def get_mlb_player_props(
                 # Add game_logs to prop for bar chart
                 prop["game_logs"] = game_logs
     
-    # Evaluate MLB badges for each prop
+    # =========================================================================
+    # ROLLING CACHE MERGE - Vision Intel Suite
+    # Merge vision_intel, vision_summary, scout_badges, vk_data from cache
+    # This ensures the Player Detail Page displays pre-enriched Vision Intel
+    # =========================================================================
+    if player.get("props") and cached_props_map:
+        merged_count = 0
+        for prop in player["props"]:
+            # Generate prop ID to lookup in cache
+            prop_id = generate_prop_id(prop)
+            cached_prop = cached_props_map.get(prop_id)
+            
+            logger.debug(f"[CACHE_MERGE] Looking for prop_id={prop_id}, found={cached_prop is not None}")
+            
+            if cached_prop and cached_prop.get("_enriched"):
+                # Merge Vision Intel fields from cache
+                if cached_prop.get("vision_intel"):
+                    prop["vision_intel"] = cached_prop["vision_intel"]
+                if cached_prop.get("vision_summary"):
+                    prop["vision_summary"] = cached_prop["vision_summary"]
+                if cached_prop.get("scout_badges"):
+                    prop["scout_badges"] = cached_prop["scout_badges"]
+                if cached_prop.get("vk_data"):
+                    vk_data = cached_prop["vk_data"]
+                    prop["vk_data"] = vk_data
+                    # Also flatten VK fields for frontend compatibility
+                    prop["vk_predicted"] = vk_data.get("predicted")
+                    prop["vk_prob_over"] = vk_data.get("prob_over")
+                    prop["vk_prob_under"] = vk_data.get("prob_under")
+                    prop["vk_edge"] = vk_data.get("edge")
+                    prop["vk_recommendation"] = vk_data.get("verdict")
+                    prop["projected_value"] = vk_data.get("predicted")
+                if cached_prop.get("matchup_analysis"):
+                    prop["matchup_analysis"] = cached_prop["matchup_analysis"]
+                if cached_prop.get("l20_variance"):
+                    prop["l20_variance"] = cached_prop["l20_variance"]
+                # Mark as enriched from cache
+                prop["_enriched_from_cache"] = True
+                merged_count += 1
+                logger.debug(f"[CACHE_MERGE] Merged vision intel for {prop_id}")
+        
+        logger.info(f"[CACHE_MERGE] Merged {merged_count}/{len(player['props'])} props for {player_name}")
+    
+    # Evaluate MLB badges for each prop (FALLBACK - only if not already from cache)
     try:
         from services.mlb_badge_system import get_mlb_badge_service
         badge_service = get_mlb_badge_service(_db)
         
         if player.get("props"):
             for prop in player["props"]:
+                # Skip badge evaluation if already enriched from cache
+                if prop.get("_enriched_from_cache") and prop.get("scout_badges"):
+                    continue
+                    
                 try:
                     badges = await badge_service.evaluate_all_badges(
                         player_name=player_name,
@@ -1868,7 +1923,8 @@ async def get_mlb_player_props(
                     prop["scout_badges"] = badges
                 except Exception as badge_err:
                     logger.warning(f"Badge evaluation failed for {player_name}: {badge_err}")
-                    prop["scout_badges"] = []
+                    if not prop.get("scout_badges"):
+                        prop["scout_badges"] = []
     except Exception as e:
         logger.warning(f"MLB badge service initialization failed: {e}")
     
