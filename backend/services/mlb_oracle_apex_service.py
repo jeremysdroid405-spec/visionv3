@@ -3,6 +3,19 @@ MLB Oracle Apex Service - Safe Haven Tier Logic (2026 Season)
 ==============================================================
 The "Vegas Killer" mathematically-proven Safe Haven tier for MLB.
 
+v2.0 UPDATE: STRICT MLR ENFORCEMENT
+===================================
+- Uses dedicated MLB XGBoost model trained on 90,000+ game logs
+- Park factors mathematically applied (Coors vs Seattle = different predictions)
+- Opponent K-rate for pitcher strikeouts
+- NO FALLBACKS to season_avg or EWMA
+- Props without MLR prediction are DISQUALIFIED
+
+PARK FACTOR EXAMPLES:
+- Coors Field (COL): 1.18 hits factor (hitter paradise)
+- Oracle Park (SF): 0.92 hits factor (pitcher friendly)
+- T-Mobile Park (SEA): 0.94 hits factor (pitcher friendly)
+
 SAFE HAVEN 2.0 - PREDICTIVE ACTUARY MODEL
 =========================================
 
@@ -48,6 +61,7 @@ Lineup Status Values:
 from typing import Dict, List, Any, Optional, Tuple
 from datetime import datetime, timezone
 import logging
+import os
 from services.vk_model_enforcement import (
     calculate_vk_model, 
     enforce_vk_fields, 
@@ -55,6 +69,7 @@ from services.vk_model_enforcement import (
     validate_vk_fields,
     VKResult
 )
+from services.mlb_vegas_killer_model import MLBVegasKillerModel
 import numpy as np
 import asyncio
 
@@ -295,21 +310,39 @@ class MLBOracleApexService:
     """
     MLB Oracle Apex Service for Safe Haven tier qualification.
     
-    Uses Vegas Killer ML predictions combined with MLB-specific statistical filters
-    to identify mathematically-proven safe plays for baseball.
+    v2.0: STRICT MLR ENFORCEMENT
+    - Uses dedicated MLB XGBoost model (trained on 90,000+ games)
+    - Park factors mathematically applied
+    - NO FALLBACKS to season_avg
+    - Props without MLR prediction are DISQUALIFIED
     """
     
-    def __init__(self, db, vegas_killer_model=None):
+    def __init__(self, db, mlb_vegas_killer_model=None):
         self.db = db
-        self.vegas_killer_model = vegas_killer_model
         self.cached_board = db.mlb_cached_board
         self.live_props = db.mlb_live_props
         self.master_hub = db.mlb_master_hub_2026
         self.oracle_apex_collection = db.mlb_oracle_apex_analyzed
         
+        # v2.0: Initialize dedicated MLB Vegas Killer Model
+        if mlb_vegas_killer_model:
+            self.mlb_vegas_killer_model = mlb_vegas_killer_model
+        else:
+            # Create sync MongoDB client for MLBVegasKillerModel
+            from pymongo import MongoClient
+            mongo_url = os.environ.get('MONGO_URL')
+            db_name = os.environ.get('DB_NAME', 'propvision')
+            sync_client = MongoClient(mongo_url)
+            sync_db = sync_client[db_name]
+            
+            # Create and load the trained MLB model
+            self.mlb_vegas_killer_model = MLBVegasKillerModel(sync_db)
+            loaded = self.mlb_vegas_killer_model.load_models()
+            logger.info(f"[MLB_ORACLE] MLBVegasKillerModel loaded with {loaded} trained XGBoost models")
+        
     def set_vegas_killer_model(self, model):
-        """Set the Vegas Killer model reference."""
-        self.vegas_killer_model = model
+        """Set the Vegas Killer model reference (legacy compatibility)."""
+        self.mlb_vegas_killer_model = model
     
     def _normalize_stat_type(self, raw_stat: str) -> str:
         """Normalize stat type to our standard format."""
@@ -1044,8 +1077,71 @@ class MLBOracleApexService:
             # ================================================================
             gate_stats['qualified_pool'] += 1
             
+            # ================================================================
+            # v2.0: CALL TRAINED MLB XGBoost MODEL - STRICT ENFORCEMENT
+            # ================================================================
+            # NO FALLBACKS - If MLR model fails, prop is DISQUALIFIED
+            mlr_prediction = None
+            mlr_std_dev = None
+            mlr_success = False
+            mlr_matchup = {}
+            
+            if self.mlb_vegas_killer_model:
+                try:
+                    opponent = prop.get('opponent') or prop.get('opponent_abbr')
+                    park_team = prop.get('home_team') if prop.get('is_away_team') else prop.get('team')
+                    
+                    mlr_result = self.mlb_vegas_killer_model.predict(
+                        player_name,
+                        stat_type,
+                        line=line,
+                        opponent_team=opponent,
+                        park_team=park_team
+                    )
+                    
+                    if mlr_result and not mlr_result.get('error'):
+                        mlr_prediction = mlr_result.get('predicted')
+                        mlr_std_dev = mlr_result.get('std_dev')
+                        mlr_matchup = mlr_result.get('full_features', {}).get('matchup', {})
+                        
+                        # Validate MLR prediction
+                        if mlr_prediction is not None and not (isinstance(mlr_prediction, float) and np.isnan(mlr_prediction)):
+                            mlr_success = True
+                            logger.info(
+                                f"[MLB_MLR] {player_name} {stat_type}: pred={mlr_prediction:.2f}, "
+                                f"park={mlr_matchup.get('park_factor', 1.0):.2f}, σ={mlr_std_dev:.3f}"
+                            )
+                    else:
+                        logger.warning(f"[MLB_MLR_FAIL] {player_name} {stat_type}: {mlr_result.get('error', 'Unknown')}")
+                except Exception as e:
+                    logger.warning(f"[MLB_MLR_FAIL] {player_name} {stat_type}: {e}")
+            
+            # STRICT DISQUALIFICATION: No MLR = No Elite Tier
+            if not mlr_success:
+                gate_stats['fail_mlr_model'] = gate_stats.get('fail_mlr_model', 0) + 1
+                continue
+            
+            # ================================================================
+            # VK MODEL ENFORCEMENT - Use MLR prediction for probability
+            # ================================================================
+            vk_result = calculate_vk_model(
+                predicted_value=mlr_prediction,
+                line=line,
+                dk_odds=dk_odds,
+                season_avg=prop.get('season_average'),
+                require_market=True,
+                std_dev=mlr_std_dev,
+                player_name=player_name,
+                stat_type=stat_type,
+                sport="MLB"
+            )
+            
+            if not vk_result.is_valid:
+                gate_stats['fail_vk_model'] = gate_stats.get('fail_vk_model', 0) + 1
+                continue
+            
             # Get additional data for scoring
-            raw_vk_pred = prop.get("vk_predicted") or prop.get("raw_vk_pred") or prop.get("season_average") or 0
+            raw_vk_pred = mlr_prediction  # Use MLR prediction (not season_avg fallback)
             matchup_modifier = prop.get("matchup_modifier", 1.0)
             tempo_modifier = prop.get("tempo_modifier", 1.0)
             raw_edge = (raw_vk_pred - line) if line > 0 else 0
@@ -1095,9 +1191,23 @@ class MLBOracleApexService:
                 'fl_board_score': round(fl_board_score, 1),
                 'wz_board_score': round(wz_board_score, 1),
                 
-                # Additional data
-                'raw_vk_pred': round(raw_vk_pred, 2) if raw_vk_pred else None,
-                'vk_predicted': round(raw_vk_pred * matchup_modifier * tempo_modifier, 2) if raw_vk_pred else None,
+                # v2.0: MLR MODEL OUTPUT (HIGH PRECISION)
+                'vk_predicted': round(mlr_prediction, 2),
+                'mlr_raw_prediction': mlr_prediction,
+                'vk_prob_over': vk_result.vk_prob_over,
+                'vk_prob_under': vk_result.vk_prob_under,
+                'vk_edge': vk_result.vk_edge,
+                'vk_verdict': vk_result.vk_verdict,
+                'vk_sigma_used': vk_result.standard_deviation_used,
+                'vk_sigma_source': vk_result.sigma_source,
+                'vk_z_score': vk_result.z_score,
+                
+                # v2.0: MLB MATCHUP FEATURES (Park Factors, etc.)
+                'mlr_matchup': mlr_matchup,
+                'mlr_features_used': True,
+                'park_factor': mlr_matchup.get('park_factor'),
+                'opp_k_rate': mlr_matchup.get('opp_k_rate'),
+                
                 'matchup_modifier': round(matchup_modifier, 3),
                 'tempo_modifier': round(tempo_modifier, 3),
                 

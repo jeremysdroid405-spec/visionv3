@@ -76,6 +76,39 @@ The system for calculating "Lineup Ripple" effects in MLB when Lineup Anchors ar
 
 ## Completed Work
 
+### April 14, 2026: MLB XGBoost Model Training & STRICT Enforcement (COMPLETE)
+
+#### Dedicated MLB Model Trained
+- **90,616 training samples** from 3+ years of MLB BDL data
+- **XGBoost Regressor** with 35+ features per stat type
+- Trained models: hits, total_bases, rbis, runs, pitcher_strikeouts
+
+#### MLB-Specific Features Implemented
+- **Park Factors**: Coors Field (1.18), Oracle Park (0.92), T-Mobile Park (0.94)
+- **Team K-Rates**: Arizona (1.12 - strikes out a lot), Kansas City (0.90 - contact team)
+- **EWMA Baselines**: L5/L10/L20 weighted averages
+- **True L10 Standard Deviation**: No fake 20% defaults
+
+#### STRICT Enforcement Applied
+- Props without MLR prediction are DISQUALIFIED from Elite tiers
+- High-precision predictions: `0.85 hits`, `4.32 Ks` (not rounded integers)
+- Park factors mathematically applied (Coors vs Seattle = different predictions)
+- `vk_sigma_source: direct_input` proving real variance used
+
+#### Model Performance
+| Stat | Samples | Test MAE | Test R² |
+|------|---------|----------|---------|
+| hits | 90,616 | 0.572 | 0.079 |
+| total_bases | 90,616 | 0.924 | 0.025 |
+| pitcher_strikeouts | 19,434 | 1.464 | 0.512 |
+| runs | 90,616 | 0.431 | 0.081 |
+| rbis | 90,616 | 0.473 | 0.04 |
+
+#### Files Created
+- `/app/backend/models/mlb/mlb_vk_*.pkl` - Trained XGBoost models
+- `/app/backend/services/mlb_vegas_killer_model.py` - MLB MLR Model class
+- `/app/frontend/public/mlb_mlr_strict_audit.json` - Audit export
+
 ### April 14, 2026: VK Model True Variance v2.0 - GLOBAL DEPLOYMENT (COMPLETE)
 
 #### Killed the 20% CV Default Trap
