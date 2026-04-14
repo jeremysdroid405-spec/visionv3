@@ -1,255 +1,87 @@
-# PropVision PRD
+# PropVision - Product Requirements Document
 
 ## Original Problem Statement
-Restructure the React/FastAPI betting app to a 100% Local-First Database Model, integrating multi-sport support (NBA/MLB) and an exact MLB 4-Gate evaluation system/UI replica of the NBA side. Implement BallDontLie (BDL) API modifiers precisely, establish automated daily prop capture (Forward-Testing Infrastructure), integrate Google/Apple OAuth, implement Stripe for payments, refactor Dashboard.jsx. Implement Safe Haven 2.0 (Actuary Gate) for MLB and apply unified predictive modeling and sorting logic across all tiers.
+Restructure the React/FastAPI betting app to a 100% Local-First Database Model, integrating multi-sport support (NBA/MLB) and an exact MLB/NBA evaluation system. Implement BallDontLie (BDL) API modifiers precisely, establish automated daily prop capture, integrate Google/Apple OAuth, implement Stripe for payments, refactor Dashboard.jsx. Implement a "High-Friction Ensemble" MLB MLR model that acts as a pure physical/performance prediction engine completely independent of market odds. Ensure Strict MLR output enforcement (high-precision decimals, True L10 Sigma, strictly `null` if advanced data is missing).
 
-## Architecture Overview
+## Core Architecture
+- **Frontend**: React with Shadcn/UI components
+- **Backend**: FastAPI (Python)
+- **Database**: MongoDB
+- **ML Models**: XGBoost regression for NBA/MLB predictions
+- **APIs**: BallDontLie (GOAT Tier), The Odds API
 
-### Elite Top 10 Sequential Claim Engine
-The core engine that ensures exclusive tier assignment across both NBA and MLB:
+## What's Been Implemented
 
-1. **Unified Master Probability Function** (50/50 Blend):
-   ```
-   market_prob = (abs(dk_odds) / (abs(dk_odds) + 100)) * 100
-   propvision_true_prob = (market_prob * 0.50) + (true_hit_rate * 0.50)
-   true_edge = propvision_true_prob - casino_req_rate
-   ```
+### NBA System (COMPLETE)
+- 105-feature XGBoost model trained on 5+ years of historical data
+- True L10 Standard Deviation for variance calculations
+- Strict enforcement: No season_avg fallbacks
+- Vault Isolation Architecture: `elite_war_zone`, `elite_front_lines`, `elite_safe_haven`
+- Z-Score/Normal CDF probability calculations
+- Audit exports: `nba_mlr_model_full_export.json`, `nba_vk_model_export.json`, `nba_mlr_strict_audit.json`
 
-2. **Sequential Claim Logic** (War Zone → Safe Haven → Front Lines):
-   - Step A: War Zone claims Demons + High-Odds Standards (true_edge >= 8%)
-   - Step B: Safe Haven claims Goblins (HR >= 60%, CV <= 0.35)
-   - Step C: Front Lines claims remaining pool (HR >= 50%, CV <= 0.50)
-   - Each claimed prop is REMOVED from pool before next tier
+### MLB System (IN PROGRESS - Session 4/14/2026)
+#### COMPLETED TODAY:
+1. **MLB Deep Ingestion Service** (`mlb_deep_ingestion.py`)
+   - 3-Year backfill (2023-2025) using BDL GOAT Tier API
+   - Endpoints: /stats, /players/splits, /players/{id}/vs
+   - Ingested: 14,725 game logs, 374 players with L/R splits
 
-3. **Phase 7 Override** (NBA-specific):
-   - Runs AFTER Ferrari Phases 1-6 complete
-   - Sets `SKIP_LEGACY_TIER_BUILDER = True` to prevent overwrites
-   - Hard overwrites tier collections with Elite Top 10 picks
+2. **MLB Physical Engine v2.0** (`mlb_physical_engine.py`)
+   - 64-feature XGBoost model trained on ingested data
+   - Features: L/R splits, Park Factors, Opponent K-Rate, EWMA trends
+   - 4 models trained: hits, total_bases, runs, pitcher_strikeouts
+   - Training samples: ~2,700 per stat
+   - Strict validation: Returns NULL if BDL splits missing
 
-### Dynamic Usage Vacuum Model v3.0 (NEW)
-The system for calculating "Live Injury Advantage" beneficiaries:
+3. **Audit File Generated** (`mlb_mlr_strict_audit.json`)
+   - 12,239 bytes
+   - Documents all 64 features, park factors, model weights
+   - Download: https://best-bet-finder-1.preview.emergentagent.com/mlb_mlr_strict_audit.json
 
-1. **Dynamic Star Identification** (from BDL Advanced Stats):
-   - Primary Alpha: `usage_percentage >= 28%`
-   - Secondary Alpha: `usage_percentage 22-28%`
-   - Data source: `star_usage_cache` collection (BDL advanced stats)
-
-2. **Dynamic Beneficiary Calculation**:
-   - When Alpha is OUT, query teammates sorted by `usage_percentage` DESC
-   - Top 3 teammates become Primary/Secondary/Tertiary beneficiaries
-   - Enrich with baseline stats from `nba_master_hub_2026`
-
-3. **Boost Application**:
-   - Primary: +12% PTS/PRA boost
-   - Secondary: +8% PTS/PRA boost
-   - Tertiary: +5% PTS/PRA boost
-
-### MLB Lineup Ripple Engine v1.0 (NEW)
-The system for calculating "Lineup Ripple" effects in MLB when Lineup Anchors are OUT:
-
-1. **Lineup Anchor Definition**:
-   - OPS > .850 OR wRC+ > 125
-   - Data source: `mlb_master_hub_2026.advanced_stats.season_stats.2026.batting`
-
-2. **Ripple Calculation**:
-   - **PA Bump**: +10% expected PAs for players moving UP in batting order
-   - **Protection Penalty**: -5% to hitters directly in front of/behind missing anchor
-
-3. **Boost Application**:
-   - Primary: +10% PA bump (moving up 2+ spots)
-   - Secondary: +8% PA bump (moving up 1 spot)
-   - Tertiary: +5% PA bump
-   - Protection Penalty: -5% (adjacent hitters)
-
-4. **Metadata Integration**:
-   - `lineup_ripple_adj` added to `intel_suite` for MLB props
-   - Tier collections updated with `missing_anchor` and `pa_bump_applied` flags
-
-### Key API Endpoints
-- `POST /api/nba/sync/master` - Full NBA pipeline with Phase 7
-- `POST /api/mlb/sync/master` - Full MLB pipeline with Lineup Ripple
-- `POST /api/v3/ferrari/rebuild` - Ferrari rebuild only
-- `GET /api/v3/vacuum/live-alerts` - Live Injury Advantage alerts (NBA Dynamic Model)
-- `GET /api/v3/mlb/ripple/alerts` - MLB Lineup Ripple alerts
-- `GET /api/v3/mlb/ripple/top-gainers` - Top 3 PA gainers
-- `GET /api/v3/mlb/ripple/anchors` - Get Lineup Anchors by team
-
-## Completed Work
-
-### April 14, 2026: MLB XGBoost Model Training & STRICT Enforcement (COMPLETE)
-
-#### Dedicated MLB Model Trained
-- **90,616 training samples** from 3+ years of MLB BDL data
-- **XGBoost Regressor** with 35+ features per stat type
-- Trained models: hits, total_bases, rbis, runs, pitcher_strikeouts
-
-#### MLB-Specific Features Implemented
-- **Park Factors**: Coors Field (1.18), Oracle Park (0.92), T-Mobile Park (0.94)
-- **Team K-Rates**: Arizona (1.12 - strikes out a lot), Kansas City (0.90 - contact team)
-- **EWMA Baselines**: L5/L10/L20 weighted averages
-- **True L10 Standard Deviation**: No fake 20% defaults
-
-#### STRICT Enforcement Applied
-- Props without MLR prediction are DISQUALIFIED from Elite tiers
-- High-precision predictions: `0.85 hits`, `4.32 Ks` (not rounded integers)
-- Park factors mathematically applied (Coors vs Seattle = different predictions)
-- `vk_sigma_source: direct_input` proving real variance used
-
-#### Model Performance
-| Stat | Samples | Test MAE | Test R² |
-|------|---------|----------|---------|
-| hits | 90,616 | 0.572 | 0.079 |
-| total_bases | 90,616 | 0.924 | 0.025 |
-| pitcher_strikeouts | 19,434 | 1.464 | 0.512 |
-| runs | 90,616 | 0.431 | 0.081 |
-| rbis | 90,616 | 0.473 | 0.04 |
-
-#### Files Created
-- `/app/backend/models/mlb/mlb_vk_*.pkl` - Trained XGBoost models
-- `/app/backend/services/mlb_vegas_killer_model.py` - MLB MLR Model class
-- `/app/frontend/public/mlb_mlr_strict_audit.json` - Audit export
-
-### April 14, 2026: VK Model True Variance v2.0 - GLOBAL DEPLOYMENT (COMPLETE)
-
-#### Killed the 20% CV Default Trap
-- Removed hardcoded `cv = 0.20` default from `vk_model_enforcement.py`
-- System now queries actual L10 Standard Deviation from `nba_master_hub_2026` (NBA) or `mlb_master_hub_2026` (MLB)
-- Z-score calculations use REAL player volatility instead of fake 20% default
-
-#### Database Lookup Implementation
-- Added `_get_l10_std_dev_from_db()` function for L10 variance lookup
-- Added `set_db_reference()` to set MongoDB reference at startup
-- Supports both NBA and MLB sport parameter
-
-#### MLB Volatility Floor
-- Added minimum CV of 0.35 for MLB hitting stats (Hits, Total Bases, RBIs, etc.)
-- Prevents "God Mode" probability hallucinations on volatile baseball props
-- MLB Safe Haven naturally produces fewer picks (0) due to inherent baseball volatility
-
-#### Variance Priority Chain
-1. **Direct std_dev passed in** (highest priority)
-2. **CV-based calculation** (if CV provided)
-3. **DB Lookup** (queries L10 game logs for real σ)
-4. **Stat-specific CV defaults** (last resort, NOT the 20% trap)
-
-#### Audit Fields Added to VKResult
-- `standard_deviation_used`: The actual σ used in Z-score calculation
-- `sigma_source`: Where the σ came from (`l10_db_lookup_nba`, `l10_db_lookup_mlb`, `mlb_volatility_floor_0.35`, etc.)
-- `z_score`: The calculated Z-score for transparency
-
-#### Global Refresh Results
-- **NBA**: SH=10, FL=10, WZ=10 (all using L10 DB variance ✓)
-- **MLB**: SH=0, FL=10, WZ=0 (volatility floor prevents fake Safe Haven)
-- Coby White PTS (67.4%) EXCLUDED from Safe Haven ✓
-- Coby White PRA (85.3%) correctly INCLUDED in Safe Haven ✓
-
-### April 14, 2026: MLB Lineup Ripple Engine v1.0 (COMPLETE)
-
-#### Lineup Anchor Definition
-- Defined Lineup Anchor as OPS > .850 OR wRC+ > 125
-- Dynamic identification from `mlb_master_hub_2026` batting stats
-
-#### Ripple Calculation Implementation
-- PA Bump: +10% for primary, +8% secondary, +5% tertiary
-- Protection Penalty: -5% for adjacent hitters
-- `_calculate_ripple_beneficiaries()` with dynamic beneficiary ranking
-
-#### API Integration
-- Integrated with existing `/api/v3/mlb/vacuum/live-alerts` endpoint
-- Frontend MLB Live Injury Advantage now shows Lineup Ripple data
-- Shows "Lineup Anchor OUT" with projected AB bumps (+10 AB, +8 AB, +5 AB)
-
-#### Phase 5 Integration
-- Added Step 5 to `mlb_master_sync.py` for Lineup Ripple Engine
-- Updates tier collections with `lineup_ripple_adj` in `intel_suite`
-
-### April 14, 2026: Dynamic Usage Vacuum Model v3.0 (COMPLETE)
-
-#### Removed Hardcoded Star Lists
-- Deprecated `STAR_USAGE_PROFILES` dictionary
-- Deprecated `BENEFICIARY_MAPPINGS` dictionary
-- Deprecated `PLAYER_AVG_STATS` dictionary
-
-#### Dynamic Star Identification
-- `_is_star_player()` now queries `star_usage_cache` for BDL advanced stats
-- Falls back to `nba_master_hub_2026.advanced_stats` if needed
-- Returns alpha tier classification (primary/secondary)
-
-#### Dynamic Beneficiary Calculation
-- `_get_beneficiaries()` queries teammates by `usage_percentage` DESC
-- Enriches with `baseline_stats` from `nba_master_hub_2026`
-- Calculates real projections with +12%/+8%/+5% boosts
-
-#### API Updates
-- `/v3/vacuum/live-alerts` now returns `usage_bump` with boost percentage
-- Added `usage_percentage`, `dynamic_calculation` fields
-- Frontend correctly displays +12%, +8%, +5% boosts
-
-### April 13-14, 2026: NBA Elite Top 10 Implementation
-
-#### Phase 7 Override (COMPLETE)
-- Implemented `nba_master_sync.py` with strict execution order
-- Phases 1-6: Ferrari Rebuild (populates ferrari_scored)
-- Phase 7: Elite Top 10 Hard Overwrite
-- Added `SKIP_LEGACY_TIER_BUILDER` class flag to prevent tier_builder race conditions
-- FINAL VERIFICATION confirms: WZ=10, FL=10, SH=0
-
-#### NBA Oracle Apex Service Updates (COMPLETE)
-- Added `calculate_nba_master_probability()` function
-- Added `get_nba_pp_required_win_rate()` for Goblin Tax curve
-- Added `build_elite_top_10_tiers()` method
-- Preserves NBA intel: blowout_risk, intel_suite, momentum_data, vacuum_data
-
-### April 12-13, 2026: MLB Elite Top 10 Implementation (COMPLETE)
-
-#### MLB Safe Haven 2.0 (COMPLETE)
-- Strictly GOBLIN-only
-- Dynamic hit rate calculation (actual games played)
-- 60% HR floor, 0.70 CV max
-- 50/50 predictive blend
-
-#### MLB Front Lines 2.0 (COMPLETE)
-- Hybrid lineup gate (only rejects BENCHED)
-- 55% HR floor
-- Arbitrage-weighted scoring
-
-#### MLB War Zone 2.0 (COMPLETE)
-- Elite 10 model (strictly DEMONs)
-- true_edge >= 10.0 required
-- Sorted by true_edge DESC
-
-#### Unified Master Probability (COMPLETE)
-- Same 50/50 blend formula across all MLB tiers
-- Eliminates "different edges for same player" issue
+### Key Technical Components
+- `/app/backend/services/mlb_physical_engine.py` - MLB Oracle Apex engine
+- `/app/backend/services/mlb_deep_ingestion.py` - BDL data backfill service
+- `/app/backend/services/vegas_killer_model.py` - NBA 105-feature model
+- `/app/backend/services/oracle_apex_service.py` - NBA tier orchestrator
+- `/app/backend/services/mlb_oracle_apex_service.py` - MLB tier orchestrator
 
 ## Pending Tasks
 
-### P1: Integrations
-- [ ] Google OAuth (Emergent-managed)
-- [ ] Stripe payments (test key available)
+### P0 - Critical
+1. **Wire MLB Physical Engine to mlb_oracle_apex_service.py**
+   - Integrate trained models into tier generation
+   - Ensure high-precision predictions flow to frontend
 
-### P2: Enhancements
-- [ ] Wind Tunnel weather API integration
-- [ ] Refactor `ferrari_tiers.py` (technical debt)
-- [ ] Refactor `Dashboard.jsx` (technical debt)
+2. **RBI Model Training**
+   - BDL API returns `rbi` not `rbis` - needs mapping fix in ingestion
+   - Re-run ingestion with correct field mapping
 
-## Technical Debt
-- `ferrari_tiers.py` needs cleanup
-- `Dashboard.jsx` needs refactoring
-- DB_NAME inconsistency: code uses 'pick_vision', some scripts used 'propvision'
+### P1 - High Priority
+- Google OAuth integration (Emergent-managed)
+- Stripe payments integration (pod test keys)
 
-## Key Files
-- `/app/backend/services/vk_model_enforcement.py` - VK/MLR Model v2.0 with TRUE VARIANCE
-- `/app/backend/services/nba_master_sync.py` - NBA Elite Top 10 orchestrator
-- `/app/backend/services/oracle_apex_service.py` - NBA math and Elite engine
-- `/app/backend/services/mlb_oracle_apex_service.py` - MLB Elite engine
-- `/app/backend/services/mlb_master_sync.py` - MLB orchestrator with Lineup Ripple
-- `/app/backend/services/mlb_lineup_ripple_service.py` - MLB Lineup Ripple Engine v1.0
-- `/app/backend/services/injury_vacuum_service.py` - NBA Dynamic Usage Vacuum Model v3.0
-- `/app/backend/services/cached_board_builder_service.py` - SKIP_LEGACY_TIER_BUILDER flag
-- `/app/backend/routes/mlb_ripple.py` - MLB Ripple API routes
+### P2 - Medium Priority
+- Wind Tunnel weather API (Atmospheric data for MLB)
+- Refactor `ferrari_tiers.py` and `Dashboard.jsx`
+
+## Database Collections
+- `mlb_master_hub_2026` - 797 players with game logs and splits
+- `nba_master_hub_2026` - 326 players with NBA data
+- `elite_war_zone`, `elite_front_lines`, `elite_safe_haven` - Vault tiers
+
+## Model Performance (MLB)
+| Stat | Samples | Test MAE | Top Features |
+|------|---------|----------|--------------|
+| hits | 2,703 | 0.7019 | rhp_slg, matchup_slg, contact_rate |
+| total_bases | 2,626 | 1.2766 | l5_min, rhp_slg, platoon_obp |
+| runs | 2,703 | 0.5406 | l5_min, rhp_bb_rate, consistency |
+| pitcher_strikeouts | 2,703 | 0.7483 | contact_rate, overall_k_rate, power_index |
 
 ## 3rd Party Integrations
-- Gemini 3.1 Flash-Lite (Google GenAI SDK) — uses Emergent LLM Key
-- The Odds API — User API Key
-- BallDontLie API — User API Key (used to hydrate advanced statistics)
+- BallDontLie API (BDL_API_KEY in backend/.env)
+- The Odds API (requires user key)
+- Gemini 3.1 Flash-Lite (Emergent LLM Key)
+
+---
+*Last Updated: April 14, 2026*

@@ -153,13 +153,18 @@ STAT_TYPES = ['hits', 'total_bases', 'rbis', 'runs', 'pitcher_strikeouts',
 STAT_FIELD_MAP = {
     'hits': 'hits',
     'total_bases': 'total_bases',
-    'rbis': 'rbi',
+    'rbis': 'rbi',  # BDL API uses 'rbi' not 'rbis'
+    'rbi': 'rbi',
     'runs': 'runs',
     'stolen_bases': 'stolen_bases',
     'home_runs': 'home_runs',
+    'hr': 'hr',
     'walks': 'walks',
+    'bb': 'bb',
     'strikeouts': 'strikeouts',
-    'pitcher_strikeouts': 'strikeouts',
+    'k': 'k',
+    'pitcher_strikeouts': 'pitcher_strikeouts',
+    'p_k': 'p_k',
     'hits+runs+rbis': ['hits', 'runs', 'rbi'],
 }
 
@@ -276,16 +281,16 @@ class MLBPhysicalEngine:
         Returns:
             (is_valid, error_message)
         """
-        # Check for L/R splits
-        vs_left = player.get('vs_left', {})
-        vs_right = player.get('vs_right', {})
+        # Check for L/R splits - handle None values explicitly
+        vs_left = player.get('vs_left') or {}
+        vs_right = player.get('vs_right') or {}
         
         if not vs_left and not vs_right:
             return False, "MISSING_LR_SPLITS: No vs_left or vs_right data"
         
         # Check for at-bats in splits (need sample size)
-        lhp_ab = vs_left.get('at_bats', 0) or 0
-        rhp_ab = vs_right.get('at_bats', 0) or 0
+        lhp_ab = (vs_left.get('at_bats') or 0) if vs_left else 0
+        rhp_ab = (vs_right.get('at_bats') or 0) if vs_right else 0
         
         if lhp_ab < 5 and rhp_ab < 5:
             return False, f"INSUFFICIENT_SPLIT_SAMPLE: LHP_AB={lhp_ab}, RHP_AB={rhp_ab}"
@@ -423,8 +428,8 @@ class MLBPhysicalEngine:
         # =====================================================================
         # CATEGORY 2: L/R SPLITS (PvP - Pitcher vs Batter)
         # =====================================================================
-        vs_left = player.get('vs_left', {})
-        vs_right = player.get('vs_right', {})
+        vs_left = player.get('vs_left') or {}
+        vs_right = player.get('vs_right') or {}
         
         # vs LHP
         lhp_ab = vs_left.get('at_bats', 0) or 0
@@ -488,8 +493,8 @@ class MLBPhysicalEngine:
         # =====================================================================
         # CATEGORY 3: HOME/AWAY SPLITS
         # =====================================================================
-        home = player.get('home_splits', {})
-        away = player.get('away_splits', {})
+        home = player.get('home_splits') or {}
+        away = player.get('away_splits') or {}
         
         home_ab = home.get('at_bats', 0) or 0
         home_hits = home.get('hits', 0) or 0
@@ -580,9 +585,15 @@ class MLBPhysicalEngine:
         data = []
         skipped_bdl = 0
         
-        # Query all players with game logs
+        # Query players with BOTH game logs AND L/R splits (optimization)
         cursor = self.master_hub.find(
-            {'bdl_game_logs': {'$exists': True}},
+            {
+                'bdl_game_logs': {'$exists': True},
+                '$or': [
+                    {'vs_left': {'$ne': None}},
+                    {'vs_right': {'$ne': None}}
+                ]
+            },
             {'_id': 0}
         )
         
