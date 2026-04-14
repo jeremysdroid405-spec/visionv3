@@ -1331,6 +1331,11 @@ async def startup_event():
     await initialize_dvp_cache()
     logger.info("DvP Service initialized (MongoDB-backed DvP rankings)")
     
+    # Initialize VK Model Enforcement with MongoDB reference for TRUE VARIANCE lookups
+    from services.vk_model_enforcement import set_db_reference as set_vk_db_reference
+    set_vk_db_reference(db)
+    logger.info("VK Model Enforcement v2.0 initialized (TRUE VARIANCE - L10 std_dev lookups)")
+    
     # Initialize Adaptive Sync Engine - Mission-critical polling
     adaptive_sync = init_adaptive_sync_engine(db, ODDS_API_KEY)
     logger.info("Adaptive Sync Engine initialized (Mission-Critical Polling)")

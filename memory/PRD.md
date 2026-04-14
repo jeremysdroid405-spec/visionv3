@@ -76,6 +76,34 @@ The system for calculating "Lineup Ripple" effects in MLB when Lineup Anchors ar
 
 ## Completed Work
 
+### April 14, 2026: VK Model True Variance v2.0 (COMPLETE)
+
+#### Killed the 20% CV Default Trap
+- Removed hardcoded `cv = 0.20` default from `vk_model_enforcement.py`
+- System now queries actual L10 Standard Deviation from `nba_master_hub_2026` (NBA) or `mlb_master_hub_2026` (MLB)
+- Z-score calculations use REAL player volatility instead of fake 20% default
+
+#### Database Lookup Implementation
+- Added `_get_l10_std_dev_from_db()` function for L10 variance lookup
+- Added `set_db_reference()` to set MongoDB reference at startup
+- Supports both NBA and MLB sport parameter
+
+#### Variance Priority Chain
+1. **Direct std_dev passed in** (highest priority)
+2. **CV-based calculation** (if CV provided)
+3. **DB Lookup** (queries L10 game logs for real σ)
+4. **Stat-specific CV defaults** (last resort, NOT the 20% trap)
+
+#### Audit Fields Added to VKResult
+- `standard_deviation_used`: The actual σ used in Z-score calculation
+- `sigma_source`: Where the σ came from (`direct_input`, `cv_input`, `l10_db_lookup_nba`, `stat_default_cv_0.25`, etc.)
+- `z_score`: The calculated Z-score for transparency
+
+#### Coby White Verification Test
+- OLD 20% Default: σ=2.740, P(Over)=78.9%
+- NEW True Variance: σ=4.881 (L10 std_dev), P(Over)=67.4%
+- **Probability Shift: -11.5%** (more accurate, less overconfident)
+
 ### April 14, 2026: MLB Lineup Ripple Engine v1.0 (COMPLETE)
 
 #### Lineup Anchor Definition
@@ -172,6 +200,7 @@ The system for calculating "Lineup Ripple" effects in MLB when Lineup Anchors ar
 - DB_NAME inconsistency: code uses 'pick_vision', some scripts used 'propvision'
 
 ## Key Files
+- `/app/backend/services/vk_model_enforcement.py` - VK/MLR Model v2.0 with TRUE VARIANCE
 - `/app/backend/services/nba_master_sync.py` - NBA Elite Top 10 orchestrator
 - `/app/backend/services/oracle_apex_service.py` - NBA math and Elite engine
 - `/app/backend/services/mlb_oracle_apex_service.py` - MLB Elite engine
