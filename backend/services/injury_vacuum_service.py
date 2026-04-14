@@ -248,6 +248,11 @@ class InjuryVacuumService:
         """
         Check if player is a star (Usage > 25%).
         Returns (is_star, profile_data).
+        
+        Now checks:
+        1. In-memory cache
+        2. Database star_usage_cache (hydrated from BDL advanced stats)
+        3. Hardcoded fallback data
         """
         normalized = self._normalize_player_name(player_name)
         
@@ -256,7 +261,38 @@ class InjuryVacuumService:
             profile = self.star_profiles_cache[normalized]
             return profile.get("usage_rate", 0) >= STAR_USAGE_THRESHOLD, profile
         
-        # Check fallback data
+        # Check database star_usage_cache (BDL advanced stats) using sync pymongo
+        try:
+            from pymongo import MongoClient
+            import os
+            sync_client = MongoClient(os.environ.get('MONGO_URL'))
+            sync_db = sync_client['pick_vision']
+            
+            db_star = sync_db.star_usage_cache.find_one(
+                {'$or': [
+                    {'player_name': {'$regex': f'^{re.escape(normalized)}', '$options': 'i'}},
+                    {'player_name': player_name}
+                ]},
+                {'_id': 0}
+            )
+            sync_client.close()
+            
+            if db_star:
+                usage_pct = db_star.get('usage_percentage', 0)
+                profile = {
+                    "name": db_star.get('player_name'),
+                    "team": db_star.get('team'),
+                    "usage_rate": usage_pct,
+                    "pie": db_star.get('pie', 0),
+                    "net_rating": db_star.get('net_rating', 0),
+                    "is_star": usage_pct >= STAR_USAGE_THRESHOLD
+                }
+                self.star_profiles_cache[normalized] = profile
+                return usage_pct >= STAR_USAGE_THRESHOLD, profile
+        except Exception as e:
+            logger.warning(f"[VacuumService] Error checking star_usage_cache: {e}")
+        
+        # Check hardcoded fallback data
         for star_name, profile in STAR_USAGE_PROFILES.items():
             if self._normalize_player_name(star_name) == normalized:
                 self.star_profiles_cache[normalized] = {**profile, "name": star_name}
@@ -264,14 +300,18 @@ class InjuryVacuumService:
         
         return False, None
     
-    def _get_beneficiaries(self, injured_player: str) -> List[Dict]:
+    def _get_beneficiaries(self, injured_player: str, injured_team: str = None) -> List[Dict]:
         """
         Get the top 2 beneficiaries for an injured star player.
         Returns list of beneficiary dicts with name, usage_bump, minutes_bump, modifier, and projections.
+        
+        Now checks:
+        1. Hardcoded beneficiary mappings
+        2. Database - teammates with next-highest usage on same team
         """
         normalized = self._normalize_player_name(injured_player)
         
-        # Check beneficiary mappings
+        # Check hardcoded beneficiary mappings first
         for star_name, beneficiaries in BENEFICIARY_MAPPINGS.items():
             if self._normalize_player_name(star_name) == normalized:
                 result = []
@@ -298,6 +338,54 @@ class InjuryVacuumService:
                         "late_injury_boost": True
                     })
                 return result
+        
+        # Dynamic beneficiary lookup from database using sync pymongo
+        if injured_team:
+            try:
+                from pymongo import MongoClient
+                import os
+                sync_client = MongoClient(os.environ.get('MONGO_URL'))
+                sync_db = sync_client['pick_vision']
+                
+                # Find teammates with next-highest usage (excluding injured player)
+                teammates = list(sync_db.star_usage_cache.find(
+                    {
+                        'team': injured_team,
+                        'player_name': {'$ne': injured_player, '$not': {'$regex': normalized, '$options': 'i'}}
+                    },
+                    {'_id': 0}
+                ).sort('usage_percentage', -1).limit(2))
+                
+                sync_client.close()
+                
+                if teammates:
+                    result = []
+                    for i, teammate in enumerate(teammates):
+                        usage_bump = 4.0 if i == 0 else 2.5  # Primary gets bigger bump
+                        minutes_bump = 4 if i == 0 else 2
+                        
+                        modifier = PRIMARY_BENEFICIARY_MODIFIER if i == 0 else SECONDARY_BENEFICIARY_MODIFIER
+                        usage_multiplier = PRIMARY_USAGE_MULTIPLIER if i == 0 else SECONDARY_USAGE_MULTIPLIER
+                        
+                        result.append({
+                            "name": teammate.get('player_name'),
+                            "player_name": teammate.get('player_name'),
+                            "team": teammate.get('team'),
+                            "usage_bump": usage_bump,
+                            "usage_percentage": teammate.get('usage_percentage', 0),
+                            "projected_bump": usage_bump,
+                            "minutes_bump": minutes_bump,
+                            "modifier": modifier,
+                            "rank": "primary" if i == 0 else "secondary",
+                            "usage_multiplier": usage_multiplier,
+                            "high_usage_advantage": True,
+                            "late_injury_boost": True,
+                            "dynamic_lookup": True  # Flag that this was looked up dynamically
+                        })
+                    logger.info(f"[VacuumService] Dynamic beneficiaries for {injured_player}: {[b['name'] for b in result]}")
+                    return result
+            except Exception as e:
+                logger.warning(f"[VacuumService] Error looking up dynamic beneficiaries: {e}")
         
         return []
     
@@ -664,7 +752,7 @@ class InjuryVacuumService:
                         # Use the correct team from star profile, not injury data
                         correct_team = star_profile.get("team", team)
                         
-                        logger.info(f"[VacuumService] *** LATE SCRATCH DETECTED ***")
+                        logger.info("[VacuumService] *** LATE SCRATCH DETECTED ***")
                         logger.info(f"[VacuumService] STAR PLAYER OUT: {player_name} (Team: {correct_team}, Usage: {usage_rate}%)")
                         
                         # TRIGGER RESCAN EVENT
@@ -679,7 +767,7 @@ class InjuryVacuumService:
                         logger.info(f"[VacuumService] ReScanEvent triggered for team {correct_team}")
                         
                         # Get beneficiaries with boosted projections
-                        beneficiaries = self._get_beneficiaries(player_name)
+                        beneficiaries = self._get_beneficiaries(player_name, correct_team)
                         
                         if beneficiaries:
                             # Check for board promotions for each beneficiary
