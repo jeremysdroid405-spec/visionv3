@@ -87,26 +87,41 @@ def calculate_vk_model(
     pp_implied_prob: float = None,
     season_avg: float = None,
     adjustment_pct: float = 0.0,
-    require_market: bool = True
+    require_market: bool = True,
+    cv: float = None,  # Coefficient of Variation (stdev/mean) from player's logs
+    std_dev: float = None  # Direct standard deviation if available
 ) -> VKResult:
     """
-    Calculate VK/MLR model output with STRICT validation.
+    Calculate VK/MLR model output using STATISTICAL DISTRIBUTION.
     
-    MARKET-FIRST FILTER: If require_market=True and dk_odds is None/0,
-    returns invalid result. No mocked edges allowed.
+    FORMULA (Normal Distribution CDF):
+    --------------------------------
+    P(X > line) = 1 - Φ((line - predicted) / σ)
+    
+    Where:
+    - Φ = Standard Normal CDF
+    - σ = Standard Deviation (calculated from CV if not provided)
+    - If no CV/stdev: σ = predicted * 0.20 (default 20% volatility)
+    
+    This properly converts a prediction vs line into a probability
+    that accounts for the player's historical variance.
     
     Args:
-        predicted_value: MLR predicted stat value
-        line: Betting line
+        predicted_value: MLR predicted stat value (mean of distribution)
+        line: Betting line (threshold)
         dk_odds: DraftKings odds (REQUIRED for Elite tiers)
         pp_implied_prob: PrizePicks implied probability (optional)
-        season_avg: Player's season average (fallback)
+        season_avg: Player's season average (fallback for prediction)
         adjustment_pct: Any lineup/injury adjustment percentage
         require_market: If True, dk_odds must be valid (default True)
+        cv: Coefficient of Variation from player's L10/season logs
+        std_dev: Direct standard deviation if available
         
     Returns:
-        VKResult with all required fields populated, or invalid result
+        VKResult with statistically accurate probabilities
     """
+    import math
+    
     # =========================================================================
     # MARKET-FIRST FILTER: Reject if no market price
     # =========================================================================
@@ -158,43 +173,75 @@ def calculate_vk_model(
     adjusted_prediction = predicted_value * (1 + adjustment_pct)
     
     # =========================================================================
-    # STEP 3: Calculate Edge Ratio
+    # STEP 3: Calculate Standard Deviation (σ)
     # =========================================================================
-    edge_ratio = (adjusted_prediction - line) / line if line > 0 else 0
+    # Priority: Direct std_dev > CV-based > Default 20% volatility
     
-    # Cap edge ratio at reasonable bounds
-    if edge_ratio > 1.0:
-        edge_ratio = 1.0
-        capped = True
-        cap_reason = "Edge ratio capped at 100%"
-    elif edge_ratio < -1.0:
-        edge_ratio = -1.0
-        capped = True
-        cap_reason = "Edge ratio capped at -100%"
-    
-    # =========================================================================
-    # STEP 4: Calculate VK Probabilities
-    # =========================================================================
-    # Convert edge ratio to probability using sigmoid-like function
-    # Positive edge = favor Over, negative = favor Under
-    
-    if edge_ratio > 0:
-        # Favor OVER
-        # Scale: 0% edge = 50%, 50% edge = 75%, 100% edge = 95%
-        vk_prob_over = min(50 + (edge_ratio * 45), 95)
-        vk_prob_under = 100 - vk_prob_over
-    elif edge_ratio < 0:
-        # Favor UNDER
-        vk_prob_under = min(50 + (abs(edge_ratio) * 45), 95)
-        vk_prob_over = 100 - vk_prob_under
+    if std_dev and std_dev > 0:
+        sigma = std_dev
+        sigma_source = "direct"
+    elif cv and cv > 0:
+        # σ = CV * mean (CV = σ/μ, so σ = CV * μ)
+        sigma = cv * adjusted_prediction
+        sigma_source = "cv"
     else:
-        # Neutral
-        vk_prob_over = 50.0
-        vk_prob_under = 50.0
+        # Default: 20% of predicted value as volatility
+        # This is conservative - real player variance is often 15-30%
+        sigma = adjusted_prediction * 0.20
+        sigma_source = "default_20pct"
     
-    # Round to 1 decimal
-    vk_prob_over = round(vk_prob_over, 1)
-    vk_prob_under = round(vk_prob_under, 1)
+    # Ensure minimum sigma to avoid division by zero
+    sigma = max(sigma, 0.01)
+    
+    # =========================================================================
+    # STEP 4: Calculate VK Probabilities using Normal Distribution CDF
+    # =========================================================================
+    # FORMULA: P(X > line) = 1 - Φ((line - μ) / σ)
+    # Where Φ is the standard normal CDF
+    #
+    # This is the CORRECT statistical approach:
+    # - If prediction (μ) >> line: z-score is very negative, P(over) → 100%
+    # - If prediction (μ) = line: z-score = 0, P(over) = 50%
+    # - If prediction (μ) << line: z-score is very positive, P(over) → 0%
+    
+    # Calculate z-score
+    z_score = (line - adjusted_prediction) / sigma
+    
+    # Standard Normal CDF approximation (accurate to 0.01%)
+    # Using the error function approximation
+    def normal_cdf(z):
+        """Approximate standard normal CDF using error function."""
+        # Abramowitz and Stegun approximation
+        a1 =  0.254829592
+        a2 = -0.284496736
+        a3 =  1.421413741
+        a4 = -1.453152027
+        a5 =  1.061405429
+        p  =  0.3275911
+        
+        sign = 1 if z >= 0 else -1
+        z = abs(z) / math.sqrt(2)
+        
+        t = 1.0 / (1.0 + p * z)
+        y = 1.0 - (((((a5 * t + a4) * t) + a3) * t + a2) * t + a1) * t * math.exp(-z * z)
+        
+        return 0.5 * (1.0 + sign * y)
+    
+    # P(X > line) = 1 - CDF(z)
+    prob_under = normal_cdf(z_score)
+    prob_over = 1.0 - prob_under
+    
+    # Convert to percentage and round
+    vk_prob_over = round(prob_over * 100, 1)
+    vk_prob_under = round(prob_under * 100, 1)
+    
+    # Cap at 1-99% to avoid 0% or 100% (nothing is certain)
+    vk_prob_over = max(1.0, min(99.0, vk_prob_over))
+    vk_prob_under = max(1.0, min(99.0, vk_prob_under))
+    
+    # Log the calculation for debugging
+    logger.debug(f"[VK_MODEL] Statistical Calc: pred={adjusted_prediction:.2f}, line={line}, "
+                f"σ={sigma:.3f} ({sigma_source}), z={z_score:.3f}, P(over)={vk_prob_over}%")
     
     # =========================================================================
     # STEP 5: Calculate VK Edge (vs PrizePicks implied)

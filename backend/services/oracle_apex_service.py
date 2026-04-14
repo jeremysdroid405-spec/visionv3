@@ -1548,17 +1548,25 @@ class OracleApexService:
             if p['prop_type'] == 'GOBLIN'
         ]
         
-        # Additional Safe Haven filters: HR >= 60%, CV <= 0.35 (NBA-specific tighter CV)
+        # Additional Safe Haven filters: 
+        # - HR >= 60% (trust gate)
+        # - CV <= 0.35 (NBA-specific tighter CV)
+        # - vk_prob_over >= 70% (MLR SUPREMACY - predictive model MUST show strong confidence)
         safe_haven_candidates = [
             p for p in safe_haven_candidates 
-            if p['true_hit_rate'] >= 60.0 and p['cv'] <= 0.35
+            if p['true_hit_rate'] >= 60.0 
+            and p['cv'] <= 0.35
+            and p.get('vk_prob_over', 0) >= 70.0  # MLR SUPREMACY: Reject < 70%
         ]
         
-        # Sort by propvision_true_prob + true_edge DESC
+        # PRIMARY SORT: vk_prob_over DESC (MLR predictive model is king)
+        # Historical L10 hit rate is NO LONGER a sort key
         safe_haven_candidates.sort(
-            key=lambda x: (x['propvision_true_prob'] + x['true_edge']), 
+            key=lambda x: x.get('vk_prob_over', 0), 
             reverse=True
         )
+        
+        logger.info(f"[NBA_ELITE_TOP_10] Safe Haven after MLR filter: {len(safe_haven_candidates)} candidates (vk_prob_over >= 70%)")
         
         # Dedupe by player+stat
         sh_seen = set()
@@ -1568,8 +1576,8 @@ class OracleApexService:
             if key not in sh_seen and len(safe_haven_picks) < 10:
                 sh_seen.add(key)
                 p['tier'] = 'safe_haven'
-                p['tier_label'] = 'NBA Safe Haven (Elite 10)'
-                p['board_score'] = p['sh_board_score']
+                p['tier_label'] = 'NBA Safe Haven (Elite 10 - MLR Sorted)'
+                p['board_score'] = p.get('vk_prob_over', 0)  # Use vk_prob_over as board_score
                 safe_haven_picks.append(p)
         
         # REMOVE claimed props from pool
@@ -1580,9 +1588,9 @@ class OracleApexService:
         logger.info(f"  Remaining pool: {len(remaining_pool)}")
         
         # ====================================================================
-        # STEP 2C: FRONT LINES CLAIMS LAST (Universal Value)
+        # STEP 3: FRONT LINES (Sort by vk_edge DESC - MLR Arbitrage)
         # ====================================================================
-        # Everything remaining, sorted by board_score DESC
+        # Everything remaining, sorted by vk_edge (MLR vs market disagreement)
         
         front_lines_candidates = remaining_pool.copy()
         
@@ -1592,8 +1600,8 @@ class OracleApexService:
             if p['true_hit_rate'] >= 50.0 and p['cv'] <= 0.50
         ]
         
-        # Sort by fl_board_score DESC
-        front_lines_candidates.sort(key=lambda x: x['fl_board_score'], reverse=True)
+        # PRIMARY SORT: vk_edge DESC (MLR arbitrage - biggest disagreements with market)
+        front_lines_candidates.sort(key=lambda x: x.get('vk_edge', 0), reverse=True)
         
         # Dedupe by player+stat
         fl_seen = set()
@@ -1603,8 +1611,8 @@ class OracleApexService:
             if key not in fl_seen and len(front_lines_picks) < 10:
                 fl_seen.add(key)
                 p['tier'] = 'front_lines'
-                p['tier_label'] = 'NBA Front Lines (Elite 10)'
-                p['board_score'] = p['fl_board_score']
+                p['tier_label'] = 'NBA Front Lines (Elite 10 - vk_edge Sorted)'
+                p['board_score'] = p.get('vk_edge', 0)  # Use vk_edge as board_score
                 front_lines_picks.append(p)
         
         logger.info(f"[NBA_ELITE_TOP_10] FRONT LINES claimed: {len(front_lines_picks)} picks")

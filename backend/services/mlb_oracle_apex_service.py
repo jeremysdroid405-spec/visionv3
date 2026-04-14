@@ -1125,18 +1125,21 @@ class MLBOracleApexService:
         # ====================================================================
         # STEP 2A: WAR ZONE CLAIMS FIRST (High-Alpha Payouts)
         # ====================================================================
-        # Demons + Standards with DK > +100, sorted by true_edge DESC
+        # ====================================================================
+        # STEP 1: WAR ZONE (Sort by vk_edge DESC - MLR Supremacy)
+        # ====================================================================
+        # Demons + Standards with DK > +100, sorted by vk_edge DESC (MLR arbitrage)
         
         war_zone_candidates = [
             p for p in qualified_pool
             if p['prop_type'] == 'DEMON' or (p['prop_type'] == 'STANDARD' and (p['dk_odds'] or 0) > 100)
         ]
         
-        # Additional War Zone filter: true_edge >= 10% for high-alpha
-        war_zone_candidates = [p for p in war_zone_candidates if p['true_edge'] >= 10.0]
+        # Additional War Zone filter: vk_edge >= 10% for high-alpha (using MLR model)
+        war_zone_candidates = [p for p in war_zone_candidates if p.get('vk_edge', 0) >= 10.0]
         
-        # Sort by true_edge DESC
-        war_zone_candidates.sort(key=lambda x: x['true_edge'], reverse=True)
+        # PRIMARY SORT: vk_edge DESC (MLR arbitrage - biggest market disagreements)
+        war_zone_candidates.sort(key=lambda x: x.get('vk_edge', 0), reverse=True)
         
         # Dedupe by player+stat
         wz_seen = set()
@@ -1146,8 +1149,8 @@ class MLBOracleApexService:
             if key not in wz_seen and len(war_zone_picks) < 10:
                 wz_seen.add(key)
                 p['tier'] = 'war_zone'
-                p['tier_label'] = 'MLB War Zone (Elite 10)'
-                p['board_score'] = p['wz_board_score']
+                p['tier_label'] = 'MLB War Zone (Elite 10 - vk_edge Sorted)'
+                p['board_score'] = p.get('vk_edge', 0)  # Use vk_edge as board_score
                 war_zone_picks.append(p)
         
         # REMOVE claimed props from pool
@@ -1158,26 +1161,35 @@ class MLBOracleApexService:
         logger.info(f"  Remaining pool: {len(remaining_pool)}")
         
         # ====================================================================
-        # STEP 2B: SAFE HAVEN CLAIMS SECOND (Elite Stability)
+        # STEP 2: SAFE HAVEN (MLR Supremacy - Sort by vk_prob_over DESC)
         # ====================================================================
-        # Goblins only, sorted by propvision_true_prob + true_edge DESC
+        # Goblins only, sorted PURELY by vk_prob_over (MLR predictive model)
+        # Historical rates (L5/L10) are metadata only - NOT sort keys
         
         safe_haven_candidates = [
             p for p in remaining_pool
             if p['prop_type'] == 'GOBLIN'
         ]
         
-        # Additional Safe Haven filters: HR >= 60%, CV <= 0.70
+        # Additional Safe Haven filters: 
+        # - HR >= 60% (trust gate)
+        # - CV <= 0.70 (consistency gate)
+        # - vk_prob_over >= 70% (MLR SUPREMACY - predictive model MUST show strong confidence)
         safe_haven_candidates = [
             p for p in safe_haven_candidates 
-            if p['true_hit_rate'] >= 60.0 and p['cv'] <= 0.70
+            if p['true_hit_rate'] >= 60.0 
+            and p['cv'] <= 0.70
+            and p.get('vk_prob_over', 0) >= 70.0  # MLR SUPREMACY: Reject < 70%
         ]
         
-        # Sort by propvision_true_prob + true_edge DESC
+        # PRIMARY SORT: vk_prob_over DESC (MLR predictive model is king)
+        # Historical L10 hit rate is NO LONGER a sort key
         safe_haven_candidates.sort(
-            key=lambda x: (x['propvision_true_prob'] + x['true_edge']), 
+            key=lambda x: x.get('vk_prob_over', 0), 
             reverse=True
         )
+        
+        logger.info(f"[ELITE_TOP_10] Safe Haven after MLR filter: {len(safe_haven_candidates)} candidates (vk_prob_over >= 70%)")
         
         # Dedupe by player+stat
         sh_seen = set()
@@ -1187,8 +1199,8 @@ class MLBOracleApexService:
             if key not in sh_seen and len(safe_haven_picks) < 10:
                 sh_seen.add(key)
                 p['tier'] = 'safe_haven'
-                p['tier_label'] = 'MLB Safe Haven (Elite 10)'
-                p['board_score'] = p['sh_board_score']
+                p['tier_label'] = 'MLB Safe Haven (Elite 10 - MLR Sorted)'
+                p['board_score'] = p.get('vk_prob_over', 0)  # Use vk_prob_over as board_score
                 safe_haven_picks.append(p)
         
         # REMOVE claimed props from pool
@@ -1199,9 +1211,9 @@ class MLBOracleApexService:
         logger.info(f"  Remaining pool: {len(remaining_pool)}")
         
         # ====================================================================
-        # STEP 2C: FRONT LINES CLAIMS LAST (Universal Value)
+        # STEP 3: FRONT LINES (Sort by vk_edge DESC - MLR Arbitrage)
         # ====================================================================
-        # Everything remaining, sorted by board_score DESC
+        # Everything remaining, sorted by vk_edge (MLR vs market disagreement)
         
         front_lines_candidates = remaining_pool.copy()
         
@@ -1211,8 +1223,8 @@ class MLBOracleApexService:
             if p['true_hit_rate'] >= 55.0 and p['cv'] <= 0.75
         ]
         
-        # Sort by fl_board_score DESC
-        front_lines_candidates.sort(key=lambda x: x['fl_board_score'], reverse=True)
+        # PRIMARY SORT: vk_edge DESC (MLR arbitrage - biggest disagreements with market)
+        front_lines_candidates.sort(key=lambda x: x.get('vk_edge', 0), reverse=True)
         
         # Dedupe by player+stat
         fl_seen = set()
@@ -1222,8 +1234,8 @@ class MLBOracleApexService:
             if key not in fl_seen and len(front_lines_picks) < 10:
                 fl_seen.add(key)
                 p['tier'] = 'front_lines'
-                p['tier_label'] = 'MLB Front Lines (Elite 10)'
-                p['board_score'] = p['fl_board_score']
+                p['tier_label'] = 'MLB Front Lines (Elite 10 - vk_edge Sorted)'
+                p['board_score'] = p.get('vk_edge', 0)  # Use vk_edge as board_score
                 front_lines_picks.append(p)
         
         logger.info(f"[ELITE_TOP_10] FRONT LINES claimed: {len(front_lines_picks)} picks")
@@ -1441,11 +1453,14 @@ class MLBOracleApexService:
             # ================================================================
             # VK MODEL ENFORCEMENT - MANDATORY HANDSHAKE
             # ================================================================
+            # VK MODEL ENFORCEMENT - MANDATORY HANDSHAKE (with CV for proper stats)
+            # ================================================================
             vk_result = calculate_vk_model(
                 predicted_value=raw_vk_pred,
                 line=line,
                 dk_odds=dk_odds,
-                season_avg=season_avg
+                season_avg=season_avg,
+                cv=cv  # Pass CV for dynamic standard deviation calculation
             )
             
             # STRICT: If VK model failed, log critical error
@@ -1456,7 +1471,8 @@ class MLBOracleApexService:
                     predicted_value=season_avg or line,
                     line=line,
                     dk_odds=dk_odds,
-                    season_avg=season_avg
+                    season_avg=season_avg,
+                    cv=cv
                 )
             
             # Calculate Board Score - Weights true edge heavily, penalizes volatility
