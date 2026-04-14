@@ -124,8 +124,12 @@ class IntelSuiteCalculator:
         opponent: Optional[str] = None,
         board_pick: Optional[Dict] = None,
         lasso_result: Optional[Dict] = None,
+        use_llm: bool = False,
     ) -> Dict[str, Any]:
-        """Calculate full Intel Suite with Lasso v2 integration."""
+        """Calculate full Intel Suite.
+        use_llm=True: Call Gemini for scout text (batch enrichment only).
+        use_llm=False: Fast baseline text (inline request-time calls).
+        """
 
         # Fetch player from hub — only need game logs + team
         player = await self.master_hub.find_one(
@@ -185,7 +189,7 @@ class IntelSuiteCalculator:
         vision_insight = await self._generate_vision_insight(
             player_name, stat_type, line, direction,
             usage_ripple, matchup_dvp, pace_delta, stability_index,
-            board_pick, lasso_result,
+            board_pick, lasso_result, use_llm=use_llm,
         )
 
         # Scout badges from live data
@@ -304,32 +308,29 @@ class IntelSuiteCalculator:
         except Exception as e:
             return {"risk_level": "UNKNOWN", "risk_reason": str(e), "warning": None}
 
-    async def _generate_vision_insight(self, player_name, stat_type, line, direction, usage_ripple, matchup_dvp, pace_delta, stability_index, board_pick, lasso_result):
-        """Generate vision_insight via Gemini LLM."""
-        from services.gemini_scout_engine import generate_gemini_scout_intel, build_scout_payload
-
-        intel_suite_data = {
-            "matchup_dvp": matchup_dvp,
-            "pace_delta": pace_delta,
-            "stability_index": stability_index,
-            "usage_ripple": usage_ripple,
-        }
-
-        payload = build_scout_payload(
-            player_name=player_name,
-            stat_type=stat_type,
-            line=line,
-            lasso_result=lasso_result,
-            board_pick=board_pick,
-            intel_suite=intel_suite_data,
-            sport="nba",
-        )
-
-        scout_text = await generate_gemini_scout_intel(payload)
-
-        # Build structured insight with the LLM text as primary
+    async def _generate_vision_insight(self, player_name, stat_type, line, direction, usage_ripple, matchup_dvp, pace_delta, stability_index, board_pick, lasso_result, use_llm=False):
+        """Generate vision_insight — Gemini for batch enrichment, fast baseline for inline."""
         lasso_proj = lasso_result.get("projection") if lasso_result else None
         lasso_edge = (lasso_proj - line) if lasso_proj and line else None
+
+        if use_llm:
+            from services.gemini_scout_engine import generate_gemini_scout_intel, build_scout_payload
+            intel_suite_data = {
+                "matchup_dvp": matchup_dvp, "pace_delta": pace_delta,
+                "stability_index": stability_index, "usage_ripple": usage_ripple,
+            }
+            payload = build_scout_payload(
+                player_name=player_name, stat_type=stat_type, line=line,
+                lasso_result=lasso_result, board_pick=board_pick,
+                intel_suite=intel_suite_data, sport="nba",
+            )
+            scout_text = await generate_gemini_scout_intel(payload)
+        else:
+            # Fast baseline — no LLM call
+            direction_word = "OVER" if (lasso_edge and lasso_edge > 0) else "UNDER"
+            proj_str = f"{lasso_proj:.1f}" if lasso_proj else "N/A"
+            edge_str = f"{lasso_edge:+.1f}" if lasso_edge else ""
+            scout_text = f"{player_name} {stat_type} — Projection: {proj_str} vs Line: {line} ({direction_word} {edge_str} edge)."
 
         return {
             "primary": scout_text,

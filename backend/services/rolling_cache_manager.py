@@ -606,6 +606,7 @@ class DeltaManager:
                 opponent=opponent,
                 board_pick=prop,
                 lasso_result=lasso_result,
+                use_llm=True,
             )
 
             if intel_suite:

@@ -25,21 +25,29 @@ _vegas_killer_model = None
 _sync_db = None
 
 
+_enrichment_cache = {}
+_enrichment_cache_mtime = {}
+
 def overlay_enrichment_cache(picks: list, sport: str) -> list:
     """Merge vision_intel, scout_badges, and Lasso data from the enrichment cache onto picks."""
     import json as _json
     cache_path = f"/app/backend/data/{'nba' if sport == 'nba' else 'mlb'}_master_active_cache.json"
+
+    # Memory-cache with file mtime check
     try:
-        with open(cache_path) as f:
-            cache = _json.load(f)
-        cache_props = cache.get("props", {})
+        import os
+        mtime = os.path.getmtime(cache_path)
+        if cache_path not in _enrichment_cache or _enrichment_cache_mtime.get(cache_path) != mtime:
+            with open(cache_path) as f:
+                _enrichment_cache[cache_path] = _json.load(f).get("props", {})
+            _enrichment_cache_mtime[cache_path] = mtime
+        cache_props = _enrichment_cache.get(cache_path, {})
     except Exception:
         return picks
 
     if not cache_props:
         return picks
 
-    # Build lookup: "player_name|stat_type" -> cached prop
     cache_lookup = {}
     for pid, cprop in cache_props.items():
         key = f"{cprop.get('player_name', '')}|{cprop.get('stat_type', '')}".lower()
@@ -54,7 +62,6 @@ def overlay_enrichment_cache(picks: list, sport: str) -> list:
                 pick["vision_summary"] = cached["vision_intel"]
             if cached.get("scout_badges"):
                 pick["scout_badges"] = cached["scout_badges"]
-            # Merge enriched intel_suite (with Lasso data) over the stale one
             enriched_suite = cached.get("intel_suite")
             if enriched_suite and enriched_suite.get("lasso"):
                 existing = pick.get("intel_suite", {})
