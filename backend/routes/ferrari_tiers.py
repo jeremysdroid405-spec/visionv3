@@ -3373,3 +3373,97 @@ async def nba_elite_top_10_sync():
         logger.error(f"[NBA_ELITE_SYNC] Error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+
+
+# =============================================================================
+# LASSO-WEIGHTED PREDICTION ENGINE
+# =============================================================================
+
+@router.get("/v3/lasso/predict/{sport}/{player_name}/{target_stat}")
+async def lasso_predict(sport: str, player_name: str, target_stat: str):
+    """
+    Lasso-Weighted Prediction for a player + stat.
+    
+    Uses AutoFE survivor coefficients to project next-game performance.
+    Returns projection, confidence tier, and top feature contributors.
+    """
+    from models.predictor import get_lasso_engine
+
+    if _db is None:
+        raise HTTPException(status_code=500, detail="Database not initialized")
+
+    engine = get_lasso_engine()
+
+    # Resolve hub + game logs
+    if sport.lower() == "mlb":
+        hub = _db["mlb_master_hub_2026"]
+        doc = await hub.find_one(
+            {"player_name": {"$regex": f"^{player_name}$", "$options": "i"}},
+            {"_id": 0, "player_name": 1, "history": 1, "team": 1, "position": 1}
+        )
+        if not doc:
+            doc = await hub.find_one(
+                {"player_name": {"$regex": player_name, "$options": "i"}},
+                {"_id": 0, "player_name": 1, "history": 1, "team": 1, "position": 1}
+            )
+    else:
+        hub = _db["nba_master_hub_2026"]
+        doc = await hub.find_one(
+            {"display_name": {"$regex": f"^{player_name}$", "$options": "i"}},
+            {"_id": 0, "display_name": 1, "history": 1, "team": 1, "position": 1}
+        )
+        if not doc:
+            doc = await hub.find_one(
+                {"display_name": {"$regex": player_name, "$options": "i"}},
+                {"_id": 0, "display_name": 1, "history": 1, "team": 1, "position": 1}
+            )
+
+    if not doc:
+        raise HTTPException(status_code=404, detail=f"Player '{player_name}' not found in {sport} hub")
+
+    name = doc.get("player_name") or doc.get("display_name")
+
+    # Flatten history into chronological game logs
+    history = doc.get("history", {})
+    all_logs = []
+    for sk in ["2023_season", "2024_season", "2025_season"]:
+        all_logs.extend(history.get(sk, []))
+    all_logs.sort(key=lambda x: x.get("game_id") or 0)
+
+    if len(all_logs) < 11:
+        raise HTTPException(status_code=400, detail=f"Insufficient history: {len(all_logs)} games (need 11+)")
+
+    result = engine.predict_player(
+        sport=sport.lower(),
+        target_stat=target_stat,
+        game_logs=all_logs,
+        player_name=name,
+    )
+
+    if result and result.get("error"):
+        raise HTTPException(status_code=400, detail=result["error"])
+
+    result["team"] = doc.get("team")
+    result["position"] = doc.get("position")
+    result["total_history_games"] = len(all_logs)
+
+    return {"success": True, "prediction": result}
+
+
+@router.get("/v3/lasso/models")
+async def lasso_models():
+    """List all available Lasso prediction models."""
+    from models.predictor import get_lasso_engine
+    engine = get_lasso_engine()
+    models = []
+    for key, model in engine.models.items():
+        models.append({
+            "model_key": key,
+            "sport": model.sport,
+            "target_stat": model.target_stat,
+            "survivors": len(model.survivor_names),
+            "r_squared": model.r_squared,
+            "confidence_tier": model.confidence_tier,
+            "lasso_alpha": model.alpha,
+        })
+    return {"success": True, "models": models}

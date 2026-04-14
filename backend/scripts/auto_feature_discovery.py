@@ -223,7 +223,7 @@ def lasso_survivor_selection(X, y, feature_names, top_n=40):
         else:
             killed.append(name)
 
-    return survivors[:top_n], killed, lasso
+    return survivors[:top_n], killed, lasso, scaler
 
 
 def run_pipeline(sport, player_type, target_stat):
@@ -281,11 +281,20 @@ def run_pipeline(sport, player_type, target_stat):
     # Step 3: Lasso
     print(f"\n[STEP 3] LASSO L1 SURVIVOR SELECTION...")
     start = time.time()
-    survivors, killed, lasso = lasso_survivor_selection(X, y, feature_names, top_n=40)
+    survivors, killed, lasso, scaler = lasso_survivor_selection(X, y, feature_names, top_n=40)
+
+    # Compute R² on clean data
+    mask = np.isfinite(X).all(axis=1) & np.isfinite(y)
+    X_clean = X[mask]
+    y_clean = y[mask]
+    X_clean_scaled = scaler.transform(X_clean)
+    r2_score = lasso.score(X_clean_scaled, y_clean)
+
     print(f"  Optimal alpha:          {lasso.alpha_:.6f}")
     print(f"  Features SURVIVED:      {len(survivors)}")
     print(f"  Features KILLED:        {len(killed)}")
-    print(f"  Lasso R² (CV):          {lasso.score(StandardScaler().fit_transform(X[np.isfinite(X).all(axis=1)]), y[np.isfinite(X).all(axis=1)]):.4f}")
+    print(f"  Lasso R² (CV):          {r2_score:.4f}")
+    print(f"  Intercept:              {lasso.intercept_:.4f}")
     print(f"  Selection time: {time.time() - start:.1f}s")
 
     print(f"\n{'='*80}")
@@ -308,7 +317,16 @@ def run_pipeline(sport, player_type, target_stat):
             marker = " [MOMENTUM]"
         print(f"  {rank:<5} {name:<50} {abs_coef:>8.4f} {sign:>5}{marker}")
 
-    # Save results
+    # Save results with scaler params for live prediction
+    # Build scaler map: only for survivor features
+    survivor_indices = []
+    for name, _, _ in survivors:
+        if name in feature_names:
+            survivor_indices.append(feature_names.index(name))
+
+    scaler_means = {feature_names[i]: float(scaler.mean_[i]) for i in survivor_indices}
+    scaler_scales = {feature_names[i]: float(scaler.scale_[i]) for i in survivor_indices}
+
     results = {
         "sport": sport,
         "player_type": player_type,
@@ -317,9 +335,13 @@ def run_pipeline(sport, player_type, target_stat):
         "survivors": len(survivors),
         "killed": len(killed),
         "lasso_alpha": float(lasso.alpha_),
+        "lasso_intercept": float(lasso.intercept_),
+        "r_squared": float(r2_score),
         "discovered_features": sorted(discovered),
         "survivor_list": [(n, float(a), float(r)) for n, a, r in survivors],
         "raw_keys_found": sorted(valid_keys),
+        "scaler_means": scaler_means,
+        "scaler_scales": scaler_scales,
     }
 
     output_path = f"/app/backend/data/autofe_{sport}_{player_type}_{target_stat}.json"

@@ -12,6 +12,18 @@ Restructure the React/FastAPI betting app to a 100% Local-First Database Model, 
 
 ## What's Been Implemented
 
+### Lasso-Weighted Prediction Engine (COMPLETE - 4/14/2026)
+- 3 models: MLB Hits, MLB Total Bases, NBA Points
+- AutoFE: 366 engineered features → Lasso L1 kills to 40 survivors each
+- StandardScaler normalization with stored means/scales
+- NBA Points R²=0.486 (HIGH_FIDELITY), MLB R²≈0.03 (HIGH_VARIANCE)
+- API: `GET /api/v3/lasso/predict/{sport}/{player}/{stat}`
+
+### NBA Master Hub 2026 - 3-Year + Advanced Overlay (COMPLETE - 4/14/2026)
+- 559 players, 112,778 game logs (2023: 32,119 / 2024: 38,590 / 2025: 42,069)
+- Advanced overlay: usage_pct, true_shooting_pct, off_rating, def_rating, pace, ast_pct, reb_pct, pie, net_rating, eFG_pct, turnover_ratio (100% coverage)
+- No-Loss Merge: existing metadata (headshots, badges) preserved
+
 ### MLB Master Hub 2026 - 3-Year Deep Ingestion (COMPLETE - 4/14/2026)
 - **777 active MLB players** ingested from BDL GOAT Tier API
 - **149,989 game logs** across 3 seasons (2023: 42,382 | 2024: 49,706 | 2025: 57,901)
