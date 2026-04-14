@@ -810,8 +810,12 @@ async def get_ferrari_safe_haven(
             logger.error(f"[SAFE_HAVEN] Legacy scan error: {e}")
             raise HTTPException(status_code=500, detail=str(e))
     
-    # DEFAULT: Read from sport-specific stored collection
-    collection_name = get_collection_name("safe_haven", sport)
+    # DEFAULT: VAULT ISOLATION - NBA uses elite collections, MLB uses legacy
+    if sport == "nba":
+        collection_name = "elite_safe_haven"
+    else:
+        collection_name = "mlb_safe_haven"
+    
     collection = _db[collection_name]
     
     cursor = collection.find({}, {"_id": 0}).limit(limit)
@@ -837,16 +841,16 @@ async def get_ferrari_safe_haven(
         except Exception as e:
             logger.warning(f"[SAFE_HAVEN MLB] JIT injury check failed: {e}")
     
-    # Return Oracle Apex picks - this is the source of truth for both NBA and MLB
+    # Return picks from vault-isolated collection
     return {
         "tier": "safe_haven",
         "tier_label": f"Safe Haven ({sport.upper()})",
-        "logic": "oracle_apex_stored",
+        "logic": "elite_vault" if sport == "nba" else "legacy_ferrari",
         "sport": sport,
         "collection": collection_name,
         "picks": picks,
         "count": len(picks),
-        "note": "Oracle Apex 3-Gate qualified picks" if picks else "No picks qualified - run rebuild to populate"
+        "note": "Elite Top 10 Sequential Claim picks" if sport == "nba" else "Oracle Apex qualified picks"
     }
 
 
@@ -861,12 +865,15 @@ async def get_ferrari_front_lines(
     
     Sport-aware: Pass ?sport=mlb for MLB data, ?sport=nba for NBA data.
     
+    **VAULT ISOLATION**: NBA reads from elite_front_lines (Elite Top 10 engine).
+    MLB reads from mlb_front_lines (legacy Ferrari).
+    
     Picks include:
     - Vision Intel analysis (intel_score, intel_verdict, vision_intel summary)
     - Composite scoring based on VK + Gemini confidence
     - All props that passed the Gemini gate (TRAP verdicts removed)
     """
-    from config.db_config import get_collection_name, validate_sport
+    from config.db_config import validate_sport
     
     response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
     
@@ -879,8 +886,12 @@ async def get_ferrari_front_lines(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     
-    # Read from sport-specific collection
-    collection_name = get_collection_name("front_lines", sport)
+    # VAULT ISOLATION: NBA uses elite collections, MLB uses legacy
+    if sport == "nba":
+        collection_name = "elite_front_lines"
+    else:
+        collection_name = "mlb_front_lines"
+    
     collection = _db[collection_name]
     
     cursor = collection.find({}, {"_id": 0}).limit(limit)
@@ -906,16 +917,16 @@ async def get_ferrari_front_lines(
         except Exception as e:
             logger.warning(f"[FRONT_LINES MLB] JIT injury check failed: {e}")
     
-    # Return Oracle Apex picks - this is the source of truth for both NBA and MLB
+    # Return picks from vault-isolated collection
     return {
         "tier": "front_lines",
         "tier_label": f"Front Lines ({sport.upper()})",
-        "logic": "oracle_apex_stored",
+        "logic": "elite_vault" if sport == "nba" else "legacy_ferrari",
         "sport": sport,
         "collection": collection_name,
         "picks": picks,
         "count": len(picks),
-        "note": "Oracle Apex 3-Gate qualified picks" if picks else "No picks qualified - run rebuild to populate"
+        "note": "Elite Top 10 Sequential Claim picks" if sport == "nba" else "Oracle Apex qualified picks"
     }
 
 
@@ -930,12 +941,15 @@ async def get_ferrari_war_zone(
     
     Sport-aware: Pass ?sport=mlb for MLB data, ?sport=nba for NBA data.
     
+    **VAULT ISOLATION**: NBA reads from elite_war_zone (Elite Top 10 engine).
+    MLB reads from mlb_war_zone (legacy Ferrari).
+    
     Picks include:
     - Vision Intel analysis (intel_score, intel_verdict, vision_intel summary)
     - Composite scoring based on VK + Gemini confidence
     - All props that passed the Gemini gate (TRAP verdicts removed)
     """
-    from config.db_config import get_collection_name, validate_sport
+    from config.db_config import validate_sport
     
     response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
     
@@ -948,8 +962,12 @@ async def get_ferrari_war_zone(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     
-    # Read from sport-specific collection
-    collection_name = get_collection_name("war_zone", sport)
+    # VAULT ISOLATION: NBA uses elite collections, MLB uses legacy
+    if sport == "nba":
+        collection_name = "elite_war_zone"
+    else:
+        collection_name = "mlb_war_zone"
+    
     collection = _db[collection_name]
     
     cursor = collection.find({}, {"_id": 0}).limit(limit)
@@ -975,16 +993,16 @@ async def get_ferrari_war_zone(
         except Exception as e:
             logger.warning(f"[WAR_ZONE MLB] JIT injury check failed: {e}")
     
-    # Return Oracle Apex picks - this is the source of truth for both NBA and MLB
+    # Return picks from vault-isolated collection
     return {
         "tier": "war_zone",
         "tier_label": f"War Zone ({sport.upper()})",
-        "logic": "oracle_apex_stored",
+        "logic": "elite_vault" if sport == "nba" else "legacy_ferrari",
         "sport": sport,
         "collection": collection_name,
         "picks": picks,
         "count": len(picks),
-        "note": "Oracle Apex 3-Gate qualified picks" if picks else "No picks qualified - run rebuild to populate"
+        "note": "Elite Top 10 Sequential Claim picks" if sport == "nba" else "Oracle Apex qualified picks"
     }
 
 

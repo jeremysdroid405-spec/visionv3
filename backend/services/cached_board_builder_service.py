@@ -37,6 +37,9 @@ class CachedBoardBuilderService:
     # Global flag to skip legacy tier builder (set when using Elite Top 10)
     SKIP_LEGACY_TIER_BUILDER = False
     
+    # Global flag to skip ALL Ferrari tier rebuilds (set by Phase 7)
+    SKIP_ALL_FERRARI_REBUILDS = False
+    
     def __init__(self, db: AsyncIOMotorDatabase, tier_builder_service, parlay_builder_service):
         self.db = db
         self.tier_builder_service = tier_builder_service

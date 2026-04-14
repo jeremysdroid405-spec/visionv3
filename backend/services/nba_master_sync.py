@@ -112,10 +112,12 @@ class NBAMasterSync:
             # ================================================================
             # PHASE 7: ELITE TOP 10 HARD OVERWRITE
             # ================================================================
-            # CRITICAL: Set global flag to prevent tier_builder from running during/after Phase 7
+            # CRITICAL: Set global flags to prevent ANY tier rebuilds after Phase 7
             from services.cached_board_builder_service import CachedBoardBuilderService
             CachedBoardBuilderService.SKIP_LEGACY_TIER_BUILDER = True
-            logger.info("[NBA_MASTER_V2] Set SKIP_LEGACY_TIER_BUILDER = True (prevents tier_builder overwrites)")
+            CachedBoardBuilderService.SKIP_ALL_FERRARI_REBUILDS = True
+            logger.info("[NBA_MASTER_V2] Set SKIP_LEGACY_TIER_BUILDER = True")
+            logger.info("[NBA_MASTER_V2] Set SKIP_ALL_FERRARI_REBUILDS = True (protects NBA tiers from overwrites)")
             
             logger.info("=" * 70)
             logger.info("[NBA_MASTER_V2] PHASE 7: Elite Top 10 HARD OVERWRITE")
@@ -147,14 +149,14 @@ class NBAMasterSync:
             logger.info("=" * 70)
             
             # Final verification - ensure collections are NOT empty
-            final_sh = await self.db.ferrari_safe_haven.count_documents({})
-            final_fl = await self.db.ferrari_front_lines.count_documents({})
-            final_wz = await self.db.ferrari_war_zone.count_documents({})
+            final_sh = await self.db.elite_safe_haven.count_documents({})
+            final_fl = await self.db.elite_front_lines.count_documents({})
+            final_wz = await self.db.elite_war_zone.count_documents({})
             
-            logger.info("[NBA_MASTER_V2] FINAL VERIFICATION:")
-            logger.info(f"  ferrari_safe_haven: {final_sh}")
-            logger.info(f"  ferrari_front_lines: {final_fl}")
-            logger.info(f"  ferrari_war_zone: {final_wz}")
+            logger.info("[NBA_MASTER_V2] FINAL VERIFICATION (ELITE VAULT):")
+            logger.info(f"  elite_safe_haven: {final_sh}")
+            logger.info(f"  elite_front_lines: {final_fl}")
+            logger.info(f"  elite_war_zone: {final_wz}")
             
             # Final summary
             total_duration = (datetime.now(timezone.utc) - start_time).total_seconds()
@@ -172,7 +174,8 @@ class NBAMasterSync:
             
             metrics["verification"] = {
                 "collections_populated": (final_sh + final_fl + final_wz) > 0,
-                "phase7_overwrote_phase6": True
+                "vault_isolation": True,
+                "elite_collections_used": ["elite_safe_haven", "elite_front_lines", "elite_war_zone"]
             }
             
             logger.info("=" * 70)
@@ -341,30 +344,40 @@ class NBAMasterSync:
     
     async def _hard_overwrite_collection(self, collection_name: str, picks: list, tier_name: str):
         """
-        HARD OVERWRITE: Atomic delete + insert for tier collection.
+        HARD OVERWRITE: Atomic delete + insert for ELITE tier collection.
         
-        This ensures Phase 7 data ALWAYS replaces Phase 6 legacy data.
+        VAULT ISOLATION: Writes to elite_* collections exclusively.
+        This isolates Elite Top 10 data from legacy Ferrari overwrites.
         """
-        collection = self.db[collection_name]
+        # Map to elite collection names
+        elite_collection_map = {
+            "ferrari_safe_haven": "elite_safe_haven",
+            "ferrari_front_lines": "elite_front_lines", 
+            "ferrari_war_zone": "elite_war_zone"
+        }
+        
+        # Use elite collection
+        elite_name = elite_collection_map.get(collection_name, f"elite_{collection_name}")
+        collection = self.db[elite_name]
         
         # Count before
         before_count = await collection.count_documents({})
         
         # HARD DELETE all existing documents
         delete_result = await collection.delete_many({})
-        logger.info(f"[PHASE_7] {tier_name}: Deleted {delete_result.deleted_count} legacy documents")
+        logger.info(f"[PHASE_7] {tier_name}: Deleted {delete_result.deleted_count} documents from {elite_name}")
         
         # INSERT new Elite Top 10 picks
         if picks:
             insert_result = await collection.insert_many(picks)
-            logger.info(f"[PHASE_7] {tier_name}: Inserted {len(insert_result.inserted_ids)} Elite Top 10 picks")
+            logger.info(f"[PHASE_7] {tier_name}: Inserted {len(insert_result.inserted_ids)} Elite Top 10 picks to {elite_name}")
         else:
-            logger.info(f"[PHASE_7] {tier_name}: No picks to insert (0 qualified)")
+            logger.info(f"[PHASE_7] {tier_name}: No picks to insert (0 qualified) to {elite_name}")
         
         # Count after
         after_count = await collection.count_documents({})
         
-        logger.info(f"[PHASE_7] {tier_name} OVERWRITE: {before_count} -> {after_count}")
+        logger.info(f"[PHASE_7] {tier_name} VAULT ISOLATION: {elite_name} now has {after_count} picks")
     
     async def run_elite_sync(self) -> Dict[str, Any]:
         """

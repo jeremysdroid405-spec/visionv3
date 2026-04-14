@@ -562,6 +562,21 @@ class FerrariTierService:
             target_sport: Sport to process ('nba' or 'mlb')
             refresh_intel: If True, force regenerate all Vision Intel (ignores cache)
         """
+        # Check if Elite Top 10 mode is active (Phase 7 completed)
+        from services.cached_board_builder_service import CachedBoardBuilderService
+        if CachedBoardBuilderService.SKIP_ALL_FERRARI_REBUILDS and target_sport == "nba":
+            logger.info("=" * 70)
+            logger.info("[PROPVISION v7] SKIPPED - Elite Top 10 mode active (Phase 7 completed)")
+            logger.info("[PROPVISION v7] NBA tier collections are protected from overwrite")
+            logger.info("=" * 70)
+            return {
+                "success": True,
+                "skipped": True,
+                "reason": "Elite Top 10 mode active",
+                "synced_at": sync_time.isoformat(),
+                "sport": target_sport
+            }
+        
         # Store refresh_intel for use in diff_check_and_enrich
         self._refresh_intel = refresh_intel
         
