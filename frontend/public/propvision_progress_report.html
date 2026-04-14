@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>PropVision AI - Project Progress Report</title>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 900px; margin: 0 auto; padding: 20px; line-height: 1.6; }
+        h1 { color: #1a365d; border-bottom: 3px solid #2563eb; padding-bottom: 10px; }
+        h2 { color: #1e40af; margin-top: 30px; border-bottom: 1px solid #93c5fd; padding-bottom: 5px; }
+        h3 { color: #3b82f6; }
+        table { border-collapse: collapse; width: 100%; margin: 15px 0; }
+        th, td { border: 1px solid #ddd; padding: 10px; text-align: left; }
+        th { background-color: #2563eb; color: white; }
+        tr:nth-child(even) { background-color: #f8fafc; }
+        code { background-color: #f1f5f9; padding: 2px 6px; border-radius: 3px; font-family: monospace; }
+        pre { background-color: #1e293b; color: #e2e8f0; padding: 15px; border-radius: 5px; overflow-x: auto; }
+        .status-complete { color: #16a34a; font-weight: bold; }
+        .status-failed { color: #dc2626; font-weight: bold; }
+        .status-pending { color: #d97706; font-weight: bold; }
+        .section { background: #f8fafc; padding: 15px; border-radius: 8px; margin: 15px 0; border-left: 4px solid #2563eb; }
+        .critical { background: #fef2f2; border-left-color: #dc2626; }
+    </style>
+</head>
+<body>
+
+<h1>PropVision AI - Project Progress Report</h1>
+<p><strong>Generated:</strong> April 14, 2026</p>
+<p><strong>Job ID:</strong> 1f811669-ab62-4290-81dc-4fbb3cce00c7</p>
+
+<h2>Executive Summary</h2>
+<div class="section critical">
+    <h3>Current Critical Issue (P0)</h3>
+    <p><span class="status-failed">UNRESOLVED:</span> Vision Intel Summary not displaying on PlayerDetailPage.jsx frontend</p>
+    <p><strong>Root Cause:</strong> <code>mlb_master_hub_2026</code> collection has 0 documents - never populated</p>
+    <p><strong>Impact:</strong> MLB Vision Intel features are non-functional despite backend code being in place</p>
+</div>
+
+<h2>Original Problem Statement</h2>
+<p>Restructure the React/FastAPI betting app to a 100% Local-First Database Model, integrating multi-sport support (NBA/MLB) and an exact MLB/NBA evaluation system.</p>
+
+<h3>Core Requirements</h3>
+<ul>
+    <li>Implement BallDontLie (BDL) API modifiers precisely</li>
+    <li>Establish automated daily prop capture</li>
+    <li>Integrate Google/Apple OAuth</li>
+    <li>Implement Stripe for payments</li>
+    <li>Refactor Dashboard.jsx</li>
+    <li>Implement "High-Friction Ensemble" MLB MLR model</li>
+    <li>Display Vision Intel Suite instantly via Rolling Cache Architecture</li>
+</ul>
+
+<h2>Architecture Overview</h2>
+<table>
+    <tr><th>Component</th><th>Technology</th><th>Status</th></tr>
+    <tr><td>Frontend</td><td>React with Shadcn/UI</td><td class="status-complete">Running</td></tr>
+    <tr><td>Backend</td><td>FastAPI (Python)</td><td class="status-complete">Running</td></tr>
+    <tr><td>Database</td><td>MongoDB</td><td class="status-complete">Connected</td></tr>
+    <tr><td>ML Models</td><td>XGBoost (64 features)</td><td class="status-complete">Trained</td></tr>
+    <tr><td>Cache</td><td>Rolling Cache Architecture</td><td class="status-pending">Partial</td></tr>
+</table>
+
+<h2>Completed Work</h2>
+
+<h3>1. MLB Physical Engine v2.1</h3>
+<ul>
+    <li>64-feature XGBoost model built and trained</li>
+    <li>5 models: hits, total_bases, rbis, runs, pitcher_strikeouts</li>
+    <li>File: <code>/app/backend/services/mlb_physical_engine.py</code></li>
+    <li>Models: <code>/app/backend/models/mlb_physical/*.pkl</code></li>
+</ul>
+
+<h3>2. Ferrari+ Tier System v4</h3>
+<table>
+    <tr><th>Tier</th><th>Sharp Price Window</th><th>Description</th></tr>
+    <tr><td>Safe Haven</td><td>≤ -250</td><td>Ultra-high probability locks</td></tr>
+    <tr><td>Front Lines</td><td>-245 to -115</td><td>Strong favorites with edge</td></tr>
+    <tr><td>War Zone</td><td>-114 to +500</td><td>Value plays and longshots</td></tr>
+</table>
+
+<h3>3. Global Variance Synchronization (L20 Stabilized Shield)</h3>
+<table>
+    <tr><th>Layer</th><th>Metric</th><th>Window</th><th>Purpose</th></tr>
+    <tr><td>Performance</td><td>Hit Rate</td><td>L10</td><td>Current "Heat"</td></tr>
+    <tr><td>Risk</td><td>CV/Sigma</td><td>L20</td><td>"Stabilized Shield"</td></tr>
+</table>
+
+<h3>4. Rolling Cache Architecture v2.0</h3>
+<ul>
+    <li>APEX-ONLY CACHING - No empty shell props</li>
+    <li>Format Normalization Layer</li>
+    <li>Cache Integrity Checking</li>
+    <li>Files:
+        <ul>
+            <li><code>/app/backend/services/rolling_cache_manager.py</code></li>
+            <li><code>/app/backend/services/normalize_to_intel_mapping.py</code></li>
+            <li><code>/app/backend/services/filter_logic.py</code></li>
+        </ul>
+    </li>
+</ul>
+
+<h3>5. MLB Scout Intel Badges</h3>
+<ul>
+    <li>8 MLB-specific badges integrated</li>
+    <li>Pure Contact, High-Heat Trap, Workhorse, Barrel Master</li>
+    <li>Wind Blowing Out, Cold Zone, BvP Dominator, Split Advantage</li>
+</ul>
+
+<h3>6. Audit Documentation</h3>
+<ul>
+    <li><code>/app/frontend/public/mlb_mlr_strict_audit.json</code> - 64-feature documentation</li>
+    <li><code>/app/memory/FERRARI_METHODOLOGY.md</code> - Complete methodology</li>
+    <li><code>/app/memory/FERRARI_BUILD_GUIDE.md</code> - Technical specification</li>
+</ul>
+
+<h2>Database Status</h2>
+<table>
+    <tr><th>Collection</th><th>Documents</th><th>Status</th></tr>
+    <tr><td>nba_master_hub_2026</td><td>326</td><td class="status-complete">Populated</td></tr>
+    <tr><td>mlb_master_hub_2026</td><td>0</td><td class="status-failed">EMPTY - CRITICAL</td></tr>
+    <tr><td>dg_cached_board</td><td>66</td><td class="status-complete">Active</td></tr>
+    <tr><td>dg_live_props</td><td>1439</td><td class="status-complete">Active</td></tr>
+</table>
+
+<h2>API Endpoints</h2>
+<h3>Ferrari Tiers</h3>
+<ul>
+    <li><code>GET /api/v3/ferrari/safe-haven</code></li>
+    <li><code>GET /api/v3/ferrari/front-lines</code></li>
+    <li><code>GET /api/v3/ferrari/war-zone</code></li>
+    <li><code>GET /api/v3/mlb/ferrari/safe-haven</code></li>
+    <li><code>GET /api/v3/mlb/ferrari/front-lines</code></li>
+    <li><code>GET /api/v3/mlb/ferrari/war-zone</code></li>
+</ul>
+
+<h3>Intel Cache</h3>
+<ul>
+    <li><code>GET /api/v3/intel-cache/nba</code></li>
+    <li><code>GET /api/v3/intel-cache/mlb</code></li>
+    <li><code>GET /api/v3/intel-cache/status</code></li>
+    <li><code>POST /api/v3/intel-cache/refresh/{sport}</code></li>
+</ul>
+
+<h2>Pending Tasks</h2>
+<table>
+    <tr><th>Priority</th><th>Task</th><th>Status</th></tr>
+    <tr><td>P0</td><td>Fix Vision Intel display on PlayerDetailPage</td><td class="status-failed">Blocked - No MLB Hub Data</td></tr>
+    <tr><td>P0</td><td>Populate mlb_master_hub_2026 collection</td><td class="status-failed">Not Started</td></tr>
+    <tr><td>P1</td><td>Google OAuth integration</td><td class="status-pending">Pending</td></tr>
+    <tr><td>P1</td><td>Stripe payments integration</td><td class="status-pending">Pending</td></tr>
+    <tr><td>P2</td><td>Wind Tunnel weather API</td><td class="status-pending">Pending</td></tr>
+    <tr><td>P2</td><td>Refactor Dashboard.jsx</td><td class="status-pending">Pending</td></tr>
+</table>
+
+<h2>Files Reference</h2>
+<h3>Backend Services</h3>
+<pre>
+/app/backend/services/
+├── mlb_physical_engine.py      # MLR model (64 features)
+├── mlb_oracle_apex_service.py  # Elite tier orchestrator
+├── rolling_cache_manager.py    # Cache management
+├── filter_logic.py             # Strict Board Lockdown
+├── normalize_to_intel_mapping.py
+├── mlb_tier_service.py
+├── mlb_badge_system.py
+└── mlb_deep_ingestion.py       # Hub population (NOT RUN)
+</pre>
+
+<h3>Frontend Components</h3>
+<pre>
+/app/frontend/src/components/dashboard/
+├── PlayerDetailPage.jsx        # Vision Intel display (BROKEN)
+├── Dashboard.jsx
+└── PickCard.jsx
+</pre>
+
+<h3>Memory/Documentation</h3>
+<pre>
+/app/memory/
+├── PRD.md
+├── CHANGELOG.md
+├── FERRARI_METHODOLOGY.md
+└── FERRARI_BUILD_GUIDE.md
+</pre>
+
+<h2>3rd Party Integrations</h2>
+<table>
+    <tr><th>Service</th><th>Purpose</th><th>Status</th></tr>
+    <tr><td>Gemini 3.1 Flash-Lite</td><td>AI Context Analysis</td><td class="status-complete">Active (Emergent Key)</td></tr>
+    <tr><td>The Odds API</td><td>Sharp Market Data</td><td class="status-complete">Active (User Key)</td></tr>
+    <tr><td>BallDontLie API</td><td>Game Logs & Stats</td><td class="status-complete">Active (User Key)</td></tr>
+</table>
+
+<h2>Changelog Summary</h2>
+
+<h3>April 14, 2026</h3>
+<ul>
+    <li>Implemented Strict Board Lockdown v2.0 (Ferrari Tiers Only)</li>
+    <li>Created filter_logic.py for surgical enrichment</li>
+    <li>Attempted Vision Intel cache merge fixes</li>
+    <li>Discovered mlb_master_hub_2026 is empty (CRITICAL)</li>
+</ul>
+
+<h3>April 10, 2026</h3>
+<ul>
+    <li>MLB Scout Intel Badges integrated</li>
+    <li>Sport-aware Vision Intel Suite</li>
+    <li>MLB stats display fix (L5/L10/Avg)</li>
+</ul>
+
+<h3>April 2, 2026</h3>
+<ul>
+    <li>Ferrari v4 Pipeline - Final Architectural Lock</li>
+    <li>5% Absolute Edge requirement</li>
+    <li>Median Anchor implementation</li>
+</ul>
+
+<hr>
+<p><em>Report generated for support escalation. Contact: support@emergent.sh</em></p>
+
+</body>
+</html>
