@@ -1556,12 +1556,14 @@ class OracleApexService:
         ]
         
         # Additional Safe Haven filters: 
-        # - HR >= 60% (trust gate)
+        # - HR >= 60% (trust gate - L10 historical)
+        # - L5 HR >= 70% (RECENT CONSISTENCY - added to prevent fake safe picks)
         # - CV <= 0.35 (NBA-specific tighter CV)
         # - vk_prob_over >= 70% (MLR SUPREMACY - predictive model MUST show strong confidence)
         safe_haven_candidates = [
             p for p in safe_haven_candidates 
             if p['true_hit_rate'] >= 60.0 
+            and p.get('h5_rate', 0) >= 70.0  # L5 RECENT CONSISTENCY: Must hit 70%+ in last 5
             and p['cv'] <= 0.35
             and p.get('vk_prob_over', 0) >= 70.0  # MLR SUPREMACY: Reject < 70%
         ]
