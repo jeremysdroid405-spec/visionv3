@@ -1454,6 +1454,16 @@ class MLBOracleApexService:
                 'hit_count': hit_count,
                 'true_hit_rate': round(true_hit_rate, 1),
                 
+                # *** HIT RATES FOR FRONTEND DISPLAY ***
+                'h5_rate': prop.get('hit_rate_l5') or prop.get('h5_rate'),
+                'h10_rate': prop.get('hit_rate_l10') or prop.get('h10_rate'),
+                'season_avg': prop.get('season_average') or prop.get('season_avg'),
+                'hit_rates': {
+                    'l5': prop.get('hit_rate_l5') or prop.get('h5_rate'),
+                    'l10': prop.get('hit_rate_l10') or prop.get('h10_rate'),
+                },
+                'last_10_games': prop.get('last_10_games'),
+                
                 # Consistency
                 'cv': round(cv, 3) if cv else None,
                 
@@ -1726,6 +1736,16 @@ class MLBOracleApexService:
                 'hit_count': hit_count,
                 'true_hit_rate': round(true_hit_rate, 1),
                 
+                # *** HIT RATES FOR FRONTEND DISPLAY ***
+                'h5_rate': prop.get('hit_rate_l5') or prop.get('h5_rate'),
+                'h10_rate': prop.get('hit_rate_l10') or prop.get('h10_rate'),
+                'season_avg': prop.get('season_average') or prop.get('season_avg'),
+                'hit_rates': {
+                    'l5': prop.get('hit_rate_l5') or prop.get('h5_rate'),
+                    'l10': prop.get('hit_rate_l10') or prop.get('h10_rate'),
+                },
+                'last_10_games': prop.get('last_10_games'),
+                
                 # Consistency
                 'cv': round(cv, 3) if cv else None,
                 
@@ -1994,6 +2014,16 @@ class MLBOracleApexService:
                 'games_played': games_played,
                 'hit_count': hit_count,
                 'true_hit_rate': round(true_hit_rate, 1),
+                
+                # *** HIT RATES FOR FRONTEND DISPLAY ***
+                'h5_rate': prop.get('hit_rate_l5') or prop.get('h5_rate'),
+                'h10_rate': prop.get('hit_rate_l10') or prop.get('h10_rate'),
+                'season_avg': prop.get('season_average') or prop.get('season_avg'),
+                'hit_rates': {
+                    'l5': prop.get('hit_rate_l5') or prop.get('h5_rate'),
+                    'l10': prop.get('hit_rate_l10') or prop.get('h10_rate'),
+                },
+                'last_10_games': prop.get('last_10_games'),
                 
                 # Volatility
                 'cv': round(cv, 3) if cv else None,
