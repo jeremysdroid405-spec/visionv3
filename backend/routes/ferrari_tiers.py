@@ -3385,6 +3385,7 @@ async def lasso_predict(
     player_name: str,
     target_stat: str,
     line: float = Query(None, description="PrizePicks line to compute Vision Score"),
+    playoff: bool = Query(False, description="Enable Playoff Intensity override for rest-game outliers"),
 ):
     """
     Lasso-Weighted Prediction with Vision Score.
@@ -3455,6 +3456,7 @@ async def lasso_predict(
         game_logs=all_logs,
         player_name=name,
         line=line,
+        playoff_intensity=playoff,
     )
 
     if result and result.get("error"):

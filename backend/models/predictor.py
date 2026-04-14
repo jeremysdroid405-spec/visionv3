@@ -157,7 +157,21 @@ class SurvivorFeatureBuilder:
     def build(
         self, game_logs: List[Dict], raw_keys: List[str], survivor_set: set
     ) -> Dict[str, float]:
-        """Build ONLY the survivor features from chronological game logs."""
+        """Build ONLY the survivor features from chronological game logs.
+        Filters out DNP games (min=='00' or fga==0 for NBA, at_bats==None for MLB)."""
+        # DNP filter: remove games where player didn't actually play
+        if self.sport == "nba":
+            game_logs = [
+                g for g in game_logs
+                if g.get("min") not in ("00", "", "0", None)
+                and (g.get("fga") or 0) > 0
+            ]
+        else:
+            game_logs = [
+                g for g in game_logs
+                if g.get("at_bats") is not None or g.get("ip") is not None
+            ]
+
         if len(game_logs) < 11:
             return {}
 
@@ -272,8 +286,10 @@ class PropVisionLassoEngine:
         game_logs: List[Dict],
         player_name: str = "",
         line: float = None,
+        playoff_intensity: bool = False,
     ) -> Optional[Dict]:
-        """Full prediction with Vision Score."""
+        """Full prediction with Vision Score.
+        playoff_intensity: Override prev_fga to L10 avg (assumes starter volume)."""
         mkey = self.resolve_model_key(sport, target_stat)
         if not mkey:
             return {"error": f"No model for {sport}/{target_stat}"}
@@ -287,11 +303,24 @@ class PropVisionLassoEngine:
         if not features:
             return {"error": "Insufficient game log history (need 11+ games)"}
 
+        # Playoff Intensity Override: replace prev_fga with L10 avg if last game
+        # was a rest/cooldown outlier (prev_fga < L10_avg * 0.6)
+        if playoff_intensity and sport == "nba":
+            prev_fga = features.get("prev_fga", 0)
+            l10_fga = features.get("L10_avg_fga", prev_fga)
+            if prev_fga < l10_fga * 0.6 and l10_fga > 10:
+                features["prev_fga"] = l10_fga
+                features["_playoff_override"] = True
+        if not features:
+            return {"error": "Insufficient game log history (need 11+ games)"}
+
         result = model.predict(features)
         result["player_name"] = player_name
         result["sport"] = sport
         result["target_stat"] = target_stat
         result["games_analyzed"] = len(game_logs)
+        if features.get("_playoff_override"):
+            result["playoff_intensity_applied"] = True
 
         # Vision Score
         if line is not None and line > 0:
