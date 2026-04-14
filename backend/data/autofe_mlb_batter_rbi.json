@@ -1,0 +1,165 @@
+{
+  "sport": "mlb",
+  "player_type": "batter",
+  "target_stat": "rbi",
+  "total_features_engineered": 366,
+  "survivors": 16,
+  "killed": 350,
+  "lasso_alpha": 0.011988341643596925,
+  "lasso_intercept": 0.44389334321022034,
+  "r_squared": 0.013220608234405518,
+  "discovered_features": [],
+  "survivor_list": [
+    [
+      "L10_avg_plate_appearances",
+      0.04342247545719147,
+      0.04342247545719147
+    ],
+    [
+      "L10_std_stolen_bases",
+      0.01885239966213703,
+      -0.01885239966213703
+    ],
+    [
+      "L5_std_fielding_chances",
+      0.017871534451842308,
+      0.017871534451842308
+    ],
+    [
+      "L10_std_rbi",
+      0.014024188742041588,
+      0.014024188742041588
+    ],
+    [
+      "L10_avg_slg",
+      0.013058041222393513,
+      0.013058041222393513
+    ],
+    [
+      "L10_std_hr",
+      0.010854627937078476,
+      0.010854627937078476
+    ],
+    [
+      "L10_avg_bb",
+      0.01029582042247057,
+      0.01029582042247057
+    ],
+    [
+      "L10_avg_hit_by_pitch",
+      0.006122376304119825,
+      0.006122376304119825
+    ],
+    [
+      "L5_avg_sac_bunts",
+      0.0031955502927303314,
+      -0.0031955502927303314
+    ],
+    [
+      "L10_std_fielding_chances",
+      0.002017010934650898,
+      0.002017010934650898
+    ],
+    [
+      "L5_avg_hit_by_pitch",
+      0.0010574450716376305,
+      0.0010574450716376305
+    ],
+    [
+      "L3_std_runs",
+      0.0008367941481992602,
+      0.0008367941481992602
+    ],
+    [
+      "L10_avg_k",
+      0.0002147019113181159,
+      0.0002147019113181159
+    ],
+    [
+      "L10_avg_fly_outs",
+      5.970814163447358e-05,
+      5.970814163447358e-05
+    ],
+    [
+      "L3_std_left_on_base",
+      2.056563062069472e-05,
+      2.056563062069472e-05
+    ],
+    [
+      "ix_bb_x_fly_outs",
+      2.5812573767325375e-06,
+      2.5812573767325375e-06
+    ]
+  ],
+  "raw_keys_found": [
+    "air_outs",
+    "assists",
+    "at_bats",
+    "avg",
+    "bb",
+    "caught_stealing",
+    "doubles",
+    "errors",
+    "fielding_chances",
+    "fielding_pct",
+    "fly_outs",
+    "game_id",
+    "gidp",
+    "ground_outs",
+    "hit_by_pitch",
+    "hits",
+    "hr",
+    "intentional_walks",
+    "k",
+    "left_on_base",
+    "line_outs",
+    "obp",
+    "plate_appearances",
+    "pop_outs",
+    "putouts",
+    "rbi",
+    "runs",
+    "sac_bunts",
+    "sac_flies",
+    "slg",
+    "stolen_bases",
+    "total_bases",
+    "triples"
+  ],
+  "scaler_means": {
+    "L10_avg_plate_appearances": 3.694730694707734,
+    "L10_std_stolen_bases": 0.15903630651315787,
+    "L5_std_fielding_chances": 2.0690888712076014,
+    "L10_std_rbi": 0.693960412803731,
+    "L10_avg_slg": 0.42073326137836625,
+    "L10_std_hr": 0.2510695739499731,
+    "L10_avg_bb": 0.30920231571654605,
+    "L10_avg_hit_by_pitch": 0.04333313956422832,
+    "L5_avg_sac_bunts": 0.010433564967213722,
+    "L10_std_fielding_chances": 2.2712654282987317,
+    "L5_avg_hit_by_pitch": 0.04322810361757783,
+    "L3_std_runs": 0.4274447094519734,
+    "L10_avg_k": 0.7829725189770215,
+    "L10_avg_fly_outs": 0.5008461276036568,
+    "L3_std_left_on_base": 0.9470155451966534,
+    "ix_bb_x_fly_outs": 0.12405905350994924
+  },
+  "scaler_scales": {
+    "L10_avg_plate_appearances": 0.656585322099058,
+    "L10_std_stolen_bases": 0.21868455938072534,
+    "L5_std_fielding_chances": 1.2097592207212524,
+    "L10_std_rbi": 0.3494162286068968,
+    "L10_avg_slg": 0.09626474577574547,
+    "L10_std_hr": 0.20371374046169521,
+    "L10_avg_bb": 0.20932885178185195,
+    "L10_avg_hit_by_pitch": 0.07036148813702134,
+    "L5_avg_sac_bunts": 0.04949089005423755,
+    "L10_std_fielding_chances": 1.1414133569805285,
+    "L5_avg_hit_by_pitch": 0.09584244902209095,
+    "L3_std_runs": 0.3324495339649798,
+    "L10_avg_k": 0.34278220729729164,
+    "L10_avg_fly_outs": 0.23770430958213448,
+    "L3_std_left_on_base": 0.5793061229748944,
+    "ix_bb_x_fly_outs": 0.4250603966460938
+  }
+}

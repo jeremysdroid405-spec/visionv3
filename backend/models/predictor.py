@@ -29,7 +29,11 @@ CONFIDENCE_TIERS = [
 MODEL_REGISTRY = {
     ("mlb", "batter", "hits"): "autofe_mlb_batter_hits.json",
     ("mlb", "batter", "total_bases"): "autofe_mlb_batter_total_bases.json",
+    ("mlb", "batter", "rbi"): "autofe_mlb_batter_rbi.json",
+    ("mlb", "batter", "runs"): "autofe_mlb_batter_runs.json",
     ("nba", "all", "pts"): "autofe_nba_all_pts.json",
+    ("nba", "all", "reb"): "autofe_nba_all_reb.json",
+    ("nba", "all", "ast"): "autofe_nba_all_ast.json",
 }
 
 # Stat type aliases: what PrizePicks calls it -> model target key
@@ -38,9 +42,20 @@ STAT_ALIASES = {
     "Hits": "hits",
     "total_bases": "total_bases",
     "Total Bases": "total_bases",
+    "rbi": "rbi",
+    "rbis": "rbi",
+    "RBIs": "rbi",
+    "runs": "runs",
+    "Runs": "runs",
     "pts": "pts",
     "points": "pts",
     "Points": "pts",
+    "reb": "reb",
+    "rebounds": "reb",
+    "Rebounds": "reb",
+    "ast": "ast",
+    "assists": "ast",
+    "Assists": "ast",
 }
 
 HIGH_EDGE_THRESHOLD = 0.15  # 15% of line
