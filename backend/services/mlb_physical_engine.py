@@ -153,19 +153,19 @@ STAT_TYPES = ['hits', 'total_bases', 'rbis', 'runs', 'pitcher_strikeouts',
 STAT_FIELD_MAP = {
     'hits': 'hits',
     'total_bases': 'total_bases',
-    'rbis': 'rbi',  # BDL API uses 'rbi' not 'rbis'
-    'rbi': 'rbi',
+    'rbis': 'rbis',  # Our database uses 'rbis'
+    'rbi': 'rbis',   # Alias
     'runs': 'runs',
     'stolen_bases': 'stolen_bases',
     'home_runs': 'home_runs',
-    'hr': 'hr',
+    'hr': 'home_runs',
     'walks': 'walks',
-    'bb': 'bb',
+    'bb': 'walks',
     'strikeouts': 'strikeouts',
-    'k': 'k',
+    'k': 'strikeouts',
     'pitcher_strikeouts': 'pitcher_strikeouts',
-    'p_k': 'p_k',
-    'hits+runs+rbis': ['hits', 'runs', 'rbi'],
+    'p_k': 'pitcher_strikeouts',
+    'hits+runs+rbis': ['hits', 'runs', 'rbis'],
 }
 
 STAT_ALIASES = {

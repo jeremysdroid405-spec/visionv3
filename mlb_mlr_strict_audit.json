@@ -1,14 +1,18 @@
 {
-  "version": "MLB_ORACLE_APEX_v2.0",
-  "generated_at": "2026-04-14T05:11:51.868134+00:00",
-  "description": "1:1 functional replica of NBA_MLR_STRICT_v2.2 - Trained on 3-Year BDL GOAT Tier Data",
-  "training_summary": {
+  "version": "MLB_ORACLE_APEX_v2.0_FINAL",
+  "generated_at": "2026-04-14T05:20:55.140250+00:00",
+  "description": "1:1 functional replica of NBA_MLR_STRICT_v2.2 - 5-Model Ensemble with 64 Physical Features",
+  "data_summary": {
+    "mlb_master_hub_2026": {
+      "total_players": 797,
+      "players_with_game_logs": 796,
+      "players_with_lr_splits": 380
+    },
     "data_source": "BDL GOAT Tier API - 3 Year Backfill (2023-2025)",
-    "total_game_logs": 14725,
-    "players_with_splits": 374,
-    "training_samples_per_stat": {
+    "training_samples": {
       "hits": 2703,
       "total_bases": 2626,
+      "rbis": 2703,
       "runs": 2703,
       "pitcher_strikeouts": 2703
     }
@@ -17,41 +21,41 @@
     "rule_1_no_fallbacks": {
       "description": "DELETE all OR season_avg logic",
       "behavior": "If BDL L/R splits missing -> return NULL prediction, disqualify prop",
-      "validation_func": "_validate_bdl_data()"
+      "code": "_validate_bdl_data() -> Tuple[bool, str]"
     },
     "rule_2_high_precision": {
       "description": "Predictions like 4.38 K, not rounded integers",
-      "format": "round(prediction, 2) for 2 decimal places",
+      "format": "round(prediction, 2)",
       "examples": [
         "0.96 hits",
         "4.38 strikeouts",
-        "1.23 total_bases"
+        "1.23 total_bases",
+        "0.57 rbis"
       ]
     },
     "rule_3_sigma_linkage": {
-      "description": "TRUE L10 Standard Deviation from database game logs",
-      "source": "player.bdl_game_logs[:10] -> np.std(values, ddof=1)",
-      "no_defaults": "No 20% CV default - real variance only",
-      "mlb_floor": "Minimum CV of 0.35 for hitting stats (baseball volatility)"
+      "description": "TRUE L10 Standard Deviation from database",
+      "source": "np.std(last_10_game_values, ddof=1)",
+      "mlb_volatility_floor": "0.35 CV minimum for hitting stats"
     },
     "rule_4_edge_calculation": {
-      "formula": "vk_edge = vk_prob_over - implied_probability",
-      "implied_prob_formula": "abs(dk_odds) / (abs(dk_odds) + 100) * 100 for negative odds"
+      "formula": "vk_edge = vk_prob_over - implied_probability"
     }
   },
   "physical_brain_inputs": {
     "pvp_collision": {
-      "vs_left": "Stats vs Left-Handed Pitchers",
-      "vs_right": "Stats vs Right-Handed Pitchers",
+      "description": "Pitcher vs Batter historical splits",
       "fields": [
-        "at_bats",
-        "hits",
-        "home_runs",
-        "strikeouts",
-        "walks",
+        "vs_left",
+        "vs_right"
+      ],
+      "sub_metrics": [
         "avg",
         "slg",
-        "obp"
+        "obp",
+        "k_rate",
+        "bb_rate",
+        "iso"
       ]
     },
     "park_factors": {
@@ -63,35 +67,13 @@
         "k",
         "tb"
       ],
-      "hitter_parks": [
-        "COL",
-        "CIN",
-        "TEX",
-        "BOS",
-        "PHI"
-      ],
-      "pitcher_parks": [
-        "SF",
-        "OAK",
-        "SD",
-        "MIA",
-        "SEA"
-      ]
+      "example_coors": "COL: hits=1.18, runs=1.25, hr=1.32 (HITTER PARADISE)",
+      "example_oracle": "SF: hits=0.92, runs=0.88, hr=0.80 (PITCHER FRIENDLY)"
     },
     "opponent_k_rate": {
-      "description": "Team-level strikeout tendency modifier",
-      "high_k_teams": [
-        "ARI",
-        "DET",
-        "OAK",
-        "CHC"
-      ],
-      "low_k_teams": [
-        "HOU",
-        "NYY",
-        "CLE",
-        "KC"
-      ]
+      "description": "Team-level strikeout tendency",
+      "high_k_teams": "ARI (1.14), DET (1.12), OAK (1.10)",
+      "low_k_teams": "HOU (0.92), KC (0.91), CLE (0.93)"
     }
   },
   "market_context_inputs": {
@@ -177,9 +159,10 @@
       "ceiling_l10"
     ]
   },
-  "trained_models": {
+  "trained_models_5": {
     "hits": {
       "version": "MLB_ORACLE_APEX_v2.0",
+      "trained_at": "2026-04-14T05:18:42.862153+00:00",
       "n_features": 64,
       "model_type": "XGBRegressor",
       "top_20_features": {
@@ -207,6 +190,7 @@
     },
     "total_bases": {
       "version": "MLB_ORACLE_APEX_v2.0",
+      "trained_at": "2026-04-14T05:18:42.867315+00:00",
       "n_features": 64,
       "model_type": "XGBRegressor",
       "top_20_features": {
@@ -232,8 +216,37 @@
         "l20_avg": 0.0184
       }
     },
+    "rbis": {
+      "version": "MLB_ORACLE_APEX_v2.0",
+      "trained_at": "2026-04-14T05:18:42.872651+00:00",
+      "n_features": 64,
+      "model_type": "XGBRegressor",
+      "top_20_features": {
+        "matchup_slg": 0.030105,
+        "rhp_slg": 0.029826,
+        "range_l5": 0.027583,
+        "combined_slg": 0.027431,
+        "platoon_obp": 0.022195,
+        "home_away_split": 0.021808,
+        "platoon_slg": 0.021721,
+        "rhp_iso": 0.021689,
+        "rhp_ab": 0.021495,
+        "bb_k_ratio": 0.021352,
+        "overall_bb_rate": 0.020802,
+        "lhp_avg": 0.020446,
+        "overall_k_rate": 0.020442,
+        "away_avg": 0.020125,
+        "l10_max": 0.0199,
+        "lhp_ab": 0.019337,
+        "l20_avg": 0.019195,
+        "rhp_obp": 0.019002,
+        "combined_avg": 0.018925,
+        "std_l10": 0.018675
+      }
+    },
     "runs": {
       "version": "MLB_ORACLE_APEX_v2.0",
+      "trained_at": "2026-04-14T05:18:42.877413+00:00",
       "n_features": 64,
       "model_type": "XGBRegressor",
       "top_20_features": {
@@ -261,6 +274,7 @@
     },
     "pitcher_strikeouts": {
       "version": "MLB_ORACLE_APEX_v2.0",
+      "trained_at": "2026-04-14T05:10:11.018468+00:00",
       "n_features": 64,
       "model_type": "XGBRegressor",
       "top_20_features": {
@@ -285,6 +299,28 @@
         "overall_bb_rate": 0.01726,
         "rhp_k_rate": 0.017204
       }
+    }
+  },
+  "model_performance": {
+    "hits": {
+      "mae": 0.7019,
+      "top_feature": "rhp_slg"
+    },
+    "total_bases": {
+      "mae": 1.2766,
+      "top_feature": "l5_min"
+    },
+    "rbis": {
+      "mae": 0.5705,
+      "top_feature": "matchup_slg"
+    },
+    "runs": {
+      "mae": 0.5406,
+      "top_feature": "l5_min"
+    },
+    "pitcher_strikeouts": {
+      "mae": 0.7483,
+      "top_feature": "contact_rate"
     }
   },
   "park_factors_30_stadiums": {
@@ -531,26 +567,9 @@
     "KC": 0.91,
     "MIN": 0.93
   },
-  "mlr_matchup_block_schema": {
-    "splits": {
-      "vs_lhp_avg": "batting average vs LHP",
-      "vs_rhp_avg": "batting average vs RHP",
-      "platoon_split": "rhp_avg - lhp_avg",
-      "matchup_avg": "avg based on opposing pitcher hand"
-    },
-    "park": {
-      "venue": "team abbreviation",
-      "factor": "park multiplier for stat type"
-    },
-    "opponent": {
-      "team": "opponent abbreviation",
-      "k_rate": "team K tendency"
-    },
-    "trends": {
-      "l5_avg": "last 5 games",
-      "l10_avg": "last 10 games",
-      "momentum": "(ewma_l5 - ewma_l10) / ewma_l10"
-    }
+  "vision_summary_format": {
+    "template": "Park: {venue} ({desc}, {factor}x) | vs {hand}HP: .{avg} | L10: {l10} | \u03c3={sigma}",
+    "example": "Park: COL (hitter-friendly, 1.18x) | vs RHP: .285 | L10: 0.8 | \u03c3=0.72"
   },
   "output_schema": {
     "mlr_predicted": "HIGH PRECISION prediction (2 decimals)",
@@ -558,6 +577,8 @@
     "z_score": "(line - prediction) / sigma",
     "vk_prob_over": "probability % of going OVER",
     "vk_edge": "vk_prob_over - implied_probability",
+    "mlr_matchup": "Full physical friction breakdown",
+    "vision_summary": "Human-readable park + splits explanation",
     "is_valid": "True if prediction succeeded"
   }
 }
