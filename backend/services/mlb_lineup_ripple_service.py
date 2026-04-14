@@ -255,31 +255,35 @@ class MLBLineupRippleService:
                 name = teammate.get('display_name', '')
                 ops = teammate.get('ops', 0)
                 
-                # Calculate PA bump based on position in sorted list
+                # Calculate REALISTIC PA bump based on position in sorted list
+                # MLB average: 4.0-4.5 PAs per game. When a star is out:
+                # - Primary beneficiary (moves up 1-2 spots): +0.5 PA
+                # - Secondary beneficiary: +0.4 PA
+                # - Tertiary beneficiary: +0.25 PA
                 if i == 0:
                     # Primary beneficiary - biggest PA bump
-                    pa_bump_pct = PA_BUMP_PERCENTAGE  # +10%
+                    expected_pa_bump = 0.5  # +0.5 expected PAs (realistic)
                     ripple_type = "primary"
                     modifier = PRIMARY_RIPPLE_MODIFIER
-                    expected_pa_bump = 0.5  # +0.5 expected PAs
+                    boost_pct = 0.10  # 10% internal boost for projections
                 elif i == 1:
                     # Secondary beneficiary
-                    pa_bump_pct = PA_BUMP_PERCENTAGE * 0.8  # +8%
+                    expected_pa_bump = 0.4  # +0.4 expected PAs
                     ripple_type = "secondary"
                     modifier = SECONDARY_RIPPLE_MODIFIER
-                    expected_pa_bump = 0.4
+                    boost_pct = 0.08
                 elif i == 2:
                     # Tertiary
-                    pa_bump_pct = PA_BUMP_PERCENTAGE * 0.5  # +5%
+                    expected_pa_bump = 0.25  # +0.25 expected PAs
                     ripple_type = "tertiary"
                     modifier = 5.0
-                    expected_pa_bump = 0.25
+                    boost_pct = 0.05
                 else:
                     # Protection penalty zone (players who were adjacent)
-                    pa_bump_pct = -PROTECTION_PENALTY  # -5%
+                    expected_pa_bump = -0.2  # -0.2 expected PAs (fewer hittable pitches)
                     ripple_type = "protection_penalty"
                     modifier = PROTECTION_PENALTY_MODIFIER
-                    expected_pa_bump = -0.2
+                    boost_pct = -0.05
                 
                 # Calculate projected stat boosts
                 props = teammate.get('cached_props', [])
@@ -289,12 +293,12 @@ class MLBLineupRippleService:
                     stat_type = prop.get('stat_type', '')
                     line = prop.get('line', 0)
                     if stat_type and line:
-                        # Apply PA bump to counting stats
-                        boosted = round(line * (1 + pa_bump_pct), 1)
+                        # Apply boost to counting stats
+                        boosted = round(line * (1 + boost_pct), 1)
                         projections[stat_type] = {
                             "original_line": line,
                             "boosted_projection": boosted,
-                            "boost_pct": round(pa_bump_pct * 100, 1)
+                            "boost_pct": round(boost_pct * 100, 1)
                         }
                 
                 beneficiary_data = {
@@ -304,11 +308,12 @@ class MLBLineupRippleService:
                     "position": teammate.get('primary_position'),
                     "ops": round(ops, 3),
                     "ripple_type": ripple_type,
-                    "pa_bump_pct": round(pa_bump_pct * 100, 1),
+                    # REALISTIC PA bump values (what frontend displays)
+                    "pa_bump_pct": expected_pa_bump,  # Now shows +0.5, +0.4, +0.25
                     "expected_pa_bump": expected_pa_bump,
                     "modifier": modifier,
                     "projections": projections,
-                    "lineup_ripple_adj": round(pa_bump_pct * 100, 1),
+                    "lineup_ripple_adj": expected_pa_bump,  # Also realistic
                     "missing_anchor": anchor_name,
                     "anchor_ops": anchor_ops,
                     "dynamic_calculation": True
@@ -316,10 +321,10 @@ class MLBLineupRippleService:
                 
                 result.append(beneficiary_data)
                 
-                if pa_bump_pct > 0:
-                    logger.info(f"[RippleService] PA Bump: {name} +{pa_bump_pct*100:.1f}% PAs (Missing: {anchor_name})")
+                if expected_pa_bump > 0:
+                    logger.info(f"[RippleService] PA Bump: {name} +{expected_pa_bump} PAs (Missing: {anchor_name})")
                 else:
-                    logger.info(f"[RippleService] Protection Penalty: {name} {pa_bump_pct*100:.1f}% (Adjacent to {anchor_name})")
+                    logger.info(f"[RippleService] Protection Penalty: {name} {expected_pa_bump} PAs (Adjacent to {anchor_name})")
             
             return result
             
