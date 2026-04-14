@@ -1,7 +1,7 @@
 # PropVision - Product Requirements Document
 
 ## Original Problem Statement
-Restructure the React/FastAPI betting app to a 100% Local-First Database Model, integrating multi-sport support (NBA/MLB) and an exact MLB/NBA evaluation system.
+Restructure the React/FastAPI betting app to a 100% Local-First Database Model, integrating multi-sport support (NBA/MLB) and an exact MLB/NBA evaluation system. Implement "Strict Board Lockdown" for Rolling Cache to only enrich live Ferrari tier props. Populate `mlb_master_hub_2026` with 3-year historical BDL data (2023-2025) as the Single Source of Truth, merging all historical logs into the primary player document.
 
 ## Core Architecture
 - **Frontend**: React with Shadcn/UI components
@@ -12,73 +12,31 @@ Restructure the React/FastAPI betting app to a 100% Local-First Database Model, 
 
 ## What's Been Implemented
 
+### MLB Master Hub 2026 - 3-Year Deep Ingestion (COMPLETE - 4/14/2026)
+- **777 active MLB players** ingested from BDL GOAT Tier API
+- **149,989 game logs** across 3 seasons (2023: 42,382 | 2024: 49,706 | 2025: 57,901)
+- **Schema v2.0 SSOT** with `history: {2023_season: [...], 2024_season: [...], 2025_season: [...]}`
+- **bdl_game_logs** flat array with mapped field names for backward compatibility
+- **is_pitcher / is_batter** flags derived from BDL position data
+- Async ingestion engine: `asyncio.Semaphore(15)` + `aiohttp` + `bulk_write` every 100 players
+- Completed in 257.9s (0.33s/player avg, 0 errors)
+
 ### Rolling Cache Architecture v2.0 (COMPLETE - 4/14/2026)
+- APEX-ONLY CACHING: Props only cached AFTER enrichment succeeds
+- Strict Board Lockdown: Only Ferrari tier props (~30 max) enriched
+- dk_odds parameter mismatch FIXED in `_calculate_nba_intel`
 
-#### APEX-ONLY CACHING
-- **NO "Empty Shell" Props** - Props are ONLY cached AFTER enrichment succeeds
-- **Format Normalization Layer** - `normalize_to_intel_mapping.py`
-- **Cache Integrity Check** - Missing intel treated as "new", re-processed
-- **Synchronous Enrichment Stitching** - Validate before cache write
+### Key DB Collections
+| Collection | Docs | Purpose |
+|-----------|------|---------|
+| mlb_master_hub_2026 | 777 | SSOT - 3yr history per player |
+| mlb_cached_board | 191 | Live prop board |
+| nba_master_hub_2026 | 559 | NBA player hub |
 
-#### Architecture Files:
-| File | Purpose |
-|------|---------|
-| `rolling_cache_manager.py` | Delta manager, JIT enrichment, cache I/O |
-| `normalize_to_intel_mapping.py` | Format normalization, validation |
-| `intel_cache.py` | API routes for instant frontend display |
-
-#### Cache Files:
-- `/app/backend/data/nba_master_active_cache.json`
-- `/app/backend/data/mlb_master_active_cache.json`
-
-#### API Endpoints:
-- `GET /api/v3/intel-cache/nba` - Instant NBA props (from JSON file)
-- `GET /api/v3/intel-cache/mlb` - Instant MLB props (from JSON file)
-- `GET /api/v3/intel-cache/status` - Cache health status
-
-### Enriched Prop Structure (Apex Version)
-```json
-{
-  "player_name": "Miguel Rojas",
-  "stat_type": "RBIs",
-  "line": 0.5,
-  "vk_data": {
-    "predicted": 0.25,
-    "prob_over": 33.1,
-    "prob_under": 66.9,
-    "edge": 2.4,
-    "verdict": "STRONG_UNDER",
-    "sigma_used": 0.56,
-    "sigma_source": "TRUE_L20_STABILIZED_SHIELD"
-  },
-  "vision_summary": "Park: LAD (neutral, 1.00x) | vs RHP: .255 | L10: 0.1 | σ=0.56",
-  "scout_badges": ["high_stability"],
-  "matchup_analysis": {
-    "splits": {"vs_lhp_avg": 0.23, "vs_rhp_avg": 0.255, ...},
-    "park": {"venue": "LAD", "factor": 1.0, ...},
-    "opponent": {"team": "LAD", "k_rate": 0.97},
-    "trends": {"l10_avg": 0.1, "momentum": -0.05}
-  },
-  "l20_variance": {
-    "cv_l20": 0.32,
-    "std_l20": 0.56,
-    "consistency": 0.68
-  },
-  "_enriched": true,
-  "_enriched_at": "2026-04-14T06:20:00Z"
-}
-```
-
-### Global Variance Synchronization (L20 Stabilized Shield)
-| Layer | Metric | Window | Purpose |
-|-------|--------|--------|---------|
-| Performance | Hit Rate | L10 | Current "Heat" |
-| Risk | CV/Sigma | L20 | "Stabilized Shield" |
-
-### MLB Physical Engine v2.1
-- 64-feature XGBoost model
-- 5 trained models: hits, total_bases, rbis, runs, pitcher_strikeouts
-- L20 variance calculations
+### API Endpoints
+- `GET /api/v3/mlb/player/{player_name}` - Full player data w/ game logs + props
+- `GET /api/v3/intel-cache/mlb` - Instant MLB props from JSON cache
+- `GET /api/v3/mlb/ferrari/safe-haven|front-lines|war-zone` - Ferrari tier picks
 
 ## Pending Tasks
 
@@ -87,19 +45,10 @@ Restructure the React/FastAPI betting app to a 100% Local-First Database Model, 
 - Stripe payments integration
 
 ### P2 - Medium Priority
-- Wind Tunnel weather API
+- Wind Tunnel weather API integration
 - Refactor frontend Dashboard.jsx
-
-## Test Results (4/14/2026)
-```
-MLB Cache Test:
-- New props: 2158
-- Enriched: 14  (players with BDL splits data)
-- Failed: 16   (players missing from master hub)
-- Total cached: 27 (ALL FULLY ENRICHED)
-- Empty shells: 0
-```
+- Refactor ferrari_tiers.py (technical debt)
 
 ---
 *Last Updated: April 14, 2026*
-*Rolling Cache Architecture v2.0 - Apex-Only Caching Complete*
+*MLB SSOT Ingestion Complete - 777 players, 149,989 game logs*

@@ -553,10 +553,9 @@ class DeltaManager:
                 player_name=prop.get('player_name', ''),
                 stat_type=prop.get('stat_type', ''),
                 line=prop.get('line', 0),
-                dk_odds=prop.get('dk_odds'),
+                direction=prop.get('direction', 'over'),
                 opponent=prop.get('opponent'),
-                game_date=prop.get('game_date'),
-                is_home=prop.get('is_home')
+                board_pick=prop
             )
             
             if intel_suite:
