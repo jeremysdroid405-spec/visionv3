@@ -479,12 +479,35 @@ class MLBInjuryVacuumService:
         """
         Get formatted alerts for the "Live Injury Advantage" section.
         
+        INTEGRATED with MLB Lineup Ripple Engine v1.0:
+        - Uses dynamic Lineup Anchor detection (OPS > .850)
+        - Calculates PA Bump (+10% primary, +8% secondary, +5% tertiary)
+        - Includes Protection Penalty (-5% for adjacent hitters)
+        
         ACTIVE PROP GATE:
         Only returns alerts where the beneficiary has an active prop on today's board.
         Injuries without actionable betting value are filtered out.
         """
+        # Import Lineup Ripple service for dynamic calculations
+        from services.mlb_lineup_ripple_service import get_mlb_ripple_service
+        
         if refresh or not self.last_injury_check:
             await self.check_injuries()
+        
+        # =====================================================================
+        # STEP 0: Get Lineup Ripple data
+        # =====================================================================
+        ripple_service = get_mlb_ripple_service(self.db)
+        ripple_alerts = await ripple_service.get_ripple_alerts(refresh=refresh)
+        ripple_by_player = {}
+        
+        for alert in ripple_alerts.get("alerts", []):
+            player_name = alert.get("beneficiary_name", "")
+            if player_name:
+                normalized = self._normalize_player_name(player_name)
+                ripple_by_player[normalized] = alert
+        
+        logger.info(f"[MLBVacuum] Lineup Ripple data: {len(ripple_by_player)} beneficiaries")
         
         # =====================================================================
         # STEP 1: Get active props from today's board
@@ -511,9 +534,72 @@ class MLBInjuryVacuumService:
         alerts = []
         filtered_count = 0
         
+        # =====================================================================
+        # First, add alerts from Lineup Ripple Engine (dynamic data)
+        # =====================================================================
+        for ripple_alert in ripple_alerts.get("alerts", []):
+            beneficiary_name = ripple_alert.get("beneficiary_name", "")
+            normalized_beneficiary = self._normalize_player_name(beneficiary_name)
+            
+            # ACTIVE PROP GATE
+            if active_players_on_board and normalized_beneficiary not in active_players_on_board:
+                filtered_count += 1
+                continue
+            
+            # Get the beneficiary's props for display
+            beneficiary_props = active_props_by_player.get(normalized_beneficiary, [])
+            prop_lines = []
+            for prop in beneficiary_props[:3]:
+                stat_type = prop.get("stat_type", "")
+                line = prop.get("line", 0)
+                if stat_type and line:
+                    prop_lines.append(f"{stat_type} {line}")
+            
+            # Convert Lineup Ripple format to Live Alerts format
+            pa_bump_pct = ripple_alert.get("pa_bump_pct", 0)
+            
+            alerts.append({
+                "id": ripple_alert.get("id", f"{ripple_alert.get('missing_anchor')}-{beneficiary_name}"),
+                "injured_player": ripple_alert.get("missing_anchor"),
+                "injured_team": ripple_alert.get("anchor_team"),
+                "injured_ops": ripple_alert.get("anchor_ops", 0),
+                "injury_reason": "Lineup Anchor OUT",
+                "time_ago": "Today",
+                "is_late_scratch": True,
+                "beneficiary_name": beneficiary_name,
+                # Lineup Ripple fields (PA-based)
+                "pa_bump_pct": pa_bump_pct,
+                "lineup_ripple_adj": ripple_alert.get("lineup_ripple_adj", 0),
+                "expected_pa_bump": ripple_alert.get("expected_pa_bump", 0),
+                # Legacy fields for compatibility
+                "ab_bump": pa_bump_pct,  # Map PA bump to AB bump for UI
+                "lineup_bump": ripple_alert.get("expected_pa_bump", 0),
+                "modifier": ripple_alert.get("modifier", 0),
+                "rank": ripple_alert.get("ripple_type", "secondary"),
+                "late_injury_boost": True,
+                # Active prop data
+                "has_active_prop": len(prop_lines) > 0,
+                "active_prop_lines": prop_lines,
+                "projection_boost": pa_bump_pct / 100,
+                "projection_boost_pct": f"+{pa_bump_pct}%",
+                # Dynamic calculation flag
+                "dynamic_calculation": True,
+                "source": "lineup_ripple_engine"
+            })
+        
+        # =====================================================================
+        # Then, add traditional injury alerts (fallback for non-anchor injuries)
+        # =====================================================================
         for vacuum in self.active_vacuums.values():
             injured_player = vacuum.get("injured_player")
             profile = vacuum.get("profile", {})
+            
+            # Skip if already covered by Lineup Ripple
+            if self._normalize_player_name(injured_player) in [
+                self._normalize_player_name(a.get("missing_anchor", "")) 
+                for a in ripple_alerts.get("alerts", [])
+            ]:
+                continue
             
             # Calculate time ago
             triggered_at = vacuum.get("triggered_at")
@@ -539,34 +625,31 @@ class MLBInjuryVacuumService:
                 beneficiary_name = beneficiary["name"]
                 normalized_beneficiary = self._normalize_player_name(beneficiary_name)
                 
-                # =====================================================================
-                # STEP 2: ACTIVE PROP GATE
-                # Only include if beneficiary has active prop on today's board
-                # =====================================================================
-                if normalized_beneficiary not in active_players_on_board:
+                # ACTIVE PROP GATE
+                if active_players_on_board and normalized_beneficiary not in active_players_on_board:
                     filtered_count += 1
                     logger.debug(f"[MLBVacuum] Filtered: {beneficiary_name} (no active props)")
                     continue
                 
+                # Check if this beneficiary has Lineup Ripple data
+                ripple_data = ripple_by_player.get(normalized_beneficiary, {})
+                
                 # Get the beneficiary's props for display
                 beneficiary_props = active_props_by_player.get(normalized_beneficiary, [])
                 prop_lines = []
-                for prop in beneficiary_props[:3]:  # Top 3 props
+                for prop in beneficiary_props[:3]:
                     stat_type = prop.get("stat_type", "")
                     line = prop.get("line", 0)
                     if stat_type and line:
                         prop_lines.append(f"{stat_type} {line}")
                 
-                # =====================================================================
-                # STEP 3: Calculate volume/tempo boost
-                # =====================================================================
-                ab_bump = beneficiary.get("ab_bump", 0)
-                lineup_bump = beneficiary.get("lineup_bump", 0)
+                # Use Lineup Ripple data if available, otherwise use legacy
+                ab_bump = ripple_data.get("pa_bump_pct", beneficiary.get("ab_bump", 0))
+                lineup_bump = ripple_data.get("expected_pa_bump", beneficiary.get("lineup_bump", 0))
                 
                 # Calculate adjusted projection boost
-                # Formula: base_modifier + (ab_bump * 0.1) + (late_injury_bonus if within 2 hours of game)
                 base_modifier = beneficiary.get("modifier", 0.05)
-                volume_boost = ab_bump * 0.1
+                volume_boost = ab_bump * 0.01 if ab_bump else 0  # Convert % to decimal
                 late_scratch_bonus = 0.05 if vacuum.get("is_late_scratch") else 0
                 total_projection_boost = base_modifier + volume_boost + late_scratch_bonus
                 
@@ -584,15 +667,20 @@ class MLBInjuryVacuumService:
                     "modifier": beneficiary.get("modifier", 0),
                     "rank": beneficiary.get("rank", "secondary"),
                     "late_injury_boost": beneficiary.get("late_injury_boost", True),
-                    # NEW: Active prop data
-                    "has_active_prop": True,
+                    # Active prop data
+                    "has_active_prop": len(prop_lines) > 0,
                     "active_prop_lines": prop_lines,
                     "projection_boost": round(total_projection_boost, 3),
-                    "projection_boost_pct": f"+{round(total_projection_boost * 100, 1)}%"
+                    "projection_boost_pct": f"+{round(total_projection_boost * 100, 1)}%",
+                    "dynamic_calculation": bool(ripple_data),
+                    "source": "lineup_ripple_engine" if ripple_data else "legacy_vacuum"
                 })
         
         if filtered_count > 0:
             logger.info(f"[MLBVacuum] Active Prop Gate: Filtered {filtered_count} beneficiaries (no active props)")
+        
+        # Sort by PA bump (highest first)
+        alerts.sort(key=lambda x: x.get("ab_bump", 0), reverse=True)
         
         return alerts
     

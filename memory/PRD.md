@@ -87,11 +87,10 @@ The system for calculating "Lineup Ripple" effects in MLB when Lineup Anchors ar
 - Protection Penalty: -5% for adjacent hitters
 - `_calculate_ripple_beneficiaries()` with dynamic beneficiary ranking
 
-#### API Endpoints
-- `GET /api/v3/mlb/ripple/alerts` - Lineup ripple alerts
-- `GET /api/v3/mlb/ripple/top-gainers` - Top 3 PA gainers
-- `GET /api/v3/mlb/ripple/anchors` - Get Lineup Anchors by team
-- `POST /api/v3/mlb/ripple/check` - Trigger lineup check
+#### API Integration
+- Integrated with existing `/api/v3/mlb/vacuum/live-alerts` endpoint
+- Frontend MLB Live Injury Advantage now shows Lineup Ripple data
+- Shows "Lineup Anchor OUT" with projected AB bumps (+10 AB, +8 AB, +5 AB)
 
 #### Phase 5 Integration
 - Added Step 5 to `mlb_master_sync.py` for Lineup Ripple Engine
