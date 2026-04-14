@@ -390,7 +390,7 @@ class DeltaManager:
             try:
                 intel_data = await self._calculate_intel_for_prop(prop)
                 
-                if intel_data and intel_data.get('vk_data', {}).get('predicted') is not None:
+                if intel_data and (intel_data.get('vision_intel') or intel_data.get('intel_suite') or intel_data.get('vk_data')):
                     enriched_prop = merge_intel_into_prop(prop, intel_data)
                     
                     if validate_prop_has_intel(enriched_prop, self.sport):
@@ -543,31 +543,112 @@ class DeltaManager:
         return result
     
     async def _calculate_nba_intel(self, prop: Dict) -> Dict:
-        """Calculate NBA-specific intel."""
+        """Calculate NBA-specific intel with Lasso v2 integration."""
         result = {}
-        
+
         try:
             intel_calc = await self._get_intel_calculator()
-            
+
+            # Run Lasso prediction for this prop
+            lasso_result = None
+            try:
+                from models.predictor import get_lasso_engine
+                engine = get_lasso_engine()
+
+                player_name = prop.get('player_name', '')
+                stat_type = prop.get('stat_type', '') or prop.get('stat_type_raw', '')
+                line = prop.get('line', 0)
+
+                # Resolve stat key for Lasso
+                from models.predictor import STAT_ALIASES
+                target = STAT_ALIASES.get(stat_type, stat_type.lower().replace(" ", "_"))
+
+                # Fetch player game logs for Lasso
+                hub = self.db.nba_master_hub_2026
+                player_doc = await hub.find_one(
+                    {"display_name": {"$regex": f"^{player_name}$", "$options": "i"}},
+                    {"_id": 0, "history.2025_season": 1}
+                )
+                if player_doc:
+                    logs = player_doc.get("history", {}).get("2025_season", [])
+                    logs.sort(key=lambda x: x.get("game_id") or x.get("date") or 0)
+                    if len(logs) >= 11:
+                        lasso_result = engine.predict_player(
+                            sport="nba",
+                            target_stat=target,
+                            game_logs=logs,
+                            player_name=player_name,
+                            line=line,
+                        )
+            except Exception as e:
+                logger.warning(f"[JIT_NBA] Lasso prediction failed for {prop.get('player_name')}: {e}")
+
             intel_suite = await intel_calc.calculate_intel_suite(
                 player_name=prop.get('player_name', ''),
                 stat_type=prop.get('stat_type', ''),
                 line=prop.get('line', 0),
                 direction=prop.get('direction', 'over'),
                 opponent=prop.get('opponent'),
-                board_pick=prop
+                board_pick=prop,
+                lasso_result=lasso_result,
             )
-            
+
             if intel_suite:
                 result['intel_suite'] = intel_suite
-                result['vk_data'] = intel_suite.get('vk_data', {})
-                result['l20_variance'] = intel_suite.get('variance', {})
+                result['vk_data'] = intel_suite.get('lasso', {}) or {}
+                result['l20_variance'] = {}
                 result['scout_badges'] = intel_suite.get('scout_badges', [])
-                
+
+                # Build vision_intel text from Lasso + intel
+                result['vision_intel'] = self._build_nba_vision_text(prop, lasso_result, intel_suite)
+                result['vision_summary'] = result['vision_intel']
+
         except Exception as e:
             logger.warning(f"[JIT_NBA] Error: {e}")
-        
+
         return result
+
+    def _build_nba_vision_text(self, prop: Dict, lasso_result: Optional[Dict], intel_suite: Dict) -> str:
+        """Generate grit-style scout text using Lasso + intel suite data."""
+        player = prop.get('player_name', 'Player')
+        stat = prop.get('stat_type', 'stat')
+        line = prop.get('line', 0)
+        h10 = prop.get('h10_rate') or 0
+
+        # Lasso data
+        proj = lasso_result.get('projection', 0) if lasso_result else 0
+        tier = lasso_result.get('confidence_tier', '') if lasso_result else ''
+        edge = (proj - line) if proj and line else 0
+        top_drivers = [c['feature'] for c in (lasso_result or {}).get('top_contributors', [])[:2]]
+        driver_text = top_drivers[0].replace('_', ' ').replace('L10 avg ', '').replace('prev ', 'last-game ') if top_drivers else ''
+
+        # Intel suite data
+        dvp = intel_suite.get('matchup_dvp', {}).get('rank', 15)
+        pace = intel_suite.get('pace_delta', {}).get('possessions', 0)
+        stab = intel_suite.get('stability_index', {}).get('score', 50)
+        bump = intel_suite.get('usage_ripple', {}).get('bump_percent', 0)
+
+        # Conditional templates
+        if tier == 'HIGH_FIDELITY' and abs(edge) > line * 0.15 and edge > 0:
+            return f"{player} is absolutely locked in — Lasso projects {proj:.1f} vs a {line} line, that's a +{edge:.1f} cushion backed by R²=0.54 fidelity. Driven by {driver_text}. Smash spot, don't overthink it."
+        elif tier == 'HIGH_FIDELITY' and abs(edge) > line * 0.15 and edge < 0:
+            return f"FADE ALERT: {player} {stat} @ {line} — model sees only {proj:.1f} (edge {edge:+.1f}). {driver_text} is pulling him down. The book set this too high, take the UNDER."
+        elif h10 >= 80 and edge > 0:
+            return f"Riding the hot hand with {player} — {h10:.0f}% L10 hit rate and the Lasso has him at {proj:.1f} vs {line}. {driver_text} is the engine. Lock it in."
+        elif dvp >= 22 and edge > 0:
+            return f"Soft matchup spot for {player} — DvP #{dvp} plus Lasso at {proj:.1f}. Volume is there ({driver_text}), defense isn't. Safe Haven territory."
+        elif bump >= 3 and edge > 0:
+            return f"Volume play on {player} today — +{bump:.1f}% usage shift from injuries. Model projects {proj:.1f} vs {line} line. {driver_text} is surging."
+        elif stab >= 75 and edge > 0:
+            return f"Chalk play on {player} {stat} @ {line} — stability score {stab}/100. Lasso sees {proj:.1f}, floor is locked in. Boring but profitable."
+        elif pace >= 3:
+            return f"Tempo play: {player} in a high-pace game (+{pace:.1f} possessions). Model has {proj:.1f} vs {line}. {driver_text} drives the projection."
+        elif h10 < 40 and edge < 0:
+            return f"{player} has been ice cold at {h10:.0f}% L10 — model confirms at {proj:.1f}. UNDER {line} is the play. Proceed with caution or fade entirely."
+        elif edge > 0:
+            return f"Solid value on {player} {stat} @ {line}. Lasso projects {proj:.1f} with a +{edge:.1f} edge. {driver_text} is the key feature. The math works."
+        else:
+            return f"{player} {stat} @ {line}: Model sees {proj:.1f} ({edge:+.1f}). Edge is thin — need the situation to break right. {driver_text} is the swing factor."
     
     def _generate_mlb_badges(self, mlr_result, prop: Dict) -> List[str]:
         """Generate MLB scout badges based on MLR result."""

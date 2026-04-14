@@ -99,20 +99,52 @@ def enrich_mlb_prop_with_averages(prop: Dict, player_data: Dict = None) -> Dict:
     prop["season_avg"] = season_avg or prop.get("l10_avg")
     
     # =========================================================================
-    # VK PREDICTION - Calculate vision model projection
-    # Use weighted average: L5 (40%) + L10 (35%) + Season (25%)
+    # VK PREDICTION - Lasso v2 first, fallback to weighted average
     # =========================================================================
     l5 = prop.get("l5_avg") or 0
     l10 = prop.get("l10_avg") or 0
     season = prop.get("season_avg") or l10
-    
-    if l5 or l10 or season:
-        # Weighted projection
+
+    # Try Lasso v2 projection
+    lasso_proj = None
+    lasso_tier = None
+    lasso_top_driver = None
+    try:
+        from models.predictor import get_lasso_engine, STAT_ALIASES
+        engine = get_lasso_engine()
+        stat_type_raw = prop.get("stat_type", "")
+        target = STAT_ALIASES.get(stat_type_raw, stat_type_raw.lower().replace(" ", "_"))
+        sport = prop.get("sport", "nba").lower()
+        model_key = engine.resolve_model_key(sport, target)
+        if model_key and prop.get("_lasso_game_logs"):
+            lasso_result = engine.predict_player(
+                sport=sport, target_stat=target,
+                game_logs=prop["_lasso_game_logs"],
+                player_name=prop.get("player_name", ""),
+                line=line,
+            )
+            if lasso_result and not lasso_result.get("error"):
+                lasso_proj = lasso_result["projection"]
+                lasso_tier = lasso_result.get("confidence_tier")
+                top_c = lasso_result.get("top_contributors", [])
+                if top_c:
+                    lasso_top_driver = top_c[0].get("feature", "")
+    except Exception:
+        pass
+
+    if lasso_proj is not None:
+        vk_predicted = lasso_proj
+        prop["vk_predicted"] = round(vk_predicted, 2)
+        prop["vk_source"] = "lasso_v2"
+        prop["lasso_confidence"] = lasso_tier
+    elif l5 or l10 or season:
         vk_predicted = (l5 * 0.40) + (l10 * 0.35) + (season * 0.25)
         prop["vk_predicted"] = round(vk_predicted, 2)
-        
-        # VK Edge = Projection - Line (raw cushion)
-        if line > 0:
+        prop["vk_source"] = "weighted_avg"
+    else:
+        vk_predicted = 0
+
+    if vk_predicted and line > 0:
             vk_edge = vk_predicted - line
             prop["vk_edge"] = round(vk_edge, 2)
             
@@ -135,7 +167,7 @@ def enrich_mlb_prop_with_averages(prop: Dict, player_data: Dict = None) -> Dict:
                 prop["vk_recommendation"] = "HOLD"
     
     # =========================================================================
-    # VISION INTEL - Generate gritty scout-style summary
+    # VISION INTEL - Lasso-aware gritty scout-style summary
     # =========================================================================
     player_name = prop.get("player_name", "Player")
     stat_type = prop.get("stat_type", "stat")
@@ -145,24 +177,29 @@ def enrich_mlb_prop_with_averages(prop: Dict, player_data: Dict = None) -> Dict:
     tempo_mult = prop.get("tempo_modifier") or prop.get("intel_suite", {}).get("tempo", {}).get("multiplier") or 1.0
     is_goblin = prop.get("is_goblin", False)
     is_demon = prop.get("is_demon", False)
-    
-    # Gritty scout-style reports based on conditions
-    if h10 >= 80 and vk_edge >= 0.5:
-        vision_intel = f"{player_name} is absolutely locked in right now - {h10:.0f}% hit rate over L10 is printing money. Our math has him at {vk_pred:.1f} vs a {line} line, that's a +{vk_edge:.1f} cushion the book is sleeping on. Smash spot, don't overthink it."
+    driver_text = (lasso_top_driver or "").replace("_", " ").replace("L10 avg ", "").replace("prev ", "last-game ")
+
+    # Lasso-enhanced templates
+    if lasso_proj is not None and lasso_tier == "HIGH_FIDELITY" and abs(vk_edge) > line * 0.15 and vk_edge > 0:
+        vision_intel = f"{player_name} is absolutely locked in — Lasso projects {vk_pred:.1f} vs a {line} line, that's a +{vk_edge:.1f} cushion backed by high-fidelity math. Driven by {driver_text}. Smash spot, don't overthink it."
+    elif lasso_proj is not None and lasso_tier == "HIGH_FIDELITY" and vk_edge < -line * 0.15:
+        vision_intel = f"FADE ALERT: {player_name} {stat_type} @ {line} — model sees only {vk_pred:.1f} (edge {vk_edge:+.1f}). {driver_text} is pulling projections down. Take the UNDER."
+    elif h10 >= 80 and vk_edge >= 0.5:
+        vision_intel = f"Riding the hot hand with {player_name} — {h10:.0f}% L10 hit rate with a +{vk_edge:.1f} edge. {f'Driven by {driver_text}. ' if driver_text else ''}Lock it in."
     elif h10 >= 70 and vk_edge >= 0.3:
-        vision_intel = f"Riding the hot hand with {player_name} here. {h10:.0f}% L10 hit rate with a +{vk_edge:.1f} edge over the line - the book set this too low. This is a soft landing, lock it in."
+        vision_intel = f"{player_name} heating up — {h10:.0f}% L10 with +{vk_edge:.1f} edge over the line. The book set this too low."
     elif is_goblin and h10 >= 60:
-        vision_intel = f"{player_name} {stat_type} is chalky for a reason - this line is disrespectful at {line}. {h10:.0f}% L10, averaging {l10:.1f}. Safe haven territory, let it ride."
+        vision_intel = f"{player_name} {stat_type} is chalky for a reason — line at {line} is disrespectful. {h10:.0f}% L10, averaging {l10:.1f}. Safe haven territory."
     elif is_demon:
-        vision_intel = f"DEMON PLAY: {player_name} {stat_type} @ {line} is a ceiling spot. High variance but when this hits, it pays big. Boom or bust - you know what you're signing up for."
+        vision_intel = f"DEMON PLAY: {player_name} {stat_type} @ {line} is a ceiling spot. High variance but when this hits, it pays big. Boom or bust."
     elif tempo_mult >= 1.05:
-        vision_intel = f"Volume play on {player_name} today. Lineup spot and pace means extra ABs coming his way. At {l10:.1f} L10 average vs a {line} line, let the plate appearances pile up."
+        vision_intel = f"Volume play on {player_name} today. Pace means extra opportunities. At {l10:.1f} L10 average vs {line} line, let the volume pile up."
     elif h10 < 50:
-        vision_intel = f"{player_name} has been ice cold at {h10:.0f}% L10 - this feels like a trap. Our model still sees {vk_pred:.1f} but proceed with caution or fade entirely."
+        vision_intel = f"{player_name} has been ice cold at {h10:.0f}% L10 — model sees {vk_pred:.1f} but proceed with caution or fade entirely."
     elif vk_edge >= 0.2:
-        vision_intel = f"Solid value on {player_name} {stat_type} @ {line}. Model projects {vk_pred:.1f} with a comfortable +{vk_edge:.1f} edge. Not a slam dunk but the math works."
+        vision_intel = f"Solid value on {player_name} {stat_type} @ {line}. Model projects {vk_pred:.1f} with a +{vk_edge:.1f} edge. {f'{driver_text} drives it. ' if driver_text else ''}The math works."
     else:
-        vision_intel = f"{player_name} {stat_type} @ {line}: Projecting {vk_pred:.1f} with {h10:.0f}% recent hit rate. Edge is thin here - need the situation to break right."
+        vision_intel = f"{player_name} {stat_type} @ {line}: Projecting {vk_pred:.1f} with {h10:.0f}% hit rate. Edge is thin — need the situation to break right."
     
     prop["vision_intel"] = vision_intel
     prop["vision_summary"] = vision_intel

@@ -100,8 +100,8 @@ def validate_prop_has_intel(prop: Dict, sport: str = "MLB") -> bool:
     if not vk_data:
         return False
     
-    # Check vk_data has prediction
-    if vk_data.get('predicted') is None:
+    # Check vk_data has prediction (Lasso uses 'projection', legacy uses 'predicted')
+    if vk_data.get('predicted') is None and vk_data.get('projection') is None:
         return False
     
     # Check for scout_badges (can be empty list, but must exist)
