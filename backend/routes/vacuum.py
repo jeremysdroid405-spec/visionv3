@@ -254,7 +254,7 @@ async def get_live_vacuum_alerts(response: Response, refresh: bool = False):
                 pass
         
         for beneficiary in vacuum.get("beneficiaries", []):
-            beneficiary_name = beneficiary.get("name", "Unknown")
+            beneficiary_name = beneficiary.get("name", "") or beneficiary.get("player_name", "Unknown")
             normalized_beneficiary = beneficiary_name.strip().lower()
             
             # ACTIVE PROP GATE: Only include if beneficiary has active prop
@@ -274,11 +274,20 @@ async def get_live_vacuum_alerts(response: Response, refresh: bool = False):
             projections = beneficiary.get("projections", {})
             promotion = beneficiary.get("board_promotion", {})
             
+            # Extract dynamic model fields
+            usage_pct = beneficiary.get("usage_percentage", 0)
+            usage_per_min = beneficiary.get("usage_per_minute", 0)
+            boost_pct = beneficiary.get("boost_percentage", 0) or projections.get("boost_percentage", 0)
+            is_dynamic = beneficiary.get("dynamic_calculation", False)
+            
+            # For frontend compatibility, usage_bump should show the boost percentage
+            usage_bump_for_display = boost_pct
+            
             alert = {
                 "id": f"{injured_player}-{beneficiary_name}".replace(" ", "-").lower(),
                 "beneficiary_name": beneficiary_name,
                 "beneficiary_rank": beneficiary.get("rank", "primary"),
-                "usage_bump": beneficiary.get("usage_bump", 0),
+                "usage_bump": usage_bump_for_display,  # Frontend displays this as +X%
                 "minutes_bump": beneficiary.get("minutes_bump", 0),
                 "modifier": beneficiary.get("modifier", 0),
                 "injured_player": injured_player,
@@ -288,9 +297,13 @@ async def get_live_vacuum_alerts(response: Response, refresh: bool = False):
                 "triggered_at": triggered_at,
                 "time_ago": time_ago,
                 "mins_ago": mins_ago,
-                # Projections with boost
+                # Dynamic Usage Model v3.0 fields
+                "usage_percentage": usage_pct,
+                "usage_per_minute": usage_per_min,
+                "dynamic_calculation": is_dynamic,
+                # Projections with +12% PTS/PRA boost
                 "projections": projections,
-                "boost_percentage": projections.get("boost_percentage", 0),
+                "boost_percentage": boost_pct,
                 # Board promotion
                 "should_promote": promotion.get("should_promote", False),
                 "eligible_props": promotion.get("eligible_props", []),
@@ -302,8 +315,8 @@ async def get_live_vacuum_alerts(response: Response, refresh: bool = False):
                 # NEW: Active prop data
                 "has_active_prop": True,
                 "active_prop_lines": prop_lines,
-                # Formatted display string
-                "display_text": f"{beneficiary_name} — {injured_player} ruled OUT {time_ago}. +{beneficiary.get('usage_bump', 0)}% usage rate increase."
+                # Formatted display string with boost info
+                "display_text": f"{beneficiary_name} — {injured_player} ruled OUT {time_ago}. +{boost_pct:.0f}% PTS/PRA boost (Usage: {usage_pct:.1f}%)."
             }
             
             alerts.append(alert)

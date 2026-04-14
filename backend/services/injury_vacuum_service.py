@@ -38,10 +38,14 @@ import hashlib
 logger = logging.getLogger(__name__)
 
 # =============================================================================
-# USAGE VACUUM CONSTANTS
+# USAGE VACUUM CONSTANTS - Dynamic Usage Model v3.0
 # =============================================================================
 
-# Star player threshold (Usage Rate > 20% for late scratch detection)
+# Dynamic Star Identification Thresholds (from BDL Advanced Stats)
+PRIMARY_ALPHA_THRESHOLD = 28.0    # Primary Alpha: usg_pct >= 28%
+SECONDARY_ALPHA_THRESHOLD = 22.0  # Secondary Alpha: usg_pct 22-28%
+
+# Legacy compatibility (kept for fallback only)
 STAR_USAGE_THRESHOLD = 20.0
 HIGH_USAGE_THRESHOLD = 25.0
 
@@ -49,9 +53,9 @@ HIGH_USAGE_THRESHOLD = 25.0
 PRIMARY_BENEFICIARY_MODIFIER = 15.0
 SECONDARY_BENEFICIARY_MODIFIER = 10.0
 
-# Usage redistribution multipliers
-PRIMARY_USAGE_MULTIPLIER = 1.25  # +25% usage boost
-SECONDARY_USAGE_MULTIPLIER = 1.15  # +15% usage boost
+# Usage redistribution multipliers - Dynamic Model applies +12% boost for PTS/PRA
+PRIMARY_USAGE_MULTIPLIER = 1.12   # +12% usage boost for PTS/PRA (user spec)
+SECONDARY_USAGE_MULTIPLIER = 1.08 # +8% for secondary beneficiaries
 
 # Board promotion threshold (projected stat > 15% above line)
 BOARD_PROMOTION_THRESHOLD = 0.15
@@ -89,100 +93,16 @@ TEAM_NAME_TO_ABBREV = {
 
 
 # =============================================================================
-# STAR USAGE PROFILES (Fallback Data)
+# DYNAMIC USAGE MODEL v3.0 - No Hardcoded Star Lists
 # =============================================================================
-
-# Top usage players by team with their usage rates
-STAR_USAGE_PROFILES = {
-    # Format: "player_name": {"team": "ABBR", "usage_rate": XX.X, "position": "POS"}
-    "Luka Doncic": {"team": "DAL", "usage_rate": 36.5, "position": "PG"},
-    "Giannis Antetokounmpo": {"team": "MIL", "usage_rate": 35.2, "position": "PF"},
-    "Joel Embiid": {"team": "PHI", "usage_rate": 34.8, "position": "C"},
-    "Shai Gilgeous-Alexander": {"team": "OKC", "usage_rate": 33.5, "position": "PG"},
-    "LeBron James": {"team": "LAL", "usage_rate": 31.2, "position": "SF"},
-    "Anthony Davis": {"team": "LAL", "usage_rate": 28.5, "position": "PF"},
-    "Kevin Durant": {"team": "PHX", "usage_rate": 32.1, "position": "SF"},
-    "Devin Booker": {"team": "PHX", "usage_rate": 28.8, "position": "SG"},
-    "Jayson Tatum": {"team": "BOS", "usage_rate": 30.5, "position": "SF"},
-    "Jaylen Brown": {"team": "BOS", "usage_rate": 26.2, "position": "SG"},
-    "Donovan Mitchell": {"team": "CLE", "usage_rate": 29.8, "position": "SG"},
-    "Trae Young": {"team": "ATL", "usage_rate": 32.5, "position": "PG"},
-    "De'Aaron Fox": {"team": "SAC", "usage_rate": 30.2, "position": "PG"},
-    "Domantas Sabonis": {"team": "SAC", "usage_rate": 25.8, "position": "C"},
-    "Ja Morant": {"team": "MEM", "usage_rate": 31.5, "position": "PG"},
-    "Paolo Banchero": {"team": "ORL", "usage_rate": 28.2, "position": "PF"},
-    "Anthony Edwards": {"team": "MIN", "usage_rate": 30.8, "position": "SG"},
-    "Karl-Anthony Towns": {"team": "MIN", "usage_rate": 26.5, "position": "C"},
-    "Tyrese Haliburton": {"team": "IND", "usage_rate": 27.5, "position": "PG"},
-    "Tyrese Maxey": {"team": "PHI", "usage_rate": 26.8, "position": "PG"},
-    "Jalen Brunson": {"team": "NYK", "usage_rate": 29.5, "position": "PG"},
-    "Julius Randle": {"team": "NYK", "usage_rate": 27.2, "position": "PF"},
-    "Damian Lillard": {"team": "MIL", "usage_rate": 28.5, "position": "PG"},
-    "Stephen Curry": {"team": "GSW", "usage_rate": 30.2, "position": "PG"},
-    "Kawhi Leonard": {"team": "LAC", "usage_rate": 28.5, "position": "SF"},
-    "Paul George": {"team": "PHI", "usage_rate": 26.5, "position": "SF"},
-    "Jimmy Butler": {"team": "MIA", "usage_rate": 27.8, "position": "SF"},
-    "Bam Adebayo": {"team": "MIA", "usage_rate": 25.2, "position": "C"},
-}
-
-# Beneficiary mappings (who benefits when star is OUT)
-# Format: "injured_star": [("primary_beneficiary", usage_bump, minutes_bump), ("secondary_beneficiary", usage_bump, minutes_bump)]
-# Usage bump = percentage point increase, Minutes bump = additional minutes per game
-BENEFICIARY_MAPPINGS = {
-    "LeBron James": [("Anthony Davis", 5.2, 4), ("Austin Reaves", 4.8, 6)],
-    "Anthony Davis": [("LeBron James", 4.5, 3), ("Austin Reaves", 3.8, 5)],
-    "Kevin Durant": [("Devin Booker", 5.5, 4), ("Bradley Beal", 4.2, 5)],
-    "Devin Booker": [("Kevin Durant", 4.8, 3), ("Bradley Beal", 3.5, 5)],
-    "Joel Embiid": [("Tyrese Maxey", 6.2, 4), ("Paul George", 4.5, 3)],
-    "Tyrese Maxey": [("Joel Embiid", 3.8, 2), ("Paul George", 3.2, 4)],
-    "Giannis Antetokounmpo": [("Damian Lillard", 5.8, 4), ("Khris Middleton", 4.2, 5)],
-    "Damian Lillard": [("Giannis Antetokounmpo", 4.5, 3), ("Khris Middleton", 3.5, 5)],
-    "Jayson Tatum": [("Jaylen Brown", 5.5, 4), ("Derrick White", 3.8, 5)],
-    "Jaylen Brown": [("Jayson Tatum", 4.2, 3), ("Derrick White", 3.5, 5)],
-    "Shai Gilgeous-Alexander": [("Jalen Williams", 6.5, 5), ("Chet Holmgren", 4.2, 4)],
-    "Luka Doncic": [("Kyrie Irving", 6.8, 4), ("PJ Washington", 3.5, 5)],
-    "Stephen Curry": [("Andrew Wiggins", 5.2, 4), ("Klay Thompson", 4.5, 3)],
-    "Donovan Mitchell": [("Darius Garland", 5.8, 4), ("Evan Mobley", 3.5, 4)],
-    "Trae Young": [("Dejounte Murray", 5.5, 4), ("Jalen Johnson", 4.2, 5)],
-    "Ja Morant": [("Desmond Bane", 6.2, 5), ("Jaren Jackson Jr.", 4.8, 3)],
-    "Anthony Edwards": [("Karl-Anthony Towns", 4.5, 3), ("Rudy Gobert", 2.8, 2)],
-    "Jalen Brunson": [("Julius Randle", 5.2, 3), ("RJ Barrett", 4.5, 5)],
-    "Jimmy Butler": [("Bam Adebayo", 5.5, 4), ("Tyler Herro", 4.8, 5)],
-    "Kawhi Leonard": [("Paul George", 5.8, 4), ("James Harden", 4.2, 3)],
-}
-
-# Player average stats for projection calculation (fallback data)
-PLAYER_AVG_STATS = {
-    "Anthony Davis": {"pts": 24.5, "ast": 3.2, "reb": 12.5, "pra": 40.2},
-    "Austin Reaves": {"pts": 15.8, "ast": 5.2, "reb": 4.3, "pra": 25.3},
-    "Devin Booker": {"pts": 27.2, "ast": 6.8, "reb": 4.5, "pra": 38.5},
-    "Bradley Beal": {"pts": 18.5, "ast": 5.2, "reb": 4.2, "pra": 27.9},
-    "Tyrese Maxey": {"pts": 25.5, "ast": 6.2, "reb": 3.8, "pra": 35.5},
-    "Paul George": {"pts": 22.8, "ast": 5.2, "reb": 5.8, "pra": 33.8},
-    "Damian Lillard": {"pts": 24.8, "ast": 7.2, "reb": 4.5, "pra": 36.5},
-    "Khris Middleton": {"pts": 15.2, "ast": 5.5, "reb": 4.8, "pra": 25.5},
-    "Jaylen Brown": {"pts": 23.5, "ast": 3.8, "reb": 5.5, "pra": 32.8},
-    "Derrick White": {"pts": 15.8, "ast": 5.2, "reb": 4.2, "pra": 25.2},
-    "Jalen Williams": {"pts": 20.2, "ast": 5.5, "reb": 5.8, "pra": 31.5},
-    "Chet Holmgren": {"pts": 16.5, "ast": 2.8, "reb": 8.2, "pra": 27.5},
-    "Kyrie Irving": {"pts": 25.5, "ast": 5.2, "reb": 5.0, "pra": 35.7},
-    "PJ Washington": {"pts": 12.5, "ast": 2.2, "reb": 7.2, "pra": 21.9},
-    "Andrew Wiggins": {"pts": 17.2, "ast": 2.8, "reb": 5.2, "pra": 25.2},
-    "Klay Thompson": {"pts": 17.8, "ast": 2.2, "reb": 3.8, "pra": 23.8},
-    "Darius Garland": {"pts": 21.5, "ast": 6.8, "reb": 2.8, "pra": 31.1},
-    "Evan Mobley": {"pts": 18.2, "ast": 3.2, "reb": 9.2, "pra": 30.6},
-    "Dejounte Murray": {"pts": 22.5, "ast": 6.5, "reb": 5.2, "pra": 34.2},
-    "Jalen Johnson": {"pts": 16.2, "ast": 3.8, "reb": 8.5, "pra": 28.5},
-    "Desmond Bane": {"pts": 23.2, "ast": 4.8, "reb": 4.5, "pra": 32.5},
-    "Jaren Jackson Jr.": {"pts": 22.5, "ast": 2.2, "reb": 5.8, "pra": 30.5},
-    "Karl-Anthony Towns": {"pts": 25.2, "ast": 3.2, "reb": 8.8, "pra": 37.2},
-    "Rudy Gobert": {"pts": 14.2, "ast": 1.5, "reb": 12.8, "pra": 28.5},
-    "Julius Randle": {"pts": 24.2, "ast": 5.2, "reb": 9.2, "pra": 38.6},
-    "RJ Barrett": {"pts": 19.5, "ast": 3.2, "reb": 5.5, "pra": 28.2},
-    "Bam Adebayo": {"pts": 19.8, "ast": 4.5, "reb": 10.2, "pra": 34.5},
-    "Tyler Herro": {"pts": 20.8, "ast": 4.8, "reb": 5.2, "pra": 30.8},
-    "James Harden": {"pts": 16.8, "ast": 8.5, "reb": 5.2, "pra": 30.5},
-}
+# 
+# Star identification and beneficiary calculation are now 100% database-driven:
+# - Primary Alpha: usage_percentage >= 28% (from star_usage_cache / BDL advanced stats)
+# - Secondary Alpha: usage_percentage 22-28%
+# - Beneficiaries: Dynamically calculated as teammates with highest usage_per_minute
+#
+# DEPRECATED: STAR_USAGE_PROFILES, BENEFICIARY_MAPPINGS, PLAYER_AVG_STATS
+# =============================================================================
 
 
 # =============================================================================
@@ -246,28 +166,32 @@ class InjuryVacuumService:
     
     def _is_star_player(self, player_name: str) -> Tuple[bool, Optional[Dict]]:
         """
-        Check if player is a star (Usage > 25%).
-        Returns (is_star, profile_data).
+        Dynamic Star Identification v3.0
         
-        Now checks:
-        1. In-memory cache
-        2. Database star_usage_cache (hydrated from BDL advanced stats)
-        3. Hardcoded fallback data
+        Checks if player is a star using BDL Advanced Stats (usage_percentage):
+        - Primary Alpha: usage_percentage >= 28%
+        - Secondary Alpha: usage_percentage >= 22% (still triggers vacuum)
+        
+        Returns (is_star, profile_data) where profile includes:
+        - alpha_tier: 'primary' (>=28%) or 'secondary' (22-28%)
+        - usage_rate: actual usage percentage from BDL
         """
         normalized = self._normalize_player_name(player_name)
         
-        # Check cache first
+        # Check in-memory cache first
         if normalized in self.star_profiles_cache:
             profile = self.star_profiles_cache[normalized]
-            return profile.get("usage_rate", 0) >= STAR_USAGE_THRESHOLD, profile
+            usage = profile.get("usage_rate", 0)
+            return usage >= SECONDARY_ALPHA_THRESHOLD, profile
         
-        # Check database star_usage_cache (BDL advanced stats) using sync pymongo
+        # Dynamic database lookup from star_usage_cache (BDL advanced stats)
         try:
             from pymongo import MongoClient
             import os
             sync_client = MongoClient(os.environ.get('MONGO_URL'))
             sync_db = sync_client['pick_vision']
             
+            # Query star_usage_cache for player
             db_star = sync_db.star_usage_cache.find_one(
                 {'$or': [
                     {'player_name': {'$regex': f'^{re.escape(normalized)}', '$options': 'i'}},
@@ -278,153 +202,293 @@ class InjuryVacuumService:
             sync_client.close()
             
             if db_star:
-                usage_pct = db_star.get('usage_percentage', 0)
+                usage_pct = db_star.get('usage_percentage', 0) or db_star.get('usage_pct', 0)
+                
+                # Determine alpha tier
+                if usage_pct >= PRIMARY_ALPHA_THRESHOLD:
+                    alpha_tier = 'primary'
+                elif usage_pct >= SECONDARY_ALPHA_THRESHOLD:
+                    alpha_tier = 'secondary'
+                else:
+                    alpha_tier = None
+                
                 profile = {
                     "name": db_star.get('player_name'),
+                    "player_name": db_star.get('player_name'),
                     "team": db_star.get('team'),
+                    "position": db_star.get('position'),
                     "usage_rate": usage_pct,
+                    "usage_percentage": usage_pct,
                     "pie": db_star.get('pie', 0),
                     "net_rating": db_star.get('net_rating', 0),
-                    "is_star": usage_pct >= STAR_USAGE_THRESHOLD
+                    "alpha_tier": alpha_tier,
+                    "is_primary_alpha": usage_pct >= PRIMARY_ALPHA_THRESHOLD,
+                    "is_secondary_alpha": SECONDARY_ALPHA_THRESHOLD <= usage_pct < PRIMARY_ALPHA_THRESHOLD,
+                    "source": "bdl_advanced_stats"
                 }
                 self.star_profiles_cache[normalized] = profile
-                return usage_pct >= STAR_USAGE_THRESHOLD, profile
+                
+                is_star = usage_pct >= SECONDARY_ALPHA_THRESHOLD
+                if is_star:
+                    logger.info(f"[VacuumService] Dynamic Star: {player_name} (Usage: {usage_pct:.1f}%, Tier: {alpha_tier})")
+                return is_star, profile
+                
         except Exception as e:
-            logger.warning(f"[VacuumService] Error checking star_usage_cache: {e}")
+            logger.warning(f"[VacuumService] Error in dynamic star lookup: {e}")
         
-        # Check hardcoded fallback data
-        for star_name, profile in STAR_USAGE_PROFILES.items():
-            if self._normalize_player_name(star_name) == normalized:
-                self.star_profiles_cache[normalized] = {**profile, "name": star_name}
-                return True, {**profile, "name": star_name}
+        # If not found in database, check nba_master_hub_2026 advanced_stats as fallback
+        try:
+            from pymongo import MongoClient
+            import os
+            sync_client = MongoClient(os.environ.get('MONGO_URL'))
+            sync_db = sync_client['pick_vision']
+            
+            hub_player = sync_db.nba_master_hub_2026.find_one(
+                {'$or': [
+                    {'normalized_name': normalized},
+                    {'display_name': {'$regex': f'^{re.escape(player_name)}', '$options': 'i'}}
+                ]},
+                {'_id': 0, 'display_name': 1, 'team': 1, 'advanced_stats': 1}
+            )
+            sync_client.close()
+            
+            if hub_player and hub_player.get('advanced_stats'):
+                adv = hub_player['advanced_stats']
+                usage_pct = adv.get('usage_percentage', 0) or adv.get('usg_pct', 0)
+                
+                if usage_pct >= SECONDARY_ALPHA_THRESHOLD:
+                    alpha_tier = 'primary' if usage_pct >= PRIMARY_ALPHA_THRESHOLD else 'secondary'
+                    profile = {
+                        "name": hub_player.get('display_name'),
+                        "team": hub_player.get('team'),
+                        "usage_rate": usage_pct,
+                        "alpha_tier": alpha_tier,
+                        "source": "nba_master_hub_2026"
+                    }
+                    self.star_profiles_cache[normalized] = profile
+                    logger.info(f"[VacuumService] Hub Star: {player_name} (Usage: {usage_pct:.1f}%)")
+                    return True, profile
+                    
+        except Exception as e:
+            logger.warning(f"[VacuumService] Error in hub star lookup: {e}")
         
         return False, None
     
     def _get_beneficiaries(self, injured_player: str, injured_team: str = None) -> List[Dict]:
         """
-        Get the top 2 beneficiaries for an injured star player.
-        Returns list of beneficiary dicts with name, usage_bump, minutes_bump, modifier, and projections.
+        Dynamic Beneficiary Calculation v3.0
         
-        Now checks:
-        1. Hardcoded beneficiary mappings
-        2. Database - teammates with next-highest usage on same team
+        When an Alpha is OUT, calculates beneficiaries by:
+        1. Finding active teammates on the same team
+        2. Ranking by usage_per_minute (usage_percentage / minutes_per_game)
+        3. Top 2 teammates become primary/secondary beneficiaries
+        4. Applies +12% boost to PTS and PRA projected values
+        
+        Returns list of up to 3 beneficiary dicts with boosted projections.
         """
         normalized = self._normalize_player_name(injured_player)
+        logger.info(f"[VacuumService] Calculating dynamic beneficiaries for {injured_player} ({injured_team})")
         
-        # Check hardcoded beneficiary mappings first
-        for star_name, beneficiaries in BENEFICIARY_MAPPINGS.items():
-            if self._normalize_player_name(star_name) == normalized:
-                result = []
-                for i, beneficiary_data in enumerate(beneficiaries[:2]):
-                    beneficiary_name = beneficiary_data[0]
-                    usage_bump = beneficiary_data[1]
-                    minutes_bump = beneficiary_data[2] if len(beneficiary_data) > 2 else 4
-                    
-                    modifier = PRIMARY_BENEFICIARY_MODIFIER if i == 0 else SECONDARY_BENEFICIARY_MODIFIER
-                    usage_multiplier = PRIMARY_USAGE_MULTIPLIER if i == 0 else SECONDARY_USAGE_MULTIPLIER
-                    
-                    # Calculate projected stats with usage boost
-                    projections = self._calculate_boosted_projections(beneficiary_name, usage_multiplier, minutes_bump)
-                    
-                    result.append({
-                        "name": beneficiary_name,
-                        "usage_bump": usage_bump,
-                        "minutes_bump": minutes_bump,
-                        "modifier": modifier,
-                        "rank": "primary" if i == 0 else "secondary",
-                        "usage_multiplier": usage_multiplier,
-                        "projections": projections,
-                        "high_usage_advantage": True,  # Badge flag
-                        "late_injury_boost": True
-                    })
-                return result
+        # Get injured player's team if not provided
+        if not injured_team:
+            is_star, star_profile = self._is_star_player(injured_player)
+            if star_profile:
+                injured_team = star_profile.get('team')
         
-        # Dynamic beneficiary lookup from database using sync pymongo
-        if injured_team:
-            try:
-                from pymongo import MongoClient
-                import os
-                sync_client = MongoClient(os.environ.get('MONGO_URL'))
-                sync_db = sync_client['pick_vision']
-                
-                # Find teammates with next-highest usage (excluding injured player)
-                teammates = list(sync_db.star_usage_cache.find(
+        if not injured_team:
+            logger.warning(f"[VacuumService] Cannot find team for {injured_player}")
+            return []
+        
+        try:
+            from pymongo import MongoClient
+            import os
+            sync_client = MongoClient(os.environ.get('MONGO_URL'))
+            sync_db = sync_client['pick_vision']
+            
+            # Query star_usage_cache for teammates (excluding injured player)
+            # Sort by usage_percentage DESC to get highest usage teammates
+            teammates = list(sync_db.star_usage_cache.find(
+                {
+                    'team': injured_team,
+                    'player_name': {'$ne': injured_player, '$not': {'$regex': f'^{re.escape(normalized)}', '$options': 'i'}}
+                },
+                {'_id': 0}
+            ).sort('usage_percentage', -1).limit(5))
+            
+            # Enrich teammates with baseline_stats from nba_master_hub_2026
+            for teammate in teammates:
+                player_name = teammate.get('player_name', '')
+                hub_data = sync_db.nba_master_hub_2026.find_one(
+                    {'$or': [
+                        {'display_name': player_name},
+                        {'normalized_name': player_name.lower()}
+                    ]},
+                    {'_id': 0, 'baseline_stats': 1, 'advanced_stats': 1}
+                )
+                if hub_data:
+                    teammate['baseline_stats'] = hub_data.get('baseline_stats', {})
+                    adv = hub_data.get('advanced_stats', {})
+                    if not teammate.get('minutes_per_game'):
+                        teammate['minutes_per_game'] = adv.get('minutes_per_game', 28)
+            
+            # If not enough in star_usage_cache, also check nba_master_hub_2026
+            if len(teammates) < 3:
+                hub_teammates = list(sync_db.nba_master_hub_2026.find(
                     {
                         'team': injured_team,
-                        'player_name': {'$ne': injured_player, '$not': {'$regex': normalized, '$options': 'i'}}
+                        'display_name': {'$ne': injured_player},
+                        'advanced_stats.usage_percentage': {'$exists': True}
                     },
-                    {'_id': 0}
-                ).sort('usage_percentage', -1).limit(2))
+                    {'_id': 0, 'display_name': 1, 'team': 1, 'advanced_stats': 1, 'baseline_stats': 1}
+                ).sort('advanced_stats.usage_percentage', -1).limit(5))
                 
-                sync_client.close()
-                
-                if teammates:
-                    result = []
-                    for i, teammate in enumerate(teammates):
-                        usage_bump = 4.0 if i == 0 else 2.5  # Primary gets bigger bump
-                        minutes_bump = 4 if i == 0 else 2
-                        
-                        modifier = PRIMARY_BENEFICIARY_MODIFIER if i == 0 else SECONDARY_BENEFICIARY_MODIFIER
-                        usage_multiplier = PRIMARY_USAGE_MULTIPLIER if i == 0 else SECONDARY_USAGE_MULTIPLIER
-                        
-                        result.append({
-                            "name": teammate.get('player_name'),
-                            "player_name": teammate.get('player_name'),
-                            "team": teammate.get('team'),
-                            "usage_bump": usage_bump,
-                            "usage_percentage": teammate.get('usage_percentage', 0),
-                            "projected_bump": usage_bump,
-                            "minutes_bump": minutes_bump,
-                            "modifier": modifier,
-                            "rank": "primary" if i == 0 else "secondary",
-                            "usage_multiplier": usage_multiplier,
-                            "high_usage_advantage": True,
-                            "late_injury_boost": True,
-                            "dynamic_lookup": True  # Flag that this was looked up dynamically
+                # Merge with existing teammates
+                existing_names = {t.get('player_name', '').lower() for t in teammates}
+                for hub_player in hub_teammates:
+                    name = hub_player.get('display_name', '')
+                    if name.lower() not in existing_names and len(teammates) < 5:
+                        adv = hub_player.get('advanced_stats', {})
+                        baseline = hub_player.get('baseline_stats', {})
+                        teammates.append({
+                            'player_name': name,
+                            'team': hub_player.get('team'),
+                            'usage_percentage': adv.get('usage_percentage', 0),
+                            'pie': adv.get('pie', 0),
+                            'minutes_per_game': adv.get('minutes_per_game', 28),
+                            'baseline_stats': baseline,
+                            'source': 'nba_master_hub_2026'
                         })
-                    logger.info(f"[VacuumService] Dynamic beneficiaries for {injured_player}: {[b['name'] for b in result]}")
-                    return result
-            except Exception as e:
-                logger.warning(f"[VacuumService] Error looking up dynamic beneficiaries: {e}")
-        
-        return []
+            
+            sync_client.close()
+            
+            if not teammates:
+                logger.warning(f"[VacuumService] No teammates found for {injured_team}")
+                return []
+            
+            # Sort by usage_percentage DESC (highest usage teammates first)
+            # This is more reliable than usage_per_minute which can be skewed by low-minute players
+            teammates.sort(key=lambda x: x.get('usage_percentage', 0), reverse=True)
+            
+            # Calculate usage_per_minute for display purposes only
+            for t in teammates:
+                usage = t.get('usage_percentage', 0) or 0
+                minutes = t.get('minutes_per_game', 28) or 28
+                t['usage_per_minute'] = round(usage / minutes, 3) if minutes > 0 else 0
+            
+            # Build beneficiary list
+            result = []
+            for i, teammate in enumerate(teammates[:3]):
+                is_primary = (i == 0)
+                is_secondary = (i == 1)
+                
+                # Calculate boost factor (+12% for primary PTS/PRA, +8% for secondary)
+                if is_primary:
+                    pts_pra_boost = 1.12  # +12% boost per user spec
+                    modifier = PRIMARY_BENEFICIARY_MODIFIER
+                    rank = "primary"
+                elif is_secondary:
+                    pts_pra_boost = 1.08  # +8% boost
+                    modifier = SECONDARY_BENEFICIARY_MODIFIER
+                    rank = "secondary"
+                else:
+                    pts_pra_boost = 1.05  # +5% tertiary
+                    modifier = 5.0
+                    rank = "tertiary"
+                
+                # Get baseline stats for projection
+                baseline = teammate.get('baseline_stats', {})
+                base_pts = baseline.get('PTS', {}).get('season_avg', 15.0) if isinstance(baseline.get('PTS'), dict) else 15.0
+                base_reb = baseline.get('REB', {}).get('season_avg', 5.0) if isinstance(baseline.get('REB'), dict) else 5.0
+                base_ast = baseline.get('AST', {}).get('season_avg', 3.5) if isinstance(baseline.get('AST'), dict) else 3.5
+                base_pra = baseline.get('PRA', {}).get('season_avg', 23.5) if isinstance(baseline.get('PRA'), dict) else base_pts + base_reb + base_ast
+                
+                # Apply +12% boost to PTS and PRA (user spec)
+                projected_pts = round(base_pts * pts_pra_boost, 1)
+                projected_pra = round(base_pra * pts_pra_boost, 1)
+                projected_reb = round(base_reb * 1.05, 1)  # Small reb boost
+                projected_ast = round(base_ast * 1.03, 1)  # Minimal ast boost
+                
+                boost_pct = round((pts_pra_boost - 1) * 100, 1)
+                
+                beneficiary_data = {
+                    "name": teammate.get('player_name'),
+                    "player_name": teammate.get('player_name'),
+                    "team": teammate.get('team'),
+                    "usage_percentage": teammate.get('usage_percentage', 0),
+                    "usage_per_minute": round(teammate.get('usage_per_minute', 0), 3),
+                    "modifier": modifier,
+                    "rank": rank,
+                    "boost_percentage": boost_pct,
+                    "projections": {
+                        "pts": projected_pts,
+                        "reb": projected_reb,
+                        "ast": projected_ast,
+                        "pra": projected_pra,
+                        "boost_percentage": boost_pct
+                    },
+                    "high_usage_advantage": True,
+                    "late_injury_boost": True,
+                    "dynamic_calculation": True,
+                    "injured_star": injured_player,
+                    "source": teammate.get('source', 'star_usage_cache')
+                }
+                
+                result.append(beneficiary_data)
+                logger.info(f"[VacuumService] Beneficiary {rank}: {teammate.get('player_name')} "
+                           f"(Usage: {teammate.get('usage_percentage', 0):.1f}%, "
+                           f"Boost: +{boost_pct}% PTS/PRA)")
+            
+            return result
+            
+        except Exception as e:
+            logger.error(f"[VacuumService] Error calculating dynamic beneficiaries: {e}")
+            return []
     
     def _calculate_boosted_projections(self, player_name: str, usage_multiplier: float, minutes_bump: int) -> Dict[str, float]:
         """
-        Calculate projected stats with usage boost applied.
+        DEPRECATED: This method is kept for backward compatibility.
+        New code uses inline projection calculations in _get_beneficiaries().
         
-        Uses the usage multiplier to increase projected stats:
-        - Primary beneficiary: +25% usage = ~15-20% stat increase
-        - Secondary beneficiary: +15% usage = ~10-12% stat increase
+        For dynamic model, we fetch baseline stats from nba_master_hub_2026.
         """
         normalized = self._normalize_player_name(player_name)
         
-        # Get base stats
-        base_stats = None
-        for name, stats in PLAYER_AVG_STATS.items():
-            if self._normalize_player_name(name) == normalized:
-                base_stats = stats
-                break
+        # Try to get real stats from database
+        try:
+            from pymongo import MongoClient
+            import os
+            sync_client = MongoClient(os.environ.get('MONGO_URL'))
+            sync_db = sync_client['pick_vision']
+            
+            player = sync_db.nba_master_hub_2026.find_one(
+                {'$or': [
+                    {'normalized_name': normalized},
+                    {'display_name': {'$regex': f'^{re.escape(player_name)}', '$options': 'i'}}
+                ]},
+                {'_id': 0, 'baseline_stats': 1}
+            )
+            sync_client.close()
+            
+            if player and player.get('baseline_stats'):
+                baseline = player['baseline_stats']
+                base_pts = baseline.get('PTS', {}).get('season_avg', 15.0) if isinstance(baseline.get('PTS'), dict) else 15.0
+                base_reb = baseline.get('REB', {}).get('season_avg', 5.0) if isinstance(baseline.get('REB'), dict) else 5.0
+                base_ast = baseline.get('AST', {}).get('season_avg', 3.5) if isinstance(baseline.get('AST'), dict) else 3.5
+                base_pra = baseline.get('PRA', {}).get('season_avg', 23.5) if isinstance(baseline.get('PRA'), dict) else base_pts + base_reb + base_ast
+            else:
+                # Fallback
+                base_pts, base_reb, base_ast, base_pra = 15.0, 5.0, 3.5, 23.5
+        except Exception:
+            base_pts, base_reb, base_ast, base_pra = 15.0, 5.0, 3.5, 23.5
         
-        if not base_stats:
-            # Fallback: use generic averages
-            base_stats = {"pts": 15.0, "ast": 3.5, "reb": 5.0, "pra": 23.5}
-        
-        # Calculate boost factor (usage multiplier affects stats proportionally but not 1:1)
-        # Typically 25% usage increase = ~15% stat increase
-        stat_boost_factor = 1 + ((usage_multiplier - 1) * 0.6)  # Dampen the boost slightly
-        
-        # Add minutes-based boost (more minutes = proportionally more stats)
-        # Assume average 32 mins/game, each additional minute adds ~3% stats
-        minutes_boost = 1 + (minutes_bump * 0.03)
-        
-        total_boost = stat_boost_factor * minutes_boost
+        # Apply +12% boost for PTS/PRA per user spec
+        total_boost = usage_multiplier
         
         return {
-            "pts": round(base_stats.get("pts", 15) * total_boost, 1),
-            "ast": round(base_stats.get("ast", 3.5) * total_boost, 1),
-            "reb": round(base_stats.get("reb", 5) * total_boost, 1),
-            "pra": round(base_stats.get("pra", 23.5) * total_boost, 1),
+            "pts": round(base_pts * total_boost, 1),
+            "ast": round(base_ast * 1.03, 1),  # Minimal boost
+            "reb": round(base_reb * 1.05, 1),  # Small boost
+            "pra": round(base_pra * total_boost, 1),
             "boost_percentage": round((total_boost - 1) * 100, 1)
         }
     
@@ -955,23 +1019,73 @@ class InjuryVacuumService:
     
     async def sync_star_profiles(self) -> Dict[str, Any]:
         """
-        Sync star player usage profiles from NBA API or fallback data.
-        This would normally query leaguedashplayerstats for real usage rates.
+        Sync star player usage profiles from BDL Advanced Stats in database.
+        Dynamic Usage Model v3.0 - loads from star_usage_cache collection.
         """
-        logger.info("[VacuumService] Syncing star usage profiles...")
+        logger.info("[VacuumService] Syncing star profiles from BDL Advanced Stats...")
         
-        # For now, use fallback data
-        for player_name, profile in STAR_USAGE_PROFILES.items():
-            self.star_profiles_cache[self._normalize_player_name(player_name)] = {
-                **profile,
-                "name": player_name
+        try:
+            from pymongo import MongoClient
+            import os
+            sync_client = MongoClient(os.environ.get('MONGO_URL'))
+            sync_db = sync_client['pick_vision']
+            
+            # Load all players with usage >= Secondary Alpha threshold (22%)
+            stars = list(sync_db.star_usage_cache.find(
+                {'usage_percentage': {'$gte': SECONDARY_ALPHA_THRESHOLD}},
+                {'_id': 0}
+            ).sort('usage_percentage', -1))
+            
+            sync_client.close()
+            
+            # Cache all star profiles
+            primary_count = 0
+            secondary_count = 0
+            
+            for star in stars:
+                name = star.get('player_name', '')
+                normalized = self._normalize_player_name(name)
+                usage = star.get('usage_percentage', 0)
+                
+                alpha_tier = 'primary' if usage >= PRIMARY_ALPHA_THRESHOLD else 'secondary'
+                if alpha_tier == 'primary':
+                    primary_count += 1
+                else:
+                    secondary_count += 1
+                
+                self.star_profiles_cache[normalized] = {
+                    "name": name,
+                    "player_name": name,
+                    "team": star.get('team'),
+                    "position": star.get('position'),
+                    "usage_rate": usage,
+                    "usage_percentage": usage,
+                    "pie": star.get('pie', 0),
+                    "net_rating": star.get('net_rating', 0),
+                    "alpha_tier": alpha_tier,
+                    "is_primary_alpha": usage >= PRIMARY_ALPHA_THRESHOLD,
+                    "source": "bdl_advanced_stats"
+                }
+            
+            logger.info(f"[VacuumService] Synced {len(stars)} star profiles "
+                       f"(Primary Alpha: {primary_count}, Secondary Alpha: {secondary_count})")
+            
+            return {
+                "success": True,
+                "profiles_synced": len(self.star_profiles_cache),
+                "primary_alphas": primary_count,
+                "secondary_alphas": secondary_count,
+                "synced_at": datetime.now(timezone.utc).isoformat(),
+                "source": "bdl_advanced_stats"
             }
-        
-        return {
-            "success": True,
-            "profiles_synced": len(self.star_profiles_cache),
-            "synced_at": datetime.now(timezone.utc).isoformat()
-        }
+            
+        except Exception as e:
+            logger.error(f"[VacuumService] Error syncing star profiles: {e}")
+            return {
+                "success": False,
+                "error": str(e),
+                "profiles_synced": 0
+            }
 
 
 # =============================================================================

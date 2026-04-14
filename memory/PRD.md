@@ -26,12 +26,53 @@ The core engine that ensures exclusive tier assignment across both NBA and MLB:
    - Sets `SKIP_LEGACY_TIER_BUILDER = True` to prevent overwrites
    - Hard overwrites tier collections with Elite Top 10 picks
 
+### Dynamic Usage Vacuum Model v3.0 (NEW)
+The system for calculating "Live Injury Advantage" beneficiaries:
+
+1. **Dynamic Star Identification** (from BDL Advanced Stats):
+   - Primary Alpha: `usage_percentage >= 28%`
+   - Secondary Alpha: `usage_percentage 22-28%`
+   - Data source: `star_usage_cache` collection (BDL advanced stats)
+
+2. **Dynamic Beneficiary Calculation**:
+   - When Alpha is OUT, query teammates sorted by `usage_percentage` DESC
+   - Top 3 teammates become Primary/Secondary/Tertiary beneficiaries
+   - Enrich with baseline stats from `nba_master_hub_2026`
+
+3. **Boost Application**:
+   - Primary: +12% PTS/PRA boost
+   - Secondary: +8% PTS/PRA boost
+   - Tertiary: +5% PTS/PRA boost
+
 ### Key API Endpoints
 - `POST /api/nba/sync/master` - Full NBA pipeline with Phase 7
 - `POST /api/mlb/sync/master` - Full MLB pipeline
 - `POST /api/v3/ferrari/rebuild` - Ferrari rebuild only
+- `GET /api/v3/vacuum/live-alerts` - Live Injury Advantage alerts (Dynamic Model)
 
 ## Completed Work
+
+### April 14, 2026: Dynamic Usage Vacuum Model v3.0 (COMPLETE)
+
+#### Removed Hardcoded Star Lists
+- Deprecated `STAR_USAGE_PROFILES` dictionary
+- Deprecated `BENEFICIARY_MAPPINGS` dictionary
+- Deprecated `PLAYER_AVG_STATS` dictionary
+
+#### Dynamic Star Identification
+- `_is_star_player()` now queries `star_usage_cache` for BDL advanced stats
+- Falls back to `nba_master_hub_2026.advanced_stats` if needed
+- Returns alpha tier classification (primary/secondary)
+
+#### Dynamic Beneficiary Calculation
+- `_get_beneficiaries()` queries teammates by `usage_percentage` DESC
+- Enriches with `baseline_stats` from `nba_master_hub_2026`
+- Calculates real projections with +12%/+8%/+5% boosts
+
+#### API Updates
+- `/v3/vacuum/live-alerts` now returns `usage_bump` with boost percentage
+- Added `usage_percentage`, `dynamic_calculation` fields
+- Frontend correctly displays +12%, +8%, +5% boosts
 
 ### April 13-14, 2026: NBA Elite Top 10 Implementation
 
@@ -92,8 +133,9 @@ The core engine that ensures exclusive tier assignment across both NBA and MLB:
 - `/app/backend/services/mlb_oracle_apex_service.py` - MLB Elite engine
 - `/app/backend/services/mlb_master_sync.py` - MLB orchestrator
 - `/app/backend/services/cached_board_builder_service.py` - SKIP_LEGACY_TIER_BUILDER flag
+- `/app/backend/services/injury_vacuum_service.py` - Dynamic Usage Vacuum Model v3.0
 
 ## 3rd Party Integrations
 - Gemini 3.1 Flash-Lite (Google GenAI SDK) — uses Emergent LLM Key
 - The Odds API — User API Key
-- BallDontLie API — User API Key
+- BallDontLie API — User API Key (used to hydrate advanced statistics)
