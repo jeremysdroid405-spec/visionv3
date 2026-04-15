@@ -486,11 +486,21 @@ class MLBTierSorter:
         """
         Check if prop passes Safe Haven stat-specific gates.
         
+        For GOBLIN LINES (line < 1.0), uses relaxed thresholds calibrated
+        for binary/Bernoulli outcomes:
+          - CV <= 1.10, Hit Rate >= 75%, TP > 60%
+        
         Returns:
             Tuple of (passed, reason, gate_results)
         """
         stat_key = self._normalize_stat_type(prop.get("stat_type", ""))
-        gates = SAFE_HAVEN_GATES.get(stat_key, SAFE_HAVEN_GATES.get("hits"))
+        line = prop.get("line", 0)
+        
+        # Goblin-line override for sub-1.0 props (binary outcomes)
+        if line < 1.0:
+            gates = {"max_cv": 1.10, "min_hit_rate": 75, "min_edge": 0, "min_tp": 60}
+        else:
+            gates = SAFE_HAVEN_GATES.get(stat_key, SAFE_HAVEN_GATES.get("hits"))
         
         gate_results = {
             "gate1_cv": {"threshold": gates["max_cv"], "value": cv, "passed": False},
