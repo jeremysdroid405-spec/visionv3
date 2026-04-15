@@ -85,27 +85,17 @@ NBA_REQUIRED_KEYS = {
 def validate_prop_has_intel(prop: Dict, sport: str = "MLB") -> bool:
     """
     Check if a prop has enough intel data to be cached.
-    Accepts either full MLBPhysicalEngine output OR Lasso-only output.
+    Accepts: full MLBPhysicalEngine output, Lasso-only output, or Gemini-only output.
     """
     # Must have vision text
     if not prop.get('vision_intel') and not prop.get('vision_summary'):
-        return False
-
-    # Must have some prediction — vk_data OR intel_suite.lasso
-    vk_data = prop.get('vk_data', {})
-    lasso = prop.get('intel_suite', {}).get('lasso', {})
-    has_prediction = (
-        vk_data.get('predicted') is not None
-        or vk_data.get('projection') is not None
-        or lasso.get('projection') is not None
-    )
-    if not has_prediction:
         return False
 
     # scout_badges must exist (can be empty list)
     if 'scout_badges' not in prop:
         prop['scout_badges'] = []
 
+    # If we have a prediction (vk_data or lasso), great. If not, vision_intel alone is enough.
     return True
 
 

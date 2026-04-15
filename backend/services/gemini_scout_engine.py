@@ -37,49 +37,62 @@ Rules:
 - Output ONLY the final two-sentence scout text, nothing else"""
 
 
-async def generate_gemini_scout_intel(payload: Dict) -> str:
+async def generate_gemini_scout_intel(payload: Dict, max_retries: int = 3) -> str:
     """
     Call Gemini Flash to generate a two-sentence scout summary.
-    
-    payload keys:
-        player, stat, line, direction, lasso_proj, edge, edge_pct,
-        r_squared, confidence_tier, top_drivers, h10_rate, l10_avg,
-        matchup_opponent, dvp_rank, dvp_label, pace_delta, stability_score,
-        usage_bump, sport
+    Retries with exponential backoff on rate limits / transient errors.
     """
     if not EMERGENT_LLM_KEY:
         return _fallback(payload)
 
-    try:
-        chat = LlmChat(
-            api_key=EMERGENT_LLM_KEY,
-            session_id=f"scout-{uuid.uuid4().hex[:8]}",
-            system_message=SYSTEM_PROMPT,
-        ).with_model("gemini", "gemini-3-flash-preview")
+    player = payload.get("player", "?")
+    user_text = json.dumps(payload, default=str)
 
-        user_msg = UserMessage(text=json.dumps(payload, default=str))
-        response = await asyncio.wait_for(
-            chat.send_message(user_msg),
-            timeout=10.0,
-        )
+    for attempt in range(max_retries):
+        try:
+            chat = LlmChat(
+                api_key=EMERGENT_LLM_KEY,
+                session_id=f"scout-{uuid.uuid4().hex[:8]}",
+                system_message=SYSTEM_PROMPT,
+            ).with_model("gemini", "gemini-3-flash-preview")
 
-        text = str(response).strip()
-        if len(text) < 20:
+            response = await asyncio.wait_for(
+                chat.send_message(UserMessage(text=user_text)),
+                timeout=12.0,
+            )
+
+            text = str(response).strip()
+            if len(text) >= 20:
+                return text
+
+        except asyncio.TimeoutError:
+            logger.warning(f"[GEMINI] Timeout for {player} (attempt {attempt+1}/{max_retries})")
+        except Exception as e:
+            err = str(e)
+            is_retryable = any(k in err.lower() for k in [
+                "rate", "limit", "429", "503", "unavailable", "reset",
+                "connect", "timeout", "overloaded", "capacity",
+            ])
+            if is_retryable and attempt < max_retries - 1:
+                wait = 2 ** attempt
+                logger.info(f"[GEMINI] Retryable error for {player}, waiting {wait}s (attempt {attempt+1}): {err[:80]}")
+                await asyncio.sleep(wait)
+                continue
+            logger.warning(f"[GEMINI] Failed for {player} after {attempt+1} attempts: {err[:120]}")
             return _fallback(payload)
-        return text
 
-    except asyncio.TimeoutError:
-        logger.warning(f"[GEMINI] Timeout for {payload.get('player')}")
-        return _fallback(payload)
-    except Exception as e:
-        logger.warning(f"[GEMINI] Error for {payload.get('player')}: {e}")
-        return _fallback(payload)
+    return _fallback(payload)
 
 
-async def batch_generate_scout_intel(payloads: list) -> list:
-    """Process a batch of payloads concurrently."""
-    tasks = [generate_gemini_scout_intel(p) for p in payloads]
-    return await asyncio.gather(*tasks, return_exceptions=False)
+async def batch_generate_scout_intel(payloads: list, concurrency: int = 5) -> list:
+    """Process a batch of payloads with limited concurrency to avoid rate limits."""
+    sem = asyncio.Semaphore(concurrency)
+
+    async def _run(p):
+        async with sem:
+            return await generate_gemini_scout_intel(p)
+
+    return await asyncio.gather(*[_run(p) for p in payloads])
 
 
 def build_scout_payload(
