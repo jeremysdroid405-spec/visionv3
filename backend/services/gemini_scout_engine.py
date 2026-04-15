@@ -151,11 +151,40 @@ def build_scout_payload(
 
 
 def _fallback(payload: Dict) -> str:
-    """Baseline fallback if LLM fails."""
+    """Baseline fallback if LLM fails — still punchy."""
     player = payload.get("player", "Player")
     stat = payload.get("stat", "stat")
-    proj = payload.get("lasso_proj", "?")
+    proj = payload.get("lasso_proj")
     line = payload.get("line", "?")
     edge = payload.get("edge", 0)
+    edge_pct = payload.get("edge_pct", 0)
     direction = payload.get("direction", "OVER")
-    return f"{player} {stat} — Projection: {proj} vs Line: {line} ({direction} {edge:+.1f} edge)."
+    h10 = payload.get("h10_rate", 0)
+    dvp_rank = payload.get("dvp_rank")
+    dvp_label = payload.get("dvp_label")
+    
+    # Build a two-sentence summary with whatever data we have
+    parts = []
+    
+    # Sentence 1: The edge call
+    if proj and edge:
+        if abs(edge_pct) >= 15:
+            parts.append(f"{player} is projecting {proj} on {stat} against a line of {line} — that's a {edge_pct:+.1f}% edge the books haven't priced in.")
+        else:
+            parts.append(f"{player} {stat} projects to {proj} vs a {line} line ({direction} {edge:+.1f}).")
+    else:
+        parts.append(f"{player} {stat} at {line} — riding the {direction.lower()} side here.")
+    
+    # Sentence 2: Supporting context
+    if h10 >= 80:
+        parts.append(f"Hitting {h10:.0f}% over the last 10 — this is a heater you don't fade.")
+    elif h10 >= 65:
+        parts.append(f"L10 hit rate sits at {h10:.0f}%, steady enough to back with confidence.")
+    elif dvp_rank and dvp_rank >= 20:
+        parts.append(f"Matchup grades out soft ({dvp_label or 'bottom-10 defense'}) — volume should be there tonight.")
+    elif dvp_rank and dvp_rank <= 8:
+        parts.append(f"Tough matchup on paper (#{dvp_rank} defense) — proceed with caution.")
+    else:
+        parts.append(f"The math leans {direction.lower()} but stay disciplined with your unit size.")
+    
+    return " ".join(parts)

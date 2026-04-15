@@ -226,7 +226,12 @@ def enrich_mlb_prop_with_averages(prop: Dict, player_data: Dict = None) -> Dict:
     # Only set baseline if vision_intel not already set by Gemini enrichment
     if not prop.get("vision_intel"):
         direction = "OVER" if vk_edge > 0 else "UNDER"
-        prop["vision_intel"] = f"{player_name} {stat_type} — Projection: {vk_pred:.1f} vs Line: {line} ({direction} {vk_edge:+.1f} edge)."
+        if h10 >= 80:
+            prop["vision_intel"] = f"{player_name} is hammering {stat_type} at an {h10:.0f}% L10 clip — projection of {vk_pred:.1f} vs {line} gives us a {vk_edge:+.1f} edge to ride."
+        elif h10 >= 65:
+            prop["vision_intel"] = f"{player_name} {stat_type} projects to {vk_pred:.1f} against a {line} line ({direction} {vk_edge:+.1f}). L10 hit rate at {h10:.0f}% — consistent enough to back."
+        else:
+            prop["vision_intel"] = f"{player_name} {stat_type} at {line} — model sees {vk_pred:.1f} ({direction} {vk_edge:+.1f}). Stay cautious, the floor isn't locked here."
         prop["vision_summary"] = prop["vision_intel"]
     
     # =========================================================================
