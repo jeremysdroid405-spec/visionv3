@@ -497,8 +497,9 @@ class MLBTierSorter:
         line = prop.get("line", 0)
         
         # Goblin-line override for sub-1.0 props (binary outcomes)
+        # Only 3 gates: CV, Hit Rate, TP — no edge requirement
         if line < 1.0:
-            gates = {"max_cv": 1.10, "min_hit_rate": 75, "min_edge": 0, "min_tp": 60}
+            gates = {"max_cv": 1.10, "min_hit_rate": 75, "min_edge": -9999, "min_tp": 60}
         else:
             gates = SAFE_HAVEN_GATES.get(stat_key, SAFE_HAVEN_GATES.get("hits"))
         
