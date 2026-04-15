@@ -626,6 +626,13 @@ def enrich_mlb_intel_suite(prop: Dict) -> Dict:
         # volatility_extreme: High CV
         if cv and cv > 70:
             scout.append({"badge_key": "volatility_extreme", "id": "volatility_extreme"})
+        
+        # SAFETY OVERRIDE: Block soft_matchup if SP is a buzzsaw (Top 15 rank)
+        matchup = prop.get("matchup_analysis") or {}
+        sp_rank = (matchup.get("sp_matchup") or {}).get("rank")
+        if sp_rank and sp_rank <= 15:
+            scout = [b for b in scout if b.get("badge_key") != "soft_matchup"]
+        
         prop["scout_badges"] = scout
     
     return prop
