@@ -437,6 +437,9 @@ def enrich_mlb_intel_suite(prop: Dict) -> Dict:
     l10_avg = prop.get("l10_avg") or 0
     season_avg = prop.get("season_avg") or prop.get("season_average") or l10_avg
     cv = prop.get("cv") or 0
+    # Normalize CV: if stored as percentage (>5), convert to decimal
+    if cv > 5:
+        cv = cv / 100
     
     # Classification
     is_goblin = prop.get("is_goblin", False)
@@ -472,7 +475,7 @@ def enrich_mlb_intel_suite(prop: Dict) -> Dict:
         badge_keys.append("whiff_wizard")
     
     # VOLATILITY_EXTREME: High CV indicates boom/bust
-    if cv and cv > 70:
+    if cv and cv > 0.70:
         badge_keys.append("volatility_extreme")
     
     # HITTERS_HAVEN: Playing in hitter-friendly park
@@ -513,10 +516,10 @@ def enrich_mlb_intel_suite(prop: Dict) -> Dict:
     if l10_avg and line and l10_avg > line:
         reasons.append(f"L10 average of {l10_avg:.1f} exceeds {line} line")
     
-    if cv and cv <= 40:
-        reasons.append(f"Low variance (CV {cv:.0f}%) indicates consistency")
-    elif cv and cv > 70:
-        reasons.append(f"High variance (CV {cv:.0f}%) - boom/bust potential")
+    if cv and cv <= 0.40:
+        reasons.append(f"Low variance (CV {cv:.0%}) indicates consistency")
+    elif cv and cv > 0.70:
+        reasons.append(f"High variance (CV {cv:.0%}) - boom/bust potential")
         confidence = "SPECULATIVE"
     
     if is_goblin and dk_odds and dk_odds <= -250:
@@ -555,13 +558,13 @@ def enrich_mlb_intel_suite(prop: Dict) -> Dict:
     # BUILD STABILITY INDEX from actual data
     # =========================================================================
     if cv:
-        if cv <= 30:
+        if cv <= 0.30:
             stability_score = 90
             consistency = "Elite"
-        elif cv <= 50:
+        elif cv <= 0.50:
             stability_score = 70
             consistency = "Stable"
-        elif cv <= 70:
+        elif cv <= 0.70:
             stability_score = 50
             consistency = "Variable"
         else:
@@ -624,7 +627,7 @@ def enrich_mlb_intel_suite(prop: Dict) -> Dict:
         if prop.get("has_vacuum_modifier") or prop.get("vacuum_modifier"):
             scout.append({"badge_key": "usage_spike", "id": "usage_spike"})
         # volatility_extreme: High CV
-        if cv and cv > 70:
+        if cv and cv > 0.70:
             scout.append({"badge_key": "volatility_extreme", "id": "volatility_extreme"})
         
         # SAFETY OVERRIDE: Block soft_matchup if SP is a buzzsaw (Top 15 rank)
