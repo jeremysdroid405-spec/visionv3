@@ -30,7 +30,7 @@ from config.db_config import get_collection_name
 logger = logging.getLogger(__name__)
 
 # Gemini API configuration
-GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY")
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 
 # Oracle thresholds
 SAFE_HAVEN_MIN_SCORE = 7  # Props below this get demoted
@@ -56,17 +56,17 @@ class PropVisionOracleService:
         if self._genai is not None:
             return True
         
-        if not GOOGLE_API_KEY:
-            logger.error("[ORACLE] GOOGLE_API_KEY not configured")
+        if not GEMINI_API_KEY:
+            logger.error("[ORACLE] GEMINI_API_KEY not configured")
             return False
         
         try:
             import google.generativeai as genai
-            genai.configure(api_key=GOOGLE_API_KEY)
+            genai.configure(api_key=GEMINI_API_KEY)
             self._genai = genai
-            # Use gemini-3.1-pro-preview for Bull vs Bear analysis (Tier 1 paid key)
-            self._model = genai.GenerativeModel("gemini-3.1-pro-preview")
-            logger.info("[ORACLE] Gemini API initialized with gemini-3.1-pro-preview")
+            # Use gemini-3.1-flash-lite-preview for Bull vs Bear analysis (Tier 1 paid key)
+            self._model = genai.GenerativeModel("gemini-3.1-flash-lite-preview")
+            logger.info("[ORACLE] Gemini API initialized with gemini-3.1-flash-lite-preview")
             return True
         except Exception as e:
             logger.error(f"[ORACLE] Failed to initialize Gemini: {e}")
@@ -609,7 +609,7 @@ Only return valid JSON. No markdown code blocks.
                 
                 results["gemini_analysis"] = {
                     "verdicts_returned": len(verdicts),
-                    "model": "gemini-3.1-pro-preview"
+                    "model": "gemini-3.1-flash-lite-preview"
                 }
             
             # Step 4: Calculate Oracle scores and organize by tier

@@ -26,7 +26,7 @@ logger = logging.getLogger("ai_context_engine")
 # Environment variables
 MONGO_URL = os.environ.get("MONGO_URL")
 DB_NAME = os.environ.get("DB_NAME", "pick_vision")
-GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY")
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 
 
 class AiContextEngine:
@@ -43,10 +43,10 @@ class AiContextEngine:
         self.db = db
         self.master_hub = db.nba_master_hub_2026
         self.news_cache = db.ai_news_cache
-        self._api_available = bool(GOOGLE_API_KEY)
+        self._api_available = bool(GEMINI_API_KEY)
         
         if not self._api_available:
-            logger.warning("[AI_CONTEXT] GOOGLE_API_KEY not set - engine will use neutral defaults")
+            logger.warning("[AI_CONTEXT] GEMINI_API_KEY not set - engine will use neutral defaults")
     
     # ==================== DATA GATHERING PHASE ====================
     
@@ -190,7 +190,7 @@ Output ONLY valid JSON, no markdown, no explanation:"""
         try:
             from google import genai
             
-            client = genai.Client(api_key=GOOGLE_API_KEY)
+            client = genai.Client(api_key=GEMINI_API_KEY)
             
             def generate():
                 return client.models.generate_content(

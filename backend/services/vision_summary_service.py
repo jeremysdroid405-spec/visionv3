@@ -42,9 +42,9 @@ class VisionSummaryService:
     _CIRCUIT_BREAKER_DURATION = 30  # Skip API calls for 30 seconds after failure
     
     def __init__(self):
-        self.api_key = os.environ.get("GOOGLE_API_KEY")
+        self.api_key = os.environ.get("GEMINI_API_KEY")
         if not self.api_key:
-            logger.warning("[VISION] No GOOGLE_API_KEY found - summaries will be disabled")
+            logger.warning("[VISION] No GEMINI_API_KEY found - summaries will be disabled")
     
     def _get_badge_headline(self, badge_key: str) -> str:
         """Get a descriptive headline for a badge key."""
