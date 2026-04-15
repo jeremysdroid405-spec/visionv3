@@ -1398,7 +1398,7 @@ class VegasKillerModel:
     Uses ensemble of Ridge + Gradient Boosting for robust predictions.
     """
     
-    def __init__(self, db, model_dir: str = '/app/backend/models'):
+    def __init__(self, db, model_dir: str = os.environ.get('MODEL_DIR', '/app/backend/models')):
         self.db = db
         self.model_dir = model_dir
         self.feature_engineer = VegasFeatureEngineer(db)
