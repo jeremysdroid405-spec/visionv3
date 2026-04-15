@@ -84,30 +84,28 @@ NBA_REQUIRED_KEYS = {
 
 def validate_prop_has_intel(prop: Dict, sport: str = "MLB") -> bool:
     """
-    Check if a prop has complete intel data.
-    
-    Returns True only if ALL required intel keys are present.
-    This prevents "Empty Shell" props from being cached.
+    Check if a prop has enough intel data to be cached.
+    Accepts either full MLBPhysicalEngine output OR Lasso-only output.
     """
-    required = MLB_REQUIRED_KEYS if sport.upper() == "MLB" else NBA_REQUIRED_KEYS
-    
-    # Check for vision_intel (AI summary) - REQUIRED
+    # Must have vision text
     if not prop.get('vision_intel') and not prop.get('vision_summary'):
         return False
-    
-    # Check for vk_data (prediction) - REQUIRED
+
+    # Must have some prediction — vk_data OR intel_suite.lasso
     vk_data = prop.get('vk_data', {})
-    if not vk_data:
+    lasso = prop.get('intel_suite', {}).get('lasso', {})
+    has_prediction = (
+        vk_data.get('predicted') is not None
+        or vk_data.get('projection') is not None
+        or lasso.get('projection') is not None
+    )
+    if not has_prediction:
         return False
-    
-    # Check vk_data has prediction (Lasso uses 'projection', legacy uses 'predicted')
-    if vk_data.get('predicted') is None and vk_data.get('projection') is None:
-        return False
-    
-    # Check for scout_badges (can be empty list, but must exist)
+
+    # scout_badges must exist (can be empty list)
     if 'scout_badges' not in prop:
-        return False
-    
+        prop['scout_badges'] = []
+
     return True
 
 
@@ -238,7 +236,7 @@ def merge_intel_into_prop(base_prop: Dict, intel_data: Dict) -> Dict:
         merged['vision_intel'] = intel_data['vision_summary']
     
     # Merge scout badges
-    if intel_data.get('scout_badges'):
+    if 'scout_badges' in intel_data:
         merged['scout_badges'] = intel_data['scout_badges']
     
     # Merge matchup analysis

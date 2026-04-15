@@ -2470,6 +2470,9 @@ async def get_mlb_safe_haven_picks(
         elif vi is None:
             confirmed.append(p)
     
+    # Overlay enrichment cache (Gemini + Lasso)
+    confirmed = overlay_enrichment_cache(confirmed, "mlb")
+
     return {
         "success": True,
         "tier": "SAFE_HAVEN",
@@ -2502,6 +2505,9 @@ async def get_mlb_front_lines_picks(
     collection = _db[get_collection_name("front_lines", "mlb")]
     picks = await collection.find({}, {"_id": 0}).limit(limit).to_list(length=limit)
     
+    # Overlay enrichment cache (Gemini + Lasso)
+    picks = overlay_enrichment_cache(picks, "mlb")
+
     return {
         "success": True,
         "tier": "FRONT_LINES",
@@ -2533,6 +2539,9 @@ async def get_mlb_war_zone_picks(
     collection = _db[get_collection_name("war_zone", "mlb")]
     picks = await collection.find({}, {"_id": 0}).limit(limit).to_list(length=limit)
     
+    # Overlay enrichment cache (Gemini + Lasso)
+    picks = overlay_enrichment_cache(picks, "mlb")
+
     return {
         "success": True,
         "tier": "WAR_ZONE",

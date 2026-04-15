@@ -474,72 +474,142 @@ class DeltaManager:
         return result
     
     async def _calculate_mlb_intel(self, prop: Dict) -> Dict:
-        """Calculate MLB-specific intel."""
+        """Calculate MLB-specific intel with Lasso v2 + Gemini integration."""
         result = {}
-        
-        engine = await self._get_mlb_engine()
-        if not engine:
-            return result
-        
+
         player_name = prop.get('player_name', '')
         stat_type = prop.get('stat_type', '') or prop.get('stat_type_raw', '')
         line = prop.get('line', 0)
+
+        # Derive opponent from board if not on prop
         opponent = prop.get('opponent') or prop.get('opponent_abbr')
+        if not opponent and player_name:
+            board_doc = await self.db.mlb_cached_board.find_one(
+                {"player_name": {"$regex": f"^{player_name}$", "$options": "i"}},
+                {"_id": 0, "opponent": 1, "opponent_abbr": 1}
+            )
+            if board_doc:
+                opponent = board_doc.get("opponent") or board_doc.get("opponent_abbr")
+
+        # --- Lasso prediction ---
+        lasso_result = None
+        try:
+            from models.predictor import get_lasso_engine, STAT_ALIASES
+            engine = get_lasso_engine()
+            target = STAT_ALIASES.get(stat_type, stat_type.lower().replace(" ", "_"))
+
+            hub = self.db.mlb_master_hub_2026
+            player_doc = await hub.find_one(
+                {"player_name": {"$regex": f"^{player_name}$", "$options": "i"}},
+                {"_id": 0, "bdl_game_logs": 1}
+            )
+            if player_doc:
+                logs = player_doc.get("bdl_game_logs", [])
+                # Reverse-map field names for Lasso
+                MLB_REVERSE = {
+                    "rbis": "rbi", "home_runs": "hr", "walks": "bb",
+                    "strikeouts": "k", "innings_pitched": "ip",
+                    "pitcher_strikeouts": "p_k", "pitcher_walks": "p_bb",
+                    "hits_allowed": "p_hits", "earned_runs": "er", "batting_avg": "avg",
+                }
+                mapped_logs = []
+                for log in logs:
+                    m = dict(log)
+                    for old_k, new_k in MLB_REVERSE.items():
+                        if old_k in m:
+                            m[new_k] = m.pop(old_k)
+                    mapped_logs.append(m)
+                mapped_logs.sort(key=lambda x: x.get("game_id") or 0)
+                if len(mapped_logs) >= 11:
+                    lasso_result = engine.predict_player(
+                        sport="mlb", target_stat=target,
+                        game_logs=mapped_logs, player_name=player_name, line=line,
+                    )
+        except Exception as e:
+            logger.warning(f"[JIT_MLB] Lasso failed for {player_name}: {e}")
+
+        # --- MLBPhysicalEngine prediction ---
+        engine = await self._get_mlb_engine()
         park_team = prop.get('home_team') if prop.get('is_away_team') else prop.get('team')
         dk_odds = prop.get('dk_odds')
-        
+
         try:
-            # Get MLR prediction
-            mlr_result = engine.predict(
-                player_name=player_name,
-                stat_type=stat_type,
-                line=line,
-                opponent_team=opponent,
-                park_team=park_team,
-                dk_odds=int(dk_odds) if dk_odds else None
-            )
-            
-            if mlr_result.is_valid:
-                result['vk_data'] = {
-                    'predicted': mlr_result.mlr_predicted,
-                    'prob_over': mlr_result.vk_prob_over,
-                    'prob_under': mlr_result.vk_prob_under,
-                    'edge': mlr_result.vk_edge,
-                    'verdict': mlr_result.vk_verdict,
-                    'sigma_used': mlr_result.sigma_used,
-                    'sigma_source': mlr_result.sigma_source,
-                    'z_score': mlr_result.z_score,
-                }
-                
-                result['l20_variance'] = mlr_result.mlr_matchup.get('variance', {})
-                result['matchup_analysis'] = {
-                    'splits': mlr_result.mlr_matchup.get('splits', {}),
-                    'park': mlr_result.mlr_matchup.get('park', {}),
-                    'opponent': mlr_result.mlr_matchup.get('opponent', {}),
-                    'trends': mlr_result.mlr_matchup.get('trends', {}),
-                    'discipline': mlr_result.mlr_matchup.get('discipline', {}),
-                }
-                
-                # Generate scout badges
-                result['scout_badges'] = self._generate_mlb_badges(mlr_result, prop)
-                
-                # Build vision summary
-                park = mlr_result.mlr_matchup.get('park', {})
-                splits = mlr_result.mlr_matchup.get('splits', {})
-                trends = mlr_result.mlr_matchup.get('trends', {})
-                
-                park_factor = park.get('factor', 1.0)
-                park_desc = "hitter-friendly" if park_factor > 1.05 else "pitcher-friendly" if park_factor < 0.95 else "neutral"
-                
-                result['vision_summary'] = (
-                    f"Park: {park.get('venue', 'N/A')} ({park_desc}, {park_factor:.2f}x) | "
-                    f"vs {prop.get('pitcher_hand', 'R')}HP: .{int(splits.get('matchup_avg', 0.25)*1000):03d} | "
-                    f"L10: {trends.get('l10_avg', 0):.1f} | σ={mlr_result.sigma_used:.2f}"
+            if engine:
+                mlr_result = engine.predict(
+                    player_name=player_name, stat_type=stat_type, line=line,
+                    opponent_team=opponent, park_team=park_team,
+                    dk_odds=int(dk_odds) if dk_odds else None,
                 )
-                
+                if mlr_result.is_valid:
+                    result['vk_data'] = {
+                        'predicted': mlr_result.mlr_predicted,
+                        'prob_over': mlr_result.vk_prob_over,
+                        'prob_under': mlr_result.vk_prob_under,
+                        'edge': mlr_result.vk_edge,
+                        'verdict': mlr_result.vk_verdict,
+                        'sigma_used': mlr_result.sigma_used,
+                        'sigma_source': mlr_result.sigma_source,
+                        'z_score': mlr_result.z_score,
+                    }
+                    result['l20_variance'] = mlr_result.mlr_matchup.get('variance', {})
+                    result['matchup_analysis'] = {
+                        'splits': mlr_result.mlr_matchup.get('splits', {}),
+                        'park': mlr_result.mlr_matchup.get('park', {}),
+                        'opponent': mlr_result.mlr_matchup.get('opponent', {}),
+                        'trends': mlr_result.mlr_matchup.get('trends', {}),
+                        'discipline': mlr_result.mlr_matchup.get('discipline', {}),
+                    }
+                    result['scout_badges'] = self._generate_mlb_badges(mlr_result, prop)
+
+                    park = mlr_result.mlr_matchup.get('park', {})
+                    park_factor = park.get('factor', 1.0)
+                    park_desc = "hitter-friendly" if park_factor > 1.05 else "pitcher-friendly" if park_factor < 0.95 else "neutral"
+                    result['vision_summary'] = (
+                        f"Park: {park.get('venue', 'N/A')} ({park_desc}, {park_factor:.2f}x) | "
+                        f"vs {prop.get('pitcher_hand', 'R')}HP: .{int(mlr_result.mlr_matchup.get('splits', {}).get('matchup_avg', 0.25)*1000):03d} | "
+                        f"L10: {mlr_result.mlr_matchup.get('trends', {}).get('l10_avg', 0):.1f} | sigma={mlr_result.sigma_used:.2f}"
+                    )
         except Exception as e:
-            logger.warning(f"[JIT_MLB] Error: {e}")
-        
+            logger.warning(f"[JIT_MLB] MLR engine error: {e}")
+
+        # --- Gemini scout text ---
+        try:
+            from services.gemini_scout_engine import generate_gemini_scout_intel, build_scout_payload
+            payload = build_scout_payload(
+                player_name=player_name, stat_type=stat_type, line=line,
+                lasso_result=lasso_result, board_pick=prop,
+                intel_suite=result.get('matchup_analysis', {}), sport="mlb",
+            )
+            result['vision_intel'] = await generate_gemini_scout_intel(payload)
+            result['vision_summary'] = result['vision_intel']
+        except Exception as e:
+            logger.warning(f"[JIT_MLB] Gemini failed: {e}")
+            if not result.get('vision_intel'):
+                proj = lasso_result.get('projection', '?') if lasso_result else '?'
+                result['vision_intel'] = f"{player_name} {stat_type} — Projection: {proj} vs Line: {line}."
+
+        # --- Inject Lasso data into intel_suite ---
+        if lasso_result and not lasso_result.get('error'):
+            result['intel_suite'] = result.get('intel_suite', {})
+            result['intel_suite']['lasso'] = {
+                'projection': lasso_result.get('projection'),
+                'confidence_tier': lasso_result.get('confidence_tier'),
+                'r_squared': lasso_result.get('r_squared'),
+                'top_drivers': [c['feature'] for c in lasso_result.get('top_contributors', [])[:2]],
+            }
+            # Ensure vk_data exists (validator requires it)
+            if 'vk_data' not in result:
+                proj = lasso_result.get('projection', 0)
+                result['vk_data'] = {
+                    'predicted': proj,
+                    'projection': proj,
+                    'edge': (proj - line) if proj and line else 0,
+                    'source': 'lasso_v2',
+                }
+            # Ensure scout_badges exists
+            if 'scout_badges' not in result:
+                result['scout_badges'] = []
+
         return result
     
     async def _calculate_nba_intel(self, prop: Dict) -> Dict:
