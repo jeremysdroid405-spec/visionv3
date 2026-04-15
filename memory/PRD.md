@@ -13,22 +13,26 @@ Restructure the React/FastAPI betting app to a 100% Local-First Database Model, 
 
 ## What's Been Implemented
 
+### MLB Intel Suite Full Enrichment Fix (COMPLETE - 4/15/2026)
+- Fixed MLB tier endpoints (safe-haven, front-lines, war-zone) — were NOT calling `enrich_mlb_intel_suite()` or `enrich_mlb_prop_with_tempo()`
+- Fixed MLB player detail endpoint — same missing enrichment calls
+- Fixed `enrich_mlb_intel_suite` to preserve ALL existing intel_suite data (lasso, tempo) via `{**existing_intel}` spread
+- Added scout badge generation (hot_streak, floor_lock, lasso_high_edge, high_fidelity_model, soft_matchup, usage_spike, volatility_extreme) inside `enrich_mlb_intel_suite`
+- Fixed frontend intel_suite merge: changed `||` to object spread to preserve all fields from both tier endpoint and player detail API
+
 ### Scout Badges UI Restructure (COMPLETE - 4/15/2026)
 - Removed inline scout badge pills and vision intel text from PropRow cards
-- Added 7 scout badge definitions to BADGE_REGISTRY (hot_streak, floor_lock, lasso_high_edge, high_fidelity_model, soft_matchup, usage_spike, volatility_extreme)
+- Added 7 scout badge definitions to BADGE_REGISTRY with full tooltips
 - Created dedicated "Scout Badges" section in Vision Intel Suite modal below Context Badges
-- 2-column grid layout with descriptions, tooltips, and active badge highlighting
-- Mirrors Context Badges UX: click/hover for detailed tooltip with title, description, impact
+- Unified MLB/NBA Vision Intel Suite parity: Context Badges header, Active Badges summary, and Matchup fallback sections are now sport-agnostic
 
 ### Gemini Scout Intelligence Engine (COMPLETE - 4/14/2026)
 - Built `gemini_scout_engine.py` with async Gemini Flash scout summaries
 - Concurrent batch processing for ~30 Ferrari Tier props
-- Fallback baseline strings if LLM fails
 
 ### Vision Intel Suite v2 (COMPLETE - 4/14/2026)
 - Lasso v2 wired into JIT enrichment
-- 10 conditional vision_intel templates
-- Scout badges as string arrays
+- 10 conditional vision_intel templates, scout badges as string arrays
 - Frontend: Lasso projection bar, confidence tier badge, Vision Intel modal
 
 ### Data Foundation (COMPLETE - 4/14/2026)
@@ -48,9 +52,9 @@ Restructure the React/FastAPI betting app to a 100% Local-First Database Model, 
 | dg_cached_board | varies | Live NBA prop board |
 
 ## Key API Endpoints
-- `GET /api/v3/mlb/player/{player_name}` - Full player data
+- `GET /api/v3/mlb/ferrari/safe-haven|front-lines|war-zone` - MLB Ferrari tier picks (now enriched)
+- `GET /api/v3/mlb/player/{player_name}` - Full player data (now enriched)
 - `GET /api/v3/player-with-badges/{player_name}` - NBA player data
-- `GET /api/v3/mlb/ferrari/safe-haven|front-lines|war-zone` - Ferrari tier picks
 - `GET /api/v3/lasso/predict/{sport}/{player}/{stat}?line=X`
 
 ## Pending Tasks
