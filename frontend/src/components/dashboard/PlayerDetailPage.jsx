@@ -959,7 +959,7 @@ export const PlayerDetailPage = ({ playerName, playerData = null, onBack, highli
                 {/* Badge Grid - Filter by sport */}
                 <div className="grid grid-cols-2 gap-3">
                   {Object.entries(BADGE_REGISTRY)
-                    .filter(([_, badge]) => !badge.sport || badge.sport === currentSport)
+                    .filter(([_, badge]) => (!badge.sport || badge.sport === currentSport) && badge.category !== 'scout')
                     .map(([badgeKey, badge]) => {
                     // Check if this badge is active for this player
                     // For MLB, check context_badges array for badge keys
@@ -1004,7 +1004,7 @@ export const PlayerDetailPage = ({ playerName, playerData = null, onBack, highli
               {/* ===== SCOUT BADGES - AI & Model-Driven Indicators ===== */}
               {(() => {
                 const scoutBadges = selectedVisionProp.scout_badges || selectedVisionProp.intel_suite?.scout_badges || [];
-                const SCOUT_KEYS = ['hot_streak', 'floor_lock', 'lasso_high_edge', 'high_fidelity_model', 'soft_matchup', 'usage_spike', 'volatility_extreme'];
+                const SCOUT_KEYS = ['hot_streak', 'floor_lock', 'lasso_high_edge', 'high_fidelity_model', 'soft_matchup', 'usage_spike'];
                 const activeBadgeKeys = scoutBadges.map(b => typeof b === 'string' ? b : b.badge_key || b.id || '');
                 
                 return (
