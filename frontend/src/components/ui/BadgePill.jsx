@@ -420,6 +420,110 @@ export const BADGE_REGISTRY = {
       impact: "High risk, high reward. Perfect for War Zone moonshots chasing 2000x payouts.",
       sentiment: "cautionary"
     }
+  },
+
+  // ==================== SCOUT BADGES (Cross-Sport) ====================
+  hot_streak: {
+    label: "Hot Streak",
+    icon: Flame,
+    glowColor: "#f97316",  // Orange
+    bgClass: "bg-orange-500/20",
+    borderClass: "border-orange-500/40",
+    textClass: "text-orange-400",
+    glowClass: "shadow-orange-500/30",
+    trigger: "L5 avg significantly above season baseline",
+    category: "scout",
+    tooltip: {
+      title: "Hot Streak",
+      description: "Player is on fire — last 5 game average is significantly above their season baseline for this stat.",
+      impact: "Ride the wave. Hot streaks cluster in the short term. Strong over signal.",
+      sentiment: "positive"
+    }
+  },
+  floor_lock: {
+    label: "Floor Lock",
+    icon: Shield,
+    glowColor: "#22c55e",  // Green
+    bgClass: "bg-green-500/20",
+    borderClass: "border-green-500/40",
+    textClass: "text-green-400",
+    glowClass: "shadow-green-500/30",
+    trigger: "90%+ hit rate over L10 games",
+    category: "scout",
+    tooltip: {
+      title: "Floor Lock",
+      description: "This player has hit this line in 90%+ of their last 10 games. One of the safest bets on the board.",
+      impact: "Elite consistency. Near-guaranteed floor makes this a Safe Haven lock.",
+      sentiment: "positive"
+    }
+  },
+  lasso_high_edge: {
+    label: "Lasso Edge",
+    icon: Target,
+    glowColor: "#10b981",  // Emerald
+    bgClass: "bg-emerald-500/20",
+    borderClass: "border-emerald-500/40",
+    textClass: "text-emerald-400",
+    glowClass: "shadow-emerald-500/30",
+    trigger: "Lasso projection >15% above the line",
+    category: "scout",
+    tooltip: {
+      title: "Lasso High Edge",
+      description: "The Lasso regression model projects this player 15%+ above the set line — a statistically significant edge.",
+      impact: "When the model sees a big gap between projection and line, it's a strong over signal.",
+      sentiment: "positive"
+    }
+  },
+  high_fidelity_model: {
+    label: "Hi-Fi Model",
+    icon: BarChart3,
+    glowColor: "#06b6d4",  // Cyan
+    bgClass: "bg-cyan-500/20",
+    borderClass: "border-cyan-500/40",
+    textClass: "text-cyan-400",
+    glowClass: "shadow-cyan-500/30",
+    trigger: "Model R² > 0.30 (high confidence)",
+    category: "scout",
+    tooltip: {
+      title: "High Fidelity Model",
+      description: "The prediction model for this stat has an R² above 0.30, meaning it explains a meaningful share of variance.",
+      impact: "Trust the projection more. High-fidelity models produce reliable edges.",
+      sentiment: "positive"
+    }
+  },
+  soft_matchup: {
+    label: "Soft Matchup",
+    icon: Waves,
+    glowColor: "#3b82f6",  // Blue
+    bgClass: "bg-blue-500/20",
+    borderClass: "border-blue-500/40",
+    textClass: "text-blue-400",
+    glowClass: "shadow-blue-500/30",
+    trigger: "Opponent ranks bottom-10 in defending this stat",
+    category: "scout",
+    tooltip: {
+      title: "Soft Matchup",
+      description: "Tonight's opponent ranks in the bottom third of the league at defending this specific stat category.",
+      impact: "Weak defense = inflated stats. Combine with a hot streak for max conviction.",
+      sentiment: "positive"
+    }
+  },
+  usage_spike: {
+    label: "Usage Spike",
+    icon: Zap,
+    glowColor: "#a855f7",  // Purple
+    bgClass: "bg-purple-500/20",
+    borderClass: "border-purple-500/40",
+    textClass: "text-purple-400",
+    glowClass: "shadow-purple-500/30",
+    trigger: "Expected usage rate increase (injury/rotation)",
+    category: "scout",
+    tooltip: {
+      title: "Usage Spike",
+      description: "This player is expected to see increased usage tonight due to teammate injuries, rotation changes, or lineup adjustments.",
+      impact: "More touches = more opportunity. Volume is king for prop betting.",
+      sentiment: "positive"
+    }
   }
 };
 

@@ -342,48 +342,7 @@ const PropRow = memo(({ prop, isHighlighted, highlightRef, onVisionClick, gameLo
               </div>
             )}
 
-            {/* Scout Badges as pills */}
-            {scoutBadges.length > 0 && (
-              <div className="flex flex-wrap gap-1" data-testid="scout-badges-row">
-                {scoutBadges.map((badge, i) => {
-                  const badgeStr = typeof badge === 'string' ? badge : badge.badge_key || badge.id || '';
-                  const badgeColors = {
-                    'hot_streak': 'bg-orange-500/20 text-orange-400 border-orange-500/30',
-                    'floor_lock': 'bg-green-500/20 text-green-400 border-green-500/30',
-                    'lasso_high_edge': 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30',
-                    'high_fidelity_model': 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30',
-                    'soft_matchup': 'bg-blue-500/20 text-blue-400 border-blue-500/30',
-                    'usage_spike': 'bg-purple-500/20 text-purple-400 border-purple-500/30',
-                    'volatility_extreme': 'bg-red-500/20 text-red-400 border-red-500/30',
-                  };
-                  const badgeLabels = {
-                    'hot_streak': 'HOT',
-                    'floor_lock': 'FLOOR',
-                    'lasso_high_edge': 'EDGE',
-                    'high_fidelity_model': 'HI-FI',
-                    'soft_matchup': 'SOFT D',
-                    'usage_spike': 'VOL+',
-                    'volatility_extreme': 'VOLATILE',
-                  };
-                  const color = badgeColors[badgeStr] || 'bg-zinc-700/50 text-zinc-400 border-zinc-600/30';
-                  const label = badgeLabels[badgeStr] || badgeStr.replace(/_/g, ' ').toUpperCase();
-                  return (
-                    <span key={i} className={`px-1.5 py-0.5 rounded text-[8px] font-bold border ${color}`}>
-                      {label}
-                    </span>
-                  );
-                })}
-              </div>
-            )}
-
-            {/* Vision Intel Text */}
-            {visionText && (
-              <div className={`text-[11px] leading-relaxed px-3 py-2 rounded-md italic ${
-                isHighlighted ? 'text-amber-300/80 bg-amber-950/30' : 'text-zinc-400 bg-zinc-800/30'
-              }`} data-testid="vision-intel-text">
-                {visionText}
-              </div>
-            )}
+            {/* Scout Badges + Vision Intel moved to Intel Suite modal */}
           </div>
         );
       })()}
@@ -1057,6 +1016,58 @@ export const PlayerDetailPage = ({ playerName, playerData = null, onBack, highli
                   )
                 )}
               </div>
+              
+              {/* ===== SCOUT BADGES - AI & Model-Driven Indicators ===== */}
+              {(() => {
+                const scoutBadges = selectedVisionProp.scout_badges || selectedVisionProp.intel_suite?.scout_badges || [];
+                const SCOUT_KEYS = ['hot_streak', 'floor_lock', 'lasso_high_edge', 'high_fidelity_model', 'soft_matchup', 'usage_spike', 'volatility_extreme'];
+                const activeBadgeKeys = scoutBadges.map(b => typeof b === 'string' ? b : b.badge_key || b.id || '');
+                
+                return (
+                  <div className="bg-gradient-to-r from-zinc-900 to-zinc-800/50 border border-zinc-700 rounded-lg p-4" data-testid="scout-badges-section">
+                    <h3 className="text-sm font-bold text-white mb-3 flex items-center gap-2">
+                      <Zap className="w-4 h-4 text-emerald-400" />
+                      SCOUT BADGES
+                    </h3>
+                    <p className="text-xs text-zinc-500 mb-4">
+                      AI and model-driven signals based on projections, streaks, and matchup analysis
+                    </p>
+                    
+                    <div className="grid grid-cols-2 gap-3">
+                      {SCOUT_KEYS.filter(key => BADGE_REGISTRY[key]).map(badgeKey => {
+                        const isActive = activeBadgeKeys.includes(badgeKey);
+                        const matchingBadge = scoutBadges.find(b => 
+                          (typeof b === 'string' ? b : b.badge_key || b.id) === badgeKey
+                        );
+                        const customDescription = isActive && typeof matchingBadge === 'object' ? matchingBadge.name || matchingBadge.description : null;
+                        
+                        return (
+                          <BadgeGridItem
+                            key={badgeKey}
+                            badgeKey={badgeKey}
+                            isActive={isActive}
+                            customDescription={customDescription}
+                          />
+                        );
+                      })}
+                    </div>
+                    
+                    {activeBadgeKeys.length > 0 && (
+                      <div className="mt-4 pt-4 border-t border-zinc-700">
+                        <div className="text-xs text-emerald-400 font-semibold mb-2">
+                          ACTIVE FOR {playerName?.toUpperCase()}:
+                        </div>
+                        <BadgeRow 
+                          badges={scoutBadges.map(b => ({
+                            badge_key: typeof b === 'string' ? b : b.badge_key || b.id
+                          }))}
+                          size="md"
+                        />
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
               
               {/* ===== INTEL SUITE ADVANCED METRICS ===== */}
               {selectedVisionProp.intel_suite && (
