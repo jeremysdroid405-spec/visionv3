@@ -1646,6 +1646,22 @@ class OracleApexService:
             if p['prop_type'] == 'GOBLIN'
         ]
         
+        # DEBUG: Log top 10 goblin candidates BEFORE filtering
+        goblin_sorted = sorted(safe_haven_candidates, key=lambda x: x.get('vk_prob_over', 0), reverse=True)
+        logger.info(f"[NBA_ELITE_TOP_10] === SAFE HAVEN DEBUG: {len(goblin_sorted)} goblins in pool ===")
+        for i, p in enumerate(goblin_sorted[:10]):
+            hr = p.get('true_hit_rate', 0)
+            h5 = p.get('h5_rate', 0)
+            cv = p.get('cv', 999)
+            vk = p.get('vk_prob_over', 0)
+            fails = []
+            if hr < 60: fails.append(f"HR={hr:.0f}<60")
+            if h5 < 70: fails.append(f"H5={h5:.0f}<70")
+            if cv > 0.35: fails.append(f"CV={cv:.2f}>0.35")
+            if vk < 70: fails.append(f"VK={vk:.1f}<70")
+            status = "PASS" if not fails else f"FAIL[{', '.join(fails)}]"
+            logger.info(f"  #{i+1} {p['player_name']} {p['stat_type']} {p.get('line',0)} | HR={hr:.0f}% H5={h5:.0f}% CV={cv:.2f} VK={vk:.1f}% | {status}")
+        
         # Additional Safe Haven filters: 
         # - HR >= 60% (trust gate - L10 historical)
         # - L5 HR >= 70% (RECENT CONSISTENCY - added to prevent fake safe picks)
