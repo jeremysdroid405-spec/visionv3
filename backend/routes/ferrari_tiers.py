@@ -446,13 +446,9 @@ def enrich_mlb_intel_suite(prop: Dict) -> Dict:
     # Check if pitcher
     is_pitcher = "pitcher" in position or stat_type.lower() in ["strikeouts", "pitcher strikeouts", "pitching outs", "earned runs", "hits allowed"]
     
-    # Initialize intel_suite - preserve existing tempo/pace_delta
+    # Initialize intel_suite - preserve ALL existing data (lasso, tempo, etc.)
     existing_intel = prop.get("intel_suite", {})
-    intel_suite = {
-        "tempo": existing_intel.get("tempo", {}),
-        "pace_delta": existing_intel.get("pace_delta", {}),
-        "sport": "mlb"
-    }
+    intel_suite = {**existing_intel, "sport": "mlb"}
     
     # =========================================================================
     # BUILD CONTEXT BADGES (Using BADGE_REGISTRY keys)
@@ -600,6 +596,38 @@ def enrich_mlb_intel_suite(prop: Dict) -> Dict:
     intel_suite["sport"] = "mlb"
     
     prop["intel_suite"] = intel_suite
+    
+    # =========================================================================
+    # BUILD SCOUT BADGES (Model-driven, cross-sport)
+    # Only set if not already populated from cache
+    # =========================================================================
+    if not prop.get("scout_badges"):
+        scout = []
+        # hot_streak: L5 avg significantly above season baseline
+        if l5_avg and season_avg and l5_avg > season_avg * 1.15:
+            scout.append({"badge_key": "hot_streak", "id": "hot_streak"})
+        # floor_lock: 90%+ hit rate over L10
+        if h10_rate >= 90:
+            scout.append({"badge_key": "floor_lock", "id": "floor_lock"})
+        # lasso_high_edge: VK edge > 15%
+        vk_edge = prop.get("vk_edge") or prop.get("edge_pct") or 0
+        if abs(vk_edge) >= 15:
+            scout.append({"badge_key": "lasso_high_edge", "id": "lasso_high_edge"})
+        # high_fidelity_model: R² > 0.30
+        r_squared = prop.get("r_squared") or prop.get("model_r2") or 0
+        if r_squared > 0.30:
+            scout.append({"badge_key": "high_fidelity_model", "id": "high_fidelity_model"})
+        # soft_matchup: Already handled by context badges, but check for general soft indicator
+        if h10_rate >= 70 and l10_avg and line and l10_avg > line * 1.1:
+            scout.append({"badge_key": "soft_matchup", "id": "soft_matchup"})
+        # usage_spike: Vacuum modifier present
+        if prop.get("has_vacuum_modifier") or prop.get("vacuum_modifier"):
+            scout.append({"badge_key": "usage_spike", "id": "usage_spike"})
+        # volatility_extreme: High CV
+        if cv and cv > 70:
+            scout.append({"badge_key": "volatility_extreme", "id": "volatility_extreme"})
+        prop["scout_badges"] = scout
+    
     return prop
 
 
@@ -2053,6 +2081,15 @@ async def get_mlb_player_props(
             else:
                 prop["matchup_analysis"] = None
     
+    # Enrich each prop with tempo and full intel_suite (context_badges, stability, matchup_dvp)
+    if player.get("props"):
+        for prop in player["props"]:
+            try:
+                enrich_mlb_prop_with_tempo(prop)
+            except Exception:
+                pass
+            enrich_mlb_intel_suite(prop)
+    
     return {
         "success": True,
         "player": player
@@ -2473,6 +2510,14 @@ async def get_mlb_safe_haven_picks(
     # Overlay enrichment cache (Gemini + Lasso)
     confirmed = overlay_enrichment_cache(confirmed, "mlb")
 
+    # Enrich each pick with full intel_suite (tempo, context_badges, stability, matchup)
+    for pick in confirmed:
+        try:
+            enrich_mlb_prop_with_tempo(pick)
+        except Exception:
+            pass
+        enrich_mlb_intel_suite(pick)
+
     return {
         "success": True,
         "tier": "SAFE_HAVEN",
@@ -2508,6 +2553,14 @@ async def get_mlb_front_lines_picks(
     # Overlay enrichment cache (Gemini + Lasso)
     picks = overlay_enrichment_cache(picks, "mlb")
 
+    # Enrich each pick with full intel_suite (tempo, context_badges, stability, matchup)
+    for pick in picks:
+        try:
+            enrich_mlb_prop_with_tempo(pick)
+        except Exception:
+            pass
+        enrich_mlb_intel_suite(pick)
+
     return {
         "success": True,
         "tier": "FRONT_LINES",
@@ -2541,6 +2594,14 @@ async def get_mlb_war_zone_picks(
     
     # Overlay enrichment cache (Gemini + Lasso)
     picks = overlay_enrichment_cache(picks, "mlb")
+
+    # Enrich each pick with full intel_suite (tempo, context_badges, stability, matchup)
+    for pick in picks:
+        try:
+            enrich_mlb_prop_with_tempo(pick)
+        except Exception:
+            pass
+        enrich_mlb_intel_suite(pick)
 
     return {
         "success": True,
@@ -3479,19 +3540,7 @@ async def lasso_predict(
         raise HTTPException(status_code=500, detail="Database not initialized")
 
     engine = get_lasso_engine()
-    sport_lower = sport.lower()
-
-    # Resolve hub + game logs
-    if sport_lower == "mlb":
-        hub = _db["mlb_master_hub_2026"]
-        board = _db["mlb_cached_board"]
-        name_field = "player_name"
-    else:
-        hub = _db["nba_master_hub_2026"]
-        board = _db["dg_cached_board"]
-        name_field = "display_name"
-
-    doc = await hub.find_one(
+    sport_lower = e(
         {name_field: {"$regex": f"^{player_name}$", "$options": "i"}},
         {"_id": 0, name_field: 1, "player_name": 1, "history": 1, "team": 1, "position": 1, "bdl_game_logs": 1}
     )

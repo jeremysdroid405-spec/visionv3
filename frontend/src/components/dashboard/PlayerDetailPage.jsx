@@ -537,7 +537,11 @@ export const PlayerDetailPage = ({ playerName, playerData = null, onBack, highli
                     // Scout badges
                     scout_badges: clickedProp.scout_badges || prop.scout_badges,
                     // INTEL SUITE - Critical for Tempo, Badges, etc.
-                    intel_suite: clickedProp.intel_suite || prop.intel_suite,
+                    // Merge both intel_suite objects to preserve all fields (lasso from tier, tempo/stability from player detail)
+                    intel_suite: {
+                      ...(prop.intel_suite || {}),
+                      ...(clickedProp.intel_suite || {}),
+                    },
                     // Edge and probability fields
                     edge: clickedProp.edge ?? prop.edge,
                     edge_pct: clickedProp.edge_pct ?? prop.edge_pct,
