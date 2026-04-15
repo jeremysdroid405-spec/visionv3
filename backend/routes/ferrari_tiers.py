@@ -941,6 +941,16 @@ async def get_ferrari_safe_haven(
     # Overlay enrichment cache data (vision_intel, scout_badges, Lasso)
     picks = overlay_enrichment_cache(picks, sport)
 
+    # MLB: Enrich with averages, tempo, and full intel_suite
+    if sport == "mlb" and picks:
+        for pick in picks:
+            try:
+                enrich_mlb_prop_with_averages(pick)
+                enrich_mlb_prop_with_tempo(pick)
+            except Exception:
+                pass
+            enrich_mlb_intel_suite(pick)
+
     # Return picks from vault-isolated collection
     return {
         "tier": "safe_haven",
@@ -1020,6 +1030,16 @@ async def get_ferrari_front_lines(
     # Overlay enrichment cache data (vision_intel, scout_badges, Lasso)
     picks = overlay_enrichment_cache(picks, sport)
 
+    # MLB: Enrich with averages, tempo, and full intel_suite
+    if sport == "mlb" and picks:
+        for pick in picks:
+            try:
+                enrich_mlb_prop_with_averages(pick)
+                enrich_mlb_prop_with_tempo(pick)
+            except Exception:
+                pass
+            enrich_mlb_intel_suite(pick)
+
     # Return picks from vault-isolated collection
     return {
         "tier": "front_lines",
@@ -1098,6 +1118,16 @@ async def get_ferrari_war_zone(
     
     # Overlay enrichment cache data (vision_intel, scout_badges, Lasso)
     picks = overlay_enrichment_cache(picks, sport)
+
+    # MLB: Enrich with averages, tempo, and full intel_suite
+    if sport == "mlb" and picks:
+        for pick in picks:
+            try:
+                enrich_mlb_prop_with_averages(pick)
+                enrich_mlb_prop_with_tempo(pick)
+            except Exception:
+                pass
+            enrich_mlb_intel_suite(pick)
 
     # Return picks from vault-isolated collection
     return {
