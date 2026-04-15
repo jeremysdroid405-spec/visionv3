@@ -671,10 +671,16 @@ class MLBTierSorter:
         cached_board = self.db["mlb_cached_board"]
         players = await cached_board.find({}, {"_id": 0}).to_list(length=None)
         
-        # Flatten props
+        # Flatten props - combine props, goblins, and demons arrays, then deduplicate
         all_props = []
+        seen_keys = set()
         for player in players:
-            for prop in player.get("props", []):
+            combined = player.get("props", []) + player.get("goblins", []) + player.get("demons", [])
+            for prop in combined:
+                key = f"{player.get('player_name')}|{prop.get('stat_type')}|{prop.get('line')}"
+                if key in seen_keys:
+                    continue
+                seen_keys.add(key)
                 prop["player_name"] = player.get("player_name")
                 prop["team"] = player.get("team")
                 prop["position"] = player.get("position")
@@ -770,12 +776,14 @@ class MLBTierSorter:
             prop["tp_odds"] = tp_odds
             prop["game_logs"] = recent_logs  # For Oracle summaries
             
-            is_goblin = prop.get("is_goblin", False)
-            is_demon = prop.get("is_demon", False)
+            # DK ODDS-BASED TIER CLASSIFICATION (Primary)
+            # Safe Haven: DK <= -240
+            # Front Lines: -240 < DK <= -145
+            # War Zone: DK > +150
+            # No DK odds: try stat gates for Front Lines
             
             # TIER 1: Safe Haven (The Locks)
-            # Primary Rule: MUST be Goblin AND DK <= -240
-            if is_goblin and dk_odds is not None and dk_odds <= DK_SAFE_HAVEN_MAX:
+            if dk_odds is not None and dk_odds <= DK_SAFE_HAVEN_MAX:
                 passed, reason, gate_results = self.check_safe_haven_gates(
                     prop, cv, hit_rate, edge_pct, tp_odds
                 )
@@ -789,26 +797,8 @@ class MLBTierSorter:
                     results["stats"]["safe_haven_qualified"] += 1
                     continue
             
-            # TIER 2: Front Lines (The Value Plays)
-            # Primary Rule: -240 < DK <= -145, Goblins/Standard only
-            if (is_goblin or not is_demon) and dk_odds is not None:
-                if dk_odds > DK_FRONT_LINES_MIN and dk_odds <= DK_FRONT_LINES_MAX:
-                    passed, reason, gate_results = self.check_front_lines_gates(
-                        prop, cv, hit_rate, edge_pct, tp_odds
-                    )
-                    prop["front_lines_gate_results"] = gate_results
-                    prop["front_lines_reason"] = reason
-                    
-                    if passed:
-                        prop["ferrari_tier"] = "front_lines"
-                        prop["tier_label"] = "Front Lines"
-                        results["front_lines"].append(prop)
-                        results["stats"]["front_lines_qualified"] += 1
-                        continue
-            
-            # TIER 3: War Zone (The Moonshots)
-            # Primary Rule: MUST be Demon OR DK > +150
-            if is_demon or (dk_odds is not None and dk_odds > DK_WAR_ZONE_MIN):
+            # TIER 3: War Zone (The Moonshots) — check before Front Lines
+            if dk_odds is not None and dk_odds >= DK_WAR_ZONE_MIN:
                 passed, reason, gate_results = self.check_war_zone_gates(
                     prop, cv, ceiling_rate, edge_pct
                 )
@@ -820,6 +810,21 @@ class MLBTierSorter:
                     prop["tier_label"] = "War Zone"
                     results["war_zone"].append(prop)
                     results["stats"]["war_zone_qualified"] += 1
+                    continue
+            
+            # TIER 2: Front Lines (The Value Plays) — everything in between
+            if dk_odds is None or (dk_odds > DK_SAFE_HAVEN_MAX and dk_odds < DK_WAR_ZONE_MIN):
+                passed, reason, gate_results = self.check_front_lines_gates(
+                    prop, cv, hit_rate, edge_pct, tp_odds
+                )
+                prop["front_lines_gate_results"] = gate_results
+                prop["front_lines_reason"] = reason
+                
+                if passed:
+                    prop["ferrari_tier"] = "front_lines"
+                    prop["tier_label"] = "Front Lines"
+                    results["front_lines"].append(prop)
+                    results["stats"]["front_lines_qualified"] += 1
                     continue
             
             # Didn't qualify for any tier
