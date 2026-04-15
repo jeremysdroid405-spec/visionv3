@@ -946,12 +946,10 @@ export const PlayerDetailPage = ({ playerName, playerData = null, onBack, highli
               <div className="bg-gradient-to-r from-zinc-900 to-zinc-800/50 border border-zinc-700 rounded-lg p-4">
                 <h3 className="text-sm font-bold text-white mb-3 flex items-center gap-2">
                   <Target className="w-4 h-4 text-amber-400" />
-                  {currentSport === 'mlb' ? 'SCOUT INTEL BADGES' : 'CONTEXT BADGES'}
+                  CONTEXT BADGES
                 </h3>
                 <p className="text-xs text-zinc-500 mb-4">
-                  {currentSport === 'mlb' 
-                    ? 'Statcast, weather, and matchup factors for tonight' 
-                    : 'Situational factors affecting tonight\'s performance'}
+                  Situational factors affecting tonight's performance
                 </p>
                 
                 {/* Badge Grid - Filter by sport */}
@@ -983,25 +981,8 @@ export const PlayerDetailPage = ({ playerName, playerData = null, onBack, highli
                   })}
                 </div>
                 
-                {/* Active Badges Summary - Sport-specific logic */}
-                {currentSport === 'mlb' ? (
-                  // MLB: Show context_badges
-                  (selectedVisionProp.intel_suite?.context_badges?.length > 0) && (
-                    <div className="mt-4 pt-4 border-t border-zinc-700">
-                      <div className="text-xs text-amber-400 font-semibold mb-2">
-                        ACTIVE FOR {playerName?.toUpperCase()}:
-                      </div>
-                      <BadgeRow 
-                        badges={selectedVisionProp.intel_suite.context_badges.map(b => ({
-                          badge_key: typeof b === 'string' ? b : b.badge_key
-                        }))}
-                        size="md"
-                      />
-                    </div>
-                  )
-                ) : (
-                  // NBA: Original logic - use active_badges OR context_badges (not both)
-                  (selectedVisionProp.active_badges?.length > 0 || selectedVisionProp.intel_suite?.context_badges?.length > 0) && (
+                {/* Active Badges Summary */}
+                {(selectedVisionProp.active_badges?.length > 0 || selectedVisionProp.intel_suite?.context_badges?.length > 0) && (
                     <div className="mt-4 pt-4 border-t border-zinc-700">
                       <div className="text-xs text-amber-400 font-semibold mb-2">
                         ACTIVE FOR {playerName?.toUpperCase()}:
@@ -1013,7 +994,6 @@ export const PlayerDetailPage = ({ playerName, playerData = null, onBack, highli
                         size="md"
                       />
                     </div>
-                  )
                 )}
               </div>
               
@@ -1109,8 +1089,8 @@ export const PlayerDetailPage = ({ playerName, playerData = null, onBack, highli
                     )}
                   </div>
                   
-                  {/* Defensive Momentum (replaces old Matchup DvP / Defensive Friction) */}
-                  {/* NBA: Momentum Tracker - Primary display for defensive analysis */}
+                  {/* Matchup Analysis - Sport-specific primary, shared fallback */}
+                  {/* NBA: Momentum Tracker */}
                   {currentSport === 'nba' && selectedVisionProp.momentum_data && (
                     <MomentumTrackerFull
                       momentumData={selectedVisionProp.momentum_data}
@@ -1119,7 +1099,7 @@ export const PlayerDetailPage = ({ playerName, playerData = null, onBack, highli
                     />
                   )}
                   
-                  {/* MLB: Split Matchup Analysis (SP + Bullpen for hitters, K-Rate + wRC+ for pitchers) */}
+                  {/* MLB: Split Matchup Analysis */}
                   {currentSport === 'mlb' && (
                     <MLBMatchupAnalysis
                       matchupData={selectedVisionProp.matchup_analysis}
@@ -1128,8 +1108,8 @@ export const PlayerDetailPage = ({ playerName, playerData = null, onBack, highli
                     />
                   )}
                   
-                  {/* NBA: Defensive Momentum from intel_suite - fallback when no momentum_data */}
-                  {currentSport === 'nba' && !selectedVisionProp.momentum_data && selectedVisionProp.intel_suite?.defensive_momentum && (
+                  {/* Shared fallback: Defensive Momentum from intel_suite */}
+                  {!(currentSport === 'nba' && selectedVisionProp.momentum_data) && selectedVisionProp.intel_suite?.defensive_momentum && (
                     <div className="bg-gradient-to-r from-cyan-950/40 to-zinc-900 border border-cyan-500/30 rounded-lg p-4">
                       <h3 className="text-sm font-bold text-white mb-2 flex items-center gap-2">
                         <Target className="w-4 h-4 text-cyan-400" />
@@ -1162,8 +1142,8 @@ export const PlayerDetailPage = ({ playerName, playerData = null, onBack, highli
                     </div>
                   )}
                   
-                  {/* NBA: Final fallback: matchup_dvp when no momentum data available */}
-                  {currentSport === 'nba' && !selectedVisionProp.momentum_data && !selectedVisionProp.intel_suite?.defensive_momentum && selectedVisionProp.intel_suite?.matchup_dvp && (
+                  {/* Shared fallback: matchup_dvp when no other matchup data */}
+                  {!(currentSport === 'nba' && selectedVisionProp.momentum_data) && !selectedVisionProp.intel_suite?.defensive_momentum && selectedVisionProp.intel_suite?.matchup_dvp && (
                     <div className="bg-gradient-to-r from-cyan-950/40 to-zinc-900 border border-cyan-500/30 rounded-lg p-4">
                       <h3 className="text-sm font-bold text-white mb-2 flex items-center gap-2">
                         <Target className="w-4 h-4 text-cyan-400" />
