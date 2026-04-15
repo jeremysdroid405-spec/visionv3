@@ -1,173 +1,53 @@
 {
   "sport": "MLB",
-  "last_updated": "2026-04-15T00:17:11.611716+00:00",
+  "last_updated": "2026-04-15T00:30:24.786344+00:00",
   "prop_count": 16,
   "props": {
-    "rhys_hoskins|batter_strikeouts|0.5|dk": {
-      "player_name": "Rhys Hoskins",
-      "team": "CLE",
-      "opponent": null,
-      "photo_url": null,
-      "headshot_url": null,
-      "game_time": "2026-04-13T23:46:00Z",
-      "stat_type": "Batter Strikeouts",
-      "stat_key": "BATTER_STRIKEOUTS",
-      "line": 0.5,
-      "dk_odds": 650,
-      "pp_odds": 100,
-      "prop_type": "DEMON",
-      "is_goblin": false,
-      "is_demon": true,
-      "is_standard": false,
-      "lineup_status": "PROJECTED",
-      "games_played": 10,
-      "hit_count": 0,
-      "true_hit_rate": 70.0,
-      "h5_rate": 40.0,
-      "h10_rate": 70.0,
-      "season_avg": 1.1,
-      "hit_rates": {
-        "l5": 40.0,
-        "l10": 70.0
-      },
-      "last_10_games": [
-        {
-          "date": "2026-04-13T23:45:00.000Z",
-          "value": 0,
-          "opponent": "STL"
-        },
-        {
-          "date": "2026-04-12T23:20:00.000Z",
-          "value": 1,
-          "opponent": "ATL"
-        },
-        {
-          "date": "2026-04-11T23:15:00.000Z",
-          "value": 0,
-          "opponent": "ATL"
-        },
-        {
-          "date": "2026-04-10T23:15:00.000Z",
-          "value": 1,
-          "opponent": "ATL"
-        },
-        {
-          "date": "2026-04-08T17:10:00.000Z",
-          "value": 0,
-          "opponent": "KC"
-        },
-        {
-          "date": "2026-04-07T17:10:00.000Z",
-          "value": 3,
-          "opponent": "KC"
-        },
-        {
-          "date": "2026-04-06T22:10:00.000Z",
-          "value": 2,
-          "opponent": "KC"
-        },
-        {
-          "date": "2026-04-05T20:30:00.000Z",
-          "value": 1,
-          "opponent": "CHC"
-        },
-        {
-          "date": "2026-04-02T00:20:00.000Z",
-          "value": 1,
-          "opponent": "LAD"
-        },
-        {
-          "date": "2026-04-01T02:10:00.000Z",
-          "value": 2,
-          "opponent": "LAD"
-        }
-      ],
-      "vk_prob_over": 99.0,
-      "vk_prob_under": 1.0,
-      "vk_verdict": "STRONG_OVER",
-      "vk_edge": 50.0,
-      "vk_recommendation": "STRONG_OVER",
-      "vk_confidence": 99.0,
-      "cv": 0.858,
-      "raw_vk_pred": 1.1,
-      "vk_predicted": 1.1,
-      "matchup_modifier": 1.0,
-      "tempo_modifier": 1.0,
-      "market_prob": 50.0,
-      "propvision_true_prob": 60.0,
-      "casino_req_rate": 50.0,
-      "true_edge": 10.0,
-      "board_score": 285.7,
-      "tier": "war_zone",
-      "tier_label": "MLB War Zone 2.0 (Elite 10)",
-      "war_zone_qualified": true,
-      "actuary_gate_passed": true,
-      "gate_info": {
-        "market_prob": 50.0,
-        "true_hit_rate": 70.0,
-        "propvision_true_prob": 60.0,
-        "casino_req_rate": 50.0,
-        "true_edge": 10.0,
-        "true_edge_floor": 10.0,
-        "blend_ratio": "MASTER 50/50 (same as all tiers)"
-      },
-      "vision_intel": "Hoskins has put up a clean sheet in 70% of his last ten outings, showing elite plate discipline that matches the current 0.5 line perfectly. With a zero-strikeout average over his last ten games and a high-frequency hit rate, this is a calculated play on a veteran who is seeing the ball with surgical precision right now.",
-      "intel_score": null,
-      "intel_verdict": null,
-      "bdl_modifiers": null,
-      "synced_at": "2026-04-14T03:00:04.037541+00:00",
-      "vision_summary": "Hoskins has put up a clean sheet in 70% of his last ten outings, showing elite plate discipline that matches the current 0.5 line perfectly. With a zero-strikeout average over his last ten games and a high-frequency hit rate, this is a calculated play on a veteran who is seeing the ball with surgical precision right now.",
-      "_enriched": true,
-      "_enriched_at": "2026-04-15T00:16:55.101164+00:00",
-      "scout_badges": [],
-      "_cache_updated": "2026-04-15T00:16:55.101166+00:00"
-    },
-    "wilyer_abreu|singles|0.5|dk": {
-      "player_name": "Wilyer Abreu",
+    "ceddanne_rafaela|hits|0.5|dk": {
+      "player_name": "Ceddanne Rafaela",
       "team": "BOS",
       "opponent": null,
       "photo_url": null,
       "headshot_url": null,
       "game_time": "2026-04-14T23:41:00Z",
-      "stat_type": "Singles",
-      "stat_key": "SINGLES",
+      "stat_type": "Hits",
+      "stat_key": "HITS",
       "line": 0.5,
-      "dk_odds": 113,
-      "pp_odds": 100,
-      "prop_type": "DEMON",
-      "is_goblin": false,
-      "is_demon": true,
-      "is_standard": false,
+      "dk_odds": -194,
+      "pp_odds": -137,
+      "prop_type": "GOBLIN",
+      "is_goblin": true,
+      "is_demon": false,
       "lineup_status": "PROJECTED",
       "games_played": 10,
       "hit_count": 0,
-      "true_hit_rate": 70.0,
-      "h5_rate": 60.0,
-      "h10_rate": 70.0,
-      "season_avg": 1.0,
+      "true_hit_rate": 90.0,
+      "h5_rate": 100.0,
+      "h10_rate": 90.0,
+      "season_avg": 1.1,
       "hit_rates": {
-        "l5": 60.0,
-        "l10": 70.0
+        "l5": 100.0,
+        "l10": 90.0
       },
       "last_10_games": [
         {
           "date": "2026-04-13T23:40:00.000Z",
-          "value": 2,
+          "value": 1,
           "opponent": "MIN"
         },
         {
           "date": "2026-04-12T18:15:00.000Z",
-          "value": 0,
+          "value": 1,
           "opponent": "STL"
         },
         {
           "date": "2026-04-11T23:15:00.000Z",
-          "value": 0,
+          "value": 1,
           "opponent": "STL"
         },
         {
           "date": "2026-04-11T00:15:00.000Z",
-          "value": 2,
+          "value": 1,
           "opponent": "STL"
         },
         {
@@ -177,7 +57,7 @@
         },
         {
           "date": "2026-04-07T22:45:00.000Z",
-          "value": 0,
+          "value": 1,
           "opponent": "MIL"
         },
         {
@@ -187,12 +67,12 @@
         },
         {
           "date": "2026-04-05T17:35:00.000Z",
-          "value": 1,
+          "value": 0,
           "opponent": "SD"
         },
         {
           "date": "2026-04-04T20:10:00.000Z",
-          "value": 1,
+          "value": 2,
           "opponent": "SD"
         },
         {
@@ -201,45 +81,197 @@
           "opponent": "SD"
         }
       ],
-      "vk_prob_over": 99.0,
-      "vk_prob_under": 1.0,
+      "vk_prob_over": 86.7,
+      "vk_prob_under": 13.3,
       "vk_verdict": "STRONG_OVER",
-      "vk_edge": 50.0,
+      "vk_edge": 20.7,
       "vk_recommendation": "STRONG_OVER",
-      "vk_confidence": 99.0,
-      "cv": 0.775,
-      "raw_vk_pred": 1.0,
-      "vk_predicted": 1.0,
+      "vk_confidence": 86.7,
+      "cv": 0.49,
+      "raw_vk_pred": 1.1,
+      "vk_predicted": 1.1,
       "matchup_modifier": 1.0,
       "tempo_modifier": 1.0,
-      "market_prob": 50.0,
-      "propvision_true_prob": 60.0,
-      "casino_req_rate": 50.0,
-      "true_edge": 10.0,
-      "board_score": 286.1,
-      "tier": "war_zone",
-      "tier_label": "MLB War Zone 2.0 (Elite 10)",
-      "war_zone_qualified": true,
+      "market_prob": 66.0,
+      "propvision_true_prob": 78.0,
+      "casino_req_rate": 67.4,
+      "true_edge": 10.6,
+      "board_score": 24.5,
+      "tier": "safe_haven",
+      "tier_label": "MLB Safe Haven 2.0 (Predictive)",
+      "oracle_apex_qualified": true,
       "actuary_gate_passed": true,
       "gate_info": {
-        "market_prob": 50.0,
-        "true_hit_rate": 70.0,
-        "propvision_true_prob": 60.0,
-        "casino_req_rate": 50.0,
-        "true_edge": 10.0,
-        "true_edge_floor": 10.0,
-        "blend_ratio": "MASTER 50/50 (same as all tiers)"
+        "market_prob": 66.0,
+        "true_hit_rate": 90.0,
+        "propvision_true_prob": 78.0,
+        "casino_req_rate": 67.4,
+        "true_edge": 10.6,
+        "hit_rate_floor": 60.0,
+        "cv_max": 0.7
       },
-      "vision_intel": "With the line sitting at 0.5 and the model showing zero projected value, there is no mathematical justification for an over play despite his recent hit rate. This is a pure volatility fade where we bank on the median outcome of zero, letting the lack of a clear edge dictate the under.",
+      "vision_intel": "With a massive 47.2% edge on the 0.5 line, the model's 0.7 projection makes this a mandatory smash despite recent plate appearance volatility. He is riding a lethal 90% hit rate over his last ten games, and we are betting on that elite barrel consistency to override any minor volume concerns.",
       "intel_score": null,
       "intel_verdict": null,
       "bdl_modifiers": null,
-      "synced_at": "2026-04-14T03:00:04.037279+00:00",
-      "vision_summary": "With the line sitting at 0.5 and the model showing zero projected value, there is no mathematical justification for an over play despite his recent hit rate. This is a pure volatility fade where we bank on the median outcome of zero, letting the lack of a clear edge dictate the under.",
+      "synced_at": "2026-04-14T03:00:04.033434+00:00",
+      "vk_data": {
+        "predicted": 0.736,
+        "projection": 0.736,
+        "edge": 0.236,
+        "source": "lasso_v2"
+      },
+      "vision_summary": "With a massive 47.2% edge on the 0.5 line, the model's 0.7 projection makes this a mandatory smash despite recent plate appearance volatility. He is riding a lethal 90% hit rate over his last ten games, and we are betting on that elite barrel consistency to override any minor volume concerns.",
+      "intel_suite": {
+        "lasso": {
+          "projection": 0.736,
+          "confidence_tier": "HIGH_VARIANCE",
+          "r_squared": 0.021,
+          "top_drivers": [
+            "L10_avg_plate_appearances",
+            "L5_std_fielding_chances"
+          ]
+        }
+      },
       "_enriched": true,
-      "_enriched_at": "2026-04-15T00:16:56.140146+00:00",
+      "_enriched_at": "2026-04-15T00:02:49.191860+00:00",
       "scout_badges": [],
-      "_cache_updated": "2026-04-15T00:16:56.140148+00:00"
+      "_cache_updated": "2026-04-15T00:02:49.191863+00:00"
+    },
+    "jeff_mcneil|hits|0.5|dk": {
+      "player_name": "Jeff McNeil",
+      "team": "OAK",
+      "opponent": null,
+      "photo_url": null,
+      "headshot_url": null,
+      "game_time": "2026-04-14T01:41:00Z",
+      "stat_type": "Hits",
+      "stat_key": "HITS",
+      "line": 0.5,
+      "dk_odds": -215,
+      "pp_odds": -137,
+      "prop_type": "GOBLIN",
+      "is_goblin": true,
+      "is_demon": false,
+      "lineup_status": "PROJECTED",
+      "games_played": 10,
+      "hit_count": 0,
+      "true_hit_rate": 80.0,
+      "h5_rate": 60.0,
+      "h10_rate": 80.0,
+      "season_avg": 1.3,
+      "hit_rates": {
+        "l5": 60.0,
+        "l10": 80.0
+      },
+      "last_10_games": [
+        {
+          "date": "2026-04-14T01:40:00.000Z",
+          "value": 0,
+          "opponent": "TEX"
+        },
+        {
+          "date": "2026-04-12T17:40:00.000Z",
+          "value": 1,
+          "opponent": "NYM"
+        },
+        {
+          "date": "2026-04-11T20:10:00.000Z",
+          "value": 3,
+          "opponent": "NYM"
+        },
+        {
+          "date": "2026-04-10T23:10:00.000Z",
+          "value": 2,
+          "opponent": "NYM"
+        },
+        {
+          "date": "2026-04-09T17:35:00.000Z",
+          "value": 0,
+          "opponent": "NYY"
+        },
+        {
+          "date": "2026-04-08T23:05:00.000Z",
+          "value": 2,
+          "opponent": "NYY"
+        },
+        {
+          "date": "2026-04-07T23:05:00.000Z",
+          "value": 2,
+          "opponent": "NYY"
+        },
+        {
+          "date": "2026-04-05T20:05:00.000Z",
+          "value": 1,
+          "opponent": "HOU"
+        },
+        {
+          "date": "2026-04-04T20:05:00.000Z",
+          "value": 1,
+          "opponent": "HOU"
+        },
+        {
+          "date": "2026-04-04T01:40:00.000Z",
+          "value": 1,
+          "opponent": "HOU"
+        }
+      ],
+      "vk_prob_over": 81.3,
+      "vk_prob_under": 18.7,
+      "vk_verdict": "STRONG_OVER",
+      "vk_edge": 13.0,
+      "vk_recommendation": "STRONG_OVER",
+      "vk_confidence": 81.3,
+      "cv": 0.692,
+      "raw_vk_pred": 1.3,
+      "vk_predicted": 1.3,
+      "matchup_modifier": 1.0,
+      "tempo_modifier": 1.0,
+      "market_prob": 68.3,
+      "propvision_true_prob": 74.1,
+      "casino_req_rate": 70.7,
+      "true_edge": 3.4,
+      "board_score": -0.2,
+      "tier": "safe_haven",
+      "tier_label": "MLB Safe Haven 2.0 (Predictive)",
+      "oracle_apex_qualified": true,
+      "actuary_gate_passed": true,
+      "gate_info": {
+        "market_prob": 68.3,
+        "true_hit_rate": 80.0,
+        "propvision_true_prob": 74.1,
+        "casino_req_rate": 70.7,
+        "true_edge": 3.4,
+        "hit_rate_floor": 60.0,
+        "cv_max": 0.7
+      },
+      "vision_intel": "The numbers scream value here with a massive 66.2% edge on the 0.5 line, driven primarily by his sustained volume of 3.8 plate appearances per game. McNeil has found grass in eight of his last ten outings, and my 0.8 projection makes this aggressive over a mandatory play despite the inherent high variance of his profile.",
+      "intel_score": null,
+      "intel_verdict": null,
+      "bdl_modifiers": null,
+      "synced_at": "2026-04-14T03:00:04.033619+00:00",
+      "vk_data": {
+        "predicted": 0.831,
+        "projection": 0.831,
+        "edge": 0.33099999999999996,
+        "source": "lasso_v2"
+      },
+      "vision_summary": "The numbers scream value here with a massive 66.2% edge on the 0.5 line, driven primarily by his sustained volume of 3.8 plate appearances per game. McNeil has found grass in eight of his last ten outings, and my 0.8 projection makes this aggressive over a mandatory play despite the inherent high variance of his profile.",
+      "intel_suite": {
+        "lasso": {
+          "projection": 0.831,
+          "confidence_tier": "HIGH_VARIANCE",
+          "r_squared": 0.021,
+          "top_drivers": [
+            "L5_std_fielding_chances",
+            "L10_avg_hits"
+          ]
+        }
+      },
+      "_enriched": true,
+      "_enriched_at": "2026-04-15T00:02:50.287990+00:00",
+      "scout_badges": [],
+      "_cache_updated": "2026-04-15T00:02:50.287992+00:00"
     },
     "josh_jung|total_bases|0.5|dk": {
       "player_name": "Josh Jung",
@@ -344,7 +376,7 @@
         "hit_rate_floor": 55.0,
         "cv_max": 0.75
       },
-      "vision_intel": "The 171.6% edge on this 0.5 line is a massive mispricing given Jung\u2019s 77.8% hit rate over his last ten games. Trust the 1.4 projection here as increased plate appearances are driving the value, making this over the clearest hammer on the board.",
+      "vision_intel": "We are hammering the over on Jung because my model sees a massive 1.4 projection against a basement-level 0.5 line, representing a violent 171.6% edge. High plate appearance volume over his last ten games is the primary engine here, supporting a stellar 77.8% recent hit rate that makes this a mandatory play despite the inherent variance.",
       "intel_score": null,
       "intel_verdict": null,
       "bdl_modifiers": null,
@@ -355,8 +387,7 @@
         "edge": 0.8580000000000001,
         "source": "lasso_v2"
       },
-      "vision_summary": "The 171.6% edge on this 0.5 line is a massive mispricing given Jung\u2019s 77.8% hit rate over his last ten games. Trust the 1.4 projection here as increased plate appearances are driving the value, making this over the clearest hammer on the board.",
-      "scout_badges": [],
+      "vision_summary": "We are hammering the over on Jung because my model sees a massive 1.4 projection against a basement-level 0.5 line, representing a violent 171.6% edge. High plate appearance volume over his last ten games is the primary engine here, supporting a stellar 77.8% recent hit rate that makes this a mandatory play despite the inherent variance.",
       "intel_suite": {
         "lasso": {
           "projection": 1.358,
@@ -369,8 +400,409 @@
         }
       },
       "_enriched": true,
-      "_enriched_at": "2026-04-15T00:16:57.170585+00:00",
-      "_cache_updated": "2026-04-15T00:16:57.170587+00:00"
+      "_enriched_at": "2026-04-15T00:02:51.481456+00:00",
+      "scout_badges": [],
+      "_cache_updated": "2026-04-15T00:02:51.481458+00:00"
+    },
+    "jeff_mcneil|total_bases|0.5|dk": {
+      "player_name": "Jeff McNeil",
+      "team": "OAK",
+      "opponent": null,
+      "photo_url": null,
+      "headshot_url": null,
+      "game_time": "2026-04-14T01:41:00Z",
+      "stat_type": "Total Bases",
+      "stat_key": "TOTAL_BASES",
+      "line": 0.5,
+      "dk_odds": -190,
+      "pp_odds": -137,
+      "prop_type": "GOBLIN",
+      "is_goblin": true,
+      "is_demon": false,
+      "lineup_status": "PROJECTED",
+      "games_played": 9,
+      "hit_count": 0,
+      "true_hit_rate": 88.9,
+      "h5_rate": 80.0,
+      "h10_rate": 88.9,
+      "season_avg": 1.78,
+      "hit_rates": {
+        "l5": 80.0,
+        "l10": 88.9
+      },
+      "last_10_games": [
+        {
+          "date": "2026-04-12T17:40:00.000Z",
+          "value": 2,
+          "opponent": "NYM"
+        },
+        {
+          "date": "2026-04-11T20:10:00.000Z",
+          "value": 3,
+          "opponent": "NYM"
+        },
+        {
+          "date": "2026-04-10T23:10:00.000Z",
+          "value": 3,
+          "opponent": "NYM"
+        },
+        {
+          "date": "2026-04-09T17:35:00.000Z",
+          "value": 0,
+          "opponent": "NYY"
+        },
+        {
+          "date": "2026-04-08T23:05:00.000Z",
+          "value": 3,
+          "opponent": "NYY"
+        },
+        {
+          "date": "2026-04-07T23:05:00.000Z",
+          "value": 2,
+          "opponent": "NYY"
+        },
+        {
+          "date": "2026-04-05T20:05:00.000Z",
+          "value": 1,
+          "opponent": "HOU"
+        },
+        {
+          "date": "2026-04-04T20:05:00.000Z",
+          "value": 1,
+          "opponent": "HOU"
+        },
+        {
+          "date": "2026-04-04T01:40:00.000Z",
+          "value": 1,
+          "opponent": "HOU"
+        }
+      ],
+      "vk_prob_over": 89.3,
+      "vk_prob_under": 10.7,
+      "vk_verdict": "STRONG_OVER",
+      "vk_edge": 23.8,
+      "vk_recommendation": "STRONG_OVER",
+      "vk_confidence": 89.3,
+      "cv": 0.58,
+      "raw_vk_pred": 1.78,
+      "vk_predicted": 1.78,
+      "matchup_modifier": 1.0,
+      "tempo_modifier": 1.0,
+      "market_prob": 65.5,
+      "propvision_true_prob": 77.2,
+      "casino_req_rate": 67.4,
+      "true_edge": 9.8,
+      "board_score": 20.7,
+      "tier": "safe_haven",
+      "tier_label": "MLB Safe Haven 2.0 (Predictive)",
+      "oracle_apex_qualified": true,
+      "actuary_gate_passed": true,
+      "gate_info": {
+        "market_prob": 65.5,
+        "true_hit_rate": 88.9,
+        "propvision_true_prob": 77.2,
+        "casino_req_rate": 67.4,
+        "true_edge": 9.8,
+        "hit_rate_floor": 60.0,
+        "cv_max": 0.7
+      },
+      "vision_intel": "The projection sits at 1.4 total bases against a basement-level 0.5 line, providing a massive 178% edge fueled by his consistent 3.8 plate appearances over the last ten games. With an elite 88.9% hit rate over that same stretch, this is a high-conviction play on a line that is mathematically broken.",
+      "intel_score": null,
+      "intel_verdict": null,
+      "bdl_modifiers": null,
+      "synced_at": "2026-04-14T03:00:04.033649+00:00",
+      "vk_data": {
+        "predicted": 1.39,
+        "projection": 1.39,
+        "edge": 0.8899999999999999,
+        "source": "lasso_v2"
+      },
+      "vision_summary": "The projection sits at 1.4 total bases against a basement-level 0.5 line, providing a massive 178% edge fueled by his consistent 3.8 plate appearances over the last ten games. With an elite 88.9% hit rate over that same stretch, this is a high-conviction play on a line that is mathematically broken.",
+      "intel_suite": {
+        "lasso": {
+          "projection": 1.39,
+          "confidence_tier": "HIGH_VARIANCE",
+          "r_squared": 0.0189,
+          "top_drivers": [
+            "L10_avg_plate_appearances",
+            "L5_std_fielding_chances"
+          ]
+        }
+      },
+      "_enriched": true,
+      "_enriched_at": "2026-04-15T00:02:52.386072+00:00",
+      "scout_badges": [],
+      "_cache_updated": "2026-04-15T00:02:52.386074+00:00"
+    },
+    "andy_pages|hits|0.5|dk": {
+      "player_name": "Andy Pages",
+      "team": "LAD",
+      "opponent": null,
+      "photo_url": null,
+      "headshot_url": null,
+      "game_time": "2026-04-14T02:11:00Z",
+      "stat_type": "Hits",
+      "stat_key": "HITS",
+      "line": 0.5,
+      "dk_odds": -230,
+      "pp_odds": -137,
+      "prop_type": "GOBLIN",
+      "is_goblin": true,
+      "is_demon": false,
+      "lineup_status": "PROJECTED",
+      "games_played": 10,
+      "hit_count": 0,
+      "true_hit_rate": 90.0,
+      "h5_rate": 80.0,
+      "h10_rate": 90.0,
+      "season_avg": 1.8,
+      "hit_rates": {
+        "l5": 80.0,
+        "l10": 90.0
+      },
+      "last_10_games": [
+        {
+          "date": "2026-04-12T20:10:00.000Z",
+          "value": 1,
+          "opponent": "TEX"
+        },
+        {
+          "date": "2026-04-12T01:10:00.000Z",
+          "value": 1,
+          "opponent": "TEX"
+        },
+        {
+          "date": "2026-04-11T02:10:00.000Z",
+          "value": 3,
+          "opponent": "TEX"
+        },
+        {
+          "date": "2026-04-08T19:07:00.000Z",
+          "value": 0,
+          "opponent": "TOR"
+        },
+        {
+          "date": "2026-04-07T23:07:00.000Z",
+          "value": 1,
+          "opponent": "TOR"
+        },
+        {
+          "date": "2026-04-06T23:07:00.000Z",
+          "value": 2,
+          "opponent": "TOR"
+        },
+        {
+          "date": "2026-04-05T17:35:00.000Z",
+          "value": 1,
+          "opponent": "WSH"
+        },
+        {
+          "date": "2026-04-04T20:05:00.000Z",
+          "value": 3,
+          "opponent": "WSH"
+        },
+        {
+          "date": "2026-04-03T17:05:00.000Z",
+          "value": 3,
+          "opponent": "WSH"
+        },
+        {
+          "date": "2026-04-02T00:20:00.000Z",
+          "value": 3,
+          "opponent": "CLE"
+        }
+      ],
+      "vk_prob_over": 88.6,
+      "vk_prob_under": 11.4,
+      "vk_verdict": "STRONG_OVER",
+      "vk_edge": 18.9,
+      "vk_recommendation": "STRONG_OVER",
+      "vk_confidence": 88.6,
+      "cv": 0.598,
+      "raw_vk_pred": 1.8,
+      "vk_predicted": 1.8,
+      "matchup_modifier": 1.0,
+      "tempo_modifier": 1.0,
+      "market_prob": 69.7,
+      "propvision_true_prob": 79.8,
+      "casino_req_rate": 72.5,
+      "true_edge": 7.3,
+      "board_score": 12.9,
+      "tier": "safe_haven",
+      "tier_label": "MLB Safe Haven 2.0 (Predictive)",
+      "oracle_apex_qualified": true,
+      "actuary_gate_passed": true,
+      "gate_info": {
+        "market_prob": 69.7,
+        "true_hit_rate": 90.0,
+        "propvision_true_prob": 79.8,
+        "casino_req_rate": 72.5,
+        "true_edge": 7.3,
+        "hit_rate_floor": 60.0,
+        "cv_max": 0.7
+      },
+      "vision_intel": "The model sees a massive 81.4% edge on this line with Pages projecting at 0.9 hits, fueled almost entirely by his heavy volume of 4.3 plate appearances over his last ten games. He has cleared this number in nine of his last ten starts, making this 0.5 line an absolute hammer play despite the high-variance label.",
+      "intel_score": null,
+      "intel_verdict": null,
+      "bdl_modifiers": null,
+      "synced_at": "2026-04-14T03:00:04.033896+00:00",
+      "vk_data": {
+        "predicted": 0.907,
+        "projection": 0.907,
+        "edge": 0.40700000000000003,
+        "source": "lasso_v2"
+      },
+      "vision_summary": "The model sees a massive 81.4% edge on this line with Pages projecting at 0.9 hits, fueled almost entirely by his heavy volume of 4.3 plate appearances over his last ten games. He has cleared this number in nine of his last ten starts, making this 0.5 line an absolute hammer play despite the high-variance label.",
+      "intel_suite": {
+        "lasso": {
+          "projection": 0.907,
+          "confidence_tier": "HIGH_VARIANCE",
+          "r_squared": 0.021,
+          "top_drivers": [
+            "L10_avg_plate_appearances",
+            "L10_avg_hits"
+          ]
+        }
+      },
+      "_enriched": true,
+      "_enriched_at": "2026-04-15T00:02:55.368215+00:00",
+      "scout_badges": [],
+      "_cache_updated": "2026-04-15T00:02:55.368218+00:00"
+    },
+    "freddie_freeman|hits|0.5|dk": {
+      "player_name": "Freddie Freeman",
+      "team": "LAD",
+      "opponent": null,
+      "photo_url": null,
+      "headshot_url": null,
+      "game_time": "2026-04-14T02:11:00Z",
+      "stat_type": "Hits",
+      "stat_key": "HITS",
+      "line": 0.5,
+      "dk_odds": -248,
+      "pp_odds": -137,
+      "prop_type": "GOBLIN",
+      "is_goblin": true,
+      "is_demon": false,
+      "lineup_status": "PROJECTED",
+      "games_played": 10,
+      "hit_count": 0,
+      "true_hit_rate": 90.0,
+      "h5_rate": 80.0,
+      "h10_rate": 90.0,
+      "season_avg": 1.2,
+      "hit_rates": {
+        "l5": 80.0,
+        "l10": 90.0
+      },
+      "last_10_games": [
+        {
+          "date": "2026-04-12T20:10:00.000Z",
+          "value": 1,
+          "opponent": "TEX"
+        },
+        {
+          "date": "2026-04-12T01:10:00.000Z",
+          "value": 1,
+          "opponent": "TEX"
+        },
+        {
+          "date": "2026-04-11T02:10:00.000Z",
+          "value": 0,
+          "opponent": "TEX"
+        },
+        {
+          "date": "2026-04-08T19:07:00.000Z",
+          "value": 2,
+          "opponent": "TOR"
+        },
+        {
+          "date": "2026-04-07T23:07:00.000Z",
+          "value": 1,
+          "opponent": "TOR"
+        },
+        {
+          "date": "2026-04-06T23:07:00.000Z",
+          "value": 2,
+          "opponent": "TOR"
+        },
+        {
+          "date": "2026-04-05T17:35:00.000Z",
+          "value": 1,
+          "opponent": "WSH"
+        },
+        {
+          "date": "2026-04-04T20:05:00.000Z",
+          "value": 2,
+          "opponent": "WSH"
+        },
+        {
+          "date": "2026-04-03T17:05:00.000Z",
+          "value": 1,
+          "opponent": "WSH"
+        },
+        {
+          "date": "2026-04-02T00:20:00.000Z",
+          "value": 1,
+          "opponent": "CLE"
+        }
+      ],
+      "vk_prob_over": 87.8,
+      "vk_prob_under": 12.2,
+      "vk_verdict": "STRONG_OVER",
+      "vk_edge": 16.5,
+      "vk_recommendation": "STRONG_OVER",
+      "vk_confidence": 87.8,
+      "cv": 0.5,
+      "raw_vk_pred": 1.2,
+      "vk_predicted": 1.2,
+      "matchup_modifier": 1.0,
+      "tempo_modifier": 1.0,
+      "market_prob": 71.3,
+      "propvision_true_prob": 80.6,
+      "casino_req_rate": 72.5,
+      "true_edge": 8.1,
+      "board_score": 16.8,
+      "tier": "safe_haven",
+      "tier_label": "MLB Safe Haven 2.0 (Predictive)",
+      "oracle_apex_qualified": true,
+      "actuary_gate_passed": true,
+      "gate_info": {
+        "market_prob": 71.3,
+        "true_hit_rate": 90.0,
+        "propvision_true_prob": 80.6,
+        "casino_req_rate": 72.5,
+        "true_edge": 8.1,
+        "hit_rate_floor": 60.0,
+        "cv_max": 0.7
+      },
+      "vision_intel": "The numbers scream for the over with a massive 86.4% edge as the projection of 0.9 hits dwarfs the 0.5 line. Freeman is currently torching a 90% hit rate over his last ten games, driven heavily by an elite 4.6 plate appearances per game that guarantees him the volume to cash this.",
+      "intel_score": null,
+      "intel_verdict": null,
+      "bdl_modifiers": null,
+      "synced_at": "2026-04-14T03:00:04.033829+00:00",
+      "vk_data": {
+        "predicted": 0.932,
+        "projection": 0.932,
+        "edge": 0.43200000000000005,
+        "source": "lasso_v2"
+      },
+      "vision_summary": "The numbers scream for the over with a massive 86.4% edge as the projection of 0.9 hits dwarfs the 0.5 line. Freeman is currently torching a 90% hit rate over his last ten games, driven heavily by an elite 4.6 plate appearances per game that guarantees him the volume to cash this.",
+      "intel_suite": {
+        "lasso": {
+          "projection": 0.932,
+          "confidence_tier": "HIGH_VARIANCE",
+          "r_squared": 0.021,
+          "top_drivers": [
+            "L10_avg_plate_appearances",
+            "L5_std_fielding_chances"
+          ]
+        }
+      },
+      "_enriched": true,
+      "_enriched_at": "2026-04-15T00:02:56.597115+00:00",
+      "scout_badges": [],
+      "_cache_updated": "2026-04-15T00:02:56.597117+00:00"
     },
     "julio_rodriguez|hits|0.5|dk": {
       "player_name": "Julio Rodriguez",
@@ -479,7 +911,7 @@
         "hit_rate_floor": 60.0,
         "cv_max": 0.7
       },
-      "vision_intel": "The model is hammering this massive 81% edge on Julio, projecting 0.9 hits against a floor-level 0.5 line fueled by his high-volume plate appearances over the last ten games. He has cleared this mark in 80% of his recent starts, making this heavy volume-driven projection an absolute smash play despite the inherent variance.",
+      "vision_intel": "Lock in the over as our model projects 0.9 hits against a low 0.5 line, banking on a massive 81.4% mathematical edge fueled by his heavy plate appearance volume. He has cleared this mark in 80% of his last ten games, making this high-upside play the sharpest move on the board despite the inherent volatility.",
       "intel_score": null,
       "intel_verdict": null,
       "bdl_modifiers": null,
@@ -490,8 +922,7 @@
         "edge": 0.40700000000000003,
         "source": "lasso_v2"
       },
-      "vision_summary": "The model is hammering this massive 81% edge on Julio, projecting 0.9 hits against a floor-level 0.5 line fueled by his high-volume plate appearances over the last ten games. He has cleared this mark in 80% of his recent starts, making this heavy volume-driven projection an absolute smash play despite the inherent variance.",
-      "scout_badges": [],
+      "vision_summary": "Lock in the over as our model projects 0.9 hits against a low 0.5 line, banking on a massive 81.4% mathematical edge fueled by his heavy plate appearance volume. He has cleared this mark in 80% of his last ten games, making this high-upside play the sharpest move on the board despite the inherent volatility.",
       "intel_suite": {
         "lasso": {
           "projection": 0.907,
@@ -504,127 +935,9 @@
         }
       },
       "_enriched": true,
-      "_enriched_at": "2026-04-15T00:16:58.792607+00:00",
-      "_cache_updated": "2026-04-15T00:16:58.792609+00:00"
-    },
-    "josh_jung|singles|0.5|dk": {
-      "player_name": "Josh Jung",
-      "team": "TEX",
-      "opponent": null,
-      "photo_url": null,
-      "headshot_url": null,
-      "game_time": "2026-04-14T01:41:00Z",
-      "stat_type": "Singles",
-      "stat_key": "SINGLES",
-      "line": 0.5,
-      "dk_odds": -110,
-      "pp_odds": 100,
-      "prop_type": "DEMON",
-      "is_goblin": false,
-      "is_demon": true,
-      "is_standard": false,
-      "lineup_status": "PROJECTED",
-      "games_played": 10,
-      "hit_count": 0,
-      "true_hit_rate": 70.0,
-      "h5_rate": 80.0,
-      "h10_rate": 70.0,
-      "season_avg": 0.9,
-      "hit_rates": {
-        "l5": 80.0,
-        "l10": 70.0
-      },
-      "last_10_games": [
-        {
-          "date": "2026-04-14T01:40:00.000Z",
-          "value": 0,
-          "opponent": "OAK"
-        },
-        {
-          "date": "2026-04-12T20:10:00.000Z",
-          "value": 1,
-          "opponent": "LAD"
-        },
-        {
-          "date": "2026-04-12T01:10:00.000Z",
-          "value": 1,
-          "opponent": "LAD"
-        },
-        {
-          "date": "2026-04-11T02:10:00.000Z",
-          "value": 1,
-          "opponent": "LAD"
-        },
-        {
-          "date": "2026-04-07T00:05:00.000Z",
-          "value": 2,
-          "opponent": "SEA"
-        },
-        {
-          "date": "2026-04-05T18:35:00.000Z",
-          "value": 0,
-          "opponent": "CIN"
-        },
-        {
-          "date": "2026-04-04T23:05:00.000Z",
-          "value": 1,
-          "opponent": "CIN"
-        },
-        {
-          "date": "2026-04-03T20:05:00.000Z",
-          "value": 1,
-          "opponent": "CIN"
-        },
-        {
-          "date": "2026-04-01T16:35:00.000Z",
-          "value": 2,
-          "opponent": "BAL"
-        },
-        {
-          "date": "2026-03-30T22:35:00.000Z",
-          "value": 0,
-          "opponent": "BAL"
-        }
-      ],
-      "vk_prob_over": 98.7,
-      "vk_prob_under": 1.3,
-      "vk_verdict": "STRONG_OVER",
-      "vk_edge": 46.3,
-      "vk_recommendation": "STRONG_OVER",
-      "vk_confidence": 98.7,
-      "cv": 0.778,
-      "raw_vk_pred": 0.9,
-      "vk_predicted": 0.9,
-      "matchup_modifier": 1.0,
-      "tempo_modifier": 1.0,
-      "market_prob": 52.4,
-      "propvision_true_prob": 61.2,
-      "casino_req_rate": 50.0,
-      "true_edge": 11.2,
-      "board_score": 304.1,
-      "tier": "war_zone",
-      "tier_label": "MLB War Zone 2.0 (Elite 10)",
-      "war_zone_qualified": true,
-      "actuary_gate_passed": true,
-      "gate_info": {
-        "market_prob": 52.4,
-        "true_hit_rate": 70.0,
-        "propvision_true_prob": 61.2,
-        "casino_req_rate": 50.0,
-        "true_edge": 11.2,
-        "true_edge_floor": 10.0,
-        "blend_ratio": "MASTER 50/50 (same as all tiers)"
-      },
-      "vision_intel": "The hit rate suggests value, but the projection deadlocks with the 0.5 line and zero mathematical edge creates a high-risk trap. Without a clear driver to push this over the hump, walk away or keep the exposure light on a coin-flip play.",
-      "intel_score": null,
-      "intel_verdict": null,
-      "bdl_modifiers": null,
-      "synced_at": "2026-04-14T03:00:04.037791+00:00",
-      "vision_summary": "The hit rate suggests value, but the projection deadlocks with the 0.5 line and zero mathematical edge creates a high-risk trap. Without a clear driver to push this over the hump, walk away or keep the exposure light on a coin-flip play.",
-      "_enriched": true,
-      "_enriched_at": "2026-04-15T00:16:59.886889+00:00",
+      "_enriched_at": "2026-04-15T00:02:57.876109+00:00",
       "scout_badges": [],
-      "_cache_updated": "2026-04-15T00:16:59.886892+00:00"
+      "_cache_updated": "2026-04-15T00:02:57.876111+00:00"
     },
     "luis_robert_jr.|batter_walks|0.5|dk": {
       "player_name": "Luis Robert Jr.",
@@ -734,657 +1047,16 @@
         "true_edge_floor": 10.0,
         "blend_ratio": "MASTER 50/50 (same as all tiers)"
       },
-      "vision_intel": "Robert Jr. is a notorious free-swinger who has failed to draw a walk in 70% of his last ten games, making this a clear play on his aggressive plate approach. The line sits at 0.5 and with a projected average of zero walks, the math says he stays quiet against the staff tonight.",
+      "vision_intel": "The line sits at 0.5 but his recent discipline is nonexistent, underscored by a 0.0 walk average over his last ten games. Trust the zero-percent edge here because he is hunting pitches rather than taking them, making the under a high-probability lock despite the 70% historical hit rate.",
       "intel_score": null,
       "intel_verdict": null,
       "bdl_modifiers": null,
       "synced_at": "2026-04-14T03:00:04.038071+00:00",
-      "vision_summary": "Robert Jr. is a notorious free-swinger who has failed to draw a walk in 70% of his last ten games, making this a clear play on his aggressive plate approach. The line sits at 0.5 and with a projected average of zero walks, the math says he stays quiet against the staff tonight.",
+      "vision_summary": "The line sits at 0.5 but his recent discipline is nonexistent, underscored by a 0.0 walk average over his last ten games. Trust the zero-percent edge here because he is hunting pitches rather than taking them, making the under a high-probability lock despite the 70% historical hit rate.",
       "_enriched": true,
-      "_enriched_at": "2026-04-15T00:17:00.930730+00:00",
+      "_enriched_at": "2026-04-15T00:16:44.093642+00:00",
       "scout_badges": [],
-      "_cache_updated": "2026-04-15T00:17:00.930732+00:00"
-    },
-    "ceddanne_rafaela|hits|0.5|dk": {
-      "player_name": "Ceddanne Rafaela",
-      "team": "BOS",
-      "opponent": null,
-      "photo_url": null,
-      "headshot_url": null,
-      "game_time": "2026-04-14T23:41:00Z",
-      "stat_type": "Hits",
-      "stat_key": "HITS",
-      "line": 0.5,
-      "dk_odds": -194,
-      "pp_odds": -137,
-      "prop_type": "GOBLIN",
-      "is_goblin": true,
-      "is_demon": false,
-      "lineup_status": "PROJECTED",
-      "games_played": 10,
-      "hit_count": 0,
-      "true_hit_rate": 90.0,
-      "h5_rate": 100.0,
-      "h10_rate": 90.0,
-      "season_avg": 1.1,
-      "hit_rates": {
-        "l5": 100.0,
-        "l10": 90.0
-      },
-      "last_10_games": [
-        {
-          "date": "2026-04-13T23:40:00.000Z",
-          "value": 1,
-          "opponent": "MIN"
-        },
-        {
-          "date": "2026-04-12T18:15:00.000Z",
-          "value": 1,
-          "opponent": "STL"
-        },
-        {
-          "date": "2026-04-11T23:15:00.000Z",
-          "value": 1,
-          "opponent": "STL"
-        },
-        {
-          "date": "2026-04-11T00:15:00.000Z",
-          "value": 1,
-          "opponent": "STL"
-        },
-        {
-          "date": "2026-04-08T17:35:00.000Z",
-          "value": 2,
-          "opponent": "MIL"
-        },
-        {
-          "date": "2026-04-07T22:45:00.000Z",
-          "value": 1,
-          "opponent": "MIL"
-        },
-        {
-          "date": "2026-04-06T22:45:00.000Z",
-          "value": 1,
-          "opponent": "MIL"
-        },
-        {
-          "date": "2026-04-05T17:35:00.000Z",
-          "value": 0,
-          "opponent": "SD"
-        },
-        {
-          "date": "2026-04-04T20:10:00.000Z",
-          "value": 2,
-          "opponent": "SD"
-        },
-        {
-          "date": "2026-04-03T18:10:00.000Z",
-          "value": 1,
-          "opponent": "SD"
-        }
-      ],
-      "vk_prob_over": 86.7,
-      "vk_prob_under": 13.3,
-      "vk_verdict": "STRONG_OVER",
-      "vk_edge": 20.7,
-      "vk_recommendation": "STRONG_OVER",
-      "vk_confidence": 86.7,
-      "cv": 0.49,
-      "raw_vk_pred": 1.1,
-      "vk_predicted": 1.1,
-      "matchup_modifier": 1.0,
-      "tempo_modifier": 1.0,
-      "market_prob": 66.0,
-      "propvision_true_prob": 78.0,
-      "casino_req_rate": 67.4,
-      "true_edge": 10.6,
-      "board_score": 24.5,
-      "tier": "safe_haven",
-      "tier_label": "MLB Safe Haven 2.0 (Predictive)",
-      "oracle_apex_qualified": true,
-      "actuary_gate_passed": true,
-      "gate_info": {
-        "market_prob": 66.0,
-        "true_hit_rate": 90.0,
-        "propvision_true_prob": 78.0,
-        "casino_req_rate": 67.4,
-        "true_edge": 10.6,
-        "hit_rate_floor": 60.0,
-        "cv_max": 0.7
-      },
-      "vision_intel": "The model hammers a massive 47.2% edge on the over here, fueled primarily by a heavy workload of plate appearances that puts his projection at 0.7 hits against a thin 0.5 line. He has cleared this mark in 90% of his last ten games, making this a high-conviction play despite the recent volatility in his peripheral fielding metrics.",
-      "intel_score": null,
-      "intel_verdict": null,
-      "bdl_modifiers": null,
-      "synced_at": "2026-04-14T03:00:04.033434+00:00",
-      "vk_data": {
-        "predicted": 0.736,
-        "projection": 0.736,
-        "edge": 0.236,
-        "source": "lasso_v2"
-      },
-      "vision_summary": "The model hammers a massive 47.2% edge on the over here, fueled primarily by a heavy workload of plate appearances that puts his projection at 0.7 hits against a thin 0.5 line. He has cleared this mark in 90% of his last ten games, making this a high-conviction play despite the recent volatility in his peripheral fielding metrics.",
-      "scout_badges": [],
-      "intel_suite": {
-        "lasso": {
-          "projection": 0.736,
-          "confidence_tier": "HIGH_VARIANCE",
-          "r_squared": 0.021,
-          "top_drivers": [
-            "L10_avg_plate_appearances",
-            "L5_std_fielding_chances"
-          ]
-        }
-      },
-      "_enriched": true,
-      "_enriched_at": "2026-04-15T00:17:01.984982+00:00",
-      "_cache_updated": "2026-04-15T00:17:01.984984+00:00"
-    },
-    "andy_pages|singles|0.5|dk": {
-      "player_name": "Andy Pages",
-      "team": "LAD",
-      "opponent": null,
-      "photo_url": null,
-      "headshot_url": null,
-      "game_time": "2026-04-14T02:11:00Z",
-      "stat_type": "Singles",
-      "stat_key": "SINGLES",
-      "line": 0.5,
-      "dk_odds": -127,
-      "pp_odds": -137,
-      "prop_type": "GOBLIN",
-      "is_goblin": true,
-      "is_demon": false,
-      "lineup_status": "PROJECTED",
-      "games_played": 10,
-      "hit_count": 0,
-      "true_hit_rate": 80.0,
-      "h5_rate": 80.0,
-      "h10_rate": 80.0,
-      "season_avg": 1.1,
-      "hit_rates": {
-        "l5": 80.0,
-        "l10": 80.0
-      },
-      "last_10_games": [
-        {
-          "date": "2026-04-12T20:10:00.000Z",
-          "value": 1,
-          "opponent": "TEX"
-        },
-        {
-          "date": "2026-04-12T01:10:00.000Z",
-          "value": 1,
-          "opponent": "TEX"
-        },
-        {
-          "date": "2026-04-11T02:10:00.000Z",
-          "value": 1,
-          "opponent": "TEX"
-        },
-        {
-          "date": "2026-04-08T19:07:00.000Z",
-          "value": 0,
-          "opponent": "TOR"
-        },
-        {
-          "date": "2026-04-07T23:07:00.000Z",
-          "value": 1,
-          "opponent": "TOR"
-        },
-        {
-          "date": "2026-04-06T23:07:00.000Z",
-          "value": 1,
-          "opponent": "TOR"
-        },
-        {
-          "date": "2026-04-05T17:35:00.000Z",
-          "value": 0,
-          "opponent": "WSH"
-        },
-        {
-          "date": "2026-04-04T20:05:00.000Z",
-          "value": 2,
-          "opponent": "WSH"
-        },
-        {
-          "date": "2026-04-03T17:05:00.000Z",
-          "value": 2,
-          "opponent": "WSH"
-        },
-        {
-          "date": "2026-04-02T00:20:00.000Z",
-          "value": 2,
-          "opponent": "CLE"
-        }
-      ],
-      "vk_prob_over": 80.4,
-      "vk_prob_under": 19.6,
-      "vk_verdict": "STRONG_OVER",
-      "vk_edge": 24.5,
-      "vk_recommendation": "STRONG_OVER",
-      "vk_confidence": 80.4,
-      "cv": 0.636,
-      "raw_vk_pred": 1.1,
-      "vk_predicted": 1.1,
-      "matchup_modifier": 1.0,
-      "tempo_modifier": 1.0,
-      "market_prob": 55.9,
-      "propvision_true_prob": 68.0,
-      "casino_req_rate": 65.0,
-      "true_edge": 3.0,
-      "board_score": -0.5,
-      "tier": "safe_haven",
-      "tier_label": "MLB Safe Haven 2.0 (Predictive)",
-      "oracle_apex_qualified": true,
-      "actuary_gate_passed": true,
-      "gate_info": {
-        "market_prob": 55.9,
-        "true_hit_rate": 80.0,
-        "propvision_true_prob": 68.0,
-        "casino_req_rate": 65.0,
-        "true_edge": 3.0,
-        "hit_rate_floor": 60.0,
-        "cv_max": 0.7
-      },
-      "vision_intel": "The line sits at 0.5 but the projection flatlines at zero, creating a massive mathematical vacuum for the under. Despite the recent high hit rate, the primary drivers indicate a complete regression to the mean against this unknown defensive alignment.",
-      "intel_score": null,
-      "intel_verdict": null,
-      "bdl_modifiers": null,
-      "synced_at": "2026-04-14T03:00:04.033951+00:00",
-      "vision_summary": "The line sits at 0.5 but the projection flatlines at zero, creating a massive mathematical vacuum for the under. Despite the recent high hit rate, the primary drivers indicate a complete regression to the mean against this unknown defensive alignment.",
-      "_enriched": true,
-      "_enriched_at": "2026-04-15T00:17:02.870947+00:00",
-      "scout_badges": [],
-      "_cache_updated": "2026-04-15T00:17:02.870949+00:00"
-    },
-    "francisco_lindor|batter_strikeouts|0.5|dk": {
-      "player_name": "Francisco Lindor",
-      "team": "NYM",
-      "opponent": null,
-      "photo_url": null,
-      "headshot_url": null,
-      "game_time": "2026-04-14T02:11:00Z",
-      "stat_type": "Batter Strikeouts",
-      "stat_key": "BATTER_STRIKEOUTS",
-      "line": 0.5,
-      "dk_odds": -181,
-      "pp_odds": -137,
-      "prop_type": "GOBLIN",
-      "is_goblin": true,
-      "is_demon": false,
-      "lineup_status": "PROJECTED",
-      "games_played": 10,
-      "hit_count": 0,
-      "true_hit_rate": 80.0,
-      "h5_rate": 60.0,
-      "h10_rate": 80.0,
-      "season_avg": 1.0,
-      "hit_rates": {
-        "l5": 60.0,
-        "l10": 80.0
-      },
-      "last_10_games": [
-        {
-          "date": "2026-04-12T17:40:00.000Z",
-          "value": 0,
-          "opponent": "OAK"
-        },
-        {
-          "date": "2026-04-11T20:10:00.000Z",
-          "value": 2,
-          "opponent": "OAK"
-        },
-        {
-          "date": "2026-04-10T23:10:00.000Z",
-          "value": 1,
-          "opponent": "OAK"
-        },
-        {
-          "date": "2026-04-09T23:10:00.000Z",
-          "value": 0,
-          "opponent": "ARI"
-        },
-        {
-          "date": "2026-04-08T20:10:00.000Z",
-          "value": 1,
-          "opponent": "ARI"
-        },
-        {
-          "date": "2026-04-07T20:10:00.000Z",
-          "value": 1,
-          "opponent": "ARI"
-        },
-        {
-          "date": "2026-04-05T20:05:00.000Z",
-          "value": 1,
-          "opponent": "SF"
-        },
-        {
-          "date": "2026-04-05T01:05:00.000Z",
-          "value": 2,
-          "opponent": "SF"
-        },
-        {
-          "date": "2026-04-04T02:15:00.000Z",
-          "value": 1,
-          "opponent": "SF"
-        },
-        {
-          "date": "2026-04-03T01:45:00.000Z",
-          "value": 1,
-          "opponent": "SF"
-        }
-      ],
-      "vk_prob_over": 78.5,
-      "vk_prob_under": 21.5,
-      "vk_verdict": "STRONG_OVER",
-      "vk_edge": 14.1,
-      "vk_recommendation": "STRONG_OVER",
-      "vk_confidence": 78.5,
-      "cv": 0.632,
-      "raw_vk_pred": 1.0,
-      "vk_predicted": 1.0,
-      "matchup_modifier": 1.0,
-      "tempo_modifier": 1.0,
-      "market_prob": 64.4,
-      "propvision_true_prob": 72.2,
-      "casino_req_rate": 65.9,
-      "true_edge": 6.3,
-      "board_score": 9.4,
-      "tier": "safe_haven",
-      "tier_label": "MLB Safe Haven 2.0 (Predictive)",
-      "oracle_apex_qualified": true,
-      "actuary_gate_passed": true,
-      "gate_info": {
-        "market_prob": 64.4,
-        "true_hit_rate": 80.0,
-        "propvision_true_prob": 72.2,
-        "casino_req_rate": 65.9,
-        "true_edge": 6.3,
-        "hit_rate_floor": 60.0,
-        "cv_max": 0.7
-      },
-      "vision_intel": "Lindor has put a clean sheet on the board in 80% of his last ten starts, showing elite contact control that matches the current 0.5 line. While the projection sits flat, his 8-2 hit rate on the under makes this a high-probability play on his ability to put the ball in play.",
-      "intel_score": null,
-      "intel_verdict": null,
-      "bdl_modifiers": null,
-      "synced_at": "2026-04-14T03:00:04.033800+00:00",
-      "vision_summary": "Lindor has put a clean sheet on the board in 80% of his last ten starts, showing elite contact control that matches the current 0.5 line. While the projection sits flat, his 8-2 hit rate on the under makes this a high-probability play on his ability to put the ball in play.",
-      "_enriched": true,
-      "_enriched_at": "2026-04-15T00:17:03.819463+00:00",
-      "scout_badges": [],
-      "_cache_updated": "2026-04-15T00:17:03.819465+00:00"
-    },
-    "freddie_freeman|hits|0.5|dk": {
-      "player_name": "Freddie Freeman",
-      "team": "LAD",
-      "opponent": null,
-      "photo_url": null,
-      "headshot_url": null,
-      "game_time": "2026-04-14T02:11:00Z",
-      "stat_type": "Hits",
-      "stat_key": "HITS",
-      "line": 0.5,
-      "dk_odds": -248,
-      "pp_odds": -137,
-      "prop_type": "GOBLIN",
-      "is_goblin": true,
-      "is_demon": false,
-      "lineup_status": "PROJECTED",
-      "games_played": 10,
-      "hit_count": 0,
-      "true_hit_rate": 90.0,
-      "h5_rate": 80.0,
-      "h10_rate": 90.0,
-      "season_avg": 1.2,
-      "hit_rates": {
-        "l5": 80.0,
-        "l10": 90.0
-      },
-      "last_10_games": [
-        {
-          "date": "2026-04-12T20:10:00.000Z",
-          "value": 1,
-          "opponent": "TEX"
-        },
-        {
-          "date": "2026-04-12T01:10:00.000Z",
-          "value": 1,
-          "opponent": "TEX"
-        },
-        {
-          "date": "2026-04-11T02:10:00.000Z",
-          "value": 0,
-          "opponent": "TEX"
-        },
-        {
-          "date": "2026-04-08T19:07:00.000Z",
-          "value": 2,
-          "opponent": "TOR"
-        },
-        {
-          "date": "2026-04-07T23:07:00.000Z",
-          "value": 1,
-          "opponent": "TOR"
-        },
-        {
-          "date": "2026-04-06T23:07:00.000Z",
-          "value": 2,
-          "opponent": "TOR"
-        },
-        {
-          "date": "2026-04-05T17:35:00.000Z",
-          "value": 1,
-          "opponent": "WSH"
-        },
-        {
-          "date": "2026-04-04T20:05:00.000Z",
-          "value": 2,
-          "opponent": "WSH"
-        },
-        {
-          "date": "2026-04-03T17:05:00.000Z",
-          "value": 1,
-          "opponent": "WSH"
-        },
-        {
-          "date": "2026-04-02T00:20:00.000Z",
-          "value": 1,
-          "opponent": "CLE"
-        }
-      ],
-      "vk_prob_over": 87.8,
-      "vk_prob_under": 12.2,
-      "vk_verdict": "STRONG_OVER",
-      "vk_edge": 16.5,
-      "vk_recommendation": "STRONG_OVER",
-      "vk_confidence": 87.8,
-      "cv": 0.5,
-      "raw_vk_pred": 1.2,
-      "vk_predicted": 1.2,
-      "matchup_modifier": 1.0,
-      "tempo_modifier": 1.0,
-      "market_prob": 71.3,
-      "propvision_true_prob": 80.6,
-      "casino_req_rate": 72.5,
-      "true_edge": 8.1,
-      "board_score": 16.8,
-      "tier": "safe_haven",
-      "tier_label": "MLB Safe Haven 2.0 (Predictive)",
-      "oracle_apex_qualified": true,
-      "actuary_gate_passed": true,
-      "gate_info": {
-        "market_prob": 71.3,
-        "true_hit_rate": 90.0,
-        "propvision_true_prob": 80.6,
-        "casino_req_rate": 72.5,
-        "true_edge": 8.1,
-        "hit_rate_floor": 60.0,
-        "cv_max": 0.7
-      },
-      "vision_intel": "Freeman is an absolute hammer right now with a 90% hit rate over his last ten games and a massive 86.4% edge against this 0.5 line. The projection sits at a rock-solid 0.9, fueled primarily by his heavy plate appearance volume that virtually guarantees he sees enough looks to clear this number.",
-      "intel_score": null,
-      "intel_verdict": null,
-      "bdl_modifiers": null,
-      "synced_at": "2026-04-14T03:00:04.033829+00:00",
-      "vk_data": {
-        "predicted": 0.932,
-        "projection": 0.932,
-        "edge": 0.43200000000000005,
-        "source": "lasso_v2"
-      },
-      "vision_summary": "Freeman is an absolute hammer right now with a 90% hit rate over his last ten games and a massive 86.4% edge against this 0.5 line. The projection sits at a rock-solid 0.9, fueled primarily by his heavy plate appearance volume that virtually guarantees he sees enough looks to clear this number.",
-      "scout_badges": [],
-      "intel_suite": {
-        "lasso": {
-          "projection": 0.932,
-          "confidence_tier": "HIGH_VARIANCE",
-          "r_squared": 0.021,
-          "top_drivers": [
-            "L10_avg_plate_appearances",
-            "L5_std_fielding_chances"
-          ]
-        }
-      },
-      "_enriched": true,
-      "_enriched_at": "2026-04-15T00:17:04.971343+00:00",
-      "_cache_updated": "2026-04-15T00:17:04.971345+00:00"
-    },
-    "jeff_mcneil|hits|0.5|dk": {
-      "player_name": "Jeff McNeil",
-      "team": "OAK",
-      "opponent": null,
-      "photo_url": null,
-      "headshot_url": null,
-      "game_time": "2026-04-14T01:41:00Z",
-      "stat_type": "Hits",
-      "stat_key": "HITS",
-      "line": 0.5,
-      "dk_odds": -215,
-      "pp_odds": -137,
-      "prop_type": "GOBLIN",
-      "is_goblin": true,
-      "is_demon": false,
-      "lineup_status": "PROJECTED",
-      "games_played": 10,
-      "hit_count": 0,
-      "true_hit_rate": 80.0,
-      "h5_rate": 60.0,
-      "h10_rate": 80.0,
-      "season_avg": 1.3,
-      "hit_rates": {
-        "l5": 60.0,
-        "l10": 80.0
-      },
-      "last_10_games": [
-        {
-          "date": "2026-04-14T01:40:00.000Z",
-          "value": 0,
-          "opponent": "TEX"
-        },
-        {
-          "date": "2026-04-12T17:40:00.000Z",
-          "value": 1,
-          "opponent": "NYM"
-        },
-        {
-          "date": "2026-04-11T20:10:00.000Z",
-          "value": 3,
-          "opponent": "NYM"
-        },
-        {
-          "date": "2026-04-10T23:10:00.000Z",
-          "value": 2,
-          "opponent": "NYM"
-        },
-        {
-          "date": "2026-04-09T17:35:00.000Z",
-          "value": 0,
-          "opponent": "NYY"
-        },
-        {
-          "date": "2026-04-08T23:05:00.000Z",
-          "value": 2,
-          "opponent": "NYY"
-        },
-        {
-          "date": "2026-04-07T23:05:00.000Z",
-          "value": 2,
-          "opponent": "NYY"
-        },
-        {
-          "date": "2026-04-05T20:05:00.000Z",
-          "value": 1,
-          "opponent": "HOU"
-        },
-        {
-          "date": "2026-04-04T20:05:00.000Z",
-          "value": 1,
-          "opponent": "HOU"
-        },
-        {
-          "date": "2026-04-04T01:40:00.000Z",
-          "value": 1,
-          "opponent": "HOU"
-        }
-      ],
-      "vk_prob_over": 81.3,
-      "vk_prob_under": 18.7,
-      "vk_verdict": "STRONG_OVER",
-      "vk_edge": 13.0,
-      "vk_recommendation": "STRONG_OVER",
-      "vk_confidence": 81.3,
-      "cv": 0.692,
-      "raw_vk_pred": 1.3,
-      "vk_predicted": 1.3,
-      "matchup_modifier": 1.0,
-      "tempo_modifier": 1.0,
-      "market_prob": 68.3,
-      "propvision_true_prob": 74.1,
-      "casino_req_rate": 70.7,
-      "true_edge": 3.4,
-      "board_score": -0.2,
-      "tier": "safe_haven",
-      "tier_label": "MLB Safe Haven 2.0 (Predictive)",
-      "oracle_apex_qualified": true,
-      "actuary_gate_passed": true,
-      "gate_info": {
-        "market_prob": 68.3,
-        "true_hit_rate": 80.0,
-        "propvision_true_prob": 74.1,
-        "casino_req_rate": 70.7,
-        "true_edge": 3.4,
-        "hit_rate_floor": 60.0,
-        "cv_max": 0.7
-      },
-      "vision_intel": "McNeil is riding a massive 66% edge over the 0.5 line, backed by an elite 80% hit rate over his last ten appearances. With his recent contact volume serving as the primary mathematical driver, a projection of 0.8 hits makes this high-variance play a mandatory hammer.",
-      "intel_score": null,
-      "intel_verdict": null,
-      "bdl_modifiers": null,
-      "synced_at": "2026-04-14T03:00:04.033619+00:00",
-      "vk_data": {
-        "predicted": 0.831,
-        "projection": 0.831,
-        "edge": 0.33099999999999996,
-        "source": "lasso_v2"
-      },
-      "vision_summary": "McNeil is riding a massive 66% edge over the 0.5 line, backed by an elite 80% hit rate over his last ten appearances. With his recent contact volume serving as the primary mathematical driver, a projection of 0.8 hits makes this high-variance play a mandatory hammer.",
-      "scout_badges": [],
-      "intel_suite": {
-        "lasso": {
-          "projection": 0.831,
-          "confidence_tier": "HIGH_VARIANCE",
-          "r_squared": 0.021,
-          "top_drivers": [
-            "L5_std_fielding_chances",
-            "L10_avg_hits"
-          ]
-        }
-      },
-      "_enriched": true,
-      "_enriched_at": "2026-04-15T00:17:06.056581+00:00",
-      "_cache_updated": "2026-04-15T00:17:06.056583+00:00"
+      "_cache_updated": "2026-04-15T00:16:44.093644+00:00"
     },
     "bo_bichette|batter_strikeouts|0.5|dk": {
       "player_name": "Bo Bichette",
@@ -1493,28 +1165,28 @@
         "hit_rate_floor": 60.0,
         "cv_max": 0.7
       },
-      "vision_intel": "Bichette is currently punishing the ball with an elite 80% hit rate toward the under, showing zero statistical reason to doubt his elite contact skills right now. While the projection sits flat on the line, his recent refusal to whiff makes this a high-probability play for the disciplined scout.",
+      "vision_intel": "Bichette is currently seeing the ball like a beach ball, boasting a pristine 80% hit rate on this line over his last ten games. With zero projected strikeouts against the current number, his elite contact rate makes this a high-conviction play on the under.",
       "intel_score": null,
       "intel_verdict": null,
       "bdl_modifiers": null,
       "synced_at": "2026-04-14T03:00:04.034040+00:00",
-      "vision_summary": "Bichette is currently punishing the ball with an elite 80% hit rate toward the under, showing zero statistical reason to doubt his elite contact skills right now. While the projection sits flat on the line, his recent refusal to whiff makes this a high-probability play for the disciplined scout.",
+      "vision_summary": "Bichette is currently seeing the ball like a beach ball, boasting a pristine 80% hit rate on this line over his last ten games. With zero projected strikeouts against the current number, his elite contact rate makes this a high-conviction play on the under.",
       "_enriched": true,
-      "_enriched_at": "2026-04-15T00:17:07.158545+00:00",
+      "_enriched_at": "2026-04-15T00:16:45.152413+00:00",
       "scout_badges": [],
-      "_cache_updated": "2026-04-15T00:17:07.158547+00:00"
+      "_cache_updated": "2026-04-15T00:16:45.152415+00:00"
     },
-    "andy_pages|hits|0.5|dk": {
-      "player_name": "Andy Pages",
-      "team": "LAD",
+    "francisco_lindor|batter_strikeouts|0.5|dk": {
+      "player_name": "Francisco Lindor",
+      "team": "NYM",
       "opponent": null,
       "photo_url": null,
       "headshot_url": null,
       "game_time": "2026-04-14T02:11:00Z",
-      "stat_type": "Hits",
-      "stat_key": "HITS",
+      "stat_type": "Batter Strikeouts",
+      "stat_key": "BATTER_STRIKEOUTS",
       "line": 0.5,
-      "dk_odds": -230,
+      "dk_odds": -181,
       "pp_odds": -137,
       "prop_type": "GOBLIN",
       "is_goblin": true,
@@ -1522,18 +1194,374 @@
       "lineup_status": "PROJECTED",
       "games_played": 10,
       "hit_count": 0,
-      "true_hit_rate": 90.0,
+      "true_hit_rate": 80.0,
+      "h5_rate": 60.0,
+      "h10_rate": 80.0,
+      "season_avg": 1.0,
+      "hit_rates": {
+        "l5": 60.0,
+        "l10": 80.0
+      },
+      "last_10_games": [
+        {
+          "date": "2026-04-12T17:40:00.000Z",
+          "value": 0,
+          "opponent": "OAK"
+        },
+        {
+          "date": "2026-04-11T20:10:00.000Z",
+          "value": 2,
+          "opponent": "OAK"
+        },
+        {
+          "date": "2026-04-10T23:10:00.000Z",
+          "value": 1,
+          "opponent": "OAK"
+        },
+        {
+          "date": "2026-04-09T23:10:00.000Z",
+          "value": 0,
+          "opponent": "ARI"
+        },
+        {
+          "date": "2026-04-08T20:10:00.000Z",
+          "value": 1,
+          "opponent": "ARI"
+        },
+        {
+          "date": "2026-04-07T20:10:00.000Z",
+          "value": 1,
+          "opponent": "ARI"
+        },
+        {
+          "date": "2026-04-05T20:05:00.000Z",
+          "value": 1,
+          "opponent": "SF"
+        },
+        {
+          "date": "2026-04-05T01:05:00.000Z",
+          "value": 2,
+          "opponent": "SF"
+        },
+        {
+          "date": "2026-04-04T02:15:00.000Z",
+          "value": 1,
+          "opponent": "SF"
+        },
+        {
+          "date": "2026-04-03T01:45:00.000Z",
+          "value": 1,
+          "opponent": "SF"
+        }
+      ],
+      "vk_prob_over": 78.5,
+      "vk_prob_under": 21.5,
+      "vk_verdict": "STRONG_OVER",
+      "vk_edge": 14.1,
+      "vk_recommendation": "STRONG_OVER",
+      "vk_confidence": 78.5,
+      "cv": 0.632,
+      "raw_vk_pred": 1.0,
+      "vk_predicted": 1.0,
+      "matchup_modifier": 1.0,
+      "tempo_modifier": 1.0,
+      "market_prob": 64.4,
+      "propvision_true_prob": 72.2,
+      "casino_req_rate": 65.9,
+      "true_edge": 6.3,
+      "board_score": 9.4,
+      "tier": "safe_haven",
+      "tier_label": "MLB Safe Haven 2.0 (Predictive)",
+      "oracle_apex_qualified": true,
+      "actuary_gate_passed": true,
+      "gate_info": {
+        "market_prob": 64.4,
+        "true_hit_rate": 80.0,
+        "propvision_true_prob": 72.2,
+        "casino_req_rate": 65.9,
+        "true_edge": 6.3,
+        "hit_rate_floor": 60.0,
+        "cv_max": 0.7
+      },
+      "vision_intel": "Lindor has put a clean sheet on the board in 80% of his last ten games, making this 0.5 line a gift for those tracking his elite contact rate. The math confirms a dominant trend with zero strikeouts averaged over his last ten outings, so lock in the under before the books adjust to this lack of friction.",
+      "intel_score": null,
+      "intel_verdict": null,
+      "bdl_modifiers": null,
+      "synced_at": "2026-04-14T03:00:04.033800+00:00",
+      "vision_summary": "Lindor has put a clean sheet on the board in 80% of his last ten games, making this 0.5 line a gift for those tracking his elite contact rate. The math confirms a dominant trend with zero strikeouts averaged over his last ten outings, so lock in the under before the books adjust to this lack of friction.",
+      "_enriched": true,
+      "_enriched_at": "2026-04-15T00:16:46.239129+00:00",
+      "scout_badges": [],
+      "_cache_updated": "2026-04-15T00:16:46.239131+00:00"
+    },
+    "josh_jung|singles|0.5|dk": {
+      "player_name": "Josh Jung",
+      "team": "TEX",
+      "opponent": null,
+      "photo_url": null,
+      "headshot_url": null,
+      "game_time": "2026-04-14T01:41:00Z",
+      "stat_type": "Singles",
+      "stat_key": "SINGLES",
+      "line": 0.5,
+      "dk_odds": -110,
+      "pp_odds": 100,
+      "prop_type": "DEMON",
+      "is_goblin": false,
+      "is_demon": true,
+      "is_standard": false,
+      "lineup_status": "PROJECTED",
+      "games_played": 10,
+      "hit_count": 0,
+      "true_hit_rate": 70.0,
       "h5_rate": 80.0,
-      "h10_rate": 90.0,
-      "season_avg": 1.8,
+      "h10_rate": 70.0,
+      "season_avg": 0.9,
       "hit_rates": {
         "l5": 80.0,
-        "l10": 90.0
+        "l10": 70.0
+      },
+      "last_10_games": [
+        {
+          "date": "2026-04-14T01:40:00.000Z",
+          "value": 0,
+          "opponent": "OAK"
+        },
+        {
+          "date": "2026-04-12T20:10:00.000Z",
+          "value": 1,
+          "opponent": "LAD"
+        },
+        {
+          "date": "2026-04-12T01:10:00.000Z",
+          "value": 1,
+          "opponent": "LAD"
+        },
+        {
+          "date": "2026-04-11T02:10:00.000Z",
+          "value": 1,
+          "opponent": "LAD"
+        },
+        {
+          "date": "2026-04-07T00:05:00.000Z",
+          "value": 2,
+          "opponent": "SEA"
+        },
+        {
+          "date": "2026-04-05T18:35:00.000Z",
+          "value": 0,
+          "opponent": "CIN"
+        },
+        {
+          "date": "2026-04-04T23:05:00.000Z",
+          "value": 1,
+          "opponent": "CIN"
+        },
+        {
+          "date": "2026-04-03T20:05:00.000Z",
+          "value": 1,
+          "opponent": "CIN"
+        },
+        {
+          "date": "2026-04-01T16:35:00.000Z",
+          "value": 2,
+          "opponent": "BAL"
+        },
+        {
+          "date": "2026-03-30T22:35:00.000Z",
+          "value": 0,
+          "opponent": "BAL"
+        }
+      ],
+      "vk_prob_over": 98.7,
+      "vk_prob_under": 1.3,
+      "vk_verdict": "STRONG_OVER",
+      "vk_edge": 46.3,
+      "vk_recommendation": "STRONG_OVER",
+      "vk_confidence": 98.7,
+      "cv": 0.778,
+      "raw_vk_pred": 0.9,
+      "vk_predicted": 0.9,
+      "matchup_modifier": 1.0,
+      "tempo_modifier": 1.0,
+      "market_prob": 52.4,
+      "propvision_true_prob": 61.2,
+      "casino_req_rate": 50.0,
+      "true_edge": 11.2,
+      "board_score": 304.1,
+      "tier": "war_zone",
+      "tier_label": "MLB War Zone 2.0 (Elite 10)",
+      "war_zone_qualified": true,
+      "actuary_gate_passed": true,
+      "gate_info": {
+        "market_prob": 52.4,
+        "true_hit_rate": 70.0,
+        "propvision_true_prob": 61.2,
+        "casino_req_rate": 50.0,
+        "true_edge": 11.2,
+        "true_edge_floor": 10.0,
+        "blend_ratio": "MASTER 50/50 (same as all tiers)"
+      },
+      "vision_intel": "The model sees zero room for a single here, and a 70% hit rate on the under across his last ten games confirms Jung is consistently failing to find the grass. The math is flat and the edge is nonexistent, making this a high-risk play that relies entirely on a cold streak rather than a clear statistical advantage.",
+      "intel_score": null,
+      "intel_verdict": null,
+      "bdl_modifiers": null,
+      "synced_at": "2026-04-14T03:00:04.037791+00:00",
+      "vision_summary": "The model sees zero room for a single here, and a 70% hit rate on the under across his last ten games confirms Jung is consistently failing to find the grass. The math is flat and the edge is nonexistent, making this a high-risk play that relies entirely on a cold streak rather than a clear statistical advantage.",
+      "_enriched": true,
+      "_enriched_at": "2026-04-15T00:16:47.199852+00:00",
+      "scout_badges": [],
+      "_cache_updated": "2026-04-15T00:16:47.199854+00:00"
+    },
+    "rhys_hoskins|batter_strikeouts|0.5|dk": {
+      "player_name": "Rhys Hoskins",
+      "team": "CLE",
+      "opponent": null,
+      "photo_url": null,
+      "headshot_url": null,
+      "game_time": "2026-04-13T23:46:00Z",
+      "stat_type": "Batter Strikeouts",
+      "stat_key": "BATTER_STRIKEOUTS",
+      "line": 0.5,
+      "dk_odds": 650,
+      "pp_odds": 100,
+      "prop_type": "DEMON",
+      "is_goblin": false,
+      "is_demon": true,
+      "is_standard": false,
+      "lineup_status": "PROJECTED",
+      "games_played": 10,
+      "hit_count": 0,
+      "true_hit_rate": 70.0,
+      "h5_rate": 40.0,
+      "h10_rate": 70.0,
+      "season_avg": 1.1,
+      "hit_rates": {
+        "l5": 40.0,
+        "l10": 70.0
+      },
+      "last_10_games": [
+        {
+          "date": "2026-04-13T23:45:00.000Z",
+          "value": 0,
+          "opponent": "STL"
+        },
+        {
+          "date": "2026-04-12T23:20:00.000Z",
+          "value": 1,
+          "opponent": "ATL"
+        },
+        {
+          "date": "2026-04-11T23:15:00.000Z",
+          "value": 0,
+          "opponent": "ATL"
+        },
+        {
+          "date": "2026-04-10T23:15:00.000Z",
+          "value": 1,
+          "opponent": "ATL"
+        },
+        {
+          "date": "2026-04-08T17:10:00.000Z",
+          "value": 0,
+          "opponent": "KC"
+        },
+        {
+          "date": "2026-04-07T17:10:00.000Z",
+          "value": 3,
+          "opponent": "KC"
+        },
+        {
+          "date": "2026-04-06T22:10:00.000Z",
+          "value": 2,
+          "opponent": "KC"
+        },
+        {
+          "date": "2026-04-05T20:30:00.000Z",
+          "value": 1,
+          "opponent": "CHC"
+        },
+        {
+          "date": "2026-04-02T00:20:00.000Z",
+          "value": 1,
+          "opponent": "LAD"
+        },
+        {
+          "date": "2026-04-01T02:10:00.000Z",
+          "value": 2,
+          "opponent": "LAD"
+        }
+      ],
+      "vk_prob_over": 99.0,
+      "vk_prob_under": 1.0,
+      "vk_verdict": "STRONG_OVER",
+      "vk_edge": 50.0,
+      "vk_recommendation": "STRONG_OVER",
+      "vk_confidence": 99.0,
+      "cv": 0.858,
+      "raw_vk_pred": 1.1,
+      "vk_predicted": 1.1,
+      "matchup_modifier": 1.0,
+      "tempo_modifier": 1.0,
+      "market_prob": 50.0,
+      "propvision_true_prob": 60.0,
+      "casino_req_rate": 50.0,
+      "true_edge": 10.0,
+      "board_score": 285.7,
+      "tier": "war_zone",
+      "tier_label": "MLB War Zone 2.0 (Elite 10)",
+      "war_zone_qualified": true,
+      "actuary_gate_passed": true,
+      "gate_info": {
+        "market_prob": 50.0,
+        "true_hit_rate": 70.0,
+        "propvision_true_prob": 60.0,
+        "casino_req_rate": 50.0,
+        "true_edge": 10.0,
+        "true_edge_floor": 10.0,
+        "blend_ratio": "MASTER 50/50 (same as all tiers)"
+      },
+      "vision_intel": "Hoskins is seeing the ball like a beach ball right now, boasting a 70% hit rate on this under over his last ten appearances. With the market holding steady at a 0.5 line and his contact metrics remaining elite, take the plus-money edge on him putting the ball in play.",
+      "intel_score": null,
+      "intel_verdict": null,
+      "bdl_modifiers": null,
+      "synced_at": "2026-04-14T03:00:04.037541+00:00",
+      "vision_summary": "Hoskins is seeing the ball like a beach ball right now, boasting a 70% hit rate on this under over his last ten appearances. With the market holding steady at a 0.5 line and his contact metrics remaining elite, take the plus-money edge on him putting the ball in play.",
+      "_enriched": true,
+      "_enriched_at": "2026-04-15T00:16:48.345024+00:00",
+      "scout_badges": [],
+      "_cache_updated": "2026-04-15T00:16:48.345026+00:00"
+    },
+    "max_muncy|batter_strikeouts|0.5|dk": {
+      "player_name": "Max Muncy",
+      "team": "LAD",
+      "opponent": null,
+      "photo_url": null,
+      "headshot_url": null,
+      "game_time": "2026-04-14T02:11:00Z",
+      "stat_type": "Batter Strikeouts",
+      "stat_key": "BATTER_STRIKEOUTS",
+      "line": 0.5,
+      "dk_odds": -226,
+      "pp_odds": -137,
+      "prop_type": "GOBLIN",
+      "is_goblin": true,
+      "is_demon": false,
+      "lineup_status": "PROJECTED",
+      "games_played": 10,
+      "hit_count": 0,
+      "true_hit_rate": 80.0,
+      "h5_rate": 80.0,
+      "h10_rate": 80.0,
+      "season_avg": 1.5,
+      "hit_rates": {
+        "l5": 80.0,
+        "l10": 80.0
       },
       "last_10_games": [
         {
           "date": "2026-04-12T20:10:00.000Z",
-          "value": 1,
+          "value": 3,
           "opponent": "TEX"
         },
         {
@@ -1543,12 +1571,12 @@
         },
         {
           "date": "2026-04-11T02:10:00.000Z",
-          "value": 3,
+          "value": 0,
           "opponent": "TEX"
         },
         {
           "date": "2026-04-08T19:07:00.000Z",
-          "value": 0,
+          "value": 1,
           "opponent": "TOR"
         },
         {
@@ -1558,86 +1586,188 @@
         },
         {
           "date": "2026-04-06T23:07:00.000Z",
-          "value": 2,
+          "value": 3,
           "opponent": "TOR"
         },
         {
-          "date": "2026-04-05T17:35:00.000Z",
-          "value": 1,
-          "opponent": "WSH"
-        },
-        {
           "date": "2026-04-04T20:05:00.000Z",
-          "value": 3,
+          "value": 2,
           "opponent": "WSH"
         },
         {
           "date": "2026-04-03T17:05:00.000Z",
-          "value": 3,
+          "value": 2,
           "opponent": "WSH"
         },
         {
           "date": "2026-04-02T00:20:00.000Z",
-          "value": 3,
+          "value": 2,
+          "opponent": "CLE"
+        },
+        {
+          "date": "2026-04-01T02:10:00.000Z",
+          "value": 0,
           "opponent": "CLE"
         }
       ],
-      "vk_prob_over": 88.6,
-      "vk_prob_under": 11.4,
+      "vk_prob_over": 83.5,
+      "vk_prob_under": 16.5,
       "vk_verdict": "STRONG_OVER",
-      "vk_edge": 18.9,
+      "vk_edge": 14.2,
       "vk_recommendation": "STRONG_OVER",
-      "vk_confidence": 88.6,
-      "cv": 0.598,
-      "raw_vk_pred": 1.8,
-      "vk_predicted": 1.8,
+      "vk_confidence": 83.5,
+      "cv": 0.683,
+      "raw_vk_pred": 1.5,
+      "vk_predicted": 1.5,
       "matchup_modifier": 1.0,
       "tempo_modifier": 1.0,
-      "market_prob": 69.7,
-      "propvision_true_prob": 79.8,
-      "casino_req_rate": 72.5,
-      "true_edge": 7.3,
-      "board_score": 12.9,
+      "market_prob": 69.3,
+      "propvision_true_prob": 74.7,
+      "casino_req_rate": 70.7,
+      "true_edge": 4.0,
+      "board_score": 1.8,
       "tier": "safe_haven",
       "tier_label": "MLB Safe Haven 2.0 (Predictive)",
       "oracle_apex_qualified": true,
       "actuary_gate_passed": true,
       "gate_info": {
-        "market_prob": 69.7,
-        "true_hit_rate": 90.0,
-        "propvision_true_prob": 79.8,
-        "casino_req_rate": 72.5,
-        "true_edge": 7.3,
+        "market_prob": 69.3,
+        "true_hit_rate": 80.0,
+        "propvision_true_prob": 74.7,
+        "casino_req_rate": 70.7,
+        "true_edge": 4.0,
         "hit_rate_floor": 60.0,
         "cv_max": 0.7
       },
-      "vision_intel": "Pages is a certified lock with a massive 81.4% edge against this 0.5 line, fueled primarily by his elite volume of 4.3 plate appearances over the last ten games. He has cleared this total in nine of his last ten starts, and my projection of 0.9 hits makes this a high-conviction play on a hitter currently seeing the ball like a beach ball.",
+      "vision_intel": "Muncy is locked in with a 80% hit rate over his last ten starts, demonstrating elite plate discipline that makes this bottom-tier line look like a trap. The metrics confirm he is consistently putting wood on the ball, so hammer the under while his contact rate remains this stable.",
       "intel_score": null,
       "intel_verdict": null,
       "bdl_modifiers": null,
-      "synced_at": "2026-04-14T03:00:04.033896+00:00",
-      "vk_data": {
-        "predicted": 0.907,
-        "projection": 0.907,
-        "edge": 0.40700000000000003,
-        "source": "lasso_v2"
-      },
-      "vision_summary": "Pages is a certified lock with a massive 81.4% edge against this 0.5 line, fueled primarily by his elite volume of 4.3 plate appearances over the last ten games. He has cleared this total in nine of his last ten starts, and my projection of 0.9 hits makes this a high-conviction play on a hitter currently seeing the ball like a beach ball.",
-      "scout_badges": [],
-      "intel_suite": {
-        "lasso": {
-          "projection": 0.907,
-          "confidence_tier": "HIGH_VARIANCE",
-          "r_squared": 0.021,
-          "top_drivers": [
-            "L10_avg_plate_appearances",
-            "L10_avg_hits"
-          ]
-        }
-      },
+      "synced_at": "2026-04-14T03:00:04.034069+00:00",
+      "vision_summary": "Muncy is locked in with a 80% hit rate over his last ten starts, demonstrating elite plate discipline that makes this bottom-tier line look like a trap. The metrics confirm he is consistently putting wood on the ball, so hammer the under while his contact rate remains this stable.",
       "_enriched": true,
-      "_enriched_at": "2026-04-15T00:17:08.301877+00:00",
-      "_cache_updated": "2026-04-15T00:17:08.301879+00:00"
+      "_enriched_at": "2026-04-15T00:16:49.467273+00:00",
+      "scout_badges": [],
+      "_cache_updated": "2026-04-15T00:16:49.467275+00:00"
+    },
+    "wilyer_abreu|singles|0.5|dk": {
+      "player_name": "Wilyer Abreu",
+      "team": "BOS",
+      "opponent": null,
+      "photo_url": null,
+      "headshot_url": null,
+      "game_time": "2026-04-14T23:41:00Z",
+      "stat_type": "Singles",
+      "stat_key": "SINGLES",
+      "line": 0.5,
+      "dk_odds": 113,
+      "pp_odds": 100,
+      "prop_type": "DEMON",
+      "is_goblin": false,
+      "is_demon": true,
+      "is_standard": false,
+      "lineup_status": "PROJECTED",
+      "games_played": 10,
+      "hit_count": 0,
+      "true_hit_rate": 70.0,
+      "h5_rate": 60.0,
+      "h10_rate": 70.0,
+      "season_avg": 1.0,
+      "hit_rates": {
+        "l5": 60.0,
+        "l10": 70.0
+      },
+      "last_10_games": [
+        {
+          "date": "2026-04-13T23:40:00.000Z",
+          "value": 2,
+          "opponent": "MIN"
+        },
+        {
+          "date": "2026-04-12T18:15:00.000Z",
+          "value": 0,
+          "opponent": "STL"
+        },
+        {
+          "date": "2026-04-11T23:15:00.000Z",
+          "value": 0,
+          "opponent": "STL"
+        },
+        {
+          "date": "2026-04-11T00:15:00.000Z",
+          "value": 2,
+          "opponent": "STL"
+        },
+        {
+          "date": "2026-04-08T17:35:00.000Z",
+          "value": 2,
+          "opponent": "MIL"
+        },
+        {
+          "date": "2026-04-07T22:45:00.000Z",
+          "value": 0,
+          "opponent": "MIL"
+        },
+        {
+          "date": "2026-04-06T22:45:00.000Z",
+          "value": 1,
+          "opponent": "MIL"
+        },
+        {
+          "date": "2026-04-05T17:35:00.000Z",
+          "value": 1,
+          "opponent": "SD"
+        },
+        {
+          "date": "2026-04-04T20:10:00.000Z",
+          "value": 1,
+          "opponent": "SD"
+        },
+        {
+          "date": "2026-04-03T18:10:00.000Z",
+          "value": 1,
+          "opponent": "SD"
+        }
+      ],
+      "vk_prob_over": 99.0,
+      "vk_prob_under": 1.0,
+      "vk_verdict": "STRONG_OVER",
+      "vk_edge": 50.0,
+      "vk_recommendation": "STRONG_OVER",
+      "vk_confidence": 99.0,
+      "cv": 0.775,
+      "raw_vk_pred": 1.0,
+      "vk_predicted": 1.0,
+      "matchup_modifier": 1.0,
+      "tempo_modifier": 1.0,
+      "market_prob": 50.0,
+      "propvision_true_prob": 60.0,
+      "casino_req_rate": 50.0,
+      "true_edge": 10.0,
+      "board_score": 286.1,
+      "tier": "war_zone",
+      "tier_label": "MLB War Zone 2.0 (Elite 10)",
+      "war_zone_qualified": true,
+      "actuary_gate_passed": true,
+      "gate_info": {
+        "market_prob": 50.0,
+        "true_hit_rate": 70.0,
+        "propvision_true_prob": 60.0,
+        "casino_req_rate": 50.0,
+        "true_edge": 10.0,
+        "true_edge_floor": 10.0,
+        "blend_ratio": "MASTER 50/50 (same as all tiers)"
+      },
+      "vision_intel": "The board shows a flat line of 0.5 and zero statistical edge, making this a high-risk play despite a deceivingly strong 70% recent hit rate. Without a clear projection advantage or favorable matchup driver, steer clear of this trap or scale the unit size down significantly.",
+      "intel_score": null,
+      "intel_verdict": null,
+      "bdl_modifiers": null,
+      "synced_at": "2026-04-14T03:00:04.037279+00:00",
+      "vision_summary": "The board shows a flat line of 0.5 and zero statistical edge, making this a high-risk play despite a deceivingly strong 70% recent hit rate. Without a clear projection advantage or favorable matchup driver, steer clear of this trap or scale the unit size down significantly.",
+      "_enriched": true,
+      "_enriched_at": "2026-04-15T00:16:50.852419+00:00",
+      "scout_badges": [],
+      "_cache_updated": "2026-04-15T00:16:50.852422+00:00"
     },
     "willson_contreras|singles|0.5|dk": {
       "player_name": "Willson Contreras",
@@ -1747,158 +1877,28 @@
         "true_edge_floor": 10.0,
         "blend_ratio": "MASTER 50/50 (same as all tiers)"
       },
-      "vision_intel": "Contreras is flashing a dangerous 70% hit rate over his last ten, but the board is flat with no mathematical edge or projection advantage to justify the risk. Laying juice on an Under when the recent form is this volatile makes this a low-confidence fade best left for the square money.",
+      "vision_intel": "The market is baiting us with a 70% hit rate, but the model zeroed out the projection against a total lack of positive statistical drivers. We are fading the noise and taking the under on a line where the math sees no clear path to a base.",
       "intel_score": null,
       "intel_verdict": null,
       "bdl_modifiers": null,
       "synced_at": "2026-04-14T03:00:04.038765+00:00",
-      "vision_summary": "Contreras is flashing a dangerous 70% hit rate over his last ten, but the board is flat with no mathematical edge or projection advantage to justify the risk. Laying juice on an Under when the recent form is this volatile makes this a low-confidence fade best left for the square money.",
+      "vision_summary": "The market is baiting us with a 70% hit rate, but the model zeroed out the projection against a total lack of positive statistical drivers. We are fading the noise and taking the under on a line where the math sees no clear path to a base.",
       "_enriched": true,
-      "_enriched_at": "2026-04-15T00:17:09.365350+00:00",
+      "_enriched_at": "2026-04-15T00:16:51.942563+00:00",
       "scout_badges": [],
-      "_cache_updated": "2026-04-15T00:17:09.365352+00:00"
+      "_cache_updated": "2026-04-15T00:16:51.942565+00:00"
     },
-    "jeff_mcneil|total_bases|0.5|dk": {
-      "player_name": "Jeff McNeil",
-      "team": "OAK",
-      "opponent": null,
-      "photo_url": null,
-      "headshot_url": null,
-      "game_time": "2026-04-14T01:41:00Z",
-      "stat_type": "Total Bases",
-      "stat_key": "TOTAL_BASES",
-      "line": 0.5,
-      "dk_odds": -190,
-      "pp_odds": -137,
-      "prop_type": "GOBLIN",
-      "is_goblin": true,
-      "is_demon": false,
-      "lineup_status": "PROJECTED",
-      "games_played": 9,
-      "hit_count": 0,
-      "true_hit_rate": 88.9,
-      "h5_rate": 80.0,
-      "h10_rate": 88.9,
-      "season_avg": 1.78,
-      "hit_rates": {
-        "l5": 80.0,
-        "l10": 88.9
-      },
-      "last_10_games": [
-        {
-          "date": "2026-04-12T17:40:00.000Z",
-          "value": 2,
-          "opponent": "NYM"
-        },
-        {
-          "date": "2026-04-11T20:10:00.000Z",
-          "value": 3,
-          "opponent": "NYM"
-        },
-        {
-          "date": "2026-04-10T23:10:00.000Z",
-          "value": 3,
-          "opponent": "NYM"
-        },
-        {
-          "date": "2026-04-09T17:35:00.000Z",
-          "value": 0,
-          "opponent": "NYY"
-        },
-        {
-          "date": "2026-04-08T23:05:00.000Z",
-          "value": 3,
-          "opponent": "NYY"
-        },
-        {
-          "date": "2026-04-07T23:05:00.000Z",
-          "value": 2,
-          "opponent": "NYY"
-        },
-        {
-          "date": "2026-04-05T20:05:00.000Z",
-          "value": 1,
-          "opponent": "HOU"
-        },
-        {
-          "date": "2026-04-04T20:05:00.000Z",
-          "value": 1,
-          "opponent": "HOU"
-        },
-        {
-          "date": "2026-04-04T01:40:00.000Z",
-          "value": 1,
-          "opponent": "HOU"
-        }
-      ],
-      "vk_prob_over": 89.3,
-      "vk_prob_under": 10.7,
-      "vk_verdict": "STRONG_OVER",
-      "vk_edge": 23.8,
-      "vk_recommendation": "STRONG_OVER",
-      "vk_confidence": 89.3,
-      "cv": 0.58,
-      "raw_vk_pred": 1.78,
-      "vk_predicted": 1.78,
-      "matchup_modifier": 1.0,
-      "tempo_modifier": 1.0,
-      "market_prob": 65.5,
-      "propvision_true_prob": 77.2,
-      "casino_req_rate": 67.4,
-      "true_edge": 9.8,
-      "board_score": 20.7,
-      "tier": "safe_haven",
-      "tier_label": "MLB Safe Haven 2.0 (Predictive)",
-      "oracle_apex_qualified": true,
-      "actuary_gate_passed": true,
-      "gate_info": {
-        "market_prob": 65.5,
-        "true_hit_rate": 88.9,
-        "propvision_true_prob": 77.2,
-        "casino_req_rate": 67.4,
-        "true_edge": 9.8,
-        "hit_rate_floor": 60.0,
-        "cv_max": 0.7
-      },
-      "vision_intel": "The model is screaming for this line with a massive 178% edge, projecting 1.4 bases against a basement-level 0.5 total. McNeil is an absolute lock given his elite 88.9% hit rate over the last ten games and high-volume plate appearances driving this projection.",
-      "intel_score": null,
-      "intel_verdict": null,
-      "bdl_modifiers": null,
-      "synced_at": "2026-04-14T03:00:04.033649+00:00",
-      "vk_data": {
-        "predicted": 1.39,
-        "projection": 1.39,
-        "edge": 0.8899999999999999,
-        "source": "lasso_v2"
-      },
-      "vision_summary": "The model is screaming for this line with a massive 178% edge, projecting 1.4 bases against a basement-level 0.5 total. McNeil is an absolute lock given his elite 88.9% hit rate over the last ten games and high-volume plate appearances driving this projection.",
-      "scout_badges": [],
-      "intel_suite": {
-        "lasso": {
-          "projection": 1.39,
-          "confidence_tier": "HIGH_VARIANCE",
-          "r_squared": 0.0189,
-          "top_drivers": [
-            "L10_avg_plate_appearances",
-            "L5_std_fielding_chances"
-          ]
-        }
-      },
-      "_enriched": true,
-      "_enriched_at": "2026-04-15T00:17:10.357792+00:00",
-      "_cache_updated": "2026-04-15T00:17:10.357794+00:00"
-    },
-    "max_muncy|batter_strikeouts|0.5|dk": {
-      "player_name": "Max Muncy",
+    "andy_pages|singles|0.5|dk": {
+      "player_name": "Andy Pages",
       "team": "LAD",
       "opponent": null,
       "photo_url": null,
       "headshot_url": null,
       "game_time": "2026-04-14T02:11:00Z",
-      "stat_type": "Batter Strikeouts",
-      "stat_key": "BATTER_STRIKEOUTS",
+      "stat_type": "Singles",
+      "stat_key": "SINGLES",
       "line": 0.5,
-      "dk_odds": -226,
+      "dk_odds": -127,
       "pp_odds": -137,
       "prop_type": "GOBLIN",
       "is_goblin": true,
@@ -1909,7 +1909,7 @@
       "true_hit_rate": 80.0,
       "h5_rate": 80.0,
       "h10_rate": 80.0,
-      "season_avg": 1.5,
+      "season_avg": 1.1,
       "hit_rates": {
         "l5": 80.0,
         "l10": 80.0
@@ -1917,7 +1917,7 @@
       "last_10_games": [
         {
           "date": "2026-04-12T20:10:00.000Z",
-          "value": 3,
+          "value": 1,
           "opponent": "TEX"
         },
         {
@@ -1927,12 +1927,12 @@
         },
         {
           "date": "2026-04-11T02:10:00.000Z",
-          "value": 0,
+          "value": 1,
           "opponent": "TEX"
         },
         {
           "date": "2026-04-08T19:07:00.000Z",
-          "value": 1,
+          "value": 0,
           "opponent": "TOR"
         },
         {
@@ -1942,8 +1942,13 @@
         },
         {
           "date": "2026-04-06T23:07:00.000Z",
-          "value": 3,
+          "value": 1,
           "opponent": "TOR"
+        },
+        {
+          "date": "2026-04-05T17:35:00.000Z",
+          "value": 0,
+          "opponent": "WSH"
         },
         {
           "date": "2026-04-04T20:05:00.000Z",
@@ -1959,52 +1964,47 @@
           "date": "2026-04-02T00:20:00.000Z",
           "value": 2,
           "opponent": "CLE"
-        },
-        {
-          "date": "2026-04-01T02:10:00.000Z",
-          "value": 0,
-          "opponent": "CLE"
         }
       ],
-      "vk_prob_over": 83.5,
-      "vk_prob_under": 16.5,
+      "vk_prob_over": 80.4,
+      "vk_prob_under": 19.6,
       "vk_verdict": "STRONG_OVER",
-      "vk_edge": 14.2,
+      "vk_edge": 24.5,
       "vk_recommendation": "STRONG_OVER",
-      "vk_confidence": 83.5,
-      "cv": 0.683,
-      "raw_vk_pred": 1.5,
-      "vk_predicted": 1.5,
+      "vk_confidence": 80.4,
+      "cv": 0.636,
+      "raw_vk_pred": 1.1,
+      "vk_predicted": 1.1,
       "matchup_modifier": 1.0,
       "tempo_modifier": 1.0,
-      "market_prob": 69.3,
-      "propvision_true_prob": 74.7,
-      "casino_req_rate": 70.7,
-      "true_edge": 4.0,
-      "board_score": 1.8,
+      "market_prob": 55.9,
+      "propvision_true_prob": 68.0,
+      "casino_req_rate": 65.0,
+      "true_edge": 3.0,
+      "board_score": -0.5,
       "tier": "safe_haven",
       "tier_label": "MLB Safe Haven 2.0 (Predictive)",
       "oracle_apex_qualified": true,
       "actuary_gate_passed": true,
       "gate_info": {
-        "market_prob": 69.3,
+        "market_prob": 55.9,
         "true_hit_rate": 80.0,
-        "propvision_true_prob": 74.7,
-        "casino_req_rate": 70.7,
-        "true_edge": 4.0,
+        "propvision_true_prob": 68.0,
+        "casino_req_rate": 65.0,
+        "true_edge": 3.0,
         "hit_rate_floor": 60.0,
         "cv_max": 0.7
       },
-      "vision_intel": "We are hammering the under on Muncy's strikeouts with extreme confidence given his elite 80% hit rate over the last ten games. The line sits at 0.5 and his current form suggests he is seeing the ball too well to fail, making this a high-stakes play on a red-hot streak.",
+      "vision_intel": "The model holds a neutral stance with zero projected edge, making this a stay-away despite the high 80% hit rate in recent starts. Without a positive mathematical driver or a clear projection advantage over the 0.5 line, we are fading the historical trend in favor of caution.",
       "intel_score": null,
       "intel_verdict": null,
       "bdl_modifiers": null,
-      "synced_at": "2026-04-14T03:00:04.034069+00:00",
-      "vision_summary": "We are hammering the under on Muncy's strikeouts with extreme confidence given his elite 80% hit rate over the last ten games. The line sits at 0.5 and his current form suggests he is seeing the ball too well to fail, making this a high-stakes play on a red-hot streak.",
+      "synced_at": "2026-04-14T03:00:04.033951+00:00",
+      "vision_summary": "The model holds a neutral stance with zero projected edge, making this a stay-away despite the high 80% hit rate in recent starts. Without a positive mathematical driver or a clear projection advantage over the 0.5 line, we are fading the historical trend in favor of caution.",
       "_enriched": true,
-      "_enriched_at": "2026-04-15T00:17:11.611707+00:00",
+      "_enriched_at": "2026-04-15T00:16:53.151925+00:00",
       "scout_badges": [],
-      "_cache_updated": "2026-04-15T00:17:11.611709+00:00"
+      "_cache_updated": "2026-04-15T00:16:53.151927+00:00"
     }
   }
 }
