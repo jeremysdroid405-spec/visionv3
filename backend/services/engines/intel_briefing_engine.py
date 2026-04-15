@@ -34,7 +34,7 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 logger = logging.getLogger(__name__)
 
 # Google Gemini API Key from environment
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
+GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY")
 
 
 class IntelBriefingEngine:
@@ -54,10 +54,10 @@ class IntelBriefingEngine:
         self.intel_cache = db.dg_intel_briefings
         self.radar_picks = db.dg_radar_picks
         self.goblin_vault = db.dg_goblin_vault
-        self._api_available = bool(GEMINI_API_KEY)
+        self._api_available = bool(GOOGLE_API_KEY)
         
         if not self._api_available:
-            logger.warning("[VISION] No GEMINI_API_KEY - Strategic Vision disabled")
+            logger.warning("[VISION] No GOOGLE_API_KEY - Strategic Vision disabled")
         else:
             logger.info("[VISION] Targeted Strategic Vision Engine v2.0 initialized")
     
@@ -315,7 +315,7 @@ YOUR 2-SENTENCE OUTPUT:"""
         try:
             from google import genai
             
-            client = genai.Client(api_key=GEMINI_API_KEY)
+            client = genai.Client(api_key=GOOGLE_API_KEY)
             
             def generate():
                 return client.models.generate_content(
@@ -351,7 +351,7 @@ YOUR 2-SENTENCE OUTPUT:"""
         This is the main entry point - called after sync.
         """
         if not self._api_available:
-            return {"success": False, "error": "GEMINI_API_KEY not configured"}
+            return {"success": False, "error": "GOOGLE_API_KEY not configured"}
         
         logger.info("[VISION] Generating targeted Strategic Theses...")
         

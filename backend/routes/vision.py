@@ -121,7 +121,7 @@ async def trigger_vision_batch():
 @router.get("/status")
 async def get_vision_status():
     """Get Vision AI service status and configuration."""
-    google_key_configured = bool(os.environ.get('GEMINI_API_KEY'))
+    google_key_configured = bool(os.environ.get('GOOGLE_API_KEY'))
     
     ai_insights_count = 0
     if _vision_service is not None and _db is not None:

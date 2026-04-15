@@ -16,7 +16,7 @@ import litellm
 
 logger = logging.getLogger(__name__)
 
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 
 SYSTEM_PROMPT = """You are a highly analytical NBA/MLB daily fantasy sports scout with 20 years of experience. You speak in sharp, confident, punchy prose — like a seasoned Vegas sharp texting his inner circle.
 
@@ -41,7 +41,7 @@ async def generate_gemini_scout_intel(payload: Dict, max_retries: int = 3) -> st
     Call Gemini Flash to generate a two-sentence scout summary.
     Retries with exponential backoff on rate limits / transient errors.
     """
-    if not GEMINI_API_KEY:
+    if not GOOGLE_API_KEY:
         return _fallback(payload)
 
     player = payload.get("player", "?")
@@ -52,7 +52,7 @@ async def generate_gemini_scout_intel(payload: Dict, max_retries: int = 3) -> st
             response = await asyncio.wait_for(
                 litellm.acompletion(
                     model="gemini/gemini-3-flash-preview",
-                    api_key=GEMINI_API_KEY,
+                    api_key=GOOGLE_API_KEY,
                     messages=[
                         {"role": "system", "content": SYSTEM_PROMPT},
                         {"role": "user", "content": user_text},

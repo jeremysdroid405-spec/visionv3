@@ -20,7 +20,7 @@ load_dotenv()
 logger = logging.getLogger(__name__)
 
 # Configuration - Use Google Gemini API Key
-GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY')
+GOOGLE_API_KEY = os.environ.get('GOOGLE_API_KEY')
 SUPABASE_URL = os.environ.get('SUPABASE_URL')
 SUPABASE_SERVICE_ROLE_KEY = os.environ.get('SUPABASE_SERVICE_ROLE_KEY')
 
@@ -65,8 +65,8 @@ Examples of good insights:
         self.daily_insights = db.dg_daily_insights
         self.cached_board = db.dg_cached_board
         
-        if not GEMINI_API_KEY:
-            logger.warning("[VISION] GEMINI_API_KEY not found - AI insights will be disabled")
+        if not GOOGLE_API_KEY:
+            logger.warning("[VISION] GOOGLE_API_KEY not found - AI insights will be disabled")
     
     def _detect_conflicts(
         self,
@@ -229,10 +229,10 @@ Examples of good insights:
         Now includes mandatory DvP defensive ranking context.
         Uses Google Gemini API.
         """
-        if not GEMINI_API_KEY:
+        if not GOOGLE_API_KEY:
             return {
                 "success": False,
-                "error": "GEMINI_API_KEY not configured",
+                "error": "GOOGLE_API_KEY not configured",
                 "insight": None
             }
         
@@ -313,7 +313,7 @@ Generate a 1-sentence VISION INSIGHT. You MUST include the DvP matchup context (
             # Initialize Google Gemini
             from google import genai
             
-            client = genai.Client(api_key=GEMINI_API_KEY)
+            client = genai.Client(api_key=GOOGLE_API_KEY)
             
             # Build full prompt with system context
             full_prompt = f"{self.SYSTEM_PROMPT}\n\n{user_prompt}"
@@ -369,10 +369,10 @@ Generate a 1-sentence VISION INSIGHT. You MUST include the DvP matchup context (
         Returns:
             Summary of batch processing results
         """
-        if not GEMINI_API_KEY:
+        if not GOOGLE_API_KEY:
             return {
                 "success": False,
-                "error": "GEMINI_API_KEY not configured",
+                "error": "GOOGLE_API_KEY not configured",
                 "insights_generated": 0
             }
         
