@@ -2,7 +2,7 @@
 Gemini Scout Intelligence Engine
 ==================================
 Replaces static f-string templates with real generative AI.
-Uses Gemini Flash via emergentintegrations for gritty scout summaries.
+Uses Gemini Flash via litellm for gritty scout summaries.
 Concurrent batch processing for Ferrari Tier enrichment cycles.
 """
 
@@ -10,14 +10,13 @@ import os
 import json
 import logging
 import asyncio
-import uuid
 from typing import Dict, Optional
 
-from emergentintegrations.llm.chat import LlmChat, UserMessage
+import litellm
 
 logger = logging.getLogger(__name__)
 
-EMERGENT_LLM_KEY = os.environ.get("EMERGENT_LLM_KEY")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
 SYSTEM_PROMPT = """You are a highly analytical NBA/MLB daily fantasy sports scout with 20 years of experience. You speak in sharp, confident, punchy prose — like a seasoned Vegas sharp texting his inner circle.
 
@@ -42,7 +41,7 @@ async def generate_gemini_scout_intel(payload: Dict, max_retries: int = 3) -> st
     Call Gemini Flash to generate a two-sentence scout summary.
     Retries with exponential backoff on rate limits / transient errors.
     """
-    if not EMERGENT_LLM_KEY:
+    if not GEMINI_API_KEY:
         return _fallback(payload)
 
     player = payload.get("player", "?")
@@ -50,18 +49,21 @@ async def generate_gemini_scout_intel(payload: Dict, max_retries: int = 3) -> st
 
     for attempt in range(max_retries):
         try:
-            chat = LlmChat(
-                api_key=EMERGENT_LLM_KEY,
-                session_id=f"scout-{uuid.uuid4().hex[:8]}",
-                system_message=SYSTEM_PROMPT,
-            ).with_model("gemini", "gemini-3-flash-preview")
-
             response = await asyncio.wait_for(
-                chat.send_message(UserMessage(text=user_text)),
+                litellm.acompletion(
+                    model="gemini/gemini-3-flash-preview",
+                    api_key=GEMINI_API_KEY,
+                    messages=[
+                        {"role": "system", "content": SYSTEM_PROMPT},
+                        {"role": "user", "content": user_text},
+                    ],
+                    max_tokens=200,
+                    temperature=0.7,
+                ),
                 timeout=12.0,
             )
 
-            text = str(response).strip()
+            text = response.choices[0].message.content.strip()
             if len(text) >= 20:
                 return text
 
