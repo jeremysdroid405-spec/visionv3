@@ -321,7 +321,7 @@ Generate a 1-sentence VISION INSIGHT. You MUST include the DvP matchup context (
             # Call Gemini API
             response = await asyncio.to_thread(
                 client.models.generate_content,
-                model="gemini-3.1-flash-lite-preview",
+                model="gemini-3-flash-preview",
                 contents=full_prompt
             )
             
@@ -465,7 +465,7 @@ Generate a 1-sentence VISION INSIGHT. You MUST include the DvP matchup context (
                     "$set": {
                         "insight_summary": result['insight'],
                         "ai_generated_at": result['generated_at'],
-                        "ai_model": "gemini-3.1-flash-lite-preview",
+                        "ai_model": "gemini-3-flash-preview",
                         "classification": result.get('classification', 'Standard'),
                         "has_high_conflict": result.get('has_high_conflict', False),
                         "conflict_types": result.get('conflict_types', [])

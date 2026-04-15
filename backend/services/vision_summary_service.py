@@ -282,7 +282,7 @@ Keep it tight. No fluff. Talk like a real person, not a robot. Use {last_name}'s
                     response = await asyncio.wait_for(
                         asyncio.to_thread(
                             client.models.generate_content,
-                            model="gemini-3.1-flash-lite-preview",  # Gemini 3.1 Flash Lite
+                            model="gemini-3-flash-preview",  # Gemini 3.1 Flash Lite
                             contents=full_prompt
                         ),
                         timeout=timeout

@@ -64,9 +64,9 @@ class PropVisionOracleService:
             import google.generativeai as genai
             genai.configure(api_key=GOOGLE_API_KEY)
             self._genai = genai
-            # Use gemini-3.1-flash-lite-preview for Bull vs Bear analysis (Tier 1 paid key)
-            self._model = genai.GenerativeModel("gemini-3.1-flash-lite-preview")
-            logger.info("[ORACLE] Gemini API initialized with gemini-3.1-flash-lite-preview")
+            # Use gemini-3-flash-preview for Bull vs Bear analysis (Tier 1 paid key)
+            self._model = genai.GenerativeModel("gemini-3-flash-preview")
+            logger.info("[ORACLE] Gemini API initialized with gemini-3-flash-preview")
             return True
         except Exception as e:
             logger.error(f"[ORACLE] Failed to initialize Gemini: {e}")
@@ -609,7 +609,7 @@ Only return valid JSON. No markdown code blocks.
                 
                 results["gemini_analysis"] = {
                     "verdicts_returned": len(verdicts),
-                    "model": "gemini-3.1-flash-lite-preview"
+                    "model": "gemini-3-flash-preview"
                 }
             
             # Step 4: Calculate Oracle scores and organize by tier
