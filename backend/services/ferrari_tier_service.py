@@ -733,7 +733,10 @@ class FerrariTierService:
                     player_name, player_game_logs, player_baseline_stats
                 )
                 
-                for prop in player.get("props", []):
+                # Combine all prop arrays: props, goblins, and demons
+                all_player_props = player.get("props", []) + player.get("goblins", []) + player.get("demons", [])
+                
+                for prop in all_player_props:
                     results["universal_scan"]["total_props_scanned"] += 1
                     
                     # Get sharp market data
@@ -748,9 +751,9 @@ class FerrariTierService:
                     is_demon = prop.get("is_demon", False)
                     is_goblin = prop.get("is_goblin", False)
                     
-                    # For non-demons without sharp data, skip
-                    # Demons can proceed without sharp data (use hit rates instead)
-                    if effective_sharp is None and not is_demon:
+                    # For non-demons and non-goblins without sharp data, skip
+                    # Demons and goblins can proceed without sharp data (use hit rates instead)
+                    if effective_sharp is None and not is_demon and not is_goblin:
                         results["v7_kills"]["no_sharp_data"] += 1
                         continue
                     
@@ -1053,34 +1056,16 @@ class FerrariTierService:
                     # - War Zone (DK >= +200): Demons only
                     # ==========================================================
                     
-                    # Safe Haven = Goblins only (heavily juiced lines)
+                    # Safe Haven = Props with odds <= -250 (heavily juiced lines)
                     if v7_tier == "safe_haven":
-                        if not is_goblin:
-                            results["scored"]["below_threshold"] += 1
-                            discarded.append({
-                                "player_name": player_name,
-                                "stat_type": stat_type,
-                                "line": pp_line,
-                                "reason": "SAFE_HAVEN_NON_GOBLIN: Only goblins qualify for Safe Haven"
-                            })
-                            continue
                         results["scored"]["safe_haven_pool"] += 1
                     
                     # Front Lines = Demons, Goblins, OR Standards (all prop types allowed)
                     elif v7_tier == "front_lines":
                         results["scored"]["front_lines_pool"] += 1
                     
-                    # War Zone = Demons only (longshot value plays)
+                    # War Zone = Props with odds >= +200 (longshot value plays)
                     elif v7_tier == "war_zone":
-                        if not is_demon:
-                            results["scored"]["below_threshold"] += 1
-                            discarded.append({
-                                "player_name": player_name,
-                                "stat_type": stat_type,
-                                "line": pp_line,
-                                "reason": "WAR_ZONE_NON_DEMON: Only demons qualify for War Zone"
-                            })
-                            continue
                         results["scored"]["war_zone_pool"] += 1
                     
                     else:
@@ -1268,8 +1253,8 @@ class FerrariTierService:
                             "usage_ripple": {
                                 "display": "Elevated Usage" if vacuum_data else "Standard Volume",
                                 "reasoning": vacuum_data.get("reason", "Based on team role") if vacuum_data else "Based on team role and recent minutes",
-                                "bump_percent": int(vacuum_data.get("usage_bump", 0)) if vacuum_data else 0,
-                                "shift_label": f"+{int(vacuum_data.get('usage_bump', 0))}% Usage" if vacuum_data else "Normal",
+                                "bump_percent": int(vacuum_data.get("usage_bump") or 0) if vacuum_data else 0,
+                                "shift_label": f"+{int(vacuum_data.get('usage_bump') or 0)}% Usage" if vacuum_data else "Normal",
                                 "injuries_affecting": [vacuum_data.get("injured_player")] if vacuum_data and vacuum_data.get("injured_player") else []
                             },
                             # Context Badges - MERGED: Prop badges + Player badges
@@ -2081,7 +2066,7 @@ class FerrariTierService:
         
         # Usage boost
         if vacuum_data:
-            bump = vacuum_data.get("usage_bump", 0)
+            bump = vacuum_data.get("usage_bump") or 0
             if bump >= 10:
                 reasons.append(f"+{bump}% usage boost (injury)")
                 confidence_factors.append("usage_boost")

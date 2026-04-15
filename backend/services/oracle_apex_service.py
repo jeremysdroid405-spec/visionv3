@@ -1245,12 +1245,10 @@ class OracleApexService:
             
             line = prop.get("line", 0)
             
-            # Get prop classification
-            is_goblin = prop.get("is_goblin", False)
-            is_demon = prop.get("is_demon", False)
-            prop_type = "GOBLIN" if is_goblin else ("DEMON" if is_demon else "STANDARD")
+            # Get prop classification — use prop flags first, fallback to odds pricing
+            from services.anchor_classification_service import get_tier_from_odds
             
-            # Get DK odds
+            # Get DK odds FIRST (needed for classification)
             dk_odds = prop.get("dk_odds")
             if dk_odds is None:
                 sharp_market = prop.get("sharp_market", {})
@@ -1261,6 +1259,18 @@ class OracleApexService:
                     prop.get("sort_price") or
                     prop.get("price")  # Fallback to generic price field
                 )
+            
+            # PRIMARY: Use is_goblin/is_demon flags from the cached board prop data
+            is_goblin = prop.get("is_goblin", False)
+            is_demon = prop.get("is_demon", False)
+            
+            # FALLBACK: If neither flag is set, derive from dk_odds via get_tier_from_odds
+            if not is_goblin and not is_demon and dk_odds is not None:
+                odds_tier = get_tier_from_odds(dk_odds)
+                is_goblin = odds_tier == "SAFE_HAVEN"
+                is_demon = odds_tier == "WAR_ZONE"
+            
+            prop_type = "GOBLIN" if is_goblin else ("DEMON" if is_demon else "STANDARD")
             
             # ================================================================
             # PHASE 0: MARKET-FIRST FILTER (dk_odds REQUIRED)
@@ -1645,22 +1655,6 @@ class OracleApexService:
             p for p in remaining_pool
             if p['prop_type'] == 'GOBLIN'
         ]
-        
-        # DEBUG: Log top 10 goblin candidates BEFORE filtering
-        goblin_sorted = sorted(safe_haven_candidates, key=lambda x: x.get('vk_prob_over', 0), reverse=True)
-        logger.info(f"[NBA_ELITE_TOP_10] === SAFE HAVEN DEBUG: {len(goblin_sorted)} goblins in pool ===")
-        for i, p in enumerate(goblin_sorted[:10]):
-            hr = p.get('true_hit_rate', 0)
-            h5 = p.get('h5_rate', 0)
-            cv = p.get('cv', 999)
-            vk = p.get('vk_prob_over', 0)
-            fails = []
-            if hr < 60: fails.append(f"HR={hr:.0f}<60")
-            if h5 < 70: fails.append(f"H5={h5:.0f}<70")
-            if cv > 0.35: fails.append(f"CV={cv:.2f}>0.35")
-            if vk < 70: fails.append(f"VK={vk:.1f}<70")
-            status = "PASS" if not fails else f"FAIL[{', '.join(fails)}]"
-            logger.info(f"  #{i+1} {p['player_name']} {p['stat_type']} {p.get('line',0)} | HR={hr:.0f}% H5={h5:.0f}% CV={cv:.2f} VK={vk:.1f}% | {status}")
         
         # Additional Safe Haven filters: 
         # - HR >= 60% (trust gate - L10 historical)
