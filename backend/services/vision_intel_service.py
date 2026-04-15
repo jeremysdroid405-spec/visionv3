@@ -394,14 +394,14 @@ Return your analysis as a JSON array. One object per prop with all required fiel
     
     def _generate_fallback_intel(self, prop: Dict) -> Dict:
         """Generate fallback intel without Gemini."""
-        vk_prob = prop.get('vk_prob_over', 50)
-        vk_edge = prop.get('vk_edge', 0)
-        h20_rate = prop.get('h20_rate', 50)
-        h10_rate = prop.get('h10_rate', 50)
+        vk_prob = prop.get('vk_prob_over') or 50
+        vk_edge = prop.get('vk_edge') or 0
+        h20_rate = prop.get('h20_rate') or 50
+        h10_rate = prop.get('h10_rate') or 50
         
         player = prop.get('player_name', 'Player')
         stat = prop.get('stat_type', 'stat')
-        line = prop.get('line', 0)
+        line = prop.get('line') or 0
         
         # Calculate intel score based on available data
         score = 5
@@ -409,7 +409,7 @@ Return your analysis as a JSON array. One object per prop with all required fiel
         if vk_edge >= 5: score += 1
         if h20_rate >= 80: score += 1
         if h10_rate >= 90: score += 1
-        if prop.get('cv', 1) <= 0.25: score += 1
+        if (prop.get('cv') or 1) <= 0.25: score += 1
         score = max(1, min(10, score))
         
         # Calculate adjusted confidence (0-1)
