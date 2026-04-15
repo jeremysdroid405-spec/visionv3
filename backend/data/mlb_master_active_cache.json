@@ -1,7 +1,7 @@
 {
   "sport": "MLB",
-  "last_updated": "2026-04-15T21:23:15.411930+00:00",
-  "prop_count": 18,
+  "last_updated": "2026-04-15T21:24:55.155064+00:00",
+  "prop_count": 21,
   "props": {
     "teoscar_hernandez|hits|0.5|prizepicks": {
       "player_name": "Teoscar Hernandez",
@@ -3979,6 +3979,747 @@
       "_enriched": true,
       "_enriched_at": "2026-04-15T20:40:22.065807+00:00",
       "_cache_updated": "2026-04-15T20:40:22.065809+00:00"
+    },
+    "teoscar_hernandez|batter_strikeouts|0.5|prizepicks": {
+      "player_name": "Teoscar Hernandez",
+      "stat_type": "Batter Strikeouts",
+      "line": 0.5,
+      "all_lines": {
+        "draftkings": 0.5,
+        "prizepicks": 0.5
+      },
+      "all_odds": {
+        "draftkings": -481,
+        "prizepicks": -137
+      },
+      "away_team": "New York Mets",
+      "board_score": 230.3,
+      "bookmaker": "prizepicks",
+      "bookmakers_available": [
+        "draftkings",
+        "prizepicks"
+      ],
+      "ceiling_rate": 75.0,
+      "commence_time": "2026-04-14T02:11:00Z",
+      "cv": 0.793,
+      "cv_grade": "VOLATILE",
+      "dfs_book": "prizepicks",
+      "dfs_line": 0.5,
+      "dk_edge": 0.0,
+      "dk_line": 0.5,
+      "dk_odds": -481,
+      "edge": 140.0,
+      "edge_pct": 140.0,
+      "enriched_at": "2026-04-14T02:02:59.661555+00:00",
+      "event_id": "af4723d660204fd1fb7719261eb7f74b",
+      "ferrari_tier": "safe_haven",
+      "fetched_at": "2026-04-14T02:02:52.673609+00:00",
+      "game_logs": [
+        {
+          "date": "2026-04-15T02:10:00.000Z",
+          "value": 3,
+          "opponent": "NYM"
+        },
+        {
+          "date": "2026-04-14T02:10:00.000Z",
+          "value": 1,
+          "opponent": "NYM"
+        },
+        {
+          "date": "2026-04-12T01:10:00.000Z",
+          "value": 0,
+          "opponent": "TEX"
+        },
+        {
+          "date": "2026-04-11T02:10:00.000Z",
+          "value": 0,
+          "opponent": "TEX"
+        },
+        {
+          "date": "2026-04-08T19:07:00.000Z",
+          "value": 1,
+          "opponent": "TOR"
+        }
+      ],
+      "games_played": 10,
+      "h10_rate": 80.0,
+      "h20_rate": 75.0,
+      "h5_rate": 60.0,
+      "hit_rate_l10": 80.0,
+      "hit_rate_l5": 60.0,
+      "home_team": "Los Angeles Dodgers",
+      "intel_score": 6,
+      "is_alternate_market": true,
+      "is_demon": false,
+      "is_enriched": true,
+      "is_goblin": true,
+      "l10_avg": 1.3,
+      "l20_avg": 1.2,
+      "l5_avg": 1.0,
+      "last_10_games": [
+        {
+          "date": "2026-04-12T01:10:00.000Z",
+          "value": 0,
+          "opponent": "TEX"
+        },
+        {
+          "date": "2026-04-11T02:10:00.000Z",
+          "value": 0,
+          "opponent": "TEX"
+        },
+        {
+          "date": "2026-04-08T19:07:00.000Z",
+          "value": 1,
+          "opponent": "TOR"
+        },
+        {
+          "date": "2026-04-07T23:07:00.000Z",
+          "value": 3,
+          "opponent": "TOR"
+        },
+        {
+          "date": "2026-04-06T23:07:00.000Z",
+          "value": 1,
+          "opponent": "TOR"
+        },
+        {
+          "date": "2026-04-05T17:35:00.000Z",
+          "value": 1,
+          "opponent": "WSH"
+        },
+        {
+          "date": "2026-04-03T17:05:00.000Z",
+          "value": 1,
+          "opponent": "WSH"
+        },
+        {
+          "date": "2026-04-02T00:20:00.000Z",
+          "value": 2,
+          "opponent": "CLE"
+        },
+        {
+          "date": "2026-04-01T02:10:00.000Z",
+          "value": 2,
+          "opponent": "CLE"
+        },
+        {
+          "date": "2026-03-31T02:10:00.000Z",
+          "value": 1,
+          "opponent": "CLE"
+        }
+      ],
+      "lineup_status": "PROJECTED",
+      "market_key": "batter_strikeouts_alternate",
+      "odds": -137,
+      "player_id": 1098,
+      "position": "Left Fielder",
+      "pp_dk_edge": 0.0,
+      "pp_line": 0.5,
+      "pp_odds": -137,
+      "pp_sharp_edge": null,
+      "recommendation": "OVER",
+      "safe_haven_gate_results": {
+        "gate1_cv": {
+          "threshold": 1.1,
+          "value": 0.793,
+          "passed": true
+        },
+        "gate2_hit_rate": {
+          "threshold": 75,
+          "value": 75.0,
+          "passed": true
+        },
+        "gate3_edge": {
+          "threshold": 0,
+          "value": 140.0,
+          "passed": true
+        },
+        "gate4_tp": {
+          "threshold": 60,
+          "value": 82.8,
+          "passed": true
+        }
+      },
+      "safe_haven_reason": "All gates passed for BATTER_STRIKEOUTS",
+      "season_average": 1.2,
+      "sharp_book": null,
+      "sharp_edge": null,
+      "sharp_line": null,
+      "sharp_odds": null,
+      "source": "prizepicks",
+      "sport": "mlb",
+      "stat_field": "strikeouts",
+      "team": "LAD",
+      "team_name": null,
+      "tier_label": "Safe Haven",
+      "tp_odds": 82.8,
+      "vision_intel": "Hernandez has stayed clean in",
+      "vk_predicted": null,
+      "tempo_modifier": 1.02,
+      "intel_suite": {
+        "tempo": {
+          "multiplier": 1.02,
+          "display": "+2%",
+          "tempo_label": "Standard PA Volume",
+          "factors": [
+            {
+              "name": "Home Team",
+              "value": -2.0,
+              "reason": "Risk of no 9th inning"
+            },
+            {
+              "name": "Batting 5",
+              "value": 0.0,
+              "reason": "Neutral position"
+            },
+            {
+              "name": "OBP Rank #2",
+              "value": 4.0,
+              "reason": "High lineup turnover"
+            }
+          ],
+          "total_pct": 2.0
+        },
+        "pace_delta": {
+          "multiplier": 1.02,
+          "display": "+2%",
+          "tempo_label": "Standard PA Volume",
+          "factors": [
+            {
+              "name": "Home Team",
+              "value": -2.0,
+              "reason": "Risk of no 9th inning"
+            },
+            {
+              "name": "Batting 5",
+              "value": 0.0,
+              "reason": "Neutral position"
+            },
+            {
+              "name": "OBP Rank #2",
+              "value": 4.0,
+              "reason": "High lineup turnover"
+            }
+          ],
+          "total_pct": 2.0
+        },
+        "sport": "mlb",
+        "context_badges": [
+          "pure_contact",
+          "split_advantage",
+          "bvp_dominator"
+        ],
+        "vision_insight": {
+          "primary": "Teoscar Hernandez is locked in - 80% hit rate with 1.3 avg vs 0.5 line",
+          "reasons": [
+            "Hitting at 80% over last 10 games",
+            "L10 average of 1.3 exceeds 0.5 line",
+            "Low variance (CV 1%) indicates consistency",
+            "Sharp money favors this line (-481)"
+          ],
+          "confidence": "HIGH"
+        },
+        "stability_index": {
+          "display": "90%",
+          "score": 90,
+          "consistency": "Elite",
+          "std_dev": 0.793
+        },
+        "matchup_dvp": {
+          "display": "vs Los Angeles Dodgers",
+          "opponent": "Los Angeles Dodgers",
+          "opponent_abbr": "Los",
+          "friction_level": "Medium",
+          "friction_label": "Standard Matchup",
+          "color": "yellow",
+          "dvp_rank": 15,
+          "stat_type": "Batter Strikeouts"
+        }
+      },
+      "scout_badges": [
+        {
+          "badge_key": "lasso_high_edge",
+          "id": "lasso_high_edge"
+        },
+        {
+          "badge_key": "soft_matchup",
+          "id": "soft_matchup"
+        }
+      ],
+      "vision_summary": "Hernandez has stayed clean in",
+      "_enriched": true,
+      "_enriched_at": "2026-04-15T21:24:52.094771+00:00",
+      "_cache_updated": "2026-04-15T21:24:52.094773+00:00"
+    },
+    "yandy_diaz|hits|0.5|prizepicks": {
+      "player_name": "Yandy Diaz",
+      "stat_type": "Hits",
+      "line": 0.5,
+      "all_lines": {
+        "prizepicks": 0.5,
+        "draftkings": 0.5
+      },
+      "all_odds": {
+        "prizepicks": -137,
+        "draftkings": -288
+      },
+      "away_team": "Tampa Bay Rays",
+      "board_score": 182.2,
+      "bookmaker": "prizepicks",
+      "bookmakers_available": [
+        "prizepicks",
+        "draftkings"
+      ],
+      "ceiling_rate": 80.0,
+      "commence_time": "2026-04-14T23:41:00Z",
+      "cv": 0.908,
+      "cv_grade": "VOLATILE",
+      "dfs_book": "prizepicks",
+      "dfs_line": 0.5,
+      "dk_edge": 0.0,
+      "dk_line": 0.5,
+      "dk_odds": -288,
+      "edge": 100.0,
+      "edge_pct": 100.0,
+      "enriched_at": "2026-04-14T02:02:59.785831+00:00",
+      "event_id": "3de0bc35b00fae1cd6acfbadcf023411",
+      "ferrari_tier": "safe_haven",
+      "fetched_at": "2026-04-14T02:02:54.197303+00:00",
+      "game_logs": [
+        {
+          "date": "2026-04-14T23:40:00.000Z",
+          "value": 2,
+          "opponent": "CHW"
+        },
+        {
+          "date": "2026-04-12T17:40:00.000Z",
+          "value": 1,
+          "opponent": "NYY"
+        },
+        {
+          "date": "2026-04-11T22:10:00.000Z",
+          "value": 1,
+          "opponent": "NYY"
+        },
+        {
+          "date": "2026-04-10T23:10:00.000Z",
+          "value": 2,
+          "opponent": "NYY"
+        },
+        {
+          "date": "2026-04-08T22:40:00.000Z",
+          "value": 0,
+          "opponent": "CHC"
+        }
+      ],
+      "games_played": 10,
+      "h10_rate": 80.0,
+      "h20_rate": 80.0,
+      "h5_rate": 80.0,
+      "hit_rate_l10": 80.0,
+      "hit_rate_l5": 60.0,
+      "home_team": "Chicago White Sox",
+      "intel_score": 6,
+      "is_alternate_market": true,
+      "is_demon": false,
+      "is_enriched": true,
+      "is_goblin": true,
+      "l10_avg": 1.1,
+      "l20_avg": 1.45,
+      "l5_avg": 1.2,
+      "last_10_games": [
+        {
+          "date": "2026-04-12T17:40:00.000Z",
+          "value": 1,
+          "opponent": "NYY"
+        },
+        {
+          "date": "2026-04-11T22:10:00.000Z",
+          "value": 1,
+          "opponent": "NYY"
+        },
+        {
+          "date": "2026-04-10T23:10:00.000Z",
+          "value": 2,
+          "opponent": "NYY"
+        },
+        {
+          "date": "2026-04-08T22:40:00.000Z",
+          "value": 0,
+          "opponent": "CHC"
+        },
+        {
+          "date": "2026-04-07T22:40:00.000Z",
+          "value": 0,
+          "opponent": "CHC"
+        },
+        {
+          "date": "2026-04-06T20:10:00.000Z",
+          "value": 2,
+          "opponent": "CHC"
+        },
+        {
+          "date": "2026-04-05T18:10:00.000Z",
+          "value": 1,
+          "opponent": "MIN"
+        },
+        {
+          "date": "2026-04-04T23:10:00.000Z",
+          "value": 1,
+          "opponent": "MIN"
+        },
+        {
+          "date": "2026-04-03T21:05:00.000Z",
+          "value": 1,
+          "opponent": "MIN"
+        },
+        {
+          "date": "2026-04-01T17:40:00.000Z",
+          "value": 1,
+          "opponent": "MIL"
+        }
+      ],
+      "lineup_status": "PROJECTED",
+      "market_key": "batter_hits_alternate",
+      "odds": -137,
+      "player_id": 92,
+      "position": "First Baseman",
+      "pp_dk_edge": 0.0,
+      "pp_line": 0.5,
+      "pp_odds": -137,
+      "pp_sharp_edge": null,
+      "recommendation": "OVER",
+      "safe_haven_gate_results": {
+        "gate1_cv": {
+          "threshold": 1.1,
+          "value": 0.908,
+          "passed": true
+        },
+        "gate2_hit_rate": {
+          "threshold": 75,
+          "value": 80.0,
+          "passed": true
+        },
+        "gate3_edge": {
+          "threshold": 0,
+          "value": 100.0,
+          "passed": true
+        },
+        "gate4_tp": {
+          "threshold": 60,
+          "value": 74.2,
+          "passed": true
+        }
+      },
+      "safe_haven_reason": "All gates passed for HITS",
+      "season_average": 1.0,
+      "sharp_book": null,
+      "sharp_edge": null,
+      "sharp_line": null,
+      "sharp_odds": null,
+      "source": "prizepicks",
+      "sport": "mlb",
+      "stat_field": "hits",
+      "team": "TB",
+      "team_name": null,
+      "tier_label": "Safe Haven",
+      "tp_odds": 74.2,
+      "vision_intel": "We are hammering the over",
+      "vk_predicted": null,
+      "tempo_modifier": 0.98,
+      "intel_suite": {
+        "lasso": {
+          "projection": 0.896,
+          "confidence_tier": "HIGH_VARIANCE",
+          "r_squared": 0.021,
+          "top_drivers": [
+            "L10_avg_plate_appearances",
+            "L5_std_fielding_chances"
+          ]
+        }
+      },
+      "scout_badges": [],
+      "vk_data": {
+        "predicted": 0.896,
+        "projection": 0.896,
+        "edge": 0.396,
+        "source": "lasso_v2"
+      },
+      "vision_summary": "We are hammering the over",
+      "_enriched": true,
+      "_enriched_at": "2026-04-15T21:24:53.460601+00:00",
+      "_cache_updated": "2026-04-15T21:24:53.460603+00:00"
+    },
+    "shohei_ohtani|batter_strikeouts|0.5|prizepicks": {
+      "player_name": "Shohei Ohtani",
+      "stat_type": "Batter Strikeouts",
+      "line": 0.5,
+      "all_lines": {
+        "draftkings": 0.5,
+        "prizepicks": 0.5
+      },
+      "all_odds": {
+        "draftkings": -389,
+        "prizepicks": -137
+      },
+      "away_team": "New York Mets",
+      "board_score": 287.1,
+      "bookmaker": "prizepicks",
+      "bookmakers_available": [
+        "draftkings",
+        "prizepicks"
+      ],
+      "ceiling_rate": 75.0,
+      "commence_time": "2026-04-14T02:11:00Z",
+      "cv": 0.723,
+      "cv_grade": "FAIR",
+      "dfs_book": "prizepicks",
+      "dfs_line": 0.5,
+      "dk_edge": 0.0,
+      "dk_line": 0.5,
+      "dk_odds": -389,
+      "edge": 200.0,
+      "edge_pct": 200.0,
+      "enriched_at": "2026-04-14T02:02:59.661712+00:00",
+      "event_id": "af4723d660204fd1fb7719261eb7f74b",
+      "ferrari_tier": "safe_haven",
+      "fetched_at": "2026-04-14T02:02:52.673634+00:00",
+      "game_logs": [
+        {
+          "date": "2026-04-15T02:10:00.000Z",
+          "value": 0,
+          "opponent": "NYM"
+        },
+        {
+          "date": "2026-04-14T02:10:00.000Z",
+          "value": 1,
+          "opponent": "NYM"
+        },
+        {
+          "date": "2026-04-12T20:10:00.000Z",
+          "value": 1,
+          "opponent": "TEX"
+        },
+        {
+          "date": "2026-04-12T01:10:00.000Z",
+          "value": 2,
+          "opponent": "TEX"
+        },
+        {
+          "date": "2026-04-11T02:10:00.000Z",
+          "value": 1,
+          "opponent": "TEX"
+        }
+      ],
+      "games_played": 10,
+      "h10_rate": 80.0,
+      "h20_rate": 75.0,
+      "h5_rate": 80.0,
+      "hit_rate_l10": 90.0,
+      "hit_rate_l5": 80.0,
+      "home_team": "Los Angeles Dodgers",
+      "intel_score": 6,
+      "is_alternate_market": true,
+      "is_demon": false,
+      "is_enriched": true,
+      "is_goblin": true,
+      "l10_avg": 1.2,
+      "l20_avg": 1.05,
+      "l5_avg": 1.0,
+      "last_10_games": [
+        {
+          "date": "2026-04-12T20:10:00.000Z",
+          "value": 1,
+          "opponent": "TEX"
+        },
+        {
+          "date": "2026-04-12T01:10:00.000Z",
+          "value": 2,
+          "opponent": "TEX"
+        },
+        {
+          "date": "2026-04-11T02:10:00.000Z",
+          "value": 1,
+          "opponent": "TEX"
+        },
+        {
+          "date": "2026-04-08T19:07:00.000Z",
+          "value": 2,
+          "opponent": "TOR"
+        },
+        {
+          "date": "2026-04-07T23:07:00.000Z",
+          "value": 0,
+          "opponent": "TOR"
+        },
+        {
+          "date": "2026-04-06T23:07:00.000Z",
+          "value": 2,
+          "opponent": "TOR"
+        },
+        {
+          "date": "2026-04-05T17:35:00.000Z",
+          "value": 1,
+          "opponent": "WSH"
+        },
+        {
+          "date": "2026-04-04T20:05:00.000Z",
+          "value": 2,
+          "opponent": "WSH"
+        },
+        {
+          "date": "2026-04-03T17:05:00.000Z",
+          "value": 2,
+          "opponent": "WSH"
+        },
+        {
+          "date": "2026-04-02T00:20:00.000Z",
+          "value": 2,
+          "opponent": "CLE"
+        }
+      ],
+      "lineup_status": "PROJECTED",
+      "market_key": "batter_strikeouts_alternate",
+      "odds": -137,
+      "player_id": 208,
+      "position": "Designated Hitter",
+      "pp_dk_edge": 0.0,
+      "pp_line": 0.5,
+      "pp_odds": -137,
+      "pp_sharp_edge": null,
+      "recommendation": "OVER",
+      "safe_haven_gate_results": {
+        "gate1_cv": {
+          "threshold": 1.1,
+          "value": 0.723,
+          "passed": true
+        },
+        "gate2_hit_rate": {
+          "threshold": 75,
+          "value": 75.0,
+          "passed": true
+        },
+        "gate3_edge": {
+          "threshold": 0,
+          "value": 200.0,
+          "passed": true
+        },
+        "gate4_tp": {
+          "threshold": 60,
+          "value": 79.6,
+          "passed": true
+        }
+      },
+      "safe_haven_reason": "All gates passed for BATTER_STRIKEOUTS",
+      "season_average": 1.5,
+      "sharp_book": null,
+      "sharp_edge": null,
+      "sharp_line": null,
+      "sharp_odds": null,
+      "source": "prizepicks",
+      "sport": "mlb",
+      "stat_field": "strikeouts",
+      "team": "LAD",
+      "team_name": null,
+      "tier_label": "Safe Haven",
+      "tp_odds": 79.6,
+      "vision_intel": "The market is hanging a",
+      "vk_predicted": null,
+      "tempo_modifier": 1.02,
+      "intel_suite": {
+        "tempo": {
+          "multiplier": 1.02,
+          "display": "+2%",
+          "tempo_label": "Standard PA Volume",
+          "factors": [
+            {
+              "name": "Home Team",
+              "value": -2.0,
+              "reason": "Risk of no 9th inning"
+            },
+            {
+              "name": "Batting 4",
+              "value": 0.0,
+              "reason": "Neutral position"
+            },
+            {
+              "name": "OBP Rank #2",
+              "value": 4.0,
+              "reason": "High lineup turnover"
+            }
+          ],
+          "total_pct": 2.0
+        },
+        "pace_delta": {
+          "multiplier": 1.02,
+          "display": "+2%",
+          "tempo_label": "Standard PA Volume",
+          "factors": [
+            {
+              "name": "Home Team",
+              "value": -2.0,
+              "reason": "Risk of no 9th inning"
+            },
+            {
+              "name": "Batting 4",
+              "value": 0.0,
+              "reason": "Neutral position"
+            },
+            {
+              "name": "OBP Rank #2",
+              "value": 4.0,
+              "reason": "High lineup turnover"
+            }
+          ],
+          "total_pct": 2.0
+        },
+        "sport": "mlb",
+        "context_badges": [
+          "pure_contact",
+          "split_advantage",
+          "bvp_dominator"
+        ],
+        "vision_insight": {
+          "primary": "Shohei Ohtani is locked in - 80% hit rate with 1.2 avg vs 0.5 line",
+          "reasons": [
+            "Hitting at 80% over last 10 games",
+            "L10 average of 1.2 exceeds 0.5 line",
+            "Low variance (CV 1%) indicates consistency",
+            "Sharp money favors this line (-389)"
+          ],
+          "confidence": "HIGH"
+        },
+        "stability_index": {
+          "display": "90%",
+          "score": 90,
+          "consistency": "Elite",
+          "std_dev": 0.723
+        },
+        "matchup_dvp": {
+          "display": "vs Los Angeles Dodgers",
+          "opponent": "Los Angeles Dodgers",
+          "opponent_abbr": "Los",
+          "friction_level": "Medium",
+          "friction_label": "Standard Matchup",
+          "color": "yellow",
+          "dvp_rank": 15,
+          "stat_type": "Batter Strikeouts"
+        }
+      },
+      "scout_badges": [
+        {
+          "badge_key": "lasso_high_edge",
+          "id": "lasso_high_edge"
+        },
+        {
+          "badge_key": "soft_matchup",
+          "id": "soft_matchup"
+        }
+      ],
+      "vision_summary": "The market is hanging a",
+      "_enriched": true,
+      "_enriched_at": "2026-04-15T21:24:55.155057+00:00",
+      "_cache_updated": "2026-04-15T21:24:55.155059+00:00"
     }
   }
 }
