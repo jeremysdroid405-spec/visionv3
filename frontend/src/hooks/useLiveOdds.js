@@ -678,4 +678,30 @@ export const useMLBLiveVacuumAlerts = () => {
   });
 };
 
+/**
+ * useMarketMoves - Board-diff activity feed
+ * Shows picks that recently left a visible tier.
+ * Polls every 30 seconds. Combined feed (both sports).
+ */
+const fetchMarketMoves = async (sport) => {
+  const url = sport
+    ? `${API}/api/v3/ferrari/market-moves?sport=${sport}`
+    : `${API}/api/v3/ferrari/market-moves`;
+  const res = await fetch(url);
+  if (!res.ok) return { events: [] };
+  return res.json();
+};
+
+export const useMarketMoves = (sport = null) => {
+  return useQuery({
+    queryKey: ['market-moves', sport],
+    queryFn: () => fetchMarketMoves(sport),
+    staleTime: 15 * 1000,
+    refetchInterval: 30 * 1000,
+    refetchOnWindowFocus: true,
+    retry: 1,
+  });
+};
+
+
 export default useLiveOdds;

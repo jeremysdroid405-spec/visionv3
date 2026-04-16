@@ -259,6 +259,19 @@ class UnifiedPipeline:
                 logger.info(f"  {col_name}: {count}")
 
             # ============================================================
+            # PHASE 6b: MARKET MOVES DIFF (board-diff tracking)
+            # Compare old visible board vs new, generate events for picks
+            # that left the board.
+            # ============================================================
+            try:
+                from services.market_moves_engine import compute_board_diff, persist_events
+                mm_events = compute_board_diff(self.adapter.sport, tiers)
+                if mm_events:
+                    await persist_events(self.db, mm_events)
+            except Exception as e:
+                logger.warning(f"[{sport}_PIPELINE] [{self.run_id}] Market Moves diff failed (non-fatal): {e}")
+
+            # ============================================================
             # PHASE 7: GEMINI INTEL ENRICHMENT (post-publish, non-blocking)
             # Board is already live. Gemini enriches in-place on the
             # published collections. If it fails, picks still serve

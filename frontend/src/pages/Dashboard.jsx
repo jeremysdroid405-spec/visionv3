@@ -34,6 +34,7 @@ import { PlayerDetailPage } from '../components/dashboard/PlayerDetailPage';
 import CommandPost from '../components/dashboard/CommandPost';
 import IntelligenceModal from '../components/dashboard/IntelligenceModal';
 import SportSwitcher from '../components/dashboard/SportSwitcher';
+import MarketMoves from '../components/dashboard/MarketMoves';
 import { 
   TEAM_LOGOS, STAT_CATEGORIES, getCategoryKey 
 } from '../components/dashboard/constants';
@@ -53,7 +54,8 @@ import {
   useMLBLiveVacuumAlerts,
   useMLBSafeHaven,
   useMLBFrontLines,
-  useMLBWarZone
+  useMLBWarZone,
+  useMarketMoves
 } from '../hooks/useLiveOdds';
 import { useMasterStats } from '../hooks/useMasterStats';
 
@@ -1269,6 +1271,9 @@ const Dashboard = () => {
   const { data: mlbFrontLinesData, isLoading: mlbFrontLinesLoading, refetch: refetchMLBFrontLines } = useMLBFrontLines();
   const { data: mlbWarZoneData, isLoading: mlbWarZoneLoading, refetch: refetchMLBWarZone } = useMLBWarZone();
   
+  // Market Moves — board-diff feed (combined, both sports)
+  const { data: marketMovesData, isLoading: marketMovesLoading } = useMarketMoves(currentSport);
+  
   // Extract picks from TanStack Query data
   const radarPicks = useMemo(() => warZoneData?.picks || [], [warZoneData]);
   const vaultPicks = useMemo(() => safeHavenData?.picks || [], [safeHavenData]);
@@ -1787,6 +1792,12 @@ const Dashboard = () => {
               />
             </>
           )}
+
+          {/* Market Moves — Board-diff activity feed (both sports) */}
+          <MarketMoves 
+            events={marketMovesData?.events || []} 
+            isLoading={marketMovesLoading} 
+          />
           </>
       </div>
       

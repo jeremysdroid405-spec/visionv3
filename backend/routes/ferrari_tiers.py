@@ -1263,6 +1263,44 @@ async def get_ferrari_discarded(
     }
 
 
+@router.get("/v3/ferrari/market-moves")
+async def get_market_moves(
+    response: Response,
+    sport: str = Query(None, description="Filter by sport (nba or mlb). Omit for combined feed."),
+    limit: int = Query(10, ge=1, le=20),
+):
+    """
+    MARKET MOVES — Board-diff activity feed.
+
+    Returns picks that were recently on a visible board tier
+    (Safe Haven / Front Lines / War Zone) and then left or changed state.
+
+    NOT a recommendation tier. Purely a trust/visibility layer.
+
+    Statuses:
+    - "Line moved"         — pick's line changed, no longer qualifies
+    - "Moved off board"    — pick dropped out of tier rankings
+    - "Locked"             — game started / prop locked
+    - "No longer qualified"— failed gate checks on re-evaluation
+    """
+    from services.market_moves_engine import get_recent_events
+
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+
+    if _db is None:
+        raise HTTPException(status_code=500, detail="Database not initialized")
+
+    events = await get_recent_events(_db, sport=sport, limit=limit)
+
+    return {
+        "events": events,
+        "count": len(events),
+        "sport_filter": sport,
+        "ttl_minutes": 20,
+    }
+
+
+
 @router.post("/v3/ferrari/rebuild")
 async def rebuild_ferrari_tiers(
     use_optimized: bool = True,

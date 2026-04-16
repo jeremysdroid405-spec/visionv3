@@ -15,6 +15,7 @@ UnifiedPipeline (shared framework)
   ├── Phase 4: VALIDATE    — Attach validation metadata
   ├── Phase 5: SELECT      — Tier classification + gate checks
   ├── Phase 6: PUBLISH     — Atomic writes (temp + rename)
+  ├── Phase 6b: MARKET MOVES — Board-diff tracking (shared engine)
   └── Phase 7: INTEL       — Gemini enrichment (non-blocking)
 ```
 
@@ -23,7 +24,7 @@ UnifiedPipeline (shared framework)
 - `MLBAdapter` — BDL game logs, Lasso models, SP matchup, tempo
 
 **Identical across both sports:**
-- Phase structure, validation model, atomic writes, observability, serve-time behavior
+- Phase structure, validation model, atomic writes, observability, serve-time behavior, market moves
 
 ### Stack
 - **Frontend**: React + Shadcn/UI
@@ -47,17 +48,18 @@ UnifiedPipeline (shared framework)
 }
 ```
 
-### API Status Flags
-Every tier endpoint returns:
+### Market Moves Event Shape
 ```json
 {
-  "status": "full|partial|no_data",
-  "pipeline": {
-    "source": "elite_safe_haven",
-    "fully_validated": 8,
-    "with_mlr": 10,
-    "with_gemini": 7
-  }
+  "sport": "nba",
+  "pick_id": "nba|player_name|stat_type",
+  "player_name": "Player Name",
+  "stat_type": "PTS",
+  "previous_tier": "Safe Haven",
+  "old_line": 22.5,
+  "new_line": 24.5,
+  "status": "Line moved",
+  "changed_at": "2026-04-17T05:35:00Z"
 }
 ```
 
@@ -72,34 +74,37 @@ Every tier endpoint returns:
 ### Key Files
 | File | Purpose |
 |------|---------|
-| `services/unified_pipeline.py` | Shared pipeline framework (7 phases) |
+| `services/unified_pipeline.py` | Shared pipeline framework (7 phases + market moves) |
+| `services/market_moves_engine.py` | Board-diff engine (shared NBA/MLB) |
 | `services/adapters/nba_adapter.py` | NBA-specific scoring + MLR + tier selection |
 | `services/adapters/mlb_adapter.py` | MLB-specific scoring + Lasso + tier selection |
-| `services/nba_master_sync.py` | NBA orchestrator (thin wrapper) |
-| `services/mlb_pipeline.py` | MLB orchestrator (thin wrapper) |
+| `services/gemini_scout_engine.py` | Batch AI insight generator |
+| `routes/ferrari_tiers.py` | Core routing, serve-time overlay, market-moves API |
 
 ## What's Been Implemented
 
-### Badge Deduplication Fix (4/17/2026)
-- Removed `volatility_extreme` from MLB context badges — it was duplicated in both context and scout badges
-- `volatility_extreme` now correctly lives only in scout badges (model-driven metric)
+### Market Moves Feature (4/17/2026)
+- Shared board-diff engine tracking picks that leave visible tiers
+- In-memory previous-board snapshot per sport, diffs on each pipeline run
+- MongoDB `market_moves` collection with 20-min TTL auto-prune
+- API: `GET /api/v3/ferrari/market-moves?sport=nba|mlb`
+- Frontend: `MarketMoves.jsx` renders below tiers, sport-filtered, visually secondary
+- Statuses: Line moved, Moved off board, Locked, No longer qualified
+
+### Badge Fixes (4/17/2026)
+- Removed `volatility_extreme` from context badges (was duplicated in both)
+- Added `volatility_extreme` to frontend SCOUT_KEYS so it renders in Performance Indicators grid
+- Renamed "Context Badges" → "Environmental Factors", "Scout Badges" → "Performance Indicators"
+
+### Auth Screen Updates (4/17/2026)
+- Countdown changed from 3s to 5s
+- "DEMO MODE ACTIVATED" text removed, replaced with "SYSTEM ACTIVATED"
 
 ### Unified Pipeline Architecture (COMPLETE - 4/16/2026)
 - Shared 7-phase pipeline framework
 - NBA and MLB adapters with identical publish/validate/observe behavior
-- Atomic writes (temp collection + rename, never leaves collections empty)
-- Validation metadata on every prop
-- Status flags on API responses (full/partial/no_data)
-- Gemini decoupled from pipeline (failure marks has_gemini=false, doesn't crash)
-
-### Previous Implementations
-- MLB Intel Suite Full Enrichment (4/15/2026)
-- Scout Badges UI + MLB/NBA Parity (4/15/2026)
-- Gemini Scout Engine refactored to litellm (4/15/2026)
-- Elite Tier Classification Fix (4/15/2026)
-- MLB DK Tier Sorting Fix (4/15/2026)
-- CV Scale Mismatch Fix (4/15/2026)
-- Goblin Line Gates Calibration (4/15/2026)
+- Atomic writes, validation metadata, status flags
+- Gemini decoupled from pipeline (Phase 7, non-blocking)
 
 ## Tier Collections
 | Sport | Safe Haven | Front Lines | War Zone |
@@ -112,6 +117,7 @@ Every tier endpoint returns:
 - P1: Stripe payments integration
 - P2: Wind Tunnel weather API
 - P2: Dashboard.jsx refactor
+- P3: Remove dead 4AM NBA.com L5/L10 batch jobs (data comes from BDL game logs)
 
 ---
 *Last Updated: April 17, 2026*
