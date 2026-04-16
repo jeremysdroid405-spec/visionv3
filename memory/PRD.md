@@ -107,6 +107,16 @@ The Live Injury Advantage engine MUST ONLY read from:
 Timing sources (ESPN, NBA Official) NEVER inject records into `injuries_normalized`.
 Narrative fields NEVER participate in trigger logic.
 
+### Dynamic Recency Window (Live Injury Advantage)
+| Game State | Window | Rationale |
+|-----------|--------|-----------|
+| Default (no games nearby) | 12 hours | Capture today's slate changes |
+| Within 2h of tipoff | 6 hours | Late scratch zone — only very recent |
+| Game live (started < 4h ago) | 2 hours | Minimal — stale injuries irrelevant |
+| Game finished (> 4h ago) | Skipped | Not considered active |
+
+Exposed via `GET /api/v3/vacuum/live-alerts?sport=nba` as `recency_window_hours`.
+
 ### Key Files
 | File | Purpose |
 |------|---------|

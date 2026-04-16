@@ -12,17 +12,18 @@ INPUT FIREWALL:
   injury_side) are quarantined under display_only and NEVER participate
   in advantage computation. They appear in output for UI display only.
 
+Dynamic Recency Window:
+  Default:              12 hours
+  Within 2h of tipoff:   6 hours  (late scratch zone — only very recent changes matter)
+  After game start:      2 hours  (minimal — game is live, stale injuries irrelevant)
+
 Rules:
   1. Injury must be meaningful (tier_level >= 3: OUT, DOUBTFUL, OFS, IL)
-  2. Injury must be RECENT (status_changed_at within RECENCY_WINDOW)
+  2. Injury must be RECENT (status_changed_at within dynamic recency window)
   3. Beneficiary must be on a visible board tier
   4. Beneficiary must be on the SAME TEAM as the injured player
   5. Projected minutes increase must exceed MIN_MINUTES_BUMP
   6. If no board pick qualifies, section is empty
-
-Recency rule prevents stale, long-term injuries (e.g., OUT_FOR_SEASON
-for weeks) from triggering alerts — those are already priced into
-projections and offer no new opportunity.
 """
 
 import logging
@@ -36,8 +37,10 @@ logger = logging.getLogger(__name__)
 # Minimum projected minutes increase to qualify
 MIN_MINUTES_BUMP = 2.0
 
-# Recency window: only injuries whose status changed within this window trigger alerts
-RECENCY_WINDOW_HOURS = 48
+# Dynamic recency windows (hours)
+RECENCY_DEFAULT_HOURS = 12    # No games nearby
+RECENCY_PREGAME_HOURS = 6     # Within 2h of tipoff
+RECENCY_LIVE_HOURS = 2        # Game already started
 
 # Board tier collections per sport
 TIER_COLLECTIONS = {
@@ -70,6 +73,53 @@ USAGE_BOOST_BY_TIER = {
 }
 
 
+async def _get_recency_window(db, sport: str) -> int:
+    """
+    Determine the recency window based on game proximity.
+
+    Reads commence_time from live_scores_cache to find the nearest game.
+    Games that started more than 4 hours ago are considered finished.
+    Returns hours as int.
+    """
+    try:
+        cached = await db.live_scores_cache.find_one({})
+        if not cached:
+            return RECENCY_DEFAULT_HOURS
+
+        now = datetime.now(timezone.utc)
+        games = cached.get("games", [])
+
+        for game in games:
+            ct = game.get("commence_time")
+            if not ct:
+                continue
+            try:
+                if isinstance(ct, str):
+                    ct = datetime.fromisoformat(ct.replace("Z", "+00:00"))
+                if not ct.tzinfo:
+                    ct = ct.replace(tzinfo=timezone.utc)
+            except (ValueError, TypeError):
+                continue
+
+            delta_seconds = (ct - now).total_seconds()
+
+            # Skip finished games (started > 4h ago)
+            if delta_seconds < -14400:
+                continue
+
+            # Game is live (started within last 4 hours)
+            if delta_seconds < 0:
+                return RECENCY_LIVE_HOURS
+
+            # Within 2 hours of tipoff
+            if delta_seconds < 7200:
+                return RECENCY_PREGAME_HOURS
+
+        return RECENCY_DEFAULT_HOURS
+    except Exception:
+        return RECENCY_DEFAULT_HOURS
+
+
 async def _get_board_picks(db, sport: str) -> List[dict]:
     """Load all picks from visible board tiers for a sport."""
     picks = []
@@ -86,16 +136,17 @@ async def _get_meaningful_injuries(db, sport: str) -> List[dict]:
     """
     Get injuries that are:
       - tier_level >= 3 (OUT, DOUBTFUL, OFS, IL)
-      - status_changed_at within RECENCY_WINDOW_HOURS
+      - status_changed_at within dynamic recency window
 
-    Long-standing injuries already priced into projections are excluded.
+    Dynamic window tightens as games approach:
+      12h default -> 6h pregame -> 2h live
 
     FIREWALL: Query and filter use ONLY structural fields.
     display_only is fetched separately for UI output but NEVER drives logic.
     """
-    cutoff = (datetime.now(timezone.utc) - timedelta(hours=RECENCY_WINDOW_HOURS)).isoformat()
+    window_hours = await _get_recency_window(db, sport)
+    cutoff = (datetime.now(timezone.utc) - timedelta(hours=window_hours)).isoformat()
 
-    # Explicit projection: structural fields + display_only for output
     projection = {"_id": 0, "display_only": 1}
     for f in STRUCTURAL_FIELDS:
         projection[f] = 1
@@ -110,8 +161,7 @@ async def _get_meaningful_injuries(db, sport: str) -> List[dict]:
     )
     results = await cursor.to_list(length=300)
 
-    if not results:
-        logger.debug(f"[INJURY_ADV] {sport.upper()}: 0 recent meaningful injuries (cutoff={cutoff[:16]})")
+    logger.debug(f"[INJURY_ADV] {sport.upper()}: {len(results)} meaningful injuries (window={window_hours}h, cutoff={cutoff[:16]})")
 
     return results
 
@@ -131,6 +181,7 @@ async def compute_injury_advantages(db, sport: str) -> List[dict]:
     sorted by projected minutes increase descending.
     """
     board_picks = await _get_board_picks(db, sport)
+    window_hours = await _get_recency_window(db, sport)
     injuries = await _get_meaningful_injuries(db, sport)
 
     if not board_picks or not injuries:
@@ -211,6 +262,7 @@ async def compute_injury_advantages(db, sport: str) -> List[dict]:
             "minutes_bump": minutes_bump,
             "usage_bump": usage_bump,
             "rank": rank,
+            "recency_window_hours": window_hours,
             "computed_at": datetime.now(timezone.utc).isoformat(),
         })
 
@@ -226,4 +278,11 @@ async def compute_all(db) -> dict:
     """Compute injury advantages for both sports."""
     nba = await compute_injury_advantages(db, "nba")
     mlb = await compute_injury_advantages(db, "mlb")
-    return {"nba": nba, "mlb": mlb, "total": len(nba) + len(mlb)}
+    nba_window = await _get_recency_window(db, "nba")
+    mlb_window = await _get_recency_window(db, "mlb")
+    return {
+        "nba": nba,
+        "mlb": mlb,
+        "total": len(nba) + len(mlb),
+        "recency_window": {"nba": nba_window, "mlb": mlb_window},
+    }

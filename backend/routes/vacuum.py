@@ -188,9 +188,10 @@ async def get_live_injury_advantage(response: Response, sport: str = "nba"):
         return {"has_alerts": False, "alert_count": 0, "alerts": [], "timestamp": datetime.now(timezone.utc).isoformat()}
 
     try:
-        from services.injury_advantage import compute_injury_advantages
+        from services.injury_advantage import compute_injury_advantages, _get_recency_window
 
         advantages = await compute_injury_advantages(_db, sport)
+        window_hours = await _get_recency_window(_db, sport)
 
         alerts = []
         for adv in advantages:
@@ -222,6 +223,7 @@ async def get_live_injury_advantage(response: Response, sport: str = "nba"):
             "alert_count": len(alerts),
             "alerts": alerts,
             "sport": sport,
+            "recency_window_hours": window_hours,
             "timestamp": datetime.now(timezone.utc).isoformat(),
         }
 
