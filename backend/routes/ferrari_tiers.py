@@ -508,10 +508,6 @@ def enrich_mlb_intel_suite(prop: Dict) -> Dict:
     if is_pitcher and "strikeout" in stat_type.lower() and l10_avg and l10_avg >= 6.0:
         badge_keys.append("whiff_wizard")
     
-    # VOLATILITY_EXTREME: High CV indicates boom/bust
-    if cv and cv > 0.70:
-        badge_keys.append("volatility_extreme")
-    
     # HITTERS_HAVEN: Playing in hitter-friendly park
     hitter_parks = ["COL", "CIN", "TEX", "PHI", "MIL", "BOS"]
     home_team_abbr = (prop.get("home_team", "")[:3]).upper()

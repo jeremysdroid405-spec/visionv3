@@ -5,7 +5,7 @@ Restructure the React/FastAPI betting app to a 100% Local-First Database Model, 
 
 ## Core Architecture
 
-### Unified Pipeline Framework (NEW - April 16, 2026)
+### Unified Pipeline Framework (April 16, 2026)
 **One architecture, two sports.**
 
 ```
@@ -14,8 +14,8 @@ UnifiedPipeline (shared framework)
   ├── Phase 2-3: ENRICH    — Stats + scoring (adapter-specific)
   ├── Phase 4: VALIDATE    — Attach validation metadata
   ├── Phase 5: SELECT      — Tier classification + gate checks
-  ├── Phase 6: INTEL       — Gemini enrichment (non-blocking)
-  └── Phase 7: PUBLISH     — Atomic writes (temp + rename)
+  ├── Phase 6: PUBLISH     — Atomic writes (temp + rename)
+  └── Phase 7: INTEL       — Gemini enrichment (non-blocking)
 ```
 
 **Sport Adapters:**
@@ -80,6 +80,10 @@ Every tier endpoint returns:
 
 ## What's Been Implemented
 
+### Badge Deduplication Fix (4/17/2026)
+- Removed `volatility_extreme` from MLB context badges — it was duplicated in both context and scout badges
+- `volatility_extreme` now correctly lives only in scout badges (model-driven metric)
+
 ### Unified Pipeline Architecture (COMPLETE - 4/16/2026)
 - Shared 7-phase pipeline framework
 - NBA and MLB adapters with identical publish/validate/observe behavior
@@ -110,4 +114,4 @@ Every tier endpoint returns:
 - P2: Dashboard.jsx refactor
 
 ---
-*Last Updated: April 16, 2026*
+*Last Updated: April 17, 2026*
