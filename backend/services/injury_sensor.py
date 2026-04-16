@@ -470,6 +470,11 @@ class InjurySensor:
     async def _persist(self, sport: str, records: List[dict], is_baseline: bool = False):
         """Write normalized records to DB, preserving first_seen_at and updating status_changed_at.
 
+        CRITICAL: Both baseline and non-baseline paths check existing DB records
+        to preserve timestamps. A baseline seed must NOT reset status_changed_at
+        for injuries that already exist with the same tier_level — doing so would
+        make months-old OUT_FOR_SEASON injuries appear "recent" after every restart.
+
         DB schema per record:
           - Top-level: structural fields only (logic-safe)
           - display_only: nested dict of narrative fields (UI rendering only)
@@ -478,35 +483,32 @@ class InjurySensor:
         collection = self.db[COLLECTION_NAME]
         now = datetime.now(timezone.utc).isoformat()
 
-        if not is_baseline:
-            # Load existing for change tracking — ONLY structural fields needed
-            prev_by_bdl = {}
-            cursor = collection.find(
-                {"sport": sport},
-                {"_id": 0, "bdl_id": 1, "tier_level": 1, "return_date": 1, "first_seen_at": 1, "status_changed_at": 1},
-            )
-            async for doc in cursor:
-                bid = doc.get("bdl_id")
-                if bid:
-                    prev_by_bdl[bid] = doc
+        # ALWAYS load existing records for timestamp preservation — baseline or not
+        prev_by_bdl = {}
+        cursor = collection.find(
+            {"sport": sport},
+            {"_id": 0, "bdl_id": 1, "tier_level": 1, "return_date": 1, "first_seen_at": 1, "status_changed_at": 1},
+        )
+        async for doc in cursor:
+            bid = doc.get("bdl_id")
+            if bid:
+                prev_by_bdl[bid] = doc
 
-            for rec in records:
-                bid = rec.get("bdl_id")
-                prev = prev_by_bdl.get(bid) if bid else None
-                if not prev:
-                    rec["first_seen_at"] = now
-                    rec["status_changed_at"] = now
-                else:
-                    rec["first_seen_at"] = prev.get("first_seen_at", now)
-                    # FIREWALL: change detection uses ONLY tier_level and return_date
-                    if prev.get("tier_level") != rec.get("tier_level") or prev.get("return_date") != rec.get("return_date"):
-                        rec["status_changed_at"] = now
-                    else:
-                        rec["status_changed_at"] = prev.get("status_changed_at", now)
-        else:
-            for rec in records:
+        for rec in records:
+            bid = rec.get("bdl_id")
+            prev = prev_by_bdl.get(bid) if bid else None
+            if not prev:
+                # Genuinely new injury — never seen in this DB
                 rec["first_seen_at"] = now
                 rec["status_changed_at"] = now
+            else:
+                # Existing injury — preserve first_seen, only bump status_changed
+                # if the structural state actually changed
+                rec["first_seen_at"] = prev.get("first_seen_at", now)
+                if prev.get("tier_level") != rec.get("tier_level") or prev.get("return_date") != rec.get("return_date"):
+                    rec["status_changed_at"] = now
+                else:
+                    rec["status_changed_at"] = prev.get("status_changed_at", now)
 
         # Build DB records: strip _ annotations, keep display_only nested
         rec_for_db = []
