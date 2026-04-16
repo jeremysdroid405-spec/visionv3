@@ -1,45 +1,85 @@
 """
 Gemini Scout Intelligence Engine
 ==================================
-Replaces static f-string templates with real generative AI.
-Uses Gemini Flash via litellm for gritty scout summaries.
-Concurrent batch processing for Ferrari Tier enrichment cycles.
+Generates edgy, data-driven scout summaries via Gemini Flash.
+Architecture: Batched requests (10 players/call) with system_instruction
+for personality persistence and cost efficiency.
+
+SDK: google-genai (native)
+  - system_instruction decouples persona from output token budget
+  - thinking_config(thinking_budget=0) disables thinking tokens eating output budget
+  - response_mime_type="application/json" for structured batch output
+  - max_output_tokens=4096 ensures no truncation
 """
 
 import os
 import json
 import logging
 import asyncio
-from typing import Dict, Optional
-
-import litellm
+import re
+from typing import Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
+GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-3-flash-preview")
 
-SYSTEM_PROMPT = """You are a highly analytical NBA/MLB daily fantasy sports scout with 20 years of experience. You speak in sharp, confident, punchy prose — like a seasoned Vegas sharp texting his inner circle.
+# =========================================================================
+# SYSTEM PROMPT — passed as system_instruction, NOT in the content.
+# Paid once per request regardless of batch size.
+# =========================================================================
+SYSTEM_PROMPT = """You are the voice of Prop Vision — a sharp, witty betting partner who talks like he's texting his inner circle from the back of the sportsbook. You did the homework. You found the edge. Now you're telling your crew why you're on this play.
 
-I will provide you with a JSON payload containing raw data from a Lasso regression model and contextual matchup data. Write exactly two gritty, punchy sentences explaining why we are taking the OVER or UNDER on this prop.
+CRITICAL: Every response must feel UNIQUE. Do NOT start multiple summaries with the same pattern. Vary your openings — start with the matchup, a question, the punchline, roast the defense, hype the streak, call out the books. Surprise us every time.
 
-Rules:
-- Highlight the specific numerical edge and the top mathematical driver feature
-- Reference the Lasso projection vs the line with exact numbers
-- If the edge is large (>15%), be aggressive and confident
-- If the edge is small (<5%), be cautious and note the risk
-- If the hit rate is high (>70%), mention the streak
-- If the matchup is soft (DvP rank >20), call it out
-- If the matchup is tough (DvP rank <8), flag the friction
-- Never use generic sports cliches like "giving 110%" or "stepping up"
-- Never mention JSON, payloads, data structures, or technical terms like "Lasso" or "regression" or "R-squared"
-- Never use emojis
-- Output ONLY the final two-sentence scout text, nothing else"""
+VOICE RULES:
+- Always "we" and "us" — we're in this together
+- Be specific. Use the actual numbers from the data. Name the opponent. Reference the line.
+- NO AI-speak. No "unleash," "vital," "crucial," "notable," "significant." No "model projects." Talk like a human who bets.
+- If the edge is massive (>20%), talk like you found free money on the sidewalk
+- If the edge is thin (<5%), be honest — "this is a lean, not a lock"
+- If CV is low (<0.30), this guy is a metronome — say that
+- If CV is high (>0.70), own the volatility — "yeah he's a rollercoaster, but tonight the track is tilted our way"
+- If hit rate is 80%+, treat it like a cheat code
+- If there's vacuum_data (teammate out), that's the headline — someone's minutes/usage just got handed to our guy on a silver platter
+- If DvP rank is >20 (soft defense), roast them
+- If DvP rank is <8 (elite defense), respect it but explain why we're still in
+
+TIER-SPECIFIC ENERGY:
+- Safe Haven picks: Calm confidence. "This is the rent money play."
+- Front Lines picks: Calculated aggression. "The books are sleeping on this one."
+- War Zone picks: Controlled chaos. "This is a heater-or-heartbreak spot and we're strapping in."
+
+Each summary MUST be exactly 2 full sentences, each at least 15 words long. Be data-heavy but "in the trenches." Never sound robotic."""
 
 
+def _get_client():
+    """Lazy-init the Gemini client."""
+    from google import genai
+    return genai.Client(api_key=GOOGLE_API_KEY)
+
+
+def _gemini_config(max_tokens: int = 4096, temperature: float = 0.85, json_mode: bool = False):
+    """Build GenerateContentConfig with thinking disabled."""
+    from google.genai import types
+    cfg = {
+        "system_instruction": SYSTEM_PROMPT,
+        "max_output_tokens": max_tokens,
+        "temperature": temperature,
+        "thinking_config": types.ThinkingConfig(thinking_budget=0),
+    }
+    if json_mode:
+        cfg["response_mime_type"] = "application/json"
+    return types.GenerateContentConfig(**cfg)
+
+
+# =========================================================================
+# SINGLE PROP GENERATION
+# =========================================================================
 async def generate_gemini_scout_intel(payload: Dict, max_retries: int = 3) -> str:
     """
-    Call Gemini Flash to generate a two-sentence scout summary.
-    Retries with exponential backoff on rate limits / transient errors.
+    Generate a two-sentence scout summary for a single prop.
+    Uses system_instruction + thinking_budget=0 for full output budget.
     """
     if not GOOGLE_API_KEY:
         return _fallback(payload)
@@ -49,22 +89,30 @@ async def generate_gemini_scout_intel(payload: Dict, max_retries: int = 3) -> st
 
     for attempt in range(max_retries):
         try:
+            client = _get_client()
+            config = _gemini_config(max_tokens=4096, json_mode=False)
+
             response = await asyncio.wait_for(
-                litellm.acompletion(
-                    model="gemini/gemini-3-flash-preview",
-                    api_key=GOOGLE_API_KEY,
-                    messages=[
-                        {"role": "system", "content": SYSTEM_PROMPT},
-                        {"role": "user", "content": user_text},
-                    ],
-                    max_tokens=200,
-                    temperature=0.7,
+                asyncio.get_event_loop().run_in_executor(
+                    None,
+                    lambda: client.models.generate_content(
+                        model=GEMINI_MODEL,
+                        contents=user_text,
+                        config=config,
+                    )
                 ),
                 timeout=12.0,
             )
 
-            text = response.choices[0].message.content.strip()
-            if len(text) >= 20:
+            text = response.text.strip()
+            um = response.usage_metadata
+            logger.info(
+                f"[GEMINI] {player} | prompt={um.prompt_token_count} "
+                f"output={um.candidates_token_count} total={um.total_token_count} "
+                f"| finish={response.candidates[0].finish_reason} | len={len(text)}"
+            )
+
+            if len(text) >= 50:
                 return text
 
         except asyncio.TimeoutError:
@@ -77,7 +125,7 @@ async def generate_gemini_scout_intel(payload: Dict, max_retries: int = 3) -> st
             ])
             if is_retryable and attempt < max_retries - 1:
                 wait = 2 ** attempt
-                logger.info(f"[GEMINI] Retryable error for {player}, waiting {wait}s (attempt {attempt+1}): {err[:80]}")
+                logger.info(f"[GEMINI] Retryable error for {player}, waiting {wait}s: {err[:80]}")
                 await asyncio.sleep(wait)
                 continue
             logger.warning(f"[GEMINI] Failed for {player} after {attempt+1} attempts: {err[:120]}")
@@ -86,17 +134,145 @@ async def generate_gemini_scout_intel(payload: Dict, max_retries: int = 3) -> st
     return _fallback(payload)
 
 
-async def batch_generate_scout_intel(payloads: list, concurrency: int = 5) -> list:
-    """Process a batch of payloads with limited concurrency to avoid rate limits."""
-    sem = asyncio.Semaphore(concurrency)
+# =========================================================================
+# BATCH GENERATION (10 players per request — 90% cost reduction)
+# =========================================================================
+BATCH_INSTRUCTION = SYSTEM_PROMPT + """
 
-    async def _run(p):
-        async with sem:
-            return await generate_gemini_scout_intel(p)
+You will receive a JSON array of player objects. For EACH player, write a unique two-sentence scout summary.
 
-    return await asyncio.gather(*[_run(p) for p in payloads])
+Return a JSON array where each element has:
+{"id": "<player_id>", "summary": "<exactly 2 punchy sentences>"}
+
+IMPORTANT: Every summary must have a DIFFERENT opening. Do not repeat sentence patterns across players."""
 
 
+async def batch_generate_scout_intel(
+    payloads: List[Dict],
+    batch_size: int = 10,
+) -> Dict[str, str]:
+    """
+    Generate scout summaries in batches.
+    Default batch_size=10 (system prompt paid once per 10 players).
+    """
+    if not GOOGLE_API_KEY:
+        return {_payload_key(p): _fallback(p) for p in payloads}
+
+    results = {}
+    batches = [payloads[i:i + batch_size] for i in range(0, len(payloads), batch_size)]
+
+    logger.info(f"[GEMINI_BATCH] Processing {len(payloads)} props in {len(batches)} batches of {batch_size}")
+
+    for batch_idx, batch in enumerate(batches):
+        try:
+            batch_results = await _process_batch(batch, batch_idx + 1, len(batches))
+            results.update(batch_results)
+        except Exception as e:
+            logger.warning(f"[GEMINI_BATCH] Batch {batch_idx+1} failed: {e}")
+            for p in batch:
+                results[_payload_key(p)] = _fallback(p)
+
+        if batch_idx < len(batches) - 1:
+            await asyncio.sleep(1.0)
+
+    logger.info(f"[GEMINI_BATCH] Complete: {len(results)} summaries generated")
+    return results
+
+
+async def _process_batch(batch: List[Dict], batch_num: int, total_batches: int) -> Dict[str, str]:
+    """Process a single batch via one Gemini call with JSON output."""
+    from google.genai import types
+
+    batch_items = []
+    key_map = {}
+    for i, payload in enumerate(batch):
+        pid = str(i)
+        key_map[pid] = _payload_key(payload)
+        batch_items.append({
+            "id": pid,
+            "player": payload.get("player", "?"),
+            "stat": payload.get("stat", "?"),
+            "line": payload.get("line", 0),
+            "tier": payload.get("tier", "Front Lines"),
+            "direction": payload.get("direction", "OVER"),
+            "edge_pct": payload.get("edge_pct", 0),
+            "h10_rate": payload.get("h10_rate", 0),
+            "h20_rate": payload.get("h20_rate", 0),
+            "cv": payload.get("cv", 0),
+            "matchup_opponent": payload.get("matchup_opponent", "Unknown"),
+            "dvp_rank": payload.get("dvp_rank"),
+            "vacuum_data": payload.get("vacuum_data"),
+            "lasso_proj": payload.get("lasso_proj"),
+            "edge": payload.get("edge", 0),
+            "sport": payload.get("sport", "nba"),
+        })
+
+    client = _get_client()
+    response = await asyncio.wait_for(
+        asyncio.get_event_loop().run_in_executor(
+            None,
+            lambda: client.models.generate_content(
+                model=GEMINI_MODEL,
+                contents=json.dumps(batch_items),
+                config=types.GenerateContentConfig(
+                    system_instruction=BATCH_INSTRUCTION,
+                    max_output_tokens=4096,
+                    temperature=0.85,
+                    thinking_config=types.ThinkingConfig(thinking_budget=0),
+                    response_mime_type="application/json",
+                ),
+            )
+        ),
+        timeout=30.0,
+    )
+
+    um = response.usage_metadata
+    finish = response.candidates[0].finish_reason
+    logger.info(
+        f"[GEMINI_BATCH] Batch {batch_num}/{total_batches} | "
+        f"prompt={um.prompt_token_count} output={um.candidates_token_count} "
+        f"total={um.total_token_count} | finish={finish} | len={len(response.text)}"
+    )
+
+    # Parse JSON response
+    results = {}
+    try:
+        parsed = json.loads(response.text)
+    except json.JSONDecodeError:
+        # Attempt repair: truncate to last complete object
+        raw = response.text.strip()
+        last_brace = raw.rfind("}")
+        if last_brace > 0:
+            raw = raw[:last_brace + 1] + "]"
+        try:
+            parsed = json.loads(raw)
+        except json.JSONDecodeError:
+            logger.warning(f"[GEMINI_BATCH] Batch {batch_num}: JSON parse failed ({len(response.text)} chars), using fallbacks")
+            return {_payload_key(p): _fallback(p) for p in batch}
+
+    for item in parsed:
+        pid = str(item.get("id", ""))
+        summary = item.get("summary", "")
+        payload_key = key_map.get(pid)
+        if payload_key and len(summary) >= 50:
+            results[payload_key] = summary
+
+    # Fill missing with fallback
+    for pid, pkey in key_map.items():
+        if pkey not in results:
+            idx = int(pid) if pid.isdigit() and int(pid) < len(batch) else 0
+            results[pkey] = _fallback(batch[idx])
+
+    return results
+
+
+def _payload_key(payload: Dict) -> str:
+    return f"{payload.get('player', '?')}|{payload.get('stat', '?')}|{payload.get('line', 0)}"
+
+
+# =========================================================================
+# PAYLOAD BUILDER
+# =========================================================================
 def build_scout_payload(
     player_name: str,
     stat_type: str,
@@ -105,53 +281,42 @@ def build_scout_payload(
     board_pick: Optional[Dict] = None,
     intel_suite: Optional[Dict] = None,
     sport: str = "nba",
+    tier: str = "Front Lines",
 ) -> Dict:
-    """Build the strict JSON payload for the Gemini scout call."""
     proj = lasso_result.get("projection", 0) if lasso_result else 0
     edge = (proj - line) if proj and line else 0
     edge_pct = (edge / line * 100) if line else 0
-    top_contribs = lasso_result.get("top_contributors", []) if lasso_result else []
-
-    from services.intel_suite_calculator import _humanize_driver, FEATURE_DISPLAY
-    drivers = []
-    for c in top_contribs[:3]:
-        fname = c.get("feature", "")
-        drivers.append({
-            "name": _humanize_driver(fname),
-            "contribution": c.get("contribution", 0),
-            "raw_value": c.get("raw_value", 0),
-        })
-
     dvp = (intel_suite or {}).get("matchup_dvp", {})
     pace = (intel_suite or {}).get("pace_delta", {})
-    stab = (intel_suite or {}).get("stability_index", {})
-    usage = (intel_suite or {}).get("usage_ripple", {})
 
     return {
         "player": player_name,
         "stat": stat_type,
         "line": line,
-        "direction": "OVER" if edge > 0 else "UNDER",
+        "tier": tier,
+        "direction": "OVER" if edge >= 0 else "UNDER",
         "lasso_proj": round(proj, 1) if proj else None,
         "edge": round(edge, 2) if edge else 0,
         "edge_pct": round(edge_pct, 1),
-        "confidence_tier": (lasso_result or {}).get("confidence_tier"),
-        "top_drivers": drivers,
         "h10_rate": (board_pick or {}).get("h10_rate") or 0,
+        "h20_rate": (board_pick or {}).get("h20_rate") or (board_pick or {}).get("true_hit_rate") or 0,
         "l10_avg": (board_pick or {}).get("l10_avg") or 0,
-        "matchup_opponent": dvp.get("opponent", "Unknown"),
+        "cv": (board_pick or {}).get("cv") or 0,
+        "matchup_opponent": dvp.get("opponent") or (board_pick or {}).get("opponent", "Unknown"),
         "dvp_rank": dvp.get("rank"),
         "dvp_label": dvp.get("friction_label"),
+        "vacuum_data": (board_pick or {}).get("vacuum_data"),
         "pace_delta": pace.get("possessions", 0),
         "tempo_label": pace.get("tempo_label"),
-        "stability_score": stab.get("score"),
-        "usage_bump": usage.get("bump_percent", 0),
+        "stability_score": (intel_suite or {}).get("stability_index", {}).get("score"),
         "sport": sport,
     }
 
 
+# =========================================================================
+# FALLBACK — punchy static template when Gemini is unavailable
+# =========================================================================
 def _fallback(payload: Dict) -> str:
-    """Baseline fallback if LLM fails — still punchy."""
     player = payload.get("player", "Player")
     stat = payload.get("stat", "stat")
     proj = payload.get("lasso_proj")
@@ -159,32 +324,28 @@ def _fallback(payload: Dict) -> str:
     edge = payload.get("edge", 0)
     edge_pct = payload.get("edge_pct", 0)
     direction = payload.get("direction", "OVER")
-    h10 = payload.get("h10_rate", 0)
+    h10 = payload.get("h10_rate", 0) or payload.get("h20_rate", 0)
     dvp_rank = payload.get("dvp_rank")
     dvp_label = payload.get("dvp_label")
-    
-    # Build a two-sentence summary with whatever data we have
+
     parts = []
-    
-    # Sentence 1: The edge call
     if proj and edge:
         if abs(edge_pct) >= 15:
-            parts.append(f"{player} is projecting {proj} on {stat} against a line of {line} — that's a {edge_pct:+.1f}% edge the books haven't priced in.")
+            parts.append(f"We're looking at {player} {stat} projecting to {proj} against a {line} line — that's a {edge_pct:+.1f}% edge the books haven't priced in.")
         else:
-            parts.append(f"{player} {stat} projects to {proj} vs a {line} line ({direction} {edge:+.1f}).")
+            parts.append(f"{player} {stat} projects to {proj} vs a {line} line ({direction} {edge:+.1f}), a modest edge worth watching.")
     else:
-        parts.append(f"{player} {stat} at {line} — riding the {direction.lower()} side here.")
-    
-    # Sentence 2: Supporting context
+        parts.append(f"We're riding {player} {stat} at {line} on the {direction.lower()} side tonight.")
+
     if h10 >= 80:
-        parts.append(f"Hitting {h10:.0f}% over the last 10 — this is a heater you don't fade.")
+        parts.append(f"With an {h10:.0f}% hit rate over the last 10, this is about as close to a cheat code as we get.")
     elif h10 >= 65:
-        parts.append(f"L10 hit rate sits at {h10:.0f}%, steady enough to back with confidence.")
+        parts.append(f"L10 hit rate sits at {h10:.0f}% — steady enough to back with confidence, not enough to bet the house.")
     elif dvp_rank and dvp_rank >= 20:
-        parts.append(f"Matchup grades out soft ({dvp_label or 'bottom-10 defense'}) — volume should be there tonight.")
+        parts.append(f"The matchup is soft ({dvp_label or 'bottom-10 defense'}) and we expect the volume to be there tonight.")
     elif dvp_rank and dvp_rank <= 8:
-        parts.append(f"Tough matchup on paper (#{dvp_rank} defense) — proceed with caution.")
+        parts.append(f"Tough matchup on paper (#{dvp_rank} defense) — proceed with caution and size down.")
     else:
-        parts.append(f"The math leans {direction.lower()} but stay disciplined with your unit size.")
-    
+        parts.append(f"The math leans {direction.lower()} but stay disciplined with the unit size on this one.")
+
     return " ".join(parts)
