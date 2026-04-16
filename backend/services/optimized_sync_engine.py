@@ -1007,3 +1007,21 @@ async def _persist_enriched_picks(db, picks: List[Dict], cache: GlobalSyncCache,
             logger.warning(f"[PERSIST] Error updating {player_name}: {e}")
     
     logger.info(f"[OPTIMIZED_SYNC] Persisted enrichment for {persisted_count} {target_sport.upper()} players")
+
+    if persisted_count > 0:
+        try:
+            from services.rebuild_coordinator import get_coordinator
+            from services.event_bus import BoardEvent
+            coordinator = get_coordinator()
+            if coordinator:
+                event = BoardEvent(
+                    sport=target_sport,
+                    event_type="scored_data_refresh",
+                    severity="medium",
+                    source=f"cached_board_refresh_{target_sport}",
+                    metadata={"persisted_count": persisted_count},
+                )
+                await coordinator.handle_event(event)
+                logger.info(f"[OPTIMIZED_SYNC] Coordinator event emitted: cached_board_refresh_{target_sport} ({persisted_count} players)")
+        except Exception as e:
+            logger.warning(f"[OPTIMIZED_SYNC] Coordinator event failed (non-fatal): {e}")

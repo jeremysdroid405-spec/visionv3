@@ -1391,6 +1391,28 @@ class MLBTierService:
             logger.info(f"  Total discarded: {len(discarded)}")
             
             # =================================================================
+            # PHASE 3b: EMIT COORDINATOR EVENT (trigger board republish)
+            # =================================================================
+            try:
+                from services.rebuild_coordinator import get_coordinator
+                from services.event_bus import BoardEvent
+                coordinator = get_coordinator()
+                if coordinator:
+                    event = BoardEvent(
+                        sport="mlb",
+                        event_type="scored_data_refresh",
+                        severity="medium",
+                        source="ferrari_scored_refresh_mlb",
+                        metadata={"props_count": len(all_scored)},
+                    )
+                    await coordinator.handle_event(event)
+                    logger.info(f"[PHASE 3b] Coordinator event emitted: ferrari_scored_refresh_mlb ({len(all_scored)} props)")
+                else:
+                    logger.warning("[PHASE 3b] No coordinator available — MLB board will NOT be republished")
+            except Exception as e:
+                logger.warning(f"[PHASE 3b] MLB coordinator event failed (non-fatal): {e}")
+            
+            # =================================================================
             # PHASE 4: GLOBAL SORT - Prefer Clean Picks Over Trap Picks
             # =================================================================
             logger.info("[PHASE 4] GLOBAL SORT - Ranking by true_probability (clean picks first)...")
