@@ -27,7 +27,15 @@ BDL_ENDPOINTS = {
     "mlb": "https://api.balldontlie.io/mlb/v1/player_injuries",
 }
 
+BDL_TEAM_ENDPOINTS = {
+    "nba": "https://api.balldontlie.io/nba/v1/teams",
+    "mlb": "https://api.balldontlie.io/mlb/v1/teams",
+}
+
 COLLECTION_NAME = "injuries_normalized"
+
+# Cached team_id → abbreviation maps (fetched once per sync)
+_team_cache: Dict[str, Dict[int, str]] = {}
 
 # =========================================================================
 # NORMALIZED STATUS HIERARCHY
@@ -145,6 +153,32 @@ def _normalize_mlb_record(entry: dict, synced_at: str) -> dict:
 # FETCH + NORMALIZE + PERSIST
 # =========================================================================
 
+async def _get_team_map(sport: str) -> Dict[int, str]:
+    """Fetch and cache BDL team_id → abbreviation mapping."""
+    if sport in _team_cache and _team_cache[sport]:
+        return _team_cache[sport]
+
+    endpoint = BDL_TEAM_ENDPOINTS.get(sport)
+    if not endpoint:
+        return {}
+
+    bdl_key = os.environ.get("BDL_API_KEY", "")
+    if not bdl_key:
+        return {}
+
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.get(endpoint, headers={"Authorization": bdl_key})
+            resp.raise_for_status()
+            teams = resp.json().get("data", [])
+            mapping = {t["id"]: t["abbreviation"] for t in teams if "id" in t and "abbreviation" in t}
+            _team_cache[sport] = mapping
+            return mapping
+    except Exception as e:
+        logger.warning(f"[INJURY_NORM] Team map fetch failed for {sport}: {e}")
+        return _team_cache.get(sport, {})
+
+
 async def fetch_and_normalize(sport: str) -> List[dict]:
     """
     Fetch injuries from BDL for a single sport.
@@ -164,6 +198,9 @@ async def fetch_and_normalize(sport: str) -> List[dict]:
     records = []
     cursor = None
 
+    # Fetch team map for team_id → abbreviation resolution
+    team_map = await _get_team_map(sport)
+
     async with httpx.AsyncClient(timeout=30.0) as client:
         while True:
             url = f"{endpoint}?per_page=100"
@@ -175,7 +212,11 @@ async def fetch_and_normalize(sport: str) -> List[dict]:
             data = response.json()
 
             for entry in data.get("data", []):
-                records.append(normalizer(entry, synced_at))
+                record = normalizer(entry, synced_at)
+                # Resolve team_id → abbreviation if missing
+                if not record.get("team") and record.get("team_id"):
+                    record["team"] = team_map.get(record["team_id"], "")
+                records.append(record)
 
             next_cursor = data.get("meta", {}).get("next_cursor")
             if not next_cursor:

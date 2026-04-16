@@ -235,6 +235,7 @@ async def get_live_vacuum_alerts(response: Response, refresh: bool = False):
         usage_rate = vacuum.get("usage_rate", 0)
         triggered_at = vacuum.get("triggered_at", "")
         is_late_scratch = vacuum.get("is_late_scratch", False)
+        return_date = vacuum.get("return_date")
         
         # Calculate time since triggered
         time_ago = "recently"
@@ -293,6 +294,7 @@ async def get_live_vacuum_alerts(response: Response, refresh: bool = False):
                 "injured_player": injured_player,
                 "injured_team": injured_team,
                 "injury_reason": reason,
+                "injury_return_date": return_date,
                 "injured_usage_rate": usage_rate,
                 "triggered_at": triggered_at,
                 "time_ago": time_ago,

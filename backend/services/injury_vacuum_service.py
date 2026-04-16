@@ -64,7 +64,7 @@ BOARD_PROMOTION_THRESHOLD = 0.15
 LATE_SCRATCH_WINDOW_MINUTES = 120
 
 # Injury status triggers
-TRIGGER_STATUSES = ["OUT", "DOUBTFUL"]
+TRIGGER_STATUSES = ["OUT", "DOUBTFUL", "OUT_FOR_SEASON", "IL_STANDARD", "IL_EXTENDED", "IL_SHORT"]
 
 # Cache TTL (seconds)
 STAR_PROFILE_TTL = 3600 * 24  # 24 hours
@@ -557,6 +557,7 @@ class InjuryVacuumService:
             api_key = os.environ.get("BDL_API_KEY") or os.environ.get("BALLDONTLIE_API_KEY")
             if api_key:
                 async with httpx.AsyncClient(timeout=10.0) as client:
+                    # Try live box scores first (games in progress)
                     response = await client.get(
                         "https://api.balldontlie.io/v1/box_scores/live",
                         headers={"Authorization": api_key}
@@ -570,7 +571,38 @@ class InjuryVacuumService:
                                 teams.add(home)
                             if away:
                                 teams.add(away)
+
+                    # If no live games, check today's scheduled games
+                    if not teams:
+                        from datetime import date
+                        today = date.today().isoformat()
+                        sched_resp = await client.get(
+                            f"https://api.balldontlie.io/nba/v1/games?dates[]={today}",
+                            headers={"Authorization": api_key}
+                        )
+                        if sched_resp.status_code == 200:
+                            games = sched_resp.json().get("data", [])
+                            for game in games:
+                                home = game.get("home_team", {}).get("abbreviation")
+                                away = game.get("visitor_team", {}).get("abbreviation")
+                                if home:
+                                    teams.add(home)
+                                if away:
+                                    teams.add(away)
             
+            # Fallback: check live_scores_cache in DB (populated by live scores engine)
+            if not teams and hasattr(self, 'db') and self.db is not None:
+                try:
+                    cached = await self.db.live_scores_cache.find_one({})
+                    if cached and cached.get("games"):
+                        for game in cached.get("games", []):
+                            if game.get("home_team"):
+                                teams.add(game.get("home_team"))
+                            if game.get("away_team"):
+                                teams.add(game.get("away_team"))
+                except Exception as e:
+                    logger.warning(f"[VacuumService] Failed to get games from live_scores_cache: {e}")
+
             # Fallback: check ticker_cache in DB
             if not teams and hasattr(self, 'db') and self.db is not None:
                 try:
@@ -851,9 +883,11 @@ class InjuryVacuumService:
                             
                             vacuum_alert = {
                                 "injured_player": player_name,
-                                "team": correct_team,  # Use correct team from star profile
+                                "team": correct_team,
                                 "status": current_status,
                                 "reason": injury.get("reason"),
+                                "return_date": injury.get("return_date"),
+                                "tier_level": injury.get("tier_level", 0),
                                 "usage_rate": usage_rate,
                                 "beneficiaries": beneficiaries,
                                 "triggered_at": datetime.now(timezone.utc).isoformat(),

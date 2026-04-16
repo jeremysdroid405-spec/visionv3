@@ -269,9 +269,16 @@ class LiveScoresEngine:
             )
             
             if cached:
+                games = cached.get("games", [])
+                live = sum(1 for g in games if g.get("status") == "in_play")
+                upcoming = sum(1 for g in games if g.get("status") == "upcoming")
+                final = sum(1 for g in games if g.get("status") == "final")
                 return {
                     "success": True,
-                    "games": cached.get("games", []),
+                    "games": games,
+                    "live_count": live,
+                    "upcoming_count": upcoming,
+                    "final_count": final,
                     "cached": True,
                     "updated_at": cached.get("updated_at")
                 }
