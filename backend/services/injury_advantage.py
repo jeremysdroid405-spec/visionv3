@@ -2,30 +2,32 @@
 Live Injury Advantage — Strict Board-Scoped Engine
 ====================================================
 Only fires when a player ALREADY ON THE LIVE BOARD gains meaningful
-playing time due to a same-team injury change in injuries_normalized.
+playing time due to a RECENT same-team injury change.
 
 Rules:
   1. Injury must be meaningful (tier_level >= 3: OUT, DOUBTFUL, OFS, IL)
-  2. Beneficiary must be on a visible board tier (Safe Haven / Front Lines / War Zone)
-  3. Beneficiary must be on the SAME TEAM as the injured player
-  4. Projected minutes increase must exceed MIN_MINUTES_BUMP threshold
-  5. If no board pick qualifies, section is empty (no generic boosts)
+  2. Injury must be RECENT (status_changed_at within RECENCY_WINDOW)
+  3. Beneficiary must be on a visible board tier
+  4. Beneficiary must be on the SAME TEAM as the injured player
+  5. Projected minutes increase must exceed MIN_MINUTES_BUMP
+  6. If no board pick qualifies, section is empty
 
-Architecture:
-  - Shared for NBA and MLB
-  - Reads from injuries_normalized (BDL)
-  - Reads from live board tier collections
-  - No dependency on legacy vacuum/star caches
+Recency rule prevents stale, long-term injuries (e.g., OUT_FOR_SEASON
+for weeks) from triggering alerts — those are already priced into
+projections and offer no new opportunity.
 """
 
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
-# Minimum projected minutes increase to qualify as a real advantage
+# Minimum projected minutes increase to qualify
 MIN_MINUTES_BUMP = 2.0
+
+# Recency window: only injuries whose status changed within this window trigger alerts
+RECENCY_WINDOW_HOURS = 48
 
 # Board tier collections per sport
 TIER_COLLECTIONS = {
@@ -71,12 +73,29 @@ async def _get_board_picks(db, sport: str) -> List[dict]:
 
 
 async def _get_meaningful_injuries(db, sport: str) -> List[dict]:
-    """Get injuries at tier_level >= 3 (OUT, DOUBTFUL, OFS, IL)."""
+    """
+    Get injuries that are:
+      - tier_level >= 3 (OUT, DOUBTFUL, OFS, IL)
+      - status_changed_at within RECENCY_WINDOW_HOURS
+    
+    Long-standing injuries already priced into projections are excluded.
+    """
+    cutoff = (datetime.now(timezone.utc) - timedelta(hours=RECENCY_WINDOW_HOURS)).isoformat()
+    
     cursor = db["injuries_normalized"].find(
-        {"sport": sport, "tier_level": {"$gte": 3}},
+        {
+            "sport": sport,
+            "tier_level": {"$gte": 3},
+            "status_changed_at": {"$gte": cutoff},
+        },
         {"_id": 0},
     )
-    return await cursor.to_list(length=300)
+    results = await cursor.to_list(length=300)
+    
+    if not results:
+        logger.debug(f"[INJURY_ADV] {sport.upper()}: 0 recent meaningful injuries (cutoff={cutoff[:16]})")
+    
+    return results
 
 
 def _estimate_benefit(injury_tier: int, rank: str) -> dict:

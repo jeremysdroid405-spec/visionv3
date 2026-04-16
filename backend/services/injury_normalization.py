@@ -230,29 +230,64 @@ async def fetch_and_normalize(sport: str) -> List[dict]:
 async def sync_injuries(db, sport: str) -> dict:
     """
     Fetch, normalize, and persist injuries for one sport.
-    Writes to `injuries_normalized` collection.
+    
+    Tracks change recency:
+      - first_seen_at: when this injury was first observed
+      - status_changed_at: when the status tier last changed
+    
+    On each sync, compares new records to existing ones before overwriting.
     """
     records = await fetch_and_normalize(sport)
-
     collection = db[COLLECTION_NAME]
+    now = datetime.now(timezone.utc).isoformat()
 
-    # Remove old records for this sport, then insert fresh
+    # Load previous state for change tracking
+    prev_by_bdl_id: Dict[int, dict] = {}
+    cursor = collection.find({"sport": sport}, {"_id": 0, "bdl_id": 1, "status": 1, "tier_level": 1, "return_date": 1, "first_seen_at": 1, "status_changed_at": 1})
+    async for doc in cursor:
+        bid = doc.get("bdl_id")
+        if bid:
+            prev_by_bdl_id[bid] = doc
+
+    # Stamp each record with recency fields
+    new_count = 0
+    changed_count = 0
+    for rec in records:
+        bid = rec.get("bdl_id")
+        prev = prev_by_bdl_id.get(bid) if bid else None
+
+        if not prev:
+            # New injury — never seen before
+            rec["first_seen_at"] = now
+            rec["status_changed_at"] = now
+            new_count += 1
+        else:
+            # Existing injury — preserve first_seen, check for status change
+            rec["first_seen_at"] = prev.get("first_seen_at", now)
+            if prev.get("tier_level") != rec.get("tier_level") or prev.get("return_date") != rec.get("return_date"):
+                rec["status_changed_at"] = now
+                changed_count += 1
+            else:
+                rec["status_changed_at"] = prev.get("status_changed_at", now)
+
+    # Atomic replace
     await collection.delete_many({"sport": sport})
     if records:
         await collection.insert_many(records)
 
-    # Status breakdown for logging
     tiers = {}
     for r in records:
         tiers[r["status"]] = tiers.get(r["status"], 0) + 1
 
-    logger.info(f"[INJURY_NORM] {sport.upper()}: Persisted {len(records)} → {tiers}")
+    logger.info(f"[INJURY_NORM] {sport.upper()}: Persisted {len(records)} (new={new_count}, changed={changed_count}) → {tiers}")
 
     return {
         "sport": sport,
         "count": len(records),
+        "new": new_count,
+        "changed": changed_count,
         "tiers": tiers,
-        "synced_at": datetime.now(timezone.utc).isoformat(),
+        "synced_at": now,
     }
 
 
