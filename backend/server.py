@@ -505,26 +505,32 @@ async def run_mlb_startup_health_check():
 
 async def initial_autonomous_sync():
     """
-    Run autonomous sync on startup - Demon & Goblin Engine v3
-    
-    Vision Intel Enrichment is now triggered automatically by the Board Builder
-    immediately after tier boards are created (Board-Driven approach).
+    Startup sync — routes through Rebuild Coordinator.
+
+    Phase 2: NBA uses coordinator → UnifiedPipeline(NBAAdapter).
+    demon_goblin_engine is preserved but disabled as live publisher.
     """
     await asyncio.sleep(5)  # Wait for app to fully start
-    
-    # Run Demon & Goblin sync (v3)
-    # This will:
-    # 1. Sync odds/BDL data
-    # 2. Build tier boards (War Zone, Safe Haven, Front Lines)
-    # 3. Trigger Vision Intel Enrichment for board players (automatic)
-    if demon_goblin_engine:
-        logger.info("=" * 70)
-        logger.info("DEMON & GOBLIN ENGINE v3.0 - AUTONOMOUS STARTUP SYNC")
-        logger.info("(Vision Intel will auto-trigger after Board Build)")
-        logger.info("=" * 70)
-        
-        result = await demon_goblin_engine.run_full_sync()
-        logger.info(f"[STARTUP] Sync complete: {result.get('unique_players', 0)} players, {result.get('demons_count', 0)} demons, {result.get('goblins_count', 0)} goblins")
+
+    logger.info("=" * 70)
+    logger.info("[STARTUP] AUTONOMOUS SYNC — via Rebuild Coordinator")
+    logger.info("=" * 70)
+
+    try:
+        from services.event_bus import BoardEvent, get_event_bus
+        await get_event_bus().publish(BoardEvent(
+            sport="nba",
+            event_type="scheduled_safety",
+            severity="medium",
+            source="startup_sync",
+        ))
+        logger.info("[STARTUP] NBA startup event published to coordinator")
+    except Exception as e:
+        logger.error(f"[STARTUP] Coordinator dispatch failed, falling back to legacy: {e}")
+        # Fallback: use demon_goblin if coordinator fails
+        if demon_goblin_engine:
+            result = await demon_goblin_engine.run_full_sync()
+            logger.info(f"[STARTUP] Legacy fallback complete: {result.get('unique_players', 0)} players")
 
 
 async def scheduled_daily_sync():
@@ -605,11 +611,21 @@ async def scheduled_daily_sync():
             except Exception as de:
                 logger.error(f"[SCHEDULER] DvP refresh failed (non-critical): {de}")
             
-            # Step 6: Run full odds sync
-            logger.info("[SCHEDULER] Step 6/10: Running full odds sync...")
-            result = await demon_goblin_engine.run_full_sync()
-            logger.info(f"[SCHEDULER] Sync complete: {result.get('unique_players', 0)} players")
-            logger.info(f"[SCHEDULER] Standard: {result.get('standard_count', 0)}, Demons: {result.get('demons_count', 0)}, Goblins: {result.get('goblins_count', 0)}")
+            # Step 6: Publish NBA board via Coordinator → UnifiedPipeline
+            logger.info("[SCHEDULER] Step 6/10: Publishing NBA board via Coordinator...")
+            try:
+                from services.event_bus import BoardEvent, get_event_bus
+                await get_event_bus().publish(BoardEvent(
+                    sport="nba",
+                    event_type="scheduled_safety",
+                    severity="high",
+                    source="scheduler_daily_nba",
+                ))
+                logger.info("[SCHEDULER] NBA board publish event dispatched to coordinator")
+            except Exception as pub_e:
+                logger.error(f"[SCHEDULER] Coordinator dispatch failed, falling back to legacy: {pub_e}")
+                result = await demon_goblin_engine.run_full_sync()
+                logger.info(f"[SCHEDULER] Legacy fallback: {result.get('unique_players', 0)} players")
             
             # Step 7: Calculate daily insights (advanced analytics)
             logger.info("[SCHEDULER] Step 7/10: Calculating daily insights...")
@@ -1045,36 +1061,32 @@ async def scheduled_mlb_game_values_sync():
 
 async def scheduled_hourly_full_sync():
     """
-    HOURLY ODDS & PROPS SYNC (The Engine)
-    
-    Runs every 60 minutes to keep props fresh during game days.
-    This is the main data refresh that powers all pick recommendations.
+    HOURLY SYNC — routes through Rebuild Coordinator.
+
+    Phase 2: NBA uses coordinator → UnifiedPipeline(NBAAdapter).
+    demon_goblin_engine preserved but disabled as live publisher.
     """
     logger.info("=" * 70)
-    logger.info("[SCHEDULER] HOURLY FULL SYNC (INTERVAL)")
+    logger.info("[SCHEDULER] HOURLY FULL SYNC (via Coordinator)")
     logger.info(f"[SCHEDULER] Time: {datetime.now(timezone.utc).isoformat()}")
     logger.info("=" * 70)
-    
-    # V2: Emit event to coordinator (shadow observation)
+
     try:
         from services.event_bus import BoardEvent, get_event_bus
         await get_event_bus().publish(BoardEvent(
-            sport="nba", event_type="scheduled_safety", severity="medium",
+            sport="nba",
+            event_type="scheduled_safety",
+            severity="medium",
             source="scheduler_hourly",
         ))
-    except Exception:
-        pass
-
-    if demon_goblin_engine:
-        try:
-            result = await demon_goblin_engine.run_full_sync()
-            logger.info(f"[SCHEDULER] Hourly sync complete: {result.get('unique_players', 0)} players")
-            logger.info(f"[SCHEDULER] Standard: {result.get('standard_count', 0)}, Demons: {result.get('demons_count', 0)}, Goblins: {result.get('goblins_count', 0)}")
-            logger.info("=" * 70)
-        except Exception as e:
-            logger.error(f"[SCHEDULER] Hourly full sync failed: {e}")
-    else:
-        logger.error("[SCHEDULER] Demon & Goblin Engine not initialized")
+    except Exception as e:
+        logger.error(f"[SCHEDULER] Coordinator dispatch failed, falling back to legacy: {e}")
+        if demon_goblin_engine:
+            try:
+                result = await demon_goblin_engine.run_full_sync()
+                logger.info(f"[SCHEDULER] Legacy fallback: {result.get('unique_players', 0)} players")
+            except Exception as le:
+                logger.error(f"[SCHEDULER] Legacy fallback also failed: {le}")
 
 
 async def scheduled_hourly_badge_sync():
@@ -1744,14 +1756,16 @@ async def startup_event():
         from services.odds_budget_manager import get_budget_manager
 
         event_bus = get_event_bus()
-        coordinator = get_coordinator(shadow_mode=True)
+        coordinator = get_coordinator()
         coordinator.set_db(db)
+        coordinator.set_sport_mode("nba", "live")    # Phase 2: NBA goes live
+        coordinator.set_sport_mode("mlb", "shadow")   # MLB stays shadow until Phase 3
         await coordinator.start(event_bus)
 
         budget_mgr = get_budget_manager()
 
         logger.info("[SYNC_V2] Event Bus initialized")
-        logger.info("[SYNC_V2] Rebuild Coordinator started (SHADOW MODE)")
+        logger.info(f"[SYNC_V2] Rebuild Coordinator started — NBA={coordinator._sport_mode['nba'].upper()}, MLB={coordinator._sport_mode['mlb'].upper()}")
         logger.info("[SYNC_V2] Odds Budget Manager initialized")
         logger.info(f"[SYNC_V2] Daily budget: {budget_mgr.daily_budget:,} calls/day")
     except Exception as e:

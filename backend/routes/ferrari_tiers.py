@@ -8,6 +8,7 @@ Global 15% kill-switch ensures only elite plays are visible.
 Whistle Matrix applies referee-based modifiers to power scores.
 """
 from fastapi import APIRouter, HTTPException, Query, Response
+import asyncio
 from typing import Dict, Any, List
 import logging
 import os
@@ -3670,40 +3671,39 @@ async def nba_master_sync_endpoint(
     refresh_intel: bool = Query(False, description="Force refresh all Vision Intel")
 ):
     """
-    NBA Master Sync - Full Pipeline with Elite Top 10.
+    NBA Master Sync — routes through Rebuild Coordinator → UnifiedPipeline(NBAAdapter).
     
-    This is the RECOMMENDED endpoint for NBA sync. It runs:
-    
-    **Phase 1: Ferrari Rebuild**
-    - Syncs fresh odds data
-    - Applies Blowout Risk filters
-    - Applies Injury/Usage adjustments
-    - Applies DvP Matchup analysis
-    - Applies V7 Quality gates
-    - Populates ferrari_scored with "smart-filtered" props
-    
-    **Phase 2: Elite Top 10 Sequential Claim**
-    - Reads from ferrari_scored (Ferrari-vetted props)
-    - WAR ZONE claims first (Demons + High-Odds Standards, true_edge >= 8%)
-    - SAFE HAVEN claims second (Goblins only, HR >= 60%, CV <= 0.35)
-    - FRONT LINES claims last (remaining pool, HR >= 50%, CV <= 0.50)
-    
-    **Phase 3: Store Results**
-    - Stores exclusive tier assignments to ferrari_safe_haven, ferrari_front_lines, ferrari_war_zone
-    - No prop appears in multiple tiers (deduplication guaranteed)
-    
-    Returns:
-        Combined metrics from both phases with tier counts.
+    Phase 2: All NBA board publishes go through the single authoritative path.
     """
-    from services.nba_master_sync import get_nba_master_sync
+    from services.event_bus import BoardEvent, get_event_bus
+    from services.rebuild_coordinator import get_coordinator
     
     if _db is None:
         raise HTTPException(status_code=500, detail="Database not initialized")
     
     try:
-        master_sync = get_nba_master_sync(_db)
-        result = await master_sync.run_full_pipeline(refresh_intel=refresh_intel)
-        return result
+        coordinator = get_coordinator()
+        event = BoardEvent(
+            sport="nba",
+            event_type="manual",
+            severity="high",
+            source="manual_api_nba_master",
+        )
+        await get_event_bus().publish(event)
+        
+        # Wait briefly for the async rebuild to start and finish
+        await asyncio.sleep(1)
+        
+        # Return coordinator state as response
+        stats = coordinator.get_stats()
+        last = stats.get("last_publish", {}).get("nba", {})
+        
+        return {
+            "success": True,
+            "coordinator_mode": stats["sport_modes"]["nba"],
+            "dispatch": "coordinator → UnifiedPipeline(NBAAdapter)",
+            "last_publish": last,
+        }
         
     except Exception as e:
         logger.error(f"[NBA_MASTER_SYNC] Error: {e}")
@@ -3713,33 +3713,35 @@ async def nba_master_sync_endpoint(
 @router.post("/nba/sync/elite-top-10")
 async def nba_elite_top_10_sync():
     """
-    NBA Elite Top 10 Sync - Sequential Claim Engine.
+    NBA Elite Sync — routes through Rebuild Coordinator → UnifiedPipeline(NBAAdapter).
     
-    Applies the Elite Top 10 Sequential Claim Logic to NBA props:
-    1. Build QUALIFIED POOL (preserves Blowout/Injury/DvP data)
-    2. WAR ZONE claims first (Demons + Standards DK > +100, true_edge >= 8%)
-    3. SAFE HAVEN claims second (Goblins only, HR >= 60%, CV <= 0.35)
-    4. FRONT LINES claims last (remaining pool, HR >= 50%, CV <= 0.50)
-    
-    PREREQUISITE: Run /api/v3/ferrari/rebuild first to populate ferrari_scored.
-    
-    Features:
-    - Uses unified 50/50 Master Probability (market_prob + true_hit_rate)
-    - Exclusive tier assignment (no prop in multiple tiers)
-    - Preserves NBA intel: Blowout Warnings, Injury/Usage, DvP Matchups
-    
-    Returns:
-        Detailed metrics including tier counts and no-duplicate verification.
+    Phase 2: Same authoritative publish path as nba_master_sync.
     """
-    from services.nba_master_sync import get_nba_master_sync
+    from services.event_bus import BoardEvent, get_event_bus
+    from services.rebuild_coordinator import get_coordinator
     
     if _db is None:
         raise HTTPException(status_code=500, detail="Database not initialized")
     
     try:
-        master_sync = get_nba_master_sync(_db)
-        result = await master_sync.run_elite_sync()
-        return result
+        event = BoardEvent(
+            sport="nba",
+            event_type="manual",
+            severity="high",
+            source="manual_api_nba_elite",
+        )
+        await get_event_bus().publish(event)
+        await asyncio.sleep(1)
+        
+        stats = get_coordinator().get_stats()
+        last = stats.get("last_publish", {}).get("nba", {})
+        
+        return {
+            "success": True,
+            "coordinator_mode": stats["sport_modes"]["nba"],
+            "dispatch": "coordinator → UnifiedPipeline(NBAAdapter)",
+            "last_publish": last,
+        }
         
     except Exception as e:
         logger.error(f"[NBA_ELITE_SYNC] Error: {e}")
