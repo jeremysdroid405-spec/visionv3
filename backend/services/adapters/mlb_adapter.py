@@ -242,7 +242,8 @@ class MLBAdapter(SportAdapter):
         return True
 
     async def enrich_intel(self, tiers: Dict[str, List[Dict]], db) -> Dict[str, List[Dict]]:
-        """Non-blocking Gemini enrichment for MLB. Marks has_gemini on each prop."""
+        """Pre-publish enrichment for MLB: overlay cache, averages, tempo, intel_suite.
+        Gemini batch enrichment is handled by the shared pipeline Phase 7."""
         from routes.ferrari_tiers import (
             overlay_enrichment_cache,
             enrich_mlb_prop_with_averages,
@@ -251,7 +252,6 @@ class MLBAdapter(SportAdapter):
         )
 
         for tier_name, picks in tiers.items():
-            # Overlay cache data (Gemini text + Lasso)
             picks = overlay_enrichment_cache(picks, "mlb")
             tiers[tier_name] = picks
 
@@ -262,9 +262,5 @@ class MLBAdapter(SportAdapter):
                 except Exception:
                     pass
                 enrich_mlb_intel_suite(pick)
-
-                # Update validation flag
-                if 'validation' in pick:
-                    pick['validation']['has_gemini'] = bool(pick.get('vision_intel'))
 
         return tiers
