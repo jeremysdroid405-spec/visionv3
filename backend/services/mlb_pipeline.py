@@ -17,90 +17,27 @@ logger = logging.getLogger(__name__)
 
 async def run_mlb_pipeline(db, save_to_db: bool = True) -> Dict[str, Any]:
     """
-    Run the MLB pipeline with JIT Delta Check and atomic upserts.
+    Run the MLB pipeline via UnifiedPipeline framework.
     
-    Pipeline:
-    1. Fetch props from mlb_cached_board (pre-enriched with hit rates)
-    2. Sort into tiers using mlb_tier_sorter
-    3. Apply JIT Delta Check for Vision Intel
-    4. Atomic upsert to mlb_safe_haven, mlb_front_lines, mlb_war_zone
+    Same output contract: populates mlb_safe_haven, mlb_front_lines, mlb_war_zone.
+    Now uses shared pipeline architecture with atomic writes and validation metadata.
     """
-    start_time = datetime.now(timezone.utc)
-    logger.info("=" * 60)
-    logger.info("[MLB_PIPELINE] Starting MLB Pipeline with JIT Delta Check")
-    logger.info("=" * 60)
-    
-    try:
-        from services.mlb_tier_sorter import MLBTierSorter
-        
-        # Initialize tier sorter
-        sorter = MLBTierSorter(db)
-        
-        # Get props from mlb_cached_board
-        cached_board = db.mlb_cached_board
-        props = await cached_board.find({}, {"_id": 0}).to_list(length=500)
-        
-        logger.info(f"[MLB_PIPELINE] Loaded {len(props)} props from mlb_cached_board")
-        
-        if not props:
-            logger.warning("[MLB_PIPELINE] No props found in mlb_cached_board")
-            return {
-                "success": True,
-                "output": {"safe_haven": 0, "front_lines": 0, "war_zone": 0},
-                "timings": {},
-                "synced_at": datetime.now(timezone.utc).isoformat()
-            }
-        
-        # Sort props into tiers
-        sorted_result = await sorter.sort_props(props)
-        
-        safe_haven = sorted_result.get("safe_haven", [])[:10]
-        front_lines = sorted_result.get("front_lines", [])[:10]
-        war_zone = sorted_result.get("war_zone", [])[:10]
-        
-        logger.info(f"[MLB_PIPELINE] Tier sorting complete:")
-        logger.info(f"  Safe Haven: {len(safe_haven)} picks")
-        logger.info(f"  Front Lines: {len(front_lines)} picks")
-        logger.info(f"  War Zone: {len(war_zone)} picks")
-        
-        # JIT Delta Check and atomic upsert
-        if save_to_db:
-            await _atomic_upsert_with_delta_check(
-                db, "mlb_safe_haven", safe_haven, "Safe Haven"
-            )
-            await _atomic_upsert_with_delta_check(
-                db, "mlb_front_lines", front_lines, "Front Lines"
-            )
-            await _atomic_upsert_with_delta_check(
-                db, "mlb_war_zone", war_zone, "War Zone"
-            )
-        
-        duration = (datetime.now(timezone.utc) - start_time).total_seconds()
-        
-        logger.info("=" * 60)
-        logger.info(f"[MLB_PIPELINE] Complete in {duration:.1f}s")
-        logger.info("=" * 60)
-        
-        return {
-            "success": True,
-            "output": {
-                "safe_haven": len(safe_haven),
-                "front_lines": len(front_lines),
-                "war_zone": len(war_zone)
-            },
-            "timings": {"total_seconds": duration},
-            "synced_at": datetime.now(timezone.utc).isoformat()
-        }
-        
-    except Exception as e:
-        logger.error(f"[MLB_PIPELINE] Error: {e}")
-        import traceback
-        logger.error(traceback.format_exc())
-        return {
-            "success": False,
-            "error": str(e),
-            "synced_at": datetime.now(timezone.utc).isoformat()
-        }
+    from services.unified_pipeline import UnifiedPipeline
+    from services.adapters.mlb_adapter import MLBAdapter
+
+    adapter = MLBAdapter()
+    pipeline = UnifiedPipeline(adapter, db)
+    result = await pipeline.run()
+
+    return {
+        "success": result.success,
+        "output": result.tiers,
+        "timings": {k: v.get("duration_s", 0) for k, v in result.phases.items()},
+        "validation_stats": result.validation_stats,
+        "run_id": result.run_id,
+        "synced_at": datetime.now(timezone.utc).isoformat(),
+        "errors": result.errors,
+    }
 
 
 async def _atomic_upsert_with_delta_check(

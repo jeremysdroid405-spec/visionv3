@@ -196,188 +196,27 @@ class NBAMasterSync:
     
     async def run_elite_sync_phase7(self) -> Dict[str, Any]:
         """
-        PHASE 7: Elite Top 10 Sequential Claim with Hard Overwrite.
+        PHASE 7: Elite Top 10 via Unified Pipeline.
         
-        This is the Phase 7 implementation that:
-        1. Reads ONLY from ferrari_scored (preserving all Ferrari metadata)
-        2. Applies Elite Top 10 Sequential Claim logic
-        3. HARD OVERWRITES tier collections (atomic delete + insert)
-        4. Verifies metadata preservation (mlr_projection, gemini_confidence)
-        
-        Returns:
-            Detailed metrics including metadata verification.
+        Uses the shared UnifiedPipeline framework with NBAAdapter.
+        Preserves all scoring math, MLR model, safety filters, and tier selection.
+        Adds: validation metadata, atomic writes, observability.
         """
-        start_time = datetime.now(timezone.utc)
-        metrics = {
-            "started_at": start_time.isoformat(),
-            "phase": "7_ELITE_OVERWRITE",
-            "steps": {},
-            "errors": []
+        from services.unified_pipeline import UnifiedPipeline
+        from services.adapters.nba_adapter import NBAAdapter
+
+        adapter = NBAAdapter()
+        pipeline = UnifiedPipeline(adapter, self.db)
+        result = await pipeline.run()
+
+        return {
+            "success": result.success,
+            "tiers": result.tiers,
+            "metadata_check": result.validation_stats,
+            "phases": result.phases,
+            "errors": result.errors,
+            "run_id": result.run_id,
         }
-        
-        try:
-            # ================================================================
-            # STEP 7.1: LOAD FERRARI-VETTED PROPS
-            # ================================================================
-            logger.info("[PHASE_7] Step 7.1: Loading from ferrari_scored...")
-            
-            step1_start = datetime.now(timezone.utc)
-            
-            all_props = []
-            cursor = self.db.ferrari_scored.find({}, {"_id": 0})
-            async for doc in cursor:
-                all_props.append(doc)
-            
-            step1_duration = (datetime.now(timezone.utc) - step1_start).total_seconds()
-            
-            # Verify metadata is present
-            metadata_check = {
-                "total_props": len(all_props),
-                "with_intel_suite": 0,
-                "with_blowout_risk": 0,
-                "with_momentum_data": 0,
-                "with_vision_intel": 0,
-                "with_vk_predicted": 0
-            }
-            
-            for prop in all_props:
-                if prop.get("intel_suite"):
-                    metadata_check["with_intel_suite"] += 1
-                if prop.get("blowout_risk"):
-                    metadata_check["with_blowout_risk"] += 1
-                if prop.get("momentum_data"):
-                    metadata_check["with_momentum_data"] += 1
-                if prop.get("vision_intel") or prop.get("vision_summary"):
-                    metadata_check["with_vision_intel"] += 1
-                if prop.get("vk_predicted"):
-                    metadata_check["with_vk_predicted"] += 1
-            
-            metrics["steps"]["7_1_load"] = {
-                "duration_seconds": step1_duration,
-                "props_loaded": len(all_props),
-                "metadata_check": metadata_check
-            }
-            
-            logger.info(f"[PHASE_7] Step 7.1 complete: {len(all_props)} props loaded")
-            logger.info("[PHASE_7] Metadata verification:")
-            logger.info(f"  - With intel_suite: {metadata_check['with_intel_suite']}")
-            logger.info(f"  - With blowout_risk: {metadata_check['with_blowout_risk']}")
-            logger.info(f"  - With momentum_data: {metadata_check['with_momentum_data']}")
-            logger.info(f"  - With vision_intel: {metadata_check['with_vision_intel']}")
-            logger.info(f"  - With vk_predicted: {metadata_check['with_vk_predicted']}")
-            
-            if not all_props:
-                metrics["success"] = False
-                metrics["errors"].append("ferrari_scored is empty")
-                return metrics
-            
-            # ================================================================
-            # STEP 7.2: RUN ELITE TOP 10 SEQUENTIAL CLAIM
-            # ================================================================
-            logger.info("[PHASE_7] Step 7.2: Running Elite Top 10 Sequential Claim...")
-            
-            step2_start = datetime.now(timezone.utc)
-            
-            oracle = get_oracle_apex_service(self.db)
-            elite_tiers = await oracle.build_elite_top_10_tiers(all_props)
-            
-            safe_haven = elite_tiers['safe_haven']
-            front_lines = elite_tiers['front_lines']
-            war_zone = elite_tiers['war_zone']
-            
-            step2_duration = (datetime.now(timezone.utc) - step2_start).total_seconds()
-            
-            metrics["steps"]["7_2_elite_engine"] = {
-                "duration_seconds": step2_duration,
-                "safe_haven": len(safe_haven),
-                "front_lines": len(front_lines),
-                "war_zone": len(war_zone),
-                "total_picks": len(safe_haven) + len(front_lines) + len(war_zone)
-            }
-            
-            logger.info(f"[PHASE_7] Step 7.2 complete: {len(safe_haven) + len(front_lines) + len(war_zone)} total picks")
-            
-            # ================================================================
-            # STEP 7.3: HARD OVERWRITE TIER COLLECTIONS
-            # ================================================================
-            logger.info("[PHASE_7] Step 7.3: HARD OVERWRITE of tier collections...")
-            
-            step3_start = datetime.now(timezone.utc)
-            
-            # Atomic overwrite: delete all, then insert
-            await self._hard_overwrite_collection("ferrari_safe_haven", safe_haven, "Safe Haven")
-            await self._hard_overwrite_collection("ferrari_front_lines", front_lines, "Front Lines")
-            await self._hard_overwrite_collection("ferrari_war_zone", war_zone, "War Zone")
-            
-            step3_duration = (datetime.now(timezone.utc) - step3_start).total_seconds()
-            
-            metrics["steps"]["7_3_hard_overwrite"] = {
-                "duration_seconds": step3_duration,
-                "collections_overwritten": 3
-            }
-            
-            logger.info("[PHASE_7] Step 7.3 complete: 3 collections HARD OVERWRITTEN")
-            
-            # Final metrics
-            total_duration = (datetime.now(timezone.utc) - start_time).total_seconds()
-            metrics["completed_at"] = datetime.now(timezone.utc).isoformat()
-            metrics["total_duration_seconds"] = total_duration
-            metrics["success"] = True
-            metrics["tiers"] = {
-                "safe_haven": len(safe_haven),
-                "front_lines": len(front_lines),
-                "war_zone": len(war_zone),
-                "total": len(safe_haven) + len(front_lines) + len(war_zone)
-            }
-            metrics["metadata_check"] = metadata_check
-            
-            return metrics
-            
-        except Exception as e:
-            logger.error(f"[PHASE_7] Failed: {e}")
-            import traceback
-            traceback.print_exc()
-            metrics["success"] = False
-            metrics["errors"].append(str(e))
-            metrics["completed_at"] = datetime.now(timezone.utc).isoformat()
-            return metrics
-    
-    async def _hard_overwrite_collection(self, collection_name: str, picks: list, tier_name: str):
-        """
-        HARD OVERWRITE: Atomic delete + insert for ELITE tier collection.
-        
-        VAULT ISOLATION: Writes to elite_* collections exclusively.
-        This isolates Elite Top 10 data from legacy Ferrari overwrites.
-        """
-        # Map to elite collection names
-        elite_collection_map = {
-            "ferrari_safe_haven": "elite_safe_haven",
-            "ferrari_front_lines": "elite_front_lines", 
-            "ferrari_war_zone": "elite_war_zone"
-        }
-        
-        # Use elite collection
-        elite_name = elite_collection_map.get(collection_name, f"elite_{collection_name}")
-        collection = self.db[elite_name]
-        
-        # Count before
-        before_count = await collection.count_documents({})
-        
-        # HARD DELETE all existing documents
-        delete_result = await collection.delete_many({})
-        logger.info(f"[PHASE_7] {tier_name}: Deleted {delete_result.deleted_count} documents from {elite_name}")
-        
-        # INSERT new Elite Top 10 picks
-        if picks:
-            insert_result = await collection.insert_many(picks)
-            logger.info(f"[PHASE_7] {tier_name}: Inserted {len(insert_result.inserted_ids)} Elite Top 10 picks to {elite_name}")
-        else:
-            logger.info(f"[PHASE_7] {tier_name}: No picks to insert (0 qualified) to {elite_name}")
-        
-        # Count after
-        after_count = await collection.count_documents({})
-        
-        logger.info(f"[PHASE_7] {tier_name} VAULT ISOLATION: {elite_name} now has {after_count} picks")
     
     async def run_elite_sync(self) -> Dict[str, Any]:
         """

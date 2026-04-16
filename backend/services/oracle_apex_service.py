@@ -1500,6 +1500,16 @@ class OracleApexService:
                 
                 # Timestamp
                 'synced_at': datetime.now(timezone.utc).isoformat(),
+                
+                # ====== VALIDATION METADATA (Internal Tracking) ======
+                'validation': {
+                    'has_market_data': dk_odds is not None and dk_odds != 0,
+                    'has_hit_rates': l10_rate > 0 or l5_rate > 0,
+                    'has_context': bool(prop.get('intel_suite')) or bool(prop.get('blowout_risk')),
+                    'has_mlr': False,  # Set after MLR call below
+                    'has_gemini': bool(prop.get('vision_intel') or prop.get('is_vision_enriched')),
+                    'is_fully_validated': False,  # Set after all checks
+                },
             }
             
             # ================================================================
@@ -1554,11 +1564,16 @@ class OracleApexService:
             
             # ================================================================
             # STRICT DISQUALIFICATION: No MLR = No Elite Tier
+            # Props without MLR are tracked but cannot qualify
             # ================================================================
             if not mlr_success:
                 gate_stats['fail_mlr_model'] = gate_stats.get('fail_mlr_model', 0) + 1
                 logger.debug(f"[DISQUALIFIED] {player_name} {stat_type}: MLR model failed - not eligible for Elite")
+                qualified_prop['validation']['has_mlr'] = False
                 continue
+            
+            # MLR succeeded — mark validation
+            qualified_prop['validation']['has_mlr'] = True
             
             # ================================================================
             # VK MODEL ENFORCEMENT - MANDATORY HANDSHAKE

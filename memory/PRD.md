@@ -1,72 +1,113 @@
 # PropVision - Product Requirements Document
 
 ## Original Problem Statement
-Restructure the React/FastAPI betting app to a 100% Local-First Database Model, integrating multi-sport support (NBA/MLB). Shift from static features to Automated Feature Engineering (Lasso Regression), integrate a generative AI layer (Gemini) for dynamic scout intelligence, and revamp the UI to display the Vision Intel Suite.
+Restructure the React/FastAPI betting app to a 100% Local-First Database Model, integrating multi-sport support (NBA/MLB). Implement automated feature engineering, generative AI scout intelligence, and a unified pipeline architecture for production reliability.
 
 ## Core Architecture
-- **Frontend**: React with Shadcn/UI components
+
+### Unified Pipeline Framework (NEW - April 16, 2026)
+**One architecture, two sports.**
+
+```
+UnifiedPipeline (shared framework)
+  ├── Phase 1: LOAD        — Read board, flatten, deduplicate
+  ├── Phase 2-3: ENRICH    — Stats + scoring (adapter-specific)
+  ├── Phase 4: VALIDATE    — Attach validation metadata
+  ├── Phase 5: SELECT      — Tier classification + gate checks
+  ├── Phase 6: INTEL       — Gemini enrichment (non-blocking)
+  └── Phase 7: PUBLISH     — Atomic writes (temp + rename)
+```
+
+**Sport Adapters:**
+- `NBAAdapter` — BDL stats, MLR/VK model, blowout risk, vacuum/momentum
+- `MLBAdapter` — BDL game logs, Lasso models, SP matchup, tempo
+
+**Identical across both sports:**
+- Phase structure, validation model, atomic writes, observability, serve-time behavior
+
+### Stack
+- **Frontend**: React + Shadcn/UI
 - **Backend**: FastAPI (Python)
 - **Database**: MongoDB
-- **ML Models**: Lasso Regression (10 calibrated models, 366 engineered features -> 40 survivors)
-- **Cache**: Rolling Cache Architecture (master_active_cache.json)
-- **LLM**: Gemini 3 Flash via emergentintegrations
+- **ML**: Lasso Regression (10 models), XGBoost (VegasKiller, 5 NBA models)
+- **LLM**: Gemini 3 Flash Preview via litellm + google-genai SDK
+- **Cache**: Rolling cache with background enrichment
+
+### Validation Metadata (on every prop)
+```json
+{
+  "validation": {
+    "has_market_data": true,
+    "has_hit_rates": true,
+    "has_context": true,
+    "has_mlr": false,
+    "has_gemini": true,
+    "is_fully_validated": false
+  }
+}
+```
+
+### API Status Flags
+Every tier endpoint returns:
+```json
+{
+  "status": "full|partial|no_data",
+  "pipeline": {
+    "source": "elite_safe_haven",
+    "fully_validated": 8,
+    "with_mlr": 10,
+    "with_gemini": 7
+  }
+}
+```
+
+### Environment Variables
+| Variable | Default (Preview) | Production |
+|----------|-------------------|------------|
+| MODEL_DIR | /app/backend/models | /var/www/app/backend/models |
+| CACHE_DIR | /app/backend/data | /var/www/app/backend/data |
+| GEMINI_MODEL | gemini-3-flash-preview | gemini-3-flash-preview |
+| GOOGLE_API_KEY | (set in .env) | (set in .env) |
+
+### Key Files
+| File | Purpose |
+|------|---------|
+| `services/unified_pipeline.py` | Shared pipeline framework (7 phases) |
+| `services/adapters/nba_adapter.py` | NBA-specific scoring + MLR + tier selection |
+| `services/adapters/mlb_adapter.py` | MLB-specific scoring + Lasso + tier selection |
+| `services/nba_master_sync.py` | NBA orchestrator (thin wrapper) |
+| `services/mlb_pipeline.py` | MLB orchestrator (thin wrapper) |
 
 ## What's Been Implemented
 
-### MLB Intel Suite Full Enrichment Fix (COMPLETE - 4/15/2026)
-- Fixed MLB tier endpoints (safe-haven, front-lines, war-zone) — were NOT calling `enrich_mlb_intel_suite()` or `enrich_mlb_prop_with_tempo()`
-- Fixed MLB player detail endpoint — same missing enrichment calls
-- Fixed `enrich_mlb_intel_suite` to preserve ALL existing intel_suite data (lasso, tempo) via `{**existing_intel}` spread
-- Added scout badge generation (hot_streak, floor_lock, lasso_high_edge, high_fidelity_model, soft_matchup, usage_spike, volatility_extreme) inside `enrich_mlb_intel_suite`
-- Fixed frontend intel_suite merge: changed `||` to object spread to preserve all fields from both tier endpoint and player detail API
+### Unified Pipeline Architecture (COMPLETE - 4/16/2026)
+- Shared 7-phase pipeline framework
+- NBA and MLB adapters with identical publish/validate/observe behavior
+- Atomic writes (temp collection + rename, never leaves collections empty)
+- Validation metadata on every prop
+- Status flags on API responses (full/partial/no_data)
+- Gemini decoupled from pipeline (failure marks has_gemini=false, doesn't crash)
 
-### Scout Badges UI Restructure (COMPLETE - 4/15/2026)
-- Removed inline scout badge pills and vision intel text from PropRow cards
-- Added 7 scout badge definitions to BADGE_REGISTRY with full tooltips
-- Created dedicated "Scout Badges" section in Vision Intel Suite modal below Context Badges
-- Unified MLB/NBA Vision Intel Suite parity: Context Badges header, Active Badges summary, and Matchup fallback sections are now sport-agnostic
+### Previous Implementations
+- MLB Intel Suite Full Enrichment (4/15/2026)
+- Scout Badges UI + MLB/NBA Parity (4/15/2026)
+- Gemini Scout Engine refactored to litellm (4/15/2026)
+- Elite Tier Classification Fix (4/15/2026)
+- MLB DK Tier Sorting Fix (4/15/2026)
+- CV Scale Mismatch Fix (4/15/2026)
+- Goblin Line Gates Calibration (4/15/2026)
 
-### Gemini Scout Intelligence Engine (COMPLETE - 4/14/2026)
-- Built `gemini_scout_engine.py` with async Gemini Flash scout summaries
-- Concurrent batch processing for ~30 Ferrari Tier props
-
-### Vision Intel Suite v2 (COMPLETE - 4/14/2026)
-- Lasso v2 wired into JIT enrichment
-- 10 conditional vision_intel templates, scout badges as string arrays
-- Frontend: Lasso projection bar, confidence tier badge, Vision Intel modal
-
-### Data Foundation (COMPLETE - 4/14/2026)
-- MLB: 777 active players, 149,989 game logs (3 seasons)
-- NBA: 559 players, 112,778 game logs + advanced overlay
-- Lasso: 10 models (NBA PTS/REB/AST/3PM/PRA, MLB Hits/TB/RBI/Runs/K)
-
-### Rolling Cache v2.0 (COMPLETE - 4/14/2026)
-- APEX-ONLY caching, Strict Board Lockdown (~30 max props)
-
-## Key DB Collections
-| Collection | Docs | Purpose |
-|-----------|------|---------|
-| mlb_master_hub_2026 | 777 | SSOT - 3yr history per player |
-| nba_master_hub_2026 | 559 | NBA player hub |
-| mlb_cached_board | ~191 | Live MLB prop board |
-| dg_cached_board | varies | Live NBA prop board |
-
-## Key API Endpoints
-- `GET /api/v3/mlb/ferrari/safe-haven|front-lines|war-zone` - MLB Ferrari tier picks (now enriched)
-- `GET /api/v3/mlb/player/{player_name}` - Full player data (now enriched)
-- `GET /api/v3/player-with-badges/{player_name}` - NBA player data
-- `GET /api/v3/lasso/predict/{sport}/{player}/{stat}?line=X`
+## Tier Collections
+| Sport | Safe Haven | Front Lines | War Zone |
+|-------|-----------|-------------|----------|
+| NBA | elite_safe_haven | elite_front_lines | elite_war_zone |
+| MLB | mlb_safe_haven | mlb_front_lines | mlb_war_zone |
 
 ## Pending Tasks
-
-### P1 - High Priority
-- Google OAuth integration
-- Stripe payments integration
-
-### P2 - Medium Priority
-- Wind Tunnel weather API integration
-- Refactor frontend Dashboard.jsx
-- Refactor ferrari_tiers.py (technical debt)
+- P1: Google OAuth integration
+- P1: Stripe payments integration
+- P2: Wind Tunnel weather API
+- P2: Dashboard.jsx refactor
 
 ---
-*Last Updated: April 15, 2026*
+*Last Updated: April 16, 2026*

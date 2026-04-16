@@ -959,16 +959,27 @@ async def get_ferrari_safe_haven(
                 pass
             enrich_mlb_intel_suite(pick)
 
-    # Return picks from vault-isolated collection
+    # Return picks with pipeline status
+    # Count validation states for status flag
+    fully_validated = sum(1 for p in picks if (p.get("validation") or {}).get("is_fully_validated", False))
+    has_any_mlr = sum(1 for p in picks if (p.get("validation") or {}).get("has_mlr", False))
+    has_any_gemini = sum(1 for p in picks if (p.get("validation") or {}).get("has_gemini", False))
+
+    status = "full" if fully_validated == len(picks) and picks else ("partial" if picks else "no_data")
+
     return {
         "tier": "safe_haven",
         "tier_label": f"Safe Haven ({sport.upper()})",
-        "logic": "elite_vault" if sport == "nba" else "legacy_ferrari",
         "sport": sport,
-        "collection": collection_name,
         "picks": picks,
         "count": len(picks),
-        "note": "Elite Top 10 Sequential Claim picks" if sport == "nba" else "Oracle Apex qualified picks"
+        "status": status,
+        "pipeline": {
+            "source": collection_name,
+            "fully_validated": fully_validated,
+            "with_mlr": has_any_mlr,
+            "with_gemini": has_any_gemini,
+        },
     }
 
 
@@ -1048,16 +1059,25 @@ async def get_ferrari_front_lines(
                 pass
             enrich_mlb_intel_suite(pick)
 
-    # Return picks from vault-isolated collection
+    # Return picks with pipeline status
+    fully_validated = sum(1 for p in picks if (p.get("validation") or {}).get("is_fully_validated", False))
+    has_any_mlr = sum(1 for p in picks if (p.get("validation") or {}).get("has_mlr", False))
+    has_any_gemini = sum(1 for p in picks if (p.get("validation") or {}).get("has_gemini", False))
+    status = "full" if fully_validated == len(picks) and picks else ("partial" if picks else "no_data")
+
     return {
         "tier": "front_lines",
         "tier_label": f"Front Lines ({sport.upper()})",
-        "logic": "elite_vault" if sport == "nba" else "legacy_ferrari",
         "sport": sport,
-        "collection": collection_name,
         "picks": picks,
         "count": len(picks),
-        "note": "Elite Top 10 Sequential Claim picks" if sport == "nba" else "Oracle Apex qualified picks"
+        "status": status,
+        "pipeline": {
+            "source": collection_name,
+            "fully_validated": fully_validated,
+            "with_mlr": has_any_mlr,
+            "with_gemini": has_any_gemini,
+        },
     }
 
 
@@ -1137,16 +1157,25 @@ async def get_ferrari_war_zone(
                 pass
             enrich_mlb_intel_suite(pick)
 
-    # Return picks from vault-isolated collection
+    # Return picks with pipeline status
+    fully_validated = sum(1 for p in picks if (p.get("validation") or {}).get("is_fully_validated", False))
+    has_any_mlr = sum(1 for p in picks if (p.get("validation") or {}).get("has_mlr", False))
+    has_any_gemini = sum(1 for p in picks if (p.get("validation") or {}).get("has_gemini", False))
+    status = "full" if fully_validated == len(picks) and picks else ("partial" if picks else "no_data")
+
     return {
         "tier": "war_zone",
         "tier_label": f"War Zone ({sport.upper()})",
-        "logic": "elite_vault" if sport == "nba" else "legacy_ferrari",
         "sport": sport,
-        "collection": collection_name,
         "picks": picks,
         "count": len(picks),
-        "note": "Elite Top 10 Sequential Claim picks" if sport == "nba" else "Oracle Apex qualified picks"
+        "status": status,
+        "pipeline": {
+            "source": collection_name,
+            "fully_validated": fully_validated,
+            "with_mlr": has_any_mlr,
+            "with_gemini": has_any_gemini,
+        },
     }
 
 
