@@ -1744,30 +1744,39 @@ async def startup_event():
 
         budget_mgr = get_budget_manager()
 
-        # Phase 4: Start watchers (staged activation)
-        from services.watchers import InjuryWatcher, GameClockWatcher, OddsDeltaWatcher
+        # Phase 4: Start watchers and sensors (staged activation)
+        from services.watchers import GameClockWatcher, OddsDeltaWatcher
+        from services.injury_sources import BDLInjurySource, ESPNInjurySource
+        from services.injury_sensor import InjurySensor
 
-        injury_watcher = InjuryWatcher(db)
+        # Injury Sensor: multi-source detection (replaces old InjuryWatcher)
+        injury_sensor = InjurySensor(
+            db=db,
+            sources=[BDLInjurySource(), ESPNInjurySource()],
+            sports=["nba", "mlb"],
+        )
+        await injury_sensor.start()
+
+        # Game Clock + Odds Delta watchers
         game_clock_watcher = GameClockWatcher(db)
         odds_delta_watcher = OddsDeltaWatcher(db)
 
-        # Stage 1: InjuryWatcher ON
-        await injury_watcher.start()
-        # Stage 2: GameClockWatcher ON
         await game_clock_watcher.start()
-        # Stage 3: OddsDeltaWatcher OFF (enable after observing trigger volume)
-        # await odds_delta_watcher.start()  # uncomment to enable
+        # OddsDeltaWatcher: still in controlled mode
+        # await odds_delta_watcher.start()
 
-        # Store watchers globally for admin endpoints
-        app.state.injury_watcher = injury_watcher
+        # Store for admin endpoints
+        app.state.injury_sensor = injury_sensor
         app.state.game_clock_watcher = game_clock_watcher
         app.state.odds_delta_watcher = odds_delta_watcher
+        # Legacy compat alias
+        app.state.injury_watcher = injury_sensor
 
         logger.info("[SYNC_V2] Event Bus initialized")
         logger.info(f"[SYNC_V2] Rebuild Coordinator — NBA={coordinator._sport_mode['nba'].upper()}, MLB={coordinator._sport_mode['mlb'].upper()}")
         logger.info("[SYNC_V2] Odds Budget Manager initialized")
         logger.info(f"[SYNC_V2] Daily budget: {budget_mgr.daily_budget:,} calls/day")
-        logger.info("[SYNC_V2] InjuryWatcher: ACTIVE (120s)")
+        logger.info("[SYNC_V2] Injury Sensor: ACTIVE (BDL + ESPN, dynamic cadence)")
         logger.info("[SYNC_V2] GameClockWatcher: ACTIVE (300s)")
         logger.info("[SYNC_V2] OddsDeltaWatcher: STANDBY (enable via admin)")
         logger.info(f"[SYNC_V2] Daily budget: {budget_mgr.daily_budget:,} calls/day")

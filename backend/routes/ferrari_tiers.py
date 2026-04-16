@@ -1419,14 +1419,21 @@ async def manual_coordinator_trigger(
 @router.get("/v2/watchers/status")
 async def get_watchers_status(request: Request):
     """
-    Status of all event-driven watchers.
-
-    Returns per-watcher: enabled, poll count, events emitted, changes detected.
+    Status of all event-driven watchers and sensors.
     """
     from services.rebuild_coordinator import get_coordinator
 
     watcher_data = {}
-    for name in ["injury_watcher", "game_clock_watcher", "odds_delta_watcher"]:
+
+    # Injury Sensor (replaces old InjuryWatcher)
+    sensor = getattr(request.app.state, "injury_sensor", None)
+    if sensor:
+        watcher_data["injury_sensor"] = sensor.get_stats()
+    else:
+        watcher_data["injury_sensor"] = {"status": "not initialized"}
+
+    # Other watchers
+    for name in ["game_clock_watcher", "odds_delta_watcher"]:
         watcher = getattr(request.app.state, name, None)
         if watcher:
             watcher_data[name] = watcher.get_stats()

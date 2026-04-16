@@ -127,15 +127,14 @@ async def compute_injury_advantages(db, sport: str) -> List[dict]:
 
     # For each board pick, check if same-team injuries create an advantage
     advantages = []
-    seen_keys = set()  # dedupe by player+stat
+    seen_players = set()  # one advantage per player (best stat line)
 
     for pick in board_picks:
         player = pick.get("player_name", "")
         team = pick.get("team", "")
         stat = pick.get("stat_type", "")
-        dedup_key = f"{player}|{stat}"
 
-        if dedup_key in seen_keys:
+        if player.lower() in seen_players:
             continue
 
         team_injuries = injuries_by_team.get(team, [])
@@ -170,7 +169,7 @@ async def compute_injury_advantages(db, sport: str) -> List[dict]:
         if minutes_bump < MIN_MINUTES_BUMP:
             continue
 
-        seen_keys.add(dedup_key)
+        seen_players.add(player.lower())
 
         advantages.append({
             "sport": sport,
