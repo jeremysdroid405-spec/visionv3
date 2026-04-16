@@ -8,7 +8,7 @@ and generates events when those picks leave or change state.
 
 Architecture:
   - Single engine, both sports
-  - In-memory previous-board snapshot per sport
+  - Previous board snapshot persisted to MongoDB (survives restarts)
   - On each pipeline publish, diffs old vs new
   - Writes events to MongoDB `market_moves` collection
   - Events auto-expire after 20 minutes
@@ -24,8 +24,9 @@ logger = logging.getLogger(__name__)
 EVENT_TTL_MINUTES = 20
 MAX_EVENTS_PER_SPORT = 10
 
-# In-memory snapshots of previous board state, keyed by sport
-_previous_boards: Dict[str, Dict[str, dict]] = {}
+# MongoDB collection names
+SNAPSHOT_COLLECTION = "market_moves_snapshots"
+EVENTS_COLLECTION = "market_moves"
 
 
 def _pick_id(sport: str, player_name: str, stat_type: str) -> str:
@@ -51,7 +52,25 @@ def _snapshot_board(tiers: Dict[str, List[Dict]], sport: str) -> Dict[str, dict]
     return snapshot
 
 
-def compute_board_diff(
+async def _load_previous_snapshot(db, sport: str) -> Dict[str, dict]:
+    """Load previous board snapshot from MongoDB."""
+    doc = await db[SNAPSHOT_COLLECTION].find_one({"sport": sport}, {"_id": 0})
+    if doc and doc.get("picks"):
+        return doc["picks"]
+    return {}
+
+
+async def _save_snapshot(db, sport: str, snapshot: Dict[str, dict]):
+    """Persist current board snapshot to MongoDB."""
+    await db[SNAPSHOT_COLLECTION].update_one(
+        {"sport": sport},
+        {"$set": {"sport": sport, "picks": snapshot, "updated_at": datetime.now(timezone.utc).isoformat()}},
+        upsert=True,
+    )
+
+
+async def compute_board_diff(
+    db,
     sport: str,
     new_tiers: Dict[str, List[Dict]],
 ) -> List[dict]:
@@ -61,13 +80,11 @@ def compute_board_diff(
 
     Called AFTER atomic publish with the new tier data.
     """
-    global _previous_boards
-
     new_snapshot = _snapshot_board(new_tiers, sport)
-    old_snapshot = _previous_boards.get(sport, {})
+    old_snapshot = await _load_previous_snapshot(db, sport)
 
-    # Update stored snapshot for next diff
-    _previous_boards[sport] = new_snapshot
+    # Save new snapshot for next diff
+    await _save_snapshot(db, sport, new_snapshot)
 
     # First run — no previous state to diff against
     if not old_snapshot:
@@ -80,14 +97,6 @@ def compute_board_diff(
     # Find picks that were on the old board but are NOT on the new board
     for pid, old_pick in old_snapshot.items():
         if pid in new_snapshot:
-            # Still on board — check if line changed (tier swap is not a "move off")
-            new_pick = new_snapshot[pid]
-            old_line = old_pick.get("line")
-            new_line = new_pick.get("line")
-            if old_line is not None and new_line is not None and old_line != new_line:
-                # Line changed but still on board — not an event per spec
-                # (only track picks that LEFT the board)
-                pass
             continue
 
         # Pick LEFT the board — determine why
@@ -96,12 +105,7 @@ def compute_board_diff(
         old_line = old_pick.get("line")
         old_tier = old_pick["tier"]
 
-        # Check if pick exists in new board with a different line
-        # (same player+stat but different line → "Line moved")
-        new_match = new_snapshot.get(pid)
-        # pid already checked above — if we're here, it's not in new_snapshot
-
-        # Try to find the player+stat anywhere in new tiers with different line
+        # Try to find the player+stat in new tiers with different line
         new_line = None
         status = "Moved off board"
         for tier_name, picks in new_tiers.items():
@@ -115,7 +119,6 @@ def compute_board_diff(
             if new_line is not None:
                 break
 
-        # Build event
         event = {
             "sport": sport,
             "pick_id": pid,
@@ -147,14 +150,19 @@ def _format_tier(tier_key: str) -> str:
 
 
 async def persist_events(db, events: List[dict]):
-    """Write events to MongoDB and prune expired ones."""
+    """Write events to MongoDB (upsert by pick_id) and prune expired ones."""
     if not events:
         return
 
-    collection = db["market_moves"]
+    collection = db[EVENTS_COLLECTION]
 
-    # Insert new events
-    await collection.insert_many(events)
+    # Upsert each event by pick_id to avoid duplicates
+    for event in events:
+        await collection.update_one(
+            {"pick_id": event["pick_id"]},
+            {"$set": event},
+            upsert=True,
+        )
 
     # Prune events older than TTL
     cutoff = datetime.now(timezone.utc) - timedelta(minutes=EVENT_TTL_MINUTES)
@@ -165,7 +173,7 @@ async def persist_events(db, events: List[dict]):
 
 async def get_recent_events(db, sport: Optional[str] = None, limit: int = 10) -> List[dict]:
     """Fetch recent market moves events, optionally filtered by sport."""
-    collection = db["market_moves"]
+    collection = db[EVENTS_COLLECTION]
 
     cutoff = datetime.now(timezone.utc) - timedelta(minutes=EVENT_TTL_MINUTES)
     query = {"changed_at": {"$gte": cutoff.isoformat()}}

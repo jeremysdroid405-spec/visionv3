@@ -265,7 +265,7 @@ class UnifiedPipeline:
             # ============================================================
             try:
                 from services.market_moves_engine import compute_board_diff, persist_events
-                mm_events = compute_board_diff(self.adapter.sport, tiers)
+                mm_events = await compute_board_diff(self.db, self.adapter.sport, tiers)
                 if mm_events:
                     await persist_events(self.db, mm_events)
             except Exception as e:
