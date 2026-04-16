@@ -142,7 +142,7 @@ export const Auth = () => {
   
   // Countdown state
   const [showCountdown, setShowCountdown] = useState(false);
-  const [countdown, setCountdown] = useState(3);
+  const [countdown, setCountdown] = useState(5);
   const [countdownMessage, setCountdownMessage] = useState('');
   
   // Simulated live stats
@@ -236,7 +236,7 @@ export const Auth = () => {
   
   const handleDemoMode = () => {
     enterDemoMode();
-    startCountdown('DEMO MODE ACTIVATED');
+    startCountdown('SYSTEM ACTIVATED');
   };
 
   const scrollToForm = () => {

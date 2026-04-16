@@ -950,7 +950,7 @@ export const PlayerDetailPage = ({ playerName, playerData = null, onBack, highli
               <div className="bg-gradient-to-r from-zinc-900 to-zinc-800/50 border border-zinc-700 rounded-lg p-4">
                 <h3 className="text-sm font-bold text-white mb-3 flex items-center gap-2">
                   <Target className="w-4 h-4 text-amber-400" />
-                  CONTEXT BADGES
+                  ENVIRONMENTAL FACTORS
                 </h3>
                 <p className="text-xs text-zinc-500 mb-4">
                   Situational factors affecting tonight's performance
@@ -1004,14 +1004,14 @@ export const PlayerDetailPage = ({ playerName, playerData = null, onBack, highli
               {/* ===== SCOUT BADGES - AI & Model-Driven Indicators ===== */}
               {(() => {
                 const scoutBadges = selectedVisionProp.scout_badges || selectedVisionProp.intel_suite?.scout_badges || [];
-                const SCOUT_KEYS = ['hot_streak', 'floor_lock', 'lasso_high_edge', 'high_fidelity_model', 'soft_matchup', 'usage_spike'];
+                const SCOUT_KEYS = ['hot_streak', 'floor_lock', 'lasso_high_edge', 'high_fidelity_model', 'soft_matchup', 'usage_spike', 'volatility_extreme'];
                 const activeBadgeKeys = scoutBadges.map(b => typeof b === 'string' ? b : b.badge_key || b.id || '');
                 
                 return (
                   <div className="bg-gradient-to-r from-zinc-900 to-zinc-800/50 border border-zinc-700 rounded-lg p-4" data-testid="scout-badges-section">
                     <h3 className="text-sm font-bold text-white mb-3 flex items-center gap-2">
                       <Zap className="w-4 h-4 text-emerald-400" />
-                      SCOUT BADGES
+                      PERFORMANCE INDICATORS
                     </h3>
                     <p className="text-xs text-zinc-500 mb-4">
                       AI and model-driven signals based on projections, streaks, and matchup analysis

@@ -753,21 +753,18 @@ export const BadgeRow = ({ badges = [], size = 'md', showTooltip = true, classNa
 export const BadgeGridItem = ({ 
   badgeKey, 
   isActive = false,
-  customDescription = null,  // Dynamic description from backend (e.g., "220 away from 1,000 career steals")
-  customDetail = null        // Additional detail object from backend
+  customDescription = null,
+  customDetail = null
 }) => {
+  const [expanded, setExpanded] = useState(false);
   const badge = BADGE_REGISTRY[badgeKey];
   if (!badge) return null;
   
   const Icon = badge.icon;
   const tooltip = badge.tooltip;
   
-  // For active badges with custom description, show the custom one in the card
-  // The tooltip will show BOTH generic and specific descriptions
   const displayTrigger = customDescription || badge.trigger;
-  const hasCustomDescription = customDescription && customDescription !== badge.trigger;
   
-  // Sentiment colors for tooltip
   const sentimentColors = {
     positive: "text-green-400",
     negative: "text-red-400",
@@ -779,92 +776,59 @@ export const BadgeGridItem = ({
     negative: "Negative Signal",
     cautionary: "Use Caution"
   };
-  
-  const cardContent = (
-    <div 
-      className={`flex items-center gap-2 p-2 rounded-lg border transition-all cursor-help ${
-        isActive 
-          ? `${badge.bgClass} ${badge.borderClass} shadow-lg ${badge.glowClass}`
-          : 'bg-zinc-800/30 border-zinc-700/50 opacity-40'
-      }`}
-    >
-      <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
-        isActive ? badge.bgClass : 'bg-zinc-800'
-      }`}>
-        <Icon size={16} className={isActive ? badge.textClass : 'text-zinc-600'} />
-      </div>
-      <div className="flex-1 min-w-0">
-        <div className={`text-xs font-bold ${isActive ? badge.textClass : 'text-zinc-600'}`}>
-          {badge.label}
-        </div>
-        <div className={`text-[9px] truncate ${isActive ? 'text-white' : 'text-zinc-500'}`}>
-          {displayTrigger}
-        </div>
-      </div>
-      {isActive && (
-        <div className={`w-2 h-2 rounded-full ${badge.bgClass.replace('/20', '')} animate-pulse`} />
-      )}
-    </div>
-  );
-  
-  // If no tooltip data, return card with title fallback
-  if (!tooltip) {
-    return (
-      <div title={displayTrigger}>
-        {cardContent}
-      </div>
-    );
-  }
+
+  const handleClick = (e) => {
+    e.stopPropagation();
+    if (isActive && tooltip) setExpanded(prev => !prev);
+  };
   
   return (
-    <TooltipProvider delayDuration={200}>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          {cardContent}
-        </TooltipTrigger>
-        <TooltipContent 
-          side="top" 
-          className="max-w-[300px] p-0 bg-zinc-900 border border-zinc-700 shadow-xl z-[100]"
-          sideOffset={8}
-        >
-          <div className="p-3">
-            {/* Header with badge icon and sentiment */}
-            <div className="flex items-center justify-between mb-2">
-              <div className="flex items-center gap-2">
-                <div className={`w-6 h-6 rounded-full flex items-center justify-center ${badge.bgClass}`}>
-                  <Icon size={14} className={badge.textClass} />
-                </div>
-                <span className={`text-sm font-bold ${badge.textClass}`}>{tooltip.title}</span>
-              </div>
-              <span className={`text-[10px] font-medium ${sentimentColors[tooltip.sentiment]}`}>
-                {sentimentLabels[tooltip.sentiment]}
-              </span>
-            </div>
-            
-            {/* Generic Description - What this badge means */}
-            <p className="text-xs text-zinc-300 mb-2 leading-relaxed">
-              {tooltip.description}
-            </p>
-            
-            {/* Player-Specific Detail - If custom description provided */}
-            {hasCustomDescription && (
-              <div className="bg-zinc-800/50 rounded-md p-2 mb-2 border border-zinc-700/50">
-                <p className={`text-xs font-semibold ${badge.textClass}`}>
-                  {customDescription}
-                </p>
-              </div>
-            )}
-            
-            {/* Impact */}
-            <div className="pt-2 border-t border-zinc-700">
-              <p className="text-[11px] text-zinc-400 italic">
-                {tooltip.impact}
-              </p>
-            </div>
+    <div>
+      <div 
+        onClick={handleClick}
+        className={`flex items-center gap-2 p-2 rounded-lg border transition-all ${
+          isActive 
+            ? `${badge.bgClass} ${badge.borderClass} shadow-lg ${badge.glowClass} cursor-pointer`
+            : 'bg-zinc-800/30 border-zinc-700/50 opacity-40'
+        }`}
+        data-testid={`badge-grid-${badgeKey}`}
+      >
+        <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
+          isActive ? badge.bgClass : 'bg-zinc-800'
+        }`}>
+          <Icon size={16} className={isActive ? badge.textClass : 'text-zinc-600'} />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className={`text-xs font-bold ${isActive ? badge.textClass : 'text-zinc-600'}`}>
+            {badge.label}
           </div>
-        </TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
+          <div className={`text-[9px] truncate ${isActive ? 'text-white' : 'text-zinc-500'}`}>
+            {displayTrigger}
+          </div>
+        </div>
+        {isActive && (
+          <div className={`w-2 h-2 rounded-full ${badge.bgClass.replace('/20', '')} animate-pulse`} />
+        )}
+      </div>
+      {expanded && isActive && tooltip && (
+        <div className="mt-1 p-2.5 rounded-lg bg-zinc-800/80 border border-zinc-700/60 animate-in slide-in-from-top-1 duration-150">
+          <div className="flex items-center justify-between mb-1.5">
+            <span className={`text-[11px] font-bold ${badge.textClass}`}>{tooltip.title}</span>
+            <span className={`text-[9px] font-medium ${sentimentColors[tooltip.sentiment]}`}>
+              {sentimentLabels[tooltip.sentiment]}
+            </span>
+          </div>
+          <p className="text-[11px] text-zinc-300 leading-relaxed">
+            {tooltip.description}
+          </p>
+          {tooltip.impact && (
+            <p className="text-[10px] text-zinc-500 italic mt-1.5 pt-1.5 border-t border-zinc-700/50">
+              {tooltip.impact}
+            </p>
+          )}
+        </div>
+      )}
+    </div>
   );
 };
 
