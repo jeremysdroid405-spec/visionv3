@@ -593,11 +593,10 @@ class InjuryVacuumService:
     
     async def fetch_injury_report(self) -> List[Dict]:
         """
-        Fetch the latest NBA injury report from dg_injuries collection (ESPN sourced).
+        Fetch the latest NBA injury report from injuries_normalized (BDL sourced).
         ONLY returns injuries for teams playing TODAY.
-        Falls back to bdl_injuries if dg_injuries is empty.
         """
-        logger.info("[VacuumService] Fetching injury data from database...")
+        logger.info("[VacuumService] Fetching injury data from normalized collection...")
         
         # Get today's teams first
         todays_teams = await self._get_todays_teams()
@@ -606,38 +605,39 @@ class InjuryVacuumService:
         injuries = []
         
         try:
-            # Primary source: dg_injuries (ESPN data, more complete with team info)
             if hasattr(self, 'db') and self.db is not None:
                 try:
-                    # Build query - filter by today's teams if we have them
-                    query = {"status": {"$in": ["Out", "OUT", "Doubtful", "DOUBTFUL", "Day-To-Day"]}}
+                    # Read from normalized collection — tier_level >= 3 covers Out, Doubtful, IL
+                    query = {"sport": "nba", "tier_level": {"$gte": 3}}
                     if todays_teams:
                         query["team"] = {"$in": list(todays_teams)}
                     
-                    dg_cursor = self.db.dg_injuries.find(query)
-                    dg_injuries = await dg_cursor.to_list(length=200)
+                    cursor = self.db.injuries_normalized.find(query, {"_id": 0})
+                    norm_injuries = await cursor.to_list(length=200)
                 except Exception as db_err:
-                    logger.warning(f"[VacuumService] dg_injuries query failed: {db_err}")
-                    dg_injuries = []
+                    logger.warning(f"[VacuumService] injuries_normalized query failed: {db_err}")
+                    norm_injuries = []
                 
-                for inj in dg_injuries:
+                for inj in norm_injuries:
                     player_name = inj.get("player_name", "")
                     team = inj.get("team", "UNK")
-                    status = inj.get("status", "").upper()
+                    status = inj.get("status", "UNKNOWN")  # normalized tier name
                     reason = inj.get("short_comment", "") or inj.get("description", "")[:100]
                     
                     injuries.append({
                         "player_name": player_name,
                         "team": team,
-                        "team_name": inj.get("team_full", ""),
+                        "team_name": "",
                         "status": status,
                         "reason": reason,
+                        "return_date": inj.get("return_date"),
+                        "tier_level": inj.get("tier_level", 0),
                         "updated_at": inj.get("synced_at", datetime.now(timezone.utc).isoformat())
                     })
                 
-                logger.info(f"[VacuumService] Found {len(injuries)} injuries from dg_injuries (filtered for today's games)")
+                logger.info(f"[VacuumService] Found {len(injuries)} injuries from injuries_normalized (BDL)")
                 
-                # If dg_injuries is empty, try bdl_injuries
+                # Fallback to legacy dg_injuries if normalized is empty
                 if len(injuries) == 0:
                     logger.info("[VacuumService] dg_injuries empty, checking bdl_injuries...")
                     

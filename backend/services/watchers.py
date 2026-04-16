@@ -29,9 +29,11 @@ logger = logging.getLogger(__name__)
 
 class InjuryWatcher:
     """
-    Polls injury collections for status changes.
-    Emits events when a player's injury status changes (new OUT, new DOUBTFUL, etc.)
-    that could affect board picks.
+    Polls BDL injuries via normalization layer for BOTH sports.
+    Emits events only on meaningful changes:
+      - tier_level changed (status escalation/de-escalation)
+      - return_date shifted
+      - new injury appeared
 
     Interval: 120s (every 2 min)
     """
@@ -42,15 +44,16 @@ class InjuryWatcher:
         self.db = db
         self._enabled = False
         self._task: Optional[asyncio.Task] = None
-        self._previous_statuses: Dict[str, str] = {}  # player_name → last known status
-        self._stats = {"polls": 0, "changes_detected": 0, "events_emitted": 0}
+        # Previous state: {sport: {bdl_id: {tier_level, return_date}}}
+        self._previous: Dict[str, Dict[int, dict]] = {"nba": {}, "mlb": {}}
+        self._stats = {"polls": 0, "changes_detected": 0, "events_emitted": 0, "new_injuries": 0, "status_changes": 0, "return_shifts": 0}
 
     async def start(self):
         if self._enabled:
             return
         self._enabled = True
         self._task = asyncio.create_task(self._loop())
-        logger.info("[INJURY_WATCHER] Started (120s interval)")
+        logger.info("[INJURY_WATCHER] Started (120s interval, BDL source, both sports)")
 
     async def stop(self):
         self._enabled = False
@@ -59,7 +62,6 @@ class InjuryWatcher:
         logger.info("[INJURY_WATCHER] Stopped")
 
     async def _loop(self):
-        # Seed initial state without emitting
         await self._seed_baseline()
         while self._enabled:
             try:
@@ -72,67 +74,78 @@ class InjuryWatcher:
                 await asyncio.sleep(30)
 
     async def _seed_baseline(self):
-        """Load current injury statuses as baseline (no events emitted)."""
-        cursor = self.db["dg_injuries"].find({}, {"_id": 0, "player_name": 1, "status": 1})
-        async for doc in cursor:
-            name = doc.get("player_name", "")
-            status = doc.get("status", "")
-            if name:
-                self._previous_statuses[name] = status
-        logger.info(f"[INJURY_WATCHER] Baseline: {len(self._previous_statuses)} players")
+        """Fetch current injuries from BDL and store as baseline (no events)."""
+        from services.injury_normalization import sync_all, get_injuries
+
+        try:
+            await sync_all(self.db)
+        except Exception as e:
+            logger.warning(f"[INJURY_WATCHER] Baseline BDL fetch failed: {e}")
+
+        for sport in ["nba", "mlb"]:
+            records = await get_injuries(self.db, sport=sport)
+            snap = {}
+            for r in records:
+                bid = r.get("bdl_id")
+                if bid:
+                    snap[bid] = {"tier_level": r.get("tier_level", 0), "return_date": r.get("return_date")}
+            self._previous[sport] = snap
+        total = sum(len(v) for v in self._previous.values())
+        logger.info(f"[INJURY_WATCHER] Baseline: NBA={len(self._previous['nba'])}, MLB={len(self._previous['mlb'])} ({total} total)")
 
     async def _check(self):
         self._stats["polls"] += 1
-        changed_players: Dict[str, List[str]] = {"nba": [], "mlb": []}
+        from services.injury_normalization import sync_injuries as norm_sync, get_injuries, is_meaningful_change
 
-        # Check NBA injuries
-        cursor = self.db["dg_injuries"].find({}, {"_id": 0, "player_name": 1, "status": 1, "team": 1})
-        current = {}
-        async for doc in cursor:
-            name = doc.get("player_name", "")
-            status = doc.get("status", "")
-            if not name:
-                continue
-            current[name] = status
-            old = self._previous_statuses.get(name)
-            if old != status:
-                changed_players["nba"].append(name)
-                self._stats["changes_detected"] += 1
-
-        # Check MLB injuries
-        mlb_cursor = self.db["live_injuries"].find(
-            {"sport": "mlb"}, {"_id": 0, "player_name": 1, "status": 1}
-        )
-        async for doc in mlb_cursor:
-            name = doc.get("player_name", "")
-            status = doc.get("status", "")
-            if not name:
-                continue
-            key = f"mlb:{name}"
-            current[key] = status
-            old = self._previous_statuses.get(key)
-            if old != status:
-                changed_players["mlb"].append(name)
-                self._stats["changes_detected"] += 1
-
-        self._previous_statuses = current
-
-        # Emit events for sports with changes
         bus = get_event_bus()
-        for sport, players in changed_players.items():
-            if players:
+
+        for sport in ["nba", "mlb"]:
+            try:
+                await norm_sync(self.db, sport)
+            except Exception as e:
+                logger.warning(f"[INJURY_WATCHER] {sport.upper()} BDL fetch failed: {e}")
+                continue
+
+            records = await get_injuries(self.db, sport=sport)
+            new_snap = {}
+            meaningful_players = []
+
+            for r in records:
+                bid = r.get("bdl_id")
+                if not bid:
+                    continue
+                new_entry = {"tier_level": r.get("tier_level", 0), "return_date": r.get("return_date")}
+                new_snap[bid] = new_entry
+
+                old_entry = self._previous[sport].get(bid)
+                changed, reason = is_meaningful_change(old_entry, new_entry)
+                if changed:
+                    meaningful_players.append(r.get("player_name", ""))
+                    self._stats["changes_detected"] += 1
+                    if reason == "new_injury":
+                        self._stats["new_injuries"] += 1
+                    elif reason.startswith("status_"):
+                        self._stats["status_changes"] += 1
+                    elif reason == "return_date_shifted":
+                        self._stats["return_shifts"] += 1
+
+            self._previous[sport] = new_snap
+
+            if meaningful_players:
                 await bus.publish(BoardEvent(
                     sport=sport,
                     event_type="injury_change",
                     severity="high",
-                    affected_players=players[:10],
+                    affected_players=meaningful_players[:10],
                     source="injury_watcher",
+                    metadata={"change_count": len(meaningful_players)},
                 ))
                 self._stats["events_emitted"] += 1
-                logger.info(f"[INJURY_WATCHER] {sport.upper()}: {len(players)} status changes → {players[:5]}")
+                logger.info(f"[INJURY_WATCHER] {sport.upper()}: {len(meaningful_players)} meaningful changes → {meaningful_players[:5]}")
 
     def get_stats(self) -> dict:
-        return {"enabled": self._enabled, "tracked_players": len(self._previous_statuses), **self._stats}
+        tracked = sum(len(v) for v in self._previous.values())
+        return {"enabled": self._enabled, "tracked_players": tracked, "tracked_nba": len(self._previous.get("nba", {})), "tracked_mlb": len(self._previous.get("mlb", {})), **self._stats}
 
 
 # ==========================================================================

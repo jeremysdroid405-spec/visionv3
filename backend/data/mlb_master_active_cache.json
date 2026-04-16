@@ -1,6 +1,6 @@
 {
   "sport": "MLB",
-  "last_updated": "2026-04-16T18:01:56.139764+00:00",
+  "last_updated": "2026-04-16T18:06:26.207842+00:00",
   "prop_count": 22,
   "props": {
     "jordan_walker|singles|0.5|prizepicks": {
@@ -1168,177 +1168,6 @@
       "_enriched": true,
       "_enriched_at": "2026-04-16T02:02:53.967334+00:00",
       "_cache_updated": "2026-04-16T02:02:53.967336+00:00"
-    },
-    "william_contreras|hits|0.5|prizepicks": {
-      "event_id": "9d2cb684d156eddca29c13df0d0bce22",
-      "stat_type": "Hits",
-      "line": 0.5,
-      "player_name": "William Contreras",
-      "recommendation": "OVER",
-      "all_lines": {
-        "prizepicks": 0.5
-      },
-      "all_odds": {
-        "prizepicks": -137
-      },
-      "away_team": "Toronto Blue Jays",
-      "bookmaker": "prizepicks",
-      "bookmakers_available": [
-        "prizepicks"
-      ],
-      "commence_time": "2026-04-14T23:41:00Z",
-      "dfs_book": "prizepicks",
-      "dfs_line": 0.5,
-      "dk_edge": null,
-      "dk_line": null,
-      "dk_odds": null,
-      "fetched_at": "2026-04-14T02:02:54.354211+00:00",
-      "home_team": "Milwaukee Brewers",
-      "is_alternate_market": true,
-      "is_demon": false,
-      "is_goblin": true,
-      "market_key": "batter_hits_alternate",
-      "odds": -137,
-      "pp_dk_edge": null,
-      "pp_line": 0.5,
-      "pp_odds": -137,
-      "pp_sharp_edge": null,
-      "sharp_book": null,
-      "sharp_edge": null,
-      "sharp_line": null,
-      "sharp_odds": null,
-      "source": "prizepicks",
-      "sport": "mlb",
-      "team": "MIL",
-      "player_id": 168,
-      "team_name": null,
-      "position": "Catcher",
-      "lineup_status": "PROJECTED",
-      "stat_field": "hits",
-      "season_average": 1.2,
-      "cv": 0.58,
-      "cv_grade": "FAIR",
-      "hit_rate_l10": 100.0,
-      "hit_rate_l5": 100.0,
-      "last_10_games": [
-        {
-          "date": "2026-04-12T18:10:00.000Z",
-          "value": 1,
-          "opponent": "WSH"
-        },
-        {
-          "date": "2026-04-11T23:10:00.000Z",
-          "value": 1,
-          "opponent": "WSH"
-        },
-        {
-          "date": "2026-04-10T23:40:00.000Z",
-          "value": 1,
-          "opponent": "WSH"
-        },
-        {
-          "date": "2026-04-07T22:45:00.000Z",
-          "value": 1,
-          "opponent": "BOS"
-        },
-        {
-          "date": "2026-04-06T22:45:00.000Z",
-          "value": 1,
-          "opponent": "BOS"
-        },
-        {
-          "date": "2026-04-05T18:10:00.000Z",
-          "value": 2,
-          "opponent": "KC"
-        },
-        {
-          "date": "2026-04-04T18:10:00.000Z",
-          "value": 1,
-          "opponent": "KC"
-        },
-        {
-          "date": "2026-04-01T17:40:00.000Z",
-          "value": 2,
-          "opponent": "TB"
-        },
-        {
-          "date": "2026-03-31T23:40:00.000Z",
-          "value": 0,
-          "opponent": "TB"
-        },
-        {
-          "date": "2026-03-30T23:40:00.000Z",
-          "value": 2,
-          "opponent": "TB"
-        }
-      ],
-      "games_played": 10,
-      "edge": 140.0,
-      "enriched_at": "2026-04-14T02:02:59.802460+00:00",
-      "is_enriched": true,
-      "board": "war_zone",
-      "intel_suite": {
-        "lasso": {
-          "projection": 0.917,
-          "confidence_tier": "HIGH_VARIANCE",
-          "r_squared": 0.021,
-          "top_drivers": [
-            "L10_avg_plate_appearances",
-            "L5_std_fielding_chances"
-          ]
-        }
-      },
-      "is_vision_enriched": true,
-      "hit_rate": 90.0,
-      "h5_rate": 100.0,
-      "h10_rate": 100.0,
-      "h20_rate": 90.0,
-      "l10_avg": 1.3,
-      "l5_avg": 1.2,
-      "season_avg": 1.2,
-      "true_probability": 50.0,
-      "edge_pct": 40.0,
-      "vk_predicted": 1.23,
-      "vk_edge": 0.73,
-      "board_score": 99.0,
-      "synced_at": "2026-04-16T02:01:28.567873+00:00",
-      "validation": {
-        "has_market_data": false,
-        "has_hit_rates": true,
-        "has_context": true,
-        "has_mlr": false,
-        "has_gemini": true,
-        "is_fully_validated": false
-      },
-      "ferrari_tier": "front_lines",
-      "tier_label": "Front Lines",
-      "l5_hits": 5,
-      "l10_hits": 9,
-      "l20_avg": 1.2,
-      "l20_hits": 9,
-      "hit_rate_l20": 90.0,
-      "vk_source": "weighted_avg",
-      "vk_prob_over": 95,
-      "vk_probability": 95,
-      "vk_prob_under": 5,
-      "vk_recommendation": "STRONG OVER",
-      "vision_intel": "Contreras is a lock to clear",
-      "vision_summary": "Contreras is a lock to clear",
-      "oracle_apex_qualified": true,
-      "tier": "safe_haven",
-      "opponent": "Milwaukee Brewers",
-      "game_time": "2026-04-14T23:41:00Z",
-      "tempo_modifier": 0.9,
-      "scout_badges": [],
-      "vk_data": {
-        "predicted": 0.917,
-        "projection": 0.917,
-        "edge": 0.41700000000000004,
-        "source": "lasso_v2"
-      },
-      "_enriched": true,
-      "_enriched_at": "2026-04-16T02:02:56.587412+00:00",
-      "_cache_updated": "2026-04-16T02:02:56.587414+00:00"
     },
     "rhys_hoskins|hits|0.5|prizepicks": {
       "event_id": "970acfb69adcb4bf8fc9ce89662aa43e",
@@ -2729,177 +2558,6 @@
       "_enriched": true,
       "_enriched_at": "2026-04-16T02:03:06.679091+00:00",
       "_cache_updated": "2026-04-16T02:03:06.679093+00:00"
-    },
-    "william_contreras|total_bases|0.5|prizepicks": {
-      "event_id": "9d2cb684d156eddca29c13df0d0bce22",
-      "stat_type": "Total Bases",
-      "line": 0.5,
-      "player_name": "William Contreras",
-      "recommendation": "OVER",
-      "all_lines": {
-        "prizepicks": 0.5
-      },
-      "all_odds": {
-        "prizepicks": -137
-      },
-      "away_team": "Toronto Blue Jays",
-      "bookmaker": "prizepicks",
-      "bookmakers_available": [
-        "prizepicks"
-      ],
-      "commence_time": "2026-04-14T23:41:00Z",
-      "dfs_book": "prizepicks",
-      "dfs_line": 0.5,
-      "dk_edge": null,
-      "dk_line": null,
-      "dk_odds": null,
-      "fetched_at": "2026-04-14T02:02:54.354522+00:00",
-      "home_team": "Milwaukee Brewers",
-      "is_alternate_market": true,
-      "is_demon": false,
-      "is_goblin": true,
-      "market_key": "batter_total_bases_alternate",
-      "odds": -137,
-      "pp_dk_edge": null,
-      "pp_line": 0.5,
-      "pp_odds": -137,
-      "pp_sharp_edge": null,
-      "sharp_book": null,
-      "sharp_edge": null,
-      "sharp_line": null,
-      "sharp_odds": null,
-      "source": "prizepicks",
-      "sport": "mlb",
-      "team": "MIL",
-      "player_id": 168,
-      "team_name": null,
-      "position": "Catcher",
-      "lineup_status": "PROJECTED",
-      "stat_field": "total_bases",
-      "season_average": 1.9,
-      "cv": 0.774,
-      "cv_grade": "VOLATILE",
-      "hit_rate_l10": 100.0,
-      "hit_rate_l5": 100.0,
-      "last_10_games": [
-        {
-          "date": "2026-04-12T18:10:00.000Z",
-          "value": 1,
-          "opponent": "WSH"
-        },
-        {
-          "date": "2026-04-11T23:10:00.000Z",
-          "value": 4,
-          "opponent": "WSH"
-        },
-        {
-          "date": "2026-04-10T23:40:00.000Z",
-          "value": 1,
-          "opponent": "WSH"
-        },
-        {
-          "date": "2026-04-07T22:45:00.000Z",
-          "value": 1,
-          "opponent": "BOS"
-        },
-        {
-          "date": "2026-04-06T22:45:00.000Z",
-          "value": 1,
-          "opponent": "BOS"
-        },
-        {
-          "date": "2026-04-05T18:10:00.000Z",
-          "value": 3,
-          "opponent": "KC"
-        },
-        {
-          "date": "2026-04-04T18:10:00.000Z",
-          "value": 2,
-          "opponent": "KC"
-        },
-        {
-          "date": "2026-04-01T17:40:00.000Z",
-          "value": 1,
-          "opponent": "TB"
-        },
-        {
-          "date": "2026-03-31T23:40:00.000Z",
-          "value": 0,
-          "opponent": "TB"
-        },
-        {
-          "date": "2026-03-30T23:40:00.000Z",
-          "value": 5,
-          "opponent": "TB"
-        }
-      ],
-      "games_played": 10,
-      "edge": 280.0,
-      "enriched_at": "2026-04-14T02:02:59.804189+00:00",
-      "is_enriched": true,
-      "board": "war_zone",
-      "intel_suite": {
-        "lasso": {
-          "projection": 1.587,
-          "confidence_tier": "HIGH_VARIANCE",
-          "r_squared": 0.0189,
-          "top_drivers": [
-            "L10_avg_plate_appearances",
-            "L5_std_fielding_chances"
-          ]
-        }
-      },
-      "is_vision_enriched": true,
-      "hit_rate": 90.0,
-      "h5_rate": 100.0,
-      "h10_rate": 100.0,
-      "h20_rate": 90.0,
-      "l10_avg": 1.8,
-      "l5_avg": 1.8,
-      "season_avg": 1.9,
-      "true_probability": 50.0,
-      "edge_pct": 40.0,
-      "vk_predicted": 1.83,
-      "vk_edge": 1.33,
-      "board_score": 99.0,
-      "synced_at": "2026-04-16T02:01:28.568444+00:00",
-      "validation": {
-        "has_market_data": false,
-        "has_hit_rates": true,
-        "has_context": true,
-        "has_mlr": false,
-        "has_gemini": true,
-        "is_fully_validated": false
-      },
-      "ferrari_tier": "front_lines",
-      "tier_label": "Front Lines",
-      "l5_hits": 5,
-      "l10_hits": 9,
-      "l20_avg": 1.9,
-      "l20_hits": 9,
-      "hit_rate_l20": 90.0,
-      "vk_source": "weighted_avg",
-      "vk_prob_over": 95,
-      "vk_probability": 95,
-      "vk_prob_under": 5,
-      "vk_recommendation": "STRONG OVER",
-      "vision_intel": "The math screams hammer the over on",
-      "vision_summary": "The math screams hammer the over on",
-      "oracle_apex_qualified": true,
-      "tier": "safe_haven",
-      "opponent": "Milwaukee Brewers",
-      "game_time": "2026-04-14T23:41:00Z",
-      "tempo_modifier": 0.9,
-      "scout_badges": [],
-      "vk_data": {
-        "predicted": 1.587,
-        "projection": 1.587,
-        "edge": 1.087,
-        "source": "lasso_v2"
-      },
-      "_enriched": true,
-      "_enriched_at": "2026-04-16T02:03:08.057634+00:00",
-      "_cache_updated": "2026-04-16T02:03:08.057635+00:00"
     },
     "sonny_gray|earned_runs|0.5|prizepicks": {
       "event_id": "62e56fb8e25706db1f4b277d3dab18de",
@@ -4406,6 +4064,427 @@
       "_enriched": true,
       "_enriched_at": "2026-04-16T02:03:27.121568+00:00",
       "_cache_updated": "2026-04-16T02:03:27.121570+00:00"
+    },
+    "david_peterson|hits_allowed|4.5|prizepicks": {
+      "event_id": "af4723d660204fd1fb7719261eb7f74b",
+      "recommendation": "OVER",
+      "stat_type": "Hits Allowed",
+      "line": 4.5,
+      "player_name": "David Peterson",
+      "all_lines": {
+        "prizepicks": 4.5
+      },
+      "all_odds": {
+        "prizepicks": -137
+      },
+      "away_team": "New York Mets",
+      "bookmaker": "prizepicks",
+      "bookmakers_available": [
+        "prizepicks"
+      ],
+      "commence_time": "2026-04-14T02:11:00Z",
+      "dfs_book": "prizepicks",
+      "dfs_line": 4.5,
+      "dk_edge": null,
+      "dk_line": null,
+      "dk_odds": null,
+      "fetched_at": "2026-04-14T02:02:52.674785+00:00",
+      "home_team": "Los Angeles Dodgers",
+      "is_alternate_market": true,
+      "is_demon": false,
+      "is_goblin": true,
+      "market_key": "pitcher_hits_allowed_alternate",
+      "odds": -137,
+      "pp_dk_edge": null,
+      "pp_line": 4.5,
+      "pp_odds": -137,
+      "pp_sharp_edge": null,
+      "sharp_book": null,
+      "sharp_edge": null,
+      "sharp_line": null,
+      "sharp_odds": null,
+      "source": "prizepicks",
+      "sport": "mlb",
+      "team": "NYM",
+      "player_id": 279,
+      "team_name": null,
+      "position": "Starting Pitcher",
+      "lineup_status": "UNKNOWN",
+      "stat_field": "hits_allowed",
+      "season_average": 5.5,
+      "cv": 0.381,
+      "cv_grade": "FAIR",
+      "hit_rate_l10": 85.7,
+      "hit_rate_l5": 100.0,
+      "last_10_games": [
+        {
+          "date": "2026-04-08T20:10:00.000Z",
+          "value": 6,
+          "opponent": "ARI"
+        },
+        {
+          "date": "2026-04-03T01:45:00.000Z",
+          "value": 9,
+          "opponent": "SF"
+        },
+        {
+          "date": "2026-03-28T20:10:00.000Z",
+          "value": 6,
+          "opponent": "PIT"
+        },
+        {
+          "date": "2026-03-22T17:10:00.000Z",
+          "value": 5,
+          "opponent": "MIA"
+        },
+        {
+          "date": "2026-03-16T22:10:00.000Z",
+          "value": 5,
+          "opponent": "WSH"
+        },
+        {
+          "date": "2026-03-10T17:10:00.000Z",
+          "value": 2,
+          "opponent": "STL"
+        }
+      ],
+      "games_played": 6,
+      "edge": 22.22,
+      "enriched_at": "2026-04-14T02:02:59.667261+00:00",
+      "is_enriched": true,
+      "hit_rate": 85.7,
+      "h5_rate": 100.0,
+      "h10_rate": 85.7,
+      "h20_rate": 85.7,
+      "l10_avg": 5.43,
+      "l5_avg": 6.2,
+      "season_avg": 5.5,
+      "true_probability": 50.0,
+      "edge_pct": 35.7,
+      "vk_predicted": 5.76,
+      "vk_edge": 1.26,
+      "board_score": 94.27,
+      "synced_at": "2026-04-16T18:03:56.130089+00:00",
+      "validation": {
+        "has_market_data": false,
+        "has_hit_rates": true,
+        "has_context": true,
+        "has_mlr": false,
+        "has_gemini": true,
+        "is_fully_validated": false
+      },
+      "ferrari_tier": "front_lines",
+      "tier_label": "Front Lines",
+      "volatility_score": 47.6,
+      "volatility_label": "low",
+      "volatility_family": "default",
+      "scout_badges": [
+        {
+          "badge_key": "soft_matchup",
+          "id": "soft_matchup"
+        }
+      ],
+      "l5_hits": 5,
+      "l10_hits": 5,
+      "l20_avg": 5.5,
+      "l20_hits": 5,
+      "hit_rate_l20": 85.7,
+      "vk_source": "weighted_avg",
+      "vk_prob_over": 95,
+      "vk_probability": 95,
+      "vk_prob_under": 5,
+      "vk_recommendation": "STRONG OVER",
+      "vision_intel": "The books are giving us a gift with this 4.5 line considering David Peterson has been a total hit magnet, surrendering at least five knocks in 85.7% of his last 20 outings. Facing a Dodgers lineup that eats southpaws for breakfast, we are hammerng this over because his 5.43 average over the last ten games shows he simply doesn't have the stuff to navigate this many bats cleanly.",
+      "vision_summary": "The books are giving us a gift with this 4.5 line considering David Peterson has been a total hit magnet, surrendering at least five knocks in 85.7% of his last 20 outings. Facing a Dodgers lineup that eats southpaws for breakfast, we are hammerng this over because his 5.43 average over the last ten games shows he simply doesn't have the stuff to navigate this many bats cleanly.",
+      "oracle_apex_qualified": true,
+      "tier": "safe_haven",
+      "opponent": "Los Angeles Dodgers",
+      "game_time": "2026-04-14T02:11:00Z",
+      "tempo_modifier": 1.0,
+      "intel_suite": {
+        "tempo": {
+          "multiplier": 1.0,
+          "display": "+0%",
+          "tempo_label": "Standard Workload",
+          "factors": [],
+          "total_pct": 0.0
+        },
+        "pace_delta": {
+          "multiplier": 1.0,
+          "display": "+0%",
+          "tempo_label": "Standard Workload",
+          "factors": [],
+          "total_pct": 0.0
+        },
+        "sport": "mlb",
+        "context_badges": [
+          "workhorse",
+          "cold_zone"
+        ],
+        "vision_insight": {
+          "primary": "David Peterson is locked in - 86% hit rate with 5.4 avg vs 4.5 line",
+          "reasons": [
+            "Hitting at 86% over last 10 games",
+            "L10 average of 5.4 exceeds 4.5 line",
+            "Low variance (CV 38%) indicates consistency",
+            "Matchup vs Los Angeles Dodgers"
+          ],
+          "confidence": "HIGH"
+        },
+        "stability_index": {
+          "display": "70%",
+          "score": 70,
+          "consistency": "Stable",
+          "std_dev": 0.381
+        },
+        "matchup_dvp": {
+          "display": "vs Los Angeles Dodgers",
+          "opponent": "Los Angeles Dodgers",
+          "opponent_abbr": "Los",
+          "friction_level": "Medium",
+          "friction_label": "Standard Matchup",
+          "color": "yellow",
+          "dvp_rank": 15,
+          "stat_type": "Hits Allowed"
+        }
+      },
+      "_enriched": true,
+      "_enriched_at": "2026-04-16T18:04:52.531559+00:00",
+      "_cache_updated": "2026-04-16T18:04:52.531562+00:00"
+    },
+    "byron_buxton|batter_strikeouts|0.5|prizepicks": {
+      "event_id": "62e56fb8e25706db1f4b277d3dab18de",
+      "recommendation": "OVER",
+      "stat_type": "Batter Strikeouts",
+      "line": 0.5,
+      "player_name": "Byron Buxton",
+      "all_lines": {
+        "prizepicks": 0.5
+      },
+      "all_odds": {
+        "prizepicks": -137
+      },
+      "away_team": "Boston Red Sox",
+      "bookmaker": "prizepicks",
+      "bookmakers_available": [
+        "prizepicks"
+      ],
+      "commence_time": "2026-04-14T23:41:00Z",
+      "dfs_book": "prizepicks",
+      "dfs_line": 0.5,
+      "dk_edge": null,
+      "dk_line": null,
+      "dk_odds": null,
+      "fetched_at": "2026-04-14T02:02:54.014717+00:00",
+      "home_team": "Minnesota Twins",
+      "is_alternate_market": true,
+      "is_demon": false,
+      "is_goblin": true,
+      "market_key": "batter_strikeouts_alternate",
+      "odds": -137,
+      "pp_dk_edge": null,
+      "pp_line": 0.5,
+      "pp_odds": -137,
+      "pp_sharp_edge": null,
+      "sharp_book": null,
+      "sharp_edge": null,
+      "sharp_line": null,
+      "sharp_odds": null,
+      "source": "prizepicks",
+      "sport": "mlb",
+      "team": "MIN",
+      "player_id": 1028,
+      "team_name": null,
+      "position": "Center Fielder",
+      "lineup_status": "PROJECTED",
+      "stat_field": "strikeouts",
+      "season_average": 1.1,
+      "cv": 0.648,
+      "cv_grade": "VOLATILE",
+      "hit_rate_l10": 80.0,
+      "hit_rate_l5": 100.0,
+      "last_10_games": [
+        {
+          "date": "2026-04-13T23:40:00.000Z",
+          "value": 1,
+          "opponent": "BOS"
+        },
+        {
+          "date": "2026-04-11T19:07:00.000Z",
+          "value": 1,
+          "opponent": "TOR"
+        },
+        {
+          "date": "2026-04-10T23:07:00.000Z",
+          "value": 3,
+          "opponent": "TOR"
+        },
+        {
+          "date": "2026-04-09T17:40:00.000Z",
+          "value": 2,
+          "opponent": "DET"
+        },
+        {
+          "date": "2026-04-08T23:40:00.000Z",
+          "value": 0,
+          "opponent": "DET"
+        },
+        {
+          "date": "2026-04-07T23:40:00.000Z",
+          "value": 1,
+          "opponent": "DET"
+        },
+        {
+          "date": "2026-04-06T23:40:00.000Z",
+          "value": 0,
+          "opponent": "DET"
+        },
+        {
+          "date": "2026-04-05T18:10:00.000Z",
+          "value": 1,
+          "opponent": "TB"
+        },
+        {
+          "date": "2026-04-03T21:05:00.000Z",
+          "value": 1,
+          "opponent": "TB"
+        },
+        {
+          "date": "2026-04-02T18:10:00.000Z",
+          "value": 1,
+          "opponent": "KC"
+        }
+      ],
+      "games_played": 10,
+      "edge": 120.0,
+      "enriched_at": "2026-04-14T02:02:59.762703+00:00",
+      "is_enriched": true,
+      "hit_rate": 85.0,
+      "h5_rate": 100.0,
+      "h10_rate": 80.0,
+      "h20_rate": 85.0,
+      "l10_avg": 1.1,
+      "l5_avg": 1.4,
+      "season_avg": 1.1,
+      "true_probability": 50.0,
+      "edge_pct": 35.0,
+      "vk_predicted": 1.22,
+      "vk_edge": 0.72,
+      "board_score": 93.5,
+      "synced_at": "2026-04-16T18:03:56.099398+00:00",
+      "validation": {
+        "has_market_data": false,
+        "has_hit_rates": true,
+        "has_context": true,
+        "has_mlr": false,
+        "has_gemini": true,
+        "is_fully_validated": false
+      },
+      "ferrari_tier": "front_lines",
+      "tier_label": "Front Lines",
+      "volatility_score": 76.2,
+      "volatility_label": "moderate",
+      "volatility_family": "mlb_counting",
+      "scout_badges": [
+        {
+          "badge_key": "hot_streak",
+          "id": "hot_streak"
+        },
+        {
+          "badge_key": "soft_matchup",
+          "id": "soft_matchup"
+        }
+      ],
+      "l5_hits": 4,
+      "l10_hits": 8,
+      "l20_avg": 1.1,
+      "l20_hits": 8,
+      "hit_rate_l20": 85.0,
+      "vk_source": "weighted_avg",
+      "vk_prob_over": 87.2,
+      "vk_probability": 87.2,
+      "vk_prob_under": 12.8,
+      "vk_recommendation": "STRONG OVER",
+      "vision_intel": "Byron Buxton is walking into a buzzsaw tonight, and with a ridiculous 85% hit rate over his last 20 games, we are hammer-heading this over before the books realize they left the lights on. Even though he can be a bit of a rollercoaster, averaging 1.1 strikeouts lately means we only need one whiff to cash this ticket against a Minnesota staff that knows exactly how to exploit his swing.",
+      "vision_summary": "Byron Buxton is walking into a buzzsaw tonight, and with a ridiculous 85% hit rate over his last 20 games, we are hammer-heading this over before the books realize they left the lights on. Even though he can be a bit of a rollercoaster, averaging 1.1 strikeouts lately means we only need one whiff to cash this ticket against a Minnesota staff that knows exactly how to exploit his swing.",
+      "oracle_apex_qualified": true,
+      "tier": "safe_haven",
+      "opponent": "Minnesota Twins",
+      "game_time": "2026-04-14T23:41:00Z",
+      "tempo_modifier": 1.03,
+      "intel_suite": {
+        "tempo": {
+          "multiplier": 1.03,
+          "display": "+3%",
+          "tempo_label": "Standard PA Volume",
+          "factors": [
+            {
+              "name": "Home Team",
+              "value": -2.0,
+              "reason": "Risk of no 9th inning"
+            },
+            {
+              "name": "Batting 1",
+              "value": 5.0,
+              "reason": "Maximized PAs"
+            }
+          ],
+          "total_pct": 3.0
+        },
+        "pace_delta": {
+          "multiplier": 1.03,
+          "display": "+3%",
+          "tempo_label": "Standard PA Volume",
+          "factors": [
+            {
+              "name": "Home Team",
+              "value": -2.0,
+              "reason": "Risk of no 9th inning"
+            },
+            {
+              "name": "Batting 1",
+              "value": 5.0,
+              "reason": "Maximized PAs"
+            }
+          ],
+          "total_pct": 3.0
+        },
+        "sport": "mlb",
+        "context_badges": [
+          "pure_contact",
+          "cold_zone",
+          "split_advantage",
+          "bvp_dominator"
+        ],
+        "vision_insight": {
+          "primary": "Byron Buxton is locked in - 80% hit rate with 1.1 avg vs 0.5 line",
+          "reasons": [
+            "Hitting at 80% over last 10 games",
+            "L10 average of 1.1 exceeds 0.5 line",
+            "Matchup vs Minnesota Twins"
+          ],
+          "confidence": "HIGH"
+        },
+        "stability_index": {
+          "display": "50%",
+          "score": 50,
+          "consistency": "Variable",
+          "std_dev": 0.648
+        },
+        "matchup_dvp": {
+          "display": "vs Minnesota Twins",
+          "opponent": "Minnesota Twins",
+          "opponent_abbr": "Min",
+          "friction_level": "Medium",
+          "friction_label": "Standard Matchup",
+          "color": "yellow",
+          "dvp_rank": 15,
+          "stat_type": "Batter Strikeouts"
+        }
+      },
+      "_enriched": true,
+      "_enriched_at": "2026-04-16T18:04:54.842076+00:00",
+      "_cache_updated": "2026-04-16T18:04:54.842078+00:00"
     }
   }
 }

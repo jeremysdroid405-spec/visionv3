@@ -1,15 +1,12 @@
 """
-Injury Intelligence Service - Real-time NBA injury tracking and usage ripple analysis
-Primary: ESPN Injuries API (reliable, comprehensive)
-Secondary: BallDontLie API (BDL) for official NBA injury data
+Injury Intelligence Service - Real-time injury tracking and usage ripple analysis.
+Source: BallDontLie API via shared injury_normalization layer.
 
 Features:
-- Real-time injury status tracking
+- Real-time injury status tracking (NBA + MLB)
 - "Usage Ripple" analysis (who benefits when a star is out)
 - Risk flagging for GTD/Questionable players
 - Breaking news detection
-
-NOTE: BDL is the only stats source from this application.
 """
 
 import os
@@ -24,123 +21,91 @@ load_dotenv()
 
 logger = logging.getLogger(__name__)
 
-# API Configuration
-ESPN_INJURIES_URL = "https://site.web.api.espn.com/apis/site/v2/sports/basketball/nba/injuries"
 ESPN_NEWS_URL = "http://site.api.espn.com/apis/site/v2/sports/basketball/nba/news"
-
-# Injury status severity mapping
-INJURY_SEVERITY = {
-    "Out": {"level": 3, "color": "red", "risk": "HIGH"},
-    "Doubtful": {"level": 2.5, "color": "red", "risk": "HIGH"},
-    "Questionable": {"level": 2, "color": "yellow", "risk": "MEDIUM"},
-    "Probable": {"level": 1, "color": "green", "risk": "LOW"},
-    "Day-To-Day": {"level": 2, "color": "yellow", "risk": "MEDIUM"},
-    "GTD": {"level": 2, "color": "yellow", "risk": "MEDIUM"},
-}
 
 
 class InjuryIntelligenceService:
     """
     The Injury Intelligence "War Room" - Tracks injuries and calculates usage ripples.
+    Uses BDL via injury_normalization layer (shared for NBA + MLB).
     """
     
     def __init__(self, db):
-        """Initialize with MongoDB database connection."""
         self.db = db
-        self.injuries_collection = db.dg_injuries
+        self.injuries_collection = db.dg_injuries  # legacy name kept for downstream compat
         self.cached_board = db.dg_cached_board
         self.daily_insights = db.dg_daily_insights
         self.breaking_news = db.dg_breaking_news
         
     async def sync_injuries(self) -> Dict[str, Any]:
         """
-        Sync injury data from ESPN API.
-        Updates the dg_injuries collection with current injury status.
+        Sync NBA injury data from BDL via normalization layer.
+        Writes to both `injuries_normalized` (new canonical) and `dg_injuries` (legacy compat).
         """
-        logger.info("[INJURY] Starting injury sync from ESPN + BDL...")
+        logger.info("[INJURY] Starting NBA injury sync from BDL (normalized)...")
         
         try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                response = await client.get(ESPN_INJURIES_URL)
-                response.raise_for_status()
-                data = response.json()
-            
-            if data.get('status') != 'success':
-                raise Exception(f"ESPN API error: {data.get('status')}")
-            
-            injuries_data = data.get('injuries', [])
-            synced_at = datetime.now(timezone.utc)
-            
-            all_injuries = []
-            injured_players = []
-            
-            for team_data in injuries_data:
-                team_name = team_data.get('displayName', 'Unknown')
-                team_abbr = self._get_team_abbr(team_name)
-                
-                for injury in team_data.get('injuries', []):
-                    athlete = injury.get('athlete', {})
-                    player_name = athlete.get('displayName', 'Unknown')
-                    status = injury.get('status', 'Unknown')
-                    
-                    injury_record = {
-                        "player_name": player_name,
-                        "player_id": athlete.get('id'),
-                        "team": team_abbr,
-                        "team_full": team_name,
-                        "status": status,
-                        "injury_type": injury.get('type', {}).get('description', 'Unknown'),
-                        "description": injury.get('longComment', ''),
-                        "short_comment": injury.get('shortComment', ''),
-                        "severity": INJURY_SEVERITY.get(status, INJURY_SEVERITY['Questionable']),
-                        "date_reported": injury.get('date', synced_at.isoformat()),
-                        "synced_at": synced_at.isoformat(),
-                        "source": "ESPN"
-                    }
-                    
-                    all_injuries.append(injury_record)
-                    
-                    # Track for usage ripple calculation
-                    if status in ['Out', 'Doubtful']:
-                        injured_players.append({
-                            "player_name": player_name,
-                            "team": team_abbr,
-                            "status": status
-                        })
-            
-            # Sync from BDL for comprehensive injury coverage
-            bdl_count = await self._sync_bdl_injuries()
-            
-            # Clear and insert fresh injury data
+            from services.injury_normalization import sync_injuries as norm_sync, get_injuries
+
+            # Sync via normalization layer → injuries_normalized
+            result = await norm_sync(self.db, "nba")
+
+            # Also write to legacy dg_injuries for backward compat with vacuum service etc.
+            normalized = await get_injuries(self.db, sport="nba")
             await self.injuries_collection.delete_many({})
-            if all_injuries:
-                await self.injuries_collection.insert_many(all_injuries)
-            
-            # Calculate usage ripples for injured star players
+            if normalized:
+                # Map to legacy shape
+                legacy_records = []
+                for n in normalized:
+                    legacy_records.append({
+                        "player_name": n["player_name"],
+                        "player_id": str(n.get("bdl_id", "")),
+                        "bdl_id": n.get("bdl_id"),
+                        "team": n["team"],
+                        "team_full": "",
+                        "position": n.get("position", ""),
+                        "status": n["raw_status"],  # legacy consumers expect raw status
+                        "normalized_status": n["status"],
+                        "tier_level": n["tier_level"],
+                        "risk": n["risk"],
+                        "return_date": n.get("return_date"),
+                        "description": n.get("description", ""),
+                        "short_comment": n.get("short_comment", ""),
+                        "severity": {
+                            "level": n["tier_level"],
+                            "color": n["color"],
+                            "risk": n["risk"],
+                        },
+                        "synced_at": n["synced_at"],
+                        "source": "BDL",
+                    })
+                await self.injuries_collection.insert_many(legacy_records)
+
+            # Calculate usage ripples for OUT/DOUBTFUL players
+            injured_players = [
+                {"player_name": n["player_name"], "team": n["team"], "status": n["status"]}
+                for n in normalized if n.get("tier_level", 0) >= 3
+            ]
             ripple_updates = await self._calculate_usage_ripples(injured_players)
-            
-            # Fetch breaking news
+
             breaking_count = await self._sync_breaking_news()
-            
-            logger.info(f"[INJURY] Synced {len(all_injuries)} injuries, {bdl_count} BDL injuries, {ripple_updates} ripple updates")
-            
+
+            logger.info(f"[INJURY] BDL sync: {result['count']} injuries, {len(injured_players)} out/doubtful, {ripple_updates} ripples")
+
             return {
                 "success": True,
-                "injuries_synced": len(all_injuries),
-                "bdl_injuries": bdl_count,
-                "teams_affected": len(injuries_data),
+                "source": "BDL",
+                "injuries_synced": result["count"],
+                "tiers": result.get("tiers", {}),
                 "star_players_out": len(injured_players),
                 "usage_ripple_updates": ripple_updates,
                 "breaking_news_items": breaking_count,
-                "synced_at": synced_at.isoformat()
+                "synced_at": result["synced_at"],
             }
-            
+
         except Exception as e:
-            logger.error(f"[INJURY] Sync failed: {e}")
-            return {
-                "success": False,
-                "error": str(e)
-            }
+            logger.error(f"[INJURY] BDL sync failed: {e}")
+            return {"success": False, "error": str(e)}
     
     async def _calculate_usage_ripples(self, injured_players: List[Dict]) -> int:
         """

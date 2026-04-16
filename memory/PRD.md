@@ -1,56 +1,58 @@
 # PropVision - Product Requirements Document
 
-## Sync Architecture v2 — Phases 1-4 Complete
+## Sync Architecture v2 — All Phases Complete
 
 ### Phase 1: Foundation (COMPLETE) — Event bus, coordinator, budget manager
-### Phase 2: NBA Migration (COMPLETE) — All NBA through coordinator → pipeline
+### Phase 2: NBA Migration (COMPLETE) — All NBA through coordinator → pipeline  
 ### Phase 3: MLB Migration (COMPLETE) — All MLB through coordinator → pipeline
-### Phase 4: Event-Driven Activation (COMPLETE) — Watchers active, OddsDelta in controlled mode
+### Phase 4: Event-Driven Activation (COMPLETE) — Watchers active
 
-## Volatility System — Single Source of Truth
+## Injury Normalization Layer (COMPLETE)
 
-### Architecture
-All volatility interpretation routes through ONE shared function:
-```python
-from services.volatility_profile import get_volatility_profile
-profile = get_volatility_profile(cv=0.55, stat_type="Hits", line=0.5)
-# profile.score, profile.label, profile.is_extreme, profile.badge_key, profile.family
-```
+### Source: BallDontLie API (replaced ESPN)
+- NBA: `/nba/v1/player_injuries` → 181 injuries, 5 status tiers
+- MLB: `/mlb/v1/player_injuries` → 143 injuries, 5 status tiers + IL designations
 
-### Prop Family Thresholds
+### Normalized Status Hierarchy
+| Tier Level | NBA Status | MLB Status | Risk | Color |
+|-----------|-----------|-----------|------|-------|
+| 1 | PROBABLE | PATERNITY, BEREAVEMENT | LOW | green |
+| 2 | QUESTIONABLE | DAY_TO_DAY | MEDIUM | yellow |
+| 3 | DOUBTFUL | IL_SHORT (7-day, 10-day) | HIGH | orange |
+| 4 | OUT | IL_STANDARD (15-day), SUSPENDED | HIGH | red |
+| 5 | OUT_FOR_SEASON | IL_EXTENDED (60-day) | CRITICAL | red |
 
-| Family | Stat Types | Line Range | Moderate | High | Extreme |
-|--------|-----------|-----------|----------|------|---------|
-| **mlb_binary** | Hits, Runs, RBIs, HR, SB, Earned Runs, Walks | ≤ 1.5 | 0.55 | 0.80 | 1.00 |
-| **mlb_counting** | Total Bases, Batter K, Pitcher K, H+R+RBI, Doubles | any | 0.45 | 0.65 | 0.85 |
-| **nba_low_line** | AST, REB, STL, BLK, 3PM, TO | ≤ 4.5 | 0.50 | 0.70 | 0.90 |
-| **nba_mid_line** | PTS, REB, AST, STL, BLK, PA, PR | 4.5-15 | 0.40 | 0.60 | 0.80 |
-| **nba_high_line** | PRA, PTS, P+A, P+R, Fantasy | > 15 | 0.30 | 0.50 | 0.70 |
-| **default** | Unknown prop types | any | 0.40 | 0.60 | 0.80 |
+### Collection: `injuries_normalized`
+| Field | Type | Description |
+|-------|------|-------------|
+| sport | string | "nba" / "mlb" |
+| player_name | string | Full name |
+| bdl_id | int | BDL player ID (direct hub join) |
+| status | string | Normalized tier name |
+| tier_level | int | 1-5 severity |
+| risk | string | LOW/MEDIUM/HIGH/CRITICAL |
+| return_date | string | Expected return (YYYY-MM-DD) |
+| injury_date | string | When injury occurred (MLB only) |
+| injury_type | string | Category (MLB only) |
+| injury_detail | string | Specific injury (MLB only) |
+| injury_side | string | Body side (MLB only) |
+| description | string | Context |
 
-### What Changed
-- **Before**: Flat CV > 0.70 threshold for all props → Hits 0.5 (CV 0.77) falsely flagged extreme
-- **After**: Family-aware thresholds → Hits 0.5 (CV 0.77) correctly labeled `moderate` in `mlb_binary` family (extreme = 1.00)
+### InjuryWatcher — Meaningful Changes Only
+Triggers only on:
+- `tier_level` changed (status escalation/de-escalation)
+- `return_date` shifted
+- New injury appeared
 
-### Consumers Updated
-| Location | What | Before | After |
-|----------|------|--------|-------|
-| `ferrari_tiers.py` overlay | `volatility_score`, `volatility_label`, `volatility_family` | Not set | Set from shared profile for ALL picks |
-| `ferrari_tiers.py` scout badge | `volatility_extreme` badge | `cv > 0.70` | `vol_profile.is_extreme` |
-| `ferrari_tiers.py` intel reasons | Confidence = SPECULATIVE | `cv > 0.70` | `vol_profile.label in ("high", "extreme")` |
-| `ferrari_tiers.py` overlay | Badge reconciliation | Stale cache could contradict | Cache badges reconciled with profile |
-| `nba_adapter.py` gate check | CV fail gate | `cv > 0.90` | `vol.label == "extreme"` |
-| `mlb_adapter.py` Safe Haven gates | CV fail gate | `cv > 1.10` (binary) / `cv > max_cv` | `vol.is_extreme` (binary) / `vol.label in ("high","extreme")` |
+Does NOT trigger on: description text changes, same-tier updates.
 
 ### Key Files
 | File | Purpose |
 |------|---------|
-| `services/volatility_profile.py` | Single source of truth — `get_volatility_profile()` |
-| `services/event_bus.py` | Async pub/sub |
-| `services/rebuild_coordinator.py` | Dedup, scope, lock, rate limit, dispatch |
-| `services/odds_budget_manager.py` | Budget tracking |
-| `services/watchers.py` | InjuryWatcher, GameClockWatcher, OddsDeltaWatcher |
-| `services/unified_pipeline.py` | 7-phase pipeline |
+| `services/injury_normalization.py` | Fetch, normalize, persist, compare |
+| `services/watchers.py` InjuryWatcher | BDL polling → meaningful change detection |
+| `services/injury_service.py` | Legacy compat wrapper (writes dg_injuries) |
+| `services/injury_vacuum_service.py` | Reads from injuries_normalized |
 
 ---
 *Last Updated: April 17, 2026*
