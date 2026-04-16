@@ -294,7 +294,7 @@ class RebuildCoordinator:
         return False
 
     def _classify_scope(self, event: BoardEvent) -> RebuildScope:
-        if event.event_type in ("manual", "scheduled_safety"):
+        if event.event_type in ("manual", "scheduled_safety", "scored_data_refresh"):
             return RebuildScope.FULL
         if event.severity == "high":
             return RebuildScope.FULL

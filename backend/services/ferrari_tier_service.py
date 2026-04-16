@@ -1338,6 +1338,30 @@ class FerrariTierService:
             logger.info(f"  Total discarded: {len(discarded)}")
             
             # =================================================================
+            # PHASE 3b: EMIT COORDINATOR EVENT (trigger board republish)
+            # =================================================================
+            # ferrari_scored has fresh data — the coordinator must republish
+            # the board so elite_* collections reflect the updated candidate pool.
+            try:
+                from services.rebuild_coordinator import get_coordinator
+                from services.event_bus import BoardEvent
+                coordinator = get_coordinator()
+                if coordinator:
+                    event = BoardEvent(
+                        sport=target_sport,
+                        event_type="scored_data_refresh",
+                        severity="medium",
+                        source="ferrari_scored_refresh",
+                        metadata={"props_count": len(all_scored)},
+                    )
+                    await coordinator.handle_event(event)
+                    logger.info(f"[PHASE 3b] Coordinator event emitted: ferrari_scored_refresh ({len(all_scored)} props)")
+                else:
+                    logger.warning("[PHASE 3b] No coordinator available — board will NOT be republished")
+            except Exception as e:
+                logger.warning(f"[PHASE 3b] Coordinator event failed (non-fatal): {e}")
+            
+            # =================================================================
             # PHASE 4: GLOBAL SORT - Prefer Clean Picks Over Trap Picks
             # =================================================================
             logger.info("[PHASE 4] GLOBAL SORT - Ranking by true_probability (clean picks first)...")
