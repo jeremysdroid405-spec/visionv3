@@ -1642,11 +1642,11 @@ class OracleApexService:
         # Sort by true_edge DESC
         war_zone_candidates.sort(key=lambda x: x['true_edge'], reverse=True)
         
-        # Dedupe by player+stat
+        # Dedupe by player+stat+line (alternates are separate props)
         wz_seen = set()
         war_zone_picks = []
         for p in war_zone_candidates:
-            key = f"{p['player_name']}|{p['stat_type']}"
+            key = f"{p['player_name']}|{p['stat_type']}|{p.get('line', '')}"
             if key not in wz_seen and len(war_zone_picks) < 10:
                 wz_seen.add(key)
                 p['tier'] = 'war_zone'
@@ -1655,8 +1655,8 @@ class OracleApexService:
                 war_zone_picks.append(p)
         
         # REMOVE claimed props from pool
-        claimed_keys = {f"{p['player_name']}|{p['stat_type']}" for p in war_zone_picks}
-        remaining_pool = [p for p in qualified_pool if f"{p['player_name']}|{p['stat_type']}" not in claimed_keys]
+        claimed_keys = {f"{p['player_name']}|{p['stat_type']}|{p.get('line', '')}" for p in war_zone_picks}
+        remaining_pool = [p for p in qualified_pool if f"{p['player_name']}|{p['stat_type']}|{p.get('line', '')}" not in claimed_keys]
         
         logger.info(f"[NBA_ELITE_TOP_10] WAR ZONE claimed: {len(war_zone_picks)} picks")
         logger.info(f"  Remaining pool: {len(remaining_pool)}")
@@ -1693,21 +1693,21 @@ class OracleApexService:
         
         logger.info(f"[NBA_ELITE_TOP_10] Safe Haven after MLR filter: {len(safe_haven_candidates)} candidates (vk_prob_over >= 70%)")
         
-        # Dedupe by player+stat
+        # Dedupe by player+stat+line (alternates are separate props)
         sh_seen = set()
         safe_haven_picks = []
         for p in safe_haven_candidates:
-            key = f"{p['player_name']}|{p['stat_type']}"
+            key = f"{p['player_name']}|{p['stat_type']}|{p.get('line', '')}"
             if key not in sh_seen and len(safe_haven_picks) < 10:
                 sh_seen.add(key)
                 p['tier'] = 'safe_haven'
                 p['tier_label'] = 'NBA Safe Haven (Elite 10 - MLR Sorted)'
-                p['board_score'] = p.get('vk_prob_over', 0)  # Use vk_prob_over as board_score
+                p['board_score'] = p.get('vk_prob_over', 0)
                 safe_haven_picks.append(p)
         
         # REMOVE claimed props from pool
-        claimed_keys = {f"{p['player_name']}|{p['stat_type']}" for p in safe_haven_picks}
-        remaining_pool = [p for p in remaining_pool if f"{p['player_name']}|{p['stat_type']}" not in claimed_keys]
+        claimed_keys = {f"{p['player_name']}|{p['stat_type']}|{p.get('line', '')}" for p in safe_haven_picks}
+        remaining_pool = [p for p in remaining_pool if f"{p['player_name']}|{p['stat_type']}|{p.get('line', '')}" not in claimed_keys]
         
         logger.info(f"[NBA_ELITE_TOP_10] SAFE HAVEN claimed: {len(safe_haven_picks)} picks")
         logger.info(f"  Remaining pool: {len(remaining_pool)}")
@@ -1728,16 +1728,16 @@ class OracleApexService:
         # PRIMARY SORT: vk_edge DESC (MLR arbitrage - biggest disagreements with market)
         front_lines_candidates.sort(key=lambda x: x.get('vk_edge', 0), reverse=True)
         
-        # Dedupe by player+stat
+        # Dedupe by player+stat+line (alternates are separate props)
         fl_seen = set()
         front_lines_picks = []
         for p in front_lines_candidates:
-            key = f"{p['player_name']}|{p['stat_type']}"
+            key = f"{p['player_name']}|{p['stat_type']}|{p.get('line', '')}"
             if key not in fl_seen and len(front_lines_picks) < 10:
                 fl_seen.add(key)
                 p['tier'] = 'front_lines'
                 p['tier_label'] = 'NBA Front Lines (Elite 10 - vk_edge Sorted)'
-                p['board_score'] = p.get('vk_edge', 0)  # Use vk_edge as board_score
+                p['board_score'] = p.get('vk_edge', 0)
                 front_lines_picks.append(p)
         
         logger.info(f"[NBA_ELITE_TOP_10] FRONT LINES claimed: {len(front_lines_picks)} picks")
@@ -1764,11 +1764,11 @@ class OracleApexService:
             logger.info(f"  {i}. {p['player_name']} - {p['stat_type']} [{p['prop_type']}] | "
                        f"Board: {p['board_score']} | TRUE EDGE: +{p['true_edge']:.1f}%")
         
-        # Verify no duplicates
+        # Verify no duplicates (line-aware)
         all_keys = set()
         for tier_name, picks in [('WAR_ZONE', war_zone_picks), ('SAFE_HAVEN', safe_haven_picks), ('FRONT_LINES', front_lines_picks)]:
             for p in picks:
-                key = f"{p['player_name']}|{p['stat_type']}"
+                key = f"{p['player_name']}|{p['stat_type']}|{p.get('line', '')}"
                 if key in all_keys:
                     logger.error(f"[NBA_ELITE_TOP_10] DUPLICATE FOUND: {key}")
                 all_keys.add(key)

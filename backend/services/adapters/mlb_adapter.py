@@ -170,7 +170,7 @@ class MLBAdapter(SportAdapter):
         if previous_tiers:
             for tier_name, picks in previous_tiers.items():
                 prev_keys[tier_name] = {
-                    f"{p.get('player_name', '')}|{p.get('stat_type', '')}" for p in picks
+                    f"{p.get('player_name', '')}|{p.get('stat_type', '')}|{p.get('line', '')}" for p in picks
                 }
 
         safe_haven, front_lines, war_zone = [], [], []
@@ -215,11 +215,10 @@ class MLBAdapter(SportAdapter):
 
     def _apply_retention_cap(self, candidates: List[Dict], prev_keys: set, sort_key: str) -> List[Dict]:
         """Qualified capped set: keep all if underfilled, displace only at capacity."""
-        # Deduplicate
         seen = set()
         unique = []
         for p in candidates:
-            key = f"{p.get('player_name', '')}|{p.get('stat_type', '')}"
+            key = f"{p.get('player_name', '')}|{p.get('stat_type', '')}|{p.get('line', '')}"
             if key not in seen:
                 seen.add(key)
                 unique.append(p)

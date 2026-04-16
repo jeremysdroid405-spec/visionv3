@@ -360,11 +360,11 @@ class NBAAdapter(SportAdapter):
           3. Displacement only when retained + new > TIER_CAPACITY
           4. Score used for ordering within the tier and for displacement tie-breaking
         """
-        prev_keys = {}  # tier_name -> set of "player|stat" keys on previous board
+        prev_keys = {}  # tier_name -> set of "player|stat|line" keys on previous board
         if previous_tiers:
             for tier_name, picks in previous_tiers.items():
                 prev_keys[tier_name] = {
-                    f"{p.get('player_name', '')}|{p.get('stat_type', '')}" for p in picks
+                    f"{p.get('player_name', '')}|{p.get('stat_type', '')}|{p.get('line', '')}" for p in picks
                 }
 
         # WAR ZONE claims first
@@ -379,8 +379,8 @@ class NBAAdapter(SportAdapter):
             score_field='wz_board_score',
         )
 
-        claimed = {f"{p['player_name']}|{p['stat_type']}" for p in wz_picks}
-        remaining = [p for p in scored_props if f"{p['player_name']}|{p['stat_type']}" not in claimed]
+        claimed = {f"{p['player_name']}|{p['stat_type']}|{p.get('line', '')}" for p in wz_picks}
+        remaining = [p for p in scored_props if f"{p['player_name']}|{p['stat_type']}|{p.get('line', '')}" not in claimed]
 
         # SAFE HAVEN claims second
         sh_cands = [
@@ -397,8 +397,8 @@ class NBAAdapter(SportAdapter):
             score_field='vk_prob_over',
         )
 
-        claimed.update(f"{p['player_name']}|{p['stat_type']}" for p in sh_picks)
-        remaining = [p for p in remaining if f"{p['player_name']}|{p['stat_type']}" not in claimed]
+        claimed.update(f"{p['player_name']}|{p['stat_type']}|{p.get('line', '')}" for p in sh_picks)
+        remaining = [p for p in remaining if f"{p['player_name']}|{p['stat_type']}|{p.get('line', '')}" not in claimed]
 
         # FRONT LINES claims last
         fl_cands = [
@@ -433,18 +433,18 @@ class NBAAdapter(SportAdapter):
             pure score ranking decides displacement)
         4. Deduplicate by player|stat
         """
-        # Deduplicate candidates by player|stat
+        # Deduplicate candidates by player|stat|line (alternates are separate props)
         seen = set()
         unique = []
         for p in candidates:
-            key = f"{p['player_name']}|{p['stat_type']}"
+            key = f"{p['player_name']}|{p['stat_type']}|{p.get('line', '')}"
             if key not in seen:
                 seen.add(key)
                 unique.append(p)
 
         # Tag retained vs new
-        retained = [p for p in unique if f"{p['player_name']}|{p['stat_type']}" in prev_keys]
-        new = [p for p in unique if f"{p['player_name']}|{p['stat_type']}" not in prev_keys]
+        retained = [p for p in unique if f"{p['player_name']}|{p['stat_type']}|{p.get('line', '')}" in prev_keys]
+        new = [p for p in unique if f"{p['player_name']}|{p['stat_type']}|{p.get('line', '')}" not in prev_keys]
 
         if len(unique) <= self.TIER_CAPACITY:
             # Underfilled: keep ALL qualified picks, sort for display order

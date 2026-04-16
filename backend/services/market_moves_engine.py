@@ -49,8 +49,12 @@ TIER_COLLECTIONS = {
 }
 
 
-def _pick_id(sport: str, player_name: str, stat_type: str) -> str:
-    return f"{sport}|{player_name}|{stat_type}".lower()
+def _pick_id(sport: str, player_name: str, stat_type: str, line=None) -> str:
+    """Prop identity includes line — alternate lines are separate props."""
+    base = f"{sport}|{player_name}|{stat_type}".lower()
+    if line is not None:
+        return f"{base}|{line}"
+    return base
 
 
 def _format_tier(tier_key: str) -> str:
@@ -78,7 +82,8 @@ async def _read_live_board(db, sport: str) -> Dict[str, dict]:
         async for doc in cursor:
             player = doc.get("player_name", "")
             stat = doc.get("stat_type", "")
-            pid = _pick_id(sport, player, stat)
+            line = doc.get("line")
+            pid = _pick_id(sport, player, stat, line)
             snapshot[pid] = {
                 "player_name": player,
                 "stat_type": stat,
@@ -100,7 +105,8 @@ def _snapshot_from_tiers(tiers: Dict[str, List[Dict]], sport: str) -> Dict[str, 
         for pick in picks:
             player = pick.get("player_name", "")
             stat = pick.get("stat_type", "")
-            pid = _pick_id(sport, player, stat)
+            line = pick.get("line")
+            pid = _pick_id(sport, player, stat, line)
             snapshot[pid] = {
                 "player_name": player,
                 "stat_type": stat,
@@ -242,11 +248,11 @@ async def _classify_exits(
         async for doc in hub_cursor:
             player_team[doc["display_name"].lower()] = (doc.get("team") or "").upper()
 
-    # 5. Candidate pool
+    # 5. Candidate pool — keyed by player|stat|line for exact identity
     candidate_by_key = {}
     if candidate_pool:
         for prop in candidate_pool:
-            key = f"{prop.get('player_name', '').lower()}|{prop.get('stat_type', '').lower()}"
+            key = f"{prop.get('player_name', '').lower()}|{prop.get('stat_type', '').lower()}|{prop.get('line', '')}"
             candidate_by_key[key] = prop
     else:
         scored_cursor = db.ferrari_scored.find(
@@ -254,7 +260,7 @@ async def _classify_exits(
             {"_id": 0, "player_name": 1, "stat_type": 1, "board_score": 1, "line": 1, "market": 1, "validation": 1},
         )
         async for doc in scored_cursor:
-            key = f"{doc.get('player_name', '').lower()}|{doc.get('stat_type', '').lower()}"
+            key = f"{doc.get('player_name', '').lower()}|{doc.get('stat_type', '').lower()}|{doc.get('line', '')}"
             candidate_by_key[key] = doc
 
     # ---- Classify each exit ----
@@ -269,139 +275,122 @@ async def _classify_exits(
         old_direction = old_pick.get("direction", "Over")
         old_tier = old_pick["tier"]
         name_lower = player.lower()
-        prop_key = f"{name_lower}|{stat.lower()}"
+        prop_key = f"{name_lower}|{stat.lower()}|{old_line}"
 
-        # Check if same player+stat ended up on the new board (different tier/line)
-        for npid, npick in new_snapshot.items():
-            if npick["player_name"].lower() == name_lower and npick["stat_type"].lower() == stat.lower():
-                new_line = npick.get("line")
-                new_market = npick.get("market", "")
-                # Exact market match required for line_changed
-                if old_market and new_market and old_market == new_market and new_line != old_line:
+        # With line-aware IDs, if pid is NOT in new_snapshot, the exact
+        # player+stat+line is gone. No need to scan for "same player+stat
+        # different line" — those are separate props that coexist independently.
+        # A line_changed event is ONLY possible if the snapshot key format
+        # changed between cycles (backward compat), which we handle below.
+
+        # Pick fully left the board. Classify why.
+        team = player_team.get(name_lower, "")
+
+        # Priority 1: Game locked
+        if team and team in locked_teams:
+            events.append(_build_event(
+                sport, pid, player, stat, old_tier, old_line, None,
+                status="locked", exit_reason="locked", now_iso=now_iso,
+            ))
+            continue
+
+        # Priority 2: Injury
+        inj = injury_by_name.get(name_lower)
+        if inj:
+            events.append(_build_event(
+                sport, pid, player, stat, old_tier, old_line, None,
+                status="moved_off_board", exit_reason="injury_repriced",
+                detail=f"{inj['status']} (tier {inj['tier_level']})",
+                now_iso=now_iso,
+            ))
+            continue
+
+        # Priority 3: Check raw book board for EXACT market match
+        player_props = book_props_by_player.get(name_lower, [])
+        exact_match = _find_exact_market_match(player_props, stat, old_market, old_direction)
+
+        if exact_match:
+            new_book_line = exact_match.get("line")
+            if new_book_line is not None and old_line is not None and new_book_line != old_line:
+                delta = abs(new_book_line - old_line)
+                if delta <= LINE_DELTA_SANITY_THRESHOLD:
                     events.append(_build_event(
-                        sport, pid, player, stat, old_tier, old_line, new_line,
-                        status="line_moved", exit_reason="line_changed",
+                        sport, pid, player, stat, old_tier, old_line, new_book_line,
+                        status="moved_off_board", exit_reason="line_changed",
+                        detail=f"market={old_market} delta={delta:.1f}",
                         now_iso=now_iso,
-                        detail=f"market={old_market}",
                     ))
-                break
+                    continue
+                else:
+                    logger.warning(
+                        f"[MARKET_MOVES] Extreme line delta for {player} {stat}: "
+                        f"{old_line} -> {new_book_line} (delta={delta:.1f}, market={old_market}). "
+                        f"Classifying as prop_removed."
+                    )
+                    events.append(_build_event(
+                        sport, pid, player, stat, old_tier, old_line, new_book_line,
+                        status="moved_off_board", exit_reason="prop_removed",
+                        detail=f"extreme_delta={delta:.1f} market={old_market}",
+                        now_iso=now_iso,
+                    ))
+                    continue
+
+        # Priority 4: Check if ANY prop exists for this player+stat on the book
+        any_stat_match = _find_any_stat_match(player_props, stat)
+
+        if not any_stat_match and not player_props:
+            events.append(_build_event(
+                sport, pid, player, stat, old_tier, old_line, None,
+                status="moved_off_board", exit_reason="prop_removed",
+                now_iso=now_iso,
+            ))
+            continue
+
+        if not any_stat_match:
+            events.append(_build_event(
+                sport, pid, player, stat, old_tier, old_line, None,
+                status="moved_off_board", exit_reason="prop_removed",
+                detail="stat_market_removed",
+                now_iso=now_iso,
+            ))
+            continue
+
+        # Stat still exists on book but not on our board
+        candidate = candidate_by_key.get(prop_key)
+
+        if not candidate:
+            events.append(_build_event(
+                sport, pid, player, stat, old_tier, old_line, None,
+                status="no_longer_qualified", exit_reason="no_longer_qualified",
+                now_iso=now_iso,
+            ))
+            continue
+
+        validation = candidate.get("validation", {})
+        if validation and not validation.get("is_fully_validated", True):
+            events.append(_build_event(
+                sport, pid, player, stat, old_tier, old_line, None,
+                status="moved_off_board", exit_reason="validation_failed",
+                now_iso=now_iso,
+            ))
+            continue
+
+        # In candidate pool, validated — check if pool was at capacity
+        old_tier_key = old_tier.lower().replace(" ", "_")
+        pool_size = new_tier_counts.get(old_tier_key, 0)
+
+        if pool_size >= POOL_CAPACITY:
+            events.append(_build_event(
+                sport, pid, player, stat, old_tier, old_line, None,
+                status="moved_off_board", exit_reason="displaced_by_higher",
+                detail=f"pool={old_tier_key} at {pool_size}/{POOL_CAPACITY}",
+                now_iso=now_iso,
+            ))
         else:
-            # Pick fully left the board. Classify why.
-            team = player_team.get(name_lower, "")
-
-            # Priority 1: Game locked
-            if team and team in locked_teams:
-                events.append(_build_event(
-                    sport, pid, player, stat, old_tier, old_line, None,
-                    status="locked", exit_reason="locked", now_iso=now_iso,
-                ))
-                continue
-
-            # Priority 2: Injury
-            inj = injury_by_name.get(name_lower)
-            if inj:
-                events.append(_build_event(
-                    sport, pid, player, stat, old_tier, old_line, None,
-                    status="moved_off_board", exit_reason="injury_repriced",
-                    detail=f"{inj['status']} (tier {inj['tier_level']})",
-                    now_iso=now_iso,
-                ))
-                continue
-
-            # Priority 3: Check raw book board for EXACT market match
-            player_props = book_props_by_player.get(name_lower, [])
-            exact_match = _find_exact_market_match(player_props, stat, old_market, old_direction)
-
-            if exact_match:
-                new_book_line = exact_match.get("line")
-                if new_book_line is not None and old_line is not None and new_book_line != old_line:
-                    delta = abs(new_book_line - old_line)
-                    if delta <= LINE_DELTA_SANITY_THRESHOLD:
-                        # Reasonable delta with exact market match → line_changed
-                        events.append(_build_event(
-                            sport, pid, player, stat, old_tier, old_line, new_book_line,
-                            status="moved_off_board", exit_reason="line_changed",
-                            detail=f"market={old_market} delta={delta:.1f}",
-                            now_iso=now_iso,
-                        ))
-                        continue
-                    else:
-                        # Extreme delta even with exact market → log and flag
-                        logger.warning(
-                            f"[MARKET_MOVES] Extreme line delta for {player} {stat}: "
-                            f"{old_line} -> {new_book_line} (delta={delta:.1f}, market={old_market}). "
-                            f"Classifying as prop_removed."
-                        )
-                        events.append(_build_event(
-                            sport, pid, player, stat, old_tier, old_line, new_book_line,
-                            status="moved_off_board", exit_reason="prop_removed",
-                            detail=f"extreme_delta={delta:.1f} market={old_market}",
-                            now_iso=now_iso,
-                        ))
-                        continue
-
-            # Priority 4: Check if ANY prop exists for this player+stat on the book
-            any_stat_match = _find_any_stat_match(player_props, stat)
-
-            if not any_stat_match and not player_props:
-                # Player entirely gone from the book
-                events.append(_build_event(
-                    sport, pid, player, stat, old_tier, old_line, None,
-                    status="moved_off_board", exit_reason="prop_removed",
-                    now_iso=now_iso,
-                ))
-                continue
-
-            if not any_stat_match:
-                # Player on book but this stat is gone
-                events.append(_build_event(
-                    sport, pid, player, stat, old_tier, old_line, None,
-                    status="moved_off_board", exit_reason="prop_removed",
-                    detail="stat_market_removed",
-                    now_iso=now_iso,
-                ))
-                continue
-
-            # Stat still exists on book but not on our board
-            # Check candidate pool
-            candidate = candidate_by_key.get(prop_key)
-
-            if not candidate:
-                events.append(_build_event(
-                    sport, pid, player, stat, old_tier, old_line, None,
-                    status="no_longer_qualified", exit_reason="no_longer_qualified",
-                    now_iso=now_iso,
-                ))
-                continue
-
-            validation = candidate.get("validation", {})
-            if validation and not validation.get("is_fully_validated", True):
-                events.append(_build_event(
-                    sport, pid, player, stat, old_tier, old_line, None,
-                    status="moved_off_board", exit_reason="validation_failed",
-                    now_iso=now_iso,
-                ))
-                continue
-
-            # In candidate pool, validated — check if pool was at capacity
-            old_tier_key = old_tier.lower().replace(" ", "_")
-            pool_size = new_tier_counts.get(old_tier_key, 0)
-
-            if pool_size >= POOL_CAPACITY:
-                # Pool was full → true displacement
-                events.append(_build_event(
-                    sport, pid, player, stat, old_tier, old_line, None,
-                    status="moved_off_board", exit_reason="displaced_by_higher",
-                    detail=f"pool={old_tier_key} at {pool_size}/{POOL_CAPACITY}",
-                    now_iso=now_iso,
-                ))
-            else:
-                # Pool was NOT full — this should not happen with retention logic.
-                # If it does, log it as anomalous and suppress the event.
-                logger.warning(
-                    f"[MARKET_MOVES] {player} {stat} left underfilled pool "
-                    f"{old_tier_key} ({pool_size}/{POOL_CAPACITY}). Suppressing event."
-                )
+            logger.warning(
+                f"[MARKET_MOVES] {player} {stat} left underfilled pool "
+                f"{old_tier_key} ({pool_size}/{POOL_CAPACITY}). Suppressing event."
+            )
 
     return events
 
