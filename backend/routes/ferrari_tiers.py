@@ -28,6 +28,31 @@ _sync_db = None
 _enrichment_cache = {}
 _enrichment_cache_mtime = {}
 
+
+def _generate_vision_fallback(pick: dict) -> str:
+    """Generate a punchy fallback vision_intel summary from available prop data."""
+    player = pick.get("player_name", "Player")
+    stat = pick.get("stat_type", "stat")
+    line = pick.get("line") or 0
+    vk_pred = pick.get("vk_predicted")
+    vk_edge = pick.get("vk_edge") or pick.get("true_edge") or 0
+    h10 = pick.get("h10_rate") or pick.get("l10_rate") or pick.get("true_hit_rate") or 0
+    prob = pick.get("vk_prob_over") or pick.get("propvision_true_prob") or 0
+
+    if vk_pred and vk_edge:
+        direction = "OVER" if vk_edge > 0 else "UNDER"
+        if h10 >= 80:
+            return f"{player} is hammering {stat} at an {h10:.0f}% L10 clip — projection of {vk_pred:.1f} vs {line} gives us a {vk_edge:+.1f} edge to ride."
+        elif h10 >= 65:
+            return f"{player} {stat} projects to {vk_pred:.1f} against a {line} line ({direction} {vk_edge:+.1f}). L10 hit rate at {h10:.0f}% — consistent enough to back."
+        else:
+            return f"{player} {stat} at {line} — model sees {vk_pred:.1f} ({direction} {vk_edge:+.1f}). Stay cautious, the floor isn't locked here."
+    elif prob >= 70:
+        return f"{player} {stat} at {line} — model confidence at {prob:.0f}%. L10 hit rate {h10:.0f}%. The math backs the over."
+    else:
+        return f"{player} {stat} at {line} — riding this with {prob:.0f}% model probability and {h10:.0f}% recent form."
+
+
 def overlay_enrichment_cache(picks: list, sport: str) -> list:
     """Merge vision_intel, scout_badges, and Lasso data from the enrichment cache onto picks."""
     import json as _json
@@ -959,6 +984,11 @@ async def get_ferrari_safe_haven(
                 pass
             enrich_mlb_intel_suite(pick)
 
+    # Generate fallback vision_intel for any pick missing it (both sports)
+    for pick in picks:
+        if not pick.get("vision_intel"):
+            pick["vision_intel"] = _generate_vision_fallback(pick)
+
     # Return picks with pipeline status
     # Count validation states for status flag
     fully_validated = sum(1 for p in picks if (p.get("validation") or {}).get("is_fully_validated", False))
@@ -1059,6 +1089,11 @@ async def get_ferrari_front_lines(
                 pass
             enrich_mlb_intel_suite(pick)
 
+    # Generate fallback vision_intel for any pick missing it (both sports)
+    for pick in picks:
+        if not pick.get("vision_intel"):
+            pick["vision_intel"] = _generate_vision_fallback(pick)
+
     # Return picks with pipeline status
     fully_validated = sum(1 for p in picks if (p.get("validation") or {}).get("is_fully_validated", False))
     has_any_mlr = sum(1 for p in picks if (p.get("validation") or {}).get("has_mlr", False))
@@ -1156,6 +1191,11 @@ async def get_ferrari_war_zone(
             except Exception:
                 pass
             enrich_mlb_intel_suite(pick)
+
+    # Generate fallback vision_intel for any pick missing it (both sports)
+    for pick in picks:
+        if not pick.get("vision_intel"):
+            pick["vision_intel"] = _generate_vision_fallback(pick)
 
     # Return picks with pipeline status
     fully_validated = sum(1 for p in picks if (p.get("validation") or {}).get("is_fully_validated", False))
