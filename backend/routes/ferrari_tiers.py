@@ -1300,6 +1300,85 @@ async def get_market_moves(
     }
 
 
+# ==========================================================================
+# SYNC ARCHITECTURE V2 — Observability Endpoints
+# ==========================================================================
+
+@router.get("/v2/coordinator/status")
+async def get_coordinator_status(response: Response):
+    """
+    Rebuild Coordinator observability.
+
+    Returns: mode, lock states, event counters, scope classification counts,
+    last rebuild timestamps, dedup stats.
+    """
+    from services.rebuild_coordinator import get_coordinator
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    coordinator = get_coordinator()
+    return coordinator.get_stats()
+
+
+@router.get("/v2/odds/budget")
+async def get_odds_budget(response: Response):
+    """
+    Odds API budget tracker.
+
+    Returns: monthly/daily budget, per-sport allocation, per-pool usage,
+    peak window status, recommended polling intervals.
+    """
+    from services.odds_budget_manager import get_budget_manager
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    return get_budget_manager().get_status()
+
+
+@router.get("/v2/event-bus/stats")
+async def get_event_bus_stats(response: Response):
+    """
+    Event bus throughput stats.
+
+    Returns: total published, total delivered, breakdown by type and sport.
+    """
+    from services.event_bus import get_event_bus
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    return get_event_bus().get_stats()
+
+
+@router.post("/v2/coordinator/trigger")
+async def manual_coordinator_trigger(
+    sport: str = Query("nba", description="Sport to rebuild (nba or mlb)"),
+    reason: str = Query("manual", description="Trigger reason for logging"),
+):
+    """
+    Manual rebuild trigger via Coordinator.
+
+    Phase 1 (shadow mode): logs what WOULD happen, returns classification.
+    Phase 2+: dispatches actual pipeline rebuild.
+    """
+    from services.event_bus import BoardEvent, get_event_bus
+    from services.rebuild_coordinator import get_coordinator
+
+    event = BoardEvent(
+        sport=sport.lower(),
+        event_type="manual",
+        severity="high",
+        source="manual_api",
+        metadata={"reason": reason},
+    )
+
+    bus = get_event_bus()
+    await bus.publish(event)
+
+    coordinator = get_coordinator()
+    return {
+        "triggered": True,
+        "sport": sport,
+        "reason": reason,
+        "coordinator_mode": "shadow" if coordinator.shadow_mode else "live",
+        "message": f"Event published to coordinator ({'shadow — logged only' if coordinator.shadow_mode else 'live — rebuild dispatched'})",
+    }
+
+
+
 
 @router.post("/v3/ferrari/rebuild")
 async def rebuild_ferrari_tiers(

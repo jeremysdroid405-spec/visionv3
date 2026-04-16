@@ -981,6 +981,16 @@ async def scheduled_mlb_daily_sync():
     logger.info(f"[SCHEDULER] Time: {datetime.now(timezone.utc).isoformat()}")
     logger.info("=" * 70)
     
+    # V2: Emit event to coordinator (shadow observation)
+    try:
+        from services.event_bus import BoardEvent, get_event_bus
+        await get_event_bus().publish(BoardEvent(
+            sport="mlb", event_type="scheduled_safety", severity="medium",
+            source="scheduler_daily_mlb",
+        ))
+    except Exception:
+        pass
+
     try:
         from services.mlb_sync_engine import run_mlb_sync
         
@@ -1045,6 +1055,16 @@ async def scheduled_hourly_full_sync():
     logger.info(f"[SCHEDULER] Time: {datetime.now(timezone.utc).isoformat()}")
     logger.info("=" * 70)
     
+    # V2: Emit event to coordinator (shadow observation)
+    try:
+        from services.event_bus import BoardEvent, get_event_bus
+        await get_event_bus().publish(BoardEvent(
+            sport="nba", event_type="scheduled_safety", severity="medium",
+            source="scheduler_hourly",
+        ))
+    except Exception:
+        pass
+
     if demon_goblin_engine:
         try:
             result = await demon_goblin_engine.run_full_sync()
@@ -1193,6 +1213,20 @@ async def scheduled_live_injury_check():
         vacuums_triggered = vacuum_result.get('vacuums_triggered', [])
         if vacuums_triggered:
             logger.info(f"[SCHEDULER] Vacuums triggered: {[v.get('injured_player') for v in vacuums_triggered]}")
+            
+            # V2: Emit injury events to coordinator (shadow observation)
+            try:
+                from services.event_bus import BoardEvent, get_event_bus
+                bus = get_event_bus()
+                injured_names = [v.get('injured_player', '') for v in vacuums_triggered]
+                for sport in ["nba", "mlb"]:
+                    await bus.publish(BoardEvent(
+                        sport=sport, event_type="injury_change", severity="high",
+                        affected_players=injured_names,
+                        source="injury_watcher",
+                    ))
+            except Exception:
+                pass
         
     except Exception as e:
         logger.error(f"[SCHEDULER] Live injury check failed: {e}")
@@ -1698,6 +1732,30 @@ async def startup_event():
     # This runs only once when deployed to a new environment with empty DB
     asyncio.create_task(check_and_run_initial_sync(db))
     logger.info("[STARTUP] Initial sync check scheduled (runs in background)")
+
+    # ==========================================================================
+    # PHASE 1: SYNC ARCHITECTURE V2 — Foundation (Shadow Mode)
+    # Runs alongside existing scheduler. Observes events, logs decisions,
+    # does NOT dispatch actual rebuilds yet.
+    # ==========================================================================
+    try:
+        from services.event_bus import get_event_bus
+        from services.rebuild_coordinator import get_coordinator
+        from services.odds_budget_manager import get_budget_manager
+
+        event_bus = get_event_bus()
+        coordinator = get_coordinator(shadow_mode=True)
+        coordinator.set_db(db)
+        await coordinator.start(event_bus)
+
+        budget_mgr = get_budget_manager()
+
+        logger.info("[SYNC_V2] Event Bus initialized")
+        logger.info("[SYNC_V2] Rebuild Coordinator started (SHADOW MODE)")
+        logger.info("[SYNC_V2] Odds Budget Manager initialized")
+        logger.info(f"[SYNC_V2] Daily budget: {budget_mgr.daily_budget:,} calls/day")
+    except Exception as e:
+        logger.error(f"[SYNC_V2] Foundation init failed (non-fatal): {e}")
 
 
 async def check_and_run_initial_sync(db):
