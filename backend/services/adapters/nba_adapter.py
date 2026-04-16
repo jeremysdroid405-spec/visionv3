@@ -11,7 +11,7 @@ This adapter plugs into UnifiedPipeline without changing any scoring math.
 import os
 import logging
 from datetime import datetime, timezone
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from services.unified_pipeline import SportAdapter
 
@@ -349,8 +349,23 @@ class NBAAdapter(SportAdapter):
 
         return qualified_pool
 
-    def select_tiers(self, scored_props: List[Dict]) -> Dict[str, List[Dict]]:
-        """NBA tier selection: War Zone → Safe Haven → Front Lines (sequential claim)."""
+    TIER_CAPACITY = 10
+
+    def select_tiers(self, scored_props: List[Dict], previous_tiers: Optional[Dict[str, List[Dict]]] = None) -> Dict[str, List[Dict]]:
+        """NBA tier selection with retention: qualified capped set.
+
+        Rules:
+          1. Props from previous board that still pass gates → RETAINED first
+          2. New qualified props fill remaining capacity, sorted by score
+          3. Displacement only when retained + new > TIER_CAPACITY
+          4. Score used for ordering within the tier and for displacement tie-breaking
+        """
+        prev_keys = {}  # tier_name -> set of "player|stat" keys on previous board
+        if previous_tiers:
+            for tier_name, picks in previous_tiers.items():
+                prev_keys[tier_name] = {
+                    f"{p.get('player_name', '')}|{p.get('stat_type', '')}" for p in picks
+                }
 
         # WAR ZONE claims first
         wz_cands = [
@@ -358,16 +373,11 @@ class NBAAdapter(SportAdapter):
             if p['prop_type'] in ('DEMON', 'STANDARD') and (p.get('dk_odds') or 0) > 100
             and (p.get('true_edge') or 0) >= 8.0
         ]
-        wz_cands.sort(key=lambda x: x.get('true_edge', 0), reverse=True)
-        wz_seen, wz_picks = set(), []
-        for p in wz_cands:
-            key = f"{p['player_name']}|{p['stat_type']}"
-            if key not in wz_seen and len(wz_picks) < 10:
-                wz_seen.add(key)
-                p['tier'] = 'war_zone'
-                p['tier_label'] = 'War Zone'
-                p['board_score'] = p.get('wz_board_score', 0)
-                wz_picks.append(p)
+        wz_picks = self._select_with_retention(
+            wz_cands, prev_keys.get('war_zone', set()),
+            sort_key='true_edge', tier_name='war_zone', tier_label='War Zone',
+            score_field='wz_board_score',
+        )
 
         claimed = {f"{p['player_name']}|{p['stat_type']}" for p in wz_picks}
         remaining = [p for p in scored_props if f"{p['player_name']}|{p['stat_type']}" not in claimed]
@@ -381,16 +391,11 @@ class NBAAdapter(SportAdapter):
             and (p.get('cv') or 1) <= 0.35
             and (p.get('vk_prob_over') or 0) >= 70.0
         ]
-        sh_cands.sort(key=lambda x: x.get('vk_prob_over', 0), reverse=True)
-        sh_seen, sh_picks = set(), []
-        for p in sh_cands:
-            key = f"{p['player_name']}|{p['stat_type']}"
-            if key not in sh_seen and len(sh_picks) < 10:
-                sh_seen.add(key)
-                p['tier'] = 'safe_haven'
-                p['tier_label'] = 'Safe Haven'
-                p['board_score'] = p.get('vk_prob_over', 0)
-                sh_picks.append(p)
+        sh_picks = self._select_with_retention(
+            sh_cands, prev_keys.get('safe_haven', set()),
+            sort_key='vk_prob_over', tier_name='safe_haven', tier_label='Safe Haven',
+            score_field='vk_prob_over',
+        )
 
         claimed.update(f"{p['player_name']}|{p['stat_type']}" for p in sh_picks)
         remaining = [p for p in remaining if f"{p['player_name']}|{p['stat_type']}" not in claimed]
@@ -400,19 +405,66 @@ class NBAAdapter(SportAdapter):
             p for p in remaining
             if (p.get('true_hit_rate') or 0) >= 50.0 and (p.get('cv') or 1) <= 0.50
         ]
-        fl_cands.sort(key=lambda x: x.get('vk_edge', 0), reverse=True)
-        fl_seen, fl_picks = set(), []
-        for p in fl_cands:
-            key = f"{p['player_name']}|{p['stat_type']}"
-            if key not in fl_seen and len(fl_picks) < 10:
-                fl_seen.add(key)
-                p['tier'] = 'front_lines'
-                p['tier_label'] = 'Front Lines'
-                p['board_score'] = p.get('vk_edge', 0)
-                fl_picks.append(p)
+        fl_picks = self._select_with_retention(
+            fl_cands, prev_keys.get('front_lines', set()),
+            sort_key='vk_edge', tier_name='front_lines', tier_label='Front Lines',
+            score_field='vk_edge',
+        )
 
         logger.info(f"[NBA_ADAPTER] Tier selection: SH={len(sh_picks)} FL={len(fl_picks)} WZ={len(wz_picks)}")
         return {"safe_haven": sh_picks, "front_lines": fl_picks, "war_zone": wz_picks}
+
+    def _select_with_retention(
+        self,
+        candidates: List[Dict],
+        prev_keys: set,
+        sort_key: str,
+        tier_name: str,
+        tier_label: str,
+        score_field: str,
+    ) -> List[Dict]:
+        """
+        Qualified Capped Set selection with retention.
+
+        1. Separate candidates into retained (were on previous board) and new
+        2. If total qualified <= capacity, keep ALL
+        3. If total qualified > capacity, sort by score, keep top capacity
+           (retained picks don't get preferential treatment at capacity —
+            pure score ranking decides displacement)
+        4. Deduplicate by player|stat
+        """
+        # Deduplicate candidates by player|stat
+        seen = set()
+        unique = []
+        for p in candidates:
+            key = f"{p['player_name']}|{p['stat_type']}"
+            if key not in seen:
+                seen.add(key)
+                unique.append(p)
+
+        # Tag retained vs new
+        retained = [p for p in unique if f"{p['player_name']}|{p['stat_type']}" in prev_keys]
+        new = [p for p in unique if f"{p['player_name']}|{p['stat_type']}" not in prev_keys]
+
+        if len(unique) <= self.TIER_CAPACITY:
+            # Underfilled: keep ALL qualified picks, sort for display order
+            picks = unique
+            picks.sort(key=lambda x: x.get(sort_key, 0), reverse=True)
+        else:
+            # Overfilled: pure score ranking decides who stays
+            unique.sort(key=lambda x: x.get(sort_key, 0), reverse=True)
+            picks = unique[:self.TIER_CAPACITY]
+
+        # Tag tier metadata
+        for p in picks:
+            p['tier'] = tier_name
+            p['tier_label'] = tier_label
+            p['board_score'] = p.get(score_field, 0)
+
+        if retained:
+            logger.debug(f"[NBA_ADAPTER] {tier_name}: {len(retained)} retained, {len(new)} new, {len(picks)} final")
+
+        return picks
 
     async def enrich_intel(self, tiers: Dict[str, List[Dict]], db) -> Dict[str, List[Dict]]:
         """Non-blocking Gemini enrichment for NBA. Marks has_gemini on each prop."""

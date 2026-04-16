@@ -282,19 +282,26 @@ class LiveInjuryMicroSync:
         """
         Just-In-Time check for a player's injury status.
         
-        Called right before a player is finalized into a tier.
-        Returns injury info if player is injured, None if healthy.
+        Reads from injuries_normalized (authoritative BDL-derived source).
+        Only structural fields are used for the check (tier_level >= 4 = OUT/OFS).
         """
-        injury = await self.live_injuries.find_one(
+        injury = await self.db.injuries_normalized.find_one(
             {
                 "player_name": {"$regex": f"^{player_name}$", "$options": "i"},
-                "sport": sport
+                "sport": sport,
+                "tier_level": {"$gte": 4},  # OUT (4) or OUT_FOR_SEASON (5) only
             },
-            {"_id": 0}
+            {"_id": 0, "player_name": 1, "status": 1, "tier_level": 1, "team": 1, "display_only": 1}
         )
         
-        if injury and injury.get("is_out"):
-            return injury
+        if injury:
+            return {
+                "player_name": injury.get("player_name"),
+                "status": injury.get("status"),
+                "is_out": True,
+                "tier_level": injury.get("tier_level"),
+                "injury_type": (injury.get("display_only") or {}).get("injury_type", "Unknown"),
+            }
         
         return None
     

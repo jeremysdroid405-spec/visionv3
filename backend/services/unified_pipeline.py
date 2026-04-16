@@ -77,11 +77,21 @@ class SportAdapter(ABC):
         """
 
     @abstractmethod
-    def select_tiers(self, scored_props: List[Dict]) -> Dict[str, List[Dict]]:
-        """Phase 5: Classify props into tiers and select top-N per tier.
+    def select_tiers(self, scored_props: List[Dict], previous_tiers: Optional[Dict[str, List[Dict]]] = None) -> Dict[str, List[Dict]]:
+        """Phase 5: Classify props into tiers with retention logic.
+
+        Qualified Capped Set rules:
+          1. Props from previous_tiers that still pass qualification gates → RETAINED
+          2. New qualified props fill remaining capacity, sorted by score
+          3. Displacement only when retained + new > capacity
+          4. Empty tiers returned as empty lists — never padded
+
+        Args:
+            scored_props: All validated+scored props from Phase 4
+            previous_tiers: Optional previous board state for retention.
+                            If None, pure top-N selection (first run).
+
         Returns {'safe_haven': [...], 'front_lines': [...], 'war_zone': [...]}.
-        Each tier list is capped at the adapter's max (typically 10).
-        Empty tiers are returned as empty lists — never padded.
         """
 
     async def enrich_intel(self, tiers: Dict[str, List[Dict]], db) -> Dict[str, List[Dict]]:
@@ -134,6 +144,25 @@ class UnifiedPipeline:
         self.adapter = adapter
         self.db = db
         self.run_id = uuid.uuid4().hex[:8]
+
+    # Tier collection names per sport
+    _TIER_COLS = {
+        "nba": {"safe_haven": "elite_safe_haven", "front_lines": "elite_front_lines", "war_zone": "elite_war_zone"},
+        "mlb": {"safe_haven": "mlb_safe_haven", "front_lines": "mlb_front_lines", "war_zone": "mlb_war_zone"},
+    }
+
+    async def _load_previous_tiers(self) -> Dict[str, List[Dict]]:
+        """Load the current published board as the previous tier state.
+        Used for retention logic in select_tiers."""
+        cols = self._TIER_COLS.get(self.adapter.sport, {})
+        prev = {}
+        for tier_name, col_name in cols.items():
+            cursor = self.db[col_name].find(
+                {},
+                {"_id": 0, "player_name": 1, "stat_type": 1, "line": 1, "market": 1},
+            )
+            prev[tier_name] = await cursor.to_list(length=20)
+        return prev
 
     async def run(self) -> PipelineResult:
         """Execute the full pipeline: Load → Enrich → Score → Validate → Select → Intel → Publish."""
@@ -217,12 +246,17 @@ class UnifiedPipeline:
             logger.info(f"  Gemini:      {v_stats['pct_gemini']}%")
 
             # ============================================================
-            # PHASE 5: SELECT TIERS
+            # PHASE 5: SELECT TIERS (Qualified Capped Set with Retention)
+            # Load previous board for retention: qualified picks that were on
+            # the board stay unless the pool is full and a higher-ranked pick
+            # displaces them.
             # ============================================================
             phase_start = datetime.now(timezone.utc)
             logger.info(f"[{sport}_PIPELINE] [{self.run_id}] PHASE 5: Selecting tiers...")
 
-            tiers = self.adapter.select_tiers(validated)
+            # Load previous tiers from live collections
+            previous_tiers = await self._load_previous_tiers()
+            tiers = self.adapter.select_tiers(validated, previous_tiers=previous_tiers)
 
             phase_dur = (datetime.now(timezone.utc) - phase_start).total_seconds()
             tier_counts = {k: len(v) for k, v in tiers.items()}

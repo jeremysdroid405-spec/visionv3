@@ -158,11 +158,20 @@ class MLBAdapter(SportAdapter):
         logger.info(f"[MLB_ADAPTER] Scored {stats['scored']}/{stats['total']} props ({stats['no_odds']} missing odds)")
         return scored
 
-    def select_tiers(self, scored_props: List[Dict]) -> Dict[str, List[Dict]]:
-        """MLB tier selection: DK odds → gate checks → top 10 per tier."""
+    TIER_CAPACITY = 10
+
+    def select_tiers(self, scored_props: List[Dict], previous_tiers: Optional[Dict[str, List[Dict]]] = None) -> Dict[str, List[Dict]]:
+        """MLB tier selection with retention: qualified capped set."""
         from services.mlb_tier_sorter import (
             DK_SAFE_HAVEN_MAX, DK_WAR_ZONE_MIN, SAFE_HAVEN_GATES,
         )
+
+        prev_keys = {}
+        if previous_tiers:
+            for tier_name, picks in previous_tiers.items():
+                prev_keys[tier_name] = {
+                    f"{p.get('player_name', '')}|{p.get('stat_type', '')}" for p in picks
+                }
 
         safe_haven, front_lines, war_zone = [], [], []
 
@@ -174,9 +183,7 @@ class MLBAdapter(SportAdapter):
             tp = prop.get('true_probability') or 50
             line = prop.get('line') or 0
 
-            # Classify by DK odds
             if dk_odds is not None and dk_odds <= DK_SAFE_HAVEN_MAX:
-                # Safe Haven gates
                 if self._check_safe_haven_gates(prop, cv, hit_rate, edge_pct, tp, line):
                     prop['ferrari_tier'] = 'safe_haven'
                     prop['tier_label'] = 'Safe Haven'
@@ -184,7 +191,6 @@ class MLBAdapter(SportAdapter):
                     continue
 
             if dk_odds is not None and dk_odds >= DK_WAR_ZONE_MIN:
-                # War Zone — less strict gates
                 ceiling = prop.get('ceiling_rate') or hit_rate or 0
                 if edge_pct >= 5 or ceiling >= 30:
                     prop['ferrari_tier'] = 'war_zone'
@@ -192,7 +198,6 @@ class MLBAdapter(SportAdapter):
                     war_zone.append(prop)
                     continue
 
-            # Front Lines — everything in between
             if dk_odds is None or (dk_odds > DK_SAFE_HAVEN_MAX and dk_odds < DK_WAR_ZONE_MIN):
                 if (hit_rate or 0) >= 50 and (cv or 1) <= 0.80:
                     prop['ferrari_tier'] = 'front_lines'
@@ -200,17 +205,31 @@ class MLBAdapter(SportAdapter):
                     front_lines.append(prop)
                     continue
 
-        # Sort and cap at 10
-        safe_haven.sort(key=lambda x: x.get('board_score', 0), reverse=True)
-        front_lines.sort(key=lambda x: x.get('edge_pct', 0), reverse=True)
-        war_zone.sort(key=lambda x: x.get('edge_pct', 0), reverse=True)
-
-        safe_haven = safe_haven[:10]
-        front_lines = front_lines[:10]
-        war_zone = war_zone[:10]
+        # Apply retention + capped set logic per tier
+        safe_haven = self._apply_retention_cap(safe_haven, prev_keys.get('safe_haven', set()), 'board_score')
+        front_lines = self._apply_retention_cap(front_lines, prev_keys.get('front_lines', set()), 'edge_pct')
+        war_zone = self._apply_retention_cap(war_zone, prev_keys.get('war_zone', set()), 'edge_pct')
 
         logger.info(f"[MLB_ADAPTER] Tier selection: SH={len(safe_haven)} FL={len(front_lines)} WZ={len(war_zone)}")
         return {"safe_haven": safe_haven, "front_lines": front_lines, "war_zone": war_zone}
+
+    def _apply_retention_cap(self, candidates: List[Dict], prev_keys: set, sort_key: str) -> List[Dict]:
+        """Qualified capped set: keep all if underfilled, displace only at capacity."""
+        # Deduplicate
+        seen = set()
+        unique = []
+        for p in candidates:
+            key = f"{p.get('player_name', '')}|{p.get('stat_type', '')}"
+            if key not in seen:
+                seen.add(key)
+                unique.append(p)
+
+        if len(unique) <= self.TIER_CAPACITY:
+            unique.sort(key=lambda x: x.get(sort_key, 0), reverse=True)
+            return unique
+        else:
+            unique.sort(key=lambda x: x.get(sort_key, 0), reverse=True)
+            return unique[:self.TIER_CAPACITY]
 
     def _check_safe_haven_gates(self, prop, cv, hit_rate, edge_pct, tp, line) -> bool:
         """Check MLB Safe Haven gates using shared volatility profile."""

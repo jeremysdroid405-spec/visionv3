@@ -171,6 +171,13 @@ async def _classify_exits(
     if not exited_pids:
         return []
 
+    # Compute new pool sizes per tier for capacity check
+    POOL_CAPACITY = 10
+    new_tier_counts: Dict[str, int] = {}
+    for npick in new_snapshot.values():
+        t = npick.get("tier", "")
+        new_tier_counts[t] = new_tier_counts.get(t, 0) + 1
+
     # ---- Gather classification data ----
 
     # 1. Injury lookup
@@ -376,12 +383,25 @@ async def _classify_exits(
                 ))
                 continue
 
-            # In candidate pool, validated → outranked
-            events.append(_build_event(
-                sport, pid, player, stat, old_tier, old_line, None,
-                status="moved_off_board", exit_reason="displaced_by_higher",
-                now_iso=now_iso,
-            ))
+            # In candidate pool, validated — check if pool was at capacity
+            old_tier_key = old_tier.lower().replace(" ", "_")
+            pool_size = new_tier_counts.get(old_tier_key, 0)
+
+            if pool_size >= POOL_CAPACITY:
+                # Pool was full → true displacement
+                events.append(_build_event(
+                    sport, pid, player, stat, old_tier, old_line, None,
+                    status="moved_off_board", exit_reason="displaced_by_higher",
+                    detail=f"pool={old_tier_key} at {pool_size}/{POOL_CAPACITY}",
+                    now_iso=now_iso,
+                ))
+            else:
+                # Pool was NOT full — this should not happen with retention logic.
+                # If it does, log it as anomalous and suppress the event.
+                logger.warning(
+                    f"[MARKET_MOVES] {player} {stat} left underfilled pool "
+                    f"{old_tier_key} ({pool_size}/{POOL_CAPACITY}). Suppressing event."
+                )
 
     return events
 
