@@ -213,12 +213,17 @@ class MLBAdapter(SportAdapter):
         return {"safe_haven": safe_haven, "front_lines": front_lines, "war_zone": war_zone}
 
     def _check_safe_haven_gates(self, prop, cv, hit_rate, edge_pct, tp, line) -> bool:
-        """Check MLB Safe Haven gates with goblin-line override for sub-1.0 props."""
+        """Check MLB Safe Haven gates using shared volatility profile."""
+        from services.volatility_profile import get_volatility_profile
         from services.mlb_tier_sorter import SAFE_HAVEN_GATES
+
+        stat_type = prop.get('stat_type', '')
+        vol = get_volatility_profile(cv, stat_type, line)
 
         if line < 1.0:
             # Goblin-line override: binary/Bernoulli outcomes
-            if cv is not None and cv > 1.10:
+            # Use volatility profile's extreme threshold instead of hardcoded 1.10
+            if vol.is_extreme:
                 return False
             if hit_rate is not None and hit_rate < 75:
                 return False
@@ -228,10 +233,11 @@ class MLBAdapter(SportAdapter):
 
         # Standard gates by stat type
         sorter = self._sorter
-        stat_key = sorter._normalize_stat_type(prop.get('stat_type', '')) if sorter else 'hits'
+        stat_key = sorter._normalize_stat_type(stat_type) if sorter else 'hits'
         gates = SAFE_HAVEN_GATES.get(stat_key, SAFE_HAVEN_GATES.get('hits'))
 
-        if cv is not None and cv > gates['max_cv']:
+        # Use volatility profile for CV check instead of raw threshold
+        if vol.label in ("extreme", "high"):
             return False
         if hit_rate is not None and hit_rate < gates['min_hit_rate']:
             return False

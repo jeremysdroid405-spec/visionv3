@@ -176,15 +176,16 @@ class NBAAdapter(SportAdapter):
                 gate_stats['fail_hit_rate'] += 1
                 continue
 
-            # CV
+            # CV — use shared volatility profile
             cv = prop.get("cv")
             if cv is None or cv == 0:
                 l10_std = prop.get("l10_std_dev") or 0
                 l10_avg = prop.get("l10_avg") or prop.get("l10_mean") or 1
                 cv = l10_std / l10_avg if l10_avg > 0 and l10_std > 0 else 0.5
-            if cv > 1:
-                cv = cv / 100.0
-            if cv > 0.90:
+            from services.volatility_profile import get_volatility_profile
+            vol = get_volatility_profile(cv, prop_type, line)
+            cv = vol.cv_raw
+            if vol.label == "extreme":
                 gate_stats['fail_cv'] += 1
                 continue
 

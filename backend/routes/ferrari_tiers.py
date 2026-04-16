@@ -98,6 +98,36 @@ def overlay_enrichment_cache(picks: list, sport: str) -> list:
                 existing.update(enriched_suite)
                 pick["intel_suite"] = existing
 
+    # Apply shared volatility profile to ALL picks (both sports)
+    from services.volatility_profile import get_volatility_profile
+    for pick in picks:
+        cv = pick.get("cv")
+        stat_type = pick.get("stat_type", "")
+        line_val = pick.get("line")
+        vol = get_volatility_profile(cv, stat_type, line_val)
+        pick["volatility_score"] = vol.score
+        pick["volatility_label"] = vol.label
+        pick["volatility_family"] = vol.family
+
+        # Reconcile scout_badges with volatility profile
+        scout = pick.get("scout_badges") or []
+        if isinstance(scout, list):
+            if vol.is_extreme:
+                # Ensure badge is present
+                has_it = any(
+                    (b.get("badge_key") if isinstance(b, dict) else b) == "volatility_extreme"
+                    for b in scout
+                )
+                if not has_it:
+                    scout.append({"badge_key": "volatility_extreme", "id": "volatility_extreme"})
+            else:
+                # Remove stale badge that contradicts the profile
+                scout = [
+                    b for b in scout
+                    if (b.get("badge_key") if isinstance(b, dict) else b) != "volatility_extreme"
+                ]
+            pick["scout_badges"] = scout
+
     return picks
 
 
@@ -472,9 +502,10 @@ def enrich_mlb_intel_suite(prop: Dict) -> Dict:
     l10_avg = prop.get("l10_avg") or 0
     season_avg = prop.get("season_avg") or prop.get("season_average") or l10_avg
     cv = prop.get("cv") or 0
-    # Normalize CV: if stored as percentage (>5), convert to decimal
-    if cv > 5:
-        cv = cv / 100
+    # Normalize CV through shared volatility profile
+    from services.volatility_profile import get_volatility_profile
+    vol_profile = get_volatility_profile(cv, stat_type, line)
+    cv = vol_profile.cv_raw
     
     # Classification
     is_goblin = prop.get("is_goblin", False)
@@ -549,8 +580,8 @@ def enrich_mlb_intel_suite(prop: Dict) -> Dict:
     
     if cv and cv <= 0.40:
         reasons.append(f"Low variance (CV {cv:.0%}) indicates consistency")
-    elif cv and cv > 0.70:
-        reasons.append(f"High variance (CV {cv:.0%}) - boom/bust potential")
+    elif vol_profile.label in ("high", "extreme"):
+        reasons.append(f"High variance (CV {cv:.0%}, {vol_profile.family}) - boom/bust potential")
         confidence = "SPECULATIVE"
     
     if is_goblin and dk_odds and dk_odds <= -250:
@@ -657,8 +688,8 @@ def enrich_mlb_intel_suite(prop: Dict) -> Dict:
         # usage_spike: Vacuum modifier present
         if prop.get("has_vacuum_modifier") or prop.get("vacuum_modifier"):
             scout.append({"badge_key": "usage_spike", "id": "usage_spike"})
-        # volatility_extreme: High CV
-        if cv and cv > 0.70:
+        # volatility_extreme: From shared volatility profile (prop-family-aware)
+        if vol_profile.is_extreme:
             scout.append({"badge_key": "volatility_extreme", "id": "volatility_extreme"})
         
         # SAFETY OVERRIDE: Block soft_matchup if SP is a buzzsaw (Top 15 rank)
@@ -668,7 +699,12 @@ def enrich_mlb_intel_suite(prop: Dict) -> Dict:
             scout = [b for b in scout if b.get("badge_key") != "soft_matchup"]
         
         prop["scout_badges"] = scout
-    
+
+    # Attach volatility profile to prop for consistent downstream use
+    prop["volatility_score"] = vol_profile.score
+    prop["volatility_label"] = vol_profile.label
+    prop["volatility_family"] = vol_profile.family
+
     return prop
 
 
