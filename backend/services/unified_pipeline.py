@@ -21,6 +21,7 @@ Contracts:
 """
 
 import os
+import json
 import logging
 import uuid
 from datetime import datetime, timezone
@@ -232,41 +233,59 @@ class UnifiedPipeline:
                 logger.info(f"  {tier_name}: {len(picks)} picks")
 
             # ============================================================
-            # PHASE 6: INTEL ENRICHMENT (non-blocking)
+            # PHASE 5b: ADAPTER ENRICHMENT (non-Gemini, pre-publish)
+            # MLB: overlay cache, tempo, intel_suite, context badges
+            # NBA: validation flag pass
             # ============================================================
-            phase_start = datetime.now(timezone.utc)
-            logger.info(f"[{sport}_PIPELINE] [{self.run_id}] PHASE 6: Intel enrichment (Gemini)...")
-
             try:
                 tiers = await self.adapter.enrich_intel(tiers, self.db)
-                gemini_ok = True
             except Exception as e:
-                logger.warning(f"[{sport}_PIPELINE] [{self.run_id}] PHASE 6 Gemini failed (non-fatal): {e}")
-                gemini_ok = False
-                # Mark all props as missing Gemini
-                for tier_picks in tiers.values():
-                    for p in tier_picks:
-                        if "validation" in p:
-                            p["validation"]["has_gemini"] = False
-
-            phase_dur = (datetime.now(timezone.utc) - phase_start).total_seconds()
-            result.phases["6_intel"] = {"duration_s": round(phase_dur, 2), "gemini_success": gemini_ok}
-            logger.info(f"[{sport}_PIPELINE] [{self.run_id}] PHASE 6 complete: gemini={'OK' if gemini_ok else 'FAILED'} ({phase_dur:.1f}s)")
+                logger.warning(f"[{sport}_PIPELINE] [{self.run_id}] Adapter enrich_intel failed (non-fatal): {e}")
 
             # ============================================================
-            # PHASE 7: PUBLISH (atomic writes)
+            # PHASE 6: PUBLISH (atomic writes) — BEFORE Gemini
+            # Tiers are published immediately so the board is never empty.
             # ============================================================
             phase_start = datetime.now(timezone.utc)
-            logger.info(f"[{sport}_PIPELINE] [{self.run_id}] PHASE 7: Atomic publish...")
+            logger.info(f"[{sport}_PIPELINE] [{self.run_id}] PHASE 6: Atomic publish...")
 
             publish_result = await self._atomic_publish(tiers)
 
             phase_dur = (datetime.now(timezone.utc) - phase_start).total_seconds()
-            result.phases["7_publish"] = {"duration_s": round(phase_dur, 2), **publish_result}
+            result.phases["6_publish"] = {"duration_s": round(phase_dur, 2), **publish_result}
 
-            logger.info(f"[{sport}_PIPELINE] [{self.run_id}] PHASE 7 complete ({phase_dur:.1f}s)")
+            logger.info(f"[{sport}_PIPELINE] [{self.run_id}] PHASE 6 complete ({phase_dur:.1f}s)")
             for col_name, count in publish_result.items():
                 logger.info(f"  {col_name}: {count}")
+
+            # ============================================================
+            # PHASE 7: GEMINI INTEL ENRICHMENT (post-publish, non-blocking)
+            # Board is already live. Gemini enriches in-place on the
+            # published collections. If it fails, picks still serve
+            # with fallback vision_intel from _generate_vision_fallback.
+            # ============================================================
+            phase_start = datetime.now(timezone.utc)
+            logger.info(f"[{sport}_PIPELINE] [{self.run_id}] PHASE 7: Gemini batch enrichment (non-blocking)...")
+
+            gemini_stats = {"attempted": 0, "success": 0, "failed": 0, "skipped": 0}
+            try:
+                gemini_stats = await self._run_gemini_enrichment(tiers)
+                gemini_ok = gemini_stats.get("success", 0) > 0
+            except Exception as e:
+                logger.warning(f"[{sport}_PIPELINE] [{self.run_id}] PHASE 7 Gemini failed (non-fatal): {e}")
+                gemini_ok = False
+
+            phase_dur = (datetime.now(timezone.utc) - phase_start).total_seconds()
+            result.phases["7_gemini"] = {
+                "duration_s": round(phase_dur, 2),
+                "gemini_ok": gemini_ok,
+                **gemini_stats,
+            }
+            logger.info(
+                f"[{sport}_PIPELINE] [{self.run_id}] PHASE 7 complete: "
+                f"gemini={'OK' if gemini_ok else 'FAILED/SKIPPED'} "
+                f"({gemini_stats.get('success', 0)}/{gemini_stats.get('attempted', 0)} enriched, {phase_dur:.1f}s)"
+            )
 
             # ============================================================
             # DONE
@@ -400,3 +419,112 @@ class UnifiedPipeline:
                 result[target_col] = existing
 
         return result
+
+    # ------------------------------------------------------------------
+    # INTERNAL: Post-publish Gemini batch enrichment
+    # ------------------------------------------------------------------
+
+    async def _run_gemini_enrichment(self, tiers: Dict[str, List[Dict]]) -> Dict:
+        """
+        Run batch Gemini enrichment AFTER publish.
+        
+        Writes vision_intel directly to the live tier collections.
+        Non-blocking: failures are logged but never crash the pipeline.
+        Also updates the sport-specific cache JSON for serve-time overlay.
+        """
+        from services.gemini_scout_engine import batch_generate_scout_intel
+
+        sport = self.adapter.sport
+        col_map = self.adapter.tier_collections
+        tier_labels = {"safe_haven": "Safe Haven", "front_lines": "Front Lines", "war_zone": "War Zone"}
+
+        # Build payloads from all tier picks
+        payloads = []
+        pick_refs = []  # (collection_name, player_name, stat_type, line)
+
+        for tier_name, picks in tiers.items():
+            tier_label = tier_labels.get(tier_name, "Front Lines")
+            for pick in picks:
+                payloads.append({
+                    "player": pick.get("player_name", "?"),
+                    "stat": pick.get("stat_type", "?"),
+                    "line": pick.get("line", 0),
+                    "tier": tier_label,
+                    "direction": "OVER" if (pick.get("vk_edge") or pick.get("true_edge") or 0) >= 0 else "UNDER",
+                    "lasso_proj": pick.get("vk_predicted"),
+                    "edge": pick.get("vk_edge") or pick.get("true_edge") or 0,
+                    "edge_pct": pick.get("true_edge") or pick.get("edge_pct") or 0,
+                    "h10_rate": pick.get("h10_rate") or pick.get("l10_rate") or pick.get("true_hit_rate") or 0,
+                    "h20_rate": pick.get("true_hit_rate") or pick.get("h20_rate") or 0,
+                    "cv": pick.get("cv"),
+                    "matchup_opponent": pick.get("opponent") or pick.get("opponent_abbr"),
+                    "dvp_rank": (pick.get("momentum_data") or {}).get("dvp_rank"),
+                    "vacuum_data": pick.get("vacuum_data"),
+                    "sport": sport,
+                })
+                pick_refs.append((
+                    col_map.get(tier_name, ""),
+                    pick.get("player_name"),
+                    pick.get("stat_type"),
+                    pick.get("line"),
+                ))
+
+        if not payloads:
+            return {"attempted": 0, "success": 0, "failed": 0, "skipped": 0}
+
+        stats = {"attempted": len(payloads), "success": 0, "failed": 0, "skipped": 0}
+
+        # Batch call Gemini
+        results = await batch_generate_scout_intel(payloads, batch_size=10)
+
+        # Write summaries directly to published collections
+        for i, (col_name, player, stat, line) in enumerate(pick_refs):
+            key = f"{payloads[i]['player']}|{payloads[i]['stat']}|{payloads[i]['line']}"
+            text = results.get(key, "")
+
+            if not text or len(text) < 50:
+                stats["failed"] += 1
+                continue
+
+            try:
+                await self.db[col_name].update_one(
+                    {"player_name": player, "stat_type": stat, "line": line},
+                    {"$set": {"vision_intel": text, "vision_summary": text,
+                              "validation.has_gemini": True}},
+                )
+                stats["success"] += 1
+            except Exception as e:
+                logger.warning(f"[GEMINI_ENRICH] Failed to write {player} {stat}: {e}")
+                stats["failed"] += 1
+
+        # Update cache JSON for serve-time overlay
+        cache_path = os.path.join(CACHE_DIR, f"{sport}_master_active_cache.json")
+        try:
+            with open(cache_path) as f:
+                cache = json.load(f)
+        except (FileNotFoundError, json.JSONDecodeError):
+            cache = {"props": {}}
+
+        for key, text in results.items():
+            if text and len(text) >= 50:
+                parts = key.split("|")
+                cache_key = f"{parts[0]}_{parts[1]}_{parts[2]}"
+                if cache_key not in cache["props"]:
+                    cache["props"][cache_key] = {}
+                cache["props"][cache_key]["vision_intel"] = text
+                cache["props"][cache_key]["player_name"] = parts[0]
+                cache["props"][cache_key]["stat_type"] = parts[1]
+
+        try:
+            with open(cache_path, "w") as f:
+                json.dump(cache, f)
+        except Exception as e:
+            logger.warning(f"[GEMINI_ENRICH] Cache write failed: {e}")
+
+        logger.info(
+            f"[GEMINI_ENRICH] {sport.upper()} | "
+            f"success={stats['success']} failed={stats['failed']} "
+            f"cache={cache_path}"
+        )
+        return stats
+
