@@ -121,8 +121,8 @@ async def get_ticker_data():
                 "category": "upcoming"
             })
     
-    # Add breaking news
-    for news in news_result.get("news", [])[:10]:
+    # Add breaking news (max 8 — controlled by backend freshness lifecycle)
+    for news in news_result.get("news", [])[:8]:
         ticker_items.append({
             "type": "news",
             "text": news["title"],

@@ -1,5 +1,5 @@
 """
-Live Scores Engine v1.0
+Live Scores Engine v1.1
 ========================
 
 Fetches live NBA scores from The Odds API /scores endpoint.
@@ -8,12 +8,23 @@ Also includes RSS feed integration for breaking news.
 Features:
 - Live score fetching with in_play detection
 - Game status tracking (not started, in progress, final)
-- Breaking news from RSS feeds (Rotoworld, ESPN Injury Reports)
+- Breaking news from RSS feeds with strict freshness lifecycle
+- Headline fingerprinting and cross-source deduplication
 - Background polling for fresh data
+
+Ticker Freshness Rules:
+- Each headline gets a fingerprint (normalized title hash)
+- first_seen_at is set ONCE on first discovery — never overwritten
+- last_seen_at is updated on each fetch cycle
+- Headlines shown only if first_seen_at <= 6 hours ago
+- Headlines purged from DB after 12 hours
+- Max 8 items returned, sorted by first_seen_at desc
 """
 
 import os
+import hashlib
 import logging
+import re
 import asyncio
 import httpx
 import feedparser
@@ -25,6 +36,11 @@ logger = logging.getLogger(__name__)
 
 ODDS_API_KEY = os.environ.get("ODDS_API_KEY")
 ODDS_API_BASE = "https://api.the-odds-api.com/v4"
+
+# Freshness lifecycle
+HEADLINE_SHOW_WINDOW_HOURS = 6    # Only show if first_seen_at within this window
+HEADLINE_PURGE_HOURS = 12         # Remove from DB after this
+TICKER_MAX_ITEMS = 8              # Max headlines returned to frontend
 
 # RSS Feed URLs for breaking news
 RSS_FEEDS = [
@@ -46,6 +62,18 @@ RSS_FEEDS = [
 ]
 
 
+def _fingerprint(title: str) -> str:
+    """
+    Generate a stable fingerprint for headline deduplication.
+    Normalizes: lowercase, strip punctuation/extra spaces, hash.
+    'LeBron James OUT vs. Celtics' and 'Lebron James Out vs Celtics'
+    produce the same fingerprint.
+    """
+    normalized = re.sub(r"[^a-z0-9 ]", "", title.lower())
+    normalized = re.sub(r"\s+", " ", normalized).strip()
+    return hashlib.sha256(normalized.encode()).hexdigest()[:16]
+
+
 class LiveScoresEngine:
     """
     Fetches and manages live NBA scores from The Odds API.
@@ -56,6 +84,7 @@ class LiveScoresEngine:
         self.db = db
         self.scores_cache = db.live_scores_cache
         self.news_cache = db.breaking_news_cache
+        self.headlines_col = db.ticker_headlines  # Per-headline lifecycle tracking
         self._api_available = bool(ODDS_API_KEY)
         self._last_scores_fetch = None
         self._last_news_fetch = None
@@ -183,7 +212,7 @@ class LiveScoresEngine:
                 game_time = datetime.fromisoformat(commence_time.replace("Z", "+00:00"))
                 est_time = game_time - timedelta(hours=5)  # Convert UTC to EST
                 status_display = est_time.strftime("%I:%M %p ET")
-            except:
+            except (ValueError, TypeError):
                 status_display = "TBD"
         
         # Get spread if available (for upcoming games)
@@ -291,79 +320,120 @@ class LiveScoresEngine:
     
     async def fetch_breaking_news(self, custom_headlines: List[str] = None) -> Dict[str, Any]:
         """
-        Fetch breaking news from RSS feeds and combine with custom headlines.
-        
-        Args:
-            custom_headlines: Optional list of custom headlines to include
-        
-        Returns:
-            Dict with news items
+        Fetch breaking news from RSS feeds, deduplicate via fingerprint,
+        persist per-headline lifecycle, and return only fresh items.
+
+        Lifecycle:
+          1. Fetch RSS items from all feeds
+          2. Fingerprint each title for cross-source dedup
+          3. Upsert into ticker_headlines: set first_seen_at once, update last_seen_at
+          4. Purge headlines older than HEADLINE_PURGE_HOURS
+          5. Return only headlines where first_seen_at <= HEADLINE_SHOW_WINDOW_HOURS
+          6. Limit to TICKER_MAX_ITEMS, sorted by first_seen_at desc
         """
-        news_items = []
-        
-        # Add custom headlines first (if provided)
+        now = datetime.now(timezone.utc)
+        now_iso = now.isoformat()
+
+        # Step 1: Ingest custom headlines
         if custom_headlines:
             for headline in custom_headlines:
-                news_items.append({
-                    "title": headline,
-                    "source": "Editorial",
-                    "category": "breaking",
-                    "timestamp": datetime.now(timezone.utc).isoformat(),
-                    "is_custom": True
-                })
-        
-        # Fetch from RSS feeds
+                fp = _fingerprint(headline)
+                await self.headlines_col.update_one(
+                    {"fingerprint": fp},
+                    {
+                        "$setOnInsert": {
+                            "fingerprint": fp,
+                            "title": headline,
+                            "source": "Editorial",
+                            "category": "breaking",
+                            "link": "",
+                            "is_custom": True,
+                            "first_seen_at": now_iso,
+                        },
+                        "$set": {"last_seen_at": now_iso},
+                        "$addToSet": {"sources": "Editorial"},
+                    },
+                    upsert=True,
+                )
+
+        # Step 2: Fetch from RSS feeds
         try:
             async with httpx.AsyncClient(timeout=15.0) as client:
                 for feed_config in RSS_FEEDS:
                     try:
                         response = await client.get(feed_config["url"])
-                        if response.status_code == 200:
-                            feed = feedparser.parse(response.text)
-                            
-                            # Get latest 5 items from each feed
-                            for entry in feed.entries[:5]:
-                                # Filter for NBA-relevant news
-                                title = entry.get("title", "")
-                                if self._is_nba_relevant(title):
-                                    news_items.append({
+                        if response.status_code != 200:
+                            continue
+                        feed = feedparser.parse(response.text)
+
+                        for entry in feed.entries[:5]:
+                            title = entry.get("title", "")
+                            if not self._is_nba_relevant(title):
+                                continue
+
+                            fp = _fingerprint(title)
+                            await self.headlines_col.update_one(
+                                {"fingerprint": fp},
+                                {
+                                    "$setOnInsert": {
+                                        "fingerprint": fp,
                                         "title": title,
                                         "source": feed_config["name"],
                                         "category": feed_config["category"],
                                         "link": entry.get("link", ""),
-                                        "timestamp": entry.get("published", datetime.now(timezone.utc).isoformat()),
-                                        "is_custom": False
-                                    })
+                                        "is_custom": False,
+                                        "first_seen_at": now_iso,
+                                    },
+                                    "$set": {"last_seen_at": now_iso},
+                                    "$addToSet": {"sources": feed_config["name"]},
+                                },
+                                upsert=True,
+                            )
                     except Exception as e:
                         logger.warning(f"[NEWS] Failed to fetch {feed_config['name']}: {e}")
                         continue
-                        
         except Exception as e:
             logger.error(f"[NEWS] RSS fetch error: {e}")
-        
-        # Deduplicate and sort by timestamp
-        seen_titles = set()
-        unique_news = []
-        for item in news_items:
-            title_key = item["title"][:50].lower()
-            if title_key not in seen_titles:
-                seen_titles.add(title_key)
-                unique_news.append(item)
-        
-        # Sort by custom first, then by timestamp
-        unique_news.sort(key=lambda x: (0 if x.get("is_custom") else 1, x.get("timestamp", "")), reverse=True)
-        
-        # Cache the news
-        await self._cache_news(unique_news)
-        self._last_news_fetch = datetime.now(timezone.utc)
-        
-        logger.info(f"[NEWS] Fetched {len(unique_news)} news items")
-        
+
+        # Step 3: Purge stale headlines (first_seen_at > HEADLINE_PURGE_HOURS ago)
+        purge_cutoff = (now - timedelta(hours=HEADLINE_PURGE_HOURS)).isoformat()
+        purge_result = await self.headlines_col.delete_many({"first_seen_at": {"$lt": purge_cutoff}})
+        if purge_result.deleted_count:
+            logger.info(f"[NEWS] Purged {purge_result.deleted_count} stale headlines (>{HEADLINE_PURGE_HOURS}h)")
+
+        # Step 4: Query fresh headlines (first_seen_at within show window)
+        show_cutoff = (now - timedelta(hours=HEADLINE_SHOW_WINDOW_HOURS)).isoformat()
+        cursor = self.headlines_col.find(
+            {"first_seen_at": {"$gte": show_cutoff}},
+            {"_id": 0},
+        ).sort("first_seen_at", -1).limit(TICKER_MAX_ITEMS)
+
+        fresh_headlines = await cursor.to_list(length=TICKER_MAX_ITEMS)
+
+        # Step 5: Format for API response (backward-compatible shape)
+        news_items = []
+        for h in fresh_headlines:
+            news_items.append({
+                "title": h.get("title", ""),
+                "source": h.get("source", ""),
+                "sources": h.get("sources", []),
+                "category": h.get("category", "news"),
+                "link": h.get("link", ""),
+                "timestamp": h.get("first_seen_at", now_iso),
+                "is_custom": h.get("is_custom", False),
+            })
+
+        # Also update the flat news cache for backward compat
+        await self._cache_news(news_items)
+        self._last_news_fetch = now
+
+        logger.info(f"[NEWS] {len(news_items)} fresh headlines (show<={HEADLINE_SHOW_WINDOW_HOURS}h, purge>{HEADLINE_PURGE_HOURS}h)")
+
         return {
             "success": True,
-            "news": unique_news[:15],  # Limit to 15 items
-            "news_count": len(unique_news),
-            "fetched_at": self._last_news_fetch.isoformat()
+            "news": news_items,
+            "news_count": len(news_items),
+            "fetched_at": self._last_news_fetch.isoformat(),
         }
     
     def _is_nba_relevant(self, title: str) -> bool:
@@ -401,23 +471,44 @@ class LiveScoresEngine:
             logger.error(f"[NEWS] Cache error: {e}")
     
     async def get_cached_news(self) -> Dict[str, Any]:
-        """Get cached news from MongoDB."""
+        """
+        Get fresh headlines from the per-headline collection.
+        Falls back to the flat cache if the collection is empty.
+        Always enforces the show window — never returns stale headlines.
+        """
         try:
-            cached = await self.news_cache.find_one(
-                {"type": "breaking_news"},
-                {"_id": 0}
-            )
-            
-            if cached:
+            now = datetime.now(timezone.utc)
+            show_cutoff = (now - timedelta(hours=HEADLINE_SHOW_WINDOW_HOURS)).isoformat()
+
+            cursor = self.headlines_col.find(
+                {"first_seen_at": {"$gte": show_cutoff}},
+                {"_id": 0},
+            ).sort("first_seen_at", -1).limit(TICKER_MAX_ITEMS)
+
+            fresh = await cursor.to_list(length=TICKER_MAX_ITEMS)
+
+            if fresh:
+                news_items = []
+                for h in fresh:
+                    news_items.append({
+                        "title": h.get("title", ""),
+                        "source": h.get("source", ""),
+                        "sources": h.get("sources", []),
+                        "category": h.get("category", "news"),
+                        "link": h.get("link", ""),
+                        "timestamp": h.get("first_seen_at", ""),
+                        "is_custom": h.get("is_custom", False),
+                    })
                 return {
                     "success": True,
-                    "news": cached.get("news", []),
+                    "news": news_items,
                     "cached": True,
-                    "updated_at": cached.get("updated_at")
+                    "updated_at": now.isoformat(),
                 }
-            
-            return {"success": False, "error": "No cached news", "news": []}
-            
+
+            # Nothing fresh — signal caller to do a live fetch
+            return {"success": False, "error": "No fresh headlines", "news": []}
+
         except Exception as e:
             logger.error(f"[NEWS] Cache read error: {e}")
             return {"success": False, "error": str(e), "news": []}

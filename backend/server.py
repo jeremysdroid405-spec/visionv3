@@ -1305,6 +1305,10 @@ async def startup_event():
         # dg_cached_board_temp - Shadow table for zero-downtime sync
         await db.dg_cached_board_temp.create_index([("player_name", ASCENDING)], background=True)
         
+        # ticker_headlines - Per-headline lifecycle tracking
+        await db.ticker_headlines.create_index([("fingerprint", ASCENDING)], unique=True, background=True)
+        await db.ticker_headlines.create_index([("first_seen_at", DESCENDING)], background=True)
+        
         logger.info("[INDEXES] MongoDB indexes created successfully (including compound indexes)")
     except Exception as e:
         logger.error(f"[INDEXES] Error creating indexes: {e}")
