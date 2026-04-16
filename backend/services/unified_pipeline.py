@@ -260,12 +260,16 @@ class UnifiedPipeline:
 
             # ============================================================
             # PHASE 6b: MARKET MOVES DIFF (board-diff tracking)
-            # Compare old visible board vs new, generate events for picks
-            # that left the board.
+            # Compare old visible board vs new, classify exit reasons.
+            # Pass validated candidate pool so the engine can distinguish
+            # displaced_by_higher vs no_longer_qualified.
             # ============================================================
             try:
                 from services.market_moves_engine import diff_and_update_from_tiers
-                mm_events = await diff_and_update_from_tiers(self.db, self.adapter.sport, tiers)
+                mm_events = await diff_and_update_from_tiers(
+                    self.db, self.adapter.sport, tiers,
+                    candidate_pool=validated,
+                )
             except Exception as e:
                 logger.warning(f"[{sport}_PIPELINE] [{self.run_id}] Market Moves diff failed (non-fatal): {e}")
 
