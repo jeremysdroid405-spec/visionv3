@@ -1922,6 +1922,13 @@ class MLBTierService:
                 
                 logger.info(f"  ATOMIC UPSERT complete: Safe={safe_count}, Front={front_count}, War={war_count}")
                 
+                # Market Moves: diff board after publish
+                try:
+                    from services.market_moves_engine import diff_and_update_from_db
+                    await diff_and_update_from_db(self.db, "mlb")
+                except Exception as e:
+                    logger.warning(f"  Market Moves diff failed (non-fatal): {e}")
+                
                 # Store parlays (less critical, can use simple replace)
                 parlays_collection = self.db.mlb_parlays
                 await parlays_collection.delete_many({})

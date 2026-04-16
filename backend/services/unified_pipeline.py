@@ -264,10 +264,8 @@ class UnifiedPipeline:
             # that left the board.
             # ============================================================
             try:
-                from services.market_moves_engine import compute_board_diff, persist_events
-                mm_events = await compute_board_diff(self.db, self.adapter.sport, tiers)
-                if mm_events:
-                    await persist_events(self.db, mm_events)
+                from services.market_moves_engine import diff_and_update_from_tiers
+                mm_events = await diff_and_update_from_tiers(self.db, self.adapter.sport, tiers)
             except Exception as e:
                 logger.warning(f"[{sport}_PIPELINE] [{self.run_id}] Market Moves diff failed (non-fatal): {e}")
 

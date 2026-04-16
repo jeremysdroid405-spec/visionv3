@@ -383,6 +383,13 @@ class MLBMasterSync:
         await self._store_tier_results("mlb_front_lines", front_lines)
         await self._store_tier_results("mlb_war_zone", war_zone)
         
+        # Market Moves: diff board after publish
+        try:
+            from services.market_moves_engine import diff_and_update_from_db
+            await diff_and_update_from_db(self.db, "mlb")
+        except Exception as e:
+            logger.warning(f"[MLB_MASTER_SYNC] Market Moves diff failed (non-fatal): {e}")
+        
         return {
             "safe_haven": len(safe_haven),
             "front_lines": len(front_lines),
