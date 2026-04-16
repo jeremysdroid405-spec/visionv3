@@ -170,178 +170,62 @@ async def sync_star_profiles():
 
 
 @router.get("/v3/vacuum/live-alerts")
-async def get_live_vacuum_alerts(response: Response, refresh: bool = False):
+async def get_live_injury_advantage(response: Response, sport: str = "nba"):
     """
-    Get live usage vacuum alerts for frontend display.
-    
-    ACTIVE PROP GATE: Only returns alerts where the beneficiary has an 
-    active prop on today's board. Injuries without actionable betting 
-    value are filtered out.
-    
-    Returns:
-        List of formatted alerts for the "Live Injury Advantage" section.
+    Live Injury Advantage — Strict board-scoped engine.
+
+    Only returns advantages where:
+    1. A meaningful injury (tier >= 3) exists on injuries_normalized
+    2. A board pick on the SAME TEAM gains projected minutes >= 2.0
+    3. If no board pick qualifies, returns empty (no generic boosts)
+
+    Query params:
+        sport: "nba" or "mlb"
     """
     response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
-    
-    service = get_service()
-    
-    # If refresh requested or no recent check, fetch fresh injuries
-    should_refresh = refresh
-    if service.last_injury_check:
-        mins_since_check = (datetime.now(timezone.utc) - service.last_injury_check).total_seconds() / 60
-        if mins_since_check > 5:  # Auto-refresh if last check > 5 mins ago
-            should_refresh = True
-    else:
-        should_refresh = True
-    
-    if should_refresh:
-        try:
-            await service.check_injuries()
-        except Exception as e:
-            logger.warning(f"[VacuumAlerts] Refresh failed: {e}")
-    
-    # Get vacuums filtered to today's teams only
-    vacuums = await service.get_active_vacuums_for_today()
-    
-    # =========================================================================
-    # ACTIVE PROP GATE: Get players with active props on today's board
-    # =========================================================================
-    active_players_on_board = set()
-    active_props_by_player = {}
-    
+
+    if _db is None:
+        return {"has_alerts": False, "alert_count": 0, "alerts": [], "timestamp": datetime.now(timezone.utc).isoformat()}
+
     try:
-        if _db is not None:
-            cached_board = _db.get_collection("dg_cached_board")
-            async for player_doc in cached_board.find({}, {"player_name": 1, "props": 1, "_id": 0}):
-                player_name = player_doc.get("player_name")
-                if player_name:
-                    normalized = player_name.strip().lower()
-                    active_players_on_board.add(normalized)
-                    active_props_by_player[normalized] = player_doc.get("props", [])
-            
-            logger.info(f"[VacuumAlerts] Active Prop Gate: {len(active_players_on_board)} players on today's board")
-    except Exception as e:
-        logger.warning(f"[VacuumAlerts] Error fetching active board: {e}")
-    
-    # Format alerts for frontend display
-    alerts = []
-    board_promotions = []
-    filtered_count = 0
-    
-    for vacuum in vacuums:
-        injured_player = vacuum.get("injured_player", "Unknown")
-        injured_team = vacuum.get("team", "")
-        reason = vacuum.get("reason", "")
-        usage_rate = vacuum.get("usage_rate", 0)
-        triggered_at = vacuum.get("triggered_at", "")
-        is_late_scratch = vacuum.get("is_late_scratch", False)
-        return_date = vacuum.get("return_date")
-        
-        # Calculate time since triggered
-        time_ago = "recently"
-        mins_ago = 0
-        if triggered_at:
-            try:
-                triggered_dt = datetime.fromisoformat(triggered_at.replace("Z", "+00:00"))
-                delta = datetime.now(timezone.utc) - triggered_dt
-                mins_ago = int(delta.total_seconds() / 60)
-                if mins_ago < 60:
-                    time_ago = f"{mins_ago} mins ago"
-                elif mins_ago < 120:
-                    time_ago = f"{mins_ago // 60} hour ago"
-                else:
-                    time_ago = f"{mins_ago // 60} hours ago"
-            except:
-                pass
-        
-        for beneficiary in vacuum.get("beneficiaries", []):
-            beneficiary_name = beneficiary.get("name", "") or beneficiary.get("player_name", "Unknown")
-            normalized_beneficiary = beneficiary_name.strip().lower()
-            
-            # ACTIVE PROP GATE: Only include if beneficiary has active prop
-            if active_players_on_board and normalized_beneficiary not in active_players_on_board:
-                filtered_count += 1
-                continue
-            
-            # Get beneficiary's active props
-            beneficiary_props = active_props_by_player.get(normalized_beneficiary, [])
-            prop_lines = []
-            for prop in beneficiary_props[:3]:
-                stat_type = prop.get("stat_type", "")
-                line = prop.get("line", 0)
-                if stat_type and line:
-                    prop_lines.append(f"{stat_type} {line}")
-            
-            projections = beneficiary.get("projections", {})
-            promotion = beneficiary.get("board_promotion", {})
-            
-            # Extract dynamic model fields
-            usage_pct = beneficiary.get("usage_percentage", 0)
-            usage_per_min = beneficiary.get("usage_per_minute", 0)
-            boost_pct = beneficiary.get("boost_percentage", 0) or projections.get("boost_percentage", 0)
-            is_dynamic = beneficiary.get("dynamic_calculation", False)
-            
-            # For frontend compatibility, usage_bump should show the boost percentage
-            usage_bump_for_display = boost_pct
-            
-            alert = {
-                "id": f"{injured_player}-{beneficiary_name}".replace(" ", "-").lower(),
-                "beneficiary_name": beneficiary_name,
-                "beneficiary_rank": beneficiary.get("rank", "primary"),
-                "usage_bump": usage_bump_for_display,  # Frontend displays this as +X%
-                "minutes_bump": beneficiary.get("minutes_bump", 0),
-                "modifier": beneficiary.get("modifier", 0),
-                "injured_player": injured_player,
-                "injured_team": injured_team,
-                "injury_reason": reason,
-                "injury_return_date": return_date,
-                "injured_usage_rate": usage_rate,
-                "triggered_at": triggered_at,
-                "time_ago": time_ago,
-                "mins_ago": mins_ago,
-                # Dynamic Usage Model v3.0 fields
-                "usage_percentage": usage_pct,
-                "usage_per_minute": usage_per_min,
-                "dynamic_calculation": is_dynamic,
-                # Projections with +12% PTS/PRA boost
-                "projections": projections,
-                "boost_percentage": boost_pct,
-                # Board promotion
-                "should_promote": promotion.get("should_promote", False),
-                "eligible_props": promotion.get("eligible_props", []),
-                "top_edge_stat": promotion.get("top_edge_stat"),
-                # Badge flags
-                "high_usage_advantage": beneficiary.get("high_usage_advantage", True),
-                "late_injury_boost": beneficiary.get("late_injury_boost", True),
-                "is_late_scratch": is_late_scratch,
-                # NEW: Active prop data
+        from services.injury_advantage import compute_injury_advantages
+
+        advantages = await compute_injury_advantages(_db, sport)
+
+        alerts = []
+        for adv in advantages:
+            alerts.append({
+                "id": f"{adv['injured_player']}-{adv['beneficiary_name']}".replace(" ", "-").lower(),
+                "beneficiary_name": adv["beneficiary_name"],
+                "beneficiary_team": adv["beneficiary_team"],
+                "beneficiary_rank": adv["rank"],
+                "stat_type": adv["stat_type"],
+                "line": adv["line"],
+                "board_tier": adv["board_tier"],
+                "minutes_bump": adv["minutes_bump"],
+                "usage_bump": adv["usage_bump"],
+                "injured_player": adv["injured_player"],
+                "injured_status": adv["injured_status"],
+                "injured_tier_level": adv["injured_tier_level"],
+                "injury_return_date": adv["injury_return_date"],
+                "injury_reason": adv["injury_description"],
                 "has_active_prop": True,
-                "active_prop_lines": prop_lines,
-                # Formatted display string with boost info
-                "display_text": f"{beneficiary_name} — {injured_player} ruled OUT {time_ago}. +{boost_pct:.0f}% PTS/PRA boost (Usage: {usage_pct:.1f}%)."
-            }
-            
-            alerts.append(alert)
-            
-            # Track board promotions separately
-            if promotion.get("should_promote"):
-                board_promotions.append({
-                    "player_name": beneficiary_name,
-                    "injured_star": injured_player,
-                    "props": promotion.get("eligible_props", []),
-                    "high_usage_advantage": True
-                })
-    
-    if filtered_count > 0:
-        logger.info(f"[VacuumAlerts] Active Prop Gate: Filtered {filtered_count} beneficiaries (no active props)")
-    
-    return {
-        "has_alerts": len(alerts) > 0,
-        "alert_count": len(alerts),
-        "alerts": alerts,
-        "board_promotions": board_promotions,
-        "total_promotions": len(board_promotions),
-        "filtered_count": filtered_count,
-        "last_check": service.last_injury_check.isoformat() if service.last_injury_check else None,
-        "timestamp": datetime.now(timezone.utc).isoformat()
-    }
+                "display_text": (
+                    f"{adv['beneficiary_name']} ({adv['stat_type']} {adv['line']}) — "
+                    f"{adv['injured_player']} {adv['injured_status']}. "
+                    f"+{adv['minutes_bump']:.0f} min projected."
+                ),
+            })
+
+        return {
+            "has_alerts": len(alerts) > 0,
+            "alert_count": len(alerts),
+            "alerts": alerts,
+            "sport": sport,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }
+
+    except Exception as e:
+        logger.error(f"[INJURY_ADV] Error: {e}")
+        return {"has_alerts": False, "alert_count": 0, "alerts": [], "error": str(e)}
+
