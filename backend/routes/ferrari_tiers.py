@@ -82,9 +82,13 @@ def overlay_enrichment_cache(picks: list, sport: str) -> list:
         key = f"{pick.get('player_name', '')}|{pick.get('stat_type', '')}".lower()
         cached = cache_lookup.get(key)
         if cached:
-            if cached.get("vision_intel"):
-                pick["vision_intel"] = cached["vision_intel"]
-                pick["vision_summary"] = cached["vision_intel"]
+            # Only overlay vision_intel if cache has LONGER text than DB
+            # (Phase 7 Gemini writes directly to DB — don't overwrite with stale cache)
+            cached_vi = cached.get("vision_intel", "")
+            existing_vi = pick.get("vision_intel", "")
+            if cached_vi and len(cached_vi) > len(existing_vi):
+                pick["vision_intel"] = cached_vi
+                pick["vision_summary"] = cached_vi
             if cached.get("scout_badges"):
                 pick["scout_badges"] = cached["scout_badges"]
             enriched_suite = cached.get("intel_suite")
