@@ -654,7 +654,9 @@ class InjuryVacuumService:
                     player_name = inj.get("player_name", "")
                     team = inj.get("team", "UNK")
                     status = inj.get("status", "UNKNOWN")  # normalized tier name
-                    reason = inj.get("short_comment", "") or inj.get("description", "")[:100]
+                    # DISPLAY_ONLY: narrative fields from quarantined namespace
+                    display = inj.get("display_only", {})
+                    reason = display.get("short_comment", "") or display.get("description", "")[:100]
                     
                     injuries.append({
                         "player_name": player_name,

@@ -64,19 +64,20 @@ class InjuryIntelligenceService:
                         "team": n["team"],
                         "team_full": "",
                         "position": n.get("position", ""),
-                        "status": n["raw_status"],  # legacy consumers expect raw status
+                        "status": n.get("display_only", {}).get("raw_status", n.get("status", "")),
                         "normalized_status": n["status"],
                         "tier_level": n["tier_level"],
                         "risk": n["risk"],
                         "return_date": n.get("return_date"),
-                        "description": n.get("description", ""),
-                        "short_comment": n.get("short_comment", ""),
+                        # DISPLAY_ONLY: narrative fields from quarantined namespace
+                        "description": n.get("display_only", {}).get("description", ""),
+                        "short_comment": n.get("display_only", {}).get("short_comment", ""),
                         "severity": {
                             "level": n["tier_level"],
                             "color": n["color"],
                             "risk": n["risk"],
                         },
-                        "synced_at": n["synced_at"],
+                        "synced_at": n.get("synced_at", ""),
                         "source": "BDL",
                     })
                 await self.injuries_collection.insert_many(legacy_records)

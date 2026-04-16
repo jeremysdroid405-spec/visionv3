@@ -10,6 +10,11 @@ Source: BallDontLie API (player_injuries endpoint)
 All raw BDL statuses are mapped through a normalized severity hierarchy.
 No downstream consumer reads raw BDL status directly.
 
+Field Classification:
+  STRUCTURAL — Logic-safe fields. Used by triggers, diffs, advantage engine.
+  DISPLAY_ONLY — Narrative/free-text. Stored for UI only. NEVER participates
+                 in trigger logic, change detection, or advantage computation.
+
 Writes to: `injuries_normalized` collection (replaces dg_injuries + bdl_injuries)
 """
 
@@ -34,8 +39,73 @@ BDL_TEAM_ENDPOINTS = {
 
 COLLECTION_NAME = "injuries_normalized"
 
-# Cached team_id → abbreviation maps (fetched once per sync)
+# Cached team_id -> abbreviation maps (fetched once per sync)
 _team_cache: Dict[str, Dict[int, str]] = {}
+
+# =========================================================================
+# FIELD CLASSIFICATION — Hard boundary between logic and display
+# =========================================================================
+# STRUCTURAL: These fields and ONLY these fields may participate in
+#   trigger logic, change detection, advantage computation, or coordinator events.
+# DISPLAY_ONLY: Free-text / narrative. Stored under a nested "display_only"
+#   key in every record. Downstream logic must NEVER branch on these.
+
+STRUCTURAL_FIELDS = frozenset({
+    "sport",
+    "player_name",
+    "bdl_id",
+    "team",
+    "team_id",
+    "position",
+    "status",           # Normalized tier name (e.g. "OUT", "QUESTIONABLE")
+    "tier_level",       # int 1-5
+    "risk",             # "LOW" / "MEDIUM" / "HIGH" / "CRITICAL"
+    "color",            # UI color hint derived from tier (structural, not narrative)
+    "return_date",      # ISO date string — structured, drives return_date_shifted trigger
+    "injury_date",      # ISO date — structured (MLB only)
+    "source",           # "bdl" / "BDL" — adapter origin tag
+    "synced_at",        # ISO timestamp — bookkeeping
+    "first_seen_at",    # ISO timestamp — recency tracking
+    "status_changed_at",# ISO timestamp — drives recency gate in advantage engine
+})
+
+DISPLAY_ONLY_FIELDS = frozenset({
+    "raw_status",       # Original BDL text before normalization
+    "description",      # Free-text injury narrative from BDL
+    "short_comment",    # Truncated narrative
+    "injury_type",      # Free-text category from BDL (e.g. "Knee")
+    "injury_detail",    # Free-text detail from BDL (e.g. "ACL Tear")
+    "injury_side",      # Free-text body side from BDL (e.g. "Left")
+})
+
+
+def firewall_for_logic(record: dict) -> dict:
+    """
+    INPUT FIREWALL — Returns ONLY structural fields from an injury record.
+    This is the ONLY function that logic consumers (triggers, diffs,
+    advantage engine) should use to read injury data.
+
+    Any field not in STRUCTURAL_FIELDS is stripped.
+    """
+    return {k: v for k, v in record.items() if k in STRUCTURAL_FIELDS}
+
+
+def extract_display(record: dict) -> dict:
+    """
+    Extract display-only narrative fields from a record.
+    Returns a dict suitable for nesting under "display_only" key.
+    """
+    return {k: record.get(k, "") for k in DISPLAY_ONLY_FIELDS if record.get(k) is not None}
+
+
+def build_normalized_record(structural: dict, display: dict) -> dict:
+    """
+    Assemble a complete normalized record for DB storage.
+    Structural fields at top level, narratives nested under display_only.
+    """
+    rec = dict(structural)
+    rec["display_only"] = dict(display)
+    return rec
 
 # =========================================================================
 # NORMALIZED STATUS HIERARCHY
@@ -89,64 +159,70 @@ def _parse_date(val) -> Optional[str]:
 
 
 def _normalize_nba_record(entry: dict, synced_at: str) -> dict:
-    """Normalize a single BDL NBA injury record."""
+    """Normalize a single BDL NBA injury record with structural/display separation."""
     player = entry.get("player", {})
     raw_status = entry.get("status", "Unknown")
     norm = normalize_status(raw_status)
 
-    return {
+    structural = {
         "sport": "nba",
         "player_name": f"{player.get('first_name', '')} {player.get('last_name', '')}".strip(),
         "bdl_id": player.get("id"),
         "team": "",  # NBA player_injuries doesn't nest team — filled below
         "team_id": player.get("team_id"),
         "position": player.get("position", ""),
-        "raw_status": raw_status,
         "status": norm["tier"],
         "tier_level": norm["tier_level"],
         "risk": norm["risk"],
         "color": norm["color"],
         "return_date": _parse_date(entry.get("return_date")),
-        "injury_date": None,  # NBA endpoint doesn't provide injury date
+        "injury_date": None,
+        "synced_at": synced_at,
+        "source": "bdl",
+    }
+    display = {
+        "raw_status": raw_status,
         "description": entry.get("description", ""),
         "short_comment": (entry.get("description") or "")[:120],
         "injury_type": None,
         "injury_detail": None,
         "injury_side": None,
-        "synced_at": synced_at,
-        "source": "BDL",
     }
+    return build_normalized_record(structural, display)
 
 
 def _normalize_mlb_record(entry: dict, synced_at: str) -> dict:
-    """Normalize a single BDL MLB injury record."""
+    """Normalize a single BDL MLB injury record with structural/display separation."""
     player = entry.get("player", {})
     team = player.get("team", {}) if isinstance(player.get("team"), dict) else {}
     raw_status = entry.get("status", "Unknown")
     norm = normalize_status(raw_status)
 
-    return {
+    structural = {
         "sport": "mlb",
         "player_name": player.get("full_name") or f"{player.get('first_name', '')} {player.get('last_name', '')}".strip(),
         "bdl_id": player.get("id"),
         "team": team.get("abbreviation", ""),
         "team_id": team.get("id"),
         "position": player.get("position", ""),
-        "raw_status": raw_status,
         "status": norm["tier"],
         "tier_level": norm["tier_level"],
         "risk": norm["risk"],
         "color": norm["color"],
         "return_date": _parse_date(entry.get("return_date")),
         "injury_date": _parse_date(entry.get("date")),
+        "synced_at": synced_at,
+        "source": "bdl",
+    }
+    display = {
+        "raw_status": raw_status,
         "description": entry.get("long_comment") or entry.get("description") or "",
         "short_comment": entry.get("short_comment") or (entry.get("long_comment") or "")[:120],
         "injury_type": entry.get("type"),
         "injury_detail": entry.get("detail"),
         "injury_side": entry.get("side"),
-        "synced_at": synced_at,
-        "source": "BDL",
     }
+    return build_normalized_record(structural, display)
 
 
 # =========================================================================
@@ -302,6 +378,10 @@ async def get_injuries(db, sport: Optional[str] = None, min_tier_level: int = 0)
     """
     Read normalized injuries from DB.
     Optionally filter by sport and minimum severity tier.
+
+    Returns full records including display_only namespace.
+    Logic consumers MUST call firewall_for_logic() on each record
+    before using them in trigger/diff/advantage computations.
     """
     query: dict = {}
     if sport:
@@ -317,6 +397,8 @@ def is_meaningful_change(old: dict, new: dict) -> Tuple[bool, str]:
     """
     Determine if an injury record change is meaningful enough to trigger a rebuild.
 
+    STRUCTURAL FIELDS ONLY — this function must never inspect display_only fields.
+
     Meaningful changes:
       - tier_level changed (status escalation or de-escalation)
       - return_date shifted
@@ -327,6 +409,7 @@ def is_meaningful_change(old: dict, new: dict) -> Tuple[bool, str]:
     if not old:
         return True, "new_injury"
 
+    # FIREWALL: Only compare structural fields
     if old.get("tier_level") != new.get("tier_level"):
         direction = "escalated" if (new.get("tier_level", 0) > old.get("tier_level", 0)) else "de-escalated"
         return True, f"status_{direction}"
@@ -334,4 +417,6 @@ def is_meaningful_change(old: dict, new: dict) -> Tuple[bool, str]:
     if old.get("return_date") != new.get("return_date"):
         return True, "return_date_shifted"
 
+    # display_only fields (description, short_comment, injury_type, etc.)
+    # are explicitly excluded — text changes NEVER trigger rebuilds
     return False, "no_change"

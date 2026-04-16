@@ -32,7 +32,14 @@ from datetime import datetime, timezone, timedelta
 from typing import Dict, List, Optional, Tuple
 
 from services.event_bus import BoardEvent, get_event_bus
-from services.injury_normalization import normalize_status, COLLECTION_NAME
+from services.injury_normalization import (
+    normalize_status,
+    COLLECTION_NAME,
+    STRUCTURAL_FIELDS,
+    DISPLAY_ONLY_FIELDS,
+    firewall_for_logic,
+    extract_display,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -270,12 +277,18 @@ class InjurySensor:
 
     def _normalize_records(self, records: List[dict], sport: str) -> List[dict]:
         """Apply shared normalization to merged records.
-        Carries forward timing-source disagreement annotations (prefixed with _)
-        but these are stripped before DB persistence."""
+
+        Enforces the structural/display firewall:
+          - Structural fields at top level (logic-safe)
+          - Narrative fields nested under display_only (NEVER used for triggers)
+          - Timing-source annotations prefixed with _ (stripped before DB persist)
+        """
         normalized = []
         for rec in records:
             raw_status = rec.get("raw_status", "Unknown")
             norm = normalize_status(raw_status)
+
+            # STRUCTURAL — logic-safe fields only
             entry = {
                 "sport": sport,
                 "player_name": rec.get("player_name", ""),
@@ -283,25 +296,31 @@ class InjurySensor:
                 "team": rec.get("team", ""),
                 "team_id": rec.get("team_id"),
                 "position": rec.get("position", ""),
-                "raw_status": raw_status,
                 "status": norm["tier"],
                 "tier_level": norm["tier_level"],
                 "risk": norm["risk"],
                 "color": norm["color"],
                 "return_date": self._parse_date(rec.get("return_date")),
                 "injury_date": self._parse_date(rec.get("injury_date")),
+                "source": rec.get("source", "unknown"),
+            }
+
+            # DISPLAY_ONLY — narrative fields, quarantined from logic
+            entry["display_only"] = {
+                "raw_status": raw_status,
                 "description": rec.get("description", ""),
                 "short_comment": rec.get("short_comment", "") or (rec.get("description") or "")[:120],
                 "injury_type": rec.get("injury_type"),
                 "injury_detail": rec.get("injury_detail"),
                 "injury_side": rec.get("injury_side"),
-                "source": rec.get("source", "unknown"),
-                "_source_disagreement": rec.get("_source_disagreement", False),
             }
-            # Carry forward all timing signal annotations (e.g. _espn_status_signal, _nba_official_status_signal)
+
+            # Internal annotations (timing signals) — stripped before DB persist
+            entry["_source_disagreement"] = rec.get("_source_disagreement", False)
             for key, val in rec.items():
                 if key.endswith("_status_signal") and key.startswith("_"):
                     entry[key] = val
+
             normalized.append(entry)
         return normalized
 
@@ -449,14 +468,23 @@ class InjurySensor:
     # =========================================================================
 
     async def _persist(self, sport: str, records: List[dict], is_baseline: bool = False):
-        """Write normalized records to DB, preserving first_seen_at and updating status_changed_at."""
+        """Write normalized records to DB, preserving first_seen_at and updating status_changed_at.
+
+        DB schema per record:
+          - Top-level: structural fields only (logic-safe)
+          - display_only: nested dict of narrative fields (UI rendering only)
+          - Internal _ annotations are stripped before DB write.
+        """
         collection = self.db[COLLECTION_NAME]
         now = datetime.now(timezone.utc).isoformat()
 
         if not is_baseline:
-            # Load existing for change tracking
+            # Load existing for change tracking — ONLY structural fields needed
             prev_by_bdl = {}
-            cursor = collection.find({"sport": sport}, {"_id": 0, "bdl_id": 1, "tier_level": 1, "return_date": 1, "first_seen_at": 1, "status_changed_at": 1})
+            cursor = collection.find(
+                {"sport": sport},
+                {"_id": 0, "bdl_id": 1, "tier_level": 1, "return_date": 1, "first_seen_at": 1, "status_changed_at": 1},
+            )
             async for doc in cursor:
                 bid = doc.get("bdl_id")
                 if bid:
@@ -470,6 +498,7 @@ class InjurySensor:
                     rec["status_changed_at"] = now
                 else:
                     rec["first_seen_at"] = prev.get("first_seen_at", now)
+                    # FIREWALL: change detection uses ONLY tier_level and return_date
                     if prev.get("tier_level") != rec.get("tier_level") or prev.get("return_date") != rec.get("return_date"):
                         rec["status_changed_at"] = now
                     else:
@@ -479,9 +508,12 @@ class InjurySensor:
                 rec["first_seen_at"] = now
                 rec["status_changed_at"] = now
 
-        rec_for_db = [{k: v for k, v in r.items() if not k.startswith("_")} for r in records]
-        for r in rec_for_db:
-            r["synced_at"] = now
+        # Build DB records: strip _ annotations, keep display_only nested
+        rec_for_db = []
+        for r in records:
+            db_rec = {k: v for k, v in r.items() if not k.startswith("_")}
+            db_rec["synced_at"] = now
+            rec_for_db.append(db_rec)
 
         await collection.delete_many({"sport": sport})
         if rec_for_db:

@@ -4,6 +4,14 @@ Live Injury Advantage — Strict Board-Scoped Engine
 Only fires when a player ALREADY ON THE LIVE BOARD gains meaningful
 playing time due to a RECENT same-team injury change.
 
+INPUT FIREWALL:
+  This engine reads ONLY from injuries_normalized (BDL-derived).
+  All trigger decisions use ONLY structural fields:
+    tier_level, status_changed_at, team, player_name, return_date
+  Narrative fields (description, short_comment, injury_type, injury_detail,
+  injury_side) are quarantined under display_only and NEVER participate
+  in advantage computation. They appear in output for UI display only.
+
 Rules:
   1. Injury must be meaningful (tier_level >= 3: OUT, DOUBTFUL, OFS, IL)
   2. Injury must be RECENT (status_changed_at within RECENCY_WINDOW)
@@ -20,6 +28,8 @@ projections and offer no new opportunity.
 import logging
 from datetime import datetime, timezone, timedelta
 from typing import Dict, List, Optional
+
+from services.injury_normalization import STRUCTURAL_FIELDS
 
 logger = logging.getLogger(__name__)
 
@@ -77,24 +87,32 @@ async def _get_meaningful_injuries(db, sport: str) -> List[dict]:
     Get injuries that are:
       - tier_level >= 3 (OUT, DOUBTFUL, OFS, IL)
       - status_changed_at within RECENCY_WINDOW_HOURS
-    
+
     Long-standing injuries already priced into projections are excluded.
+
+    FIREWALL: Query and filter use ONLY structural fields.
+    display_only is fetched separately for UI output but NEVER drives logic.
     """
     cutoff = (datetime.now(timezone.utc) - timedelta(hours=RECENCY_WINDOW_HOURS)).isoformat()
-    
+
+    # Explicit projection: structural fields + display_only for output
+    projection = {"_id": 0, "display_only": 1}
+    for f in STRUCTURAL_FIELDS:
+        projection[f] = 1
+
     cursor = db["injuries_normalized"].find(
         {
             "sport": sport,
             "tier_level": {"$gte": 3},
             "status_changed_at": {"$gte": cutoff},
         },
-        {"_id": 0},
+        projection,
     )
     results = await cursor.to_list(length=300)
-    
+
     if not results:
         logger.debug(f"[INJURY_ADV] {sport.upper()}: 0 recent meaningful injuries (cutoff={cutoff[:16]})")
-    
+
     return results
 
 
@@ -171,6 +189,10 @@ async def compute_injury_advantages(db, sport: str) -> List[dict]:
 
         seen_players.add(player.lower())
 
+        # DISPLAY_ONLY: narrative sourced from quarantined namespace
+        display = best_injury.get("display_only", {})
+        injury_desc = (display.get("description") or display.get("short_comment") or "")[:120]
+
         advantages.append({
             "sport": sport,
             "beneficiary_name": player,
@@ -178,11 +200,14 @@ async def compute_injury_advantages(db, sport: str) -> List[dict]:
             "stat_type": stat,
             "line": pick.get("line"),
             "board_tier": pick.get("_board_tier"),
+            # Structural fields from injury record
             "injured_player": best_injury.get("player_name"),
             "injured_status": best_injury.get("status"),
             "injured_tier_level": injury_tier,
             "injury_return_date": best_injury.get("return_date"),
-            "injury_description": (best_injury.get("description") or "")[:120],
+            # Display-only narrative — NEVER used for logic
+            "injury_description": injury_desc,
+            # Computed advantage metrics
             "minutes_bump": minutes_bump,
             "usage_bump": usage_bump,
             "rank": rank,
