@@ -280,7 +280,7 @@ class IntelSuiteCalculator:
 
         if std_dev is None and len(values) >= 5:
             recent = values[-10:] if len(values) >= 10 else values
-            std_dev = float(np.std(recent))
+            std_dev = float(np.std(recent, ddof=1))
         elif std_dev is None:
             std_dev = 3.0
 
@@ -350,7 +350,7 @@ class IntelSuiteCalculator:
 
         l10 = values[-10:] if len(values) >= 10 else values
         l10_avg = float(np.mean(l10))
-        l10_std = float(np.std(l10))
+        l10_std = float(np.std(l10, ddof=1))
         hit_rate = sum(1 for v in l10 if v > line) / len(l10) * 100 if l10 else 0
 
         if hit_rate >= 80:

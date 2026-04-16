@@ -1,25 +1,29 @@
 # Changelog
 
+## 2026-04-16 — Non-Manual MLB Path Verified + CV Standardization
+- Traced full non-manual MLB pipeline end-to-end: `scheduled_safety` → Coordinator → UnifiedPipeline(MLBAdapter) → Atomic Publish → Gemini enrichment
+- Raw log trace: run_id `a8fa4aa3`, 2171 props → SH=2, FL=10, WZ=10, 22/22 Gemini enriched in 16.1s
+- Fixed CV calculation inconsistency: standardized all `np.std()` calls to use `ddof=1` (sample std dev) across `oracle_apex_service.py`, `intel_suite_calculator.py`
+- Files already using `ddof=1`: `vegas_regression_model.py`
+- Discovered DB_NAME mismatch: server uses `pick_vision` (from .env), not `propvision`
+- Added test endpoint `POST /api/v3/mlb/test-scheduled-sync` for non-manual path verification
+
+## 2026-04-16 — Event-Driven Sync Architecture Complete
+- Wired legacy data sync paths to emit BoardEvent coordinator triggers
+- MLB sync engine, Ferrari tier service, MLB tier service all emit `scored_data_refresh`
+- Closed the "open-door" publish gap
+- Market Moves exit-reason classification (prop_removed, displaced_by_higher, etc.)
+- 3-part prop identity keys (player|stat|line) for alternate lines
+
 ## 2026-04-14 - MLB Deep Ingestion Complete
-- Built async 15x parallel ingestion engine (`scripts/async_ingestion.py`)
-  - `asyncio.Semaphore(15)` + `aiohttp.ClientSession` for max throughput
-  - Active-only filter (777 players)
-  - `bulk_write` every 100 players
-  - Status counter per batch
+- Built async 15x parallel ingestion engine
 - Ingested 777 active MLB players with 149,989 game logs (3 seasons)
-- Post-migration: added `bdl_game_logs` (mapped fields), `is_pitcher`/`is_batter`
-- Fixed `dk_odds` parameter mismatch in `rolling_cache_manager.py` (`_calculate_nba_intel`)
-- Fixed BDL_API_KEY in backend .env (was set to wrong value)
-- Purged empty shell documents from previous failed ingestion
+- Fixed dk_odds parameter mismatch in rolling_cache_manager.py
 
 ## 2026-04-14 - NBA Deep Ingestion + Advanced Overlay Complete
 - NBA async ingestion: 559 players, 112,778 game logs, 181.4s, 0 errors
-- No-Loss Merge: preserved headshots, badges, advanced_stats via `$set` only
-- Advanced Overlay: 15 metrics (usage_pct, true_shooting_pct, off_rating, def_rating, pace, etc.) merged into every NBA game log (100% coverage)
+- Advanced Overlay: 15 metrics merged into every NBA game log
 
 ## 2026-04-14 - Automated Feature Discovery + Lasso Prediction Engine
-- AutoFE pipeline: Raw Scan → 366 engineered features (interactions, time-derivatives, rolling volatility) → Lasso L1 selection
-- 3 models trained: MLB Hits (R²=0.030), MLB Total Bases (R²=0.030), NBA Points (R²=0.486)
-- Lasso Predictor engine (`/app/backend/models/predictor.py`) with StandardScaler normalization
-- API endpoints: `GET /api/v3/lasso/predict/{sport}/{player}/{stat}` and `GET /api/v3/lasso/models`
-- Validation: SGA → 23.4 pts (HIGH_FIDELITY), Ohtani → 0.57 hits / 1.02 TB (HIGH_VARIANCE)
+- AutoFE pipeline: 366 engineered features → Lasso L1 selection
+- 3 models trained for MLB, NBA

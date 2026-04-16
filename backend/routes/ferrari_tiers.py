@@ -4018,3 +4018,45 @@ async def lasso_models():
             "lasso_alpha": model.alpha,
         })
     return {"success": True, "models": models}
+
+
+
+# =============================================================================
+# TEST: Non-manual scheduled MLB sync (same event as daily cron)
+# =============================================================================
+
+@router.post("/v3/mlb/test-scheduled-sync")
+async def test_mlb_scheduled_sync():
+    """
+    Test endpoint: Fires the EXACT same BoardEvent as the daily cron job.
+    event_type='scheduled_safety' (NOT 'manual') so the coordinator
+    treats it identically to an automated trigger.
+    """
+    from services.event_bus import BoardEvent, get_event_bus
+    from services.rebuild_coordinator import get_coordinator
+
+    if _db is None:
+        raise HTTPException(status_code=500, detail="Database not initialized")
+
+    event = BoardEvent(
+        sport="mlb",
+        event_type="scheduled_safety",
+        severity="high",
+        source="scheduler_daily_mlb",
+    )
+    await get_event_bus().publish(event)
+
+    # Wait briefly for dispatch
+    await asyncio.sleep(1)
+
+    stats = get_coordinator().get_stats()
+    last = stats.get("last_publish", {}).get("mlb", {})
+
+    return {
+        "success": True,
+        "event_type": "scheduled_safety",
+        "source": "scheduler_daily_mlb",
+        "note": "Non-manual: identical to daily cron trigger",
+        "coordinator_mode": stats["sport_modes"]["mlb"],
+        "last_publish": last,
+    }

@@ -697,9 +697,9 @@ class OracleApexService:
             l20_values = all_values[:20]
             l10_values = all_values[:10]
             
-            # Calculate CV from L10
+            # Calculate CV from L10 (ddof=1: sample std dev for small N)
             l10_mean = np.mean(l10_values)
-            l10_std = np.std(l10_values)
+            l10_std = np.std(l10_values, ddof=1)
             cv = l10_std / l10_mean if l10_mean > 0 else 999
             
             # Get VK prediction
@@ -1053,9 +1053,9 @@ class OracleApexService:
             l20_avg = round(np.mean(l20_values), 1) if l20_values else None
             season_avg = round(np.mean(all_values), 1) if all_values else None
             
-            # Calculate CV from L10
+            # Calculate CV from L10 (ddof=1: sample std dev for small N)
             l10_mean = np.mean(l10_values) if l10_values else 0
-            l10_std = np.std(l10_values) if l10_values else 0
+            l10_std = np.std(l10_values, ddof=1) if l10_values else 0
             cv = l10_std / l10_mean if l10_mean > 0 else 999
             
             # Get VK prediction
