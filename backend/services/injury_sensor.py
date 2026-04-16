@@ -132,7 +132,6 @@ class InjurySensor:
                 return CADENCE_IDLE
 
             games = cached.get("games", [])
-            sport_key = "nba" if sport == "nba" else "mlb"
 
             for game in games:
                 ct = game.get("commence_time")
@@ -208,12 +207,18 @@ class InjurySensor:
 
     async def _fetch_and_merge(self, sport: str) -> List[dict]:
         """
-        Fetch from all sources and merge with precedence rules.
+        Fetch from all sources and merge with strict precedence rules.
 
-        BDL wins for structural fields (bdl_id, return_date, injury detail).
-        ESPN triggers timing signals even if BDL hasn't updated yet.
+        BDL = STRUCTURAL AUTHORITY (wins for all fields: bdl_id, return_date, injury detail).
+        ESPN / NBA Official = TIMING AUTHORITY (annotate BDL records with disagreement signals).
+
+        CRITICAL: Only BDL records form the merged output. Timing sources
+        (ESPN, NBA Official) NEVER add standalone records. They only annotate
+        existing BDL records when a status disagreement is detected.
+
+        Live Injury Advantage reads exclusively from BDL-derived normalized data.
         """
-        all_records: Dict[str, List[dict]] = {}  # source_id → records
+        all_records: Dict[str, List[dict]] = {}  # source_id -> records
 
         for source in self.sources:
             try:
@@ -225,9 +230,8 @@ class InjurySensor:
                 self._metrics["source_errors"][source.SOURCE_ID] = self._metrics["source_errors"].get(source.SOURCE_ID, 0) + 1
                 logger.warning(f"[INJURY_SENSOR] {source.SOURCE_ID} fetch failed for {sport}: {e}")
 
-        # Merge: BDL is primary, ESPN augments timing
+        # BDL is the sole structural base
         bdl_records = all_records.get("bdl", [])
-        espn_records = all_records.get("espn", [])
 
         # Build BDL lookup by player name (lowercase)
         bdl_by_name = {}
@@ -236,22 +240,27 @@ class InjurySensor:
             if name_key:
                 bdl_by_name[name_key] = r
 
-        merged = list(bdl_records)  # Start with all BDL records
+        merged = list(bdl_records)  # ONLY BDL records form the output
 
-        # Check ESPN for status signals not yet in BDL
-        for espn_rec in espn_records:
-            name_key = espn_rec.get("player_name", "").lower().strip()
+        # Collect all timing-only sources (ESPN, NBA Official, any future timing adapter)
+        timing_source_ids = [s.SOURCE_ID for s in self.sources if s.SOURCE_ID != "bdl"]
+        timing_records: List[dict] = []
+        for sid in timing_source_ids:
+            timing_records.extend(all_records.get(sid, []))
+
+        # Annotate BDL records with timing disagreements from all timing sources
+        for timing_rec in timing_records:
+            name_key = timing_rec.get("player_name", "").lower().strip()
             bdl_rec = bdl_by_name.get(name_key)
 
             if bdl_rec:
-                # Both sources have this player — check for status disagreement
-                espn_status = espn_rec.get("raw_status", "").lower()
+                timing_status = timing_rec.get("raw_status", "").lower()
                 bdl_status = bdl_rec.get("raw_status", "").lower()
-                if espn_status != bdl_status:
-                    # ESPN sees different status — annotate the BDL record
-                    bdl_rec["_espn_status_signal"] = espn_rec.get("raw_status")
+                source_id = timing_rec.get("source", "unknown")
+                if timing_status != bdl_status:
+                    bdl_rec[f"_{source_id}_status_signal"] = timing_rec.get("raw_status")
                     bdl_rec["_source_disagreement"] = True
-            # Don't add ESPN-only records to merged — ESPN lacks BDL IDs
+            # NEVER add timing-only records to merged — they lack BDL structural fields
 
         return merged
 
@@ -260,12 +269,14 @@ class InjurySensor:
     # =========================================================================
 
     def _normalize_records(self, records: List[dict], sport: str) -> List[dict]:
-        """Apply shared normalization to merged records."""
+        """Apply shared normalization to merged records.
+        Carries forward timing-source disagreement annotations (prefixed with _)
+        but these are stripped before DB persistence."""
         normalized = []
         for rec in records:
             raw_status = rec.get("raw_status", "Unknown")
             norm = normalize_status(raw_status)
-            normalized.append({
+            entry = {
                 "sport": sport,
                 "player_name": rec.get("player_name", ""),
                 "bdl_id": rec.get("bdl_id"),
@@ -285,9 +296,13 @@ class InjurySensor:
                 "injury_detail": rec.get("injury_detail"),
                 "injury_side": rec.get("injury_side"),
                 "source": rec.get("source", "unknown"),
-                "_espn_status_signal": rec.get("_espn_status_signal"),
                 "_source_disagreement": rec.get("_source_disagreement", False),
-            })
+            }
+            # Carry forward all timing signal annotations (e.g. _espn_status_signal, _nba_official_status_signal)
+            for key, val in rec.items():
+                if key.endswith("_status_signal") and key.startswith("_"):
+                    entry[key] = val
+            normalized.append(entry)
         return normalized
 
     # =========================================================================
@@ -354,6 +369,8 @@ class InjurySensor:
     def _make_change(self, rec: dict, old: Optional[dict], change_type: str) -> dict:
         old_tier = old.get("tier_level", 0) if old else 0
         new_tier = rec.get("tier_level", 0)
+        # Collect all timing signals from the record
+        timing_signals = {k: v for k, v in rec.items() if k.endswith("_status_signal") and k.startswith("_") and v}
         return {
             "player_key": self._player_key(rec),
             "player_name": rec.get("player_name", ""),
@@ -367,7 +384,7 @@ class InjurySensor:
             "tier_delta": new_tier - old_tier,
             "return_date": rec.get("return_date"),
             "source": rec.get("source"),
-            "_espn_signal": rec.get("_espn_status_signal"),
+            "timing_signals": timing_signals,
         }
 
     # =========================================================================

@@ -3,15 +3,15 @@
 ## Sync Architecture v2 — All Phases Complete
 
 ### Phase 1: Foundation (COMPLETE) — Event bus, coordinator, budget manager
-### Phase 2: NBA Migration (COMPLETE) — All NBA through coordinator → pipeline  
-### Phase 3: MLB Migration (COMPLETE) — All MLB through coordinator → pipeline
+### Phase 2: NBA Migration (COMPLETE) — All NBA through coordinator -> pipeline  
+### Phase 3: MLB Migration (COMPLETE) — All MLB through coordinator -> pipeline
 ### Phase 4: Event-Driven Activation (COMPLETE) — Watchers active
 
 ## Injury Normalization Layer (COMPLETE)
 
-### Source: BallDontLie API (replaced ESPN)
-- NBA: `/nba/v1/player_injuries` → 181 injuries, 5 status tiers
-- MLB: `/mlb/v1/player_injuries` → 143 injuries, 5 status tiers + IL designations
+### Source: BallDontLie API (structural authority)
+- NBA: `/nba/v1/player_injuries` -> 181 injuries, 5 status tiers
+- MLB: `/mlb/v1/player_injuries` -> 143 injuries, 5 status tiers + IL designations
 
 ### Normalized Status Hierarchy
 | Tier Level | NBA Status | MLB Status | Risk | Color |
@@ -38,7 +38,34 @@
 | injury_side | string | Body side (MLB only) |
 | description | string | Context |
 
-### InjuryWatcher — Meaningful Changes Only
+## Multi-Source Injury Sensor (COMPLETE)
+
+### Architecture
+```
+  Source Adapters (BDL, ESPN, NBA Official)
+    -> Sensor Loop (dynamic cadence per sport)
+      -> Multi-Source Merge (strict precedence rules)
+        -> Normalizer (shared status hierarchy)
+          -> Change Detector (tier change, return shift, new/cleared)
+            -> Event Emitter -> Coordinator -> Targeted Pipeline Rebuild
+```
+
+### Source Trust Hierarchy
+| Source | Role | Provides | Does NOT provide |
+|--------|------|----------|------------------|
+| BDL | STRUCTURAL AUTHORITY | Player IDs, return dates, injury detail | Fast timing |
+| ESPN | TIMING AUTHORITY (NBA) | Status changes first | Player IDs, return dates |
+| NBA Official PDF | TIMING AUTHORITY (NBA) | League-mandated status changes | Player IDs, return dates |
+
+### Critical Rule: Live Injury Advantage Input
+The Live Injury Advantage engine (`injury_advantage.py`) MUST ONLY read from:
+- BDL-derived normalized injuries in `injuries_normalized`
+- OR the merged normalized state (which is BDL-only by design)
+
+Timing sources (ESPN, NBA Official) NEVER inject records into `injuries_normalized`.
+They only annotate BDL records with timing disagreement signals.
+
+### InjuryWatcher/Sensor Triggers
 Triggers only on:
 - `tier_level` changed (status escalation/de-escalation)
 - `return_date` shifted
@@ -50,9 +77,11 @@ Does NOT trigger on: description text changes, same-tier updates.
 | File | Purpose |
 |------|---------|
 | `services/injury_normalization.py` | Fetch, normalize, persist, compare |
-| `services/watchers.py` InjuryWatcher | BDL polling → meaningful change detection |
-| `services/injury_service.py` | Legacy compat wrapper (writes dg_injuries) |
-| `services/injury_vacuum_service.py` | Reads from injuries_normalized |
+| `services/injury_sensor.py` | Multi-source polling, merge, diff, emit |
+| `services/injury_sources/bdl_source.py` | BDL adapter (structural authority) |
+| `services/injury_sources/espn_source.py` | ESPN adapter (timing authority) |
+| `services/injury_sources/nba_official_source.py` | NBA PDF adapter (timing authority) |
+| `services/injury_advantage.py` | Board-scoped, recency-gated advantage engine |
 
 ---
-*Last Updated: April 17, 2026*
+*Last Updated: April 16, 2026*

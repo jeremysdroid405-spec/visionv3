@@ -1746,13 +1746,14 @@ async def startup_event():
 
         # Phase 4: Start watchers and sensors (staged activation)
         from services.watchers import GameClockWatcher, OddsDeltaWatcher
-        from services.injury_sources import BDLInjurySource, ESPNInjurySource
+        from services.injury_sources import BDLInjurySource, ESPNInjurySource, NBAOfficialInjurySource
         from services.injury_sensor import InjurySensor
 
         # Injury Sensor: multi-source detection (replaces old InjuryWatcher)
+        # BDL = structural authority, ESPN + NBA Official = timing authorities
         injury_sensor = InjurySensor(
             db=db,
-            sources=[BDLInjurySource(), ESPNInjurySource()],
+            sources=[BDLInjurySource(), ESPNInjurySource(), NBAOfficialInjurySource()],
             sports=["nba", "mlb"],
         )
         await injury_sensor.start()
@@ -1776,7 +1777,7 @@ async def startup_event():
         logger.info(f"[SYNC_V2] Rebuild Coordinator — NBA={coordinator._sport_mode['nba'].upper()}, MLB={coordinator._sport_mode['mlb'].upper()}")
         logger.info("[SYNC_V2] Odds Budget Manager initialized")
         logger.info(f"[SYNC_V2] Daily budget: {budget_mgr.daily_budget:,} calls/day")
-        logger.info("[SYNC_V2] Injury Sensor: ACTIVE (BDL + ESPN, dynamic cadence)")
+        logger.info("[SYNC_V2] Injury Sensor: ACTIVE (BDL + ESPN + NBA Official, dynamic cadence)")
         logger.info("[SYNC_V2] GameClockWatcher: ACTIVE (300s)")
         logger.info("[SYNC_V2] OddsDeltaWatcher: STANDBY (enable via admin)")
         logger.info(f"[SYNC_V2] Daily budget: {budget_mgr.daily_budget:,} calls/day")

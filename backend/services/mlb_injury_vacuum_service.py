@@ -517,8 +517,8 @@ class MLBInjuryVacuumService:
         
         try:
             # Check mlb_cached_board for today's active props
-            cached_board = self.db.get_collection("mlb_cached_board") if self.db else None
-            if cached_board:
+            cached_board = self.db.get_collection("mlb_cached_board") if self.db is not None else None
+            if cached_board is not None:
                 async for player_doc in cached_board.find({}, {"player_name": 1, "props": 1, "_id": 0}):
                     player_name = player_doc.get("player_name")
                     if player_name:
