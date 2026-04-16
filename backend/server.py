@@ -987,41 +987,33 @@ async def scheduled_mlb_game_logs_sync():
 
 async def scheduled_mlb_daily_sync():
     """
-    MLB Daily Sync - Runs at 4:03 AM EST (3 min after NBA daily sync).
-    
-    Runs the MLB Pipeline (1:1 clone of NBA) to refresh all MLB props and enrichments.
-    Uses JIT Delta Check for Vision Intel efficiency.
+    MLB Daily Sync — routes through Rebuild Coordinator → UnifiedPipeline(MLBAdapter).
+
+    Phase 3: MLB uses coordinator → single authoritative publish path.
+    Legacy mlb_sync_engine preserved as fallback.
     """
     logger.info("=" * 70)
-    logger.info("[SCHEDULER] MLB DAILY SYNC (4:03 AM EST)")
+    logger.info("[SCHEDULER] MLB DAILY SYNC (via Coordinator)")
     logger.info(f"[SCHEDULER] Time: {datetime.now(timezone.utc).isoformat()}")
     logger.info("=" * 70)
-    
-    # V2: Emit event to coordinator (shadow observation)
+
     try:
         from services.event_bus import BoardEvent, get_event_bus
         await get_event_bus().publish(BoardEvent(
-            sport="mlb", event_type="scheduled_safety", severity="medium",
+            sport="mlb",
+            event_type="scheduled_safety",
+            severity="high",
             source="scheduler_daily_mlb",
         ))
-    except Exception:
-        pass
-
-    try:
-        from services.mlb_sync_engine import run_mlb_sync
-        
-        result = await run_mlb_sync(db, save_to_db=True, target_sport="mlb")
-        
-        logger.info(f"[SCHEDULER] MLB Sync Engine complete:")
-        logger.info(f"[SCHEDULER]   - Success: {result.get('success', False)}")
-        logger.info(f"[SCHEDULER]   - Output: {result.get('output', {})}")
-        logger.info(f"[SCHEDULER]   - Timings: {result.get('timings', {})}")
-        logger.info("=" * 70)
-        
+        logger.info("[SCHEDULER] MLB daily event dispatched to coordinator")
     except Exception as e:
-        logger.error(f"[SCHEDULER] MLB daily sync failed: {e}")
-        import traceback
-        logger.error(traceback.format_exc())
+        logger.error(f"[SCHEDULER] Coordinator dispatch failed, falling back to legacy: {e}")
+        try:
+            from services.mlb_sync_engine import run_mlb_sync
+            result = await run_mlb_sync(db, save_to_db=True, target_sport="mlb")
+            logger.info(f"[SCHEDULER] MLB legacy fallback: {result.get('success', False)}")
+        except Exception as le:
+            logger.error(f"[SCHEDULER] MLB legacy fallback also failed: {le}")
 
 
 async def scheduled_mlb_game_values_sync():
@@ -1758,8 +1750,8 @@ async def startup_event():
         event_bus = get_event_bus()
         coordinator = get_coordinator()
         coordinator.set_db(db)
-        coordinator.set_sport_mode("nba", "live")    # Phase 2: NBA goes live
-        coordinator.set_sport_mode("mlb", "shadow")   # MLB stays shadow until Phase 3
+        coordinator.set_sport_mode("nba", "live")    # Phase 2: NBA live
+        coordinator.set_sport_mode("mlb", "live")    # Phase 3: MLB live
         await coordinator.start(event_bus)
 
         budget_mgr = get_budget_manager()

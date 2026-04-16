@@ -3575,29 +3575,38 @@ async def run_mlb_ferrari_pipeline_endpoint(
     save_to_db: bool = Query(True, description="Save results to collections"),
 ):
     """
-    Execute the full MLB PropVision Ferrari Pipeline.
-    
-    Phases:
-    1. Quantitative Sorting Gates
-    2. Vision Intel Scout Badges  
-    3. Gemini Oracle Summarizer
-    4. Save to Ferrari Collections
-    
-    Returns:
-        Complete pipeline results with all tiers
+    MLB Ferrari Pipeline — routes through Rebuild Coordinator → UnifiedPipeline(MLBAdapter).
+
+    Phase 3: Same authoritative publish path as mlb/sync/master.
     """
+    from services.event_bus import BoardEvent, get_event_bus
+    from services.rebuild_coordinator import get_coordinator
+
     if _db is None:
         raise HTTPException(status_code=500, detail="Database not initialized")
-    
+
     try:
-        from services.mlb_ferrari_pipeline import run_mlb_ferrari_pipeline
-        
-        result = await run_mlb_ferrari_pipeline(_db, save_to_db)
-        
-        return result
-        
+        event = BoardEvent(
+            sport="mlb",
+            event_type="manual",
+            severity="high",
+            source="manual_api_mlb_pipeline",
+        )
+        await get_event_bus().publish(event)
+        await asyncio.sleep(1)
+
+        stats = get_coordinator().get_stats()
+        last = stats.get("last_publish", {}).get("mlb", {})
+
+        return {
+            "success": True,
+            "coordinator_mode": stats["sport_modes"]["mlb"],
+            "dispatch": "coordinator → UnifiedPipeline(MLBAdapter)",
+            "last_publish": last,
+        }
+
     except Exception as e:
-        logger.error(f"[FERRARI_PIPELINE] Error: {e}")
+        logger.error(f"[MLB_FERRARI_PIPELINE] Error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -3640,27 +3649,36 @@ async def get_top_hrr_safe_haven_endpoint(
 @router.post("/mlb/sync/master")
 async def mlb_master_sync():
     """
-    MLB Master Sync - Enforces strict pipeline sequence.
-    
-    Sequence:
-    1. Sync Vegas Odds → mlb_live_props
-    2. Build mlb_cached_board (INTERSECTION: PrizePicks AND Odds only)
-    3. BDL Splits Prefetch (ONLY for players in cached_board)
-    4. Oracle Apex Tier Rebuilds
-    
-    Returns:
-        Detailed metrics for each step including BDL API calls made.
+    MLB Master Sync — routes through Rebuild Coordinator → UnifiedPipeline(MLBAdapter).
+
+    Phase 3: All MLB board publishes go through the single authoritative path.
     """
-    from services.mlb_master_sync import get_mlb_master_sync
-    
+    from services.event_bus import BoardEvent, get_event_bus
+    from services.rebuild_coordinator import get_coordinator
+
     if _db is None:
         raise HTTPException(status_code=500, detail="Database not initialized")
-    
+
     try:
-        master_sync = get_mlb_master_sync(_db)
-        result = await master_sync.run_master_sync()
-        return result
-        
+        event = BoardEvent(
+            sport="mlb",
+            event_type="manual",
+            severity="high",
+            source="manual_api_mlb_master",
+        )
+        await get_event_bus().publish(event)
+        await asyncio.sleep(1)
+
+        stats = get_coordinator().get_stats()
+        last = stats.get("last_publish", {}).get("mlb", {})
+
+        return {
+            "success": True,
+            "coordinator_mode": stats["sport_modes"]["mlb"],
+            "dispatch": "coordinator → UnifiedPipeline(MLBAdapter)",
+            "last_publish": last,
+        }
+
     except Exception as e:
         logger.error(f"[MLB_MASTER_SYNC] Error: {e}")
         raise HTTPException(status_code=500, detail=str(e))

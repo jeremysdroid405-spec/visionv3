@@ -130,25 +130,36 @@ async def get_mlb_war_zone(limit: int = Query(default=10, le=20)):
 @router.post("/v3/mlb/rebuild")
 async def rebuild_mlb_tiers(save_to_db: bool = Query(default=True)):
     """
-    Trigger MLB pipeline rebuild with JIT Delta Check.
-    Same architecture as NBA rebuild.
+    MLB Rebuild — routes through Rebuild Coordinator → UnifiedPipeline(MLBAdapter).
+
+    Phase 3: Same authoritative publish path as all MLB syncs.
     """
     if _db is None:
         raise HTTPException(status_code=503, detail="Database not connected")
-    
+
     try:
-        from services.mlb_sync_engine import run_mlb_sync
-        
-        logger.info("[MLB_REBUILD] Starting MLB sync with JIT Delta Check...")
-        
-        result = await run_mlb_sync(_db, save_to_db=save_to_db, target_sport="mlb")
-        
+        from services.event_bus import BoardEvent, get_event_bus
+        from services.rebuild_coordinator import get_coordinator
+        import asyncio
+
+        event = BoardEvent(
+            sport="mlb",
+            event_type="manual",
+            severity="high",
+            source="manual_api_mlb_rebuild",
+        )
+        await get_event_bus().publish(event)
+        await asyncio.sleep(1)
+
+        stats = get_coordinator().get_stats()
+        last = stats.get("last_publish", {}).get("mlb", {})
+
         return {
             "success": True,
-            "message": "MLB tiers rebuilt with JIT Vision Intel",
-            "output": result.get("output", {}),
-            "timings": result.get("timings", {}),
-            "synced_at": datetime.now(timezone.utc).isoformat()
+            "message": "MLB rebuild dispatched via coordinator",
+            "coordinator_mode": stats["sport_modes"]["mlb"],
+            "last_publish": last,
+            "synced_at": datetime.now(timezone.utc).isoformat(),
         }
     except Exception as e:
         logger.error(f"[MLB_REBUILD] Error: {e}")
