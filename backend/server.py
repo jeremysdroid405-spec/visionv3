@@ -1218,19 +1218,7 @@ async def scheduled_live_injury_check():
         if vacuums_triggered:
             logger.info(f"[SCHEDULER] Vacuums triggered: {[v.get('injured_player') for v in vacuums_triggered]}")
             
-            # V2: Emit injury events to coordinator (shadow observation)
-            try:
-                from services.event_bus import BoardEvent, get_event_bus
-                bus = get_event_bus()
-                injured_names = [v.get('injured_player', '') for v in vacuums_triggered]
-                for sport in ["nba", "mlb"]:
-                    await bus.publish(BoardEvent(
-                        sport=sport, event_type="injury_change", severity="high",
-                        affected_players=injured_names,
-                        source="injury_watcher",
-                    ))
-            except Exception:
-                pass
+            # Note: InjuryWatcher handles event emission to coordinator (Phase 4)
         
     except Exception as e:
         logger.error(f"[SCHEDULER] Live injury check failed: {e}")
@@ -1756,9 +1744,32 @@ async def startup_event():
 
         budget_mgr = get_budget_manager()
 
+        # Phase 4: Start watchers (staged activation)
+        from services.watchers import InjuryWatcher, GameClockWatcher, OddsDeltaWatcher
+
+        injury_watcher = InjuryWatcher(db)
+        game_clock_watcher = GameClockWatcher(db)
+        odds_delta_watcher = OddsDeltaWatcher(db)
+
+        # Stage 1: InjuryWatcher ON
+        await injury_watcher.start()
+        # Stage 2: GameClockWatcher ON
+        await game_clock_watcher.start()
+        # Stage 3: OddsDeltaWatcher OFF (enable after observing trigger volume)
+        # await odds_delta_watcher.start()  # uncomment to enable
+
+        # Store watchers globally for admin endpoints
+        app.state.injury_watcher = injury_watcher
+        app.state.game_clock_watcher = game_clock_watcher
+        app.state.odds_delta_watcher = odds_delta_watcher
+
         logger.info("[SYNC_V2] Event Bus initialized")
-        logger.info(f"[SYNC_V2] Rebuild Coordinator started — NBA={coordinator._sport_mode['nba'].upper()}, MLB={coordinator._sport_mode['mlb'].upper()}")
+        logger.info(f"[SYNC_V2] Rebuild Coordinator — NBA={coordinator._sport_mode['nba'].upper()}, MLB={coordinator._sport_mode['mlb'].upper()}")
         logger.info("[SYNC_V2] Odds Budget Manager initialized")
+        logger.info(f"[SYNC_V2] Daily budget: {budget_mgr.daily_budget:,} calls/day")
+        logger.info("[SYNC_V2] InjuryWatcher: ACTIVE (120s)")
+        logger.info("[SYNC_V2] GameClockWatcher: ACTIVE (300s)")
+        logger.info("[SYNC_V2] OddsDeltaWatcher: STANDBY (enable via admin)")
         logger.info(f"[SYNC_V2] Daily budget: {budget_mgr.daily_budget:,} calls/day")
     except Exception as e:
         logger.error(f"[SYNC_V2] Foundation init failed (non-fatal): {e}")

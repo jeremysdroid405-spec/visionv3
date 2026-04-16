@@ -1,27 +1,35 @@
 """
-Rebuild Coordinator
-====================
+Rebuild Coordinator v2
+=======================
 Central nervous system for board refreshes.
 
-Receives BoardEvents from all sources (odds delta, injury, game clock, manual, scheduler).
-Deduplicates, classifies scope, enforces per-sport locks, and dispatches rebuilds.
+Phase 4: Event-driven with per-trigger-class toggles, hard rate limits,
+and comprehensive metrics.
 
-Phase 1: SHADOW MODE (MLB) — logs decisions, does not dispatch
-Phase 2: LIVE MODE (NBA) — coordinator owns NBA pipeline dispatching
+Features:
+  - Per-sport mode (live/shadow)
+  - Per-trigger-class enable/disable (injury, game_lock, odds_delta, manual, scheduled)
+  - Dedup within configurable window
+  - Hard cooldown per sport (prevents thrashing)
+  - Max rebuilds per hour per sport
+  - Full observability: events by type, scope counts, avg duration, publish counts
 """
 
 import asyncio
 import logging
+import time
+from collections import deque
 from datetime import datetime, timezone, timedelta
 from enum import Enum
-from typing import Dict, List, Optional, Set
+from typing import Dict, List, Optional
 
 from services.event_bus import BoardEvent, EventBus, get_event_bus
 
 logger = logging.getLogger(__name__)
 
 DEDUP_WINDOW_SECONDS = 30
-REBUILD_COOLDOWN_SECONDS = 60
+DEFAULT_COOLDOWN_SECONDS = 60
+MAX_REBUILDS_PER_HOUR = 12  # hard cap: max 12 rebuilds/hr/sport = 1 every 5 min avg
 
 
 class RebuildScope(str, Enum):
@@ -31,37 +39,44 @@ class RebuildScope(str, Enum):
 
 
 class RebuildCoordinator:
-    """
-    Ingests events, deduplicates, classifies scope, enforces locks, dispatches.
-
-    Per-sport mode: each sport can be shadow or live independently.
-    """
 
     def __init__(self):
         self._db = None
 
-        # Per-sport mode: "shadow" or "live"
-        self._sport_mode: Dict[str, str] = {
-            "nba": "shadow",
-            "mlb": "shadow",
+        # Per-sport mode
+        self._sport_mode: Dict[str, str] = {"nba": "shadow", "mlb": "shadow"}
+
+        # Per-trigger-class toggles (all default ON except odds_delta)
+        self._trigger_enabled: Dict[str, bool] = {
+            "injury_change": True,
+            "game_lock": True,
+            "odds_delta": False,      # starts disabled until observed
+            "manual": True,           # always on
+            "scheduled_safety": True,  # always on
         }
 
-        # Per-sport locks
-        self._locks: Dict[str, asyncio.Lock] = {
-            "nba": asyncio.Lock(),
-            "mlb": asyncio.Lock(),
-        }
+        # Per-sport locks and cooldowns
+        self._locks: Dict[str, asyncio.Lock] = {"nba": asyncio.Lock(), "mlb": asyncio.Lock()}
+        self._cooldown_seconds: Dict[str, int] = {"nba": DEFAULT_COOLDOWN_SECONDS, "mlb": DEFAULT_COOLDOWN_SECONDS}
 
-        # Dedup: recent event keys with timestamps
+        # Dedup cache
         self._recent_events: Dict[str, datetime] = {}
 
-        # Last rebuild timestamps per sport
+        # Rate limit tracking: rolling window of rebuild timestamps per sport
+        self._rebuild_history: Dict[str, deque] = {
+            "nba": deque(maxlen=MAX_REBUILDS_PER_HOUR),
+            "mlb": deque(maxlen=MAX_REBUILDS_PER_HOUR),
+        }
+
+        # Last rebuild timestamps
         self._last_rebuild: Dict[str, datetime] = {}
 
-        # Observability counters
-        self._stats = {
+        # ---- Metrics ----
+        self._metrics = {
             "events_received": 0,
             "events_deduped": 0,
+            "events_trigger_disabled": 0,
+            "events_rate_limited": 0,
             "scope_noop": 0,
             "scope_targeted": 0,
             "scope_full": 0,
@@ -74,38 +89,58 @@ class RebuildCoordinator:
             "by_source": {},
             "by_event_type": {},
             "last_publish_counts": {},
+            "pipeline_durations": {"nba": [], "mlb": []},  # last 20 durations
         }
 
+    # ---- Configuration ----
+
     def set_sport_mode(self, sport: str, mode: str):
-        """Set a sport to 'live' or 'shadow'."""
         self._sport_mode[sport] = mode
         logger.info(f"[COORDINATOR] {sport.upper()} mode set to {mode.upper()}")
 
+    def set_trigger_enabled(self, trigger_type: str, enabled: bool):
+        self._trigger_enabled[trigger_type] = enabled
+        state = "ENABLED" if enabled else "DISABLED"
+        logger.info(f"[COORDINATOR] Trigger class '{trigger_type}' {state}")
+
+    def set_cooldown(self, sport: str, seconds: int):
+        self._cooldown_seconds[sport] = seconds
+        logger.info(f"[COORDINATOR] {sport.upper()} cooldown set to {seconds}s")
+
     @property
     def shadow_mode(self) -> bool:
-        """Legacy compat: True if ALL sports are shadow."""
         return all(m == "shadow" for m in self._sport_mode.values())
 
     async def start(self, bus: Optional[EventBus] = None):
-        """Subscribe to the event bus."""
         bus = bus or get_event_bus()
         bus.subscribe(self.handle_event)
         modes = ", ".join(f"{s.upper()}={m.upper()}" for s, m in self._sport_mode.items())
+        triggers = ", ".join(f"{t}={'ON' if e else 'OFF'}" for t, e in self._trigger_enabled.items())
         logger.info(f"[COORDINATOR] Started — {modes}")
+        logger.info(f"[COORDINATOR] Triggers — {triggers}")
+
+    def set_db(self, db):
+        self._db = db
+
+    # ---- Event Handler ----
 
     async def handle_event(self, event: BoardEvent):
-        """Main event handler — dedup, classify, dispatch."""
-        self._stats["events_received"] += 1
-        self._stats["by_source"][event.source] = self._stats["by_source"].get(event.source, 0) + 1
-        self._stats["by_event_type"][event.event_type] = self._stats["by_event_type"].get(event.event_type, 0) + 1
+        self._metrics["events_received"] += 1
+        self._metrics["by_source"][event.source] = self._metrics["by_source"].get(event.source, 0) + 1
+        self._metrics["by_event_type"][event.event_type] = self._metrics["by_event_type"].get(event.event_type, 0) + 1
 
         sport = event.sport
         mode = self._sport_mode.get(sport, "shadow")
 
-        # Dedup check
+        # Check trigger class enabled
+        if not self._trigger_enabled.get(event.event_type, True):
+            self._metrics["events_trigger_disabled"] += 1
+            logger.debug(f"[COORDINATOR] TRIGGER DISABLED: {event.event_type}({sport})")
+            return
+
+        # Dedup
         if self._is_duplicate(event):
-            self._stats["events_deduped"] += 1
-            logger.debug(f"[COORDINATOR] Deduped: {event.event_type}({sport}) from {event.source}")
+            self._metrics["events_deduped"] += 1
             return
 
         self._recent_events[event.key] = event.timestamp
@@ -113,65 +148,66 @@ class RebuildCoordinator:
 
         # Classify scope
         scope = self._classify_scope(event)
-        affected = event.affected_players[:5] if event.affected_players else ["board-wide"]
 
         if scope == RebuildScope.NO_OP:
-            self._stats["scope_noop"] += 1
-            logger.info(f"[COORDINATOR] NO-OP: {event.event_type}({sport}) severity={event.severity} source={event.source}")
+            self._metrics["scope_noop"] += 1
+            logger.info(f"[COORDINATOR] NO-OP: {event.event_type}({sport}) severity={event.severity}")
             return
 
         if scope == RebuildScope.TARGETED:
-            self._stats["scope_targeted"] += 1
+            self._metrics["scope_targeted"] += 1
         else:
-            self._stats["scope_full"] += 1
+            self._metrics["scope_full"] += 1
 
-        # Cooldown check (bypass for manual triggers)
-        last = self._last_rebuild.get(sport)
-        if last and event.event_type != "manual":
-            elapsed = (datetime.now(timezone.utc) - last).total_seconds()
-            if elapsed < REBUILD_COOLDOWN_SECONDS:
-                self._stats["rebuilds_skipped_cooldown"] += 1
-                logger.info(f"[COORDINATOR] COOLDOWN: {sport.upper()} skipped ({elapsed:.0f}s < {REBUILD_COOLDOWN_SECONDS}s)")
+        # Cooldown check (bypass for manual)
+        if event.event_type != "manual":
+            last = self._last_rebuild.get(sport)
+            cooldown = self._cooldown_seconds.get(sport, DEFAULT_COOLDOWN_SECONDS)
+            if last:
+                elapsed = (datetime.now(timezone.utc) - last).total_seconds()
+                if elapsed < cooldown:
+                    self._metrics["rebuilds_skipped_cooldown"] += 1
+                    logger.info(f"[COORDINATOR] COOLDOWN: {sport.upper()} ({elapsed:.0f}s < {cooldown}s)")
+                    return
+
+        # Rate limit check (bypass for manual)
+        if event.event_type != "manual":
+            history = self._rebuild_history.get(sport, deque())
+            now = datetime.now(timezone.utc)
+            cutoff = now - timedelta(hours=1)
+            recent = sum(1 for t in history if t > cutoff)
+            if recent >= MAX_REBUILDS_PER_HOUR:
+                self._metrics["events_rate_limited"] += 1
+                logger.warning(f"[COORDINATOR] RATE LIMITED: {sport.upper()} ({recent}/{MAX_REBUILDS_PER_HOUR} rebuilds/hr)")
                 return
 
-        # Lock check (non-blocking)
+        # Lock check
         lock = self._locks.get(sport, asyncio.Lock())
         if lock.locked():
-            self._stats["rebuilds_skipped_lock"] += 1
-            logger.info(f"[COORDINATOR] LOCKED: {sport.upper()} rebuild in progress, skipping {event.event_type}")
+            self._metrics["rebuilds_skipped_lock"] += 1
+            logger.info(f"[COORDINATOR] LOCKED: {sport.upper()} rebuild in progress")
             return
 
         # Dispatch
-        self._stats["by_sport"][sport] = self._stats["by_sport"].get(sport, 0) + 1
-        self._stats["rebuilds_dispatched"] += 1
+        self._metrics["by_sport"][sport] = self._metrics["by_sport"].get(sport, 0) + 1
+        self._metrics["rebuilds_dispatched"] += 1
+        affected = event.affected_players[:5] if event.affected_players else ["board-wide"]
 
         if mode == "shadow":
-            logger.info(
-                f"[COORDINATOR] SHADOW: {scope.value.upper()} {sport.upper()} | "
-                f"trigger={event.event_type} source={event.source} affected={affected}"
-            )
+            logger.info(f"[COORDINATOR] SHADOW: {scope.value.upper()} {sport.upper()} | {event.event_type} from {event.source} affected={affected}")
         else:
-            logger.info(
-                f"[COORDINATOR] LIVE DISPATCH: {scope.value.upper()} {sport.upper()} | "
-                f"trigger={event.event_type} source={event.source}"
-            )
+            logger.info(f"[COORDINATOR] LIVE DISPATCH: {scope.value.upper()} {sport.upper()} | {event.event_type} from {event.source}")
             asyncio.create_task(self._execute_rebuild(sport, scope, event))
 
-    async def _execute_rebuild(self, sport: str, scope: RebuildScope, event: BoardEvent):
-        """
-        Execute a pipeline rebuild via UnifiedPipeline.
+    # ---- Rebuild Execution ----
 
-        Verification logging:
-        1. Trigger received
-        2. Rebuild scope chosen
-        3. Pipeline executed
-        4. elite_* counts after publish
-        5. Market Moves diff count
-        """
+    async def _execute_rebuild(self, sport: str, scope: RebuildScope, event: BoardEvent):
         lock = self._locks.get(sport, asyncio.Lock())
         async with lock:
-            self._last_rebuild[sport] = datetime.now(timezone.utc)
-            start = datetime.now(timezone.utc)
+            now = datetime.now(timezone.utc)
+            self._last_rebuild[sport] = now
+            self._rebuild_history[sport].append(now)
+            start_time = time.monotonic()
 
             logger.info("=" * 70)
             logger.info(f"[COORDINATOR] REBUILD START: {sport.upper()}")
@@ -195,15 +231,14 @@ class RebuildCoordinator:
                 pipeline = UnifiedPipeline(adapter, self._db)
                 result = await pipeline.run()
 
-                elapsed = (datetime.now(timezone.utc) - start).total_seconds()
+                duration = time.monotonic() - start_time
 
-                # Read final collection counts for verification
-                col_map = adapter.tier_collections
+                # Collection counts
                 counts = {}
-                for tier_name, col_name in col_map.items():
+                for tier_name, col_name in adapter.tier_collections.items():
                     counts[col_name] = await self._db[col_name].count_documents({})
 
-                # Read market moves generated in this run
+                # Market Moves count
                 mm_count = 0
                 try:
                     from services.market_moves_engine import get_recent_events
@@ -212,18 +247,26 @@ class RebuildCoordinator:
                 except Exception:
                     pass
 
-                self._stats["rebuilds_completed"] += 1
-                self._stats["last_publish_counts"][sport] = {
+                # Update metrics
+                self._metrics["rebuilds_completed"] += 1
+                durations = self._metrics["pipeline_durations"][sport]
+                durations.append(round(duration, 1))
+                if len(durations) > 20:
+                    self._metrics["pipeline_durations"][sport] = durations[-20:]
+
+                self._metrics["last_publish_counts"][sport] = {
                     "collections": counts,
                     "market_moves": mm_count,
-                    "duration_s": round(elapsed, 1),
+                    "duration_s": round(duration, 1),
                     "timestamp": datetime.now(timezone.utc).isoformat(),
                     "run_id": result.run_id,
                     "success": result.success,
+                    "trigger": event.event_type,
+                    "source": event.source,
                 }
 
                 logger.info("=" * 70)
-                logger.info(f"[COORDINATOR] REBUILD COMPLETE: {sport.upper()} ({elapsed:.1f}s)")
+                logger.info(f"[COORDINATOR] REBUILD COMPLETE: {sport.upper()} ({duration:.1f}s)")
                 logger.info(f"  Success: {result.success}")
                 logger.info(f"  Pipeline run_id: {result.run_id}")
                 for col_name, count in counts.items():
@@ -234,17 +277,18 @@ class RebuildCoordinator:
                 logger.info("=" * 70)
 
             except Exception as e:
-                self._stats["rebuilds_failed"] += 1
-                elapsed = (datetime.now(timezone.utc) - start).total_seconds()
-                logger.error(f"[COORDINATOR] REBUILD FAILED: {sport.upper()} ({elapsed:.1f}s) — {e}")
+                duration = time.monotonic() - start_time
+                self._metrics["rebuilds_failed"] += 1
+                logger.error(f"[COORDINATOR] REBUILD FAILED: {sport.upper()} ({duration:.1f}s) — {e}")
                 import traceback
                 traceback.print_exc()
+
+    # ---- Helpers ----
 
     def _is_duplicate(self, event: BoardEvent) -> bool:
         key = event.key
         if key in self._recent_events:
-            last_seen = self._recent_events[key]
-            elapsed = (event.timestamp - last_seen).total_seconds()
+            elapsed = (event.timestamp - self._recent_events[key]).total_seconds()
             if elapsed < DEDUP_WINDOW_SECONDS:
                 return True
         return False
@@ -252,7 +296,7 @@ class RebuildCoordinator:
     def _classify_scope(self, event: BoardEvent) -> RebuildScope:
         if event.event_type in ("manual", "scheduled_safety"):
             return RebuildScope.FULL
-        if event.severity == "high" and event.affected_players:
+        if event.severity == "high":
             return RebuildScope.FULL
         if event.severity == "medium" and event.affected_players:
             return RebuildScope.TARGETED
@@ -268,21 +312,34 @@ class RebuildCoordinator:
         for k in expired:
             del self._recent_events[k]
 
-    def set_db(self, db):
-        self._db = db
+    # ---- Observability ----
 
     def get_stats(self) -> dict:
+        # Compute avg durations
+        avg_durations = {}
+        for sport, durations in self._metrics["pipeline_durations"].items():
+            if durations:
+                avg_durations[sport] = round(sum(durations) / len(durations), 1)
+
+        # Rate limit status
+        now = datetime.now(timezone.utc)
+        cutoff = now - timedelta(hours=1)
+        rate_status = {}
+        for sport, history in self._rebuild_history.items():
+            recent = sum(1 for t in history if t > cutoff)
+            rate_status[sport] = f"{recent}/{MAX_REBUILDS_PER_HOUR}"
+
         return {
             "sport_modes": dict(self._sport_mode),
-            "cooldown_seconds": REBUILD_COOLDOWN_SECONDS,
-            "dedup_window_seconds": DEDUP_WINDOW_SECONDS,
-            "last_rebuild": {
-                sport: ts.isoformat() if ts else None
-                for sport, ts in self._last_rebuild.items()
-            },
-            "locks": {sport: lock.locked() for sport, lock in self._locks.items()},
-            "counters": self._stats,
-            "last_publish": self._stats.get("last_publish_counts", {}),
+            "trigger_classes": dict(self._trigger_enabled),
+            "cooldowns": dict(self._cooldown_seconds),
+            "max_rebuilds_per_hour": MAX_REBUILDS_PER_HOUR,
+            "rate_limit_status": rate_status,
+            "last_rebuild": {s: ts.isoformat() if ts else None for s, ts in self._last_rebuild.items()},
+            "locks": {s: lock.locked() for s, lock in self._locks.items()},
+            "avg_pipeline_duration_s": avg_durations,
+            "counters": self._metrics,
+            "last_publish": self._metrics.get("last_publish_counts", {}),
         }
 
 

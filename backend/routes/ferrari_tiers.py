@@ -7,7 +7,7 @@ Uses Bovada separation as the primary sharp benchmark.
 Global 15% kill-switch ensures only elite plays are visible.
 Whistle Matrix applies referee-based modifiers to power scores.
 """
-from fastapi import APIRouter, HTTPException, Query, Response
+from fastapi import APIRouter, HTTPException, Query, Request, Response
 import asyncio
 from typing import Dict, Any, List
 import logging
@@ -1376,6 +1376,80 @@ async def manual_coordinator_trigger(
         "reason": reason,
         "coordinator_mode": "shadow" if coordinator.shadow_mode else "live",
         "message": f"Event published to coordinator ({'shadow — logged only' if coordinator.shadow_mode else 'live — rebuild dispatched'})",
+    }
+
+
+
+@router.get("/v2/watchers/status")
+async def get_watchers_status(request: Request):
+    """
+    Status of all event-driven watchers.
+
+    Returns per-watcher: enabled, poll count, events emitted, changes detected.
+    """
+    from services.rebuild_coordinator import get_coordinator
+
+    watcher_data = {}
+    for name in ["injury_watcher", "game_clock_watcher", "odds_delta_watcher"]:
+        watcher = getattr(request.app.state, name, None)
+        if watcher:
+            watcher_data[name] = watcher.get_stats()
+        else:
+            watcher_data[name] = {"status": "not initialized"}
+
+    coordinator = get_coordinator()
+    return {
+        "watchers": watcher_data,
+        "trigger_classes": coordinator._trigger_enabled,
+        "coordinator_summary": {
+            "events_received": coordinator._metrics["events_received"],
+            "events_deduped": coordinator._metrics["events_deduped"],
+            "events_trigger_disabled": coordinator._metrics["events_trigger_disabled"],
+            "events_rate_limited": coordinator._metrics["events_rate_limited"],
+            "rebuilds_dispatched": coordinator._metrics["rebuilds_dispatched"],
+            "rebuilds_completed": coordinator._metrics["rebuilds_completed"],
+            "rebuilds_failed": coordinator._metrics["rebuilds_failed"],
+        },
+    }
+
+
+@router.post("/v2/watchers/toggle")
+async def toggle_watcher(
+    request: Request,
+    watcher: str = Query(..., description="injury_watcher, game_clock_watcher, or odds_delta_watcher"),
+    enabled: bool = Query(..., description="true to enable, false to disable"),
+):
+    """
+    Enable or disable a specific watcher at runtime.
+    Also toggles the corresponding trigger class in the coordinator.
+    """
+    from services.rebuild_coordinator import get_coordinator
+
+    watcher_obj = getattr(request.app.state, watcher, None)
+    if not watcher_obj:
+        raise HTTPException(status_code=404, detail=f"Watcher '{watcher}' not found")
+
+    # Map watcher name → trigger event type
+    trigger_map = {
+        "injury_watcher": "injury_change",
+        "game_clock_watcher": "game_lock",
+        "odds_delta_watcher": "odds_delta",
+    }
+
+    if enabled:
+        await watcher_obj.start()
+    else:
+        await watcher_obj.stop()
+
+    # Also toggle the trigger class in coordinator
+    trigger_type = trigger_map.get(watcher)
+    if trigger_type:
+        get_coordinator().set_trigger_enabled(trigger_type, enabled)
+
+    return {
+        "watcher": watcher,
+        "enabled": enabled,
+        "stats": watcher_obj.get_stats(),
     }
 
 
