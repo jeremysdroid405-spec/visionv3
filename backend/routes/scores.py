@@ -127,6 +127,155 @@ async def recompute_one(
         raise HTTPException(status_code=400, detail=str(ve))
 
 
+@router.get("/{sport}/diff")
+async def diff_versions(
+    sport: str,
+    a: str = Query(..., description="Baseline version_tag"),
+    b: str = Query(..., description="Comparison version_tag"),
+    player_name: Optional[str] = Query(default=None),
+    stat_type: Optional[str] = Query(default=None),
+    min_delta: Optional[float] = Query(
+        default=None, ge=0, description="Only include movers with |vision_score delta| >= this"
+    ),
+    limit: int = Query(default=20, ge=1, le=500),
+):
+    """Compare two version_tags in the same sport's score collection.
+
+    Returns per-prop vision_score delta, tier migration matrix, distribution
+    shift, tier gain/loss counts, and top-N biggest movers. Read-only."""
+    sport = (sport or "").lower()
+    if sport not in SUPPORTED_SPORTS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported sport '{sport}'. Supported: {list(SUPPORTED_SPORTS)}",
+        )
+    if a == b:
+        raise HTTPException(status_code=400, detail="a and b must be distinct version_tags")
+
+    db = _get_db()
+    coll = db[f"{sport}_prop_scores"]
+
+    # Verify both versions exist
+    a_count = await coll.count_documents({"version_tag": a})
+    b_count = await coll.count_documents({"version_tag": b})
+    if a_count == 0:
+        raise HTTPException(status_code=404, detail=f"version_tag '{a}' has 0 docs")
+    if b_count == 0:
+        raise HTTPException(status_code=404, detail=f"version_tag '{b}' has 0 docs")
+
+    # Optional filter — applied to BOTH versions symmetrically
+    filt: Dict[str, Any] = {}
+    if player_name:
+        filt["player_name"] = {"$regex": player_name, "$options": "i"}
+    if stat_type:
+        filt["stat_type"] = stat_type
+
+    proj = {
+        "_id": 0, "canonical_key": 1, "player_name": 1, "stat_type": 1,
+        "line": 1, "recommendation": 1,
+        "vision_score": 1, "tier": 1, "pp_utility": 1,
+        "pp_utility_category": 1, "quality_source": 1,
+    }
+    a_docs = await coll.find({**filt, "version_tag": a}, proj).to_list(length=None)
+    b_docs = await coll.find({**filt, "version_tag": b}, proj).to_list(length=None)
+
+    a_idx = {d["canonical_key"]: d for d in a_docs if d.get("canonical_key")}
+    b_idx = {d["canonical_key"]: d for d in b_docs if d.get("canonical_key")}
+
+    only_in_a = sorted(set(a_idx) - set(b_idx))
+    only_in_b = sorted(set(b_idx) - set(a_idx))
+    shared = sorted(set(a_idx) & set(b_idx))
+
+    # Tier migration matrix: from-tier -> to-tier counts (shared props only)
+    migration: Dict[str, Dict[str, int]] = {}
+    tier_before: Dict[str, int] = {}
+    tier_after: Dict[str, int] = {}
+    vision_deltas: List[Dict[str, Any]] = []
+    dist_before: List[float] = []
+    dist_after: List[float] = []
+
+    for ck in shared:
+        ad = a_idx[ck]; bd = b_idx[ck]
+        ta = ad.get("tier") or "unknown"
+        tb = bd.get("tier") or "unknown"
+        migration.setdefault(ta, {})
+        migration[ta][tb] = migration[ta].get(tb, 0) + 1
+        tier_before[ta] = tier_before.get(ta, 0) + 1
+        tier_after[tb] = tier_after.get(tb, 0) + 1
+
+        va = ad.get("vision_score")
+        vb = bd.get("vision_score")
+        if va is not None: dist_before.append(va)
+        if vb is not None: dist_after.append(vb)
+        if va is not None and vb is not None:
+            delta = round(vb - va, 2)
+            if min_delta is None or abs(delta) >= min_delta:
+                vision_deltas.append({
+                    "canonical_key": ck,
+                    "player_name": ad.get("player_name"),
+                    "stat_type": ad.get("stat_type"),
+                    "line": ad.get("line"),
+                    "recommendation": ad.get("recommendation"),
+                    "vision_score_a": va,
+                    "vision_score_b": vb,
+                    "vision_score_delta": delta,
+                    "tier_a": ta, "tier_b": tb,
+                    "pp_utility_a": ad.get("pp_utility"),
+                    "pp_utility_b": bd.get("pp_utility"),
+                })
+
+    # Top movers (abs delta)
+    vision_deltas.sort(key=lambda x: abs(x["vision_score_delta"]), reverse=True)
+    top_movers = vision_deltas[:limit]
+
+    # Tier gain/loss (B - A)
+    tier_gained_lost: Dict[str, Dict[str, int]] = {}
+    all_tiers = set(tier_before) | set(tier_after) | {
+        "safe_haven", "front_lines", "war_zone", "unqualified"
+    }
+    for t in all_tiers:
+        a_n = tier_before.get(t, 0)
+        b_n = tier_after.get(t, 0)
+        tier_gained_lost[t] = {"before": a_n, "after": b_n, "delta": b_n - a_n}
+
+    # Distribution percentiles
+    def _pct(arr, p):
+        if not arr: return None
+        arr = sorted(arr)
+        i = max(0, min(len(arr) - 1, int(round((p / 100.0) * (len(arr) - 1)))))
+        return round(arr[i], 2)
+
+    dist_shift = {
+        "a_count": len(dist_before), "b_count": len(dist_after),
+        "a_p25": _pct(dist_before, 25), "b_p25": _pct(dist_after, 25),
+        "a_p50": _pct(dist_before, 50), "b_p50": _pct(dist_after, 50),
+        "a_p75": _pct(dist_before, 75), "b_p75": _pct(dist_after, 75),
+        "a_p95": _pct(dist_before, 95), "b_p95": _pct(dist_after, 95),
+        "a_mean": round(sum(dist_before) / len(dist_before), 2) if dist_before else None,
+        "b_mean": round(sum(dist_after) / len(dist_after), 2) if dist_after else None,
+    }
+
+    return {
+        "sport": sport,
+        "version_a": a, "version_b": b,
+        "counts": {
+            "a_total": a_count, "b_total": b_count,
+            "shared": len(shared),
+            "only_in_a": len(only_in_a),
+            "only_in_b": len(only_in_b),
+        },
+        "filters_applied": {
+            "player_name": player_name, "stat_type": stat_type,
+            "min_delta": min_delta, "limit": limit,
+        },
+        "tier_migration_matrix": migration,
+        "tier_gained_lost": tier_gained_lost,
+        "vision_score_distribution_shift": dist_shift,
+        "top_movers": top_movers,
+        "movers_matching_min_delta": len(vision_deltas),
+    }
+
+
 @router.get("/supported-sports")
 async def supported_sports():
     return {"supported_sports": list(SUPPORTED_SPORTS)}
