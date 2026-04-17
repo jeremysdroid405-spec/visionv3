@@ -35,6 +35,7 @@ from .mlb_tiers import router as mlb_tiers_router, set_mlb_tiers_db
 from .mlb_ripple import router as mlb_ripple_router, set_mlb_ripple_db
 from .forward_testing import router as forward_testing_router, set_forward_test_db
 from .intel_cache import router as intel_cache_router, set_db as set_intel_cache_db
+from .scores import router as scores_router
 
 # ARCHIVED ROUTES (moved to routes_archive/):
 # - intel.py (duplicates of injuries.py, intel_sync.py, live_scores.py)
@@ -203,3 +204,6 @@ def register_all_routes(app, engine, game_lock_engine=None, db=None,
     if db is not None:
         set_intel_cache_db(db)
     app.include_router(intel_cache_router)
+
+    # Scoring Recompute Framework (system-level, sport-agnostic)
+    app.include_router(scores_router)

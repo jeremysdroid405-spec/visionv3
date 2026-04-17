@@ -131,6 +131,46 @@ No scoring-stack field lives in `mlb_cached_board` or tier collections.
 - `services/scoring/prop_scores_store.py` — writer + stripper
 - `services/adapters/mlb_adapter.py::enrich_and_score` — composes stack + persists
 
+## Scoring Recompute Framework (COMPLETE — April 17, 2026)
+
+System-level, sport-agnostic infrastructure to rebuild `{sport}_prop_scores`
+from existing live props — NO odds-sync, NO mutation of live props or
+cached_board, NO parlay/UI logic.
+
+### Endpoints
+- `POST /api/scores/recompute` — all supported sports (or `sports` array in body)
+- `POST /api/scores/recompute/{sport}` — single sport (ignores `sports` array)
+- `GET  /api/scores/supported-sports` — list of supported sport keys
+
+### Request body
+```
+{ "sports": ["mlb","nba"], "version_tag": "...", "dry_run": false,
+  "limit": null, "override_config": { "vision_score":{}, "tier":{}, "pp_utility":{} } }
+```
+
+### Architecture
+- `services/scoring/adapters/base.py` — `ScoringAdapter` + `ScoringContext`
+- `services/scoring/adapters/mlb_scoring.py` — MLB (uses `MLBTierSorter` + XGBoost)
+- `services/scoring/adapters/nba_scoring.py` — NBA (uses `_NBAGateSorter`; real PP multiplier label from `is_demon`/`is_goblin`/`prop_type`)
+- `services/scoring/recompute.py` — sport-agnostic orchestrator
+- `services/scoring/prop_scores_store.py` — versioned writer
+- `routes/scores.py` — FastAPI endpoints
+
+### Versioning
+Every score doc: `canonical_key`, `sport`, `version_tag`, `computed_at`.
+Collection indexes: unique `(canonical_key, version_tag)` + secondary
+on `vision_score desc`, `tier`, `pp_utility desc`, `computed_at desc`.
+Duplicate `(canonical_key, version_tag)` inserts rejected by MongoDB.
+
+### Live validation (2026-04-17)
+- MLB: 4944 processed → 4944 written, 0 live-props mutation, 0 cached_board leakage
+- NBA: 2854 processed → 2854 written, 0 live-props mutation, 0 cached_board leakage
+- Dry-run verified: `written=0` when `dry_run=true`
+- A/B test: same canonical_key coexists across 4+ version_tags
+- MLB quality_source: pinnacle 410 / consensus 2837 / dk 865 / mgm 483 / insufficient 349
+- NBA quality_source: `betonline` (sharp) 1622 / consensus 274 / dk 304 / mgm 91 / insufficient 541
+- NBA pp_utility: real PP multiplier label feeds 1085 `pp_premium` + 609 `pp_discount` (no fakery from odds)
+
 ## Upcoming Tasks
 - P1: Google/Apple OAuth (via `integration_playbook_expert_v2`)
 - P1: Stripe payments (via `integration_playbook_expert_v2`)

@@ -74,6 +74,10 @@ def _pick_fair_probability(
     Sharp-first fair probability source selection.
     Returns (fair_prob [0,1] or None, source_label).
     PP data is NEVER considered as a fair-price source.
+
+    The source_label reflects the actual book used:
+      - If sharp_layer present, uses its ``book`` key (e.g., 'pinnacle', 'betonline')
+      - consensus(dk,mgm) / dk / mgm otherwise
     """
     sharp_odds = sharp_layer.get("odds") if sharp_layer else None
     dk_odds = dk_layer.get("odds") if dk_layer else None
@@ -84,7 +88,8 @@ def _pick_fair_probability(
     mgm_p = _american_to_prob(mgm_odds)
 
     if sharp_p is not None:
-        return sharp_p, "pinnacle"
+        book_name = (sharp_layer or {}).get("book") or "sharp"
+        return sharp_p, str(book_name).lower()
     if dk_p is not None and mgm_p is not None:
         return round((dk_p + mgm_p) / 2.0, 4), "consensus"
     if dk_p is not None:

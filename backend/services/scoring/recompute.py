@@ -1,0 +1,238 @@
+"""
+Sport-Agnostic Scoring Recompute Orchestrator
+==============================================
+Rebuilds `{sport}_prop_scores` from existing live prop collections
+WITHOUT triggering any sportsbook sync or mutating cached boards.
+
+Entry points:
+  recompute(db, sports, version_tag, dry_run=False, limit=None,
+            override_config=None) → dict
+
+Constraints enforced:
+ - Read-only access to live props (find only; no updates/inserts)
+ - Read-only access to cached_board (used only for leak-check audit)
+ - Scoring-stack fields live ONLY in {sport}_prop_scores
+ - Sport-specific ScoringAdapter provides the ScoringContext
+"""
+import time
+import uuid
+from datetime import datetime, timezone
+from typing import Any, Dict, List, Optional
+
+import logging
+logger = logging.getLogger(__name__)
+
+from services.scoring.scoring_stack import compute_scoring_stack
+from services.scoring.adapters import (
+    SCORING_ADAPTERS, SUPPORTED_SPORTS, get_scoring_adapter,
+)
+from services.scoring.prop_scores_store import write_versioned_scores
+
+
+def _default_version_tag() -> str:
+    ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
+    return f"recompute-{ts}-{uuid.uuid4().hex[:6]}"
+
+
+def _apply_vision_score_normalization(score_docs: List[Dict[str, Any]]) -> None:
+    """Populate `vision_score` (0-100) via percentile rank of vision_score_raw.
+    Props with quality_source='insufficient_market' keep vision_score=None."""
+    raw = sorted([
+        d["vision_score_raw"] for d in score_docs
+        if d.get("vision_score_raw") is not None and d["vision_score_raw"] > 0
+    ])
+    if not raw:
+        for d in score_docs:
+            d["vision_score"] = (
+                None if d.get("quality_source") == "insufficient_market" else 0.0
+            )
+        return
+
+    for d in score_docs:
+        if d.get("quality_source") == "insufficient_market":
+            d["vision_score"] = None
+            continue
+        vr = d.get("vision_score_raw")
+        if vr is None or vr <= 0:
+            d["vision_score"] = 0.0
+        else:
+            rank = sum(1 for s in raw if s <= vr)
+            d["vision_score"] = round((rank / len(raw)) * 100.0, 1)
+
+
+async def recompute_sport(
+    db,
+    sport: str,
+    version_tag: str,
+    dry_run: bool = False,
+    limit: Optional[int] = None,
+    override_config: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """Recompute scoring stack for a single sport."""
+    t0 = time.monotonic()
+    adapter = get_scoring_adapter(sport)
+    config = {
+        "version_tag": version_tag,
+        "limit": limit,
+        "override_config": override_config or {},
+    }
+
+    # Snapshot cached_board BEFORE recompute (for leak-check audit).
+    cached_coll = db[adapter.cached_board_collection]
+    cached_before_count = await cached_coll.count_documents({})
+    cached_before_sample = await cached_coll.find_one({}, {"_id": 0})
+
+    # 1. Load live props (read-only)
+    props = await adapter.load_live_props(db, limit=limit)
+
+    # 2. Build scoring contexts + compute stack
+    sorter = adapter.get_sorter(db)
+    if sorter is None and hasattr(adapter, "_build_sorter"):
+        sorter = adapter._build_sorter(config)
+    score_docs: List[Dict[str, Any]] = []
+    samples: List[Dict[str, Any]] = []
+    skipped = 0
+
+    for prop in props:
+        ctx = await adapter.build_context(db, prop, config)
+        if ctx is None:
+            skipped += 1
+            continue
+        # Get up-to-date sorter (NBA may have rebuilt it with config overrides)
+        sorter = adapter.get_sorter(db) or sorter
+
+        # Run the three independent scoring functions through the composed entry.
+        stack = compute_scoring_stack(
+            prop={
+                "pp_layer": ctx.pp_layer, "dk_layer": ctx.dk_layer,
+                "mgm_layer": ctx.mgm_layer, "sharp_layer": ctx.sharp_layer,
+                # multiplier hints for pp_utility
+                "pp_combo_multiplier": ctx.pp_combo_multiplier,
+                "pp_label": ctx.pp_label,
+                "pp_multiplier_model": ctx.pp_multiplier_model,
+                # raw fields used by MLBTierSorter gate evaluation
+                **ctx.raw_prop,
+            },
+            p_model=ctx.p_model,
+            cv=ctx.cv,
+            hit_rate=ctx.hit_rate,
+            edge_pct=ctx.edge_pct,
+            tp=ctx.tp,
+            ceiling_rate=ctx.ceiling_rate,
+            books_available_count=ctx.books_available_count,
+            sorter=sorter,
+        )
+        doc = {
+            "canonical_key": ctx.canonical_key,
+            "sport": ctx.sport,
+            "event_id": ctx.event_id,
+            "player_name": ctx.player_name,
+            "stat_type": ctx.stat_type,
+            "line": ctx.line,
+            "recommendation": ctx.recommendation,
+            **stack,
+        }
+        score_docs.append(doc)
+
+    # 3. Percentile-normalize vision_score across the sport's slate.
+    _apply_vision_score_normalization(score_docs)
+
+    # 4. Persist (unless dry_run)
+    write_result = await write_versioned_scores(
+        db=db, sport=sport, score_docs=score_docs,
+        version_tag=version_tag, dry_run=dry_run,
+    )
+
+    # 5. Leak-check: cached_board must NOT be mutated AND must not contain
+    #    recompute-produced scoring data (check for non-null scoring values).
+    cached_after_count = await cached_coll.count_documents({})
+    cached_after_sample = await cached_coll.find_one({}, {"_id": 0})
+    leakage_fields = []
+    if cached_after_sample:
+        candidate = cached_after_sample
+        if isinstance(candidate.get("props"), list) and candidate["props"]:
+            candidate = candidate["props"][0]
+        scoring_field_names = (
+            "vision_score", "vision_score_raw", "tier_reason", "tier_gate_results",
+            "pp_utility", "pp_utility_components", "quality_source",
+        )
+        # Only flag as leakage if the field is present AND carries a non-null
+        # value — empty pre-existing keys set to None by legacy pipelines
+        # are NOT recompute leakage.
+        leakage_fields = [
+            f for f in scoring_field_names
+            if f in candidate and candidate[f] is not None and candidate[f] != {}
+        ]
+
+    # Sample outputs for response
+    for d in score_docs[:3]:
+        samples.append({k: v for k, v in d.items() if k != "_id"})
+
+    duration_ms = int((time.monotonic() - t0) * 1000)
+    return {
+        "sport": sport,
+        "processed": len(props),
+        "written": write_result["written"],
+        "skipped": skipped,
+        "replaced": write_result.get("replaced", 0),
+        "collection": write_result["collection"],
+        "version_tag": version_tag,
+        "dry_run": dry_run,
+        "duration_ms": duration_ms,
+        "cached_board_before_count": cached_before_count,
+        "cached_board_after_count": cached_after_count,
+        "cached_board_mutated": cached_before_count != cached_after_count
+            or cached_before_sample != cached_after_sample,
+        "cached_board_leakage_fields": leakage_fields,
+        "samples": samples,
+    }
+
+
+async def recompute(
+    db,
+    sports: Optional[List[str]] = None,
+    version_tag: Optional[str] = None,
+    dry_run: bool = False,
+    limit: Optional[int] = None,
+    override_config: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """Orchestrate recompute across one or more sports."""
+    t0 = time.monotonic()
+    if not sports:
+        sports = list(SUPPORTED_SPORTS)
+    # Validate sport list
+    unknown = [s for s in sports if s not in SCORING_ADAPTERS]
+    if unknown:
+        raise ValueError(f"Unknown sports: {unknown}. Supported: {SUPPORTED_SPORTS}")
+
+    version_tag = version_tag or _default_version_tag()
+
+    per_sport: Dict[str, Dict[str, Any]] = {}
+    for sport in sports:
+        try:
+            per_sport[sport] = await recompute_sport(
+                db=db, sport=sport, version_tag=version_tag,
+                dry_run=dry_run, limit=limit,
+                override_config=override_config,
+            )
+        except Exception as e:
+            logger.exception(f"[RECOMPUTE] {sport} failed: {e}")
+            per_sport[sport] = {
+                "sport": sport, "error": str(e),
+                "processed": 0, "written": 0, "skipped": 0,
+                "version_tag": version_tag, "dry_run": dry_run,
+            }
+
+    duration_ms = int((time.monotonic() - t0) * 1000)
+    return {
+        "status": "success",
+        "sports_processed": sports,
+        "processed": {s: per_sport[s].get("processed", 0) for s in sports},
+        "written": {s: per_sport[s].get("written", 0) for s in sports},
+        "skipped": {s: per_sport[s].get("skipped", 0) for s in sports},
+        "version_tag": version_tag,
+        "duration_ms": duration_ms,
+        "dry_run": dry_run,
+        "per_sport": per_sport,
+        "samples": {s: per_sport[s].get("samples", []) for s in sports},
+    }
