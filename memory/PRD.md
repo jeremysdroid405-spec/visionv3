@@ -263,6 +263,30 @@ are the single source of truth; sport adapters MUST NOT override them.
 - Christian Braun REB 7.5 OVER (ref=dk@+630, WZ band, ceiling-gate fail) → `unqualified` ✓
 - Christian Braun PTS 8.5 OVER (no ref) → `unqualified` (no_reference_market) ✓
 
+## Calibration Snapshot Persistence (COMPLETE — April 17, 2026)
+
+Audit trail for scoring calibration experiments. POST endpoints run compare
+variants read-only and persist lean summary docs to `{sport}_calibration_runs`.
+GET endpoints retrieve history.
+
+**Endpoints**
+- `POST /api/scores/calibration-snapshot` — system-level (one doc per sport)
+- `POST /api/scores/calibration-snapshot/{sport}` — single sport
+- `GET /api/scores/calibration-snapshots/{sport}` — list w/ filters (`label_contains`,
+  `start_date`, `end_date`, `limit`, `offset`)
+- `GET /api/scores/calibration-snapshots/{sport}/{snapshot_id}` — fetch full doc
+
+**Request body** (same shape as simulate/compare + `label` + `notes`):
+```json
+{"sports":["nba"],"limit":500,"label":"...","notes":"...","variants":[{"name":"baseline","override_config":{}},...]}
+```
+
+**Storage**: per-sport collections `{sport}_calibration_runs`; lean docs (~10KB each), no full prop dumps. Indexes: `uniq(snapshot_id)`, `created_at desc`, `label`.
+
+**Stored fields**: `snapshot_id` (uuid hex), `sport`, `created_at`, `label`, `notes`, `limit_applied`, `source_timestamps` (`live_props_fetched_at`, `score_collection_latest`), `baseline_variant`, `variants_meta[]` (per-variant: override_config, processed, skipped, duration_ms, tier/quality/pp_category distributions, 3-sample `top_samples_lean`), `tier_counts_table`, `tier_deltas_vs_baseline`, `war_zone_movers_vs_baseline` (counts + 10-key samples), `tier_canonical_key_overlap_vs_baseline`, `top_sample_overlap_vs_baseline`, `summary`.
+
+**Validated zero mutation**: mlb/nba prop_scores, mlb/dg cached_board, mlb/dg live_props.fetched_at all UNCHANGED after two snapshot creations. Only `nba_calibration_runs` grew (0 → 2 docs as expected).
+
 ## Upcoming Tasks
 - P1: Google/Apple OAuth (via `integration_playbook_expert_v2`)
 - P1: Stripe payments (via `integration_playbook_expert_v2`)

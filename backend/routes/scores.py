@@ -19,6 +19,7 @@ from pydantic import BaseModel, Field
 
 from services.scoring.adapters import SUPPORTED_SPORTS
 from services.scoring.recompute import recompute
+from services.scoring.calibration_store import write_snapshot
 
 router = APIRouter(prefix="/api/scores", tags=["scoring"])
 
@@ -406,6 +407,14 @@ class CompareRequest(BaseModel):
     variants: List[CompareVariant]
 
 
+class CalibrationSnapshotRequest(BaseModel):
+    sports: Optional[List[str]] = None
+    limit: Optional[int] = None
+    variants: List[CompareVariant]
+    label: Optional[str] = None
+    notes: Optional[str] = None
+
+
 _ALL_TIERS = ("safe_haven", "front_lines", "war_zone", "unqualified")
 
 
@@ -695,6 +704,191 @@ async def simulate_compare_one(
         "variants": [v.name for v in req.variants],
         **comparison,
     }
+
+
+# =============================================================================
+# Calibration Snapshot Persistence — audit trail for scoring experiments
+# =============================================================================
+
+async def _run_and_compare(
+    db, sports: List[str], limit: Optional[int], variants: List[CompareVariant]
+) -> Dict[str, Any]:
+    """Run variants read-only + compare. Returns {sport: comparison_dict} and
+    {variant_name: override_config}."""
+    per_variant = await _run_variants(db, sports, limit, variants)
+    baseline_name = variants[0].name
+    comparisons: Dict[str, Any] = {}
+    for sport in sports:
+        comparisons[sport] = _compare_sport(sport, per_variant, baseline_name)
+    variant_overrides = {v.name: (v.override_config or {}) for v in variants}
+    return comparisons, variant_overrides
+
+
+@router.post("/calibration-snapshot")
+async def calibration_snapshot_all(req: CalibrationSnapshotRequest = Body(...)):
+    """Run variants read-only, persist a lean summary to each sport's
+    `{sport}_calibration_runs` collection. Creates one snapshot doc per sport."""
+    if not req.variants:
+        raise HTTPException(status_code=400, detail="at least one variant required")
+    names = [v.name for v in req.variants]
+    if len(set(names)) != len(names):
+        raise HTTPException(status_code=400, detail="variant names must be unique")
+
+    sports = [s.lower() for s in (req.sports or list(SUPPORTED_SPORTS))]
+    unknown = [s for s in sports if s not in SUPPORTED_SPORTS]
+    if unknown:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unknown sports: {unknown}. Supported: {list(SUPPORTED_SPORTS)}",
+        )
+
+    db = _get_db()
+    comparisons, variant_overrides = await _run_and_compare(
+        db, sports, req.limit, req.variants
+    )
+
+    snapshots = {}
+    for sport in sports:
+        doc = await write_snapshot(
+            db=db, sport=sport,
+            comparison=comparisons[sport],
+            variant_overrides=variant_overrides,
+            label=req.label, notes=req.notes, limit=req.limit,
+        )
+        snapshots[sport] = {
+            "snapshot_id": doc["snapshot_id"],
+            "created_at": doc["created_at"],
+            "summary": doc["summary"],
+            "source_timestamps": doc["source_timestamps"],
+            "collection": f"{sport}_calibration_runs",
+        }
+
+    return {
+        "status": "success",
+        "persisted": True,
+        "sports_processed": sports,
+        "snapshots": snapshots,
+    }
+
+
+@router.post("/calibration-snapshot/{sport}")
+async def calibration_snapshot_one(
+    sport: str, req: CalibrationSnapshotRequest = Body(...)
+):
+    """Per-sport calibration snapshot. Ignores request `sports` array."""
+    sport = (sport or "").lower()
+    if sport not in SUPPORTED_SPORTS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported sport '{sport}'. Supported: {list(SUPPORTED_SPORTS)}",
+        )
+    if not req.variants:
+        raise HTTPException(status_code=400, detail="at least one variant required")
+    names = [v.name for v in req.variants]
+    if len(set(names)) != len(names):
+        raise HTTPException(status_code=400, detail="variant names must be unique")
+
+    db = _get_db()
+    comparisons, variant_overrides = await _run_and_compare(
+        db, [sport], req.limit, req.variants
+    )
+    doc = await write_snapshot(
+        db=db, sport=sport,
+        comparison=comparisons[sport],
+        variant_overrides=variant_overrides,
+        label=req.label, notes=req.notes, limit=req.limit,
+    )
+    return {
+        "status": "success",
+        "persisted": True,
+        "sport": sport,
+        "snapshot_id": doc["snapshot_id"],
+        "created_at": doc["created_at"],
+        "collection": f"{sport}_calibration_runs",
+        "summary": doc["summary"],
+        "source_timestamps": doc["source_timestamps"],
+        "label": doc["label"],
+        "notes": doc["notes"],
+    }
+
+
+@router.get("/calibration-snapshots/{sport}")
+async def list_calibration_snapshots(
+    sport: str,
+    label_contains: Optional[str] = Query(default=None),
+    start_date: Optional[str] = Query(
+        default=None, description="ISO8601 UTC lower bound (inclusive)"
+    ),
+    end_date: Optional[str] = Query(
+        default=None, description="ISO8601 UTC upper bound (inclusive)"
+    ),
+    limit: int = Query(default=50, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
+):
+    """List calibration snapshots for a sport with optional filters."""
+    sport = (sport or "").lower()
+    if sport not in SUPPORTED_SPORTS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported sport '{sport}'. Supported: {list(SUPPORTED_SPORTS)}",
+        )
+    db = _get_db()
+    coll = db[f"{sport}_calibration_runs"]
+
+    q: Dict[str, Any] = {}
+    if label_contains:
+        q["label"] = {"$regex": label_contains, "$options": "i"}
+    if start_date or end_date:
+        date_q: Dict[str, Any] = {}
+        if start_date:
+            date_q["$gte"] = start_date
+        if end_date:
+            date_q["$lte"] = end_date
+        q["created_at"] = date_q
+
+    total = await coll.count_documents(q)
+    # Lean projection for list view
+    proj = {
+        "_id": 0, "snapshot_id": 1, "sport": 1, "created_at": 1,
+        "label": 1, "notes": 1, "baseline_variant": 1,
+        "source_timestamps": 1, "summary": 1,
+        "tier_counts_table": 1, "limit_applied": 1,
+    }
+    cursor = (
+        coll.find(q, proj).sort([("created_at", -1)]).skip(offset).limit(limit)
+    )
+    results = await cursor.to_list(length=limit)
+    return {
+        "sport": sport,
+        "total_matching": total,
+        "returned": len(results),
+        "filters": {
+            "label_contains": label_contains,
+            "start_date": start_date, "end_date": end_date,
+            "limit": limit, "offset": offset,
+        },
+        "results": results,
+    }
+
+
+@router.get("/calibration-snapshots/{sport}/{snapshot_id}")
+async def get_calibration_snapshot(sport: str, snapshot_id: str):
+    """Fetch a full calibration snapshot by id."""
+    sport = (sport or "").lower()
+    if sport not in SUPPORTED_SPORTS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported sport '{sport}'. Supported: {list(SUPPORTED_SPORTS)}",
+        )
+    db = _get_db()
+    coll = db[f"{sport}_calibration_runs"]
+    doc = await coll.find_one({"snapshot_id": snapshot_id}, {"_id": 0})
+    if not doc:
+        raise HTTPException(
+            status_code=404,
+            detail=f"snapshot '{snapshot_id}' not found in {sport}_calibration_runs",
+        )
+    return doc
 
 
 # =============================================================================
