@@ -171,6 +171,23 @@ Duplicate `(canonical_key, version_tag)` inserts rejected by MongoDB.
 - NBA quality_source: `betonline` (sharp) 1622 / consensus 274 / dk 304 / mgm 91 / insufficient 541
 - NBA pp_utility: real PP multiplier label feeds 1085 `pp_premium` + 609 `pp_discount` (no fakery from odds)
 
+### Query Endpoint (April 17, 2026)
+`GET /api/scores/{sport}` — read-only QA inspection against `{sport}_prop_scores`.
+
+Query params: `version_tag` (auto-latest if omitted), `min_vision`, `max_vision`,
+`tier`, `pp_utility_category`, `quality_source`, `player_name`, `stat_type`,
+`limit` (1-1000, default 50), `offset`, `sort_by`, `sort_dir`.
+
+Returns: `total_matching`, `returned`, `summary` (by_tier / by_pp_utility_category /
+by_quality_source / vision_score_null), `results[]`. Zero mutation.
+
+### NBA Tier Gating Fix (April 17, 2026)
+NBA CV now computed directly from `nba_master_hub_2026.bdl_game_logs` (L20 window,
+ddof=1 sample std). Before: 0% qualified. After: 2055/2854 (72%) have computed CV,
+143 qualified (40 safe_haven / 103 front_lines / 0 war_zone — war_zone still needs
+elevated ceiling_rate gates). Hit_rate + ceiling_rate also recomputed from
+game logs. Decoupling preserved — vision_score, tier, pp_utility semantics unchanged.
+
 ## Upcoming Tasks
 - P1: Google/Apple OAuth (via `integration_playbook_expert_v2`)
 - P1: Stripe payments (via `integration_playbook_expert_v2`)

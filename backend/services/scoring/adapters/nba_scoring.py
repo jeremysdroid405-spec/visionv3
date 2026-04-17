@@ -86,8 +86,23 @@ class _NBAGateSorter:
 
 
 class NBAScoringAdapter(ScoringAdapter):
+    # Map our stat_type to the bdl_game_logs field
+    _STAT_FIELD_MAP = {
+        "PTS": "pts",
+        "REB": "reb",
+        "AST": "ast",
+        "PRA": "pra",  # synthesized
+        "3PM": "fg3m",
+        "STL": "stl",
+        "BLK": "blk",
+        "TO": "turnover",
+    }
+
     def __init__(self):
         self._sorter = None
+        self._cv_cache: dict = {}
+        self._logs_cache: dict = {}
+        self._logs_loaded = False
 
     @property
     def sport(self) -> str:
@@ -121,11 +136,85 @@ class NBAScoringAdapter(ScoringAdapter):
         self._sorter = _NBAGateSorter(overrides)
         return self._sorter
 
+    async def _preload_game_logs(self, db) -> None:
+        """Pull NBA game logs from master hub once per recompute."""
+        if self._logs_loaded:
+            return
+        hub = db["nba_master_hub_2026"]
+        cursor = hub.find(
+            {"bdl_game_logs_count": {"$gt": 0}},
+            {"display_name": 1, "bdl_game_logs": 1, "_id": 0},
+        )
+        count = 0
+        async for doc in cursor:
+            name = (doc.get("display_name") or "").strip()
+            if not name:
+                continue
+            self._logs_cache[name.lower()] = doc.get("bdl_game_logs") or []
+            count += 1
+        self._logs_loaded = True
+        logger.info(f"[NBA_SCORING] Cached game logs for {count} players")
+
+    def _compute_cv_and_hit_rate(
+        self, player_name: str, stat_type: str, line: float, window: int = 20
+    ):
+        """
+        Compute (cv, hit_rate, ceiling_rate) from the player's last-N game logs.
+        Returns (None, None, None) if unavailable.
+        """
+        field = self._STAT_FIELD_MAP.get(stat_type)
+        if field is None:
+            return None, None, None
+        logs = self._logs_cache.get((player_name or "").lower()) or []
+        if not logs:
+            return None, None, None
+
+        # Newest-first order is NOT guaranteed; sort by date desc for the window.
+        try:
+            logs_sorted = sorted(
+                logs,
+                key=lambda g: str(g.get("date") or ""),
+                reverse=True,
+            )
+        except Exception:
+            logs_sorted = logs
+        window_logs = logs_sorted[:window]
+
+        import numpy as np
+        # PRA synthesized
+        if stat_type == "PRA":
+            vals = [
+                (g.get("pts") or 0) + (g.get("reb") or 0) + (g.get("ast") or 0)
+                for g in window_logs
+                if g.get("pts") is not None
+            ]
+        else:
+            vals = [g.get(field) for g in window_logs if g.get(field) is not None]
+        vals = [float(v) for v in vals if v is not None]
+        if len(vals) < 5:
+            return None, None, None
+
+        arr = np.array(vals)
+        mean = float(arr.mean())
+        if mean <= 0:
+            cv = None
+        else:
+            cv = round(float(arr.std(ddof=1) / mean), 4)
+        hits = int(sum(1 for v in vals if v > line))
+        hit_rate = round((hits / len(vals)) * 100.0, 1)
+        # Ceiling: hit rate vs 2x line (or line + 50% mean) — use 1.5x for NBA
+        ceiling_thresh = max(line * 1.5, line + 0.5)
+        ceiling_hits = int(sum(1 for v in vals if v >= ceiling_thresh))
+        ceiling_rate = round((ceiling_hits / len(vals)) * 100.0, 1)
+        return cv, hit_rate, ceiling_rate
+
     async def build_context(
         self, db, prop: Dict[str, Any], config: Dict[str, Any]
     ) -> Optional[ScoringContext]:
         if self._sorter is None:
             self._build_sorter(config)
+        # Ensure game logs loaded once
+        await self._preload_game_logs(db)
 
         player_name = prop.get("player_name")
         # NBA market/prop_type → stat_type
@@ -179,22 +268,22 @@ class NBAScoringAdapter(ScoringAdapter):
             if bo_price is not None else None
         )
 
-        # Hit rates (embedded in prop)
+        # Hit rates (embedded in prop as fallback)
         hr = (prop.get("hit_rates") or {})
         season = hr.get("season") or {}
         l10 = hr.get("l10") or {}
         season_rate = season.get("hit_rate")
         l10_rate = l10.get("hit_rate")
-        # Use L10 for primary; convert 0-1 to %.
-        hit_rate = round(l10_rate * 100.0, 1) if l10_rate is not None else (
+        embedded_hit_rate = round(l10_rate * 100.0, 1) if l10_rate is not None else (
             round(season_rate * 100.0, 1) if season_rate is not None else None
         )
 
-        # CV: use coefficient of variation from season if available; else None.
-        cv = None  # NBA adapter: placeholder — dg_live_props does not carry CV directly
-
-        # Ceiling rate: unavailable in dg_live_props; set None (war_zone gate will fail)
-        ceiling_rate = None
+        # CV + recomputed hit_rate + ceiling_rate from master-hub game logs.
+        # Prefer computed over embedded; fall back to embedded if logs missing.
+        cv, computed_hit_rate, ceiling_rate = self._compute_cv_and_hit_rate(
+            player_name, stat_type, float(line), window=20
+        )
+        hit_rate = computed_hit_rate if computed_hit_rate is not None else embedded_hit_rate
 
         # Model probability: NBA lacks a dedicated XGBoost model in this adapter;
         # use hit_rate as a pragmatic proxy (config can override).
