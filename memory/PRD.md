@@ -238,6 +238,31 @@ duplicate names → 400, unsupported sport → 400.
 Route-ordering compat: `/simulate/{sport}` explicitly dispatches `sport='compare'`
 to `/simulate/compare` since FastAPI path matching is first-match.
 
+## Hard Reference-Odds Admission Bands (LOCKED — April 17, 2026)
+
+`services/scoring/scoring_stack.py` — `compute_tier()` enforces 3-band
+hard admission. A prop is evaluated by quality gates (vision_score, CV,
+hit_rate, edge, ceiling) ONLY after it falls into the correct band.
+If gates fail inside a band, the prop goes to `unqualified` — no
+cross-tier fallthrough.
+
+| Tier | Reference-odds band |
+|---|---|
+| Safe Haven | `ref_odds <= -240` |
+| Front Lines | `-239 <= ref_odds <= +149` |
+| War Zone | `ref_odds >= +150` |
+
+Constants `_REF_SAFE_HAVEN_MAX = -240` and `_REF_WAR_ZONE_MIN = 150`
+are the single source of truth; sport adapters MUST NOT override them.
+
+**Validation (2026-04-17, NBA)**:
+- Band violations in any tier: 0 / 2847 props
+- Duplicate (player, stat, line) groups spanning qualified tiers: 0
+- Christian Braun PTS 9.5 OVER (ref=dk@-190, FL band) → `front_lines` ✓
+- Christian Braun PTS 7.5 OVER (ref=dk@-381, SH band, edge-gate fail) → `unqualified` ✓ (no fallthrough to FL)
+- Christian Braun REB 7.5 OVER (ref=dk@+630, WZ band, ceiling-gate fail) → `unqualified` ✓
+- Christian Braun PTS 8.5 OVER (no ref) → `unqualified` (no_reference_market) ✓
+
 ## Upcoming Tasks
 - P1: Google/Apple OAuth (via `integration_playbook_expert_v2`)
 - P1: Stripe payments (via `integration_playbook_expert_v2`)

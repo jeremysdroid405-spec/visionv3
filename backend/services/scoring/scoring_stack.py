@@ -173,7 +173,20 @@ def compute_vision_score(
 # 2. TIER — Risk bucket via reference-market gates
 # =============================================================================
 
-# Reference-odds thresholds (mirrors existing MLBTierSorter constants).
+# =============================================================================
+# Reference-odds hard admission bands (LOCKED 2026-04-17)
+# =============================================================================
+# A prop must FIRST fall inside the correct band based on reference-market
+# odds. Only then are quality gates (CV, hit_rate, edge, ceiling, vision_score)
+# evaluated. If the prop is inside the band but fails quality gates, it goes
+# to `unqualified` — never to a different tier.
+#
+#   Safe Haven    : ref_odds <= -240
+#   Front Lines   : -239 <= ref_odds <= +149
+#   War Zone      : ref_odds >= +150
+#
+# These constants are the SINGLE source of truth for tier admission and
+# MUST NOT be overridden by sport adapters.
 _REF_SAFE_HAVEN_MAX = -240
 _REF_WAR_ZONE_MIN = 150
 
