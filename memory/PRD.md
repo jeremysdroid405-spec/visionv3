@@ -188,6 +188,20 @@ ddof=1 sample std). Before: 0% qualified. After: 2055/2854 (72%) have computed C
 elevated ceiling_rate gates). Hit_rate + ceiling_rate also recomputed from
 game logs. Decoupling preserved — vision_score, tier, pp_utility semantics unchanged.
 
+## NBA War Zone Defaults (LOCKED — April 17, 2026)
+`_NBAGateSorter.WAR_ZONE = {"min_cv": 0.45, "min_ceiling_rate": 20, "min_edge": 10}`
+(varA, validated: 42 war_zone props / 2847, 100% `pp_premium`, zero cannibalization
+of safe_haven/front_lines, all entrants migrated from `unqualified` only.)
+
+## Simulation Endpoints (COMPLETE — April 17, 2026)
+- `POST /api/scores/simulate` — system-level read-only
+- `POST /api/scores/simulate/{sport}` — per-sport
+Request body identical to recompute (`sports`, `limit`, `override_config`).
+Returns `mode=simulation`, `persisted=false`, `tier_distribution`,
+`quality_source_distribution`, `pp_category_distribution`, `top_samples[]`
+(top 10 by vision_score). Zero persistence — `{sport}_prop_scores` and live
+prop collections provably unchanged byte-for-byte pre/post simulation.
+
 ## Upcoming Tasks
 - P1: Google/Apple OAuth (via `integration_playbook_expert_v2`)
 - P1: Stripe payments (via `integration_playbook_expert_v2`)

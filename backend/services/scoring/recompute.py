@@ -168,6 +168,25 @@ async def recompute_sport(
     for d in score_docs[:3]:
         samples.append({k: v for k, v in d.items() if k != "_id"})
 
+    # Tier distribution + top samples for simulation / diagnostic use
+    tier_distribution: Dict[str, int] = {}
+    quality_distribution: Dict[str, int] = {}
+    pp_category_distribution: Dict[str, int] = {}
+    for d in score_docs:
+        t = d.get("tier") or "unknown"
+        tier_distribution[t] = tier_distribution.get(t, 0) + 1
+        q = d.get("quality_source") or "unknown"
+        quality_distribution[q] = quality_distribution.get(q, 0) + 1
+        c = d.get("pp_utility_category") or "unknown"
+        pp_category_distribution[c] = pp_category_distribution.get(c, 0) + 1
+
+    # Top 10 by vision_score (nulls sorted last)
+    def _vs_key(d):
+        v = d.get("vision_score")
+        return (0 if v is None else 1, v if v is not None else -1.0)
+    top_samples = sorted(score_docs, key=_vs_key, reverse=True)[:10]
+    top_samples = [{k: v for k, v in d.items() if k != "_id"} for d in top_samples]
+
     duration_ms = int((time.monotonic() - t0) * 1000)
     return {
         "sport": sport,
@@ -184,7 +203,11 @@ async def recompute_sport(
         "cached_board_mutated": cached_before_count != cached_after_count
             or cached_before_sample != cached_after_sample,
         "cached_board_leakage_fields": leakage_fields,
+        "tier_distribution": tier_distribution,
+        "quality_source_distribution": quality_distribution,
+        "pp_category_distribution": pp_category_distribution,
         "samples": samples,
+        "top_samples": top_samples,
     }
 
 

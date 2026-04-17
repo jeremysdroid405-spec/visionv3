@@ -282,6 +282,107 @@ async def supported_sports():
 
 
 # =============================================================================
+# Simulation endpoints — pure read-only threshold experiments
+# No persistence, no version_tag docs, no mutation.
+# =============================================================================
+
+def _simulate_payload(per_sport_result: Dict[str, Any]) -> Dict[str, Any]:
+    """Reshape a recompute `per_sport` entry into a simulation summary."""
+    return {
+        "sport": per_sport_result.get("sport"),
+        "processed": per_sport_result.get("processed", 0),
+        "skipped": per_sport_result.get("skipped", 0),
+        "duration_ms": per_sport_result.get("duration_ms", 0),
+        "tier_distribution": per_sport_result.get("tier_distribution", {}),
+        "quality_source_distribution": per_sport_result.get(
+            "quality_source_distribution", {}
+        ),
+        "pp_category_distribution": per_sport_result.get(
+            "pp_category_distribution", {}
+        ),
+        "top_samples": per_sport_result.get("top_samples", []),
+        "cached_board_mutated": per_sport_result.get("cached_board_mutated"),
+        "cached_board_leakage_fields": per_sport_result.get(
+            "cached_board_leakage_fields", []
+        ),
+        "error": per_sport_result.get("error"),
+    }
+
+
+@router.post("/simulate")
+async def simulate_all(req: RecomputeRequest = Body(default=None)):
+    """Read-only simulation across one or more sports. No persistence,
+    no version_tag, no mutation of live props or cached_board."""
+    req = req or RecomputeRequest()
+    db = _get_db()
+    try:
+        result = await recompute(
+            db=db,
+            sports=req.sports or list(SUPPORTED_SPORTS),
+            version_tag="simulate",  # ignored by dry_run persist path
+            dry_run=True,
+            limit=req.limit,
+            override_config=req.override_config,
+        )
+        per_sport = result.get("per_sport") or {}
+        return {
+            "status": "success",
+            "mode": "simulation",
+            "persisted": False,
+            "sports_processed": result.get("sports_processed", []),
+            "processed": result.get("processed", {}),
+            "duration_ms": result.get("duration_ms", 0),
+            "override_config": req.override_config or {},
+            "per_sport": {s: _simulate_payload(per_sport[s]) for s in per_sport},
+        }
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
+
+
+@router.post("/simulate/{sport}")
+async def simulate_one(
+    sport: str, req: RecomputeRequest = Body(default=None)
+):
+    """Read-only per-sport simulation. No persistence."""
+    sport = (sport or "").lower()
+    if sport not in SUPPORTED_SPORTS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported sport '{sport}'. Supported: {list(SUPPORTED_SPORTS)}",
+        )
+    req = req or RecomputeRequest()
+    db = _get_db()
+    try:
+        result = await recompute(
+            db=db,
+            sports=[sport],
+            version_tag="simulate",
+            dry_run=True,
+            limit=req.limit,
+            override_config=req.override_config,
+        )
+        per_sport = result.get("per_sport") or {}
+        s_payload = _simulate_payload(per_sport.get(sport, {}))
+        return {
+            "status": "success",
+            "mode": "simulation",
+            "persisted": False,
+            "sport": sport,
+            "processed": s_payload["processed"],
+            "duration_ms": s_payload["duration_ms"],
+            "override_config": req.override_config or {},
+            "tier_distribution": s_payload["tier_distribution"],
+            "quality_source_distribution": s_payload["quality_source_distribution"],
+            "pp_category_distribution": s_payload["pp_category_distribution"],
+            "top_samples": s_payload["top_samples"],
+            "cached_board_mutated": s_payload["cached_board_mutated"],
+            "cached_board_leakage_fields": s_payload["cached_board_leakage_fields"],
+        }
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
+
+
+# =============================================================================
 # Query endpoint — read-only QA inspection of {sport}_prop_scores
 # =============================================================================
 

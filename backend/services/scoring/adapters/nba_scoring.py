@@ -28,7 +28,11 @@ class _NBAGateSorter:
     """
     SAFE_HAVEN = {"max_cv": 0.50, "min_hit_rate": 75, "min_edge": 8, "min_tp": 70}
     FRONT_LINES = {"max_cv": 0.75, "min_hit_rate": 60, "min_edge": 5, "min_tp": 55}
-    WAR_ZONE = {"min_cv": 0.80, "min_ceiling_rate": 30, "min_edge": 15}
+    # NBA war_zone defaults (varA, locked 2026-04-17 after tuning validation).
+    # MLB-scale thresholds (cv=0.80, ceil=30, edge=15) were unreachable on NBA.
+    # varA produces ~1.5% slate-share legitimate moonshots with zero cannibalization
+    # of safe_haven/front_lines; all entrants migrate from unqualified only.
+    WAR_ZONE = {"min_cv": 0.45, "min_ceiling_rate": 20, "min_edge": 10}
 
     def __init__(self, overrides: Optional[Dict[str, Any]] = None):
         o = overrides or {}
