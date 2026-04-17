@@ -29,8 +29,8 @@ coll = db.bdl_historical_game_logs
 adv_coll = db.bdl_advanced_stats
 
 # ---------- Config ----------
-SEASONS = [2022, 2023, 2024]          # last 3 seasons
-SEASON_WEIGHTS = {2024: 1.00, 2023: 0.85, 2022: 0.70}
+SEASONS = [2020, 2021, 2022, 2023, 2024]          # last 5 seasons (full DB history)
+SEASON_WEIGHTS = {2024: 1.00, 2023: 0.85, 2022: 0.70, 2021: 0.55, 2020: 0.40}
 MIN_GAMES_PER_PLAYER = 12
 ROLLING_WINDOW = 20
 MODEL_DIR = '/app/backend/models'
@@ -64,7 +64,7 @@ def preload_advanced_stats():
     adv_map = {}
     projection = {'_id': 0, 'player_id': 1, 'game_id': 1}
     for f in ADV_FIELDS: projection[f] = 1
-    for doc in adv_coll.find({'season': {'$in': SEASONS + [2020, 2021]}}, projection).batch_size(5000):
+    for doc in adv_coll.find({'season': {'$in': SEASONS}}, projection).batch_size(5000):
         pid = doc.get('player_id'); gid = doc.get('game_id')
         if pid is None or gid is None: continue
         adv_map[(pid, gid)] = doc
@@ -357,7 +357,7 @@ def train_one(stat_label, stat_field, adv_map=None):
     payload = {
         'stat_label': stat_label,
         'stat_field': stat_field,
-        'version': 'NBA_VK_v2_3yr_weighted',
+        'version': 'NBA_VK_v2_5yr_weighted',
         'trained_at': datetime.now(timezone.utc).isoformat(),
         'seasons_used': SEASONS,
         'season_weights': SEASON_WEIGHTS,
