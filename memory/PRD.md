@@ -69,12 +69,44 @@ Every injury record in `injuries_normalized` enforces a hard separation:
 - `GET /api/v3/command-center/ticker` — News ticker
 - `POST /api/v3/mlb/test-scheduled-sync` — Non-manual MLB sync test
 
+## Canonical Layered Odds Architecture (COMPLETE — April 17, 2026)
+
+### Strict Exact-Match Layering (No Fuzzy Matching)
+- **Anchor**: PrizePicks creates canonical props keyed by `sport|event_id|player|stat|line|side`
+- **References**: DraftKings and BetMGM attach ONLY when their `line` and `side` exactly match the PP anchor
+- **Flattened schema** in `mlb_live_props`: `canonical_key`, `pp_layer`, `dk_layer`, `mgm_layer`, `sharp_layer`
+- **Hard audit proven** — 0 line mismatches across 4944 props, 0 duplicate canonical keys
+
+### Layer Coverage (live verification)
+| Layer Composition | Count | % |
+|---|---|---|
+| PP + DK + MGM | 3070 | 62% |
+| PP + DK only | 877 | 18% |
+| PP + MGM only | 633 | 13% |
+| PP only | 364 | 7% |
+
+### Market Consensus & Anomaly Split (validated on new layered data)
+| Consensus Source | Count | % |
+|---|---|---|
+| dk+mgm (both books on same line) | 2669 | 55% |
+| dk_only (MGM line mismatch excluded) | 1144 | 23% |
+| mgm_only (DK line mismatch excluded) | 551 | 11% |
+| neutral_baseline (no reference book) | 461 | 9% |
+
+- DK line mismatches (excluded from consensus): 113
+- MGM line mismatches (excluded from consensus): 555
+- True market disagreement (both on same line, ≠ probabilities): 414
+- Strong consensus (disagreement < 0.03): 1528
+
+### Vision Score Calibration (percentile distribution)
+P25=23.7  P50=49.1  P75=74.6  P95=94.9 — well-spread across 0–100
+
 ## Upcoming Tasks
 - P1: Google/Apple OAuth (via `integration_playbook_expert_v2`)
 - P1: Stripe payments (via `integration_playbook_expert_v2`)
 - P2: Wind Tunnel weather API
 - P2: Dashboard.jsx refactor
-- Phase 5: Drop corrupt/legacy collections (pending user approval)
+- Phase 5: Drop corrupt/legacy collections (`live_injuries`, `dg_injuries`, `bdl_injuries`) — pending user approval
 
 ## Key Files
 | File | Purpose |
@@ -92,4 +124,4 @@ Every injury record in `injuries_normalized` enforces a hard separation:
 | `services/mlb_tier_sorter.py` | MLB tier scoring |
 
 ---
-*Last Updated: April 16, 2026*
+*Last Updated: April 17, 2026*
