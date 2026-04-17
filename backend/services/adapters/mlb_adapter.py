@@ -135,7 +135,9 @@ class MLBAdapter(SportAdapter):
                     vk_predicted = result.get('predicted')
                     vk_prob_over = result.get('prob_over')
                     vk_z_score = result.get('z_score')
-                    if vk_prob_over is not None and dk_odds is not None:
+                    if vk_prob_over is not None:
+                        # Model edge = model probability - DK implied probability
+                        # If no DK odds, use 50% as neutral baseline
                         model_edge = round(vk_prob_over - tp, 1)
                         edge_source = 'post_model'
                         model_stats['model_hit'] += 1

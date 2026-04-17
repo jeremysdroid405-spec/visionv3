@@ -82,9 +82,14 @@ class MLBHighFrictionModel:
         'stolen_bases': 'stolen_bases',
         'home_runs': 'home_runs',
         'walks': 'walks',
+        'doubles': 'doubles',
         'strikeouts': 'strikeouts',
         'pitcher_strikeouts': 'pitcher_strikeouts',
+        'earned_runs': 'earned_runs',
+        'hits_allowed': 'hits_allowed',
+        'pitcher_walks': 'pitcher_walks',
         'hits+runs+rbis': ['hits', 'runs', 'rbis'],
+        'singles': '_calc_singles',
     }
     
     # =========================================================================
@@ -186,6 +191,11 @@ class MLBHighFrictionModel:
     def _get_stat_value(self, game: Dict, stat: str) -> Optional[float]:
         """Extract stat from game log."""
         field = self.STAT_FIELD_MAP.get(stat, stat)
+        if field == '_calc_singles':
+            h = game.get('hits')
+            if h is None:
+                return None
+            return max(0, float(h) - float(game.get('doubles', 0) or 0) - float(game.get('triples', 0) or 0) - float(game.get('home_runs', 0) or 0))
         if isinstance(field, list):
             return sum(float(game.get(f, 0) or 0) for f in field)
         val = game.get(field)
