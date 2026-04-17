@@ -264,12 +264,56 @@ class MLBAdapter(SportAdapter):
             confidence = round(sum(confidence_signals) / len(confidence_signals), 4)
 
             # -------------------------------------------------------
-            # VISION SCORE (raw)
+            # VISION SCORE (legacy raw — retained for backward compat)
             # -------------------------------------------------------
             edge_decimal = edge_pct / 100.0
-            vision_score = round(edge_decimal * p_true * stability * confidence * agreement_factor, 6)
+            legacy_vision_score = round(edge_decimal * p_true * stability * confidence * agreement_factor, 6)
 
             board_score = tp + edge_pct + ((hit_rate or 0) / 10)
+
+            # -------------------------------------------------------
+            # SCORING STACK — three INDEPENDENT dimensions (locked spec)
+            #   vision_score  : platform-agnostic quality (sharp-first fair)
+            #   tier          : risk bucket via ref-market gates
+            #   pp_utility    : PP-specific leg usefulness
+            # -------------------------------------------------------
+            from services.scoring import compute_scoring_stack
+            p_model_for_stack = (vk_prob_over / 100.0) if vk_prob_over is not None else None
+
+            # Hydrate canonical layer dicts from either nested layers (new schema)
+            # or flat fields (legacy cached_board shape).
+            def _hydrate(prop_d, book_key, line_key, odds_key, layer_key):
+                nested = prop_d.get(layer_key)
+                if nested:
+                    return nested
+                ln = prop_d.get(line_key)
+                od = prop_d.get(odds_key)
+                if ln is None and od is None:
+                    return None
+                return {"book": book_key, "line": ln, "odds": od}
+
+            stack_prop = dict(prop)
+            stack_prop['pp_layer'] = _hydrate(prop, 'prizepicks', 'pp_line', 'pp_odds', 'pp_layer') or (
+                {"book": "prizepicks", "line": line, "odds": prop.get("odds")}
+            )
+            stack_prop['dk_layer'] = _hydrate(prop, 'draftkings', 'dk_line', 'dk_odds', 'dk_layer')
+            stack_prop['mgm_layer'] = _hydrate(prop, 'betmgm', 'mgm_line', 'mgm_odds', 'mgm_layer')
+            stack_prop['sharp_layer'] = prop.get('sharp_layer') or (
+                {"book": prop.get('sharp_book'), "line": prop.get('sharp_line'), "odds": prop.get('sharp_odds')}
+                if prop.get('sharp_odds') is not None else None
+            )
+
+            stack = compute_scoring_stack(
+                prop=stack_prop,
+                p_model=p_model_for_stack,
+                cv=cv,
+                hit_rate=hit_rate,
+                edge_pct=edge_pct,
+                tp=tp,
+                ceiling_rate=ceiling_rate,
+                books_available_count=books_available_count,
+                sorter=sorter,
+            )
 
             scored_prop = {
                 **prop,
@@ -302,12 +346,35 @@ class MLBAdapter(SportAdapter):
                 'pre_model_edge': pre_model_edge,
                 'post_model_edge': model_edge,
                 'edge_source': edge_source,
-                # --- Vision score (raw, normalized added in post-pass) ---
-                'vision_score': vision_score,
-                'vision_score_100': None,  # set in percentile normalization pass
+                # --- Vision score (legacy raw — kept for back-compat) ---
+                'legacy_vision_score': legacy_vision_score,
+                'vision_score_100': None,  # legacy percentile (set in post-pass)
                 'p_true': round(p_true, 4),
                 'stability': stability,
                 'confidence': confidence,
+                # --- SCORING STACK (locked spec, written to mlb_prop_scores) ---
+                # 1. vision_score (platform-agnostic, sharp-first) — populated via percentile pass
+                'vision_score': None,
+                'vision_score_raw': stack['vision_score_raw'],
+                'quality_source': stack['quality_source'],
+                'fair_prob': stack['fair_prob'],
+                'edge_vs_fair': stack['edge_vs_fair'],
+                # 2. tier (risk bucket from reference market + gates)
+                'tier': stack['tier'],
+                'tier_reason': stack['tier_reason'],
+                'tier_reference_book': stack['tier_reference_book'],
+                'tier_reference_odds': stack['tier_reference_odds'],
+                'tier_gate_results': stack['tier_gate_results'],
+                # 3. pp_utility (PP-specific leg usefulness)
+                'pp_utility': stack['pp_utility'],
+                'pp_utility_category': stack['pp_utility_category'],
+                'pp_utility_components': stack['pp_utility_components'],
+                'pp_multiplier': stack.get('pp_multiplier'),
+                'pp_multiplier_label': stack.get('pp_multiplier_label'),
+                'pp_multiplier_source': stack.get('pp_multiplier_source'),
+                'pp_reference_source': stack.get('pp_reference_source'),
+                # Canonical identity (carry through for mlb_prop_scores key)
+                'canonical_key': prop.get('canonical_key'),
                 # --- Anomaly flags (4 categories) ---
                 'anomaly_line_mismatch_dk': anomaly_line_mismatch_dk,
                 'anomaly_line_mismatch_mgm': anomaly_line_mismatch_mgm,
@@ -364,20 +431,61 @@ class MLBAdapter(SportAdapter):
         # -------------------------------------------------------
         # PERCENTILE-BASED NORMALIZATION (post-pass)
         # -------------------------------------------------------
-        raw_scores = sorted([p['vision_score'] for p in scored if p['vision_score'] is not None and p['vision_score'] != 0])
-        if raw_scores:
+        # Legacy vision_score_100 (based on legacy_vision_score)
+        legacy_raw = sorted([p['legacy_vision_score'] for p in scored if p['legacy_vision_score'] is not None and p['legacy_vision_score'] != 0])
+        if legacy_raw:
             for prop in scored:
-                vs = prop.get('vision_score', 0)
+                vs = prop.get('legacy_vision_score', 0)
                 if vs == 0 or vs is None:
                     prop['vision_score_100'] = 0.0
                 else:
-                    # Percentile rank within the slate
-                    rank = sum(1 for s in raw_scores if s <= vs)
-                    percentile = rank / len(raw_scores)
+                    rank = sum(1 for s in legacy_raw if s <= vs)
+                    percentile = rank / len(legacy_raw)
                     prop['vision_score_100'] = round(percentile * 100, 1)
         else:
             for prop in scored:
                 prop['vision_score_100'] = 0.0
+
+        # New spec vision_score (0-100 from percentile of vision_score_raw)
+        # Props with quality_source='insufficient_market' → vision_score stays None.
+        stack_raw = sorted([
+            p['vision_score_raw'] for p in scored
+            if p.get('vision_score_raw') is not None and p['vision_score_raw'] > 0
+        ])
+        if stack_raw:
+            for prop in scored:
+                if prop.get('quality_source') == 'insufficient_market':
+                    prop['vision_score'] = None
+                    continue
+                vr = prop.get('vision_score_raw')
+                if vr is None or vr <= 0:
+                    prop['vision_score'] = 0.0
+                else:
+                    rank = sum(1 for s in stack_raw if s <= vr)
+                    prop['vision_score'] = round((rank / len(stack_raw)) * 100, 1)
+        else:
+            for prop in scored:
+                if prop.get('quality_source') == 'insufficient_market':
+                    prop['vision_score'] = None
+                else:
+                    prop['vision_score'] = 0.0
+
+        # -------------------------------------------------------
+        # PERSIST SCORING STACK TO mlb_prop_scores (system of record)
+        # Per locked spec: do NOT embed in mlb_cached_board/tier collections.
+        # -------------------------------------------------------
+        try:
+            from services.scoring import write_prop_scores, strip_score_fields
+            write_result = await write_prop_scores(db, scored)
+            logger.info(
+                f"[MLB_ADAPTER] mlb_prop_scores updated: "
+                f"inserted={write_result['inserted']} purged={write_result['purged']}"
+            )
+            # Strip scoring-stack fields from in-memory props so downstream
+            # writers (cached_board, tiers) do NOT persist them.
+            strip_score_fields(scored)
+        except Exception as e:
+            logger.error(f"[MLB_ADAPTER] mlb_prop_scores write failed: {e}")
 
         return scored
 

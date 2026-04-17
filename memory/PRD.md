@@ -101,6 +101,36 @@ Every injury record in `injuries_normalized` enforces a hard separation:
 ### Vision Score Calibration (percentile distribution)
 P25=23.7  P50=49.1  P75=74.6  P95=94.9 — well-spread across 0–100
 
+## Scoring Stack — Three Independent Dimensions (LOCKED — April 17, 2026)
+
+### Design
+Three DECOUPLED scores per canonical prop, persisted to dedicated `mlb_prop_scores` collection.
+No scoring-stack field lives in `mlb_cached_board` or tier collections.
+
+| Dimension | Purpose | Null-case |
+|---|---|---|
+| `vision_score` (0–100) | Platform-agnostic pick quality. Sharp-first fair prob: pinnacle > consensus(dk,mgm) > dk > mgm. Never reads PP data. | `null` with `quality_source="insufficient_market"` |
+| `tier` | Risk bucket from reference odds (dk → mgm fallback) + existing `MLBTierSorter` gates | `"unqualified"` with `tier_reason="no_reference_market"` |
+| `pp_utility` (0–100 + category) | PP-specific leg usefulness for parlay construction. Components: availability, line_fairness, model_alignment, edge_confidence, multiplier_value (reserved). | Category: `pp_fair` \| `pp_exclusive` \| `pp_scam` \| `pp_premium`* \| `pp_discount`* |
+
+*`pp_premium` / `pp_discount` are RESERVED — emitted only when a real multiplier source exists (`pp_combo_multiplier`, `pp_label`, or `pp_multiplier_model`). PP American odds are NEVER treated as a payout multiplier.
+
+### Storage
+- Collection: `mlb_prop_scores` (unique index on `canonical_key`)
+- Writer: `/app/backend/services/scoring/prop_scores_store.py`
+- Scoring fields stripped from in-memory props post-write so downstream `mlb_cached_board` / tier writers cannot persist them.
+
+### Live validation (2026-04-17)
+- 4825 score docs; 297 PP-exclusive vision_score=null; pinnacle=0, consensus=3173, dk=753, mgm=602
+- tiers: 50 safe_haven / 24 front_lines / 48 war_zone / 4703 unqualified (297 no_ref + 4406 failed gates)
+- pp_utility: 4513 fair / 297 exclusive / 15 scam / 0 premium / 0 discount (no real multiplier source yet)
+- cached_board leak check: 0 scoring fields leaked
+
+### Key Files
+- `services/scoring/scoring_stack.py` — pure scoring functions (three dimensions)
+- `services/scoring/prop_scores_store.py` — writer + stripper
+- `services/adapters/mlb_adapter.py::enrich_and_score` — composes stack + persists
+
 ## Upcoming Tasks
 - P1: Google/Apple OAuth (via `integration_playbook_expert_v2`)
 - P1: Stripe payments (via `integration_playbook_expert_v2`)
