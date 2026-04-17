@@ -148,11 +148,15 @@ def build_features(history_logs, target_game=None, adv_map=None):
 
     # -------- ADVANCED ROLLING FEATURES (from bdl_advanced_stats) ----------
     # Rolling means of each advanced field over L5 and L10 of the history window.
-    # Missing advanced rows → skip that game for those fields only (left-join).
+    # Missing advanced rows default to 0.0 ONLY when explicit missingness flags
+    # are also emitted so the model can distinguish "real zero" from "no data":
+    #   - adv_coverage_L10     : # of last-10 history games with any adv row
+    #   - adv_missing_season   : fraction of last-10 history games from the
+    #                             known season-wide gap (season 2023 has 0 rows)
+    #   - adv_{field}_L{w}_miss: 1.0 if window had zero valid samples for field
     if adv_map is not None:
         for adv_f in ADV_FIELDS:
             l5_vals, l10_vals = [], []
-            adv_hit_l10 = 0
             for idx, g in enumerate(history_logs[:10]):
                 key = (g.get('player_id'), g.get('game_id'))
                 a = adv_map.get(key)
@@ -163,15 +167,24 @@ def build_features(history_logs, target_game=None, adv_map=None):
                 except (TypeError, ValueError): continue
                 if idx < 5: l5_vals.append(v)
                 l10_vals.append(v)
-                adv_hit_l10 += 1
             feats[f'adv_{adv_f}_L5_mean'] = float(np.mean(l5_vals)) if l5_vals else 0.0
             feats[f'adv_{adv_f}_L10_mean'] = float(np.mean(l10_vals)) if l10_vals else 0.0
-        # Coverage flag: how many of the last 10 games had advanced data
+            # per-feature missing indicator (cheap: 2 bits per adv field)
+            feats[f'adv_{adv_f}_L5_miss'] = 0.0 if l5_vals else 1.0
+            feats[f'adv_{adv_f}_L10_miss'] = 0.0 if l10_vals else 1.0
+
+        # Coverage count over L10
         adv_coverage = 0
+        season_gap_count = 0
         for g in history_logs[:10]:
             if (g.get('player_id'), g.get('game_id')) in adv_map:
                 adv_coverage += 1
+            # Season-wide gap indicator (2023 has zero adv rows)
+            if g.get('season') == 2023:
+                season_gap_count += 1
         feats['adv_coverage_L10'] = float(adv_coverage)
+        window_sz = float(min(10, len(history_logs)))
+        feats['adv_missing_season'] = (season_gap_count / window_sz) if window_sz else 0.0
 
     # Target-game context
     if target_game is not None:
@@ -183,7 +196,7 @@ def build_features(history_logs, target_game=None, adv_map=None):
 
 
 # ---------- Data assembly per stat (single pass over players) ----------
-def build_training_matrix(stat_label, stat_field):
+def build_training_matrix(stat_label, stat_field, adv_map=None):
     """Returns (X, y, sample_weights, feature_cols)."""
     log.info(f'[{stat_label}] building training matrix...')
     t0 = time.monotonic()
@@ -228,7 +241,7 @@ def build_training_matrix(stat_label, stat_field):
             history_desc = list(reversed(logs_chrono[max(0, i - ROLLING_WINDOW):i]))
             if len(history_desc) < 5:
                 continue
-            feats = build_features(history_desc, target_game=tgt)
+            feats = build_features(history_desc, target_game=tgt, adv_map=adv_map)
             if feats is None:
                 continue
             if feature_cols is None:
@@ -276,8 +289,8 @@ def build_training_matrix(stat_label, stat_field):
 
 
 # ---------- Train + calibrate per stat ----------
-def train_one(stat_label, stat_field):
-    X, y, sw, feature_cols = build_training_matrix(stat_label, stat_field)
+def train_one(stat_label, stat_field, adv_map=None):
+    X, y, sw, feature_cols = build_training_matrix(stat_label, stat_field, adv_map=adv_map)
     if X is None:
         log.warning(f'[{stat_label}] no samples; SKIP')
         return
@@ -380,11 +393,12 @@ def train_one(stat_label, stat_field):
 # ---------- Main ----------
 if __name__ == '__main__':
     t_all = time.monotonic()
+    adv_map = preload_advanced_stats()
     results = {}
     for label, field in STATS.items():
         log.info(f'=== {label} ({field}) ===')
         try:
-            results[label] = train_one(label, field)
+            results[label] = train_one(label, field, adv_map=adv_map)
         except Exception as e:
             log.exception(f'[{label}] FAILED: {e}')
         gc.collect()
