@@ -71,12 +71,13 @@ class MLBAdapter(SportAdapter):
         """
         Enrich and score MLB props.
         
-        Delegates to MLBTierSorter for:
-        - Hit rate calculation from mlb_master_hub_2026
+        Delegates to MLBTierSorter for all calculations:
+        - Hit rate (L5, L10, L20) from mlb_master_hub_2026
         - CV calculation
+        - Ceiling hit rate
         - DK odds extraction
-        - True probability calculation
-        - VK projection lookup
+        - True probability from odds
+        - VK/Lasso projection lookup
         
         Returns scored props with validation metadata.
         """
@@ -101,6 +102,9 @@ class MLBAdapter(SportAdapter):
             hit_rate, avg = sorter._calculate_hit_rate(player_name, stat_type, line, 20)
             h5_rate, h5_avg = sorter._calculate_hit_rate(player_name, stat_type, line, 5)
             h10_rate, h10_avg = sorter._calculate_hit_rate(player_name, stat_type, line, 10)
+
+            # Ceiling hit rate — required for War Zone gates
+            ceiling_rate = sorter._calculate_ceiling_hit_rate(player_name, stat_type, line)
 
             # True probability from odds
             tp = sorter._calculate_tp_odds(dk_odds) if dk_odds else 50.0
@@ -129,6 +133,7 @@ class MLBAdapter(SportAdapter):
                 'l10_avg': h10_avg,
                 'l5_avg': h5_avg,
                 'season_avg': avg,
+                'ceiling_rate': ceiling_rate,
                 'true_probability': tp,
                 'edge_pct': edge_pct,
                 'vk_predicted': vk.get('projection'),
@@ -161,10 +166,24 @@ class MLBAdapter(SportAdapter):
     TIER_CAPACITY = 10
 
     def select_tiers(self, scored_props: List[Dict], previous_tiers: Optional[Dict[str, List[Dict]]] = None) -> Dict[str, List[Dict]]:
-        """MLB tier selection with retention: qualified capped set."""
+        """
+        MLB tier selection using the INTENDED stat-specific gate system.
+        
+        Delegates to MLBTierSorter.check_*_gates() methods which enforce:
+          - SAFE_HAVEN_GATES: max_cv, min_hit_rate, min_edge, min_tp per stat
+          - FRONT_LINES_GATES: max_cv, min_hit_rate, min_edge, min_tp per stat
+          - WAR_ZONE_GATES: min_cv, min_ceiling_rate, min_edge per stat
+        
+        DK odds thresholds determine which gate set is tested:
+          - dk_odds <= -240  → test Safe Haven gates
+          - dk_odds >= +150  → test War Zone gates
+          - else / None      → test Front Lines gates
+        """
         from services.mlb_tier_sorter import (
-            DK_SAFE_HAVEN_MAX, DK_WAR_ZONE_MIN, SAFE_HAVEN_GATES,
+            DK_SAFE_HAVEN_MAX, DK_WAR_ZONE_MIN,
         )
+
+        sorter = self._sorter
 
         prev_keys = {}
         if previous_tiers:
@@ -181,34 +200,49 @@ class MLBAdapter(SportAdapter):
             hit_rate = prop.get('hit_rate') or prop.get('h20_rate')
             edge_pct = prop.get('edge_pct') or 0
             tp = prop.get('true_probability') or 50
-            line = prop.get('line') or 0
+            ceiling_rate = prop.get('ceiling_rate')
 
             # HARD GUARD: dk_odds must come from a real DK offering.
-            # If the prop's bookmakers_available list does not include draftkings,
-            # dk_odds is inherited junk — zero it out so it cannot drive tier selection.
             bookmakers_available = prop.get('bookmakers_available') or []
             if dk_odds is not None and 'draftkings' not in bookmakers_available:
                 dk_odds = None
                 prop['dk_odds'] = None
                 prop['dk_odds_disqualified'] = True
 
+            # TIER 1: Safe Haven — dk_odds <= -240, then stat-specific gates
             if dk_odds is not None and dk_odds <= DK_SAFE_HAVEN_MAX:
-                if self._check_safe_haven_gates(prop, cv, hit_rate, edge_pct, tp, line):
+                passed, reason, gate_results = sorter.check_safe_haven_gates(
+                    prop, cv, hit_rate, edge_pct, tp
+                )
+                prop['safe_haven_gate_results'] = gate_results
+                prop['safe_haven_reason'] = reason
+                if passed:
                     prop['ferrari_tier'] = 'safe_haven'
                     prop['tier_label'] = 'Safe Haven'
                     safe_haven.append(prop)
                     continue
 
+            # TIER 3: War Zone — dk_odds >= +150, then stat-specific gates
             if dk_odds is not None and dk_odds >= DK_WAR_ZONE_MIN:
-                ceiling = prop.get('ceiling_rate') or hit_rate or 0
-                if edge_pct >= 5 or ceiling >= 30:
+                passed, reason, gate_results = sorter.check_war_zone_gates(
+                    prop, cv, ceiling_rate, edge_pct
+                )
+                prop['war_zone_gate_results'] = gate_results
+                prop['war_zone_reason'] = reason
+                if passed:
                     prop['ferrari_tier'] = 'war_zone'
                     prop['tier_label'] = 'War Zone'
                     war_zone.append(prop)
                     continue
 
+            # TIER 2: Front Lines — everything else, then stat-specific gates
             if dk_odds is None or (dk_odds > DK_SAFE_HAVEN_MAX and dk_odds < DK_WAR_ZONE_MIN):
-                if (hit_rate or 0) >= 50 and (cv or 1) <= 0.80:
+                passed, reason, gate_results = sorter.check_front_lines_gates(
+                    prop, cv, hit_rate, edge_pct, tp
+                )
+                prop['front_lines_gate_results'] = gate_results
+                prop['front_lines_reason'] = reason
+                if passed:
                     prop['ferrari_tier'] = 'front_lines'
                     prop['tier_label'] = 'Front Lines'
                     front_lines.append(prop)
@@ -217,7 +251,7 @@ class MLBAdapter(SportAdapter):
         # Apply retention + capped set logic per tier
         safe_haven = self._apply_retention_cap(safe_haven, prev_keys.get('safe_haven', set()), 'board_score')
         front_lines = self._apply_retention_cap(front_lines, prev_keys.get('front_lines', set()), 'edge_pct')
-        war_zone = self._apply_retention_cap(war_zone, prev_keys.get('war_zone', set()), 'edge_pct')
+        war_zone = self._apply_retention_cap(war_zone, prev_keys.get('war_zone', set()), 'ceiling_rate')
 
         logger.info(f"[MLB_ADAPTER] Tier selection: SH={len(safe_haven)} FL={len(front_lines)} WZ={len(war_zone)}")
         return {"safe_haven": safe_haven, "front_lines": front_lines, "war_zone": war_zone}
@@ -238,41 +272,6 @@ class MLBAdapter(SportAdapter):
         else:
             unique.sort(key=lambda x: x.get(sort_key, 0), reverse=True)
             return unique[:self.TIER_CAPACITY]
-
-    def _check_safe_haven_gates(self, prop, cv, hit_rate, edge_pct, tp, line) -> bool:
-        """Check MLB Safe Haven gates using shared volatility profile."""
-        from services.volatility_profile import get_volatility_profile
-        from services.mlb_tier_sorter import SAFE_HAVEN_GATES
-
-        stat_type = prop.get('stat_type', '')
-        vol = get_volatility_profile(cv, stat_type, line)
-
-        if line < 1.0:
-            # Goblin-line override: binary/Bernoulli outcomes
-            # Use volatility profile's extreme threshold instead of hardcoded 1.10
-            if vol.is_extreme:
-                return False
-            if hit_rate is not None and hit_rate < 75:
-                return False
-            if tp < 60:
-                return False
-            return True
-
-        # Standard gates by stat type
-        sorter = self._sorter
-        stat_key = sorter._normalize_stat_type(stat_type) if sorter else 'hits'
-        gates = SAFE_HAVEN_GATES.get(stat_key, SAFE_HAVEN_GATES.get('hits'))
-
-        # Use volatility profile for CV check instead of raw threshold
-        if vol.label in ("extreme", "high"):
-            return False
-        if hit_rate is not None and hit_rate < gates['min_hit_rate']:
-            return False
-        if edge_pct < gates['min_edge']:
-            return False
-        if tp < gates['min_tp']:
-            return False
-        return True
 
     async def enrich_intel(self, tiers: Dict[str, List[Dict]], db) -> Dict[str, List[Dict]]:
         """Pre-publish enrichment for MLB: overlay cache, averages, tempo, intel_suite.
