@@ -104,14 +104,18 @@ class NBAScoringAdapter(ScoringAdapter):
 
     # Which stat_types have a Vegas Killer model on disk
     _MODEL_STATS = {"PTS", "REB", "AST", "3PM", "PRA"}
+    # VK v2 model file paths (new 3-season weighted models)
+    _VK2_DIR = "/app/backend/models"
 
     def __init__(self):
         self._sorter = None
         self._cv_cache: dict = {}
         self._logs_cache: dict = {}
         self._logs_loaded = False
-        self._vk = None         # lazy-init VegasKillerModel
+        self._vk = None         # lazy-init legacy VegasKillerModel
         self._vk_sigmas: dict = {}   # stat_type -> residual SD (empirical, from test RMSE)
+        self._vk2_loaded: bool = False
+        self._vk2_models: dict = {}  # stat -> {model, scaler, features, sigma}
 
     @property
     def sport(self) -> str:
