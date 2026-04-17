@@ -64,7 +64,14 @@ class MLBHighFrictionModel:
         'pitcher_strikeouts',
         'hits+runs+rbis',
         'home_runs',
-        'stolen_bases'
+        'stolen_bases',
+        'strikeouts',
+        'doubles',
+        'walks',
+        'singles',
+        'earned_runs',
+        'hits_allowed',
+        'pitcher_walks',
     ]
     
     STAT_FIELD_MAP = {
@@ -164,10 +171,15 @@ class MLBHighFrictionModel:
         stat_lower = stat_type.lower().replace(' ', '_').replace('+', '+')
         aliases = {
             'k': 'pitcher_strikeouts', 'ks': 'pitcher_strikeouts',
-            'pitcher k': 'pitcher_strikeouts', 'pitcher strikeouts': 'pitcher_strikeouts',
+            'pitcher_k': 'pitcher_strikeouts', 'pitcher_strikeouts': 'pitcher_strikeouts',
             'tb': 'total_bases', 'rbi': 'rbis', 'sb': 'stolen_bases',
             'hr': 'home_runs', 'h': 'hits', 'r': 'runs',
             'hrr': 'hits+runs+rbis', 'hits+runs+rbi': 'hits+runs+rbis',
+            'batter_strikeouts': 'strikeouts',
+            'batter_walks': 'walks',
+            'walks_allowed': 'pitcher_walks',
+            'pitcher_outs': 'pitcher_strikeouts',
+            'pitching_outs': 'pitcher_strikeouts',
         }
         return aliases.get(stat_lower, stat_lower)
     
