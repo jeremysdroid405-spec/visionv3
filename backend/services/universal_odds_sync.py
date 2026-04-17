@@ -462,20 +462,26 @@ class UniversalOddsSyncService:
         config = self._get_sport_config(sport)
         stat_type_map = config["stat_type_map"]
         
-        # First pass: Collect all props grouped by player/stat
-        prop_groups: Dict[str, Dict] = {}  # key -> {lines: {bookmaker: line}, ...}
+        # =================================================================
+        # PrizePicks is the SOURCE OF TRUTH for which props exist.
+        # DraftKings / Pinnacle are REFERENCE LAYERS only.
+        # 
+        # Architecture:
+        #   Pass 1: Create prop records ONLY from PrizePicks outcomes.
+        #   Pass 2: Attach DK/Pinnacle odds as reference columns onto
+        #           matching PP records (same player|stat|line).
+        #           If DK has a different line, attach the closest one.
+        # =================================================================
         
-        # ================================================================
-        # DIAGNOSTIC LOG 3: Mapping Dictionary
-        # ================================================================
-        logger.info("[ODDS_DIAG] MAPPING: Bookmaker config keys = %s", list(BOOKMAKER_CONFIG.keys()))
-        logger.info("[ODDS_DIAG] MAPPING: stat_type_map keys = %s", list(stat_type_map.keys())[:10])
+        # --- Pass 1: PrizePicks props (source of truth) ---
+        pp_props = {}  # group_key -> prop dict
         
         for bookmaker in odds_data.get("bookmakers", []):
             bm_key = bookmaker.get("key", "unknown")
+            if bm_key != "prizepicks":
+                continue
+            
             bm_config = BOOKMAKER_CONFIG.get(bm_key, {})
-            is_sharp = bm_config.get("is_sharp", False)
-            is_dfs = bm_config.get("is_dfs", False)
             
             for market in bookmaker.get("markets", []):
                 market_key = market.get("key", "")
@@ -485,153 +491,170 @@ class UniversalOddsSyncService:
                     player_name = outcome.get("description", "")
                     if not player_name:
                         continue
-                    
                     line = outcome.get("point")
                     if line is None:
                         continue
                     
-                    # Determine over/under
                     outcome_name = outcome.get("name", "").lower()
                     recommendation = "OVER" if "over" in outcome_name else "UNDER"
-                    
-                    # Get the price/odds
                     price = outcome.get("price", -110)
                     
-                    # Classify based on price: +100 = DEMON, -137 = GOBLIN
-                    # Positive odds (e.g., +100) = DEMON (harder to hit, better payout)
-                    # Negative odds (e.g., -137) = GOBLIN (easier to hit, worse payout)
-                    is_demon = price >= 100   # +100 or better = DEMON
-                    is_goblin = price < 0     # -137 or worse = GOBLIN
-                    
-                    # Create group key (unique per player/stat/line/recommendation)
                     group_key = f"{player_name}|{stat_type}|{line}|{recommendation}"
                     
-                    if group_key not in prop_groups:
-                        prop_groups[group_key] = {
-                            "player_name": player_name,
-                            "stat_type": stat_type,
-                            "line": float(line),
-                            "recommendation": recommendation,
-                            "market_key": market_key,
-                            "event_id": odds_data.get("event_id"),
-                            "home_team": event_info.get("home_team"),
-                            "away_team": event_info.get("away_team"),
-                            "commence_time": event_info.get("commence_time"),
-                            "sport": sport,
-                            "lines": {},  # bookmaker -> line
-                            "odds": {},   # bookmaker -> odds
-                            "sharp_line": None,
-                            "dfs_line": None,
-                            "is_goblin": False,
-                            "is_demon": False,
-                            "is_alternate_market": "alternate" in market_key.lower(),
-                        }
-                    
-                    # Store line by bookmaker
-                    prop_groups[group_key]["lines"][bm_key] = float(line)
-                    prop_groups[group_key]["odds"][bm_key] = price
-                    
-                    # Update goblin/demon flags based on REAL sportsbook price only.
-                    # PrizePicks returns flat 100/-137 for all props (DFS platform, not a book).
-                    # Only DraftKings/Pinnacle prices carry real market signal.
-                    if bm_key not in ("prizepicks",):
-                        if price >= 100:
-                            prop_groups[group_key]["is_demon"] = True
-                        elif price < 0:
-                            prop_groups[group_key]["is_goblin"] = True
-                    
-                    # Track sharp line
-                    if is_sharp and prop_groups[group_key]["sharp_line"] is None:
-                        prop_groups[group_key]["sharp_line"] = float(line)
-                        prop_groups[group_key]["sharp_book"] = bm_key
-                    
-                    # Track DFS line (PrizePicks, Underdog)
-                    if is_dfs and prop_groups[group_key]["dfs_line"] is None:
-                        prop_groups[group_key]["dfs_line"] = float(line)
-                        prop_groups[group_key]["dfs_book"] = bm_key
+                    pp_props[group_key] = {
+                        "player_name": player_name,
+                        "stat_type": stat_type,
+                        "line": float(line),
+                        "recommendation": recommendation,
+                        "market_key": market_key,
+                        "event_id": odds_data.get("event_id"),
+                        "home_team": event_info.get("home_team"),
+                        "away_team": event_info.get("away_team"),
+                        "commence_time": event_info.get("commence_time"),
+                        "sport": sport,
+                        "is_alternate_market": "alternate" in market_key.lower(),
+                        # PP data
+                        "pp_line": float(line),
+                        "pp_odds": price,
+                        "odds": price,
+                        "bookmaker": "prizepicks",
+                        "source": "prizepicks",
+                        # DK/Sharp placeholders — filled in pass 2
+                        "dk_line": None,
+                        "dk_odds": None,
+                        "sharp_line": None,
+                        "sharp_odds": None,
+                        "sharp_book": None,
+                        # Reference dicts
+                        "all_lines": {"prizepicks": float(line)},
+                        "all_odds": {"prizepicks": price},
+                        "bookmakers_available": ["prizepicks"],
+                        # Flags (set by DK in pass 2)
+                        "is_demon": False,
+                        "is_goblin": False,
+                    }
         
-        # Second pass: Build prop documents with multi-book comparison
-        props = []
+        # --- Pass 2: Attach DK/Pinnacle/Sharp as reference layers ---
+        from collections import defaultdict as _defaultdict
+        pp_by_player_stat = _defaultdict(list)
+        for gk, prop in pp_props.items():
+            ps_key = f"{prop['player_name']}|{prop['stat_type']}|{prop['recommendation']}"
+            pp_by_player_stat[ps_key].append((prop['line'], gk))
         
-        for group_key, group_data in prop_groups.items():
-            # Use DFS line as primary if available, else use first available
-            lines = group_data["lines"]
-            primary_line = group_data.get("dfs_line")
-            primary_book = group_data.get("dfs_book", "prizepicks")
-            
-            if primary_line is None and lines:
-                # Fallback to first available line
-                primary_book = list(lines.keys())[0]
-                primary_line = lines[primary_book]
-            
-            if primary_line is None:
+        for bookmaker in odds_data.get("bookmakers", []):
+            bm_key = bookmaker.get("key", "unknown")
+            if bm_key == "prizepicks":
                 continue
             
-            # Calculate sharp edge if available
-            sharp_edge = None
-            sharp_line = group_data.get("sharp_line")
-            if sharp_line is not None and primary_line > 0:
-                # Positive edge = DFS line below sharp (value on OVER)
-                # Negative edge = DFS line above sharp (value on UNDER)
-                sharp_edge = round((sharp_line - primary_line) / primary_line * 100, 2)
+            bm_config = BOOKMAKER_CONFIG.get(bm_key, {})
+            is_sharp = bm_config.get("is_sharp", False)
             
-            # Calculate DraftKings edge (DK line vs DFS line)
-            dk_edge = None
-            dk_line = lines.get("draftkings")
-            if dk_line is not None and primary_line > 0:
-                dk_edge = round((dk_line - primary_line) / primary_line * 100, 2)
+            for market in bookmaker.get("markets", []):
+                market_key = market.get("key", "")
+                stat_type = stat_type_map.get(market_key, market_key)
+                
+                for outcome in market.get("outcomes", []):
+                    player_name = outcome.get("description", "")
+                    if not player_name:
+                        continue
+                    line = outcome.get("point")
+                    if line is None:
+                        continue
+                    
+                    outcome_name = outcome.get("name", "").lower()
+                    recommendation = "OVER" if "over" in outcome_name else "UNDER"
+                    price = outcome.get("price", -110)
+                    
+                    # Try exact match first
+                    exact_key = f"{player_name}|{stat_type}|{line}|{recommendation}"
+                    if exact_key in pp_props:
+                        target = pp_props[exact_key]
+                    else:
+                        # Find closest PP line for same player|stat|rec
+                        ps_key = f"{player_name}|{stat_type}|{recommendation}"
+                        candidates = pp_by_player_stat.get(ps_key, [])
+                        if not candidates:
+                            continue  # No PP prop for this player+stat — skip
+                        closest = min(candidates, key=lambda x: abs(x[0] - float(line)))
+                        target = pp_props[closest[1]]
+                    
+                    # Attach reference data
+                    target["all_lines"][bm_key] = float(line)
+                    target["all_odds"][bm_key] = price
+                    if bm_key not in target["bookmakers_available"]:
+                        target["bookmakers_available"].append(bm_key)
+                    
+                    if bm_key == "draftkings":
+                        if float(line) == target["line"]:
+                            target["dk_line"] = float(line)
+                            target["dk_odds"] = price
+                        elif target["dk_odds"] is None:
+                            target["dk_line"] = float(line)
+                            target["dk_odds"] = price
+                            target["dk_line_mismatch"] = True
+                        
+                        if price >= 100:
+                            target["is_demon"] = True
+                        elif price < 0:
+                            target["is_goblin"] = True
+                    
+                    if is_sharp and target["sharp_line"] is None:
+                        target["sharp_line"] = float(line)
+                        target["sharp_odds"] = price
+                        target["sharp_book"] = bm_key
+        
+        # --- Pass 3: Build final props list ---
+        props = []
+        for group_key, gd in pp_props.items():
+            pp_line = gd.get("pp_line")
+            dk_line = gd.get("dk_line")
+            sharp_line = gd.get("sharp_line")
             
-            # Build prop document
+            pp_dk_edge = None
+            if pp_line and dk_line and pp_line > 0:
+                pp_dk_edge = round((dk_line - pp_line) / pp_line * 100, 2)
+            
+            pp_sharp_edge = None
+            if pp_line and sharp_line and pp_line > 0:
+                pp_sharp_edge = round((sharp_line - pp_line) / pp_line * 100, 2)
+            
             prop = {
-                "player_name": group_data["player_name"],
-                "stat_type": group_data["stat_type"],
-                "line": group_data.get("line") or primary_line,
-                "recommendation": group_data["recommendation"],
-                "odds": group_data["odds"].get(primary_book, -110),
-                "market_key": group_data["market_key"],
-                "bookmaker": primary_book,
-                # Event context
-                "event_id": group_data["event_id"],
-                "home_team": group_data["home_team"],
-                "away_team": group_data["away_team"],
-                "commence_time": group_data["commence_time"],
-                # ============================================================
-                # SEPARATED BOOK COLUMNS (PP, DK, Sharp/Pinnacle)
-                # These are for reference and sorting - NOT displayed on frontend
-                # ============================================================
-                # PrizePicks (PP) - Primary display book
-                "pp_line": lines.get("prizepicks"),
-                "pp_odds": group_data["odds"].get("prizepicks"),
-                # DraftKings (DK) - Reference book
-                "dk_line": lines.get("draftkings"),
-                "dk_odds": group_data["odds"].get("draftkings"),
-                # Sharp/Pinnacle - Reference book for sharp line comparison
-                "sharp_line": lines.get("pinnacle") or sharp_line,
-                "sharp_odds": group_data["odds"].get("pinnacle"),
-                "sharp_book": group_data.get("sharp_book") or ("pinnacle" if lines.get("pinnacle") else None),
-                # Edge calculations
-                "pp_dk_edge": round((lines.get("draftkings", 0) - lines.get("prizepicks", 0)) / lines.get("prizepicks", 1) * 100, 2) if lines.get("prizepicks") and lines.get("draftkings") else None,
-                "pp_sharp_edge": round((lines.get("pinnacle", 0) - lines.get("prizepicks", 0)) / lines.get("prizepicks", 1) * 100, 2) if lines.get("prizepicks") and lines.get("pinnacle") else None,
-                # ============================================================
-                # Legacy multi-book data (kept for backwards compatibility)
-                "all_lines": lines,
-                "all_odds": group_data["odds"],
-                "sharp_edge": sharp_edge,
-                "dk_edge": dk_edge,
-                "dfs_line": group_data.get("dfs_line"),
-                "dfs_book": group_data.get("dfs_book"),
-                # PrizePicks goblin/demon flags (based on price: +100=demon, negative=goblin)
-                "is_goblin": group_data.get("is_goblin", False),
-                "is_demon": group_data.get("is_demon", False),
-                "is_alternate_market": group_data.get("is_alternate_market", False),
-                # Metadata
+                "player_name": gd["player_name"],
+                "stat_type": gd["stat_type"],
+                "line": gd["line"],
+                "recommendation": gd["recommendation"],
+                "odds": gd["odds"],
+                "market_key": gd["market_key"],
+                "bookmaker": "prizepicks",
+                "event_id": gd["event_id"],
+                "home_team": gd["home_team"],
+                "away_team": gd["away_team"],
+                "commence_time": gd["commence_time"],
+                "pp_line": pp_line,
+                "pp_odds": gd.get("pp_odds"),
+                "dk_line": dk_line,
+                "dk_odds": gd.get("dk_odds"),
+                "dk_line_mismatch": gd.get("dk_line_mismatch", False),
+                "sharp_line": sharp_line,
+                "sharp_odds": gd.get("sharp_odds"),
+                "sharp_book": gd.get("sharp_book"),
+                "pp_dk_edge": pp_dk_edge,
+                "pp_sharp_edge": pp_sharp_edge,
+                "all_lines": gd["all_lines"],
+                "all_odds": gd["all_odds"],
+                "sharp_edge": pp_sharp_edge,
+                "dk_edge": pp_dk_edge,
+                "dfs_line": pp_line,
+                "dfs_book": "prizepicks",
+                "is_goblin": gd.get("is_goblin", False),
+                "is_demon": gd.get("is_demon", False),
+                "is_alternate_market": gd.get("is_alternate_market", False),
                 "sport": sport,
                 "fetched_at": datetime.now(timezone.utc).isoformat(),
-                "source": "prizepicks" if lines.get("prizepicks") else primary_book,  # Always mark as PP source if PP line exists
-                "bookmakers_available": list(lines.keys()),
-                "team": None  # Will be set during enrichment
+                "source": "prizepicks",
+                "bookmakers_available": gd["bookmakers_available"],
+                "team": None,
             }
-            
             props.append(prop)
         
         return props
