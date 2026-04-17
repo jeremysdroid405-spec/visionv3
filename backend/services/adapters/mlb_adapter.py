@@ -183,6 +183,15 @@ class MLBAdapter(SportAdapter):
             tp = prop.get('true_probability') or 50
             line = prop.get('line') or 0
 
+            # HARD GUARD: dk_odds must come from a real DK offering.
+            # If the prop's bookmakers_available list does not include draftkings,
+            # dk_odds is inherited junk — zero it out so it cannot drive tier selection.
+            bookmakers_available = prop.get('bookmakers_available') or []
+            if dk_odds is not None and 'draftkings' not in bookmakers_available:
+                dk_odds = None
+                prop['dk_odds'] = None
+                prop['dk_odds_disqualified'] = True
+
             if dk_odds is not None and dk_odds <= DK_SAFE_HAVEN_MAX:
                 if self._check_safe_haven_gates(prop, cv, hit_rate, edge_pct, tp, line):
                     prop['ferrari_tier'] = 'safe_haven'

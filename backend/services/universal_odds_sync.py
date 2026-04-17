@@ -531,10 +531,14 @@ class UniversalOddsSyncService:
                     prop_groups[group_key]["lines"][bm_key] = float(line)
                     prop_groups[group_key]["odds"][bm_key] = price
                     
-                    # Update goblin/demon flags based on PrizePicks price
-                    if bm_key == "prizepicks":
-                        prop_groups[group_key]["is_goblin"] = is_goblin
-                        prop_groups[group_key]["is_demon"] = is_demon
+                    # Update goblin/demon flags based on REAL sportsbook price only.
+                    # PrizePicks returns flat 100/-137 for all props (DFS platform, not a book).
+                    # Only DraftKings/Pinnacle prices carry real market signal.
+                    if bm_key not in ("prizepicks",):
+                        if price >= 100:
+                            prop_groups[group_key]["is_demon"] = True
+                        elif price < 0:
+                            prop_groups[group_key]["is_goblin"] = True
                     
                     # Track sharp line
                     if is_sharp and prop_groups[group_key]["sharp_line"] is None:
@@ -746,41 +750,28 @@ class UniversalOddsSyncService:
             results["unique_players"] = len(results["unique_players"])
             
             # Step 3: Save to sport-specific collection
+            # CRITICAL: Drop-and-replace to purge stale props from past events.
+            # The old upsert-by-event_id approach left zombie records because
+            # event_id changes every game day, so old records were never matched.
             if all_props:
                 collection_name = get_collection_name("live_props", sport)
                 collection = self.db[collection_name]
                 
-                # Clear old props for today and insert new ones
-                # Using upsert to prevent duplicates
-                inserted = 0
-                updated = 0
+                # Purge ALL old data and insert fresh — no zombies
+                stale_count = await collection.count_documents({})
+                await collection.delete_many({})
                 
-                for prop in all_props:
-                    # Composite key for deduplication
-                    filter_key = {
-                        "player_name": prop["player_name"],
-                        "stat_type": prop["stat_type"],
-                        "line": prop["line"],
-                        "recommendation": prop["recommendation"],
-                        "event_id": prop["event_id"]
-                    }
-                    
-                    result = await collection.update_one(
-                        filter_key,
-                        {"$set": prop},
-                        upsert=True
-                    )
-                    
-                    if result.upserted_id:
-                        inserted += 1
-                    elif result.modified_count > 0:
-                        updated += 1
+                # Strip _id before insert
+                clean_props = [{k: v for k, v in p.items() if k != "_id"} for p in all_props]
+                await collection.insert_many(clean_props)
                 
+                inserted = len(clean_props)
                 results["inserted"] = inserted
-                results["updated"] = updated
+                results["updated"] = 0
+                results["purged_stale"] = stale_count
                 results["collection"] = collection_name
                 
-                logger.info(f"[UNIVERSAL_ODDS] Saved {inserted} new, {updated} updated props to {collection_name}")
+                logger.info(f"[UNIVERSAL_ODDS] Replaced {collection_name}: purged {stale_count} stale, inserted {inserted} fresh")
             
             # Log summary
             duration = (datetime.now(timezone.utc) - sync_start).total_seconds()
