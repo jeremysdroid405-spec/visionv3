@@ -102,11 +102,16 @@ class NBAScoringAdapter(ScoringAdapter):
         "TO": "turnover",
     }
 
+    # Which stat_types have a Vegas Killer model on disk
+    _MODEL_STATS = {"PTS", "REB", "AST", "3PM", "PRA"}
+
     def __init__(self):
         self._sorter = None
         self._cv_cache: dict = {}
         self._logs_cache: dict = {}
         self._logs_loaded = False
+        self._vk = None         # lazy-init VegasKillerModel
+        self._vk_sigmas: dict = {}   # stat_type -> residual SD (empirical, from test RMSE)
 
     @property
     def sport(self) -> str:
@@ -139,6 +144,78 @@ class NBAScoringAdapter(ScoringAdapter):
         overrides = ((config or {}).get("override_config") or {}).get("tier")
         self._sorter = _NBAGateSorter(overrides)
         return self._sorter
+
+    def _get_vk(self, db):
+        """Lazy-load the legacy VegasKillerModel + cache stat-specific residual SDs."""
+        if self._vk is not None:
+            return self._vk
+        import os, pymongo
+        from services.vegas_killer_model import VegasKillerModel
+        sync_client = pymongo.MongoClient(os.environ.get("MONGO_URL"))
+        sync_db = sync_client[os.environ.get("DB_NAME", "pick_vision")]
+        vk = VegasKillerModel(sync_db)
+        try:
+            vk.load_models()
+        except Exception as e:
+            logger.warning(f"[NBA_SCORING] VegasKiller load failed: {e}")
+            self._vk = vk
+            return vk
+        # Pull residual SDs from stored metadata. test_rmse is an empirical
+        # estimate of model-residual SD on held-out data.
+        for st in self._MODEL_STATS:
+            m = (vk.metrics or {}).get(st, {})
+            rmse = (m.get("test") or {}).get("rmse") or (m.get("train") or {}).get("rmse")
+            if rmse and rmse > 0:
+                self._vk_sigmas[st] = float(rmse)
+        self._vk = vk
+        logger.info(f"[NBA_SCORING] VegasKiller loaded. stat-sigmas={self._vk_sigmas}")
+        return vk
+
+    def _predict_model_prob_over(
+        self, db, player_name: str, stat_type: str,
+        line: float, opponent_team: Optional[str],
+    ) -> Dict[str, Optional[float]]:
+        """Run VegasKiller projection + convert to prob_over via empirical
+        residual calibration.
+
+        Returns {projection, sigma, p_over, error?}."""
+        if stat_type not in self._MODEL_STATS:
+            return {"projection": None, "sigma": None, "p_over": None,
+                    "error": f"no_model_for_{stat_type}"}
+        vk = self._get_vk(db)
+        if not vk.models:
+            return {"projection": None, "sigma": None, "p_over": None,
+                    "error": "vk_not_loaded"}
+        try:
+            r = vk.predict(
+                player_name=player_name, stat_type=stat_type,
+                line=line, opponent_team=opponent_team,
+            )
+        except Exception as e:
+            return {"projection": None, "sigma": None, "p_over": None,
+                    "error": f"predict_failed:{e}"}
+        if r.get("error"):
+            return {"projection": None, "sigma": None, "p_over": None,
+                    "error": r["error"]}
+        projection = r.get("predicted")
+        if projection is None:
+            return {"projection": None, "sigma": None, "p_over": None,
+                    "error": "no_projection"}
+        sigma = self._vk_sigmas.get(stat_type)
+        if sigma is None or sigma <= 0:
+            # Fallback: widen slightly to avoid overconfidence
+            sigma = max(1.0, float(r.get("full_features", {}).get(
+                "baseline", {}).get("std_dev_l10", 5) or 5))
+        # Normal CDF: P(stat > line) = 1 - Phi((line - mu) / sigma) = Phi((mu - line) / sigma)
+        from math import erf, sqrt
+        z = (float(projection) - float(line)) / float(sigma)
+        p_over = 0.5 * (1.0 + erf(z / sqrt(2.0)))
+        return {
+            "projection": round(float(projection), 3),
+            "sigma": round(float(sigma), 3),
+            "p_over": round(float(p_over), 4),
+            "error": None,
+        }
 
     async def _preload_game_logs(self, db) -> None:
         """Pull NBA game logs from master hub once per recompute."""
@@ -289,9 +366,45 @@ class NBAScoringAdapter(ScoringAdapter):
         )
         hit_rate = computed_hit_rate if computed_hit_rate is not None else embedded_hit_rate
 
-        # Model probability: NBA lacks a dedicated XGBoost model in this adapter;
-        # use hit_rate as a pragmatic proxy (config can override).
-        p_model = (hit_rate / 100.0) if hit_rate is not None else None
+        # -----------------------------------------------------------
+        # p_true candidates
+        #  1. p_true_hit_rate = raw L20 rolling count (legacy default)
+        #  2. p_true_model    = VegasKiller regressor + empirical residual CDF
+        # `p_true_method` from override_config selects the active p_model.
+        # -----------------------------------------------------------
+        p_true_hit_rate = (hit_rate / 100.0) if hit_rate is not None else None
+
+        p_true_model = None
+        model_projection = None
+        model_sigma = None
+        if stat_type in self._MODEL_STATS:
+            opponent_team = prop.get("opponent") or prop.get("away_team")
+            mres = self._predict_model_prob_over(
+                db=db, player_name=player_name, stat_type=stat_type,
+                line=float(line), opponent_team=opponent_team,
+            )
+            p_over = mres.get("p_over")
+            if p_over is not None:
+                # OVER side uses p_over, UNDER side uses 1 - p_over
+                if side == "UNDER":
+                    p_true_model = round(1.0 - p_over, 4)
+                else:
+                    p_true_model = round(p_over, 4)
+            model_projection = mres.get("projection")
+            model_sigma = mres.get("sigma")
+
+        # Select active method: default "hit_rate" (production); "model" opts in.
+        active_method = (
+            ((config or {}).get("override_config") or {})
+            .get("vision_score", {})
+            .get("p_true_method")
+        ) or "hit_rate"
+        if active_method == "model" and p_true_model is not None:
+            p_model = p_true_model
+            p_true_method_used = "model"
+        else:
+            p_model = p_true_hit_rate
+            p_true_method_used = "hit_rate" if p_true_hit_rate is not None else "none"
 
         # tp from reference-market implied prob (dk preferred, else fanduel)
         def _amer(o):
@@ -338,4 +451,9 @@ class NBAScoringAdapter(ScoringAdapter):
             raw_prop=prop,
             pp_combo_multiplier=pp_multiplier,
             pp_label=pp_label, pp_multiplier_model=None,
+            p_true_hit_rate=p_true_hit_rate,
+            p_true_model=p_true_model,
+            p_true_method=p_true_method_used,
+            model_projection=model_projection,
+            model_sigma=model_sigma,
         )

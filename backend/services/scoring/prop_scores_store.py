@@ -29,6 +29,9 @@ _SCORE_OUTPUT_FIELDS = (
     "pp_utility", "pp_utility_category", "pp_utility_components",
     "pp_multiplier", "pp_multiplier_label", "pp_multiplier_source",
     "pp_reference_source",
+    # p_true diagnostic panel
+    "p_true_active", "p_true_method", "p_true_hit_rate", "p_true_model",
+    "model_projection", "model_sigma",
 )
 
 _IDENTITY_FIELDS = (

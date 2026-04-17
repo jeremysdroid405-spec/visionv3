@@ -35,6 +35,12 @@ class ScoringContext:
     pp_combo_multiplier: Optional[float] = None
     pp_label: Optional[str] = None           # goblin | standard | demon
     pp_multiplier_model: Optional[float] = None
+    # Diagnostic-only: alternative p_true candidates (not used by scoring_stack)
+    p_true_hit_rate: Optional[float] = None
+    p_true_model: Optional[float] = None
+    p_true_method: Optional[str] = None       # "hit_rate" | "model"
+    model_projection: Optional[float] = None  # raw regressor output (stat units)
+    model_sigma: Optional[float] = None       # residual SD used for CDF conversion
 
 
 class ScoringAdapter(ABC):
