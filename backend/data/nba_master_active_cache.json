@@ -1,6 +1,6 @@
 {
   "sport": "NBA",
-  "last_updated": "2026-04-17T22:29:47.167199+00:00",
+  "last_updated": "2026-04-17T22:35:50.590328+00:00",
   "prop_count": 30,
   "props": {
     "stephon_castle|ast|8.5|dk": {
@@ -1785,233 +1785,6 @@
       "_enriched": true,
       "_enriched_at": "2026-04-17T05:54:52.667548+00:00",
       "_cache_updated": "2026-04-17T05:54:52.667550+00:00"
-    },
-    "jerami_grant|pts|14.5|dk": {
-      "player_name": "Jerami Grant",
-      "player_id": "182",
-      "team": "POR",
-      "opponent": "SAS",
-      "photo_url": "/static/player-headshots/203924.png",
-      "headshot_url": "/static/player-headshots/203924.png",
-      "game_time": null,
-      "position": "F",
-      "nba_id": 203924,
-      "stat_type": "PTS",
-      "line": 14.5,
-      "dk_odds": 253,
-      "price": 100,
-      "direction": "Over",
-      "market": "player_points_alternate",
-      "prop_type": "DEMON",
-      "is_goblin": false,
-      "is_demon": true,
-      "is_standard": false,
-      "l10_rate": 70.0,
-      "l5_rate": 80.0,
-      "h10_rate": 70.0,
-      "h5_rate": 80.0,
-      "true_hit_rate": 70.0,
-      "cv": 0.35,
-      "l10_std_dev": 6.06,
-      "l10_avg": 17.3,
-      "avg_mins": null,
-      "market_prob": 50.0,
-      "propvision_true_prob": 75.2,
-      "true_probability": 75.2,
-      "casino_req_rate": 50.0,
-      "true_edge": 25.2,
-      "pp_edge": 25.0,
-      "sh_board_score": 70.4,
-      "fl_board_score": 132.4,
-      "wz_board_score": 516.5,
-      "board_score": 29.2,
-      "ferrari_power_score": 313.03,
-      "blowout_risk": "MEDIUM",
-      "intel_suite": {
-        "usage_ripple": {
-          "bump_percent": 0,
-          "display": "Standard Volume",
-          "shift_label": "Standard Volume",
-          "injuries_affecting": [],
-          "reasoning": "No significant lineup changes"
-        },
-        "matchup_dvp": {
-          "rank": 24,
-          "display": "Rank #24 vs. Scorers",
-          "color": "yellow",
-          "friction_level": "Low-Med",
-          "friction_label": "Soft Defense",
-          "opponent": "SAS",
-          "stat_category": "PTS"
-        },
-        "pace_delta": {
-          "possessions": -1.2,
-          "display": "-1.2 Possessions",
-          "pace_factor": 1.0,
-          "tempo_label": "Standard Tempo",
-          "team_pace": 97.5,
-          "opponent_pace": 95.2,
-          "expected_game_pace": 96.3
-        },
-        "stability_index": {
-          "score": 55,
-          "label": "Medium",
-          "display": "55/100 (Medium)",
-          "std_dev": 3.86,
-          "consistency": "Average",
-          "variance_level": "Medium"
-        },
-        "vision_insight": {
-          "primary": "The books are practically begging us to take the over here because Jerami Grant has cleared this 14.5 line in 70% of his last twenty games while averaging a cool 17.3 points. San Antonio is currently sporting a bottom-tier defense that ranks 24th against his position, giving us a massive 34% edge to exploit while we bank on him crushing this projection by five full points.",
-          "summary": "The books are practically begging us to take the over here because Jerami Grant has cleared this 14.5 line in 70% of his last twenty games while averaging a cool 17.3 points. San Antonio is currently sporting a bottom-tier defense that ranks 24th against his position, giving us a massive 34% edge to exploit while we bank on him crushing this projection by five full points.",
-          "lasso_projection": 19.485,
-          "lasso_edge": 4.98,
-          "confidence": "HIGH_FIDELITY",
-          "tactical_note": "Defensive weakness in opponent's scheme"
-        },
-        "blowout_risk": {
-          "player_team_record": "42-40",
-          "opponent_team_record": "62-20",
-          "player_win_pct": 0.512,
-          "opponent_win_pct": 0.756,
-          "win_pct_diff": 0.244,
-          "favored_team": "SAS",
-          "player_is_favored": false,
-          "risk_level": "MEDIUM",
-          "risk_reason": "Underdog (POR 42-40) vs better opponent (SAS 62-20)",
-          "warning": "\u26a1 Blowout possible: POR is underdog - reduced minutes if game gets away"
-        },
-        "scout_badges": [
-          "hot_streak",
-          "lasso_high_edge",
-          "high_fidelity_model"
-        ],
-        "lasso": {
-          "projection": 19.485,
-          "confidence_tier": "HIGH_FIDELITY",
-          "r_squared": 0.544,
-          "top_drivers": [
-            "prev_fga",
-            "L10_avg_fgm"
-          ]
-        },
-        "calculated_at": "2026-04-17T05:54:56.887522+00:00"
-      },
-      "active_badges": [
-        "jet_lag",
-        "pay_day"
-      ],
-      "momentum_data": {
-        "team": "SAS",
-        "stat_type": "PTS",
-        "season_rank": 21,
-        "l10_rank": 15,
-        "l5_rank": 13,
-        "composite_rank": 17.7,
-        "season_def_rating": 116.5,
-        "l10_pts_allowed": 116.5,
-        "l5_pts_allowed": 114.2,
-        "season_allowed": 116.5,
-        "l10_allowed": 116.5,
-        "l5_allowed": 114.2,
-        "momentum": "stable",
-        "trend_alert": null,
-        "is_elite": false,
-        "is_weak": false,
-        "using_proxy": true,
-        "proxy_type": "DRTG",
-        "proxy_label": "Defensive Rating",
-        "proxy_description": "Team Defensive Rating (lower = better defense)",
-        "modifier": 0.0,
-        "tooltip": "50% Season (#21, DRtg: 116.5) | 35% L10 (#15, 116.5 PPG) | 15% L5 (#13, 114.2 PPG)"
-      },
-      "vacuum_data": null,
-      "whistle_data": null,
-      "whistle_class": "neutral",
-      "whistle_modifier": 0.0,
-      "momentum_modifier": 0.0,
-      "vacuum_modifier": 0.0,
-      "v7_components": {
-        "true_probability": 75.22,
-        "sharp_implied": 75.0,
-        "pp_edge": 25.0,
-        "l5_rate": 80.0,
-        "l10_rate": 70.0,
-        "line_below_avg_bonus": 2.8,
-        "mode_edge": 0,
-        "mode": null,
-        "raw_score": 328.03,
-        "penalties_applied": [
-          "High variance (std_dev=6.1)",
-          "Medium blowout risk"
-        ]
-      },
-      "v7_confidence": "HIGH",
-      "season_avg": 17.3,
-      "l5_avg": 17.4,
-      "l10_median": 18.5,
-      "vk_predicted": 15.64,
-      "vk_edge": 29.2,
-      "vk_prob_over": 57.5,
-      "is_vision_enriched": true,
-      "vision_intel": "The books are essentially begging us to take the over here by setting the line at 14.5 when Jerami has cleared that mark in 70% of his last twenty games. San Antonio is currently sporting a bottom-tier defense that ranks 24th in the league, so we are expecting Grant to feast on their soft perimeter coverage and easily blow past his 17.3 point average.",
-      "draftkings_price": 253,
-      "fanduel_price": 220,
-      "sort_price": 253,
-      "hook_risk": false,
-      "trap_risk": false,
-      "dk_tier": "war_zone",
-      "tier_label": "Front Lines",
-      "synced_at": "2026-04-17T05:53:02.716796+00:00",
-      "validation": {
-        "has_market_data": true,
-        "has_hit_rates": true,
-        "has_context": true,
-        "has_mlr": true,
-        "has_gemini": true,
-        "is_fully_validated": true
-      },
-      "mlr_matchup": {
-        "opp_def_rating": 116.5,
-        "opp_pace": 100.3,
-        "opp_pts_allowed": 110,
-        "opp_def_rank": 17.7,
-        "pace_delta": 1.3
-      },
-      "mlr_friction": {
-        "b2b_penalty": 0,
-        "opp_interior_def": 116.5,
-        "opp_perimeter_def": 116.5,
-        "matchup_difficulty": 0.59,
-        "travel_factor": 0.8
-      },
-      "mlr_features_used": true,
-      "mlr_raw_prediction": 15.64,
-      "vk_prob_under": 42.5,
-      "vk_verdict": "LEAN_OVER",
-      "vk_confidence": 57.5,
-      "tier": "front_lines",
-      "vision_summary": "The books are essentially begging us to take the over here by setting the line at 14.5 when Jerami has cleared that mark in 70% of his last twenty games. San Antonio is currently sporting a bottom-tier defense that ranks 24th in the league, so we are expecting Grant to feast on their soft perimeter coverage and easily blow past his 17.3 point average.",
-      "volatility_score": 43.7,
-      "volatility_label": "low",
-      "volatility_family": "nba_mid_line",
-      "scout_badges": [
-        "hot_streak",
-        "lasso_high_edge",
-        "high_fidelity_model"
-      ],
-      "vk_data": {
-        "projection": 19.485,
-        "confidence_tier": "HIGH_FIDELITY",
-        "r_squared": 0.544,
-        "top_drivers": [
-          "prev_fga",
-          "L10_avg_fgm"
-        ]
-      },
-      "_enriched": true,
-      "_enriched_at": "2026-04-17T05:54:58.109586+00:00",
-      "_cache_updated": "2026-04-17T05:54:58.109588+00:00"
     },
     "scoot_henderson|reb|2.5|dk": {
       "player_name": "Scoot Henderson",
@@ -6734,6 +6507,235 @@
       "_enriched": true,
       "_enriched_at": "2026-04-17T20:26:05.686455+00:00",
       "_cache_updated": "2026-04-17T20:26:05.686457+00:00"
+    },
+    "sion_james|ast|1.5|dk": {
+      "player_name": "Sion James",
+      "player_id": "1057384156",
+      "team": "CHA",
+      "opponent": "ORL",
+      "photo_url": "/static/player-headshots/1642883.png",
+      "headshot_url": "/static/player-headshots/1642883.png",
+      "game_time": null,
+      "position": "G",
+      "nba_id": 1642883,
+      "stat_type": "AST",
+      "line": 1.5,
+      "dk_odds": 147,
+      "price": 100,
+      "direction": "Over",
+      "market": "player_assists_alternate",
+      "prop_type": "DEMON",
+      "is_goblin": false,
+      "is_demon": true,
+      "is_standard": false,
+      "l10_rate": 80.0,
+      "l5_rate": 80.0,
+      "h10_rate": 80.0,
+      "h5_rate": 80.0,
+      "true_hit_rate": 80.0,
+      "cv": 0.543,
+      "l10_std_dev": 1.25,
+      "l10_avg": 2.3,
+      "avg_mins": null,
+      "market_prob": 50.0,
+      "propvision_true_prob": 71.1,
+      "true_probability": 71.1,
+      "casino_req_rate": 50.0,
+      "true_edge": 30.0,
+      "pp_edge": 30.0,
+      "sh_board_score": 81.8,
+      "fl_board_score": 154.6,
+      "wz_board_score": 607.3,
+      "board_score": 607.3,
+      "ferrari_power_score": 340.41,
+      "blowout_risk": "NONE",
+      "intel_suite": {
+        "usage_ripple": {
+          "bump_percent": 0,
+          "display": "Standard Volume",
+          "shift_label": "Standard Volume",
+          "injuries_affecting": [],
+          "reasoning": "No significant lineup changes"
+        },
+        "matchup_dvp": {
+          "rank": 4,
+          "display": "Rank #4 vs. Playmakers",
+          "color": "red",
+          "friction_level": "High",
+          "friction_label": "Elite Defense",
+          "opponent": "ORL",
+          "stat_category": "AST"
+        },
+        "pace_delta": {
+          "possessions": -0.3,
+          "display": "-0.3 Possessions",
+          "pace_factor": 1.0,
+          "tempo_label": "Standard Tempo",
+          "team_pace": 97.8,
+          "opponent_pace": 96.5,
+          "expected_game_pace": 97.2
+        },
+        "stability_index": {
+          "score": 95,
+          "label": "Elite",
+          "display": "95/100 (Elite)",
+          "std_dev": 1.07,
+          "consistency": "Extremely Consistent",
+          "variance_level": "Low"
+        },
+        "vision_insight": {
+          "primary": "The books are practically handing us a gift with this 1.5 line considering Sion has cleared this mark in eight of his last ten outings while averaging a comfortable 2.3 dimes. Even though Orlando brings that elite defensive reputation to the table, James owns a 95 stability score that tells us he\u2019s too consistent to be bottled up by a tough matchup.",
+          "summary": "The books are practically handing us a gift with this 1.5 line considering Sion has cleared this mark in eight of his last ten outings while averaging a comfortable 2.3 dimes. Even though Orlando brings that elite defensive reputation to the table, James owns a 95 stability score that tells us he\u2019s too consistent to be bottled up by a tough matchup.",
+          "lasso_projection": 2.454,
+          "lasso_edge": 0.95,
+          "confidence": "HIGH_FIDELITY",
+          "tactical_note": "Baseline projection favorable"
+        },
+        "blowout_risk": {
+          "player_team_record": "44-38",
+          "opponent_team_record": "45-37",
+          "player_win_pct": 0.537,
+          "opponent_win_pct": 0.549,
+          "win_pct_diff": 0.012,
+          "favored_team": "ORL",
+          "player_is_favored": false,
+          "risk_level": "NONE",
+          "risk_reason": "Competitive matchup: CHA (44-38) vs ORL (45-37)",
+          "warning": null
+        },
+        "scout_badges": [
+          "lasso_high_edge",
+          "high_fidelity_model"
+        ],
+        "lasso": {
+          "projection": 2.454,
+          "confidence_tier": "HIGH_FIDELITY",
+          "r_squared": 0.5469,
+          "top_drivers": [
+            "target_L10_avg",
+            "prev_pf"
+          ]
+        },
+        "calculated_at": "2026-04-17T22:32:48.933479+00:00"
+      },
+      "active_badges": [],
+      "momentum_data": {
+        "team": "ORL",
+        "stat_type": "AST",
+        "season_rank": 15,
+        "l10_rank": 5,
+        "l5_rank": 6,
+        "composite_rank": 10.2,
+        "season_def_rating": 114.2,
+        "l10_pts_allowed": 109.6,
+        "l5_pts_allowed": 109.4,
+        "season_allowed": 114.2,
+        "l10_allowed": 109.6,
+        "l5_allowed": 109.4,
+        "momentum": "stable",
+        "trend_alert": null,
+        "is_elite": false,
+        "is_weak": false,
+        "using_proxy": true,
+        "proxy_type": "DRTG",
+        "proxy_label": "Defensive Rating",
+        "proxy_description": "Proxy: Defensive Rating (offensive flow correlates with assists)",
+        "modifier": 0.0,
+        "tooltip": "50% Season (#15, DRtg: 114.2) | 35% L10 (#5, 109.6 PPG) | 15% L5 (#6, 109.4 PPG)"
+      },
+      "vacuum_data": null,
+      "whistle_data": {
+        "crew_chief": "Marc Davis (#8)",
+        "ref_ou_pct": 50.0,
+        "ref_ppg": 114.5,
+        "whistle_class": "neutral",
+        "point_lift": 0.0,
+        "lift_label": "Neutral Impact",
+        "lift_type": "neutral"
+      },
+      "whistle_class": "neutral",
+      "whistle_modifier": 0.0,
+      "momentum_modifier": 0.0,
+      "vacuum_modifier": 0.0,
+      "v7_components": {
+        "true_probability": 71.11,
+        "sharp_implied": 80.0,
+        "pp_edge": 30.0,
+        "l5_rate": 80.0,
+        "l10_rate": 80.0,
+        "line_below_avg_bonus": 0.8,
+        "mode_edge": 0.5,
+        "mode": 2.0,
+        "raw_score": 342.41,
+        "penalties_applied": [
+          "Above avg defense (#10)"
+        ]
+      },
+      "v7_confidence": "MEDIUM",
+      "season_avg": 2.3,
+      "l5_avg": 2.0,
+      "l10_median": 2.0,
+      "vk_predicted": 1.8,
+      "vk_edge": 19.0,
+      "vk_prob_over": 59.5,
+      "is_vision_enriched": true,
+      "vision_intel": "The books are practically begging us to take the over here by setting the line at a measly 1.5 when Sion has cleared this mark in eight of his last ten games. Orlando might play some lock-down defense, but James is averaging 2.3 dimes lately and his 95 stability score proves he\u2019s the guy we trust to find the open man regardless of the matchup.",
+      "draftkings_price": 147,
+      "fanduel_price": null,
+      "sort_price": 147,
+      "hook_risk": true,
+      "trap_risk": true,
+      "dk_tier": "war_zone",
+      "tier_label": "War Zone",
+      "synced_at": "2026-04-17T22:32:00.519334+00:00",
+      "validation": {
+        "has_market_data": true,
+        "has_hit_rates": true,
+        "has_context": true,
+        "has_mlr": true,
+        "has_gemini": true,
+        "is_fully_validated": true
+      },
+      "mlr_matchup": {
+        "opp_def_rating": 114.2,
+        "opp_pace": 96.8,
+        "opp_pts_allowed": 110,
+        "opp_def_rank": 10.2,
+        "pace_delta": -2.2
+      },
+      "mlr_friction": {
+        "b2b_penalty": 0,
+        "opp_interior_def": 114.2,
+        "opp_perimeter_def": 114.2,
+        "matchup_difficulty": 0.34,
+        "travel_factor": 0.8
+      },
+      "mlr_features_used": true,
+      "mlr_raw_prediction": 1.8,
+      "vk_prob_under": 40.5,
+      "vk_verdict": "LEAN_OVER",
+      "vk_confidence": 59.5,
+      "tier": "war_zone",
+      "vision_summary": "The books are practically begging us to take the over here by setting the line at a measly 1.5 when Sion has cleared this mark in eight of his last ten games. Orlando might play some lock-down defense, but James is averaging 2.3 dimes lately and his 95 stability score proves he\u2019s the guy we trust to find the open man regardless of the matchup.",
+      "volatility_score": 60.3,
+      "volatility_label": "moderate",
+      "volatility_family": "nba_low_line",
+      "scout_badges": [
+        "lasso_high_edge",
+        "high_fidelity_model"
+      ],
+      "vk_data": {
+        "projection": 2.454,
+        "confidence_tier": "HIGH_FIDELITY",
+        "r_squared": 0.5469,
+        "top_drivers": [
+          "target_L10_avg",
+          "prev_pf"
+        ]
+      },
+      "_enriched": true,
+      "_enriched_at": "2026-04-17T22:32:49.990076+00:00",
+      "_cache_updated": "2026-04-17T22:32:49.990078+00:00"
     }
   }
 }
