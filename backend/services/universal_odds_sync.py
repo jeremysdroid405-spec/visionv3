@@ -239,7 +239,7 @@ SPORT_API_CONFIG = {
             "batter_hits_runs_alternate": "Hits+Runs",
         },
         # PrizePicks + DK + Pinnacle for MLB (DK/Pinnacle for reference only)
-        "bookmakers": ["prizepicks", "draftkings", "pinnacle"]
+        "bookmakers": ["prizepicks", "draftkings", "betmgm", "pinnacle"]
     }
 }
 
@@ -519,9 +519,11 @@ class UniversalOddsSyncService:
                         "odds": price,
                         "bookmaker": "prizepicks",
                         "source": "prizepicks",
-                        # DK/Sharp placeholders — filled in pass 2
+                        # DK/Sharp/MGM placeholders — filled in pass 2
                         "dk_line": None,
                         "dk_odds": None,
+                        "mgm_line": None,
+                        "mgm_odds": None,
                         "sharp_line": None,
                         "sharp_odds": None,
                         "sharp_book": None,
@@ -598,6 +600,22 @@ class UniversalOddsSyncService:
                         elif price < 0:
                             target["is_goblin"] = True
                     
+                    if bm_key == "betmgm":
+                        if float(line) == target["line"]:
+                            target["mgm_line"] = float(line)
+                            target["mgm_odds"] = price
+                        elif target["mgm_odds"] is None:
+                            target["mgm_line"] = float(line)
+                            target["mgm_odds"] = price
+                            target["mgm_line_mismatch"] = True
+                        
+                        # MGM sets demon/goblin only if DK didn't
+                        if not target["is_demon"] and not target["is_goblin"]:
+                            if price >= 100:
+                                target["is_demon"] = True
+                            elif price < 0:
+                                target["is_goblin"] = True
+                    
                     if is_sharp and target["sharp_line"] is None:
                         target["sharp_line"] = float(line)
                         target["sharp_odds"] = price
@@ -635,6 +653,9 @@ class UniversalOddsSyncService:
                 "dk_line": dk_line,
                 "dk_odds": gd.get("dk_odds"),
                 "dk_line_mismatch": gd.get("dk_line_mismatch", False),
+                "mgm_line": gd.get("mgm_line"),
+                "mgm_odds": gd.get("mgm_odds"),
+                "mgm_line_mismatch": gd.get("mgm_line_mismatch", False),
                 "sharp_line": sharp_line,
                 "sharp_odds": gd.get("sharp_odds"),
                 "sharp_book": gd.get("sharp_book"),
