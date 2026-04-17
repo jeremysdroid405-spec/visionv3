@@ -71,20 +71,26 @@ class MLBAdapter(SportAdapter):
         """
         Enrich and score MLB props.
         
-        Delegates to MLBTierSorter for all calculations:
-        - Hit rate (L5, L10, L20) from mlb_master_hub_2026
-        - CV calculation
-        - Ceiling hit rate
-        - DK odds extraction
-        - True probability from odds
-        - VK/Lasso projection lookup
+        Runs the MLBHighFrictionModel (XGBoost) LIVE for each prop to get
+        model-driven predictions and probability-based edge.
         
-        Returns scored props with validation metadata.
+        Edge priority:
+          1. Model prob_over - DK implied probability (post-model edge)
+          2. Fallback: hit_rate - tp (pre-model edge) if model fails
         """
         sorter = await self._get_sorter(db)
 
+        # Load the XGBoost VK model
+        from services.mlb_high_friction_model import get_mlb_high_friction_model
+        import pymongo as _pymongo
+        _sync_client = _pymongo.MongoClient(os.environ.get('MONGO_URL', 'mongodb://localhost:27017'))
+        _sync_db = _sync_client[os.environ.get('DB_NAME', 'pick_vision')]
+        hf_model = get_mlb_high_friction_model(_sync_db)
+        if hf_model and not hf_model.models:
+            hf_model.load_models()
+
         scored = []
-        stats = {'total': len(props), 'no_odds': 0, 'scored': 0}
+        model_stats = {'total': len(props), 'no_odds': 0, 'scored': 0, 'model_hit': 0, 'model_miss': 0}
 
         for prop in props:
             player_name = prop.get("player_name", "?")
@@ -95,27 +101,54 @@ class MLBAdapter(SportAdapter):
             all_odds = prop.get("all_odds") or {}
             dk_odds = all_odds.get("draftkings") or prop.get("dk_odds")
             if dk_odds is None:
-                stats['no_odds'] += 1
+                model_stats['no_odds'] += 1
 
             # Stats from hub
             cv = sorter._calculate_cv(player_name, stat_type)
             hit_rate, avg = sorter._calculate_hit_rate(player_name, stat_type, line, 20)
             h5_rate, h5_avg = sorter._calculate_hit_rate(player_name, stat_type, line, 5)
             h10_rate, h10_avg = sorter._calculate_hit_rate(player_name, stat_type, line, 10)
-
-            # Ceiling hit rate — required for War Zone gates
             ceiling_rate = sorter._calculate_ceiling_hit_rate(player_name, stat_type, line)
 
-            # True probability from odds
+            # True probability from DK odds
             tp = sorter._calculate_tp_odds(dk_odds) if dk_odds else 50.0
 
-            # VK/Lasso projection
-            vk = sorter._get_vk_projection(player_name, stat_type, line)
-            vk_edge = vk.get('edge_pct') or prop.get('edge_pct')
-            if vk_edge is None and hit_rate is not None:
-                vk_edge = round(hit_rate - tp, 1)
+            # --- RUN MODEL LIVE ---
+            vk_predicted = None
+            vk_prob_over = None
+            vk_z_score = None
+            model_edge = None
+            edge_source = 'pre_model'
 
-            edge_pct = vk_edge or 0
+            if hf_model:
+                opponent = prop.get('away_team') if not prop.get('is_away_team') else prop.get('home_team')
+                park_team = prop.get('home_team') if prop.get('is_away_team') else prop.get('team')
+                result = hf_model.predict(
+                    player_name=player_name,
+                    stat_type=stat_type,
+                    line=line,
+                    opponent_team=opponent,
+                    park_team=park_team,
+                    dk_odds=int(dk_odds) if dk_odds else None,
+                )
+                if not result.get('error'):
+                    vk_predicted = result.get('predicted')
+                    vk_prob_over = result.get('prob_over')
+                    vk_z_score = result.get('z_score')
+                    if vk_prob_over is not None and dk_odds is not None:
+                        model_edge = round(vk_prob_over - tp, 1)
+                        edge_source = 'post_model'
+                        model_stats['model_hit'] += 1
+                    else:
+                        model_stats['model_miss'] += 1
+                else:
+                    model_stats['model_miss'] += 1
+
+            # Pre-model fallback
+            pre_model_edge = round((hit_rate or 0) - tp, 1) if hit_rate is not None else 0
+
+            # FINAL edge: model wins if available
+            edge_pct = model_edge if model_edge is not None else pre_model_edge
             board_score = tp + edge_pct + ((hit_rate or 0) / 10)
 
             scored_prop = {
@@ -136,21 +169,25 @@ class MLBAdapter(SportAdapter):
                 'ceiling_rate': ceiling_rate,
                 'true_probability': tp,
                 'edge_pct': edge_pct,
-                'vk_predicted': vk.get('projection'),
-                'vk_edge': vk_edge,
+                'pre_model_edge': pre_model_edge,
+                'post_model_edge': model_edge,
+                'edge_source': edge_source,
+                'vk_predicted': vk_predicted,
+                'vk_prob_over': vk_prob_over,
+                'vk_z_score': vk_z_score,
+                'vk_edge': model_edge if model_edge is not None else pre_model_edge,
                 'board_score': round(board_score, 2),
                 'synced_at': datetime.now(timezone.utc).isoformat(),
                 'validation': {
                     'has_market_data': dk_odds is not None and dk_odds != 0,
                     'has_hit_rates': (hit_rate or 0) > 0,
                     'has_context': bool(prop.get('matchup_analysis')) or bool(all_odds),
-                    'has_mlr': bool(vk.get('projection')),
+                    'has_mlr': vk_predicted is not None,
                     'has_gemini': bool(prop.get('vision_intel')),
                     'is_fully_validated': False,
                 },
             }
 
-            # Compute full validation
             v = scored_prop['validation']
             v['is_fully_validated'] = all([
                 v['has_market_data'],
@@ -158,9 +195,12 @@ class MLBAdapter(SportAdapter):
             ])
 
             scored.append(scored_prop)
-            stats['scored'] += 1
+            model_stats['scored'] += 1
 
-        logger.info(f"[MLB_ADAPTER] Scored {stats['scored']}/{stats['total']} props ({stats['no_odds']} missing odds)")
+        logger.info(
+            f"[MLB_ADAPTER] Scored {model_stats['scored']}/{model_stats['total']} props "
+            f"(model_hit={model_stats['model_hit']}, model_miss={model_stats['model_miss']}, no_odds={model_stats['no_odds']})"
+        )
         return scored
 
     TIER_CAPACITY = 10
