@@ -463,25 +463,22 @@ class UniversalOddsSyncService:
         stat_type_map = config["stat_type_map"]
         
         # =================================================================
-        # PrizePicks is the SOURCE OF TRUTH for which props exist.
-        # DraftKings / Pinnacle are REFERENCE LAYERS only.
-        # 
-        # Architecture:
-        #   Pass 1: Create prop records ONLY from PrizePicks outcomes.
-        #   Pass 2: Attach DK/Pinnacle odds as reference columns onto
-        #           matching PP records (same player|stat|line).
-        #           If DK has a different line, attach the closest one.
+        # LAYERED ARCHITECTURE — No merging, no fuzzy matching.
+        #
+        # Canonical prop key:
+        #   sport|event_id|player|market_type|line|side
+        #
+        # PP is the anchor. DK and MGM attach as independent layers
+        # ONLY on exact canonical key match. No closest-line. No approximate.
         # =================================================================
         
-        # --- Pass 1: PrizePicks props (source of truth) ---
-        pp_props = {}  # group_key -> prop dict
+        # --- Pass 1: PP anchor layer (creates canonical props) ---
+        canonical = {}  # canonical_key -> prop record
         
         for bookmaker in odds_data.get("bookmakers", []):
             bm_key = bookmaker.get("key", "unknown")
             if bm_key != "prizepicks":
                 continue
-            
-            bm_config = BOOKMAKER_CONFIG.get(bm_key, {})
             
             for market in bookmaker.get("markets", []):
                 market_key = market.get("key", "")
@@ -496,53 +493,41 @@ class UniversalOddsSyncService:
                         continue
                     
                     outcome_name = outcome.get("name", "").lower()
-                    recommendation = "OVER" if "over" in outcome_name else "UNDER"
+                    side = "OVER" if "over" in outcome_name else "UNDER"
                     price = outcome.get("price", -110)
                     
-                    group_key = f"{player_name}|{stat_type}|{line}|{recommendation}"
+                    event_id = odds_data.get("event_id", "")
+                    canon_key = f"{sport}|{event_id}|{player_name}|{stat_type}|{float(line)}|{side}"
                     
-                    pp_props[group_key] = {
-                        "player_name": player_name,
-                        "stat_type": stat_type,
-                        "line": float(line),
-                        "recommendation": recommendation,
-                        "market_key": market_key,
-                        "event_id": odds_data.get("event_id"),
+                    canonical[canon_key] = {
+                        "canonical_key": canon_key,
+                        "sport": sport,
+                        "event_id": event_id,
                         "home_team": event_info.get("home_team"),
                         "away_team": event_info.get("away_team"),
                         "commence_time": event_info.get("commence_time"),
-                        "sport": sport,
+                        "player_name": player_name,
+                        "stat_type": stat_type,
+                        "market_key": market_key,
+                        "line": float(line),
+                        "recommendation": side,
                         "is_alternate_market": "alternate" in market_key.lower(),
-                        # PP data
-                        "pp_line": float(line),
-                        "pp_odds": price,
-                        "odds": price,
-                        "bookmaker": "prizepicks",
-                        "source": "prizepicks",
-                        # DK/Sharp/MGM placeholders — filled in pass 2
-                        "dk_line": None,
-                        "dk_odds": None,
-                        "mgm_line": None,
-                        "mgm_odds": None,
-                        "sharp_line": None,
-                        "sharp_odds": None,
-                        "sharp_book": None,
-                        # Reference dicts
-                        "all_lines": {"prizepicks": float(line)},
-                        "all_odds": {"prizepicks": price},
-                        "bookmakers_available": ["prizepicks"],
-                        # Flags (set by DK in pass 2)
-                        "is_demon": False,
-                        "is_goblin": False,
+                        # --- PP layer ---
+                        "pp_layer": {
+                            "book": "prizepicks",
+                            "line": float(line),
+                            "odds": price,
+                            "fetched_at": datetime.now(timezone.utc).isoformat(),
+                        },
+                        # --- DK layer (empty until exact match) ---
+                        "dk_layer": None,
+                        # --- MGM layer (empty until exact match) ---
+                        "mgm_layer": None,
+                        # --- Sharp layer (empty until exact match) ---
+                        "sharp_layer": None,
                     }
         
-        # --- Pass 2: Attach DK/Pinnacle/Sharp as reference layers ---
-        from collections import defaultdict as _defaultdict
-        pp_by_player_stat = _defaultdict(list)
-        for gk, prop in pp_props.items():
-            ps_key = f"{prop['player_name']}|{prop['stat_type']}|{prop['recommendation']}"
-            pp_by_player_stat[ps_key].append((prop['line'], gk))
-        
+        # --- Pass 2: Attach DK/MGM/Sharp as independent layers (exact match only) ---
         for bookmaker in odds_data.get("bookmakers", []):
             bm_key = bookmaker.get("key", "unknown")
             if bm_key == "prizepicks":
@@ -564,116 +549,117 @@ class UniversalOddsSyncService:
                         continue
                     
                     outcome_name = outcome.get("name", "").lower()
-                    recommendation = "OVER" if "over" in outcome_name else "UNDER"
+                    side = "OVER" if "over" in outcome_name else "UNDER"
                     price = outcome.get("price", -110)
                     
-                    # Try exact match first
-                    exact_key = f"{player_name}|{stat_type}|{line}|{recommendation}"
-                    if exact_key in pp_props:
-                        target = pp_props[exact_key]
-                    else:
-                        # Find closest PP line for same player|stat|rec
-                        ps_key = f"{player_name}|{stat_type}|{recommendation}"
-                        candidates = pp_by_player_stat.get(ps_key, [])
-                        if not candidates:
-                            continue  # No PP prop for this player+stat — skip
-                        closest = min(candidates, key=lambda x: abs(x[0] - float(line)))
-                        target = pp_props[closest[1]]
+                    event_id = odds_data.get("event_id", "")
+                    canon_key = f"{sport}|{event_id}|{player_name}|{stat_type}|{float(line)}|{side}"
                     
-                    # Attach reference data
-                    target["all_lines"][bm_key] = float(line)
-                    target["all_odds"][bm_key] = price
-                    if bm_key not in target["bookmakers_available"]:
-                        target["bookmakers_available"].append(bm_key)
+                    # EXACT MATCH ONLY — if no canonical prop exists, skip
+                    if canon_key not in canonical:
+                        continue
+                    
+                    layer = {
+                        "book": bm_key,
+                        "line": float(line),
+                        "odds": price,
+                        "fetched_at": datetime.now(timezone.utc).isoformat(),
+                    }
+                    
+                    target = canonical[canon_key]
                     
                     if bm_key == "draftkings":
-                        if float(line) == target["line"]:
-                            target["dk_line"] = float(line)
-                            target["dk_odds"] = price
-                        elif target["dk_odds"] is None:
-                            target["dk_line"] = float(line)
-                            target["dk_odds"] = price
-                            target["dk_line_mismatch"] = True
-                        
-                        if price >= 100:
-                            target["is_demon"] = True
-                        elif price < 0:
-                            target["is_goblin"] = True
+                        target["dk_layer"] = layer
+                    elif bm_key == "betmgm":
+                        target["mgm_layer"] = layer
                     
-                    if bm_key == "betmgm":
-                        if float(line) == target["line"]:
-                            target["mgm_line"] = float(line)
-                            target["mgm_odds"] = price
-                        elif target["mgm_odds"] is None:
-                            target["mgm_line"] = float(line)
-                            target["mgm_odds"] = price
-                            target["mgm_line_mismatch"] = True
-                        
-                        # MGM sets demon/goblin only if DK didn't
-                        if not target["is_demon"] and not target["is_goblin"]:
-                            if price >= 100:
-                                target["is_demon"] = True
-                            elif price < 0:
-                                target["is_goblin"] = True
-                    
-                    if is_sharp and target["sharp_line"] is None:
-                        target["sharp_line"] = float(line)
-                        target["sharp_odds"] = price
-                        target["sharp_book"] = bm_key
+                    if is_sharp and target["sharp_layer"] is None:
+                        target["sharp_layer"] = layer
         
-        # --- Pass 3: Build final props list ---
+        # --- Pass 3: Flatten canonical records into prop documents ---
         props = []
-        for group_key, gd in pp_props.items():
-            pp_line = gd.get("pp_line")
-            dk_line = gd.get("dk_line")
-            sharp_line = gd.get("sharp_line")
+        for canon_key, rec in canonical.items():
+            pp = rec["pp_layer"]
+            dk = rec.get("dk_layer")
+            mgm = rec.get("mgm_layer")
+            sharp = rec.get("sharp_layer")
             
-            pp_dk_edge = None
-            if pp_line and dk_line and pp_line > 0:
-                pp_dk_edge = round((dk_line - pp_line) / pp_line * 100, 2)
+            # Derive flat fields from layers
+            pp_odds = pp["odds"]
+            dk_odds = dk["odds"] if dk else None
+            mgm_odds = mgm["odds"] if mgm else None
+            sharp_odds = sharp["odds"] if sharp else None
             
-            pp_sharp_edge = None
-            if pp_line and sharp_line and pp_line > 0:
-                pp_sharp_edge = round((sharp_line - pp_line) / pp_line * 100, 2)
+            # Demon/goblin from DK, then MGM, then nothing
+            is_demon = False
+            is_goblin = False
+            if dk_odds is not None:
+                is_demon = dk_odds >= 100
+                is_goblin = dk_odds < 0
+            elif mgm_odds is not None:
+                is_demon = mgm_odds >= 100
+                is_goblin = mgm_odds < 0
+            
+            # Build all_odds/all_lines from exact-match layers only
+            all_odds = {"prizepicks": pp_odds}
+            all_lines = {"prizepicks": pp["line"]}
+            books_available = ["prizepicks"]
+            if dk:
+                all_odds["draftkings"] = dk_odds
+                all_lines["draftkings"] = dk["line"]
+                books_available.append("draftkings")
+            if mgm:
+                all_odds["betmgm"] = mgm_odds
+                all_lines["betmgm"] = mgm["line"]
+                books_available.append("betmgm")
+            if sharp:
+                all_odds[sharp["book"]] = sharp_odds
+                all_lines[sharp["book"]] = sharp["line"]
+                if sharp["book"] not in books_available:
+                    books_available.append(sharp["book"])
             
             prop = {
-                "player_name": gd["player_name"],
-                "stat_type": gd["stat_type"],
-                "line": gd["line"],
-                "recommendation": gd["recommendation"],
-                "odds": gd["odds"],
-                "market_key": gd["market_key"],
+                "canonical_key": canon_key,
+                "player_name": rec["player_name"],
+                "stat_type": rec["stat_type"],
+                "line": rec["line"],
+                "recommendation": rec["recommendation"],
+                "odds": pp_odds,
+                "market_key": rec["market_key"],
                 "bookmaker": "prizepicks",
-                "event_id": gd["event_id"],
-                "home_team": gd["home_team"],
-                "away_team": gd["away_team"],
-                "commence_time": gd["commence_time"],
-                "pp_line": pp_line,
-                "pp_odds": gd.get("pp_odds"),
-                "dk_line": dk_line,
-                "dk_odds": gd.get("dk_odds"),
-                "dk_line_mismatch": gd.get("dk_line_mismatch", False),
-                "mgm_line": gd.get("mgm_line"),
-                "mgm_odds": gd.get("mgm_odds"),
-                "mgm_line_mismatch": gd.get("mgm_line_mismatch", False),
-                "sharp_line": sharp_line,
-                "sharp_odds": gd.get("sharp_odds"),
-                "sharp_book": gd.get("sharp_book"),
-                "pp_dk_edge": pp_dk_edge,
-                "pp_sharp_edge": pp_sharp_edge,
-                "all_lines": gd["all_lines"],
-                "all_odds": gd["all_odds"],
-                "sharp_edge": pp_sharp_edge,
-                "dk_edge": pp_dk_edge,
-                "dfs_line": pp_line,
-                "dfs_book": "prizepicks",
-                "is_goblin": gd.get("is_goblin", False),
-                "is_demon": gd.get("is_demon", False),
-                "is_alternate_market": gd.get("is_alternate_market", False),
+                "event_id": rec["event_id"],
+                "home_team": rec["home_team"],
+                "away_team": rec["away_team"],
+                "commence_time": rec["commence_time"],
+                # Flat layer fields
+                "pp_line": pp["line"],
+                "pp_odds": pp_odds,
+                "dk_line": dk["line"] if dk else None,
+                "dk_odds": dk_odds,
+                "mgm_line": mgm["line"] if mgm else None,
+                "mgm_odds": mgm_odds,
+                "sharp_line": sharp["line"] if sharp else None,
+                "sharp_odds": sharp_odds,
+                "sharp_book": sharp["book"] if sharp else None,
+                # Structured layers (full objects)
+                "pp_layer": pp,
+                "dk_layer": dk,
+                "mgm_layer": mgm,
+                "sharp_layer": sharp,
+                # Aggregated (from exact matches only)
+                "all_lines": all_lines,
+                "all_odds": all_odds,
+                "bookmakers_available": books_available,
+                # Classification
+                "is_goblin": is_goblin,
+                "is_demon": is_demon,
+                "is_alternate_market": rec.get("is_alternate_market", False),
+                # Metadata
                 "sport": sport,
                 "fetched_at": datetime.now(timezone.utc).isoformat(),
                 "source": "prizepicks",
-                "bookmakers_available": gd["bookmakers_available"],
+                "dfs_line": pp["line"],
+                "dfs_book": "prizepicks",
                 "team": None,
             }
             props.append(prop)
