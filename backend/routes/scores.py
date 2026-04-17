@@ -13,7 +13,7 @@ Endpoints:
 import os
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, HTTPException, Body, Query
+from fastapi import APIRouter, HTTPException, Body, Query, Path
 from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel, Field
 
@@ -341,16 +341,24 @@ async def simulate_all(req: RecomputeRequest = Body(default=None)):
 
 @router.post("/simulate/{sport}")
 async def simulate_one(
-    sport: str, req: RecomputeRequest = Body(default=None)
+    sport: str,
+    req: Dict[str, Any] = Body(default=None),
 ):
-    """Read-only per-sport simulation. No persistence."""
+    """Read-only per-sport simulation. No persistence.
+    Dispatches `sport='compare'` to the compare handler for route-ordering
+    compatibility (FastAPI matches /simulate/{sport} before /simulate/compare)."""
     sport = (sport or "").lower()
+    # Route-collision guard: /simulate/compare uses CompareRequest body shape.
+    if sport == "compare":
+        cmp_req = CompareRequest(**(req or {}))
+        return await simulate_compare_all(cmp_req)
     if sport not in SUPPORTED_SPORTS:
         raise HTTPException(
             status_code=400,
             detail=f"Unsupported sport '{sport}'. Supported: {list(SUPPORTED_SPORTS)}",
         )
-    req = req or RecomputeRequest()
+    # Re-validate body against RecomputeRequest for the standard simulate path
+    body = RecomputeRequest(**(req or {}))
     db = _get_db()
     try:
         result = await recompute(
@@ -358,8 +366,8 @@ async def simulate_one(
             sports=[sport],
             version_tag="simulate",
             dry_run=True,
-            limit=req.limit,
-            override_config=req.override_config,
+            limit=body.limit,
+            override_config=body.override_config,
         )
         per_sport = result.get("per_sport") or {}
         s_payload = _simulate_payload(per_sport.get(sport, {}))
@@ -370,7 +378,7 @@ async def simulate_one(
             "sport": sport,
             "processed": s_payload["processed"],
             "duration_ms": s_payload["duration_ms"],
-            "override_config": req.override_config or {},
+            "override_config": body.override_config or {},
             "tier_distribution": s_payload["tier_distribution"],
             "quality_source_distribution": s_payload["quality_source_distribution"],
             "pp_category_distribution": s_payload["pp_category_distribution"],
@@ -380,6 +388,313 @@ async def simulate_one(
         }
     except ValueError as ve:
         raise HTTPException(status_code=400, detail=str(ve))
+
+
+# =============================================================================
+# Multi-variant compare — side-by-side simulation
+# =============================================================================
+
+
+class CompareVariant(BaseModel):
+    name: str
+    override_config: Optional[Dict[str, Any]] = None
+
+
+class CompareRequest(BaseModel):
+    sports: Optional[List[str]] = None
+    limit: Optional[int] = None
+    variants: List[CompareVariant]
+
+
+_ALL_TIERS = ("safe_haven", "front_lines", "war_zone", "unqualified")
+
+
+async def _run_variants(
+    db, sports: List[str], limit: Optional[int], variants: List[CompareVariant]
+) -> Dict[str, Dict[str, Any]]:
+    """Run each variant via `recompute(dry_run=True)` and return
+    `{variant_name: per_sport_dict}`."""
+    names = [v.name for v in variants]
+    if len(set(names)) != len(names):
+        raise HTTPException(status_code=400, detail="variant names must be unique")
+
+    out: Dict[str, Dict[str, Any]] = {}
+    for v in variants:
+        res = await recompute(
+            db=db, sports=sports, version_tag=f"compare-{v.name}",
+            dry_run=True, limit=limit,
+            override_config=v.override_config or {},
+        )
+        out[v.name] = res.get("per_sport") or {}
+    return out
+
+
+def _compare_sport(
+    sport: str,
+    per_variant: Dict[str, Dict[str, Any]],
+    baseline_name: str,
+) -> Dict[str, Any]:
+    """Build side-by-side comparison for a single sport."""
+    # Per-variant tier data
+    per_variant_data: Dict[str, Dict[str, Any]] = {}
+    tier_sets: Dict[str, Dict[str, set]] = {t: {} for t in _ALL_TIERS}
+    top_sample_keys: Dict[str, set] = {}
+
+    for name, data in per_variant.items():
+        sport_data = data.get(sport, {}) or {}
+        per_variant_data[name] = {
+            "processed": sport_data.get("processed", 0),
+            "skipped": sport_data.get("skipped", 0),
+            "duration_ms": sport_data.get("duration_ms", 0),
+            "tier_distribution": sport_data.get("tier_distribution", {}),
+            "quality_source_distribution": sport_data.get(
+                "quality_source_distribution", {}
+            ),
+            "pp_category_distribution": sport_data.get(
+                "pp_category_distribution", {}
+            ),
+            "top_samples": sport_data.get("top_samples", []),
+            "cached_board_mutated": sport_data.get("cached_board_mutated"),
+            "cached_board_leakage_fields": sport_data.get(
+                "cached_board_leakage_fields", []
+            ),
+        }
+        tier_keys = sport_data.get("tier_canonical_keys") or {}
+        for t in _ALL_TIERS:
+            tier_sets[t][name] = set(tier_keys.get(t, []))
+        top_sample_keys[name] = {
+            s.get("canonical_key")
+            for s in (sport_data.get("top_samples") or [])
+            if s.get("canonical_key")
+        }
+
+    variant_names = list(per_variant.keys())
+
+    # Side-by-side tier counts table (rows = tier, cols = variant)
+    tier_counts_table: Dict[str, Dict[str, int]] = {}
+    for t in _ALL_TIERS:
+        tier_counts_table[t] = {
+            n: per_variant_data[n]["tier_distribution"].get(t, 0)
+            for n in variant_names
+        }
+
+    # Per-tier deltas vs baseline
+    tier_deltas_vs_baseline: Dict[str, Dict[str, int]] = {}
+    if baseline_name in variant_names:
+        base_row = tier_counts_table
+        for t in _ALL_TIERS:
+            base_n = base_row[t].get(baseline_name, 0)
+            tier_deltas_vs_baseline[t] = {
+                n: base_row[t].get(n, 0) - base_n
+                for n in variant_names
+                if n != baseline_name
+            }
+
+    # Canonical-key overlap per tier across variants (pairs vs baseline)
+    tier_overlap: Dict[str, Dict[str, Dict[str, int]]] = {}
+    if baseline_name in variant_names:
+        for t in _ALL_TIERS:
+            base_set = tier_sets[t].get(baseline_name, set())
+            tier_overlap[t] = {}
+            for n in variant_names:
+                if n == baseline_name:
+                    continue
+                v_set = tier_sets[t].get(n, set())
+                tier_overlap[t][n] = {
+                    "baseline_size": len(base_set),
+                    "variant_size": len(v_set),
+                    "shared": len(base_set & v_set),
+                    "only_in_baseline": len(base_set - v_set),
+                    "only_in_variant": len(v_set - base_set),
+                    "jaccard": round(
+                        len(base_set & v_set) / max(1, len(base_set | v_set)), 4
+                    ),
+                }
+
+    # War-zone entering/leaving between EACH pair of variants (variant vs baseline)
+    war_zone_movers: Dict[str, Dict[str, List[str]]] = {}
+    if baseline_name in variant_names:
+        base_wz = tier_sets["war_zone"].get(baseline_name, set())
+        for n in variant_names:
+            if n == baseline_name:
+                continue
+            v_wz = tier_sets["war_zone"].get(n, set())
+            war_zone_movers[n] = {
+                "entered": sorted(v_wz - base_wz)[:50],
+                "left": sorted(base_wz - v_wz)[:50],
+                "entered_count": len(v_wz - base_wz),
+                "left_count": len(base_wz - v_wz),
+            }
+
+    # Top-sample overlap counts (vs baseline)
+    top_sample_overlap: Dict[str, Dict[str, int]] = {}
+    if baseline_name in variant_names:
+        base_top = top_sample_keys.get(baseline_name, set())
+        for n in variant_names:
+            if n == baseline_name:
+                continue
+            v_top = top_sample_keys.get(n, set())
+            top_sample_overlap[n] = {
+                "baseline_top_size": len(base_top),
+                "variant_top_size": len(v_top),
+                "shared_top": len(base_top & v_top),
+                "jaccard_top": round(
+                    len(base_top & v_top) / max(1, len(base_top | v_top)), 4
+                ),
+            }
+
+    # Summary flags
+    summary: Dict[str, Any] = {}
+    if baseline_name in variant_names:
+        base_unqual = per_variant_data[baseline_name]["tier_distribution"].get(
+            "unqualified", 0
+        )
+
+        most_adds_tier = None  # variant that adds most qualified (reduces unqualified)
+        most_adds_qty = -1
+        most_removes_qty = -1
+        most_removes_tier = None
+        max_overlap_score = -1.0
+        max_overlap_name = None
+        clean_migration_variants: List[str] = []
+
+        for n in variant_names:
+            if n == baseline_name:
+                continue
+            v_unqual = per_variant_data[n]["tier_distribution"].get("unqualified", 0)
+            qualified_delta = base_unqual - v_unqual  # positive = added qualifiers
+            if qualified_delta > most_adds_qty:
+                most_adds_qty = qualified_delta
+                most_adds_tier = n
+            if -qualified_delta > most_removes_qty:
+                most_removes_qty = -qualified_delta
+                most_removes_tier = n
+
+            # Overlap: average jaccard across tiers (weighted by baseline size)
+            scores = []
+            weights = []
+            for t in _ALL_TIERS:
+                if tier_overlap.get(t, {}).get(n):
+                    j = tier_overlap[t][n]["jaccard"]
+                    w = tier_overlap[t][n]["baseline_size"]
+                    scores.append(j * w)
+                    weights.append(w)
+            avg_jac = sum(scores) / max(1, sum(weights))
+            if avg_jac > max_overlap_score:
+                max_overlap_score = avg_jac
+                max_overlap_name = n
+
+            # "Clean migration" = non-unqualified tiers unchanged vs baseline
+            clean = True
+            for t in ("safe_haven", "front_lines", "war_zone"):
+                b = per_variant_data[baseline_name]["tier_distribution"].get(t, 0)
+                v = per_variant_data[n]["tier_distribution"].get(t, 0)
+                base_set = tier_sets[t].get(baseline_name, set())
+                v_set = tier_sets[t].get(n, set())
+                # If the count is unchanged AND the set is identical, counts as clean
+                if b != v or base_set != v_set:
+                    # Check specifically: does the variant REMOVE any baseline pick
+                    # from the existing tier? (cannibalization)
+                    if base_set - v_set:
+                        clean = False
+                        break
+            if clean:
+                clean_migration_variants.append(n)
+
+        summary = {
+            "baseline": baseline_name,
+            "most_adds_qualified_variant": most_adds_tier,
+            "most_adds_qualified_count": most_adds_qty,
+            "most_removes_qualified_variant": most_removes_tier,
+            "most_removes_qualified_count": most_removes_qty,
+            "highest_overlap_with_baseline_variant": max_overlap_name,
+            "highest_overlap_score": round(max_overlap_score, 4),
+            "clean_migration_variants": clean_migration_variants,
+        }
+
+    # Mutation audit
+    any_mutation = any(
+        pv.get("cached_board_mutated") for pv in per_variant_data.values()
+    )
+    any_leakage = any(
+        pv.get("cached_board_leakage_fields") for pv in per_variant_data.values()
+    )
+
+    return {
+        "sport": sport,
+        "variant_results": per_variant_data,
+        "tier_counts_table": tier_counts_table,
+        "tier_deltas_vs_baseline": tier_deltas_vs_baseline,
+        "tier_canonical_key_overlap_vs_baseline": tier_overlap,
+        "war_zone_movers_vs_baseline": war_zone_movers,
+        "top_sample_overlap_vs_baseline": top_sample_overlap,
+        "summary": summary,
+        "persisted": False,
+        "cached_board_mutated_any": any_mutation,
+        "cached_board_leakage_any": any_leakage,
+    }
+
+
+@router.post("/simulate/compare")
+async def simulate_compare_all(req: CompareRequest = Body(...)):
+    """Run multiple named variants across sports; return side-by-side comparison.
+    Read-only. No persistence. No live-prop or cached_board mutation."""
+    if not req.variants:
+        raise HTTPException(status_code=400, detail="at least one variant required")
+    sports = [s.lower() for s in (req.sports or list(SUPPORTED_SPORTS))]
+    unknown = [s for s in sports if s not in SUPPORTED_SPORTS]
+    if unknown:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unknown sports: {unknown}. Supported: {list(SUPPORTED_SPORTS)}",
+        )
+
+    db = _get_db()
+    baseline_name = req.variants[0].name  # first variant is the baseline
+    per_variant = await _run_variants(db, sports, req.limit, req.variants)
+
+    comparison: Dict[str, Any] = {}
+    for sport in sports:
+        comparison[sport] = _compare_sport(sport, per_variant, baseline_name)
+
+    return {
+        "status": "success",
+        "mode": "simulation_compare",
+        "persisted": False,
+        "sports_processed": sports,
+        "baseline_variant": baseline_name,
+        "variants": [v.name for v in req.variants],
+        "per_sport": comparison,
+    }
+
+
+@router.post("/simulate/compare/{sport}")
+async def simulate_compare_one(
+    sport: str, req: CompareRequest = Body(...)
+):
+    """Per-sport compare. Ignores request `sports` array."""
+    sport = (sport or "").lower()
+    if sport not in SUPPORTED_SPORTS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported sport '{sport}'. Supported: {list(SUPPORTED_SPORTS)}",
+        )
+    if not req.variants:
+        raise HTTPException(status_code=400, detail="at least one variant required")
+
+    db = _get_db()
+    baseline_name = req.variants[0].name
+    per_variant = await _run_variants(db, [sport], req.limit, req.variants)
+    comparison = _compare_sport(sport, per_variant, baseline_name)
+    return {
+        "status": "success",
+        "mode": "simulation_compare",
+        "persisted": False,
+        "sport": sport,
+        "baseline_variant": baseline_name,
+        "variants": [v.name for v in req.variants],
+        **comparison,
+    }
 
 
 # =============================================================================

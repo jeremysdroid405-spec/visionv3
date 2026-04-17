@@ -202,6 +202,42 @@ Returns `mode=simulation`, `persisted=false`, `tier_distribution`,
 (top 10 by vision_score). Zero persistence — `{sport}_prop_scores` and live
 prop collections provably unchanged byte-for-byte pre/post simulation.
 
+## Multi-Variant Scoring Compare Endpoint (COMPLETE — April 17, 2026)
+- `POST /api/scores/simulate/compare` — system-level (all supported sports or `sports` array)
+- `POST /api/scores/simulate/compare/{sport}` — per-sport (ignores `sports`)
+
+Request body:
+```json
+{
+  "sports": ["mlb","nba"],
+  "limit": 500,
+  "variants": [
+    {"name":"baseline","override_config":{}},
+    {"name":"cv_040","override_config":{"tier":{"war_zone":{"min_cv":0.40}}}},
+    {"name":"cv_050","override_config":{"tier":{"war_zone":{"min_cv":0.50}}}}
+  ]
+}
+```
+
+First variant = baseline (all comparisons relative to it). Response includes:
+- `variant_results[name]`: tier / quality_source / pp_category distributions + top_samples
+- `tier_counts_table`: rows=tier, cols=variant
+- `tier_deltas_vs_baseline`: per-tier delta per variant
+- `war_zone_movers_vs_baseline`: entered / left (first 50 canonical_keys each)
+- `tier_canonical_key_overlap_vs_baseline`: Jaccard + shared + only_in_* per tier
+- `top_sample_overlap_vs_baseline`: top-N overlap counts
+- `summary`: `most_adds_qualified_variant`, `most_removes_qualified_variant`,
+  `highest_overlap_with_baseline_variant`, `clean_migration_variants`
+  (variants that don't remove any baseline pick from existing tiers)
+
+Read-only enforced: mlb_prop_scores, nba_prop_scores, mlb_cached_board,
+dg_cached_board, and both `live_props.fetched_at` timestamps byte-identical
+pre/post compare call. Error paths validated: empty variants → 400,
+duplicate names → 400, unsupported sport → 400.
+
+Route-ordering compat: `/simulate/{sport}` explicitly dispatches `sport='compare'`
+to `/simulate/compare` since FastAPI path matching is first-match.
+
 ## Upcoming Tasks
 - P1: Google/Apple OAuth (via `integration_playbook_expert_v2`)
 - P1: Stripe payments (via `integration_playbook_expert_v2`)

@@ -172,6 +172,7 @@ async def recompute_sport(
     tier_distribution: Dict[str, int] = {}
     quality_distribution: Dict[str, int] = {}
     pp_category_distribution: Dict[str, int] = {}
+    tier_canonical_keys: Dict[str, List[str]] = {}
     for d in score_docs:
         t = d.get("tier") or "unknown"
         tier_distribution[t] = tier_distribution.get(t, 0) + 1
@@ -179,6 +180,9 @@ async def recompute_sport(
         quality_distribution[q] = quality_distribution.get(q, 0) + 1
         c = d.get("pp_utility_category") or "unknown"
         pp_category_distribution[c] = pp_category_distribution.get(c, 0) + 1
+        ck = d.get("canonical_key")
+        if ck:
+            tier_canonical_keys.setdefault(t, []).append(ck)
 
     # Top 10 by vision_score (nulls sorted last)
     def _vs_key(d):
@@ -206,6 +210,7 @@ async def recompute_sport(
         "tier_distribution": tier_distribution,
         "quality_source_distribution": quality_distribution,
         "pp_category_distribution": pp_category_distribution,
+        "tier_canonical_keys": tier_canonical_keys,
         "samples": samples,
         "top_samples": top_samples,
     }
