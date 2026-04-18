@@ -1145,6 +1145,119 @@ async def _get_nba_tier_picks_from_scores(tier: str, limit: int) -> List[Dict[st
     return picks
 
 
+async def _enrich_under_picks_with_gemini(
+    picks: List[Dict[str, Any]],
+    tier_name: str,
+) -> None:
+    """JIT Gemini enrichment for UNDER picks only.
+
+    OVER picks already carry `vision_intel` from the legacy pipeline that
+    wrote into `dg_cached_board`. UNDER picks never went through Gemini, so
+    this method picks them up after the tier-scoring pass and runs the
+    direction-aware batch prompt using the same `GOOGLE_API_KEY` +
+    `gemini-3-flash-preview` path used for OVERs.
+
+    Results are cached directly on the `nba_prop_scores` doc (fields
+    `vision_intel` + `vision_intel_generated_at`) keyed by `canonical_key`,
+    so subsequent requests skip the API call. Cache is invalidated whenever
+    the score's `computed_at` is newer than the cached `vision_intel_generated_at`.
+    """
+    if _db is None or not picks:
+        return
+
+    from datetime import datetime, timezone
+    from services.vision_intel_service import get_vision_intel_service
+
+    under_picks = [p for p in picks if (p.get("direction") or "").strip().upper() == "UNDER"]
+    if not under_picks:
+        return
+
+    # --- Cache lookup: fetch any previously-generated UNDER vision_intel
+    # that's still fresh (generated AFTER the current computed_at).
+    ckeys = [p.get("canonical_key") for p in under_picks if p.get("canonical_key")]
+    cache_docs = await _db.nba_prop_scores.find(
+        {"canonical_key": {"$in": ckeys}, "version_tag": "final-nba",
+         "vision_intel": {"$ne": None}},
+        {"_id": 0, "canonical_key": 1, "vision_intel": 1,
+         "vision_intel_generated_at": 1, "computed_at": 1},
+    ).to_list(length=len(ckeys))
+    cache_by_ck: Dict[str, Dict[str, Any]] = {d["canonical_key"]: d for d in cache_docs}
+
+    def _is_cache_fresh(pick: Dict[str, Any], cached: Dict[str, Any]) -> bool:
+        """Cache is fresh if generated at-or-after the score's computed_at."""
+        gen = cached.get("vision_intel_generated_at")
+        comp = cached.get("computed_at") or pick.get("computed_at")
+        if not gen or not comp:
+            return False
+        try:
+            gen_dt = gen if isinstance(gen, datetime) else datetime.fromisoformat(str(gen).replace("Z", "+00:00"))
+            comp_dt = comp if isinstance(comp, datetime) else datetime.fromisoformat(str(comp).replace("Z", "+00:00"))
+            # Normalize tz — drop tz from both sides for a consistent compare.
+            # (Mongo stores datetimes as BSON which can return naive in some drivers.)
+            if gen_dt.tzinfo is not None:
+                gen_dt = gen_dt.replace(tzinfo=None)
+            if comp_dt.tzinfo is not None:
+                comp_dt = comp_dt.replace(tzinfo=None)
+            return gen_dt >= comp_dt
+        except Exception:
+            return False
+
+    # Attach cached intel where available; collect the uncached for batch call.
+    to_call: List[Dict[str, Any]] = []
+    for p in under_picks:
+        ck = p.get("canonical_key")
+        cached = cache_by_ck.get(ck) if ck else None
+        if cached and cached.get("vision_intel") and _is_cache_fresh(p, cached):
+            p["vision_intel"] = cached["vision_intel"]
+            p["vision_summary"] = cached["vision_intel"]
+        else:
+            to_call.append(p)
+
+    if not to_call:
+        return
+
+    vis = get_vision_intel_service()
+    if not getattr(vis, "enabled", False):
+        logger.warning(
+            "[UNDER_GEMINI] VisionIntelService disabled — leaving %d UNDER picks without Gemini intel",
+            len(to_call),
+        )
+        return
+
+    # Call Gemini ONE PROP AT A TIME via the strict method. This guarantees
+    # we only cache text Gemini actually authored — if the prop_id echo fails
+    # or the response is empty, we return None and the pick falls back to
+    # _generate_vision_fallback downstream (without corrupting the cache).
+    results = await asyncio.gather(
+        *[vis.analyze_prop_strict(p, tier_name) for p in to_call]
+    )
+
+    # Map results back by canonical_key and persist to nba_prop_scores.
+    now = datetime.now(timezone.utc)
+    persist_ops = []
+    for src, out in zip(to_call, results):
+        if not out:
+            continue
+        vi = (out.get("vision_intel") or "").strip()
+        if not vi:
+            continue
+        src["vision_intel"] = vi
+        src["vision_summary"] = vi
+        ck = src.get("canonical_key")
+        if ck:
+            persist_ops.append(
+                _db.nba_prop_scores.update_one(
+                    {"canonical_key": ck, "version_tag": "final-nba"},
+                    {"$set": {
+                        "vision_intel": vi,
+                        "vision_intel_generated_at": now,
+                    }},
+                )
+            )
+    if persist_ops:
+        await asyncio.gather(*persist_ops, return_exceptions=True)
+
+
 def _finalize_nba_picks_side_aware(picks: List[Dict[str, Any]]) -> None:
     """Post-overlay side-aware finalization for NBA picks.
 
@@ -1444,6 +1557,9 @@ async def get_ferrari_safe_haven(
     # after the enrichment cache overlays OVER-biased scout_badges onto them.
     if sport == "nba" and picks:
         _finalize_nba_picks_side_aware(picks)
+        # Gemini UNDER enrichment (same GOOGLE_API_KEY + model used for OVERs).
+        # OVERs already carry vision_intel from the legacy pipeline.
+        await _enrich_under_picks_with_gemini(picks, "safe_haven")
 
     # MLB: Enrich with averages, tempo, and full intel_suite
     if sport == "mlb" and picks:
@@ -1554,6 +1670,7 @@ async def get_ferrari_front_lines(
     # after the enrichment cache overlays OVER-biased scout_badges onto them.
     if sport == "nba" and picks:
         _finalize_nba_picks_side_aware(picks)
+        await _enrich_under_picks_with_gemini(picks, "front_lines")
 
     # MLB: Enrich with averages, tempo, and full intel_suite
     if sport == "mlb" and picks:
@@ -1662,6 +1779,7 @@ async def get_ferrari_war_zone(
     # after the enrichment cache overlays OVER-biased scout_badges onto them.
     if sport == "nba" and picks:
         _finalize_nba_picks_side_aware(picks)
+        await _enrich_under_picks_with_gemini(picks, "war_zone")
 
     # MLB: Enrich with averages, tempo, and full intel_suite
     if sport == "mlb" and picks:

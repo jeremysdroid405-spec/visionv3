@@ -296,6 +296,33 @@ GET endpoints retrieve history.
   - Injury: `live_injuries`, `dg_injuries`, `bdl_injuries`
   - Elite tier (now deprecated after April 18 migration): `elite_safe_haven`, `elite_front_lines`, `elite_war_zone`
 
+## April 18, 2026 — UNDER Pipeline Rebuild (3 layers, production-shipped)
+
+**Layer 1: UNDER tp math** (`services/scoring/adapters/nba_scoring.py:601`)
+Flipped `tp` to `100 - tp_over` for UNDER picks. Market-implied probability is
+now correctly side-aware.
+
+**Layer 2: UNDER gate_tp replacement** (`services/scoring/scoring_stack.py` +
+`_NBAGateSorter.UNDER_TP_FLOORS`). UNDER `gate_tp` replaced with a
+model-confidence floor (path c, BALANCED): safe_haven 75%, front_lines 65%,
+war_zone 60%. OVER behaviour fully preserved. Result: 21 UNDERs now qualify
+for front_lines (none for safe_haven/war_zone due to routing/ceiling gates
+which remain OVER-semantic — tracked as separate scope).
+
+**Layer 3: UNDER badge + Gemini** (`routes/ferrari_tiers.py` +
+`services/vision_intel_service.py`)
+- `_apply_under_badge_rewire()`: strips OVER-only badges from UNDER picks,
+  re-derives `floor_lock` / `lasso_high_edge` from score-doc fields.
+- `_enrich_under_picks_with_gemini()`: JIT parallel single-prop Gemini calls
+  via `GOOGLE_API_KEY` + `gemini-3-flash-preview` (same key/model as OVERs).
+  `VisionIntelService.analyze_prop_strict()` returns None on missing
+  prop_id echo — prevents fallback pollution in the cache.
+- Cached on `nba_prop_scores.vision_intel` keyed by `canonical_key`; TTL
+  compares `vision_intel_generated_at` vs `computed_at`.
+- Prompt extended with direction-aware DvP interpretation +
+  prop-isolation instruction. `prop_id` uses `canonical_key` to eliminate
+  cross-prop contamination.
+
 ## April 18, 2026 — Ferrari Tier Migration to `nba_prop_scores`
 NBA Dashboard tier endpoints (`/api/v3/ferrari/safe-haven`, `/front-lines`, `/war-zone`)
 were rewired to read from `nba_prop_scores` where `version_tag='final-nba'` and `tier`

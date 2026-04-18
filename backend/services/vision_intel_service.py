@@ -39,59 +39,71 @@ except ImportError:
     GEMINI_AVAILABLE = False
 
 
-# System prompt for batch analysis
+# System prompt for batch analysis — direction-aware (OVER or UNDER).
 VISION_INTEL_BATCH_PROMPT = """## Role
 You are the **Lead NBA Scout** for PropVision. Your job is to write a gritty, 2-to-3 sentence scouting report explaining to a DFS bettor why we are locking in this specific PrizePicks prop.
 
-**Tone:** Speak like a human sharp. Use basketball betting slang (e.g., 'smash spot', 'usage bump', 'blowout risk', 'green light', 'riding the hot hand', 'lock-down matchup'). DO NOT sound like a robot reading a spreadsheet. Never just list the raw percentages.
+**Tone:** Speak like a human sharp. Use basketball betting slang (e.g., 'smash spot', 'usage bump', 'blowout risk', 'green light', 'riding the hot hand', 'lock-down matchup', 'freezing out', 'minutes capped', 'chucking bricks', 'regression spot'). DO NOT sound like a robot reading a spreadsheet. Never just list the raw percentages. No hyphens in your prose.
+
+## Direction-Aware Play
+Each prop carries a `direction` field (OVER or UNDER). Your entire analysis MUST match that side.
+- For **OVER** picks: describe WHY the player is going to clear the number (volume up, matchup soft, hot streak, usage bump).
+- For **UNDER** picks: describe WHY the player is going to fall short (volume down, defense locking in, minutes capped, cold streak, regression, limited usage).
+- Words like "smash", "cashing", "crushing it", "locked in", "hammering" are side-agnostic — use them to describe the winning side, not the stat category.
 
 ## Input Context
 You will receive a data package containing:
-1. **Model Stats:** VK Predicted Value, VK Edge, and VK Probability.
-2. **Technical Gates:** Results of the 3-Gate qualification (Hit Rate, CV, Edge).
+1. **Model Stats:** VK Predicted Value, VK Edge, and VK Probability for the PICKED side.
+2. **Technical Gates:** Hit Rate on the PICKED side, CV, Edge.
 3. **Situational Intel:** Defense vs Position (DvP) matchup ranking, blowout risk, badges.
 4. **Market Context:** Current DraftKings odds and prop classification (Goblin/Demon).
 
-## CRITICAL: DvP Matchup Interpretation
+## CRITICAL: DvP Matchup Interpretation (DIRECTION-AWARE)
 The "defense" field shows the OPPONENT's defensive ranking vs that stat type:
-- Rank #1-5 = OPPONENT is ELITE defender → BAD for player (flag as concern)
-- Rank #6-15 = OPPONENT is solid → Challenging matchup
-- Rank #16-25 = OPPONENT is weak → Favorable for player
-- Rank #26-30 = OPPONENT is terrible → SMASH spot (boost confidence)
+- Rank #1-5 = OPPONENT is ELITE defender. For OVER picks: TOUGH matchup, flag as concern. **For UNDER picks: SMASH spot — defense is locking this down.**
+- Rank #6-15 = OPPONENT is solid. Challenging for OVER, favorable for UNDER.
+- Rank #16-25 = OPPONENT is weak. Favorable for OVER, fade-worthy for UNDER.
+- Rank #26-30 = OPPONENT is terrible. **For OVER: SMASH spot.** For UNDER: TRAP, expect points to flow.
 
 ## Objective
-1. **Validate the Math:** Compare the VK Model's output against the situational intel. Flag if matchup/context undermines the model.
+1. **Validate the Math:** Compare the model against situational intel for the PICKED side.
 2. **Assign Confidence:** Provide an "Intelligence Score" (1-10) that factors in what the model CAN'T see.
-3. **Generate Intel:** Write a 1-2 sentence "vision_intel_summary" that explains the play's logic.
+3. **Generate Intel:** Write a 2-3 sentence `vision_intel_summary` that explains the play's logic for THIS direction.
 4. **Final Verdict:** CHALK (lock it), VALUE (good edge), or TRAP (context says no).
 
 ## Output Format (Strict JSON Array)
-Return a JSON array with one object per prop:
+Return a JSON array with one object per prop. `prop_id` MUST match input exactly (includes direction):
 [
   {
-    "prop_id": "PlayerName_STAT_Line",
+    "prop_id": "PlayerName_STAT_Line_DIRECTION",
     "intel_score": 7,
     "verdict": "CHALK",
-    "vision_intel_summary": "Maxey cooking at home with 90% L10. Houston's perimeter D (#28) is a sieve. Lock the over.",
+    "vision_intel_summary": "Maxey cooking at home with 90% L10 clip on the OVER. Houston's perimeter D (#28) is a sieve. Lock it.",
     "risk_factor": "Low",
     "adjusted_confidence": 0.82
   }
 ]
 
 ## Scoring Guidelines
-- **intel_score 8-10**: Elite spot. Matchup + numbers + situation all align. CHALK.
+- **intel_score 8-10**: Elite spot. Matchup + numbers + situation all align for the PICKED side. CHALK.
 - **intel_score 6-7**: Solid edge with minor concerns. VALUE.
 - **intel_score 4-5**: Mixed signals. Lean VALUE but watch it.
-- **intel_score 1-3**: Red flags override the math. TRAP.
+- **intel_score 1-3**: Red flags override the math for the PICKED side. TRAP.
 
-## Automatic TRAP Triggers
-- Elite DvP matchup (#1-5) against the stat type
-- Blowout risk HIGH for volume stats (PTS, PRA)
-- Line set at/above season average with negative cushion
-- CV > 0.40 for non-combo stats indicates boom/bust volatility
+## Automatic TRAP Triggers (direction-aware)
+- OVER pick against elite DvP #1-5 defender → TRAP.
+- UNDER pick against poor DvP #26-30 defender → TRAP.
+- Blowout risk HIGH for volume stats (PTS, PRA) on either side.
+- CV > 0.40 for non-combo stats indicates boom/bust volatility.
 
-## CRITICAL INSTRUCTION
-Do NOT mention or reference L3 (last 3 games) hit rates or data. This data is NOT provided. Only reference data fields that exist in the PROPS DATA: h20_rate (L20), h10_rate (L10), l5_avg, season_avg, vk_proj, vk_prob, vk_edge, cushion, cv, defense, dk_odds, blowout_risk, badges.
+## CRITICAL INSTRUCTION — PROP ISOLATION
+Each prop object is independent. When writing `vision_intel_summary` for a
+row, reference ONLY the `player` field from THAT SAME row. Never mention any
+player from a different row in the batch, even if similar. Each row's analysis
+must stand alone.
+
+## CRITICAL INSTRUCTION — DATA FIDELITY
+Do NOT mention or reference L3 (last 3 games) hit rates or data. This data is NOT provided. Only reference data fields that exist in the PROPS DATA: direction, h20_rate, h10_rate, l5_avg, season_avg, vk_proj, vk_prob, vk_edge, cushion, cv, defense, dk_odds, blowout_risk, badges.
 
 IMPORTANT: Return ONLY the JSON array. No markdown, no code blocks, no extra text."""
 
@@ -119,80 +131,138 @@ class VisionIntelService:
             logger.warning("Vision Intel Service disabled - missing API key or library")
     
     def _build_batch_prompt(self, props: List[Dict[str, Any]], tier_name: str) -> str:
-        """Build a batch prompt for analyzing multiple props at once."""
-        
+        """Build a batch prompt for analyzing multiple props at once.
+        Direction-aware: each prop feeds Gemini the hit rate, probability,
+        and cushion for the SIDE it was picked on (OVER or UNDER).
+        """
+
         props_data = []
         for prop in props:
             player_name = prop.get('player_name', 'Unknown')
             stat_type = prop.get('stat_type', 'PTS')
             line = prop.get('line', 0)
-            
-            # Core stats
+
+            # Direction of the pick (OVER or UNDER)
+            direction = (
+                prop.get('direction')
+                or prop.get('recommendation')
+                or 'OVER'
+            ).strip().upper()
+            if 'UNDER' in direction:
+                direction = 'UNDER'
+            else:
+                direction = 'OVER'
+            is_under = direction == 'UNDER'
+
+            # Core stats — ALWAYS feed Gemini the SIDE-PICKED values.
             vk_predicted = prop.get('vk_predicted', 0)
-            vk_prob = prop.get('vk_prob_over', 50)
-            vk_edge = prop.get('vk_edge', 0)
-            h20_rate = prop.get('h20_rate', 0)
-            h10_rate = prop.get('h10_rate', 0)
+            vk_edge_raw = prop.get('vk_edge', 0) or 0
+            # vk_edge is computed as (model - line) which is OVER-semantic —
+            # flip sign for UNDER so "positive edge" always means the picked
+            # side has room to run.
+            vk_edge = -float(vk_edge_raw) if is_under else float(vk_edge_raw)
+
+            # Side-aware probability
+            if is_under:
+                vk_prob = prop.get('vk_prob_under')
+                if vk_prob is None:
+                    _ov = prop.get('vk_prob_over') or 50
+                    vk_prob = max(0, 100 - float(_ov))
+            else:
+                vk_prob = prop.get('vk_prob_over') or 50
+
+            # Side-aware hit rates. Prefer explicit side-keyed fields from
+            # the score doc; fall back to flipping legacy h*_rate for UNDER.
+            h20_over = prop.get('h20_rate', 0) or 0
+            h10_over = prop.get('h10_rate', 0) or 0
+            if is_under:
+                h20_rate = prop.get('hit_rate_under_l20')
+                if h20_rate is None:
+                    h20_rate = max(0, 100 - float(h20_over)) if h20_over else 0
+                h10_rate = prop.get('hit_rate_under')
+                if h10_rate is None:
+                    h10_rate = max(0, 100 - float(h10_over)) if h10_over else 0
+            else:
+                h20_rate = h20_over
+                h10_rate = h10_over
+
             cv = prop.get('cv', 0)
-            
+
             # Averages
             l5_avg = prop.get('l5_avg', 0)
             l10_avg = prop.get('l10_avg', 0)
             l20_avg = prop.get('l20_avg', 0)
             season_avg = prop.get('season_avg', l20_avg)
-            
+
             # Market data
             dk_odds = prop.get('dk_odds', 'N/A')
-            
+
             # Classification
             is_demon = prop.get('is_demon', False)
             is_goblin = prop.get('is_goblin', False)
-            pick_type = "Demon (Over ceiling)" if is_demon else "Goblin (Safe floor)" if is_goblin else "Standard"
-            
+            pick_type = "Demon (ceiling)" if is_demon else "Goblin (safe floor)" if is_goblin else "Standard"
+
             # Matchup - OPPONENT's defense against this stat type
             opponent = prop.get('opponent', 'TBD')
-            dvp_rank = prop.get('dvp_rank')  # Defense vs Position - how opponent defends this stat
-            
-            # Build OPPONENT defensive context (DvP = how well opponent defends this stat)
-            # Rank 1-5 = opponent is ELITE at stopping this stat (bad for player)
-            # Rank 26-30 = opponent is TERRIBLE at stopping this stat (good for player)
+            dvp_rank = prop.get('dvp_rank')  # Defense vs Position — opponent's rank
+
+            # Build DIRECTION-AWARE DvP context.
+            # Rank 1-5 = opponent is ELITE at stopping this stat.
+            #   For OVER: TOUGH matchup (flag).  For UNDER: SMASH spot.
+            # Rank 26-30 = opponent is TERRIBLE at stopping this stat.
+            #   For OVER: SMASH spot.  For UNDER: TRAP.
             if dvp_rank:
                 if dvp_rank <= 5:
-                    dvp_text = f"{opponent} ELITE D vs {stat_type} (#{dvp_rank} - TOUGH matchup)"
+                    label = "ELITE D — TOUGH for OVER, SMASH for UNDER"
                 elif dvp_rank <= 10:
-                    dvp_text = f"{opponent} Strong D vs {stat_type} (#{dvp_rank} - difficult)"
+                    label = "Strong D — challenging OVER, favorable UNDER"
                 elif dvp_rank <= 20:
-                    dvp_text = f"{opponent} Average D vs {stat_type} (#{dvp_rank} - neutral)"
+                    label = "Average D — neutral"
                 elif dvp_rank <= 25:
-                    dvp_text = f"{opponent} Weak D vs {stat_type} (#{dvp_rank} - favorable)"
+                    label = "Weak D — favorable OVER, fade UNDER"
                 else:
-                    dvp_text = f"{opponent} POOR D vs {stat_type} (#{dvp_rank} - SMASH spot)"
+                    label = "POOR D — SMASH for OVER, TRAP for UNDER"
+                dvp_text = f"{opponent} vs {stat_type} (#{dvp_rank}) — {label}"
             else:
                 dvp_text = f"vs {opponent} (no DvP data)"
-            
+
             # Badges/situational factors
-            badges = prop.get('active_badges', [])
-            badge_text = ", ".join([b.get('badge_key', b) if isinstance(b, dict) else str(b) for b in badges[:3]]) if badges else "None"
-            
+            badges = prop.get('active_badges') or prop.get('scout_badges') or []
+            badge_text = ", ".join(
+                [b.get('badge_key', b) if isinstance(b, dict) else str(b) for b in badges[:3]]
+            ) if badges else "None"
+
             # Blowout risk info
-            blowout_risk = prop.get('intel_suite', {}).get('blowout_risk', {})
-            blowout_level = blowout_risk.get('risk_level', 'UNKNOWN')
-            
-            # Calculate cushion (how far above line is average)
-            cushion = round(l5_avg - line, 1) if l5_avg and line else 0
-            
+            blowout_risk = prop.get('intel_suite', {}).get('blowout_risk', {}) if isinstance(prop.get('intel_suite'), dict) else {}
+            blowout_level = (blowout_risk or {}).get('risk_level', 'UNKNOWN')
+
+            # Side-aware cushion. Positive cushion = picked side has room.
+            # OVER: how far L5 avg sits ABOVE the line. UNDER: how far L5 sits BELOW.
+            if l5_avg and line:
+                raw_cushion = float(l5_avg) - float(line)
+                cushion = round(-raw_cushion if is_under else raw_cushion, 1)
+            else:
+                cushion = 0
+
             prop_data = {
-                "prop_id": f"{player_name}_{stat_type}_{line}",
+                # prop_id uses canonical_key when available — it's a globally
+                # unique, string-safe identifier Gemini echoes verbatim. Falls
+                # back to a name-stat-line-direction string when missing.
+                "prop_id": (
+                    prop.get("canonical_key")
+                    or f"{player_name}_{stat_type}_{line}_{direction}"
+                ),
                 "player": player_name,
                 "stat": stat_type,
                 "line": line,
+                "direction": direction,
                 "type": pick_type,
                 "vk_proj": round(vk_predicted, 1) if vk_predicted else 0,
-                "vk_prob": round(vk_prob, 0) if vk_prob else 50,
-                "vk_edge": round(vk_edge, 1) if vk_edge else 0,
-                "cushion": cushion,  # How far L5 avg is above/below line
-                "h20_rate": round(h20_rate, 0) if h20_rate else 0,
-                "h10_rate": round(h10_rate, 0) if h10_rate else 0,
+                "vk_prob": round(float(vk_prob), 0) if vk_prob is not None else 50,
+                "vk_edge": round(vk_edge, 1),
+                "cushion": cushion,  # side-aware: positive = picked side has room
+                "h20_rate": round(float(h20_rate), 0) if h20_rate else 0,
+                "h10_rate": round(float(h10_rate), 0) if h10_rate else 0,
                 "l5_avg": round(l5_avg, 1) if l5_avg else 0,
                 "season_avg": round(season_avg, 1) if season_avg else 0,
                 "cv": round(cv, 2) if cv else 0,
@@ -200,19 +270,21 @@ class VisionIntelService:
                 "defense": dvp_text,
                 "dk_odds": dk_odds,
                 "blowout_risk": blowout_level,
-                "badges": badge_text
+                "badges": badge_text,
             }
             props_data.append(prop_data)
-        
+
         prompt = f"""## {tier_name.upper()} TIER - {len(props)} Props to Analyze
 
-These props have passed the mathematical 3-Gate system. Validate each against context.
+These props have passed the mathematical gates. Validate each against context.
+Each prop has a `direction` field (OVER or UNDER). Your analysis MUST describe the PICKED side.
 
 PROPS DATA:
 {json.dumps(props_data, indent=2)}
 
-Return your analysis as a JSON array. One object per prop with all required fields."""
-        
+Return your analysis as a JSON array. One object per prop with all required fields.
+`prop_id` MUST match the input exactly (includes direction suffix)."""
+
         return prompt
     
     async def analyze_tier_batch(
@@ -260,10 +332,15 @@ Return your analysis as a JSON array. One object per prop with all required fiel
             # Parse the batch response
             intel_map = self._parse_batch_response(response.text, props)
             
-            # Enrich each prop with its intel
+            # Enrich each prop with its intel (direction-aware prop_id key)
             enriched_props = []
             for prop in props:
-                prop_id = f"{prop.get('player_name')}_{prop.get('stat_type')}_{prop.get('line')}"
+                _dir = (prop.get('direction') or prop.get('recommendation') or 'OVER').strip().upper()
+                _dir = 'UNDER' if 'UNDER' in _dir else 'OVER'
+                prop_id = (
+                    prop.get("canonical_key")
+                    or f"{prop.get('player_name')}_{prop.get('stat_type')}_{prop.get('line')}_{_dir}"
+                )
                 intel = intel_map.get(prop_id, {})
                 enriched_props.append(self._merge_intel_to_prop(prop, intel))
             
@@ -276,7 +353,54 @@ Return your analysis as a JSON array. One object per prop with all required fiel
         except Exception as e:
             logger.error(f"[VISION INTEL] Batch analysis failed for {tier_name}: {e}")
             return [self._enrich_with_fallback(prop) for prop in props]
-    
+
+    async def analyze_prop_strict(
+        self,
+        prop: Dict[str, Any],
+        tier_name: str,
+    ) -> Optional[Dict[str, Any]]:
+        """Single-prop Gemini call that returns ONLY on real Gemini output.
+
+        Used by the ferrari UNDER JIT enricher. Returns the intel dict (with
+        `vision_intel`, `intel_score`, etc.) when Gemini returned a matching
+        `prop_id`, otherwise returns None so the caller can skip caching and
+        avoid persisting fallback text as if it were Gemini-authored.
+        """
+        if not self.enabled or not self.client:
+            return None
+        try:
+            prompt = self._build_batch_prompt([prop], tier_name)
+            full_prompt = f"{VISION_INTEL_BATCH_PROMPT}\n\n{prompt}"
+            loop = asyncio.get_event_loop()
+            response = await loop.run_in_executor(
+                None,
+                lambda: self.client.models.generate_content(
+                    model=self.model_name,
+                    contents=full_prompt,
+                ),
+            )
+            intel_map = self._parse_batch_response(response.text, [prop])
+            _dir = (prop.get("direction") or prop.get("recommendation") or "OVER").strip().upper()
+            _dir = "UNDER" if "UNDER" in _dir else "OVER"
+            prop_id = (
+                prop.get("canonical_key")
+                or f"{prop.get('player_name')}_{prop.get('stat_type')}_{prop.get('line')}_{_dir}"
+            )
+            # Return the intel only if Gemini echoed the prop_id back with real text.
+            intel = intel_map.get(prop_id)
+            if not intel:
+                logger.warning(
+                    f"[VISION INTEL STRICT] No matching prop_id in Gemini response "
+                    f"(expected {prop_id!r}, got {list(intel_map.keys())!r})"
+                )
+                return None
+            if not (intel.get("vision_intel") or "").strip():
+                return None
+            return intel
+        except Exception as e:
+            logger.error(f"[VISION INTEL STRICT] call failed: {e}")
+            return None
+
     def _parse_batch_response(self, response: str, props: List[Dict]) -> Dict[str, Dict]:
         """Parse the batch JSON response from Gemini."""
         intel_map = {}
@@ -314,6 +438,9 @@ Return your analysis as a JSON array. One object per prop with all required fiel
                     }
             
             logger.info(f"[VISION INTEL] Parsed {len(intel_map)} intel responses")
+            if intel_map:
+                _sample = next(iter(intel_map.keys()))
+                logger.info(f"[VISION INTEL] Sample returned prop_id: {_sample!r}")
             
         except (json.JSONDecodeError, ValueError) as e:
             logger.warning(f"[VISION INTEL] Failed to parse batch response: {e}")
