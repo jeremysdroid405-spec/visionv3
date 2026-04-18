@@ -130,13 +130,17 @@ async def recompute_sport(
             "stat_type": ctx.stat_type,
             "line": ctx.line,
             "recommendation": ctx.recommendation,
-            # p_true diagnostic panel (both paths always computed)
+            # p_true diagnostic panel (all paths always computed)
             "p_true_active": ctx.p_model,
             "p_true_method": ctx.p_true_method,
             "p_true_hit_rate": ctx.p_true_hit_rate,
             "p_true_model": ctx.p_true_model,
             "model_projection": ctx.model_projection,
             "model_sigma": ctx.model_sigma,
+            "p_true_vk2": ctx.p_true_vk2,
+            "vk2_projection": ctx.vk2_projection,
+            "vk2_sigma": ctx.vk2_sigma,
+            "vk2_error": ctx.vk2_error,
             **stack,
         }
         score_docs.append(doc)

@@ -32,6 +32,8 @@ _SCORE_OUTPUT_FIELDS = (
     # p_true diagnostic panel
     "p_true_active", "p_true_method", "p_true_hit_rate", "p_true_model",
     "model_projection", "model_sigma",
+    # VK2 (5-year adv-stat) diagnostics — parallel to legacy VK model_*
+    "p_true_vk2", "vk2_projection", "vk2_sigma", "vk2_error",
 )
 
 _IDENTITY_FIELDS = (

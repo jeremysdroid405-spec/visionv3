@@ -38,9 +38,14 @@ class ScoringContext:
     # Diagnostic-only: alternative p_true candidates (not used by scoring_stack)
     p_true_hit_rate: Optional[float] = None
     p_true_model: Optional[float] = None
-    p_true_method: Optional[str] = None       # "hit_rate" | "model"
+    p_true_method: Optional[str] = None       # "hit_rate" | "model" | "vk2"
     model_projection: Optional[float] = None  # raw regressor output (stat units)
     model_sigma: Optional[float] = None       # residual SD used for CDF conversion
+    # VK2 (5-year adv-stat) diagnostics
+    p_true_vk2: Optional[float] = None
+    vk2_projection: Optional[float] = None
+    vk2_sigma: Optional[float] = None
+    vk2_error: Optional[str] = None
 
 
 class ScoringAdapter(ABC):

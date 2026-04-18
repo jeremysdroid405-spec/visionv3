@@ -104,8 +104,15 @@ class NBAScoringAdapter(ScoringAdapter):
 
     # Which stat_types have a Vegas Killer model on disk
     _MODEL_STATS = {"PTS", "REB", "AST", "3PM", "PRA"}
-    # VK v2 model file paths (new 3-season weighted models)
+    # VK v2 model file paths (new 5-season weighted models w/ advanced stats)
     _VK2_DIR = "/app/backend/models"
+    _VK2_FILE_MAP = {
+        "PTS": "vk2_pts.pkl",
+        "REB": "vk2_reb.pkl",
+        "AST": "vk2_ast.pkl",
+        "3PM": "vk2_3pm.pkl",
+        "PRA": "vk2_pra.pkl",
+    }
 
     def __init__(self):
         self._sorter = None
@@ -116,6 +123,8 @@ class NBAScoringAdapter(ScoringAdapter):
         self._vk_sigmas: dict = {}   # stat_type -> residual SD (empirical, from test RMSE)
         self._vk2_loaded: bool = False
         self._vk2_models: dict = {}  # stat -> {model, scaler, features, sigma}
+        self._vk2_adv_map: dict = {}      # (player_id, game_id) -> adv doc
+        self._vk2_adv_loaded: bool = False
 
     @property
     def sport(self) -> str:
@@ -221,6 +230,121 @@ class NBAScoringAdapter(ScoringAdapter):
             "error": None,
         }
 
+    # -----------------------------------------------------------------
+    # VK2 (5-year, adv-stat-enriched) models — parallel to legacy VK
+    # -----------------------------------------------------------------
+    def _load_vk2_models(self) -> None:
+        if self._vk2_loaded:
+            return
+        import os, pickle
+        for stat, fn in self._VK2_FILE_MAP.items():
+            p = os.path.join(self._VK2_DIR, fn)
+            if not os.path.exists(p):
+                logger.warning(f"[NBA_SCORING] VK2 model missing: {p}")
+                continue
+            with open(p, "rb") as f:
+                payload = pickle.load(f)
+            self._vk2_models[stat] = {
+                "model": payload["model"],
+                "scaler": payload["scaler"],
+                "features": list(payload["features"]),
+                "sigma": float(payload["residual_sigma_empirical"]),
+                "version": payload.get("version"),
+                "feature_count": payload.get("feature_count"),
+            }
+        self._vk2_loaded = True
+        logger.info(
+            "[NBA_SCORING] VK2 loaded: "
+            f"{[(s, self._vk2_models[s]['sigma'], self._vk2_models[s]['version']) for s in self._vk2_models]}"
+        )
+
+    async def _preload_vk2_adv_map(self, db) -> None:
+        """Build {(player_id, game_id): adv_doc} for VK2 feature lookup.
+        One-shot per recompute; mirrors retrain_nba_vk2.preload_advanced_stats."""
+        if self._vk2_adv_loaded:
+            return
+        from services.scoring.nba_vk2_features import ADV_FIELDS
+        proj = {"_id": 0, "player_id": 1, "game_id": 1}
+        for f in ADV_FIELDS:
+            proj[f] = 1
+        cursor = db["bdl_advanced_stats"].find({}, proj)
+        async for doc in cursor:
+            pid = doc.get("player_id"); gid = doc.get("game_id")
+            if pid is None or gid is None:
+                continue
+            self._vk2_adv_map[(pid, gid)] = doc
+        self._vk2_adv_loaded = True
+        logger.info(f"[NBA_SCORING] VK2 adv_map loaded rows={len(self._vk2_adv_map):,}")
+
+    def _get_vk2_history_logs(self, player_name: str, window: int = 20) -> List[Dict[str, Any]]:
+        """Pull newest-first historical logs for a player from the master hub
+        cache and normalize keys for VK2 feature builder.
+        Master hub stores `bdl_player_id` (== historical `player_id`) so we
+        remap it to `player_id` for adv_map matching."""
+        raw = self._logs_cache.get((player_name or "").lower()) or []
+        if not raw:
+            return []
+        # Sort newest-first by date
+        try:
+            raw_sorted = sorted(raw, key=lambda g: str(g.get("date") or ""), reverse=True)
+        except Exception:
+            raw_sorted = list(raw)
+        out = []
+        for g in raw_sorted[:window]:
+            g2 = dict(g)
+            if g2.get("player_id") is None and g2.get("bdl_player_id") is not None:
+                g2["player_id"] = g2["bdl_player_id"]
+            out.append(g2)
+        return out
+
+    def _predict_vk2_prob_over(
+        self, player_name: str, stat_type: str, line: float,
+    ) -> Dict[str, Optional[float]]:
+        """VK2 predict + erf-based p_over calibration using per-stat empirical sigma.
+        Returns {projection, sigma, p_over, error?}."""
+        if stat_type not in self._VK2_FILE_MAP:
+            return {"projection": None, "sigma": None, "p_over": None,
+                    "error": f"no_vk2_model_for_{stat_type}"}
+        if not self._vk2_loaded:
+            self._load_vk2_models()
+        m = self._vk2_models.get(stat_type)
+        if not m:
+            return {"projection": None, "sigma": None, "p_over": None,
+                    "error": "vk2_not_loaded"}
+        history = self._get_vk2_history_logs(player_name, window=20)
+        if len(history) < 5:
+            return {"projection": None, "sigma": None, "p_over": None,
+                    "error": "insufficient_history"}
+        from services.scoring.nba_vk2_features import build_features
+        feats = build_features(history_logs=history, target_game=history[0],
+                               adv_map=self._vk2_adv_map or None)
+        if feats is None:
+            return {"projection": None, "sigma": None, "p_over": None,
+                    "error": "feature_build_failed"}
+        import numpy as np
+        row = np.asarray(
+            [[feats.get(c, 0.0) for c in m["features"]]], dtype=np.float32,
+        )
+        try:
+            row_s = m["scaler"].transform(row)
+            projection = float(m["model"].predict(row_s)[0])
+        except Exception as e:
+            return {"projection": None, "sigma": None, "p_over": None,
+                    "error": f"predict_failed:{e}"}
+        sigma = float(m["sigma"])
+        if sigma <= 0:
+            return {"projection": round(projection, 3), "sigma": sigma,
+                    "p_over": None, "error": "sigma_invalid"}
+        from math import erf, sqrt
+        z = (projection - float(line)) / sigma
+        p_over = 0.5 * (1.0 + erf(z / sqrt(2.0)))
+        return {
+            "projection": round(projection, 3),
+            "sigma": round(sigma, 3),
+            "p_over": round(p_over, 4),
+            "error": None,
+        }
+
     async def _preload_game_logs(self, db) -> None:
         """Pull NBA game logs from master hub once per recompute."""
         if self._logs_loaded:
@@ -301,6 +425,15 @@ class NBAScoringAdapter(ScoringAdapter):
         # Ensure game logs loaded once
         await self._preload_game_logs(db)
 
+        # Lazy-preload VK2 adv_map when model path requested
+        active_method_early = (
+            ((config or {}).get("override_config") or {})
+            .get("vision_score", {})
+            .get("p_true_method")
+        ) or "hit_rate"
+        if active_method_early == "vk2" and not self._vk2_adv_loaded:
+            await self._preload_vk2_adv_map(db)
+
         player_name = prop.get("player_name")
         # NBA market/prop_type → stat_type
         market = prop.get("market", "")
@@ -372,38 +505,55 @@ class NBAScoringAdapter(ScoringAdapter):
 
         # -----------------------------------------------------------
         # p_true candidates
-        #  1. p_true_hit_rate = raw L20 rolling count (legacy default)
-        #  2. p_true_model    = VegasKiller regressor + empirical residual CDF
+        #  1. p_true_hit_rate  = raw L20 rolling count (legacy default)
+        #  2. p_true_model     = legacy VegasKiller regressor + empirical residual CDF
+        #  3. p_true_vk2       = 5-year adv-stat VK2 regressor + per-stat sigma CDF
         # `p_true_method` from override_config selects the active p_model.
         # -----------------------------------------------------------
         p_true_hit_rate = (hit_rate / 100.0) if hit_rate is not None else None
 
+        # Legacy VK path (always computed when a model stat, unless vk2 is active)
         p_true_model = None
         model_projection = None
         model_sigma = None
+        # VK2 path (always computed when a model stat & method is vk2)
+        p_true_vk2 = None
+        vk2_projection = None
+        vk2_sigma = None
+        vk2_error = None
         if stat_type in self._MODEL_STATS:
             opponent_team = prop.get("opponent") or prop.get("away_team")
-            mres = self._predict_model_prob_over(
-                db=db, player_name=player_name, stat_type=stat_type,
-                line=float(line), opponent_team=opponent_team,
-            )
-            p_over = mres.get("p_over")
-            if p_over is not None:
-                # OVER side uses p_over, UNDER side uses 1 - p_over
-                if side == "UNDER":
-                    p_true_model = round(1.0 - p_over, 4)
-                else:
-                    p_true_model = round(p_over, 4)
-            model_projection = mres.get("projection")
-            model_sigma = mres.get("sigma")
+            if active_method_early != "vk2":
+                mres = self._predict_model_prob_over(
+                    db=db, player_name=player_name, stat_type=stat_type,
+                    line=float(line), opponent_team=opponent_team,
+                )
+                p_over = mres.get("p_over")
+                if p_over is not None:
+                    p_true_model = round(
+                        (1.0 - p_over) if side == "UNDER" else p_over, 4
+                    )
+                model_projection = mres.get("projection")
+                model_sigma = mres.get("sigma")
+            else:
+                v2res = self._predict_vk2_prob_over(
+                    player_name=player_name, stat_type=stat_type, line=float(line),
+                )
+                p_over_v2 = v2res.get("p_over")
+                if p_over_v2 is not None:
+                    p_true_vk2 = round(
+                        (1.0 - p_over_v2) if side == "UNDER" else p_over_v2, 4
+                    )
+                vk2_projection = v2res.get("projection")
+                vk2_sigma = v2res.get("sigma")
+                vk2_error = v2res.get("error")
 
-        # Select active method: default "hit_rate" (production); "model" opts in.
-        active_method = (
-            ((config or {}).get("override_config") or {})
-            .get("vision_score", {})
-            .get("p_true_method")
-        ) or "hit_rate"
-        if active_method == "model" and p_true_model is not None:
+        # Select active method: default "hit_rate" (production); "model" / "vk2" opt-in.
+        active_method = active_method_early
+        if active_method == "vk2" and p_true_vk2 is not None:
+            p_model = p_true_vk2
+            p_true_method_used = "vk2"
+        elif active_method == "model" and p_true_model is not None:
             p_model = p_true_model
             p_true_method_used = "model"
         else:
@@ -460,4 +610,8 @@ class NBAScoringAdapter(ScoringAdapter):
             p_true_method=p_true_method_used,
             model_projection=model_projection,
             model_sigma=model_sigma,
+            p_true_vk2=p_true_vk2,
+            vk2_projection=vk2_projection,
+            vk2_sigma=vk2_sigma,
+            vk2_error=vk2_error,
         )
