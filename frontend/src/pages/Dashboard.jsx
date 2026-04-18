@@ -443,12 +443,12 @@ const _normalizeSide = (pick) => {
 
 const DirectionSubheader = memo(({ label, count }) => (
   <div
-    className="flex items-center gap-2 px-1 pt-3 pb-2 text-[11px] font-semibold tracking-wider uppercase text-zinc-400"
+    className="flex items-center gap-2 px-1 pt-2 pb-1 text-[10px] font-semibold tracking-[0.12em] uppercase text-zinc-500"
     data-testid={`direction-subheader-${label.toLowerCase()}`}
   >
-    <span>{label}</span>
-    <span className="text-zinc-600">({count})</span>
-    <div className="flex-1 h-px bg-zinc-800/80" />
+    <span className="text-zinc-400">{label}</span>
+    <span className="text-zinc-600 font-normal">({count})</span>
+    <div className="flex-1 h-px bg-zinc-800/60" />
   </div>
 ));
 

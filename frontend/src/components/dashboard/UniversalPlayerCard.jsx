@@ -79,39 +79,45 @@ const TEAM_LOGOS = {
 // ==================== TIER ICONS - Using shared Icons from ./Icons.jsx ====================
 // DemonIcon and GoblinIcon are imported from './Icons'
 
-// ==================== THEME CONFIG (TIER-BASED GLOW) ====================
+// ==================== THEME CONFIG (TIER-BASED GLOW — REFINED) ====================
+// Refinement pass: tighten blur, remove hazy spread, differentiate per tier.
+//   Safe Haven  (GOBLIN)   → strongest clean glow
+//   Front Lines (FRONT_LINE)→ moderate glow
+//   War Zone    (DEMON)    → subtle glow
+// All glows kept tight to the card edge (low blur) so the board feels like
+// a trading terminal, not a sportsbook.
 const TIER_THEMES = {
   DEMON: {
     border: 'border-red-500/50',
-    bg: 'from-red-950/60 to-zinc-900',
-    glow: 'shadow-[0_0_25px_rgba(239,68,68,0.4)]',
+    bg: 'from-red-950/40 to-zinc-900',
+    glow: 'shadow-[0_0_10px_rgba(239,68,68,0.28)]',
     text: 'text-red-400',
     accent: 'bg-red-500',
     ring: 'ring-red-500/50',
     Icon: DemonIcon
   },
   GOBLIN: {
-    border: 'border-green-500/50',
-    bg: 'from-green-950/60 to-zinc-900',
-    glow: 'shadow-[0_0_25px_rgba(34,197,94,0.4)]',
+    border: 'border-green-500/60',
+    bg: 'from-green-950/40 to-zinc-900',
+    glow: 'shadow-[0_0_18px_rgba(34,197,94,0.40)]',
     text: 'text-green-400',
     accent: 'bg-green-500',
     ring: 'ring-green-500/50',
     Icon: GoblinIcon
   },
   FRONT_LINE: {
-    border: 'border-yellow-500/50',
-    bg: 'from-yellow-950/60 to-zinc-900',
-    glow: 'shadow-[0_0_25px_rgba(234,179,8,0.4)]',
+    border: 'border-yellow-500/55',
+    bg: 'from-yellow-950/40 to-zinc-900',
+    glow: 'shadow-[0_0_14px_rgba(234,179,8,0.32)]',
     text: 'text-yellow-400',
     accent: 'bg-yellow-500',
     ring: 'ring-yellow-500/50',
-    Icon: null // Icon determined by actual pick type (DEMON/GOBLIN)
+    Icon: null
   },
   STANDARD: {
     border: 'border-zinc-500/40',
     bg: 'from-zinc-800/40 to-zinc-900',
-    glow: 'shadow-[0_0_15px_rgba(161,161,170,0.2)]',
+    glow: 'shadow-[0_0_8px_rgba(161,161,170,0.15)]',
     text: 'text-zinc-400',
     accent: 'bg-zinc-500',
     ring: 'ring-zinc-500/50',
@@ -763,79 +769,121 @@ const UniversalPlayerCard = memo(({
     
     // Only board picks (the 30 props in War Zone, Safe Haven, Front Lines) should be clickable
     const isClickable = isBoardPick && !is_locked;
-    
+
+    // Direction-aware display values (presentation-only)
+    const _sideRaw = (player.direction || player.recommendation || '').toString().toUpperCase();
+    const sideIsUnder = _sideRaw.includes('UNDER');
+    const sideLabel = sideIsUnder ? 'UNDER' : 'OVER';
+    const sideColor = sideIsUnder ? 'text-red-400' : 'text-green-400';
+    const sideBar = sideIsUnder ? 'bg-red-500' : 'bg-green-500';
+    const sideBarGlow = sideIsUnder
+      ? 'shadow-[0_0_8px_rgba(239,68,68,0.45)]'
+      : 'shadow-[0_0_8px_rgba(34,197,94,0.45)]';
+
+    // Direction-aware edge display (backend vk_edge is OVER-side)
+    const dispEdge = (player.vk_edge != null && sideIsUnder)
+      ? -Number(player.vk_edge)
+      : (player.vk_edge != null ? Number(player.vk_edge) : null);
+
+    // Inline Vision Intel one-liner — prefers backend vision_intel / vision_summary,
+    // falls back to a tight VK-derived sentence. Never renders a CTA button.
+    const visionLine = player.vision_intel || player.vision_summary || (() => {
+      if (player.vk_predicted == null) return null;
+      const proj = Number(player.vk_predicted).toFixed(1);
+      const rel = sideIsUnder ? 'below' : 'above';
+      const verb = sideIsUnder ? 'stays below' : 'clears';
+      if (dispEdge != null && Math.abs(dispEdge) >= 10) {
+        return `Projection ${proj} sits well ${rel} the ${line} line — model favors the ${sideLabel.toLowerCase()}.`;
+      }
+      return `Model ${verb} ${line} on a ${proj} projection.`;
+    })();
+
     return (
-      <div 
-        className={`relative p-3 rounded-lg border ${theme.border} bg-gradient-to-br ${theme.bg} ${theme.glow} ${isClickable ? 'cursor-pointer hover:scale-[1.02]' : ''} ${is_locked ? 'cursor-not-allowed opacity-80' : ''} transition-all w-full`}
+      <div
+        className={`relative pl-4 pr-3 py-3 rounded-lg border ${theme.border} bg-gradient-to-br ${theme.bg} ${theme.glow} ${isClickable ? 'cursor-pointer hover:scale-[1.01]' : ''} ${is_locked ? 'cursor-not-allowed opacity-80' : ''} transition-all w-full overflow-hidden`}
         onClick={isClickable ? handleCardClick : undefined}
         data-testid={`player-compact-${playerSlug}`}
       >
+        {/* Left Signal Bar — green OVER / red UNDER */}
+        <div
+          className={`absolute left-0 top-2 bottom-2 w-1 md:w-[3px] rounded-r ${sideBar} ${sideBarGlow}`}
+          data-testid={`signal-bar-${sideLabel.toLowerCase()}`}
+          aria-hidden="true"
+        />
+
         {/* Locked Overlay */}
         <LockedOverlay isLocked={is_locked} gameStatus={game_status} sectionColor={sectionColor} />
-        
-        {/* Header: Photo + Name + Icon */}
-        <div className="flex items-center gap-2 mb-2">
+
+        {/* Quick Add (top-right, single visual indicator per spec) */}
+        {onQuickAdd && !is_locked && (
+          <button
+            onClick={(e) => { e.stopPropagation(); handleQuickAdd(player); }}
+            className="absolute top-2 right-2 w-6 h-6 rounded-full bg-cyan-500/15 border border-cyan-500/40 flex items-center justify-center text-cyan-400 hover:bg-cyan-500/25 transition-all"
+            data-testid={`quick-add-${playerSlug}`}
+            aria-label="Quick add"
+          >
+            <Plus className="w-3 h-3" />
+          </button>
+        )}
+
+        {/* Header — photo + player name (left-aligned, tight) */}
+        <div className="flex items-center gap-2 mb-2 pr-7">
           <div className="relative flex-shrink-0">
             <PlayerHeadshot photoUrl={displayPhoto} playerName={displayName} team={team} size="sm" sport={playerSport} mlbId={mlbId} />
-            {/* Tier icon on photo */}
-            <div className="absolute -top-1 -right-1">
-              {hasTrapRisk ? (
-                <span className="text-orange-400 text-sm">⚠️</span>
-              ) : isDemon ? (
-                <DemonIcon size={14} />
-              ) : isGoblin ? (
-                <GoblinIcon size={14} />
-              ) : null}
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="text-sm font-semibold text-white truncate">{displayName}</div>
+            <div className="text-[10px] text-zinc-500 uppercase tracking-wider truncate">
+              {sideLabel} {line} {formatStatType(stat_type)}
             </div>
           </div>
-          <div className="flex-1 min-w-0 overflow-hidden">
-            <div className="text-sm font-medium text-white truncate max-w-full">{displayName}</div>
-            <div className={`text-xs ${theme.text} truncate`}>{formatStatType(stat_type)} {line}</div>
-          </div>
-          {rank && (
-            <Badge className="bg-zinc-800 text-zinc-300 border-none text-xs flex-shrink-0">#{rank}</Badge>
-          )}
         </div>
-        
-        {/* Sidecar Warning Flags - Hook Risk & Bait Detection (INTERACTIVE) */}
+
+        {/* PRIMARY — direction + line + stat, left-aligned, bold, color-coded */}
+        <div className={`${sideColor} leading-none mb-2`}>
+          <span className="text-3xl md:text-2xl font-extrabold tracking-tight">{sideLabel} {line}</span>
+          <span className="ml-1.5 text-xs md:text-[11px] font-semibold text-zinc-400 uppercase">
+            {formatStatType(stat_type)}
+          </span>
+        </div>
+
+        {/* INLINE VISION INTEL — always visible, no CTA button */}
+        {visionLine && (
+          <div
+            className="text-[11px] md:text-[11.5px] leading-snug text-zinc-300/90 mb-2.5 line-clamp-2"
+            data-testid={`vision-intel-inline-${playerSlug}`}
+          >
+            {visionLine}
+          </div>
+        )}
+
+        {/* Sidecar Warning Flags — preserved (interactive info) */}
         {player.sidecar?.enabled && (player.sidecar.hook_risk || player.sidecar.suspect_line_bait) && (
-          <div className="mt-1.5 space-y-1">
+          <div className="mb-2 space-y-1">
             {player.sidecar.suspect_line_bait && (
               <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setIntelligenceModal({ isOpen: true, type: 'suspect_bait' });
-                }}
-                className="w-full flex items-center justify-between gap-1 px-2 py-1.5 bg-red-950/60 border border-red-500/40 rounded text-[10px] animate-pulse hover:bg-red-900/60 transition-colors cursor-pointer"
+                onClick={(e) => { e.stopPropagation(); setIntelligenceModal({ isOpen: true, type: 'suspect_bait' }); }}
+                className="w-full flex items-center justify-between gap-1 px-2 py-1 bg-red-950/40 border border-red-500/30 rounded text-[10px] hover:bg-red-900/40 transition-colors"
                 data-testid="suspect-bait-badge"
               >
-                <div className="flex items-center gap-1">
-                  <span className="text-red-400 font-bold">🚨 SUSPECT LINE:</span>
-                  <span className="text-red-300">Vegas Bait</span>
-                </div>
-                <Info className="w-3.5 h-3.5 text-red-400/70" />
+                <span className="text-red-300 font-semibold">SUSPECT LINE — Vegas Bait</span>
+                <Info className="w-3 h-3 text-red-400/70" />
               </button>
             )}
             {player.sidecar.hook_risk && !player.sidecar.suspect_line_bait && (
               <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setIntelligenceModal({ isOpen: true, type: 'hook_risk' });
-                }}
-                className="w-full flex items-center justify-between gap-1 px-2 py-1.5 bg-amber-950/60 border border-amber-500/40 rounded text-[10px] hover:bg-amber-900/60 transition-colors cursor-pointer"
+                onClick={(e) => { e.stopPropagation(); setIntelligenceModal({ isOpen: true, type: 'hook_risk' }); }}
+                className="w-full flex items-center justify-between gap-1 px-2 py-1 bg-amber-950/40 border border-amber-500/30 rounded text-[10px] hover:bg-amber-900/40 transition-colors"
                 data-testid="hook-risk-badge"
               >
-                <div className="flex items-center gap-1">
-                  <span className="text-amber-400 font-bold">⚠️ Hook Risk</span>
-                  <span className="text-amber-300/70">Tap for info</span>
-                </div>
-                <Info className="w-3.5 h-3.5 text-amber-400/70" />
+                <span className="text-amber-300 font-semibold">Hook Risk</span>
+                <Info className="w-3 h-3 text-amber-400/70" />
               </button>
             )}
           </div>
         )}
-        
-        {/* Intelligence Modal */}
+
+        {/* Intelligence Modal (preserved) */}
         <IntelligenceModal
           isOpen={intelligenceModal.isOpen}
           onClose={() => setIntelligenceModal({ isOpen: false, type: null })}
@@ -845,97 +893,34 @@ const UniversalPlayerCard = memo(({
           line={player.line}
           sidecarData={player.sidecar}
         />
-        
-        {/* Stats Row - L5 / L10 / Median (replaces Avg) */}
-        <div className="flex items-center justify-between bg-zinc-800/50 rounded px-2 py-1.5 text-[10px] mt-1">
-          <div className="text-center flex-1">
-            <div className="text-zinc-500">L5</div>
-            <div className={`font-bold ${getHitRateColor(h5_rate || 0)}`}>
-              {h5_rate != null ? `${h5_rate}%` : '---'}
+
+        {/* FLAT STAT STRIP — Edge / Hit Rate / Avg */}
+        <div className="flex items-stretch gap-3 pt-1.5 border-t border-zinc-800/70 text-left">
+          <div className="flex-1 min-w-0">
+            <div className="text-[9px] uppercase tracking-wider text-zinc-500 mb-0.5">Edge</div>
+            <div className={`text-sm md:text-[15px] font-bold tabular-nums ${
+              dispEdge == null ? 'text-zinc-400'
+                : dispEdge >= 10 ? 'text-green-400'
+                : dispEdge >= 0 ? 'text-zinc-200'
+                : 'text-red-400'
+            }`}>
+              {dispEdge != null ? `${dispEdge > 0 ? '+' : ''}${dispEdge.toFixed(1)}%` : '—'}
             </div>
           </div>
-          <div className="h-4 w-px bg-zinc-700" />
-          <div className="text-center flex-1">
-            <div className="text-zinc-500">L10</div>
-            <div className={`font-bold ${getHitRateColor(h10_rate || 0)}`}>
-              {h10_rate != null ? `${h10_rate}%` : '---'}
+          <div className="flex-1 min-w-0">
+            <div className="text-[9px] uppercase tracking-wider text-zinc-500 mb-0.5">Hit Rate</div>
+            <div className={`text-sm md:text-[15px] font-bold tabular-nums ${getHitRateColor(h10_rate || 0)}`}>
+              {h10_rate != null ? `${h10_rate}%` : '—'}
             </div>
           </div>
-          <div className="h-4 w-px bg-zinc-700" />
-          <div className="text-center flex-1">
-            {/* Show Median if sidecar data available, else show Avg */}
-            <div className="text-zinc-500">
-              {player.sidecar?.median != null ? 'Med' : 'Avg'}
-            </div>
-            <div className="font-bold text-white">
-              {player.sidecar?.median != null 
-                ? player.sidecar.median 
-                : (season_avg != null ? (season_avg.toFixed?.(1) || season_avg) : '---')
-              }
+          <div className="flex-1 min-w-0">
+            <div className="text-[9px] uppercase tracking-wider text-zinc-500 mb-0.5">Avg</div>
+            <div className="text-sm md:text-[15px] font-bold tabular-nums text-white">
+              {season_avg != null ? (season_avg.toFixed?.(1) || season_avg) : '—'}
             </div>
           </div>
         </div>
-        
-        {/* Vision Intel Suite CTA - only show for the 30 board picks */}
-        {isBoardPick && (
-          <div className="mt-2 text-center">
-            <span className="text-[10px] text-white font-medium animate-pulse drop-shadow-[0_0_8px_rgba(255,255,255,0.8)]">
-              Click for Vision Intel Suite
-            </span>
-          </div>
-        )}
-        
-        {/* Vision Model ML Prediction Badge - Show for board picks with VK data */}
-        {isBoardPick && player.vk_predicted != null && (
-          <div className={`mt-1.5 px-2 py-1 rounded text-[10px] ${theme.bg.replace('from-', 'bg-').split(' ')[0]}/40 border ${theme.border} ${theme.glow.replace('25px', '12px')}`}>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-1">
-                <span className={`${theme.text} font-bold`}>🎯 Vision Model:</span>
-                <span className="text-white font-bold">{player.vk_predicted?.toFixed?.(1)}</span>
-                <span className="text-white/60">proj</span>
-              </div>
-              <div className={`font-bold ${
-                player.vk_recommendation === 'STRONG_OVER' ? 'text-white' :
-                player.vk_recommendation === 'STRONG_UNDER' ? 'text-white' :
-                player.vk_recommendation === 'LEAN_OVER' ? 'text-white/90' :
-                player.vk_recommendation === 'LEAN_UNDER' ? 'text-white/90' :
-                'text-white/70'
-              }`}>
-                {player.vk_recommendation === 'STRONG_OVER' ? '⬆ STRONG OVER' :
-                 player.vk_recommendation === 'STRONG_UNDER' ? '⬇ STRONG UNDER' :
-                 player.vk_recommendation === 'LEAN_OVER' ? '↑ Lean Over' :
-                 player.vk_recommendation === 'LEAN_UNDER' ? '↓ Lean Under' :
-                 '→ Neutral'}
-              </div>
-            </div>
-            {player.vk_edge != null && (
-              <div className="flex items-center justify-between mt-0.5 text-[9px]">
-                {(() => {
-                  // Direction-aware display edge (UNDER flips sign)
-                  const _side = (player.direction || player.recommendation || '').toString().toUpperCase();
-                  const _isUnder = _side.includes('UNDER');
-                  const _dispEdge = _isUnder ? -Number(player.vk_edge) : Number(player.vk_edge);
-                  return (
-                    <span className="text-white/70">Edge: <span className="text-white font-medium">{_dispEdge > 0 ? '+' : ''}{_dispEdge.toFixed(1)}%</span></span>
-                  );
-                })()}
-                <span className="text-white/70">Over: <span className="text-white">{player.vk_prob_over?.toFixed?.(0)}%</span> | Under: <span className="text-white">{player.vk_prob_under?.toFixed?.(0)}%</span></span>
-              </div>
-            )}
-          </div>
-        )}
-        
-        {/* Quick Add Button */}
-        {onQuickAdd && !is_locked && (
-          <button
-            onClick={(e) => { e.stopPropagation(); handleQuickAdd(player); }}
-            className="absolute top-2 right-2 w-6 h-6 rounded-full bg-cyan-500/20 border border-cyan-500/40 flex items-center justify-center text-cyan-400 hover:bg-cyan-500/30 transition-all"
-            data-testid={`quick-add-${playerSlug}`}
-          >
-            <Plus className="w-3 h-3" />
-          </button>
-        )}
-        
+
       </div>
     );
   }
