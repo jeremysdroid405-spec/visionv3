@@ -150,30 +150,49 @@ const PlayerRow = memo(({ player, onClick, linesLoaded }) => (
 
 // Section Header
 const SectionHeader = memo(({ icon, title, subtitle, badgeText, badgeColor = 'red' }) => {
+  // Terminal module header — matches landing's mono+tracking aesthetic.
+  // Tier color remains semantic (badge/left accent), typography is unified.
   const badgeColors = {
-    red: 'bg-red-500/20 text-red-400 border-red-500/30',
-    amber: 'bg-amber-500/20 text-amber-400 border-amber-500/30',
-    green: 'bg-green-500/20 text-green-400 border-green-500/30'
+    red:   'text-red-400   bg-red-500/10   border-red-500/30   shadow-[0_0_10px_rgba(239,68,68,0.18)]',
+    amber: 'text-amber-400 bg-amber-500/10 border-amber-500/30 shadow-[0_0_10px_rgba(245,158,11,0.18)]',
+    green: 'text-green-400 bg-green-500/10 border-green-500/30 shadow-[0_0_10px_rgba(34,197,94,0.20)]',
   };
-  
+  const accentLine = {
+    red:   'from-red-500/60',
+    amber: 'from-amber-500/60',
+    green: 'from-green-500/60',
+  }[badgeColor];
+
   return (
-    <div className="flex items-center justify-between mb-3">
-      <div className="flex items-center gap-2">
-        {icon && (
-          <div className="w-8 h-8 rounded-full flex items-center justify-center bg-zinc-800/50 border border-zinc-700">
-            {icon}
+    <div className="mb-4">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className={`w-1 h-8 rounded-sm bg-gradient-to-b ${accentLine} to-transparent`} aria-hidden="true" />
+          {icon && (
+            <div className="w-7 h-7 rounded-md border border-zinc-800/80 bg-zinc-950 flex items-center justify-center">
+              {icon}
+            </div>
+          )}
+          <div className="min-w-0">
+            <h2 className="text-base md:text-[17px] font-black tracking-tight text-white truncate">
+              {title}
+            </h2>
+            {subtitle && (
+              <p className="text-[10px] font-mono tracking-wider text-zinc-500 mt-0.5 truncate uppercase">
+                <span className="text-zinc-600">//</span> {subtitle}
+              </p>
+            )}
+          </div>
+        </div>
+        {badgeText && (
+          <div
+            className={`px-2.5 py-1 rounded-sm text-[10px] font-mono font-bold tracking-[0.15em] uppercase border ${badgeColors[badgeColor]} whitespace-nowrap`}
+          >
+            {badgeText}
           </div>
         )}
-        <div>
-          <span className="text-sm font-bold text-white">{title}</span>
-          {subtitle && <p className="text-[10px] text-zinc-500">{subtitle}</p>}
-        </div>
       </div>
-      {badgeText && (
-        <div className={`px-2 py-1 rounded text-[10px] font-bold border ${badgeColors[badgeColor]}`}>
-          {badgeText}
-        </div>
-      )}
+      <div className="mt-2 h-px bg-gradient-to-r from-zinc-800/80 via-zinc-900/50 to-transparent" />
     </div>
   );
 });
@@ -443,12 +462,13 @@ const _normalizeSide = (pick) => {
 
 const DirectionSubheader = memo(({ label, count }) => (
   <div
-    className="flex items-center gap-2 px-1 pt-2 pb-1 text-[10px] font-semibold tracking-[0.12em] uppercase text-zinc-500"
+    className="flex items-center gap-2.5 px-1 pt-3 pb-1.5 font-mono"
     data-testid={`direction-subheader-${label.toLowerCase()}`}
   >
-    <span className="text-zinc-400">{label}</span>
-    <span className="text-zinc-600 font-normal">({count})</span>
-    <div className="flex-1 h-px bg-zinc-800/60" />
+    <span className="text-zinc-600 text-[10px]">&gt;</span>
+    <span className="text-zinc-300 text-[10px] font-semibold tracking-[0.18em] uppercase">{label}</span>
+    <span className="text-zinc-600 text-[10px] tracking-widest">[{count}]</span>
+    <div className="flex-1 h-px bg-gradient-to-r from-zinc-800/70 to-transparent" />
   </div>
 ));
 

@@ -79,45 +79,45 @@ const TEAM_LOGOS = {
 // ==================== TIER ICONS - Using shared Icons from ./Icons.jsx ====================
 // DemonIcon and GoblinIcon are imported from './Icons'
 
-// ==================== THEME CONFIG (TIER-BASED GLOW — REFINED) ====================
-// Refinement pass: tighten blur, remove hazy spread, differentiate per tier.
-//   Safe Haven  (GOBLIN)   → strongest clean glow
+// ==================== THEME CONFIG (TIER-BASED GLOW — TERMINAL STYLE) ====================
+// Landing-aligned DNA: near-black surfaces, tight 1px borders, glow on edges
+// only (low blur, slightly higher opacity for electric precision rather than
+// hazy spread). Tier remains the semantic carrier of emphasis.
+//   Safe Haven  (GOBLIN)    → strongest clean glow
 //   Front Lines (FRONT_LINE)→ moderate glow
-//   War Zone    (DEMON)    → subtle glow
-// All glows kept tight to the card edge (low blur) so the board feels like
-// a trading terminal, not a sportsbook.
+//   War Zone    (DEMON)     → subtle glow
 const TIER_THEMES = {
   DEMON: {
-    border: 'border-red-500/50',
-    bg: 'from-red-950/40 to-zinc-900',
-    glow: 'shadow-[0_0_10px_rgba(239,68,68,0.28)]',
+    border: 'border-red-500/30',
+    bg: 'from-zinc-950 to-zinc-950',
+    glow: 'shadow-[0_0_0_1px_rgba(239,68,68,0.08),0_0_10px_rgba(239,68,68,0.22)]',
     text: 'text-red-400',
     accent: 'bg-red-500',
-    ring: 'ring-red-500/50',
+    ring: 'ring-red-500/40',
     Icon: DemonIcon
   },
   GOBLIN: {
-    border: 'border-green-500/60',
-    bg: 'from-green-950/40 to-zinc-900',
-    glow: 'shadow-[0_0_18px_rgba(34,197,94,0.40)]',
+    border: 'border-green-500/40',
+    bg: 'from-zinc-950 to-zinc-950',
+    glow: 'shadow-[0_0_0_1px_rgba(34,197,94,0.12),0_0_14px_rgba(34,197,94,0.30)]',
     text: 'text-green-400',
     accent: 'bg-green-500',
-    ring: 'ring-green-500/50',
+    ring: 'ring-green-500/40',
     Icon: GoblinIcon
   },
   FRONT_LINE: {
-    border: 'border-yellow-500/55',
-    bg: 'from-yellow-950/40 to-zinc-900',
-    glow: 'shadow-[0_0_14px_rgba(234,179,8,0.32)]',
+    border: 'border-yellow-500/35',
+    bg: 'from-zinc-950 to-zinc-950',
+    glow: 'shadow-[0_0_0_1px_rgba(234,179,8,0.08),0_0_12px_rgba(234,179,8,0.24)]',
     text: 'text-yellow-400',
     accent: 'bg-yellow-500',
-    ring: 'ring-yellow-500/50',
+    ring: 'ring-yellow-500/40',
     Icon: null
   },
   STANDARD: {
-    border: 'border-zinc-500/40',
-    bg: 'from-zinc-800/40 to-zinc-900',
-    glow: 'shadow-[0_0_8px_rgba(161,161,170,0.15)]',
+    border: 'border-zinc-800/80',
+    bg: 'from-zinc-950 to-zinc-950',
+    glow: 'shadow-[0_0_0_1px_rgba(161,161,170,0.06)]',
     text: 'text-zinc-400',
     accent: 'bg-zinc-500',
     ring: 'ring-zinc-500/50',
@@ -810,7 +810,7 @@ const UniversalPlayerCard = memo(({
 
     return (
       <div
-        className={`relative pl-4 pr-3 py-3 rounded-lg border ${theme.border} bg-gradient-to-br ${theme.bg} ${theme.glow} ${isClickable ? 'cursor-pointer hover:scale-[1.01]' : ''} ${is_locked ? 'cursor-not-allowed opacity-80' : ''} transition-all w-full overflow-hidden`}
+        className={`relative pl-4 pr-3 py-3 rounded-md border ${theme.border} bg-gradient-to-br ${theme.bg} ${theme.glow} ${isClickable ? 'cursor-pointer hover:border-opacity-80 hover:scale-[1.005]' : ''} ${is_locked ? 'cursor-not-allowed opacity-80' : ''} transition-all w-full overflow-hidden`}
         onClick={isClickable ? handleCardClick : undefined}
         data-testid={`player-compact-${playerSlug}`}
       >
@@ -828,7 +828,7 @@ const UniversalPlayerCard = memo(({
         {onQuickAdd && !is_locked && (
           <button
             onClick={(e) => { e.stopPropagation(); handleQuickAdd(player); }}
-            className="absolute top-2 right-2 w-6 h-6 rounded-full bg-cyan-500/15 border border-cyan-500/40 flex items-center justify-center text-cyan-400 hover:bg-cyan-500/25 transition-all"
+            className="absolute top-2 right-2 w-6 h-6 rounded-sm bg-emerald-500/10 border border-emerald-500/40 flex items-center justify-center text-emerald-400 hover:bg-emerald-500/20 hover:border-emerald-400 transition-all"
             data-testid={`quick-add-${playerSlug}`}
             aria-label="Quick add"
           >
@@ -842,9 +842,9 @@ const UniversalPlayerCard = memo(({
             <PlayerHeadshot photoUrl={displayPhoto} playerName={displayName} team={team} size="sm" sport={playerSport} mlbId={mlbId} />
           </div>
           <div className="flex-1 min-w-0">
-            <div className="text-sm font-semibold text-white truncate">{displayName}</div>
-            <div className="text-[10px] text-zinc-500 uppercase tracking-wider truncate">
-              {sideLabel} {line} {formatStatType(stat_type)}
+            <div className="text-sm font-semibold text-white truncate leading-tight">{displayName}</div>
+            <div className="text-[10px] font-mono text-zinc-500 uppercase tracking-[0.12em] truncate mt-0.5">
+              {sideLabel} · {line} · {formatStatType(stat_type)}
             </div>
           </div>
         </div>
@@ -852,7 +852,7 @@ const UniversalPlayerCard = memo(({
         {/* PRIMARY — direction + line + stat, left-aligned, bold, color-coded */}
         <div className={`${sideColor} leading-none mb-2`}>
           <span className="text-3xl md:text-2xl font-extrabold tracking-tight">{sideLabel} {line}</span>
-          <span className="ml-1.5 text-xs md:text-[11px] font-semibold text-zinc-400 uppercase">
+          <span className="ml-1.5 text-xs md:text-[11px] font-mono font-semibold text-zinc-400 uppercase tracking-wider">
             {formatStatType(stat_type)}
           </span>
         </div>
@@ -904,13 +904,13 @@ const UniversalPlayerCard = memo(({
           sidecarData={player.sidecar}
         />
 
-        {/* FLAT STAT STRIP — Edge / Hit Rate / Avg */}
+        {/* FLAT STAT STRIP — Edge / Hit Rate / Avg (terminal label style) */}
         <div className="flex items-stretch gap-3 pt-1.5 border-t border-zinc-800/70 text-left">
           <div className="flex-1 min-w-0">
-            <div className="text-[9px] uppercase tracking-wider text-zinc-500 mb-0.5">Edge</div>
-            <div className={`text-sm md:text-[15px] font-bold tabular-nums ${
+            <div className="text-[9px] font-mono uppercase tracking-[0.15em] text-zinc-500 mb-0.5">Edge</div>
+            <div className={`text-sm md:text-[15px] font-bold font-mono tabular-nums ${
               dispEdge == null ? 'text-zinc-400'
-                : dispEdge >= 10 ? 'text-green-400'
+                : dispEdge >= 10 ? 'text-emerald-400'
                 : dispEdge >= 0 ? 'text-zinc-200'
                 : 'text-red-400'
             }`}>
@@ -918,14 +918,14 @@ const UniversalPlayerCard = memo(({
             </div>
           </div>
           <div className="flex-1 min-w-0">
-            <div className="text-[9px] uppercase tracking-wider text-zinc-500 mb-0.5">Hit Rate</div>
-            <div className={`text-sm md:text-[15px] font-bold tabular-nums ${getHitRateColor(h10_rate || 0)}`}>
+            <div className="text-[9px] font-mono uppercase tracking-[0.15em] text-zinc-500 mb-0.5">Hit Rate</div>
+            <div className={`text-sm md:text-[15px] font-bold font-mono tabular-nums ${getHitRateColor(h10_rate || 0)}`}>
               {h10_rate != null ? `${h10_rate}%` : '—'}
             </div>
           </div>
           <div className="flex-1 min-w-0">
-            <div className="text-[9px] uppercase tracking-wider text-zinc-500 mb-0.5">Avg</div>
-            <div className="text-sm md:text-[15px] font-bold tabular-nums text-white">
+            <div className="text-[9px] font-mono uppercase tracking-[0.15em] text-zinc-500 mb-0.5">Avg</div>
+            <div className="text-sm md:text-[15px] font-bold font-mono tabular-nums text-white">
               {season_avg != null ? (season_avg.toFixed?.(1) || season_avg) : '—'}
             </div>
           </div>

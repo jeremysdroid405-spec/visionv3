@@ -77,80 +77,66 @@
   border-style: solid;
 }
 
-/* ==================== SECTION BACKGROUND GLOWS ==================== */
+/* ==================== SECTION BACKGROUND GLOWS (TERMINAL STYLE) ====================
+   Landing-aligned visual DNA: darker base (near-black), tight border line,
+   thin gradient top accent, zero hazy ::before pulse rings. Matches the
+   PropVision AI terminal card aesthetic.
+*/
 .war-zone-section {
   position: relative;
-  background: linear-gradient(135deg, rgba(220, 38, 38, 0.15) 0%, rgba(15, 15, 15, 0.95) 50%, rgba(220, 38, 38, 0.1) 100%);
-  border-radius: 16px;
-  padding: 16px;
-  border: 1px solid rgba(239, 68, 68, 0.4);
-  box-shadow: 0 0 30px rgba(239, 68, 68, 0.2), inset 0 0 60px rgba(239, 68, 68, 0.05);
+  background: linear-gradient(180deg, rgba(12, 10, 10, 0.96) 0%, rgba(9, 9, 11, 0.98) 100%);
+  border-radius: 10px;
+  padding: 18px;
+  border: 1px solid rgba(239, 68, 68, 0.22);
+  box-shadow: 0 0 0 1px rgba(239, 68, 68, 0.05), 0 0 18px rgba(239, 68, 68, 0.06);
 }
 
 .war-zone-section::before {
   content: '';
   position: absolute;
-  inset: -4px;
-  border-radius: 20px;
-  background: linear-gradient(135deg, rgba(239, 68, 68, 0.4), transparent 40%, transparent 60%, rgba(239, 68, 68, 0.3));
-  filter: blur(12px);
-  z-index: -1;
-  animation: radar-pulse 2.5s ease-in-out infinite;
-}
-
-@keyframes radar-pulse {
-  0%, 100% { opacity: 0.6; transform: scale(1); }
-  50% { opacity: 1; transform: scale(1.01); }
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(239, 68, 68, 0.6) 20%, rgba(239, 68, 68, 0.6) 80%, transparent);
 }
 
 .goblin-recon-section {
   position: relative;
-  background: linear-gradient(135deg, rgba(34, 197, 94, 0.15) 0%, rgba(15, 15, 15, 0.95) 50%, rgba(34, 197, 94, 0.1) 100%);
-  border-radius: 16px;
-  padding: 16px;
-  border: 1px solid rgba(34, 197, 94, 0.4);
-  box-shadow: 0 0 30px rgba(34, 197, 94, 0.2), inset 0 0 60px rgba(34, 197, 94, 0.05);
+  background: linear-gradient(180deg, rgba(8, 12, 10, 0.96) 0%, rgba(9, 9, 11, 0.98) 100%);
+  border-radius: 10px;
+  padding: 18px;
+  border: 1px solid rgba(34, 197, 94, 0.30);
+  box-shadow: 0 0 0 1px rgba(34, 197, 94, 0.06), 0 0 22px rgba(34, 197, 94, 0.10);
 }
 
 .goblin-recon-section::before {
   content: '';
   position: absolute;
-  inset: -4px;
-  border-radius: 20px;
-  background: linear-gradient(135deg, rgba(34, 197, 94, 0.4), transparent 40%, transparent 60%, rgba(34, 197, 94, 0.3));
-  filter: blur(12px);
-  z-index: -1;
-  animation: recon-pulse 2.5s ease-in-out infinite;
-}
-
-@keyframes recon-pulse {
-  0%, 100% { opacity: 0.6; transform: scale(1); }
-  50% { opacity: 1; transform: scale(1.01); }
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(34, 197, 94, 0.75) 20%, rgba(34, 197, 94, 0.75) 80%, transparent);
 }
 
 .front-lines-section {
   position: relative;
-  background: linear-gradient(135deg, rgba(245, 158, 11, 0.15) 0%, rgba(15, 15, 15, 0.95) 50%, rgba(245, 158, 11, 0.1) 100%);
-  border-radius: 16px;
-  padding: 16px;
-  border: 1px solid rgba(245, 158, 11, 0.4);
-  box-shadow: 0 0 30px rgba(245, 158, 11, 0.2), inset 0 0 60px rgba(245, 158, 11, 0.05);
+  background: linear-gradient(180deg, rgba(14, 12, 9, 0.96) 0%, rgba(9, 9, 11, 0.98) 100%);
+  border-radius: 10px;
+  padding: 18px;
+  border: 1px solid rgba(245, 158, 11, 0.26);
+  box-shadow: 0 0 0 1px rgba(245, 158, 11, 0.05), 0 0 20px rgba(245, 158, 11, 0.08);
 }
 
 .front-lines-section::before {
   content: '';
   position: absolute;
-  inset: -4px;
-  border-radius: 20px;
-  background: linear-gradient(135deg, rgba(245, 158, 11, 0.4), transparent 40%, transparent 60%, rgba(245, 158, 11, 0.3));
-  filter: blur(12px);
-  z-index: -1;
-  animation: frontlines-pulse 2.5s ease-in-out infinite;
-}
-
-@keyframes frontlines-pulse {
-  0%, 100% { opacity: 0.6; transform: scale(1); }
-  50% { opacity: 1; transform: scale(1.01); }
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(245, 158, 11, 0.65) 20%, rgba(245, 158, 11, 0.65) 80%, transparent);
 }
 
 /* ==================== CARD GLOW EFFECTS ==================== */
