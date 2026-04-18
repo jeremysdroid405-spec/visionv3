@@ -292,7 +292,30 @@ GET endpoints retrieve history.
 - P1: Stripe payments (via `integration_playbook_expert_v2`)
 - P2: Wind Tunnel weather API
 - P2: Dashboard.jsx refactor
-- Phase 5: Drop corrupt/legacy collections (`live_injuries`, `dg_injuries`, `bdl_injuries`) — pending user approval
+- Phase 5: Drop corrupt/legacy collections — pending user approval:
+  - Injury: `live_injuries`, `dg_injuries`, `bdl_injuries`
+  - Elite tier (now deprecated after April 18 migration): `elite_safe_haven`, `elite_front_lines`, `elite_war_zone`
+
+## April 18, 2026 — Ferrari Tier Migration to `nba_prop_scores`
+NBA Dashboard tier endpoints (`/api/v3/ferrari/safe-haven`, `/front-lines`, `/war-zone`)
+were rewired to read from `nba_prop_scores` where `version_tag='final-nba'` and `tier`
+matches, sorted DESC by `vision_score`. Enrichment (intel_suite, hit rates, headshots,
+team/opponent, prices) overlayed from `dg_cached_board` via natural key
+(event_id, player_name, stat_type, line, direction). Legacy `elite_*` collections
+no longer feed the UI.
+
+Verification (hard-audit mode):
+- DB: safe_haven=21, front_lines=54 (48 OVER + 6 UNDER), war_zone=39, all tagged `final-nba`
+- Board join coverage: 110/114 (96.5%); 4 misses fall back gracefully
+- Live API: 0 duplicates at (player, stat, line, direction); strict tier isolation;
+  DESC sort confirmed; UNDER props now surface in front_lines (e.g. Desmond Bane REB 6.5
+  UNDER vs 99.3, Brandon Miller PRA 28.5 UNDER vs 99.0, James Harden PRA 34.5 UNDER)
+- Frontend: Dashboard renders cleanly; Christian Braun duplicate ghost from legacy
+  `elite_safe_haven` gone (count: 0)
+
+Key helper: `_get_nba_tier_picks_from_scores(tier, limit)` +
+`_build_nba_board_lookup()` + `_merge_score_with_board()` in
+`/app/backend/routes/ferrari_tiers.py`.
 
 ## Key Files
 | File | Purpose |
@@ -310,4 +333,4 @@ GET endpoints retrieve history.
 | `services/mlb_tier_sorter.py` | MLB tier scoring |
 
 ---
-*Last Updated: April 17, 2026*
+*Last Updated: April 18, 2026*

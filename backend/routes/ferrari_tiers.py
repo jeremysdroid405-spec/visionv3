@@ -791,6 +791,268 @@ def get_vegas_killer():
     return _vegas_killer_model
 
 
+# =============================================================================
+# NBA FERRARI TIER MIGRATION — reads directly from `nba_prop_scores`
+# (version_tag="final-nba") instead of the deprecated `elite_*` collections.
+#
+# Wiring:
+#   1. Pull top N scored rows for the target tier, sorted by vision_score DESC.
+#   2. Overlay full UI enrichment (intel_suite, hit rates, headshots, team,
+#      opponent, price, etc.) from `dg_cached_board` via the natural key
+#      (event_id, player_name, stat_type, line, direction).
+#   3. Preserve the legacy UI payload contract so UniversalPlayerCard.jsx
+#      renders unchanged.
+# =============================================================================
+
+_NBA_BOARD_CACHE: Dict[str, Any] = {"lookup": None, "built_at": 0.0}
+
+
+async def _build_nba_board_lookup() -> Dict[tuple, Dict[str, Any]]:
+    """Flatten `dg_cached_board` (player-grain) into a prop-grain lookup keyed
+    by (event_id, player_name_lower, STAT_UPPER, line_float, DIR_UPPER).
+
+    Each entry carries both the prop dict (full enrichment) and the parent
+    player doc (headshot_url, team, opponent, nba_id, position, etc.).
+    Re-built on every call — dg_cached_board is ~126 player docs, negligible.
+    """
+    lookup: Dict[tuple, Dict[str, Any]] = {}
+    if _db is None:
+        return lookup
+    async for player_doc in _db.dg_cached_board.find({}):
+        for bucket in ("standard", "demons", "goblins"):
+            for p in (player_doc.get(bucket) or []):
+                if not isinstance(p, dict):
+                    continue
+                line = p.get("line")
+                try:
+                    line_f = float(line) if line is not None else None
+                except (TypeError, ValueError):
+                    line_f = None
+                key = (
+                    p.get("event_id"),
+                    (p.get("player_name") or "").strip().lower(),
+                    (p.get("stat_type") or "").strip().upper(),
+                    line_f,
+                    (p.get("direction") or "").strip().upper(),
+                )
+                if key[0] and key[1] and key[2] and key[3] is not None and key[4]:
+                    lookup[key] = {"player": player_doc, "prop": p, "bucket": bucket}
+    return lookup
+
+
+def _merge_score_with_board(score: Dict[str, Any], board_entry: Dict[str, Any] | None) -> Dict[str, Any]:
+    """Produce a UI-ready pick dict from a `nba_prop_scores` row plus an
+    optional matching board entry (from `dg_cached_board`).
+
+    The output shape matches the legacy `elite_*` contract consumed by
+    UniversalPlayerCard.jsx / Dashboard.jsx. Score-layer fields (tier,
+    vision_score, pp_*, tier_gate_results, edge_vs_fair, recommendation)
+    are authoritative. Board-layer fields (intel_suite, hit rates,
+    headshot, opponent, price) provide display enrichment.
+    """
+    direction_upper = (score.get("recommendation") or "OVER").strip().upper()
+    direction_title = "Under" if direction_upper == "UNDER" else "Over"
+    is_under = direction_upper == "UNDER"
+
+    # Start from board prop if matched (full enrichment), else empty dict.
+    if board_entry:
+        from bson import ObjectId
+        def _strip_objectids(obj):
+            if isinstance(obj, ObjectId):
+                return None
+            if isinstance(obj, dict):
+                return {k: _strip_objectids(v) for k, v in obj.items() if k != "_id"}
+            if isinstance(obj, list):
+                return [_strip_objectids(x) for x in obj]
+            return obj
+
+        prop = _strip_objectids(board_entry["prop"])  # deep-clean enrichment
+        player_doc = _strip_objectids(board_entry["player"])
+        # Player-level fields from parent player doc
+        for fld in (
+            "player_id", "nba_id", "bdl_id", "nba_com_id", "espn_id",
+            "headshot_url", "photo_url", "team", "team_name", "team_logo_url",
+            "position", "jersey_number", "opponent", "opponent_abbr",
+            "injury_status", "injured_teammates", "context_badges",
+        ):
+            val = player_doc.get(fld)
+            if val is not None and prop.get(fld) in (None, "", []):
+                prop[fld] = val
+    else:
+        prop = {
+            "player_name": score.get("player_name"),
+            "stat_type": score.get("stat_type"),
+            "line": score.get("line"),
+        }
+
+    # --- Authoritative fields from nba_prop_scores ---
+    prop["player_name"] = score.get("player_name") or prop.get("player_name")
+    prop["stat_type"] = score.get("stat_type") or prop.get("stat_type")
+    prop["line"] = score.get("line")
+    prop["direction"] = direction_title
+    prop["recommendation"] = direction_title
+    prop["sport"] = "nba"
+
+    # Tier / scoring layer
+    prop["tier"] = score.get("tier")
+    tier_label_map = {"safe_haven": "SAFE_HAVEN", "front_lines": "FRONT_LINE", "war_zone": "WAR_ZONE"}
+    prop["tier_label"] = tier_label_map.get(score.get("tier"), (score.get("tier") or "").upper())
+    prop["vision_score"] = score.get("vision_score")
+    prop["vision_score_raw"] = score.get("vision_score_raw")
+    prop["tier_gate_results"] = score.get("tier_gate_results")
+    prop["tier_reason"] = score.get("tier_reason")
+    prop["tier_reference_book"] = score.get("tier_reference_book")
+    prop["tier_reference_odds"] = score.get("tier_reference_odds")
+    prop["edge_vs_fair"] = score.get("edge_vs_fair")
+    prop["fair_prob"] = score.get("fair_prob")
+    prop["quality_source"] = score.get("quality_source")
+    prop["stability"] = score.get("stability")
+    prop["confidence_score"] = score.get("confidence")
+    prop["version_tag"] = score.get("version_tag")
+    prop["computed_at"] = score.get("computed_at")
+
+    # PrizePicks layer
+    prop["pp_utility"] = score.get("pp_utility")
+    prop["pp_utility_category"] = score.get("pp_utility_category")
+    prop["pp_utility_components"] = score.get("pp_utility_components")
+    prop["pp_multiplier"] = score.get("pp_multiplier")
+    prop["pp_multiplier_label"] = score.get("pp_multiplier_label")
+    prop["pp_multiplier_source"] = score.get("pp_multiplier_source")
+    prop["pp_reference_source"] = score.get("pp_reference_source")
+    prop["pp_playable"] = score.get("pp_playable")
+    prop["pp_playability_reason"] = score.get("pp_playability_reason")
+
+    # Goblin/demon flags — derived from pp_multiplier_label for consistency
+    lbl = (score.get("pp_multiplier_label") or "").lower()
+    prop["is_goblin"] = lbl == "goblin"
+    prop["is_demon"] = lbl == "demon"
+    prop["is_standard"] = lbl in ("", "standard")
+    if prop["is_goblin"]:
+        prop["prop_type"] = "GOBLIN"
+    elif prop["is_demon"]:
+        prop["prop_type"] = "DEMON"
+    else:
+        prop["prop_type"] = "STANDARD"
+
+    # VK2 projection layer (authoritative over any board-cached vk_predicted)
+    vk2 = score.get("vk2_projection")
+    if vk2 is not None:
+        prop["vk_predicted"] = round(float(vk2), 2)
+        try:
+            prop["vk_edge"] = round(float(vk2) - float(score.get("line") or 0), 2)
+        except (TypeError, ValueError):
+            pass
+    prop["vk2_projection"] = vk2
+    prop["vk2_sigma"] = score.get("vk2_sigma")
+    prop["model_projection"] = score.get("model_projection")
+    prop["model_sigma"] = score.get("model_sigma")
+    prop["p_true_active"] = score.get("p_true_active")
+    prop["p_true_method"] = score.get("p_true_method")
+    prop["p_true_vk2"] = score.get("p_true_vk2")
+    prop["p_true_hit_rate"] = score.get("p_true_hit_rate")
+
+    # Side-aware VK probabilities from p_true_active (percent)
+    p_true = score.get("p_true_active")
+    if p_true is not None:
+        try:
+            p_pct = round(float(p_true) * 100, 1)
+            # p_true is the probability of the recommended side hitting
+            if is_under:
+                prop["vk_prob_under"] = p_pct
+                prop["vk_prob_over"] = round(100 - p_pct, 1)
+            else:
+                prop["vk_prob_over"] = p_pct
+                prop["vk_prob_under"] = round(100 - p_pct, 1)
+        except (TypeError, ValueError):
+            pass
+
+    # Side-aware hit rates
+    ho = score.get("hit_rate_over")
+    hu = score.get("hit_rate_under")
+    if ho is not None:
+        prop["hit_rate_over"] = ho
+        prop["h10_rate"] = round(float(ho), 1) if not is_under else prop.get("h10_rate")
+    if hu is not None:
+        prop["hit_rate_under"] = hu
+        if is_under:
+            prop["h10_rate"] = round(float(hu), 1)
+    # Defensive default for h10_rate if still missing
+    if prop.get("h10_rate") is None:
+        prop["h10_rate"] = round(float(hu), 1) if is_under and hu is not None else (
+            round(float(ho), 1) if ho is not None else None
+        )
+
+    # VK recommendation label for downstream display
+    if is_under:
+        prop["vk_recommendation"] = "STRONG_UNDER" if (prop.get("vk_prob_under") or 0) >= 70 else "LEAN_UNDER"
+    else:
+        prop["vk_recommendation"] = "STRONG_OVER" if (prop.get("vk_prob_over") or 0) >= 70 else "LEAN_OVER"
+
+    # Canonical key for client-side de-dupe / highlight tracking
+    prop["canonical_key"] = score.get("canonical_key")
+
+    # Validation flag — data completeness
+    prop["validation"] = {
+        "has_market_data": bool(board_entry and prop.get("draftkings_price")),
+        "has_hit_rates": prop.get("h10_rate") is not None,
+        "has_context": bool(prop.get("intel_suite")),
+        "has_mlr": vk2 is not None,
+        "has_gemini": bool(prop.get("vision_intel")),
+        "is_fully_validated": bool(
+            board_entry and prop.get("intel_suite") and vk2 is not None
+        ),
+    }
+
+    return prop
+
+
+async def _get_nba_tier_picks_from_scores(tier: str, limit: int) -> List[Dict[str, Any]]:
+    """Read the top-N final-nba scores for a given tier, enrich with board
+    data, and return a list of UI-ready picks sorted by vision_score DESC.
+    """
+    if _db is None:
+        return []
+
+    cursor = _db.nba_prop_scores.find(
+        {"version_tag": "final-nba", "tier": tier},
+        {"_id": 0},
+    ).sort("vision_score", -1).limit(limit)
+    scores = await cursor.to_list(length=limit)
+
+    if not scores:
+        return []
+
+    lookup = await _build_nba_board_lookup()
+
+    picks: List[Dict[str, Any]] = []
+    for sc in scores:
+        try:
+            line_f = float(sc.get("line"))
+        except (TypeError, ValueError):
+            line_f = None
+        direction_upper = (sc.get("recommendation") or "OVER").strip().upper()
+        key_exact = (
+            sc.get("event_id"),
+            (sc.get("player_name") or "").strip().lower(),
+            (sc.get("stat_type") or "").strip().upper(),
+            line_f,
+            direction_upper,
+        )
+        entry = lookup.get(key_exact)
+        # Fallback: if the exact direction isn't in the board, fall back to
+        # the opposite direction row so we at least pull player/intel context.
+        if entry is None:
+            opp = "UNDER" if direction_upper == "OVER" else "OVER"
+            key_opp = (key_exact[0], key_exact[1], key_exact[2], key_exact[3], opp)
+            entry = lookup.get(key_opp)
+        picks.append(_merge_score_with_board(sc, entry))
+
+    return picks
+
+
+
+
+
 def normalize_mlb_pick_for_ui(pick: dict) -> dict:
     """
     Normalize MLB pick fields to match the UI expected format.
@@ -1024,17 +1286,17 @@ async def get_ferrari_safe_haven(
             logger.error(f"[SAFE_HAVEN] Legacy scan error: {e}")
             raise HTTPException(status_code=500, detail=str(e))
     
-    # DEFAULT: VAULT ISOLATION - NBA uses elite collections, MLB uses legacy
+    # NBA: read from the VK2 `nba_prop_scores` (version_tag='final-nba')
+    # pipeline, not the legacy `elite_*` collections.
     if sport == "nba":
-        collection_name = "elite_safe_haven"
+        collection_name = "nba_prop_scores[tier=safe_haven,version=final-nba]"
+        picks = await _get_nba_tier_picks_from_scores("safe_haven", limit)
     else:
         collection_name = "mlb_safe_haven"
-    
-    collection = _db[collection_name]
-    
-    cursor = collection.find({}, {"_id": 0}).limit(limit)
-    picks = await cursor.to_list(length=limit)
-    
+        collection = _db[collection_name]
+        cursor = collection.find({}, {"_id": 0}).limit(limit)
+        picks = await cursor.to_list(length=limit)
+
     # JIT Injury Check for NBA picks
     if sport == "nba" and picks:
         try:
@@ -1129,17 +1391,17 @@ async def get_ferrari_front_lines(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     
-    # VAULT ISOLATION: NBA uses elite collections, MLB uses legacy
+    # VAULT ISOLATION: NBA reads from `nba_prop_scores` (VK2 pipeline);
+    # MLB still uses legacy collection.
     if sport == "nba":
-        collection_name = "elite_front_lines"
+        collection_name = "nba_prop_scores[tier=front_lines,version=final-nba]"
+        picks = await _get_nba_tier_picks_from_scores("front_lines", limit)
     else:
         collection_name = "mlb_front_lines"
-    
-    collection = _db[collection_name]
-    
-    cursor = collection.find({}, {"_id": 0}).limit(limit)
-    picks = await cursor.to_list(length=limit)
-    
+        collection = _db[collection_name]
+        cursor = collection.find({}, {"_id": 0}).limit(limit)
+        picks = await cursor.to_list(length=limit)
+
     # JIT Injury Check for NBA picks
     if sport == "nba" and picks:
         try:
@@ -1232,17 +1494,17 @@ async def get_ferrari_war_zone(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     
-    # VAULT ISOLATION: NBA uses elite collections, MLB uses legacy
+    # VAULT ISOLATION: NBA reads from `nba_prop_scores` (VK2 pipeline);
+    # MLB still uses legacy collection.
     if sport == "nba":
-        collection_name = "elite_war_zone"
+        collection_name = "nba_prop_scores[tier=war_zone,version=final-nba]"
+        picks = await _get_nba_tier_picks_from_scores("war_zone", limit)
     else:
         collection_name = "mlb_war_zone"
-    
-    collection = _db[collection_name]
-    
-    cursor = collection.find({}, {"_id": 0}).limit(limit)
-    picks = await cursor.to_list(length=limit)
-    
+        collection = _db[collection_name]
+        cursor = collection.find({}, {"_id": 0}).limit(limit)
+        picks = await cursor.to_list(length=limit)
+
     # JIT Injury Check for NBA picks
     if sport == "nba" and picks:
         try:
