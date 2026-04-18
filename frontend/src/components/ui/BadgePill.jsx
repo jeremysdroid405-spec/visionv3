@@ -458,36 +458,36 @@ export const BADGE_REGISTRY = {
     }
   },
   lasso_high_edge: {
-    label: "Lasso Edge",
+    label: "Vision Edge",
     icon: Target,
     glowColor: "#10b981",  // Emerald
     bgClass: "bg-emerald-500/20",
     borderClass: "border-emerald-500/40",
     textClass: "text-emerald-400",
     glowClass: "shadow-emerald-500/30",
-    trigger: "Lasso projection >15% above the line",
+    trigger: "Vision projection >15% above the line",
     category: "scout",
     tooltip: {
-      title: "Lasso High Edge",
-      description: "The Lasso regression model projects this player 15%+ above the set line — a statistically significant edge.",
-      impact: "When the model sees a big gap between projection and line, it's a strong over signal.",
+      title: "Vision Edge",
+      description: "Our projection sits more than 15% away from the sportsbook line. That's a meaningful gap between what the model thinks will happen and what the line is pricing.",
+      impact: "A large gap between projection and line is one of the strongest value signals we surface.",
       sentiment: "positive"
     }
   },
   high_fidelity_model: {
-    label: "Hi-Fi Model",
+    label: "High Confidence",
     icon: BarChart3,
     glowColor: "#06b6d4",  // Cyan
     bgClass: "bg-cyan-500/20",
     borderClass: "border-cyan-500/40",
     textClass: "text-cyan-400",
     glowClass: "shadow-cyan-500/30",
-    trigger: "Model R² > 0.30 (high confidence)",
+    trigger: "Model fits this stat reliably on held-out games",
     category: "scout",
     tooltip: {
-      title: "High Fidelity Model",
-      description: "The prediction model for this stat has an R² above 0.30, meaning it explains a meaningful share of variance.",
-      impact: "Trust the projection more. High-fidelity models produce reliable edges.",
+      title: "High Confidence Projection",
+      description: "Our model is especially reliable for this stat type, meaning past predictions have matched real game results closely. The projection you see is more trustworthy than usual.",
+      impact: "When you see this badge, lean into the projection. The model's track record on this stat is strong.",
       sentiment: "positive"
     }
   },
@@ -779,44 +779,54 @@ export const BadgeGridItem = ({
 
   const handleClick = (e) => {
     e.stopPropagation();
-    if (isActive && tooltip) setExpanded(prev => !prev);
+    // Always open the tooltip, even for inactive badges, so operators can
+    // explore what each badge means before it ever triggers.
+    if (tooltip) setExpanded(prev => !prev);
   };
-  
+
   return (
     <div>
-      <div 
+      <div
         onClick={handleClick}
-        className={`flex items-center gap-2 p-2 rounded-lg border transition-all ${
-          isActive 
-            ? `${badge.bgClass} ${badge.borderClass} shadow-lg ${badge.glowClass} cursor-pointer`
-            : 'bg-zinc-800/30 border-zinc-700/50 opacity-40'
+        className={`flex items-center gap-2 p-2 rounded-lg border transition-all cursor-pointer ${
+          isActive
+            ? `${badge.bgClass} ${badge.borderClass} shadow-lg ${badge.glowClass}`
+            : 'bg-zinc-800/30 border-zinc-700/60 hover:bg-zinc-800/60 hover:border-zinc-600/80'
         }`}
         data-testid={`badge-grid-${badgeKey}`}
       >
         <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
           isActive ? badge.bgClass : 'bg-zinc-800'
         }`}>
-          <Icon size={16} className={isActive ? badge.textClass : 'text-zinc-600'} />
+          <Icon size={16} className={isActive ? badge.textClass : 'text-zinc-500'} />
         </div>
         <div className="flex-1 min-w-0">
-          <div className={`text-xs font-bold ${isActive ? badge.textClass : 'text-zinc-600'}`}>
+          <div className={`text-xs font-bold ${isActive ? badge.textClass : 'text-zinc-300'}`}>
             {badge.label}
           </div>
           <div className={`text-[9px] truncate ${isActive ? 'text-white' : 'text-zinc-500'}`}>
             {displayTrigger}
           </div>
         </div>
-        {isActive && (
+        {isActive ? (
           <div className={`w-2 h-2 rounded-full ${badge.bgClass.replace('/20', '')} animate-pulse`} />
+        ) : (
+          <div className="text-[9px] font-mono text-zinc-600 tracking-wider">INFO</div>
         )}
       </div>
-      {expanded && isActive && tooltip && (
+      {expanded && tooltip && (
         <div className="mt-1 p-2.5 rounded-lg bg-zinc-800/80 border border-zinc-700/60 animate-in slide-in-from-top-1 duration-150">
           <div className="flex items-center justify-between mb-1.5">
             <span className={`text-[11px] font-bold ${badge.textClass}`}>{tooltip.title}</span>
-            <span className={`text-[9px] font-medium ${sentimentColors[tooltip.sentiment]}`}>
-              {sentimentLabels[tooltip.sentiment]}
-            </span>
+            {isActive ? (
+              <span className={`text-[9px] font-medium ${sentimentColors[tooltip.sentiment]}`}>
+                {sentimentLabels[tooltip.sentiment]}
+              </span>
+            ) : (
+              <span className="text-[9px] font-mono text-zinc-500 uppercase tracking-wider">
+                Not Active
+              </span>
+            )}
           </div>
           <p className="text-[11px] text-zinc-300 leading-relaxed">
             {tooltip.description}
