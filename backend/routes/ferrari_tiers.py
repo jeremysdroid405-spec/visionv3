@@ -29,6 +29,58 @@ _sync_db = None
 _enrichment_cache = {}
 _enrichment_cache_mtime = {}
 
+# ---------------------------------------------------------------------------
+# Canonical stat-window invariant guard
+# ---------------------------------------------------------------------------
+# The windowed hit-rate fields (h5_rate / h10_rate / h20_rate) are the single
+# source of truth for the UI's "L5 Hit / L10 Hit / L20 Hit" tiles and must
+# always match the literal chart math derived from game_logs[:N].
+#
+# This guard is called immediately before any Ferrari board endpoint serializes
+# its response. On a divergence it logs (never raises) and auto-corrects the
+# stored hit_rate back to the canonical count-based value. The guard is the
+# last line of defense in case a new overlay/merge layer forgets the contract.
+# ---------------------------------------------------------------------------
+def _assert_canonical_hit_rate_invariant(prop: dict) -> None:
+    for hits_key, rate_key, window in (
+        ("l5_hits",  "h5_rate",  5),
+        ("l10_hits", "h10_rate", 10),
+        ("l20_hits", "h20_rate", 20),
+    ):
+        hits = prop.get(hits_key)
+        rate = prop.get(rate_key)
+        if hits is None or rate is None:
+            continue
+        try:
+            canonical = round((float(hits) / float(window)) * 100.0, 1)
+        except (TypeError, ValueError, ZeroDivisionError):
+            continue
+        # Accept ±0.1 float rounding slack.
+        if abs(float(rate) - canonical) > 0.5:
+            logger.warning(
+                "[CANONICAL_GUARD] %s %s %s stored %s=%s clobbered (true=%s from %s=%s). Auto-correcting.",
+                prop.get("player_name"),
+                prop.get("stat_type"),
+                prop.get("line"),
+                rate_key, rate, canonical, hits_key, hits,
+            )
+            prop[rate_key] = canonical
+
+
+def _guard_board_picks(picks):
+    """Apply the canonical stat-window invariant to a list of picks in place."""
+    if not picks:
+        return picks
+    for p in picks:
+        if isinstance(p, dict):
+            try:
+                _assert_canonical_hit_rate_invariant(p)
+            except Exception as e:  # pragma: no cover - guard must never crash
+                logger.error("[CANONICAL_GUARD] skipped pick due to %s", e)
+    return picks
+
+
+
 
 def _resolve_prop_direction(pick: dict) -> str:
     """Universal, sport-agnostic side extractor for Vision Intel wording.
@@ -1055,21 +1107,40 @@ def _merge_score_with_board(score: Dict[str, Any], board_entry: Dict[str, Any] |
         except (TypeError, ValueError):
             pass
 
-    # Side-aware hit rates
+    # ============================================================
+    # CANONICAL STAT FIELD CONTRACT
+    # ------------------------------------------------------------
+    # prop["h5_rate"], prop["h10_rate"], prop["h20_rate"],
+    # prop["l5_avg"], prop["l10_avg"], prop["l20_avg"], prop["season_avg"]
+    # are IMMUTABLE canonical windowed values sourced from game_logs
+    # by _normalize_hit_rates_from_game_logs and its peers.
+    # No downstream board/overlay/merge layer is allowed to
+    # overwrite them. Model/scorer-derived side-aware rates live
+    # in their own namespace: model_hit_rate_{over,under,active}.
+    # Regression: /app/backend/tests/test_hit_rate_canonical.py
+    # ============================================================
     ho = score.get("hit_rate_over")
     hu = score.get("hit_rate_under")
+    # Diagnostic fields: model/scorer-derived L20 side-aware hit rates.
+    # These are NOT the chart's L10 hit rate. They are fed into VK /
+    # p_true / tier_gate calculations and rendered only where a
+    # frontend explicitly opts in to model_hit_rate_*.
     if ho is not None:
         prop["hit_rate_over"] = ho
-        prop["h10_rate"] = round(float(ho), 1) if not is_under else prop.get("h10_rate")
+        prop["model_hit_rate_over"] = round(float(ho), 1)
     if hu is not None:
         prop["hit_rate_under"] = hu
-        if is_under:
-            prop["h10_rate"] = round(float(hu), 1)
-    # Defensive default for h10_rate if still missing
-    if prop.get("h10_rate") is None:
-        prop["h10_rate"] = round(float(hu), 1) if is_under and hu is not None else (
-            round(float(ho), 1) if ho is not None else None
-        )
+        prop["model_hit_rate_under"] = round(float(hu), 1)
+    # Active-side model hit rate convenience (mirrors score.hit_rate)
+    if is_under and hu is not None:
+        prop["model_hit_rate_active"] = round(float(hu), 1)
+    elif ho is not None:
+        prop["model_hit_rate_active"] = round(float(ho), 1)
+    # NOTE: prop["h10_rate"] is intentionally NOT written here. It is the
+    # canonical L10 hit rate computed by _normalize_hit_rates_from_game_logs
+    # (line ~239) from the first 10 game_logs. Any downstream write here
+    # would silently clobber the chart/tile contract and produce the
+    # "chart 9/10 but tile shows 95%" bug (root-caused 2026-04-18).
 
     # VK recommendation label for downstream display
     if is_under:
@@ -1451,7 +1522,8 @@ async def get_oracle_apex_picks(
             raise HTTPException(status_code=500, detail=result.get('error', 'Unknown error'))
         
         picks = result.get('apex_picks', [])[:limit]
-        
+        picks = _guard_board_picks(picks)
+
         return {
             "tier": "oracle_apex",
             "tier_label": "Oracle Apex (Safe Haven)",
@@ -1521,6 +1593,7 @@ async def get_ferrari_safe_haven(
                 raise HTTPException(status_code=500, detail=result.get('error', 'Unknown error'))
             
             picks = result.get('apex_picks', [])[:limit]
+            picks = _guard_board_picks(picks)
             return {
                 "tier": "safe_haven",
                 "tier_label": "Safe Haven (Live Scan)",
@@ -1590,6 +1663,10 @@ async def get_ferrari_safe_haven(
     for pick in picks:
         if not pick.get("vision_intel"):
             pick["vision_intel"] = _generate_vision_fallback(pick)
+
+    # CANONICAL STAT GUARD: last line of defense against silent clobbering of
+    # h5_rate / h10_rate / h20_rate. Auto-corrects to count-based values.
+    picks = _guard_board_picks(picks)
 
     # Return picks with pipeline status
     # Count validation states for status flag
@@ -1702,6 +1779,9 @@ async def get_ferrari_front_lines(
         if not pick.get("vision_intel"):
             pick["vision_intel"] = _generate_vision_fallback(pick)
 
+    # CANONICAL STAT GUARD: see safe-haven for rationale.
+    picks = _guard_board_picks(picks)
+
     # Return picks with pipeline status
     fully_validated = sum(1 for p in picks if (p.get("validation") or {}).get("is_fully_validated", False))
     has_any_mlr = sum(1 for p in picks if (p.get("validation") or {}).get("has_mlr", False))
@@ -1810,6 +1890,9 @@ async def get_ferrari_war_zone(
     for pick in picks:
         if not pick.get("vision_intel"):
             pick["vision_intel"] = _generate_vision_fallback(pick)
+
+    # CANONICAL STAT GUARD: see safe-haven for rationale.
+    picks = _guard_board_picks(picks)
 
     # Return picks with pipeline status
     fully_validated = sum(1 for p in picks if (p.get("validation") or {}).get("is_fully_validated", False))
