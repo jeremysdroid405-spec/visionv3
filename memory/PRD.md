@@ -418,6 +418,26 @@ Key helper: `_get_nba_tier_picks_from_scores(tier, limit)` +
   header ⇒ **401**. Off-by-default in any environment where the operator
   hasn't opted in.
 
+## MLB Hourly Refresh Job — Shipped (Apr 18, 2026)
+- **New scheduled job**: `scheduled_hourly_mlb_full_sync()` in `server.py`
+  mirrors `scheduled_hourly_full_sync` but publishes `sport='mlb'`. Registered
+  via the same `_register_interval_job()` helper used for NBA, persistent via
+  `MongoDBJobStore`, survives restarts (`next_run_time` preserved by our
+  Phase-2 fix). Existing `mlb_daily_refresh` (09:23 UTC cron) left in place
+  as a deterministic daily anchor.
+- **Hard verification**:
+  - Boot logs show `Registering new interval job 'hourly_mlb_full_sync'` on
+    first restart, `Preserving persisted interval job 'hourly_mlb_full_sync'`
+    on the next — restart-safe as designed.
+  - Manual trigger through the live backend produced one full MLB pipeline
+    (72.1 s, run_id `c11e6d2d`), wrote 30 picks across `mlb_safe_haven`,
+    `mlb_front_lines`, `mlb_war_zone`.
+  - `/api/v3/mlb/ferrari/*` all return 200 with `synced_at ≈ 1 min` old
+    (was 10.5h before).
+  - `/api/full-sync-stats?sport=mlb` + combined payload both populated.
+  - NBA interval jobs unaffected — all 6 preserved their `next_run_time`
+    across the restart.
+
 ## Full-Sync Observability — Dual-Sport + MLB Staleness Root Cause (Apr 18, 2026)
 - **Endpoint upgrade**: `GET /api/full-sync-stats` now supports:
   - `?sport=nba` → NBA-only payload

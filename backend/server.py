@@ -1052,6 +1052,36 @@ async def scheduled_mlb_game_values_sync():
 # WEEKEND-READY INTERVAL JOBS (High-Performance Refresh)
 # =============================================================================
 
+async def scheduled_hourly_mlb_full_sync():
+    """
+    HOURLY MLB SYNC — routes through Rebuild Coordinator.
+
+    Phase 5.x: MLB previously had ONE scheduled refresh per day
+    (mlb_daily_refresh @ 09:23 UTC). Between daily crons the only way MLB
+    got refreshed was opportunistic injury_change events, leaving 8-12h
+    freshness gaps on the live /api/v3/mlb/ferrari/* endpoints. This mirrors
+    scheduled_hourly_full_sync but publishes sport='mlb'. The existing daily
+    cron (mlb_daily_refresh) is intentionally left in place — it runs at a
+    time when odds data is typically fresh and gives the day a deterministic
+    anchor. This hourly job is the gap-filler.
+    """
+    logger.info("=" * 70)
+    logger.info("[SCHEDULER] HOURLY MLB FULL SYNC (via Coordinator)")
+    logger.info(f"[SCHEDULER] Time: {datetime.now(timezone.utc).isoformat()}")
+    logger.info("=" * 70)
+
+    try:
+        from services.event_bus import BoardEvent, get_event_bus
+        await get_event_bus().publish(BoardEvent(
+            sport="mlb",
+            event_type="scheduled_safety",
+            severity="medium",
+            source="scheduler_hourly_mlb",
+        ))
+    except Exception as e:
+        logger.error(f"[SCHEDULER] MLB hourly coordinator dispatch failed: {e}")
+
+
 async def scheduled_hourly_full_sync():
     """
     HOURLY SYNC — routes through Rebuild Coordinator.
@@ -1596,6 +1626,16 @@ async def startup_event():
         IntervalTrigger(minutes=60, timezone=SCHEDULER_TIMEZONE),
         job_id='hourly_full_sync',
         name='Hourly Full Sync (60 min interval)',
+    )
+    
+    # 1b. HOURLY MLB FULL SYNC - Every 60 minutes
+    # Gap-filler between the 09:23 UTC daily cron. Without this, MLB tier
+    # collections went stale for 8-12h between refreshes.
+    _register_interval_job(
+        scheduled_hourly_mlb_full_sync,
+        IntervalTrigger(minutes=60, timezone=SCHEDULER_TIMEZONE),
+        job_id='hourly_mlb_full_sync',
+        name='Hourly MLB Full Sync (60 min interval)',
     )
     
     # 2. HOURLY BADGE SYNC (The Intel) - Every 60 minutes
