@@ -406,58 +406,76 @@ class BadgeResolverService:
         standard_line: float,
         tier: str,
         badges: List[Dict],
-        stats: Dict
+        stats: Dict,
+        direction: str = "OVER"
     ) -> str:
         """
         Generate a ladder-specific insight for DEMON or GOBLIN lines.
-        
-        Explains WHY this particular line is categorized and its viability.
+
+        `direction` is the prop side (OVER/UNDER). Wording inverts for
+        UNDER props so phrasing like "cleared" / "floor" is replaced with
+        "stayed below" / "ceiling". Logic/tier semantics unchanged.
         """
         first_name = player_name.split()[0]
-        l5_avg = stats.get("ppg_l5", stats.get("l5_avg", 0))
-        season_avg = stats.get("ppg", stats.get("season_avg", 0))
-        
-        # Get relevant badge labels
-        badge_labels = [b.get("display") for b in badges[:2]] if badges else []
+        l5_avg = stats.get("ppg_l5") or stats.get("l5_avg") or 0
+        badges = badges or []
+
         has_locked_in = any(b.get("badge_key") == "locked_in" for b in badges)
         has_legal = any(b.get("badge_key") == "legal_noise" for b in badges)
-        
+
+        is_under = (direction or "OVER").upper() == "UNDER"
+
         if tier == "demon" or tier == "red":
-            # DEMON insight - explain the high-risk play
-            gap = line - standard_line
+            if is_under:
+                # DEMON-tier UNDER: high-line UNDER play (fade the ceiling)
+                insight = (f"This is a Demon-tier ladder fade. While {first_name}'s standard is {standard_line}, "
+                           f"the {line} bar is stretched enough that staying under is live. ")
+                if l5_avg < standard_line:
+                    insight += f"His recent {l5_avg:.1f} {stat_type} average "
+                if has_locked_in:
+                    insight += f"and a 'Locked In' role without forced usage "
+                elif has_legal:
+                    insight += f"combined with his off-court situation capping ceiling "
+                insight += f"make the {line}- under a credible high-variance target."
+                if l5_avg < line:
+                    insight += f" He's finished under {line} in his last 5."
+                return insight
+
+            # DEMON-tier OVER (original behaviour)
             insight = f"This is a Demon-tier ladder play. While {first_name}'s standard is {standard_line}, "
-            
             if l5_avg > standard_line:
                 insight += f"his recent {l5_avg:.1f} {stat_type} average "
-            
             if has_locked_in:
                 insight += f"and 'Locked In' status "
             elif has_legal:
                 insight += f"and ability to channel off-court pressure into performance "
-            
             insight += f"make this {line}+ high-ceiling target viable."
-            
-            # Add historical context if available
             if l5_avg > line:
                 insight += f" He's hit {line}+ in his last 5."
-            
             return insight
-            
+
         elif tier == "goblin" or tier == "green":
-            # GOBLIN insight - explain the safe play
-            gap = standard_line - line
+            if is_under:
+                # GOBLIN-tier UNDER: low-line UNDER (fade a depressed line)
+                insight = f"Goblin-tier under play. At {line}- (vs standard {standard_line}), "
+                insight += f"{first_name} needs to stay at or below this tight number. "
+                if l5_avg + 5 < line:
+                    insight += f"His L5 average of {l5_avg:.1f} leaves a {line - l5_avg:.1f} point cushion under."
+                elif l5_avg < line:
+                    insight += f"Recent form ({l5_avg:.1f} L5 avg) supports staying below."
+                return insight
+
+            # GOBLIN-tier OVER (original behaviour)
             insight = f"Goblin-tier safe play. At {line}+ (vs standard {standard_line}), "
             insight += f"{first_name} has cleared this with high consistency. "
-            
             if l5_avg > line + 5:
                 insight += f"His L5 average of {l5_avg:.1f} provides a {l5_avg - line:.1f} point cushion."
             elif l5_avg > line:
                 insight += f"Recent form ({l5_avg:.1f} L5 avg) supports this floor."
-            
             return insight
-        
+
         return None
-    
+
     async def get_player_vision(self, player_id: int) -> Dict[str, Any]:
         """
         Get complete player vision data including stats and badges.

@@ -30,28 +30,84 @@ _enrichment_cache = {}
 _enrichment_cache_mtime = {}
 
 
+def _resolve_prop_direction(pick: dict) -> str:
+    """Universal, sport-agnostic side extractor for Vision Intel wording.
+    Reads `direction` first (PP ships per-side prop rows), falls back to
+    `recommendation`. Returns 'OVER' or 'UNDER'."""
+    raw = (pick.get("direction") or pick.get("recommendation") or "").upper()
+    if "UNDER" in raw:
+        return "UNDER"
+    return "OVER"
+
+
 def _generate_vision_fallback(pick: dict) -> str:
-    """Generate a punchy fallback vision_intel summary from available prop data."""
+    """Generate a punchy fallback vision_intel summary — DIRECTION-AWARE.
+
+    Same reasoning shape for OVER and UNDER; only the interpretive verbs
+    and hit-rate field used flip. No sport-specific branches.
+    """
     player = pick.get("player_name", "Player")
     stat = pick.get("stat_type", "stat")
     line = pick.get("line") or 0
     vk_pred = pick.get("vk_predicted")
-    vk_edge = pick.get("vk_edge") or pick.get("true_edge") or 0
-    h10 = pick.get("h10_rate") or pick.get("l10_rate") or pick.get("true_hit_rate") or 0
-    prob = pick.get("vk_prob_over") or pick.get("propvision_true_prob") or 0
+    vk_edge_raw = pick.get("vk_edge") or pick.get("true_edge") or 0
+    prob_over = pick.get("vk_prob_over") or pick.get("propvision_true_prob") or 0
+    prob_under = pick.get("vk_prob_under")
+    if prob_under is None and prob_over:
+        prob_under = max(0.0, 100.0 - float(prob_over))
 
-    if vk_pred and vk_edge:
-        direction = "OVER" if vk_edge > 0 else "UNDER"
-        if h10 >= 80:
-            return f"{player} is hammering {stat} at an {h10:.0f}% L10 clip — projection of {vk_pred:.1f} vs {line} gives us a {vk_edge:+.1f} edge to ride."
-        elif h10 >= 65:
-            return f"{player} {stat} projects to {vk_pred:.1f} against a {line} line ({direction} {vk_edge:+.1f}). L10 hit rate at {h10:.0f}% — consistent enough to back."
-        else:
-            return f"{player} {stat} at {line} — model sees {vk_pred:.1f} ({direction} {vk_edge:+.1f}). Stay cautious, the floor isn't locked here."
-    elif prob >= 70:
-        return f"{player} {stat} at {line} — model confidence at {prob:.0f}%. L10 hit rate {h10:.0f}%. The math backs the over."
+    direction = _resolve_prop_direction(pick)
+    is_under = direction == "UNDER"
+
+    # Side-aware hit-rate. Prefer explicit side-keyed field (backend now
+    # emits `hit_rate_under` / `hit_rate_over`); fall back to raw OVER rate
+    # flipped for UNDER when only legacy h10/l10 is present.
+    h_over = pick.get("hit_rate_over") or pick.get("h10_rate") or pick.get("l10_rate") or pick.get("true_hit_rate") or 0
+    h_under = pick.get("hit_rate_under")
+    if h_under is None and h_over is not None:
+        h_under = max(0.0, 100.0 - float(h_over))
+    h_side = h_under if is_under else h_over
+
+    # Side-aware edge (vk_edge is OVER-edge; flip for UNDER).
+    try:
+        vk_edge = -float(vk_edge_raw) if is_under else float(vk_edge_raw)
+    except (TypeError, ValueError):
+        vk_edge = 0
+
+    # Side-aware probability for the low-confidence fallback.
+    prob_side = prob_under if is_under else prob_over
+    prob_side = float(prob_side or 0)
+
+    # Verbs / floor-vs-ceiling chosen per side.
+    if is_under:
+        hammer_verb = "suppressing"           # high under-rate
+        relation = "below"                    # projection sits BELOW line
+        pick_verb = "ride the under"
+        caution_noun = "ceiling"              # UNDER loses if the ceiling breaks
+        math_backs = "the math backs the under"
     else:
-        return f"{player} {stat} at {line} — riding this with {prob:.0f}% model probability and {h10:.0f}% recent form."
+        hammer_verb = "hammering"
+        relation = "above"
+        pick_verb = "ride"
+        caution_noun = "floor"
+        math_backs = "the math backs the over"
+
+    if vk_pred and vk_edge_raw:
+        if h_side >= 80:
+            return (f"{player} is {hammer_verb} {stat} at an {h_side:.0f}% L10 {direction.lower()} clip — "
+                    f"projection of {vk_pred:.1f} sits {relation} the {line} line for a {vk_edge:+.1f} edge to {pick_verb}.")
+        elif h_side >= 65:
+            return (f"{player} {stat} projects to {vk_pred:.1f} against a {line} line ({direction} {vk_edge:+.1f}). "
+                    f"L10 {direction.lower()} rate at {h_side:.0f}% — consistent enough to back.")
+        else:
+            return (f"{player} {stat} at {line} — model sees {vk_pred:.1f} ({direction} {vk_edge:+.1f}). "
+                    f"Stay cautious, the {caution_noun} isn't locked here.")
+    elif prob_side >= 70:
+        return (f"{player} {stat} at {line} — model confidence at {prob_side:.0f}%. "
+                f"L10 {direction.lower()} rate {h_side:.0f}%. {math_backs}.")
+    else:
+        return (f"{player} {stat} at {line} — riding the {direction.lower()} with {prob_side:.0f}% model probability "
+                f"and {h_side:.0f}% recent form.")
 
 
 def overlay_enrichment_cache(picks: list, sport: str) -> list:
@@ -277,21 +333,12 @@ def enrich_mlb_prop_with_averages(prop: Dict, player_data: Dict = None) -> Dict:
     # VISION INTEL - Generated by Gemini during enrichment cycle.
     # This sync path sets a baseline; the async enrichment overwrites with LLM text.
     # =========================================================================
-    player_name = prop.get("player_name", "Player")
-    stat_type = prop.get("stat_type", "stat")
-    h10 = prop.get("h10_rate") or 0
-    vk_pred = prop.get("vk_predicted") or 0
-    vk_edge = prop.get("vk_edge") or 0
-
-    # Only set baseline if vision_intel not already set by Gemini enrichment
+    # Only set baseline if vision_intel not already set by Gemini enrichment.
+    # Delegates to the shared DIRECTION-AWARE fallback builder so the
+    # sync-path and the fallback-overlay path produce identical symmetric
+    # wording for OVER and UNDER props.
     if not prop.get("vision_intel"):
-        direction = "OVER" if vk_edge > 0 else "UNDER"
-        if h10 >= 80:
-            prop["vision_intel"] = f"{player_name} is hammering {stat_type} at an {h10:.0f}% L10 clip — projection of {vk_pred:.1f} vs {line} gives us a {vk_edge:+.1f} edge to ride."
-        elif h10 >= 65:
-            prop["vision_intel"] = f"{player_name} {stat_type} projects to {vk_pred:.1f} against a {line} line ({direction} {vk_edge:+.1f}). L10 hit rate at {h10:.0f}% — consistent enough to back."
-        else:
-            prop["vision_intel"] = f"{player_name} {stat_type} at {line} — model sees {vk_pred:.1f} ({direction} {vk_edge:+.1f}). Stay cautious, the floor isn't locked here."
+        prop["vision_intel"] = _generate_vision_fallback(prop)
         prop["vision_summary"] = prop["vision_intel"]
     
     # =========================================================================

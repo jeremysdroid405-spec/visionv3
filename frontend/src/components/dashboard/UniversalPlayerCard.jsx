@@ -500,11 +500,19 @@ const PropRow = memo(({ prop, theme, onClick, onQuickAdd, onVKClick }) => {
   
   // Vegas Killer prediction data
   const vkPredicted = prop.vk_predicted;
-  const vkEdge = prop.vk_edge;
+  const vkRecommendation = prop.vk_recommendation;
   const vkProbOver = prop.vk_prob_over;
   const vkProbUnder = prop.vk_prob_under;
-  const vkRecommendation = prop.vk_recommendation;
   const hasVK = vkPredicted != null;
+
+  // Direction-aware edge: backend stores `vk_edge` as OVER-side edge.
+  // For an UNDER prop card, invert so the user sees the edge FOR the
+  // side they're betting. Same logic applies universally across sports.
+  const _propSide = (prop.direction || prop.recommendation || '').toString().toUpperCase();
+  const _isUnderSide = _propSide.includes('UNDER');
+  const vkEdge = (prop.vk_edge != null && _isUnderSide)
+    ? -Number(prop.vk_edge)
+    : prop.vk_edge;
   
   // Determine card styling based on tier
   const tierBg = isMinefield ? 'bg-orange-950/40 border-orange-500/30'
@@ -902,7 +910,15 @@ const UniversalPlayerCard = memo(({
             </div>
             {player.vk_edge != null && (
               <div className="flex items-center justify-between mt-0.5 text-[9px]">
-                <span className="text-white/70">Edge: <span className="text-white font-medium">{player.vk_edge > 0 ? '+' : ''}{player.vk_edge?.toFixed?.(1)}%</span></span>
+                {(() => {
+                  // Direction-aware display edge (UNDER flips sign)
+                  const _side = (player.direction || player.recommendation || '').toString().toUpperCase();
+                  const _isUnder = _side.includes('UNDER');
+                  const _dispEdge = _isUnder ? -Number(player.vk_edge) : Number(player.vk_edge);
+                  return (
+                    <span className="text-white/70">Edge: <span className="text-white font-medium">{_dispEdge > 0 ? '+' : ''}{_dispEdge.toFixed(1)}%</span></span>
+                  );
+                })()}
                 <span className="text-white/70">Over: <span className="text-white">{player.vk_prob_over?.toFixed?.(0)}%</span> | Under: <span className="text-white">{player.vk_prob_under?.toFixed?.(0)}%</span></span>
               </div>
             )}
