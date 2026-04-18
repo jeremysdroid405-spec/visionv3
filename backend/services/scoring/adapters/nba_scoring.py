@@ -34,14 +34,27 @@ class _NBAGateSorter:
     # of safe_haven/front_lines; all entrants migrate from unqualified only.
     WAR_ZONE = {"min_cv": 0.45, "min_ceiling_rate": 20, "min_edge": 10}
 
+    # Path (c) — side-aware tp gate: UNDER picks replace market-implied tp with
+    # a model-confidence floor (p_model * 100) at BALANCED thresholds locked
+    # 2026-04-18 after slate audit. OVER path is unchanged. `war_zone_under`
+    # is recorded for future use; war_zone has no gate_tp today (ceiling-only).
+    UNDER_TP_FLOORS = {
+        "safe_haven": 75,
+        "front_lines": 65,
+        "war_zone": 60,  # not yet wired — awaits floor_rate side-aware gate
+    }
+
     def __init__(self, overrides: Optional[Dict[str, Any]] = None):
         o = overrides or {}
         self.SAFE_HAVEN = {**self.SAFE_HAVEN, **(o.get("safe_haven") or {})}
         self.FRONT_LINES = {**self.FRONT_LINES, **(o.get("front_lines") or {})}
         self.WAR_ZONE = {**self.WAR_ZONE, **(o.get("war_zone") or {})}
+        self.UNDER_TP_FLOORS = {**self.UNDER_TP_FLOORS, **(o.get("under_tp_floors") or {})}
 
     def _check(self, gates_def, *, cv=None, hit_rate=None, edge_pct=None,
-               tp=None, ceiling_rate=None):
+               tp=None, ceiling_rate=None,
+               side: str = "OVER", p_model_pct: Optional[float] = None,
+               tier_name: Optional[str] = None):
         results = {}
         if "max_cv" in gates_def:
             results["gate_cv"] = {
@@ -69,22 +82,39 @@ class _NBAGateSorter:
                 "passed": edge_pct is not None and edge_pct >= gates_def["min_edge"],
             }
         if "min_tp" in gates_def:
-            results["gate_tp"] = {
-                "threshold": gates_def["min_tp"], "value": tp,
-                "passed": tp is not None and tp >= gates_def["min_tp"],
-            }
+            if side == "UNDER" and tier_name in self.UNDER_TP_FLOORS:
+                # Side-aware path: replace market-implied tp with model
+                # confidence (p_model * 100) against UNDER-specific threshold.
+                under_floor = self.UNDER_TP_FLOORS[tier_name]
+                results["gate_tp"] = {
+                    "threshold": under_floor, "value": p_model_pct,
+                    "passed": p_model_pct is not None and p_model_pct >= under_floor,
+                    "source": "model_confidence_under",
+                }
+            else:
+                results["gate_tp"] = {
+                    "threshold": gates_def["min_tp"], "value": tp,
+                    "passed": tp is not None and tp >= gates_def["min_tp"],
+                    "source": "market_implied_over" if side == "OVER" else "market_implied",
+                }
         failed = [k for k, v in results.items() if not v["passed"]]
         return (len(failed) == 0), (",".join(failed) or "ok"), results
 
-    def check_safe_haven_gates(self, prop, cv, hit_rate, edge_pct, tp):
+    def check_safe_haven_gates(self, prop, cv, hit_rate, edge_pct, tp,
+                               side: str = "OVER", p_model_pct: Optional[float] = None):
         return self._check(self.SAFE_HAVEN, cv=cv, hit_rate=hit_rate,
-                           edge_pct=edge_pct, tp=tp)
+                           edge_pct=edge_pct, tp=tp,
+                           side=side, p_model_pct=p_model_pct, tier_name="safe_haven")
 
-    def check_front_lines_gates(self, prop, cv, hit_rate, edge_pct, tp):
+    def check_front_lines_gates(self, prop, cv, hit_rate, edge_pct, tp,
+                                side: str = "OVER", p_model_pct: Optional[float] = None):
         return self._check(self.FRONT_LINES, cv=cv, hit_rate=hit_rate,
-                           edge_pct=edge_pct, tp=tp)
+                           edge_pct=edge_pct, tp=tp,
+                           side=side, p_model_pct=p_model_pct, tier_name="front_lines")
 
     def check_war_zone_gates(self, prop, cv, ceiling_rate, edge_pct):
+        # war_zone has no tp gate — UNDER qualification here awaits the
+        # separate floor_rate work. OVER behaviour fully preserved.
         return self._check(self.WAR_ZONE, cv=cv, ceiling_rate=ceiling_rate,
                            edge_pct=edge_pct)
 

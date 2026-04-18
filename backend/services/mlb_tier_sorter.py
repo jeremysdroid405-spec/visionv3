@@ -481,7 +481,8 @@ class MLBTierSorter:
         cv: Optional[float],
         hit_rate: Optional[float],
         edge_pct: Optional[float],
-        tp_odds: float
+        tp_odds: float,
+        **kwargs,
     ) -> Tuple[bool, str, Dict]:
         """
         Check if prop passes Safe Haven stat-specific gates.
@@ -567,7 +568,8 @@ class MLBTierSorter:
         cv: Optional[float],
         hit_rate: Optional[float],
         edge_pct: Optional[float],
-        tp_odds: float
+        tp_odds: float,
+        **kwargs,
     ) -> Tuple[bool, str, Dict]:
         """Check if prop passes Front Lines stat-specific gates."""
         stat_key = self._normalize_stat_type(prop.get("stat_type", ""))

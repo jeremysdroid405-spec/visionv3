@@ -1,6 +1,6 @@
 {
   "sport": "NBA",
-  "last_updated": "2026-04-18T03:05:09.714890+00:00",
+  "last_updated": "2026-04-18T03:12:27.203678+00:00",
   "prop_count": 30,
   "props": {
     "shaedon_sharpe|ast|2.5|prizepicks": {
@@ -5079,279 +5079,6 @@
       "_enriched_at": "2026-04-18T03:04:01.652213+00:00",
       "_cache_updated": "2026-04-18T03:04:01.652215+00:00"
     },
-    "grayson_allen|ast|2.5|prizepicks": {
-      "event_id": "c8d1b7fd06c21e259b9416daf596f023",
-      "home_team": "PHX",
-      "away_team": "GSW",
-      "commence_time": "2026-04-18T02:18:02Z",
-      "player_name": "Grayson Allen",
-      "market": "player_assists_alternate",
-      "direction": "Over",
-      "line": 2.5,
-      "price": 100,
-      "multiplier": null,
-      "bookmaker": "prizepicks",
-      "is_alternate_market": true,
-      "is_demon": true,
-      "is_goblin": false,
-      "prop_type": "DEMON",
-      "last_update": "2026-04-18T02:48:26Z",
-      "popularity_order": 11,
-      "fetched_at": "2026-04-18T02:48:31.083204+00:00",
-      "sharp_market": {
-        "draftkings_price": 155,
-        "fanduel_price": null,
-        "betonline_price": null,
-        "sort_price": 155,
-        "sort_source": "draftkings",
-        "is_alternate": true
-      },
-      "draftkings_price": 155,
-      "fanduel_price": null,
-      "betonline_price": null,
-      "sort_price": 155,
-      "sort_source": "draftkings",
-      "home_team_full": "Phoenix Suns",
-      "away_team_full": "Golden State Warriors",
-      "player_name_raw": "Grayson Allen",
-      "_composite_key": "Grayson Allen|AST|2.5|Over|2026-04-18",
-      "stat_type_extracted": "AST",
-      "game_date": "2026-04-18",
-      "synced_at": "2026-04-18T02:48:30.753684+00:00",
-      "hit_rates": {
-        "l10_rate": 40,
-        "l5_rate": 0,
-        "l10_hit_count": 4,
-        "l5_hit_count": 0,
-        "l5_avg": 1.4,
-        "season_avg": 3.8,
-        "l10_avg": 2.4
-      },
-      "oracle_apex_qualified": false,
-      "apex_reason": "GATE1_HIT_RATE: 12/20 < 15/20",
-      "vk_predicted": 2.7,
-      "vk_edge": 0.2,
-      "vk_prob_over": 60.0,
-      "vk_prob_under": 40.0,
-      "vk_recommendation": "LEAN_OVER",
-      "cv": 0.627,
-      "h5_rate": 0,
-      "h10_rate": 60.0,
-      "h20_rate": 60.0,
-      "l5_hits": 0,
-      "l10_hits": 4,
-      "l20_hits": 12,
-      "l5_avg": 1.4,
-      "l10_avg": 2.4,
-      "l20_avg": 3.8,
-      "sharp_movement": false,
-      "movement_delta": -1.1,
-      "movement_direction": "under_value",
-      "movement_strength": "minimal",
-      "trap_risk": false,
-      "hook_risk": false,
-      "suspect_line_bait": false,
-      "trap_reasons": [],
-      "sidecar": {
-        "hook_risk": false,
-        "suspect_line_bait": false
-      },
-      "tier_label": "WAR_ZONE",
-      "stat_type": "AST",
-      "h10_hit_rate": 40,
-      "h5_hit_rate": 0,
-      "season_avg": 3.8,
-      "l10_hit_count": 4,
-      "l5_hit_count": 0,
-      "intel_suite": {
-        "usage_ripple": {
-          "bump_percent": 0,
-          "display": "Standard Volume",
-          "shift_label": "Standard Volume",
-          "injuries_affecting": [],
-          "reasoning": "No significant lineup changes"
-        },
-        "matchup_dvp": {
-          "rank": 10,
-          "display": "Rank #10 vs. Playmakers",
-          "color": "yellow",
-          "friction_level": "Med-High",
-          "friction_label": "Above Average Defense",
-          "opponent": "GSW",
-          "stat_category": "AST"
-        },
-        "pace_delta": {
-          "possessions": 1.1,
-          "display": "+1.1 Possessions",
-          "pace_factor": 1.0,
-          "tempo_label": "Standard Tempo",
-          "team_pace": 99.0,
-          "opponent_pace": 98.2,
-          "expected_game_pace": 98.6
-        },
-        "stability_index": {
-          "score": 95,
-          "label": "Elite",
-          "display": "95/100 (Elite)",
-          "std_dev": 1.25,
-          "consistency": "Extremely Consistent",
-          "variance_level": "Low"
-        },
-        "vision_insight": {
-          "primary": "The books are practically begging us to take the over here, because projecting Grayson to drop 3.5 dimes against a line of 2.5 is a massive 38% edge we simply can't ignore. Golden State\u2019s defense is respectable, but with a 95 stability score and a faster pace on deck, we are looking at a total gift for a guy who consistently facilitates when the floor opens up.",
-          "summary": "The books are practically begging us to take the over here, because projecting Grayson to drop 3.5 dimes against a line of 2.5 is a massive 38% edge we simply can't ignore. Golden State\u2019s defense is respectable, but with a 95 stability score and a faster pace on deck, we are looking at a total gift for a guy who consistently facilitates when the floor opens up.",
-          "lasso_projection": 3.46,
-          "lasso_edge": 0.96,
-          "confidence": "HIGH_FIDELITY",
-          "tactical_note": "Baseline projection favorable"
-        },
-        "blowout_risk": {
-          "player_team_record": "45-37",
-          "opponent_team_record": "37-45",
-          "player_win_pct": 0.549,
-          "opponent_win_pct": 0.451,
-          "win_pct_diff": 0.098,
-          "favored_team": "PHX",
-          "player_is_favored": true,
-          "risk_level": "NONE",
-          "risk_reason": "Competitive matchup: PHX (45-37) vs GSW (37-45)",
-          "warning": null
-        },
-        "scout_badges": [
-          "hot_streak",
-          "floor_lock",
-          "lasso_high_edge",
-          "high_fidelity_model"
-        ],
-        "lasso": {
-          "projection": 3.46,
-          "confidence_tier": "HIGH_FIDELITY",
-          "r_squared": 0.5469,
-          "top_drivers": [
-            "prev_ast",
-            "target_L10_avg"
-          ]
-        },
-        "calculated_at": "2026-04-18T03:04:06.116609+00:00"
-      },
-      "is_vision_enriched": true,
-      "is_anomaly": false,
-      "is_demon_anomaly": false,
-      "is_goblin_anomaly": false,
-      "season_margin": 1.3,
-      "margin": -0.1,
-      "player_id": "8",
-      "nba_id": 1628960,
-      "bdl_id": 8,
-      "nba_com_id": 1628960,
-      "headshot_url": "/static/player-headshots/1628960.png",
-      "photo_url": "/static/player-headshots/1628960.png",
-      "team": "PHX",
-      "team_name": "Phoenix Suns",
-      "position": "G",
-      "opponent": "GSW",
-      "opponent_abbr": "GSW",
-      "injured_teammates": [],
-      "recommendation": "Over",
-      "sport": "nba",
-      "tier": "war_zone",
-      "vision_score": 81.4,
-      "vision_score_raw": 0.097749,
-      "tier_gate_results": {
-        "gate_cv": {
-          "threshold": 0.45,
-          "value": 0.648,
-          "passed": true
-        },
-        "gate_ceiling": {
-          "threshold": 20,
-          "value": 45.0,
-          "passed": true
-        },
-        "gate_edge": {
-          "threshold": 10,
-          "value": 20.8,
-          "passed": true
-        }
-      },
-      "tier_reason": "gates_passed",
-      "tier_reference_book": "dk",
-      "tier_reference_odds": 155,
-      "edge_vs_fair": 0.2078,
-      "fair_prob": 0.3922,
-      "quality_source": "dk",
-      "stability": 0.784,
-      "confidence_score": 1.0,
-      "version_tag": "final-nba",
-      "computed_at": "2026-04-18T03:01:52.276095+00:00",
-      "pp_utility": 78.0,
-      "pp_utility_category": "pp_premium",
-      "pp_utility_components": {
-        "availability": 1.0,
-        "line_fairness": 1.0,
-        "model_alignment": 0.5844,
-        "edge_confidence": 0.5195,
-        "multiplier_value": 0.9,
-        "weights": {
-          "availability": 0.15,
-          "line_fairness": 0.2,
-          "model_alignment": 0.25,
-          "edge_confidence": 0.2,
-          "multiplier_value": 0.2
-        },
-        "pp_utility_raw": 78.0,
-        "category_raw": "pp_premium"
-      },
-      "pp_multiplier": null,
-      "pp_multiplier_label": "demon",
-      "pp_multiplier_source": "pp_label",
-      "pp_reference_source": "dk",
-      "pp_playable": true,
-      "pp_playability_reason": "playable",
-      "is_standard": false,
-      "vk2_projection": null,
-      "vk2_sigma": null,
-      "model_projection": 2.7,
-      "model_sigma": 1.7,
-      "p_true_active": 0.6,
-      "p_true_method": "hit_rate",
-      "p_true_vk2": null,
-      "p_true_hit_rate": 0.6,
-      "hit_rate_over": 60.0,
-      "hit_rate_under": 40.0,
-      "canonical_key": "nba|c8d1b7fd06c21e259b9416daf596f023|Grayson Allen|AST|2.5|OVER",
-      "validation": {
-        "has_market_data": true,
-        "has_hit_rates": true,
-        "has_context": true,
-        "has_mlr": false,
-        "has_gemini": false,
-        "is_fully_validated": false
-      },
-      "volatility_score": 69.7,
-      "volatility_label": "moderate",
-      "volatility_family": "nba_low_line",
-      "scout_badges": [
-        "hot_streak",
-        "floor_lock",
-        "lasso_high_edge",
-        "high_fidelity_model"
-      ],
-      "vision_intel": "The books are practically begging us to take the over here by setting the line at 2.5 when Grayson is staring down a massive 38.4% edge against Golden State. Even though the Warriors' defense isn't a total pushover, our guy has been a metronome of stability lately and our projection of 3.5 assists makes this feel like we're finding free money on the sidewalk.",
-      "vk_data": {
-        "projection": 3.46,
-        "confidence_tier": "HIGH_FIDELITY",
-        "r_squared": 0.5469,
-        "top_drivers": [
-          "prev_ast",
-          "target_L10_avg"
-        ]
-      },
-      "vision_summary": "The books are practically begging us to take the over here by setting the line at 2.5 when Grayson is staring down a massive 38.4% edge against Golden State. Even though the Warriors' defense isn't a total pushover, our guy has been a metronome of stability lately and our projection of 3.5 assists makes this feel like we're finding free money on the sidewalk.",
-      "_enriched": true,
-      "_enriched_at": "2026-04-18T03:04:07.372863+00:00",
-      "_cache_updated": "2026-04-18T03:04:07.372866+00:00"
-    },
     "sandro_mamukelashvili|pts|7.5|prizepicks": {
       "event_id": "2a8e5a45f1bcb477a6f9cbd7739d005e",
       "home_team": "CLE",
@@ -5907,283 +5634,6 @@
       "_enriched": true,
       "_enriched_at": "2026-04-18T03:04:40.400686+00:00",
       "_cache_updated": "2026-04-18T03:04:40.400688+00:00"
-    },
-    "gary_payton_ii|pra|9.5|prizepicks": {
-      "event_id": "c8d1b7fd06c21e259b9416daf596f023",
-      "home_team": "PHX",
-      "away_team": "GSW",
-      "commence_time": "2026-04-18T02:18:02Z",
-      "player_name": "Gary Payton II",
-      "market": "player_points_rebounds_assists_alternate",
-      "direction": "Over",
-      "line": 9.5,
-      "price": -137,
-      "multiplier": null,
-      "bookmaker": "prizepicks",
-      "is_alternate_market": true,
-      "is_demon": false,
-      "is_goblin": true,
-      "prop_type": "GOBLIN",
-      "last_update": "2026-04-18T02:48:26Z",
-      "popularity_order": 16,
-      "fetched_at": "2026-04-18T02:48:31.083342+00:00",
-      "sharp_market": {
-        "draftkings_price": -250,
-        "fanduel_price": null,
-        "betonline_price": null,
-        "sort_price": -250,
-        "sort_source": "draftkings",
-        "is_alternate": true
-      },
-      "draftkings_price": -250,
-      "fanduel_price": null,
-      "betonline_price": null,
-      "sort_price": -250,
-      "sort_source": "draftkings",
-      "home_team_full": "Phoenix Suns",
-      "away_team_full": "Golden State Warriors",
-      "player_name_raw": "Gary Payton II",
-      "_composite_key": "Gary Payton II|PRA|9.5|Over|2026-04-18",
-      "stat_type_extracted": "PRA",
-      "game_date": "2026-04-18",
-      "synced_at": "2026-04-18T02:48:30.753684+00:00",
-      "hit_rates": {
-        "l10_rate": 80,
-        "l5_rate": 60,
-        "l10_hit_count": 8,
-        "l5_hit_count": 3,
-        "l5_avg": 7.8,
-        "season_avg": 13.0,
-        "l10_avg": 14.3
-      },
-      "oracle_apex_qualified": false,
-      "apex_reason": "GATE2_CV: 0.371 > 0.2",
-      "vk_predicted": 11.4,
-      "vk_edge": 1.9,
-      "vk_prob_over": 90.0,
-      "vk_prob_under": 10.0,
-      "vk_recommendation": "STRONG_OVER",
-      "cv": 0.371,
-      "h5_rate": 60,
-      "h10_rate": 90.0,
-      "h20_rate": 95.0,
-      "l5_hits": 4,
-      "l10_hits": 9,
-      "l20_hits": 19,
-      "l5_avg": 7.8,
-      "l10_avg": 14.3,
-      "l20_avg": 18.7,
-      "sharp_movement": true,
-      "movement_delta": 2.1,
-      "movement_direction": "over_value",
-      "movement_strength": "moderate",
-      "trap_risk": false,
-      "hook_risk": false,
-      "suspect_line_bait": false,
-      "trap_reasons": [],
-      "sidecar": {
-        "hook_risk": false,
-        "suspect_line_bait": false
-      },
-      "tier_label": "SAFE_HAVEN",
-      "stat_type": "PRA",
-      "h10_hit_rate": 80,
-      "h5_hit_rate": 60,
-      "season_avg": 13.0,
-      "l10_hit_count": 8,
-      "l5_hit_count": 3,
-      "intel_suite": {
-        "usage_ripple": {
-          "bump_percent": 0,
-          "display": "Standard Volume",
-          "shift_label": "Standard Volume",
-          "injuries_affecting": [],
-          "reasoning": "No significant lineup changes"
-        },
-        "matchup_dvp": {
-          "rank": 15,
-          "display": "Rank #15 vs. All-Around",
-          "color": "yellow",
-          "friction_level": "Medium",
-          "friction_label": "Below Average Defense",
-          "opponent": "PHX",
-          "stat_category": "PRA"
-        },
-        "pace_delta": {
-          "possessions": 1.1,
-          "display": "+1.1 Possessions",
-          "pace_factor": 1.0,
-          "tempo_label": "Standard Tempo",
-          "team_pace": 98.2,
-          "opponent_pace": 99.0,
-          "expected_game_pace": 98.6
-        },
-        "stability_index": {
-          "score": 55,
-          "label": "Medium",
-          "display": "55/100 (Medium)",
-          "std_dev": 4.22,
-          "consistency": "Average",
-          "variance_level": "Medium"
-        },
-        "vision_insight": {
-          "primary": "Why the books are still hanging a 9.5 PRA line on Gary Payton II is a mystery we\u2019re happy to exploit after he cleared this mark in nine of his last ten games. With an average of 14.3 over that span and a matchup against a mediocre Phoenix defense, we are looking at an 18.7% edge that feels like a total gift for our bankrolls tonight.",
-          "summary": "Why the books are still hanging a 9.5 PRA line on Gary Payton II is a mystery we\u2019re happy to exploit after he cleared this mark in nine of his last ten games. With an average of 14.3 over that span and a matchup against a mediocre Phoenix defense, we are looking at an 18.7% edge that feels like a total gift for our bankrolls tonight.",
-          "lasso_projection": 11.28,
-          "lasso_edge": 1.78,
-          "confidence": "HIGH_FIDELITY",
-          "tactical_note": "Baseline projection favorable"
-        },
-        "blowout_risk": {
-          "player_team_record": "37-45",
-          "opponent_team_record": "45-37",
-          "player_win_pct": 0.451,
-          "opponent_win_pct": 0.549,
-          "win_pct_diff": 0.098,
-          "favored_team": "PHX",
-          "player_is_favored": false,
-          "risk_level": "NONE",
-          "risk_reason": "Competitive matchup: GSW (37-45) vs PHX (45-37)",
-          "warning": null
-        },
-        "scout_badges": [
-          "lasso_high_edge",
-          "high_fidelity_model"
-        ],
-        "lasso": {
-          "projection": 11.28,
-          "confidence_tier": "HIGH_FIDELITY",
-          "r_squared": 0.6081,
-          "top_drivers": [
-            "prev_fga",
-            "L10_avg_fg_pct"
-          ]
-        },
-        "calculated_at": "2026-04-18T03:04:42.567483+00:00"
-      },
-      "is_vision_enriched": true,
-      "is_anomaly": false,
-      "is_demon_anomaly": false,
-      "is_goblin_anomaly": false,
-      "season_margin": 3.5,
-      "margin": 4.8,
-      "vision_summary": "The books haven't caught up to the fact that GP2 has cleared this 9.5 PRA line in nine of his last ten games while averaging a massive 14.3 over that stretch. We are jumping on this 18.7% edge against a middle-of-the-pack Phoenix defense because his 95% hit rate over the last twenty games makes this line feel like a total clerical error.",
-      "vision_enriched_at": null,
-      "vision_score": 93.8,
-      "board": null,
-      "active_badges": null,
-      "player_id": "2189",
-      "nba_id": 1627780,
-      "bdl_id": 2189,
-      "nba_com_id": 1627780,
-      "headshot_url": "/static/player-headshots/1627780.png",
-      "photo_url": "/static/player-headshots/1627780.png",
-      "team": "GSW",
-      "team_name": "Golden State Warriors",
-      "position": "",
-      "opponent": "PHX",
-      "opponent_abbr": "PHX",
-      "injured_teammates": [],
-      "recommendation": "Over",
-      "sport": "nba",
-      "tier": "safe_haven",
-      "vision_score_raw": 0.147353,
-      "tier_gate_results": {
-        "gate_cv": {
-          "threshold": 0.5,
-          "value": 0.355,
-          "passed": true
-        },
-        "gate_hit_rate": {
-          "threshold": 75,
-          "value": 90.0,
-          "passed": true
-        },
-        "gate_edge": {
-          "threshold": 8,
-          "value": 18.6,
-          "passed": true
-        },
-        "gate_tp": {
-          "threshold": 70,
-          "value": 71.4,
-          "passed": true
-        }
-      },
-      "tier_reason": "gates_passed",
-      "tier_reference_book": "dk",
-      "tier_reference_odds": -250,
-      "edge_vs_fair": 0.1857,
-      "fair_prob": 0.7143,
-      "quality_source": "dk",
-      "stability": 0.8817,
-      "confidence_score": 1.0,
-      "version_tag": "final-nba",
-      "computed_at": "2026-04-18T03:01:52.276095+00:00",
-      "pp_utility": 65.0,
-      "pp_utility_category": "pp_discount",
-      "pp_utility_components": {
-        "availability": 1.0,
-        "line_fairness": 1.0,
-        "model_alignment": 0.6286,
-        "edge_confidence": 0.4642,
-        "multiplier_value": 0.25,
-        "weights": {
-          "availability": 0.15,
-          "line_fairness": 0.2,
-          "model_alignment": 0.25,
-          "edge_confidence": 0.2,
-          "multiplier_value": 0.2
-        },
-        "pp_utility_raw": 65.0,
-        "category_raw": "pp_discount"
-      },
-      "pp_multiplier": null,
-      "pp_multiplier_label": "goblin",
-      "pp_multiplier_source": "pp_label",
-      "pp_reference_source": "dk",
-      "pp_playable": true,
-      "pp_playability_reason": "playable",
-      "is_standard": false,
-      "vk2_projection": null,
-      "vk2_sigma": null,
-      "model_projection": 13.76,
-      "model_sigma": 7.92,
-      "p_true_active": 0.9,
-      "p_true_method": "hit_rate",
-      "p_true_vk2": null,
-      "p_true_hit_rate": 0.9,
-      "hit_rate_over": 90.0,
-      "hit_rate_under": 10.0,
-      "canonical_key": "nba|c8d1b7fd06c21e259b9416daf596f023|Gary Payton II|PRA|9.5|OVER",
-      "validation": {
-        "has_market_data": true,
-        "has_hit_rates": true,
-        "has_context": true,
-        "has_mlr": false,
-        "has_gemini": false,
-        "is_fully_validated": false
-      },
-      "volatility_score": 53.0,
-      "volatility_label": "moderate",
-      "volatility_family": "nba_high_line",
-      "scout_badges": [
-        "lasso_high_edge",
-        "high_fidelity_model"
-      ],
-      "vision_intel": "The books haven't caught up to the fact that GP2 has cleared this 9.5 PRA line in nine of his last ten games while averaging a massive 14.3 over that stretch. We are jumping on this 18.7% edge against a middle-of-the-pack Phoenix defense because his 95% hit rate over the last twenty games makes this line feel like a total clerical error.",
-      "vk_data": {
-        "projection": 11.28,
-        "confidence_tier": "HIGH_FIDELITY",
-        "r_squared": 0.6081,
-        "top_drivers": [
-          "prev_fga",
-          "L10_avg_fg_pct"
-        ]
-      },
-      "_enriched": true,
-      "_enriched_at": "2026-04-18T03:04:43.687268+00:00",
-      "_cache_updated": "2026-04-18T03:04:43.687270+00:00"
     },
     "donovan_clingan|reb|8.5|prizepicks": {
       "event_id": "04e3ad1ccbad6419ac711ff120fd5cbe",
@@ -8383,6 +7833,368 @@
       "_enriched": true,
       "_enriched_at": "2026-04-18T03:05:09.714882+00:00",
       "_cache_updated": "2026-04-18T03:05:09.714884+00:00"
+    },
+    "grayson_allen|ast|2.5|dk": {
+      "player_name": "Grayson Allen",
+      "stat_type": "AST",
+      "line": 2.5,
+      "direction": "Over",
+      "recommendation": "Over",
+      "sport": "nba",
+      "tier": "war_zone",
+      "tier_label": "WAR_ZONE",
+      "vision_score": 81.4,
+      "vision_score_raw": 0.097749,
+      "tier_gate_results": {
+        "gate_cv": {
+          "threshold": 0.45,
+          "value": 0.648,
+          "passed": true
+        },
+        "gate_ceiling": {
+          "threshold": 20,
+          "value": 45.0,
+          "passed": true
+        },
+        "gate_edge": {
+          "threshold": 10,
+          "value": 20.8,
+          "passed": true
+        }
+      },
+      "tier_reason": "gates_passed",
+      "tier_reference_book": "dk",
+      "tier_reference_odds": 155,
+      "edge_vs_fair": 0.2078,
+      "fair_prob": 0.3922,
+      "quality_source": "dk",
+      "stability": 0.784,
+      "confidence_score": 1.0,
+      "version_tag": "final-nba",
+      "computed_at": "2026-04-18T03:01:52.276095+00:00",
+      "pp_utility": 78.0,
+      "pp_utility_category": "pp_premium",
+      "pp_utility_components": {
+        "availability": 1.0,
+        "line_fairness": 1.0,
+        "model_alignment": 0.5844,
+        "edge_confidence": 0.5195,
+        "multiplier_value": 0.9,
+        "weights": {
+          "availability": 0.15,
+          "line_fairness": 0.2,
+          "model_alignment": 0.25,
+          "edge_confidence": 0.2,
+          "multiplier_value": 0.2
+        },
+        "pp_utility_raw": 78.0,
+        "category_raw": "pp_premium"
+      },
+      "pp_multiplier": null,
+      "pp_multiplier_label": "demon",
+      "pp_multiplier_source": "pp_label",
+      "pp_reference_source": "dk",
+      "pp_playable": true,
+      "pp_playability_reason": "playable",
+      "is_goblin": false,
+      "is_demon": true,
+      "is_standard": false,
+      "prop_type": "DEMON",
+      "vk2_projection": null,
+      "vk2_sigma": null,
+      "model_projection": 2.7,
+      "model_sigma": 1.7,
+      "p_true_active": 0.6,
+      "p_true_method": "hit_rate",
+      "p_true_vk2": null,
+      "p_true_hit_rate": 0.6,
+      "vk_prob_over": 60.0,
+      "vk_prob_under": 40.0,
+      "hit_rate_over": 60.0,
+      "h10_rate": 60.0,
+      "hit_rate_under": 40.0,
+      "vk_recommendation": "LEAN_OVER",
+      "canonical_key": "nba|c8d1b7fd06c21e259b9416daf596f023|Grayson Allen|AST|2.5|OVER",
+      "validation": {
+        "has_market_data": false,
+        "has_hit_rates": true,
+        "has_context": false,
+        "has_mlr": false,
+        "has_gemini": false,
+        "is_fully_validated": false
+      },
+      "vision_intel": "We\u2019re staring at a massive 38.4% edge on Grayson Allen\u2019s assist line because the books are practically giving us a discount on a guy with a rock-solid 95 stability score. With his projection sitting at 3.5 dimes, we are hammering the over against a mid-tier defense that doesn't have the perimeter speed to keep him from finding open shooters.",
+      "vision_summary": "We\u2019re staring at a massive 38.4% edge on Grayson Allen\u2019s assist line because the books are practically giving us a discount on a guy with a rock-solid 95 stability score. With his projection sitting at 3.5 dimes, we are hammering the over against a mid-tier defense that doesn't have the perimeter speed to keep him from finding open shooters.",
+      "scout_badges": [
+        "hot_streak",
+        "floor_lock",
+        "lasso_high_edge",
+        "high_fidelity_model"
+      ],
+      "intel_suite": {
+        "usage_ripple": {
+          "bump_percent": 0,
+          "display": "Standard Volume",
+          "shift_label": "Standard Volume",
+          "injuries_affecting": [],
+          "reasoning": "No significant lineup changes"
+        },
+        "matchup_dvp": {
+          "rank": 15,
+          "display": "Rank #15 vs. Playmakers",
+          "color": "yellow",
+          "friction_level": "Medium",
+          "friction_label": "Below Average Defense",
+          "opponent": "Unknown",
+          "stat_category": "AST"
+        },
+        "pace_delta": {
+          "possessions": 0.8,
+          "display": "+0.8 Possessions",
+          "pace_factor": 1.0,
+          "tempo_label": "Standard Tempo",
+          "team_pace": 99.0,
+          "opponent_pace": 97.5,
+          "expected_game_pace": 98.2
+        },
+        "stability_index": {
+          "score": 95,
+          "label": "Elite",
+          "display": "95/100 (Elite)",
+          "std_dev": 1.25,
+          "consistency": "Extremely Consistent",
+          "variance_level": "Low"
+        },
+        "vision_insight": {
+          "primary": "The books are practically begging us to take this 2.5 line while Grayson Allen is projected to flirt with 4 assists against a middle-of-the-pack defense. We are looking at a massive 38% edge on a guy with a nearly perfect stability score, making this Over feel like a total gift in a standard tempo environment.",
+          "summary": "The books are practically begging us to take this 2.5 line while Grayson Allen is projected to flirt with 4 assists against a middle-of-the-pack defense. We are looking at a massive 38% edge on a guy with a nearly perfect stability score, making this Over feel like a total gift in a standard tempo environment.",
+          "lasso_projection": 3.46,
+          "lasso_edge": 0.96,
+          "confidence": "HIGH_FIDELITY",
+          "tactical_note": "Baseline projection favorable"
+        },
+        "blowout_risk": {
+          "risk_level": "UNKNOWN",
+          "risk_reason": "Team data unavailable",
+          "warning": null
+        },
+        "scout_badges": [
+          "hot_streak",
+          "floor_lock",
+          "lasso_high_edge",
+          "high_fidelity_model"
+        ],
+        "lasso": {
+          "projection": 3.46,
+          "confidence_tier": "HIGH_FIDELITY",
+          "r_squared": 0.5469,
+          "top_drivers": [
+            "prev_ast",
+            "target_L10_avg"
+          ]
+        },
+        "calculated_at": "2026-04-18T03:06:42.296599+00:00"
+      },
+      "volatility_score": 0.0,
+      "volatility_label": "unknown",
+      "volatility_family": "unknown",
+      "vk_data": {
+        "projection": 3.46,
+        "confidence_tier": "HIGH_FIDELITY",
+        "r_squared": 0.5469,
+        "top_drivers": [
+          "prev_ast",
+          "target_L10_avg"
+        ]
+      },
+      "_enriched": true,
+      "_enriched_at": "2026-04-18T03:06:43.726722+00:00",
+      "_cache_updated": "2026-04-18T03:06:43.726724+00:00"
+    },
+    "gary_payton_ii|pra|9.5|dk": {
+      "player_name": "Gary Payton II",
+      "stat_type": "PRA",
+      "line": 9.5,
+      "direction": "Over",
+      "recommendation": "Over",
+      "sport": "nba",
+      "tier": "safe_haven",
+      "tier_label": "SAFE_HAVEN",
+      "vision_score": 93.8,
+      "vision_score_raw": 0.147353,
+      "tier_gate_results": {
+        "gate_cv": {
+          "threshold": 0.5,
+          "value": 0.355,
+          "passed": true
+        },
+        "gate_hit_rate": {
+          "threshold": 75,
+          "value": 90.0,
+          "passed": true
+        },
+        "gate_edge": {
+          "threshold": 8,
+          "value": 18.6,
+          "passed": true
+        },
+        "gate_tp": {
+          "threshold": 70,
+          "value": 71.4,
+          "passed": true
+        }
+      },
+      "tier_reason": "gates_passed",
+      "tier_reference_book": "dk",
+      "tier_reference_odds": -250,
+      "edge_vs_fair": 0.1857,
+      "fair_prob": 0.7143,
+      "quality_source": "dk",
+      "stability": 0.8817,
+      "confidence_score": 1.0,
+      "version_tag": "final-nba",
+      "computed_at": "2026-04-18T03:01:52.276095+00:00",
+      "pp_utility": 65.0,
+      "pp_utility_category": "pp_discount",
+      "pp_utility_components": {
+        "availability": 1.0,
+        "line_fairness": 1.0,
+        "model_alignment": 0.6286,
+        "edge_confidence": 0.4642,
+        "multiplier_value": 0.25,
+        "weights": {
+          "availability": 0.15,
+          "line_fairness": 0.2,
+          "model_alignment": 0.25,
+          "edge_confidence": 0.2,
+          "multiplier_value": 0.2
+        },
+        "pp_utility_raw": 65.0,
+        "category_raw": "pp_discount"
+      },
+      "pp_multiplier": null,
+      "pp_multiplier_label": "goblin",
+      "pp_multiplier_source": "pp_label",
+      "pp_reference_source": "dk",
+      "pp_playable": true,
+      "pp_playability_reason": "playable",
+      "is_goblin": true,
+      "is_demon": false,
+      "is_standard": false,
+      "prop_type": "GOBLIN",
+      "vk2_projection": null,
+      "vk2_sigma": null,
+      "model_projection": 13.76,
+      "model_sigma": 7.92,
+      "p_true_active": 0.9,
+      "p_true_method": "hit_rate",
+      "p_true_vk2": null,
+      "p_true_hit_rate": 0.9,
+      "vk_prob_over": 90.0,
+      "vk_prob_under": 10.0,
+      "hit_rate_over": 90.0,
+      "h10_rate": 90.0,
+      "hit_rate_under": 10.0,
+      "vk_recommendation": "STRONG_OVER",
+      "canonical_key": "nba|c8d1b7fd06c21e259b9416daf596f023|Gary Payton II|PRA|9.5|OVER",
+      "validation": {
+        "has_market_data": false,
+        "has_hit_rates": true,
+        "has_context": false,
+        "has_mlr": false,
+        "has_gemini": false,
+        "is_fully_validated": false
+      },
+      "vision_intel": "The books are basically begging us to take this line while GP2 is out here cashing the over in nine of his last ten outings. Phoenix is middle-of-the-pack on defense, and with our projection sitting nearly two full points above the 9.5 total, we are looking at a massive 18.7% edge tonight.",
+      "vision_summary": "The books are basically begging us to take this line while GP2 is out here cashing the over in nine of his last ten outings. Phoenix is middle-of-the-pack on defense, and with our projection sitting nearly two full points above the 9.5 total, we are looking at a massive 18.7% edge tonight.",
+      "scout_badges": [
+        "lasso_high_edge",
+        "high_fidelity_model"
+      ],
+      "intel_suite": {
+        "usage_ripple": {
+          "bump_percent": 0,
+          "display": "Standard Volume",
+          "shift_label": "Standard Volume",
+          "injuries_affecting": [],
+          "reasoning": "No significant lineup changes"
+        },
+        "matchup_dvp": {
+          "rank": 15,
+          "display": "Rank #15 vs. All-Around",
+          "color": "yellow",
+          "friction_level": "Medium",
+          "friction_label": "Below Average Defense",
+          "opponent": "PHX",
+          "stat_category": "PRA"
+        },
+        "pace_delta": {
+          "possessions": 1.1,
+          "display": "+1.1 Possessions",
+          "pace_factor": 1.0,
+          "tempo_label": "Standard Tempo",
+          "team_pace": 98.2,
+          "opponent_pace": 99.0,
+          "expected_game_pace": 98.6
+        },
+        "stability_index": {
+          "score": 55,
+          "label": "Medium",
+          "display": "55/100 (Medium)",
+          "std_dev": 4.22,
+          "consistency": "Average",
+          "variance_level": "Medium"
+        },
+        "vision_insight": {
+          "primary": "The books are practically begging us to take the Over here considering Gary Payton II has cleared this 9.5 PRA line in nine of his last ten outings. Phoenix doesn't have the perimeter depth to keep him off the glass or stop his backdoor cuts, making that 18.7% edge feel like a total gift for our bankrolls tonight.",
+          "summary": "The books are practically begging us to take the Over here considering Gary Payton II has cleared this 9.5 PRA line in nine of his last ten outings. Phoenix doesn't have the perimeter depth to keep him off the glass or stop his backdoor cuts, making that 18.7% edge feel like a total gift for our bankrolls tonight.",
+          "lasso_projection": 11.28,
+          "lasso_edge": 1.78,
+          "confidence": "HIGH_FIDELITY",
+          "tactical_note": "Baseline projection favorable"
+        },
+        "blowout_risk": {
+          "player_team_record": "37-45",
+          "opponent_team_record": "45-37",
+          "player_win_pct": 0.451,
+          "opponent_win_pct": 0.549,
+          "win_pct_diff": 0.098,
+          "favored_team": "PHX",
+          "player_is_favored": false,
+          "risk_level": "NONE",
+          "risk_reason": "Competitive matchup: GSW (37-45) vs PHX (45-37)",
+          "warning": null
+        },
+        "scout_badges": [
+          "lasso_high_edge",
+          "high_fidelity_model"
+        ],
+        "lasso": {
+          "projection": 11.28,
+          "confidence_tier": "HIGH_FIDELITY",
+          "r_squared": 0.6081,
+          "top_drivers": [
+            "prev_fga",
+            "L10_avg_fg_pct"
+          ]
+        },
+        "calculated_at": "2026-04-18T03:06:48.098007+00:00"
+      },
+      "volatility_score": 0.0,
+      "volatility_label": "unknown",
+      "volatility_family": "unknown",
+      "vk_data": {
+        "projection": 11.28,
+        "confidence_tier": "HIGH_FIDELITY",
+        "r_squared": 0.6081,
+        "top_drivers": [
+          "prev_fga",
+          "L10_avg_fg_pct"
+        ]
+      },
+      "_enriched": true,
+      "_enriched_at": "2026-04-18T03:06:52.815262+00:00",
+      "_cache_updated": "2026-04-18T03:06:52.815264+00:00"
     }
   }
 }

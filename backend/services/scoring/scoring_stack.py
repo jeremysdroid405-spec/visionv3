@@ -215,9 +215,17 @@ def compute_tier(
     ceiling_rate: Optional[float],
     dk_layer: Optional[Dict],
     mgm_layer: Optional[Dict],
+    p_model: Optional[float] = None,
 ) -> Dict[str, Any]:
     """Assign risk bucket using existing MLBTierSorter gates on a reference book."""
     ref_odds, ref_book = _pick_reference_odds(dk_layer, mgm_layer)
+
+    # Side-aware gate inputs. For UNDER picks we pass `p_model_pct` through
+    # so the sorter can replace the market-implied `gate_tp` with a
+    # model-confidence floor (path (c): "UNDER tp = model confidence").
+    # OVER behaviour is unchanged — sorter ignores side when it equals OVER.
+    side = (prop.get("recommendation") or "OVER").upper()
+    p_model_pct = round((p_model or 0.0) * 100.0, 1) if p_model is not None else None
 
     if ref_odds is None:
         return {
@@ -230,7 +238,10 @@ def compute_tier(
 
     # Safe Haven — short odds
     if ref_odds <= _REF_SAFE_HAVEN_MAX:
-        passed, reason, gates = sorter.check_safe_haven_gates(prop, cv, hit_rate, edge_pct, tp)
+        passed, reason, gates = sorter.check_safe_haven_gates(
+            prop, cv, hit_rate, edge_pct, tp,
+            side=side, p_model_pct=p_model_pct,
+        )
         if passed:
             return {
                 "tier": "safe_haven", "tier_reason": "gates_passed",
@@ -259,7 +270,10 @@ def compute_tier(
         }
 
     # Front Lines — middle band
-    passed, reason, gates = sorter.check_front_lines_gates(prop, cv, hit_rate, edge_pct, tp)
+    passed, reason, gates = sorter.check_front_lines_gates(
+        prop, cv, hit_rate, edge_pct, tp,
+        side=side, p_model_pct=p_model_pct,
+    )
     if passed:
         return {
             "tier": "front_lines", "tier_reason": "gates_passed",
@@ -539,6 +553,7 @@ def compute_scoring_stack(
         sorter=sorter, prop=prop,
         cv=cv, hit_rate=hit_rate, edge_pct=edge_pct, tp=tp, ceiling_rate=ceiling_rate,
         dk_layer=dk_layer, mgm_layer=mgm_layer,
+        p_model=p_model,
     )
     pp = compute_pp_utility(
         p_model=p_model, prop=prop,

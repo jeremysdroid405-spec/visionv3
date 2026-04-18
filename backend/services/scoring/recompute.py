@@ -112,6 +112,9 @@ async def recompute_sport(
                 "pp_multiplier_model": ctx.pp_multiplier_model,
                 # raw fields used by MLBTierSorter gate evaluation
                 **ctx.raw_prop,
+                # Authoritative direction for side-aware gate paths — placed
+                # AFTER the raw_prop splat so nothing can shadow it.
+                "recommendation": ctx.recommendation,
             },
             p_model=ctx.p_model,
             cv=ctx.cv,
