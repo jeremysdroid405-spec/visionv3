@@ -440,14 +440,14 @@ export const Auth = () => {
         </div>
       </section>
 
-      {/* ==================== SECTION 2: THE VISION STACK ==================== */}
+      {/* ==================== SECTION 2: PROPVISION ==================== */}
       <section className="py-12 sm:py-20 px-4 bg-zinc-950 border-y border-zinc-900">
         <div className="max-w-3xl mx-auto">
           {/* Section Header */}
           <div className="text-center mb-6 sm:mb-10">
             <span className="text-zinc-600 font-mono text-[9px] sm:text-[10px] tracking-[0.2em] sm:tracking-[0.3em]">TECHNICAL SPECIFICATIONS</span>
             <h2 className="text-xl sm:text-2xl md:text-3xl font-bold text-white mt-2 tracking-tight">
-              DEPLOYMENT: <span className="text-emerald-400">VISION STACK™</span>
+              DEPLOYMENT: <span className="text-emerald-400">PROPVISION™</span>
             </h2>
             <div className="flex items-center justify-center gap-2 mt-2 sm:mt-3">
               <span className="text-zinc-600 font-mono text-[10px] sm:text-xs">SYSTEM STATUS:</span>
