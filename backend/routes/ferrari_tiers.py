@@ -872,6 +872,14 @@ def _apply_under_badge_rewire(prop: Dict[str, Any], score: Dict[str, Any]) -> No
     prop["scout_badges"] = scout
 
 
+def _generate_under_vision_gritty(score: Dict[str, Any], prop: Dict[str, Any]) -> str:
+    """Deprecated — replaced by Gemini UNDER enrichment. Kept as an import-safe
+    no-op so any stale callers don't break; returns empty string so the
+    fallback chain continues. Remove once all callers are migrated.
+    """
+    return ""
+
+
 async def _build_nba_board_lookup() -> Dict[tuple, Dict[str, Any]]:
     """Flatten `dg_cached_board` (player-grain) into a prop-grain lookup keyed
     by (event_id, player_name_lower, STAT_UPPER, line_float, DIR_UPPER).
@@ -1141,8 +1149,11 @@ def _finalize_nba_picks_side_aware(picks: List[Dict[str, Any]]) -> None:
     """Post-overlay side-aware finalization for NBA picks.
 
     Runs AFTER `overlay_enrichment_cache` (which re-injects OVER-side
-    `scout_badges` from the master enrichment cache). For UNDER picks,
-    re-applies the UNDER badge rewire using the stashed score doc.
+    `scout_badges` and `vision_intel` from the master enrichment cache).
+    For UNDER picks:
+      - re-applies the UNDER badge rewire using the stashed score doc
+      - clears inherited OVER-biased `vision_intel` so the UNDER-Gemini
+        enrichment can supply correct side-specific text downstream
     Mutates picks in place; strips internal helper fields before return.
     """
     for pick in picks:
@@ -1152,6 +1163,11 @@ def _finalize_nba_picks_side_aware(picks: List[Dict[str, Any]]) -> None:
         direction_upper = (pick.get("direction") or pick.get("recommendation") or "OVER").strip().upper()
         if direction_upper == "UNDER":
             _apply_under_badge_rewire(pick, score)
+            # Clear any OVER-biased vision_intel inherited from the enrichment
+            # cache or dg_cached_board. UNDER Gemini enrichment fills this
+            # back in via `_enrich_under_picks_with_gemini` below.
+            pick["vision_intel"] = None
+            pick["vision_summary"] = None
 
 
 
