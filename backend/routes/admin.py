@@ -341,3 +341,65 @@ async def injury_rescore_stats(
         "last_trigger": last or None,
     }
 
+
+@router.get("/full-sync-stats")
+async def full_sync_stats(
+    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
+):
+    """Read-only snapshot of the last hourly full sync (NBA).
+
+    Source: `RebuildCoordinator._metrics['last_publish_counts']['nba']`
+    which is written by `_execute_rebuild()` on every successful pipeline
+    run. Zero new persistence, zero hot-path impact — we just reformat
+    fields that are already captured in-memory by the coordinator.
+
+    Returned fields:
+      - last_full_sync_at           (ISO UTC; null if no run yet)
+      - last_full_sync_duration_ms  (int ms; null if no run yet)
+      - last_full_sync_props_written (sum of per-tier collection counts
+        produced by the last rebuild; null if no run yet)
+      - last_trigger                (event_type, e.g. "scheduled_safety"
+        for the hourly scheduler, plus source — so you can distinguish
+        hourly runs from manual/injury-driven full rebuilds)
+
+    Auth: identical to /injury-rescore-stats.
+    """
+    _require_admin_debug_token(x_admin_token)
+
+    from services.rebuild_coordinator import get_coordinator
+
+    coord = get_coordinator()
+    last = (coord._metrics.get("last_publish_counts") or {}).get("nba") or {}
+
+    if not last:
+        return {
+            "last_full_sync_at": None,
+            "last_full_sync_duration_ms": None,
+            "last_full_sync_props_written": None,
+            "last_trigger": None,
+        }
+
+    collections = last.get("collections") or {}
+    try:
+        props_written = int(sum(int(v or 0) for v in collections.values()))
+    except (TypeError, ValueError):
+        props_written = None
+
+    try:
+        duration_ms = int(round(float(last.get("duration_s", 0.0)) * 1000))
+    except (TypeError, ValueError):
+        duration_ms = None
+
+    return {
+        "last_full_sync_at": last.get("timestamp"),
+        "last_full_sync_duration_ms": duration_ms,
+        "last_full_sync_props_written": props_written,
+        "last_trigger": {
+            "event_type": last.get("trigger"),
+            "source": last.get("source"),
+            "success": last.get("success"),
+            "run_id": last.get("run_id"),
+            "collections": collections,
+        },
+    }
+
