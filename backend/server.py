@@ -1559,6 +1559,39 @@ async def startup_event():
     # This prevents the "empty MLB board" issue on fresh environments
     # ==========================================================================
     await run_mlb_startup_health_check()
+
+    # ==========================================================================
+    # CANONICAL COLLECTION HEALTH CHECK - one-shot, log-only
+    # =========================================================================
+    # Compares config/collections.py SPORT_OVERRIDES against the actual
+    # MongoDB namespace. Warns on:
+    #   OVERRIDE_MISSING — override points at a legacy coll that doesn't exist
+    #   CANONICAL_BLEED  — both legacy + canonical carry data (drift)
+    #   CANONICAL_READY  — canonical populated, override not yet retired
+    #   LEGACY_EMPTY     — override points at an empty coll w/ no canonical
+    # Never raises, never blocks startup. Runs once per restart.
+    # ==========================================================================
+    try:
+        from services.board.health_check import run_canonical_collection_health_check
+        await run_canonical_collection_health_check(db)
+    except Exception as _e:
+        logger.warning(f"[COLL_HEALTH] Audit skipped due to error: {_e}")
+
+    # ==========================================================================
+    # UNIVERSAL BOARD ENGINE — Step 5: real-time 'new_props' subscriber
+    # =========================================================================
+    # Subscribes a single, sport-agnostic handler to the event bus. Any
+    # publisher (odds-sync, manual refresh, future watchers) that detects
+    # net-new canonical_keys can emit BoardEvent(event_type='new_props',
+    # sport=..., metadata={'canonical_keys': [...]}) and the engine will
+    # score + UPSERT just those keys into {sport}_prop_scores. The
+    # universal board reader surfaces them instantly — no full rebuild.
+    # ==========================================================================
+    try:
+        from services.board.engine import subscribe_new_props_handler
+        subscribe_new_props_handler(db)
+    except Exception as _e:
+        logger.error(f"[BOARD_ENGINE] Failed to subscribe new_props handler: {_e}")
     
     # ==========================================================================
     # WEEKEND-READY SCHEDULER: High-Performance Interval System

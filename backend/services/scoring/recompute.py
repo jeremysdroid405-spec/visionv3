@@ -67,8 +67,23 @@ async def recompute_sport(
     dry_run: bool = False,
     limit: Optional[int] = None,
     override_config: Optional[Dict[str, Any]] = None,
+    write_mode: str = "replace",
+    props: Optional[List[Dict[str, Any]]] = None,
 ) -> Dict[str, Any]:
-    """Recompute scoring stack for a single sport."""
+    """Recompute scoring stack for a single sport.
+
+    `write_mode`:
+      - "replace" (default, used by the hourly full recompute): wipes
+        every doc with `version_tag` then bulk-inserts the new docs.
+      - "upsert" (Step 5 real-time scoped ingest): per-doc upsert keyed
+        on `(canonical_key, version_tag)`. Never destroys existing rows
+        outside the supplied key set.
+
+    `props`: optional pre-loaded list of raw live props. When supplied,
+    `adapter.load_live_props` is bypassed entirely — the caller is
+    responsible for filtering. Used by `services/board/engine.py` for
+    scoped real-time ingest.
+    """
     t0 = time.monotonic()
     adapter = get_scoring_adapter(sport)
     config = {
@@ -82,8 +97,9 @@ async def recompute_sport(
     cached_before_count = await cached_coll.count_documents({})
     cached_before_sample = await cached_coll.find_one({}, {"_id": 0})
 
-    # 1. Load live props (read-only)
-    props = await adapter.load_live_props(db, limit=limit)
+    # 1. Load live props (read-only) — unless caller supplied them
+    if props is None:
+        props = await adapter.load_live_props(db, limit=limit)
 
     # 2. Build scoring contexts + compute stack
     sorter = adapter.get_sorter(db)
@@ -180,6 +196,7 @@ async def recompute_sport(
     write_result = await write_versioned_scores(
         db=db, sport=sport, score_docs=score_docs,
         version_tag=version_tag, dry_run=dry_run,
+        mode=write_mode,
     )
 
     # 5. Leak-check: cached_board must NOT be mutated AND must not contain

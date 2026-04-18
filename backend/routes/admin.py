@@ -446,3 +446,24 @@ async def collection_migration_status(
                 summary["pending"] += 1
     return {"summary": summary, "by_sport": full}
 
+
+@router.get("/board-engine-stats")
+async def board_engine_stats(
+    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
+):
+    """Read-only snapshot of the universal real-time ingest engine
+    (`services/board/engine.py`). Zero DB I/O, zero mutation.
+
+    Per-sport counters:
+      - events_received / events_processed / events_skipped
+      - props_upserted (cumulative)
+      - last_event_at / last_source / last_keys_count / last_written /
+        last_skipped / last_duration_ms / last_error
+
+    Auth: identical to /injury-rescore-stats.
+    """
+    _require_admin_debug_token(x_admin_token)
+    from services.board.engine import stats_snapshot
+    return {"by_sport": stats_snapshot()}
+
+

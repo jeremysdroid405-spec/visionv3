@@ -615,10 +615,109 @@ Key helper: `_get_nba_tier_picks_from_scores(tier, limit)` +
   default cap, `orphan_audit_capture` one-shot snapshot dropped. Audit
   document preserved at `/app/memory/PHASE5_ORPHAN_AUDIT.md`.
 
+## Canonical Collection Health Check — one-shot startup audit (Apr 18, 2026)
+- **Module**: `services/board/health_check.py::run_canonical_collection_health_check`.
+- **Wired**: `server.py` startup event, non-blocking (try/except so a
+  Mongo hiccup never blocks boot).
+- **Audit scope**: every (sport, concept) pair in `config/collections.py`.
+  Four warning classes, each emitted with a distinct prefix for grep /
+  alerting:
+  - `OVERRIDE_MISSING` — `SPORT_OVERRIDES` points at a legacy coll that
+    does not exist in the DB (silent-divergence trap).
+  - `CANONICAL_BLEED` — both legacy and canonical carry data; reads
+    still route to legacy (partially-migrated writer).
+  - `CANONICAL_READY` — canonical exists populated, legacy still
+    authoritative; migration ready to cut over by flipping one line
+    in `SPORT_OVERRIDES`.
+  - `LEGACY_EMPTY` — override points at an empty coll with no
+    canonical counterpart (dead writer path).
+- **Hard verification** (logged + sibling hash assertions):
+  1. Clean run: 0 warnings, 32/54 pairs canonical, 22 pending (expected
+     overrides, all with data) — INFO-level summary line.
+  2. Synthetic seed of two bleed conditions (populated `nba_live_props`
+     and `nba_cached_board` alongside their legacy counterparts) →
+     exactly 2 CANONICAL_BLEED warnings emitted with raw doc counts.
+  3. Synthetic OVERRIDE_MISSING + CANONICAL_READY conditions → exactly
+     one warning of each class emitted with the expected structured
+     findings.
+  4. Post-cleanup re-run → back to 0 warnings. All transitions
+     observable end-to-end.
+- **Runtime cost**: one `listCollections` + up to ~44 `estimatedCount`
+  calls, bounded by `SUPPORTED_SPORTS × CANONICAL_CONCEPTS`. Pure
+  log-only. Fires once per pod boot (uvicorn reload produces two fires
+  which is expected).
+
+## Universal Real-Time Ingest Engine — Step 5 (Apr 18, 2026)
+- **New module**: `services/board/engine.py`. One sport-agnostic handler
+  `on_new_props(db, sport, canonical_keys)` scores ONLY the supplied
+  canonical keys and UPSERTs them into `{sport}_prop_scores`. The
+  universal board reader surfaces them instantly — no atomic swap, no
+  full rebuild, no per-sport branching.
+- **Writer contract**: `services/scoring/prop_scores_store.py::write_versioned_scores`
+  now accepts `mode={"replace","upsert"}`. Replace (default) preserves
+  the full-recompute semantics (delete_many then insert_many). Upsert
+  issues per-doc `update_one({canonical_key, version_tag}, $set=doc,
+  upsert=True)` — NEVER destroys sibling rows under the same
+  version_tag. This is what makes scoped real-time ingest safe.
+- **Scoper**: `services/scoring/recompute.py::recompute_sport` gained
+  a `props: Optional[List[Dict]]` kwarg. When supplied, the adapter's
+  `load_live_props` is bypassed entirely and the caller's filtered set
+  is scored. This was necessary because `get_scoring_adapter()` returns
+  fresh instances per call (monkey-patching the instance in the engine
+  did not propagate). The engine now pre-filters raw props in its own
+  frame (matching adapter-built `canonical_key` against the target
+  set) and passes the filtered list directly into `recompute_sport`.
+- **Subscriber**: `subscribe_new_props_handler(db)` wired at startup
+  in `server.py`. Single subscription listens for
+  `BoardEvent(event_type='new_props', sport=..., metadata={'canonical_keys': [...]})`.
+  Per-sport asyncio.Lock serializes concurrent scoped recomputes for
+  the same sport.
+- **Observability**: new endpoint `GET /api/board-engine-stats`
+  (same `X-Admin-Token` gate as other admin endpoints). Reports per
+  sport: `events_received`, `events_processed`, `events_skipped`,
+  `props_upserted`, `last_event_at`, `last_source`, `last_keys_count`,
+  `last_written`, `last_skipped`, `last_duration_ms`, `last_error`.
+- **Hard e2e verification**
+  (`/app/backend/tests/step5_realtime_ingest_verify.py`):
+  - NBA: 1 canonical key → 1 raw live prop matched → 1 doc upserted to
+    `nba_prop_scores`. Total docs 158 → 159. 158 siblings
+    byte-identical (sha256 of all other-key docs matched pre/post).
+    `active=True`, `tier=unqualified`, `vision_score=0.0`. Ingest
+    16.5s end-to-end.
+  - MLB: 1 canonical key (`mlb|...|Nico Hoerner|Hits|2.5|OVER`),
+    pre-existing score row. `computed_at` advanced from
+    `19:49:21` → `19:51:14`. Total docs 4944 → 4944. 4943 siblings
+    byte-identical. `active=True`. Ingest 41s end-to-end
+    (dominated by VK model inference on the full-slate pre-filter;
+    latency optimisation tracked as a follow-up).
+  - Live-backend `GET /api/board-engine-stats` returns 200 with
+    per-sport zero counters (verification ran in a separate process
+    with its own engine state — expected).
+- **Known follow-ups (not blocking)**:
+  1. Pre-filter optimisation: current scoped ingest loads ALL live
+     props + runs `build_context` on each to match canonical_key.
+     Adapter-level `quick_match(raw, keys) -> bool` hook would cut the
+     filter phase to an O(N) string compare on raw fields. Reduce
+     MLB latency from ~41s → sub-1s for small batches.
+  2. `vision_score` percentile-rank normalization during upsert-mode
+     runs against the current batch only (1 doc → percentile=100).
+     Should compute against the existing pool's `vision_score_raw`
+     distribution for accurate positioning. Documented in the engine
+     module docstring.
+  3. `odds_sync_service.py` → emit `BoardEvent('new_props', ...)`
+     with the delta canonical_keys after each sync. Deferred to the
+     Step 6 session (legacy-writer retirement) since firing alongside
+     the current full-rebuild coordinator would duplicate work. Wiring
+     this is gated by the 48h observation window per user directive.
+
 ## Remaining Roadmap
+- **P1**: Step 5 follow-ups listed above (latency + vision_score
+  normalization + odds_sync event emission).
+- **P1**: Step 6 — retire legacy per-sport board writers
+  (`_atomic_publish` elite_*, `mlb_safe_haven/front_lines/war_zone`)
+  after 48h observation window starting Apr 18 2026 19:53 UTC.
 - **P1**: Phase 5 Step 2 — migrate `market_moves_engine` + `injury_advantage`
-  readers off `elite_*` (read `nba_prop_scores` grouped by tier) — needs
-  48-hour observation window since Step 1 before starting.
+  readers off `elite_*` (read `nba_prop_scores` grouped by tier).
 - **P1**: Phase 5 Step 3 — retire `_atomic_publish` elite_* writer.
 - **P1**: Phase 5 Step 4 — drop `live_injuries` + reroute
   `/api/v3/injuries/live` to `injuries_normalized`.

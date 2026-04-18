@@ -123,11 +123,18 @@ async def write_versioned_scores(
     score_docs: List[Dict[str, Any]],
     version_tag: str,
     dry_run: bool = False,
+    mode: str = "replace",
 ) -> Dict[str, Any]:
     """
     Persist score docs for a single sport and version_tag.
+
+    Modes:
+      - "replace": wipe every doc with the same version_tag, then bulk
+        insert. Used by the full recompute path.
+      - "upsert": per-doc upsert keyed on (canonical_key, version_tag).
+        Used by Step 5 real-time ingest so one prop landing does not
+        blow away the other 2,999 scored props in the pool.
     In dry_run mode, does not write anything.
-    Replaces any existing docs with the SAME version_tag.
     """
     coll_name = f"{sport}_prop_scores"
     coll = db[coll_name]
@@ -146,11 +153,47 @@ async def write_versioned_scores(
             "computed_at": computed_at,
             "prepared": len(prepared),
             "written": 0,
+            "mode": mode,
             "dry_run": True,
         }
 
     await ensure_indexes(db, sport)
 
+    if mode == "upsert":
+        upserted = 0
+        modified = 0
+        for doc in prepared:
+            clean = {k: v for k, v in doc.items() if k != "_id"}
+            ck = clean.get("canonical_key")
+            if not ck:
+                continue
+            res = await coll.update_one(
+                {"canonical_key": ck, "version_tag": version_tag},
+                {"$set": clean},
+                upsert=True,
+            )
+            if getattr(res, "upserted_id", None) is not None:
+                upserted += 1
+            elif getattr(res, "modified_count", 0):
+                modified += 1
+        logger.info(
+            f"[SCORES_STORE:{sport}] mode=upsert version='{version_tag}' "
+            f"upserted={upserted} modified={modified} → {coll_name}"
+        )
+        return {
+            "sport": sport,
+            "collection": coll_name,
+            "version_tag": version_tag,
+            "computed_at": computed_at,
+            "prepared": len(prepared),
+            "written": upserted + modified,
+            "upserted": upserted,
+            "modified": modified,
+            "mode": "upsert",
+            "dry_run": False,
+        }
+
+    # Default: replace
     # Replace docs with same (canonical_key, version_tag) deterministically.
     deleted = await coll.delete_many({"version_tag": version_tag})
     inserted = 0
@@ -161,7 +204,7 @@ async def write_versioned_scores(
         inserted = len(clean)
 
     logger.info(
-        f"[SCORES_STORE:{sport}] version='{version_tag}' "
+        f"[SCORES_STORE:{sport}] mode=replace version='{version_tag}' "
         f"inserted={inserted} replaced={deleted.deleted_count} → {coll_name}"
     )
     return {
@@ -172,6 +215,7 @@ async def write_versioned_scores(
         "prepared": len(prepared),
         "written": inserted,
         "replaced": deleted.deleted_count,
+        "mode": "replace",
         "dry_run": False,
     }
 
