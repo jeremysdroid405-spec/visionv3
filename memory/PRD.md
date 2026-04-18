@@ -418,6 +418,33 @@ Key helper: `_get_nba_tier_picks_from_scores(tier, limit)` +
   header ⇒ **401**. Off-by-default in any environment where the operator
   hasn't opted in.
 
+## Full-Sync Observability — Dual-Sport + MLB Staleness Root Cause (Apr 18, 2026)
+- **Endpoint upgrade**: `GET /api/full-sync-stats` now supports:
+  - `?sport=nba` → NBA-only payload
+  - `?sport=mlb` → MLB-only payload
+  - no param → combined `{"nba": {...}, "mlb": {...}}`
+  - invalid sport → 401/503/200 unchanged; adds 400 for bad `sport` value.
+  Same `X-Admin-Token` gate, still zero persistence (reads from
+  `RebuildCoordinator._metrics["last_publish_counts"][sport]`).
+- **MLB staleness RCA** (the NBA vs MLB schedule asymmetry):
+  - NBA has 6 interval jobs (5-min live_injury_check + 30-min social + 4x
+    60-min syncs) hitting the coordinator every cycle.
+  - MLB has **ONE** scheduled job — `mlb_daily_refresh` CronTrigger(hour=9,
+    minute=23 UTC) — publishing `BoardEvent(sport='mlb',
+    event_type='scheduled_safety')`. Between daily crons the ONLY way MLB
+    gets refreshed is ad-hoc `injury_change` events picked up by
+    `RebuildCoordinator.handle_event` (which performs FULL MLB rebuilds).
+  - Evidence today: only 2 MLB pipeline runs — 07:15:09 (`scheduler_daily_mlb`)
+    and 18:13:30 (`injury_sensor` for Justin Slaten). 10h58m gap in between.
+  - `mlb_live_props` is the deepest stale layer (22.2h — Odds-API MLB sync
+    is once-daily, no interval refresh).
+- **User-facing impact (confirmed)**:
+  - `/api/v3/mlb/ferrari/safe-haven|front-lines|war-zone` receive 2258/2246/2246
+    hits respectively — these serve from `mlb_safe_haven` etc. and DO suffer
+    stale reads during the ~10h gaps between scheduled refreshes.
+  - `/api/v3/mlb/vacuum/live-alerts` (1871 hits) is refreshed by every injury
+    event so is typically fresher.
+
 ## Vision Intel Prompt Refresh — "The books" Ban (COMPLETE Apr 18, 2026)
 - **Problem**: every Gemini-generated summary leaned on "the books" / "books are" /
   "printing money" / "metronome" / "begging us" openers. Feedback was unanimous
