@@ -590,7 +590,10 @@ class NBAScoringAdapter(ScoringAdapter):
             p_model = p_true_hit_rate
             p_true_method_used = "hit_rate" if p_true_hit_rate is not None else "none"
 
-        # tp from reference-market implied prob (dk preferred, else fanduel)
+        # tp from reference-market implied prob (dk preferred, else fanduel).
+        # Prices on dg_live_props are OVER-side American odds, so convert and
+        # flip for UNDER picks to keep the gate mathematically side-aware
+        # (mirrors the existing side-aware fix applied to gate_hit_rate).
         def _amer(o):
             if o is None: return None
             try: o = float(o)
@@ -599,13 +602,16 @@ class NBAScoringAdapter(ScoringAdapter):
         dk_p = _amer(dk_price)
         fd_p = _amer(fd_price)
         if dk_p is not None and fd_p is not None:
-            tp = round(((dk_p + fd_p) / 2.0) * 100.0, 1)
+            tp_over = round(((dk_p + fd_p) / 2.0) * 100.0, 1)
         elif dk_p is not None:
-            tp = round(dk_p * 100.0, 1)
+            tp_over = round(dk_p * 100.0, 1)
         elif fd_p is not None:
-            tp = round(fd_p * 100.0, 1)
+            tp_over = round(fd_p * 100.0, 1)
         else:
-            tp = 50.0
+            tp_over = 50.0
+        # Flip to the recommended side so gate_tp and edge_pct reflect
+        # the market's implied probability for the SIDE we are picking.
+        tp = round(100.0 - tp_over, 1) if side == "UNDER" else tp_over
 
         if p_model is not None:
             edge_pct = round(p_model * 100.0 - tp, 1)
