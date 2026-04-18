@@ -107,6 +107,28 @@ const MarketMoveItem = memo(({ event }) => {
   const tierColor = TIER_COLORS[event.previous_tier] || 'text-zinc-400';
   const showLineShift = (reason === 'line_changed' || event.status === 'line_moved') && event.new_line != null;
 
+  // Humanize exit_detail: upstream emits raw key=value debug strings like
+  //   "extreme_delta=12.0 market=player_points_rebounds_assists_alternate"
+  // Surface only the most signal-y fragment and drop verbose market ids.
+  const humanizeDetail = (raw) => {
+    if (!raw || typeof raw !== 'string') return null;
+    const parts = raw.split(/\s+/).filter(Boolean);
+    const kv = {};
+    for (const p of parts) {
+      const idx = p.indexOf('=');
+      if (idx > 0) kv[p.slice(0, idx)] = p.slice(idx + 1);
+    }
+    if (kv.extreme_delta) {
+      const n = Number(kv.extreme_delta);
+      return `Line shifted ${isNaN(n) ? kv.extreme_delta : n.toFixed(1)} pts`;
+    }
+    if (kv.reason) return kv.reason.replace(/_/g, ' ');
+    // No key=value pairs — assume already human copy; trim long tokens.
+    if (raw.includes('=')) return null;
+    return raw.length > 60 ? raw.slice(0, 57) + '…' : raw;
+  };
+  const detail = humanizeDetail(event.exit_detail);
+
   return (
     <div
       className={`flex items-center gap-3 px-3 py-2 rounded-lg border ${cfg.bg} ${cfg.border} transition-all`}
@@ -133,10 +155,10 @@ const MarketMoveItem = memo(({ event }) => {
         </div>
         <div className="flex items-center gap-2 mt-0.5">
           <span className={`text-[10px] font-medium ${cfg.color}`}>{cfg.label}</span>
-          {event.exit_detail && (
+          {detail && (
             <>
               <span className="text-zinc-600 text-[10px]">·</span>
-              <span className="text-[10px] text-zinc-400">{event.exit_detail}</span>
+              <span className="text-[10px] text-zinc-400">{detail}</span>
             </>
           )}
           <span className="text-zinc-600 text-[10px]">·</span>

@@ -775,10 +775,20 @@ const UniversalPlayerCard = memo(({
     const sideIsUnder = _sideRaw.includes('UNDER');
     const sideLabel = sideIsUnder ? 'UNDER' : 'OVER';
     const sideColor = sideIsUnder ? 'text-red-400' : 'text-green-400';
-    const sideBar = sideIsUnder ? 'bg-red-500' : 'bg-green-500';
-    const sideBarGlow = sideIsUnder
-      ? 'shadow-[0_0_8px_rgba(239,68,68,0.45)]'
-      : 'shadow-[0_0_8px_rgba(34,197,94,0.45)]';
+
+    // Tier-matched left signal bar (NOT direction-matched).
+    // Safe Haven → green, Front Lines → amber, War Zone → red, default → zinc.
+    const tierKey = (theme === TIER_THEMES.GOBLIN) ? 'GOBLIN'
+      : (theme === TIER_THEMES.FRONT_LINE) ? 'FRONT_LINE'
+      : (theme === TIER_THEMES.DEMON) ? 'DEMON' : 'STANDARD';
+    const tierBarStyles = {
+      GOBLIN:     { bar: 'bg-green-500',  glow: 'shadow-[0_0_8px_rgba(34,197,94,0.45)]' },
+      FRONT_LINE: { bar: 'bg-yellow-500', glow: 'shadow-[0_0_8px_rgba(234,179,8,0.45)]' },
+      DEMON:      { bar: 'bg-red-500',    glow: 'shadow-[0_0_8px_rgba(239,68,68,0.45)]' },
+      STANDARD:   { bar: 'bg-zinc-500',   glow: 'shadow-[0_0_6px_rgba(161,161,170,0.30)]' },
+    }[tierKey];
+    const sideBar = tierBarStyles.bar;
+    const sideBarGlow = tierBarStyles.glow;
 
     // Direction-aware edge display (backend vk_edge is OVER-side)
     const dispEdge = (player.vk_edge != null && sideIsUnder)
@@ -804,10 +814,10 @@ const UniversalPlayerCard = memo(({
         onClick={isClickable ? handleCardClick : undefined}
         data-testid={`player-compact-${playerSlug}`}
       >
-        {/* Left Signal Bar — green OVER / red UNDER */}
+        {/* Left Signal Bar — matches TIER color (Safe Haven green / Front Lines amber / War Zone red) */}
         <div
           className={`absolute left-0 top-2 bottom-2 w-1 md:w-[3px] rounded-r ${sideBar} ${sideBarGlow}`}
-          data-testid={`signal-bar-${sideLabel.toLowerCase()}`}
+          data-testid={`tier-signal-bar-${tierKey.toLowerCase()}`}
           aria-hidden="true"
         />
 
