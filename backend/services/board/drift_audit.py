@@ -462,13 +462,26 @@ async def _audit_one_window(
         "missing": 0,
         "inactive": 0,
         "divergence_ratio": 0.0,
+        # Step 6 shadow-tag observability: both writers output to distinct
+        # version_tags during the window. `rt_presence` proves the real-time
+        # fast-path wrote its upsert to `<canonical>-rt`. `legacy_presence`
+        # proves the legacy full-rebuild populated `<canonical>`. The primary
+        # classification (above) compares the ledger RT entry against the
+        # canonical (legacy) view — that is the A/B convergence signal.
+        "rt_tag": f"{adapter.version_tag}-rt",
+        "legacy_tag": adapter.version_tag,
+        "rt_present": 0,
+        "legacy_present": 0,
+        "rt_presence_ratio": 0.0,
+        "legacy_presence_ratio": 0.0,
         "divergence_samples": [],
     }
     if not entries:
         return report
 
     unique_keys = {e["canonical_key"] for e in entries}
-    current_docs: Dict[str, Dict[str, Any]] = {}
+    legacy_docs: Dict[str, Dict[str, Any]] = {}
+    rt_docs: Dict[str, Dict[str, Any]] = {}
     scores_coll = db[adapter.scores_collection]
     async for d in scores_coll.find(
         {
@@ -477,16 +490,33 @@ async def _audit_one_window(
         },
         {"_id": 0},
     ):
-        current_docs[d.get("canonical_key")] = d
+        legacy_docs[d.get("canonical_key")] = d
+    async for d in scores_coll.find(
+        {
+            "version_tag": f"{adapter.version_tag}-rt",
+            "canonical_key": {"$in": list(unique_keys)},
+        },
+        {"_id": 0},
+    ):
+        rt_docs[d.get("canonical_key")] = d
+
+    # Alias kept so the classifier keeps its prior semantics (ledger vs legacy).
+    current_docs = legacy_docs
 
     for e in entries:
-        cur = current_docs.get(e["canonical_key"])
-        cls = await _classify_entry(e, cur)
+        ck = e["canonical_key"]
+        legacy = legacy_docs.get(ck)
+        rt = rt_docs.get(ck)
+        if legacy is not None:
+            report["legacy_present"] += 1
+        if rt is not None:
+            report["rt_present"] += 1
+        cls = await _classify_entry(e, legacy)
         report[cls] += 1
         if (cls in ("tier_changed", "vision_score_drift", "missing")
                 and len(report["divergence_samples"]) < include_divergence_samples):
             report["divergence_samples"].append({
-                "canonical_key": e["canonical_key"],
+                "canonical_key": ck,
                 "class": cls,
                 "observed_at": (
                     e["observed_at"].isoformat()
@@ -494,19 +524,27 @@ async def _audit_one_window(
                     else e.get("observed_at")
                 ),
                 "source": e.get("source"),
-                "rt": {
+                "rt_ledger": {
                     "tier": e.get("tier_rt"),
                     "vision_score": e.get("vision_score_rt"),
                     "quality_source": e.get("quality_source_rt"),
                     "computed_at": e.get("computed_at_rt"),
                 },
-                "current": (
+                "rt_materialized": (
                     {
-                        "tier": cur.get("tier"),
-                        "vision_score": cur.get("vision_score"),
-                        "quality_source": cur.get("quality_source"),
-                        "computed_at": cur.get("computed_at"),
-                    } if cur else None
+                        "tier": rt.get("tier"),
+                        "vision_score": rt.get("vision_score"),
+                        "quality_source": rt.get("quality_source"),
+                        "computed_at": rt.get("computed_at"),
+                    } if rt else None
+                ),
+                "legacy_current": (
+                    {
+                        "tier": legacy.get("tier"),
+                        "vision_score": legacy.get("vision_score"),
+                        "quality_source": legacy.get("quality_source"),
+                        "computed_at": legacy.get("computed_at"),
+                    } if legacy else None
                 ),
             })
 
@@ -515,6 +553,14 @@ async def _audit_one_window(
     )
     report["divergence_ratio"] = (
         round(total_divergent / report["entries"], 3)
+        if report["entries"] else 0.0
+    )
+    report["rt_presence_ratio"] = (
+        round(report["rt_present"] / report["entries"], 3)
+        if report["entries"] else 0.0
+    )
+    report["legacy_presence_ratio"] = (
+        round(report["legacy_present"] / report["entries"], 3)
         if report["entries"] else 0.0
     )
     return report

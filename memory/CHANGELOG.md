@@ -1,6 +1,32 @@
 # Changelog
 
 ## 2026-04-18 — Priority realignment (user directive)
+
+## 2026-04-19 — Step 6 A/B Comparator Isolation + Prop-Scores Hygiene
+- **Hygiene pass**: archived 15 stale experimental version_tags (41,793 docs)
+  from `nba_prop_scores` → `nba_prop_scores_archive_stale_tags`; same for MLB
+  (10,090 docs → `mlb_prop_scores_archive_stale_tags`). Canonical tags
+  (`final-nba`, `final-mlb`) are the only writable tags left on the live
+  collections. Indexes rebuilt via `ensure_indexes()`.
+- **Stray `live` tag plugged**: `write_prop_scores()` (MLB legacy wrapper) now
+  writes to `final-mlb` instead of `live`, eliminating the off-window writer.
+- **Real-time engine → shadow tag**: `services/board/engine.py` now upserts
+  under `{canonical}-rt` (`final-nba-rt` / `final-mlb-rt`). Legacy full-rebuild
+  continues writing under the canonical tag. No writer collision on the live
+  tag during the 48h window.
+- **Drift auditor cross-tag**: `_audit_one_window` now queries BOTH tags per
+  ledger entry. Report surfaces `rt_tag`, `legacy_tag`, `rt_present`,
+  `legacy_present`, `rt_presence_ratio`, `legacy_presence_ratio`, and each
+  divergence sample carries `rt_ledger`, `rt_materialized`, `legacy_current`
+  side-by-side.
+- **Reader unchanged**: live board readers (ferrari routes, optimized_sync,
+  injury_triggered_rescore) stay pinned to `final-{sport}`.
+- **Verified**: ledger flushed; direct `recompute_sport(tag=final-nba-rt)`
+  wrote 3 docs to the shadow tag (visible under the new `-rt` distribution);
+  audit report confirms `rt_presence_ratio=1.0` against `legacy_presence_ratio=0.0`
+  for the seeded keys. Regression tests (5) still pass.
+
+
 - Per user: next priority is Universal Board Migration + Legacy Writer
   Retirement (Step 6). No new features until that lands.
 - New file `/app/memory/ROADMAP.md` created with P0/P1/P2 and explicit

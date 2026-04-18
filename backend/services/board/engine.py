@@ -201,10 +201,16 @@ async def on_new_props(
             return {**result, "duration_ms": duration_ms, "reason": "no_match"}
 
         try:
+            # Step 6 observation window: real-time engine writes to a shadow
+            # `<canonical>-rt` tag so it no longer races with the legacy
+            # full-rebuild on the canonical tag. The live board reader stays
+            # pinned to the canonical tag during the window; only the drift
+            # auditor reads both. See /app/memory/ROADMAP.md §1a.
+            rt_version_tag = f"{board_adapter.version_tag}-rt"
             rc = await recompute_sport(
                 db=db,
                 sport=sport_key,
-                version_tag=board_adapter.version_tag,
+                version_tag=rt_version_tag,
                 dry_run=False,
                 limit=None,
                 override_config=None,
