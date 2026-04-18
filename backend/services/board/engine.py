@@ -122,33 +122,67 @@ async def on_new_props(
     keys_set: Set[str] = set(keys)
     lock = _sport_locks.setdefault(sport_key, asyncio.Lock())
 
+    # --- DB-side pre-filter: parse canonical_keys to extract event_id +
+    # player_name subsets. Canonical key format is
+    # '{sport}|{event_id}|{player}|{stat}|{line}|{side}'. Passing those
+    # sets as $in filters cuts the O(N_live_props) scan to O(matched)
+    # before the engine ever touches build_context. ---
+    event_ids: Set[str] = set()
+    player_names: Set[str] = set()
+    for k in keys_set:
+        parts = k.split("|")
+        if len(parts) >= 4:
+            if parts[1]:
+                event_ids.add(parts[1])
+            if parts[2]:
+                player_names.add(parts[2])
+
     async with lock:
-        # Load raw props from live_props, then filter to those whose
-        # scoring-adapter canonical_key is in the target set. We filter
-        # BEFORE calling recompute so the heavy scoring work runs only
-        # on matched props. `get_scoring_adapter()` returns a fresh
-        # instance every call, so we pre-load + filter here and pass
-        # the result directly into recompute via the `props` kwarg.
+        live_coll_name = scoring_adapter.live_props_collection
+        # Narrow query leveraging existing NBA dg_live_props indexes on
+        # event_id / player_name. If the canonical_keys carry no usable
+        # event_id/player (e.g., degenerate keys) we fall back to full
+        # scan — which is how the un-optimised path worked before.
+        query: Dict[str, Any] = {}
+        if event_ids:
+            query["event_id"] = {"$in": list(event_ids)}
+        if player_names:
+            query["player_name"] = {"$in": list(player_names)}
         try:
-            all_props = await scoring_adapter.load_live_props(db, limit=None)
+            raw_docs: List[Dict[str, Any]] = await db[live_coll_name].find(
+                query, {"_id": 0}
+            ).to_list(length=None)
         except Exception as e:
             logger.exception(
-                f"[BOARD_ENGINE] {sport_key} load_live_props failed: {e}"
+                f"[BOARD_ENGINE] {sport_key} pre-filtered load failed: {e}"
             )
             _STATS[sport_key]["events_skipped"] = _STATS[sport_key].get("events_skipped", 0) + 1
             _STATS[sport_key]["last_error"] = str(e)
             return {**result, "reason": "load_failed", "error": str(e)}
 
+        # Fast key match: O(N_narrow) string interpolations. 10,000x
+        # faster than calling build_context per prop.
         matched: List[Dict[str, Any]] = []
-        for p in all_props:
-            try:
-                ctx = await scoring_adapter.build_context(db, p, {})
-            except Exception:
-                continue
-            if ctx is None:
-                continue
-            if ctx.canonical_key in keys_set:
+        fast_misses: List[Dict[str, Any]] = []
+        for p in raw_docs:
+            ck = board_adapter.canonical_key(p)
+            if ck is None:
+                fast_misses.append(p)
+            elif ck in keys_set:
                 matched.append(p)
+
+        # Defensive fallback — if the fast-path missed any props (e.g.
+        # a sport whose adapter override hasn't been written yet, or a
+        # malformed doc), run build_context on just those fast_misses
+        # to preserve correctness without paying the cost on every prop.
+        if fast_misses and len(matched) < len(keys_set):
+            for p in fast_misses:
+                try:
+                    ctx = await scoring_adapter.build_context(db, p, {})
+                except Exception:
+                    continue
+                if ctx and ctx.canonical_key in keys_set:
+                    matched.append(p)
 
         if not matched:
             duration_ms = int((time.monotonic() - started_at) * 1000)

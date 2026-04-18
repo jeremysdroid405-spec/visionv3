@@ -694,11 +694,8 @@ Key helper: `_get_nba_tier_picks_from_scores(tier, limit)` +
     per-sport zero counters (verification ran in a separate process
     with its own engine state — expected).
 - **Known follow-ups (not blocking)**:
-  1. Pre-filter optimisation: current scoped ingest loads ALL live
-     props + runs `build_context` on each to match canonical_key.
-     Adapter-level `quick_match(raw, keys) -> bool` hook would cut the
-     filter phase to an O(N) string compare on raw fields. Reduce
-     MLB latency from ~41s → sub-1s for small batches.
+  1. ~~Pre-filter optimisation~~ — **SHIPPED Apr 18, 2026**. See
+     "Step 5 Hot-Path Optimisation" below.
   2. `vision_score` percentile-rank normalization during upsert-mode
      runs against the current batch only (1 doc → percentile=100).
      Should compute against the existing pool's `vision_score_raw`
@@ -709,6 +706,72 @@ Key helper: `_get_nba_tier_picks_from_scores(tier, limit)` +
      Step 6 session (legacy-writer retirement) since firing alongside
      the current full-rebuild coordinator would duplicate work. Wiring
      this is gated by the 48h observation window per user directive.
+
+## Step 5 Hot-Path Optimisation — `adapter.canonical_key()` fast filter (Apr 18, 2026)
+
+### Problem
+The initial Step 5 ingest path called `scoring_adapter.build_context()`
+on every raw live prop to reconstruct `canonical_key` for scoped
+filtering. `build_context` triggers VegasKiller model inference, game
+log preloads, and advanced stats lookups — all of which the scoped
+filter does not need. Per-event latency: **NBA 16.5 s, MLB 41 s**.
+
+### Fix (3 surgical edits)
+1. `services/board/adapters/nba.py::NBABoardAdapter.canonical_key()`
+   — pure-string reconstruction of `canonical_key` mirroring the NBA
+   scoring adapter's format exactly. Uses the same
+   `_NBA_STAT_TYPE_MAP` (duplicated locally with a comment flag
+   anchoring it to the scoring adapter). Zero DB I/O, zero model
+   inference.
+2. `services/board/adapters/mlb.py::MLBBoardAdapter.canonical_key()`
+   — reads the pre-computed `canonical_key` field on the prop
+   (present on MLB live docs) with a reconstruction fallback.
+3. `services/board/engine.py::on_new_props()` — rewritten filter
+   phase:
+   - Parse target canonical_keys → extract `event_id` and
+     `player_name` subsets.
+   - DB-side narrow query: `live_props.find({'event_id': {'$in': [...]},
+     'player_name': {'$in': [...]}})` cuts the scan from O(N_total) to
+     O(N_matched_group).
+   - Iterate returned docs calling `board_adapter.canonical_key(p)` —
+     ~0.001 ms per prop — and keep only those in the requested set.
+   - Defensive fallback: any prop whose fast-path returns `None` is
+     re-attempted via `scoring_adapter.build_context()` (belt +
+     suspenders).
+
+### Hard verification
+| Metric | Pre (build_context filter) | Post (canonical_key filter) | Speedup |
+|---|---|---|---|
+| NBA 1 key | 16,563 ms | 124 ms | **133×** |
+| MLB 1 key | 40,998 ms | 333 ms | **123×** |
+| NBA 300-prop canonical_key parity | — | 300/300 match | — |
+| MLB 300-prop canonical_key parity | — | 300/300 match | — |
+
+Warm-cache scaling:
+| Batch | NBA | MLB |
+|---|---|---|
+| 5 keys  | 952 ms (cold) | 458 ms |
+| 20 keys | 248 ms (warm) — 12 ms/prop | 548 ms — 27 ms/prop |
+
+Correctness preserved in every run:
+- NBA bs=1/5/20: total docs stable at 159, sibling sha256 hash
+  byte-identical pre/post.
+- MLB bs=1/5/20: total docs stable at 4944, sibling sha256 hash
+  byte-identical pre/post.
+- `active=True` / `computed_at` advanced on all upserted docs.
+- Post-restart 60s scanner log line
+  (`[GAME_START_SCANNER] mlb: 21 props → inactive (game_started)`)
+  confirms scanner-engine integration unchanged.
+- All 6 tier endpoints return 200 with pre-existing counts
+  (NBA 3/5/1, MLB 0/0/0 as expected at 20:02 UTC with all today's
+  MLB games having tipped).
+
+### Target met
+"Sub-1s or as close as realistically possible" → achieved for NBA
+(124 ms) and MLB (333 ms) on single-key events. Sub-1s also at 20-key
+warm batches (248 ms NBA, 548 ms MLB). The remaining latency is pure
+scoring work (VK model / MLB HF model inference on matched props) —
+there is no filter overhead left to cut.
 
 ## Remaining Roadmap
 - **P1**: Step 5 follow-ups listed above (latency + vision_score

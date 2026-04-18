@@ -1,6 +1,6 @@
 """NBA board adapter."""
 from __future__ import annotations
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from services.board.adapters.base import SportBoardAdapter
 
@@ -14,6 +14,18 @@ _NBA_SORT_KEYS = {
     "unqualified": "vision_score",
 }
 
+# Must mirror the mapping in `services/scoring/adapters/nba_scoring.py`
+# build_context() so the fast-path canonical_key is byte-identical to
+# the scoring adapter's persisted key. A divergence here breaks scoped
+# ingest filtering.
+_NBA_STAT_TYPE_MAP = {
+    "player_points": "PTS", "player_rebounds": "REB", "player_assists": "AST",
+    "player_points_rebounds_assists": "PRA",
+    "player_points_alternate": "PTS", "player_rebounds_alternate": "REB",
+    "player_assists_alternate": "AST",
+    "player_points_rebounds_assists_alternate": "PRA",
+}
+
 
 class NBABoardAdapter(SportBoardAdapter):
     sport = "nba"
@@ -24,6 +36,30 @@ class NBABoardAdapter(SportBoardAdapter):
 
     def sort_key_for_tier(self, tier: str) -> str:
         return _NBA_SORT_KEYS.get(tier, "vision_score")
+
+    def canonical_key(self, prop: Dict) -> Optional[str]:
+        """Hot-path canonical_key reconstruction — mirrors
+        `NBAScoringAdapter.build_context()` exactly. Pure string I/O,
+        no DB, no model inference. Used by the universal engine to
+        pre-filter scoped-ingest batches in O(N) without running
+        `build_context` across the entire live pool."""
+        player_name = prop.get("player_name")
+        line = prop.get("line")
+        if player_name is None or line is None:
+            return None
+        market = prop.get("market", "") or ""
+        stat_type = _NBA_STAT_TYPE_MAP.get(
+            market, prop.get("stat_type_extracted") or market
+        )
+        if not stat_type:
+            return None
+        direction = (prop.get("direction") or "OVER").upper()
+        side = "OVER" if "OVER" in direction else "UNDER"
+        event_id = prop.get("event_id", "?")
+        try:
+            return f"nba|{event_id}|{player_name}|{stat_type}|{float(line)}|{side}"
+        except (TypeError, ValueError):
+            return None
 
     async def score_batch(self, db, canonical_keys: List[str]) -> List[Dict]:
         """Reserved for Step 5 (real-time ingest). Not invoked by the

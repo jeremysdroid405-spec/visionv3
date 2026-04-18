@@ -1,6 +1,6 @@
 """MLB board adapter."""
 from __future__ import annotations
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from services.board.adapters.base import SportBoardAdapter
 
@@ -22,6 +22,27 @@ class MLBBoardAdapter(SportBoardAdapter):
 
     def sort_key_for_tier(self, tier: str) -> str:
         return _MLB_SORT_KEYS.get(tier, "vision_score")
+
+    def canonical_key(self, prop: Dict) -> Optional[str]:
+        """Hot-path canonical_key — mirrors
+        `MLBScoringAdapter.build_context()` exactly. MLB live props
+        usually carry the pre-computed `canonical_key` field already,
+        so this is a pointer-read in the common case. Fallback
+        reconstruction matches the scoring adapter's format."""
+        ck = prop.get("canonical_key")
+        if ck:
+            return ck
+        player_name = prop.get("player_name")
+        stat_type = prop.get("stat_type")
+        line = prop.get("line")
+        if player_name is None or line is None or stat_type is None:
+            return None
+        event_id = prop.get("event_id", "?")
+        rec = prop.get("recommendation", "OVER")
+        try:
+            return f"mlb|{event_id}|{player_name}|{stat_type}|{float(line)}|{rec}"
+        except (TypeError, ValueError):
+            return None
 
     async def score_batch(self, db, canonical_keys: List[str]) -> List[Dict]:
         raise NotImplementedError(
