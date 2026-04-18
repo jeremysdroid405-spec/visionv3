@@ -57,13 +57,55 @@ async def get_board(
     if primary != "pp_utility":
         sort_spec.append(("pp_utility", -1))
 
+    # ------------------------------------------------------------------
+    # TIER INTEGRITY — one player = max one pick per tier (board-wide).
+    # ------------------------------------------------------------------
+    # The scoring store legitimately holds multiple qualifying props per
+    # player (e.g. Amen Thompson PTS 14.5 OVER *and* PTS 15.5 OVER — both
+    # pass the safe_haven gates). Surfacing both on the same board violates
+    # the product invariant that each tier lists distinct players. This
+    # invariant is enforced here in the reader — the single entry point
+    # every board route funnels through — so the dedup can never be
+    # accidentally bypassed by a new caller.
+    #
+    # Strategy:
+    #   1. Over-fetch up to `cap * OVER_FETCH_FACTOR` rows (bounded) sorted
+    #      by the adapter's tier key so the best row per player appears
+    #      FIRST in the stream.
+    #   2. Walk the sorted stream; keep the first occurrence per
+    #      normalized player_name, skip subsequent duplicates.
+    #   3. Stop once we have `cap` distinct players.
+    #
+    # Sort already prioritizes `primary DESC, pp_utility DESC` — "first
+    # seen" is therefore "best pick" (highest vision_score, tie-broken by
+    # pp_utility). No additional comparison needed.
+    OVER_FETCH_FACTOR = 6
+    OVER_FETCH_MAX = 500
+    fetch_limit = min(max(cap * OVER_FETCH_FACTOR, cap), OVER_FETCH_MAX)
+
     cursor = (
         db[adapter.scores_collection]
         .find(query, projection)
         .sort(sort_spec)
-        .limit(cap)
+        .limit(fetch_limit)
     )
-    return await cursor.to_list(length=cap)
+    raw = await cursor.to_list(length=fetch_limit)
+
+    seen: set = set()
+    deduped: List[Dict] = []
+    for row in raw:
+        player_key = (row.get("player_name") or "").strip().lower()
+        if not player_key:
+            # rows missing player_name are not a valid tier pick — skip
+            continue
+        if player_key in seen:
+            continue
+        seen.add(player_key)
+        deduped.append(row)
+        if len(deduped) >= cap:
+            break
+
+    return deduped
 
 
 async def get_board_count(db, sport: str, tier: str) -> int:

@@ -80,6 +80,68 @@ def _guard_board_picks(picks):
     return picks
 
 
+def _dedupe_picks_by_player(picks, keep: str = "best"):
+    """Tier-integrity invariant: one player = max one pick per tier.
+
+    Legacy-Ferrari MLB collections and a few NBA paths can surface multiple
+    qualifying props for the same player (e.g. PTS 14.5 OVER + PTS 15.5 OVER,
+    or RBIs O0.5 + Batter Walks O0.5). The product contract is that each
+    tier lists DISTINCT players; alternate lines / alternate stat families
+    for the same player must collapse into a single pick.
+
+    Comparison is on a normalized `player_name` — `player_id` is frequently
+    None across the MLB collections and some NBA shadow rows.
+
+    Ranking (best-pick-wins):
+        1. vision_score           DESC  (primary tier ranker)
+        2. pp_utility             DESC
+        3. abs(edge_pct or vk_edge) DESC  (fallback for legacy MLB docs)
+
+    `picks` input is expected to be pre-sorted by the reader, but we sort
+    again defensively so the invariant holds even when a caller bypasses the
+    reader or a downstream overlay mutates ordering.
+    """
+    if not picks:
+        return picks
+
+    def _rank_score(p):
+        vs = p.get("vision_score")
+        pu = p.get("pp_utility")
+        eg = p.get("edge_pct") if p.get("edge_pct") is not None else p.get("vk_edge")
+        # Treat None as lowest rank; negative edges are still ranked by magnitude.
+        vs_r = float(vs) if isinstance(vs, (int, float)) else float("-inf")
+        pu_r = float(pu) if isinstance(pu, (int, float)) else float("-inf")
+        eg_r = abs(float(eg)) if isinstance(eg, (int, float)) else float("-inf")
+        return (vs_r, pu_r, eg_r)
+
+    ordered = sorted(
+        [p for p in picks if isinstance(p, dict)],
+        key=_rank_score,
+        reverse=True,
+    )
+
+    seen = set()
+    collapsed_count = 0
+    out = []
+    for p in ordered:
+        pname = (p.get("player_name") or "").strip().lower()
+        if not pname:
+            # Unnamed rows are never valid tier picks.
+            continue
+        if pname in seen:
+            collapsed_count += 1
+            continue
+        seen.add(pname)
+        out.append(p)
+
+    if collapsed_count:
+        logger.info(
+            "[TIER_DEDUPE] collapsed %d duplicate-player pick(s); kept %d of %d",
+            collapsed_count, len(out), len(picks),
+        )
+    return out
+
+
 
 
 def _resolve_prop_direction(pick: dict) -> str:
@@ -1523,6 +1585,7 @@ async def get_oracle_apex_picks(
         
         picks = result.get('apex_picks', [])[:limit]
         picks = _guard_board_picks(picks)
+        picks = _dedupe_picks_by_player(picks)
 
         return {
             "tier": "oracle_apex",
@@ -1594,6 +1657,7 @@ async def get_ferrari_safe_haven(
             
             picks = result.get('apex_picks', [])[:limit]
             picks = _guard_board_picks(picks)
+            picks = _dedupe_picks_by_player(picks)
             return {
                 "tier": "safe_haven",
                 "tier_label": "Safe Haven (Live Scan)",
@@ -1667,6 +1731,7 @@ async def get_ferrari_safe_haven(
     # CANONICAL STAT GUARD: last line of defense against silent clobbering of
     # h5_rate / h10_rate / h20_rate. Auto-corrects to count-based values.
     picks = _guard_board_picks(picks)
+    picks = _dedupe_picks_by_player(picks)
 
     # Return picks with pipeline status
     # Count validation states for status flag
@@ -1781,6 +1846,7 @@ async def get_ferrari_front_lines(
 
     # CANONICAL STAT GUARD: see safe-haven for rationale.
     picks = _guard_board_picks(picks)
+    picks = _dedupe_picks_by_player(picks)
 
     # Return picks with pipeline status
     fully_validated = sum(1 for p in picks if (p.get("validation") or {}).get("is_fully_validated", False))
@@ -1893,6 +1959,7 @@ async def get_ferrari_war_zone(
 
     # CANONICAL STAT GUARD: see safe-haven for rationale.
     picks = _guard_board_picks(picks)
+    picks = _dedupe_picks_by_player(picks)
 
     # Return picks with pipeline status
     fully_validated = sum(1 for p in picks if (p.get("validation") or {}).get("is_fully_validated", False))
