@@ -1414,9 +1414,10 @@ async def startup_event():
     # interval job to (now + interval), which in production can delay
     # hourly syncs by up to 60 minutes after a redeploy.
     #
-    # All `scheduler.add_job(...)` calls already pass `replace_existing=True`
-    # which keeps the persisted job's state when present AND upgrades the
-    # trigger/func when code changes — preventing duplicate registrations.
+    # Interval jobs go through _register_interval_job() (defined below) so
+    # their persisted next_run_time is preserved across restarts. Cron jobs
+    # keep using replace_existing=True because their next_run_time is
+    # deterministic from the cron expression.
     try:
         _scheduler_mongo_client = MongoClient(
             os.environ.get("MONGO_URL"),
@@ -1537,44 +1538,91 @@ async def startup_event():
     # 4:23 AM - MLB Daily Pipeline (recalculate with fresh data)
     # ==========================================================================
     
+    # --------------------------------------------------------------------
+    # Interval-job registration helper
+    # --------------------------------------------------------------------
+    # Problem: re-calling scheduler.add_job(..., replace_existing=True) on
+    # an IntervalTrigger job overwrites the persisted next_run_time in
+    # MongoDBJobStore with (now + interval). On every backend restart that
+    # delays hourly syncs by up to 60 minutes and 5-min checks by up to
+    # 5 minutes - exactly the stale-pipeline bug we're fixing.
+    #
+    # Fix: if the interval job is already persisted in the jobstore, skip
+    # re-registration entirely so its real next_run_time survives the
+    # restart. Cron/date jobs are unaffected (their next_run_time is
+    # deterministic) and keep using replace_existing=True so code/schedule
+    # edits still propagate.
+    #
+    # NOTE: scheduler.get_job() ONLY consults _pending_jobs when the
+    # scheduler is STATE_STOPPED, so we must query the MongoDB collection
+    # directly to know whether the job is already persisted.
+    # --------------------------------------------------------------------
+    try:
+        _scheduler_jobs_coll = _scheduler_mongo_client[
+            os.environ.get("DB_NAME", "pick_vision")
+        ]["scheduler_jobs"]
+    except Exception:
+        _scheduler_jobs_coll = None
+    
+    def _register_interval_job(func, trigger, *, job_id, name):
+        already_persisted = False
+        if _scheduler_jobs_coll is not None:
+            try:
+                already_persisted = (
+                    _scheduler_jobs_coll.count_documents({"_id": job_id}, limit=1) > 0
+                )
+            except Exception as _e:
+                logger.warning(
+                    f"[SCHEDULER] Existence check failed for '{job_id}' ({_e}); "
+                    "falling back to fresh registration."
+                )
+                already_persisted = False
+        if already_persisted:
+            logger.info(
+                f"[SCHEDULER] Preserving persisted interval job '{job_id}' "
+                f"(next_run_time kept)"
+            )
+            return
+        logger.info(f"[SCHEDULER] Registering new interval job '{job_id}'")
+        scheduler.add_job(
+            func, trigger,
+            id=job_id, name=name, replace_existing=False
+        )
+    
     # 1. HOURLY FULL SYNC (The Engine) - Every 60 minutes
     # Keeps props fresh during game days
-    scheduler.add_job(
+    _register_interval_job(
         scheduled_hourly_full_sync,
         IntervalTrigger(minutes=60, timezone=SCHEDULER_TIMEZONE),
-        id='hourly_full_sync',
+        job_id='hourly_full_sync',
         name='Hourly Full Sync (60 min interval)',
-        replace_existing=True
     )
     
     # 2. HOURLY BADGE SYNC (The Intel) - Every 60 minutes
     # Updates context badges for all players
-    scheduler.add_job(
+    _register_interval_job(
         scheduled_hourly_badge_sync,
         IntervalTrigger(minutes=60, timezone=SCHEDULER_TIMEZONE),
-        id='hourly_badge_sync',
+        job_id='hourly_badge_sync',
         name='Hourly Badge Sync (60 min interval)',
-        replace_existing=True
     )
     
     # 3. HOURLY INJURY SYNC (The Roster) - Every 60 minutes
     # Catches injury report updates for Usage Ripple
-    scheduler.add_job(
+    _register_interval_job(
         scheduled_hourly_injury_sync,
         IntervalTrigger(minutes=60, timezone=SCHEDULER_TIMEZONE),
-        id='hourly_injury_sync',
+        job_id='hourly_injury_sync',
         name='Hourly Injury Sync (60 min interval)',
-        replace_existing=True
     )
     
     # 4. LIVE INJURY CHECK (Every 5 minutes)
     # Powers the "Live Injury Advantage" section - needs frequent updates
-    scheduler.add_job(
+    _register_interval_job(
         scheduled_live_injury_check,
         IntervalTrigger(minutes=5, timezone=SCHEDULER_TIMEZONE),
-        id='live_injury_check',
+        job_id='live_injury_check',
         name='Live Injury Check (5 min interval)',
-        replace_existing=True
     )
     
     # NOTE: Vision Intel enrichment now runs at the END of every sync cycle
@@ -1582,23 +1630,21 @@ async def startup_event():
     
     # 5. HALF-HOURLY SOCIAL SYNC (The News) - Every 30 minutes
     # Catches late-breaking lineup news and social signals
-    scheduler.add_job(
+    _register_interval_job(
         scheduled_half_hourly_social_sync,
         IntervalTrigger(minutes=30, timezone=SCHEDULER_TIMEZONE),
-        id='half_hourly_social_sync',
+        job_id='half_hourly_social_sync',
         name='Half-Hourly Social Sync (30 min interval)',
-        replace_existing=True
     )
     
     # 6. HOURLY REFEREE SYNC (The Whistle Matrix) - Every 60 minutes
     # Scrapes referee assignments and stats for Vision Intel Suite
     # Critical for new picks to have officiating data (ref_ppg, crew_chief, whistle_class)
-    scheduler.add_job(
+    _register_interval_job(
         scheduled_hourly_referee_sync,
         IntervalTrigger(minutes=60, timezone=SCHEDULER_TIMEZONE),
-        id='hourly_referee_sync',
+        job_id='hourly_referee_sync',
         name='Hourly Referee Sync (60 min interval)',
-        replace_existing=True
     )
     
     # ==========================================================================

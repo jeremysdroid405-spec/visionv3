@@ -359,5 +359,35 @@ Key helper: `_get_nba_tier_picks_from_scores(tier, limit)` +
 | `services/oracle_apex_service.py` | NBA Safe Haven scoring |
 | `services/mlb_tier_sorter.py` | MLB tier scoring |
 
+## APScheduler Persistence (Phase 2 — COMPLETE Apr 18, 2026)
+- **Problem**: interval jobs in `MongoDBJobStore` had their `next_run_time`
+  overwritten on every backend restart because `add_job(..., replace_existing=True)`
+  unconditionally resets persisted trigger state. In production this delayed
+  hourly syncs by up to 60 min and the 5-min `live_injury_check` by up to 5 min
+  after every redeploy.
+- **Fix**: `_register_interval_job()` helper in `server.py` queries
+  `scheduler_jobs` in MongoDB directly (scheduler.get_job() is not reliable
+  pre-start — it only consults pending jobs). If the job id is already
+  persisted, skip re-registration so next_run_time survives. Cron jobs keep
+  using `replace_existing=True` (deterministic next_run_time from cron
+  expression).
+- **Hard verification**: BEFORE vs AFTER restart dump — 5 of 6 interval jobs
+  showed exactly 0.0s drift; 6th (`live_injury_check`) fired legitimately at
+  its preserved timestamp `05:36:19.597429` (confirmed by APScheduler's own
+  "scheduled at" log line) and auto-advanced one interval.
+
+## Remaining Roadmap
+- **P1**: Phase 3 Targeted Injury-Triggered Rescore
+  (`services/injury_triggered_rescore.py` — flesh out impacted-prop selector
+  and patch only affected rows in `nba_prop_scores` + `dg_cached_board`).
+- **P1**: Phase 4 — rip deprecated writers out of `live_injuries`,
+  `dg_injuries`, `bdl_injuries` pipelines.
+- **P1**: Phase 5 — drop legacy collections (`elite_safe_haven`,
+  `elite_front_lines`, `elite_war_zone`, `live_injuries`, `dg_injuries`,
+  `bdl_injuries`) once no readers remain.
+- **P1**: Google/Apple OAuth (Emergent-managed).
+- **P1**: Stripe payments (pod test keys).
+- **P2**: Wind Tunnel weather integration for MLB friction.
+
 ---
 *Last Updated: April 18, 2026*
