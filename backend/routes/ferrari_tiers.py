@@ -887,29 +887,45 @@ async def _build_nba_board_lookup() -> Dict[tuple, Dict[str, Any]]:
     Each entry carries both the prop dict (full enrichment) and the parent
     player doc (headshot_url, team, opponent, nba_id, position, etc.).
     Re-built on every call — dg_cached_board is ~126 player docs, negligible.
+
+    **Reads from `props[]`, not `standard/goblins/demons` buckets.** The persist
+    step in `optimized_sync_engine._persist_enriched_picks` writes modern
+    `intel_suite` (momentum_data, vacuum_data, whistle_data, board, sport,
+    ferrari_power_score) by positional index into `props.{idx}.intel_suite`.
+    The bucket arrays are rebuilt by `cached_board_builder_service` and carry
+    whatever `intel_suite` shape was live when they were categorized — which
+    drifts out of sync with the persist output. Reading from `props[]`
+    eliminates the drift (single source of truth, guaranteed fresh).
     """
     lookup: Dict[tuple, Dict[str, Any]] = {}
     if _db is None:
         return lookup
     async for player_doc in _db.dg_cached_board.find({}):
-        for bucket in ("standard", "demons", "goblins"):
-            for p in (player_doc.get(bucket) or []):
-                if not isinstance(p, dict):
-                    continue
-                line = p.get("line")
-                try:
-                    line_f = float(line) if line is not None else None
-                except (TypeError, ValueError):
-                    line_f = None
-                key = (
-                    p.get("event_id"),
-                    (p.get("player_name") or "").strip().lower(),
-                    (p.get("stat_type") or "").strip().upper(),
-                    line_f,
-                    (p.get("direction") or "").strip().upper(),
+        for p in (player_doc.get("props") or []):
+            if not isinstance(p, dict):
+                continue
+            line = p.get("line")
+            try:
+                line_f = float(line) if line is not None else None
+            except (TypeError, ValueError):
+                line_f = None
+            key = (
+                p.get("event_id"),
+                (p.get("player_name") or "").strip().lower(),
+                (p.get("stat_type") or "").strip().upper(),
+                line_f,
+                (p.get("direction") or "").strip().upper(),
+            )
+            if key[0] and key[1] and key[2] and key[3] is not None and key[4]:
+                # Derive bucket label from pp_multiplier_label for downstream
+                # display components that still expect it (goblin/demon/std).
+                lbl = (p.get("pp_multiplier_label") or "").lower()
+                bucket_lbl = (
+                    "demons" if lbl == "demon"
+                    else "goblins" if lbl == "goblin"
+                    else "standard"
                 )
-                if key[0] and key[1] and key[2] and key[3] is not None and key[4]:
-                    lookup[key] = {"player": player_doc, "prop": p, "bucket": bucket}
+                lookup[key] = {"player": player_doc, "prop": p, "bucket": bucket_lbl}
     return lookup
 
 

@@ -301,6 +301,120 @@ async def _fetch_vacuum_cached(db) -> Tuple[List, Dict]:
         logger.warning(f"[SYNC_CACHE] Vacuum fetch failed: {e}")
         return [], {}
 
+async def _collect_nba_tier_picks_from_scores(
+    db, board_name: str, limit: int = 10
+) -> List[Dict[str, Any]]:
+    """Source-of-truth NBA tier picks for the enrichment write path.
+
+    Reads the top-N final-nba rows from `nba_prop_scores` for the given
+    tier and overlays player-level context (team, opponent, headshot)
+    from `dg_cached_board` so the downstream `enrich_pick_with_cache`
+    call can resolve team/opponent-keyed data (momentum, whistle, vacuum).
+
+    This matches the exact source the Dashboard read path uses — eliminates
+    the Ferrari<>VK2 split-brain that stranded props on the legacy
+    intel_suite shape.
+    """
+    cursor = db.nba_prop_scores.find(
+        {"version_tag": "final-nba", "tier": board_name},
+        {"_id": 0},
+    ).sort("vision_score", -1).limit(limit)
+    scores = await cursor.to_list(length=limit)
+    if not scores:
+        return []
+
+    # One-pass build of player-name -> player-doc context map
+    player_lookup: Dict[str, Dict[str, Any]] = {}
+    async for pd in db.dg_cached_board.find(
+        {},
+        {"_id": 0, "player_name": 1, "team": 1, "team_name": 1, "team_logo_url": 1,
+         "opponent": 1, "opponent_abbr": 1, "headshot_url": 1, "photo_url": 1,
+         "nba_id": 1, "bdl_id": 1, "nba_com_id": 1, "espn_id": 1, "position": 1,
+         "jersey_number": 1, "injury_status": 1, "injured_teammates": 1},
+    ):
+        pn = pd.get("player_name")
+        if pn:
+            player_lookup[pn] = pd
+
+    picks: List[Dict[str, Any]] = []
+    for sc in scores:
+        player_doc = player_lookup.get(sc.get("player_name"), {})
+        pick: Dict[str, Any] = {
+            # Canonical identity
+            "canonical_key": sc.get("canonical_key"),
+            "event_id": sc.get("event_id"),
+            "player_name": sc.get("player_name"),
+            "stat_type": sc.get("stat_type"),
+            "line": sc.get("line"),
+            "direction": (sc.get("recommendation") or "OVER").title(),
+            "recommendation": (sc.get("recommendation") or "OVER").title(),
+
+            # Player context (drives enrich_pick_with_cache lookups)
+            "team": player_doc.get("team"),
+            "team_name": player_doc.get("team_name"),
+            "team_logo_url": player_doc.get("team_logo_url"),
+            "opponent": player_doc.get("opponent"),
+            "opponent_abbr": player_doc.get("opponent_abbr"),
+            "headshot_url": player_doc.get("headshot_url"),
+            "photo_url": player_doc.get("photo_url"),
+            "nba_id": player_doc.get("nba_id"),
+            "bdl_id": player_doc.get("bdl_id"),
+            "nba_com_id": player_doc.get("nba_com_id"),
+            "espn_id": player_doc.get("espn_id"),
+            "position": player_doc.get("position"),
+            "jersey_number": player_doc.get("jersey_number"),
+            "injury_status": player_doc.get("injury_status"),
+            "injured_teammates": player_doc.get("injured_teammates"),
+
+            # Tier / scoring layer (used by the intel_suite builder)
+            "tier": sc.get("tier"),
+            "vision_score": sc.get("vision_score"),
+            "ferrari_power_score": sc.get("vision_score"),
+            "tier_reference_book": sc.get("tier_reference_book"),
+            "tier_reference_odds": sc.get("tier_reference_odds"),
+            "edge_vs_fair": sc.get("edge_vs_fair"),
+            "fair_prob": sc.get("fair_prob"),
+            "confidence_score": sc.get("confidence"),
+
+            # PrizePicks / pricing layer
+            "pp_multiplier": sc.get("pp_multiplier"),
+            "pp_multiplier_label": sc.get("pp_multiplier_label"),
+            "pp_multiplier_source": sc.get("pp_multiplier_source"),
+            "pp_utility": sc.get("pp_utility"),
+            "pp_utility_category": sc.get("pp_utility_category"),
+
+            # Model projection layer
+            "vk_predicted": (
+                round(float(sc["vk2_projection"]), 2)
+                if sc.get("vk2_projection") is not None else None
+            ),
+            "vk2_projection": sc.get("vk2_projection"),
+            "vk2_sigma": sc.get("vk2_sigma"),
+            "model_projection": sc.get("model_projection"),
+            "model_sigma": sc.get("model_sigma"),
+            "p_true_active": sc.get("p_true_active"),
+            "p_true_method": sc.get("p_true_method"),
+
+            # Recent form (feeds stability / cushion intel)
+            "hit_rate_over": sc.get("hit_rate_over"),
+            "hit_rate_under": sc.get("hit_rate_under"),
+            "cv": sc.get("cv"),
+            "l5_avg": sc.get("l5_avg"),
+            "l10_avg": sc.get("l10_avg"),
+            "l20_avg": sc.get("l20_avg"),
+            "season_avg": sc.get("season_avg"),
+
+            # Book layer (may be absent on score doc — persist tolerates None)
+            "draftkings_price": sc.get("draftkings_price"),
+            "fanduel_price": sc.get("fanduel_price"),
+            "dk_odds": sc.get("draftkings_price"),
+        }
+        picks.append(pick)
+
+    return picks
+
+
+
 
 def enrich_pick_with_cache(
     pick: Dict[str, Any],
@@ -602,29 +716,49 @@ async def run_optimized_sync(db, target_sport: str = DEFAULT_SPORT, refresh_inte
     
     logger.info(f"[OPTIMIZED_SYNC] Ferrari complete: {ferrari_result.get('output', {}).get('total_picks', 0)} picks")
     
-    # Step 3: Collect all picks from Ferrari collections and enrich with cache
+    # Step 3: Collect all picks from the authoritative tier source and enrich with cache.
+    # ------------------------------------------------------------------
+    # NBA: split-brain fix (Apr 18 2026)
+    #   The read path (Dashboard / /api/v3/ferrari/*) was migrated to
+    #   `nba_prop_scores` (VK2 pipeline). Previously this write path still
+    #   read from `ferrari_service.get_{safe_haven,front_lines,war_zone}()`
+    #   which is a different tier selection, causing surfaced picks (e.g.
+    #   Christian Braun PRA 14.5 OVER) to inherit the stale legacy
+    #   `intel_suite` shape with `board=None`, `momentum_data=None`, etc.
+    #
+    #   Write driver now reads from the SAME `nba_prop_scores` source so
+    #   every pick the UI surfaces gets enriched with the modern
+    #   `intel_suite` (momentum_data, vacuum_data, whistle_data, board,
+    #   sport, ferrari_power_score) via `enrich_pick_with_cache`.
+    #
+    #   MLB path unchanged (still routed through mlb_tier_service).
+    # ------------------------------------------------------------------
     t3 = datetime.now(timezone.utc)
     all_picks = []
     boards = {}
-    
+
     for board_name in ["safe_haven", "front_lines", "war_zone"]:
-        # Get picks from getter methods (already in memory)
-        if board_name == "safe_haven":
-            board_data = await ferrari_service.get_safe_haven(10)
-        elif board_name == "front_lines":
-            board_data = await ferrari_service.get_front_lines(10)
+        if target_sport == "nba":
+            picks = await _collect_nba_tier_picks_from_scores(db, board_name, limit=10)
+            # Enrich each pick with momentum/whistle/vacuum from the shared cache.
+            # (Same enrichment fn used by the legacy path — GUARANTEES parity.)
+            for pick in picks:
+                pick["board"] = board_name
+                pick["sport"] = target_sport
+                enrich_pick_with_cache(pick, cache)
         else:
-            board_data = await ferrari_service.get_war_zone(10)
-        
-        picks = board_data.get("picks", [])
-        
-        # Enrich each pick with cached data (momentum, vacuum, whistle already in Ferrari)
-        for pick in picks:
-            pick["board"] = board_name
-            pick["sport"] = target_sport  # Tag sport on each pick
-            # Add any missing cache data
-            enrich_pick_with_cache(pick, cache)
-        
+            if board_name == "safe_haven":
+                board_data = await ferrari_service.get_safe_haven(10)
+            elif board_name == "front_lines":
+                board_data = await ferrari_service.get_front_lines(10)
+            else:
+                board_data = await ferrari_service.get_war_zone(10)
+            picks = board_data.get("picks", [])
+            for pick in picks:
+                pick["board"] = board_name
+                pick["sport"] = target_sport
+                enrich_pick_with_cache(pick, cache)
+
         all_picks.extend(picks)
         boards[board_name] = {
             "picks": picks,

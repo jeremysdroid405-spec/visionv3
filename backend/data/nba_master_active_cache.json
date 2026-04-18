@@ -1,6 +1,6 @@
 {
   "sport": "NBA",
-  "last_updated": "2026-04-18T04:18:25.723344+00:00",
+  "last_updated": "2026-04-18T04:42:12.904344+00:00",
   "prop_count": 30,
   "props": {
     "shaedon_sharpe|ast|2.5|prizepicks": {
@@ -8094,15 +8094,179 @@
       "_enriched_at": "2026-04-18T03:26:24.447937+00:00",
       "_cache_updated": "2026-04-18T03:26:24.447939+00:00"
     },
-    "gui_santos|ast|3.5|dk": {
+    "gui_santos|ast|3.5|prizepicks": {
+      "event_id": "c8d1b7fd06c21e259b9416daf596f023",
+      "home_team": "PHX",
+      "away_team": "GSW",
+      "commence_time": "2026-04-18T02:18:02Z",
       "player_name": "Gui Santos",
-      "stat_type": "AST",
-      "line": 3.5,
+      "market": "player_assists_alternate",
       "direction": "Over",
+      "line": 3.5,
+      "price": 100,
+      "multiplier": null,
+      "bookmaker": "prizepicks",
+      "is_alternate_market": true,
+      "is_demon": true,
+      "is_goblin": false,
+      "prop_type": "DEMON",
+      "last_update": "2026-04-18T04:28:43Z",
+      "popularity_order": 5,
+      "fetched_at": "2026-04-18T04:29:43.304696+00:00",
+      "sharp_market": {
+        "draftkings_price": null,
+        "fanduel_price": 158,
+        "betonline_price": null,
+        "sort_price": 158,
+        "sort_source": "fanduel",
+        "is_alternate": true
+      },
+      "draftkings_price": null,
+      "fanduel_price": 158,
+      "betonline_price": null,
+      "sort_price": 158,
+      "sort_source": "fanduel",
+      "home_team_full": "Phoenix Suns",
+      "away_team_full": "Golden State Warriors",
+      "player_name_raw": "Gui Santos",
+      "_composite_key": "Gui Santos|AST|3.5|Over|2026-04-18",
+      "stat_type_extracted": "AST",
+      "game_date": "2026-04-18",
+      "synced_at": "2026-04-18T04:29:42.944794+00:00",
+      "hit_rates": {
+        "l10_rate": 50,
+        "l5_rate": 40,
+        "l10_hit_count": 5,
+        "l5_hit_count": 2,
+        "l5_avg": 3.4,
+        "season_avg": 2.3,
+        "l10_avg": 3.4
+      },
+      "oracle_apex_qualified": false,
+      "apex_reason": "GATE1_HIT_RATE: 12/20 < 15/20",
+      "vk_predicted": 3.9,
+      "vk_edge": 0.4,
+      "vk_prob_over": 60.0,
+      "vk_prob_under": 40.0,
+      "vk_recommendation": "LEAN_OVER",
+      "cv": 0.586,
+      "h5_rate": 40,
+      "h10_rate": 60.0,
+      "h20_rate": 60.0,
+      "l5_hits": 2,
+      "l10_hits": 5,
+      "l20_hits": 12,
+      "l5_avg": 3.4,
+      "l10_avg": 3.4,
+      "l20_avg": 3.9,
+      "sharp_movement": false,
+      "movement_delta": -0.5,
+      "movement_direction": "under_value",
+      "movement_strength": "minimal",
+      "trap_risk": false,
+      "hook_risk": false,
+      "suspect_line_bait": false,
+      "trap_reasons": [],
+      "sidecar": {
+        "hook_risk": false,
+        "suspect_line_bait": false
+      },
+      "tier_label": "WAR_ZONE",
+      "stat_type": "AST",
+      "h10_hit_rate": 50,
+      "h5_hit_rate": 40,
+      "season_avg": 2.3,
+      "l10_hit_count": 5,
+      "l5_hit_count": 2,
+      "intel_suite": {
+        "usage_ripple": {
+          "bump_percent": 0,
+          "display": "Standard Volume",
+          "shift_label": "Standard Volume",
+          "injuries_affecting": [],
+          "reasoning": "No significant lineup changes"
+        },
+        "matchup_dvp": {
+          "rank": 13,
+          "display": "Rank #13 vs. Playmakers",
+          "color": "yellow",
+          "friction_level": "Medium",
+          "friction_label": "Average Defense",
+          "opponent": "PHX",
+          "stat_category": "AST"
+        },
+        "pace_delta": {
+          "possessions": 1.1,
+          "display": "+1.1 Possessions",
+          "pace_factor": 1.0,
+          "tempo_label": "Standard Tempo",
+          "team_pace": 98.2,
+          "opponent_pace": 99.0,
+          "expected_game_pace": 98.6
+        },
+        "stability_index": {
+          "score": 95,
+          "label": "Elite",
+          "display": "95/100 (Elite)",
+          "std_dev": 0.42,
+          "consistency": "Extremely Consistent",
+          "variance_level": "Low"
+        },
+        "vision_insight": {
+          "primary": "The books are handing us a gift with this 3.5 line because Gui Santos hasn't even sniffed four assists in his last three outings. We are hammering this under against a Phoenix squad that keeps things tight enough to keep his playmaking opportunities stuck in the mud.",
+          "summary": "The books are handing us a gift with this 3.5 line because Gui Santos hasn't even sniffed four assists in his last three outings. We are hammering this under against a Phoenix squad that keeps things tight enough to keep his playmaking opportunities stuck in the mud.",
+          "lasso_projection": 2.65,
+          "lasso_edge": -0.85,
+          "confidence": "HIGH_FIDELITY",
+          "tactical_note": "Baseline projection favorable"
+        },
+        "blowout_risk": {
+          "player_team_record": "37-45",
+          "opponent_team_record": "45-37",
+          "player_win_pct": 0.451,
+          "opponent_win_pct": 0.549,
+          "win_pct_diff": 0.098,
+          "favored_team": "PHX",
+          "player_is_favored": false,
+          "risk_level": "NONE",
+          "risk_reason": "Competitive matchup: GSW (37-45) vs PHX (45-37)",
+          "warning": null
+        },
+        "scout_badges": [
+          "high_fidelity_model"
+        ],
+        "lasso": {
+          "projection": 2.65,
+          "confidence_tier": "HIGH_FIDELITY",
+          "r_squared": 0.5469,
+          "top_drivers": [
+            "L10_avg_ast",
+            "target_L10_avg"
+          ]
+        },
+        "calculated_at": "2026-04-18T04:31:09.872389+00:00"
+      },
+      "is_vision_enriched": true,
+      "is_anomaly": false,
+      "is_demon_anomaly": false,
+      "is_goblin_anomaly": false,
+      "season_margin": -1.2,
+      "margin": -0.1,
+      "player_id": "57875092",
+      "nba_id": 1630611,
+      "bdl_id": 57875092,
+      "nba_com_id": 1630611,
+      "headshot_url": "/static/player-headshots/1630611.png",
+      "photo_url": "/static/player-headshots/1630611.png",
+      "team": "GSW",
+      "team_name": "Golden State Warriors",
+      "position": "F",
+      "opponent": "PHX",
+      "opponent_abbr": "PHX",
+      "injured_teammates": [],
       "recommendation": "Over",
       "sport": "nba",
       "tier": "war_zone",
-      "tier_label": "WAR_ZONE",
       "vision_score": 99.3,
       "vision_score_raw": 0.225612,
       "tier_gate_results": {
@@ -8156,10 +8320,7 @@
       "pp_reference_source": "dk",
       "pp_playable": true,
       "pp_playability_reason": "playable",
-      "is_goblin": false,
-      "is_demon": true,
       "is_standard": false,
-      "prop_type": "DEMON",
       "vk2_projection": null,
       "vk2_sigma": null,
       "model_projection": 3.23,
@@ -8168,97 +8329,25 @@
       "p_true_method": "hit_rate",
       "p_true_vk2": null,
       "p_true_hit_rate": 0.6,
-      "vk_prob_over": 60.0,
-      "vk_prob_under": 40.0,
       "hit_rate_over": 60.0,
-      "h10_rate": 60.0,
       "hit_rate_under": 40.0,
-      "vk_recommendation": "LEAN_OVER",
       "canonical_key": "nba|c8d1b7fd06c21e259b9416daf596f023|Gui Santos|AST|3.5|OVER",
       "validation": {
         "has_market_data": false,
         "has_hit_rates": true,
-        "has_context": false,
+        "has_context": true,
         "has_mlr": false,
         "has_gemini": false,
         "is_fully_validated": false
       },
-      "vision_intel": "Why the books think Gui Santos is suddenly transforming into a floor general against Phoenix is beyond us, especially since he hasn't cleared this 3.5 line once in his last twenty appearances. With a massive 24.3% edge on the under and a stability score of 95, we are fading this inflated number and banking on his consistent inability to rack up dimes.",
-      "vision_summary": "Why the books think Gui Santos is suddenly transforming into a floor general against Phoenix is beyond us, especially since he hasn't cleared this 3.5 line once in his last twenty appearances. With a massive 24.3% edge on the under and a stability score of 95, we are fading this inflated number and banking on his consistent inability to rack up dimes.",
+      "vision_intel": "The books are hallucinating with this 3.5 line because Gui Santos hasn't cleared this mark in almost half his recent games and our numbers have him buried at a 2.6 projection. While Phoenix isn't exactly a defensive powerhouse, Santos lacks the consistent usage to hunt for four dimes tonight, making this massive 24.3% edge feel like absolute highway robbery.",
+      "vision_summary": "The books are hallucinating with this 3.5 line because Gui Santos hasn't cleared this mark in almost half his recent games and our numbers have him buried at a 2.6 projection. While Phoenix isn't exactly a defensive powerhouse, Santos lacks the consistent usage to hunt for four dimes tonight, making this massive 24.3% edge feel like absolute highway robbery.",
       "scout_badges": [
         "high_fidelity_model"
       ],
-      "intel_suite": {
-        "usage_ripple": {
-          "bump_percent": 0,
-          "display": "Standard Volume",
-          "shift_label": "Standard Volume",
-          "injuries_affecting": [],
-          "reasoning": "No significant lineup changes"
-        },
-        "matchup_dvp": {
-          "rank": 13,
-          "display": "Rank #13 vs. Playmakers",
-          "color": "yellow",
-          "friction_level": "Medium",
-          "friction_label": "Average Defense",
-          "opponent": "PHX",
-          "stat_category": "AST"
-        },
-        "pace_delta": {
-          "possessions": 1.1,
-          "display": "+1.1 Possessions",
-          "pace_factor": 1.0,
-          "tempo_label": "Standard Tempo",
-          "team_pace": 98.2,
-          "opponent_pace": 99.0,
-          "expected_game_pace": 98.6
-        },
-        "stability_index": {
-          "score": 95,
-          "label": "Elite",
-          "display": "95/100 (Elite)",
-          "std_dev": 0.42,
-          "consistency": "Extremely Consistent",
-          "variance_level": "Low"
-        },
-        "vision_insight": {
-          "primary": "Why are the books acting like Gui Santos is suddenly a floor general when he hasn't cleared this 3.5 line a single time over his last twenty games? We are fading this number with extreme prejudice because our projection shows nearly a 25% edge against a Phoenix defense that stays disciplined enough to keep him from playmaking.",
-          "summary": "Why are the books acting like Gui Santos is suddenly a floor general when he hasn't cleared this 3.5 line a single time over his last twenty games? We are fading this number with extreme prejudice because our projection shows nearly a 25% edge against a Phoenix defense that stays disciplined enough to keep him from playmaking.",
-          "lasso_projection": 2.65,
-          "lasso_edge": -0.85,
-          "confidence": "HIGH_FIDELITY",
-          "tactical_note": "Baseline projection favorable"
-        },
-        "blowout_risk": {
-          "player_team_record": "37-45",
-          "opponent_team_record": "45-37",
-          "player_win_pct": 0.451,
-          "opponent_win_pct": 0.549,
-          "win_pct_diff": 0.098,
-          "favored_team": "PHX",
-          "player_is_favored": false,
-          "risk_level": "NONE",
-          "risk_reason": "Competitive matchup: GSW (37-45) vs PHX (45-37)",
-          "warning": null
-        },
-        "scout_badges": [
-          "high_fidelity_model"
-        ],
-        "lasso": {
-          "projection": 2.65,
-          "confidence_tier": "HIGH_FIDELITY",
-          "r_squared": 0.5469,
-          "top_drivers": [
-            "L10_avg_ast",
-            "target_L10_avg"
-          ]
-        },
-        "calculated_at": "2026-04-18T03:27:56.892202+00:00"
-      },
-      "volatility_score": 0.0,
-      "volatility_label": "unknown",
-      "volatility_family": "unknown",
+      "volatility_score": 65.1,
+      "volatility_label": "moderate",
+      "volatility_family": "nba_low_line",
       "vk_data": {
         "projection": 2.65,
         "confidence_tier": "HIGH_FIDELITY",
@@ -8269,8 +8358,8 @@
         ]
       },
       "_enriched": true,
-      "_enriched_at": "2026-04-18T03:27:58.232739+00:00",
-      "_cache_updated": "2026-04-18T03:27:58.232741+00:00"
+      "_enriched_at": "2026-04-18T04:31:17.832901+00:00",
+      "_cache_updated": "2026-04-18T04:31:17.832904+00:00"
     }
   }
 }
